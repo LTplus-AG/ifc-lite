@@ -285,7 +285,10 @@ class AuthoredRebarAttribute(TypedDict):
     source_id: int
     value: Union[AuthoredRebarText, AuthoredRebarMeasure]
 
-class RebarSweep(TypedDict):
+class RebarSweepPreflightFields(TypedDict, total=False):
+    preflight: RebarPreflightReport
+
+class RebarSweep(RebarSweepPreflightFields):
     occurrence_index: int
     source: Optional[SweptDiskSourceKey]  # None when definition output budget was exhausted
     solid_id: int
@@ -298,7 +301,22 @@ class RebarSweep(TypedDict):
     directrix_metrics: Optional[DirectrixMetrics]
     checks: SweptDiskCheckReport
 
-class RebarScheduleRow(TypedDict):
+class RebarPreflightComparison(TypedDict):
+    kind: Literal["inside_bend_radius", "straight_segment_length", "developed_centreline_length"]
+    segment_index: Optional[int]
+    measured_m: float
+    limit_m: float
+    passed: bool
+
+class RebarPreflightReport(TypedDict):
+    skipped_reason: Optional[str]
+    comparisons: List[RebarPreflightComparison]
+    unassessed_reasons: List[str]
+
+class RebarRowPreflightFields(TypedDict, total=False):
+    preflight_skipped_reason: str
+
+class RebarScheduleRow(RebarRowPreflightFields):
     GlobalId: Optional[str]
     Name: Optional[str]
     type_id: Optional[int]
@@ -507,6 +525,27 @@ def authored_quantity_analysis(
     This view has no derived estimate, physical bar count or material takeoff.
     """
     ...
+
+def rebar_schedule(
+    ifc_bytes: bytes,
+    ids: Optional[Set[int]] = None,
+    *,
+    zero_length_tolerance_m: float = 1e-9,
+    gap_tolerance_m: float = 1e-6,
+    tangent_tolerance_rad: float = 1e-6,
+) -> RebarSchedule: ...
+
+def rebar_schedule_with_preflight(
+    ifc_bytes: bytes,
+    min_inside_bend_radius_m: float,
+    min_straight_segment_length_m: float,
+    ids: Optional[Set[int]] = None,
+    *,
+    max_developed_centreline_length_m: Optional[float] = None,
+    zero_length_tolerance_m: float = 1e-9,
+    gap_tolerance_m: float = 1e-6,
+    tangent_tolerance_rad: float = 1e-6,
+) -> RebarSchedule: ...
 
 def entity_data(
     ifc_bytes: bytes,

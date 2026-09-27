@@ -2,6 +2,103 @@ use super::*;
 
 const REBAR: &str = include_str!("../../geometry/tests/fixtures/swept_disk_composite_arc_ubar.ifc");
 const MAPPED: &str = include_str!("../../geometry/tests/fixtures/swept_disk_trimmed_line.ifc");
+const CRANK: &str = include_str!("../../geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc");
+
+#[test]
+fn issue_6305_preflight_equality_failures_and_mm_geometry() {
+    let options = SweptDiskCheckOptions::default();
+    let loose = RebarPreflightLimits {
+        min_inside_bend_radius_m: 0.0,
+        min_straight_segment_length_m: 0.0,
+        max_developed_centreline_length_m: Some(10.0),
+    };
+    let first = build_rebar_schedule_with_preflight(REBAR.as_bytes(), None, &options, &loose).unwrap();
+    let sweep = &first.rows[&125].sweeps[0];
+    let comparisons = &sweep.preflight.as_ref().unwrap().comparisons;
+    let bend = comparisons.iter().find(|item| item.kind == "inside_bend_radius").unwrap();
+    let straight = comparisons.iter().filter(|item| item.kind == "straight_segment_length")
+        .min_by(|left, right| left.measured_m.total_cmp(&right.measured_m)).unwrap();
+    let length = comparisons.iter().find(|item| item.kind == "developed_centreline_length").unwrap();
+    assert!((bend.measured_m - 0.087).abs() < 1e-12);
+    assert_eq!(bend.segment_index, Some(1));
+    let equal = RebarPreflightLimits {
+        min_inside_bend_radius_m: bend.measured_m,
+        min_straight_segment_length_m: straight.measured_m,
+        max_developed_centreline_length_m: Some(length.measured_m),
+    };
+    let schedule = build_rebar_schedule_with_preflight(REBAR.as_bytes(), None, &options, &equal).unwrap();
+    let row = &schedule.rows[&125];
+    assert!(row.sweeps[0].preflight.as_ref().unwrap().comparisons.iter().all(|item| item.passed));
+    assert!(!row.authored.contains_key("BarLength"));
+    assert!(row.sweeps[0].directrix_metrics.is_some());
+    let strict = RebarPreflightLimits {
+        min_inside_bend_radius_m: bend.measured_m + 0.001,
+        min_straight_segment_length_m: straight.measured_m + 0.001,
+        max_developed_centreline_length_m: Some(length.measured_m - 0.001),
+    };
+    let schedule = build_rebar_schedule_with_preflight(REBAR.as_bytes(), None, &options, &strict).unwrap();
+    let failed = schedule.rows[&125].sweeps[0].preflight.as_ref().unwrap().comparisons
+        .iter().filter(|item| !item.passed).collect::<Vec<_>>();
+    assert!(failed.iter().any(|item| item.kind == "inside_bend_radius" && item.segment_index.is_some()));
+    assert!(failed.iter().any(|item| item.kind == "straight_segment_length" && item.segment_index.is_some()));
+    assert!(failed.iter().any(|item| item.kind == "developed_centreline_length" && item.segment_index.is_none()));
+    assert!(build_rebar_schedule_with_preflight(CRANK.as_bytes(), None, &options, &loose)
+        .unwrap().rows[&79].sweeps[0].preflight.as_ref().unwrap().comparisons.len() >= 5);
+    let line_only = build_rebar_schedule_with_preflight(MAPPED.as_bytes(), None, &options, &loose).unwrap();
+    let report = line_only.rows[&50].sweeps[0].preflight.as_ref().unwrap();
+    assert!(report.unassessed_reasons.iter().any(|reason| reason.contains("no arc segments")));
+    let arc_only = REBAR.replace(
+        "#71=IFCCOMPOSITECURVE((#48,#55,#60,#65,#70),.F.);",
+        "#71=IFCCOMPOSITECURVE((#55,#65),.F.);",
+    );
+    let schedule = build_rebar_schedule_with_preflight(arc_only.as_bytes(), None, &options, &loose).unwrap();
+    let report = schedule.rows[&125].sweeps[0].preflight.as_ref().unwrap();
+    assert!(report.unassessed_reasons.iter().any(|reason| reason.contains("no line segments")));
+}
+
+#[test]
+fn issue_6305_preflight_explains_missing_modified_and_invalid_inputs() {
+    let options = SweptDiskCheckOptions::default();
+    let limits = RebarPreflightLimits {
+        min_inside_bend_radius_m: 0.0,
+        min_straight_segment_length_m: 0.0,
+        max_developed_centreline_length_m: None,
+    };
+    let absent = REBAR.replace("#33,#124,$,$,29.", "#33,$,$,$,29.");
+    let row = &build_rebar_schedule_with_preflight(absent.as_bytes(), None, &options, &limits)
+        .unwrap().rows[&125];
+    assert_eq!(row.preflight_skipped_reason, row.geometry_unavailable_reason);
+    let modified = MAPPED.replace(
+        "#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#43));",
+        "#1001=IFCBOOLEANRESULT(.UNION.,#43,#43);\n#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#1001));",
+    );
+    let schedule = build_rebar_schedule_with_preflight(modified.as_bytes(), None, &options, &limits).unwrap();
+    for sweep in &schedule.rows[&50].sweeps {
+        let report = sweep.preflight.as_ref().unwrap();
+        assert!(report.skipped_reason.as_ref().unwrap().contains("modified"));
+        assert!(report.comparisons.is_empty());
+    }
+    let unsupported = MAPPED.replace(
+        "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#10,$,$);",
+        "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM($,$,#10,$,$,2.,1.);",
+    );
+    let schedule = build_rebar_schedule_with_preflight(unsupported.as_bytes(), None, &options, &limits).unwrap();
+    let report = schedule.rows[&50].sweeps[0].preflight.as_ref().unwrap();
+    assert!(report.skipped_reason.as_ref().unwrap().contains("unsupported"));
+    assert!(report.comparisons.is_empty());
+    for invalid in [f64::NAN, -1.0, f64::INFINITY] {
+        let bad = RebarPreflightLimits { min_inside_bend_radius_m: invalid, ..limits };
+        assert!(build_rebar_schedule_with_preflight(REBAR.as_bytes(), Some(&HashSet::new()), &options, &bad).is_err());
+    }
+    let invalid_arc = REBAR.replace(
+        "#72=IFCSWEPTDISKSOLID(#71,14.5,$,0.,820.826726273522);",
+        "#72=IFCSWEPTDISKSOLID(#71,101.5,$,0.,820.826726273522);",
+    );
+    let schedule = build_rebar_schedule_with_preflight(invalid_arc.as_bytes(), None, &options, &limits).unwrap();
+    let report = schedule.rows[&125].sweeps[0].preflight.as_ref().unwrap();
+    assert!(report.unassessed_reasons.iter().any(|reason| reason.contains("centreline radius")));
+    assert!(!report.comparisons.iter().any(|item| item.kind == "inside_bend_radius"));
+}
 
 #[test]
 fn issue_5759_revit_snowdon_schedule_preserves_authored_and_measured_lengths() {
@@ -30,6 +127,16 @@ fn issue_5759_revit_snowdon_schedule_preserves_authored_and_measured_lengths() {
     assert_eq!(metrics.segments.len(), 11);
     assert_eq!(metrics.segments.iter().filter(|part| part.bend_angle.is_some()).count(), 5);
     assert!((metrics.total_length - authored_m).abs() > 0.009);
+    let preflight = build_rebar_schedule_with_preflight(&content, Some(&ids),
+        &SweptDiskCheckOptions::default(), &RebarPreflightLimits {
+            min_inside_bend_radius_m: 0.0,
+            min_straight_segment_length_m: 0.0,
+            max_developed_centreline_length_m: None,
+        }).unwrap();
+    let comparisons = &preflight.rows[&132347].sweeps[0].preflight.as_ref().unwrap().comparisons;
+    assert!(comparisons.iter().any(|item| item.kind == "inside_bend_radius" && item.segment_index.is_some()));
+    assert!(comparisons.iter().any(|item| item.kind == "straight_segment_length" && item.segment_index.is_some()));
+    assert_eq!(preflight.rows[&132347].authored["BarLength"].value, bar.authored["BarLength"].value);
 }
 
 #[test]

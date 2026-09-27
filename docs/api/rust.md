@@ -729,6 +729,18 @@ precedence. `bar_entity_count` and `represented_sweep_count` count IFC records,
 not manufactured bars. The API provides no physical bar count, cutting length,
 or certified fabrication result.
 
+`build_rebar_schedule_with_preflight(ifc_bytes, ids, &options, &limits)` adds
+caller-defined geometric comparisons to each represented sweep. Construct
+`RebarPreflightLimits::new(min_inside_bend_radius_m,
+min_straight_segment_length_m, max_developed_centreline_length_m)` with finite,
+nonnegative SI-metre limits. Each comparison retains its measured value, limit,
+segment index (when applicable), and pass/fail result; equality passes. The
+inside radius is the centreline arc radius minus the swept outer radius.
+Modified CSG sources and unsupported directrices receive a skip reason; rows
+without a swept-disk source receive `preflight_skipped_reason`. Missing line or
+arc segments are listed as unassessed. These comparisons do not certify a
+cutting length or fabrication-code compliance.
+
 ### Appearance authoring
 
 `ifc_lite_processing::appearance::calibrate_appearance_plane` establishes one

@@ -11,6 +11,10 @@ use serde::Serialize;
 use std::f64::consts::TAU;
 
 const MAX_LOOPS: usize = 100_000;
+// Application baseline in raw IFC length units. IFC does not prescribe a
+// default Precision. Declared values may tighten joins or widen clearance;
+// keep closure separate so a broad context cannot close an open boundary.
+const DEFAULT_TOPOLOGY_CLEARANCE: f64 = 1e-9;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -53,7 +57,24 @@ pub fn extract_analytic_profile(profile: &DecodedEntity, decoder: &mut EntityDec
         loops: Vec::new(), status: AnalyticStatus::Complete,
     };
     let parsed = parse_profile(profile, decoder, &mut result);
-    if let Err(reason) = parsed {
+    let validated = parsed.and_then(|()| {
+        if matches!(profile.ifc_type,
+            IfcType::IfcArbitraryClosedProfileDef | IfcType::IfcArbitraryProfileDefWithVoids)
+        {
+            let declared = decoder.geometric_context_precision_range()
+                .map_err(|error| format!("profile topology Precision: {error}"))?;
+            let clearance = declared.map_or(DEFAULT_TOPOLOGY_CLEARANCE, |(_, max)| {
+                max.max(DEFAULT_TOPOLOGY_CLEARANCE)
+            });
+            let join_precision = declared.map_or(DEFAULT_TOPOLOGY_CLEARANCE, |(min, _)| {
+                min.min(DEFAULT_TOPOLOGY_CLEARANCE)
+            });
+            super::profile_topology::validate(&result.loops, clearance, join_precision)
+        } else {
+            Ok(())
+        }
+    });
+    if let Err(reason) = validated {
         result.loops.clear();
         result.status = AnalyticStatus::Unsupported(reason);
     }

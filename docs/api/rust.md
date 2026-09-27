@@ -436,7 +436,9 @@ authored `SweptArea` and `Position` STEP IDs, raw file-unit `Depth`, authored
 the solid-local `Position`. `extract_analytic_profile` resolves exact closed
 line and arc loops for rectangles, circles, and supported arbitrary profiles,
 including holes, signed winding area, and exact perimeter in file units. The profile's own `Position` matrix
-remains separate. Unsupported profile geometry or malformed extrusion
+remains separate. Arbitrary boundaries also require conservative
+[topology validation](#analytic-arbitrary-profile-topology), including contained,
+disjoint holes; unresolved topology produces `Unsupported`. Unsupported profile geometry or malformed extrusion
 parameters produce `AnalyticStatus::Unsupported` with a reason; no sampled
 outline is substituted. `ProfileType` must be `AREA`, and
 `ValidExtrusionDirection` rejects a direction perpendicular to the solid's
@@ -1146,3 +1148,57 @@ fill while retaining the existing symbol JSON shape. Deserialization accepts
 older symbol JSON and leaves missing provenance unknown. WASM and the server
 consume the enriched extraction; callers that only need 2D data can keep using
 the legacy API.
+
+### Analytic arbitrary-profile topology
+
+`ifc_lite_geometry::analytic::extract_analytic_profile` preserves exact source
+line and circular-arc primitives. For `IfcArbitraryClosedProfileDef` and
+`IfcArbitraryProfileDefWithVoids`, `Complete` requires a simple outer boundary,
+simple inner boundaries inside it, mutually disjoint boundaries, and no nested
+inner boundaries. This implements the material-region conditions in
+[buildingSMART's profile definition](https://ifc43-docs.standards.buildingsmart.org/IFC/RELEASE/IFC4x3/HTML/lexical/IfcArbitraryProfileDefWithVoids.htm).
+An invalid or unconfirmed topology returns `Unsupported` on the source profile,
+with no partial loops. `extract_analytic_extrusion` propagates that status.
+Consumers must require `Complete` before reporting nominal material quantities.
+
+Validation uses outward-rounded analytic curve enclosures and ray crossings;
+it does not substitute a drawing polygon or reuse the renderer's repair of
+malformed holes. Adjacent segments may meet at their designated endpoints.
+Their outgoing derivatives must establish separation, and all possible contacts
+must stay within the precision neighbourhood of that join. Sub-precision
+contacts there are treated as the same topological join, consistent with IFC's
+point-identity tolerance; strict simplicity below that resolution is not claimed. Other
+segment pairs and separate loops must have certified clearance. The authored
+segments, winding, area and perimeter are not changed by validation.
+
+The context-free extractor uses
+`EntityDecoder::geometric_context_precision_range()`: a lazy, cached scan of
+declared geometric-context `Precision` values in file-length units. The largest
+declaration sets boundary clearance; the smallest declaration limits adjacent
+endpoint equivalence. This conservatively covers profiles reused across representations.
+Subcontexts inherit from geometric contexts; scanning those base declarations
+also covers their precision. This may reject a close boundary valid in a
+tighter context when an unrelated context declares a larger precision.
+Malformed explicit declarations cause `Unsupported`. The IFC attribute is
+optional and has no specified default; the application uses a minimum clearance
+of `1e-9` file units when declarations are absent or smaller, while the join
+tolerance is capped at `1e-9` and respects any smaller declaration. This is an
+application policy, not an IFC default. Existing loop-closure checks remain
+separate; a loose model-wide declaration does not permit larger closure gaps.
+
+Line endpoints and partial-arc chords must be distinguishable at the clearance,
+and arc radii must exceed it. A conservative area/perimeter resolution screen
+also rejects thin loops composed entirely of adjacent primitives. These checks
+may refuse small features that cannot be established at the model's precision.
+They are not a complete certificate of local feature size: a narrow wedge near
+an otherwise valid acute corner is not itself classified as a self-intersection.
+
+The validator spends at most 1,000,000 work units per profile across pair
+checks, interval refinement and containment, with at most 48 refinement levels
+per pair or ray interval. Exhaustion is reported as `Unsupported`. Numerically
+unresolved contacts, overflow and evaluations requiring angles outside the
+certified trigonometric domain also return `Unsupported`. Thus valid but ill-conditioned or
+very large profiles may be unavailable for analytic quantities; they are never
+silently certified or substituted with an approximation. Rendering is
+unaffected. This change makes no performance claim; an end-to-end base/branch
+performance verdict is required before merge.

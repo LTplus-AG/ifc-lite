@@ -9,6 +9,8 @@ mod curve;
 mod frame;
 mod helpers;
 mod profile;
+mod profile_topology;
+mod topology_interval;
 pub use profile::{extract_analytic_profile, AnalyticProfile, AnalyticProfileLoop, ProfileLoopKind};
 mod extrusion;
 pub use extrusion::{extract_analytic_extrusion, AnalyticExtrusion};

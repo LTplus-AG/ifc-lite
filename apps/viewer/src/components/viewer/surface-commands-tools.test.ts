@@ -5,6 +5,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { Crosshair, Slice } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { paletteSurfaceCommands, SURFACE_COMMANDS } from './surface-commands.js';
 
@@ -34,6 +35,13 @@ describe('shared Tools palette commands (#5870)', () => {
       assert.equal(row.labelKey, definition.labelKey);
       assert.equal(row.icon, definition.icon);
     }
+    const reposition = editableRows.find((row) => row.id === 'model:reposition');
+    assert.equal(reposition?.labelKey, 'commandPalette.tool.reposition.label');
+    assert.equal(reposition?.icon, Crosshair);
+    const splitRow = editableRows.find((row) => row.id === 'tool:split');
+    assert.equal(splitRow?.labelKey, 'commandPalette.tool.split.label');
+    assert.equal(splitRow?.icon, Slice);
+    assert.equal(splitRow?.shortcut, 'tool.split');
   });
 
   it('runs the registered tool action through the viewer store', () => {

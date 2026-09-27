@@ -15,7 +15,6 @@
  */
 
 import { useMemo, useRef, useState } from 'react';
-import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -31,6 +30,7 @@ import {
   readIdentityMapSidecar,
 } from '@/lib/compare/identitySidecar';
 import { compareExportPayload } from '@/lib/compare/runTelemetry';
+import { AnalysisExportMenu } from '../analysis/AnalysisExportMenu';
 
 interface CompareExportBarProps {
   result: CompareResult;
@@ -96,16 +96,14 @@ export function CompareExportBar({ result, reportable }: CompareExportBarProps) 
     <div className="border-b border-border text-xs">
       {reportable && (
         <div className="flex items-center gap-2 px-3 py-2">
-          <Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <span className="text-muted-foreground">{t('comparePanel.exportBar.downloadReportLabel')}</span>
-          <div className="ml-auto flex items-center gap-1">
-            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => downloadReport('csv')}>
-              CSV
-            </Button>
-            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => downloadReport('json')}>
-              JSON
-            </Button>
-          </div>
+          <AnalysisExportMenu
+            className="ml-auto"
+            formats={[
+              { id: 'csv', label: t('comparePanel.exportBar.formatCsv'), title: t('comparePanel.exportBar.reportCsvTitle'), onExport: () => downloadReport('csv') },
+              { id: 'json', label: t('comparePanel.exportBar.formatJson'), title: t('comparePanel.exportBar.reportJsonTitle'), onExport: () => downloadReport('json') },
+            ]}
+          />
         </div>
       )}
       <div className="flex items-center gap-2 px-3 py-2">

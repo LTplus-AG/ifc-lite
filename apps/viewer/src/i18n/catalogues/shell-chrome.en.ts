@@ -125,7 +125,6 @@ export const shellChromeEn = {
   'shellChrome.mobileToolbar.commands': 'Commands…',
   'shellChrome.mobileToolbar.homeAriaLabel': 'Home',
   'shellChrome.mobileToolbar.fitAllAriaLabel': 'Fit All',
-  'shellChrome.mobileToolbar.showAllAriaLabel': 'Show All',
   'shellChrome.mobileToolbar.selectTool': 'Select',
   'shellChrome.mobileToolbar.measureTool': 'Measure',
   'shellChrome.mobileToolbar.sectionTool': 'Section',

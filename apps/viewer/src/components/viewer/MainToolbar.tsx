@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { hasWorkspaceHistory, replayWorkspaceHistory } from '@/lib/model-placement/history';
 
 import { AuthorPanelMenuItems } from './toolbar/AuthorPanelMenuItems.js';
@@ -799,7 +800,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         </div>
       )}
 
-      <ActionButton icon={Eye} label={t('mainToolbar.showAll')} onClick={handleShowAll} shortcut="visibility.showAll" />
+      <ActionButton icon={Eye} label={t(ACTION_NAME_KEYS.showAll)} onClick={handleShowAll} shortcut="visibility.showAll" />
       <ActionButton icon={Maximize2} label={t('mainToolbar.fitAll')} onClick={() => cameraCallbacks.fitAll?.()} shortcut="camera.fitAll" />
 
       <DropdownMenu>

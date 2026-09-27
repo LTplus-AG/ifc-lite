@@ -77,6 +77,15 @@ describe('model tree over the edited model (#5249)', () => {
     assert.ok(byName.get('IfcColumn')?.has(12), 'the retyped wall is listed as a column');
   });
 
+  it('By Class: a parsed wall renamed this session is listed under its new Name (#6233)', async () => {
+    const ds = await parse();
+    const view = new MutablePropertyView(null, 'legacy');
+    view.setAttribute(10, 'Name', 'Renamed A');
+    const nodes = buildTypeTree(new Map(), ds, ALL, false, new Set([10, 11, 12]), [], undefined, () => view);
+    assert.deepEqual([...(idsByName(nodes).get('Renamed A') ?? [])], [10]);
+    assert.equal(idsByName(nodes).has('Wall A'), false, 'the parsed Name is gone');
+  });
+
   it('By Type: the deleted occurrence is dropped from its type', async () => {
     const { ds, view, geometric } = await edited();
     const nodes = buildIfcTypeTree(new Map(), ds, new Set(nodes0(ds)), false, geometric, undefined, () => view);

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { effectiveRowType, effectiveTreeType, type TreeOverlay } from './treeOverlay.js';
+import { effectiveRowType, effectiveTreeType, overlayViewFor, type TreeOverlay } from './treeOverlay.js';
 import { effectiveTreeEntityName, effectiveTypeAssignments, effectiveTypeEntities, effectiveTypeInstanceIds } from './effectiveTypeEntities.js';
 import { effectiveGroupAssignments, effectiveGroupIds, effectiveGroupMembers, effectiveGroupName } from './effectiveGroupEntities.js';
 import { GROUP_ENTITY_TYPES, groupMatchesSubFilter } from './groupEntityTypes.js';
@@ -25,7 +25,7 @@ import type { FederatedModel } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { mergeObjectCounts, summarizeObjects } from './objectCountSummary';
 import { buildOtherGroupNodes, type OtherBucketEntry } from './otherBucket';
-import { elementRowType, emitElementsWithOtherBucket, makeShapeTest, spatialRowView, type ElementRowView } from './elementSubtree';
+import { elementRowType, emitElementsWithOtherBucket, makeShapeTest, type ElementRowView } from './elementSubtree';
 import {
   makeAssemblyGeometry,
   partsOrOwnIds,
@@ -161,7 +161,7 @@ export function buildUnifiedStoreys(
       : new Map<number, SpatialNode>();
     const descendantSpaceCache = new Map<number, Set<number>>();
     const displayElevationOf = storeyDisplayElevationFor(modelId, dataStore, model, georefMutations);
-    const view = spatialRowView(overlay, modelId);
+    const view = overlayViewFor(overlay, modelId);
 
     for (const [storeyId, elements] of byStorey.entries()) {
       const elevation = storeyElevations.get(storeyId) ?? 0;
@@ -468,7 +468,7 @@ export function buildTreeData(
           // IfcRelAggregates parts — issue #1133), ordered by the active name
           // sort so it reaches inside the storey (issue #1476).
           if (contribExpanded && model?.ifcDataStore) {
-            const view = spatialRowView(overlay, storey.modelId);
+            const view = overlayViewFor(overlay, storey.modelId);
             emitElementsWithOtherBucket(
               storey.elements,
               storey.modelId,
@@ -532,7 +532,7 @@ export function buildTreeData(
       // If expanded, show Project -> Site -> Building (stop at building, no storeys)
       if (isModelExpanded && model.ifcDataStore?.spatialHierarchy?.project) {
         const descendantSpaceCache = new Map<number, Set<number>>();
-        const view = spatialRowView(overlay, modelId);
+        const view = overlayViewFor(overlay, modelId);
         buildSpatialNodes(
           model.ifcDataStore.spatialHierarchy.project,
           modelId,
@@ -564,7 +564,7 @@ export function buildTreeData(
     const [modelId, model] = Array.from(models.entries())[0];
     if (model.ifcDataStore?.spatialHierarchy?.project) {
       const descendantSpaceCache = new Map<number, Set<number>>();
-      const view = spatialRowView(overlay, modelId);
+      const view = overlayViewFor(overlay, modelId);
       buildSpatialNodes(
         model.ifcDataStore.spatialHierarchy.project,
         modelId,
@@ -593,7 +593,7 @@ export function buildTreeData(
   } else if (ifcDataStore?.spatialHierarchy?.project) {
     // Legacy single-model mode (no offset)
     const descendantSpaceCache = new Map<number, Set<number>>();
-    const view = spatialRowView(overlay, 'legacy');
+    const view = overlayViewFor(overlay, 'legacy');
     buildSpatialNodes(
       ifcDataStore.spatialHierarchy.project,
       'legacy',
@@ -676,7 +676,7 @@ export function buildTypeTree(
       // geometry-less assembly).
       const typeName = effectiveTreeType(view, expressId, dataStore.entities.getTypeName(expressId) || 'Unknown');
       if (typeName === null) continue;
-      const entityName = dataStore.entities.getName(expressId) || `${typeName} #${expressId}`;
+      const entityName = effectiveTreeEntityName(dataStore, view, expressId, `${typeName} #${expressId}`);
       if (!assemblyGeometry.renders(typeName, expressId, globalId)) {
         if (assemblyGeometry.isOther(typeName, expressId, globalId)) {
           otherEntities.push({ expressId, globalId, name: entityName, modelId, ifcType: typeName });

@@ -25,6 +25,9 @@ import {
 import { useViewerStore, resolveEntityRef, resolveGlobalId, toGlobalIdFromModels } from '@/store';
 import type { DuplicateDirection } from '@/store/slices/mutationSlice';
 import { useContextMutationAccess } from './useContextMutationAccess';
+import { effectiveTreeEntityName } from './hierarchy/effectiveTypeEntities';
+import { effectiveRowType } from './hierarchy/treeOverlay';
+import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { hideFromContextMenuFromStore } from '@/store/hideSelection';
 import {
@@ -53,6 +56,7 @@ export function EntityContextMenu() {
   // Store-level mutations
   const removeEntity = useViewerStore((s) => s.removeEntity);
   const duplicateEntity = useViewerStore((s) => s.duplicateEntity);
+  const mutationViews = useViewerStore((s) => s.mutationViews);
   const triggerRef = useRef<HTMLSpanElement>(null);
   const focusReturnRef = useRef<HTMLElement | null>(null);
   const wasOpenRef = useRef(false);
@@ -246,11 +250,18 @@ export function EntityContextMenu() {
     closeContextMenu();
   }, [contextMenu.entityId, closeContextMenu]);
 
-  // Right-clicked entity's type — used in the toast message.
-  const contextEntityType = useMemo(() => {
-    if (!resolvedExpressId || !activeDataStore) return '';
-    return activeDataStore.entities.getTypeName(resolvedExpressId) || '';
-  }, [resolvedExpressId, activeDataStore]);
+  // Right-clicked entity's name and class for the header and toasts, read
+  // through the session's mutation view so an element authored this session
+  // shows its own name and class, not the parsed table's 'Unknown' (#6233).
+  let entityName = '';
+  let entityType = '';
+  if (resolvedExpressId && activeDataStore) {
+    const view = contextEntityRef
+      ? mutationViews.get(normalizeMutationModelId(useViewerStore.getState(), contextEntityRef.modelId)) : undefined;
+    entityName = effectiveTreeEntityName(activeDataStore, view, resolvedExpressId, '');
+    entityType = effectiveRowType(activeDataStore, view, resolvedExpressId)
+      ?? (activeDataStore.entities.getTypeName(resolvedExpressId) || '');
+  }
 
   const { canEdit, editReasonKey, showMutationActions } = useContextMutationAccess(contextEntityRef, contextMenu.isOpen);
   const editReason = editReasonKey ? t(editReasonKey) : undefined;
@@ -288,20 +299,12 @@ export function EntityContextMenu() {
       hideEntity(contextMenu.entityId);
       // Drop the selection so the right panel doesn't cling to a tombstoned id.
       setSelectedEntityId(null);
-      toast.success(`${contextEntityType || 'Entity'} #${contextEntityRef.expressId} deleted — undo to restore`);
+      toast.success(`${entityType || 'Entity'} #${contextEntityRef.expressId} deleted — undo to restore`);
     } else {
       toast.error('Delete failed — entity not found in store overlay');
     }
     closeContextMenu();
-  }, [contextEntityRef, canEdit, contextEntityType, contextMenu.entityId, removeEntity, hideEntity, setSelectedEntityId, closeContextMenu]);
-
-  // Get entity info for display (resolvedExpressId is the original ID for IfcDataStore lookups)
-  let entityName = '';
-  let entityType = '';
-  if (resolvedExpressId && activeDataStore) {
-    entityName = activeDataStore.entities.getName(resolvedExpressId) || '';
-    entityType = activeDataStore.entities.getTypeName(resolvedExpressId) || '';
-  }
+  }, [contextEntityRef, canEdit, entityType, contextMenu.entityId, removeEntity, hideEntity, setSelectedEntityId, closeContextMenu]);
 
   return (
     <ContextMenu

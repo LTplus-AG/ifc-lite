@@ -22,17 +22,11 @@ import type { FederatedModel } from '@/store';
 import { isPhysicalObjectType } from '@/lib/physical-objects';
 import { makeAssemblyGeometry, resolveTreeGlobalId } from './productTree';
 import { effectiveTreeEntityName } from './effectiveTypeEntities.js';
-import { effectiveRowType, type TreeOverlay } from './treeOverlay.js';
+import { effectiveRowType } from './treeOverlay.js';
 import type { TreeNode, HierarchySortMode, ExpansionLookup } from './types';
 
 /** One model's mutation view as the spatial tree reads it; absent = no edits. */
 export type ElementRowView = MutablePropertyView | null | undefined;
-
-/** The spatial tree's view for `modelId`. Legacy single-store mode keys its
- *  edits under `__legacy__`, as the Inspector does. */
-export function spatialRowView(overlay: TreeOverlay | undefined, modelId: string): ElementRowView {
-  return overlay?.(modelId === 'legacy' ? '__legacy__' : modelId);
-}
 
 /** The class a spatial element row shows and counts: the edited class, so an
  *  element authored this session reads as its own class rather than the

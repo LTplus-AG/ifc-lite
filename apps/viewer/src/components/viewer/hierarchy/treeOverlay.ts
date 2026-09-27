@@ -37,6 +37,12 @@ export function effectiveTreeType(
   return retype ? normalizeIfcTypeName(retype) : parsedType;
 }
 
+/** `modelId`'s view as a tree or chip reads it. Legacy single-store mode
+ *  keys its edits under `__legacy__`, as the Inspector does. */
+export function overlayViewFor(overlay: TreeOverlay | undefined, modelId: string): MutablePropertyView | null | undefined {
+  return overlay?.(modelId === 'legacy' ? '__legacy__' : modelId);
+}
+
 /**
  * Any row's class in the edited model, parsed or authored: the overlay
  * record's class for an entity created this session (the parsed table does

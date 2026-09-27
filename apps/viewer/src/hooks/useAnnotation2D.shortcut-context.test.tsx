@@ -14,17 +14,21 @@ import assert from 'node:assert/strict';
 import { useRef } from 'react';
 import { render, cleanup, press } from '@/test/render.js';
 import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
+import { useViewerStore } from '@/store';
 import { useAnnotation2D } from './useAnnotation2D.js';
+import { useMeasure2D } from './useMeasure2D.js';
 
-function Probe({ onDelete, onDeselect = () => {} }: { onDelete: () => void; onDeselect?: () => void }) {
+function Probe({ onDelete, onDeselect = () => {}, activeTool = 'none' }: {
+  onDelete: () => void; onDeselect?: () => void; activeTool?: 'none' | 'measure';
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   useAnnotation2D({
     drawing: null,
     viewTransform: { x: 0, y: 0, scale: 1 },
     sectionAxis: 'down',
     containerRef,
-    activeTool: 'none',
-    setActiveTool: () => {},
+    activeTool,
+    setActiveTool: (tool) => { useViewerStore.getState().setAnnotation2DActiveTool(tool); },
     polygonArea2DPoints: [],
     addPolygonArea2DPoint: () => {},
     completePolygonArea2D: () => {},
@@ -49,10 +53,24 @@ function Probe({ onDelete, onDeselect = () => {} }: { onDelete: () => void; onDe
   return <div ref={containerRef} />;
 }
 
+function MeasureProbe({ onCancel }: { onCancel: () => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  useMeasure2D({
+    drawing: null, viewTransform: { x: 0, y: 0, scale: 1 }, setViewTransform: () => {},
+    sectionAxis: 'down', containerRef, measure2DMode: true,
+    measure2DStart: null, measure2DCurrent: null, measure2DShiftLocked: false,
+    measure2DLockedAxis: null, setMeasure2DStart: () => {}, setMeasure2DCurrent: () => {},
+    setMeasure2DShiftLocked: () => {}, setMeasure2DSnapPoint: () => {},
+    cancelMeasure2D: onCancel, completeMeasure2D: () => {},
+  });
+  return <div ref={containerRef} />;
+}
+
 describe('useAnnotation2D — Delete respects the focused widget (#5596)', () => {
   afterEach(() => {
     cleanup();
     document.body.replaceChildren();
+    useViewerStore.getState().setAnnotation2DActiveTool('none');
   });
 
   it('Delete with nothing focused removes the selected annotation (control)', () => {
@@ -90,6 +108,22 @@ describe('useAnnotation2D — Delete respects the focused widget (#5596)', () =>
       press(window, 'Escape');
       assert.equal(deselections, 1);
       assert.equal(globalEscapes, 0);
+    } finally {
+      unregister();
+    }
+  });
+
+  it('#5841 Escape cancels measurement and exits its active drawing tool', () => {
+    useViewerStore.getState().setAnnotation2DActiveTool('measure');
+    let cancellations = 0;
+    let globalEscapes = 0;
+    const unregister = registerKeyboardCommand('selection.escape', () => { globalEscapes++; });
+    try {
+      render(<><MeasureProbe onCancel={() => { cancellations++; }} /><Probe activeTool="measure" onDelete={() => {}} /></>);
+      press(window, 'Escape');
+      assert.equal(cancellations, 1, 'the in-progress measurement is cancelled');
+      assert.equal(useViewerStore.getState().annotation2DActiveTool, 'none', 'the drawing tool exits');
+      assert.equal(globalEscapes, 0, 'Escape is owned by the drawing');
     } finally {
       unregister();
     }

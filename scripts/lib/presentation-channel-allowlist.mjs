@@ -142,7 +142,7 @@ export const NO_MARKER_REQUIRED = new Map([
     // module, and closed the mobile KNOWN GAP they recorded: mobile used to
     // hide only the singular selectedEntityId.
     'apps/viewer/src/store/hideSelection.ts',
-    'hideSelectionFromStore hides THE CURRENT SELECTION (state.selectedEntityIds, falling back to selectedEntityId), not a raw entity pick. Selecting a geometry-less assembly already puts its renderable parts in that set: useSelectAssembly.ts does setSelectedEntityIds([...renderableParts, globalId]) after routing through cameraCallbacks.resolveHighlightIds, and SearchModal.text/HierarchyPanel do the same, so the ids arriving here are post-expansion. Expanding again would be a no-op at best. Every surface\'s Hide (keyboard, ribbon, classic toolbar, palette, mobile, context menu) calls this one function.',
+    'hideSelectionFromStore hides THE CURRENT SELECTION (state.selectedEntityIds, falling back to selectedEntityId), not a raw entity pick. Selecting a geometry-less assembly already puts its renderable parts in that set: useSelectAssembly.ts does setSelectedEntityIds([...renderableParts, globalId]) after routing through cameraCallbacks.resolveHighlightIds, and SearchModal.text/HierarchyPanel do the same, so the ids arriving here are post-expansion. Expanding again would be a no-op at best. Every current surface\'s Hide (keyboard, ribbon, palette, mobile, context menu) calls this one function.',
   ],
   [
     'apps/viewer/src/components/viewer/schedule/useOverlayCompositor.ts',

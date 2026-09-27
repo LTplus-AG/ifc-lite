@@ -99,7 +99,7 @@ export const TOUR_ANCHORS = {
   bcfCaptureViewpoint: 'bcf-capture-viewpoint',
   /** BCFPanel header Export BCF button (disabled until a topic exists). */
   bcfExport: 'bcf-export',
-  /** RibbonToolbar tab strip (ribbon style only; the classic strip has none). */
+  /** RibbonToolbar tab strip. */
   ribbonTabs: 'ribbon-tabs',
   /** Ribbon collapse/expand chevron in the tab strip. */
   ribbonCollapse: 'ribbon-collapse',

@@ -82,8 +82,8 @@ export function useFileCommands(): FileCommands {
   const resetViewerState = useViewerStore((state) => state.resetViewerState);
 
   // Share dialog host. Owned here (not by a toolbar or tab panel) because
-  // this hook is mounted by whichever toolbar style is active for the whole
-  // session, while ribbon tab panels unmount on tab switch/collapse — the
+  // this hook is mounted by RibbonToolbar for the whole session, while its
+  // tab panels unmount on tab switch/collapse — the
   // `ifc-lite:open-share-dialog` event (RoomPanel's "Create a room") must
   // always find a live listener.
   const collabEnabled = useMemo(() => isCollabEnabled(), []);

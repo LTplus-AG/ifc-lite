@@ -144,13 +144,11 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
 
         <div className="flex-1" />
 
-        {/* Inline search — the very component the classic strip hosts, not
-            a ribbon copy of it, so `/` and ⌘F focus a field here too, the
-            n/N result cycle is reachable, and the recent-search popover
-            plus the "N filter rules active" badge (with its one-click
-            clear) exist in both styles. It sits in the tab strip rather
-            than inside a tab so it survives collapse and tab switches,
-            matching the classic strip's always-visible field.
+        {/* Inline search uses the shared SearchInline component, so `/` and
+            ⌘F focus this field. The n/N result cycle, recent-search popover,
+            and "N filter rules active" badge (with its one-click
+            clear) remain available. It sits in the tab strip rather than
+            inside a tab so it survives collapse and tab switches.
 
             Right-oriented: the tab strip's left edge is tab geography, so
             a field parked there competes with the tabs for the same

@@ -134,10 +134,9 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
               ) : undefined}
             />
             {/* Room panel toggle — live presence + management. Shown whenever
-                collab is on, not only inside a room: the classic strip's Panels
-                menu, the palette and the rail all offer it unconditionally, and
-                gating it here left ribbon users unable to open the panel at all
-                before joining. It also contradicted this toolbar's own rule
+                collab is on, not only inside a room: the palette and rail offer
+                it unconditionally. Gating it here left ribbon users unable to
+                open the panel before joining. It also contradicted this toolbar's own rule
                 that its geography stays put rather than appearing mid-session. */}
             <RibbonLargeButton
               icon={CollabsRoom}

@@ -12,7 +12,9 @@
  *      cursor ray ∩ the plane;
  *   2. the WP3 solver (`solveSnap`): the command's anchor, chain and typed
  *      locks, Shift (angle step) / Alt (suspend snapping), and — while
- *      snapping is on — the mesh snap source (`commandSnapSource.ts`);
+ *      snapping is on — the WP3 sources: the mesh source over the renderer's
+ *      magnetic pick, and the semantic source over the session storey's
+ *      wall axes (endpoints, midpoints, bodies);
  *   3. `render` = the solved point on the plane.
  * Moves are coalesced to one resolve per animation frame, using the LATEST
  * cursor position and modifiers of that frame.
@@ -30,7 +32,9 @@ import {
 import type { ModelingCommand, Vec3, Workplane } from '@/lib/commands/modeling/types';
 import { commandGhostId } from '@/lib/commands/modeling/ghost';
 import { useViewerStore } from '@/store';
-import { meshSnapSource } from './commandSnapSource.js';
+import { createMeshSource, type MeshPick } from '@/lib/snap/sources/mesh';
+import { createSemanticSource, type SemanticSource } from '@/lib/snap/sources/semantic';
+import { storeyWallAxes } from '@/lib/snap/sources/semantic-walls';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 
 export interface PointerModifiers { shiftKey: boolean; altKey: boolean }
@@ -74,21 +78,36 @@ function pickOptions(ctx: MouseHandlerContext, command: ModelingCommand) {
   return { ...options, hiddenIds };
 }
 
-/** The renderer's magnetic pick at the cursor, keeping its edge lock in step. */
-function magneticPick(ctx: MouseHandlerContext, command: ModelingCommand, x: number, y: number) {
+/** The renderer's magnetic pick at the cursor, given the held edge lock. */
+function magneticPick(ctx: MouseHandlerContext, command: ModelingCommand, x: number, y: number): MeshPick {
   const lock = ctx.edgeLockStateRef.current;
-  const result = ctx.renderer.raycastSceneMagnetic(x, y, {
+  return ctx.renderer.raycastSceneMagnetic(x, y, {
     edge: lock.edge, meshExpressId: lock.meshExpressId, lockStrength: lock.lockStrength,
   }, {
     ...pickOptions(ctx, command),
     snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40 },
+  }) as MeshPick;
+}
+
+/** One semantic (wall-axis) source per session model; it rebuilds itself on edits and storey changes. */
+let semantic: { modelId: string; source: SemanticSource } | null = null;
+
+function semanticSource(modelId: string): SemanticSource {
+  if (semantic?.modelId === modelId) return semantic.source;
+  const source = createSemanticSource({
+    modelId,
+    version: () => useViewerStore.getState().mutationVersion,
+    storeyId: () => useViewerStore.getState().session?.storeyId ?? null,
+    loadAxes: (storeyId) => {
+      const s = useViewerStore.getState();
+      const store = s.models.get(modelId)?.ifcDataStore;
+      const view = s.mutationViews.get(modelId);
+      const editor = s.storeEditors.get(modelId);
+      return store && view && editor ? storeyWallAxes(store, view, editor, storeyId) : [];
+    },
   });
-  ctx.setSnapTarget(result.snapTarget ?? null);
-  if (!result.snapTarget || result.edgeLock.shouldRelease) ctx.clearEdgeLock();
-  else if (result.edgeLock.shouldLock && result.edgeLock.edge) {
-    ctx.setEdgeLock(result.edgeLock.edge, result.edgeLock.meshExpressId!, result.edgeLock.edgeT);
-  }
-  return result;
+  semantic = { modelId, source };
+  return source;
 }
 
 export function resolveCommandSnap(
@@ -107,19 +126,27 @@ export function resolveCommandSnap(
     return { local: [hit.point.x, -hit.point.z], render: [hit.point.x, hit.point.y, hit.point.z], winner: null, guides: [], locked: false };
   }
   const snapping = ctx.snapEnabledRef.current && !mods.altKey;
-  const magnetic = snapping ? magneticPick(ctx, command, x, y) : null;
+  const pick = snapping ? magneticPick(ctx, command, x, y) : null;
   if (!snapping) ctx.setSnapTarget(null);
-  const hit = magnetic ? magnetic.intersection : ctx.renderer.raycastScene(x, y, pickOptions(ctx, command))?.intersection;
-  const toLocal = (p: { x: number; y: number; z: number }): Vec2 => {
+  const hit = pick ? pick.intersection : ctx.renderer.raycastScene(x, y, pickOptions(ctx, command))?.intersection;
+  const toLocal = (p: { x: number; y: number; z: number }) => {
     const l = plane.renderToLocal([p.x, p.y, p.z]);
-    return [l[0], l[1]];
+    return { local: [l[0], l[1]] as Vec2, elevation: l[2] };
   };
-  const cursor = hit ? toLocal(hit.point) : onPlane(ctx, plane, x, y);
+  const cursor = hit ? toLocal(hit.point).local : onPlane(ctx, plane, x, y);
   if (!cursor) return null;
   const beside = onPlane(ctx, plane, x + 1, y);
   const here = onPlane(ctx, plane, x, y);
   const metresPerPixel = here && beside ? Math.hypot(beside[0] - here[0], beside[1] - here[1]) : 0;
-  const sources: SnapSource[] = magnetic ? [meshSnapSource(magnetic.snapTarget ?? null, toLocal)] : [];
+  const sources: SnapSource[] = pick ? [
+    createMeshSource({
+      pick: () => pick,
+      lock: { get: () => ctx.edgeLockStateRef.current, set: ctx.setEdgeLock, clear: ctx.clearEdgeLock },
+      toLocal,
+    }),
+    semanticSource(commandCtx.modelId),
+  ] : [];
+  ctx.setSnapTarget(pick?.snapTarget ?? null);
   const input = command.snapQuery?.(runtime.gesture) ?? { anchor: null, chain: [], locks: {} };
   const solved = solveSnap(
     { cursor, metresPerPixel, ...input, modifiers: { shift: mods.shiftKey, alt: mods.altKey } },

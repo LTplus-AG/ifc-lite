@@ -185,7 +185,7 @@ export function ActivityBar() {
                     {/* Unpublished-edits badge on the Layers icon. */}
                     {!customizing && id === 'layers' && pendingLayerEdits > 0 && (
                       <span
-                        className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-medium text-white ring-1 ring-background"
+                        className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-500 px-1 text-2xs font-medium text-white ring-1 ring-background"
                         aria-hidden
                       >
                         {pendingLayerEdits > 99 ? '99+' : pendingLayerEdits}

@@ -63,7 +63,7 @@ export function TablePreview({ block, state }: TablePreviewProps) {
       {message !== null || !table ? (
         <div className={`rounded border border-dashed border-neutral-300 px-3 py-2 text-xs ${state?.status === 'error' ? 'text-amber-900' : 'text-neutral-500'}`} data-table-message>{message}</div>
       ) : (
-        <table className="w-full border-collapse text-[8px] leading-tight" data-table-rows={table.rows.length}>
+        <table className="w-full border-collapse text-2xs leading-tight" data-table-rows={table.rows.length}>
           <thead>
             <tr>
               {table.columns.map((c, i) => <th key={i} className={`border border-neutral-200 bg-slate-700 px-1 py-0.5 font-semibold text-white ${c.numeric ? 'text-right' : 'text-left'}`}>{c.id ? t(TABLE_COLUMN_LABEL_KEY[c.id as TableColumnId]) : c.label}</th>)}

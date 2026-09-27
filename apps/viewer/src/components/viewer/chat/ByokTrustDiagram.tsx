@@ -25,6 +25,8 @@ export function ByokTrustDiagram({ apiHost }: ByokTrustDiagramProps) {
     <svg
       viewBox="0 0 520 200"
       xmlns="http://www.w3.org/2000/svg"
+      // SVG artwork needs an image role; an HTML img cannot contain these live vector labels.
+      // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
       role="img"
       aria-label={t('chatByok.trustDiagram.ariaLabel', { apiHost })}
       className="w-full h-auto"
@@ -58,7 +60,7 @@ export function ByokTrustDiagram({ apiHost }: ByokTrustDiagramProps) {
 
       {/* Row 1 — the path that's actually used */}
       <g transform="translate(0, 18)">
-        <text x="0" y="-4" className="text-[10px] uppercase tracking-wider fill-emerald-600 dark:fill-emerald-400 font-semibold">
+        <text x="0" y="-4" className="text-2xs uppercase tracking-wider fill-emerald-600 dark:fill-emerald-400 font-semibold">
           {t('chatByok.trustDiagram.activeFlowLabel')}
         </text>
 
@@ -72,7 +74,7 @@ export function ByokTrustDiagram({ apiHost }: ByokTrustDiagramProps) {
           className="fill-background stroke-emerald-500"
           strokeWidth="1.75"
         />
-        <text x="62" y="35" textAnchor="middle" className="text-[12px] fill-foreground font-medium">
+        <text x="62" y="35" textAnchor="middle" className="text-xs fill-foreground font-medium">
           {t('chatByok.trustDiagram.browserBox')}
         </text>
 
@@ -86,7 +88,7 @@ export function ByokTrustDiagram({ apiHost }: ByokTrustDiagramProps) {
           strokeWidth="2"
           markerEnd="url(#byok-arrow-active)"
         />
-        <text x="235" y="22" textAnchor="middle" className="text-[10px] fill-emerald-600 dark:fill-emerald-400 font-mono">
+        <text x="235" y="22" textAnchor="middle" className="text-2xs fill-emerald-600 dark:fill-emerald-400 font-mono">
           {t('chatByok.trustDiagram.httpsDirect')}
         </text>
 
@@ -100,14 +102,14 @@ export function ByokTrustDiagram({ apiHost }: ByokTrustDiagramProps) {
           className="fill-emerald-500/10 stroke-emerald-500"
           strokeWidth="1.75"
         />
-        <text x="434" y="35" textAnchor="middle" className="text-[12px] fill-foreground font-mono">
+        <text x="434" y="35" textAnchor="middle" className="text-xs fill-foreground font-mono">
           {apiHost}
         </text>
       </g>
 
       {/* Row 2 — what we are NOT doing */}
       <g transform="translate(0, 116)" opacity="0.55">
-        <text x="0" y="-4" className="text-[10px] uppercase tracking-wider fill-destructive font-semibold" opacity="1">
+        <text x="0" y="-4" className="text-2xs uppercase tracking-wider fill-destructive font-semibold" opacity="1">
           {t('chatByok.trustDiagram.blockedFlowLabel')}
         </text>
 
@@ -122,7 +124,7 @@ export function ByokTrustDiagram({ apiHost }: ByokTrustDiagramProps) {
           strokeWidth="1"
           strokeDasharray="3 3"
         />
-        <text x="52" y="33" textAnchor="middle" className="text-[11px] fill-muted-foreground">
+        <text x="52" y="33" textAnchor="middle" className="text-2xs fill-muted-foreground">
           {t('chatByok.trustDiagram.browserBox')}
         </text>
 
@@ -149,7 +151,7 @@ export function ByokTrustDiagram({ apiHost }: ByokTrustDiagramProps) {
           strokeWidth="1"
           strokeDasharray="3 3"
         />
-        <text x="250" y="33" textAnchor="middle" className="text-[11px] fill-muted-foreground">
+        <text x="250" y="33" textAnchor="middle" className="text-2xs fill-muted-foreground">
           {t('chatByok.trustDiagram.ourServerBox')}
         </text>
         {/* Strike-through across the "our server" box */}
@@ -186,7 +188,7 @@ export function ByokTrustDiagram({ apiHost }: ByokTrustDiagramProps) {
           strokeWidth="1"
           strokeDasharray="3 3"
         />
-        <text x="458" y="33" textAnchor="middle" className="text-[11px] fill-muted-foreground font-mono">
+        <text x="458" y="33" textAnchor="middle" className="text-2xs fill-muted-foreground font-mono">
           {apiHost}
         </text>
       </g>

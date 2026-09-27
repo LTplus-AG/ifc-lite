@@ -27,6 +27,7 @@ import { fromStoreyLocal, storeyPlanFrame, toStoreyLocal, type StoreyPlanFrame }
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { ViewerState } from '@/store';
 import { effectiveStoreyElevation } from '@/components/viewer/add-element-storeys';
+import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import { modelPointToWorkspacePoint, workspacePointToModelFrame, type PointPlacement } from '@/lib/model-placement/rotation';
 import { fromRenderTranslation, toRenderTranslation } from '@/lib/model-placement/translation';
@@ -52,17 +53,17 @@ const unit = (a: Vec3): Vec3 => { const l = Math.hypot(...a) || 1; return [a[0] 
 
 /** The pure composition; `buildStoreyWorkplane` gathers its inputs from the store. */
 export function composeStoreyWorkplane(frame: StoreyWorkplaneFrame): Workplane {
-  const rtc = frame.coordinateInfo?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 };
-  const shift = frame.coordinateInfo?.originShift ?? { x: 0, y: 0, z: 0 };
-  // Elevation is building-relative, i.e. already net of the RTC anchor's
-  // height (rvt01: storey 4.7 m, rtc.z 14.73 m, walls rendered at 4.7), so
-  // only the origin shift comes off it.
-  const floor = frame.elevation + frame.spec.offset - shift.y;
+  // Render = world − (originShift + RTC) in Y-up axes, from the one shared
+  // helper. Height is the exception: storey elevation is building-relative,
+  // already net of the RTC anchor's height (rvt01: storey 4.7 m, RTC z 14.73 m,
+  // walls rendered at 4.7), so only the origin shift comes off it.
+  const offset = totalYupOffset(frame.coordinateInfo);
+  const floor = frame.elevation + frame.spec.offset - (frame.coordinateInfo?.originShift?.y ?? 0);
   const inverse = frame.alignment ? invertAffine(frame.alignment) : null;
 
   const localToRender = (p: Vec3): Vec3 => {
     const [wx, wy] = fromStoreyLocal(frame.plan, [p[0], p[1]]);
-    let r: Vec3 = [wx - rtc.x - shift.x, floor + p[2], -(wy - rtc.y) - shift.z];
+    let r: Vec3 = [wx - offset.x, floor + p[2], -wy - offset.z];
     if (frame.alignment) r = applyAffine(frame.alignment, r);
     return toRenderTranslation(modelPointToWorkspacePoint(fromRender(r), frame.placement));
   };
@@ -70,7 +71,7 @@ export function composeStoreyWorkplane(frame: StoreyWorkplaneFrame): Workplane {
   const renderToLocal = (p: Vec3): Vec3 => {
     let r: Vec3 = toRenderTranslation(workspacePointToModelFrame(fromRender(p), frame.placement));
     if (inverse) r = applyAffine(inverse, r);
-    const [x, y] = toStoreyLocal(frame.plan, [r[0] + rtc.x + shift.x, -(r[2] + shift.z) + rtc.y]);
+    const [x, y] = toStoreyLocal(frame.plan, [r[0] + offset.x, -(r[2] + offset.z)]);
     return [x, y, r[1] - floor];
   };
 
@@ -133,6 +134,16 @@ export function buildStoreyWorkplane(
     alignment,
     placement: { translation: displayedTranslation(s.modelPlacement, modelId), rotation: placementFor(s.modelPlacement, modelId).rotation },
   });
+}
+
+/**
+ * The storey an element sits on, for building its workplane. Authored
+ * elements are registered into the live hierarchy when created
+ * (`authoredTreeEntry.ts`), and a deleted one cannot be selected or targeted.
+ */
+export function elementStoreyId(s: ViewerState, modelId: string, expressId: number): number | null {
+  // @raw-entity-enumeration-ok point lookup; the hierarchy carries authored elements (authoredTreeEntry.ts)
+  return s.models.get(modelId)?.ifcDataStore?.spatialHierarchy?.elementToStorey.get(expressId) ?? null;
 }
 
 export function isWorkplane(value: Workplane | { refused: string }): value is Workplane {

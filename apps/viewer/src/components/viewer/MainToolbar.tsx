@@ -452,7 +452,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               >
                 <Share2 className="h-4 w-4" />
                 {collabPeerCount > 0 && (
-                  <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-medium text-primary-foreground">
+                  <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-2xs font-medium text-primary-foreground">
                     {collabPeerCount + 1}
                   </span>
                 )}
@@ -474,7 +474,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
                 >
                   <Users className="h-4 w-4" />
                   {collabPeerCount > 0 && (
-                    <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-medium text-white">
+                    <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-emerald-500 px-1 text-2xs font-medium text-white">
                       {collabPeerCount + 1}
                     </span>
                   )}
@@ -506,7 +506,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         <DropdownMenuContent align="start" className="w-56">
           <BottomPanelMenuItems active={activeWorkspacePanels} onToggle={handleToggleBottomPanel} />
           <DropdownMenuSeparator />
-          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          <DropdownMenuLabel className="text-2xs uppercase tracking-wide text-muted-foreground">
             {t('mainToolbar.inspectValidate')}
           </DropdownMenuLabel>
           <DropdownMenuCheckboxItem
@@ -603,7 +603,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           {(rightAnalysisExtensions.length > 0 || bottomAnalysisExtensions.length > 0) && (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              <DropdownMenuLabel className="text-2xs uppercase tracking-wide text-muted-foreground">
                 {t('mainToolbar.analysisExtensions')}
               </DropdownMenuLabel>
               {rightAnalysisExtensions.map((extension) => {
@@ -755,7 +755,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           >
             <LayoutTemplate className="h-4 w-4" />
             {(basketViewCount > 0 || pinboardEntities.size > 0) && (
-              <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-[9px] font-bold rounded-full min-w-[14px] h-[14px] flex items-center justify-center px-0.5 border border-background">
+              <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-2xs font-bold rounded-full min-w-[14px] h-[14px] flex items-center justify-center px-0.5 border border-background">
                 {basketViewCount > 0 ? `${basketViewCount}/${pinboardEntities.size}` : pinboardEntities.size}
               </span>
             )}
@@ -783,7 +783,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           aria-label={t('mainToolbar.selectionActionsAriaLabel', { count: selectionCount })}
         >
           <span
-            className="text-[10px] font-semibold tabular-nums text-primary uppercase tracking-wide whitespace-nowrap pr-1.5"
+            className="text-2xs font-semibold tabular-nums text-primary uppercase tracking-wide whitespace-nowrap pr-1.5"
             aria-hidden="true"
           >
             {t('mainToolbar.selectionCountBadge', { count: selectionCount })}
@@ -979,7 +979,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               View tab (it did: rotate was ribbon-only, see CameraCommands). */}
           <CameraCommandMenuItems />
           <DropdownMenuSeparator />
-          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          <DropdownMenuLabel className="text-2xs uppercase tracking-wide text-muted-foreground">
             {t('mainToolbar.projection')}
           </DropdownMenuLabel>
           <DropdownMenuCheckboxItem
@@ -990,7 +990,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             {t('mainToolbar.orthographic')}
           </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
-          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          <DropdownMenuLabel className="text-2xs uppercase tracking-wide text-muted-foreground">
             {t('mainToolbar.helpers')}
           </DropdownMenuLabel>
           <DropdownMenuCheckboxItem
@@ -1002,7 +1002,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => openSettings()}><Settings className="h-4 w-4 mr-2" />{t('mainToolbar.openSettings')}</DropdownMenuItem>
-          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          <DropdownMenuLabel className="text-2xs uppercase tracking-wide text-muted-foreground">
             {t('mainToolbar.toolbarLabel')}
           </DropdownMenuLabel>
           {/* Issue #1686: jump to the tabbed, IFCFlux-style ribbon. This

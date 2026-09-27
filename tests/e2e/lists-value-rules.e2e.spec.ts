@@ -41,9 +41,59 @@ async function waitForModels(page: Page, count: number) {
     const api = (globalThis as unknown as Record<string, Api>)[key as string];
     const models = [...(api?.getState().models.values() ?? [])];
     return !!api && !api.getState().loading && models.length === n
-      && models.every((model) => (model.geometryResult?.meshes.length ?? 0) > 0);
+      && models.every((model) => (model.geometryResult?.meshes.length ?? 0) > 0 && !!model.ifcDataStore);
   }, [STORE, count] as const, { timeout: 180_000 });
 }
+
+test('Lists model readiness waits for parsed IFC after geometry (#6291)', async ({ page }) => {
+  await page.goto('about:blank');
+  await page.evaluate((key) => {
+    const probe = { polls: 0 };
+    const state = {
+      loading: false,
+      models: new Map([['model', { geometryResult: { meshes: [{}] }, ifcDataStore: null as Store | null }]]),
+    };
+    (globalThis as Record<string, unknown>).__listReadinessProbe = probe;
+    (globalThis as Record<string, unknown>)[key] = { getState: () => { probe.polls++; return state; } };
+  }, STORE);
+
+  let ready = false;
+  const pending = waitForModels(page, 1).then(() => { ready = true; });
+  await page.waitForFunction(() =>
+    ((globalThis as Record<string, unknown>).__listReadinessProbe as { polls: number }).polls > 0);
+  await page.waitForTimeout(100);
+  expect(ready, 'geometry alone must not mark a model ready for Lists').toBe(false);
+
+  await page.evaluate((key) => {
+    const api = (globalThis as unknown as Record<string, Api>)[key];
+    api.getState().models.get('model')!.ifcDataStore = {} as Store;
+  }, STORE);
+  await pending;
+  expect(ready).toBe(true);
+});
+
+test('Lists run waits for fresh two-model rows after a prior one-model result (#6291)', async ({ page }) => {
+  await page.setContent(`<button>Run list ${LIST}</button>`);
+  await page.evaluate((key) => {
+    const probe = { polls: 0 };
+    const state = { listResult: { rows: [{ modelId: 'first', entityId: 1 }] } };
+    (globalThis as Record<string, unknown>).__listResultProbe = probe;
+    (globalThis as Record<string, unknown>)[key] = { getState: () => { probe.polls++; return state; } };
+  }, STORE);
+
+  let ready = false;
+  const pending = runAndReadRows(page, 2).then((rows) => { ready = true; return rows; });
+  await page.waitForFunction(() =>
+    ((globalThis as Record<string, unknown>).__listResultProbe as { polls: number }).polls > 0);
+  await page.waitForTimeout(100);
+  expect(ready, 'the previous one-model result must not satisfy the new run').toBe(false);
+
+  await page.evaluate((key) => {
+    const api = (globalThis as unknown as Record<string, Api>)[key];
+    api.getState().listResult!.rows.push({ modelId: 'second', entityId: 2 });
+  }, STORE);
+  expect(new Set((await pending).map((row) => row.modelId))).toEqual(new Set(['first', 'second']));
+});
 
 async function openFirstModel(page: Page) {
   await page.goto('/');
@@ -59,10 +109,12 @@ async function snap(page: Page, testInfo: TestInfo, name: string) {
   await testInfo.attach(name, { path, contentType: 'image/png' });
 }
 
-async function runAndReadRows(page: Page) {
+async function runAndReadRows(page: Page, expectedModels: number) {
   await page.getByRole('button', { name: `Run list ${LIST}` }).click();
-  await page.waitForFunction((key) => ((globalThis as unknown as Record<string, Api>)[key].getState().listResult?.rows.length ?? 0) > 0,
-    STORE, { timeout: 60_000 });
+  await page.waitForFunction(([key, count]) => {
+    const rows = (globalThis as unknown as Record<string, Api>)[key as string].getState().listResult?.rows ?? [];
+    return rows.length > 0 && new Set(rows.map((row) => row.modelId)).size === count;
+  }, [STORE, expectedModels] as const, { timeout: 60_000 });
   return page.evaluate((key) => (globalThis as unknown as Record<string, Api>)[key].getState().listResult!.rows
     .map(({ modelId, entityId }) => ({ modelId, entityId })), STORE);
 }
@@ -109,7 +161,7 @@ test('a saved exact-Container List value rule is created, reopened and run on on
   await page.getByRole('button', { name: 'Cancel', exact: true }).first().click();
 
   // One model.
-  const one = await runAndReadRows(page);
+  const one = await runAndReadRows(page, 1);
   const [firstId] = new Set(one.map((row) => row.modelId));
   expect(new Set(one.map((row) => row.modelId)).size).toBe(1);
   // Every kept element sits on the ground floor, and upper-floor elements exist but were dropped.
@@ -137,7 +189,7 @@ test('a saved exact-Container List value rule is created, reopened and run on on
   const alignmentNotice = page.locator('[role="alert"] button').first();
   if (await alignmentNotice.isVisible()) await alignmentNotice.click();
   await page.getByRole('button', { name: 'Back to Lists' }).first().click();
-  const two = await runAndReadRows(page);
+  const two = await runAndReadRows(page, 2);
   const perModel = new Map<string, number>();
   for (const row of two) perModel.set(row.modelId, (perModel.get(row.modelId) ?? 0) + 1);
   expect(perModel.size, 'rows come from both models').toBe(2);

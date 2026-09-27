@@ -30,7 +30,7 @@ import { useViewerStore } from '@/store';
 import { canMutate } from '@/store/mutation-permission';
 import { useIfc } from '@/hooks/useIfc';
 import { useProjectorTick } from '@/components/viewport-ui/scene';
-import { buildStoreyWorkplane, isWorkplane } from '@/lib/commands/modeling/workplane';
+import { buildStoreyWorkplane, elementStoreyId, isWorkplane } from '@/lib/commands/modeling/workplane';
 import { beginWallEndpointDrag, type WallEnd } from '@/lib/commands/modeling/commands/wall-move-endpoint';
 
 type Vec2 = { x: number; y: number };
@@ -60,8 +60,8 @@ export function WallEndpointOverlay() {
     const state = useViewerStore.getState();
     if (!canMutate(state, selectedEntity.modelId)) return null;
     const wall = readWallEndpoints(selectedEntity.modelId, selectedEntity.expressId);
-    const storeyId = models.get(selectedEntity.modelId)?.ifcDataStore?.spatialHierarchy?.elementToStorey.get(selectedEntity.expressId);
-    if (!wall || storeyId === undefined) return null;
+    const storeyId = elementStoreyId(state, selectedEntity.modelId, selectedEntity.expressId);
+    if (!wall || storeyId === null) return null;
     const plane = buildStoreyWorkplane(state, selectedEntity.modelId, storeyId, 0);
     if (!isWorkplane(plane)) return null;
     const toWorld = (p: [number, number, number]): Vec3 => {

@@ -1,5 +1,6 @@
 ---
 "@ifc-lite/lists": major
+"@ifc-lite/sdk": patch
 ---
 
 Replace `ListDefinition.conditions` with required Rules `groups: FilterGroup[]`.
@@ -13,3 +14,7 @@ Consumers constructing a definition should replace flat `conditions` with
 snapshots through `expressIdsByModel`; it rejects nonempty groups so it cannot
 silently return extra rows. For a v1 predicate that has no Rules equivalent,
 pass it as `legacyConditions` to that provider-only path.
+
+The SDK's `bim.list.execute()` keeps its optional `conditions` contract by
+passing an empty Rules group set and translating supplied conditions into
+provider-only predicates for the updated Lists engine.

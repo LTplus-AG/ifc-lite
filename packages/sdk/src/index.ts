@@ -250,6 +250,8 @@ export { createStructuralStoreBackend, type StructuralStoreModelResolver } from 
 export type { CostStoreModelResolution, CostStoreModelResolver } from './cost-store-backend.js';
 export type { CostStoreBackendMethods } from './store-cost-types.js';
 export type { StructuralStoreBackendMethods } from './store-structural-types.js';
+export { createModellingStoreBackend, type ModellingStoreModelResolver } from './store-modelling-backend.js';
+export type { ModellingStoreBackendMethods } from './store-modelling-types.js';
 
 // Clash — geometric interference detection over caller-provided ClashElement[]
 export { ClashNamespace } from './namespaces/clash.js';

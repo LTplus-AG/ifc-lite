@@ -14,7 +14,7 @@ export function AuthorPanelMenuItems({ active, canEdit, onToggle }: {
 }) {
   const { t } = useTranslation();
   return <>
-    <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">{t('workspacePanels.authorLabel')}</DropdownMenuLabel>
+    <DropdownMenuLabel className="text-2xs uppercase tracking-wide text-muted-foreground">{t('workspacePanels.authorLabel')}</DropdownMenuLabel>
     <DropdownMenuCheckboxItem checked={active.has('appearance')} onCheckedChange={() => onToggle('appearance')}>
       <Palette className="h-4 w-4 mr-2" />{t(panelTitleKey('appearance'))}
     </DropdownMenuCheckboxItem>

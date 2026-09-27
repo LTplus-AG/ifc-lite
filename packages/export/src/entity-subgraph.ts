@@ -42,7 +42,12 @@ const log = createLogger('EntitySubgraph');
 export interface EntitySubgraphRequest {
   /** Elements to mesh. Tombstoned or unknown ids are skipped. */
   targets: ReadonlySet<number>;
-  /** Extra roots; defaults to `remeshContextRoots(store, view, targets)`. */
+  /**
+   * Extra roots; defaults to `remeshContextRoots(store, view, targets)`. A
+   * relationship root contributes its single references to the walk, but its
+   * list-valued ones are narrowed to what the subgraph already holds; the
+   * relationship is dropped if that empties one of its lists.
+   */
   contextRoots?: ReadonlySet<number>;
 }
 

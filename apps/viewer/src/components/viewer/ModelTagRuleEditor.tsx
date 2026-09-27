@@ -78,7 +78,7 @@ export function ModelTagRuleEditor({ rule, tags, onChange }: ModelTagRuleEditorP
         </div>
       )}
       {unresolved.size > 0 && (
-        <span role="alert" className="text-[10px] text-amber-600 dark:text-amber-400">
+        <span role="alert" className="text-2xs text-amber-600 dark:text-amber-400">
           {t('modelTagRuleEditor.unresolvedWarning', { count: unresolved.size })}
         </span>
       )}

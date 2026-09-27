@@ -492,7 +492,7 @@ renderer.render({
 ```
 
 !!! tip "Basket Isolation in the Viewer App"
-    The viewer app provides an interactive **basket** for building isolation sets incrementally. Use `I` to set, `+` to add, `-` to remove entities. Cmd/Ctrl+Click to multi-select, then use basket shortcuts on the whole selection. See the [Rendering Guide](rendering.md#basket-isolation-viewer-app) for details.
+    The viewer app provides an interactive **basket** for building isolation sets incrementally. Use `I` to isolate, `=` or `+` to add, and `-` to remove entities. Cmd/Ctrl+Click to multi-select, then use basket shortcuts on the whole selection. See the [Rendering Guide](rendering.md#basket-isolation-viewer-app) for details.
 
 ## Data Flow Diagram
 

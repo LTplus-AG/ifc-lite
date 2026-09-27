@@ -23,6 +23,7 @@ import { RIBBON_VIEW_SURFACE_COMMANDS } from './surface-commands-view-ribbon';
 import { VISIBILITY_SURFACE_COMMANDS } from './surface-commands-visibility';
 import { RIBBON_FILE_SURFACE_COMMANDS } from './surface-commands-file-ribbon';
 import { RIBBON_ELEMENTS_SURFACE_COMMANDS } from './surface-commands-elements-ribbon';
+import { RIBBON_AUTHOR_SURFACE_COMMANDS } from './surface-commands-author-ribbon';
 import { MOBILE_SURFACE_COMMANDS } from './surface-commands-mobile';
 import { CONTEXT_SURFACE_COMMANDS, runContextOr } from './surface-commands-context';
 import { runSurfaceCommand } from './surface-command-run';
@@ -180,6 +181,7 @@ export type SurfaceCommandId =
   | (typeof RIBBON_VIEW_SURFACE_COMMANDS)[number]['id']
   | (typeof RIBBON_FILE_SURFACE_COMMANDS)[number]['id']
   | (typeof RIBBON_ELEMENTS_SURFACE_COMMANDS)[number]['id']
+  | (typeof RIBBON_AUTHOR_SURFACE_COMMANDS)[number]['id']
   | (typeof MOBILE_SURFACE_COMMANDS)[number]['id']
   | (typeof CONTEXT_SURFACE_COMMANDS)[number]['id']
   | (typeof VISIBILITY_SURFACE_COMMANDS)[number]['id'];
@@ -191,6 +193,7 @@ export const SURFACE_COMMANDS: readonly (SurfaceCommandDefinition & { id: Surfac
   ...RIBBON_VIEW_SURFACE_COMMANDS,
   ...RIBBON_FILE_SURFACE_COMMANDS,
   ...RIBBON_ELEMENTS_SURFACE_COMMANDS,
+  ...RIBBON_AUTHOR_SURFACE_COMMANDS,
   ...MOBILE_SURFACE_COMMANDS,
   ...CONTEXT_SURFACE_COMMANDS,
   ...VISIBILITY_SURFACE_COMMANDS,

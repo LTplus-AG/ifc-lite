@@ -66,7 +66,7 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
   return [
     {
       id: 'home',
-      labelKey: 'cameraCommands.home.label',
+      labelKey: 'ribbon.home.home',
       tooltipKey: 'cameraCommands.home.tooltip',
       shortcut: 'camera.home',
       group: 'camera',

@@ -12,9 +12,12 @@ test('#5860 saved worker override is visible and resettable in Settings', async 
   });
   await page.goto('/');
   await page.getByRole('tab', { name: 'View', exact: true }).click({ force: true });
-  await page.getByRole('tabpanel', { name: 'View' })
-    .getByRole('button', { name: 'Theme, tooltips, navigation devices and other preferences', exact: true })
-    .click({ force: true });
+  const settings = page.getByRole('tabpanel', { name: 'View' })
+    .locator('button[data-command-id="pref:settings"]');
+  await expect(settings).toHaveAccessibleName('Settings');
+  await settings.hover();
+  await expect(page.getByRole('tooltip')).toContainText('Theme, tooltips, navigation devices and other preferences');
+  await settings.click({ force: true });
   const dialog = page.locator('[data-settings-dialog]');
   await dialog.getByRole('tab', { name: 'Performance' }).click({ force: true });
   await expect(dialog.getByText('Geometry workers: 4')).toBeVisible();

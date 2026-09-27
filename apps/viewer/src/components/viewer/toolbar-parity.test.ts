@@ -74,6 +74,11 @@ const STOP_PREFIXES = ['components/ui/', 'lib/', 'store/', 'icons/', 'sdk/'];
 const ALLOWLIST: { surface: Surface; symbol: string; reason: string }[] = [
   {
     surface: 'ribbon',
+    symbol: 'leftPanelCollapsed',
+    reason: 'Only the palette-only panel:tree registry row reads this field. The shared registry is imported by the ribbon, but neither toolbar renders that row; #5874 retires this classic-vs-ribbon guard.',
+  },
+  {
+    surface: 'ribbon',
     symbol: 'ribbonTab',
     reason: 'Tabs are the ribbon\'s own geography; the classic strip has no tabs to select.',
   },

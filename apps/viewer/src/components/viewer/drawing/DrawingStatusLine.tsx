@@ -64,7 +64,7 @@ export function DrawingStatusLine(p: DrawingStatusLineProps) {
   if (facts.length === 0) facts.push(t('section2d.status.noMarkup'));
 
   return (
-    <div role="status" className="flex h-6 shrink-0 items-center gap-3 border-t px-3 text-[11px] text-muted-foreground tabular-nums">
+    <output className="flex h-6 shrink-0 items-center gap-3 border-t px-3 text-2xs text-muted-foreground tabular-nums">
       <span className="min-w-0 flex-1 truncate">{hint}</span>
       {p.activeTool === 'measure' && p.measureStarted && (
         <span className={cn('shrink-0', p.shiftLocked && 'text-primary')}>{t('section2d.tip.shift')}</span>
@@ -77,6 +77,6 @@ export function DrawingStatusLine(p: DrawingStatusLineProps) {
         </span>
       )}
       <span className="hidden shrink-0 sm:inline">{facts.join(' · ')}</span>
-    </div>
+    </output>
   );
 }

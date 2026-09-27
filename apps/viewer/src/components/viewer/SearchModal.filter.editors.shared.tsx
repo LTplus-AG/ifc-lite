@@ -54,7 +54,7 @@ export function OpDropdown<T extends string>({
         {ops.map((op) => (
           <DropdownMenuItem key={op} onSelect={() => onChange(op)} className="font-mono">
             {label(op)}
-            <span className="ml-2 text-[10px] text-muted-foreground">{op}</span>
+            <span className="ml-2 text-2xs text-muted-foreground">{op}</span>
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

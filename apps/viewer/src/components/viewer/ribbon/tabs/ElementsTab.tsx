@@ -12,7 +12,7 @@ import { ClassVisibility, CopyGuid, ElementTooltips, FocusSelected, HideSelected
 import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { resolveGlobalId, useViewerStore, type HierarchyMode } from '@/store';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
-import { resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { showAllFromStore } from '@/store/homeView';
 import { hideSelectionFromStore } from '@/store/hideSelection';
 import { useTranslation } from '@/i18n';
 import { BimReactContext } from '@/sdk/BimProvider';
@@ -90,7 +90,7 @@ export function ElementsTab() {
           aria-label={t(ACTION_NAME_KEYS.showAll)}
           tooltip={t('ribbon.elements.showAllTooltip')}
           shortcut="visibility.showAll"
-          onClick={() => resetVisibilityForHomeFromStore('show_all')}
+          onClick={() => showAllFromStore('show_all')}
         />
         <RibbonLargeButton
           icon={ElementTooltips}

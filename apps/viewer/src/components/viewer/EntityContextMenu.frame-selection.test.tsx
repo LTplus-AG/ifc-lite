@@ -102,15 +102,14 @@ describe('EntityContextMenu — Frame selection (#5597)', () => {
     assert.equal(state.contextMenu.isOpen, false);
   });
 
-  it('shows the keyboard hints of the items that have a shortcut', () => {
+  it('shows only the keyboard hints of actions with matching shortcuts (#5855)', () => {
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
     const container = render();
     const hints: Array<[string, string]> = [
       ['Frame selection', 'F'],
       // Every chord that hides, from the keyboard command table (#5836).
       ['Hide', 'Del, Backspace, Space'],
-      ['Set Collection', '='],
-      ['Add to Collection', '+'],
+      ['Add to Collection', '=, +'],
       ['Remove from Collection', '−'],
       ['Save Collection View', 'B'],
     ];
@@ -118,6 +117,11 @@ describe('EntityContextMenu — Frame selection (#5597)', () => {
       const hint = menuItem(container, label).querySelectorAll('span')[1];
       assert.equal(hint?.textContent, key, `"${label}" shortcut hint`);
     }
+    assert.equal(
+      menuItem(container, 'Set Collection').querySelectorAll('span')[1],
+      undefined,
+      'Set Collection has no key binding, so its menu row does not claim one',
+    );
   });
 
   it('shows the A hint on the canvas menu\'s "Show all"', () => {

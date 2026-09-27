@@ -94,7 +94,7 @@ export function CameraCommandMenuItems() {
       {groups.map((group, index) => (
         <React.Fragment key={group}>
           {index > 0 && <DropdownMenuSeparator />}
-          <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          <DropdownMenuLabel className="text-2xs uppercase tracking-wide text-muted-foreground">
             {t(GROUP_LABEL_KEY[group])}
           </DropdownMenuLabel>
           {commands

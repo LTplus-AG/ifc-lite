@@ -13,6 +13,7 @@
  * by Cesium, so the caller gates this on `!cesiumEnabled`.
  */
 
+import { useId } from 'react';
 import { useViewerStore } from '@/store';
 import { cn } from '@/lib/utils';
 
@@ -24,10 +25,11 @@ function TrimSlider({ label, resetTitle, value, min, max, onChange }: {
   max: number;
   onChange: (value: number) => void;
 }) {
+  const sliderId = useId();
   return (
-    <label className="flex flex-col gap-0.5">
-      <span className="flex justify-between text-[9px] uppercase tracking-wider text-muted-foreground">
-        <span>{label}</span>
+    <div className="flex flex-col gap-0.5">
+      <span className="flex justify-between text-2xs uppercase tracking-wider text-muted-foreground">
+        <label htmlFor={sliderId}>{label}</label>
         <button
           type="button"
           onClick={() => onChange(1)}
@@ -38,6 +40,7 @@ function TrimSlider({ label, resetTitle, value, min, max, onChange }: {
         </button>
       </span>
       <input
+        id={sliderId}
         type="range"
         min={min}
         max={max}
@@ -46,7 +49,7 @@ function TrimSlider({ label, resetTitle, value, min, max, onChange }: {
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-full accent-primary"
       />
-    </label>
+    </div>
   );
 }
 

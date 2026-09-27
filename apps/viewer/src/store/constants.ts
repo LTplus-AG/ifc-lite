@@ -194,33 +194,24 @@ export function isMeshOnlyCacheEnabled(): boolean {
 }
 
 /**
- * localStorage key for the desktop toolbar style (issue #1686). `classic`
- * is the original single-strip toolbar; `ribbon` is the tabbed,
- * IFCFlux-style ribbon. Same sticky-preference pattern as the theme.
+ * Retired desktop-toolbar preference key. Keep only for one-time migration
+ * when a viewer opened before #5874 stored a classic choice.
  */
 export const TOOLBAR_STYLE_STORAGE_KEY = 'ifc-lite-toolbar-style';
 
-// TODO(remove-by: #5874 final stacked deletion PR, owner: 01a0dbf3):
-// The store type/setter remain only while classic-toolbar tests are retired.
-export type ToolbarStyle = 'classic' | 'ribbon';
-
-/**
- * Retire a stored classic-toolbar choice when the viewer starts (#5874).
- * The desktop always uses the ribbon; clearing the old preference prevents
- * stale storage from reviving the retired layout after another update.
- * Exported so the migration can be checked independently of module startup.
- */
-export function resolveInitialToolbarStyle(): ToolbarStyle {
-  if (typeof window === 'undefined') return 'ribbon';
+/** Clear the retired preference on startup; the ribbon is the only desktop toolbar. */
+export function clearRetiredToolbarStylePreference(): void {
+  if (typeof window === 'undefined') return;
   try {
     if (localStorage.getItem(TOOLBAR_STYLE_STORAGE_KEY) !== null) {
       localStorage.removeItem(TOOLBAR_STYLE_STORAGE_KEY);
     }
   } catch (err) {
-    console.warn('[toolbar-style] could not clear retired preference; using ribbon', err);
+    console.warn('[toolbar-style] could not clear retired preference', err);
   }
-  return 'ribbon';
 }
+
+clearRetiredToolbarStylePreference();
 
 /** Ribbon tab strip contexts, in strip order. */
 export type RibbonTabId = 'file' | 'home' | 'view' | 'elements' | 'analyze' | 'author';
@@ -309,12 +300,6 @@ export const UI_DEFAULTS = {
    * `undefined` = automatic tier selection, the normal case.
    */
   GEOM_TIER_OVERRIDE: getGeomTierOverride(),
-  /**
-   * The ribbon is the only desktop toolbar. Clear any stored classic choice
-   * during initialization while the legacy state field is removed in the
-   * final #5874 deletion slice.
-   */
-  TOOLBAR_STYLE: resolveInitialToolbarStyle(),
   /** Ribbon band collapsed to the tab strip only. */
   RIBBON_COLLAPSED: getInitialRibbonCollapsed(),
   /** Ribbon tab open on boot; session-local, never persisted. */

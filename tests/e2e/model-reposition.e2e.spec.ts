@@ -70,7 +70,7 @@ async function load(page: Page, file: string | { name: string; mimeType: string;
       loading: state.loading, geometryStreamingActive: state.geometryStreamingActive, models: state.models.size,
       perModel: [...state.models.values()].map((m) => ({ loadState: m.loadState, pointCloud: m.pointCloudHandleId !== undefined, meshes: m.geometryResult?.meshes.length ?? null })),
       error: (state as { error?: unknown }).error ?? null,
-      isMobile: state.isMobile, toolbarStyle: state.toolbarStyle,
+      isMobile: state.isMobile,
       dom,
     };
   }).catch((e) => ({ evaluateFailed: String(e) }));

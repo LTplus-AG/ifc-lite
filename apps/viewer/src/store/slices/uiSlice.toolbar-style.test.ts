@@ -110,7 +110,7 @@ async function buildSlice() {
   };
 }
 
-describe('UISlice — toolbar style (issue #1686)', () => {
+describe('UISlice — ribbon preferences and retired classic migration (#5874)', () => {
   let storage: MutableStorage | null = null;
 
   beforeEach(() => {
@@ -122,38 +122,23 @@ describe('UISlice — toolbar style (issue #1686)', () => {
     uninstallLocalStorage();
   });
 
-  it('seeds toolbarStyle and ribbonCollapsed from UI_DEFAULTS', async () => {
-    // ESM modules load once per process, so the initial state mirrors
-    // whatever `UI_DEFAULTS` carried at first import — asserting the
-    // slice against the defaults table proves it never drifts from it.
+  it('seeds ribbonCollapsed from UI_DEFAULTS', async () => {
     const constantsMod = await import('../constants.js');
     const slice = await buildSlice();
-    assert.strictEqual(slice.state.toolbarStyle, constantsMod.UI_DEFAULTS.TOOLBAR_STYLE);
     assert.strictEqual(slice.state.ribbonCollapsed, constantsMod.UI_DEFAULTS.RIBBON_COLLAPSED);
   });
 
-  it('setToolbarStyle switches the style and persists it', async () => {
-    const slice = await buildSlice();
-    (slice.state.setToolbarStyle as (v: string) => void)('ribbon');
-    assert.strictEqual(slice.state.toolbarStyle, 'ribbon');
-    assert.strictEqual(storage!.store[STYLE_KEY], 'ribbon');
-
-    (slice.state.setToolbarStyle as (v: string) => void)('classic');
-    assert.strictEqual(slice.state.toolbarStyle, 'classic');
-    assert.strictEqual(storage!.store[STYLE_KEY], 'classic');
-  });
-
   it('#5874 migrates an explicit classic preference to ribbon and clears storage', async () => {
-    const { resolveInitialToolbarStyle } = await import('../constants.js');
-    assert.strictEqual(resolveInitialToolbarStyle(), 'ribbon');
+    const { clearRetiredToolbarStylePreference } = await import('../constants.js');
+    clearRetiredToolbarStylePreference();
     storage!.store[STYLE_KEY] = 'classic';
-    assert.strictEqual(resolveInitialToolbarStyle(), 'ribbon');
+    clearRetiredToolbarStylePreference();
     assert.equal(storage!.store[STYLE_KEY], undefined);
     storage!.store[STYLE_KEY] = 'ribbon';
-    assert.strictEqual(resolveInitialToolbarStyle(), 'ribbon');
+    clearRetiredToolbarStylePreference();
     assert.equal(storage!.store[STYLE_KEY], undefined);
     storage!.store[STYLE_KEY] = 'nonsense';
-    assert.strictEqual(resolveInitialToolbarStyle(), 'ribbon');
+    clearRetiredToolbarStylePreference();
     assert.equal(storage!.store[STYLE_KEY], undefined);
   });
 
@@ -192,8 +177,6 @@ describe('UISlice — toolbar style (issue #1686)', () => {
     (globalThis.localStorage as unknown as { setItem: () => void }).setItem = () => {
       throw new Error('QuotaExceededError');
     };
-    (slice.state.setToolbarStyle as (v: string) => void)('ribbon');
-    assert.strictEqual(slice.state.toolbarStyle, 'ribbon');
     (slice.state.setRibbonCollapsed as (v: boolean) => void)(true);
     assert.strictEqual(slice.state.ribbonCollapsed, true);
   });

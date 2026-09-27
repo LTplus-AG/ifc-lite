@@ -812,16 +812,16 @@ function getOrCreateStoreEditor(
   return editor;
 }
 
-/**
- * The (view, editor, dataStore, metre scale) every read-only chain reader
- * needs, created lazily so handles surface on first selection. Null while
- * the model has no editable view.
- */
 /** `start + axis · t`. */
 function alongAxis(start: readonly number[], axis: readonly number[], t: number): [number, number, number] {
   return [start[0] + axis[0] * t, start[1] + axis[1] * t, start[2] + axis[2] * t];
 }
 
+/**
+ * The (view, editor, dataStore, metre scale) every read-only chain reader
+ * needs, created lazily so handles surface on first selection. Null while
+ * the model has no editable view.
+ */
 function resolveEditReadContext(
   get: () => ViewerState,
   set: (partial: Partial<ViewerState>) => void,

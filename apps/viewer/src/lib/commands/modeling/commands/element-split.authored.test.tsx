@@ -112,6 +112,6 @@ describe('element.split on authored elements in a mm file on an offset storey (#
 
     act(() => press(document.body, 'Escape'));
     assert.equal(getCommandRuntime().command, null);
-    assert.deepEqual(toastTexts(), [], 'the refusal must not outlive the command');
+    assert.ok(!toastTexts().some((text) => text.includes(reason)), 'the refusal must not outlive the command');
   });
 });

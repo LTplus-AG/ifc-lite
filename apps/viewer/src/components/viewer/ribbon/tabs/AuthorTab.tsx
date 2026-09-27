@@ -18,6 +18,7 @@ import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
 import { BulkPropertyEditor } from '../../BulkPropertyEditor';
 import { DataConnector } from '../../DataConnector';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
+import { panelTitleKey } from '@/lib/panels/registry';
 import {
   RibbonGroup,
   RibbonGroupDivider,
@@ -92,7 +93,7 @@ export function AuthorTab() {
       <RibbonGroup label={t('ribbon.author.createGroup')}>
         <RibbonLargeButton
           icon={Appearance}
-          label={t('ribbon.author.appearance')}
+          label={t(panelTitleKey('appearance'))}
           className="w-20"
           tooltip={t('ribbon.author.appearanceTooltip')}
           active={activeWorkspacePanels.has('appearance')}
@@ -157,7 +158,7 @@ export function AuthorTab() {
       <RibbonGroup label={t('ribbon.author.customizeGroup')}>
         <RibbonLargeButton
           icon={Extension}
-          label={t('ribbon.author.extensions')}
+          label={t(panelTitleKey('extensions'))}
           tooltip={t('ribbon.author.extensionsTooltip')}
           active={activeWorkspacePanels.has('extensions')}
           onClick={() => handleToggleRightPanel('extensions')}

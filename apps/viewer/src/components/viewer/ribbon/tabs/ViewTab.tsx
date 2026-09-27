@@ -15,6 +15,7 @@ import { openSettings } from '@/lib/settings/open-settings';
 import { useTranslation } from '@/i18n';
 import { useCameraCommands } from '../../toolbar/CameraCommands';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
+import { panelTitleKey } from '@/lib/panels/registry';
 import {
   RibbonGroup,
   RibbonGroupDivider,
@@ -156,7 +157,7 @@ export function ViewTab() {
         )}
         <RibbonLargeButton
           icon={Lighting}
-          label={t('ribbon.view.lighting')}
+          label={t(panelTitleKey('environment'))}
           tooltip={t('ribbon.view.lightingTooltip')}
           active={activeWorkspacePanels.has('environment') || solarEnabled || envSkyEnabled || envPreset !== 'default'}
           activeClassName="bg-amber-500/20 text-foreground ring-1 ring-inset ring-amber-500/50"
@@ -193,7 +194,7 @@ export function ViewTab() {
       <RibbonGroup label={t('ribbon.view.interfaceGroup')}>
         <RibbonLargeButton
           icon={Viewpoint}
-          label={t('ribbon.view.present')}
+          label={t(panelTitleKey('presentation'))}
           tooltip={t('ribbon.view.presentTooltip', { views: basketViewCount, entities: pinboardEntities.size })}
           active={activeWorkspacePanels.has('presentation')}
           disabled={!hasModels}

@@ -10,6 +10,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { WORKSPACE_PANELS, workspacePanelForShortcutCode } from '@/lib/panels/registry';
+import { resolveEnglish } from '@/i18n/registry';
 import { KEYBOARD_SHORTCUTS } from './keyboard-shortcuts-list.js';
 
 describe('Alt+1…0 shortcut description (#5606)', () => {
@@ -20,9 +21,9 @@ describe('Alt+1…0 shortcut description (#5606)', () => {
     const codes = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].map((d) => `Digit${d}`);
     const titles = codes.map((code) => {
       const id = workspacePanelForShortcutCode(code);
-      const title = WORKSPACE_PANELS.find((p) => p.id === id)?.title;
-      assert.ok(title, `${code} opens a registered panel`);
-      return title;
+      const titleKey = WORKSPACE_PANELS.find((p) => p.id === id)?.titleKey;
+      assert.ok(titleKey, `${code} opens a registered panel`);
+      return resolveEnglish(titleKey);
     });
     let from = 0;
     for (const title of titles) {

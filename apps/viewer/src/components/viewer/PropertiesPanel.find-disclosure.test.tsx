@@ -276,6 +276,6 @@ describe('Properties find and section disclosure (#5899)', () => {
     useViewerStore.setState({ ifcDataStore: null, geometryResult: null, models: new Map(), selectedEntity: null, selectedEntityId: null, selectedModelId: null, selectedEntities: [] });
     const panel = render(<PropertiesPanel />);
     assert.equal(panel.querySelector('h2')?.textContent, 'Properties');
-    assert.equal(WORKSPACE_PANELS.find((panel) => panel.id === 'properties')?.title, 'Properties');
+    assert.equal(WORKSPACE_PANELS.find((panel) => panel.id === 'properties')?.titleKey, 'properties.panel.title');
   });
 });

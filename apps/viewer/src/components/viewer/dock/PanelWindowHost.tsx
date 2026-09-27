@@ -61,18 +61,22 @@ export function PanelWindowHost() {
 }
 
 function PanelWindowChrome({ entry }: { entry: PanelWindowEntry }) {
-  const { t } = useTranslation();
+  const { t, revision } = useTranslation();
   const def = getPanelDef(entry.id);
   const Icon = def?.Icon;
   const dock = () => useViewerStore.getState().showWorkspacePanel(entry.id);
   const close = () => closePanelWindow(entry.id);
+
+  useEffect(() => {
+    entry.win.document.title = `${def ? t(def.titleKey) : entry.id} — ifc-lite`;
+  }, [def, entry.id, entry.win, revision, t]);
 
   return (
     <PortalContainerProvider container={entry.win.document.body}>
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background text-foreground">
       <div className="flex items-center gap-2 h-9 shrink-0 px-2 border-b border-border bg-muted/40 select-none">
         {Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
-        <span className="text-xs font-medium truncate flex-1 min-w-0">{def?.title ?? entry.id}</span>
+        <span className="text-xs font-medium truncate flex-1 min-w-0">{def ? t(def.titleKey) : entry.id}</span>
         <span className="text-[9px] uppercase tracking-wide text-muted-foreground shrink-0">
           {t(entry.kind === 'pip' ? 'shellChrome.panelWindowHost.kindPip' : 'shellChrome.panelWindowHost.kindWindow')}
         </span>

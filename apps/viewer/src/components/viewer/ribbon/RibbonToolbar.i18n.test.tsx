@@ -49,7 +49,6 @@ const NOT_RENDERED_IN_THIS_STATE: RibbonKey[] = [
   'ribbon.file.shareGroup', // collab feature flag is off under test
   'ribbon.file.share',
   'ribbon.file.shareTooltip',
-  'ribbon.file.room',
   'ribbon.file.roomTooltip',
   'ribbon.file.roomNotJoinedTooltip',
   'ribbon.view.worldShowTooltip', // Cesium is enabled
@@ -158,7 +157,9 @@ describe('RibbonToolbar localization (#4785)', () => {
         // Owned keys whose English is exactly this text (placeholder keys are
         // interpolated, so they are checked by the literal-catalogue tests).
         const candidates = RIBBON_KEYS.filter((key) =>
-          ownedBy(tab, key) && !ribbonToolbarEn[key].includes('{') && ribbonToolbarEn[key] === text);
+          ownedBy(tab, key) &&
+          !(slot.endsWith(':text') && key.endsWith('Tooltip')) &&
+          !ribbonToolbarEn[key].includes('{') && ribbonToolbarEn[key] === text);
         if (candidates.length > 0) {
           const match = candidates.find((key) => shown === mark(key));
           assert.ok(match, `${tab}: "${text}" at ${slot} should be translated, shows "${shown}"`);

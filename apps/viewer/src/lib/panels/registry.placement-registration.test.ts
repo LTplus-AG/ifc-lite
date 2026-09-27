@@ -23,7 +23,7 @@ describe('WORKSPACE_PANELS — placement panel registration (#5505)', () => {
   it('registers a placement entry', () => {
     const entry = WORKSPACE_PANELS.find((p) => p.id === 'placement');
     assert.notEqual(entry, undefined, "WORKSPACE_PANELS is missing the 'placement' panel definition");
-    assert.equal(entry?.title, 'Placement');
+    assert.equal(entry?.titleKey, 'placementPanel.title');
     assert.equal(entry?.region, 'side');
   });
 

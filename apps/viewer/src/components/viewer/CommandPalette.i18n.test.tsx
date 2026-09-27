@@ -77,8 +77,6 @@ const RESET = {
  * Keys this render cannot show, each for a stated reason:
  *  - `category.recent` — no recorded command usage in this test's
  *    localStorage, so browse mode never renders a Recent group.
- *  - `panel.collab.label` — gated on `isCollabEnabled()`, off by default
- *    in this test environment (no `VITE_COLLAB`/localStorage override).
  *  - `export.unavailable` — a toast, not palette text; raised only when an
  *    Export row runs with nothing loaded (`commandPaletteExports.test.tsx`).
  *  - `noResults` — neither the browse render nor the "learn" search render
@@ -87,7 +85,6 @@ const RESET = {
  */
 const NOT_RENDERED_IN_THIS_STATE: PaletteKey[] = [
   'commandPalette.category.recent',
-  'commandPalette.panel.collab.label',
   'commandPalette.export.unavailable',
 ];
 

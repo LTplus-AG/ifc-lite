@@ -24,7 +24,7 @@ import { ActivityBar } from './ActivityBar';
 
 function pointCloudsButton(container: HTMLElement): HTMLElement | undefined {
   return [...container.querySelectorAll<HTMLElement>('button')].find(
-    (b) => b.getAttribute('aria-label') === 'Point Clouds',
+    (b) => b.getAttribute('aria-label') === 'Point Cloud',
   );
 }
 

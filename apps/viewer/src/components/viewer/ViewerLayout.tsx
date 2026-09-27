@@ -419,7 +419,7 @@ export function ViewerLayout() {
                 floating host and the pop-out windows render from. */}
             {!rightPanelCollapsed && (
               <MobileBottomSheet
-                title={mobileSheet.kind === 'extension' ? (activeAnalysisExtension?.label ?? t('shellChrome.layout.analysisFallback')) : mobileSheet.kind === 'addElement' ? t('shellChrome.layout.addElementLabel') : getPanelDef(mobileSheet.id)?.title ?? t('properties.panel.title')}
+                title={mobileSheet.kind === 'extension' ? (activeAnalysisExtension?.label ?? t('shellChrome.layout.analysisFallback')) : mobileSheet.kind === 'addElement' ? t('shellChrome.layout.addElementLabel') : t(getPanelDef(mobileSheet.id)?.titleKey ?? 'properties.panel.title')}
                 bottomInset={bottomViewportInset}
                 onClose={() => {
                   setRightPanelCollapsed(true);

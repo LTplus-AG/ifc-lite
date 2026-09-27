@@ -39,7 +39,7 @@ import { bottomPanelCommands } from './commandPaletteBottomPanels';
 import { buildExportCommands } from './commandPaletteExports';
 import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 import type { Command } from './commandPaletteSearch';
-import { withKey, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
+import { withKey, withPanelTitle, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
 
 export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
   const c: Command[] = [];
@@ -47,46 +47,46 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
   // ── Panels ──
   c.push(
     ...bottomPanelCommands(p.activateBottomPanel),
-    { id: 'panel:properties', label: 'Properties', ...withKey('properties.panel.title'), keywords: 'properties attributes material classification schedule task panel right inspector information', category: 'Panels', icon: Layout,
+    { id: 'panel:properties', ...withPanelTitle('properties'), keywords: 'properties attributes material classification schedule task panel right inspector information', category: 'Panels', icon: Layout,
       action: () => { useViewerStore.getState().showWorkspacePanel('properties', 'palette'); } },
-    { id: 'panel:tree', label: 'Hierarchy', ...withKey('commandPalette.panel.tree.label'), keywords: 'spatial tree hierarchy left panel', category: 'Panels', icon: TreeDeciduous,
+    { id: 'panel:tree', ...withPanelTitle('hierarchy'), keywords: 'spatial tree hierarchy left panel', category: 'Panels', icon: TreeDeciduous,
       action: () => { const s = useViewerStore.getState(); s.setLeftPanelCollapsed(!s.leftPanelCollapsed); } },
-    { id: 'panel:bcf', label: 'BCF Topics', ...withKey('commandPalette.panel.bcf.label'), keywords: 'collaboration topics comments viewpoint', category: 'Panels', icon: MessageSquare,
+    { id: 'panel:bcf', ...withPanelTitle('bcf'), keywords: 'collaboration topics comments viewpoint', category: 'Panels', icon: MessageSquare,
       action: () => { p.activateRightPanel('bcf'); } },
-    { id: 'panel:ids', label: 'IDS Validation', ...withKey('commandPalette.panel.ids.label'), keywords: 'information delivery specification check', category: 'Panels', icon: ClipboardCheck,
+    { id: 'panel:ids', ...withPanelTitle('validation'), keywords: 'ids validation information delivery specification check', category: 'Panels', icon: ClipboardCheck,
       action: () => { p.activateRightPanel('validation'); } },
-    { id: 'panel:clash', label: 'Clash Detection', ...withKey('commandPalette.panel.clash.label'), keywords: 'collision interference clearance coordination clash matrix mep', category: 'Panels', icon: Crosshair,
+    { id: 'panel:clash', ...withPanelTitle('clash'), keywords: 'collision interference clearance coordination clash matrix mep', category: 'Panels', icon: Crosshair,
       action: () => { p.activateRightPanel('clash'); } },
-    { id: 'panel:compare', label: 'Compare Models', ...withKey('commandPalette.panel.compare.label'), keywords: 'diff revision version change added deleted modified geometry data', category: 'Panels', icon: GitCompareArrows,
+    { id: 'panel:compare', ...withPanelTitle('compare'), keywords: 'diff revision version change added deleted modified geometry data', category: 'Panels', icon: GitCompareArrows,
       action: () => { p.activateRightPanel('compare'); } },
-    { id: 'panel:cost', label: 'Cost', ...withKey('commandPalette.panel.cost.label'), keywords: '5d cost schedule item quantity budget estimate', category: 'Panels', icon: Coins,
+    { id: 'panel:cost', ...withPanelTitle('cost'), keywords: '5d cost schedule item quantity budget estimate', category: 'Panels', icon: Coins,
       action: () => { p.activateRightPanel('cost'); } },
     { id: 'panel:chat', label: 'AI Chat', ...withKey('commandPalette.panel.chat.label'), keywords: 'ai assistant script chat ask model', category: 'Panels', icon: Sparkles,
       action: () => {
         if (!isBottomPanelDocked(useViewerStore.getState(), 'script')) p.activateBottomPanel('script');
         useViewerStore.getState().setChatPanelVisible(true);
       } },
-    { id: 'panel:lens', label: 'Lens Rules', ...withKey('commandPalette.panel.lens.label'), keywords: 'color filter highlight', category: 'Panels', icon: Palette,
+    { id: 'panel:lens', ...withPanelTitle('lens'), keywords: 'lens rules color filter highlight', category: 'Panels', icon: Palette,
       action: () => { p.activateRightPanel('lens'); } },
-    { id: 'panel:layers', label: 'Layer Stack', ...withKey('commandPalette.panel.layers.label'), keywords: 'ifcx layers federation draft publish merge review provenance registry version overlay', category: 'Panels', icon: Layers,
+    { id: 'panel:layers', ...withPanelTitle('layers'), keywords: 'ifcx layers federation draft publish merge review provenance registry version overlay', category: 'Panels', icon: Layers,
       action: () => { p.activateRightPanel('layers'); } },
-    { id: 'panel:sources', label: 'Cloud Sources', ...withKey('commandPalette.panel.sources.label'), keywords: 'cde common data environment connect provider bim360 acc trimble dalux integration remote', category: 'Panels', icon: Cloud,
+    { id: 'panel:sources', ...withPanelTitle('sources'), keywords: 'cde common data environment connect provider bim360 acc trimble dalux integration remote', category: 'Panels', icon: Cloud,
       action: () => { p.activateRightPanel('sources'); } },
-    { id: 'panel:zones', label: 'Location Zones', ...withKey('commandPalette.panel.zones.label'), keywords: 'zone section takt area construction location apportionment storey', category: 'Panels', icon: Box,
+    { id: 'panel:zones', ...withPanelTitle('zones'), keywords: 'zone section takt area construction location apportionment storey', category: 'Panels', icon: Box,
       action: () => { p.activateRightPanel('zones'); } },
-    { id: 'panel:loadReport', label: 'Load Report', ...withKey('commandPalette.panel.loadReport.label'), keywords: 'geometry diagnostics warnings dropped items csg openings unsupported load report', category: 'Panels', icon: FileWarning,
+    { id: 'panel:loadReport', ...withPanelTitle('loadReport'), keywords: 'geometry diagnostics warnings dropped items csg openings unsupported load report', category: 'Panels', icon: FileWarning,
       action: () => { p.activateRightPanel('loadReport'); } },
-    { id: 'panel:pointclouds', label: 'Point Clouds', ...withKey('commandPalette.panel.pointClouds.label'), keywords: 'point cloud scan las laz e57 splat classification deviation registration alignment', category: 'Panels', icon: Scan,
+    { id: 'panel:pointclouds', ...withPanelTitle('pointclouds'), keywords: 'point clouds scan las laz e57 splat classification deviation registration alignment', category: 'Panels', icon: Scan,
       action: () => { p.activateRightPanel('pointclouds'); } },
-    { id: 'panel:measurements', label: 'Measurements', ...withKey('commandPalette.panel.measurements.label'), keywords: 'measure distance polyline angle radius coordinates point quantities area volume list', category: 'Panels', icon: Ruler,
+    { id: 'panel:measurements', ...withPanelTitle('measurements'), keywords: 'measure distance polyline angle radius coordinates point quantities area volume list', category: 'Panels', icon: Ruler,
       action: () => { p.activateRightPanel('measurements'); } },
-    { id: 'panel:appearance', label: 'Appearance', ...withKey('commandPalette.panel.appearance.label'), keywords: 'image texture upload UV planar box projection surfaces', category: 'Panels', icon: Palette,
+    { id: 'panel:appearance', ...withPanelTitle('appearance'), keywords: 'image texture upload UV planar box projection surfaces', category: 'Panels', icon: Palette,
       action: () => { p.activateRightPanel('appearance'); } },
     ...(isCollabEnabled()
-      ? [{ id: 'panel:collab', label: 'Collaboration Room', ...withKey('commandPalette.panel.collab.label'), keywords: 'share invite live multiplayer presence room realtime sync', category: 'Panels' as const, icon: Users,
+      ? [{ id: 'panel:collab', ...withPanelTitle('collab'), keywords: 'share invite live multiplayer presence room realtime sync', category: 'Panels' as const, icon: Users,
           action: () => { p.activateRightPanel('collab'); } }]
       : []),
-    { id: 'panel:extensions', label: 'Extensions', ...withKey('commandPalette.panel.extensions.label'), keywords: 'extension plugin install manage iflx', category: 'Panels', icon: Puzzle,
+    { id: 'panel:extensions', ...withPanelTitle('extensions'), keywords: 'extension plugin install manage iflx', category: 'Panels', icon: Puzzle,
       action: () => { p.activateRightPanel('extensions'); } },
     { id: 'extensions:author', label: 'Author an extension…', ...withKey('commandPalette.tool.extensionsAuthor.label'),
       keywords: 'create new build plan chat ai extension generate',

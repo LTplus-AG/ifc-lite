@@ -126,6 +126,7 @@ export function ActivityBar() {
         {visibleIds.map((id) => {
           const def = getPanelDef(id);
           if (!def) return null;
+          const title = t(def.titleKey);
           const Icon = def.Icon;
           const loc = panelLocation(id);
           const active = loc === 'docked';
@@ -138,12 +139,12 @@ export function ActivityBar() {
           // explicitly. In customize mode the action is "hide" (only shown
           // panels render here now, #1263).
           const ariaLabel = customizing
-            ? t('shellChrome.activityBar.iconAriaLabelHide', { title: def.title })
+            ? t('shellChrome.activityBar.iconAriaLabelHide', { title })
             : loc === 'floating'
-              ? t('shellChrome.activityBar.iconAriaLabelFloating', { title: def.title })
+              ? t('shellChrome.activityBar.iconAriaLabelFloating', { title })
               : loc === 'popped'
-                ? t('shellChrome.activityBar.iconAriaLabelPopped', { title: def.title })
-                : def.title;
+                ? t('shellChrome.activityBar.iconAriaLabelPopped', { title })
+                : title;
 
           return (
             <div key={id} className="contents">
@@ -216,7 +217,7 @@ export function ActivityBar() {
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="left">
-                  {def.title}
+                  {title}
                   <span className="text-muted-foreground">
                     {customizing ? (
                       ` · ${t('shellChrome.activityBar.clickToHideHint')}`

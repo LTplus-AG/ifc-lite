@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Test-only seed for the modeling command tests: one parsed IFC4 model with a
- * single storey (#40, elevation 0) and an empty geometry result, loaded into
+ * Test-only seed for the modeling command tests: one parsed IFC4 model with
+ * two storeys (#40 at 0 m, #50 at 3 m) and an empty geometry result, loaded into
  * the singleton store with edit mode on — enough for `addWall` and friends.
  */
 
@@ -16,6 +16,8 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 
 export const MODEL_ID = 'ifc';
 export const STOREY = 40;
+/** A second storey, 3 m up. */
+export const UPPER_STOREY = 50;
 
 const FIXTURE = `ISO-10303-21;
 HEADER;
@@ -30,7 +32,9 @@ DATA;
 #31=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
 #40=IFCBUILDINGSTOREY('2hQBAVPOr5VxhS3Jl0O47h',$,'L0',$,$,#41,$,$,.ELEMENT.,0.);
 #41=IFCLOCALPLACEMENT($,#21);
-#70=IFCRELAGGREGATES('0kTvXnbbzCWw8lcMd1dR4o',$,$,$,#1,(#40));
+#50=IFCBUILDINGSTOREY('2hQBAVPOr5VxhS3Jl0O47i',$,'L1',$,$,#51,$,$,.ELEMENT.,3.);
+#51=IFCLOCALPLACEMENT($,#21);
+#70=IFCRELAGGREGATES('0kTvXnbbzCWw8lcMd1dR4o',$,$,$,#1,(#40,#50));
 ENDSEC;
 END-ISO-10303-21;
 `;

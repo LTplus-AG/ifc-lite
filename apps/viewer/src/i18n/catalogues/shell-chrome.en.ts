@@ -104,6 +104,10 @@ export const shellChromeEn = {
   // StatusBar.tsx
   'shellChrome.statusBar.loadingFallback': 'Loading...',
   'shellChrome.statusBar.ready': 'Ready',
+  'shellChrome.statusBar.modelWorkspace': 'Model',
+  'shellChrome.statusBar.modelWorkspaceStorey': 'Model · {storey}',
+  'shellChrome.statusBar.enterModelWorkspace': 'Enter the Model workspace',
+  'shellChrome.statusBar.leaveModelWorkspace': 'Leave the Model workspace',
   'shellChrome.statusBar.cancelStreamTitle': 'Cancel the model or point cloud that is loading',
   'shellChrome.statusBar.cancelButton': 'Cancel',
   'shellChrome.statusBar.elementsCount': { one: 'element', other: 'elements' },

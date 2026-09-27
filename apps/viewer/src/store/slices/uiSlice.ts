@@ -62,6 +62,14 @@ const AUTHORING_TOOLS: ReadonlySet<string> = new Set([
   'command',
 ]);
 
+/** The authoring session and collab gate, reached through the combined `get()`. */
+interface WorkspaceCrossSlice {
+  canCollabEdit?: () => boolean;
+  workspaceMode?: 'view' | 'model';
+  enterModelWorkspace?: () => boolean;
+  exitModelWorkspace?: () => void;
+}
+
 /**
  * Cross-slice surface UISlice reaches into via the combined Zustand
  * `get()` to decide whether toggling a load-time setting needs a
@@ -249,9 +257,10 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
       // Collab role gate: in a shared session only editor/admin may
       // unlock authoring. Viewers/commenters can still pick read-only
       // tools, so we only block the authoring branch.
-      const canEdit = (get() as unknown as { canCollabEdit?: () => boolean }).canCollabEdit;
-      if (canEdit && !canEdit()) return;
+      const cross = get() as unknown as WorkspaceCrossSlice;
+      if (cross.canCollabEdit && !cross.canCollabEdit()) return;
       if (leavingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
+      if (cross.workspaceMode !== 'model') cross.enterModelWorkspace?.();
       set({ activeTool, editEnabled: true, spaceSketchMinimized: false });
       return;
     }
@@ -260,44 +269,32 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   },
   setSpaceSketchMinimized: (spaceSketchMinimized) => set({ spaceSketchMinimized }),
   setEditEnabled: (editEnabled) => {
+    // Edit mode is the Model workspace's (#6232): entering or leaving goes
+    // through the session slice, which keeps `editEnabled` in step. Only
+    // with no editable model (no workspace to open) is it the bare flag.
+    const cross = get() as unknown as WorkspaceCrossSlice;
     if (editEnabled) {
       // Collab role gate: only editor/admin (or single-user, role===null)
-      // may enter edit mode. This is the single chokepoint that unlocks
-      // the gizmo, geometry card, add-element draw tools, and the inline
-      // property editors — gating it here covers every authoring surface.
-      const canEdit = (get() as unknown as { canCollabEdit?: () => boolean }).canCollabEdit;
-      if (canEdit && !canEdit()) return;
-    }
-    if (!editEnabled) {
-      // Flipping edit mode off must clear every authoring sub-state
-      // that depends on it — otherwise the viewer ends up "not in
-      // edit mode" but still carrying a georef draft or a half-drawn
-      // slab polygon. Cross-slice reset lives here so callers don't
-      // have to remember to mop up.
-      set((s) => ({
-        editEnabled: false,
-        activeTool: AUTHORING_TOOLS.has(s.activeTool) ? 'select' : s.activeTool,
-        spaceSketchMinimized: false,
-        cesiumPlacementEditMode: false,
-        cesiumPlacementDraftModelId: null,
-        cesiumPlacementDraft: null,
-      }));
+      // may enter edit mode — the single chokepoint for every authoring surface.
+      if (cross.canCollabEdit && !cross.canCollabEdit()) return;
+      if (!cross.enterModelWorkspace?.()) set({ editEnabled: true });
       return;
     }
-    // Turning edit mode ON with nothing selected auto-opens the
-    // AddElement panel — most "I want to edit" sessions start
-    // with adding something, and forcing the user to click an
-    // extra button to reach the panel adds friction. When a
-    // selection already exists, leave activeTool alone so the
-    // Properties panel + Geometry edit card stay primary.
-    set((s) => {
-      const next: Partial<UISlice & UICrossSliceState> = { editEnabled: true };
-      const slice = s as unknown as { selectedEntity?: unknown };
-      if (s.activeTool === 'select' && !slice.selectedEntity) {
-        next.activeTool = 'addElement';
-      }
-      return next;
-    });
+    if (cross.workspaceMode === 'model' && cross.exitModelWorkspace) {
+      cross.exitModelWorkspace();
+      return;
+    }
+    // Flipping edit mode off must clear every authoring sub-state that
+    // depends on it — otherwise the viewer ends up "not in edit mode" but
+    // still carrying a georef draft or a half-drawn slab polygon.
+    set((s) => ({
+      editEnabled: false,
+      activeTool: AUTHORING_TOOLS.has(s.activeTool) ? 'select' : s.activeTool,
+      spaceSketchMinimized: false,
+      cesiumPlacementEditMode: false,
+      cesiumPlacementDraftModelId: null,
+      cesiumPlacementDraft: null,
+    }));
   },
   toggleEditEnabled: () => {
     get().setEditEnabled(!get().editEnabled);

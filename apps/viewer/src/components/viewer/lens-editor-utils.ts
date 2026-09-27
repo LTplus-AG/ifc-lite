@@ -118,6 +118,7 @@ export function duplicateLensConfig(lens: Lens, generateId: () => string): Lens 
 
 /** Empty chip presets must not turn a saved Lens into an inert filter. */
 function isConfiguredFilterRule(rule: FilterRule): boolean {
+  if (!rule || typeof rule !== 'object') return false;
   switch (rule.kind) {
     case 'model':
     case 'ifcType':
@@ -130,16 +131,16 @@ function isConfiguredFilterRule(rule: FilterRule): boolean {
     case 'attribute': return typeof rule.name === 'string' && rule.name.trim().length > 0;
     case 'property': return typeof rule.propertyName === 'string' && rule.propertyName.trim().length > 0;
     case 'quantity': return typeof rule.quantityName === 'string' && rule.quantityName.trim().length > 0;
-    default: return true;
+    default: return false;
   }
 }
 
 /** Save configured shared filters or preserved unreadable source data. */
 export function isRuleValid(rule: LensRule): boolean {
-  return !!rule.unreadableLegacy || !!rule.groups?.some((group) => group.rules.length > 0 &&
-    (group.combinator === 'AND'
-      ? group.rules.every(isConfiguredFilterRule)
-      : group.rules.some(isConfiguredFilterRule)));
+  if (rule.unreadableLegacy) return true;
+  return Array.isArray(rule.groups) && rule.groups.length > 0 &&
+    rule.groups.every((group) => Array.isArray(group?.rules) && group.rules.length > 0 &&
+      group.rules.every(isConfiguredFilterRule));
 }
 
 /**

@@ -230,7 +230,7 @@ describe('isRuleValid — shared Lens groups (#5896)', () => {
     assert.equal(isRuleValid({ ...rule, groups: [], criteria: { type: 'ifcType', ifcType: 'IfcWall' } }), false);
   });
 
-  it('rejects unfinished shared chips before Save without losing valid OR and presence rules (#5896)', () => {
+  it('rejects unfinished shared chips before Save without losing presence rules (#5896)', () => {
     const blankType = { kind: 'ifcType' as const, op: 'in' as const, values: [] };
     const walls = { kind: 'ifcType' as const, op: 'in' as const, values: ['IfcWall'] };
     const saved = (rules: FilterRule[], combinator: 'AND' | 'OR' = 'AND') =>
@@ -238,8 +238,17 @@ describe('isRuleValid — shared Lens groups (#5896)', () => {
     assert.equal(saved([blankType]), false, 'an untouched Add type chip selects no IFC element');
     assert.equal(saved([{ kind: 'ifcType', op: 'in' } as unknown as FilterRule]), false,
       'a malformed imported set rule also fails closed without throwing');
+    assert.equal(saved([null as unknown as FilterRule]), false, 'a malformed imported member cannot crash Save');
+    assert.equal(saved([{ kind: 'futureKind' } as unknown as FilterRule]), false,
+      'an unknown future rule cannot be saved as if it selected entities');
     assert.equal(saved([walls, blankType]), false, 'an incomplete AND member empties the whole selection');
-    assert.equal(saved([walls, blankType], 'OR'), true, 'a complete OR member still selects walls');
+    assert.equal(saved([walls, blankType], 'OR'), false, 'an empty notIn set in OR could select every entity');
+    assert.equal(isRuleValid({ ...rule, groups: [
+      { combinator: 'AND', rules: [walls] },
+      { combinator: 'AND', rules: [{ kind: 'ifcType', op: 'notIn', values: [] }] },
+    ] }), false, 'an unfinished second group must not broaden the saved Lens');
+    assert.equal(isRuleValid({ ...rule, groups: [null] as unknown as LensRule['groups'] }), false,
+      'a malformed imported group cannot crash Save');
     assert.equal(saved([{ kind: 'ifcType', op: 'in', values: ['IfcWall'] }]), true);
     assert.equal(isRuleValid({ ...rule, groups: [{ combinator: 'AND', rules: [
       { kind: 'property', setName: 'Pset_WallCommon', propertyName: '', op: 'eq', value: '' },

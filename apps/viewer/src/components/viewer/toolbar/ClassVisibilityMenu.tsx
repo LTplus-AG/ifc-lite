@@ -3,9 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The Visibility dropdown body — class toggles, the Model/Types 3D view
- * switch, and the load-time geometry settings — shared by the classic
- * toolbar and the ribbon so the two styles can never drift.
+ * The Visibility dropdown body used by the ribbon and Settings: class
+ * toggles, the Model/Types 3D view switch, and load-time geometry settings.
  *
  * Settings-style panel (not a list of menu-items): each row is a plain
  * <label> wrapping a right-aligned Switch, so toggling does NOT close

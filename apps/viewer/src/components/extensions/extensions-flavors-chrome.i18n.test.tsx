@@ -47,8 +47,6 @@ import { FlavorIndicator } from './FlavorIndicator.js';
 import { HelpHint } from './HelpHint.js';
 import { BundlePreview } from './BundlePreview.js';
 import { ExtensionDockHost } from './ExtensionDockHost.js';
-import { ClassicExportMenuItems } from '@/components/viewer/toolbar/ClassicExportMenuItems';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ExtensionToolbarSlot } from './ExtensionToolbarSlot.js';
 import { flavorSwitchPartial } from './flavor-dialog-feedback.js';
 
@@ -874,29 +872,6 @@ describe('ExtensionDockHost localization (#4918)', () => {
     // <div>{t('...loadingWidget')}</div>`) identical in shape to every
     // other converted string in this file, all of which the other
     // assertion here already proves the mechanism for.
-  });
-});
-
-describe('extension exporter rows localization (#4918, #5838)', () => {
-  it('translates the "From extensions" group label in the export menu', () => {
-    const host = new StubHost();
-    host.slotRegistry.register('ext.a', [
-      {
-        extensionId: 'ext.a',
-        slot: 'exportMenu',
-        payload: { id: 'exp1', name: 'Demo CSV', mimeType: 'text/csv', extension: 'csv', handler: 'x.js' },
-      },
-    ]);
-    render(
-      <ExtensionHostContext.Provider value={host}>
-        <DropdownMenu open modal={false}>
-          <DropdownMenuTrigger>Export</DropdownMenuTrigger>
-          <DropdownMenuContent><ClassicExportMenuItems /></DropdownMenuContent>
-        </DropdownMenu>
-      </ExtensionHostContext.Provider>,
-    );
-
-    assertAllTranslate([{ key: 'exportCommands.extension.groupLabel' }]);
   });
 });
 

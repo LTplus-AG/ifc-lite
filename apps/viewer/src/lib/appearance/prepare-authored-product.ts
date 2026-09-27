@@ -4,6 +4,7 @@
 import { StepExporter } from '@ifc-lite/export';
 import { StoreEditor } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
+import { mutationDenial } from '@/store/mutation-permission';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { placementFor } from '@/lib/model-placement/state';
 import { appearanceRevision, captureAppearanceSource } from './command';
@@ -12,6 +13,8 @@ import { prepareAppearanceSerialization } from './serialization';
 /** One effective IFC snapshot and allocation guard for every authored product. */
 export async function prepareAuthoredProduct(modelId: string, signal?: AbortSignal, validateSource: () => void = () => {}) {
   const state = useViewerStore.getState(), model = state.models.get(modelId);
+  const denial = mutationDenial(state, modelId);
+  if (denial) throw new Error(denial);
   if (!model?.ifcDataStore || /\.glb$/i.test(model.sourceFile?.name ?? '') || !model.schemaVersion.startsWith('IFC4')) throw new Error('Choose an editable IFC4 or IFC4X3 model.');
   if (state.modelPlacement.preview) throw new Error('Finish repositioning the model before creating an object.');
   if (model.federationAlignmentStatus === 'same-crs' || model.federationAlignmentStatus === 'reprojected') {
@@ -31,6 +34,8 @@ export async function prepareAuthoredProduct(modelId: string, signal?: AbortSign
     const current = useViewerStore.getState();
     if (current.modelPlacement !== state.modelPlacement || current.models.get(modelId) !== model
       || current.collabRoomId || appearanceRevision(modelId) !== sourceRevision) throw new Error('The target model changed. Try again.');
+    const currentDenial = mutationDenial(current, modelId);
+    if (currentDenial) throw new Error(currentDenial);
     source.validate(current.mutationViews.get(modelId));
     validateSource();
   };

@@ -72,6 +72,6 @@ export function AppearanceScanPanel() {
     </div>
     </fieldset>
     {work.busy && transfer.ready && <Button size="sm" variant="outline" onClick={work.cancel}>{t('appearance.scan.cancelAppearanceOperation')}</Button>}
-    <ScanTransferFields transfer={transfer} disabled={work.busy || work.stale || !work.previewReady || !work.result || fit < 4 || checks < 4} />
+    <ScanTransferFields transfer={transfer} targetModelId={work.targetId} disabled={work.busy || work.stale || !work.previewReady || !work.result || fit < 4 || checks < 4} />
   </section>;
 }

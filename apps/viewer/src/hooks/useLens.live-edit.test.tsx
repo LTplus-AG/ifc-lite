@@ -62,17 +62,18 @@ const WALL_LENS: Lens = {
       id: 'rule-name',
       name: 'Renamed',
       enabled: true,
-      criteria: { type: 'attribute', attributeName: 'Name', operator: 'equals', attributeValue: 'Renamed' },
+      groups: [{ combinator: 'AND', rules: [{ kind: 'name', op: 'eq', value: 'Renamed' }] }],
       action: 'colorize',
       color: '#ff0000',
     },
   ],
 };
 
-let api: ReturnType<typeof useLens> | null = null;
+let mounted = false;
 
 function Probe(): null {
-  api = useLens();
+  useLens();
+  mounted = true;
   return null;
 }
 
@@ -85,7 +86,7 @@ async function mountProbe(): Promise<void> {
   await act(async () => {
     root!.render(<Probe />);
   });
-  assert.ok(api, 'useLens must be mounted');
+  assert.ok(mounted, 'useLens must be mounted');
 }
 
 async function activateLens(): Promise<void> {
@@ -98,6 +99,7 @@ async function activateLens(): Promise<void> {
  *  the federation registry singleton, then `addModel` with that offset. */
 async function loadModel(modelId: string, store: IfcDataStore, maxExpressId: number): Promise<void> {
   await act(async () => {
+    useViewerStore.setState({ editEnabled: true });
     const idOffset = useViewerStore.getState().registerModelOffset(modelId, maxExpressId);
     useViewerStore.getState().addModel({
       id: modelId,
@@ -117,7 +119,7 @@ async function loadModel(modelId: string, store: IfcDataStore, maxExpressId: num
 }
 
 beforeEach(() => {
-  api = null;
+  mounted = false;
 });
 
 afterEach(async () => {
@@ -155,5 +157,34 @@ describe('useLens re-evaluates after a live edit (#5207)', () => {
       useViewerStore.getState().lensColorMap.get(1), '#ff0000',
       'the active lens must pick up the edited Name on its own',
     );
+  });
+});
+
+describe('useLens group evaluation errors (#5896)', () => {
+  it('clears the previous Lens overlay when a replacement rule is rejected, then recovers', async () => {
+    const store = await parse("#1=IFCWALL('0aaaaaaaaaaaaaaaaaaaaa',$,'Renamed',$,$,$,$,$,.STANDARD.);");
+    await mountProbe();
+    await loadModel('model-a', store, 1);
+    await activateLens();
+    assert.equal(useViewerStore.getState().lensColorMap.get(1), '#ff0000');
+
+    const badLens: Lens = {
+      ...WALL_LENS, id: 'unsafe-rule', name: 'Unsafe rule',
+      rules: [{
+        ...WALL_LENS.rules[0], id: 'unsafe-rule',
+        groups: [{ combinator: 'AND', rules: [{ kind: 'name', op: 'matches', value: '(a+)+$' }] }],
+      }],
+    };
+    await act(async () => {
+      useViewerStore.setState({ savedLenses: [WALL_LENS, badLens], activeLensId: badLens.id });
+    });
+    const afterFailure = useViewerStore.getState();
+    assert.equal(afterFailure.lensColorMap.size, 0, 'a failed new rule must not leave the prior Lens visible');
+    assert.equal(afterFailure.lensAppliedColors, null);
+    assert.equal(afterFailure.lensHiddenIds.size, 0);
+    assert.equal(afterFailure.lensRuleEntityIds.size, 0);
+
+    await act(async () => useViewerStore.setState({ activeLensId: WALL_LENS.id }));
+    assert.equal(useViewerStore.getState().lensColorMap.get(1), '#ff0000', 'a valid Lens still recovers');
   });
 });

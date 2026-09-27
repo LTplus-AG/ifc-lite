@@ -66,7 +66,7 @@ export async function coordinatedFixture() {
   useViewerStore.setState({ models: new Map(entries.map(e => [e.modelId, e.model])), activeModelId: 'a',
     geometryResult: entries[0].geometry, mutationViews: new Map(entries.map(e => [e.modelId, e.view])),
     storeEditors: new Map(entries.map(e => [e.modelId, e.editor])), undoStacks: new Map(), redoStacks: new Map(),
-    dirtyModels: new Set(), mutationVersion: 0, collabRoomId: null });
+    dirtyModels: new Set(), mutationVersion: 0, collabRoomId: null, editEnabled: true });
   const snapshots = new Map<string, AppearanceSnapshot>();
   const steps: PreparedAssignmentStep[] = entries.map(e => {
     const revision = appearanceRevision(e.modelId), checkpoint = captureAppearanceSource(e.view), next = e.view.peekNextExpressId();

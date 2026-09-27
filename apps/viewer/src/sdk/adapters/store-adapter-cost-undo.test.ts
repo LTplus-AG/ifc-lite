@@ -60,6 +60,7 @@ async function makeStore(canCollabEdit: () => boolean = () => true, legacy = fal
     },
     markCostRelationshipMutation: (modelId: string) => { relationshipMutationCalls.push(modelId); },
     canCollabEdit,
+    editEnabled: true,
     mirrorEntityCreate: (_modelId: string, entityId: number, ifcType: string, roomKey: string) => {
       mirrorCalls.push({ kind: 'create', entityId, detail: ifcType, roomKey });
       registerEntityPath(dataStore, entityId, pathForGuid(dataStore, roomKey));

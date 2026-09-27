@@ -33,7 +33,11 @@ export function TourInvite() {
     <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
       <span>{t('tours.tourInvite.prompt')}</span>
       <button
-        className="font-medium text-primary underline-offset-2 hover:underline"
+        // Text-line height alone is ~16px tall (width, ~143px, already
+        // clears 24), under the WCAG 2.2 2.5.8 target-size minimum (#5826).
+        // `inset-x-0` keeps width unchanged — this row's items sit `gap-1.5`
+        // (6px) apart, and a horizontal slop would reach into that gap.
+        className="relative font-medium text-primary underline-offset-2 hover:underline after:absolute after:inset-x-0 after:-top-1 after:-bottom-1 after:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         onClick={() => {
           trackUiEvent('onboarding_surface', { surface: 'tour_invite', action: 'start_tour' });
           startTour('welcome', 'invite');
@@ -43,7 +47,10 @@ export function TourInvite() {
       </button>
       <button
         aria-label={t('tours.tourInvite.dismissAriaLabel')}
-        className="ml-0.5 rounded p-0.5 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
+        // 16x16: needs 4px a side both ways to reach 24 (16 + 2*4 = 24),
+        // which stays inside the row's 6px `gap-1.5` on the left (no overlap
+        // with the Start button) and this is the last item on the right.
+        className="relative ml-0.5 rounded p-0.5 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground after:absolute after:-inset-1 after:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         onClick={() => {
           trackUiEvent('onboarding_surface', { surface: 'tour_invite', action: 'dismiss' });
           dismissInvite();

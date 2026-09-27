@@ -5,6 +5,7 @@ import { captureAppearanceDependencies, planAuthoredResourceCleanup } from '@ifc
 import { StoreEditor } from '@ifc-lite/mutations';
 import { equivalentAppearanceGeometry, federationRegistry, type Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
+import { mutationDenial } from '@/store/mutation-permission';
 import { previewPreparedOverlayGlobalId, publishPreparedOverlayRange } from '@/store/federation-overlay-publication';
 import { entityRefToString } from '@/store/types';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -22,6 +23,8 @@ export async function commitAuthoredProduct(modelId: string, assetIds: readonly 
   containerId: number, renderer: Renderer, source: ReturnType<typeof captureAppearanceSource>,
   options: AppearanceCommitOptions = {}): Promise<{ expressId: number; globalId: number }> {
   const state = useViewerStore.getState(), model = state.models.get(modelId), view = state.mutationViews.get(modelId);
+  const denial = mutationDenial(state, modelId);
+  if (denial) throw new Error(denial);
   if (!model?.ifcDataStore || !model.geometryResult || !view) throw new Error('The target IFC model is not ready.');
   if (state.collabRoomId) throw new Error('Leave the shared room before creating authored objects, then share the finished model.');
   const assets = [...new Set(assetIds)];
@@ -35,6 +38,8 @@ export async function commitAuthoredProduct(modelId: string, assetIds: readonly 
   const validate = () => {
     if (options.signal?.aborted) throw new DOMException('Object creation cancelled.', 'AbortError');
     const now = useViewerStore.getState();
+    const currentDenial = mutationDenial(now, modelId);
+    if (currentDenial) throw new Error(currentDenial);
     if (now.modelPlacement !== state.modelPlacement || now.models.get(modelId) !== model || now.collabRoomId || appearanceRevision(modelId) !== plan.sourceRevision) {
       throw new Error('The model changed while preparing the object. Try again.');
     }

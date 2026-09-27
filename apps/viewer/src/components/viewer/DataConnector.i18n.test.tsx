@@ -25,7 +25,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, cleanup, click, advance } from '@/test/render.js';
+import { render, cleanup, click, activate, advance } from '@/test/render.js';
 import { registerLocale, setLocale, localeCount, type Catalogue } from '@/i18n';
 import { resolve } from '@/i18n/registry';
 import { en } from '@/i18n/en';
@@ -49,7 +49,10 @@ function markValue(value: TranslationValue): TranslationValue {
   return marked as PluralTranslation;
 }
 
-const PSEUDO: Catalogue = Object.fromEntries(KEYS.map((key) => [key, markValue(CATALOGUE[key]!)]));
+const PSEUDO: Catalogue = {
+  ...Object.fromEntries(KEYS.map((key) => [key, markValue(CATALOGUE[key]!)])),
+  'mutationPermission.roleRequired': markValue(en['mutationPermission.roleRequired']),
+};
 const BASELINE_LOCALE = 'en';
 const PSEUDO_LOCALE = 'data-connector-pseudo';
 
@@ -167,6 +170,7 @@ beforeEach(() => {
   registerLocale(PSEUDO_LOCALE, PSEUDO);
   setLocale(BASELINE_LOCALE);
   useViewerStore.setState({
+    editEnabled: true,
     models: new Map(),
     activeModelId: null,
     ifcDataStore: null,
@@ -192,6 +196,19 @@ afterEach(() => {
 });
 
 describe('DataConnector localization (#4918)', () => {
+  it('#5823 opens the CSV picker from the upload control with Enter and Space', async () => {
+    await openDialog();
+    const upload = [...document.body.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Drag & drop a CSV file'));
+    const input = document.body.querySelector<HTMLInputElement>('input[type="file"]');
+    assert.ok(upload && input);
+    let opens = 0;
+    input.addEventListener('click', () => { opens++; });
+    activate(upload, 'Enter');
+    activate(upload, ' ');
+    assert.equal(opens, 2);
+  });
+
   it('translates the default trigger button when no custom trigger is supplied', async () => {
     render(<DataConnector />);
     checkAtCurrentState([{ key: 'dataConnector.triggerButton' }]);
@@ -426,12 +443,13 @@ describe('DataConnector localization (#4918)', () => {
       mutationViews: new Map(),
       mutationVersion: 0,
       collabRole: 'viewer',
+      editEnabled: true,
     });
 
     await openDialog();
     await settle();
 
-    checkAtCurrentState([{ key: 'dataConnector.editRequiresAccessTitle' }]);
+    checkAtCurrentState([{ key: 'mutationPermission.roleRequired' }]);
   });
 
   it('accounts for every catalogue key: rendered above, or a documented other-branch', () => {

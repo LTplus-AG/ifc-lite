@@ -15,8 +15,10 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, mouseDown, render } from '@/test/render.js';
 import { registerLocale, setLocale } from '@/i18n';
+import { resolve } from '@/i18n/registry';
+import { panelTitleKey } from '@/lib/panels/registry';
 import { TOOLBAR_STYLE_STORAGE_KEY } from '@/store/constants';
 import { useViewerStore, type RibbonTabId } from '@/store';
 import { RibbonToolbar } from './RibbonToolbar.js';
@@ -26,7 +28,7 @@ const TABS: RibbonTabId[] = ['file', 'home', 'view', 'elements', 'analyze', 'aut
 function showTab(container: HTMLElement, tab: RibbonTabId): void {
   const target = container.querySelectorAll('[role="tab"]')[TABS.indexOf(tab)];
   assert.ok(target, `tab ${tab} is rendered`);
-  click(target);
+  mouseDown(target, { button: 0 });
   assert.equal(useViewerStore.getState().ribbonTab, tab);
 }
 
@@ -81,7 +83,13 @@ describe('RibbonToolbar with a registered locale (#4785)', () => {
     showTab(container, 'view');
     const { basketViews, pinboardEntities } = useViewerStore.getState();
     const expected = `Präsentation (${basketViews.length} Ansichten, ${pinboardEntities.size} Elemente)`;
-    assert.ok(container.querySelector(`button[aria-label="${expected}"]`), 'present tooltip');
+    const presentButton = [...container.querySelectorAll('button')].find(
+      (button) => button.getAttribute('aria-label') === resolve(panelTitleKey('presentation')),
+    );
+    assert.ok(presentButton, 'present button announces its canonical panel name');
+    const descriptionId = presentButton.getAttribute('aria-describedby');
+    assert.ok(descriptionId, 'present button links its translated tooltip');
+    assert.equal(container.ownerDocument.getElementById(descriptionId)?.textContent, expected);
   });
 
   it('falls back to English per key for a partial locale', () => {

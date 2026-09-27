@@ -1,0 +1,26 @@
+diff --git a/dist/index.js b/dist/index.js
+index 4a48d912a544afa0f223a84586d071a92f28fb54..5271602026168133db4d73b7be727337f024ba1f 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -271,7 +271,7 @@ var PopoverContentImpl = /* @__PURE__ */ React.forwardRef(
+       import_react_focus_scope.FocusScope,
+       {
+         asChild: true,
+-        loop: true,
++        loop: trapFocus,
+         trapped: trapFocus,
+         onMountAutoFocus: onOpenAutoFocus,
+         onUnmountAutoFocus: onCloseAutoFocus,
+diff --git a/dist/index.mjs b/dist/index.mjs
+index f90341b0b502ed8695ca6bbdbc420be5c187c521..9e6e2637efd77c0e652a2c5fa6bbdd9ad2b44598 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -223,7 +223,7 @@ var PopoverContentImpl = /* @__PURE__ */ React.forwardRef(
+       FocusScope,
+       {
+         asChild: true,
+-        loop: true,
++        loop: trapFocus,
+         trapped: trapFocus,
+         onMountAutoFocus: onOpenAutoFocus,
+         onUnmountAutoFocus: onCloseAutoFocus,

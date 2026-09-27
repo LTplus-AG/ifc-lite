@@ -31,7 +31,7 @@ function TablePreview({ table }: { table: Table }) {
   const rows = table.rows.slice(0, LIMIT);
   return (
     <div className="overflow-x-auto">
-      <table className="text-[10px]">
+      <table className="text-2xs">
         <thead>
           <tr>{table.columns.map((c) => <th key={c.name} className="whitespace-nowrap px-1 text-left font-medium" title={`${c.type}${c.unit ? ` · ${c.unit}` : ''}`}>{c.name}</th>)}</tr>
         </thead>
@@ -51,7 +51,7 @@ function Items({ items }: { items: readonly unknown[] }) {
   if (items.length === 0) return <span className="text-muted-foreground">{t('flowPanel.preview.empty')}</span>;
   const shown = items.slice(0, LIMIT);
   return (
-    <ul className="font-mono text-[10px]">
+    <ul className="font-mono text-2xs">
       {shown.map((v, i) => <li key={i} className="truncate">{cell(v)}</li>)}
       {items.length > LIMIT && <li className="text-muted-foreground">{t('flowPanel.preview.more', { count: items.length - LIMIT })}</li>}
     </ul>
@@ -64,7 +64,7 @@ export function FlowValuePreview({ data }: { data: FlowData | undefined }) {
   if (data.kind === 'item') {
     const v = data.value;
     if (v && typeof v === 'object' && !Array.isArray(v) && validateTable(v).length === 0) return <TablePreview table={v as Table} />;
-    return <span className="font-mono text-[10px]">{cell(v)}</span>;
+    return <span className="font-mono text-2xs">{cell(v)}</span>;
   }
   if (data.kind === 'list') return <Items items={data.items} />;
   const branches = [...data.branches].slice(0, LIMIT);
@@ -73,7 +73,7 @@ export function FlowValuePreview({ data }: { data: FlowData | undefined }) {
     <div className="space-y-1">
       {branches.map(([key, items]) => (
         <div key={key}>
-          <div className="font-mono text-[10px] text-[#7dcfff]">{key || '""'} <span className="text-muted-foreground">· {items.length}</span></div>
+          <div className="font-mono text-2xs text-[#7dcfff]">{key || '""'} <span className="text-muted-foreground">· {items.length}</span></div>
           <div className="pl-2"><Items items={items} /></div>
         </div>
       ))}

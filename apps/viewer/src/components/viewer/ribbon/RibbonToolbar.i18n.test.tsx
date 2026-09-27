@@ -16,7 +16,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, click, render } from '@/test/render.js';
+import { advance, cleanup, mouseDown, press, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { ribbonToolbarEn } from '@/i18n/catalogues/ribbon-toolbar.en';
 import { useViewerStore, type RibbonTabId } from '@/store';
@@ -49,7 +49,6 @@ const NOT_RENDERED_IN_THIS_STATE: RibbonKey[] = [
   'ribbon.file.shareGroup', // collab feature flag is off under test
   'ribbon.file.share',
   'ribbon.file.shareTooltip',
-  'ribbon.file.room',
   'ribbon.file.roomTooltip',
   'ribbon.file.roomNotJoinedTooltip',
   'ribbon.view.worldShowTooltip', // Cesium is enabled
@@ -77,6 +76,10 @@ function readableSlots(root: HTMLElement): Map<string, string> {
   root.querySelectorAll('*').forEach((element, index) => {
     const label = element.getAttribute('aria-label');
     if (label) out.set(`${index}:aria`, label);
+    const descriptionId = element.getAttribute('aria-describedby');
+    const description = descriptionId?.split(/\s+/).map((id) => root.ownerDocument.getElementById(id)?.textContent?.trim())
+      .filter(Boolean).join(' ');
+    if (description) out.set(`${index}:description`, description);
     const ownText = [...element.childNodes]
       .filter((node) => node.nodeType === node.TEXT_NODE)
       .map((node) => node.textContent ?? '')
@@ -91,7 +94,7 @@ function showTab(container: HTMLElement, tab: RibbonTabId): void {
   const tabs = [...container.querySelectorAll('[role="tab"]')];
   const target = tabs[TABS.indexOf(tab)];
   assert.ok(target, `tab ${tab} is rendered`);
-  click(target);
+  mouseDown(target);
   assert.equal(useViewerStore.getState().ribbonTab, tab);
 }
 
@@ -123,6 +126,20 @@ afterEach(() => {
 });
 
 describe('RibbonToolbar localization (#4785)', () => {
+  it('#5815 ArrowRight selects View and labels the command band', async () => {
+    const container = render(<RibbonToolbar />);
+    const tabs = [...container.querySelectorAll<HTMLElement>('[role="tab"]')];
+    assert.equal(tabs.length, TABS.length);
+    tabs[1].focus(); // Home is the initial tab.
+    press(tabs[1], 'ArrowRight');
+    await advance(5);
+    assert.equal(useViewerStore.getState().ribbonTab, 'view');
+    assert.equal(document.activeElement, tabs[2]);
+    const panel = container.querySelector('[role="tabpanel"]');
+    assert.ok(panel);
+    assert.equal(panel.getAttribute('aria-labelledby'), tabs[2].id);
+  });
+
   it('puts each key translation on the control that showed its English, on every tab', () => {
     const container = render(<RibbonToolbar />);
     registerLocale('ribbon-pseudo', PSEUDO);
@@ -144,7 +161,12 @@ describe('RibbonToolbar localization (#4785)', () => {
         // Owned keys whose English is exactly this text (placeholder keys are
         // interpolated, so they are checked by the literal-catalogue tests).
         const candidates = RIBBON_KEYS.filter((key) =>
-          ownedBy(tab, key) && !ribbonToolbarEn[key].includes('{') && ribbonToolbarEn[key] === text);
+          ownedBy(tab, key) &&
+          !(slot.endsWith(':text') && key.endsWith('Tooltip')) &&
+          // A panel button announces its visible name; its descriptive tooltip
+          // is checked in the paired aria-description slot instead.
+          !(slot.endsWith(':aria') && before.has(slot.replace(/:aria$/, ':description')) && key.endsWith('Tooltip')) &&
+          !ribbonToolbarEn[key].includes('{') && ribbonToolbarEn[key] === text);
         if (candidates.length > 0) {
           const match = candidates.find((key) => shown === mark(key));
           assert.ok(match, `${tab}: "${text}" at ${slot} should be translated, shows "${shown}"`);

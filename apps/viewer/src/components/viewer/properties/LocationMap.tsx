@@ -14,11 +14,11 @@
  *   - Links to Google Maps, OpenStreetMap, and Google Earth (KMZ export)
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import {
-  Map as MapIcon, ExternalLink, Loader2, MapPinOff, Globe2,
-  Search, Mountain, MapPin, X, Check,
-} from 'lucide-react';
+import { Map as MapIcon, ExternalLink, MapPinOff, Globe2, Search, Mountain, MapPin, X, Check } from 'lucide-react';
+import { IconButton } from '@/components/ui/icon-button';
+import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/components/ui/toast';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
@@ -38,6 +38,7 @@ import { posthog } from '@/lib/analytics';
 import { addFootprintToMap, removeFootprintFromMap } from './location-map-footprint';
 import { geocodeSearch, type GeocodeResult } from './location-map-geocode';
 import { loadMaplibre, disposeMap, purgeMapContainer } from './location-map-lifecycle';
+import { LocationMapSearchBar } from './location-map-search';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 /** Position picked on the map, ready to be applied to IfcMapConversion */
@@ -603,13 +604,12 @@ export function LocationMap({
         return;
       }
       downloadBlob(new Blob([kmz as BlobPart], { type: 'application/vnd.google-earth.kmz' }), modelExportFilename(modelName, 'kmz'));
+      trackExportCompleted({ format: 'kmz', surface: 'location_map' });
     } catch (err) {
       toast.error(t('properties.locationMap.kmzExportFailedUnknown', { message: err instanceof Error ? err.message : t('properties.locationMap.unknownError') }));
     }
   }, [latLon, geometryResult, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, createKmzProcessor, instancedModelRange, modelName, t]);
-
   const isDarkRef = useRef(false);
-
   const handleStyleToggle = useCallback(() => {
     if (!mapRef.current) return;
     isDarkRef.current = !isDarkRef.current;
@@ -652,65 +652,34 @@ export function LocationMap({
           </span>
         )}
         {editable && (
-          <button
+          <IconButton
+            label={t('properties.locationMap.searchTooltip')} size="icon-xs"
             onClick={() => { setSearchOpen(!searchOpen); setSearchQuery(''); setSearchResults([]); }}
-            className="p-0.5 text-zinc-400 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
-            title={t('properties.locationMap.searchTooltip')}
+            className="text-zinc-400 hover:text-teal-600 dark:hover:text-teal-400"
           >
             <Search className="h-3 w-3" />
-          </button>
+          </IconButton>
         )}
       </div>
-
-      {/* Search bar */}
+      {/* Search bar + results dropdown (#5817: the dropdown is now a Radix
+          Popover) — extracted to `location-map-search.tsx`. */}
       {editable && searchOpen && (
-        <div className="px-3 pb-1.5 relative">
-          <div className="flex items-center gap-1">
-            <div className="flex-1 relative">
-              <input
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder={t('properties.locationMap.searchPlaceholder')}
-                className="w-full text-[11px] px-2 py-1 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400 focus:border-teal-400 placeholder:text-zinc-400/60"
-                autoFocus
-                onKeyDown={e => { if (e.key === 'Escape') { setSearchOpen(false); setSearchQuery(''); setSearchResults([]); } }}
-              />
-              {searchLoading && (
-                <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-teal-500 animate-spin" />
-              )}
-            </div>
-            <button
-              onClick={() => { setSearchOpen(false); setSearchQuery(''); setSearchResults([]); }}
-              className="p-0.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-
-          {/* Search results dropdown */}
-          {searchResults.length > 0 && (
-            <div className="absolute left-3 right-3 top-full z-50 mt-0.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-lg max-h-[160px] overflow-y-auto">
-              {searchResults.map((r, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleSearchSelect(r)}
-                  className="w-full text-left px-2 py-1.5 text-[10px] text-zinc-700 dark:text-zinc-300 hover:bg-teal-50 dark:hover:bg-teal-950/50 border-b border-zinc-100 dark:border-zinc-800 last:border-0 transition-colors"
-                >
-                  <div className="flex items-start gap-1.5">
-                    <MapPin className="h-3 w-3 text-teal-500 shrink-0 mt-0.5" />
-                    <span className="line-clamp-2">{r.display_name}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <LocationMapSearchBar
+          query={searchQuery}
+          onQueryChange={setSearchQuery}
+          results={searchResults}
+          onResultsChange={setSearchResults}
+          loading={searchLoading}
+          placeholder={t('properties.locationMap.searchPlaceholder')}
+          onSelect={handleSearchSelect}
+          onClose={() => { setSearchOpen(false); setSearchQuery(''); setSearchResults([]); }}
+        />
       )}
 
       {/* Map container */}
       {mapState === 'loading' && (
         <div className="flex items-center justify-center h-[180px] bg-zinc-50 dark:bg-zinc-900/50">
-          <Loader2 className="h-4 w-4 text-teal-500 animate-spin" />
+          <Spinner size="md" className="text-teal-500" />
           <span className="text-[10px] text-zinc-400 ml-2">{t('properties.locationMap.resolvingCoordinates')}</span>
         </div>
       )}
@@ -796,7 +765,7 @@ export function LocationMap({
                 </div>
                 <div className="text-foreground text-right tabular-nums">
                   {elevationLoading ? (
-                    <Loader2 className="h-2.5 w-2.5 animate-spin inline" />
+                    <Spinner className="h-2.5 w-2.5 inline" />
                   ) : pickedElevation !== null ? (
                     t('properties.locationMap.elevationMeters', { value: formatLocaleNumber(locale, pickedElevation, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })
                   ) : (

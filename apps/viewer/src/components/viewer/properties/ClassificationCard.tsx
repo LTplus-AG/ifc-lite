@@ -6,8 +6,8 @@
  * Classification display component for IFC element classifications.
  */
 
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Tag } from 'lucide-react';
+import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ChevronDown, Tag } from 'lucide-react';
 import type { ClassificationInfo } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import {
@@ -16,8 +16,10 @@ import {
   EXPRESS_LOCATION_ATTRIBUTE,
   EXPRESS_NAME_ATTRIBUTE,
 } from './express-labels';
+import { PersistentCollapsible } from './PersistentCollapsible';
+import { associationDisclosureId } from './associationDisclosureId';
 
-export function ClassificationCard({ classification }: { classification: ClassificationInfo }) {
+export function ClassificationCard({ classification, sectionId }: { classification: ClassificationInfo; sectionId?: string }) {
   const { t } = useTranslation();
   // Matches the "unavailable on this data source" treatment in
   // ModelMetadataPanel: a server-parsed store (#3948) can prove the entity
@@ -40,8 +42,8 @@ export function ClassificationCard({ classification }: { classification: Classif
   const systemName = classification.system;
 
   return (
-    <Collapsible defaultOpen className="border-2 border-emerald-200 dark:border-emerald-800 bg-emerald-50/20 dark:bg-emerald-950/20 w-full max-w-full overflow-hidden">
-      <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 text-left transition-colors overflow-hidden">
+    <PersistentCollapsible id={sectionId ?? associationDisclosureId('classification', classification, [classification], 0)} className="border-2 border-emerald-200 dark:border-emerald-800 bg-emerald-50/20 dark:bg-emerald-950/20 w-full max-w-full overflow-hidden">
+      <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 text-left transition-colors overflow-hidden">
         <Tag className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
         <span className="font-bold text-xs text-emerald-700 dark:text-emerald-400 truncate flex-1 min-w-0">
           {systemName || t('properties.classification.heading')}
@@ -49,6 +51,7 @@ export function ClassificationCard({ classification }: { classification: Classif
         <span className="text-[10px] font-mono bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 shrink-0">
           {displayName}
         </span>
+        <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-emerald-200 dark:border-emerald-800 divide-y divide-emerald-100 dark:divide-emerald-900/30">
@@ -90,6 +93,6 @@ export function ClassificationCard({ classification }: { classification: Classif
           )}
         </div>
       </CollapsibleContent>
-    </Collapsible>
+    </PersistentCollapsible>
   );
 }

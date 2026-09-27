@@ -93,7 +93,11 @@ export function useWindowFileDrop(onDrop: (dataTransfer: DataTransfer) => void, 
       }
       if (!isFileDrag(e.dataTransfer) || e.defaultPrevented) return; // a child drop zone handled it
       e.preventDefault();
-      if (accept && e.dataTransfer) onDropRef.current(e.dataTransfer);
+      // Always handed to the caller, even when `accept` is false (#5851):
+      // `accept` only steers the cursor/overlay above, so the caller's own
+      // guard — not a swallowed drop — is what explains an unsupported
+      // browser. A silent no-op here is the bug #5851 fixed.
+      if (e.dataTransfer) onDropRef.current(e.dataTransfer);
     };
 
     const listeners: Array<[string, (e: DragEvent) => void, boolean]> = [

@@ -11,7 +11,7 @@
  * keyed on the new value missed the element, and a rule keyed on the OLD
  * value still matched it.
  *
- * Each of the three edit kinds is covered by its own `evaluateLens` run,
+ * Each of the three edit kinds is covered by the shared group evaluator,
  * against a real `IfcParser.parseColumnar` store and a real
  * `MutablePropertyView` wired the way `configureMutationView` wires it for
  * the live viewer — per the issue's own executed reproduction table.
@@ -24,9 +24,11 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import { evaluateAutoColorLens, evaluateLens } from '@ifc-lite/lens';
 import type { Lens } from '@ifc-lite/lens';
+import type { FilterRule } from '@ifc-lite/rules';
 import type { FederatedModel } from '@/store/types';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { createLensDataProvider } from './adapter';
+import { evaluateLensGroups } from './evaluate-lens-groups';
 
 const FIXTURE = `ISO-10303-21;
 HEADER;
@@ -65,23 +67,24 @@ function federatedModel(id: string, ifcDataStore: IfcDataStore): FederatedModel 
   return { id, name: id, ifcDataStore, idOffset: 0, maxExpressId: 999 } as FederatedModel;
 }
 
-function ruleOn(propOrAttrOrQty: Lens['rules'][number]['criteria'], value: string): Lens {
+function ruleOn(rule: FilterRule): Lens {
   return {
     id: 'lens',
     name: 'Lens',
     rules: [
-      { id: 'r', name: 'r', enabled: true, criteria: { ...propOrAttrOrQty, ...valueField(propOrAttrOrQty, value) }, action: 'colorize', color: '#ff0000' },
+      { id: 'r', name: 'r', enabled: true, groups: [{ combinator: 'AND', rules: [rule] }], action: 'colorize', color: '#ff0000' },
     ],
   };
 }
 
-// Each criteria "type" keys its comparison value under a different field
-// name (LensCriteria in packages/lens/src/types.ts) — this just routes to
-// the right one so the three tests below can share one `ruleOn` helper.
-function valueField(criteria: Lens['rules'][number]['criteria'], value: string) {
-  if (criteria.type === 'property') return { propertyValue: value };
-  if (criteria.type === 'attribute') return { attributeValue: value };
-  return { quantityValue: value };
+async function selectedIds(lens: Lens, store: IfcDataStore, view?: MutablePropertyView): Promise<number[]> {
+  const models = new Map([['m1', federatedModel('m1', store)]]);
+  const views = view ? new Map([['m1', view]]) : undefined;
+  const provider = createLensDataProvider(models, null, views);
+  const matched = await evaluateLensGroups(
+    lens, [{ id: 'm1', store, mutationView: view }], models, new Set(),
+  );
+  return evaluateLens(lens, provider, matched).ruleEntityIds.get('r') ?? [];
 }
 
 describe('lens adapter reads the live mutation overlay (#5207)', () => {
@@ -148,15 +151,11 @@ describe('lens adapter reads the live mutation overlay (#5207)', () => {
     const view = liveView(store);
     view.setProperty(41, 'Pset_WallCommon', 'FireRating', 'F999', PropertyValueType.String);
 
-    const models = new Map([['m1', federatedModel('m1', store)]]);
-    const mutationViews = new Map([['m1', view]]);
-    const provider = createLensDataProvider(models, null, mutationViews);
-
-    const newRule = ruleOn({ type: 'property', propertySet: 'Pset_WallCommon', propertyName: 'FireRating', operator: 'equals' }, 'F999');
-    const oldRule = ruleOn({ type: 'property', propertySet: 'Pset_WallCommon', propertyName: 'FireRating', operator: 'equals' }, 'F90');
-
-    assert.deepEqual(evaluateLens(newRule, provider).ruleEntityIds.get('r'), [41], 'matches the edited value');
-    assert.deepEqual(evaluateLens(oldRule, provider).ruleEntityIds.get('r'), [], 'no longer matches the stale value');
+    const property = (value: string): FilterRule => ({
+      kind: 'property', setName: 'Pset_WallCommon', propertyName: 'FireRating', op: 'eq', value,
+    });
+    assert.deepEqual(await selectedIds(ruleOn(property('F999')), store, view), [41], 'matches the edited value');
+    assert.deepEqual(await selectedIds(ruleOn(property('F90')), store, view), [], 'no longer matches the stale value');
   });
 
   it('an attribute (Name) edit: rule on the new value matches, rule on the old value does not', async () => {
@@ -164,15 +163,8 @@ describe('lens adapter reads the live mutation overlay (#5207)', () => {
     const view = liveView(store);
     view.setAttribute(41, 'Name', 'Wall-A-RENAMED');
 
-    const models = new Map([['m1', federatedModel('m1', store)]]);
-    const mutationViews = new Map([['m1', view]]);
-    const provider = createLensDataProvider(models, null, mutationViews);
-
-    const newRule = ruleOn({ type: 'attribute', attributeName: 'Name', operator: 'equals' }, 'Wall-A-RENAMED');
-    const oldRule = ruleOn({ type: 'attribute', attributeName: 'Name', operator: 'equals' }, 'Wall-A');
-
-    assert.deepEqual(evaluateLens(newRule, provider).ruleEntityIds.get('r'), [41], 'matches the edited value');
-    assert.deepEqual(evaluateLens(oldRule, provider).ruleEntityIds.get('r'), [], 'no longer matches the stale value');
+    assert.deepEqual(await selectedIds(ruleOn({ kind: 'name', op: 'eq', value: 'Wall-A-RENAMED' }), store, view), [41], 'matches the edited value');
+    assert.deepEqual(await selectedIds(ruleOn({ kind: 'name', op: 'eq', value: 'Wall-A' }), store, view), [], 'no longer matches the stale value');
   });
 
   it('a quantity edit: rule on the new value matches, rule on the old value does not', async () => {
@@ -180,31 +172,23 @@ describe('lens adapter reads the live mutation overlay (#5207)', () => {
     const view = liveView(store);
     view.setQuantity(41, 'Qto_WallBaseQuantities', 'Length', 9999, QuantityType.Length);
 
-    const models = new Map([['m1', federatedModel('m1', store)]]);
-    const mutationViews = new Map([['m1', view]]);
-    const provider = createLensDataProvider(models, null, mutationViews);
-
-    const newRule = ruleOn({ type: 'quantity', quantitySet: 'Qto_WallBaseQuantities', quantityName: 'Length', operator: 'equals' }, '9999');
-    const oldRule = ruleOn({ type: 'quantity', quantitySet: 'Qto_WallBaseQuantities', quantityName: 'Length', operator: 'equals' }, '5000');
-
-    assert.deepEqual(evaluateLens(newRule, provider).ruleEntityIds.get('r'), [41], 'matches the edited value');
-    assert.deepEqual(evaluateLens(oldRule, provider).ruleEntityIds.get('r'), [], 'no longer matches the stale value');
+    const quantity = (op: 'gt' | 'lt'): FilterRule => ({
+      kind: 'quantity', setName: 'Qto_WallBaseQuantities', quantityName: 'Length', op, value: 6000,
+    });
+    assert.deepEqual(await selectedIds(ruleOn(quantity('gt')), store, view), [41], 'matches the edited value');
+    assert.deepEqual(await selectedIds(ruleOn(quantity('lt')), store, view), [], 'no longer matches the stale value');
   });
 
   it('no-regression: an entity with NO edits classifies exactly as before', async () => {
     const store = await parsedStore();
     const view = liveView(store); // configured, but nothing edited
 
-    const models = new Map([['m1', federatedModel('m1', store)]]);
-    const withView = createLensDataProvider(models, null, new Map([['m1', view]]));
-    const withoutView = createLensDataProvider(models, null, undefined);
+    const rule = ruleOn({ kind: 'property', setName: 'Pset_WallCommon', propertyName: 'FireRating', op: 'eq', value: 'F90' });
 
-    const rule = ruleOn({ type: 'property', propertySet: 'Pset_WallCommon', propertyName: 'FireRating', operator: 'equals' }, 'F90');
-
-    assert.deepEqual(evaluateLens(rule, withView).ruleEntityIds.get('r'), [41], 'unedited entity still matches its base value with a (no-op) view present');
+    assert.deepEqual(await selectedIds(rule, store, view), [41], 'unedited entity still matches its base value with a (no-op) view present');
     assert.deepEqual(
-      evaluateLens(rule, withView).ruleEntityIds.get('r'),
-      evaluateLens(rule, withoutView).ruleEntityIds.get('r'),
+      await selectedIds(rule, store, view),
+      await selectedIds(rule, store),
       'identical classification with and without a mutation view when nothing was edited',
     );
   });

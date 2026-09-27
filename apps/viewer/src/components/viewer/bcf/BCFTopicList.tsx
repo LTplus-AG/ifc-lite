@@ -17,6 +17,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -113,16 +114,11 @@ export function BCFTopicList({
       <ScrollArea className="flex-1">
         {sortedTopics.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 px-4 text-muted-foreground text-sm">
-            <MessageSquare className="h-8 w-8 mb-2 opacity-50" />
-            <p>{t('bcf.topicList.noTopics')}</p>
-            <Button
-              variant="link"
-              size="sm"
-              onClick={onCreateTopic}
-              className="mt-1"
-            >
-              {t('bcf.topicList.createFirstTopic')}
-            </Button>
+            <EmptyState
+              icon={<MessageSquare className="size-8" />}
+              title={t('bcf.topicList.noTopics')}
+              action={<Button variant="link" size="sm" onClick={onCreateTopic}>{t('bcf.topicList.createFirstTopic')}</Button>}
+            />
 
             {/* Email setup nudge */}
             <div className="mt-6 w-full max-w-xs">

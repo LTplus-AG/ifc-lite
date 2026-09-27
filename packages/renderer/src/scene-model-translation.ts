@@ -23,7 +23,6 @@ interface TranslationScene {
   bounds: Map<number, BoundingBox>;
   batches: BatchedMesh[];
   meshes: Mesh[];
-  overrides: BatchedMesh[];
   textured: TexturedMesh[];
   templates: (InstancedTemplateGPU | undefined)[];
   cpu: (CpuTemplate | undefined)[];
@@ -68,7 +67,6 @@ export function translateSceneModel(scene: TranslationScene, modelIndex: number,
   for (const mesh of scene.meshes) scene.translations.placeAuthoredMesh(mesh);
   for (const mesh of scene.textured) scene.translations.moveDrawable(mesh);
   for (const batch of scene.batches) scene.translations.moveDrawable(batch);
-  for (const batch of scene.overrides) scene.translations.moveDrawable(batch);
   scene.clearPartial();
   placeSceneInstances(scene, modelIndex);
   return true;

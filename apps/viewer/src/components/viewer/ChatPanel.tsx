@@ -19,17 +19,8 @@
  */
 
 import { useCallback, useRef, useEffect, useState, type KeyboardEvent, type DragEvent } from 'react';
-import {
-  X,
-  Send,
-  Square,
-  Trash2,
-  Paperclip,
-  Loader2,
-  ArrowDown,
-  Zap,
-  Wrench,
-} from 'lucide-react';
+import { X, Send, Square, Trash2, Paperclip, ArrowDown, Zap, Wrench } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { PromoteToolDialog } from '@/components/extensions/PromoteToolDialog';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
@@ -1441,7 +1432,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         {/* Sending indicator */}
         {status === 'sending' && (
           <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <Spinner size="sm" />
             <span className="text-xs">{t('chat.panel.sendingIndicator')}</span>
           </div>
         )}
@@ -1559,12 +1550,14 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                 <Paperclip className="h-3 w-3" />
               )}
               {a.name}
-              <button
-                className="ml-0.5 hover:text-destructive"
+              <IconButton
+                label={t('chat.panel.removeAttachment', { name: a.name })}
+                size="icon-xs"
+                className="ml-0.5 h-4 w-4 p-0 hover:text-destructive"
                 onClick={() => removeAttachment(a.id)}
               >
                 <X className="h-3 w-3" />
-              </button>
+              </IconButton>
             </span>
           ))}
         </div>

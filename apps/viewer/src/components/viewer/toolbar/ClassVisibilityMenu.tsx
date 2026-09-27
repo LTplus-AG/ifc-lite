@@ -34,11 +34,12 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { DropdownMenuContent, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { isPreviewTier } from '@/store/constants';
 import { cn } from '@/lib/utils';
+import { openSettings } from '@/lib/settings/open-settings';
 
 interface ClassVisibilityRowProps {
   /** Colored class glyph (caller sets the tint). */
@@ -111,7 +112,6 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
   const setGeometryMode = useViewerStore((state) => state.setGeometryMode);
   // #2544: a pinned `?geomTier=` override is otherwise invisible and permanent.
   const geomTierOverride = useViewerStore((state) => state.geomTierOverride);
-  const clearGeomTierOverride = useViewerStore((state) => state.clearGeomTierOverride);
   const { visible: visibleClassCount, total: classToggleCount } = useVisibleClassCount();
 
   return (
@@ -301,14 +301,15 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
               </span>
             </span>
           </span>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 shrink-0 px-2 text-[11px] font-semibold uppercase tracking-wider"
-            onClick={clearGeomTierOverride}
-          >
-            {t('classVisibility.clear')}
-          </Button>
+          <DropdownMenuItem asChild onSelect={() => openSettings('performance')}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 shrink-0 px-2 text-[11px] font-semibold uppercase tracking-wider"
+            >
+              {t('classVisibility.performanceSettings')}
+            </Button>
+          </DropdownMenuItem>
         </div>
       )}
     </DropdownMenuContent>

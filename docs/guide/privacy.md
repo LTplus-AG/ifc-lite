@@ -22,9 +22,11 @@ All four live in your browser's IndexedDB. None of it is sent off-device unless 
 
 The action and audit logs are held in an in-memory ring buffer and mirrored to IndexedDB, so they survive a reload (both are hydrated from IDB on startup). Clearing a log wipes both the in-memory copy and its persisted copy.
 
-## The Privacy panel
+## Settings → Privacy
 
-Open the Extensions panel (Command Palette → "Extensions") and click the **Privacy** tab. Three sections:
+Open **Settings → Privacy** to control product analytics and inspect or clear local data. The hosted viewer sends anonymous, coarse usage and error events unless you opt out. The switch is stored in this browser and stops both explicit event calls and PostHog automatic capture. A self-hosted viewer without a PostHog key sends no product analytics.
+
+The page also contains these local-data controls:
 
 ### What we store locally
 
@@ -79,7 +81,7 @@ What is **never** in the log:
 
 ## Memory extractor
 
-The Privacy panel's **Extract from chat** button runs a rule-based scanner over your current session transcript. It looks for stable preferences (sentences starting with `Always`, `Never`, `I prefer`, etc.) and proposes them as overlay additions.
+Settings → Privacy's **Extract from chat** button runs a rule-based scanner over your current session transcript. It looks for stable preferences (sentences starting with `Always`, `Never`, `I prefer`, etc.) and proposes them as overlay additions.
 
 The extractor is **privacy-first by design**:
 
@@ -108,9 +110,10 @@ The customisation system itself does not make network calls, and the model-loadi
 
 | Goal | How |
 |------|-----|
-| Audit what's stored | Privacy tab → **Export JSON** on the action log; Audit tab → **Export** on the audit log |
-| Wipe pattern suggestions | Privacy tab → **Clear** the action log |
-| Stop the assistant from "remembering" preferences | Privacy tab → clear the textarea + Save overlay |
+| Audit what's stored | Settings → Privacy → **Export JSON** on the action log; Extensions → Audit → **Export** on the audit log |
+| Wipe pattern suggestions | Settings → Privacy → **Clear** the action log |
+| Stop the assistant from "remembering" preferences | Settings → Privacy → clear the textarea + Save overlay |
+| Stop product analytics | Settings → Privacy → **Opt out of product analytics** |
 | Stop the miner entirely | Disable every action log emit by clearing the log; the miner has no input to act on |
 | Forget an extension | Extensions tab → trash icon — removes bundle bytes, install record, granted capabilities |
 | Forget a flavor | Flavors dialog → delete on the row (active flavor can't be deleted; switch first) |
@@ -121,9 +124,9 @@ The customisation system itself does not make network calls, and the model-loadi
 
 On the first launch where the extensions subsystem comes up, a one-time toast surfaces the headline:
 
-> IFClite keeps a local, content-free action log to suggest one-click tools. Manage or delete it in Extensions → Privacy.
+> IFClite stores an action log on your device. The hosted viewer also sends anonymous product analytics unless you opt out in Privacy settings.
 
-The acknowledgement is persisted in localStorage so you only see it once per browser. To re-show it (e.g. on a different device), clear the `ifclite.extensions.privacy-disclosure.v1` key.
+The toast has a **Privacy settings** action that opens the opt-out switch and local-data controls. The acknowledgement is persisted in localStorage so you only see it once per browser. To re-show it, clear the `ifclite.extensions.privacy-disclosure.v2` key.
 
 ## Source-of-truth references
 

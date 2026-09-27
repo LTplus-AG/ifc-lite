@@ -20,7 +20,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { resolve } from '@/i18n/registry';
 import { en } from '@/i18n/en';
@@ -117,6 +117,7 @@ const BASE_PROPS = {
   canRun: true,
   running: false,
   onRun: () => {},
+  onCancel: () => {},
   error: null,
   geometryUnavailable: false,
   placementOnlyGeometry: false,
@@ -173,11 +174,21 @@ describe('CompareRunControls localization (#4918)', () => {
     assertAllTranslate(
       [
         { key: 'comparePanel.runControls.pickDifferentModels' },
-        { key: 'comparePanel.runControls.comparing' },
+        { key: 'comparePanel.runControls.cancel' },
       ],
       englishDom,
       afterDom,
     );
+  });
+
+  it('uses the run button to cancel even if the pair is no longer valid (#5831)', () => {
+    let cancelled = 0;
+    const container = render(<CompareRunControls {...BASE_PROPS} running canRun={false} onCancel={() => { cancelled += 1; }} />);
+    const button = [...container.querySelectorAll('button')].find((item) => item.textContent?.includes('Cancel comparison'));
+    assert.ok(button);
+    assert.equal(button.disabled, false);
+    click(button);
+    assert.equal(cancelled, 1);
   });
 
   it('translates the placement-only geometry warning as one complete message', () => {

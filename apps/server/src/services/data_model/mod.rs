@@ -14,9 +14,11 @@ mod properties;
 mod property_value;
 mod quantities;
 mod relationships;
+mod rooted;
 mod spatial;
 mod types;
 
+pub use rooted::DataModelEntities;
 pub use types::*;
 
 use classifications::extract_classifications;

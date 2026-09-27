@@ -14,6 +14,7 @@
 import React, { useCallback, useState, useMemo } from 'react';
 import { Palette, Plus, Trash2, ChevronDown, ChevronRight, GripVertical, Eye, EyeOff, Check, Copy, PenTool, Flame, Building2, Wrench, Printer, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -357,26 +358,25 @@ function CustomRuleItem({
   if (!isEditing) {
     return (
       <div
-        className="flex items-center gap-2 px-2 py-1.5 bg-muted/30 rounded text-xs cursor-pointer hover:bg-muted/50"
-        onClick={onEdit}
+        className="group flex items-center gap-2 px-2 py-1.5 bg-muted/30 rounded text-xs hover:bg-muted/50"
       >
-        <GripVertical className="h-3 w-3 text-muted-foreground" />
-        {rule.style.fillColor && (
-          <div
-            className="w-4 h-4 rounded border border-black/20"
-            style={{ backgroundColor: rule.style.fillColor }}
-          />
-        )}
-        <div className="flex-1 min-w-0">
-          <div className="font-medium truncate">{rule.name}</div>
-          <div className="text-muted-foreground truncate">
-            {ifcTypes.join(', ') || t('drawingUnderlay.settings.clickToEditPlaceholder')}
-          </div>
-        </div>
-        <Button
+        <button type="button" className="flex flex-1 min-w-0 items-center gap-2 text-left" onClick={onEdit}>
+          <GripVertical className="h-3 w-3 text-muted-foreground" />
+          {rule.style.fillColor && (
+            <span className="w-4 h-4 rounded border border-black/20" style={{ backgroundColor: rule.style.fillColor }} />
+          )}
+          <span className="flex-1 min-w-0">
+            <span className="block font-medium truncate">{rule.name}</span>
+            <span className="block text-muted-foreground truncate">
+              {ifcTypes.join(', ') || t('drawingUnderlay.settings.clickToEditPlaceholder')}
+            </span>
+          </span>
+        </button>
+        <IconButton
+          label={t(rule.enabled ? 'drawingUnderlay.settings.disableRule' : 'drawingUnderlay.settings.enableRule', { name: rule.name })}
           variant="ghost"
           size="icon-sm"
-          className="h-6 w-6 opacity-0 group-hover:opacity-100"
+          className="h-6 w-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
           onClick={(e) => {
             e.stopPropagation();
             onUpdate({ enabled: !rule.enabled });
@@ -387,7 +387,7 @@ function CustomRuleItem({
           ) : (
             <EyeOff className="h-3 w-3 text-muted-foreground" />
           )}
-        </Button>
+        </IconButton>
       </div>
     );
   }

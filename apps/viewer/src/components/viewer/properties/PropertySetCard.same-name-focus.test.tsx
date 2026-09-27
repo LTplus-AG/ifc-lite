@@ -55,6 +55,7 @@ function render(node: ReactElement): HTMLElement {
 afterEach(() => {
   if (root) act(() => root!.unmount());
   host?.remove();
+  localStorage.clear();
   root = null;
   host = null;
 });
@@ -114,5 +115,24 @@ describe('PropertySetCard focus highlight — two same-named psets, one holds th
     );
 
     assert.deepEqual(highlightedKeys(container), [`${ENTITY_ID}:Pset_Unique:FireRating`]);
+  });
+
+  it('temporarily reveals a focused row without replacing the saved collapsed preference (#5899)', () => {
+    const pset = { name: PSET_NAME, properties: [{ name: 'FireRating', value: 'RF60' }] };
+    const card = (focusedPropKey?: string) => <PropertySetCard pset={pset} entityId={ENTITY_ID} focusedPropKey={focusedPropKey} projectUnits={UNITS} />;
+    const container = render(card());
+    const trigger = container.querySelector<HTMLButtonElement>('button[aria-expanded]');
+    assert.ok(trigger);
+    act(() => trigger.click());
+    assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+    const key = 'ifc-lite:properties:section:pset:default:Pset_Common';
+    assert.equal(localStorage.getItem(key), 'closed');
+
+    act(() => root!.render(<TooltipProvider>{card(FOCUSED_KEY)}</TooltipProvider>));
+    assert.equal(trigger.getAttribute('aria-expanded'), 'true', 'the focus gesture opens the rendered card');
+    assert.equal(localStorage.getItem(key), 'closed', 'the focus gesture does not overwrite the user preference');
+
+    act(() => root!.render(<TooltipProvider>{card()}</TooltipProvider>));
+    assert.equal(trigger.getAttribute('aria-expanded'), 'false', 'clearing focus restores the collapsed preference');
   });
 });

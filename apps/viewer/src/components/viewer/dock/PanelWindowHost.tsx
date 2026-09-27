@@ -11,7 +11,7 @@
  * and make sure every child closes when the parent tab unloads.
  */
 
-import { useEffect } from 'react';
+import { useEffect, type ElementType, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useSyncExternalStore } from 'react';
 import { PinOff, X, MonitorUp } from 'lucide-react';
@@ -61,25 +61,47 @@ export function PanelWindowHost() {
 }
 
 function PanelWindowChrome({ entry }: { entry: PanelWindowEntry }) {
-  const { t } = useTranslation();
+  const { t, revision } = useTranslation();
   const def = getPanelDef(entry.id);
-  const Icon = def?.Icon;
   const dock = () => useViewerStore.getState().showWorkspacePanel(entry.id);
   const close = () => closePanelWindow(entry.id);
+  const title = def ? t(def.titleKey) : entry.id;
+
+  useEffect(() => {
+    entry.win.document.title = `${title} — ifc-lite`;
+  }, [entry.win, revision, title]);
 
   return (
     <PortalContainerProvider container={entry.win.document.body}>
+      <PanelWindowChromeShell title={title} Icon={def?.Icon} kind={entry.kind} onDock={dock} onClose={close}>
+        {renderPanelBody(entry.id, close)}
+      </PanelWindowChromeShell>
+    </PortalContainerProvider>
+  );
+}
+
+/** The rendered window surface also supplies real DOM classes to the contrast regression test. */
+export function PanelWindowChromeShell({ title, Icon, kind, onDock, onClose, children }: {
+  title: string;
+  Icon?: ElementType;
+  kind: PanelWindowEntry['kind'];
+  onDock: () => void;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const { t } = useTranslation();
+  return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background text-foreground">
       <div className="flex items-center gap-2 h-9 shrink-0 px-2 border-b border-border bg-muted/40 select-none">
         {Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
-        <span className="text-xs font-medium truncate flex-1 min-w-0">{def?.title ?? entry.id}</span>
+        <span className="text-xs font-medium truncate flex-1 min-w-0">{title}</span>
         <span className="text-[9px] uppercase tracking-wide text-muted-foreground shrink-0">
-          {t(entry.kind === 'pip' ? 'shellChrome.panelWindowHost.kindPip' : 'shellChrome.panelWindowHost.kindWindow')}
+          {t(kind === 'pip' ? 'shellChrome.panelWindowHost.kindPip' : 'shellChrome.panelWindowHost.kindWindow')}
         </span>
         <button
           type="button"
           title={t('shellChrome.panelWindowHost.dockTitle')}
-          onClick={dock}
+          onClick={onDock}
           className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted transition-colors"
         >
           <PinOff className="h-3.5 w-3.5" />
@@ -87,19 +109,18 @@ function PanelWindowChrome({ entry }: { entry: PanelWindowEntry }) {
         <button
           type="button"
           title={t('shellChrome.panelWindowHost.closeWindowTitle')}
-          onClick={close}
+          onClick={onClose}
           className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted transition-colors"
         >
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      <div className="flex-1 min-h-0 overflow-hidden">{renderPanelBody(entry.id, close)}</div>
+      <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
       {/* Decorative hint strip — reinforces that this content is live. */}
       <div className="flex items-center gap-1.5 h-5 shrink-0 px-2 border-t border-border bg-muted/30 text-[9px] text-muted-foreground select-none">
         <MonitorUp className="h-3 w-3" />
         <span>{t('shellChrome.panelWindowHost.liveSyncedNotice')}</span>
       </div>
     </div>
-    </PortalContainerProvider>
   );
 }

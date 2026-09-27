@@ -135,6 +135,30 @@
       // drive a real pointer, so the #5403 throw cannot happen there.
       "files": ["apps/viewer/src/**/*.test.ts", "apps/viewer/src/**/*.test.tsx", "apps/viewer/src/test/**"],
       "rules": { "no-restricted-properties": "off" }
+    },
+    {
+      // #5813: native dialogs block rendering and have no shared focus contract.
+      "files": ["apps/viewer/src/**"],
+      "rules": { "no-alert": "error" }
+    },
+    {
+      "files": ["apps/viewer/src/**/*.test.ts", "apps/viewer/src/**/*.test.tsx", "apps/viewer/src/test/**"],
+      "rules": { "no-alert": "off" }
+    },
+    {
+      // #5814: keep the loading icon and accessibility behavior in Spinner.
+      "files": ["apps/viewer/src/components/**/*.tsx"],
+      "excludeFiles": ["apps/viewer/src/components/**/*.test.tsx", "apps/viewer/src/components/**/test/**"],
+      "rules": { "no-restricted-imports": ["error", {
+        "paths": [
+          { "name": "@ifc-lite/data", "importNames": ["ENTITIES_IFC4"], "message": "Import ENTITIES_IFC4_EXPRESS instead (#5204)." },
+          { "name": "lucide-react", "importNames": ["Loader2"], "message": "Use the shared Spinner from components/ui/spinner (#5814)." }
+        ]
+      }] }
+    },
+    {
+      "files": ["apps/viewer/src/components/ui/spinner.tsx"],
+      "rules": { "no-restricted-imports": "off" }
     }
   ],
   "ignorePatterns": [

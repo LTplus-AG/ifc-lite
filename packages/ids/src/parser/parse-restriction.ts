@@ -164,13 +164,18 @@ function parseRestrictionFamilies(el: Element): IDSConstraint[] {
 
   if (out.length > 0) return out;
 
-  // No recognised pattern/enumeration/bounds child. If the element only
-  // carries a `base` attribute (the common "empty restriction" authoring
-  // mistake — e.g. `<xs:restriction base="xs:string"/>`), surface an
-  // empty enumeration so the coherence auditor can flag it. Otherwise
-  // fall through to text content.
-  const text = el.textContent?.trim() || '';
-  if (base && text === '') {
+  // No recognised pattern/enumeration/bounds child. If the element carries
+  // no text at all (the common "empty restriction" authoring mistake —
+  // e.g. `<xs:restriction base="xs:string"/>`, or the same thing
+  // pretty-printed with only indentation whitespace between the tags),
+  // surface an empty enumeration so the coherence auditor can flag it —
+  // presence is decided on the TRIMMED text so indentation whitespace
+  // doesn't masquerade as authored content. Otherwise fall through to the
+  // RAW text kept verbatim, not trimmed: `xs:string` whitespace inside a
+  // real value is significant, same rule as `xml-parser.ts` (#6117/#6153).
+  const rawText = el.textContent ?? '';
+  const hasText = rawText.trim() !== '';
+  if (!hasText) {
     return [
       {
         type: 'enumeration',
@@ -179,10 +184,5 @@ function parseRestrictionFamilies(el: Element): IDSConstraint[] {
       } satisfies IDSEnumerationConstraint,
     ];
   }
-  if (text) {
-    return [{ type: 'simpleValue', value: text }];
-  }
-  return [
-    { type: 'enumeration', values: [], base } satisfies IDSEnumerationConstraint,
-  ];
+  return [{ type: 'simpleValue', value: rawText }];
 }

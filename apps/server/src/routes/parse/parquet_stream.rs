@@ -114,7 +114,7 @@ pub async fn parse_parquet_stream(
     // This avoids re-processing files that are already cached (see
     // `cached_replay.rs`; a short/corrupt blob falls through as a miss).
     if let Some(response) =
-        super::cached_replay::try_cached_replay(&state, &cache_key, layout, stream_shapes).await?
+        super::cached_replay::try_cached_replay(&state, &cache_key, layout, stream_shapes, query.data_model_entities).await?
     {
         // Cached replay: no parse work runs, so holding the admission
         // guard (and its CPU slot) while a slow client drains the SSE
@@ -337,10 +337,13 @@ pub async fn parse_parquet_stream(
     // exactly that window sees a 404 for a fill that is, in fact, still
     // possible on retry. `InFlightGuard::drop` handles all three uniformly.
     let content_for_cache = content.clone();
-    let cache_key_for_dm = cache_key.clone();
+    // Keyed by the data-model ENTRY this fill writes, as `get_data_model`
+    // asks (#6034): a fill of one variant says nothing about the other.
+    let data_model_entities = query.data_model_entities;
+    let dm_key = data_model_cache_key(&cache_key, data_model_entities);
     let cache_for_dm = cache.clone();
     let admission_for_dm = state.admission.clone();
-    let in_flight = state.data_model_in_flight.begin(cache_key.clone());
+    let in_flight = state.data_model_in_flight.begin(dm_key.clone());
     tokio::spawn(async move {
         let _in_flight = in_flight;
         // The data-model extraction re-parses the whole upload, so it must
@@ -361,14 +364,14 @@ pub async fn parse_parquet_stream(
         let dm_result =
             tokio::task::spawn_blocking(move || extract_data_model(&content_for_cache)).await;
 
-        if let Ok(data_model) = dm_result {
+        if let Ok(mut data_model) = dm_result {
             // Serialize and cache
-            let serialize_result =
-                tokio::task::spawn_blocking(move || serialize_data_model_to_parquet(&data_model))
-                    .await;
+            let serialize_result = tokio::task::spawn_blocking(move || {
+                data_model_entities.apply(&mut data_model);
+                serialize_data_model_to_parquet(&data_model)
+            }).await;
 
             if let Ok(Ok(parquet_data)) = serialize_result {
-                let dm_key = data_model_cache_key(&cache_key_for_dm);
                 if let Err(e) = cache_for_dm.set_bytes(&dm_key, &parquet_data).await {
                     tracing::error!(error = %e, "Failed to cache data model from stream");
                 } else {

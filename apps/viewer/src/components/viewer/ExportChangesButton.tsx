@@ -11,8 +11,11 @@
  * export).
  */
 
+import type { ExportSurface } from '@/lib/analytics-export-events';
+import { trackExportCompleted } from '@/lib/analytics';
 import { useState, useCallback, useLayoutEffect, cloneElement, isValidElement, type MouseEvent, type ReactNode } from 'react';
-import { Download, Loader2, Check, AlertCircle } from 'lucide-react';
+import { Download, Check, AlertCircle } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { zip, strToU8 } from 'fflate';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +40,7 @@ import {
 } from './ExportChangesReviewDialog';
 
 interface ExportChangesButtonProps {
+  surface?: ExportSurface;
   /** Optional custom class name */
   className?: string;
   /**
@@ -182,7 +186,7 @@ export function useReviewGroups(
   return [groups, setGroups];
 }
 
-export function ExportChangesButton({ className, trigger }: ExportChangesButtonProps) {
+export function ExportChangesButton({ surface = 'classic', className, trigger }: ExportChangesButtonProps) {
   const { t } = useTranslation();
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -262,6 +266,12 @@ export function ExportChangesButton({ className, trigger }: ExportChangesButtonP
       setTimeout(() => setExportStatus('idle'), 2000);
 
       const exportedChanges = files.reduce((n, f) => n + f.changeCount, 0);
+      trackExportCompleted({
+        format: files.length === 1 ? files[0].ext : 'zip',
+        surface,
+        model_count: files.length,
+        change_count: exportedChanges,
+      });
       const unrepresented = files.reduce((n, f) => n + f.skippedCount, 0);
       if (skipped.length > 0) {
         // The empty-pset note rides along: a skipped model must not hide it (#5201).
@@ -284,7 +294,7 @@ export function ExportChangesButton({ className, trigger }: ExportChangesButtonP
     } finally {
       setIsExporting(false);
     }
-  }, []);
+  }, [surface]);
 
   const handleConfirm = useCallback(() => {
     // Re-derive fresh, synchronously, at click time — comparing against
@@ -363,7 +373,7 @@ export function ExportChangesButton({ className, trigger }: ExportChangesButtonP
             className={`border-amber-500/60 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 ${className ?? ''}`}
           >
             {isExporting ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <Spinner size="md" className="mr-2" />
             ) : exportStatus === 'success' ? (
               <Check className="h-4 w-4 mr-2 text-green-500" />
             ) : exportStatus === 'error' ? (

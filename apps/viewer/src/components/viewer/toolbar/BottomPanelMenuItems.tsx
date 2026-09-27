@@ -3,23 +3,22 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { BarChart3, CalendarClock, FileCode2, FileSpreadsheet, FileText, PencilRuler, Workflow, type LucideIcon } from 'lucide-react';
 import { DropdownMenuCheckboxItem, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
-import { useTranslation, type TranslationKey } from '@/i18n';
+import { useTranslation } from '@/i18n';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
+import { panelTitleKey } from '@/lib/panels/registry';
 
 /**
- * Menu order and labels for the bottom strip's panels (the classic
- * toolbar's "Workspace" group). Translation keys, not text: this table is
- * a plain data module, so it carries a key per row and the component below
- * calls `t()` at render time (#4918 slice 2).
+ * Menu order for the bottom strip's panels (the classic toolbar's
+ * "Workspace" group); names come from the workspace-panel registry.
  */
-const ITEMS: ReadonlyArray<{ id: BottomPanelId; labelKey: TranslationKey; Icon: LucideIcon }> = [
-  { id: 'script', labelKey: 'workspacePanels.bottom.script', Icon: FileCode2 },
-  { id: 'lists', labelKey: 'workspacePanels.bottom.lists', Icon: FileSpreadsheet },
-  { id: 'gantt', labelKey: 'workspacePanels.bottom.gantt', Icon: CalendarClock },
-  { id: 'charts', labelKey: 'workspacePanels.bottom.charts', Icon: BarChart3 },
-  { id: 'document', labelKey: 'workspacePanels.bottom.document', Icon: FileText },
-  { id: 'drawing', labelKey: 'workspacePanels.bottom.drawing', Icon: PencilRuler },
-  { id: 'flow', labelKey: 'workspacePanels.bottom.flow', Icon: Workflow },
+const ITEMS: ReadonlyArray<{ id: BottomPanelId; Icon: LucideIcon }> = [
+  { id: 'script', Icon: FileCode2 },
+  { id: 'lists', Icon: FileSpreadsheet },
+  { id: 'gantt', Icon: CalendarClock },
+  { id: 'charts', Icon: BarChart3 },
+  { id: 'document', Icon: FileText },
+  { id: 'drawing', Icon: PencilRuler },
+  { id: 'flow', Icon: Workflow },
 ];
 
 export function BottomPanelMenuItems({ active, onToggle }: {
@@ -29,9 +28,9 @@ export function BottomPanelMenuItems({ active, onToggle }: {
   const { t } = useTranslation();
   return <>
     <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">{t('workspacePanels.workspaceLabel')}</DropdownMenuLabel>
-    {ITEMS.map(({ id, labelKey, Icon }) => (
+    {ITEMS.map(({ id, Icon }) => (
       <DropdownMenuCheckboxItem key={id} checked={active.has(id)} onCheckedChange={() => onToggle(id)}>
-        <Icon className="h-4 w-4 mr-2" />{t(labelKey)}
+        <Icon className="h-4 w-4 mr-2" />{t(panelTitleKey(id))}
       </DropdownMenuCheckboxItem>
     ))}
   </>;

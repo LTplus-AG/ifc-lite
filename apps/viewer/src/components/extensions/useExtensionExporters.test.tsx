@@ -35,7 +35,7 @@ import { EXPORT_COMMAND_IDS, type ExportIconSet } from '@/components/viewer/tool
 import { ClassicExportMenuItems } from '@/components/viewer/toolbar/ClassicExportMenuItems';
 import { RibbonExportGroup } from '@/components/viewer/ribbon/tabs/RibbonExportGroup';
 import { buildExportCommands } from '@/components/viewer/commandPaletteExports';
-import { usePaletteExportRunner } from '@/components/viewer/usePaletteExportRunner';
+import { useExportRunner } from '@/components/viewer/useExportRunner';
 
 // ─── Download-path observers (real seams, no module mocks) ───────────────
 
@@ -170,9 +170,9 @@ function extensionControls(): HTMLElement[] {
   return [...document.body.querySelectorAll<HTMLElement>('[data-export-extension]')];
 }
 
-let paletteRunner: ReturnType<typeof usePaletteExportRunner> | null = null;
+let paletteRunner: ReturnType<typeof useExportRunner> | null = null;
 function PaletteRunnerHarness() {
-  paletteRunner = usePaletteExportRunner();
+  paletteRunner = useExportRunner();
   return null;
 }
 

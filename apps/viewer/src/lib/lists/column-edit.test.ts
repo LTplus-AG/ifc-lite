@@ -89,7 +89,7 @@ describe('column edit in place (#1591 follow-up)', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall],
-      conditions: [],
+      groups: [],
       columns: [
         { id: 'name', source: 'attribute', propertyName: 'Name' },
         col('fire', 'FireRating'),

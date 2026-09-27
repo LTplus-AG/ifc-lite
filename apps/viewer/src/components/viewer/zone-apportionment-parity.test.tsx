@@ -129,12 +129,12 @@ function openPanelsMenu(container: HTMLElement): void {
 function zonesControl(surface: 'classic' | 'ribbon', container: HTMLElement): HTMLElement {
   const found = surface === 'classic'
     ? [...document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')].filter(
-        (e) => e.textContent?.trim() === 'Location Zones')
+        (e) => e.textContent?.trim() === 'Location zones')
     // Matched on the VISIBLE label: `RibbonLargeButton` sets
     // `aria-label={tooltip ?? label}`, so this button's accessible name is the
     // tooltip prose, not "Zones".
     : [...container.querySelectorAll<HTMLElement>('button')].filter(
-        (e) => e.textContent?.trim() === 'Zones');
+        (e) => e.textContent?.trim() === 'Location zones');
   assert.equal(found.length, 1, `${surface}: expected one Zones control, found ${found.length}`);
   return found[0];
 }
@@ -217,7 +217,7 @@ describe('#2508 zone apportionment reachability', () => {
 
         assert.doesNotMatch(
           (container.textContent ?? '') + (document.body.textContent ?? ''),
-          /straddler|Split volume by zone/,
+          /boundary-crossing element|Split volumes/,
           `${name} must not host a second copy of the apportionment UI`,
         );
       });
@@ -233,7 +233,7 @@ describe('#2508 zone apportionment reachability', () => {
       // Zones has no visibility flag of its own, so the sidebar exclusivity
       // subscription -- which promotes whichever panel's flag just went
       // off->on -- could never adopt it. The menu item dispatched, every flag
-      // went false, and the docked slot fell back to Information: the panel
+      // went false, and the docked slot fell back to Properties: the panel
       // could not be opened from ANY entry point.
       useViewerStore.getState().showWorkspacePanel('properties');
       assert.equal(useViewerStore.getState().sidebarActivePanel, 'properties');
@@ -359,7 +359,7 @@ describe('#2508 zone apportionment reachability', () => {
 
       assert.match(
         container.textContent ?? '',
-        /1 straddler\b/,
+        /1 boundary-crossing element\b/,
         `ZonesPanel must render the whole-set control: ${container.textContent?.slice(0, 300)}`,
       );
     });
@@ -391,7 +391,7 @@ describe('#2508 zone apportionment reachability', () => {
       const button = container.querySelector('button');
       assert.ok(button, 'the control must render');
       assert.equal(button.disabled, true, 'nothing to split');
-      assert.match(button.textContent ?? '', /0 straddlers/);
+      assert.match(button.textContent ?? '', /0 boundary-crossing elements/);
     });
 
     it('CLICKING it with a straddler present records the outcome, including a refusal', () => {
@@ -405,7 +405,7 @@ describe('#2508 zone apportionment reachability', () => {
       act(() => root.render(<ZoneApportionSummary zoneSet={ZONE_SET} />));
       const button = container.querySelector('button')!;
       assert.equal(button.disabled, false, 'a straddler makes the control live');
-      assert.match(button.textContent ?? '', /1 straddler\b/);
+      assert.match(button.textContent ?? '', /1 boundary-crossing element\b/);
 
       act(() => button.click());
 
@@ -583,7 +583,7 @@ describe('#2508 zone apportionment reachability', () => {
       try {
         act(() => probeRoot.render(<Probe />));
         act(() => { useViewerStore.getState().toggleWorkspacePanel('zones'); });
-        assert.equal(seen.at(-1), 'Location Zones');
+        assert.equal(seen.at(-1), 'Location zones');
       } finally {
         act(() => probeRoot.unmount());
         host.remove();

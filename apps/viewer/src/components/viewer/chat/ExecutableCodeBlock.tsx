@@ -14,18 +14,8 @@
  */
 
 import { memo, useCallback, useState, useEffect, useRef } from 'react';
-import {
-  Play,
-  Copy,
-  CheckCircle2,
-  AlertCircle,
-  Loader2,
-  FileCode2,
-  RefreshCw,
-  Terminal,
-  ChevronDown,
-  ChevronRight,
-} from 'lucide-react';
+import { Play, Copy, CheckCircle2, AlertCircle, FileCode2, RefreshCw, Terminal, ChevronDown, ChevronRight } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -235,7 +225,7 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
               className="gap-1 h-6 px-2 text-xs"
             >
               {isRunning ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <Spinner size="xs" />
               ) : (
                 <Play className="h-3 w-3" />
               )}
@@ -267,7 +257,7 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
             <Terminal className="h-3 w-3 shrink-0" />
             <span className="text-[10px] font-mono uppercase tracking-wider">{t('chat.codeBlock.console')}</span>
             {isRunning && (
-              <Loader2 className="h-3 w-3 animate-spin ml-1 text-blue-500" />
+              <Spinner size="xs" className="ml-1 text-blue-500" />
             )}
             {result?.status === 'success' && (
               <CheckCircle2 className="h-3 w-3 ml-1 text-emerald-500" />
@@ -288,7 +278,7 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
               {/* Running indicator */}
               {isRunning && (!hasLogs) && (
                 <div className="flex items-center gap-1.5 text-blue-500 py-0.5">
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <Spinner size="xs" />
                   <span>{t('chat.codeBlock.executingScript')}</span>
                 </div>
               )}

@@ -22,6 +22,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import type { SetResult, SpecificationResult, ValidationReport } from '@ifc-lite/ids';
 import { cleanup, click, render } from '@/test/render.js';
+import { installLayout } from '@/test/dom-layout.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { validationPanelEn } from '@/i18n/catalogues/validation-panel.en';
 import { useViewerStore } from '@/store';
@@ -30,6 +31,8 @@ import { setValidationSourceChoice } from '@/lib/validation/validation-source-ch
 import { ValidationPanel, RunningState } from './ValidationPanel.js';
 import { IdsSummary } from './ValidationPanel.idsSummary.js';
 import { resetValidationPanelFixture } from './validation-test-fixture.js';
+
+installLayout();
 
 type Key = keyof typeof validationPanelEn;
 const ALL_KEYS = Object.keys(validationPanelEn) as Key[];

@@ -54,9 +54,8 @@ export interface GeometryLoadSettingsState {
   geometryReloadReason: GeometryReloadReason;
   /**
    * Stored `?geomTier=` tessellation override, or `undefined` when the tier is
-   * chosen automatically. Mirrored into the store so the Visibility menu can
-   * surface it: it persists from a single link visit and, before #2544, was
-   * invisible with no way out but `?geomTier=auto` or clearing site data.
+   * chosen automatically. Mirrored into the store so Settings → Performance
+   * can surface and reset a pin persisted from a single link visit.
    */
   geomTierOverride: TessellationQuality | undefined;
 }

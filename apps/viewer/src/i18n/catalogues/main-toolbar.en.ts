@@ -29,22 +29,10 @@ export const mainToolbarEn = {
   'mainToolbar.bulkPropertyEditor': 'Bulk Property Editor',
   'mainToolbar.importDataCsv': 'Import Data (CSV)',
   'mainToolbar.share': 'Share',
-  'mainToolbar.room': 'Room',
 
   'mainToolbar.panels': 'Panels',
   'mainToolbar.panelsWithLabel': 'Panels: {label}',
   'mainToolbar.inspectValidate': 'Inspect & validate',
-  'mainToolbar.bcfTopics': 'BCF Topics',
-  'mainToolbar.idsValidation': 'IDS Validation',
-  'mainToolbar.lensRules': 'Lens Rules',
-  'mainToolbar.clashDetection': 'Clash Detection',
-  'mainToolbar.compareModels': 'Compare Models',
-  'mainToolbar.cloudSources': 'Cloud Sources',
-  'mainToolbar.layerStack': 'Layer Stack',
-  'mainToolbar.locationZones': 'Location Zones',
-  'mainToolbar.loadReport': 'Load Report',
-  'mainToolbar.cost': 'Cost',
-  'mainToolbar.collaborationRoom': 'Collaboration Room',
   'mainToolbar.analysisExtensions': 'Analysis extensions',
 
   'mainToolbar.toolSelect': 'Select',
@@ -70,11 +58,11 @@ export const mainToolbarEn = {
 
   'mainToolbar.presentationShow': 'Show Presentation dock',
   'mainToolbar.presentationHide': 'Hide Presentation dock',
-  'mainToolbar.presentationTooltip': 'Basket Presentation Dock (Views: {views}, Entities: {entities})',
+  'mainToolbar.presentationTooltip': 'Collection Presentation Dock (Views: {views}, Entities: {entities})',
 
   'mainToolbar.selectionActionsAriaLabel': 'Selection actions — {count} selected',
   'mainToolbar.selectionCountBadge': '{count} sel',
-  'mainToolbar.isolateSelection': 'Isolate Selection (Set Basket)',
+  'mainToolbar.isolateSelection': 'Isolate Selection (Set Collection)',
   'mainToolbar.hideSelection': 'Hide Selection',
   'mainToolbar.frameSelection': 'Frame Selection',
   'mainToolbar.showAll': 'Show All (Reset Filters)',
@@ -92,9 +80,8 @@ export const mainToolbarEn = {
   'mainToolbar.moveGeorefStop': 'Stop moving georeference',
   'mainToolbar.moveGeorefTooltip': 'Move georeference',
 
-  'mainToolbar.sunSkyOpen': 'Open Sun & Sky panel',
-  'mainToolbar.sunSkyClose': 'Close Sun & Sky panel',
-  'mainToolbar.sunSkyTooltip': 'Sun & sky',
+  'mainToolbar.openPanel': 'Open {title}',
+  'mainToolbar.closePanel': 'Close {title}',
 
   'mainToolbar.spaceMouseOpen': 'SpaceMouse settings',
   'mainToolbar.spaceMouseTooltip': 'SpaceMouse',

@@ -164,6 +164,7 @@ async function seed(arrangement: Arrangement): Promise<void> {
 
   useViewerStore.setState({
     ...federation,
+    editEnabled: true,
     // The mirror is the active model's geometry. When the edited model is
     // active and has none of its own, that is the decoy — which is exactly the
     // legacy shape the mirror fallback exists for.

@@ -72,7 +72,7 @@ const UI_EVENT_KEYS: { readonly [E in UiEventName]: ReadonlyArray<keyof UiEventP
 // `$set` / `$set_once` person update can never ride along.
 const SDK_PASSTHROUGH_KEYS = new Set(['token', 'distinct_id', 'app_version', 'app_build_sha']);
 const PERSON_UPDATE_KEYS = new Set(['$set', '$set_once', '$unset']);
-const isSdkProperty = (key: string): boolean =>
+export const isSdkProperty = (key: string): boolean =>
   SDK_PASSTHROUGH_KEYS.has(key) || (key.startsWith('$') && !PERSON_UPDATE_KEYS.has(key));
 
 // Closed vocabularies: a value outside them is dropped.

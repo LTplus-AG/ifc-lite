@@ -40,6 +40,7 @@ function seed(entities = GUIDS.map((globalId, i) => ({ expressId: 40 + i, type: 
     scheduleIsEdited: false,
     scheduleSourceModelId: null,
     collabRole: null,
+    editEnabled: true,
   });
   return views;
 }

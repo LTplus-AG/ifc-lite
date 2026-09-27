@@ -284,6 +284,17 @@ describe('Search tab — committing a result row', () => {
     assert.equal(s.selectedEntityIds.size, 1);
     assert.equal(closed, 1);
   });
+
+  it('#5823 Space on the result list commits the highlighted option', () => {
+    seedStore();
+    useViewerStore.setState({ searchHighlightIndex: 1 });
+    const container = mount();
+    const listbox = container.querySelector<HTMLElement>('[role="listbox"]');
+    assert.ok(listbox);
+    press(listbox, ' ');
+    assert.equal(useViewerStore.getState().selectedEntity?.expressId, 43);
+    assert.equal(closed, 1);
+  });
 });
 
 describe('Search tab — the additive (Shift) path', () => {
@@ -349,5 +360,8 @@ describe('Search tab — the additive (Shift) path', () => {
     // from firing: without it, ticking a box also selects, frames and closes.
     assert.equal(closed, 0, 'ticking the box must not close the modal');
     assert.equal(s.searchVimCycle, null, 'ticking the box must not arm the cycle');
+
+    press(checkbox, ' ');
+    assert.equal(closed, 0, 'Space on the checkbox must not commit the highlighted result');
   });
 });

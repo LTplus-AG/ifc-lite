@@ -62,6 +62,7 @@ import { encodeRoomAttributeValue, referencedExpressIds } from '@/lib/collab/ent
 import { entityForPath, pathForGuid } from '@/lib/collab/entity-paths.js';
 import { ensureSourceRoomEntities, initialRoomAttributes } from './store-adapter-collab.js';
 import { roomSlotFor } from '@/lib/collab/room-model-target.js';
+import { mutationDenialMessage, mutationPermission } from '../../store/mutation-permission.js';
 
 export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   // One StoreEditor per (modelId, MutablePropertyView) pair. Editors are
@@ -91,10 +92,13 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     return editor;
   }
 
-  function assertCanEdit(operation: string): void {
-    if (!store.getState().canCollabEdit()) {
-      throw new Error(`bim.store.${operation}: collaboration is read-only for this participant`);
-    }
+  function assertCanEdit(operation: string, modelId: string): void {
+    const permission = mutationPermission(store.getState(), modelId);
+    if (permission.allowed) return;
+    const detail = permission.reason === 'collab-role'
+      ? 'collaboration is read-only for this participant'
+      : mutationDenialMessage(permission.reason);
+    throw new Error(`bim.store.${operation}: ${detail}`);
   }
 
   function isSharedRoomModel(modelId: string): boolean {
@@ -162,7 +166,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     element: AuthoredElement,
     build: (editor: StoreEditor, anchor: SpatialAnchor) => number,
   ): EntityRef {
-    assertCanEdit(operation);
+    assertCanEdit(operation, modelId);
     const editor = getEditor(modelId);
     const dataStore = resolveDataStore(modelId);
     if (!editor || !dataStore) {
@@ -215,7 +219,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
 
   return {
     addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef {
-      assertCanEdit('addEntity');
+      assertCanEdit('addEntity', modelId);
       const normalizedId = normalizeMutationModelId(store.getState(), modelId);
       const editor = getEditor(modelId);
       if (!editor) {
@@ -243,7 +247,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return { modelId: normalizedId, expressId: ref.expressId };
     },
     removeEntity(ref: EntityRef): boolean {
-      assertCanEdit('removeEntity');
+      assertCanEdit('removeEntity', ref.modelId);
       const editor = getEditor(ref.modelId);
       if (!editor) return false;
       const dataStore = resolveDataStore(ref.modelId);
@@ -272,7 +276,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return removed;
     },
     setPositionalAttribute(ref: EntityRef, index: number, value: unknown): void {
-      assertCanEdit('setPositionalAttribute');
+      assertCanEdit('setPositionalAttribute', ref.modelId);
       const editor = getEditor(ref.modelId);
       if (!editor) {
         throw new Error(`bim.store.setPositionalAttribute: no model loaded for id "${ref.modelId}"`);

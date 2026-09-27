@@ -131,9 +131,9 @@ export const clashToolsEn = {
   'clashTools.setFilter.clearLabel': 'Clear',
   'clashTools.setFilter.unreadableWarning': {
     one:
-      'One rule in this filter cannot be read by this version (saved by a newer version, or malformed). Runs using it are refused; any edit here discards that rule.',
+      'One entry in this filter cannot be read by this version (saved by a newer version, or malformed). Runs using it are refused; any edit here discards that entry.',
     other:
-      '{count} rules in this filter cannot be read by this version (saved by a newer version, or malformed). Runs using it are refused; any edit here discards those rules.',
+      '{count} entries in this filter cannot be read by this version (saved by a newer version, or malformed). Runs using it are refused; any edit here discards those entries.',
   },
   'clashTools.setFilter.definedByFilter':
     'This filter defines {label}; its type selector above is ignored while it has rules.',

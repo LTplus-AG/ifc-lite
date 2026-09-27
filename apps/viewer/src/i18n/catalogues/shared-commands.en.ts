@@ -104,18 +104,16 @@ export const sharedCommandsEn = {
   'cameraCommands.rotateRight.tooltip': 'Rotate right 90°',
 
   'workspacePanels.workspaceLabel': 'Workspace',
-  'workspacePanels.bottom.script': 'Script Editor',
-  'workspacePanels.bottom.lists': 'Lists',
+  'workspacePanels.multiplePanels': 'Multiple panels',
+  'workspacePanels.panel.collab': 'Collaboration room',
+  'workspacePanels.panel.layers': 'Layer stack',
+  'workspacePanels.panel.presentation': 'Presentation',
   'workspacePanels.bottom.gantt': 'Schedule (Gantt)',
   'workspacePanels.bottom.charts': 'Charts',
-  'workspacePanels.bottom.flow': 'Flow',
-  'workspacePanels.bottom.drawing': 'Drawing',
   'workspacePanels.bottom.document': 'Document',
 
   'workspacePanels.authorLabel': 'Author',
-  'workspacePanels.author.appearance': 'Appearance',
   'workspacePanels.author.addElement': 'Add Element',
-  'workspacePanels.author.extensions': 'Extensions',
 
   'classVisibility.viewHeading': '3D View',
   'classVisibility.viewModeAriaLabel': '3D view mode',
@@ -147,7 +145,7 @@ export const sharedCommandsEn = {
   'classVisibility.fastGeometry.descriptionExact': 'Exact: full cuts + density · on reload',
 
   'classVisibility.pinnedDetail.label': 'Detail pinned: {tier}',
-  'classVisibility.pinnedDetail.descriptionIgnored': 'Ignored in Exact · from a ?geomTier= link',
-  'classVisibility.pinnedDetail.descriptionOverrides': 'Overrides automatic detail · from a ?geomTier= link',
-  'classVisibility.clear': 'Clear',
+  'classVisibility.pinnedDetail.descriptionIgnored': 'Ignored in Exact · manage in Performance settings',
+  'classVisibility.pinnedDetail.descriptionOverrides': 'Overrides automatic detail · manage in Performance settings',
+  'classVisibility.performanceSettings': 'Performance settings',
 } as const satisfies Record<string, TranslationValue>;

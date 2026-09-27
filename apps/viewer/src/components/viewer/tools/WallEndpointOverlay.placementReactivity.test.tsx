@@ -36,6 +36,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { render, cleanup } from '@/test/render.js';
+import { fixtureModel } from '@/test/store-fixture.js';
 import { WallEndpointOverlay } from './WallEndpointOverlay.js';
 import type { PlacementState } from '@/lib/model-placement/state.js';
 import type { Translation } from '@/lib/model-placement/translation.js';
@@ -92,7 +93,7 @@ describe('WallEndpointOverlay re-projects its handles when modelPlacement change
       editEnabled: true,
       activeTool: 'select',
       selectedEntity: { modelId: MODEL_ID, expressId: EXPRESS_ID },
-      models: new Map(),
+      models: new Map([[MODEL_ID, fixtureModel(MODEL_ID, { entities: [{ expressId: EXPRESS_ID, type: 'IfcWall' }] })]]),
       readWallEndpoints: () => ({ start: [2, 3, 0], end: [6, 1, 0] }),
       resizeWall: () => ({ ok: true }),
       mutationVersion: 1,

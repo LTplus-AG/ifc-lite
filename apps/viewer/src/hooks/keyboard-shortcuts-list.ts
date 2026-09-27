@@ -11,10 +11,11 @@
  */
 
 import { ALT_SHORTCUT_PANELS } from '@/lib/panels/registry';
+import { resolveEnglish } from '@/i18n/registry';
 
 /** Alt+1…0 panel names, taken from the registry so a rename cannot go stale. */
 const altPanelTitles = (bottom: boolean) =>
-  ALT_SHORTCUT_PANELS.filter((p) => (p.region === 'bottom') === bottom).map((p) => p.title).join(', ');
+  ALT_SHORTCUT_PANELS.filter((p) => (p.region === 'bottom') === bottom).map((p) => resolveEnglish(p.titleKey)).join(', ');
 
 // Export shortcut definitions for UI display
 export const KEYBOARD_SHORTCUTS = [

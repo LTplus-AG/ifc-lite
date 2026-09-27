@@ -10,7 +10,8 @@ import { isAllowedHost, isHttpsUrl } from '@/services/sources/host-fetch';
 import { useSourceAuth } from './useSourceAuth';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
-import { Cloud, Loader2, LogIn, LogOut, Settings } from 'lucide-react';
+import { Cloud, LogIn, LogOut, Settings } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { useTranslation } from '@/i18n';
 import { resolveLiveMessage } from '@/i18n/live-message';
 
@@ -179,7 +180,7 @@ export function SourceProviderRow({
             {auth.status === 'signed-out' ? (
               <LogIn className="mr-1.5 h-3.5 w-3.5" aria-hidden />
             ) : (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />
+              <Spinner size="sm" className="mr-1.5" />
             )}
             {t('sources.sourceProviderRow.signIn')}
           </Button>

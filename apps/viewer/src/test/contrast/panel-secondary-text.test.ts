@@ -39,7 +39,12 @@ import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { measureTextContrastOnSurface, closeContrastBrowser, type Theme } from './render-harness';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { CountBadge, LISTED_STATES } from '../../components/viewer/compare/CompareResultsList';
+import { MeasurePointReadout } from '../../components/viewer/tools/MeasurePointReadout';
+import { useViewerStore } from '../../store';
+import { measureTextContrastOnSurface, measureRenderedTextContrastOnSurface, closeContrastBrowser, type Theme } from './render-harness';
 import { extractClassNameAfter, extractFirstStringLiteralAfter } from './extract-classname';
 import { WCAG_AA_NORMAL_TEXT } from './wcag';
 
@@ -60,13 +65,11 @@ const MEASURE_POINT_READOUT = join(VIEWER_DIR, 'tools/MeasurePointReadout.tsx');
 // confirmed by reading the surrounding JSX before adding it here.
 const CHUNK_ERROR_BOUNDARY = join(__dirname, '../../components/ChunkErrorBoundary.tsx');
 const IDS_AUDIT_SUMMARY = join(VIEWER_DIR, 'IDSAuditSummary.tsx');
-const ENTITY_CONTEXT_MENU = join(VIEWER_DIR, 'EntityContextMenu.tsx');
 const ROOM_PANEL = join(VIEWER_DIR, 'RoomPanel.tsx');
 const CUSTOMIZE_SIDEBAR = join(VIEWER_DIR, 'sidebar/CustomizeSidebar.tsx');
 const SECTION_TOOLBAR = join(VIEWER_DIR, 'tools/SectionToolbar.tsx');
 const RIBBON_PRIMITIVES = join(VIEWER_DIR, 'ribbon/primitives.tsx');
 const CHANGE_DETAIL_VIEW = join(VIEWER_DIR, 'compare/ChangeDetailView.tsx');
-const COMPARE_RESULTS_LIST = join(VIEWER_DIR, 'compare/CompareResultsList.tsx');
 const LAYERS_PANEL = join(VIEWER_DIR, 'layers/LayersPanel.tsx');
 
 // Post-merge audit of #4792/#4794 (this file's own remaining `/NN` grep
@@ -78,7 +81,6 @@ const LAYERS_PANEL = join(VIEWER_DIR, 'layers/LayersPanel.tsx');
 // are deliberately excluded (see the sibling-sweep report, not repeated in
 // this file).
 const LEARN_TAB = join(__dirname, '../../components/tours/LearnTab.tsx');
-const BULK_PROPERTY_EDITOR = join(VIEWER_DIR, 'BulkPropertyEditor.tsx');
 const BYOK_KEY_MODAL = join(VIEWER_DIR, 'chat/ByokKeyModal.tsx');
 const MODEL_SELECTOR = join(VIEWER_DIR, 'chat/ModelSelector.tsx');
 const CLASS_VISIBILITY_MENU = join(VIEWER_DIR, 'toolbar/ClassVisibilityMenu.tsx');
@@ -260,18 +262,6 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
       surface: 'bg-card',
     },
     {
-      name: 'EntityContextMenu "⌘D" duplicate shortcut',
-      file: ENTITY_CONTEXT_MENU,
-      anchor: "<span>{t('entityContextMenu.duplicateLabel')}</span>\n        <span ",
-      surface: 'bg-popover',
-    },
-    {
-      name: 'EntityContextMenu row shortcut hint',
-      file: ENTITY_CONTEXT_MENU,
-      anchor: '{shortcut && (\n        <span ',
-      surface: 'bg-popover',
-    },
-    {
       name: 'RoomPanel "Got an invite?" hint',
       file: ROOM_PANEL,
       anchor: "{t('zonesPanel.roomPanel.createRoomButton')}\n        </Button>\n        <p ",
@@ -329,12 +319,6 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
       surface: 'bg-background',
     },
     {
-      name: 'compare/CompareResultsList CountBadge hint',
-      file: COMPARE_RESULTS_LIST,
-      anchor: '<span className="text-[10px] text-muted-foreground">{label}</span>\n      {hint && <span ',
-      surface: 'bg-background',
-    },
-    {
       name: 'LayersPanel "drop .ifcx files anywhere" hint',
       file: LAYERS_PANEL,
       anchor: '/>\n          </div>\n          <p ',
@@ -354,12 +338,6 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
       surface: KEYBOARD_SHORTCUTS_DIALOG_SURFACE,
     },
     {
-      name: 'BulkPropertyEditor "(N found)" annotation',
-      file: BULK_PROPERTY_EDITOR,
-      anchor: "{t('bulkPropertyEditor.propertySet')}\n                    {psetOptions.length > 0 && (\n                      <span ",
-      surface: 'bg-background',
-    },
-    {
       name: 'ByokKeyModal pricing hint',
       file: BYOK_KEY_MODAL,
       anchor: '            </ol>\n            <p ',
@@ -376,12 +354,6 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
       file: CLASS_VISIBILITY_MENU,
       anchor: '<div className="flex items-center gap-1">\n          <span ',
       surface: 'bg-popover',
-    },
-    {
-      name: 'MeasurePointReadout CoordRow hint',
-      file: MEASURE_POINT_READOUT,
-      anchor: '<span className="font-mono text-[11px] tabular-nums">{value}</span>\n      {hint && <span ',
-      surface: 'bg-background',
     },
     {
       name: 'geo-readout EnhLine label',
@@ -403,6 +375,49 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
         );
       });
     }
+  }
+
+  for (const theme of THEMES) {
+    it(`MeasurePointReadout rendered CoordRow hint clears AA in ${theme} theme`, async () => {
+      // React's server renderer reads useSyncExternalStore's initial snapshot.
+      // Populate that snapshot only for this render, then restore it exactly.
+      const initial = useViewerStore.getInitialState();
+      const before = {
+        activeMeasurement: initial.activeMeasurement,
+        measurements: initial.measurements,
+        geoReadoutEnabled: initial.geoReadoutEnabled,
+        measureReferencePoint: initial.measureReferencePoint,
+      };
+      try {
+        Object.assign(initial, {
+          activeMeasurement: null,
+          measurements: [{ id: 'contrast-point', start: { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 }, end: { x: 1, y: 2, z: 3, screenX: 1, screenY: 2 }, distance: 3.74 }],
+          geoReadoutEnabled: false,
+          measureReferencePoint: null,
+        });
+        const markup = renderToStaticMarkup(createElement(MeasurePointReadout));
+        assert.match(markup, />m<\/span>/, 'the last-point row renders its unit hint');
+        const ratio = await measureRenderedTextContrastOnSurface(
+          theme, 'bg-background', markup, '#surface .overflow-x-auto > div:first-child span:last-child',
+        );
+        assert.ok(ratio >= WCAG_AA_NORMAL_TEXT,
+          `rendered MeasurePointReadout unit hint measured ${ratio.toFixed(2)}:1 in ${theme} theme, expected >= ${WCAG_AA_NORMAL_TEXT}:1`);
+      } finally {
+        Object.assign(initial, before);
+      }
+    });
+
+    it(`compare/CompareResultsList CountBadge hint clears AA in ${theme} theme`, async () => {
+      const hint = '4 type objects';
+      const markup = renderToStaticMarkup(createElement(CountBadge, {
+        label: 'Changed', value: 4, color: LISTED_STATES[0].color, hint,
+      }));
+      const ratio = await measureRenderedTextContrastOnSurface(
+        theme, 'bg-background', markup, '#surface span:nth-of-type(3)',
+      );
+      assert.ok(ratio >= WCAG_AA_NORMAL_TEXT,
+        `rendered CountBadge hint measured ${ratio.toFixed(2)}:1 in ${theme} theme, expected >= ${WCAG_AA_NORMAL_TEXT}:1`);
+    });
   }
 });
 

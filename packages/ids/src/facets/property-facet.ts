@@ -14,6 +14,7 @@ import type {
 import type { FacetCheckResult } from './index.js';
 import { matchConstraint, formatConstraint } from '../constraints/index.js';
 import { ifcMeasureToXsdTypes, literalCastsUnderAnyType } from '../constraints/xsd-cast.js';
+import { isExpressStringOnlyMeasure } from '../constraints/express-base.js';
 import { dataTypeFailure, dataTypePasses } from './property-datatype.js';
 
 /**
@@ -82,6 +83,41 @@ function passesCastGate(
   return passes;
 }
 
+// #6117: an unknown IfcLogical is absent, but IFCLABEL('UNKNOWN') is a
+// present string. `optional`/`prohibited` interpret absence in checkRequirement.
+function isAbsentPropertyValue(
+  value: string | number | boolean | null | undefined,
+  dataType: string | undefined
+): boolean {
+  return value === null || value === undefined || value === '' ||
+    (value === 'UNKNOWN' && dataType?.toUpperCase() === 'IFCLOGICAL');
+}
+
+// The property's dataType decides `stringOnly` when known, else the
+// requirement's `dataType` facet, else — conservatively — exact string.
+// `isExpressStringOnlyMeasure` classifies by EXPRESS base, not the XSD
+// backing type: IfcDate/IfcDateTime/IfcDuration are EXPRESS STRING under
+// an xs:date/xs:dateTime/xs:duration backing type (#6153 review).
+function isStringOnlyValue(
+  facet: IDSPropertyFacet,
+  prop: PropertySetInfo['properties'][number],
+  schemaVersion: string | undefined
+): boolean {
+  if (prop.dataType !== undefined) return isExpressStringOnlyMeasure(prop.dataType, schemaVersion);
+  if (facet.dataType?.type === 'simpleValue') return isExpressStringOnlyMeasure(facet.dataType.value, schemaVersion);
+  return true;
+}
+
+// Shared shape for the two "absent value" failures in `checkSingleProperty`.
+function emptyValueFailure(pset: PropertySetInfo, prop: PropertySetInfo['properties'][number], expectedValue: string): FacetCheckResult {
+  return {
+    passed: false,
+    actualValue: '(empty)',
+    expectedValue,
+    failure: { type: 'PROPERTY_EMPTY', field: `${pset.name}.${prop.name}`, actual: '(empty)', expected: expectedValue },
+  };
+}
+
 /**
  * Diagnostics-free verdict for a single property — the exact `passed`
  * boolean `checkSingleProperty` would compute.
@@ -91,10 +127,8 @@ function singlePropertyPasses(
   prop: PropertySetInfo['properties'][number],
   schemaVersion: string | undefined
 ): boolean {
-  // "No value" fails any check, including existence-only ones.
-  if (prop.value === null || prop.value === undefined || prop.value === '') {
-    return false;
-  }
+  // "No value" fails any check, including existence-only ones (#6117).
+  if (isAbsentPropertyValue(prop.value, prop.dataType)) return false;
 
   if (facet.dataType && !dataTypePasses(facet.dataType, prop)) return false;
 
@@ -102,9 +136,9 @@ function singlePropertyPasses(
     if (facet.value.type === 'simpleValue') {
       if (!passesCastGate(facet.value, prop.dataType, schemaVersion)) return false;
     }
-    const candidateValues =
-      prop.values && prop.values.length > 0 ? prop.values : [prop.value];
-    return candidateValues.some((v) => matchConstraint(facet.value!, v));
+    const candidateValues = prop.values && prop.values.length > 0 ? prop.values : [prop.value];
+    const stringOnly = isStringOnlyValue(facet, prop, schemaVersion);
+    return candidateValues.some((v) => matchConstraint(facet.value!, v, { stringOnly }));
   }
 
   return true;
@@ -326,28 +360,11 @@ function checkSingleProperty(
   prop: PropertySetInfo['properties'][number],
   schemaVersion: string | undefined
 ): FacetCheckResult {
-  // Per IDS spec, a property whose stored value is "no value" (null,
-  // undefined, empty string, or IfcLogical UNKNOWN) fails ANY check —
-  // including a name-only existence check. Detect those up front so
-  // the rest of the function can assume `prop.value` is meaningful.
-  if (
-    prop.value === null ||
-    prop.value === undefined ||
-    prop.value === ''
-  ) {
-    return {
-      passed: false,
-      actualValue: '(empty)',
-      expectedValue: facet.value
-        ? formatConstraint(facet.value)
-        : `property "${pset.name}.${prop.name}" must have a value`,
-      failure: {
-        type: 'PROPERTY_VALUE_MISMATCH',
-        field: `${pset.name}.${prop.name}`,
-        actual: '(empty)',
-        expected: facet.value ? formatConstraint(facet.value) : 'a non-empty value',
-      },
-    };
+  // `PROPERTY_EMPTY` still fails REQUIRED, but `checkRequirement` reads
+  // it as "missing" under `optional` (#6117).
+  if (isAbsentPropertyValue(prop.value, prop.dataType)) {
+    const expected = facet.value ? formatConstraint(facet.value) : `property "${pset.name}.${prop.name}" must have a value`;
+    return emptyValueFailure(pset, prop, expected);
   }
   // Check data type if specified; an unknown type fails (#5224).
   if (facet.dataType && !dataTypePasses(facet.dataType, prop)) {
@@ -358,25 +375,9 @@ function checkSingleProperty(
   if (facet.value) {
     const propValue = prop.value;
 
-    if (
-      propValue === null ||
-      propValue === undefined ||
-      // Per IDS spec: empty strings and IfcLogical UNKNOWN values are
-      // treated as "no value" — they fail any value check, including
-      // a name-only check that the property exists with a value.
-      propValue === ''
-    ) {
-      return {
-        passed: false,
-        actualValue: '(empty)',
-        expectedValue: formatConstraint(facet.value),
-        failure: {
-          type: 'PROPERTY_VALUE_MISMATCH',
-          field: `${pset.name}.${prop.name}`,
-          actual: '(empty)',
-          expected: formatConstraint(facet.value),
-        },
-      };
+    // Same `PROPERTY_EMPTY` reasoning as above.
+    if (isAbsentPropertyValue(propValue, prop.dataType)) {
+      return emptyValueFailure(pset, prop, formatConstraint(facet.value));
     }
 
     // Strict XSD-cast gate, mirroring the attribute facet. Shared with
@@ -402,12 +403,9 @@ function checkSingleProperty(
     // Multi-valued IFC properties (IfcPropertyEnumeratedValue,
     // IfcPropertyListValue) pass if ANY individual value satisfies the
     // constraint, per upstream ifctester semantics.
-    const candidateValues =
-      prop.values && prop.values.length > 0 ? prop.values : [propValue];
-
-    const anyMatch = candidateValues.some((v) =>
-      matchConstraint(facet.value!, v)
-    );
+    const stringOnly = isStringOnlyValue(facet, prop, schemaVersion);
+    const candidateValues = prop.values && prop.values.length > 0 ? prop.values : [propValue];
+    const anyMatch = candidateValues.some((v) => matchConstraint(facet.value!, v, { stringOnly }));
 
     if (!anyMatch) {
       const failureType =

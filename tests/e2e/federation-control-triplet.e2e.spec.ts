@@ -329,17 +329,17 @@ test('canonical IFC + LandXML + XYZ federation keeps five independent bonsai-top
   // The tiny control scan is intentionally only five points. Increase the
   // visible point-size through its real viewport control before asking PNG
   // density to distinguish that isolated scan from an empty canvas. Those
-  // controls live in the Point Clouds side panel (#5507), and Reposition just
+  // controls live in the Point Cloud side panel (#5507), and Reposition just
   // docked the Placement panel in its place (#5505): bring it back the way a
   // user would, from the activity bar.
-  const pointCloudsPanel = page.getByRole('button', { name: 'Point Clouds', exact: true });
+  const pointCloudsPanel = page.getByRole('button', { name: 'Point Cloud', exact: true });
   if ((await pointCloudsPanel.getAttribute('aria-pressed')) !== 'true') await pointCloudsPanel.click();
   await page.locator('input[type="range"]').first().fill('20');
   await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().pointCloudPointSize)).toBe(20);
-  // EDL intentionally amplifies continuous scan depth. Disable it through
+  // Edge shading intentionally amplifies continuous scan depth. Disable it through
   // its viewport control for this five-point survey target so it cannot turn
   // each isolated splat into an edge-only post-process sample.
-  await page.getByRole('checkbox', { name: 'EDL', exact: true }).uncheck();
+  await page.getByRole('checkbox', { name: 'Edge shading', exact: true }).uncheck();
   await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().pointCloudEdlEnabled)).toBe(false);
 
   // Hide the overlapping sources one at a time and assert that each one

@@ -36,6 +36,7 @@
 import '@/test/setup-dom.js';
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { render, cleanup } from '@/test/render.js';
 import { WallEndpointOverlay } from './WallEndpointOverlay.js';
@@ -103,7 +104,7 @@ describe('dragging a wall-endpoint handle on a moved+rotated model writes the co
     let resized: { modelId: string; expressId: number; start: [number, number, number]; end: [number, number, number] } | null = null;
     useViewerStore.setState({
       modelPlacement: PLACEMENT,
-      editEnabled: true,
+      editEnabled: false,
       activeTool: 'select',
       selectedEntity: { modelId: MODEL_ID, expressId: EXPRESS_ID },
       models: new Map([[MODEL_ID, {
@@ -136,6 +137,8 @@ describe('dragging a wall-endpoint handle on a moved+rotated model writes the co
     } as unknown as Partial<ReturnType<typeof useViewerStore.getState>>);
 
     const container = render(<WallEndpointOverlay />);
+    assert.equal(container.querySelectorAll('circle').length, 0, 'Edit-off shows no draggable wall handles (#5901)');
+    act(() => useViewerStore.setState({ editEnabled: true }));
     const hitCircles = container.querySelectorAll('circle');
     assert.ok(hitCircles.length >= 2, `expected at least 2 handle circles, got ${hitCircles.length}`);
     const startHitCircle = hitCircles[0]; // first `<g>`'s hit-area circle is the START handle

@@ -19,11 +19,13 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Beaker, FilePlus, FileText, GitFork, Lightbulb, Puzzle, Shield, Sparkles, Trash2, Upload, Wrench, X } from 'lucide-react';
+import { Beaker, FilePlus, FileText, GitFork, Lightbulb, Puzzle, Sparkles, Trash2, Upload, Wrench, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useInstalledExtensions } from '@/hooks/useInstalledExtensions';
 import { useForkExtension } from '@/hooks/useForkExtension';
@@ -32,7 +34,6 @@ import { CapabilityReview } from './CapabilityReview';
 import { AuditLogPanel } from './AuditLogPanel';
 import { IdeasPanel } from './IdeasPanel';
 import { RepairQueuePanel } from './RepairQueuePanel';
-import { PrivacyPanel } from './PrivacyPanel';
 import type { ExtensionInstallSummary } from '@/services/extensions/host';
 import { ExtensionInstallError } from '@/services/extensions/host';
 import { ExtensionStorageQuotaError } from '@/services/extensions/idb-storage';
@@ -72,7 +73,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [view, setView] = useState<'installed' | 'ideas' | 'audit' | 'repair' | 'privacy'>('installed');
+  const [view, setView] = useState<'installed' | 'ideas' | 'audit' | 'repair'>('installed');
   /** Deep-link entry point (Command Palette "Author an extension…"). */
   const extensionsRequestedView = useViewerStore((s) => s.extensionsRequestedView);
   const setExtensionsRequestedView = useViewerStore((s) => s.setExtensionsRequestedView);
@@ -182,7 +183,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   );
 
   return (
-    <div className="flex flex-col h-full">
+    <Tabs value={view} onValueChange={(value) => setView(value as typeof view)} className="flex flex-col h-full">
       {/* Title row — always fits regardless of panel width. The tab
           strip moves to its own row below so it can scroll
           horizontally without crowding the title. */}
@@ -194,7 +195,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
             <button
               type="button"
               onClick={() => setFlavorDialogRequested(true)}
-              className="shrink-0 text-[10px] uppercase tracking-wide bg-primary/10 text-primary hover:bg-primary/20 rounded px-1.5 py-0.5 font-semibold transition-colors max-w-[110px] truncate"
+              className="shrink-0 text-2xs uppercase tracking-wide bg-primary/10 text-primary hover:bg-primary/20 rounded px-1.5 py-0.5 font-semibold transition-colors max-w-[110px] truncate"
               title={t('extensionsFlavors.extensionsPanel.activeFlavorTitle', { name: activeFlavorName })}
               aria-label={t('extensionsFlavors.extensionsPanel.activeFlavorAriaLabel', { name: activeFlavorName })}
             >
@@ -246,9 +247,8 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
 
       {/* Tab strip — its own row so the title row never crowds it.
           Horizontally scrollable when the panel narrows. */}
-      <div
-        className="flex items-center gap-0 border-b overflow-x-auto px-1"
-        role="tablist"
+      <TabsList
+        className="flex h-auto items-center justify-start gap-0 rounded-none border-b bg-transparent overflow-x-auto px-1 py-0"
         aria-label={t('extensionsFlavors.extensionsPanel.tabStripAriaLabel')}
       >
         {(
@@ -257,42 +257,31 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
             { id: 'ideas', label: t('extensionsFlavors.extensionsPanel.tab.ideas'), Icon: Lightbulb },
             { id: 'repair', label: t('extensionsFlavors.extensionsPanel.tab.repair'), Icon: Wrench },
             { id: 'audit', label: t('extensionsFlavors.extensionsPanel.tab.audit'), Icon: FileText },
-            { id: 'privacy', label: t('extensionsFlavors.extensionsPanel.tab.privacy'), Icon: Shield },
           ] as const
         ).map(({ id, label, Icon }) => {
-          const active = view === id;
           return (
-            <button
+            <TabsTrigger
               key={id}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => setView(id)}
-              className={`shrink-0 flex items-center gap-1 px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
-                active
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
+              value={id}
+              className="shrink-0 flex items-center gap-1 rounded-none px-3 py-1.5 text-xs font-medium border-b-2 border-transparent bg-transparent shadow-none transition-colors data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
             >
               <Icon className="h-3.5 w-3.5" />
               {label}
-            </button>
+            </TabsTrigger>
           );
         })}
-      </div>
+      </TabsList>
 
       {/* Body — every sub-view fills the remaining height and owns its
           own scroll. `min-h-0` lets flex children actually shrink so
           inner ScrollArea / overflow-auto kicks in at narrow heights. */}
-      <div className="flex-1 min-h-0 flex flex-col">
+      <TabsContent value={view} className="mt-0 flex-1 min-h-0 flex flex-col">
       {view === 'audit' ? (
         <AuditLogPanel />
       ) : view === 'ideas' ? (
         <IdeasPanel />
       ) : view === 'repair' ? (
         <RepairQueuePanel />
-      ) : view === 'privacy' ? (
-        <PrivacyPanel />
       ) : (
       <div
         className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden transition-colors ${
@@ -355,7 +344,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
               </Button>
             </div>
 
-            <div className="mt-2 text-[10px] text-muted-foreground text-center">
+            <div className="mt-2 text-2xs text-muted-foreground text-center">
               {t('extensionsFlavors.extensionsPanel.emptyState.cliHint')}
             </div>
           </div>
@@ -366,7 +355,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="font-mono text-xs break-all">{record.id}</div>
-                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    <div className="mt-0.5 text-2xs text-muted-foreground">
                       {t('extensionsFlavors.extensionsPanel.row.stats', {
                         version: record.version,
                         count: record.grantedCapabilities.length,
@@ -410,8 +399,8 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                     />
                     <IconButton
                       label={t('extensionsFlavors.extensionsPanel.row.uninstallAriaLabel', { id: record.id })}
-                      onClick={() => {
-                        if (!confirm(t('extensionsFlavors.extensionsPanel.confirmUninstall', { id: record.id }))) return;
+                      onClick={async () => {
+                        if (!await confirmDialog({ description: t('extensionsFlavors.extensionsPanel.confirmUninstall', { id: record.id }), destructive: true })) return;
                         host.uninstall(record.id).catch((err) => {
                           toast.error(t('extensionsFlavors.extensionsPanel.toast.operationFailed', {
                             operation: t('extensionsFlavors.extensionsPanel.operation.uninstall'),
@@ -429,13 +418,13 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
                     {record.grantedCapabilities.slice(0, 4).map((cap) => (
                       <code
                         key={cap}
-                        className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono"
+                        className="rounded bg-muted px-1.5 py-0.5 text-2xs font-mono"
                       >
                         {cap}
                       </code>
                     ))}
                     {record.grantedCapabilities.length > 4 && (
-                      <span className="text-[10px] text-muted-foreground self-center">
+                      <span className="text-2xs text-muted-foreground self-center">
                         {t('extensionsFlavors.extensionsPanel.row.moreCapabilities', {
                           count: formatLocaleNumber(locale, record.grantedCapabilities.length - 4),
                         })}
@@ -449,8 +438,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         )}
       </div>
       )}
-      </div>
-
+      </TabsContent>
       {pending && (
         <CapabilityReview
           open
@@ -461,6 +449,6 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
           onCancel={() => setPending(null)}
         />
       )}
-    </div>
+    </Tabs>
   );
 }

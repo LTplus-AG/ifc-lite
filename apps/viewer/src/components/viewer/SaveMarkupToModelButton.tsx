@@ -19,6 +19,8 @@ import { useCallback, useState } from 'react';
 import { Save } from 'lucide-react';
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { useViewerStore } from '@/store';
+import { mutationDenialKey, type MutationDenialReason } from '@/store/mutation-permission';
+import { useMutationDenialReason } from '@/hooks/useMutationDenialReason';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { saveDrawingMarkupToModel, type SaveMarkupRefusal } from '@/lib/drawing2d-markup/drawing-markup-save';
@@ -27,7 +29,7 @@ function targetViewFor(axis: string | undefined): 'PLAN_VIEW' | 'SECTION_VIEW' {
   return axis === 'down' ? 'PLAN_VIEW' : 'SECTION_VIEW';
 }
 
-function refusalText(refusal: SaveMarkupRefusal | 'no-active-model'): string {
+function refusalText(refusal: Exclude<SaveMarkupRefusal, MutationDenialReason> | 'no-active-model'): string {
   switch (refusal) {
     case 'no-active-model':
     case 'no-model':
@@ -45,7 +47,9 @@ function refusalText(refusal: SaveMarkupRefusal | 'no-active-model'): string {
 
 /** The handler behind the menu item. */
 function useSaveDrawingMarkupHandler() {
+  const { t } = useTranslation();
   const activeModelId = useViewerStore((s) => s.activeModelId);
+  const denialReason = useMutationDenialReason(activeModelId ?? undefined);
   const measure2DResults = useViewerStore((s) => s.measure2DResults);
   const polygonArea2DResults = useViewerStore((s) => s.polygonArea2DResults);
   const textAnnotations2D = useViewerStore((s) => s.textAnnotations2D);
@@ -66,7 +70,9 @@ function useSaveDrawingMarkupHandler() {
         targetViewFor(sectionAxis),
       );
       if (outcome.refusal) {
-        toast.error(refusalText(outcome.refusal));
+        const refusal = outcome.refusal;
+        toast.error(refusal === 'edit-mode' || refusal === 'collab-role' || refusal === 'model-unavailable'
+          ? t(mutationDenialKey(refusal)) : refusalText(refusal));
         return;
       }
       const saved = outcome.measuresSaved + outcome.polygonsSaved + outcome.textsSaved + outcome.cloudsSaved;
@@ -82,19 +88,22 @@ function useSaveDrawingMarkupHandler() {
     } finally {
       setIsSaving(false);
     }
-  }, [activeModelId, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, sectionAxis]);
+  }, [activeModelId, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, sectionAxis, t]);
 
-  return { handleSave, isSaving, disabled: !activeModelId || isSaving };
+  return { handleSave, isSaving, disabled: !activeModelId || isSaving || !!denialReason, denialReason };
 }
 
 /** The Drawing panel's Export menu item. */
 export function SaveMarkupToModelMenuItem() {
   const { t } = useTranslation();
-  const { handleSave, disabled } = useSaveDrawingMarkupHandler();
+  const { handleSave, disabled, denialReason } = useSaveDrawingMarkupHandler();
+  const label = t('saveMarkupToModelButton.menuItemLabel');
+  const denialMessage = denialReason ? t(mutationDenialKey(denialReason)) : undefined;
   return (
-    <DropdownMenuItem onClick={handleSave} disabled={disabled}>
+    <DropdownMenuItem onClick={handleSave} disabled={disabled} title={denialMessage}
+      aria-label={denialMessage ? `${label}: ${denialMessage}` : label}>
       <Save className="h-4 w-4 mr-2" />
-      {t('saveMarkupToModelButton.menuItemLabel')}
+      {label}
     </DropdownMenuItem>
   );
 }

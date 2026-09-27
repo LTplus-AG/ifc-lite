@@ -19,6 +19,8 @@ pattern that passes the guard can still throw the native `SyntaxError`.
 
 Other exports:
 
+- `compileNameMatcher(pattern)` / `isNamePattern(pattern)`: cached exact-or-`/regex/flags` name matching shared by Lists and Rules; guarded patterns retain the Lists API behavior.
+- `unsafeNamePatternReason(pattern)`: inspect a name-pattern rejection without compiling it.
 - `assertGuardedRegexPattern(pattern, { maxLength? }?)`: validate without compiling.
 - `hasCatastrophicBacktrackingShape(pattern)`: detect the nested-quantifier shapes
   covered by the heuristic.

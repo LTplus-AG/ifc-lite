@@ -24,7 +24,7 @@ const STRUCT = 'tag-structure';
 const REVIEW = 'tag-review';
 
 const presets: ClashSetFilters[] = [
-  { filterA: { combinator: 'AND', rules: [Rule.modelTag('hasAny', [STRUCT])] }, filterB: { combinator: 'AND', rules: [Rule.ifcType(['IfcDuct'])] } },
+  { filterA: [{ combinator: 'AND', rules: [Rule.modelTag('hasAny', [STRUCT])] }], filterB: [{ combinator: 'AND', rules: [Rule.ifcType(['IfcDuct'])] }] },
 ];
 const assignments = (a: string[], b: string[]) =>
   new Map<string, ReadonlySet<string>>([['A', new Set(a)], ['B', new Set(b)]]);
@@ -32,7 +32,18 @@ const assignments = (a: string[], b: string[]) =>
 describe('clash model-tag inputs (#4215)', () => {
   it('references only the tag ids the filters name; a preset without tag rules captures nothing', () => {
     assert.deepEqual([...referencedModelTagIds(presets)], [STRUCT]);
-    assert.equal(captureModelTagInputs([{ filterA: { combinator: 'AND', rules: [Rule.ifcType(['IfcWall'])] } }], assignments([STRUCT], [])), null);
+    assert.equal(captureModelTagInputs([{ filterA: [{ combinator: 'AND', rules: [Rule.ifcType(['IfcWall'])] }] }], assignments([STRUCT], [])), null);
+  });
+
+  it('tracks model-tag rules in every OR group of both clash sides (#5898)', () => {
+    const grouped: ClashSetFilters[] = [{
+      filterA: [
+        { combinator: 'AND', rules: [Rule.ifcType(['IfcWall'])] },
+        { combinator: 'AND', rules: [Rule.modelTag('hasAny', [STRUCT])] },
+      ],
+      filterB: [{ combinator: 'AND', rules: [Rule.modelTag('hasAny', [REVIEW])] }],
+    }];
+    assert.deepEqual(referencedModelTagIds(grouped), new Set([STRUCT, REVIEW]));
   });
 
   it('a result reports changed inputs only when a REFERENCED tag moved', () => {
@@ -47,7 +58,7 @@ describe('clash model-tag inputs (#4215)', () => {
   });
 
   it('an `untagged` rule depends on which models carry any tag: tagging a previously untagged model is a change', () => {
-    const untaggedPreset: ClashSetFilters[] = [{ filterA: { combinator: 'AND', rules: [Rule.modelTag('untagged', [])] } }];
+    const untaggedPreset: ClashSetFilters[] = [{ filterA: [{ combinator: 'AND', rules: [Rule.modelTag('untagged', [])] }] }];
     assert.deepEqual([...referencedModelTagIds(untaggedPreset)], [UNTAGGED_INPUT]);
     const result = {};
     rememberModelTagInputs(result, captureModelTagInputs(untaggedPreset, assignments([STRUCT], [])));

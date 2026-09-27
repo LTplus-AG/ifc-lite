@@ -95,7 +95,7 @@ describe('ListModelTagScopeEditor is localized (#4918 revert-oracle witness)', (
 
   it('renders a registered locale override for the operator select and the "Runs over" hint', () => {
     registerLocale('list-model-tag-scope-witness', {
-      'lists.modelTagScope.opHasAll': 'WITNESS-HAS-ALL',
+      'filterOperators.hasAll': 'WITNESS-HAS-ALL',
       'lists.modelTagScope.runsOverHasAll': 'WITNESS-RUNS-OVER {names}',
     });
     setLocale('list-model-tag-scope-witness');

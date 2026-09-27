@@ -126,6 +126,7 @@ export function ActivityBar() {
         {visibleIds.map((id) => {
           const def = getPanelDef(id);
           if (!def) return null;
+          const title = t(def.titleKey);
           const Icon = def.Icon;
           const loc = panelLocation(id);
           const active = loc === 'docked';
@@ -138,12 +139,12 @@ export function ActivityBar() {
           // explicitly. In customize mode the action is "hide" (only shown
           // panels render here now, #1263).
           const ariaLabel = customizing
-            ? t('shellChrome.activityBar.iconAriaLabelHide', { title: def.title })
+            ? t('shellChrome.activityBar.iconAriaLabelHide', { title })
             : loc === 'floating'
-              ? t('shellChrome.activityBar.iconAriaLabelFloating', { title: def.title })
+              ? t('shellChrome.activityBar.iconAriaLabelFloating', { title })
               : loc === 'popped'
-                ? t('shellChrome.activityBar.iconAriaLabelPopped', { title: def.title })
-                : def.title;
+                ? t('shellChrome.activityBar.iconAriaLabelPopped', { title })
+                : title;
 
           return (
             <div key={id} className="contents">
@@ -174,7 +175,13 @@ export function ActivityBar() {
                     }}
                     onClick={() => (customizing ? setPanelShownInSidebar(id, false) : onIconClick(id))}
                     className={cn(
-                      'relative h-9 w-9 inline-flex items-center justify-center rounded-md transition-colors',
+                      // `shrink-0`: this sits in a `flex flex-col` rail with more
+                      // icons than fit some viewports (`overflow-y-auto` on the
+                      // rail). Without it the default flex-shrink squeezed every
+                      // icon's height well under its own `h-9`, down to ~16px in
+                      // a full rail (#5826) — flexbox shrinks fixed-size items to
+                      // fit the cross axis before overflow ever gets a say.
+                      'relative h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-md transition-colors',
                       active
                         ? 'bg-primary/15 text-primary'
                         : 'text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -210,7 +217,7 @@ export function ActivityBar() {
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="left">
-                  {def.title}
+                  {title}
                   <span className="text-muted-foreground">
                     {customizing ? (
                       ` · ${t('shellChrome.activityBar.clickToHideHint')}`

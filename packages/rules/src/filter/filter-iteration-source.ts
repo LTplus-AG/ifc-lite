@@ -16,7 +16,7 @@ import { isQueryableObjectType, type IfcDataStore } from '@ifc-lite/parser';
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 
 import type { Combinator, FilterRule } from './filter-rules.js';
-import { unionByStorey } from './filter-match.js';
+import { unionByStorey } from './filter-storey.js';
 
 // ── Iteration source: index prefilter (AND + op:in) ──────────────────────────
 

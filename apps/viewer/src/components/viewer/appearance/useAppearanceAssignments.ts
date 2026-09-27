@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { trackExportCompleted } from '@/lib/analytics';
 import { canResumeAssignmentReview, rememberAssignmentReview, forgetAssignmentReview } from '@/lib/appearance/assignments/session-review.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
@@ -249,6 +250,7 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
     try {
       downloadBlob(new Blob([serializeAppearanceAssignments(rows)], { type: 'application/json' }),
         `${sanitizeFilename('appearance-assignments')}.json`);
+      trackExportCompleted({ format: 'json', surface: 'appearance_panel' });
     } catch (error) { setStatus('error'); setNotice(rawMessage(error)); }
   }
   const resolved = useMemo(() => rows.length ? resolveAppearanceAssignments(rows) : [], [rows]);
@@ -259,6 +261,7 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
     move(id: string, direction: -1 | 1) { const next = [...rows], index = next.findIndex(row => row.id === id), target = index + direction;
       if (index >= 0 && target >= 0 && target < next.length) { [next[index], next[target]] = [next[target], next[index]]; save(next); } },
     hasPreview: !!draft.current,
+    targetModelIds: [...(draft.current?.preparation.snapshots.keys() ?? [])],
     blockedReason: room ? translatedMessage('appearance.assignments.status.leaveRoom') : undefined,
     affectedCount: resolved.reduce((sum, row) => sum + row.productIds.length, 0),
   };

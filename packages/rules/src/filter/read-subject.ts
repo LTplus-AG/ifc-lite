@@ -44,7 +44,8 @@ import {
 } from '@ifc-lite/parser';
 import { RelationshipType, collectSpatialAncestors } from '@ifc-lite/data';
 import type { Subject } from '../rule-set/rule-set.js';
-import { stringifyValue, defaultStoreyName, materialNamesOf } from './filter-match.js';
+import { stringifyValue, materialNamesOf } from './filter-match.js';
+import { defaultStoreyName } from './filter-storey.js';
 import { resolveEntityPredefinedType } from './entity-predefined-type.js';
 import { readMeasureSubject } from './read-measure-subject.js';
 import { assignedGroupNames } from './filter-group-rule.js';

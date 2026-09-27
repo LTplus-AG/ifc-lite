@@ -40,6 +40,7 @@ import type { PropertyValueType } from '@ifc-lite/data';
 import type { ViewerState } from '../index.js';
 import { collabServerUrl } from '@/lib/collab/config';
 import {
+  applyIdentityPatch,
   loadOrCreateIdentity,
   persistIdentity,
   type EphemeralIdentity,
@@ -96,9 +97,8 @@ export type CollabRole = 'viewer' | 'commenter' | 'editor' | 'admin';
 
 /**
  * The single role -> edit rule. `canCollabEdit()` below is its store-bound
- * form, and components that mirror the same gate in their own UI
- * (`BulkPropertyEditor`, `DataConnector`) call this directly off `collabRole`.
- * Keeping one body means a future role change cannot drift the copies apart.
+ * form. The shared mutation permission selector calls that store-bound form,
+ * so Bulk, CSV, Properties, and script authoring share the same role rule.
  * `null` = not in a shared room, so the local single-user editing rules apply
  * (handled by the UI's existing `editEnabled` gate) and this returns true.
  */
@@ -529,12 +529,11 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   collabGeometryNotice: null,
 
   setCollabPanelVisible: (collabPanelVisible) => set({ collabPanelVisible }),
-
   setCollabIdentity: (patch) => {
-    const next: EphemeralIdentity = { ...get().collabIdentity, ...patch };
+    const next = applyIdentityPatch(get().collabIdentity, patch);
+    if (!next) return;
     persistIdentity(next);
     set({ collabIdentity: next });
-    // Reflect the rename into a live session's presence immediately.
     const session = get().collabSession;
     if (session) {
       const user: UserIdentity = { id: next.id, name: next.name, color: next.color };

@@ -7,6 +7,26 @@
  * an existing annotation. Read mode shows the note + relative time
  * + entity context; edit mode swaps in a textarea with Enter-to-save
  * / Shift+Enter-newline / Esc-cancel semantics.
+ *
+ * The shell moved onto Radix (`ui/popover.tsx`, #5817): it used to be a
+ * hand-rolled `HudSurface` with `role="dialog"` and its own
+ * `document`-level `mousedown`/no dedicated Escape-for-dismissal listener
+ * (Escape only cancelled an in-progress edit; nothing closed the popover
+ * itself on Escape before). There's no real DOM trigger to anchor to — the
+ * pin is a projected SVG point, re-anchored every camera tick by the shared
+ * `SceneProjector` (`AnnotationLayer.tsx`) — so this builds a *virtual*
+ * Radix anchor: a zero-size rect at the `anchorX`/`anchorY` canvas-relative
+ * point, resolved against a hidden 0×0 probe planted at the canvas's own
+ * viewport origin. `updatePositionStrategy="always"` on `PopoverContent`
+ * re-reads it every animation frame, matching how the pin itself moves.
+ * Radix's own flip/shift collision avoidance (`side="right"`,
+ * `collisionPadding`) replaces the old manual `wantsLeft`/clamp math —
+ * equivalent in effect (flips toward the side with room, stays on-screen),
+ * not pixel-identical to the old formula. `collisionBoundary` is set to
+ * `boundaryEl` (`AnnotationLayer`'s own canvas-sized layer element, #5817
+ * review) rather than left at Radix's default (the viewport): without it,
+ * a pin near the canvas edge with a side panel docked gets positioned past
+ * the layer and clipped, since the layer is smaller than the window.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -14,6 +34,7 @@ import { Pencil, Trash2, X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { HudSurface } from '@/components/viewport-ui/hud';
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey, TranslationParameters } from '@/i18n';
@@ -27,9 +48,11 @@ export interface AnnotationPopoverProps {
   /** Anchor in canvas-relative pixel coordinates. */
   anchorX: number;
   anchorY: number;
-  /** Canvas dimensions for edge clamping (so the popover never falls off-screen). */
-  canvasWidth: number;
-  canvasHeight: number;
+  /** `AnnotationLayer`'s own canvas-sized layer element, passed as Radix's
+   *  `collisionBoundary` so the popover clamps to the canvas rather than
+   *  the whole window (edge clamping — the popover never falls off the
+   *  canvas even with a side panel docked). */
+  boundaryEl: HTMLElement | null;
   /** Resolved entity type, when the pin is anchored to a known IfcRoot. */
   entityType?: string | null;
   onSave: (note: string) => void;
@@ -57,8 +80,7 @@ export function AnnotationPopover({
   annotation,
   anchorX,
   anchorY,
-  canvasWidth,
-  canvasHeight,
+  boundaryEl,
   entityType,
   onSave,
   onDelete,
@@ -68,7 +90,28 @@ export function AnnotationPopover({
   const [editing, setEditing] = useState(annotation.note.length === 0);
   const [draft, setDraft] = useState(annotation.note);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+
+  // The canvas-relative anchor point, read fresh on every
+  // `virtualAnchorRef.getBoundingClientRect()` call (Radix/floating-ui
+  // calls this repeatedly, including from `updatePositionStrategy="always"`'s
+  // per-frame re-measure) — a plain closure over `anchorX`/`anchorY` would
+  // go stale between renders, since `virtualAnchorRef` itself is never
+  // reassigned.
+  const anchorPointRef = useRef({ x: anchorX, y: anchorY });
+  anchorPointRef.current = { x: anchorX, y: anchorY };
+  // 0×0 probe at the canvas's own top-left (this component renders as a
+  // child of `AnnotationLayer`'s canvas-aligned `absolute inset-0`
+  // container), so its `getBoundingClientRect()` gives the viewport offset
+  // `anchorX`/`anchorY` are relative to.
+  const originRef = useRef<HTMLDivElement>(null);
+  const virtualAnchorRef = useRef({
+    getBoundingClientRect: () => {
+      const origin = originRef.current?.getBoundingClientRect();
+      const left = (origin?.left ?? 0) + anchorPointRef.current.x;
+      const top = (origin?.top ?? 0) + anchorPointRef.current.y;
+      return new DOMRect(left, top, 0, 0);
+    },
+  });
 
   // Reset editor state when the popover is reused for a different
   // annotation. Without this, switching pins would carry the previous
@@ -86,30 +129,6 @@ export function AnnotationPopover({
       textareaRef.current.select();
     }
   }, [editing]);
-
-  // Close on outside click. Listening at the document level keeps
-  // the popover predictable when the user mouses anywhere else.
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      const node = containerRef.current;
-      if (!node) return;
-      if (node.contains(e.target as Node)) return;
-      // Don't close when the click landed on the same pin — the
-      // pin's onClick handler controls open/close itself.
-      const closestPin = (e.target as HTMLElement).closest?.('[data-annotation-pin-id]');
-      if (closestPin?.getAttribute('data-annotation-pin-id') === annotation.id) return;
-      onClose();
-    };
-    // Defer registration to next tick so the click that opened the
-    // popover doesn't immediately close it.
-    const id = window.setTimeout(() => {
-      document.addEventListener('mousedown', handler);
-    }, 0);
-    return () => {
-      window.clearTimeout(id);
-      document.removeEventListener('mousedown', handler);
-    };
-  }, [annotation.id, onClose]);
 
   const handleSave = useCallback(() => {
     onSave(draft);
@@ -139,30 +158,64 @@ export function AnnotationPopover({
     [handleSave, handleCancel],
   );
 
-  // Edge clamp the popover. Default: anchor to the right of the pin
-  // with a 16px gap; flip left when the right edge would clip.
-  const wantsLeft = anchorX + POPOVER_OFFSET_X + POPOVER_WIDTH > canvasWidth;
-  const left = wantsLeft
-    ? Math.max(8, anchorX - POPOVER_OFFSET_X - POPOVER_WIDTH)
-    : Math.min(anchorX + POPOVER_OFFSET_X, canvasWidth - POPOVER_WIDTH - 8);
-  const top = Math.min(Math.max(8, anchorY - 12), canvasHeight - 100);
-
   const charCountVisible = editing && draft.length >= SOFT_NOTE_LIMIT;
   const overSoftLimit = draft.length > SOFT_NOTE_LIMIT;
   const overHardLimit = draft.length > MAX_NOTE_LEN;
 
   return (
-    <HudSurface
-      ref={containerRef}
-      role="dialog"
-      aria-label={t('annotations.popover.ariaLabel')}
-      style={{ left, top, width: POPOVER_WIDTH }}
-      className={cn(
-        // The shared viewport card (#5491): no bespoke hue, border or shadow.
-        'absolute z-[60] overflow-hidden',
-        'animate-in fade-in-0 zoom-in-95 duration-150',
-      )}
+    <Popover
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
     >
+      {/* eslint-disable-next-line jsx-a11y/aria-hidden-on-focusable -- pure 0x0 measurement probe, never focusable */}
+      <div ref={originRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, width: 0, height: 0 }} />
+      <PopoverAnchor virtualRef={virtualAnchorRef} />
+      <PopoverContent
+        updatePositionStrategy="always"
+        side="right"
+        align="start"
+        sideOffset={POPOVER_OFFSET_X}
+        collisionPadding={8}
+        collisionBoundary={boundaryEl}
+        avoidCollisions
+        // Editing keeps the textarea's own Escape (cancel-the-edit, not
+        // close) in charge; read mode defers to Radix's default (closes via
+        // `onOpenChange` above).
+        onEscapeKeyDown={(e) => {
+          if (editing) {
+            e.preventDefault();
+            handleCancel();
+          }
+        }}
+        // The pin's own `onClick` toggles selection itself — without this,
+        // clicking it while its popover is open would both re-toggle
+        // selection AND have Radix dismiss the popover as an "outside"
+        // click, double-handling the same gesture.
+        onPointerDownOutside={(e) => {
+          // `e.target` is the CustomEvent's own dispatch target (the
+          // Content node), not the click's real target — that's
+          // `e.detail.originalEvent.target`.
+          const realTarget = e.detail.originalEvent.target as HTMLElement | null;
+          const closestPin = realTarget?.closest?.('[data-annotation-pin-id]');
+          if (closestPin?.getAttribute('data-annotation-pin-id') === annotation.id) e.preventDefault();
+        }}
+        onOpenAutoFocus={(e) => {
+          if (!editing) e.preventDefault();
+        }}
+        asChild
+      >
+        <HudSurface
+          role="dialog"
+          aria-label={t('annotations.popover.ariaLabel')}
+          style={{ width: POPOVER_WIDTH }}
+          className={cn(
+            // The shared viewport card (#5491): no bespoke hue, border or shadow.
+            'z-[60] overflow-hidden p-0',
+            'animate-in fade-in-0 zoom-in-95 duration-150',
+          )}
+        >
       {/* Header — entity context + close. The ink dot echoes the pin this
           popover belongs to. */}
       <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border">
@@ -287,6 +340,8 @@ export function AnnotationPopover({
           </>
         )}
       </div>
-    </HudSurface>
+        </HudSurface>
+      </PopoverContent>
+    </Popover>
   );
 }

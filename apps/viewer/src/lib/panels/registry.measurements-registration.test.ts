@@ -20,7 +20,7 @@ describe('WORKSPACE_PANELS — measurements panel registration (#5502)', () => {
   it('registers a measurements side panel', () => {
     const entry = WORKSPACE_PANELS.find((p) => p.id === 'measurements');
     assert.notEqual(entry, undefined, "WORKSPACE_PANELS is missing the 'measurements' panel definition");
-    assert.equal(entry?.title, 'Measurements');
+    assert.equal(entry?.titleKey, 'measure.panel.title');
     assert.equal(entry?.region, 'side');
   });
 

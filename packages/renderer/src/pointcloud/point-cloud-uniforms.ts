@@ -102,6 +102,10 @@ export interface PointUniformInputs {
  * it onto the GPU. The two scratch typed-arrays must alias the same
  * underlying buffer so we can write floats and packed u32 flags in one
  * pass.
+ *
+ * Returns false without uploading when the node's origin lies outside this
+ * camera's RTE envelope: it cannot be rasterised this frame, so the caller
+ * skips its draw rather than reusing the previous frame's uniforms (#6128).
  */
 export function writePointCloudUniforms(
   device: GPUDevice,
@@ -109,7 +113,7 @@ export function writePointCloudUniforms(
   scratchU32: Uint32Array,
   node: PointCloudNode,
   inputs: PointUniformInputs,
-): void {
+): boolean {
   const u = scratch;
   const uU32 = scratchU32;
 
@@ -126,7 +130,7 @@ export function writePointCloudUniforms(
     u[16] = 1; u[21] = 1; u[26] = 1; u[31] = 1;
   }
   u[28] = 0; u[29] = 0; u[30] = 0; u[31] = 1;
-  inputs.relativeToEyeFrame.packDrawableOrigin(origin, u, 32);
+  if (!inputs.relativeToEyeFrame.tryPackDrawableOrigin(origin, u, 32)) return false;
   const camera = inputs.relativeToEyeFrame.getCameraWorld();
   // colorOverride — floats 40..43
   u[40] = inputs.fixedColor[0];
@@ -185,4 +189,5 @@ export function writePointCloudUniforms(
   // array view to exactly the uniform size + 4 alignment is identical
   // to the byteOffset/byteLength form on the buffer.
   device.queue.writeBuffer(node.uniformBuffer, 0, u, 0, POINT_UNIFORM_SIZE / 4);
+  return true;
 }

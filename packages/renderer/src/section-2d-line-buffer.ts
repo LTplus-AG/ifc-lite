@@ -27,8 +27,8 @@ import {
 } from './shaders/section-2d-overlay.wgsl.js';
 import {
   MAX_RTE_LOCAL_METRES,
-  packRteDrawableDelta,
   splitFloat64ForRte,
+  tryPackRteDrawableDelta,
 } from './relative-to-eye.js';
 
 /** Shared GPU resources a {@link WorldLineBuffer} borrows for the duration of a draw. */
@@ -160,7 +160,8 @@ export class WorldLineBuffer {
       uniforms.set(viewProj, SECTION_2D_UNIFORM_SLOTS.viewProj);
       if (partition.anchor && rteViewProj && camera) {
         uniforms.set(rteViewProj, SECTION_2D_UNIFORM_SLOTS.rteViewProj);
-        packRteDrawableDelta(partition.anchor, camera, uniforms, SECTION_2D_UNIFORM_SLOTS.originDeltaHigh);
+        // Outside this camera's RTE envelope: not rasterisable this frame (#6128).
+        if (!tryPackRteDrawableDelta(partition.anchor, camera, uniforms, SECTION_2D_UNIFORM_SLOTS.originDeltaHigh)) continue;
         uniforms[SECTION_2D_UNIFORM_SLOTS.originDeltaHigh + 3] = 1;
       }
       uniforms.set(color, SECTION_2D_UNIFORM_SLOTS.lineColor);

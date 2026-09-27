@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { trackExportCompleted } from '@/lib/analytics';
 import { AppearanceAnnotationFields } from './AppearanceAnnotationFields';
 import { referenceFrameStatus } from '@/lib/appearance/reference-runtime/frame.js';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -111,6 +112,7 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
           disabled={blocked || references.size === 0}
           onClick={() => perform(() => {
             downloadBlob(new Blob([useViewerStore.getState().exportAppearanceReferences()], { type: 'application/json' }), 'drawing-registration.json');
+            trackExportCompleted({ format: 'json', surface: 'appearance_panel' });
             setNoticeKey('appearance.referenceLibrary.exportedNotice');
           })}
         ><Download aria-hidden="true" /></IconButton>

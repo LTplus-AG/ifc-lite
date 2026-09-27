@@ -12,7 +12,7 @@
  */
 
 import { Scan, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
 import type { PointColorModeUi, PointSizeModeUi } from '@/store/slices/pointCloudSlice';
 import { cn } from '@/lib/utils';
@@ -78,21 +78,21 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
       <div className="flex items-center gap-2 border-b p-3">
         <Scan className="h-4 w-4 text-teal-600" />
         <span className="font-medium text-sm">{t('pointCloudPanel.title')}</span>
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-2xs text-muted-foreground">
           {t('pointCloudPanel.assetCount', { count: assetCount })}
         </span>
         <span className="flex-1" />
         {onClose && (
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
+          <IconButton label={t('pointCloudPanel.close')} variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
             <X className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         )}
       </div>
       <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2">
 
       {/* Color mode */}
       <div className="flex flex-col gap-0.5">
-        <span className="text-[9px] uppercase text-muted-foreground tracking-wider">{t('pointCloudPanel.colourSectionLabel')}</span>
+        <span className="text-2xs uppercase text-muted-foreground tracking-wider">{t('pointCloudPanel.colourSectionLabel')}</span>
         {COLOR_MODES.map((mode) => {
           const active = colorMode === mode.value;
           return (
@@ -119,7 +119,7 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
           // compare. Until "Compute deviation" runs, that buffer is all
           // zeros, so every point maps to the ramp centre (grey). Nudge
           // the user toward the compute button below.
-          <span className="text-[10px] text-amber-500 px-2 leading-tight">
+          <span className="text-2xs text-amber-500 px-2 leading-tight">
             {triangleCount > 0
               ? t('pointCloudPanel.deviation.computeHint')
               : t('pointCloudPanel.deviation.needsModelHint')}
@@ -132,7 +132,7 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
           // on display. Alpha stays 1 since fixed-mode opacity is
           // controlled by the splat shape, not the colour swatch.
           <label className="flex items-center justify-between gap-2 mt-1 px-2 py-1 rounded bg-muted/40">
-            <span className="text-[10px] text-muted-foreground">{t('pointCloudPanel.solidColourLabel')}</span>
+            <span className="text-2xs text-muted-foreground">{t('pointCloudPanel.solidColourLabel')}</span>
             <input
               type="color"
               value={rgbToHex(fixedColor)}
@@ -150,7 +150,7 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
       {alignmentAvailable && (
         <label className="flex items-center justify-between gap-2 cursor-pointer px-2 py-1 rounded bg-muted/40">
           <span
-            className="text-[10px] text-muted-foreground"
+            className="text-2xs text-muted-foreground"
             title={t('pointCloudPanel.alignToModel.hint')}
           >
             {t('pointCloudPanel.alignToModel.label')}
@@ -176,7 +176,7 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
 
       {/* Size mode */}
       <div className="flex flex-col gap-0.5">
-        <span className="text-[9px] uppercase text-muted-foreground tracking-wider">{t('pointCloudPanel.sizeSectionLabel')}</span>
+        <span className="text-2xs uppercase text-muted-foreground tracking-wider">{t('pointCloudPanel.sizeSectionLabel')}</span>
         <div className="grid grid-cols-3 gap-0.5">
           {SIZE_MODES.map((mode) => {
             const active = sizeMode === mode.value;
@@ -187,7 +187,7 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
                 onClick={() => setSizeMode(mode.value)}
                 title={t(mode.hintKey)}
                 className={cn(
-                  'px-1.5 py-1 rounded text-[11px] transition-colors',
+                  'px-1.5 py-1 rounded text-2xs transition-colors',
                   active
                     ? 'bg-teal-600 text-white'
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -199,7 +199,7 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
           })}
         </div>
         <label className="flex items-center gap-2 mt-1">
-          <span className="text-[10px] text-muted-foreground w-8 shrink-0">{t('pointCloudPanel.pointSizePx', { value: pointSize.toFixed(0) })}</span>
+          <span className="text-2xs text-muted-foreground w-8 shrink-0">{t('pointCloudPanel.pointSizePx', { value: pointSize.toFixed(0) })}</span>
           <input
             type="range"
             min={1}
@@ -213,7 +213,7 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
         </label>
         {sizeMode !== 'fixed-px' && (
           <label className="flex items-center gap-2">
-            <span className="text-[10px] text-muted-foreground w-8 shrink-0">
+            <span className="text-2xs text-muted-foreground w-8 shrink-0">
               {t('pointCloudPanel.worldRadiusMm', { value: (worldRadius * 1000).toFixed(0) })}
             </span>
             <input
@@ -233,7 +233,7 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
       {/* EDL */}
       <div className="flex flex-col gap-0.5">
         <label className="flex items-center justify-between gap-2 cursor-pointer">
-          <span className="text-[9px] uppercase text-muted-foreground tracking-wider">{t('pointCloudPanel.edlSectionLabel')}</span>
+          <span className="text-2xs uppercase text-muted-foreground tracking-wider">{t('pointCloudPanel.edlSectionLabel')}</span>
           <input
             type="checkbox"
             checked={edlEnabled}
@@ -244,7 +244,7 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
         </label>
         {edlEnabled && (
           <label className="flex items-center gap-2">
-            <span className="text-[10px] text-muted-foreground w-8 shrink-0">
+            <span className="text-2xs text-muted-foreground w-8 shrink-0">
               {edlStrength.toFixed(1)}
             </span>
             <input

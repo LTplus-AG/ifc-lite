@@ -112,6 +112,7 @@ function fixture(
     mutationViews: new Map([[MODEL, view]]),
     getMutationView: (modelId: string) => modelId === MODEL ? view : null,
     canCollabEdit: () => canEdit,
+    editEnabled: true,
     mirrorEntityCreate: (...args: unknown[]) => {
       calls.push({ kind: 'create', args });
       if (canMirrorCreate?.() ?? true) {
@@ -125,7 +126,7 @@ function fixture(
     mirrorAttributeEdit: (...args: unknown[]) => calls.push({ kind: 'attribute', args }),
   } as unknown as ViewerState;
   const store: StoreApi = { getState: () => state, subscribe: () => () => {} };
-  return { adapter: createStoreAdapter(store), calls, view };
+  return { adapter: createStoreAdapter(store), calls, view, state };
 }
 
 describe('bim.store collaboration mirroring (#5008)', () => {
@@ -667,6 +668,15 @@ describe('bim.store collaboration mirroring (#5008)', () => {
     for (const [operation, invoke] of builders) {
       assert.throws(invoke, new RegExp(`bim\\.store\\.${operation}.*read-only`));
     }
+    assert.equal(view.getMutations().length, 0);
+    assert.deepEqual(calls, []);
+  });
+
+  it('refuses script create and delete while Edit mode is off (#5901)', () => {
+    const { adapter, calls, view, state } = fixture();
+    state.editEnabled = false;
+    assert.throws(() => adapter.addEntity(MODEL, { type: 'IFCWALL', attributes: [] }), /Turn on Edit mode/);
+    assert.throws(() => adapter.removeEntity({ modelId: MODEL, expressId: 2 }), /Turn on Edit mode/);
     assert.equal(view.getMutations().length, 0);
     assert.deepEqual(calls, []);
   });

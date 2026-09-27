@@ -29,6 +29,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { COMMON_SCALES, type DrawingSheet } from '@ifc-lite/drawing-2d';
 import { useTranslation } from '@/i18n';
+import { DRAWING_OMISSION_LABEL_KEYS, type DrawingExportOmission } from '@/lib/export/drawing-export-omissions';
 
 const AS_DISPLAYED = 'as-displayed';
 const CUSTOM = 'custom';
@@ -40,12 +41,14 @@ export interface DrawingPdfExportDialogProps {
   displayedScale: number;
   sheetEnabled: boolean;
   activeSheet: DrawingSheet | null;
+  /** Content the selected PDF writer will leave out. */
+  omissions?: readonly DrawingExportOmission[];
   /** `useDrawingExport`'s `handleExportPDF`, called exactly as the old prompt called it. */
   onExport: (scaleFactor?: number) => void;
 }
 
 export function DrawingPdfExportDialog({
-  open, onOpenChange, displayedScale, sheetEnabled, activeSheet, onExport,
+  open, onOpenChange, displayedScale, sheetEnabled, activeSheet, omissions = [], onExport,
 }: DrawingPdfExportDialogProps) {
   const { t } = useTranslation();
   const [mode, setMode] = useState<string>(AS_DISPLAYED);
@@ -149,6 +152,16 @@ export function DrawingPdfExportDialog({
                 : t('section2d.pdf.paperAuto')}
             </p>
           </div>
+          {omissions.length > 0 && (
+            <div role="note" className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+              <p className="font-medium">{t('section2d.export.omission.pdfTitle')}</p>
+              <ul className="mt-1 list-disc pl-5">
+                {omissions.map((omission) => (
+                  <li key={omission}>{t(DRAWING_OMISSION_LABEL_KEYS[omission])}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         <DialogFooter>

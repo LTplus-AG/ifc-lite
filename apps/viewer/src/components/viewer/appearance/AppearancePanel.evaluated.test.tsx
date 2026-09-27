@@ -117,7 +117,7 @@ for (const instanced of [false, true]) for (const pageSource of [false, true]) f
     const model = { ...fixtureModel('evaluated'), idOffset, maxExpressId: 54, ifcDataStore: data, geometryResult: geometry, schemaVersion: 'IFC4' as const, loadState: 'complete' as const };
     const other = fixtureModel('other');
     const selection = globalId(25);
-    useViewerStore.setState({ models: new Map([...(federated ? [['other',other] as const] : []), ['evaluated', model]]), activeModelId: federated ? 'other' : 'evaluated',
+    useViewerStore.setState({ models: new Map([...(federated ? [['other',other] as const] : []), ['evaluated', model]]), activeModelId: federated ? 'other' : 'evaluated', editEnabled: true,
       geometryResult: geometry, mutationViews: new Map([['evaluated',view]]), storeEditors: new Map([['evaluated',new StoreEditor(data,view)]]),
       undoStacks: new Map(), redoStacks: new Map(), dirtyModels: new Set(), mutationVersion: 0, collabRoomId: null,
       appearanceSources: [], appearanceDraft: null, selectedEntityId: selection, selectedEntityIds: new Set([selection]) });

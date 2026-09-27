@@ -10,6 +10,8 @@
  */
 
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
+import { useTranslation } from '@/i18n';
+import { isWorkspacePanelId, panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
 import {
   closeActiveAnalysisExtension,
@@ -33,6 +35,7 @@ export type WorkspacePanel = BottomPanel | RightPanel | string;
 
 /** `surface`: the chrome these controls sit in, reported with each open (#5618). */
 export function useWorkspacePanelControls(surface?: UiSurface) {
+  const { t, revision } = useTranslation();
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
   const bcfPanelVisible = useViewerStore((state) => state.bcfPanelVisible);
@@ -284,28 +287,12 @@ export function useWorkspacePanelControls(surface?: UiSurface) {
 
   const workspacePanelLabel = useMemo(() => {
     if (activeWorkspacePanels.size === 0) return null;
-    if (activeWorkspacePanels.size > 1) return 'Multiple Panels';
-    if (activeWorkspacePanels.has('script')) return 'Script Editor';
-    if (activeWorkspacePanels.has('lists')) return 'Lists';
-    if (activeWorkspacePanels.has('gantt')) return 'Schedule';
-    if (activeWorkspacePanels.has('bcf')) return 'BCF Topics';
-    if (activeWorkspacePanels.has('validation')) return 'IDS Validation';
-    if (activeWorkspacePanels.has('lens')) return 'Lens Rules';
-    if (activeWorkspacePanels.has('clash')) return 'Clash Detection';
-    if (activeWorkspacePanels.has('compare')) return 'Compare Models';
-    if (activeWorkspacePanels.has('extensions')) return 'Extensions';
-    if (activeWorkspacePanels.has('sources')) return 'Cloud Sources';
-    if (activeWorkspacePanels.has('addElement')) return 'Add Element';
-    if (activeWorkspacePanels.has('layers')) return 'Layer Stack';
-    if (activeWorkspacePanels.has('collab')) return 'Collaboration Room';
-    if (activeWorkspacePanels.has('zones')) return 'Location Zones';
-    if (activeWorkspacePanels.has('appearance')) return 'Appearance';
-    if (activeWorkspacePanels.has('loadReport')) return 'Load Report';
-    if (activeWorkspacePanels.has('cost')) return 'Cost';
-    if (activeWorkspacePanels.has('flow')) return 'Flow';
-    if (activeWorkspacePanels.has('drawing')) return 'Drawing';
-    return activeAnalysisExtension?.label ?? 'Analysis';
-  }, [activeAnalysisExtension?.label, activeWorkspacePanels]);
+    if (activeWorkspacePanels.size > 1) return t('workspacePanels.multiplePanels');
+    const id = activeWorkspacePanels.values().next().value;
+    if (id === 'addElement') return t('workspacePanels.author.addElement');
+    if (id && isWorkspacePanelId(id)) return t(panelTitleKey(id));
+    return activeAnalysisExtension?.label ?? t('shellChrome.layout.analysisFallback');
+  }, [activeAnalysisExtension?.label, activeWorkspacePanels, revision, t]);
 
   return {
     activeWorkspacePanels,

@@ -51,6 +51,7 @@ function ClassicExportRow({ command, disabled, onExportCsv, onRunAction }: Class
     const { Dialog } = command;
     return (
       <Dialog
+        surface="classic"
         trigger={
           <DropdownMenuItem
             data-export-command={command.id}
@@ -104,7 +105,7 @@ export function ClassicExportMenuItems() {
   const { t } = useTranslation();
   const {
     commands, handleExportCSV, runExportAction, extensionExporters, extensionExportRunning, runExtensionExporter,
-  } = useExportCommands();
+  } = useExportCommands('classic');
   const groups = groupExportCommands(commands, (resolved) => resolved.command.group);
   const ExtensionIcon = CLASSIC_EXPORT_ICONS.extension;
 

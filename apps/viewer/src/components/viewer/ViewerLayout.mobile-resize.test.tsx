@@ -17,7 +17,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup } from '@/test/render.js';
+import { activate, cleanup } from '@/test/render.js';
 import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { useViewerStore } from '@/store';
 
@@ -54,6 +54,16 @@ afterEach(() => {
 });
 
 describe('ViewerLayout mobile panel collapse (#5837)', () => {
+  it('#5823 closes an open mobile sheet when its backdrop is keyboard-activated', () => {
+    setViewport(390, 844);
+    const ui = renderViewerLayout();
+    openSheet();
+    const backdrop = ui.querySelector<HTMLButtonElement>('button[aria-label="Close panels"]');
+    assert.ok(backdrop, 'mobile backdrop must be a named button');
+    activate(backdrop, 'Enter');
+    assert.equal(sheetOpen(), false);
+  });
+
   it('collapses the panels when it mounts in mobile mode', () => {
     useViewerStore.setState({ leftPanelCollapsed: false, rightPanelCollapsed: false });
     setViewport(390, 844);

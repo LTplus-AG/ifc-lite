@@ -137,7 +137,7 @@ export function SpaceSketchBarContent(p: SpaceSketchBarProps & { tier: number; m
     >
       {!compact && (
         <>
-          <span className="flex items-center gap-1.5 whitespace-nowrap px-1.5 text-[11px] font-medium uppercase tracking-wide text-overlay-ink-muted">
+          <span className="flex items-center gap-1.5 whitespace-nowrap px-1.5 text-2xs font-medium uppercase tracking-wide text-overlay-ink-muted">
             <Layers aria-hidden className={ICON} />
             {t('spaceSketch.panel.heading')}
           </span>
@@ -301,7 +301,7 @@ export function SpaceSketchPlanCard(p: SpaceSketchPlanCardProps) {
             title={t('spaceSketch.panel.deriveAllTitle')}>
             <Building2 aria-hidden className={ICON} />
           </button>
-          <span className="ml-auto whitespace-nowrap px-1 text-[11px] tabular-nums text-muted-foreground">
+          <span className="ml-auto whitespace-nowrap px-1 text-2xs tabular-nums text-muted-foreground">
             {t('spaceSketch.panel.roomCount', { count: p.roomCount })} · {formatArea(p.totalArea)}
           </span>
           <button type="button" className={ICON_BTN} onClick={p.onCleanup} disabled={!p.canCleanup} title={t('spaceSketch.tools.cleanupTitle')}>
@@ -313,12 +313,12 @@ export function SpaceSketchPlanCard(p: SpaceSketchPlanCardProps) {
         </div>
         {children}
         {unbounded && (
-          <div className="mt-1.5 text-[11px] leading-tight text-status-warn">
+          <div className="mt-1.5 text-2xs leading-tight text-status-warn">
             {t('spaceSketch.footer.unboundedNotice', unbounded)}
           </div>
         )}
         {diagnostics && (
-          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px]">
+          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-2xs">
             <span className="text-status-ok">{t('spaceSketch.footer.diag.bounds')}</span>
             <span className="text-status-danger">{t('spaceSketch.footer.diag.leak', { count: diagnostics.leak })}</span>
             <span className="text-status-danger">{t('spaceSketch.footer.diag.failed', { count: diagnostics.failed })}</span>

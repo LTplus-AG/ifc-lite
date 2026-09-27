@@ -95,6 +95,7 @@ describe('StatusBar — storey pill and hidden count (#5504)', () => {
       ghostExceptEntities: null,
       mutationViews: new Map(),
       mutationVersion: 0,
+      showPerformanceStats: false,
     });
   });
 
@@ -102,6 +103,31 @@ describe('StatusBar — storey pill and hidden count (#5504)', () => {
     const container = renderStatusBar();
     assert.doesNotMatch(container.textContent ?? '', /Ground Floor/);
     assert.doesNotMatch(container.textContent ?? '', /hidden/);
+  });
+
+  it('keeps diagnostic readouts and the FPS loop off until enabled (#5868)', () => {
+    const originalRequestFrame = globalThis.requestAnimationFrame;
+    let requestedFrames = 0;
+    globalThis.requestAnimationFrame = (callback) => {
+      requestedFrames++;
+      return originalRequestFrame(callback);
+    };
+    try {
+      const container = renderStatusBar();
+      assert.match(container.textContent ?? '', /elements/);
+      assert.doesNotMatch(container.textContent ?? '', /FPS|tris/);
+      assert.equal(requestedFrames, 0);
+
+      act(() => useViewerStore.getState().setShowPerformanceStats(true));
+      assert.match(container.textContent ?? '', /FPS|tris/);
+      assert.ok(requestedFrames > 0, 'enabling stats starts FPS sampling');
+      assert.equal(localStorage.getItem('ifc-lite:show-performance-stats'), 'true');
+
+      act(() => useViewerStore.getState().setShowPerformanceStats(false));
+      assert.doesNotMatch(container.textContent ?? '', /FPS|tris/);
+    } finally {
+      globalThis.requestAnimationFrame = originalRequestFrame;
+    }
   });
 
   it('names the selected storey', () => {

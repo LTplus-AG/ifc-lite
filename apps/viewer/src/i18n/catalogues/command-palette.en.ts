@@ -20,11 +20,8 @@ import type { TranslationValue } from '../types';
  *    detail are catalogued here, the title itself is registry content.
  *  - Extension-contributed entries (`ext:*`) — `payload.title`, sourced
  *    from the extension registry at runtime, not a literal in this repo.
- *  - `commandPaletteBottomPanels.ts`'s bottom-panel toggle rows have their
- *    OWN keys here (`commandPalette.panel.*`) rather than reusing
- *    `workspacePanels.bottom.*` from shared-commands.en.ts: the palette's
- *    long-form labels ("Entity Lists") intentionally read differently from
- *    that menu's compact ones ("Lists").
+ *  - Built-in panel rows resolve their names from the workspace panel registry
+ *    so the palette, rail, ribbon, and classic toolbar display the same name.
  */
 export const commandPaletteEn = {
   // ── File ──
@@ -48,7 +45,6 @@ export const commandPaletteEn = {
   'commandPalette.view.left.label': 'Left View',
   'commandPalette.view.right.label': 'Right View',
   'commandPalette.view.world.label': 'Toggle 3D World Context',
-  'commandPalette.view.lighting.label': 'Environment',
   'commandPalette.view.spacemouse.label': 'SpaceMouse',
 
   // ── Tools ──
@@ -66,13 +62,13 @@ export const commandPaletteEn = {
   // ── Visibility ──
   'commandPalette.vis.hide.label': 'Hide Selection',
   'commandPalette.vis.show.label': 'Show All',
-  'commandPalette.vis.setBasket.label': 'Set Basket from Selection',
-  'commandPalette.vis.addBasket.label': 'Add to Basket',
-  'commandPalette.vis.removeBasket.label': 'Remove from Basket',
-  'commandPalette.vis.toggleBasket.label': 'Toggle Basket Visibility',
-  'commandPalette.vis.saveBasketView.label': 'Save Basket as View',
-  'commandPalette.vis.togglePresentation.label': 'Toggle Basket Presentation Dock',
-  'commandPalette.vis.clearBasket.label': 'Clear Basket',
+  'commandPalette.vis.setBasket.label': 'Set Collection from Selection',
+  'commandPalette.vis.addBasket.label': 'Add to Collection',
+  'commandPalette.vis.removeBasket.label': 'Remove from Collection',
+  'commandPalette.vis.toggleBasket.label': 'Toggle Collection Visibility',
+  'commandPalette.vis.saveBasketView.label': 'Save Collection as View',
+  'commandPalette.vis.togglePresentation.label': 'Toggle Collection Presentation Dock',
+  'commandPalette.vis.clearBasket.label': 'Clear Collection',
   'commandPalette.vis.spaces.label': 'Spaces',
   'commandPalette.vis.spatialZones.label': 'Spatial Zones',
   'commandPalette.vis.openings.label': 'Openings',
@@ -82,30 +78,8 @@ export const commandPaletteEn = {
   'commandPalette.vis.resetColors.label': 'Reset Colors',
 
   // ── Panels ──
-  'commandPalette.panel.script.label': 'Script Editor',
-  'commandPalette.panel.lists.label': 'Entity Lists',
-  'commandPalette.panel.gantt.label': 'Construction Schedule (Gantt)',
-  'commandPalette.panel.charts.label': 'Charts',
-  'commandPalette.panel.flow.label': 'Flow',
-  'commandPalette.panel.drawing.label': 'Drawing (2D)',
-  'commandPalette.panel.document.label': 'Document',
-  'commandPalette.panel.properties.label': 'Information',
-  'commandPalette.panel.tree.label': 'Hierarchy',
-  'commandPalette.panel.bcf.label': 'BCF Topics',
-  'commandPalette.panel.ids.label': 'IDS Validation',
-  'commandPalette.panel.clash.label': 'Clash Detection',
-  'commandPalette.panel.compare.label': 'Compare Models',
-  'commandPalette.panel.lens.label': 'Lens Rules',
-  'commandPalette.panel.layers.label': 'Layer Stack',
-  'commandPalette.panel.sources.label': 'Cloud Sources',
-  'commandPalette.panel.zones.label': 'Location Zones',
-  'commandPalette.panel.loadReport.label': 'Load Report',
-  'commandPalette.panel.pointClouds.label': 'Point Clouds',
-  'commandPalette.panel.measurements.label': 'Measurements',
-  'commandPalette.panel.appearance.label': 'Appearance',
-  'commandPalette.panel.collab.label': 'Collaboration Room',
-  'commandPalette.panel.extensions.label': 'Extensions',
-  'commandPalette.panel.flavors.label': 'Manage flavors…',
+  'commandPalette.panel.chat.label': 'AI Chat',
+  'commandPalette.panel.flavors.label': 'Manage profiles…',
   'commandPalette.sidebar.toggle.label': 'Toggle Sidebar',
   'commandPalette.sidebar.collapse.label': 'Collapse Sidebar to Icons',
   'commandPalette.sidebar.customize.label': 'Customize Sidebar…',

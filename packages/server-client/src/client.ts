@@ -3,7 +3,6 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 import { withNarrowedCoordinateSpace,
-  type ErrorResponse,
   type HealthResponse,
   type MetadataResponse,
   type OptimizedParquetMetadataHeader,
@@ -18,7 +17,9 @@ import { withNarrowedCoordinateSpace,
   type SymbolicData,
 } from './types.js';
 import { decodeParquetGeometry, decodeOptimizedParquetGeometry, isParquetAvailable } from './parquet-decoder.js';
-import { parquetStreamQuery, parseQuery } from './parse-query.js';
+import { dataModelQuery, parquetStreamQuery, parseQuery } from './parse-query.js';
+import type { ParseRequestOptions, ParseStreamOptions } from './parse-options.js';
+import { serverErrorFromResponse, type IfcServerError } from './server-error.js';
 import {
   consumeParquetStream,
   STREAM_ENDED_WITHOUT_TERMINAL_EVENT,
@@ -99,34 +100,7 @@ async function computeFileHash(file: File | ArrayBuffer): Promise<string> {
  * console.log(`Meshes: ${result.meshes.length}`);
  * ```
  */
-/**
- * Per-request parse options shared by all parse endpoints.
- */
-export interface ParseRequestOptions {
-  /**
-   * Tessellation detail level (#976). Omitted = `'medium'`, which is
-   * byte-identical to the historical output — and to what the wasm path
-   * produces without `setTessellationQuality`, so client-side and
-   * server-side meshes stay in parity. Non-default levels get distinct
-   * server cache entries.
-   */
-  tessellationQuality?: 'lowest' | 'low' | 'medium' | 'high' | 'highest';
-}
-
-/**
- * Options for {@link IfcServerClient.parseParquetStream}.
- */
-export interface ParseStreamOptions extends ParseRequestOptions {
-  /**
-   * Skip the hash-only cache probe and upload straight away (#3901).
-   *
-   * The probe costs one round trip plus a local SHA-256 of the file, and saves
-   * the entire upload when the server already has the model. Turn it off when
-   * you know the server is cold, or when hashing locally is the expensive part
-   * (a very large file behind a fast link).
-   */
-  skipCacheProbe?: boolean;
-}
+export type { ParseRequestOptions, ParseStreamOptions } from './parse-options.js';
 
 /** Build the query string shared by the parse endpoints. */
 export class IfcServerClient {
@@ -580,7 +554,11 @@ export class IfcServerClient {
    * This method polls until the data model is ready (with exponential backoff).
    *
    * @param cacheKey - The cache key from the geometry parse response
-   * @param maxRetries - Maximum number of retries (default: 10)
+   * @param options - Maximum number of retries (default: 10), or an options
+   *   object with `maxRetries` and `dataModelEntities`. Pass the same
+   *   `dataModelEntities` the parse call used (#6034): the full and the
+   *   rooted-only data model are separate entries, and each is served only to
+   *   a request that names it. The parse call's own options object works here.
    * @returns Data model Parquet buffer, or null if not available after retries
    *
    * @example
@@ -593,14 +571,24 @@ export class IfcServerClient {
    * if (dataModelBuffer) {
    *   const dataModel = await decodeDataModel(dataModelBuffer);
    * }
+   *
+   * // Objects only (#6034): same option on the parse and on the fetch.
+   * const options = { dataModelEntities: 'rooted' } as const;
+   * const optimized = await client.parseParquetOptimized(file, options);
+   * const rootedBuffer = await client.fetchDataModel(optimized.cache_key, options);
    * ```
    */
-  async fetchDataModel(cacheKey: string, maxRetries = 10): Promise<ArrayBuffer | null> {
+  async fetchDataModel(
+    cacheKey: string,
+    options: number | (Pick<ParseRequestOptions, 'dataModelEntities'> & { maxRetries?: number }) = 10
+  ): Promise<ArrayBuffer | null> {
+    const maxRetries = typeof options === 'number' ? options : (options.maxRetries ?? 10);
+    const query = dataModelQuery(typeof options === 'number' ? undefined : options);
     let delay = 100; // Start with 100ms delay
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        const response = await fetch(`${this.baseUrl}/api/v1/parse/data-model/${cacheKey}`, {
+        const response = await fetch(`${this.baseUrl}/api/v1/parse/data-model/${cacheKey}${query}`, {
           method: 'GET',
           headers: this.authHeaders(),
           signal: AbortSignal.timeout(30000),
@@ -964,8 +952,11 @@ export class IfcServerClient {
   /**
    * Retrieve a cached parse result by key.
    *
-   * @param key - Cache key (SHA256 hash of file content)
-   * @returns Cached parse result, or null if not found
+   * @param key - The request `cache_key` a parse returned (`result.cache_key`):
+   *   the file's SHA-256 plus its opening-filter suffix, and a `-q{level}`
+   *   suffix for a non-default tessellation quality. Not the bare hash.
+   * @returns Cached parse result, or null if the server has not cached one
+   * @throws {IfcServerError} `BAD_REQUEST` when `key` is not a request cache key
    *
    * @example
    * ```typescript
@@ -997,15 +988,8 @@ export class IfcServerClient {
     return withNarrowedCoordinateSpace<ParseResponse>(await response.json());
   }
 
-  /**
-   * Handle error responses from the server.
-   */
-  private async handleError(response: Response): Promise<Error> {
-    try {
-      const error: ErrorResponse = await response.json();
-      return new Error(`Server error (${error.code}): ${error.error}`);
-    } catch {
-      return new Error(`Server error: ${response.status} ${response.statusText}`);
-    }
+  /** Decode an error response from the server (the `{ error, code }` envelope). */
+  private handleError(response: Response): Promise<IfcServerError> {
+    return serverErrorFromResponse(response);
   }
 }

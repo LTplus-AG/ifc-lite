@@ -24,6 +24,7 @@
 
 import { getViewerStoreApi } from '@/store';
 import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
+import { resolve } from '@/i18n/registry';
 
 interface DocumentPictureInPictureApi {
   requestWindow(options?: { width?: number; height?: number }): Promise<Window>;
@@ -166,7 +167,7 @@ export async function openPanelWindow(id: WorkspacePanelId): Promise<PanelWindow
   if (!win) return null; // blocked by a popup blocker
 
   try {
-    win.document.title = `${def?.title ?? id} — ifc-lite`;
+    win.document.title = `${def ? resolve(def.titleKey) : id} — ifc-lite`;
     bridgeStyles(win.document);
   } catch {
     /* about:blank not ready in some engines — portal still mounts into body */
@@ -204,7 +205,7 @@ export function closeAllPanelWindows(): void {
 }
 
 /**
- * Copy the overlay tokens onto a child root. `useOverlayThemeSync` writes them
+ * Copy the overlay tokens onto a child root. `registerOverlayThemeSync` writes them
  * inline on `<html>` as `--overlay-*` (#5483), which the stylesheet clone above
  * does not carry, so without this a popped-out panel's token utilities
  * (`bg-clash-a`, `text-clash-overlap`, #5490) would resolve to nothing.

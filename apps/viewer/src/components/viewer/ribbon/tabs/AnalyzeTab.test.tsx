@@ -23,12 +23,12 @@ describe('AnalyzeTab — BCF ribbon button', () => {
     cleanup();
   });
 
-  it('labels the Validate-group BCF button "BCF topics", not "BCF issues"', () => {
+  it('labels the Validate-group BCF button "BCF Topics", not "BCF issues"', () => {
     const container = render(<AnalyzeTab />);
     const labels = [...container.querySelectorAll('button')].map((b) => b.textContent ?? '');
     assert.ok(
-      labels.some((t) => /BCF topics/.test(t)),
-      `expected a button labelled "BCF topics"; got: ${JSON.stringify(labels)}`,
+      labels.some((t) => /BCF Topics/.test(t)),
+      `expected a button labelled "BCF Topics"; got: ${JSON.stringify(labels)}`,
     );
     assert.ok(
       !labels.some((t) => /BCF issues/i.test(t)),

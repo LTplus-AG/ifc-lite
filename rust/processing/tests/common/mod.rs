@@ -13,6 +13,8 @@
 
 #[allow(dead_code)]
 pub mod quick_metadata;
+#[allow(dead_code)]
+pub mod wall_frame_seams;
 
 /// Refuse to skip a source-walking gate when running under CI.
 ///

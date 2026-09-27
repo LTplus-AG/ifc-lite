@@ -3,15 +3,18 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useViewerStore } from './index.js';
+import { resetVisibilityReasons } from '@/lib/visibility/visibility-reasons';
 import { trackUiEvent } from '@/lib/analytics';
 import type { ViewResetTrigger } from '@/lib/analytics-ui-events';
 
 /** `trigger` names the entry point for the `view_reset` event (#5618). */
 export function resetVisibilityForHomeFromStore(trigger: ViewResetTrigger): void {
   trackUiEvent('view_reset', { trigger });
+  // Every mechanism the reason table marks `cleared`; the ones it keeps (an
+  // active lens, the class-type toggles, the view mode, host types) stay and
+  // are named there (#5869).
+  resetVisibilityReasons(useViewerStore);
   const state = useViewerStore.getState();
-  state.showAllInAllModels();
-  state.clearStoreySelection();
   state.clearHierarchyBasketSelection();
   state.clearEntitySelection();
   state.clearBasket();

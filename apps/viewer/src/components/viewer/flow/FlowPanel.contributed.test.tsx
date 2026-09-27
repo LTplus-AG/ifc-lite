@@ -24,7 +24,8 @@ import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider';
 import type { ExtensionHostService } from '@/services/extensions/host.js';
 import { contributedFlowId, type ContributedFlow, type ResolveFlowContributionsResult } from '@/services/extensions/host-flows.js';
 import { useViewerStore } from '@/store';
-import { cleanup, render } from '@/test/render';
+import { cleanup, render, click } from '@/test/render';
+import { loadDialogs } from '@/test/dialog-host.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { FlowPanel } from './FlowPanel.js';
 
@@ -171,15 +172,14 @@ describe('FlowPanel — extension-contributed graphs (#5431 review)', () => {
     const container = await mount(host);
     selectGraph(container, host.graphs[0].doc.id);
 
-    const prompt = window.prompt;
-    window.prompt = () => null;
-    try {
-      const newButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'New');
-      assert.ok(newButton);
-      act(() => { newButton.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
-    } finally {
-      window.prompt = prompt;
-    }
+    const { ConfirmDialogHost } = await loadDialogs();
+    render(<ConfirmDialogHost />);
+    const newButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'New');
+    assert.ok(newButton);
+    click(newButton);
+    const dialog = document.querySelector('[role="alertdialog"]');
+    assert.ok(dialog);
+    click(dialog.querySelector('button')!);
 
     assert.equal(useViewerStore.getState().flowDoc?.id, host.graphs[0].doc.id);
     assert.ok(!buttonLabels(container).includes('Save'));

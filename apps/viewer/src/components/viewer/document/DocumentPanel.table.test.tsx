@@ -102,7 +102,7 @@ function openMenu(trigger: HTMLElement): void {
 }
 
 const wallList = (extra: Partial<ListDefinition> = {}): ListDefinition => ({
-  id: 'saved-walls', name: 'Walls by name', createdAt: 1, updatedAt: 1, entityTypes: [IfcTypeEnum.IfcWall], conditions: [],
+  id: 'saved-walls', name: 'Walls by name', createdAt: 1, updatedAt: 1, entityTypes: [IfcTypeEnum.IfcWall], groups: [],
   columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }, { id: 'storey', source: 'spatial', propertyName: 'Storey' }],
   sortBy: { columnId: 'name', direction: 'desc' },
   ...extra,

@@ -114,15 +114,15 @@ function ConflictRow({
   return (
     <div className="rounded border bg-card/40 px-1.5 py-1">
       <div className="flex items-center gap-1.5">
-        <span className="truncate text-[11px] font-medium" title={conflict.path}>{pathTail(conflict.path)}</span>
-        <span className="truncate text-[10px] text-muted-foreground">{conflict.componentKey ?? conflict.kind}</span>
+        <span className="truncate text-2xs font-medium" title={conflict.path}>{pathTail(conflict.path)}</span>
+        <span className="truncate text-2xs text-muted-foreground">{conflict.componentKey ?? conflict.kind}</span>
         <span className="ml-auto inline-flex overflow-hidden rounded border">
           {options.map((option) => (
             <button
               key={option}
               type="button"
               onClick={() => onChoose(option)}
-              className={`px-1.5 py-px text-[10px] font-medium transition-colors ${
+              className={`px-1.5 py-px text-2xs font-medium transition-colors ${
                 choice === option ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/60'
               }`}
             >
@@ -131,7 +131,7 @@ function ConflictRow({
           ))}
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-1 pt-0.5 text-[10px] text-muted-foreground">
+      <div className="grid grid-cols-2 gap-1 pt-0.5 text-2xs text-muted-foreground">
         {(['ours', 'theirs'] as const).map((side) => {
           const value = valueSummary(conflict[side]?.attributes as Record<string, unknown>, removedLabel);
           const key = side === 'ours' ? 'layersPanel.merge.oursValue' : 'layersPanel.merge.theirsValue';
@@ -146,15 +146,15 @@ function ConflictRow({
             rows={2}
             spellCheck={false}
             aria-label={t('layersPanel.merge.replacementAriaLabel', { path: conflict.path })}
-            className={`w-full resize-y rounded border bg-background px-1.5 py-1 font-mono text-[10px] ${editedValid ? '' : 'border-red-500'}`}
+            className={`w-full resize-y rounded border bg-background px-1.5 py-1 font-mono text-2xs ${editedValid ? '' : 'border-red-500'}`}
           />
           {!editedValid && (
-            <span className="text-[10px] text-red-500">{t('layersPanel.merge.replacementInvalid')}</span>
+            <span className="text-2xs text-red-500">{t('layersPanel.merge.replacementInvalid')}</span>
           )}
         </div>
       )}
       {isDelete && conflict.subtree && conflict.subtree.length > 0 && (
-        <p className="pt-0.5 text-[10px] text-amber-600 dark:text-amber-300">
+        <p className="pt-0.5 text-2xs text-amber-600 dark:text-amber-300">
           {t('layersPanel.merge.deleteCarries', {
             count: conflict.subtree.length,
             countDisplay: String(conflict.subtree.length),
@@ -367,7 +367,7 @@ export function LayerMergeSection() {
 
   return (
     <div className="rounded-md border border-dashed bg-card/30 p-2">
-      <div className="flex items-center gap-1.5 pb-1.5 text-[11px] font-medium">
+      <div className="flex items-center gap-1.5 pb-1.5 text-2xs font-medium">
         <GitMerge className="size-3" aria-hidden />
         <span>{t('layersPanel.merge.title')}</span>
         <Button
@@ -414,7 +414,7 @@ export function LayerMergeSection() {
           <Button
             size="sm"
             variant="outline"
-            className="h-7 px-2 text-[11px]"
+            className="h-7 px-2 text-2xs"
             disabled={busy || !candidateId || !target}
             onClick={() => void preview()}
           >
@@ -424,20 +424,20 @@ export function LayerMergeSection() {
 
         {result && (
           <div className="flex flex-col gap-1">
-            <p className="text-[11px] text-muted-foreground">{statusLine(t, result)}</p>
+            <p className="text-2xs text-muted-foreground">{statusLine(t, result)}</p>
             {result.status === 'preview' && result.ancestorMatched === false && (
-              <p className="text-[11px] text-amber-600 dark:text-amber-500">
+              <p className="text-2xs text-amber-600 dark:text-amber-500">
                 {t('layersPanel.merge.unrelatedBaseWarning')}
               </p>
             )}
             {requiredChecks.length > 0 && !mergeDone && (
               <div className="flex flex-col gap-0.5 rounded border bg-card/40 px-1.5 py-1">
-                <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
                   {t('layersPanel.merge.requiredChecksLabel')}
                 </span>
                 {requiredChecks.map((check) => (
                   <div key={check.spec} className="flex flex-col gap-0.5">
-                    <span className="flex items-center gap-1 text-[11px]">
+                    <span className="flex items-center gap-1 text-2xs">
                       {check.passing ? (
                         <CheckCircle2 className="size-3 shrink-0 text-emerald-500" aria-label={t('layersPanel.merge.checkPassAriaLabel')} />
                       ) : (
@@ -452,7 +452,7 @@ export function LayerMergeSection() {
                         onChange={(e) => setWaiverReasons((prev) => new Map(prev).set(check.spec, e.target.value))}
                         placeholder={t('layersPanel.merge.waiverPlaceholder')}
                         aria-label={t('layersPanel.merge.waiverAriaLabel', { spec: check.spec })}
-                        className="h-6 rounded border bg-background px-1.5 text-[11px] placeholder:text-muted-foreground/60"
+                        className="h-6 rounded border bg-background px-1.5 text-2xs placeholder:text-muted-foreground/60"
                       />
                     )}
                   </div>
@@ -460,7 +460,7 @@ export function LayerMergeSection() {
               </div>
             )}
             {!mergeDone && result.conflicts.length > 1 && (
-              <div className="flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-1 text-2xs text-muted-foreground">
                 <span>{t('layersPanel.merge.bulkLabel')}</span>
                 <button type="button" onClick={() => chooseAll('ours')} className="rounded border px-1.5 py-px hover:bg-muted/60">
                   {t('layersPanel.merge.allOurs')}
@@ -503,7 +503,7 @@ export function LayerMergeSection() {
             {!mergeDone && (result.status === 'preview' || result.status === 'conflicts') && (
               <Button
                 size="sm"
-                className="h-7 gap-1 self-end px-2 text-[11px]"
+                className="h-7 gap-1 self-end px-2 text-2xs"
                 disabled={busy || !allResolved || !checksSatisfied}
                 onClick={() => void execute()}
               >
@@ -515,7 +515,7 @@ export function LayerMergeSection() {
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 self-end px-2 text-[11px]"
+                className="h-7 self-end px-2 text-2xs"
                 disabled={busy}
                 onClick={() => void loadMergedRef()}
               >

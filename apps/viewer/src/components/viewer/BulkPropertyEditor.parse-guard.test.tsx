@@ -96,6 +96,7 @@ function seedStore() {
     mutationViews: new Map(),
     mutationVersion: 0,
     collabRole: null,
+    editEnabled: true,
   });
 }
 

@@ -32,6 +32,7 @@ import { useViewerStore } from '@/store';
 import { WidgetRenderer, type WidgetRendererContext } from './widget/WidgetRenderer';
 import { WidgetErrorBoundary } from './widget/WidgetErrorBoundary';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/components/ui/toast';
 import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 import { cn } from '@/lib/utils';
@@ -41,6 +42,10 @@ interface ExtensionDockHostProps {
   slot: DockContribution['slot'];
   /** Tailwind class to apply to the container. */
   className?: string;
+}
+
+function tabId(contribution: SlotContribution<DockContribution>): string {
+  return `${contribution.extensionId}:${contribution.payload.id}`;
 }
 
 export function ExtensionDockHost({ slot, className }: ExtensionDockHostProps) {
@@ -59,54 +64,46 @@ export function ExtensionDockHost({ slot, className }: ExtensionDockHostProps) {
     [modelLoaded, selectionCount],
   );
   const visible = useFiltered(contributions, whenContext);
-  const [activeId, setActiveId] = useState<string | undefined>(visible[0]?.payload.id);
+  const [activeId, setActiveId] = useState<string | undefined>(visible[0] ? tabId(visible[0]) : undefined);
 
   useEffect(() => {
-    if (!visible.find((v) => v.payload.id === activeId)) {
-      setActiveId(visible[0]?.payload.id);
+    if (!visible.find((v) => tabId(v) === activeId)) {
+      setActiveId(visible[0] ? tabId(visible[0]) : undefined);
     }
   }, [visible, activeId]);
 
   if (visible.length === 0) return null;
 
-  const active = visible.find((v) => v.payload.id === activeId) ?? visible[0];
+  const active = visible.find((v) => tabId(v) === activeId) ?? visible[0];
 
   return (
-    <div className={cn('flex flex-col h-full border-t bg-background', className)} role="region" aria-label={t('extensionsFlavors.extensionDockHost.dockAriaLabel', { slot })}>
-      <div className="flex items-center gap-0 border-b overflow-x-auto" role="tablist">
+    <Tabs value={tabId(active)} onValueChange={setActiveId} className={cn('flex flex-col h-full border-t bg-background', className)} role="region" aria-label={t('extensionsFlavors.extensionDockHost.dockAriaLabel', { slot })}>
+      <TabsList className="flex h-auto items-center justify-start gap-0 rounded-none border-b bg-transparent p-0 overflow-x-auto" aria-label={t('extensionsFlavors.extensionDockHost.dockAriaLabel', { slot })}>
         {visible.map((c) => {
-          const isActive = c.payload.id === active.payload.id;
           return (
-            <button
-              key={`${c.extensionId}:${c.payload.id}`}
-              type="button"
-              onClick={() => setActiveId(c.payload.id)}
-              role="tab"
-              aria-selected={isActive}
-              aria-controls={`dock-panel-${c.payload.id}`}
-              className={cn(
-                'shrink-0 px-3 py-1.5 text-xs font-medium border-b-2 transition-colors',
-                isActive
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
-              )}
+            <TabsTrigger
+              key={tabId(c)}
+              value={tabId(c)}
+              className="shrink-0 rounded-none px-3 py-1.5 text-xs font-medium border-b-2 border-transparent bg-transparent shadow-none transition-colors data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
               title={`${c.payload.title} — ${c.extensionId}`}
             >
               {c.payload.title}
-            </button>
+            </TabsTrigger>
           );
         })}
-      </div>
-      <ScrollArea className="flex-1">
+      </TabsList>
+      <TabsContent value={tabId(active)} className="mt-0 flex-1 min-h-0">
+        <ScrollArea className="h-full">
         {/* Keyed on the tab identity (same composite as the tab button
             above) so switching tabs remounts `DockBody` — and, inside
             it, `WidgetErrorBoundary` — instead of reusing the previous
             tab's component instance and its state. See
             `WidgetErrorBoundary`'s doc comment for why an unkeyed reuse
             here masks every later widget behind a stale crash. */}
-        <DockBody key={`${active.extensionId}:${active.payload.id}`} contribution={active} />
-      </ScrollArea>
-    </div>
+          <DockBody key={`${active.extensionId}:${active.payload.id}`} contribution={active} />
+        </ScrollArea>
+      </TabsContent>
+    </Tabs>
   );
 }
 

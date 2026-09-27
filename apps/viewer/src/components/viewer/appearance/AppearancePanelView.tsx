@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useCallback, useState } from 'react';
-import { Check, Eye, Loader2 } from 'lucide-react';
+import { Check, Eye } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { AppearancePdfFields, AppearancePdfPassword } from './AppearancePdfFields.js';
 import { AppearanceSourceFields } from './AppearanceSourceFields.js';
@@ -12,6 +13,8 @@ import { AppearanceReferenceLibrary } from './AppearanceReferenceLibrary.js';
 import { AppearanceMappingFields } from './AppearanceMappingFields.js';
 import type { AppearancePanelViewProps } from './types.js';
 import { useTranslation } from '@/i18n';
+import { mutationDenialKey } from '@/store/mutation-permission';
+import { useMutationDenialReason } from '@/hooks/useMutationDenialReason';
 import { resolveLocalizedMessage } from './localized-message.js';
 
 /** Controlled dock content. Preview, selection, asset lifetimes and commands live in the controller. */
@@ -28,10 +31,13 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
     });
   }, []);
   const reference = props.intent === 'reference';
+  const denialReason = useMutationDenialReason(props.assignmentMode && props.assignmentTargetModelIds?.length
+    ? props.assignmentTargetModelIds : undefined);
+  const denialMessage = !reference && denialReason ? t(mutationDenialKey(denialReason)) : undefined;
   const applying = props.status === 'applying';
   const busy = applying || props.status === 'preparing' || props.sourceBusy || props.pdf?.busy || props.pdfPassword?.busy;
   const blocked = !!props.pdfPassword || !!props.pdf?.error || !!props.unavailableReason || (!reference && !props.modelId) || !props.sourceId;
-  const applyDisabled = !props.canApply || !props.hasPreview || (!props.assignmentMode && blocked) || busy || (!props.assignmentMode && invalidFields.size > 0) || (!reference && props.affectedCount === 0) || props.status !== 'ready';
+  const applyDisabled = !!denialMessage || !props.canApply || !props.hasPreview || (!props.assignmentMode && blocked) || busy || (!props.assignmentMode && invalidFields.size > 0) || (!reference && props.affectedCount === 0) || props.status !== 'ready';
   const controllerMessage = resolveLocalizedMessage(props.unavailableReason ?? props.statusMessage, t);
   const message = !props.assignmentMode && invalidFields.size ? t('appearance.panelView.invalidFieldsMessage') :
     controllerMessage ?? ({
@@ -69,8 +75,8 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
     <footer className="shrink-0 space-y-2 border-t bg-background p-3">
       <div role={props.status === 'error' || invalidFields.size ? 'alert' : 'status'} aria-live="polite"
         className={`flex max-h-24 items-start gap-2 overflow-y-auto text-[11px] leading-relaxed ${props.status === 'error' || invalidFields.size ? 'text-destructive' : 'text-muted-foreground'}`}>
-        {busy && <Loader2 className="mt-0.5 h-3 w-3 shrink-0 animate-spin" aria-hidden="true" />}
-        <span>{message}</span>
+        {busy && <Spinner size="xs" className="mt-0.5 shrink-0" />}
+        <span>{denialMessage ?? message}</span>
       </div>
       {!reference && <Button type="button" variant="ghost" size="sm" className="w-full" aria-pressed={props.showingOriginal}
         disabled={!props.hasPreview || applying} onClick={() => props.onCompareChange(!props.showingOriginal)}>
@@ -78,7 +84,7 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
       </Button>}
       <div className="grid grid-cols-2 gap-2">
         <Button type="button" variant="outline" size="sm" disabled={!props.canDiscard} onClick={() => { setInputReset(value => value + 1); setInvalidFields(new Set()); props.onDiscard(); }}>{t('appearance.panelView.discard')}</Button>
-        <Button type="button" size="sm" disabled={!!applyDisabled} onClick={props.onApply}><Check aria-hidden="true" />{reference ? (props.editingReference ? t('appearance.panelView.saveRegistration') : t('appearance.panelView.placeReference')) : t('appearance.panelView.apply')}</Button>
+        <Button type="button" size="sm" disabled={!!applyDisabled} title={denialMessage} onClick={props.onApply}><Check aria-hidden="true" />{reference ? (props.editingReference ? t('appearance.panelView.saveRegistration') : t('appearance.panelView.placeReference')) : t('appearance.panelView.apply')}</Button>
       </div>
     </footer>
   </div>;

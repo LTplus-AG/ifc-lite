@@ -23,6 +23,7 @@ import { trackUiEvent } from '@/lib/analytics';
 import { commandIdForAnalytics } from '@/lib/analytics-ui-events';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { buildCommandPaletteCommands, type RightPanel } from './commandPaletteCommands';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import { useExportRunner } from './useExportRunner';
 import {
   type Command,
@@ -249,7 +250,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                       )}
                       {cmd.shortcut && (
                         <kbd className="ml-auto hidden sm:inline-flex h-5 min-w-[20px] items-center justify-center rounded border bg-muted px-1.5 text-[10px] font-medium text-muted-foreground shrink-0">
-                          {cmd.shortcut}
+                          {shortcutLabel(cmd.shortcut)}
                         </kbd>
                       )}
                     </button>

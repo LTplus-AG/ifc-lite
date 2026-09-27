@@ -6,6 +6,7 @@
  * Context menu for entity interactions
  */
 
+import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { useCallback, useEffect, useLayoutEffect, useRef, useMemo, useState } from 'react';
 import {
   Equal,
@@ -334,16 +335,16 @@ export function EntityContextMenu() {
             <div className="text-xs text-muted-foreground">{entityType}</div>
           </div>
 
-          <MenuItem icon={Maximize2} label={t('entityContextMenu.frameSelection')} shortcut="F" onClick={handleFrameSelection} />
-          <MenuItem icon={EyeOff} label={t('entityContextMenu.hide')} shortcut="Del" onClick={handleHide} />
+          <MenuItem icon={Maximize2} label={t('entityContextMenu.frameSelection')} shortcut="camera.frameSelection" onClick={handleFrameSelection} />
+          <MenuItem icon={EyeOff} label={t('entityContextMenu.hide')} shortcut="visibility.hideSelection" onClick={handleHide} />
 
           <ContextMenuSeparator />
 
           {/* Basket operations */}
-          <MenuItem icon={Equal} label={t('entityContextMenu.setBasket')} shortcut="=" onClick={handleSetBasket} />
-          <MenuItem icon={Plus} label={t('entityContextMenu.addToBasket')} shortcut="+" onClick={handleAddToBasket} />
-          <MenuItem icon={Minus} label={t('entityContextMenu.removeFromBasket')} shortcut="−" onClick={handleRemoveFromBasket} />
-          <MenuItem icon={Save} label={t('entityContextMenu.saveBasketView')} shortcut="B" onClick={handleSaveBasketView} />
+          <MenuItem icon={Equal} label={t('entityContextMenu.setBasket')} shortcut="basket.set" onClick={handleSetBasket} />
+          <MenuItem icon={Plus} label={t('entityContextMenu.addToBasket')} shortcut="basket.add" onClick={handleAddToBasket} />
+          <MenuItem icon={Minus} label={t('entityContextMenu.removeFromBasket')} shortcut="basket.remove" onClick={handleRemoveFromBasket} />
+          <MenuItem icon={Save} label={t('entityContextMenu.saveBasketView')} shortcut="basket.saveView" onClick={handleSaveBasketView} />
 
           <ContextMenuSeparator />
 
@@ -352,7 +353,7 @@ export function EntityContextMenu() {
 
           <ContextMenuSeparator />
 
-          <MenuItem icon={Copy} label="Copy GlobalId" onClick={handleCopyId} />
+          <MenuItem icon={Copy} label={t(ACTION_NAME_KEYS.copyGlobalId)} onClick={handleCopyId} />
           <MenuItem icon={ShieldQuestion} label="Export anonymized…" onClick={handleExportAnonymized} />
 
           {/* Keep denied actions visible with their reason; an editable view
@@ -375,7 +376,7 @@ export function EntityContextMenu() {
       )}
 
       {!contextMenu.entityId && (
-        <MenuItem icon={Eye} label={t('entityContextMenu.showAll')} shortcut="A" onClick={handleShowAll} />
+        <MenuItem icon={Eye} label={t(ACTION_NAME_KEYS.showAll)} shortcut="visibility.showAll" onClick={handleShowAll} />
       )}
 
       <ExtensionContextItems

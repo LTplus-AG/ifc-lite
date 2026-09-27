@@ -118,7 +118,6 @@ const BASE_PROPS = {
   running: false,
   onRun: () => {},
   onCancel: () => {},
-  error: null,
   geometryUnavailable: false,
   placementOnlyGeometry: false,
   excludedTypes: ['IfcOpeningElement'],

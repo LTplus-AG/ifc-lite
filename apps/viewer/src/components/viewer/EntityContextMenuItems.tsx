@@ -17,6 +17,7 @@ import { evaluateWhen, parseWhen, type CommandContribution, type ResolvedContext
 import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
 import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 import { useTranslation } from '@/i18n';
+import { primaryShortcutLabel, shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label';
 
 type MenuItemTone = 'default' | 'destructive';
 
@@ -25,12 +26,13 @@ interface MenuItemProps {
   label: string;
   onClick: () => void;
   disabled?: boolean;
-  shortcut?: string;
+  shortcut?: KeyCommandId;
+  primaryShortcut?: boolean;
   title?: string;
   tone?: MenuItemTone;
 }
 
-export function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, title, tone = 'default' }: MenuItemProps) {
+export function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, primaryShortcut, title, tone = 'default' }: MenuItemProps) {
   const descriptionId = useId();
   const iconClass = tone === 'destructive'
     ? 'h-4 w-4 text-red-500 dark:text-red-400'
@@ -51,7 +53,7 @@ export function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, title
       >
         <Icon className={iconClass} />
         <span className="min-w-0 flex-1">{label}</span>
-        {shortcut && <span className="shrink-0 font-mono text-2xs text-muted-foreground">{shortcut}</span>}
+        {shortcut && <span className="shrink-0 font-mono text-2xs text-muted-foreground">{primaryShortcut ? primaryShortcutLabel(shortcut) : shortcutLabel(shortcut)}</span>}
         {disabled && title && <span id={descriptionId} className="sr-only">{title}</span>}
       </button>
     </ContextMenuItem>
@@ -81,7 +83,8 @@ export function DuplicateItems({ onDuplicate, disabled = false, reason }: {
         label={t('entityContextMenu.duplicateLabel')}
         title={disabled ? reason : t('entityContextMenu.duplicateDefaultTitle')}
         disabled={disabled}
-        shortcut="⌘D"
+        shortcut="edit.duplicate"
+        primaryShortcut
         onClick={() => onDuplicate('+X')}
       />
       <ContextMenuSub>

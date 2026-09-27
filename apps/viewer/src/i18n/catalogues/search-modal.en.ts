@@ -90,7 +90,7 @@ export const searchModalEn = {
   'searchModal.inline.clearFiltersAriaLabel': 'Clear filters',
   'searchModal.inline.advancedFilter': 'Advanced filter',
   'searchModal.inline.advancedFilterActiveAriaLabel': 'Advanced filter — {count} active',
-  'searchModal.inline.advancedFilterTitle': 'Advanced filter (⌘⇧F)',
+  'searchModal.inline.advancedFilterTitle': 'Advanced filter ({keys})',
   'searchModal.inline.cyclingPrefix': 'cycling ',
   'searchModal.inline.cyclingPressHint': ' — press ',
   'searchModal.inline.cycleNextKey': 'n',

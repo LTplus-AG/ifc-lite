@@ -17,7 +17,7 @@
  * which keeps this module free of heavy imports.
  */
 
-import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, Info, Layers as LayersIcon, ListTree, MessageSquare, Move3d, Palette, PencilRuler, Presentation, Puzzle, Ruler, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
+import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, History, Info, Layers as LayersIcon, ListTree, MessageSquare, Move3d, Palette, PencilRuler, Presentation, Puzzle, Ruler, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
 import type { TranslationKey } from '@/i18n';
 
 /** Every panel reachable from the unified sidebar rail. `properties` is the
@@ -52,7 +52,8 @@ export type WorkspacePanelId =
   | 'pointclouds'
   | 'measurements'
   | 'placement'
-  | 'presentation';
+  | 'presentation'
+  | 'changes';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
 export type PanelGroup = 'navigate' | 'inspect' | 'review' | 'author' | 'work';
@@ -170,6 +171,9 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // shortcut). Entry points: the status bar and the ribbon / classic
   // toolbar's Present button.
   { id: 'presentation', titleKey: 'workspacePanels.panel.presentation', Icon: Presentation, group: 'work', region: 'bottom', prefersWide: true },
+  // Active model edits and their undoable operations (#5902). Appended so
+  // existing Alt+digit panel shortcuts remain stable.
+  { id: 'changes', titleKey: 'changesPanel.title', Icon: History, group: 'review', region: 'side' },
 ];
 
 // The bottom strip (Script / Schedule / Lists) is table-driven; the id union and

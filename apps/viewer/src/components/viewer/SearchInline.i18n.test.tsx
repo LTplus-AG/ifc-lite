@@ -26,6 +26,7 @@ import { en } from '@/i18n/en';
 import type { TranslationParameters, TranslationValue, PluralTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { SearchInline } from './SearchInline.js';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 
 const CATALOGUE: Catalogue = Object.fromEntries(
   Object.entries(en).filter(([key]) => key.startsWith('searchModal.inline.')),
@@ -127,7 +128,7 @@ describe('SearchInline localization (#4918)', () => {
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
     assertAllTranslate(
-      [{ key: 'searchModal.inline.advancedFilter' }, { key: 'searchModal.inline.advancedFilterTitle' }, { key: 'searchModal.inline.noResultsHint' }],
+      [{ key: 'searchModal.inline.advancedFilter' }, { key: 'searchModal.inline.advancedFilterTitle', params: { keys: shortcutLabel('search.openAdvanced') } }, { key: 'searchModal.inline.noResultsHint' }],
       englishDom,
       afterDom,
     );

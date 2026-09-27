@@ -9,8 +9,8 @@
  * the hint changed the visible set instead of zooming.
  *
  * Mounts the real `ViewportOverlays` in mobile mode, focuses each nav button
- * and reads the tooltip it actually renders. Oracle: the shortcut list the
- * keyboard-shortcuts dialog shows. A hinted key must be bound there, and its
+ * and reads the tooltip it actually renders. Oracle: the command registry
+ * that generates the keyboard-shortcuts dialog. A hinted key must be bound there, and its
  * action must be the one the tooltip labels.
  */
 
@@ -21,7 +21,9 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
-import { KEYBOARD_SHORTCUTS } from '@/hooks/keyboard-shortcuts-list';
+import { KEY_COMMANDS } from '@/lib/commands/keyboard-commands';
+import { formatCommandKeys } from '@/lib/commands/shortcut-label';
+import { en } from '@/i18n/en';
 import { ViewportOverlays } from './ViewportOverlays';
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
@@ -80,11 +82,12 @@ describe('mobile nav tooltip key hints (#5846)', () => {
       const hint = /^(.+) \(([^()]+)\)$/.exec(text);
       if (!hint) continue;
       const [, label, key] = hint;
-      const shortcut = KEYBOARD_SHORTCUTS.find((s) => normalizeKey(s.key) === normalizeKey(key));
+      const shortcut = KEY_COMMANDS.find((command) =>
+        formatCommandKeys(command, false).split(', ').some((boundKey) => normalizeKey(boundKey) === normalizeKey(key)));
       assert.ok(shortcut, `"${text}" hints ${key}, which no shortcut binds`);
       assert.ok(
-        shortcut.description.toLowerCase().startsWith(label.split(' ')[0].toLowerCase()),
-        `"${text}" hints ${key}, but ${key} is "${shortcut.description}"`,
+        en[shortcut.labelKey].toLowerCase().startsWith(label.split(' ')[0].toLowerCase()),
+        `"${text}" hints ${key}, but ${key} is "${en[shortcut.labelKey]}"`,
       );
       hinted++;
     }

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useTranslation } from '@/i18n';
 import { Copy, Check, Building2, Layers, Layers2, FileText, Calculator, Tag, MousePointer2, PenLine, Crosshair, Box, ChevronDown } from 'lucide-react';
@@ -1312,7 +1313,7 @@ export function PropertiesPanel() {
               {entityGlobalId}
             </code>
             <IconButton
-              label={t('properties.panel.copyGlobalIdLabel')}
+              label={t(ACTION_NAME_KEYS.copyGlobalId)}
               size="icon-xs"
               className={`h-6 w-6 rounded-none border-l transition-all duration-200 ${
                 copied

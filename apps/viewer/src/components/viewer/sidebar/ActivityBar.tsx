@@ -39,7 +39,7 @@ import { resetLayout } from '@/store/layoutReset';
 import { useTranslation } from '@/i18n';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { WORKSPACE_PANELS, getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
-import { isCollabEnabled } from '@/lib/collab/config';
+import { useRailPanelIds } from '@/hooks/useRailPanelIds';
 import { pendingCompositionMutations } from '@/lib/layers/pending';
 import { activityAnchor, tourAnchor } from '@/lib/tours/anchors';
 import { CustomizeSidebar } from './CustomizeSidebar';
@@ -70,29 +70,16 @@ export function ActivityBar() {
   // the count where the user already looks, like the Room peers badge.
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const hasStack = useViewerStore((s) => s.layerStack.length > 0);
-  // Point Clouds rail icon (#5507): only shown while at least one point
-  // cloud asset is loaded — same gating shape as `isCollabEnabled()` below,
-  // just driven by scene state instead of a feature flag.
-  const pointCloudAssetCount = useViewerStore((s) => s.pointCloudAssetCount);
   const pendingLayerEdits = useMemo(() => {
     void mutationVersion;
     return hasStack ? pendingCompositionMutations().length : 0;
   }, [mutationVersion, hasStack]);
 
-  const hidden = new Set(hiddenIds);
   const [dragId, setDragId] = useState<WorkspacePanelId | null>(null);
   const [overId, setOverId] = useState<WorkspacePanelId | null>(null);
 
-  // Hidden panels are removed from the rail in every mode (#1263), including
-  // customize. Restoring a hidden panel happens in the Customize popover's
-  // dedicated Hidden section, not by an inline greyed icon here. The collab
-  // Room panel only surfaces while the collab feature flag is on.
-  const visibleIds = order.filter(
-    (id) =>
-      (!hidden.has(id) || id === 'properties') &&
-      (id !== 'collab' || isCollabEnabled()) &&
-      (id !== 'pointclouds' || pointCloudAssetCount > 0),
-  );
+  // One rail list for the activity bar and the mobile Panels sheet (#5853).
+  const visibleIds = useRailPanelIds();
 
   const onIconClick = (id: WorkspacePanelId) => {
     const region = getPanelDef(id)?.region;

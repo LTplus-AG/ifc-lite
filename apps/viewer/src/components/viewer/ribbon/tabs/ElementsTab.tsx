@@ -6,6 +6,7 @@
  * Ribbon · Elements tab — selection actions and class visibility.
  */
 
+import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { useCallback } from 'react';
 import { ClassVisibility, CopyGuid, ElementTooltips, FocusSelected, HideSelected, IsolateSelected, Search, DisplayAll, Spatial, Class, Type, Material, Group } from '@/icons';
 import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -78,9 +79,10 @@ export function ElementsTab() {
         />
         <RibbonLargeButton
           icon={DisplayAll}
-          label={t('ribbon.elements.showAll')}
+          label={t(ACTION_NAME_KEYS.showAll)}
+          aria-label={t(ACTION_NAME_KEYS.showAll)}
           tooltip={t('ribbon.elements.showAllTooltip')}
-          shortcut="A"
+          shortcut="visibility.showAll"
           onClick={() => resetVisibilityForHomeFromStore('show_all')}
         />
         <RibbonLargeButton
@@ -99,7 +101,7 @@ export function ElementsTab() {
           icon={IsolateSelected}
           label={t('ribbon.elements.isolate')}
           tooltip={t('ribbon.elements.isolateTooltip')}
-          shortcut="I"
+          shortcut="basket.isolate"
           disabled={!hasSelection}
           onClick={() => executeBasketIsolate()}
         />
@@ -107,7 +109,7 @@ export function ElementsTab() {
           icon={HideSelected}
           label={t('ribbon.elements.hide')}
           tooltip={t('ribbon.elements.hideTooltip')}
-          shortcut={t('ribbon.elements.hideShortcut')}
+          shortcut="visibility.hideSelection"
           disabled={!hasSelection}
           onClick={hideSelectionFromStore}
         />
@@ -116,14 +118,14 @@ export function ElementsTab() {
             icon={FocusSelected}
             label={t('ribbon.elements.frame')}
             tooltip={t('ribbon.elements.frameTooltip')}
-            shortcut="F"
+            shortcut="camera.frameSelection"
             disabled={!hasSelection}
             onClick={() => cameraCallbacks.frameSelection?.()}
           />
           <RibbonSmallButton
             icon={CopyGuid}
-            label={t('ribbon.elements.copyGuid')}
-            tooltip={t('ribbon.elements.copyGuidTooltip')}
+            label={t(ACTION_NAME_KEYS.copyGlobalId)}
+            tooltip={t(ACTION_NAME_KEYS.copyGlobalId)}
             disabled={selectedEntityId === null}
             onClick={handleCopyGuid}
           />

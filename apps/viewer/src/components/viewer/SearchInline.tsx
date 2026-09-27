@@ -33,6 +33,7 @@ import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { cn } from '@/lib/utils';
 import { isTextEntryTarget } from '@/lib/keyboard-event';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import { useTranslation } from '@/i18n';
 import { runTier0Scan, type SearchResult, type ScanModel } from '@/lib/search/tier0-scan';
 import { queryTier1Indexes, type Tier1Index } from '@/lib/search/tier1-index';
@@ -459,9 +460,7 @@ export function SearchInline() {
             aria-expanded={showPopover}
             aria-controls="search-inline-popover"
           />
-          {/* Advanced-filter affordance — always visible so structured
-              filtering is discoverable without the ⌘⇧F shortcut. Shows the
-              active rule count and a quick-clear when a filter is applied. */}
+          {/* Always-visible filter entry shows the rule count and a quick-clear. */}
           <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
             {hasFilters && (
               <button
@@ -481,7 +480,7 @@ export function SearchInline() {
               type="button"
               aria-label={hasFilters ? t('searchModal.inline.advancedFilterActiveAriaLabel', { count: activeRuleCount }) : t('searchModal.inline.advancedFilter')}
               aria-pressed={hasFilters}
-              title={t('searchModal.inline.advancedFilterTitle')}
+              title={t('searchModal.inline.advancedFilterTitle', { keys: shortcutLabel('search.openAdvanced') })}
               onMouseDown={(e) => {
                 e.preventDefault();
                 openAdvancedFilter();

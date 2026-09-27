@@ -65,7 +65,6 @@ export const mainToolbarEn = {
   'mainToolbar.isolateSelection': 'Isolate Selection (Set Collection)',
   'mainToolbar.hideSelection': 'Hide Selection',
   'mainToolbar.frameSelection': 'Frame Selection',
-  'mainToolbar.showAll': 'Show All (Reset Filters)',
   'mainToolbar.fitAll': 'Fit All',
 
   'mainToolbar.visibility': 'Visibility',

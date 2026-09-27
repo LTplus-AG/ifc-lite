@@ -68,7 +68,7 @@ describe('BCFPanel shows BCF failures to the user (#5600)', () => {
       assert.match(alertText(container), new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 
       const dismiss = container.querySelector<HTMLButtonElement>(
-        `[aria-label="${resolve('bcf.panel.dismissError')}"]`,
+        `[aria-label="${resolve('analysisPanel.dismissError')}"]`,
       );
       assert.ok(dismiss, 'the error banner offers a dismiss button');
       act(() => dismiss.click());
@@ -83,7 +83,8 @@ describe('BCFPanel shows BCF failures to the user (#5600)', () => {
     const container = render(<BCFPanel onClose={() => {}} />);
     assert.doesNotMatch(container.textContent ?? '', /Processing BCF file/);
     act(() => useViewerStore.setState({ bcfLoading: true }));
-    const status = container.querySelector('[role="status"]');
+    // The shared analysis progress (#5834) is an <output>, whose implicit role is status.
+    const status = container.querySelector('output');
     assert.ok(status, 'a status region renders while bcfLoading');
     assert.equal(status.textContent?.trim(), resolve('bcf.panel.busy'));
   });

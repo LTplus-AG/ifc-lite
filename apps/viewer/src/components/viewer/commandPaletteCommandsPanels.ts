@@ -22,7 +22,7 @@ import {
   Palette, Puzzle, Sun, Info, Settings,
   CalendarPlus, Sparkles, Eraser, GraduationCap, Layers, Users, PanelRight,
   SlidersHorizontal, ChevronsRight, RotateCcw, GitCompareArrows, Crosshair, Scan,
-  Ruler, Coins,
+  Ruler, Coins, History,
 } from 'lucide-react';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { openSettings } from '@/lib/settings/open-settings';
@@ -59,6 +59,8 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => { p.activateRightPanel('clash'); } },
     { id: 'panel:compare', ...withPanelTitle('compare'), keywords: 'diff revision version change added deleted modified geometry data', category: 'Panels', icon: GitCompareArrows,
       action: () => { p.activateRightPanel('compare'); } },
+    { id: 'panel:changes', ...withPanelTitle('changes'), keywords: 'authored edits modifications properties history review', category: 'Panels', icon: History,
+      action: () => { p.activateRightPanel('changes'); } },
     { id: 'panel:cost', ...withPanelTitle('cost'), keywords: '5d cost schedule item quantity budget estimate', category: 'Panels', icon: Coins,
       action: () => { p.activateRightPanel('cost'); } },
     { id: 'panel:chat', label: 'AI Chat', ...withKey('commandPalette.panel.chat.label'), keywords: 'ai assistant script chat ask model', category: 'Panels', icon: Sparkles,
@@ -103,7 +105,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => {
         useViewerStore.getState().setFlavorDialogRequested(true);
       } },
-    { id: 'sidebar:toggle', label: 'Toggle Sidebar', ...withKey('commandPalette.sidebar.toggle.label'), keywords: 'sidebar panels show hide off optional workspace', category: 'Panels', icon: PanelRight, shortcut: 'Alt+\\',
+    { id: 'sidebar:toggle', label: 'Toggle Sidebar', ...withKey('commandPalette.sidebar.toggle.label'), keywords: 'sidebar panels show hide off optional workspace', category: 'Panels', icon: PanelRight, shortcut: 'ui.toggleSidebar',
       action: () => { useViewerStore.getState().toggleSidebar(); } },
     { id: 'sidebar:collapse', label: 'Collapse Sidebar to Icons', ...withKey('commandPalette.sidebar.collapse.label'), keywords: 'sidebar collapse icons rail minimize', category: 'Panels', icon: ChevronsRight,
       action: () => { useViewerStore.getState().setSidebarMode('collapsed'); } },
@@ -155,7 +157,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
 
   // ── Preferences ──
   c.push(
-    { id: 'pref:theme', label: 'Theme', ...withKey('commandPalette.pref.theme.label'), keywords: 'dark light mode appearance switch', category: 'Preferences', icon: Sun, shortcut: 'T',
+    { id: 'pref:theme', label: 'Theme', ...withKey('commandPalette.pref.theme.label'), keywords: 'dark light mode appearance switch', category: 'Preferences', icon: Sun, shortcut: 'ui.toggleTheme',
       action: () => { useViewerStore.getState().toggleTheme(); } },
     { id: 'pref:tooltips', label: 'Hover Tooltips', ...withKey('commandPalette.pref.tooltips.label'), keywords: 'entity info mouse hover show hide', category: 'Preferences', icon: Info,
       action: () => { useViewerStore.getState().toggleHoverTooltips(); } },

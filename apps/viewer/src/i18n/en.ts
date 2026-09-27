@@ -5,10 +5,11 @@
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { addElementEn } from './catalogues/add-element.en';
-import { analysisStaleEn } from './catalogues/analysis-stale.en';
+import { analysisPanelEn } from './catalogues/analysis-panel.en';
 import { annotationsEn } from './catalogues/annotations.en';
 import { anonymizedExportEn } from './catalogues/anonymized-export.en';
 import { chartsEn } from './catalogues/charts.en';
+import { changesPanelEn } from './catalogues/changes-panel.en';
 import { clashPanelEn } from './catalogues/clash-panel.en';
 import { appearancePanelEn } from './catalogues/appearance-panel.en';
 import { appearancePickersEn } from './catalogues/appearance-pickers.en';
@@ -21,6 +22,7 @@ import { cesiumGeoEn } from './catalogues/cesium-geo.en';
 import { chatEn } from './catalogues/chat.en';
 import { chatByokEn } from './catalogues/chat-byok.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
+import { commandsEn } from './catalogues/commands.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { comparePanelEn } from './catalogues/compare-panel.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
@@ -85,7 +87,7 @@ import { zonesPanelEn } from './catalogues/zones-panel.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
-  ...analysisStaleEn,
+  ...analysisPanelEn,
   ...addElementEn,
   ...annotationsEn,
   ...anonymizedExportEn,
@@ -104,10 +106,12 @@ export const en = {
   ...propertyEditorEn,
   ...sharedCommandsEn,
   ...commandPaletteEn,
+  ...commandsEn,
   ...ganttWorkCalendarEn,
   ...filterGroupsEn,
   ...filterOperatorsEn,
   ...chartsEn,
+  ...changesPanelEn,
   ...listsEn,
   ...clashGroupsEn,
   ...scheduleEn,

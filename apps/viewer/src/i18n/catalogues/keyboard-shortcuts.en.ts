@@ -11,13 +11,10 @@ import type { TranslationValue } from '../types';
  * the About tab (privacy banner, links, license, package-count disclosure),
  * the What's New tab (release timeline and its legend), the Shortcuts tab's
  * own "Learn more" row, and the tab strip. (Preferences moved to the
- * Settings dialog, `settings.en.ts`, #5857.)
- * Shortcut CATEGORY names,
- * DESCRIPTIONS, and key-combination glyphs come from `KEYBOARD_SHORTCUTS`
- * (`@/hooks/keyboard-shortcuts-list`) and stay out of the catalogue — model
- * content for this slice's own scope, same reasoning as every other data
- * table in this sweep. `LearnTab.tsx` (rendered as the fourth tab) has its
- * own catalogue outside this slice.
+ * Settings dialog, `settings.en.ts`, #5857.) The Shortcuts tab's rows are
+ * generated from `@/lib/commands/keyboard-commands` and translated by
+ * `commands.en.ts` (#5836). `LearnTab.tsx` (rendered as the fourth tab) has
+ * its own catalogue outside this slice.
  */
 export const keyboardShortcutsEn = {
   // Header

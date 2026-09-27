@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Lens, LensRule, LensCriteria, AutoColorSpec } from '@/store/slices/lensSlice';
+import type { FilterRule } from '@ifc-lite/rules';
 // Import the value directly from the source package (not via the slice) to avoid
 // a circular value import: lensSlice imports the helpers from this module.
 import { MAX_COMPOUND_DEPTH } from '@ifc-lite/lens';
@@ -115,9 +116,30 @@ export function duplicateLensConfig(lens: Lens, generateId: () => string): Lens 
   return copy;
 }
 
-/** Save rules that have shared filters or preserved unreadable source data. */
+/** Empty chip presets must not turn a saved Lens into an inert filter. */
+function isConfiguredFilterRule(rule: FilterRule): boolean {
+  switch (rule.kind) {
+    case 'model':
+    case 'ifcType':
+    case 'predefinedType':
+    case 'globalId': return Array.isArray(rule.values) && rule.values.length > 0;
+    case 'storey': return (Array.isArray(rule.values) && rule.values.length > 0)
+      || (Array.isArray(rule.refs) && rule.refs.length > 0);
+    case 'modelTag': return rule.op === 'untagged'
+      || (Array.isArray(rule.tagIds) && rule.tagIds.length > 0);
+    case 'attribute': return typeof rule.name === 'string' && rule.name.trim().length > 0;
+    case 'property': return typeof rule.propertyName === 'string' && rule.propertyName.trim().length > 0;
+    case 'quantity': return typeof rule.quantityName === 'string' && rule.quantityName.trim().length > 0;
+    default: return true;
+  }
+}
+
+/** Save configured shared filters or preserved unreadable source data. */
 export function isRuleValid(rule: LensRule): boolean {
-  return !!rule.unreadableLegacy || !!rule.groups?.some((group) => group.rules.length > 0);
+  return !!rule.unreadableLegacy || !!rule.groups?.some((group) => group.rules.length > 0 &&
+    (group.combinator === 'AND'
+      ? group.rules.every(isConfiguredFilterRule)
+      : group.rules.some(isConfiguredFilterRule)));
 }
 
 /**

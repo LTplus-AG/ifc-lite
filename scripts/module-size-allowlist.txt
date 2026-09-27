@@ -291,7 +291,7 @@
    454 packages/renderer/src/shadow-pass.ts
    768 packages/renderer/src/snap-detector.ts
    765 packages/renderer/src/symbolic-overlay-pipelines.ts
-   579 packages/rules/src/filter/filter-evaluate.ts
+   572 packages/rules/src/filter/filter-evaluate.ts
    587 packages/sandbox/src/bridge-create.ts
    421 packages/sandbox/src/bridge-query.ts
    498 packages/sandbox/src/bridge-schema.ts

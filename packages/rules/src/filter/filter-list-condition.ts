@@ -69,6 +69,22 @@ export function listConditionRule(condition: Omit<ListConditionRule, 'kind'>): L
   return { kind: 'listCondition', ...condition };
 }
 
+/** Refuse, before any element is read, a run whose rules hold a `listCondition`
+ * but whose model has no matcher. Checked up front rather than when the rule is
+ * reached: a cheaper failing rule earlier in an AND group would otherwise
+ * short-circuit past it, and the run would return no rows instead of saying why. */
+export function assertListConditionsAnswerable(
+  rules: readonly { kind: string }[],
+  models: readonly { id: string; listConditions?: ListConditionMatcher; store?: unknown }[],
+): void {
+  const rule = rules.find((r): r is ListConditionRule => r.kind === 'listCondition');
+  if (!rule) return;
+  const model = models.find((m) => m.store !== null && !m.listConditions);
+  if (model) {
+    throw new Error(`A Lists ${rule.source} condition needs the Lists data provider for model "${model.id}"; run it through a list.`);
+  }
+}
+
 /** A model without a matcher cannot answer the predicate; saying so beats matching nothing. */
 export function matchListConditionRule(
   rule: ListConditionRule,

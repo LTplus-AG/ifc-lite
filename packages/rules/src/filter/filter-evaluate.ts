@@ -94,7 +94,7 @@ import { defaultStoreyName, storeyMatchesRefs } from './filter-storey.js';
 import { resolveEntityPredefinedType } from './entity-predefined-type.js';
 import { matchGroupRule } from './filter-group-rule.js';
 import { matchModelFactRule } from './filter-model-fact.js';
-import { matchListConditionRule, type ListConditionMatcher } from './filter-list-condition.js';
+import { assertListConditionsAnswerable, matchListConditionRule, type ListConditionMatcher } from './filter-list-condition.js';
 import { readsThroughSubject } from './subject-read-options.js';
 import { matchRuleThroughSubject } from './subject-match.js';
 
@@ -151,6 +151,7 @@ export function evaluateFilterRules(
   options: EvaluateOptions = {},
 ): FilteredElement[] {
   if (rules.length === 0) return [];
+  assertListConditionsAnswerable(rules, [{ id: modelId, store, listConditions: options.listConditions }]);
 
   const limit = options.limit ?? DEFAULT_LIMIT;
   const orderedRules = orderRulesByCost(rules);
@@ -221,6 +222,7 @@ export async function evaluateFilterRulesFederated(
   options: FederatedEvaluateOptions = {},
 ): Promise<FilteredElement[]> {
   if (rules.length === 0) return [];
+  assertListConditionsAnswerable(rules, models);
 
   const limit = options.limit ?? DEFAULT_LIMIT;
   const chunkSize = options.chunkSize ?? DEFAULT_CHUNK_SIZE;
@@ -565,15 +567,6 @@ function relatingTypeNameOf(ctx: EvalContext, expressId: number): string | undef
 // ── Exposed for tests ────────────────────────────────────────────────────────
 
 export const __internal = {
-  flattenPsets,
-  flattenQtys,
-  stringifyValue,
-  matchPropertyRule,
-  matchQuantityRule,
-  matchAttributeRule,
-  materialNamesOf,
-  matchClassificationRule,
-  elevationOf,
-  orderRulesByCost,
-  selectIterationSource,
+  flattenPsets, flattenQtys, stringifyValue, matchPropertyRule, matchQuantityRule, matchAttributeRule,
+  materialNamesOf, matchClassificationRule, elevationOf, orderRulesByCost, selectIterationSource,
 };

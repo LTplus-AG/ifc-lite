@@ -33,6 +33,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { FilterGroup } from './filter-groups.js';
+import { assertListConditionsAnswerable } from './filter-list-condition.js';
 import {
   evaluateFilterRules,
   evaluateFilterRulesFederated,
@@ -56,6 +57,8 @@ export function evaluateFilterGroups(
   options: EvaluateOptions = {},
 ): FilteredElement[] {
   if (groups.length === 0) return [];
+  // Every group, before any group runs: a later group's rule must not fail after earlier ones returned rows.
+  assertListConditionsAnswerable(groups.flatMap((g) => g.rules), [{ id: modelId, store, listConditions: options.listConditions }]);
   if (groups.length === 1) {
     return evaluateFilterRules(modelId, store, groups[0].rules, groups[0].combinator, options);
   }
@@ -97,6 +100,7 @@ export async function evaluateFilterGroupsFederated(
   options: FederatedEvaluateOptions = {},
 ): Promise<FilteredElement[]> {
   if (groups.length === 0) return [];
+  assertListConditionsAnswerable(groups.flatMap((g) => g.rules), models);
   if (groups.length === 1) {
     return evaluateFilterRulesFederated(models, groups[0].rules, groups[0].combinator, options);
   }

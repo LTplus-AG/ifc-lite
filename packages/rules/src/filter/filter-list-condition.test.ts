@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { evaluateFilterRules, evaluateFilterRulesFederated } from './filter-evaluate.js';
+import { evaluateFilterGroups, evaluateFilterGroupsFederated } from './filter-evaluate-groups.js';
 import { isFilterRule, Rule } from './filter-rules.js';
 import { parseRuleSetFile } from '../rule-set/rule-set-io.js';
 
@@ -60,6 +61,20 @@ describe('listCondition rules (#6190)', () => {
   it('fails loudly on a model with no matcher instead of matching nothing', async () => {
     const store = await parse();
     assert.throws(() => evaluateFilterRules('m', store, [zone], 'AND', { candidateExpressIds: [10] }), /Lists zone condition/);
+  });
+
+  it('fails before evaluating when a cheaper failing rule comes first (review finding on #6249)', async () => {
+    const store = await parse();
+    // `ifcType` is cheaper and fails on every wall, so AND short-circuits before `zone` is ever reached.
+    const rules = [Rule.ifcType(['IfcDoor']), zone];
+    assert.throws(() => evaluateFilterRules('m', store, rules, 'AND'), /Lists zone condition/);
+    await assert.rejects(evaluateFilterRulesFederated([{ id: 'm', store }], rules, 'AND'), /model "m"/);
+    // A second group holding the rule is refused before the first group returns rows.
+    const groups = [{ combinator: 'AND' as const, rules: [Rule.name('eq', 'A')] }, { combinator: 'AND' as const, rules }];
+    assert.throws(() => evaluateFilterGroups('m', store, groups), /Lists zone condition/);
+    await assert.rejects(evaluateFilterGroupsFederated([{ id: 'm', store }], groups), /Lists zone condition/);
+    // Positive control: with a matcher the same filter runs and the cheap rule excludes everything.
+    assert.deepEqual(evaluateFilterRules('m', store, rules, 'AND', { listConditions: () => true }), []);
   });
 
   it('is refused by the rule-set format, which has no Lists provider to run it', () => {

@@ -20,13 +20,7 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useViewerStore } from '@/store';
 import { useWallPlaceBridge } from './add-element-wall-command';
 import { canMutate, mutationDenialKey, mutationPermission } from '@/store/mutation-permission';

@@ -65,6 +65,8 @@ const ROOTS: Record<Surface, string> = {
  * chooses to host.
  */
 const STOP_PREFIXES = ['components/ui/', 'lib/', 'store/', 'icons/', 'sdk/'];
+/** Palette-only rows share a registry import with ribbon controls, but no toolbar renders them. */
+const STOP_FILES = new Set(['components/viewer/surface-commands-workspace.ts']);
 
 /**
  * Every entry is a capability ONE toolbar deliberately does not offer.
@@ -160,7 +162,8 @@ function resolveImport(spec: string, fromFile: string): string | null {
 
 function isStopped(file: string): boolean {
   const rel = path.relative(SRC, file);
-  return STOP_PREFIXES.some((prefix) => rel.startsWith(prefix))
+  return STOP_FILES.has(rel)
+    || STOP_PREFIXES.some((prefix) => rel.startsWith(prefix))
     || rel.endsWith('.test.ts')
     || rel.endsWith('.test.tsx');
 }

@@ -40,6 +40,8 @@ describe('static workspace commands use the shared table (#5870)', () => {
   it('generates each row once in its original palette order with registry metadata', () => {
     const definitions = SURFACE_COMMANDS.filter((command) => WORKSPACE_IDS.some((id) => id === command.id));
     assert.deepEqual(definitions.map((command) => command.id), WORKSPACE_IDS);
+    assert.ok(definitions.every((command) => command.surfaces.length === 1 && command.surfaces[0] === 'palette'),
+      'workspace rows are palette-only; the toolbar AST parity walk may exclude their module');
 
     const rows = buildPanelCommands(params()).filter((command) => WORKSPACE_IDS.some((id) => id === command.id));
     assert.deepEqual(rows.map((command) => command.id), WORKSPACE_IDS);

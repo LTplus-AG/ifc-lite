@@ -10,7 +10,7 @@
  * pre-check skips the frame, and `containFrameThrow` catches whatever a
  * mid-frame call throws. Every upload call site that runs OUTSIDE that loop —
  * `addMeshes`, `loadGeometry`, `addMesh`, `ensureMeshResources`,
- * `createMeshFromData`, and the viewer's `setSpaceOverlayMeshes` — has none of
+ * `createMeshFromData`, and the viewer's `setAuthoringOverlayMeshes` — has none of
  * that. Before this module, a `device.createBuffer()` on a lost-but-not-yet-
  * `isInitialized()==false` device (see `getGPUDevice()`'s doc: a loss never
  * calls `destroy()`, so the zombie device stays "initialized") threw straight

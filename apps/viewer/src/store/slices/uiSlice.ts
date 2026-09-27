@@ -58,7 +58,6 @@ export interface PropertyFocusTarget {
 const AUTHORING_TOOLS: ReadonlySet<string> = new Set([
   'addElement',
   'cesium-placement',
-  'split',
   'spaceSketch',
   'command',
 ]);

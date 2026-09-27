@@ -20,7 +20,7 @@ import type { StateCreator, StoreApi } from 'zustand';
 import type { ViewerState } from '../index.js';
 import { defineSliceTeardown } from '../teardown.js';
 import { selectEffectiveStoreyId } from '@/components/viewer/add-element-storeys';
-import { getModelingCommand } from '@/lib/commands/modeling/registry';
+import { getModelingCommand, resolveWorkplane } from '@/lib/commands/modeling/registry';
 import {
   beginCommandRuntime,
   endCommandRuntime,
@@ -79,9 +79,11 @@ function launch(set: Set, get: Get, api: StoreApi<ViewerState>, id: CommandId): 
   const session = get().session;
   if (!command || !session) return;
   patchSession(set, { activeCommandId: id, phase: 'idle' });
+  const built = session.workplane ? resolveWorkplane(get(), session.modelId, session.workplane) : null;
+  if (built && 'refused' in built) console.warn(`[modeling] No workplane: ${built.refused}`);
   beginCommandRuntime(
     command,
-    { get, modelId: session.modelId, storeyId: session.storeyId, workplane: null },
+    { get, modelId: session.modelId, storeyId: session.storeyId, workplane: built && !('refused' in built) ? built : null },
     api,
     {
       onPhase: (phase) => { if (get().session?.phase !== phase) patchSession(set, { phase }); },

@@ -9,7 +9,8 @@
  * register throwaway commands and remove them again.
  */
 
-import type { CommandId, ModelingCommand } from './types.js';
+import type { ViewerState } from '@/store';
+import type { CommandId, ModelingCommand, Workplane, WorkplaneSpec } from './types.js';
 
 const COMMANDS = new Map<CommandId, ModelingCommand>();
 
@@ -23,4 +24,22 @@ export function registerModelingCommand<G>(command: ModelingCommand<G>): () => v
 
 export function getModelingCommand(id: CommandId): ModelingCommand | undefined {
   return COMMANDS.get(id);
+}
+
+export type WorkplaneResolver = (s: ViewerState, modelId: string, spec: WorkplaneSpec) => Workplane | { refused: string };
+
+let workplaneResolver: WorkplaneResolver = () => ({ refused: 'No workplane resolver is registered.' });
+
+/**
+ * The session builds its workplane through this seam, installed with the
+ * built-in commands (`builtin.ts`). The slice cannot import `workplane.ts`
+ * itself: its federation-alignment path reaches the store module, which
+ * composes the slice — an import cycle.
+ */
+export function setWorkplaneResolver(resolver: WorkplaneResolver): void {
+  workplaneResolver = resolver;
+}
+
+export function resolveWorkplane(s: ViewerState, modelId: string, spec: WorkplaneSpec): Workplane | { refused: string } {
+  return workplaneResolver(s, modelId, spec);
 }

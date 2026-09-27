@@ -33,7 +33,8 @@ import type { PointerGesture } from './pointerGesture.js';
 import { resolveNavigationPointerGesture, resolveWheelNavigation } from '@/lib/navigation/presets.js';
 import { handleMeasureTap, ignoreTouchPointers, setMeasureTapHandler } from './touchRouting.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
-import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover, handleSplitHover, finishPolylineFromDoubleClick, finishRadiusFromDoubleClick } from './selectionHandlers.js';
+import { routeCommandPointer } from './commandPointer.js';
+import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover, finishPolylineFromDoubleClick, finishRadiusFromDoubleClick } from './selectionHandlers.js';
 import { applyWheelZoom, createFineZoomModifierTracker } from './wheelZoom.js';
 import { createZoomSurfacePicker } from './zoomSurface.js';
 import { createFlyController } from './flyControls.js';
@@ -590,12 +591,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         if (handleAddElementHover(ctx, x, y)) return;
       }
 
-      // Split-tool hover preview — projects the cursor onto the
-      // hovered wall's axis and pushes the cut distance into the
-      // store so SplitOverlay renders the perpendicular guide.
-      if (tool === 'split' && !mouseState.isDragging) {
-        if (handleSplitHover(ctx, x, y)) return;
-      }
+      // A running modeling command owns the hover (#6232, commandPointer.ts).
+      if (tool === 'command' && !mouseState.isDragging && routeCommandPointer(ctx, 'move', x, y)) return;
 
       // Section tool face-pick: dwell-aware hover preview (issue #243
       // follow-up). Runs INSTEAD of the generic tooltip path while

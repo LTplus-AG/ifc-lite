@@ -421,14 +421,16 @@ export interface CameraCallbacks {
    */
   frameBuildingExtent?: () => void;
   /**
-   * Replace the Space Sketch draft "ghost" overlay meshes in the 3D scene. These
-   * go straight to the renderer scene (NOT through geometryResult), so frequent
-   * per-edit updates can't trip the streaming reclassifier (which would reset the
-   * camera / un-pick newly created spaces). Pass [] (or use clear) to remove all.
+   * Replace one authoring channel's "ghost" overlay meshes in the 3D scene
+   * (Space Sketch draft rooms, a modeling command's preview; see
+   * `useAuthoringOverlay.ts`). These go straight to the renderer scene (NOT
+   * through geometryResult), so frequent per-edit updates can't trip the
+   * streaming reclassifier (which would reset the camera / un-pick newly
+   * created spaces). Pass [] (or use clear) to remove the channel's meshes.
    */
-  setSpaceOverlayMeshes?: (meshes: MeshData[]) => void;
-  /** Remove all Space Sketch overlay ghost meshes from the scene. */
-  clearSpaceOverlayMeshes?: () => void;
+  setAuthoringOverlayMeshes?: (channel: AuthoringOverlayChannel, meshes: MeshData[]) => void;
+  /** Remove one authoring channel's overlay ghost meshes from the scene. */
+  clearAuthoringOverlayMeshes?: (channel: AuthoringOverlayChannel) => void;
   /**
    * Frame an explicit world-space box (min/max corners) from the canonical
    * isometric view, animating there. Used to frame a focused clash's contact
@@ -476,6 +478,7 @@ export interface CameraCallbacks {
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
 import type { ModelLoadReportFields } from '../lib/loadReport'; // #3927 load report
+import type { AuthoringOverlayChannel } from '../components/viewer/useAuthoringOverlay';
 /**
  * Compound identifier for entities across multiple models.
  *

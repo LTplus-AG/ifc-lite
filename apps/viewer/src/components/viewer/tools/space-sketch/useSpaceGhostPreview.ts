@@ -18,7 +18,7 @@
  * context of the walls they were derived from. The prior view state is
  * captured/restored by `useSpaceSceneFraming` on close.
  *
- * Ghost meshes ride a dedicated scene-overlay channel (`setSpaceOverlayMeshes`
+ * Ghost meshes ride the `spaceSketch` authoring overlay channel (`setAuthoringOverlayMeshes`
  * → `appendToBatches` direct), bypassing the streaming geometry pipeline so
  * per-edit churn can't reset the camera or break picking.
  */
@@ -138,14 +138,14 @@ export function useSpaceGhostPreview({ enabled, ghosts, contextIds }: GhostPrevi
   // X-ray/view restore afterwards, so this leaves `ghostExceptEntities` alone.
   const clearGhosts = useCallback(() => {
     if (ghostIdsRef.current.length === 0) return;
-    useViewerStore.getState().cameraCallbacks.clearSpaceOverlayMeshes?.();
+    useViewerStore.getState().cameraCallbacks.clearAuthoringOverlayMeshes?.('spaceSketch');
     ghostIdsRef.current = [];
   }, []);
 
   const rebuild = useCallback(() => {
     const store = useViewerStore.getState();
     if (!enabled) {
-      store.cameraCallbacks.clearSpaceOverlayMeshes?.();
+      store.cameraCallbacks.clearAuthoringOverlayMeshes?.('spaceSketch');
       ghostIdsRef.current = [];
       // Deliberately does NOT touch the X-ray channel. `useSpaceSceneFraming.restore`
       // owns that on close, and it runs synchronously on the `enabled` transition
@@ -185,7 +185,7 @@ export function useSpaceGhostPreview({ enabled, ghosts, contextIds }: GhostPrevi
       newIds.push(id);
     }
     // Replace the overlay in ONE scene operation (no geometryResult churn).
-    store.cameraCallbacks.setSpaceOverlayMeshes?.(meshes.filter((m): m is NonNullable<typeof m> => m !== null));
+    store.cameraCallbacks.setAuthoringOverlayMeshes?.('spaceSketch', meshes.filter((m): m is NonNullable<typeof m> => m !== null));
     ghostIdsRef.current = newIds;
     syncGhostView();
   }, [enabled, ghosts, syncGhostView]);

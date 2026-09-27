@@ -129,7 +129,7 @@ const ALLOWLIST: { surface: Surface; symbol: string; reason: string }[] = [
   },
   {
     surface: 'ribbon',
-    symbol: 'setSplitTarget',
+    symbol: 'startCommand',
     reason: 'The ribbon imports the shared command table for its own rows, so this AST closure also reaches the palette-only Split row. Neither toolbar renders Split; the shared palette owns it.',
   },
 ];

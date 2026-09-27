@@ -127,7 +127,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
               disabled={!hasModelsLoaded}
               onClick={openShareDialog}
               badge={collabPeerCount > 0 ? (
-                <span className="absolute right-1 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-medium text-primary-foreground">
+                <span className="absolute right-1 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-2xs font-medium text-primary-foreground">
                   {collabPeerCount + 1}
                 </span>
               ) : undefined}
@@ -146,7 +146,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
               active={collabPanelVisible}
               onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab', 'ribbon')}
               badge={collabPeerCount > 0 ? (
-                <span className="absolute right-1 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-medium text-white">
+                <span className="absolute right-1 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-emerald-500 px-1 text-2xs font-medium text-white">
                   {collabPeerCount + 1}
                 </span>
               ) : undefined}

@@ -11,12 +11,12 @@
  */
 
 export function LiteralOnly() {
-  return <span className={`text-[9px] text-muted-foreground`}>literal-only</span>;
+  return <span className={`text-2xs text-muted-foreground`}>literal-only</span>;
 }
 
 export function Interpolated({ primary }: { primary: boolean }) {
   return (
-    <span className={`text-[9px] ${primary ? 'text-muted-foreground' : 'text-muted-foreground/50'}`}>
+    <span className={`text-2xs ${primary ? 'text-muted-foreground' : 'text-muted-foreground/50'}`}>
       interpolated
     </span>
   );

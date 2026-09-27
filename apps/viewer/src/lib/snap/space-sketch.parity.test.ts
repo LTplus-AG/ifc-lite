@@ -3,42 +3,30 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Snapping for the 2D Space Sketch editor — shared by both dragging existing
- * room vertices and drawing new room corners, so every node behaves the same.
- *
- * Candidates, in priority order (nearest within `tol` wins per tier):
- *   1. Corners — room vertices + building-line endpoints.
- *   2. On-wall — projection onto the nearest building segment.
- * Both work in the room (model-metre) frame, the same frame the underlay lines
- * and room outlines already live in.
- *
- * Ortho (Shift) DOMINATES snap: when `ortho` is set the point is locked to the
- * horizontal/vertical line through `anchor` and snapping only moves it ALONG that
- * line (to a corner's aligned coordinate, or where the line crosses a wall) — it
- * can never break the straight constraint. Without Shift, snap is free in 2D.
+ * Space Sketch parity (#6232 WP3): the engine-backed `snapSketchPoint` must
+ * answer exactly like the standalone solver it replaced. The old body of
+ * `lib/space-snap.ts` is frozen below VERBATIM as the oracle (only renamed and
+ * un-exported), and 10k seeded inputs are compared: same kind, same point
+ * (1e-9; the ortho × wall crossing is computed by a different but equivalent
+ * formula, so it may differ in the last bits).
  */
 
-export type Pt = [number, number];
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { snapSketchPoint } from './space-sketch.js';
+import { rng } from '@/test/snap-fixture.js';
 
-export type SnapKind = 'vertex' | 'line' | 'none';
-
-export interface SnapOptions {
-  /** Corner targets — existing room vertices. */
+// ── Frozen oracle: lib/space-snap.ts snapPoint as of 585bdb4e4 ──────────────
+type Pt = [number, number];
+type SnapKind = 'vertex' | 'line' | 'none';
+interface SnapOptions {
   vertices?: ReadonlyArray<Pt>;
-  /** Building wall lines (room frame); endpoints snap as corners, bodies as on-wall. */
   segments?: ReadonlyArray<readonly [Pt, Pt]>;
-  /** Snap radius in world (metre) units. */
   tol: number;
-  /** Constrain to horizontal/vertical from `anchor` before snapping. */
   ortho?: boolean;
-  /** Reference point for ortho (e.g. the previous drawn corner or drag start). */
   anchor?: Pt | null;
 }
-
-export interface SnapResult {
-  pt: Pt;
-  kind: SnapKind;
-}
+interface SnapResult { pt: Pt; kind: SnapKind }
 
 /** Closest point on segment a→b to p (clamped to the segment). */
 function projectOnSeg(p: Pt, a: readonly [number, number], b: readonly [number, number]): Pt {
@@ -47,35 +35,6 @@ function projectOnSeg(p: Pt, a: readonly [number, number], b: readonly [number, 
   let t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2;
   t = Math.max(0, Math.min(1, t));
   return [a[0] + t * dx, a[1] + t * dy];
-}
-
-export interface AlignResult {
-  pt: Pt;
-  /** Reference point whose X the result aligned to (vertical guide), if any. */
-  vRef: Pt | null;
-  /** Reference point whose Y the result aligned to (horizontal guide), if any. */
-  hRef: Pt | null;
-}
-
-/**
- * Alignment / object-snap tracking: independently snap `p`'s X to the nearest
- * reference point's X (a vertical guide) and its Y to the nearest reference's Y
- * (a horizontal guide). Lets a drawn corner lock under/level-with an earlier
- * corner — e.g. the closing point aligns vertically with the first point — so
- * rectangles close cleanly. X and Y snap independently, so the result can sit at
- * the intersection of two different references' axes.
- */
-export function alignToAxes(p: Pt, refs: ReadonlyArray<Pt>, tol: number): AlignResult {
-  let x = p[0], y = p[1];
-  let vRef: Pt | null = null, hRef: Pt | null = null;
-  let bestVX = tol, bestHY = tol;
-  for (const r of refs) {
-    const dx = Math.abs(r[0] - p[0]);
-    if (dx < bestVX) { bestVX = dx; x = r[0]; vRef = r; }
-    const dy = Math.abs(r[1] - p[1]);
-    if (dy < bestHY) { bestHY = dy; y = r[1]; hRef = r; }
-  }
-  return { pt: [x, y], vRef, hRef };
 }
 
 /**
@@ -120,7 +79,7 @@ function snapAlongOrtho(
   return { pt, kind };
 }
 
-export function snapPoint(p: Pt, opts: SnapOptions): SnapResult {
+function legacySnapPoint(p: Pt, opts: SnapOptions): SnapResult {
   const { vertices = [], segments = [], tol, ortho = false, anchor = null } = opts;
   // Shift held → ortho dominates: snap only along the straight line.
   if (ortho && anchor) return snapAlongOrtho(p, anchor, vertices, segments, tol);
@@ -149,3 +108,44 @@ export function snapPoint(p: Pt, opts: SnapOptions): SnapResult {
   // 3. No snap — the ortho-adjusted (or raw) point.
   return { pt: base, kind: 'none' };
 }
+// ── end oracle ──────────────────────────────────────────────────────────────
+
+function randomCase(r: () => number): { p: Pt; opts: SnapOptions } {
+  const c = (): number => r() * 20 - 10;
+  const vertices: Pt[] = Array.from({ length: Math.floor(r() * 9) }, () => [c(), c()]);
+  const segments: [Pt, Pt][] = Array.from({ length: Math.floor(r() * 9) }, () => {
+    const a: Pt = [c(), c()];
+    // A third of the walls axis-aligned, like real plans.
+    const axis = r();
+    const b: Pt = axis < 0.17 ? [c(), a[1]] : axis < 0.34 ? [a[0], c()] : [c(), c()];
+    return [a, b];
+  });
+  const tol = 0.05 + r() * 1.5;
+  // Half the cursors land near a target, so snaps actually fire.
+  const targets: Pt[] = [...vertices, ...segments.flat()];
+  const near = targets.length > 0 && r() < 0.5 ? targets[Math.floor(r() * targets.length)] : null;
+  const p: Pt = near ? [near[0] + (r() - 0.5) * tol * 3, near[1] + (r() - 0.5) * tol * 3] : [c(), c()];
+  const ortho = r() < 0.4;
+  const anchor: Pt | null = r() < 0.8 ? [c(), c()] : null;
+  return { p, opts: { vertices, segments, tol, ortho, anchor } };
+}
+
+describe('snapSketchPoint parity with the replaced space-snap solver (#6232 WP3)', () => {
+  it('agrees on 10k seeded inputs (kind exact, point within 1e-9)', () => {
+    const r = rng(6232);
+    const kinds: Record<SnapKind, number> = { vertex: 0, line: 0, none: 0 };
+    let orthoSnaps = 0;
+    for (let i = 0; i < 10_000; i++) {
+      const { p, opts } = randomCase(r);
+      const want = legacySnapPoint(p, opts);
+      const got = snapSketchPoint(p, opts);
+      const ctx = `case ${i}: ${JSON.stringify({ p, opts, want, got })}`;
+      assert.equal(got.kind, want.kind, ctx);
+      assert.ok(Math.abs(got.pt[0] - want.pt[0]) <= 1e-9 && Math.abs(got.pt[1] - want.pt[1]) <= 1e-9, ctx);
+      kinds[want.kind]++;
+      if (opts.ortho && opts.anchor && want.kind !== 'none') orthoSnaps++;
+    }
+    // Coverage: every branch of the oracle was exercised, not just "no snap".
+    assert.ok(kinds.vertex > 1000 && kinds.line > 500 && kinds.none > 1000 && orthoSnaps > 500, JSON.stringify({ kinds, orthoSnaps }));
+  });
+});

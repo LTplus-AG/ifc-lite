@@ -24,7 +24,10 @@
 import { buildLocus, dist, locusGuides, projectCandidate, projectOntoLocus } from './constraints.js';
 import { inferCandidates } from './inference.js';
 import { DEFAULT_HYSTERESIS_PX, pickWinner, tierOf, type Ranked } from './rank.js';
-import type { Guide, SnapCandidate, SnapProfile, SnapQuery, SnapResult, SnapSource } from './types.js';
+import type { Guide, SnapCandidate, SnapKind, SnapProfile, SnapQuery, SnapResult, SnapSource } from './types.js';
+
+/** Kinds only inference produces (chain-closing endpoints ride along with them). */
+const INFERRED = new Set<SnapKind>(['extension', 'perpendicular', 'parallel', 'intersection']);
 
 export function solveSnap(
   q: SnapQuery,
@@ -51,10 +54,11 @@ export function solveSnap(
   // Collect around the constrained cursor: the radius is measured from it, so a
   // radius-honouring source queried at the raw cursor would miss the targets on the lock.
   const cq: SnapQuery = locked ? { ...q, cursor } : q;
-  for (const s of sources) if (wanted.has(s.id)) s.collect(cq, reach, candidates);
-  inferCandidates(q, cursor, reach, candidates, candidates);
-
+  const hint = { locus, cursor };
+  for (const s of sources) if (wanted.has(s.id)) s.collect(cq, reach, candidates, hint);
   const tiers = locked ? (p.lockedTiers ?? p.tiers) : p.tiers;
+  // Inference is the costly step; skip it for profiles that never rank an inferred kind.
+  if (tiers.some((t) => t.some((k) => INFERRED.has(k)))) inferCandidates(q, cursor, reach, candidates, candidates);
   const ranked: Ranked[] = [];
   for (let i = 0; i < candidates.length; i++) {
     const cand = candidates[i];
@@ -62,7 +66,8 @@ export function solveSnap(
     if (tier < 0) continue;
     const point = projectCandidate(cand, locus, cursor);
     if (!point) continue;
-    ranked.push({ cand, point, dist: dist(point, cursor), tier, order: i });
+    const d = dist(point, cursor);
+    if (d <= reach) ranked.push({ cand, point, dist: d, tier, order: i });
   }
 
   const win = pickWinner(ranked, radius, hysteresis, prev?.winner ?? null);

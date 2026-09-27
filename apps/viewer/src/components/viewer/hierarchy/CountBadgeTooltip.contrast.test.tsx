@@ -64,7 +64,7 @@ describe('CountBadgeTooltip contrast', () => {
     const secondaryLines = Array.from(tooltip.querySelectorAll('p')).slice(1);
     assert.equal(secondaryLines.length, 2);
     for (const line of secondaryLines) {
-      assert.equal(line.className, 'text-[10px] text-muted-foreground');
+      assert.equal(line.className, 'text-2xs text-muted-foreground');
     }
   });
 

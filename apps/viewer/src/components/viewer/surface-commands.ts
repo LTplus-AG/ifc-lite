@@ -2,47 +2,35 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** Shared homes for static viewer commands (#5870).
- *
- * The keyboard table remains the source of chords; `shortcut` references its
- * ids rather than copying a binding. Runtime rows (recent files, extensions,
- * tours) stay with their runtime providers.
- */
+/** Static commands shared by palette, ribbon, context menu and mobile (#5870). */
 
 import {
-  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Box, Building2, ChevronsUpDown, Ellipsis,
-  Crosshair, Equal, Eye, EyeOff, FolderOpen, Home, Layers3, Layout, Maximize2,
-  Minus, Orbit, Palette, Pencil, Plus, RotateCcw, Save, SquareStack, SquareX,
-  Sun, Tag,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, ChevronsUpDown,
+  Crosshair, Ellipsis, FolderOpen, Home, Layers3, Maximize2, Orbit, Save,
+  SquareStack, Sun, Tag,
 } from 'lucide-react';
 import { resolveEnglish } from '@/i18n/registry';
-import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
-import { goHomeFromStore, showAllFromStore } from '@/store/homeView';
-import { hideSelectionFromStore } from '@/store/hideSelection';
+import { goHomeFromStore } from '@/store/homeView';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { openSettings } from '@/lib/settings/open-settings';
-import {
-  executeBasketAdd, executeBasketClear, executeBasketRemove, executeBasketSaveView,
-  executeBasketSet, executeBasketToggleVisibility,
-} from '@/store/basket/basketCommands';
 import type { Command } from './commandPaletteSearch';
 import { TOOL_SURFACE_COMMANDS } from './surface-commands-tools';
 import { PANEL_SURFACE_COMMANDS } from './surface-commands-panels';
 import { WORKSPACE_SURFACE_COMMANDS } from './surface-commands-workspace';
+import { RIBBON_VIEW_SURFACE_COMMANDS } from './surface-commands-view-ribbon';
+import { VISIBILITY_SURFACE_COMMANDS } from './surface-commands-visibility';
 import { MOBILE_SURFACE_COMMANDS } from './surface-commands-mobile';
 import { CONTEXT_SURFACE_COMMANDS, runContextAction, runContextOr } from './surface-commands-context';
 import { runSurfaceCommand } from './surface-command-run';
-
 export type { CommandSurface, SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-command-types';
 import type { CommandSurface, SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-command-types';
 
 const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 const paletteAndRibbon = ['palette', 'ribbon'] as const;
 const paletteOnly = ['palette'] as const;
-
-export const SURFACE_COMMANDS = [
+const FILE_AND_VIEW_SURFACE_COMMANDS = [
   {
     id: 'file:open', labelKey: 'commandPalette.file.open.label',
     keywords: 'ifc ifcx glb load model browse',
@@ -74,16 +62,16 @@ export const SURFACE_COMMANDS = [
     run: () => { window.dispatchEvent(new CustomEvent('ifc-lite:edit-model-tags')); },
   },
   {
-    id: 'view:home', labelKey: 'commandPalette.view.home.label',
+    id: 'view:home', labelKey: 'commandPalette.view.home.label', ribbonLabelKey: 'ribbon.home.home', ribbonTooltipKey: 'ribbon.home.homeTooltip',
     searchLabel: 'Home', keywords: 'isometric fit camera', category: 'View', icon: Home,
-    surfaces: ['palette', 'mobile'], enabled: alwaysEnabled, shortcut: 'camera.home',
+    surfaces: ['palette', 'mobile', 'ribbon'], enabled: alwaysEnabled, shortcut: 'camera.home',
     mobileLabelKey: () => 'shellChrome.mobileToolbar.homeAriaLabel',
     run: () => { goHomeFromStore(); },
   },
   {
-    id: 'view:fit', labelKey: 'commandPalette.view.fit.label',
+    id: 'view:fit', labelKey: 'commandPalette.view.fit.label', ribbonLabelKey: 'cameraCommands.fitAll.label', ribbonTooltipKey: 'cameraCommands.fitAll.tooltip',
     searchLabel: 'Fit All', keywords: 'zoom extents entire model', category: 'View', icon: Maximize2,
-    surfaces: ['palette', 'mobile'], enabled: alwaysEnabled, shortcut: 'camera.fitAll',
+    surfaces: ['palette', 'mobile', 'ribbon'], enabled: alwaysEnabled, shortcut: 'camera.fitAll',
     mobileLabelKey: () => 'shellChrome.mobileToolbar.fitAllAriaLabel',
     run: () => { useViewerStore.getState().cameraCallbacks.fitAll?.(); },
   },
@@ -117,202 +105,98 @@ export const SURFACE_COMMANDS = [
     run: () => { applyLevelDisplayMode('solo'); },
   },
   {
-    id: 'view:projection', labelKey: 'commandPalette.view.projection.label',
+    id: 'view:projection', labelKey: 'commandPalette.view.projection.label', ribbonLabelKey: 'ribbon.view.orthographic', ribbonTooltipKey: 'ribbon.view.orthographicTooltip',
     searchLabel: 'Projection', keywords: 'perspective orthographic ortho toggle switch',
-    category: 'View', icon: Orbit, surfaces: ['palette', 'mobile'], enabled: alwaysEnabled,
+    category: 'View', icon: Orbit, surfaces: ['palette', 'mobile', 'ribbon'], enabled: alwaysEnabled,
     mobileLabelKey: (state: SurfaceCommandState) => state.projectionMode === 'orthographic'
       ? 'shellChrome.mobileToolbar.perspective' : 'shellChrome.mobileToolbar.orthographic',
     run: () => { useViewerStore.getState().toggleProjectionMode(); },
   },
   {
-    id: 'view:top', labelKey: 'commandPalette.view.top.label',
+    id: 'view:top', labelKey: 'commandPalette.view.top.label', ribbonLabelKey: 'cameraCommands.viewTop.label', ribbonTooltipKey: 'cameraCommands.viewTop.tooltip',
     searchLabel: 'Top View', keywords: 'camera plan', category: 'View', icon: ArrowUp,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.viewTop',
+    surfaces: paletteAndRibbon, enabled: alwaysEnabled, shortcut: 'camera.viewTop',
     run: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('top'); },
   },
   {
-    id: 'view:bottom', labelKey: 'commandPalette.view.bottom.label',
+    id: 'view:bottom', labelKey: 'commandPalette.view.bottom.label', ribbonLabelKey: 'cameraCommands.viewBottom.label', ribbonTooltipKey: 'cameraCommands.viewBottom.tooltip',
     searchLabel: 'Bottom View', keywords: 'camera', category: 'View', icon: ArrowDown,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.viewBottom',
+    surfaces: paletteAndRibbon, enabled: alwaysEnabled, shortcut: 'camera.viewBottom',
     run: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('bottom'); },
   },
   {
-    id: 'view:front', labelKey: 'commandPalette.view.front.label',
+    id: 'view:front', labelKey: 'commandPalette.view.front.label', ribbonLabelKey: 'cameraCommands.viewFront.label', ribbonTooltipKey: 'cameraCommands.viewFront.tooltip',
     searchLabel: 'Front View', keywords: 'camera elevation', category: 'View', icon: ArrowRight,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.viewFront',
+    surfaces: paletteAndRibbon, enabled: alwaysEnabled, shortcut: 'camera.viewFront',
     run: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('front'); },
   },
   {
-    id: 'view:back', labelKey: 'commandPalette.view.back.label',
+    id: 'view:back', labelKey: 'commandPalette.view.back.label', ribbonLabelKey: 'cameraCommands.viewBack.label', ribbonTooltipKey: 'cameraCommands.viewBack.tooltip',
     searchLabel: 'Back View', keywords: 'camera', category: 'View', icon: ArrowLeft,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.viewBack',
+    surfaces: paletteAndRibbon, enabled: alwaysEnabled, shortcut: 'camera.viewBack',
     run: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('back'); },
   },
   {
-    id: 'view:left', labelKey: 'commandPalette.view.left.label',
+    id: 'view:left', labelKey: 'commandPalette.view.left.label', ribbonLabelKey: 'cameraCommands.viewLeft.label', ribbonTooltipKey: 'cameraCommands.viewLeft.tooltip',
     searchLabel: 'Left View', keywords: 'camera', category: 'View', icon: ArrowLeft,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.viewLeft',
+    surfaces: paletteAndRibbon, enabled: alwaysEnabled, shortcut: 'camera.viewLeft',
     run: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('left'); },
   },
   {
-    id: 'view:right', labelKey: 'commandPalette.view.right.label',
+    id: 'view:right', labelKey: 'commandPalette.view.right.label', ribbonLabelKey: 'cameraCommands.viewRight.label', ribbonTooltipKey: 'cameraCommands.viewRight.tooltip',
     searchLabel: 'Right View', keywords: 'camera', category: 'View', icon: ArrowRight,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.viewRight',
+    surfaces: paletteAndRibbon, enabled: alwaysEnabled, shortcut: 'camera.viewRight',
     run: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('right'); },
   },
   {
-    id: 'view:world', labelKey: 'commandPalette.view.world.label',
+    id: 'view:world', labelKey: 'commandPalette.view.world.label', ribbonLabelKey: 'ribbon.view.world',
     searchLabel: 'Toggle 3D World Context',
     keywords: 'cesium globe earth satellite terrain georeference basemap context site',
-    category: 'View', icon: Building2, surfaces: paletteOnly,
+    category: 'View', icon: Building2, surfaces: paletteAndRibbon,
     enabled: (state: SurfaceCommandState) => state.cesiumAvailable === true,
     run: () => { useViewerStore.getState().toggleCesium(); },
   },
   {
-    id: 'view:lighting', labelKey: panelTitleKey('environment'),
+    id: 'view:lighting', labelKey: panelTitleKey('environment'), ribbonTooltipKey: 'ribbon.view.lightingTooltip',
     keywords: 'sun sky lighting shadow solar daylight study environment preset hdri panel',
-    category: 'View', icon: Sun, surfaces: paletteOnly, enabled: alwaysEnabled,
+    category: 'View', icon: Sun, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
     run: () => { useViewerStore.getState().toggleWorkspacePanel('environment', 'palette'); },
   },
   {
-    id: 'view:spacemouse', labelKey: 'commandPalette.view.spacemouse.label',
+    id: 'view:spacemouse', labelKey: 'commandPalette.view.spacemouse.label', ribbonLabelKey: 'ribbon.view.spaceMouse', ribbonTooltipKey: 'ribbon.view.spaceMouseTooltip',
     searchLabel: 'SpaceMouse',
     keywords: '3dconnexion space mouse navigator webhid 3d input device controller preferences settings',
-    category: 'View', icon: Orbit, surfaces: paletteOnly, enabled: alwaysEnabled,
+    category: 'View', icon: Orbit, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
     run: () => { openSettings('display'); },
   },
+] as const satisfies readonly SurfaceCommandDefinition[];
+const RIBBON_ENTITY_ACTIONS_SURFACE_COMMANDS = [{
+  id: 'elements:entity-actions', labelKey: 'entityContextMenu.entityActions',
+  keywords: 'selected entity type storey duplicate delete actions',
+  category: 'Tools', icon: Ellipsis,
+  surfaces: ['ribbon'], enabled: alwaysEnabled, run: runContextAction,
+}] as const satisfies readonly SurfaceCommandDefinition[];
+export type SurfaceCommandId =
+  | (typeof FILE_AND_VIEW_SURFACE_COMMANDS)[number]['id']
+  | (typeof TOOL_SURFACE_COMMANDS)[number]['id']
+  | (typeof PANEL_SURFACE_COMMANDS)[number]['id']
+  | (typeof WORKSPACE_SURFACE_COMMANDS)[number]['id']
+  | (typeof RIBBON_VIEW_SURFACE_COMMANDS)[number]['id']
+  | (typeof MOBILE_SURFACE_COMMANDS)[number]['id']
+  | (typeof CONTEXT_SURFACE_COMMANDS)[number]['id']
+  | (typeof RIBBON_ENTITY_ACTIONS_SURFACE_COMMANDS)[number]['id']
+  | (typeof VISIBILITY_SURFACE_COMMANDS)[number]['id'];
+export const SURFACE_COMMANDS: readonly (SurfaceCommandDefinition & { id: SurfaceCommandId })[] = [
+  ...FILE_AND_VIEW_SURFACE_COMMANDS,
   ...TOOL_SURFACE_COMMANDS,
   ...PANEL_SURFACE_COMMANDS,
   ...WORKSPACE_SURFACE_COMMANDS,
+  ...RIBBON_VIEW_SURFACE_COMMANDS,
   ...MOBILE_SURFACE_COMMANDS,
   ...CONTEXT_SURFACE_COMMANDS,
-  {
-    id: 'elements:entity-actions', labelKey: 'entityContextMenu.entityActions',
-    keywords: 'selected entity type storey duplicate delete actions',
-    category: 'Tools', icon: Ellipsis,
-    surfaces: ['ribbon'], enabled: alwaysEnabled, run: runContextAction,
-  },
-  {
-    id: 'vis:hide', labelKey: 'commandPalette.vis.hide.label',
-    keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff,
-    surfaces: ['palette', 'mobile', 'context'], enabled: alwaysEnabled, shortcut: 'visibility.hideSelection',
-    mobileLabelKey: () => 'shellChrome.mobileToolbar.hideSelection',
-    contextLabelKey: 'entityContextMenu.hide',
-    run: (context: SurfaceCommandContext) => runContextOr(context, hideSelectionFromStore),
-  },
-  {
-    id: 'vis:show', labelKey: ACTION_NAME_KEYS.showAll,
-    keywords: 'unhide reset visible', category: 'Visibility', icon: Eye,
-    surfaces: ['palette', 'mobile', 'context'], enabled: alwaysEnabled, shortcut: 'visibility.showAll',
-    run: (context: SurfaceCommandContext) => runContextOr(context, () => { showAllFromStore('show_all'); }),
-  },
-  {
-    id: 'vis:set-iso', labelKey: 'commandPalette.vis.setBasket.label',
-    searchLabel: 'Set Basket from Selection',
-    keywords: 'basket isolate set selection hierarchy view equals',
-    category: 'Visibility', icon: Equal, surfaces: ['palette', 'context'],
-    contextLabelKey: 'entityContextMenu.setBasket',
-    enabled: alwaysEnabled,
-    run: (context: SurfaceCommandContext) => runContextOr(context, () => { executeBasketSet(); }),
-  },
-  {
-    id: 'vis:add-iso', labelKey: 'commandPalette.vis.addBasket.label',
-    searchLabel: 'Add to Basket',
-    keywords: 'basket plus selection hierarchy view',
-    category: 'Visibility', icon: Plus, surfaces: ['palette', 'context'],
-    contextLabelKey: 'entityContextMenu.addToBasket',
-    enabled: alwaysEnabled, shortcut: 'basket.add',
-    run: (context: SurfaceCommandContext) => runContextOr(context, () => { executeBasketAdd(); }),
-  },
-  {
-    id: 'vis:remove-iso', labelKey: 'commandPalette.vis.removeBasket.label',
-    searchLabel: 'Remove from Basket',
-    keywords: 'basket minus selection hierarchy view',
-    category: 'Visibility', icon: Minus, surfaces: ['palette', 'context'],
-    contextLabelKey: 'entityContextMenu.removeFromBasket',
-    enabled: alwaysEnabled, shortcut: 'basket.remove',
-    run: (context: SurfaceCommandContext) => runContextOr(context, () => { executeBasketRemove(); }),
-  },
-  {
-    id: 'vis:toggle-iso', labelKey: 'commandPalette.vis.toggleBasket.label',
-    searchLabel: 'Toggle Basket Visibility',
-    keywords: 'basket show hide', category: 'Visibility', icon: Eye,
-    surfaces: paletteAndRibbon, enabled: alwaysEnabled,
-    run: () => { executeBasketToggleVisibility(); },
-  },
-  {
-    id: 'vis:save-view', labelKey: 'commandPalette.vis.saveBasketView.label',
-    searchLabel: 'Save Basket as View', keywords: 'basket presentation thumbnail',
-    category: 'Visibility', icon: Save, surfaces: ['palette', 'context'], enabled: alwaysEnabled,
-    contextLabelKey: 'entityContextMenu.saveBasketView',
-    contextShortcut: 'basket.saveView',
-    run: (context: SurfaceCommandContext) => runContextOr(context, () => {
-      void executeBasketSaveView().catch((err: unknown) => {
-        console.error('[CommandPalette] Failed to save basket view:', err);
-      });
-    }),
-  },
-  {
-    id: 'vis:toggle-presentation', labelKey: 'commandPalette.vis.togglePresentation.label',
-    searchLabel: 'Toggle Basket Presentation Dock', keywords: 'basket panel carousel thumbnails',
-    category: 'Visibility', icon: Layout, surfaces: paletteOnly, enabled: alwaysEnabled,
-    run: () => { useViewerStore.getState().toggleBottomPanel('presentation', 'palette'); },
-  },
-  {
-    id: 'vis:clear-iso', labelKey: 'commandPalette.vis.clearBasket.label',
-    searchLabel: 'Clear Basket', keywords: 'basket clear reset',
-    category: 'Visibility', icon: RotateCcw, surfaces: paletteOnly, enabled: alwaysEnabled,
-    run: () => { executeBasketClear(); },
-  },
-  {
-    id: 'vis:spaces', labelKey: 'commandPalette.vis.spaces.label',
-    keywords: 'IfcSpace rooms show hide', category: 'Visibility', icon: Box,
-    surfaces: paletteOnly, enabled: alwaysEnabled,
-    run: () => { useViewerStore.getState().toggleTypeVisibility('spaces'); },
-  },
-  {
-    id: 'vis:spatialZones', labelKey: 'commandPalette.vis.spatialZones.label',
-    keywords: 'IfcSpatialZone gross area GFA show hide', category: 'Visibility', icon: Box,
-    surfaces: paletteOnly, enabled: alwaysEnabled,
-    run: () => { useViewerStore.getState().toggleTypeVisibility('spatialZones'); },
-  },
-  {
-    id: 'vis:openings', labelKey: 'commandPalette.vis.openings.label',
-    keywords: 'IfcOpeningElement show hide', category: 'Visibility', icon: SquareX,
-    surfaces: paletteOnly, enabled: alwaysEnabled,
-    run: () => { useViewerStore.getState().toggleTypeVisibility('openings'); },
-  },
-  {
-    id: 'vis:site', labelKey: 'commandPalette.vis.site.label',
-    keywords: 'IfcSite terrain show hide', category: 'Visibility', icon: Building2,
-    surfaces: paletteOnly, enabled: alwaysEnabled,
-    run: () => { useViewerStore.getState().toggleTypeVisibility('site'); },
-  },
-  {
-    id: 'vis:ifcAnnotations', labelKey: 'commandPalette.vis.ifcAnnotations.label',
-    keywords: 'IfcAnnotation 2d drawing symbols text dimension leader label show hide',
-    category: 'Visibility', icon: Pencil, surfaces: paletteOnly, enabled: alwaysEnabled,
-    run: () => { useViewerStore.getState().toggleTypeVisibility('ifcAnnotations'); },
-  },
-  {
-    id: 'vis:ifcGrid', labelKey: 'commandPalette.vis.ifcGrid.label',
-    keywords: 'IfcGrid IfcGridAxis grid axis bubble tag show hide section clip',
-    category: 'Visibility', icon: Pencil, surfaces: paletteOnly, enabled: alwaysEnabled,
-    run: () => { useViewerStore.getState().toggleTypeVisibility('ifcGrid'); },
-  },
-  {
-    id: 'vis:reset-colors', labelKey: 'commandPalette.vis.resetColors.label',
-    keywords: 'clear color override', category: 'Visibility', icon: Palette,
-    surfaces: paletteAndRibbon, enabled: alwaysEnabled,
-    run: ({ execute, resetColors }: SurfaceCommandContext) => {
-      if (resetColors) resetColors();
-      else if (execute) execute('bim.viewer.resetColors()\nconsole.log("Colors reset")');
-      else throw new Error('Reset Colors requires a viewer action');
-    },
-  },
-] as const satisfies readonly SurfaceCommandDefinition[];
-
-export type SurfaceCommandId = (typeof SURFACE_COMMANDS)[number]['id'];
+  ...RIBBON_ENTITY_ACTIONS_SURFACE_COMMANDS,
+  ...VISIBILITY_SURFACE_COMMANDS,
+];
 
 export function surfaceCommand<const Id extends SurfaceCommandId>(
   id: Id,

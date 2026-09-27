@@ -38,7 +38,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -238,7 +238,7 @@ interface ExportOutcome {
   /** `doc.addImage(...)` arguments, or null when the export never got there. */
   addImageArgs: unknown[] | null;
   /** The user-facing failure text, or null on success. */
-  alertMessage: string | null;
+  errorMessage: string | null;
   /** Every `toast.info` message raised during the export. */
   infoToasts: string[];
   /** Canvas sizes the exporter asked the browser for. */
@@ -253,17 +253,16 @@ async function exportSheet(paperId: string, maxArea: number): Promise<ExportOutc
     infoToasts.push(message);
   };
 
-  let alertMessage: string | null = null;
+  let errorMessage: string | null = null;
   let addImageArgs: unknown[] | null = null;
   let settle!: () => void;
   const finished = new Promise<void>((resolve) => {
     settle = resolve;
   });
 
-  const g = globalThis as unknown as { alert?: (msg?: string) => void };
-  const originalAlert = g.alert;
-  g.alert = (msg?: string) => {
-    alertMessage = String(msg);
+  const originalError = toast.error;
+  toast.error = (message: string) => {
+    errorMessage = message;
     settle();
   };
 
@@ -299,11 +298,11 @@ async function exportSheet(paperId: string, maxArea: number): Promise<ExportOutc
         new Promise<void>((r) => setTimeout(r, 5000)),
       ]);
     });
-    return { addImageArgs, alertMessage, infoToasts, requested: canvas.requested };
+    return { addImageArgs, errorMessage, infoToasts, requested: canvas.requested };
   } finally {
     jsPDFApi.addImage = originalAddImage;
     toast.info = originalInfo;
-    if (originalAlert) g.alert = originalAlert; else delete g.alert;
+    toast.error = originalError;
     canvas.restore();
     if (root) await act(async () => { (root as Root).unmount(); });
     container.remove();
@@ -334,16 +333,6 @@ function largestUncappedPaperId(): string {
   assert.ok(entries.length > 0, 'no registry paper fits WebKit\'s cap — the arithmetic is wrong');
   return entries[0].id;
 }
-
-let alertGuard: (() => void) | undefined;
-beforeEach(() => {
-  const g = globalThis as unknown as { alert?: (msg?: string) => void };
-  if (!g.alert) {
-    g.alert = () => {};
-    alertGuard = () => { delete g.alert; };
-  }
-});
-afterEach(() => { alertGuard?.(); alertGuard = undefined; });
 
 describe('Drawing Sheet PDF — canvas pixel ceiling', () => {
   it('the constants are WebKit\'s own caps, not round numbers', () => {
@@ -381,15 +370,15 @@ describe('Drawing Sheet PDF — canvas pixel ceiling', () => {
   });
 
   it('exports A0 on a WebKit-capped canvas instead of failing on a blank bitmap', async () => {
-    const { addImageArgs, alertMessage, requested } = await exportSheet(
+    const { addImageArgs, errorMessage, requested } = await exportSheet(
       'A0_LANDSCAPE',
       WEBKIT_IOS_MAX_CANVAS_AREA,
     );
 
     // RED, before the fix: the exporter asks for 14043 x 9933 px, WebKit
     // hands back "data:," and jsPDF rejects it — `addImageArgs` stays null
-    // and `alertMessage` is a decoder complaint with no remedy in it.
-    assert.equal(alertMessage, null, `A0 export must succeed; failed with: ${alertMessage}`);
+    // and `errorMessage` is a decoder complaint with no remedy in it.
+    assert.equal(errorMessage, null, `A0 export must succeed; failed with: ${errorMessage}`);
     assert.ok(addImageArgs, 'jsPDF.addImage must have received a raster');
 
     assert.equal(requested.length, 1, 'exactly one canvas should be rasterized');
@@ -440,9 +429,9 @@ describe('Drawing Sheet PDF — canvas pixel ceiling', () => {
     // outside the cap arithmetic entirely. If a future cap degrades THIS
     // export, the feature's own default has regressed.
     const paper = getDefaultPaperSize();
-    const { alertMessage, infoToasts, requested } = await exportSheet(paper.id, Infinity);
+    const { errorMessage, infoToasts, requested } = await exportSheet(paper.id, Infinity);
 
-    assert.equal(alertMessage, null, `the default paper must export cleanly; failed with: ${alertMessage}`);
+    assert.equal(errorMessage, null, `the default paper must export cleanly; failed with: ${errorMessage}`);
     assert.deepEqual(infoToasts, [], 'the default paper must raise no reduction notice');
     assert.deepEqual(requested[0], {
       width: Math.ceil((paper.widthMm * SHEET_PDF_DPI) / 25.4),
@@ -456,9 +445,9 @@ describe('Drawing Sheet PDF — canvas pixel ceiling', () => {
 
     // Not the cap: a browser that allocates anything. If the guard fired here
     // it would be degrading an export that has no reason to be degraded.
-    const { addImageArgs, alertMessage, infoToasts, requested } = await exportSheet(paperId, Infinity);
+    const { addImageArgs, errorMessage, infoToasts, requested } = await exportSheet(paperId, Infinity);
 
-    assert.equal(alertMessage, null, `${paperId} must export cleanly; failed with: ${alertMessage}`);
+    assert.equal(errorMessage, null, `${paperId} must export cleanly; failed with: ${errorMessage}`);
     assert.ok(addImageArgs, 'jsPDF.addImage must have received a raster');
     assert.deepEqual(infoToasts, [], `${paperId} is inside the cap and must raise no reduction notice`);
     assert.deepEqual(requested[0], {
@@ -473,15 +462,15 @@ describe('Drawing Sheet PDF — canvas pixel ceiling', () => {
     // low-memory device. The cap cannot rule that out, so the blank bitmap
     // must be recognised rather than handed to jsPDF, whose "wrong PNG
     // signature" tells a user nothing they can act on.
-    const { addImageArgs, alertMessage } = await exportSheet('A4_LANDSCAPE', 0);
+    const { addImageArgs, errorMessage } = await exportSheet('A4_LANDSCAPE', 0);
 
     assert.equal(addImageArgs, null, 'a blank bitmap must never reach jsPDF');
-    assert.ok(alertMessage, 'the user must be told the export failed');
+    assert.ok(errorMessage, 'the user must be told the export failed');
     assert.doesNotMatch(
-      alertMessage!,
+      errorMessage!,
       /PNG signature/i,
       'jsPDF\'s decoder message is not an explanation the user can act on',
     );
-    assert.match(alertMessage!, /SVG/i, 'the message must name the vector export as the way out');
+    assert.match(errorMessage!, /SVG/i, 'the message must name the vector export as the way out');
   });
 });

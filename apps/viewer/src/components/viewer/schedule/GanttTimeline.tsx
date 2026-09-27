@@ -14,15 +14,16 @@ import { cn } from '@/lib/utils';
 import { useViewerStore, taskStartEpoch, taskFinishEpoch } from '@/store';
 import type { GanttTimeScale, ScheduleTimeRange } from '@/store';
 import { useTranslation } from '@/i18n';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { formatLocaleDate } from '@/i18n/intlFormat';
+import { IconButton } from '@/components/ui/icon-button';
 import type { FlattenedTask } from './schedule-utils';
 import {
   computeTicks,
+  advanceCalendarTime,
   formatTickLabel,
   timeToX,
 } from './schedule-utils';
-import { GANTT_ROW_HEIGHT, GANTT_HEADER_HEIGHT } from './GanttTaskTree';
+import { GANTT_ROW_HEIGHT, GANTT_HEADER_HEIGHT, GANTT_BOTTOM_GUTTER_HEIGHT } from './GanttTaskTree';
 import { useGanttBarDrag } from './useGanttBarDrag';
 import { GanttTaskBar } from './GanttTaskBar';
 import { GanttDependencyArrows } from './GanttDependencyArrows';
@@ -62,7 +63,7 @@ export const GanttTimeline = memo(function GanttTimeline({
   scrollTop,
   onScroll,
 }: GanttTimelineProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const [pixelWidth, setPixelWidth] = useState(1000);
 
@@ -193,6 +194,24 @@ export const GanttTimeline = memo(function GanttTimeline({
     onScrubSeek(range.start + pct * (range.end - range.start));
   }, [pixelWidth, range, onScrubSeek]);
 
+  const handleTimelineKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
+    let nextTime: number;
+    switch (event.key) {
+      case 'ArrowLeft':
+      case 'ArrowDown': nextTime = advanceCalendarTime(playbackTime, scale, -1); break;
+      case 'ArrowRight':
+      case 'ArrowUp': nextTime = advanceCalendarTime(playbackTime, scale, 1); break;
+      case 'Home': nextTime = range.start; break;
+      case 'End': nextTime = range.end; break;
+      default: return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    onScrubSeek(Math.min(range.end, Math.max(range.start, nextTime)));
+  }, [playbackTime, scale, range, onScrubSeek]);
+
+  const clampedPlaybackTime = Math.min(range.end, Math.max(range.start, playbackTime));
+
   return (
     <div
       ref={containerRef}
@@ -206,25 +225,17 @@ export const GanttTimeline = memo(function GanttTimeline({
         style={{ height: HEADER_HEIGHT }}
       >
         {(data.workCalendars?.length ?? 0) > 0 && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={respectWorkCalendar ? 'secondary' : 'ghost'}
-                size="icon"
-                className="absolute right-1 top-0.5 h-5 w-5 z-20"
-                aria-pressed={respectWorkCalendar}
-                aria-label={t('gantt.workCalendar.toggle.ariaLabel')}
-                onClick={() => setRespectWorkCalendar(!respectWorkCalendar)}
-              >
-                <CalendarOff className="h-3 w-3" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {respectWorkCalendar
-                ? t('gantt.workCalendar.toggle.tooltipOn')
-                : t('gantt.workCalendar.toggle.tooltipOff')}
-            </TooltipContent>
-          </Tooltip>
+          <IconButton
+            label={t('gantt.workCalendar.toggle.ariaLabel')}
+            tooltip={respectWorkCalendar ? t('gantt.workCalendar.toggle.tooltipOn') : t('gantt.workCalendar.toggle.tooltipOff')}
+            tooltipSide="bottom"
+            variant={respectWorkCalendar ? 'secondary' : 'ghost'}
+            className="absolute right-1 top-0.5 h-5 w-5 z-20"
+            aria-pressed={respectWorkCalendar}
+            onClick={() => setRespectWorkCalendar(!respectWorkCalendar)}
+          >
+            <CalendarOff className="h-3 w-3" />
+          </IconButton>
         )}
         <svg width={pixelWidth} height={HEADER_HEIGHT} className="block">
           {ticks.map((t, i) => {
@@ -235,7 +246,7 @@ export const GanttTimeline = memo(function GanttTimeline({
                 <text
                   x={x + 3}
                   y={HEADER_HEIGHT - 8}
-                  className="text-[10px] fill-muted-foreground font-mono"
+                  className="text-2xs fill-muted-foreground font-mono"
                 >
                   {formatTickLabel(t, scale)}
                 </text>
@@ -246,11 +257,14 @@ export const GanttTimeline = memo(function GanttTimeline({
       </div>
 
       {/* Timeline body */}
+      {/* Pointer canvas for bars and scrubbing; the native range below provides keyboard access. */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <svg
         width={pixelWidth}
         height={rowsHeight}
         className="block cursor-crosshair"
         onClick={handleTimelineClick}
+        data-testid="gantt-timeline-body"
       >
         {/* Non-working-day shading (#4830) — painted first so grid lines,
             row highlights and bars all draw on top of it. */}
@@ -359,6 +373,21 @@ export const GanttTimeline = memo(function GanttTimeline({
         />
       </svg>
 
+      {/* Native slider also matches the task tree's clear-control scroll gutter. */}
+      <input
+        type="range"
+        className="block accent-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+        style={{ width: pixelWidth, height: GANTT_BOTTOM_GUTTER_HEIGHT }}
+        min={range.start}
+        max={range.end}
+        value={clampedPlaybackTime}
+        aria-label={t('schedule.toolbar.playbackPosition')}
+        aria-valuetext={formatLocaleDate(locale, clampedPlaybackTime, { dateStyle: 'medium', timeStyle: 'short' })}
+        onKeyDown={handleTimelineKeyDown}
+        onChange={(event) => onScrubSeek(Number(event.currentTarget.value))}
+        data-testid="gantt-timeline-slider"
+      />
+
       {/* Live-drag tooltip — floats next to the cursor, absolute-
           positioned inside the scroll container so it scrolls with
           everything else. Only visible while a drag is active. */}
@@ -368,4 +397,3 @@ export const GanttTimeline = memo(function GanttTimeline({
     </div>
   );
 });
-

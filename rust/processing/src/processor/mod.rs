@@ -34,6 +34,9 @@ mod id_filter;
 pub use id_filter::{
     process_geometry_filtered_with_quality, process_geometry_filtered_with_quality_and_ids,
 };
+mod baked_basis;
+pub use baked_basis::process_geometry_streaming_filtered_with_baked_basis;
+use baked_basis::PassScope;
 pub(crate) mod instancing;
 mod jobs;
 mod opening_filter;
@@ -453,7 +456,7 @@ pub fn process_geometry_streaming_filtered_with_options(
         content,
         opening_filter,
         options,
-        None,
+        PassScope::default(),
         on_batch,
         on_color_update,
         on_quick_metadata_bootstrap,
@@ -464,7 +467,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     content: &[u8],
     opening_filter: OpeningFilterMode,
     options: StreamingOptions,
-    entity_ids: Option<&HashSet<u32>>,
+    PassScope { entity_ids, baked_basis_out }: PassScope<'_>,
     mut on_batch: impl FnMut(&[MeshData], usize, usize),
     mut on_color_update: impl FnMut(&[(u32, [f32; 4])]),
     mut on_quick_metadata_bootstrap: impl FnMut(&QuickMetadataBootstrap),
@@ -1098,6 +1101,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     let coord_space = frame.coordinate_space();
     let has_rtc_offset = frame.needs_shift();
     router.set_rtc_offset(frame.rtc_offset());
+    site_local::publish_baked_basis(baked_basis_out, frame, site_transform.as_deref());
     let preprocess_time = preprocess_start.elapsed();
     preprocess_span.record("phase_ms", preprocess_time.as_millis() as u64);
     drop(preprocess_span);

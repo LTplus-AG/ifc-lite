@@ -5,7 +5,7 @@
 /**
  * LandXML → IFC4X3, v1.
  *
- * Implements `docs/architecture/landxml-to-ifc-mapping.md` v1.0. That document
+ * Implements `docs/architecture/landxml-to-ifc-mapping.md` (v1.4). That document
  * is the contract; anything not written there is not in v1, and a change to the
  * mapping is a change to that document first.
  *
@@ -30,14 +30,16 @@ import type { TerrainWriter } from '../ifc-creator-terrain.js';
 import { checkCoordinateOrder, type CrsPlausibilityBounds } from './coordinate-plausibility.js';
 import { collectRefusals, isMappableSurface, refusalReason } from './refusals.js';
 import { cogoPointResolver, mapAlignments } from './alignment-mapping.js';
+import { mapProfiles } from './profile-mapping.js';
+import { stationEquationsOf } from './station-equations.js';
 import { writeAlignments, writeSurfaces, writeSurveyPoints } from './writers.js';
 import type { LandXmlIfcSource } from './source-types.js';
 import type {
-  LandXmlIfcCoverage, LandXmlIfcProvenance, LandXmlIfcResult, LandXmlIfcWarning,
+  LandXmlIfcCoverage, LandXmlIfcImagery, LandXmlIfcProvenance, LandXmlIfcResult, LandXmlIfcWarning,
 } from './result-types.js';
 
 /** The mapping-document version this converter implements. */
-export const LANDXML_IFC_MAPPING_VERSION = '1.1';
+export const LANDXML_IFC_MAPPING_VERSION = '1.4';
 
 export interface LandXmlIfcOptions {
   /** Recorded as provenance (§7); never used to decide anything. */
@@ -63,6 +65,12 @@ export interface LandXmlIfcOptions {
    * (§2.2 item 2). Recorded as provenance, exactly like the units override.
    */
   swapNorthingEasting?: boolean;
+  /**
+   * Imagery the caller will texture on the TIN (§15.5), recorded as
+   * provenance in `LandXML_Conversion`. The texture is not written here: the
+   * appearance workspace's planner writes it on `surfaceElements`.
+   */
+  imagery?: LandXmlIfcImagery;
   /** Fixed epoch-ms, for byte-deterministic output. */
   timestampMs?: number;
   Author?: string;
@@ -88,7 +96,9 @@ export function landXmlToIfc(source: LandXmlIfcSource, options: LandXmlIfcOption
   const alignmentMapping = mapAlignments(
     source.alignments, source.units, swap, cogoPointResolver(source.plan?.cogoPoints),
   );
-  const refusals = collectRefusals(source, alignmentMapping);
+  const stationing = stationEquationsOf(source, alignmentMapping);
+  const profileMapping = mapProfiles(source.profiles, source.alignments, alignmentMapping, source.units, stationing);
+  const refusals = collectRefusals(source, alignmentMapping, profileMapping, stationing);
   const warnings: LandXmlIfcWarning[] = [];
 
   const mappableSurfaces = source.surfaces.filter(isMappableSurface);
@@ -167,7 +177,9 @@ export function landXmlToIfc(source: LandXmlIfcSource, options: LandXmlIfcOption
 
   const surfaceResult = writeSurfaces(terrain, source.surfaces, units, swap, landXmlGlobalId);
   const pointResult = writeSurveyPoints(terrain, cogoPoints, units, swap, landXmlGlobalId);
-  const alignmentSamples = writeAlignments(terrain, alignmentMapping.mapped, landXmlGlobalId);
+  const alignmentSamples = writeAlignments(
+    terrain, alignmentMapping.mapped, landXmlGlobalId, profileMapping.mapped, stationing,
+  );
 
   if (options.crs?.Bounds) {
     const warning = checkCoordinateOrder(
@@ -182,6 +194,7 @@ export function landXmlToIfc(source: LandXmlIfcSource, options: LandXmlIfcOption
     vertices: surfaceResult.vertices,
     triangles: surfaceResult.triangles,
     alignments: alignmentMapping.mapped.length,
+    profiles: profileMapping.mapped.length,
   };
 
   if (coverage.surfaces === 0 && coverage.surveyPoints === 0 && (coverage.alignments ?? 0) === 0) {
@@ -197,6 +210,7 @@ export function landXmlToIfc(source: LandXmlIfcSource, options: LandXmlIfcOption
     assumedLinearUnit: units.assumed ? units.linearUnit : null,
     coordinateOrderSwapped: swap,
     refusedFamilies: refusals.map((refusal) => refusal.family),
+    ...(options.imagery ? { imagery: options.imagery } : {}),
   };
   writeProvenance(terrain, provenance, coverage);
 
@@ -204,6 +218,7 @@ export function landXmlToIfc(source: LandXmlIfcSource, options: LandXmlIfcOption
     status: 'exported',
     content: creator.toIfc().content,
     coverage,
+    surfaceElements: surfaceResult.elements,
     provenance,
     refusals,
     warnings,
@@ -249,9 +264,41 @@ function writeProvenance(
     { Name: 'ExportedSurfaces', Value: String(coverage.surfaces) },
     { Name: 'ExportedSurveyPoints', Value: String(coverage.surveyPoints) },
     { Name: 'ExportedAlignments', Value: String(coverage.alignments ?? 0) },
+    { Name: 'ExportedProfiles', Value: String(coverage.profiles ?? 0) },
+    ...imageryProperties(provenance.imagery),
   ];
   terrain.addPropertySet(terrain.siteId, {
     Name: 'LandXML_Conversion',
     Properties: properties,
   });
+}
+
+/** A number as provenance text: full precision, never an exponent. */
+function plain(value: number): string {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toPrecision(15)));
+}
+
+/**
+ * §15.5 — the imagery rows of `LandXML_Conversion`, written only when imagery
+ * is exported. The projection is spelled out so a reader can recompute every
+ * UV from the file alone: `u = (P − O)·U / W`, `v = (P − O)·V / H`.
+ */
+function imageryProperties(imagery: LandXmlIfcImagery | undefined): Array<{ Name: string; Value: string }> {
+  if (!imagery) return [];
+  const { projection: p } = imagery;
+  const pair = (value: readonly [number, number]): string => `(${plain(value[0])}, ${plain(value[1])})`;
+  return [
+    { Name: 'ImagerySourceFileName', Value: imagery.sourceFileName },
+    { Name: 'ImagerySourceHash', Value: imagery.sourceHash },
+    { Name: 'ImageryPlacement', Value: imagery.placement },
+    { Name: 'ImageryCrs', Value: imagery.crs },
+    {
+      Name: 'ImageryProjection',
+      Value: `planar in ${p.crs}: O ${pair(p.origin)}, U ${pair(p.axisU)}, V ${pair(p.axisV)}, `
+        + `W ${plain(p.extent[0])}, H ${plain(p.extent[1])}`,
+    },
+    { Name: 'ImageryCoveredFraction', Value: plain(imagery.coveredFraction) },
+    ...(imagery.shippedFileName ? [{ Name: 'ImageryShippedFileName', Value: imagery.shippedFileName }] : []),
+    ...(imagery.shippedHash ? [{ Name: 'ImageryShippedHash', Value: imagery.shippedHash }] : []),
+  ];
 }

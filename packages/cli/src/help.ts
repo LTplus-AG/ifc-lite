@@ -42,7 +42,7 @@ export function buildHelp(version: string): string {
     ids       <file.ifc> <rules.ids>              Validate against IDS rules
     bcf       <create|list|add-comment>           Work with BCF collaboration files
     clash     <file.ifc> [--matrix] [--bcf F]      Detect geometric clashes between elements
-    create    <type> [options] --out F             Create IFC elements (30+ types)
+    create    <type> [options] --out F             Create IFC elements (29 types)
     eval      <file.ifc> "<expression>"           Evaluate SDK expression
     run       <script.js> <file.ifc>              Execute a script against model
     schema                                        Dump SDK API schema (for LLM tools)
@@ -78,7 +78,6 @@ export function buildHelp(version: string): string {
     --help, -h           Show help
     --version, -v        Show version
     --json               Output as JSON (machine-readable)
-    --out <file>         Write output to file instead of stdout
     --verbose            Show parser + geometry diagnostics (stderr)
     --quiet              Errors only
     --debug              Verbose + stack traces on error
@@ -195,4 +194,68 @@ export function buildHelp(version: string): string {
 
   Learn more: https://ifclite.com
 `;
+}
+
+/**
+ * The `Commands:` block, as a map from command name to its rows (the command's
+ * own line plus any deeper-indented continuation lines).
+ *
+ * Derived from the same literal `buildHelp` returns rather than a second
+ * hand-written table: `scripts/docs/generate-docs-sections.mjs` already parses
+ * that block for the docs table, so a per-command help built any other way
+ * would be a third place to forget when a flag changes.
+ *
+ * A command row starts at exactly four spaces then the name; continuation rows
+ * are indented deeper. Long names (`diagnose-geometry`, `extract-entities`)
+ * leave only ONE space before their `<args>`, so the gap is `\s+`, not `\s{2,}`.
+ */
+function parseCommandBlock(help: string): Map<string, string[]> {
+  const block = help.match(/\n {2}Commands:\n([\s\S]*?)\n {2}Options:/);
+  const commands = new Map<string, string[]>();
+  if (!block) return commands;
+
+  let current: string[] | undefined;
+  for (const line of block[1].split('\n')) {
+    const head = line.match(/^ {4}([a-z][\w-]*)\s+\S/);
+    if (head) {
+      current = [line];
+      commands.set(head[1], current);
+    } else if (current && /^ {6,}\S/.test(line)) {
+      current.push(line);
+    } else if (line.trim() === '') {
+      current = undefined;
+    }
+  }
+  return commands;
+}
+
+/** Every command name the help text documents. */
+export function helpCommandNames(version = '0.0.0'): string[] {
+  return [...parseCommandBlock(buildHelp(version)).keys()];
+}
+
+/**
+ * Help for ONE command.
+ *
+ * `ifc-lite <command> --help` used to print the global help for all 37
+ * commands, because `index.ts` tested `args.includes('--help')` before
+ * dispatch and `args` still held the command name (#5527). The CLI's own docs
+ * tell LLM users to "discover all capabilities by running `ifc-lite --help`";
+ * there was no second level to discover.
+ *
+ * Returns `null` for a name the help text does not document, so the caller can
+ * fall back to the global help rather than print an empty section.
+ */
+export function buildCommandHelp(version: string, command: string): string | null {
+  const rows = parseCommandBlock(buildHelp(version)).get(command);
+  if (!rows) return null;
+  return [
+    ``,
+    `  ifc-lite ${command} — see \`ifc-lite --help\` for every command`,
+    ``,
+    ...rows,
+    ``,
+    `  Full reference: https://ifclite.dev/docs/guide/cli/`,
+    ``,
+  ].join('\n');
 }

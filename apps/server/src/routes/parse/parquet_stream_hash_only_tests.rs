@@ -179,7 +179,7 @@ async fn a_hash_that_contradicts_the_uploaded_body_still_keys_off_the_body() {
 }
 
 /// The shape guard. The hash is concatenated into a cache key, so a value that
-/// is not a bare digest is a caller-shaped key: `sha256=<key>-datamodel-v7`
+/// is not a bare digest is a caller-shaped key: `sha256=<key>-datamodel-v8`
 /// would address another request's data-model slot through the geometry
 /// reader. Anything but 64 lowercase hex characters is a `400`, not a lookup.
 #[tokio::test]
@@ -190,7 +190,7 @@ async fn a_sha256_that_is_not_a_bare_digest_is_rejected() {
         // Right alphabet, wrong length.
         "abc123",
         // A well-formed digest with a namespace suffix glued on.
-        &format!("{}-default-datamodel-v7", digest(TWO_WALL_FIXTURE)),
+        &format!("{}-default-datamodel-v8", digest(TWO_WALL_FIXTURE)),
         // Uppercase: `DiskCache::generate_key` only ever emits lowercase, so
         // accepting this would make two spellings of one file.
         &digest(TWO_WALL_FIXTURE).to_uppercase(),

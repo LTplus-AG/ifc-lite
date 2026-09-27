@@ -19,7 +19,8 @@ import { SourceHostProvider } from './services/sources/SourceHostProvider';
 import type { FileSourceProviderFactory } from './services/sources/source-host';
 import { Toaster } from './components/ui/toast';
 import { ChunkErrorBoundary } from './components/ChunkErrorBoundary';
-import { OverlayThemeSync } from './components/viewport-ui/OverlayThemeSync';
+import { StaleDeploymentNotice } from './components/StaleDeploymentNotice';
+import { LensRuntimeHost } from './components/viewer/LensRuntimeHost';
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 
@@ -97,6 +98,7 @@ export function App({ sourceProviders }: AppProps = {}) {
           </Suspense>
         </ChunkErrorBoundary>
         <Toaster />
+        <StaleDeploymentNotice />
         <Analytics />
       </>
     );
@@ -110,6 +112,7 @@ export function App({ sourceProviders }: AppProps = {}) {
           </Suspense>
         </ChunkErrorBoundary>
         <Toaster />
+        <StaleDeploymentNotice />
         <Analytics />
       </>
     );
@@ -119,9 +122,12 @@ export function App({ sourceProviders }: AppProps = {}) {
     <BimProvider>
       <ExtensionHostProvider>
         <SourceHostProvider additionalProviders={sourceProviders}>
-          <OverlayThemeSync />
+          <LensRuntimeHost />
+          {/* Toasts mount inside `ViewportContainer` itself (#5504, charter
+              #5478 item 22), anchored to the viewport's bottom-right above
+              the status bar, rather than the whole window's here. */}
           <ViewerLayout />
-          <Toaster />
+          <StaleDeploymentNotice />
           <Analytics />
         </SourceHostProvider>
       </ExtensionHostProvider>

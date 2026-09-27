@@ -94,6 +94,9 @@
 
 /* Custom theme configuration */
 @theme {
+  /* Smallest viewer text step; replace sub-11px arbitrary utilities (#5821). */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 0.875rem;
   --color-background: hsl(0 0% 100%);
   --color-foreground: hsl(240 10% 3.9%);
   --color-card: hsl(0 0% 100%);
@@ -127,8 +130,8 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    VIEWPORT OVERLAY TOKENS (#5483, charter #5478)
    The colours live in ONE place, `lib/viewport-ui/overlay-theme.ts`, and
-   `useOverlayThemeSync` writes them onto <html> as `--overlay-*` on every
-   theme change. These entries only lend them Tailwind names, so overlay code
+   `registerOverlayThemeSync` (a store subscription) writes them onto <html>
+   as `--overlay-*` on every theme change. These entries only lend them Tailwind names, so overlay code
    writes `stroke-overlay-accent` / `bg-overlay-accent-soft` / `text-axis-x`
    and follows the theme for free. `static` so the properties and the z scale
    exist at runtime even before any utility consumes them: scripts read them
@@ -194,8 +197,17 @@
 }
 
 /* Base styles */
-* {
-  border-color: var(--color-border);
+/* Layered (#5485): an unlayered `* { border-color }` sits ABOVE every
+   Tailwind utility layer in cascade order, so it wins over `border-<color>`
+   utilities (e.g. `border-overlay-accent`) no matter their source order —
+   the utility's declaration loses even though it's more specific-looking in
+   the file. `@layer base` puts this at Tailwind's lowest layer, where a
+   `utilities`-layer class (every `border-*` utility) always wins regardless
+   of stylesheet order, matching plain CSS cascade-layer semantics. */
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
 }
 
 body {
@@ -734,15 +746,6 @@ body {
   border-color: rgba(0, 0, 0, 0.10) !important;
 }
 
-/* Purple borders (property editor) stay purple but softened */
-.colorful .border-purple-200,
-.colorful .border-purple-300\/50,
-.colorful .border-purple-500\/30,
-.colorful .border-purple-700,
-.colorful .border-purple-800 {
-  border-color: rgba(157, 124, 216, 0.25) !important;
-}
-
 /* ── Text ── */
 .colorful .text-zinc-900,
 .colorful .text-zinc-800,
@@ -1139,6 +1142,27 @@ body {
   opacity: 0.3;
 }
 
+/* Panel-chrome button vocabulary (`data-chrome-btn`, PanelTourButton.tsx /
+   SidebarPanelHost.tsx): every one of these is `h-5 w-5` (20px), under the
+   WCAG 2.2 2.5.8 24x24 CSS px target-size minimum (#5826). One rule here
+   gives all of them (present and future) a >=24px hit area via an invisible
+   `::after` pulled outward by a negative inset, without touching their own
+   visual size, applied by attribute selector instead of by variant because
+   this vocabulary predates and sits outside `ui/button.tsx`. Sized to just
+   close the 4px gap (20 + 2*2 = 24), not beyond: these buttons sit `gap-1`
+   (4px) apart, and a bigger inset overlapped the neighbour (the defect a
+   uniform slop on every `buttonVariants` icon size caused, and was reverted
+   for, in this same review round). */
+[data-chrome-btn] {
+  position: relative;
+}
+
+[data-chrome-btn]::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+}
+
 /* Toolbar button styles */
 .toolbar-button {
   padding: 0.5rem;
@@ -1163,35 +1187,6 @@ body {
 .toolbar-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-/* Annotation pin idle introduction — fires once on mount, then settles.
-   Driven by a `prefers-reduced-motion` guard so accessibility users
-   don't get hit by the pulse. */
-@keyframes annotation-pin-idle {
-  0% {
-    transform: scale(0.7);
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55);
-  }
-  60% {
-    transform: scale(1.08);
-    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
-  }
-  100% {
-    transform: scale(1);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35),
-      0 0 0 1px rgba(0, 0, 0, 0.15);
-  }
-}
-
-.annotation-pin-idle {
-  animation: annotation-pin-idle 360ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .annotation-pin-idle {
-    animation: none;
-  }
 }
 
 /* Loading skeleton animation */

@@ -11,7 +11,7 @@ use crate::schema_unrepresented::{check_representation, UnrepresentedEntityError
 use crate::step_slot::split_top_level_args;
 
 /// Canonicalize a FILE_SCHEMA label to one of the four families we convert between.
-fn canon(s: &str) -> &'static str {
+pub(crate) fn canon(s: &str) -> &'static str {
     let u = s.to_uppercase();
     if u.starts_with("IFC2X3") {
         "IFC2X3"

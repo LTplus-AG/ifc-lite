@@ -4,10 +4,10 @@
 
 /**
  * Static integrity checks for the tour registry - the cheap, browser-free
- * complement to the runtime rot telemetry (tour_step_broken). Runtime anchor
- * existence can only be checked in a live DOM; here we pin everything that
- * can rot at build time: id uniqueness, step shape per kind, and the plain
- * ASCII copy rule.
+ * complement to the runtime rot telemetry (tour_step_broken). Whether an anchor
+ * is rendered at all is pinned by `anchors.contract.test.ts`; here we pin the
+ * rest of what can rot at build time: id uniqueness, step shape per kind, and
+ * the plain ASCII copy rule.
  */
 
 import { test } from 'node:test';

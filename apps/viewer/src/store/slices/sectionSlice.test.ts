@@ -319,11 +319,14 @@ describe('SectionSlice', () => {
       assert.strictEqual(state.sectionPickMode, false);
     });
 
-    it('setSectionPlaneFromFace updates axis + flipped to the signed-dominant cardinal', () => {
-      // CR P1 from #581: dropping the sign produced inverted exports.
+    it('setSectionPlaneFromFace sets the dominant cardinal axis and resets the flip', () => {
+      // `flipped` is relative to the custom normal (#5644), so a pick always
+      // starts on the default kept side; the cardinal sign lives in
+      // `cardinalSectionFlipped` (CR P1 from #581: exports need it).
+      state.flipSectionPlane();
       state.setSectionPlaneFromFace([-1, 0, 0], [0, 0, 0]);
       assert.strictEqual(state.sectionPlane.axis, 'side');
-      assert.strictEqual(state.sectionPlane.flipped, true);
+      assert.strictEqual(state.sectionPlane.flipped, false);
 
       state.setSectionPlaneFromFace([0, 0, 1], [0, 0, 0]);
       assert.strictEqual(state.sectionPlane.axis, 'front');

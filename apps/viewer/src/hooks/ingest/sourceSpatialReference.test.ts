@@ -21,6 +21,16 @@ describe('non-IFC source spatial metadata (#5048)', () => {
     assert.equal(spatialMetadataFromLandXml({ coordinateSystem: {} }).horizontalId, undefined);
   });
 
+  // Follow-up to #5942: LandXML 1.2's `epsgCode` is how producers declare the CRS.
+  it('reads the producer epsgCode, and takes neither code when it contradicts horizontalDatum', () => {
+    assert.equal(spatialMetadataFromLandXml({ coordinateSystem: { epsgCode: '3875' } }).horizontalId, 'EPSG:3875');
+    // Civil 3D writes a datum NAME in horizontalDatum; the code still wins.
+    assert.equal(spatialMetadataFromLandXml({ coordinateSystem: { epsgCode: '2269', horizontalDatum: 'NAD83' } }).horizontalId, 'EPSG:2269');
+    assert.equal(spatialMetadataFromLandXml({ coordinateSystem: { epsgCode: '2056', horizontalDatum: 'EPSG:2056' } }).horizontalId, 'EPSG:2056');
+    assert.equal(spatialMetadataFromLandXml({ coordinateSystem: { epsgCode: '2056', horizontalDatum: 'EPSG:21781' } }).horizontalId, undefined);
+    assert.equal(spatialMetadataFromLandXml({ coordinateSystem: { epsgCode: 'GK21' } }).horizontalId, undefined);
+  });
+
   it('reads an E57 coordinateMetadata WKT and leaves absent metadata unknown', () => {
     const declared = spatialMetadataFromE57Xml('<e57Root><coordinateMetadata>PROJCRS["LV95",ID["EPSG",2056]],VERTCRS["LN02",ID["EPSG",5729]]</coordinateMetadata></e57Root>');
     assert.equal(declared.horizontalId, 'EPSG:2056');

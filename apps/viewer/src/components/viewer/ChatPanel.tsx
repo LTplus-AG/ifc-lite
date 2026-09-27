@@ -19,19 +19,11 @@
  */
 
 import { useCallback, useRef, useEffect, useState, type KeyboardEvent, type DragEvent } from 'react';
-import {
-  X,
-  Send,
-  Square,
-  Trash2,
-  Paperclip,
-  Loader2,
-  ArrowDown,
-  Zap,
-  Wrench,
-} from 'lucide-react';
+import { X, Send, Square, Trash2, Paperclip, ArrowDown, Zap, Wrench } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { PromoteToolDialog } from '@/components/extensions/PromoteToolDialog';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { toast } from '@/components/ui/toast';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
@@ -48,7 +40,7 @@ import {
   estimateMessagesTokens,
   summarizeDroppedMessages,
 } from './chat/chatPanelHelpers';
-import { fetchUsageSnapshot, streamChat, type StreamMessage, type UsageInfo } from '@/lib/llm/stream-client';
+import { fetchUsageSnapshot, streamChat, type UsageInfo } from '@/lib/llm/stream-client';
 import { streamAnthropicChat, streamOpenAiChat } from '@/lib/llm/stream-direct';
 import { buildStreamMessagesForModel, filterAttachmentsForModel } from '@/lib/llm/message-capabilities';
 import { buildSystemPrompt } from '@/lib/llm/system-prompt';
@@ -58,12 +50,13 @@ import { MAX_PDF_ATTACHMENT_BYTES } from '@/lib/llm/document-text';
 import { attachPdfDocument, createDocumentUploadGate, shouldContinueDocumentUploadBatch } from '@/lib/llm/document-upload';
 import { extractCodeBlocks } from '@/lib/llm/code-extractor';
 import { extractScriptEditOps, filterUnappliedScriptOps } from '@/lib/llm/script-edit-ops';
-import { createPatchDiagnostic, getPrimaryRootCause, type RepairScope } from '@/lib/llm/script-diagnostics';
-import type { ScriptDiagnostic } from '@/lib/llm/script-diagnostics';
+import { createPatchDiagnostic, getPrimaryRootCause, type RepairScope, type ScriptDiagnostic } from '@/lib/llm/script-diagnostics';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
+import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { buildRepairSessionKey, getEscalatedRepairScope, pruneMessagesForRepair } from '@/lib/llm/repair-loop';
 import type { ChatMessage, ChatRepairRequest, FileAttachment } from '@/lib/llm/types';
 import { canUsePlainCodeBlockFallback, type ScriptMutationIntent } from '@/lib/llm/script-preservation';
-import { Check, Image as ImageIcon, KeyRound } from 'lucide-react';
+import { Image as ImageIcon, KeyRound } from 'lucide-react';
 import { getModelById } from '@/lib/llm/models';
 import { resolveStreamRoute } from '@/lib/llm/byok-guard';
 import { getApiKeys, hasAnthropicKey, hasOpenaiKey, subscribeApiKeys } from '@/services/api-keys';
@@ -198,7 +191,6 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const consumePendingPrompt = useViewerStore((s) => s.consumeChatPendingPrompt);
   const pendingRepairRequest = useViewerStore((s) => s.chatPendingRepairRequest);
   const consumePendingRepairRequest = useViewerStore((s) => s.consumeChatPendingRepairRequest);
-  const hasByokKey = useViewerStore((s) => s.chatHasByokKey);
   const setChatHasByokKey = useViewerStore((s) => s.setChatHasByokKey);
   const usage = useViewerStore((s) => s.chatUsage);
   const setChatUsage = useViewerStore((s) => s.setChatUsage);
@@ -333,22 +325,16 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
 
   // ── Keyboard shortcuts ──
   useEffect(() => {
-    const handler = (e: globalThis.KeyboardEvent) => {
-      // Cmd+L / Ctrl+L → focus chat input
-      if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
-        e.preventDefault();
-        inputRef.current?.focus();
-      }
-      // Escape → close panel (only if chat input isn't focused or is empty)
-      if (e.key === 'Escape' && onClose) {
-        const isChatFocused = document.activeElement === inputRef.current;
-        if (!isChatFocused || !inputText) {
-          onClose();
-        }
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    const removeFocus = registerKeyboardCommand('chat.focusInput', () => {
+      inputRef.current?.focus();
+    }, { allowInTextEntry: true });
+    const removeClose = registerKeyboardCommand('chat.close', () => {
+      if (!onClose) return false;
+      const isChatFocused = document.activeElement === inputRef.current;
+      if (isChatFocused && inputText) return false;
+      onClose();
+    }, { allowInTextEntry: true, layer: 'popover' });
+    return () => { removeFocus(); removeClose(); };
   }, [onClose, inputText]);
 
   const buildRepairPromptFromLiveState = useCallback((request: ChatRepairRequest) => {
@@ -1298,25 +1284,20 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
 
       {/* Header */}
       <div className="flex items-center gap-0.5 px-2 py-1 border-b shrink-0">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={handleClearClick}
-              disabled={messages.length === 0}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('chat.panel.clearTooltip')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('chat.panel.clearTooltip')}
+          size="icon-xs"
+          onClick={handleClearClick}
+          disabled={messages.length === 0}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </IconButton>
 
         <ModelSelector />
         <ByokStreamingPill modelId={activeModel} className="ml-1" />
         {authoringTelemetry && (
           <span
-            className="ml-1 text-[10px] uppercase tracking-wide font-semibold bg-primary/15 text-primary rounded px-1.5 py-0.5"
+            className="ml-1 text-xs uppercase tracking-wide font-semibold bg-primary/15 text-primary rounded px-1.5 py-0.5"
             title={t('chat.panel.authoringBadgeTooltip', { intent: authoringTelemetry.intent })}
           >
             {t('chat.panel.authoringBadge', {
@@ -1329,45 +1310,28 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         )}
         <div className="flex-1" />
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => openByokModal(modelSource === 'openai' ? 'openai' : 'anthropic')}
-              className={keyStateAnthropic || keyStateOpenai ? 'text-emerald-500' : ''}
-              aria-label={keyStateAnthropic || keyStateOpenai ? t('chat.panel.manageKeysLabel') : t('chat.panel.addKeyLabel')}
-            >
-              <KeyRound className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {keyStateAnthropic || keyStateOpenai ? t('chat.panel.manageKeysLabel') : t('chat.panel.addKeyLabel')}
-          </TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={keyStateAnthropic || keyStateOpenai ? t('chat.panel.manageKeysLabel') : t('chat.panel.addKeyLabel')}
+          size="icon-xs"
+          onClick={() => openByokModal(modelSource === 'openai' ? 'openai' : 'anthropic')}
+          className={keyStateAnthropic || keyStateOpenai ? 'text-emerald-500' : ''}
+        >
+          <KeyRound className="h-3.5 w-3.5" />
+        </IconButton>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => setAutoExecute(!autoExecute)}
-              className={autoExecute ? 'text-amber-500' : ''}
-            >
-              <Zap className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {t('chat.panel.autoRunStatus', {
-              state: autoExecute ? t('chat.panel.stateOn') : t('chat.panel.stateOff'),
-            })}
-          </TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('chat.panel.autoRunStatus', { state: autoExecute ? t('chat.panel.stateOn') : t('chat.panel.stateOff') })}
+          size="icon-xs"
+          onClick={() => setAutoExecute(!autoExecute)}
+          className={autoExecute ? 'text-amber-500' : ''}
+        >
+          <Zap className="h-3.5 w-3.5" />
+        </IconButton>
 
         {onClose && (
-          <Button variant="ghost" size="icon-xs" onClick={onClose}>
+          <IconButton label={t('chat.panel.closeLabel')} size="icon-xs" onClick={onClose}>
             <X className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         )}
       </div>
 
@@ -1462,7 +1426,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         {/* Sending indicator */}
         {status === 'sending' && (
           <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <Spinner size="sm" />
             <span className="text-xs">{t('chat.panel.sendingIndicator')}</span>
           </div>
         )}
@@ -1521,14 +1485,15 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       {/* Scroll to bottom button */}
       {showScrollBtn && (
         <div className="absolute bottom-[120px] right-4 z-20">
-          <Button
+          <IconButton
+            label={t('chat.panel.scrollToBottomLabel')}
             variant="outline"
             size="icon-xs"
             onClick={scrollToBottom}
             className="rounded-full shadow-md bg-background"
           >
             <ArrowDown className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         </div>
       )}
 
@@ -1541,14 +1506,14 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-5 px-2 text-[10px]"
+                className="h-5 px-2 text-xs"
                 onClick={handleContinue}
               >
                 {t('chat.panel.continueButton')}
               </Button>
             )}
             {showSupportEmail && (
-              <a className="underline text-[10px]" href="mailto:louis@ltplus.com">
+              <a className="underline text-xs" href="mailto:louis@ltplus.com">
                 {t('chat.panel.contactSupportLink')}
               </a>
             )}
@@ -1579,12 +1544,14 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                 <Paperclip className="h-3 w-3" />
               )}
               {a.name}
-              <button
-                className="ml-0.5 hover:text-destructive"
+              <IconButton
+                label={t('chat.panel.removeAttachment', { name: a.name })}
+                size="icon-xs"
+                className="ml-0.5 h-4 w-4 p-0 hover:text-destructive"
                 onClick={() => removeAttachment(a.id)}
               >
                 <X className="h-3 w-3" />
-              </button>
+              </IconButton>
             </span>
           ))}
         </div>
@@ -1609,24 +1576,15 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             onChange={handleFileUpload}
             className="hidden"
           />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={!canAttachInput}
-                className="shrink-0 mb-0.5"
-              >
-                <Paperclip className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {canAttachInput
-                ? t('chat.panel.attachTooltipEnabled')
-                : t('chat.panel.attachTooltipDisabled')}
-            </TooltipContent>
-          </Tooltip>
+          <IconButton
+            label={canAttachInput ? t('chat.panel.attachTooltipEnabled') : t('chat.panel.attachTooltipDisabled')}
+            size="icon-xs"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!canAttachInput}
+            className="shrink-0 mb-0.5"
+          >
+            <Paperclip className="h-3.5 w-3.5" />
+          </IconButton>
 
           <textarea
             ref={inputRef}
@@ -1649,39 +1607,30 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           />
 
           {isActive ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={handleStop}
-                  className="shrink-0 mb-0.5"
-                >
-                  <Square className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{t('chat.panel.stopGeneratingTooltip')}</TooltipContent>
-            </Tooltip>
+            <IconButton
+              label={t('chat.panel.stopGeneratingTooltip')}
+              size="icon-xs"
+              onClick={handleStop}
+              className="shrink-0 mb-0.5"
+            >
+              <Square className="h-3.5 w-3.5" />
+            </IconButton>
           ) : (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="default"
-                  size="icon-xs"
-                  onClick={handleSend}
-                  disabled={!inputText.trim() || needsByokKey}
-                  className="shrink-0 mb-0.5"
-                >
-                  <Send className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{t('chat.panel.sendTooltip')}</TooltipContent>
-            </Tooltip>
+            <IconButton
+              label={t('chat.panel.sendTooltip')}
+              variant="default"
+              size="icon-xs"
+              onClick={handleSend}
+              disabled={!inputText.trim() || needsByokKey}
+              className="shrink-0 mb-0.5"
+            >
+              <Send className="h-3.5 w-3.5" />
+            </IconButton>
           )}
         </div>
         <div className="flex items-center justify-between mt-1 px-0.5">
           {isActive ? (
-            <span className="text-[10px] text-muted-foreground">{t('chat.panel.streamingIndicator')}</span>
+            <span className="text-xs text-muted-foreground">{t('chat.panel.streamingIndicator')}</span>
           ) : displayUsage ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1693,7 +1642,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                       style={{ width: `${Math.min(100, displayUsage.pct)}%` }}
                     />
                   </div>
-                  <span className="text-[10px] text-muted-foreground tabular-nums">{displayUsage.pct}%</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{displayUsage.pct}%</span>
                 </div>
               </TooltipTrigger>
               <TooltipContent>
@@ -1704,9 +1653,9 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
               </TooltipContent>
             </Tooltip>
           ) : (
-            <span className="text-[10px] text-muted-foreground">{t('chat.panel.shiftEnterHint')}</span>
+            <span className="text-xs text-muted-foreground">{t('chat.panel.shiftEnterHint')}</span>
           )}
-          <span className="text-[10px] text-muted-foreground">⌘L</span>
+          <span className="text-xs text-muted-foreground">{shortcutLabel('chat.focusInput')}</span>
         </div>
       </div>
 

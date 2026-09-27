@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Naming helpers for the Export Changes artifact set (`buildChangedArtifacts`
+ * Naming helpers for the Export modified IFC… artifact set (`buildChangedArtifacts`
  * in `model-changes.ts`): the STEP schema token a model exports as, and the
  * collision-free base name each produced file gets. Pure, no store access.
  */

@@ -15,6 +15,7 @@
  */
 
 import {
+  normaliseBundlePath,
   parseCapabilities,
   wrapEntrySource,
   type ActivationDispatcher,
@@ -98,7 +99,7 @@ export async function runExtensionCommand(
     }
     const grants = grantsResult.value;
 
-    const file = bundle.files.get(entry);
+    const file = bundle.files.get(normaliseBundlePath(entry));
     if (!file) {
       throw new Error(`Command handler "${entry}" missing from bundle ${record.id}.`);
     }

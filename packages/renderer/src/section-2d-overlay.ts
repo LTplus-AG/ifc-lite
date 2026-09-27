@@ -25,7 +25,7 @@
 
 import { PIPELINE_CONSTANTS } from './constants.js';
 import { createSectionCapPipelines } from './section-cap-pipelines.js';
-import { packRteDrawableDelta } from './relative-to-eye.js';
+import { tryPackRteDrawableDelta } from './relative-to-eye.js';
 import {
   SECTION_2D_CAP_FILL_WGSL,
   SECTION_2D_OVERLAY_LINE_WGSL,
@@ -483,7 +483,9 @@ export class Section2DOverlayRenderer {
     uniforms.set(viewProj, S.viewProj);
     if (capAnchor !== null && rteViewProj !== undefined && rteCamera !== undefined) {
       uniforms.set(rteViewProj, S.rteViewProj);
-      packRteDrawableDelta(capAnchor, rteCamera, uniforms, S.originDeltaHigh);
+      // Outside this camera's RTE envelope: the cap and its outline, the only
+      // draws below, are not rasterisable this frame (#6128).
+      if (!tryPackRteDrawableDelta(capAnchor, rteCamera, uniforms, S.originDeltaHigh)) return;
       uniforms[S.originDeltaHigh + 3] = 1;
     }
     uniforms.set(this.overlayLineColor, S.lineColor); // section-cut outline colour

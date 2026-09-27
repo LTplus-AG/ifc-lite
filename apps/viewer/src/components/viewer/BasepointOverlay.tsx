@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * BasepointOverlay — renders a small XYZ triad + label at the viewer-space
- * position of each loaded model's IFC (0,0,0) point.
+ * `BasepointOverlay` — a `Pin` + `WorldLabel` at the viewer-space position
+ * of each loaded model's IFC (0,0,0) point, on the shared scene-overlay
+ * kernel (#5486/#5512, charter #5478).
  *
  * Helps users diagnose federation alignment problems by showing where each
  * model THINKS its origin is in the displayed scene. For a correctly
@@ -16,11 +17,17 @@
  * Origins are derived from each model's neutral spatial reference — independent
  * of vertex-baked alignment, so they stay correct after re-aligns and across
  * cross-CRS reprojections without maintaining a second IFC conversion seam.
+ *
+ * Before the kernel this ran its own `requestAnimationFrame` +
+ * `Camera.projectToScreen` poll (unconditional, every frame, forever) and
+ * built the marker SVG by hand via `svg.innerHTML`. `Pin`'s `fill` override
+ * carries the per-model status colour (data, not a theme token — roadmap
+ * §3), same pattern `PeerPresenceLayer` uses for a collab peer's colour.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useViewerStore } from '@/store';
-import { getGlobalRenderer } from '@/hooks/useBCF';
+import { Pin, WorldLabel } from '@/components/viewport-ui/scene';
 import {
   computeIfcOriginViewerPosition,
   type IfcOriginPlacement,
@@ -29,7 +36,6 @@ import {
 import { extractModelSpatialPlacement, findReferenceSpatialModel } from '@/hooks/ingest/federationAlign';
 import type { FederatedModel } from '@/store/types';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { Renderer } from '@ifc-lite/renderer';
 
 interface BasepointDot {
   modelId: string;
@@ -37,17 +43,15 @@ interface BasepointDot {
   status: FederatedModel['federationAlignmentStatus'];
   /** Viewer-space (Y-up) position of the model's IFC (0,0,0) point. */
   viewer: { x: number; y: number; z: number };
-  /** Source flag from computeIfcOriginViewerPosition (debug colour hint). */
-  origin: IfcOriginPlacement['source'];
 }
 
-const STATUS_COLOURS: Record<NonNullable<FederatedModel['federationAlignmentStatus']> | 'none', { stroke: string; fill: string }> = {
-  anchor:      { stroke: '#f59e0b', fill: '#fef3c7' }, // amber
-  'same-crs':  { stroke: '#10b981', fill: '#d1fae5' }, // emerald
-  reprojected: { stroke: '#10b981', fill: '#d1fae5' }, // emerald
-  identity:    { stroke: '#10b981', fill: '#d1fae5' }, // emerald
-  failed:      { stroke: '#ef4444', fill: '#fee2e2' }, // red
-  none:        { stroke: '#a1a1aa', fill: '#f4f4f5' }, // zinc
+const STATUS_COLOUR: Record<NonNullable<FederatedModel['federationAlignmentStatus']> | 'none', string> = {
+  anchor: '#f59e0b', // amber
+  'same-crs': '#10b981', // emerald
+  reprojected: '#10b981', // emerald
+  identity: '#10b981', // emerald
+  failed: '#ef4444', // red
+  none: '#a1a1aa', // zinc
 };
 
 export function BasepointOverlay() {
@@ -58,16 +62,7 @@ export function BasepointOverlay() {
   // Re-derive origins when any georef edit lands.
   useViewerStore((s) => s.mutationVersion);
 
-  // Cached origin world positions in viewer Y-up space; rebuilt only when the
-  // upstream georef data changes, NOT every camera frame.
-  const dotsRef = useRef<BasepointDot[]>([]);
-  const [version, setVersion] = useState(0);
-
-  const containerRef = useRef<HTMLDivElement>(null);
-  const svgRef = useRef<SVGSVGElement>(null);
-  const rendererRef = useRef<Renderer | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const rafRef = useRef<number | null>(null);
+  const [dots, setDots] = useState<BasepointDot[]>([]);
 
   // The overlay must use the exact same canonical-anchor predicate as the
   // federation. A display label is not a CRS identity and must not become one
@@ -80,8 +75,7 @@ export function BasepointOverlay() {
   // Recompute every model's IFC-origin viewer position when the inputs change.
   useEffect(() => {
     if (!showModelBasepoints) {
-      dotsRef.current = [];
-      setVersion((v) => v + 1);
+      setDots([]);
       return;
     }
 
@@ -104,7 +98,7 @@ export function BasepointOverlay() {
           preAlignmentCoordinateInfo: model.preAlignment?.coordinateInfo,
         };
         const anchorIsThis = anchorInput.id === modelId;
-        const placement = await computeIfcOriginViewerPosition(
+        const placement: IfcOriginPlacement | null = await computeIfcOriginViewerPosition(
           modelInput,
           anchorIsThis ? null : anchorInput.input,
         );
@@ -114,92 +108,42 @@ export function BasepointOverlay() {
           modelName: model.name,
           status: anchorIsThis ? 'anchor' : (model.federationAlignmentStatus ?? 'none'),
           viewer: placement.viewer,
-          origin: placement.source,
         });
       }
       if (cancelled) return;
-      dotsRef.current = results;
-      setVersion((v) => v + 1);
+      setDots(results);
     })();
 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showModelBasepoints, models, anchorInput, georefMutations]);
 
-  // Lazy renderer/canvas lookup + per-frame projection. We poll on RAF
-  // (matching BCFOverlay) since the WebGPU renderer doesn't expose a
-  // camera-change event we can subscribe to from React.
-  useEffect(() => {
-    if (!showModelBasepoints) return;
-    const container = containerRef.current;
-    if (!container) return;
-    const renderer = getGlobalRenderer();
-    if (!renderer) return;
-    const canvas = container.closest('[data-viewport]')?.querySelector('canvas') as HTMLCanvasElement | null;
-    if (!canvas) return;
-    rendererRef.current = renderer;
-    canvasRef.current = canvas;
-
-    function paint() {
-      const r = rendererRef.current;
-      const cv = canvasRef.current;
-      const svg = svgRef.current;
-      if (!r || !cv || !svg) {
-        rafRef.current = requestAnimationFrame(paint);
-        return;
-      }
-      const w = cv.clientWidth;
-      const h = cv.clientHeight;
-      const camera = r.getCamera();
-      // Build the SVG content procedurally to avoid React re-renders on every
-      // frame. Each dot is a triad + label + circle.
-      const fragments: string[] = [];
-      for (const dot of dotsRef.current) {
-        const screen = camera.projectToScreen(dot.viewer, w, h);
-        if (!screen) continue;
-        const colours = STATUS_COLOURS[dot.status ?? 'none'];
-        const cx = Math.round(screen.x);
-        const cy = Math.round(screen.y);
-        // Axes: 12px arms in viewer-Y-up screen space. X right, Y up (screen
-        // up = -y), Z toward viewer (approximated as 45° offset on screen for
-        // a clear distinction from X/Y).
-        fragments.push(`
-          <g transform="translate(${cx} ${cy})">
-            <line x1="0" y1="0" x2="12" y2="0" stroke="#ef4444" stroke-width="2" />
-            <line x1="0" y1="0" x2="0" y2="-12" stroke="#22c55e" stroke-width="2" />
-            <line x1="0" y1="0" x2="-8" y2="8" stroke="#3b82f6" stroke-width="2" />
-            <circle cx="0" cy="0" r="3.5" fill="${colours.fill}" stroke="${colours.stroke}" stroke-width="1.5" />
-            <text x="14" y="-6" font-family="ui-monospace, monospace" font-size="10" fill="${colours.stroke}" stroke="white" stroke-width="3" paint-order="stroke" stroke-linejoin="round">${escapeXml(dot.modelName)}</text>
-          </g>
-        `);
-      }
-      svg.innerHTML = fragments.join('');
-      rafRef.current = requestAnimationFrame(paint);
-    }
-
-    rafRef.current = requestAnimationFrame(paint);
-    return () => {
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showModelBasepoints, version]);
-
   if (!showModelBasepoints) return null;
+
   return (
-    <div ref={containerRef} className="absolute inset-0 pointer-events-none z-30">
-      <svg ref={svgRef} className="absolute inset-0 w-full h-full" />
-    </div>
+    <>
+      {dots.map((dot) => {
+        const colour = STATUS_COLOUR[dot.status ?? 'none'];
+        return (
+          <BasepointMarker key={dot.modelId} dot={dot} colour={colour} />
+        );
+      })}
+    </>
   );
 }
 
-function escapeXml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+/** One model's origin marker + name label, kept as its own component so
+ *  each dot owns a stable set of hook calls independent of how many other
+ *  models are loaded. */
+function BasepointMarker({ dot, colour }: { dot: BasepointDot; colour: string }) {
+  return (
+    <>
+      <Pin worldPoint={dot.viewer} fill={colour} title={dot.modelName} />
+      <WorldLabel worldPoint={dot.viewer} offset={{ dx: 14, dy: -28 }}>
+        <span className="font-mono" style={{ color: colour }}>
+          {dot.modelName}
+        </span>
+      </WorldLabel>
+    </>
+  );
 }

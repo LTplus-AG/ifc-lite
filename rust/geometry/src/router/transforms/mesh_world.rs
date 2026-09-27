@@ -16,6 +16,37 @@ impl GeometryRouter {
     /// intermediate local transforms.
     #[inline]
     pub(crate) fn transform_mesh_local(&self, mesh: &mut Mesh, transform: &Matrix4<f64>) {
+        // Published object-frame bounds (set on RTC-rebased items, #5698)
+        // must follow the geometry into the mapped frame: the enclosing box
+        // of the transformed corners, rounded outward to f32.
+        if let Some(bounds) = mesh.local_bounds {
+            let mut min = [f64::INFINITY; 3];
+            let mut max = [f64::NEG_INFINITY; 3];
+            for corner in 0..8 {
+                let pick = |axis: usize| bounds[axis + 3 * ((corner >> axis) & 1)] as f64;
+                let t = transform.transform_point(&Point3::new(pick(0), pick(1), pick(2)));
+                for (axis, value) in [t.x, t.y, t.z].into_iter().enumerate() {
+                    min[axis] = min[axis].min(value);
+                    max[axis] = max[axis].max(value);
+                }
+            }
+            let down = |v: f64| {
+                let f = v as f32;
+                if (f as f64) > v { f.next_down() } else { f }
+            };
+            let up = |v: f64| {
+                let f = v as f32;
+                if (f as f64) < v { f.next_up() } else { f }
+            };
+            mesh.local_bounds = Some([
+                down(min[0]),
+                down(min[1]),
+                down(min[2]),
+                up(max[0]),
+                up(max[1]),
+                up(max[2]),
+            ]);
+        }
         mesh.positions.chunks_exact_mut(3).for_each(|chunk| {
             let point = Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
             let t = transform.transform_point(&point);

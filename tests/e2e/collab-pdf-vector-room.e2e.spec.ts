@@ -107,8 +107,8 @@ async function shareAndClose(owner: { context: BrowserContext; page: Page }) {
   await owner.page.getByRole('button', { name: /^Share: link-based/ }).click();
   const dialog = owner.page.getByRole('dialog');
   await dialog.waitFor();
-  const create = dialog.getByRole('button', { name: 'Create link' });
-  if (await create.count()) await create.click();
+  // Every model count asks before uploading (#5599).
+  await dialog.getByRole('button', { name: 'Create link' }).click();
   const field = dialog.locator('#share-link');
   await expect(field).toHaveValue(/[?&]room=[^&]+&t=/, { timeout: 300_000 });
   const url = await field.inputValue();

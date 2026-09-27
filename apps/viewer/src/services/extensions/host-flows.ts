@@ -41,6 +41,7 @@ import {
   normaliseBundlePath,
 } from '@ifc-lite/extensions';
 import { BrowserTrackingStore } from '@/lib/flow/persistence.js';
+import { clearPlayerValuesByIdPrefix } from '@/lib/flow/player-values.js';
 import { parseFlowDocument, validateFlowWiring, type FlowDocument, type NodeRegistry } from '@ifc-lite/flow';
 
 /** Prefix that marks a flow document id as extension-owned, read-only. */
@@ -162,10 +163,13 @@ export function resolveFlowContributions(
 
 /**
  * Forget the per-graph state an uninstalled extension's contributed graphs
- * left behind (their tracking sidecars), as deleting a saved graph does: a
- * reinstall must not inherit tracked elements from the removed one (#5431
- * review). Disabling keeps it, so re-enabling still updates, not duplicates.
+ * left behind (their tracking sidecars and last-used Player values), as
+ * deleting a saved graph does: a reinstall must not inherit tracked elements
+ * or form values from the removed one (#5431 review, #5634). Disabling keeps
+ * both, so re-enabling still updates, not duplicates.
  */
 export function forgetContributedFlowState(extensionId: string): void {
-  BrowserTrackingStore.clearByIdPrefix(contributedFlowId(extensionId, ''));
+  const prefix = contributedFlowId(extensionId, '');
+  BrowserTrackingStore.clearByIdPrefix(prefix);
+  clearPlayerValuesByIdPrefix(prefix);
 }

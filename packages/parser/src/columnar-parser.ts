@@ -13,7 +13,7 @@ import type { EntityRef } from './types.js';
 import { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { extractLengthUnitScale } from './unit-extractor.js';
-import { extractPsetsFromIds } from './on-demand-extractors.js';
+import { extractPsetsFromIds } from './on-demand-extractors.js'; import type { ExtractedProperty } from './property-value-parser.js';
 import { readQuantitySet, type CollectedQuantity } from './quantity-collect.js';
 import { prepareColumnarEntities, type ColumnarEntityInput } from './columnar-entity-preparation.js';
 import type { DropCensus } from './drop-census.js';
@@ -27,7 +27,7 @@ import {
     RelationshipType,
     createLogger,
 } from '@ifc-lite/data';
-import type { SpatialHierarchy, QuantityTable, PropertyValue, PropertySet, QuantitySet, IfcStoreBase } from '@ifc-lite/data';
+import type { SpatialHierarchy, QuantityTable, PropertySet, QuantitySet, IfcStoreBase } from '@ifc-lite/data';
 import { BufferEntitySource } from './entity-source.js';
 import { batchExtractGlobalIdAndName, hasAttrValueAt } from './columnar-parser-attributes.js';
 import {
@@ -124,7 +124,7 @@ export interface IfcDataStore extends IfcStoreBase {
      * overwritten — the model-wide usage index depends on seeing every one.
      */
     onDemandMaterialMap?: Map<number, number[]>;
-
+    resolvedMaterials?: Map<number, Map<number, import('./material-resolver.js').MaterialInfo>>;
     /**
      * On-demand document lookup: entityId -> array of IfcDocumentReference/IfcDocumentInformation expressIds
      * Built from IfcRelAssociatesDocument relationships during parsing.
@@ -737,7 +737,7 @@ export class ColumnarParser {
     extractPropertiesOnDemand(
         store: IfcDataStore,
         entityId: number
-    ): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string; unitSiScale?: number }> }> {
+    ): Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> {
         // Use on-demand extraction if map is available (preferred for single-entity access)
         if (!store.onDemandPropertyMap || !store.source?.length) {
             // Fallback to pre-computed property table (e.g., server-parsed data)
@@ -793,7 +793,7 @@ export class ColumnarParser {
 export function extractPropertiesOnDemand(
     store: IfcDataStore,
     entityId: number
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string; unit?: string; unitSiScale?: number }> }> {
+): Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> {
     const parser = new ColumnarParser();
     return parser.extractPropertiesOnDemand(store, entityId);
 }

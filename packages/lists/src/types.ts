@@ -4,7 +4,9 @@
 
 /** Types for the Lists feature - configurable property tables from IFC data */
 import type { ListModelTagScope } from './model-tag-scope.js';
+import type { DiscoveredColumns } from './result-types.js';
 import type { IfcTypeEnum, PropertySet, QuantitySet } from '@ifc-lite/data';
+import type { FilterGroup, ListConditionOperator, ListConditionSource } from '@ifc-lite/rules';
 
 // ============================================================================
 // Data Provider Interface
@@ -190,7 +192,7 @@ export interface ListDefinition {
    * Optional explicit element scope — a snapshot of express IDs per model
    * (e.g. from a search/filter result), keyed by modelId. When present, the
    * list targets exactly these elements per model and `entityTypes` is
-   * ignored; `conditions` still apply on top. Keyed by model so federated
+   * ignored; filter groups still apply on top. Keyed by model so federated
    * snapshots don't over-select when local express IDs collide across files.
    */
   expressIdsByModel?: Record<string, number[]>;
@@ -198,8 +200,17 @@ export interface ListDefinition {
   /** Optional MODEL scope by model tag (#4215, `model-tag-scope.ts`); absent = every model. */
   modelTagScope?: ListModelTagScope;
 
-  /** Optional property-based filter conditions */
-  conditions: PropertyCondition[];
+  /** Canonical Rules filters for migrated and newly-authored lists. */
+  groups: FilterGroup[];
+
+  /** Flat predicates for provider-only `executeList` callers (the SDK). Saved
+   *  lists carry every predicate in `groups` instead (`listCondition`, #6190). */
+  legacyConditions?: PropertyCondition[];
+
+  /** Saved filters migration could not read (malformed, unknown operator or
+   *  source, a rule this build does not know). Kept visible; a list with any
+   *  cannot run until they are removed. */
+  unreadableConditions?: UnreadableListCondition[];
 
   /** Columns to display */
   columns: ColumnDefinition[];
@@ -259,7 +270,7 @@ export interface PropertyCondition {
    *   or the straddled zones joined when the element crosses a boundary) or
    *   `Straddles` (boolean); `geometry` is the World Coordinate (#3671) — `propertyName` selects axis `X` (default) | `Y` | `Z`
    */
-  source: 'attribute' | 'property' | 'quantity' | 'material' | 'classification' | 'spatial' | 'model' | 'zone' | 'geometry';
+  source: ListConditionSource;
   /** Property set name (for property/quantity sources); the zone-SET id for `zone`. */
   psetName?: string;
   /** Attribute / property / quantity name, the spatial level for `spatial`
@@ -273,15 +284,12 @@ export interface PropertyCondition {
   inherit?: 'type' | 'aggregation';
 }
 
-export type ConditionOperator =
-  | 'equals'
-  | 'notEquals'
-  | 'contains'
-  | 'gt'
-  | 'lt'
-  | 'gte'
-  | 'lte'
-  | 'exists';
+/** One vocabulary with the Rules `listCondition` adapter (#6190), which carries these predicates in groups. */
+export type ConditionOperator = ListConditionOperator;
+
+export type UnreadableListCondition =
+  | { condition: PropertyCondition; reason: 'unsupported-source' | 'unsupported-attribute' | 'name-pattern' | 'inherit' | 'operator' | 'invalid-value' | 'mixed-groups' }
+  | { condition: unknown; reason: 'invalid-condition' };
 
 // ============================================================================
 // Column Definitions
@@ -329,84 +337,7 @@ export interface ColumnDefinition {
 // List Execution Results
 // ============================================================================
 
-export interface ListResult {
-  columns: ColumnDefinition[];
-  rows: ListRow[];
-  /** Total matched entities before pagination */
-  totalCount: number;
-  /** Execution time in ms */
-  executionTime: number;
-  /** Per-group breakdown — present only when `grouping` is configured. */
-  groups?: ListGroup[];
-  /** Whole-result aggregates (count + per-column sums). Present when
-   *  `grouping` is configured. */
-  summary?: ListSummary;
-}
+export type { ListResult, ListGroup, ListSummary, ListScheduleRow, ListRow, CellValue, DiscoveredColumns } from './result-types.js';
 
-/** One group in a grouped list result. With multi-criteria grouping (issue
- *  #1790) groups are emitted as a FLAT pre-order list: each parent group is
- *  immediately followed by its subgroups (`level` gives the nesting depth). */
-export interface ListGroup {
-  /** Opaque unique group key - the JSON encoding of `path` (see
-   *  `groupPathKey`), collision-free even when a model-derived label contains
-   *  separator-like characters. */
-  key: string;
-  /** Display label for the group header (this level's value only). */
-  label: string;
-  /** Number of rows in the group (the Count aggregate, issue #1790). */
-  count: number;
-  /** columnId → summed numeric value, for the configured sum columns. */
-  sums: Record<string, number>;
-  /** 0-based nesting depth (0 = outermost grouping column). Always emitted by
-   *  `summariseListRows`; optional for backward type compatibility. */
-  level?: number;
-  /** Group-by labels from the outermost level down to this group. */
-  path?: string[];
-}
-
-/** Whole-result aggregates. */
-export interface ListSummary {
-  count: number;
-  sums: Record<string, number>;
-}
-
-/**
- * One row of the `schedule` presentation (issue #1790 round 2) — a single
- * group-value tuple (a leaf group combination) carrying its Count and sums,
- * projected from the LEAF entries of `ListGroup[]` (see `toScheduleRows`).
- * Unlike `ListGroup`, a schedule row is never a parent: there is exactly one
- * row per distinct combination of group-by values, matching Bonsai's
- * "Building | Storey | Type | Count" schedule format.
- */
-export interface ListScheduleRow {
-  /** Collision-free key — `groupPathKey(path)`, matching the source `ListGroup.key`. */
-  key: string;
-  /** Group-by values, outermost first — one per active grouping level. */
-  path: string[];
-  /** Count aggregate: number of matched elements in this group combination. */
-  count: number;
-  /** columnId -> summed numeric value, for the configured sum columns. */
-  sums: Record<string, number>;
-}
-
-export interface ListRow {
-  /** Entity reference for 3D selection */
-  entityId: number;
-  modelId: string;
-  /** Column values in same order as ListResult.columns */
-  values: CellValue[];
-}
-
-export type CellValue = string | number | boolean | null;
-
-// ============================================================================
-// Column Discovery
-// ============================================================================
-
-/** Available columns discovered from the model */
-export interface DiscoveredColumns {
-  attributes: string[];
-  properties: Map<string, string[]>; // psetName -> propNames[]
-  quantities: Map<string, string[]>; // qsetName -> quantNames[]
-}
-
+/* Result row and schedule shapes live in result-types.ts so the persisted
+ * definition and provider contracts remain below the module-size limit. */

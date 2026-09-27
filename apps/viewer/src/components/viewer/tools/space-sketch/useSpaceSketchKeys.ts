@@ -5,28 +5,14 @@
 /**
  * Keyboard ownership for the Space Sketch overlay.
  *
- * While the panel is open, three keys belong to the sketch rather than to the
- * app: Ctrl/Cmd+Z, Escape, and Enter. The global handler in
- * `useKeyboardShortcuts` registers `keydown` in the BUBBLE phase; all three
- * listeners here register with the capture flag, and Escape additionally calls
- * `stopImmediatePropagation()`. That is the whole mechanism:
- *
- * - without capture, Ctrl+Z would undo the 3D model's mutation stack instead of
- *   the sketch's plate history;
- * - without capture + `stopImmediatePropagation`, the first Escape would close
- *   the tool through the global handler and throw away every draft, instead of
- *   aborting the in-progress operation.
- *
- * Dropping the third `addEventListener` argument is a one-character regression
- * with no visible symptom until a user loses work, which is why this lives in
- * one place with `useSpaceSketchKeys.test.tsx` pinned to it.
- *
- * The modifier listener is deliberately NOT capture: it only repaints the hover
- * preview and must not shadow anything.
+ * The shared dispatcher gives the sketch's tool commands priority over global
+ * model undo and selection Escape. A popover gets the first Escape; otherwise
+ * the sketch aborts the in-progress operation before offering a two-press exit.
+ * Modifier events repaint hover cues without consuming browser behavior.
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { eventKey, isTextEntryTarget } from '@/lib/keyboard-event';
+import { KEYBOARD_PRIORITY, registerKeyboardBinding, registerKeyboardCommand, registerKeyboardKeyUp } from '@/lib/commands/dispatcher';
 
 /** Two Escapes within this window close the panel. */
 export const DOUBLE_ESC_MS = 400;
@@ -38,8 +24,8 @@ export interface UseSpaceSketchKeysOptions {
   closePopovers: () => boolean;
   /** Abort the in-progress op (rect / draw / cut / drag). Returns true if it did. */
   abortCurrentOp: () => boolean;
-  /** Leave the tool without creating anything. */
-  closeNow: () => void;
+  /** Leave the tool without creating anything; `esc` names the exit route (#5618). */
+  closeNow: (via: 'esc') => void;
   /** There are unconfirmed drafts, so the double-tap prompt says so. */
   needsConfirm: boolean;
   setStatus: (status: string) => void;
@@ -63,68 +49,43 @@ export function useSpaceSketchKeys({
   // Timestamp of the last bare Esc — a second within DOUBLE_ESC_MS closes.
   const escTimeRef = useRef(0);
 
-  // Ctrl/Cmd+Z (Shift = redo) must drive THIS overlay's history, not the 3D
-  // model behind the panel. The global handler routes Ctrl+Z to the active
-  // model's mutation stack; a capture-phase listener here runs before it and
-  // stopPropagation()s, so the sketch and the in-panel Undo/Redo buttons share
-  // one history. Skip when a text input is focused so native field undo (and
-  // the global handler, which also skips inputs) is untouched. The overlay only
-  // mounts while the tool is active, so this listener's lifetime is exactly the
-  // tool's.
-  useEffect(() => {
-    const onUndoRedo = (e: KeyboardEvent) => {
-      if (eventKey(e) !== 'z' || !(e.ctrlKey || e.metaKey)) return;
-      if (isTextEntryTarget(e)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.shiftKey) redo(); else undo();
-    };
-    window.addEventListener('keydown', onUndoRedo, true);
-    return () => window.removeEventListener('keydown', onUndoRedo, true);
-  }, [undo, redo]);
-
-  // Esc: close a popover → abort the current op → (double-tap) close, with an
-  // unconfirmed-drafts prompt. Enter closes a drawn room.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopImmediatePropagation(); // own Esc; don't let the global handler close us
-        if (closePopovers()) return;
-        const now = Date.now();
-        if (abortCurrentOp()) { escTimeRef.current = 0; return; }
-        // Double-tap Esc cancels (close without creating); the Confirm button is
-        // the only create path.
-        if (now - escTimeRef.current <= DOUBLE_ESC_MS) { escTimeRef.current = 0; closeNow(); }
-        else {
-          escTimeRef.current = now;
-          setStatus(needsConfirm
-            ? 'Esc again to close without creating (use Confirm to create).'
-            : 'Press Esc again to close.');
-        }
-      } else if (e.key === 'Enter' && commitDraw && !isTextEntryTarget(e)) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        commitDraw();
-      }
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [abortCurrentOp, closePopovers, closeNow, commitDraw, needsConfirm, setStatus]);
-
-  // Pressing/releasing a modifier re-evaluates the hover preview at the current
-  // cursor (so the action label + cues flip the instant you hold ⌥/Ctrl/Shift,
-  // without having to move). Bubble phase: it shadows nothing.
   const onMod = useCallback((e: KeyboardEvent) => {
     if (e.key !== 'Alt' && e.key !== 'Control' && e.key !== 'Meta' && e.key !== 'Shift') return;
     onModifiers(e);
   }, [onModifiers]);
+
   useEffect(() => {
-    window.addEventListener('keydown', onMod);
-    window.addEventListener('keyup', onMod);
+    const removeUndo = registerKeyboardCommand('spaceSketch.undo', () => { undo(); });
+    const removeRedo = registerKeyboardCommand('spaceSketch.redo', () => { redo(); });
+    const removePopoverEscape = registerKeyboardCommand('spaceSketch.cancel', () => {
+      if (!closePopovers()) return false;
+      escTimeRef.current = 0;
+    }, { layer: 'popover', allowInTextEntry: true, ignoreModifiers: true });
+    const removeToolEscape = registerKeyboardCommand('spaceSketch.cancel', () => {
+      const now = Date.now();
+      if (abortCurrentOp()) { escTimeRef.current = 0; return; }
+      if (now - escTimeRef.current <= DOUBLE_ESC_MS) { escTimeRef.current = 0; closeNow('esc'); }
+      else {
+        escTimeRef.current = now;
+        setStatus(needsConfirm
+          ? 'Esc again to close without creating (use Confirm to create).'
+          : 'Press Esc again to close.');
+      }
+    }, { allowInTextEntry: true, ignoreModifiers: true, priority: KEYBOARD_PRIORITY.activeOverlay });
+    const removeCommit = registerKeyboardCommand('spaceSketch.commit', () => {
+      if (!commitDraw) return false;
+      commitDraw();
+    }, { ignoreModifiers: true });
+    const removeModifierDown = registerKeyboardBinding({
+      id: 'spaceSketch.modifiers', when: 'tool.spaceSketch', layer: 'popover',
+      keys: [{ key: 'shift' }, { key: 'alt' }, { key: 'control' }, { key: 'meta' }],
+      ignoreModifiers: true, allowInTextEntry: true,
+      run: (event) => { onMod(event); return false; },
+    });
+    const removeModifierUp = registerKeyboardKeyUp(onMod);
     return () => {
-      window.removeEventListener('keydown', onMod);
-      window.removeEventListener('keyup', onMod);
+      removeUndo(); removeRedo(); removePopoverEscape(); removeToolEscape();
+      removeCommit(); removeModifierDown(); removeModifierUp();
     };
-  }, [onMod]);
+  }, [undo, redo, closePopovers, abortCurrentOp, closeNow, needsConfirm, setStatus, commitDraw, onMod]);
 }

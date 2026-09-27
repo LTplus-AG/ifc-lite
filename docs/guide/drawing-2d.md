@@ -269,12 +269,20 @@ if (isGPUComputeAvailable()) {
 In the IFClite viewer:
 
 1. **Activate section plane** - Position a section plane in the 3D view
-2. **Open 2D panel** - The 2D drawing panel shows the section cut
+2. **Open the Drawing panel** - The section cut appears in the **Drawing** panel, docked in the bottom strip below the 3D view (it opens with the Section tool, or from **Analyze → Drawing**, the sidebar rail or the command palette). Like the other bottom panels it can be resized, floated, or popped out onto another screen
 3. **Toggle layers** - Show/hide cut lines, projection, hidden lines, hatching
 4. **Annotate** - Add measurements, polygon areas, text boxes, and revision clouds
 5. **Select & edit** - Click annotations to select, drag to move, Delete to remove
 6. **Graphic overrides** - Apply presets to change element appearance
 7. **Export** - Download the drawing as vector SVG, or as DXF R12 (plan sections are georeferenced to true world/map coordinates when the model carries an `IfcMapConversion`)
+
+The PDF export dialog lists visible drawing content its writer cannot include. A
+vector PDF omits drawing markups and DXF reference underlays; a sheet PDF
+includes the underlays in its rasterized sheet image but still omits markups.
+When a sheet is active, its scale governs the PDF and the dialog explains why
+the scale cannot be changed there. DXF export asks for confirmation before it
+omits visible markups or reference underlays. Exports with none of those items
+continue directly.
 
 ### Annotation Tools
 

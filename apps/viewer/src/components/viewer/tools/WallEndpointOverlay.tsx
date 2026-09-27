@@ -26,35 +26,45 @@
  *   helper (re-exported via `selectionHandlers`) — same fallback used
  *   by the wall draw tool, so snapping and floor-plane semantics
  *   match. Result is in renderer frame; we convert to IFC via
- *   `rendererPointToIfcStoreyLocal`.
+ *   `rendererPointToModelFrame`.
  *
- * We commit one `resizeWall` call per pointer-move frame. The action
- * pushes four positional mutations onto the undo stack (start, dir,
- * profile length, profile origin) so each drag frame is a coarse but
- * recoverable step. Future polish: a batched-mutation primitive that
- * folds the four into one undo entry.
+ * We commit one `resizeWall` call per pointer-move frame, all tagged
+ * with one batch id per drag (the move gizmo's mechanism), so a whole
+ * drag is ONE undo step. On release `refreshWallMesh` rebuilds the
+ * wall's mesh once at its new length; rebuilding per frame would
+ * re-upload the scene on every pointer move. Endpoints are metres.
+ *
+ * Re-render wake (#5510): same swap as `GizmoOverlay` — `useProjectorTick`
+ * subscribes to the scene kernel's one shared `SceneProjector` loop instead
+ * of running a private `requestAnimationFrame` poll of the camera pose
+ * (`useCameraTickSubscription`). The handles' screen position is still
+ * computed in the render body via `cameraCallbacks.projectToScreen`, not
+ * the projector's anchor system — the drag math below unprojects the
+ * cursor through `unprojectToFloor` directly, with no dependency on a
+ * projected screen point at all.
  */
 
 import { useMemo, useRef } from 'react';
 import { useViewerStore } from '@/store';
+import { canMutate } from '@/store/mutation-permission';
 import { useIfc } from '@/hooks/useIfc';
-import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
-import { rendererPointToIfcStoreyLocal } from '../selectionHandlers';
+import { useProjectorTick } from '@/components/viewport-ui/scene';
+import { rendererPointToModelFrame } from '../pick-frame';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state.js';
 import { modelPointToWorkspacePoint } from '@/lib/model-placement/rotation.js';
 import { toRenderTranslation, type Translation } from '@/lib/model-placement/translation.js';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
+import { newMutationBatchId } from '@/store/slices/mutation-batch-tags';
 
 type Vec2 = { x: number; y: number };
 type Vec3 = { x: number; y: number; z: number };
 type Project = (worldPos: Vec3) => Vec2 | null;
 
 const HANDLE_RADIUS = 7;
-const HANDLE_COLOR = '#a855f7'; // purple-500 — matches edit-mode accent
 
 /**
  * Convert an IFC storey-local point (Z-up, metres) into a renderer
- * world-frame point (Y-up). Mirror of `rendererPointToIfcStoreyLocal`,
+ * world-frame point (Y-up). Mirror of `rendererPointToModelFrame`,
  * including its #4932 placement handling: `readWallEndpoints` returns
  * points in the WALL's model frame (storey-local, Z = 0 for a planar
  * wall; we add the storey elevation explicitly since it isn't carried
@@ -91,23 +101,28 @@ interface ActiveDrag {
    * model moved vertically would have its handles rendered at the correct
    * (placed) height but its drag plane at the wrong one — under a
    * non-top-down camera the two disagree, and the raycast lands somewhere
-   * other than under the cursor before `rendererPointToIfcStoreyLocal`
+   * other than under the cursor before `rendererPointToModelFrame`
    * (correctly) inverts the placement on whatever it found.
    */
   planeRenderY: number;
+  /** Shared by every frame's `resizeWall` so one Ctrl+Z reverts the drag. */
+  batchId: string;
+  /** Whether any frame landed, i.e. whether the mesh needs rebuilding. */
+  resized: boolean;
 }
 
 export function WallEndpointOverlay() {
   const editEnabled = useViewerStore((s) => s.editEnabled);
+  const collabRole = useViewerStore((s) => s.collabRole);
   const activeTool = useViewerStore((s) => s.activeTool);
   const selectedEntity = useViewerStore((s) => s.selectedEntity);
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
-  const getViewpoint = useViewerStore((s) => s.cameraCallbacks.getViewpoint);
   const readWallEndpoints = useViewerStore((s) => s.readWallEndpoints);
   const resizeWall = useViewerStore((s) => s.resizeWall);
+  const refreshWallMesh = useViewerStore((s) => s.refreshWallMesh);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const { models } = useIfc();
-  // Subscribed for the re-render alone, same idiom as `useCameraTickSubscription`
+  // Subscribed for the re-render alone, same idiom as `useProjectorTick`
   // below: `startWorld`/`endWorld`/`startScreen`/`endScreen` are computed fresh
   // in the render body on every render, not memoized, so nothing here reads
   // the value. What was missing (Macroscope review on #4953) is a REASON to
@@ -126,8 +141,9 @@ export function WallEndpointOverlay() {
   // every mutation so any other mutation (translate, rotate) updates
   // the handles. Returns null when the entity isn't a resizable wall.
   const endpoints = useMemo(() => {
-    if (!editEnabled || activeTool !== 'select') return null;
+    if (activeTool !== 'select') return null;
     if (!selectedEntity) return null;
+    if (!canMutate(useViewerStore.getState(), selectedEntity.modelId)) return null;
     const wall = readWallEndpoints(selectedEntity.modelId, selectedEntity.expressId);
     if (!wall) return null;
     // Storey elevation — needed to project endpoints back into renderer
@@ -148,10 +164,11 @@ export function WallEndpointOverlay() {
     };
     // mutationVersion forces re-resolution after any edit so handles
     // track live. Camera moves don't change endpoints — the
-    // `useCameraTickSubscription` below re-renders the host so the
-    // JSX projection refreshes without re-running this memo.
+    // `useProjectorTick` below re-renders the host so the JSX
+    // projection refreshes without re-running this memo.
   }, [
     editEnabled,
+    collabRole,
     activeTool,
     selectedEntity,
     models,
@@ -159,10 +176,10 @@ export function WallEndpointOverlay() {
     mutationVersion,
   ]);
 
-  // Camera-tick subscription — wakes the overlay on real viewpoint
-  // motion so the projection stays aligned. Skipped when the overlay
-  // isn't visible.
-  void useCameraTickSubscription(getViewpoint, endpoints !== null);
+  // Shared-projector wake (#5510) — re-renders the overlay on real
+  // viewpoint motion so the projection stays aligned. Skipped when the
+  // overlay isn't visible.
+  void useProjectorTick(endpoints !== null);
 
   if (!endpoints || !projectToScreen) return null;
   const project = projectToScreen as Project;
@@ -184,6 +201,8 @@ export function WallEndpointOverlay() {
       end: which,
       fixedIfc: which === 'start' ? endpoints.end : endpoints.start,
       planeRenderY: endpoints.storeyElevation + placementOf(endpoints.modelId).translation[2],
+      batchId: newMutationBatchId(),
+      resized: false,
     };
   };
 
@@ -200,7 +219,7 @@ export function WallEndpointOverlay() {
     if (typeof pickFn !== 'function') return null;
     const world = pickFn(clientX, clientY, drag.planeRenderY);
     if (!world) return null;
-    return rendererPointToIfcStoreyLocal(world, endpoints.modelId);
+    return rendererPointToModelFrame(world, endpoints.modelId);
   };
 
   const onDragMove = (e: React.PointerEvent<SVGElement>) => {
@@ -210,18 +229,18 @@ export function WallEndpointOverlay() {
     if (!ifc) return;
     const newStart = drag.end === 'start' ? ifc : drag.fixedIfc;
     const newEnd = drag.end === 'end' ? ifc : drag.fixedIfc;
-    const result = resizeWall(endpoints.modelId, endpoints.expressId, newStart, newEnd);
-    if (!result.ok) {
-      // Most likely a zero-length drag (cursor over the fixed end).
-      // Don't toast every frame; just skip the write.
-      return;
-    }
+    const result = resizeWall(endpoints.modelId, endpoints.expressId, newStart, newEnd, drag.batchId);
+    // A failure is most likely a zero-length drag (cursor over the fixed
+    // end). Don't toast every frame; just skip the write.
+    if (result.ok) drag.resized = true;
   };
 
   const onDragEnd = (e: React.PointerEvent<SVGElement>) => {
-    if (!dragRef.current) return;
+    const drag = dragRef.current;
+    if (!drag) return;
     releasePointer(e.target as SVGElement, e.pointerId);
     dragRef.current = null;
+    if (drag.resized) refreshWallMesh(endpoints.modelId, endpoints.expressId);
   };
 
   // Validate that the unproject callback exists once per render —
@@ -247,7 +266,7 @@ export function WallEndpointOverlay() {
         y1={startScreen.y}
         x2={endScreen.x}
         y2={endScreen.y}
-        stroke={HANDLE_COLOR}
+        className="stroke-overlay-accent"
         strokeWidth={1.5}
         strokeDasharray="4 4"
         opacity={0.5}
@@ -274,8 +293,7 @@ export function WallEndpointOverlay() {
             cx={screen.x}
             cy={screen.y}
             r={HANDLE_RADIUS}
-            fill="#fff"
-            stroke={HANDLE_COLOR}
+            className="fill-overlay-halo stroke-overlay-accent"
             strokeWidth={2.5}
             pointerEvents="none"
           />
@@ -284,4 +302,3 @@ export function WallEndpointOverlay() {
     </svg>
   );
 }
-

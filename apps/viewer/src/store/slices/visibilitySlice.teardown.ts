@@ -37,12 +37,9 @@ export const visibilityTeardown = defineSliceTeardown(
     'classFilter',
     'typeVisibility',
     'typeViewMode',
-    'hiddenEntitiesByModel',
-    'isolatedEntitiesByModel',
   ],
   {
     'session-reset': () => ({
-      // Visibility (legacy)
       hiddenEntities: new Set<number>(),
       isolatedEntities: null,
       ghostExceptEntities: null,
@@ -51,10 +48,6 @@ export const visibilityTeardown = defineSliceTeardown(
       // reverts the user's visibility choices (e.g. "Show Annotations").
       typeVisibility: getPersistedTypeVisibility(),
       typeViewMode: getPersistedTypeViewMode(),
-
-      // Visibility (multi-model)
-      hiddenEntitiesByModel: new Map(),
-      isolatedEntitiesByModel: new Map(),
     }),
     // With zero survivors every id is stale by definition, so this clears
     // unconditionally rather than repeating the range check for an
@@ -69,11 +62,9 @@ export const visibilityTeardown = defineSliceTeardown(
       isolatedEntities: null,
       ghostExceptEntities: null,
       classFilter: null,
-      hiddenEntitiesByModel: new Map(),
-      isolatedEntitiesByModel: new Map(),
     }),
     'model-removed': (scope, state) => {
-      const { modelId, isStale } = scope;
+      const { isStale } = scope;
 
       // These key off `globalId`, not `modelId`. A global id is "stale" once no
       // SURVIVING model's parse range or overlay owns it — the predicate the
@@ -90,9 +81,7 @@ export const visibilityTeardown = defineSliceTeardown(
         (priorHidden !== undefined && [...priorHidden].some(isStale)) ||
         (priorIsolated != null && [...priorIsolated].some(isStale)) ||
         (priorGhost != null && [...priorGhost].some(isStale)) ||
-        (priorClassFilter != null && [...priorClassFilter.ids].some(isStale)) ||
-        state.hiddenEntitiesByModel?.has(modelId) === true ||
-        state.isolatedEntitiesByModel?.has(modelId) === true;
+        (priorClassFilter != null && [...priorClassFilter.ids].some(isStale));
 
       // Nothing of ours named the removed model. Returning {} rather than a set
       // of equal-but-new collections is what keeps this scope idempotent:
@@ -122,8 +111,6 @@ export const visibilityTeardown = defineSliceTeardown(
               return kept.size > 0 ? { ids: kept, label: priorClassFilter.label } : null;
             })()
           : priorClassFilter,
-        hiddenEntitiesByModel: priorMapWithout(state.hiddenEntitiesByModel, modelId),
-        isolatedEntitiesByModel: priorMapWithout(state.isolatedEntitiesByModel, modelId),
       };
     },
   },
@@ -138,13 +125,3 @@ function nonEmptyOrNull(
   return kept.size > 0 ? kept : null;
 }
 
-/** A copy of `prior` without `modelId`, or `prior` itself when it is absent. */
-function priorMapWithout(
-  prior: Map<string, Set<number>> | undefined,
-  modelId: string,
-): Map<string, Set<number>> | undefined {
-  if (!prior) return prior;
-  const next = new Map(prior);
-  next.delete(modelId);
-  return next;
-}

@@ -17,77 +17,14 @@ import { type ModelTagOp } from './model-tag.js';
 import { groupRule, type GroupRule } from './filter-group-rule.js';
 import type { SubjectReadOptions } from './subject-read-options.js';
 import { modelFactRule, type ModelFactRule } from './filter-model-fact.js';
+import { listConditionRule, type ListConditionRule } from './filter-list-condition.js';
 
-// ── Operator enums ────────────────────────────────────────────────────────────
-/** Set-membership: storey, ifcType, predefinedType. */
-export type SetOp = 'in' | 'notIn';
-
-/** String comparisons (Name rule). */
-export type StringOp =
-  | 'eq'
-  | 'ne'
-  | 'contains'
-  | 'notContains'
-  | 'startsWith'
-  | 'matches'
-  | 'notMatches';
-
-/** Numeric comparisons (Quantity rule). */
-export type NumericOp = 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte';
-
-/** Mixed string+numeric+presence ops for Property values. */
-export type ValueOp =
-  | 'eq'
-  | 'ne'
-  | 'gt'
-  | 'gte'
-  | 'lt'
-  | 'lte'
-  | 'contains'
-  | 'notContains'
-  | 'matches'
-  | 'notMatches'
-  | 'isSet'
-  | 'isNotSet';
-
-/** Classification value+presence ops. A classification is matched against
- *  its code / name string, so this is the StringOp comparison subset plus
- *  presence — numeric ops don't apply. */
-export type ClassificationOp =
-  | 'eq'
-  | 'ne'
-  | 'contains'
-  | 'notContains'
-  | 'matches'
-  | 'notMatches'
-  | 'isSet'
-  | 'isNotSet';
-
-/** Top-level rule combinator. */
-export type Combinator = 'AND' | 'OR';
-
-/**
- * How a rule reads one of its strings — the producer saying so, because the
- * string itself cannot.
- *
- * `'regex'` is a regular-expression SOURCE: the WHOLE string is the pattern,
- * slashes included. `'literal'` is exact text that is never a pattern, however
- * it happens to be spelled. Absent means free text a human typed into a chip
- * field, which keeps the Lists-panel convention (#1591): a `/body/flags`
- * literal is a pattern, anything else is plain text.
- *
- * Guessing this back out of the text is the #4091 defect class — matched the
- * wrong thing, said nothing — reappearing at the adapter seam. The selector
- * grammar knows which it parsed: quoting is its ONLY escape hatch for a
- * literal name, so `"/Wall/".FireRating` is the plain name `/Wall/`, and
- * `Name=/\/tmp\//` is the source `/tmp/`. Sniffed for slashes, the first
- * matches every `…Wall…` set and the second matches `tmp`.
- *
- * A property-set or property NAME has no operator beside it, so both kinds
- * have to be declared. A VALUE's op already says whether it is a pattern, so
- * only `'regex'` is ever recorded there.
- */
-export type TextKind = 'literal' | 'regex';
+import type {
+  SetOp, StringOp, NumericOp, ValueOp, ClassificationOp, Combinator, ValueComparison, TextKind,
+} from './filter-operator-types.js';
+export type {
+  SetOp, StringOp, NumericOp, ValueOp, ClassificationOp, Combinator, ValueComparison, TextKind,
+} from './filter-operator-types.js';
 
 // ── Rule discriminated union ──────────────────────────────────────────────────
 export interface StoreyRule {
@@ -181,11 +118,17 @@ export interface AttributeRule {
   value: string;
   /** How `value` reads. Only consulted by the `matches` / `notMatches` ops. */
   valueKind?: TextKind;
+  comparison?: ValueComparison;
 }
 
 export interface PropertyRule extends SubjectReadOptions {
   kind: 'property';
   setName: string;
+  /** Preserve exact IFC name matching when decoding older saved List conditions. */
+  nameCaseMode?: 'exact';
+  /** Saved v1 Lists read the first matching property, even when another
+   * same-named property set follows it. Other Rules keep any/none semantics. */
+  legacyListFirst?: true;
   /** How `setName` reads — a regex set name is what lets one rule reach both
    *  `Pset_WallCommon` and `Pset_SlabCommon`. */
   setNameKind?: TextKind;
@@ -197,6 +140,7 @@ export interface PropertyRule extends SubjectReadOptions {
   value: string;
   /** How `value` reads. Only consulted by the `matches` / `notMatches` ops. */
   valueKind?: TextKind;
+  comparison?: ValueComparison;
 }
 
 export interface QuantityRule extends SubjectReadOptions {
@@ -292,7 +236,7 @@ export type FilterRule =
   | ElevationRule
   | TypeNameRule
   | ParentRule
-  | GroupRule | ModelFactRule;
+  | GroupRule | ModelFactRule | ListConditionRule;
 
 // ── Combinator helpers ────────────────────────────────────────────────────────
 /** Combine an array of per-rule booleans according to AND/OR semantics. */
@@ -388,13 +332,14 @@ export const Rule = {
     ({ kind: 'type', op, value, ...(valueKind ? { valueKind } : {}) }),
   parent: (op: StringOp, value: string, valueKind?: TextKind): ParentRule =>
     ({ kind: 'parent', op, value, ...(valueKind ? { valueKind } : {}) }),
-  group: groupRule, modelFact: modelFactRule,
+  group: groupRule, modelFact: modelFactRule, listCondition: listConditionRule,
 } as const;
 
 // ── JSON guards (`filter-rule-guards.ts`, re-exported for existing imports) ─
 export { isFilterRule, parseFilterRules } from './filter-rule-guards.js';
 export type { GroupRule } from './filter-group-rule.js';
 export type { ModelFactRule } from './filter-model-fact.js';
+export type { ListConditionRule } from './filter-list-condition.js';
 // Re-exported so existing `from './filter-rules.js'` imports (HierarchyPanel,
 // etc.) can pull in the groups helper too without a second import line (#4904).
 export { activeGroupRules } from './filter-groups.js';

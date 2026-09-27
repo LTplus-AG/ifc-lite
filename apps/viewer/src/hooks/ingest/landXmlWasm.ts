@@ -41,6 +41,21 @@ function topologyOrigin(value: unknown): NonNullable<LandXmlTinSurface['topology
   throw new Error('LandXML WASM returned an invalid terrain topology origin');
 }
 
+/**
+ * The root `CoordinateSystem`, raw, as the Rust parser keeps it. One decoder for
+ * the whole-document and the streamed header, so neither can drop a field the
+ * other keeps: `epsgCode` is how real producers declare the CRS (#5942 follow-up).
+ */
+export function readLandXmlCoordinateSystem(value: unknown): LandXmlTinDocument['coordinateSystem'] {
+  if (value === undefined || value === null) return undefined;
+  const raw = record(value, 'coordinate system');
+  return {
+    ...(typeof raw.horizontal_datum === 'string' ? { horizontalDatum: raw.horizontal_datum } : {}),
+    ...(typeof raw.vertical_datum === 'string' ? { verticalDatum: raw.vertical_datum } : {}),
+    ...(typeof raw.epsg_code === 'string' ? { epsgCode: raw.epsg_code } : {}),
+  };
+}
+
 /** Decode one independently streamed terrain surface using the direct adapter rules. */
 export function readLandXmlTinSurface(value: unknown): LandXmlTinSurface {
   const raw = record(value, 'surface');
@@ -165,9 +180,7 @@ export function readLandXmlTinDocument(value: unknown): LandXmlTinDocument {
   const raw = record(value, 'document');
   const units = raw.units === null || raw.units === undefined ? null : record(raw.units, 'units');
   const capabilities = record(raw.capabilities, 'capabilities');
-  const coordinateSystem = raw.coordinate_system === undefined || raw.coordinate_system === null
-    ? undefined
-    : record(raw.coordinate_system, 'coordinate system');
+  const coordinateSystem = readLandXmlCoordinateSystem(raw.coordinate_system);
   const alignments: LandXmlAlignment[] = array(raw.alignments, 'alignments').map((alignment, index) => {
     const source = record(alignment, `alignment ${index}`);
     return { sourceId: string(source.source_id, `alignment ${index} source id`), ordinal: finite(source.ordinal, `alignment ${index} ordinal`), name: string(source.name, `alignment ${index} name`), length: finite(source.length, `alignment ${index} length`), staStart: finite(source.sta_start, `alignment ${index} staStart`), profileSourceIds: strings(source.profile_source_ids, `alignment ${index} profile ids`), crossSectionSourceIds: strings(source.cross_section_source_ids, `alignment ${index} cross section ids`), segments: [], cantStations: [], superelevations: [], unsupportedTransitions: [] };
@@ -224,12 +237,7 @@ export function readLandXmlTinDocument(value: unknown): LandXmlTinDocument {
       // statement. Defaults false for documents persisted before the flag.
       assumed: units.assumed === true,
     },
-    ...(coordinateSystem ? {
-      coordinateSystem: {
-        ...(typeof coordinateSystem.horizontal_datum === 'string' ? { horizontalDatum: coordinateSystem.horizontal_datum } : {}),
-        ...(typeof coordinateSystem.vertical_datum === 'string' ? { verticalDatum: coordinateSystem.vertical_datum } : {}),
-      },
-    } : {}),
+    ...(coordinateSystem ? { coordinateSystem } : {}),
     surfaces: array(raw.surfaces, 'surfaces').map(readLandXmlTinSurface),
     extensions: array(raw.extensions, 'extensions').map((extension, index) => {
       const parsed = record(extension, `extension ${index}`);

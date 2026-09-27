@@ -90,7 +90,7 @@ async fn parquet_cache_hit_does_not_swap_body_and_metadata() {
     // version (#3869); this test is about which side each blob lands on.
     state
         .cache
-        .set_bytes(&data_model_cache_key(&cache_key), b"DATA-MODEL-PAYLOAD")
+        .set_bytes(&data_model_cache_key(&cache_key, crate::services::DataModelEntities::All), b"DATA-MODEL-PAYLOAD")
         .await
         .expect("seed data model cache entry");
     super::cache_keys::cache_symbolic_data(&state.cache, &cache_key,
@@ -148,7 +148,7 @@ async fn a_geometry_hit_with_a_stale_data_model_still_writes_the_current_data_mo
     let content = MINIMAL_IFC.as_bytes();
     let query = ParseQuery::default();
     let cache_key = request_cache_key(content, &query, TessellationQuality::default());
-    let current_key = data_model_cache_key(&cache_key);
+    let current_key = data_model_cache_key(&cache_key, crate::services::DataModelEntities::All);
 
     state
         .cache
@@ -222,4 +222,51 @@ async fn the_symbolic_sidecar_is_encoded_off_the_async_worker() {
 
     let threads = await_threads_that_logged(SYMBOLIC_CACHED, &symbolic_cache_key(&cache_key)).await;
     assert_off_the_worker(&threads, "the symbolic sidecar encode");
+}
+
+/// #5542: a warm `POST /api/v1/parse/parquet` replays the header the live
+/// parse wrote, whose stats say `from_cache: false`. The replayed header must
+/// report the hit, as the JSON route's does. Seeded with the header shape the
+/// live parse stores, so the assertion is about the replay alone.
+#[tokio::test]
+async fn issue_5542_parquet_cache_hit_reports_from_cache() {
+    let state = test_state("5542-from-cache").await;
+    let content = b"not-a-real-ifc-file-5542-from-cache-probe";
+    let cache_key = request_cache_key(content, &ParseQuery::default(), TessellationQuality::default());
+    let stored = super::parquet::ParquetMetadataHeader {
+        cache_key: cache_key.clone(),
+        metadata: crate::types::ModelMetadata::default(),
+        stats: crate::types::ProcessingStats { total_meshes: 4, ..Default::default() },
+        mesh_coordinate_space: None,
+        site_transform: None,
+        building_transform: None,
+        data_model_stats: None,
+    };
+    assert!(!stored.stats.from_cache, "seeded as the live parse writes it");
+    state.cache.set_bytes(&format!("{cache_key}-parquet-v5"), b"GEOMETRY").await.unwrap();
+    state
+        .cache
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &serde_json::to_vec(&stored).unwrap())
+        .await
+        .unwrap();
+    state.cache.set_bytes(&data_model_cache_key(&cache_key, crate::services::DataModelEntities::All), b"DATA-MODEL").await.unwrap();
+    super::cache_keys::cache_symbolic_data(&state.cache, &cache_key,
+        &ifc_lite_processing::SymbolicDataWithProvenance::default()).await;
+
+    let (content_type, body) = multipart_body(content);
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/parse/parquet")
+        .header(header::CONTENT_TYPE, content_type)
+        .body(Body::from(body))
+        .unwrap();
+    let response = build_router(state.clone()).oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let header: serde_json::Value = serde_json::from_str(
+        response.headers().get("X-IFC-Metadata").unwrap().to_str().unwrap(),
+    )
+    .unwrap();
+    assert_eq!(header["stats"]["from_cache"], true, "replayed header: {header}");
+    assert_eq!(header["stats"]["total_meshes"], 4, "the rest of the stats replay as stored");
+    assert_eq!(header["cache_key"], serde_json::Value::String(cache_key));
 }

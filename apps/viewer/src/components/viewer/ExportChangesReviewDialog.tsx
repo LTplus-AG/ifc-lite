@@ -29,7 +29,8 @@
  * count instead of silently dropping it from the review.
  */
 
-import { Download, Loader2 } from 'lucide-react';
+import { Download } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -198,7 +199,7 @@ export function ExportChangesReviewDialog({
                       </div>
                       <div className="mt-1 space-y-0.5">
                         {entity.changes.map((c, i) => (
-                          <div key={i} className="text-[10px] text-muted-foreground flex items-baseline gap-1.5">
+                          <div key={i} className="text-2xs text-muted-foreground flex items-baseline gap-1.5">
                             <span className="shrink-0">{describeChangeKind(c, t)}</span>
                             {hasValuePair(c.kind) && (
                               <span className="truncate">
@@ -218,7 +219,7 @@ export function ExportChangesReviewDialog({
                     </div>
                   ))}
                   {group.unitemizedCount > 0 && (
-                    <div className="text-[10px] text-muted-foreground px-2 py-1">
+                    <div className="text-2xs text-muted-foreground px-2 py-1">
                       {t('exportChangesReviewDialog.unitemizedNote', { count: group.unitemizedCount })}
                     </div>
                   )}
@@ -235,7 +236,7 @@ export function ExportChangesReviewDialog({
           <Button onClick={onConfirm} disabled={isExporting || isEmpty}>
             {isExporting ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Spinner size="md" className="mr-2" />
                 {t('exportChangesReviewDialog.exportingLabel')}
               </>
             ) : (

@@ -27,7 +27,7 @@ function git(cwd, ...args) {
   return result.stdout.trim();
 }
 
-function fixture({ mutateOnRevert = false } = {}) {
+function fixture({ mutateOnRevert = false, mutateNestedLockOnRevert = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'revert-oracle-cargo-lock-'));
   const manifestTail = Array.from({ length: 10 }, (_, i) => `# stable tail ${i}\n`).join('');
   mkdirSync(join(dir, 'crates', 'a'), { recursive: true });
@@ -38,6 +38,14 @@ function fixture({ mutateOnRevert = false } = {}) {
   writeFileSync(join(dir, 'crates', 'a', 'Cargo.toml'), `[package]\nname="a"\nversion="0.1.0"\n\n${manifestTail}`);
   writeFileSync(join(dir, 'crates', 'b', 'Cargo.toml'), `[package]\nname="b"\nversion="0.1.0"\n\n${manifestTail}`);
   writeFileSync(join(dir, 'Cargo.lock'), 'version = 4\n\n[[package]]\nname = "a"\nversion = "0.1.0"\n\n[[package]]\nname = "b"\nversion = "0.1.0"\n');
+  const nestedLock = join(dir, 'rust', 'python', 'Cargo.lock');
+  const nestedBase = 'version = "4.6.0"\n';
+  const nestedHead = 'version = "4.7.0"\n';
+  if (mutateNestedLockOnRevert) {
+    mkdirSync(dirname(nestedLock), { recursive: true });
+    writeFileSync(join(dir, 'rust', 'python', 'Cargo.toml'), '[package]\nname="wheel"\nversion="4.6.0"\n');
+    writeFileSync(nestedLock, nestedBase);
+  }
   git(dir, 'init', '-q');
   git(dir, 'config', 'user.email', 'oracle@example.invalid');
   git(dir, 'config', 'user.name', 'Revert Oracle');
@@ -48,11 +56,18 @@ function fixture({ mutateOnRevert = false } = {}) {
   writeFileSync(join(dir, 'crates', 'a', 'Cargo.toml'), `[package]\nname="a"\nversion="0.1.0"\n\n[dependencies]\nserde="1"\n\n${manifestTail}`);
   writeFileSync(join(dir, 'crates', 'b', 'Cargo.toml'), `[package]\nname="b"\nversion="0.1.0"\n\n[dependencies]\nitoa="1"\n\n${manifestTail}`);
   writeFileSync(join(dir, 'Cargo.lock'), 'version = 4\n# serde and itoa resolved for the head manifests\n');
+  if (mutateNestedLockOnRevert) {
+    writeFileSync(join(dir, 'rust', 'python', 'Cargo.toml'), '[package]\nname="wheel"\nversion="4.7.0"\n');
+    writeFileSync(nestedLock, nestedHead);
+  }
   const mutation = mutateOnRevert
     ? "if (!lock.includes('serde and itoa')) appendFileSync(new URL('../crates/a/Cargo.toml', import.meta.url), '\\n# post-test edit\\n');"
     : '';
+  const nestedMutation = mutateNestedLockOnRevert
+    ? `if (!lock.includes('serde and itoa')) writeFileSync(new URL('../rust/python/Cargo.lock', import.meta.url), ${JSON.stringify(nestedBase)});`
+    : '';
   writeFileSync(join(dir, 'scripts', 'cargo-lock-observer.test.mjs'),
-    `import assert from 'node:assert/strict'; import { appendFileSync, readFileSync } from 'node:fs'; import test from 'node:test'; test('head lock', () => { const lock = readFileSync(new URL('../Cargo.lock', import.meta.url), 'utf8'); ${mutation} assert.match(lock, /serde and itoa/); });\n`);
+    `import assert from 'node:assert/strict'; import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'; import test from 'node:test'; test('head lock', () => { const lock = readFileSync(new URL('../Cargo.lock', import.meta.url), 'utf8'); ${mutation} ${nestedMutation} assert.match(lock, /serde and itoa/); });\n`);
   git(dir, 'add', '.');
   git(dir, 'commit', '-qm', 'head');
   return { dir, base };
@@ -66,6 +81,19 @@ test('#4592 reverts changed manifests with Cargo.lock and restores byte-clean', 
     assert.match(result.stdout, /OBSERVED/);
     assert.equal(git(dir, 'status', '--porcelain'), '');
     assert.match(readFileSync(join(dir, 'Cargo.lock'), 'utf8'), /serde and itoa/); // @source-text-assertion-ok the temp repository's restored lockfile is subprocess output, not production source
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('#5800 restores a PyO3 lockfile rewritten by a reverted-state wheel build', () => {
+  const { dir, base } = fixture({ mutateNestedLockOnRevert: true });
+  try {
+    const result = run(dir, process.execPath, [ORACLE, '--root', dir, '--base', base]);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /OBSERVED/);
+    assert.equal(git(dir, 'status', '--porcelain'), '');
+    assert.equal(readFileSync(join(dir, 'rust', 'python', 'Cargo.lock'), 'utf8'), 'version = "4.7.0"\n');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

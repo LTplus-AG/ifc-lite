@@ -1,0 +1,16 @@
+{
+ "data": {
+  "project": {
+   "model": {
+    "versions": {
+     "items": [
+      {
+       "id": "a1b2c3d4e5",
+       "referencedObject": "53cdfea17d2a67b3f8b56eb4eb73554d"
+      }
+     ]
+    }
+   }
+  }
+ }
+}

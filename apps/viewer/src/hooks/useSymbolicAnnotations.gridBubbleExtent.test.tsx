@@ -230,7 +230,6 @@ describe('grid bubbles draw without defining the model extent (issue 3359)', () 
       models: new Map(),
       hiddenEntities: new Set<number>(),
       lensHiddenIds: new Set<number>(),
-      hiddenEntitiesByModel: new Map(),
     } as never);
   });
 

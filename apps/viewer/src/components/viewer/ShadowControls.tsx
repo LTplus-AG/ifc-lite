@@ -45,7 +45,7 @@ export function ShadowControls() {
   return (
     <div className="flex flex-col gap-1 pt-2 border-t">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {t('viewportLighting.shadowControls.title')}
         </span>
         <Switch
@@ -57,8 +57,8 @@ export function ShadowControls() {
 
       {enabled && (
         <>
-          <label className="flex flex-col gap-0.5">
-            <span className="flex justify-between text-[9px] uppercase tracking-wider text-muted-foreground">
+          <div className="flex flex-col gap-0.5">
+            <span className="flex justify-between text-xs uppercase tracking-wider text-muted-foreground">
               <span>{t('viewportLighting.shadowControls.softnessLabel')}</span>
               <button
                 type="button"
@@ -71,6 +71,7 @@ export function ShadowControls() {
             </span>
             <input
               type="range"
+              aria-label={t('viewportLighting.shadowControls.softnessLabel')}
               min={0.1}
               max={5}
               step={0.05}
@@ -78,10 +79,10 @@ export function ShadowControls() {
               onChange={(e) => setSunAngle(Number(e.target.value))}
               className="w-full accent-primary"
             />
-          </label>
+          </div>
 
           <label className="flex flex-col gap-0.5">
-            <span className="text-[9px] uppercase tracking-wider text-muted-foreground">
+            <span className="text-xs uppercase tracking-wider text-muted-foreground">
               {t('viewportLighting.shadowControls.qualityLabel')}
             </span>
             <select
@@ -89,7 +90,7 @@ export function ShadowControls() {
               value={resolution}
               onChange={(e) => setResolution(Number(e.target.value))}
               title={t('viewportLighting.shadowControls.qualityTitle')}
-              className="w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground text-[10px]"
+              className="w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground text-xs"
             >
               {RESOLUTIONS.map((r) => (
                 <option key={r} value={r}>

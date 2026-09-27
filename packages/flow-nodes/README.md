@@ -13,6 +13,7 @@ in the headless CLI.
 | `table.*` | fromEntities, longFormat, column, groupRows, pivot, rowCount | Typed columns with IFC value types and pset/prop bindings |
 | `viewer.*` | colorize, isolate, select, selection, flyTo | `noop` on a headless host; entities pass through |
 | `model.set*` | setProperty, setAttribute | Capability-checked against the actual pset (`model.mutate:<Pset>`) |
+| `http.request`, `speckle.receive` | network | Every request goes through the gated `coreNetworkRequest` (`network.fetch:<host>` grants, https only); `speckle.receive` writes a Speckle model's walls, floors, roofs, columns and beams, and reports what it cannot map |
 | `script.run` | one node | JavaScript in the QuickJS sandbox with the sandbox `bim` API |
 
 ## Usage

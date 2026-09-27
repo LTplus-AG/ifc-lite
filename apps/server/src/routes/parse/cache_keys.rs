@@ -6,7 +6,7 @@
 
 use super::ParseQuery;
 use crate::services::cache::DiskCache;
-use crate::services::{OpeningFilterMode, ParquetLayout};
+use crate::services::{DataModelEntities, OpeningFilterMode, ParquetLayout};
 use ifc_lite_processing::{SymbolicDataWithProvenance, TessellationQuality};
 
 /// Cache-key segment for a tessellation level. Empty for the default level so
@@ -42,7 +42,7 @@ pub(crate) fn cache_key_from_parts(
 ///
 /// Lives beside [`cache_key_from_parts`] because that is what it protects. The
 /// hash a client supplies is concatenated into `{hash}-{filter}{quality}` and
-/// the namespace suffix (`-parquet-v5`, `-datamodel-v7`, ...) is appended after
+/// the namespace suffix (`-parquet-v5`, `-datamodel-v8`, ...) is appended after
 /// it, so a caller-shaped string is a caller-shaped cache key. Checking the
 /// shape keeps the value to the one job it has, naming a file.
 ///
@@ -223,13 +223,19 @@ pub(crate) fn parquet_optimized_metadata_cache_key(cache_key: &str) -> String {
 /// the reader (`get_data_model`): three separate literals could disagree, and a
 /// reader looking up a key nobody writes answers `202` forever.
 ///
-/// The suffix bumps on EVERY change to the data-model payload's columns. `v6`
-/// with issue #3860: the relationships table gained `rel_id`. Without the bump
-/// a warm `CACHE_DIR` replays the pre-bump blob verbatim, the column is absent,
-/// the decoder correctly omits it, and the viewer's server path is back to
-/// `RelId = 0` on every exported relationship row with nothing saying so.
-pub(crate) fn data_model_cache_key(cache_key: &str) -> String {
-    format!("{cache_key}-datamodel-v7")
+/// The suffix bumps on EVERY change to the data-model payload's columns.
+/// `v8` adds complete material association fields (#5296); a warm `v7` cache
+/// cannot support material value checks even after the server is upgraded.
+///
+/// The entities VARIANT (#6034) is a separate namespace, not a version:
+/// `-datamodel-v8` for every STEP instance (unchanged, so a default request
+/// keeps hitting the entries already on disk) and `-datamodel-rooted-v8` for
+/// the rooted-only table. Both carry the one version number, so a payload bump
+/// retires both at once. They coexist, and neither can answer for the other:
+/// a client that asked for the rooted table must not be handed 60 MB it asked
+/// not to download, and one that did not must not lose rows it looks up.
+pub(crate) fn data_model_cache_key(cache_key: &str, entities: DataModelEntities) -> String {
+    format!("{cache_key}-datamodel{}-v8", entities.cache_infix())
 }
 
 /// Whether a data model at the CURRENT payload version is cached for
@@ -245,8 +251,16 @@ pub(crate) fn data_model_cache_key(cache_key: &str) -> String {
 /// costs one re-parse and rewrites both entries.
 ///
 /// A cache read error answers `false`: re-parsing is the safe direction.
-pub(crate) async fn has_current_data_model(cache: &DiskCache, cache_key: &str) -> bool {
-    has_entry(cache, &data_model_cache_key(cache_key)).await
+///
+/// Asks about the entities VARIANT the request selects (#6034): a replay that
+/// skips the parse must not strand a client polling for the rooted table when
+/// only the full one was ever written, or the reverse.
+pub(crate) async fn has_current_data_model(
+    cache: &DiskCache,
+    cache_key: &str,
+    entities: DataModelEntities,
+) -> bool {
+    has_entry(cache, &data_model_cache_key(cache_key, entities)).await
 }
 
 /// Whether the optimized-Parquet metadata header is cached for `cache_key`.

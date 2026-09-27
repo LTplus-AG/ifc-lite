@@ -28,6 +28,11 @@
 
 use super::IfcAPI;
 
+// Keep centerline regressions wired when the production module is reverted by
+// the changed-test oracle; the old module had its own inline tests.
+#[path = "alignment_lines_tests.rs"]
+mod alignment_lines_tests;
+
 /// A panic on another thread while it holds one of the cache mutexes
 /// (e.g. a malformed entity deep in a lazy cache rebuild) must not
 /// brick every later call on this `IfcAPI` instance. Poison

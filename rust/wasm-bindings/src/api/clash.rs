@@ -64,7 +64,7 @@ impl ClashSession {
         clearance: f64,
         report_touch: bool,
     ) -> ClashRunResult {
-        let result = self.inner.run_rule(
+        let (result, depth_floors) = self.inner.run_rule_with_depth_floors(
             group_a,
             group_b.as_deref(),
             mode,
@@ -98,6 +98,8 @@ impl ClashSession {
             status,
             distance,
             distance_kind,
+            // NaN marks "no floor" (every non-`Hard` record) across the FFI.
+            depth_floor: depth_floors.iter().map(|f| f.unwrap_or(f64::NAN)).collect(),
             points,
             bounds,
         }
@@ -121,6 +123,10 @@ pub struct ClashRunResult {
     /// Provenance of `distance`, one per record: `0` = measured on the meshes,
     /// `1` = estimated from the element AABBs. Mirrors `DistanceKind`.
     distance_kind: Vec<u8>,
+    /// Per record: for a `hard` record, the f32 noise floor of `distance`
+    /// along the direction it was measured (the classification floor);
+    /// `NaN` for every other status (#5639).
+    depth_floor: Vec<f64>,
     points: Vec<f64>,
     bounds: Vec<f64>,
 }
@@ -150,6 +156,11 @@ impl ClashRunResult {
     #[wasm_bindgen(getter, js_name = distanceKind)]
     pub fn distance_kind(&self) -> Vec<u8> {
         self.distance_kind.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = depthFloor)]
+    pub fn depth_floor(&self) -> Vec<f64> {
+        self.depth_floor.clone()
     }
 
     #[wasm_bindgen(getter)]

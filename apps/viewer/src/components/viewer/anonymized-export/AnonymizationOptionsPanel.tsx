@@ -119,7 +119,7 @@ export function AnonymizationOptionsPanel({ toggles, onTogglesChange, disabled }
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
           {t('anonymizedExport.options.heading')}
         </div>
-        <div className="text-[11px] text-muted-foreground">
+        <div className="text-2xs text-muted-foreground">
           <span className="text-emerald-700/70 dark:text-emerald-400/70 font-medium">
             {t('anonymizedExport.options.keepLabel')}
           </span>
@@ -147,13 +147,13 @@ export function AnonymizationOptionsPanel({ toggles, onTogglesChange, disabled }
               />
               <Label htmlFor={id} className="flex-1 flex items-baseline gap-2 text-sm cursor-pointer">
                 <span>{label}</span>
-                <span className="text-[11px] text-muted-foreground truncate">
+                <span className="text-2xs text-muted-foreground truncate">
                   {on ? t(row.effectKey) : t('anonymizedExport.options.keptAsAuthored')}
                 </span>
               </Label>
               <span
                 className={cn(
-                  'text-[11px] font-medium w-16 text-right',
+                  'text-2xs font-medium w-16 text-right',
                   on ? 'text-red-600 dark:text-red-400' : 'text-emerald-700/70 dark:text-emerald-400/70',
                 )}
               >

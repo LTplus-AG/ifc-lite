@@ -151,21 +151,21 @@ test('sendsSamplingParams is true only for the models flagged for it', async () 
   };
 
   // Haiku 4.5 predates Opus 4.7 and still takes a tuned temperature.
-  assert.equal(sendsSamplingParams('claude-haiku-4-5'), true);
+  assert.equal(sendsSamplingParams('claude-haiku-4-5-20251001'), true);
   // Everything current rejects them with a 400.
-  assert.equal(sendsSamplingParams('claude-opus-5'), false);
-  assert.equal(sendsSamplingParams('gpt-5.6-sol'), false);
+  assert.equal(sendsSamplingParams('claude-opus-5-5'), false);
+  assert.equal(sendsSamplingParams('gpt-6-sol'), false);
   // Fails closed on an id that is not in the registry at all.
   assert.equal(sendsSamplingParams('vendor/not-a-real-model'), false);
 
   // Guard the shape, not a count: a future entry that copies the flag by
   // accident shows up here.
   const optedIn = BYOK_MODELS.filter((m) => m.acceptsSamplingParams === true).map((m) => m.id);
-  assert.deepEqual(optedIn, ['claude-haiku-4-5']);
+  assert.deepEqual(optedIn, ['claude-haiku-4-5-20251001']);
 });
 
 // A selection persists in localStorage. Dropping an id silently reassigns
-// whoever had it to DEFAULT_BYOK_MODEL, which is Opus 5 at 5x Haiku's price
+// whoever had it to DEFAULT_BYOK_MODEL, which is Opus 5.5 at 4x Haiku's price
 // on the user's own key. Renamed ids must survive the refresh.
 test('a retired model id migrates instead of falling back to the default', async () => {
   const { canonicalModelId, getModelById, coerceModelForEntitlement, DEFAULT_BYOK_MODEL } =
@@ -177,19 +177,23 @@ test('a retired model id migrates instead of falling back to the default', async
     };
 
   const dated = 'claude-haiku-4-5-20251001';
-  assert.equal(canonicalModelId(dated), 'claude-haiku-4-5');
-  assert.equal(getModelById(dated)?.id, 'claude-haiku-4-5');
+  assert.equal(canonicalModelId('claude-haiku-4-5'), dated);
+  assert.equal(getModelById(dated)?.id, dated);
 
-  // The regression this guards: without the alias this returned Opus 5.
-  assert.notEqual(DEFAULT_BYOK_MODEL.id, 'claude-haiku-4-5');
-  assert.equal(coerceModelForEntitlement(dated, true), 'claude-haiku-4-5');
+  // The regression this guards: without the alias this returned Opus 5.5.
+  assert.notEqual(DEFAULT_BYOK_MODEL.id, dated);
+  assert.equal(coerceModelForEntitlement('claude-haiku-4-5', true), dated);
+  assert.equal(coerceModelForEntitlement('claude-opus-5', true), 'claude-opus-5-5');
+  assert.equal(coerceModelForEntitlement('claude-fable-5', true), 'claude-fable-5-1');
 
   // A retired model migrates to its nearest surviving neighbour rather than
-  // to the Opus 5 default, which would be a price jump nobody asked for.
+  // to the Opus 5.5 default, which would be a price jump nobody asked for.
   assert.equal(coerceModelForEntitlement('claude-sonnet-4-6', true), 'claude-sonnet-5');
   // An OpenAI selection must not land on an Anthropic model, or the user is
   // asked for a key they never needed.
   assert.equal(getModelById(coerceModelForEntitlement('gpt-5.5', true))?.source, 'openai');
+  assert.equal(coerceModelForEntitlement('gpt-5.6-sol', true), 'gpt-6-sol');
+  assert.equal(coerceModelForEntitlement('gpt-5.6-luna', true), 'gpt-6-luna');
 
   // An id with no migration still falls back to the default.
   assert.equal(coerceModelForEntitlement('vendor/long-gone', true), DEFAULT_BYOK_MODEL.id);

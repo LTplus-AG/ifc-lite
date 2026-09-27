@@ -26,14 +26,14 @@ import {
   type QuantityRule,
   type ClassificationRule,
   type AttributeRule,
-  type StoreyRule,
   type ParentRule,
   type TextKind,
+  type ValueOp,
 } from './filter-rules.js';
 import { valueOpMatches, numericOpMatches, matchStringAnyNone } from './filter-ops.js';
 import { lensMaterialNames } from './lens-material-names.js';
 import { parsePropertyValue } from '@ifc-lite/encoding';
-import { compileNameMatcher, isNamePattern } from '@ifc-lite/lists';
+import { compileNameMatcher, isNamePattern } from '@ifc-lite/regex-guard';
 
 /**
  * Compare a rule's property-set / property name against a row's.
@@ -55,27 +55,67 @@ import { compileNameMatcher, isNamePattern } from '@ifc-lite/lists';
  * docstring for the full contract. This function does not catch that; it
  * propagates to `filter-evaluate.ts`'s caller, which must.
  */
-export function nameMatches(rulePattern: string, rowName: string, kind?: TextKind): boolean {
+export function nameMatches(rulePattern: string, rowName: string, kind?: TextKind, caseMode?: 'exact'): boolean {
   if (kind === 'regex') return compileNameMatcher(`/${rulePattern}/`)(rowName);
   if (kind === undefined && isNamePattern(rulePattern)) return compileNameMatcher(rulePattern)(rowName);
+  if (caseMode === 'exact') return rowName === rulePattern;
   return rowName.toLowerCase() === rulePattern.toLowerCase();
 }
 
 // ── Pset / Qto matching ──────────────────────────────────────────────────────
 
-export interface PsetRow { setName: string; propertyName: string; value: string }
+export interface PsetRow {
+  setName: string;
+  propertyName: string;
+  value: string;
+  /** Retain primitive type so a converted Bulk condition cannot match a different typed value. */
+  valueType?: 'string' | 'number' | 'boolean' | 'null';
+  /** The scalar display value read by saved v1 Lists before multi-value
+   * expansion. `null` is different from an explicitly empty value. */
+  legacyListValue?: string | null;
+}
 export type PsetRows = ReadonlyArray<PsetRow>;
 
 export interface QtyRow { setName: string; quantityName: string; value: number }
 export type QtyRows = ReadonlyArray<QtyRow>;
 
+/** Structures whose `values` are the candidates a rule reads (#5475). */
+const ANY_MATCH_STRUCTURES = new Set(['enumerated', 'list', 'table']);
+
+/**
+ * The values a rule compares for one property: every member of an
+ * enumerated or list value and every cell of a table, so a positive op
+ * passes when ANY of them does (IDS / ifctester parity, #5475); otherwise the
+ * single display value. An empty list keeps one blank candidate, so the
+ * property still reads as present for `isSet`, as it did before.
+ */
+export function propertyCandidates(p: { value: unknown; values?: readonly string[]; structure?: string }): string[] {
+  if (p.structure && ANY_MATCH_STRUCTURES.has(p.structure) && p.values && p.values.length > 0) return [...p.values];
+  return [stringifyValue(p.value)];
+}
+
+function legacyListValue(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const display = parsePropertyValue(value).displayValue;
+  if (display === '\u2014') return null;
+  if (typeof value === 'number') return String(value);
+  if (Array.isArray(value) && value.length === 2 && typeof value[1] === 'number') return String(value[1]);
+  return display;
+}
+
 export function flattenPsets(
   psets: ReturnType<typeof extractPropertiesOnDemand>,
+  includeLegacyListValues = false,
 ): PsetRows {
   const out: PsetRow[] = [];
   for (const set of psets) {
     for (const p of set.properties) {
-      out.push({
+      const valueType: PsetRow['valueType'] = p.value === null || p.value === undefined ? 'null'
+        : typeof p.value === 'string' ? 'string'
+        : typeof p.value === 'number' ? 'number'
+        : typeof p.value === 'boolean' ? 'boolean' : undefined;
+      const firstValue = includeLegacyListValues ? legacyListValue(p.value) : undefined;
+      for (const value of propertyCandidates(p)) out.push({
         setName: set.name,
         propertyName: p.name,
         // Stringify everything — `valueOpMatches` re-parses numeric ops
@@ -86,7 +126,9 @@ export function flattenPsets(
         // what the user sees rendered elsewhere. `valueOpMatches`'s eq/ne
         // are case-insensitive, so this doesn't change matching outcomes
         // for either the search chips or free-typed "true"/"false".
-        value: stringifyValue(p.value),
+        value,
+        valueType,
+        ...(includeLegacyListValues ? { legacyListValue: firstValue } : {}),
       });
     }
   }
@@ -117,23 +159,44 @@ export function stringifyValue(value: unknown): string {
 }
 
 export function matchPropertyRule(rule: PropertyRule, rows: PsetRows): boolean {
-  // isSet / isNotSet are presence checks against (setName, propertyName).
-  if (rule.op === 'isSet' || rule.op === 'isNotSet') {
-    const present = rows.some(
-      (r) =>
-        nameMatches(rule.setName, r.setName, rule.setNameKind) &&
-        nameMatches(rule.propertyName, r.propertyName, rule.propertyNameKind),
-    );
-    return rule.op === 'isSet' ? present : !present;
+  // V1 Lists only stored value comparisons and isNonEmpty. Rules presence
+  // operators keep their ordinary row-presence semantics on this public flag.
+  if (rule.legacyListFirst && rule.op !== 'isSet' && rule.op !== 'isNotSet'
+    && rule.op !== 'isNull' && rule.op !== 'isNotNull') {
+    const first = rows.find((r) =>
+      nameMatches(rule.setName, r.setName, rule.setNameKind, rule.nameCaseMode) &&
+      nameMatches(rule.propertyName, r.propertyName, rule.propertyNameKind, rule.nameCaseMode));
+    const value = first?.legacyListValue === undefined
+      ? first?.valueType === 'null' ? null : first?.value ?? null
+      : first.legacyListValue;
+    if (rule.op === 'isNonEmpty') return value !== null && value !== '';
+    if (value === null) return false;
+    return valueOpMatches(rule.op, value, rule.value, rule.valueKind, rule.comparison);
   }
-
-  return rows.some(
+  const matching = rows.filter(
     (r) =>
-      nameMatches(rule.setName, r.setName, rule.setNameKind) &&
-      nameMatches(rule.propertyName, r.propertyName, rule.propertyNameKind) &&
-      valueOpMatches(rule.op, r.value, rule.value, rule.valueKind),
+      nameMatches(rule.setName, r.setName, rule.setNameKind, rule.nameCaseMode) &&
+      nameMatches(rule.propertyName, r.propertyName, rule.propertyNameKind, rule.nameCaseMode),
   );
+  // Presence, non-null and non-empty are distinct in imported filters.
+  if (rule.op === 'isSet') return matching.length > 0;
+  if (rule.op === 'isNotSet') return matching.length === 0;
+  if (rule.op === 'isNull') return matching.length === 0 || matching.some((r) => r.valueType === 'null');
+  if (rule.op === 'isNotNull') return matching.some((r) => r.valueType !== 'null');
+  if (rule.op === 'isNonEmpty') return matching.some((r) => r.valueType !== 'null' && r.value.length > 0);
+  const comparable = rule.comparison ? matching.filter((r) => r.valueType !== 'null') : matching;
+
+  // A negated op holds when NO candidate has the value (a list [A, B] is
+  // not "!= A"), the ANY/NONE convention `material` and `parent` use and
+  // validation's `checkValueOp` applies (#5475). With a single candidate
+  // this is the same answer as before.
+  const positive = NEGATED_VALUE_OP[rule.op];
+  if (positive) return comparable.length > 0 && !comparable.some((r) => valueOpMatches(positive, r.value, rule.value, rule.valueKind, rule.comparison));
+  return comparable.some((r) => valueOpMatches(rule.op, r.value, rule.value, rule.valueKind, rule.comparison));
 }
+
+/** A negated value op's positive form: the negation holds when NO candidate satisfies it (#5475). */
+export const NEGATED_VALUE_OP: Partial<Record<ValueOp, ValueOp>> = { ne: 'eq', notContains: 'contains', notMatches: 'matches' };
 
 /** One entity's generic named attributes, as `extractAllEntityAttributes`
  *  returns them — schema-driven, string/number/boolean values only. */
@@ -156,8 +219,11 @@ export function matchAttributeRule(rule: AttributeRule, attrs: AttrRows): boolea
     const present = (stringified ?? '').length > 0;
     return rule.op === 'isSet' ? present : !present;
   }
+  if (rule.op === 'isNull') return found === undefined;
+  if (rule.op === 'isNotNull') return found !== undefined;
+  if (rule.op === 'isNonEmpty') return (stringified ?? '').length > 0;
   if (stringified === undefined) return false;
-  return valueOpMatches(rule.op, stringified, rule.value, rule.valueKind);
+  return valueOpMatches(rule.op, stringified, rule.value, rule.valueKind, rule.comparison);
 }
 
 export function matchQuantityRule(rule: QuantityRule, rows: QtyRows): boolean {
@@ -167,101 +233,6 @@ export function matchQuantityRule(rule: QuantityRule, rows: QtyRows): boolean {
       nameMatches(rule.quantityName, r.quantityName, rule.quantityNameKind) &&
       numericOpMatches(rule.op, r.value, rule.value),
   );
-}
-
-// ── Storey lookup fallback ────────────────────────────────────────────────────
-
-/**
- * Storey id an element belongs to: its own direct containment
- * (`elementToStorey`, set for an element the storey directly contains plus
- * its `IfcRelAggregates`-aggregated parts) OR — one hop through a
- * containing `IfcSpace`/`IfcSpatialZone` — the storey THAT space belongs
- * to. A space is itself mapped to its storey in `elementToStorey`
- * (`SpatialHierarchyBuilder` walks a storey's own spatial children), so
- * this is a composition of two maps that already exist plus
- * `getContainingSpace` (`@ifc-lite/data`'s `spatialLookups`), not a new
- * traversal. The single home for "which storey" so the per-entity
- * evaluator (`defaultStoreyName`/`storeyMatchesRefs`) and the bulk index
- * prefilter (`unionByStorey`) cannot answer it two different ways.
- *
- * Reaches exactly one level down from the storey: an element inside a
- * space nested inside another space (rather than directly under the
- * storey) is not resolved — see `docs/guide/selector-syntax.md`.
- */
-function storeyIdOf(hierarchy: NonNullable<IfcDataStore['spatialHierarchy']>, expressId: number): number | undefined {
-  const direct = hierarchy.elementToStorey.get(expressId);
-  if (direct !== undefined) return direct;
-  // `getContainingSpace` is part of the `spatialLookups()` contract every
-  // real hierarchy carries, but several tests in this suite build a
-  // hand-rolled partial `spatialHierarchy` mock (`byStorey`/`elementToStorey`
-  // only) to exercise the ref/name-matching paths in isolation — guard
-  // rather than assume every field is present.
-  const spaceId = hierarchy.getContainingSpace?.(expressId);
-  if (spaceId == null) return undefined;
-  return hierarchy.elementToStorey.get(spaceId);
-}
-
-/** Every element `bySpace` lists for a space belonging to `storeyId` — the
- *  bulk-prefilter twin of {@link storeyIdOf}'s one-hop space widening.
- *  `bySpace` is absent on the same partial test mocks {@link storeyIdOf}
- *  guards against. */
-function spaceElementsOfStorey(hierarchy: NonNullable<IfcDataStore['spatialHierarchy']>, storeyId: number): number[] {
-  const out: number[] = [];
-  if (!hierarchy.bySpace) return out;
-  for (const [spaceId, elements] of hierarchy.bySpace) {
-    if (hierarchy.elementToStorey.get(spaceId) !== storeyId) continue;
-    for (const id of elements) out.push(id);
-  }
-  return out;
-}
-
-export function defaultStoreyName(store: IfcDataStore, expressId: number): string {
-  const hierarchy = store.spatialHierarchy;
-  if (!hierarchy) return '';
-  const storeyId = storeyIdOf(hierarchy, expressId);
-  if (!storeyId) return '';
-  return store.entities.getName(storeyId);
-}
-
-/** Does `expressId` (in `modelId`) sit in a storey ref'd by `rule.refs`?
- *  `IfcBuildingStorey.Name` isn't unique, so once a `StoreyRule` carries
- *  an exact (modelId, expressId) ref (mirrored from a HierarchyPanel
- *  click), matching bypasses Name entirely. Reaches through a containing
- *  space via {@link storeyIdOf}, same as the Name-matched path. */
-export function storeyMatchesRefs(store: IfcDataStore, expressId: number, modelId: string, rule: StoreyRule): boolean {
-  const hierarchy = store.spatialHierarchy;
-  const storeyId = hierarchy ? storeyIdOf(hierarchy, expressId) : undefined;
-  return storeyId != null && !!rule.refs?.some((r) => r.modelId === modelId && r.expressId === storeyId);
-}
-
-/** Index-prefilter twin of {@link storeyMatchesRefs}/Name matching: the
- *  bucket of elements a `storey op:'in'` rule narrows to for `modelId`.
- *  Includes each matched storey's directly-contained elements AND every
- *  element `bySpace` lists for a space belonging to that storey, so this
- *  prefilter can never exclude a candidate the (also widened) per-entity
- *  check in `filter-evaluate.ts` would go on to match. */
-export function unionByStorey(store: IfcDataStore, rule: StoreyRule, modelId: string | undefined): number[] | null {
-  const hierarchy = store.spatialHierarchy;
-  if (!hierarchy) return null;
-  const out: number[] = [];
-  if (rule.refs) {
-    for (const ref of rule.refs) {
-      if (ref.modelId !== modelId) continue;
-      const elements = hierarchy.byStorey.get(ref.expressId);
-      if (elements) for (const id of elements) out.push(id);
-      for (const id of spaceElementsOfStorey(hierarchy, ref.expressId)) out.push(id);
-    }
-    return out.length > 0 ? out : null;
-  }
-  const wanted = new Set(rule.values.map((n) => n.toLowerCase()));
-  for (const storeyId of hierarchy.byStorey.keys()) {
-    const name = store.entities.getName(storeyId);
-    if (!wanted.has(name.toLowerCase())) continue;
-    const elements = hierarchy.byStorey.get(storeyId);
-    if (elements) for (const id of elements) out.push(id);
-    for (const id of spaceElementsOfStorey(hierarchy, storeyId)) out.push(id);
-  }
-  return out.length > 0 ? out : null;
 }
 
 // ── Material / classification / elevation resolution ─────────────────────────

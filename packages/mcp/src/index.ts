@@ -43,12 +43,25 @@ export { HeadlessLikeBackend } from './headless-backend.js';
 export { ViewerManager } from './viewer-manager.js';
 export type { ViewerState, SelectionEvent, SelectionListener } from './viewer-manager.js';
 
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { readPackageVersion } from '@ifc-lite/data/node';
 import { MCPServer, type MCPServerOptions } from './server.js';
 import { buildDefaultToolRegistry } from './tools/index.js';
 import { buildDefaultResourceRegistry } from './resources/index.js';
 import { buildDefaultPromptRegistry } from './prompts/index.js';
 
-export const VERSION = '0.1.0';
+/**
+ * This server's own version, read from its `package.json`.
+ *
+ * It was a hard-coded `'0.1.0'` literal, so `--version`, `--help` and every
+ * MCP `initialize` handshake announced 0.1.0 while the package was at 0.19.0
+ * (#5540). A version an operator reads out of a client UI has to be the one
+ * they can actually install.
+ */
+export const VERSION = readPackageVersion(
+  join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'),
+);
 
 /**
  * Build an MCPServer pre-loaded with every tool/resource/prompt category.

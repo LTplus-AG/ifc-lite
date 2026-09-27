@@ -108,6 +108,26 @@ describe('writePointCloudUniforms model-matrix packing (issue #1804)', () => {
     assert.ok(Math.abs(scratch[80] - 0.025) < 1e-7, `lost crop max residual: ${scratch[80]}`);
   });
 
+  it('reports a node outside the eye envelope as undrawable without uploading (#6128)', () => {
+    const scratch = new Float32Array(POINT_UNIFORM_SIZE / 4);
+    const scratchU32 = new Uint32Array(scratch.buffer);
+    let writes = 0;
+    const device = { queue: { writeBuffer: () => { writes += 1; } } } as unknown as GPUDevice;
+    const node = {
+      meta: { expressId: 1 }, uniformBuffer: {} as GPUBuffer,
+      model: MathUtils.identity().m,
+      rteOrigin: [3_000_000, 0, 0],
+    } as unknown as PointCloudNode;
+
+    assert.strictEqual(writePointCloudUniforms(device, scratch, scratchU32, node, makeInputs()), false);
+    assert.strictEqual(writes, 0, 'a skipped node keeps no partially packed upload');
+    assert.strictEqual(
+      writePointCloudUniforms(device, scratch, scratchU32, node, makeInputs({ x: 3_000_000, y: 0, z: 0 })),
+      true,
+    );
+    assert.strictEqual(writes, 1);
+  });
+
   it('ignores a malformed (wrong-length) node.model and falls back to identity', () => {
     const scratch = new Float32Array(POINT_UNIFORM_SIZE / 4);
     const scratchU32 = new Uint32Array(scratch.buffer);

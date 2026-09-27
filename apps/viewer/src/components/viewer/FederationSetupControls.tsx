@@ -6,7 +6,7 @@
  * Save/reopen a portable federation setup (#3930).
  *
  * Mounted once from `useFileCommands` (same pattern as `ShareDialog`), so it
- * is reachable from the command palette regardless of which toolbar style is
+ * is reachable from the command palette regardless of which ribbon tab is
  * active. Two hidden `<input type="file">`s drive the two-step "open" flow
  * (pick the saved `.federation.json`, then pick the local model files to
  * match against it); the review step never applies anything silently — every

@@ -45,7 +45,6 @@ export const drawing2DTeardown = defineSliceTeardown(
     'drawing2DPhase',
     'drawing2DError',
     'drawing2DPanelVisible',
-    'suppressNextSection2DPanelAutoOpen',
     'drawing2DSvgContent',
     'drawing2DDisplayOptions',
     'activePresetId',
@@ -80,7 +79,6 @@ export const drawing2DTeardown = defineSliceTeardown(
         drawing2DPhase: defaults.drawing2DPhase,
         drawing2DError: defaults.drawing2DError,
         drawing2DPanelVisible: defaults.drawing2DPanelVisible,
-        suppressNextSection2DPanelAutoOpen: defaults.suppressNextSection2DPanelAutoOpen,
         drawing2DSvgContent: defaults.drawing2DSvgContent,
         drawing2DDisplayOptions: defaults.drawing2DDisplayOptions,
 

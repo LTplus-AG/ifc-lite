@@ -16,6 +16,19 @@ afterEach(() => {
   modelAppearanceAssets.clear(); appearanceAssets.clear(); federationRegistry.clear();
 });
 
+it('refuses a two-model coordinated appearance commit in Edit-off before either IFC graph changes (#5901)', async () => {
+  const f = await coordinatedFixture();
+  const original = f.entries.map(entry => f.export(entry.modelId));
+  f.stage();
+  useViewerStore.setState({ editEnabled: false });
+  await assert.rejects(f.commit(), /Turn on Edit mode/);
+  for (const [index, entry] of f.entries.entries()) {
+    assert.equal(f.export(entry.modelId), original[index]);
+    assert.equal(useViewerStore.getState().undoStacks.get(entry.modelId)?.length ?? 0, 0);
+    assert.equal(useViewerStore.getState().dirtyModels.has(entry.modelId), false);
+  }
+});
+
 it('coordinated Apply publishes both IFC graphs, canonical geometry, and histories once #4420', async () => {
   const f = await coordinatedFixture();
   const original = f.entries.map(e => f.export(e.modelId));

@@ -191,10 +191,10 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
               {ICON_CHOICES.map(({ key, Icon, label }) => {
                 const selected = icon === key;
                 return (
-                  <button
+                  // Icon choices are styled buttons with one-of-many radio semantics.
+                  // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+                  <button type="button" role="radio"
                     key={key}
-                    type="button"
-                    role="radio"
                     aria-checked={selected}
                     aria-label={label}
                     title={label}
@@ -232,12 +232,12 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
               </ul>
             )}
             {inference.observations.some((o) => o.unknown) && (
-              <div className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
+              <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">
                 {t('extensionsPanels.promoteToolDialog.unknownCallsWarning')}
               </div>
             )}
             {inference.parseErrors.length > 0 && (
-              <div className="mt-2 text-[11px] text-destructive">
+              <div className="mt-2 text-xs text-destructive">
                 {t('extensionsPanels.promoteToolDialog.parseErrorWarning')}
               </div>
             )}

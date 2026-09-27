@@ -50,7 +50,7 @@ export function createModelAdapter(store: StoreApi): ModelBackendMethods {
 
     loadIfc(content: string, filename: string) {
       // Create a File from IFC content and dispatch the standard load event.
-      // MainToolbar listens for 'ifc-lite:load-file' and routes to loadFile().
+      // The ribbon's useFileCommands listener routes this event to loadFile().
       const blob = new Blob([content], { type: 'application/x-step' });
       const file = new File([blob], filename || 'created.ifc', { type: 'application/x-step' });
       window.dispatchEvent(new CustomEvent('ifc-lite:load-file', { detail: file }));

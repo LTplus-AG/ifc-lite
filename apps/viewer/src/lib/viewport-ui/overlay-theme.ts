@@ -8,7 +8,7 @@
  *
  * One palette per theme, in TypeScript, so the same values reach three
  * consumers without drifting: CSS custom properties on `<html>` (written by
- * `useOverlayThemeSync`), Tailwind utilities (`@theme` entries in `index.css`
+ * `registerOverlayThemeSync`), Tailwind utilities (`@theme` entries in `index.css`
  * that point at those properties), and the renderer's uniforms
  * (`tokenToRgba` / `tokenToLinearRgba`, consumed by the renderer bridge).
  *
@@ -169,6 +169,29 @@ export function overlayCssVar(token: OverlayToken): `--${string}` {
   return token.startsWith('overlay-') ? `--${token}` : `--overlay-${token}`;
 }
 
+/**
+ * A token as a CSS colour value, `var(--overlay-axis-x)`, for the places a
+ * Tailwind utility cannot reach: an SVG presentation attribute or inline style
+ * whose colour is picked at runtime. Prefer the utility (`stroke-axis-x`)
+ * wherever the class is static.
+ */
+export function overlayColor(token: OverlayToken): string {
+  return `var(${overlayCssVar(token)})`;
+}
+
+/**
+ * The one X/Y/Z triad (#5490), as CSS colours keyed by IFC axis. Every
+ * axis-coded mark (the axis helper, the move and placement gizmos, the
+ * measure tool's shift-drag constraint axes) reads its colour here, so they
+ * cannot drift apart again. IFC is Z-up and the renderer frame is Y-up:
+ * renderer +Y is IFC Z and renderer -Z is IFC Y.
+ */
+export const IFC_AXIS_COLORS: Readonly<Record<'x' | 'y' | 'z', string>> = {
+  x: overlayColor('axis-x'),
+  y: overlayColor('axis-y'),
+  z: overlayColor('axis-z'),
+};
+
 /** `[r, g, b, a]` in 0..1. */
 export type Rgba = readonly [number, number, number, number];
 
@@ -176,8 +199,10 @@ const HEX_RE = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i;
 
 /**
  * Parse a token value into sRGB-encoded `[r, g, b, a]` in 0..1: the convention
- * of the renderer's clear colour, `setOverlayLineColor` and the section-plane
- * uniform, which write their values to the swap chain unchanged.
+ * of the renderer's clear colour and `Renderer.setOverlayTheme`'s `overlayLine`,
+ * `sectionPlane`, `clashA`, `clashB` and `clashOverlap` fields, which write their
+ * values to the swap chain unchanged (see `rendererOverlayTheme` in
+ * `overlay-theme-renderer.ts`, and `OverlayTheme` in `@ifc-lite/renderer`).
  */
 export function tokenToRgba(value: string): Rgba {
   const m = HEX_RE.exec(value);

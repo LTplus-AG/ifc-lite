@@ -35,6 +35,7 @@ import { ElevationEditor } from './SearchModal.filter.editors.elevation';
 import { ClassificationEditor, GroupEditor, ModelFactEditor } from './SearchModal.filter.editors.membership';
 import { ReadOptionControls } from './SearchModal.filter.editors.readOptions';
 import { ModelTagRuleEditor } from './ModelTagRuleEditor';
+import { ListConditionEditor } from './lists/ListConditionEditor';
 import type { ModelTag } from '@ifc-lite/rules';
 import {
   SET_OPS,
@@ -66,7 +67,7 @@ export function RuleRow({ rule, modelOptions, tagOptions, ifcTypeOptions, storey
   const { t } = useTranslation();
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded border border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-950">
-      <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+      <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wider text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
         {RULE_KIND_LABEL[rule.kind]}
       </span>
 
@@ -170,6 +171,7 @@ export function RuleRow({ rule, modelOptions, tagOptions, ifcTypeOptions, storey
 
       {rule.kind === 'group' && <GroupEditor rule={rule} onChange={onChange} />}
       {rule.kind === 'modelFact' && <ModelFactEditor rule={rule} onChange={onChange} />}
+      {rule.kind === 'listCondition' && <ListConditionEditor rule={rule} onChange={onChange} />}
 
       {rule.kind === 'parent' && (
         <NameEditor
@@ -246,7 +248,7 @@ function SetRuleEditor({ values, op, options, onChange }: SetRuleEditorProps) {
           {values.map((v) => (
             <span
               key={v}
-              className="inline-flex items-center gap-1 rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-mono dark:bg-zinc-800"
+              className="inline-flex items-center gap-1 rounded bg-zinc-100 px-1.5 py-0.5 text-2xs font-mono dark:bg-zinc-800"
             >
               {v}
               <button

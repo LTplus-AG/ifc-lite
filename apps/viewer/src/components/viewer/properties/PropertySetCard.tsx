@@ -6,19 +6,20 @@
  * Property set display component with edit support.
  */
 
-import { useState, useEffect } from 'react';
-import { Sparkles, PenLine, Building2 } from 'lucide-react';
+import { Sparkles, PenLine, Building2, ChevronDown } from 'lucide-react';
 import { PropertyEditor, type PropertyEditScope } from '../PropertyEditor';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
-import { parsePropertyValue } from './encodingUtils';
 import type { PropertySet } from './encodingUtils';
 import { setDisplayName } from './setDisplayName';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { ProjectUnits } from '@ifc-lite/parser';
-import { resolveMeasureDisplay, formatConverted } from '@/lib/units/display';
 import { useTranslation } from '@/i18n';
+import { usePersistentDisclosure } from './usePersistentDisclosure';
+import { PropertySearchHighlight } from './PropertySearchHighlight';
+import { propertyDisplayValue } from './propertyDisplayValue';
+import { CopyValueButton } from './CopyValueButton';
 
 export interface PropertySetCardProps {
   pset: PropertySet;
@@ -39,9 +40,11 @@ export interface PropertySetCardProps {
    *  renders CONVERTED into that unit instead of the file's raw value.
    *  Omitted (or empty) keeps the existing unconverted-file-unit display. */
   unitDisplayOverrides?: Record<string, string>;
+  searchQuery?: string;
+  sectionScope?: string;
 }
 
-export function PropertySetCard({ pset, modelId, entityId, enableEditing, isTypeProperty, typeEditScope, focusedPropKey, projectUnits, unitDisplayOverrides }: PropertySetCardProps) {
+export function PropertySetCard({ pset, modelId, entityId, enableEditing, isTypeProperty, typeEditScope, focusedPropKey, projectUnits, unitDisplayOverrides, searchQuery, sectionScope = 'default' }: PropertySetCardProps) {
   const { t } = useTranslation();
   // Check if any property in this set is mutated
   const hasMutations = pset.properties.some(p => p.isMutated);
@@ -53,18 +56,15 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
   const keyFor = (propName: string) => `${entityId ?? ''}:${pset.name}:${propName}`;
   const containsFocused = focusedPropKey != null && pset.properties.some(p => keyFor(p.name) === focusedPropKey);
 
-  // Self-control the collapse so a focused row can't hide inside a pset the user
-  // previously collapsed — force it open when this card holds the focus target.
-  const [open, setOpen] = useState(true);
-  useEffect(() => {
-    if (containsFocused) setOpen(true);
-  }, [containsFocused]);
+  // Focus and search only override the rendered state. Neither gesture changes
+  // the user's saved disclosure preference (#5899).
+  const [open, setOpen] = usePersistentDisclosure(`pset:${sectionScope}:${pset.name}`);
 
   // Dynamic styling based on mutation state and source
   const borderClass = isNewPset
     ? 'border-2 border-amber-400/50 dark:border-amber-500/30'
     : hasMutations
-    ? 'border-2 border-purple-300/50 dark:border-purple-500/30'
+    ? 'border-2 border-overlay-accent/40'
     : isTypeProperty
     ? 'border-2 border-indigo-200/60 dark:border-indigo-800/40'
     : 'border-2 border-zinc-200 dark:border-zinc-800';
@@ -72,14 +72,14 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
   const bgClass = isNewPset
     ? 'bg-amber-50/30 dark:bg-amber-950/20'
     : hasMutations
-    ? 'bg-purple-50/20 dark:bg-purple-950/10'
+    ? 'bg-overlay-accent/5'
     : isTypeProperty
     ? 'bg-indigo-50/20 dark:bg-indigo-950/10'
     : 'bg-white dark:bg-zinc-950';
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className={`${borderClass} ${bgClass} group w-full max-w-full overflow-hidden`}>
-      <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left transition-colors overflow-hidden">
+    <Collapsible open={open || !!searchQuery || containsFocused} onOpenChange={searchQuery || containsFocused ? undefined : setOpen} className={`${borderClass} ${bgClass} group w-full max-w-full overflow-hidden`}>
+      <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left transition-colors overflow-hidden">
         {isNewPset && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -91,7 +91,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
         {hasMutations && !isNewPset && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <PenLine className="h-3.5 w-3.5 text-purple-500 shrink-0" />
+              <PenLine className="h-3.5 w-3.5 text-overlay-accent shrink-0" />
             </TooltipTrigger>
             <TooltipContent>{t('properties.propertySetCard.hasMutationsTooltip')}</TooltipContent>
           </Tooltip>
@@ -104,22 +104,21 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
             <TooltipContent>{t('properties.propertySetCard.inheritedFromTypeTooltip')}</TooltipContent>
           </Tooltip>
         )}
-        <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate flex-1 min-w-0">{setDisplayName(pset.name, t('properties.propertySet.unnamed'))}</span>
-        <span className="text-[10px] font-mono bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 shrink-0">{pset.properties.length}</span>
+        <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate flex-1 min-w-0"><PropertySearchHighlight text={setDisplayName(pset.name, t('properties.propertySet.unnamed'))} query={searchQuery} /></span>
+        <span className="text-2xs font-mono bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 shrink-0">{pset.properties.length}</span>
+        <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-900">
           {pset.properties.map((prop: { name: string; value: unknown; isMutated?: boolean; type?: number; dataType?: string }, index: number) => {
-            const parsed = parsePropertyValue(prop.value);
+            const display = propertyDisplayValue(prop, projectUnits, unitDisplayOverrides ?? {});
+            const { parsed, unit } = display;
             // Names render VERBATIM: the parse path already decoded them (see
             // the note on `parsePropertyValue`), and decoding a second time
             // collapses `\\` twice.
             const isMutated = prop.isMutated;
             const propKey = keyFor(prop.name);
             const isFocused = focusedPropKey != null && focusedPropKey === propKey;
-            const disp = resolveMeasureDisplay(prop.value, prop.dataType, projectUnits, unitDisplayOverrides ?? {});
-            const unit = disp.unit;
-
             return (
               <div
                 // A property set's own property list may repeat a name (the same
@@ -127,11 +126,11 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                 // level down); index disambiguates the React key.
                 key={`${prop.name}-${index}`}
                 data-prop-key={propKey}
-                className={`flex items-start justify-between gap-2 px-3 py-2 text-xs group/prop transition-colors ${
+                className={`flex items-start justify-between gap-2 px-3 py-2 text-xs group/prop group/copyrow transition-colors ${
                   isFocused
                     ? 'bg-amber-100/70 dark:bg-amber-900/40 ring-2 ring-inset ring-amber-400 dark:ring-amber-500 motion-safe:animate-pulse-subtle'
                     : isMutated
-                    ? 'bg-purple-50/50 dark:bg-purple-950/30 hover:bg-purple-100/50 dark:hover:bg-purple-900/30'
+                    ? 'bg-overlay-accent-soft hover:bg-overlay-accent/20'
                     : 'hover:bg-zinc-50/50 dark:hover:bg-zinc-900/50'
                 }`}
               >
@@ -141,7 +140,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                     {isMutated && (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Badge variant="secondary" className="h-4 px-1 text-[9px] bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-700">
+                          <Badge variant="secondary" className="h-4 px-1 text-2xs bg-overlay-accent-soft text-foreground border-overlay-accent/40">
                             {t('properties.propertySetCard.editedBadge')}
                           </Badge>
                         </TooltipTrigger>
@@ -151,11 +150,11 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                     {parsed.ifcType ? (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className={`font-medium cursor-help break-words ${isMutated ? 'text-purple-600 dark:text-purple-400' : 'text-zinc-500 dark:text-zinc-400'}`}>
-                            {prop.name}
+                          <span className={`font-medium cursor-help break-words ${isMutated ? 'text-foreground' : 'text-zinc-500 dark:text-zinc-400'}`}>
+                            <PropertySearchHighlight text={prop.name} query={searchQuery} />
                           </span>
                         </TooltipTrigger>
-                        <TooltipContent side="top" className="text-[10px]">
+                        <TooltipContent side="top" className="text-2xs">
                           {/* TooltipContent uses the neutral popover surface (#4767);
                               secondary text uses its semantic muted token instead
                               of a hardcoded primary-foreground opacity tier. */}
@@ -163,13 +162,14 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                         </TooltipContent>
                       </Tooltip>
                     ) : (
-                      <span className={`font-medium break-words ${isMutated ? 'text-purple-600 dark:text-purple-400' : 'text-zinc-500 dark:text-zinc-400'}`}>
-                        {prop.name}
+                      <span className={`font-medium break-words ${isMutated ? 'text-foreground' : 'text-zinc-500 dark:text-zinc-400'}`}>
+                        <PropertySearchHighlight text={prop.name} query={searchQuery} />
                       </span>
                     )}
                   </div>
                   {/* Property value - use PropertyEditor if editing enabled */}
-                  {enableEditing && modelId && entityId ? (
+                  {/* Search shows the converted display text so a value hit can be highlighted. */}
+                  {enableEditing && modelId && entityId && !searchQuery ? (
                     <PropertyEditor
                       modelId={modelId}
                       entityId={entityId}
@@ -180,14 +180,15 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                       editScope={typeEditScope}
                     />
                   ) : (
-                    <span className={`font-mono select-all break-words ${isMutated ? 'text-purple-900 dark:text-purple-100 font-semibold' : 'text-zinc-900 dark:text-zinc-100'}`}>
-                      {disp.converted !== null ? formatConverted(disp.converted) : parsed.displayValue}
-                      {unit && parsed.displayValue !== '\u2014' && (
-                        <span className="ml-1 text-zinc-400 dark:text-zinc-500">{unit}</span>
-                      )}
+                    <span className={`font-mono select-all break-words ${isMutated ? 'text-foreground font-semibold' : 'text-zinc-900 dark:text-zinc-100'}`}>
+                      {searchQuery ? <PropertySearchHighlight text={display.full} query={searchQuery} /> : <>
+                        {display.value}
+                        {unit && <span className="ml-1 text-zinc-400 dark:text-zinc-500">{unit}</span>}
+                      </>}
                     </span>
                   )}
                 </div>
+                <CopyValueButton name={prop.name} value={display.full} />
               </div>
             );
           })}

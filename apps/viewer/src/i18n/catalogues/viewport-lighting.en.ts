@@ -6,10 +6,11 @@ import type { TranslationValue } from '../types';
 
 /**
  * The 3D-viewport-chrome + sun/lighting catalogue (#4918 viewport/lighting
- * slice, `viewportLighting.*`) covers seven files: `ViewportContainer.tsx`
+ * slice, `viewportLighting.*`) covers eight files: `ViewportContainer.tsx`
  * (the empty/welcome state, its WebGPU-unavailable banner, and the
  * "Add Model" drop overlay), `ViewportOverlays.tsx` (the mobile touch-nav
- * cluster and the per-model basepoint toggle), `Viewport.tsx`'s own
+ * cluster and the per-model basepoint toggle), `EditModeHudChip.tsx` (the
+ * edit-mode status chip), `Viewport.tsx`'s own
  * render-failure fallback, `FlySpeedIndicator.tsx`'s fly-mode HUD,
  * `ShadowControls.tsx` and `SunTimeControls.tsx` (the Environment panel's
  * shadow and manual time-of-day sub-panels), and `EnvironmentPanel.tsx` itself
@@ -41,9 +42,9 @@ export const viewportLightingEn = {
   'viewportLighting.container.emptyState.title': 'IFClite',
   'viewportLighting.container.emptyState.tagline': 'IFC toolkit for the open web',
   'viewportLighting.container.emptyState.openButton.checking': 'Checking WebGPU...',
-  'viewportLighting.container.emptyState.openButton.open': 'Open .ifc file',
+  'viewportLighting.container.emptyState.openButton.open': 'Open model file',
   'viewportLighting.container.emptyState.openButton.required': 'WebGPU Required',
-  'viewportLighting.container.emptyState.dragDropHint': 'or drag & drop anywhere',
+  'viewportLighting.container.emptyState.dragDropHint': 'or drop files here',
   'viewportLighting.container.emptyState.orDivider': 'or',
   'viewportLighting.container.emptyState.startBlank': 'Start blank',
   'viewportLighting.container.emptyState.openFromCloud': 'Open from cloud',
@@ -54,15 +55,32 @@ export const viewportLightingEn = {
   // `keyboardShortcuts.privacy.banner` key; this is only the tooltip on the
   // click-through to the About tab where the WASM/F12 detail lives.
   'viewportLighting.container.emptyState.privacyDetailsHint': 'How your data stays on your device',
-  'viewportLighting.container.emptyState.layersPromo.badge': 'New',
-  'viewportLighting.container.emptyState.layersPromo.title': 'Layers',
-  'viewportLighting.container.emptyState.layersPromo.description':
-    'Version your model like code: layers, drafts, merges, reviews',
-  'viewportLighting.container.emptyState.layersPromo.cta': 'Try the demo stack →',
+  // First-run primary action (#5840): the demo-kit sample, loaded through
+  // the same `loadFile` as any user file.
+  'viewportLighting.container.emptyState.loadDemo.button': 'Load demo project',
+  'viewportLighting.container.emptyState.loadDemo.caption': 'A small sample building. No account, nothing uploaded.',
+  'viewportLighting.container.emptyState.loadDemo.failed': 'The demo project could not be loaded. Check your connection and try again.',
+  'viewportLighting.container.emptyState.layersDemo': 'Try the Layers demo',
   'viewportLighting.container.emptyState.footer.discoverPrompt': 'New here?',
   'viewportLighting.container.emptyState.footer.discoverLink': 'ifclite.dev →',
   'viewportLighting.container.emptyState.footer.shortcutsLabel': 'SHORTCUTS',
   // ── ViewportContainer.tsx — loaded-model "Add Model" drop overlay ────
+  // ── ViewportLoadingCard.tsx — in-viewport load progress + Cancel (#5849) ─
+  'viewportLighting.container.loadingCard.title': 'Loading {name}',
+  'viewportLighting.container.loadingCard.titleFallback': 'Loading model…',
+  'viewportLighting.container.loadingCard.cancel': 'Cancel',
+  // ── ViewportLoadErrorCard.tsx — one load-error card for every load
+  // path: the picker, drop, ?model= autoload and federated adds (#5851) ──
+  'viewportLighting.container.loadErrorCard.title': 'Could not load the model',
+  'viewportLighting.container.loadErrorCard.retry': 'Retry',
+  'viewportLighting.container.loadErrorCard.dismiss': 'Dismiss',
+  'viewportLighting.container.loadErrorCard.webgpuChecking': 'WebGPU support is still being checked. Try opening the model again in a moment.',
+  'viewportLighting.container.loadErrorCard.webgpuUnsupported':
+    "This browser can't run the WebGPU renderer this viewer needs. Try a recent Chrome, Edge, Firefox or Safari — see the browser-support link at the top of the viewer.",
+  'viewportLighting.container.modelUrlAutoload.malformedUrl': 'The linked model address is not a valid URL.',
+  'viewportLighting.container.modelUrlAutoload.crossOrigin':
+    "The linked model is hosted on a different site, so it was not loaded for your safety.",
+  'viewportLighting.container.modelUrlAutoload.fetchFailed': 'The linked model could not be downloaded: {reason}',
   'viewportLighting.container.dropOverlay.addModelTitle': 'Add Model to Scene',
   'viewportLighting.container.dropOverlay.addModelSubtitle': {
     one: 'Drop to federate with {count} existing model',
@@ -73,9 +91,7 @@ export const viewportLightingEn = {
   'viewportLighting.overlays.mobileNav.homeAria': 'Home view',
   'viewportLighting.overlays.mobileNav.homeTooltip': 'Home (H)',
   'viewportLighting.overlays.mobileNav.zoomInAria': 'Zoom in',
-  'viewportLighting.overlays.mobileNav.zoomInTooltip': 'Zoom In (+)',
   'viewportLighting.overlays.mobileNav.zoomOutAria': 'Zoom out',
-  'viewportLighting.overlays.mobileNav.zoomOutTooltip': 'Zoom Out (-)',
   // ── ViewportOverlays.tsx — selected-storey count (the storeys' own
   // NAMEs are model content and are never routed through this key) ────
   'viewportLighting.overlays.storeyCount': { one: '{count} storey', other: '{count} storeys' },
@@ -83,6 +99,11 @@ export const viewportLightingEn = {
   'viewportLighting.overlays.basepointToggle.hide': 'Hide model basepoints',
   'viewportLighting.overlays.basepointToggle.showAria': 'Show model basepoints',
   'viewportLighting.overlays.basepointToggle.showTooltip': 'Show model basepoints (IFC 0,0,0)',
+
+  // ── EditModeHudChip.tsx — the top-left "Editing" status chip (#5489);
+  // `{model}` is the model's own displayed name, runtime data ──────────
+  'viewportLighting.overlays.editingChip': 'Editing',
+  'viewportLighting.overlays.editingChipWithModel': 'Editing · {model}',
 
   // ── Viewport.tsx — renderer init failure fallback ────────────────────
   'viewportLighting.viewport.renderFailed.title': '3D Rendering Failed',

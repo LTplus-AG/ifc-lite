@@ -78,12 +78,16 @@ export function alphaSlotSuffix(groupIndex: number): string {
 export const ALPHA_SLOT_KEY = /:x\d+(?::|$)/;
 
 /**
- * Per-frame X-Ray state: a snapshot of the caller's `transparencyOverrides` /
- * `ghostExceptIds` plus the resolution rules that read them.
+ * X-Ray state: a snapshot of the caller's `transparencyOverrides` /
+ * `ghostExceptIds` plus the resolution rules that read them. The renderer keeps
+ * one across frames until `XRayEpochTracker` reports a change, so the per-batch
+ * results below are paid once per X-Ray edit, not once per frame.
  *
  * Snapshotting matters: the renderer classifies a batch (opaque vs transparent
  * pipeline) and writes its uniform at two different points in the frame, and a
- * caller mutating its map in between would desync the two.
+ * caller mutating its map in between would desync the two. The sets are copied
+ * too, because a kept resolution outlives the frame whose sets it was given,
+ * and `XRayEpochTracker` only watches the sets passed since.
  */
 export class XRayAlpha {
   /** False when no override and no ghost set is active — every resolver is then
@@ -93,16 +97,16 @@ export class XRayAlpha {
   private readonly ghostExcept: ReadonlySet<number> | null;
   private readonly ghostAlpha: number;
   private readonly selected: ReadonlySet<number>;
-  // Resolved-per-batch results for THIS frame. Classification and the uniform
-  // write both need them, and recomputing would walk every id twice per batch.
+  // Resolved-per-batch results. Classification and the uniform write both need
+  // them each frame, and recomputing would walk every id twice per batch.
   private readonly batchCache = new WeakMap<object, { alpha: number; groups: AlphaGroup[] | null }>();
 
   constructor(options: RenderOptions, selectedExpressIds: ReadonlySet<number>) {
     const src = options.transparencyOverrides;
     this.overrides = src != null && src.size > 0 ? new Map(src) : null;
-    this.ghostExcept = options.ghostExceptIds ?? null;
+    this.ghostExcept = options.ghostExceptIds != null ? new Set(options.ghostExceptIds) : null;
     this.ghostAlpha = options.ghostAlpha ?? DEFAULT_GHOST_ALPHA;
-    this.selected = selectedExpressIds;
+    this.selected = new Set(selectedExpressIds);
     this.active = this.overrides != null || this.ghostExcept != null;
   }
 

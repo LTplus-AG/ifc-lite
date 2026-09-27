@@ -74,7 +74,7 @@ function readable(): Set<string> {
 }
 
 function openDialog(): void {
-  render(<ExportDialog />);
+  render(<ExportDialog surface="ribbon" />);
   const trigger = [...document.body.querySelectorAll('button')].find(
     (b) => b.textContent?.includes(CATALOGUE['exportDialog.trigger'] as string),
   );
@@ -112,7 +112,7 @@ describe('ExportDialog localization (#4918)', () => {
       'exportDialog.visibleOnlyHint',
       'exportDialog.includeGeometryLabel',
       'exportDialog.applyMutationsLabel',
-      'exportDialog.changesOnlyLabel',
+      'exportDialog.changesOnlyLabel.default',
       'exportDialog.changesOnlyHint.default',
       'exportDialog.cancelButton',
       'exportDialog.exportButton',

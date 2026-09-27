@@ -9,9 +9,8 @@
  *
  * The oracle is a pseudo-locale that maps every `command-palette.en.ts`
  * static key to a marked copy of its English text. The palette is mounted
- * open, in browse mode (empty query) and once more with a "learn" search
- * (the only way to reach the `Learn` category — see
- * `NOT_RENDERED_IN_THIS_STATE` below), every visible row's text is read off
+ * open, in browse mode (empty query) and once more with a "learn" search;
+ * every visible row's text is read off
  * in English, the locale is switched live, and every marked string that
  * was readable in English must reappear marked. A label left hardcoded, or
  * a consumer that does not re-render on a locale switch, fails here by
@@ -26,23 +25,21 @@ import { BimReactContext } from '@/sdk/BimProvider.js';
 import { cleanup, render, type as typeInto } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { commandPaletteEn } from '@/i18n/catalogues/command-palette.en';
+import { resolveEnglish } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
 import { CommandPalette } from './CommandPalette.js';
+import { EXPORT_COMMANDS } from './toolbar/export-commands.js';
 
 type PaletteKey = keyof typeof commandPaletteEn;
 const KEYS = Object.keys(commandPaletteEn) as PaletteKey[];
 
 /**
- * `category.extensions` and `category.learn` are structurally unreachable
- * as rendered header text: `Extensions`/`Learn` are deliberately excluded
- * from `CATEGORY_ORDER` (`commandPaletteSearch.ts`), so browse mode never
- * groups under either header, and search mode renders no headers at all.
- * Excluded from the text-based coverage checks below (rather than relying
- * on `NOT_RENDERED_IN_THIS_STATE`) because `category.extensions`'s English
- * text, "Extensions", collides with `panel.extensions.label`'s — a plain
+ * No extension contribution is installed in this render, so its browse
+ * header is absent. Its English text collides with the Extensions panel row:
+ * a plain
  * `english.has(text)` check cannot tell which key produced it.
  */
-const UNREACHABLE_KEYS: PaletteKey[] = ['commandPalette.category.extensions', 'commandPalette.category.learn'];
+const UNREACHABLE_KEYS: PaletteKey[] = ['commandPalette.category.extensions'];
 const STATIC_KEYS = KEYS.filter(
   (key) => !(commandPaletteEn[key] as string).includes('{') && !UNREACHABLE_KEYS.includes(key),
 );
@@ -82,15 +79,15 @@ const RESET = {
  * Keys this render cannot show, each for a stated reason:
  *  - `category.recent` — no recorded command usage in this test's
  *    localStorage, so browse mode never renders a Recent group.
- *  - `panel.collab.label` — gated on `isCollabEnabled()`, off by default
- *    in this test environment (no `VITE_COLLAB`/localStorage override).
+ *  - `export.unavailable` — a toast, not palette text; raised only when an
+ *    Export row runs with nothing loaded (`commandPaletteExports.test.tsx`).
  *  - `noResults` — neither the browse render nor the "learn" search render
  *    below has zero matches, so the empty-state text never shows; a third
  *    render (a query nothing matches) covers it instead.
  */
 const NOT_RENDERED_IN_THIS_STATE: PaletteKey[] = [
   'commandPalette.category.recent',
-  'commandPalette.panel.collab.label',
+  'commandPalette.export.unavailable',
 ];
 
 function renderPalette(query: string): HTMLElement {
@@ -118,6 +115,27 @@ afterEach(() => {
 });
 
 describe('command palette localization (#4918 slice 3)', () => {
+  it('translates every live export menu label after the classic menu retires (#5874)', () => {
+    const labels = EXPORT_COMMANDS
+      .filter((command) => command.kind !== 'table-menu')
+      .map((command) => ({ key: command.menuLabelKey, english: resolveEnglish(command.menuLabelKey) }));
+    assert.ok(labels.length > 0, 'the registry has export rows to verify');
+    renderPalette('');
+    const english = readableStrings();
+    for (const label of labels) {
+      assert.ok(english.has(label.english), `${label.key}: the palette must render the registry row`);
+    }
+
+    registerLocale('shared-export-pseudo', Object.fromEntries(
+      labels.map(({ key, english: value }) => [key, `⟦${key}|${value}⟧`]),
+    ));
+    act(() => setLocale('shared-export-pseudo'));
+    const translated = readableStrings();
+    for (const { key, english: value } of labels) {
+      assert.ok(translated.has(`⟦${key}|${value}⟧`), `${key}: palette row must update with the locale`);
+    }
+  });
+
   it('translates every static key rendered in browse mode, a Learn search, and a no-match search', () => {
     renderPalette('');
     const browseEnglish = readableStrings();

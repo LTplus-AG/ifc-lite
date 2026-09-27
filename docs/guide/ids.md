@@ -140,7 +140,8 @@ out of scope, and is called out as such:
 | Schedules, load time, CDE revision, as-built status | Out of scope — not model data |
 | Units per property ("Width recorded in mm") | Covered: `unit` requirement kind — a property/quantity value's explicit unit, else the project unit for its measure type (#5300) |
 | Georeferencing (`IfcMapConversion`, CRS), project units, header fields | Covered: a `modelFact` rule/subject (`georef.crs`, `georef.eastings`, `units.length`, `header.author`, …) that every value operator works on, read from the element's model (#5442) |
-| Complex properties, `IfcPropertyReferenceValue` | Deferred — reads as `present:false` (absent) |
+| List, enumerated and table values | Covered: an element rule matches ANY member / cell, as IDS does for lists and tables; a negated op (`ne`, `notContains`, `notMatches`) holds only when NO member has the value (#5475) |
+| Complex properties, `IfcPropertyReferenceValue` | Deferred — a complex property reads as its members' joined text, a reference as `#<id>` (#5475 follow-up) |
 | Negation / exceptions in applicability | Covered: `ne`/`notIn`/`notContains`/`notMatches`/`isNotSet`, OR-ed groups |
 | OR logic in requirements | Covered: an `element` requirement is a `RuleBlock` with OR-ed groups |
 | Value-to-value comparison (`WarrantyEnd > WarrantyStart`) | Covered: `compare` requirement kind (number or date) |
@@ -252,6 +253,9 @@ In the IFClite viewer, IDS validation is integrated through the Data validation 
 5. **Filter** - Show all entities, only failed, or only passed
 6. **Navigate** - Click a failed entity to zoom to it in 3D
 7. **Export BCF** - Turn validation failures into BCF topics (see [BCF](bcf.md#ids-validation-reports-as-bcf))
+8. **Re-run** - After editing the model, the header's Re-run button repeats the check with the same IDS against the same model the report describes. **Clear results** returns to the pre-run card and keeps the IDS loaded; **Unload IDS** removes both
+
+No `.ids` file to hand? With no model of your own open, the empty panel's **Try with demo data** loads the demo project and the IDS written for it.
 
 Validation runs in a Web Worker so the UI stays responsive during large runs, with an automatic fallback to in-process validation if the worker is unavailable.
 

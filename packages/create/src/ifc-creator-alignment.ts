@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `IfcAlignment` emitter — horizontal layout only (mapping spec §11).
+ * `IfcAlignment` emitter — horizontal layout (mapping spec §11), plus the
+ * vertical layout from `ifc-creator-alignment-vertical.ts` when given (§12).
  *
  * Writes BOTH halves IFC 4.3 defines for an alignment: the semantic layout
  * (`IfcAlignmentHorizontal` nesting `IfcAlignmentSegment`s) and the geometry
@@ -19,6 +20,8 @@
 
 import { esc, num } from './ifc-creator-math.js';
 import { ALIGNMENT_POSITION_TOLERANCE_M, type HorizontalSegment } from './landxml/alignment-mapping.js';
+import { emitGradientCurve, emitVerticalLayout, type AlignmentVerticalParams } from './ifc-creator-alignment-vertical.js';
+import { emitStationing, type StationEquationParams } from './ifc-creator-alignment-referents.js';
 
 /** The creator hooks this emitter needs. */
 export interface AlignmentContext {
@@ -37,6 +40,14 @@ export interface AlignmentParams {
   /** Station at distance 0, metres — written to the start referent's `Pset_Stationing`. */
   StartStation: number;
   Segments: readonly HorizontalSegment[];
+  /**
+   * The vertical layout (mapping spec §12). When present the alignment also
+   * gets an `IfcAlignmentVertical` and an `IfcGradientCurve` 'Axis'
+   * representation, and the composite curve moves to 'FootPrint'.
+   */
+  Vertical?: AlignmentVerticalParams;
+  /** Station equations (§14), in order along the alignment; each becomes an `IfcReferent`. */
+  StationEquations?: readonly StationEquationParams[];
   /** Deterministic GlobalId seed for this alignment's owned entities. */
   guidFor?: (role: string) => string;
 }
@@ -48,6 +59,11 @@ export interface AlignmentResult {
   /** `IfcAlignmentSegment` ids in order, including the terminating one. */
   segmentIds: number[];
   referentId: number;
+  /** Present when `Vertical` was given. */
+  verticalId?: number;
+  gradientCurveId?: number;
+  /** One `IfcReferent` per station equation, in order along the alignment. */
+  equationReferentIds: number[];
 }
 
 /**
@@ -164,15 +180,6 @@ function terminator(last: HorizontalSegment): HorizontalSegment {
   };
 }
 
-/** `0+123.456` — kilometres and metres, the usual stationing label. */
-function stationLabel(station: number): string {
-  const sign = station < 0 ? '-' : '';
-  const abs = Math.abs(station);
-  const km = Math.floor(abs / 1000);
-  const m = (abs - km * 1000).toFixed(3).padStart(7, '0');
-  return `${sign}${km}+${m}`;
-}
-
 export function emitAlignment(params: AlignmentParams, ctx: AlignmentContext): AlignmentResult {
   if (params.Segments.length === 0) {
     throw new Error('addAlignment: Segments is empty — an alignment needs at least one horizontal segment');
@@ -196,8 +203,16 @@ export function emitAlignment(params: AlignmentParams, ctx: AlignmentContext): A
     ctx, segment, index === layout.length - 1 ? '.DISCONTINUOUS.' : transitionCode(segment, layout[index + 1]),
   ));
   const compositeCurveId = ctx.emit('IFCCOMPOSITECURVE', `(${curveSegments.map((id) => `#${id}`).join(',')}),.F.`);
-  const representation = ctx.emit('IFCSHAPEREPRESENTATION', `${ctx.axisContextRef},'Axis','Curve2D',(#${compositeCurveId})`);
-  const shape = ctx.emit('IFCPRODUCTDEFINITIONSHAPE', `$,$,(#${representation})`);
+  // With a vertical layout: the composite curve as 'FootPrint' first, the
+  // gradient curve as 'Axis' — IfcOpenShell's horizontal + vertical case (§12.1).
+  const gradientCurveId = params.Vertical ? emitGradientCurve(ctx, params.Vertical, compositeCurveId) : undefined;
+  const representations = gradientCurveId === undefined
+    ? [ctx.emit('IFCSHAPEREPRESENTATION', `${ctx.axisContextRef},'Axis','Curve2D',(#${compositeCurveId})`)]
+    : [
+      ctx.emit('IFCSHAPEREPRESENTATION', `${ctx.axisContextRef},'FootPrint','Curve2D',(#${compositeCurveId})`),
+      ctx.emit('IFCSHAPEREPRESENTATION', `${ctx.axisContextRef},'Axis','Curve3D',(#${gradientCurveId})`),
+    ];
+  const shape = ctx.emit('IFCPRODUCTDEFINITIONSHAPE', `$,$,(${representations.map((id) => `#${id}`).join(',')})`);
 
   const alignmentId = ctx.emit(
     'IFCALIGNMENT',
@@ -207,31 +222,24 @@ export function emitAlignment(params: AlignmentParams, ctx: AlignmentContext): A
   // Semantics: horizontal layout nested under the alignment, segments nested
   // in order under the layout.
   const horizontalId = ctx.emit('IFCALIGNMENTHORIZONTAL', `'${guid('horizontal')}',${ctx.ownerRef},$,$,$,$,$`);
-  ctx.emit('IFCRELNESTS', `'${guid('nests:layouts')}',${ctx.ownerRef},$,$,#${alignmentId},(#${horizontalId})`);
+  const vertical = params.Vertical ? emitVerticalLayout(ctx, params.Vertical, guid) : undefined;
+  const layouts = vertical ? `#${horizontalId},#${vertical.verticalId}` : `#${horizontalId}`;
+  ctx.emit('IFCRELNESTS', `'${guid('nests:layouts')}',${ctx.ownerRef},$,$,#${alignmentId},(${layouts})`);
   const segmentIds = layout.map((segment, index) => ctx.emit(
     'IFCALIGNMENTSEGMENT',
     `'${guid(`segment:${index}`)}',${ctx.ownerRef},$,$,$,$,$,#${designParameters(ctx, segment)}`,
   ));
   ctx.emit('IFCRELNESTS', `'${guid('nests:segments')}',${ctx.ownerRef},$,$,#${horizontalId},(${segmentIds.map((id) => `#${id}`).join(',')})`);
 
-  // Stationing: an IfcReferent at distance 0 along the alignment's own curve.
-  const first = params.Segments[0];
-  const along = ctx.emit('IFCPOINTBYDISTANCEEXPRESSION', `IFCLENGTHMEASURE(0.),$,$,$,#${compositeCurveId}`);
-  const linear = ctx.emit('IFCAXIS2PLACEMENTLINEAR', `#${along},$,$`);
-  const at = ctx.emit('IFCCARTESIANPOINT', `(${num(first.start[0])},${num(first.start[1])},0.)`);
-  const up = ctx.emit('IFCDIRECTION', '(0.,0.,1.)');
-  const ahead = ctx.emit('IFCDIRECTION', `(${num(Math.cos(first.direction))},${num(Math.sin(first.direction))},0.)`);
-  const cartesian = ctx.emit('IFCAXIS2PLACEMENT3D', `#${at},#${up},#${ahead}`);
-  const placement = ctx.emit('IFCLINEARPLACEMENT', `$,#${linear},#${cartesian}`);
-  const referentId = ctx.emit(
-    'IFCREFERENT',
-    `'${guid('referent:start')}',${ctx.ownerRef},'${stationLabel(params.StartStation)}',$,$,#${placement},$,.STATION.`,
-  );
-  const station = ctx.emit('IFCPROPERTYSINGLEVALUE', `'Station',$,IFCLENGTHMEASURE(${num(params.StartStation)}),$`);
-  const pset = ctx.emit('IFCPROPERTYSET', `'${guid('pset:stationing')}',${ctx.ownerRef},'Pset_Stationing',$,(#${station})`);
-  ctx.emit('IFCRELDEFINESBYPROPERTIES', `'${guid('rel:stationing')}',${ctx.ownerRef},$,$,(#${referentId}),#${pset}`);
-  ctx.emit('IFCRELNESTS', `'${guid('nests:referents')}',${ctx.ownerRef},$,$,#${alignmentId},(#${referentId})`);
-  ctx.emit('IFCRELPOSITIONS', `'${guid('positions')}',${ctx.ownerRef},$,$,#${referentId},(#${alignmentId})`);
+  // Stationing (§11.1, §14): the start referent, then one per station
+  // equation, nested in order along the alignment.
+  const [referentId, ...equationReferentIds] = emitStationing({
+    alignmentId, compositeCurveId, segments: params.Segments, startStation: params.StartStation,
+    equations: params.StationEquations ?? [],
+  }, { emit: ctx.emit, ownerRef: ctx.ownerRef, guid });
 
-  return { alignmentId, horizontalId, compositeCurveId, segmentIds, referentId };
+  return {
+    alignmentId, horizontalId, compositeCurveId, segmentIds, referentId, equationReferentIds,
+    ...(vertical ? { verticalId: vertical.verticalId, gradientCurveId } : {}),
+  };
 }

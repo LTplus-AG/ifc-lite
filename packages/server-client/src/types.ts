@@ -253,12 +253,13 @@ export interface HealthResponse {
 }
 
 /**
- * Error response from the server.
+ * The body of every error response from the server, on every route and
+ * status. The client decodes it into an `IfcServerError`.
  */
 export interface ErrorResponse {
-  /** Error message */
+  /** Human-readable message. */
   error: string;
-  /** Error code */
+  /** Stable identifier to branch on (`NOT_FOUND`, `BAD_REQUEST`, `OVERLOADED`, ...). */
   code: string;
 }
 
@@ -504,6 +505,15 @@ export interface ParquetStreamBatchEvent {
   mesh_count: number;
   /** Batch sequence number (1-indexed) */
   batch_number: number;
+  /**
+   * Cross-batch streams only (`stream_shapes=cross-batch`, #5407): where this
+   * batch's vertex rows start in the whole stream. Its mesh rows may point
+   * below it, at a shape an earlier batch carried. Absent on a batch that
+   * decodes on its own.
+   */
+  vertex_base?: number;
+  /** Companion of `vertex_base`, in indices (three per triangle). */
+  index_base?: number;
 }
 
 /**

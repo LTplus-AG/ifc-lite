@@ -5,17 +5,20 @@
 /**
  * One row in the Raw STEP editor — a positional STEP argument with an
  * inline pen-icon editor. Mirrors the visual rhythm of the existing
- * AttributeEditorField (PropertiesPanel.tsx) but operates against
- * `bim.store.setPositionalAttribute` instead of the named-attribute path.
+ * AttributeEditorField (properties/AttributeEditorField.tsx) but operates
+ * against `bim.store.setPositionalAttribute` instead of the named-attribute
+ * path. Same commit rule (#5872): an unchanged value records nothing, and an
+ * edit settles once, so the blur after Enter / Escape cannot commit again.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { PenLine, X, Check, AlertCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
 import { isInlineEditableToken, parseRawStepInput } from './raw-step-format';
 import { useTranslation } from '@/i18n';
+import { globalIdProblem, modelGlobalIdOwner } from './global-id-check';
 
 /** Match a bare `#N` STEP entity reference. */
 const REF_TOKEN_RE = /^#(\d+)$/;
@@ -52,11 +55,12 @@ export function RawStepRow({
 }: RawStepRowProps) {
   const { t } = useTranslation();
   const setPositionalAttribute = useViewerStore((s) => s.setPositionalAttribute);
-  const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Set once a commit or cancel has decided this edit (see file header).
+  const settledRef = useRef(false);
 
   const editable = enableEditing && isInlineEditableToken(displayToken);
   const display = displayToken;
@@ -72,27 +76,43 @@ export function RawStepRow({
 
   const startEdit = useCallback(() => {
     if (!editable) return;
+    settledRef.current = false;
     setDraft(display);
     setError(null);
     setEditing(true);
   }, [editable, display]);
 
   const cancelEdit = useCallback(() => {
+    settledRef.current = true;
     setEditing(false);
     setError(null);
   }, []);
 
   const saveEdit = useCallback(() => {
+    if (settledRef.current) return;
+    if (draft.trim() === display) {
+      settledRef.current = true;
+      setEditing(false);
+      setError(null);
+      return;
+    }
     const parsed = parseRawStepInput(draft);
     if ('error' in parsed) {
       setError(parsed.error);
       return;
     }
+    // GlobalId is writable here too; it gets the attribute editor's rule.
+    const guidProblem = name === 'GlobalId' ? globalIdProblem(parsed.value, entityId, modelGlobalIdOwner(modelId)) : null;
+    if (guidProblem) {
+      setError(t(guidProblem));
+      return;
+    }
+    settledRef.current = true;
+    // setPositionalAttribute records the undo entry and bumps mutationVersion.
     setPositionalAttribute(modelId, entityId, index, parsed.value);
-    bumpMutationVersion();
     setEditing(false);
     setError(null);
-  }, [draft, modelId, entityId, index, setPositionalAttribute, bumpMutationVersion]);
+  }, [draft, display, name, modelId, entityId, index, setPositionalAttribute, t]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -110,14 +130,14 @@ export function RawStepRow({
   return (
     <div
       className={`group grid grid-cols-[28px_minmax(80px,140px)_minmax(0,1fr)_auto] items-center gap-2 px-3 py-1.5 text-sm border-b border-zinc-200/60 dark:border-zinc-800/60 ${
-        isMutated ? 'bg-purple-50/40 dark:bg-purple-950/15' : ''
+        isMutated ? 'bg-overlay-accent/5' : ''
       }`}
     >
       {/* Positional index — displayed 1-based to match the buildingSMART
        *  IFC attribute tables and STEP documentation (GlobalId = #1).
        *  The `index` prop stays 0-based for store/overlay addressing. */}
       <span
-        className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 tabular-nums tracking-wide"
+        className="text-2xs font-mono text-zinc-400 dark:text-zinc-500 tabular-nums tracking-wide"
         aria-label={t('properties.rawStepRow.positionalIndexAriaLabel', { index: index + 1 })}
       >
         [{index + 1}]
@@ -152,7 +172,7 @@ export function RawStepRow({
             className={`flex-1 min-w-0 h-7 px-2 text-xs font-mono bg-white dark:bg-zinc-900 border outline-none focus:ring-1 ${
               error
                 ? 'border-red-400 dark:border-red-500 focus:ring-red-400'
-                : 'border-purple-300 dark:border-purple-700 focus:ring-purple-400'
+                : 'border-overlay-accent/40 focus:ring-overlay-accent'
             }`}
             spellCheck={false}
             autoCapitalize="off"
@@ -203,7 +223,7 @@ export function RawStepRow({
             <TooltipTrigger asChild>
               <span
                 aria-label={t('properties.rawStepRow.overlayOverrideAriaLabel')}
-                className="inline-block h-1.5 w-1.5 rounded-full bg-purple-500 dark:bg-purple-400"
+                className="inline-block h-1.5 w-1.5 rounded-full bg-overlay-accent"
               />
             </TooltipTrigger>
             <TooltipContent side="left">{t('properties.rawStepRow.overlayOverrideTooltip')}</TooltipContent>
@@ -212,39 +232,33 @@ export function RawStepRow({
 
         {editing ? (
           <>
-            <Button
-              variant="ghost"
-              size="icon"
+            <IconButton
+              label={t('properties.rawStepRow.saveTooltip')}
               data-raw-step-action="save"
               onMouseDown={(e) => e.preventDefault()}
               onClick={saveEdit}
               className="h-6 w-6 p-0 hover:bg-emerald-100 dark:hover:bg-emerald-950/30"
-              title={t('properties.rawStepRow.saveTooltip')}
             >
               <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
+            </IconButton>
+            <IconButton
+              label={t('properties.rawStepRow.cancelTooltip')}
               data-raw-step-action="cancel"
               onMouseDown={(e) => e.preventDefault()}
               onClick={cancelEdit}
               className="h-6 w-6 p-0 hover:bg-red-100 dark:hover:bg-red-950/30"
-              title={t('properties.rawStepRow.cancelTooltip')}
             >
               <X className="h-3.5 w-3.5 text-red-500 dark:text-red-400" />
-            </Button>
+            </IconButton>
           </>
         ) : editable ? (
-          <Button
-            variant="ghost"
-            size="icon"
+          <IconButton
+            label={t('properties.rawStepRow.editTooltip')}
             onClick={startEdit}
             className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
-            title={t('properties.rawStepRow.editTooltip')}
           >
-            <PenLine className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
-          </Button>
+            <PenLine className="h-3.5 w-3.5 text-overlay-accent" />
+          </IconButton>
         ) : (
           <span className="h-6 w-6" aria-hidden />
         )}
@@ -254,7 +268,7 @@ export function RawStepRow({
       {error && (
         <p
           id={`raw-step-err-${entityId}-${index}`}
-          className="col-span-4 -mt-1 mb-1 ml-[36px] flex items-center gap-1 text-[11px] text-red-600 dark:text-red-400"
+          className="col-span-4 -mt-1 mb-1 ml-[36px] flex items-center gap-1 text-2xs text-red-600 dark:text-red-400"
         >
           <AlertCircle className="h-3 w-3 shrink-0" />
           <span>{error}</span>

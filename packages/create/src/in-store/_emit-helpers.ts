@@ -18,6 +18,7 @@
 
 import { generateIfcGuid, isValidIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
+import { completePlacementAxes } from '../ifc-creator-math.js';
 
 const POINT_EPSILON = 1e-6;
 
@@ -42,7 +43,8 @@ export function assertPositiveFinite(values: readonly number[], message: string)
  * Emit an IfcLocalPlacement chained to a parent. Wraps the cartesian
  * point + axis-placement bookkeeping. Pass `Axis` and/or `RefDirection`
  * as `[x, y, z]` to override defaults (otherwise IFC fills them with
- * world up / world X).
+ * world up / world X). Passing only one writes the other as its schema
+ * default, since IFC requires both or neither (#5469).
  */
 export function emitLocalPlacement(
   editor: StoreEditor,
@@ -52,12 +54,10 @@ export function emitLocalPlacement(
   refDirection?: [number, number, number],
 ): number {
   const originPt = editor.addEntity('IfcCartesianPoint', [location]).expressId;
-  const axisRef = axis !== undefined
-    ? `#${editor.addEntity('IfcDirection', [axis]).expressId}`
-    : null;
-  const refDirRef = refDirection !== undefined
-    ? `#${editor.addEntity('IfcDirection', [refDirection]).expressId}`
-    : null;
+  // Axis and RefDirection are written both or neither (#5469).
+  const axes = completePlacementAxes(axis, refDirection);
+  const axisRef = axes ? `#${editor.addEntity('IfcDirection', [axes.Axis]).expressId}` : null;
+  const refDirRef = axes ? `#${editor.addEntity('IfcDirection', [axes.RefDirection]).expressId}` : null;
   const axisPlacement = editor.addEntity('IfcAxis2Placement3D', [
     `#${originPt}`,
     axisRef,

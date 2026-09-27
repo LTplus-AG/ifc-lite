@@ -15,7 +15,7 @@
  *
  * This module asks several CHEAP models the SAME prompt, concurrently, and
  * pools their findings before the existing mechanical validator and judge ever
- * see them. Strong models (Sonnet, `openai/gpt-5.6-sol`) stay reserved for the
+ * see them. Strong models (Sonnet, `openai/gpt-6-sol`) stay reserved for the
  * failover path in run-reviewer.mjs, which only fires when this ensemble is
  * disabled, unconfigured, or fails outright.
  *
@@ -57,13 +57,17 @@ import { classify as classifyPrRisk } from './classify-pr-risk.mjs';
 
 /** Reference chain for docs/PR description only -- see `resolveEnsembleModels` for why this is NOT a runtime fallback. */
 export const REVIEW_ENSEMBLE_MODELS_DEFAULT = [
-  'openai/gpt-5.6-luna',
+  'openai/gpt-6-luna',
   'deepseek/deepseek-v4.1-flash',
   'deepseek/deepseek-v4-flash',
 ];
 
-/** Added to the ensemble only under `REVIEW_ENSEMBLE_STRONG_ON_RISK` on a high-risk PR. */
-export const REVIEW_ENSEMBLE_STRONG_MODEL = 'openai/gpt-5.6-sol';
+/**
+ * Added to the ensemble only under `REVIEW_ENSEMBLE_STRONG_ON_RISK` on a high-risk PR.
+ * Opus rather than Sonnet or gpt-6-sol: this seat is paid for only on the PRs the
+ * risk classifier flags, so it gets the strongest reviewer, not the cheapest one.
+ */
+export const REVIEW_ENSEMBLE_STRONG_MODEL = 'anthropic/claude-opus-5.5';
 
 /**
  * USD per MILLION tokens, { in, out }. A cost TABLE, not a cost CALL: see the
@@ -72,12 +76,15 @@ export const REVIEW_ENSEMBLE_STRONG_MODEL = 'openai/gpt-5.6-sol';
  * rather than guess.
  */
 export const MODEL_PRICES_PER_MTOK = {
+  'openai/gpt-6-luna': { in: 0.10, out: 0.50 },
   'openai/gpt-5.6-luna': { in: 0.20, out: 1.20 },
-  'deepseek/deepseek-v4.1-flash': { in: 0.15, out: 0.60 },
+  'deepseek/deepseek-v4.1-flash': { in: 0.04, out: 0.29 },
   'deepseek/deepseek-v4-flash': { in: 0.05, out: 0.09 },
   'openai/gpt-5.4-nano': { in: 0.20, out: 1.25 },
   'anthropic/claude-haiku-4.5': { in: 1.00, out: 5.00 },
   'anthropic/claude-sonnet-5': { in: 2.00, out: 10.00 },
+  'anthropic/claude-opus-5.5': { in: 4.00, out: 20.00 },
+  'openai/gpt-6-sol': { in: 2.00, out: 10.00 },
   'openai/gpt-5.6-sol': { in: 2.00, out: 10.00 },
 };
 

@@ -249,12 +249,16 @@ function checkValueOp(
     return { passed, reason: passed ? undefined : 'mismatch', actual, expected, facetType, checkedDescription };
   }
   if (op === 'eq' || op === 'ne') {
-    const rv = Number(rule.value);
-    const nums = strVals.map((v) => Number(v));
-    const allFinite = Number.isFinite(rv) && nums.length > 0 && nums.every(Number.isFinite);
-    const matchAny = allFinite
-      ? nums.some((cv) => numericOpMatches('eq', cv, rv, opts))
-      : strVals.some((v) => stringOpMatches('eq', v, rule.value, undefined, opts));
+    // Numeric vs text is decided per member (#5475): a table mixes text and
+    // number cells, and one text cell must not turn every number cell into
+    // a string compare. A blank member is never the number 0.
+    const rv = rule.value.trim() === '' ? Number.NaN : Number(rule.value);
+    const matchAny = strVals.some((v) => {
+      const cv = v.trim() === '' ? Number.NaN : Number(v);
+      return Number.isFinite(rv) && Number.isFinite(cv)
+        ? numericOpMatches('eq', cv, rv, opts)
+        : stringOpMatches('eq', v, rule.value, undefined, opts);
+    });
     const passed = op === 'eq' ? matchAny : !matchAny;
     return { passed, reason: passed ? undefined : 'mismatch', actual, expected, facetType, checkedDescription };
   }

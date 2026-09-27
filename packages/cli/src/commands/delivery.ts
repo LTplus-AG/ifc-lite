@@ -31,7 +31,7 @@
  */
 
 import { getFlag, hasFlag, fatal, printJson, writeOutput } from '../output.js';
-import { readCliVersion } from '../version.js';
+import { readPackageVersion } from '@ifc-lite/data/node';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 import { loadDeliveryRecipe } from './delivery-recipe.js';
@@ -39,7 +39,7 @@ import { loadModelForDelivery, runStructuralCheck, runIdsCheck, runRulesCheck, t
 import { buildDeliveryReport, renderDeliveryHtml, type DeliveryModelEntry, type DeliveryCheckResult } from './delivery-report.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const CLI_VERSION = readCliVersion(join(__dirname, '..', '..', 'package.json'));
+const CLI_VERSION = readPackageVersion(join(__dirname, '..', '..', 'package.json'));
 
 export async function deliveryCommand(args: string[]): Promise<void> {
   const recipePath = args.find(a => !a.startsWith('-'));

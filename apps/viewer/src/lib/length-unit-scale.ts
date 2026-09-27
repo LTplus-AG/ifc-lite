@@ -19,6 +19,9 @@
  */
 
 import { extractLengthUnitScale, type IfcDataStore } from '@ifc-lite/parser';
+import { fromNativeLength, toNativeLength } from '@ifc-lite/create';
+
+type Vec3 = [number, number, number];
 
 const scaleCache = new WeakMap<IfcDataStore, number>();
 
@@ -38,4 +41,16 @@ export function getModelLengthUnitScale(dataStore: IfcDataStore | null | undefin
 
   scaleCache.set(dataStore, scale);
   return scale;
+}
+
+/** A native-unit STEP point in metres (#6233). Rounded like `fromNativeLength`. */
+export function pointToMetres(dataStore: IfcDataStore, point: readonly number[]): Vec3 {
+  const unit = { lengthUnitScale: getModelLengthUnitScale(dataStore) };
+  return [fromNativeLength(unit, point[0]), fromNativeLength(unit, point[1]), fromNativeLength(unit, point[2])];
+}
+
+/** A metre point in the model's native unit, ready to write to STEP (#6233). */
+export function pointToNative(dataStore: IfcDataStore, point: readonly number[]): Vec3 {
+  const unit = { lengthUnitScale: getModelLengthUnitScale(dataStore) };
+  return [toNativeLength(unit, point[0]), toNativeLength(unit, point[1]), toNativeLength(unit, point[2])];
 }

@@ -91,6 +91,11 @@ export function prepareCoordinatedAppearanceHistory(store: StoreApi<ViewerState>
 
 /** A newer edit in any participant must be undone before this shared command.
  * A failed replay leaves all history stacks where they were. */
+/** Whether `mutationId` is the marker of a coordinated appearance command on this store. */
+export function hasCoordinatedAppearanceMarker(store: StoreApi<ViewerState>, mutationId: string): boolean {
+  return registries.get(store.getState)?.markers.has(mutationId) ?? false;
+}
+
 export function replayCoordinatedAppearanceHistory(store: StoreApi<ViewerState>, modelId: string, direction: 'undo' | 'redo'): boolean {
   const registry = registries.get(store.getState);
   if (!registry) return false;

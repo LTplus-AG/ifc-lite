@@ -8,6 +8,7 @@ exercise the same binary that ships to PyPI rather than a local cargo build.
 """
 
 import json
+import math
 import struct
 from pathlib import Path
 
@@ -99,6 +100,67 @@ def test_quality_applies_to_the_json_path_too():
     low = json.loads(ifclite_geom.geometry_data_json(ifc, "lowest"))
     high = json.loads(ifclite_geom.geometry_data_json(ifc, "highest"))
     assert indices(low) < indices(high)
+
+
+def test_swept_disk_directrix_is_opt_in_and_analytic():
+    ifc = read(REBAR)
+    plain = ifclite_geom.geometry_data_buffers(ifc)
+    assert "swept_disks" not in plain
+    assert "directrix_diagnostics" not in plain
+
+    with_curves = ifclite_geom.geometry_data_buffers(ifc, include_directrices=True)
+    assert with_curves["elements"] == plain["elements"]
+    assert set(with_curves["swept_disks"]) == {125}
+    (sweep,) = with_curves["swept_disks"][125]
+    assert sweep["solid_id"] == 72
+    assert sweep["directrix_id"] == 71
+    assert sweep["Radius"] == pytest.approx(0.0145)
+    assert sweep["InnerRadius"] is None
+    assert sweep["status"] == {"type": "complete"}
+    assert sweep["source_modified"] is False
+    assert [piece["type"] for piece in sweep["Directrix"]] == [
+        "line", "arc", "line", "arc", "line"
+    ]
+    arc_radii = [piece["radius"] for piece in sweep["Directrix"] if piece["type"] == "arc"]
+    assert arc_radii == pytest.approx([0.1015, 0.1015])
+    assert with_curves["directrix_diagnostics"] == []
+
+    document = json.loads(ifclite_geom.geometry_data_json(ifc, include_directrices=True))
+    assert document["swept_disks"]["125"] == with_curves["swept_disks"][125]
+    assert document["directrix_diagnostics"] == with_curves["directrix_diagnostics"]
+
+
+def test_issue_5754_rebar_directrix_metrics_use_world_metres_and_radians():
+    (sweep,) = ifclite_geom.geometry_data_buffers(
+        read(REBAR), include_directrices=True
+    )["swept_disks"][125]
+    metrics = sweep["directrix_metrics"]
+    assert metrics is not None
+    # The millimetre fixture authors 322, 245.685..., and 250 mm straight
+    # runs, with two 101.5 mm radius quarter-circle bends.
+    straight_lengths = [0.322, 0.245685133619932, 0.250]
+    quarter_arc_length = 0.1015 * math.pi / 2
+    assert [part["segment_index"] for part in metrics["segments"]] == list(range(5))
+    assert [part["length"] for part in metrics["segments"]] == pytest.approx(
+        [straight_lengths[0], quarter_arc_length, straight_lengths[1],
+         quarter_arc_length, straight_lengths[2]]
+    )
+    assert [part["bend_angle"] for part in metrics["segments"][::2]] == [None] * 3
+    assert [part["bend_angle"] for part in metrics["segments"][1::2]] == pytest.approx(
+        [math.pi / 2, math.pi / 2]
+    )
+    assert metrics["total_length"] == pytest.approx(
+        sum(straight_lengths) + 2 * quarter_arc_length
+    )
+
+
+def test_swept_disk_directrix_respects_id_filter():
+    ifc = read(REBAR)
+    empty = ifclite_geom.geometry_data_buffers(ifc, ids=set(), include_directrices=True)
+    assert empty["swept_disks"] == {}
+    assert empty["elements"] == {}
+    unknown = ifclite_geom.geometry_data_buffers(ifc, ids={999_999}, include_directrices=True)
+    assert unknown["swept_disks"] == {}
 
 
 def test_issue_4803_id_filter_none_empty_subset_and_unknown():

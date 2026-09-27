@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Renderer, type PickResult } from '@ifc-lite/renderer';
+import { DEFAULT_OVERLAY_THEME, Renderer, type PickResult } from '@ifc-lite/renderer';
 import {
   COMMON_ORIGIN, LARGE_ORIGIN, PICK_CSS_X, PICK_CSS_Y, CPU_PICK_CSS_X, CPU_PICK_CSS_Y, GEOMETRIC_TOLERANCE_METRES, MEASUREMENT_TOLERANCE_METRES,
   baseReport, distance, instancedShard, largeExtentMesh, shadowCasterMesh, type PickEvidence, type RteGpuWitnessReport, witnessMesh,
@@ -88,7 +88,9 @@ async function runWitness(canvas: HTMLCanvasElement): Promise<RteGpuWitnessRepor
       localVertices: new Float32Array([-12, 0, 1, 12, 0, 1]),
       origin: COMMON_ORIGIN,
     });
-    renderer.setOverlayLineColor([1, 0.8, 0, 1]);
+    // setOverlayTheme supersedes setOverlayLineColor (#5484): only overlayLine
+    // is exercised here, so every other field keeps the renderer's default.
+    renderer.setOverlayTheme({ ...DEFAULT_OVERLAY_THEME, overlayLine: [1, 0.8, 0, 1] });
     renderer.setPointCloudOptions({ colorMode: 'fixed', fixedColor: [0, 1, 1, 1], sizeMode: 'fixed-px', pointSize: 24 });
 
     const camera = renderer.getCamera();

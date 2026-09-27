@@ -165,13 +165,35 @@ pub struct ClassificationAssociation {
 pub struct MaterialAssociation {
     /// Element the material is assigned to.
     pub element_id: u32,
-    /// Layer-set name (`IfcMaterialLayerSet.LayerSetName`); `None` for a single
-    /// material, list, or constituent set.
+    /// IfcRelAssociatesMaterial express id, preserving separate associations.
+    pub association_id: u32,
+    /// RelatingMaterial definition express id.
+    pub definition_id: u32,
+    /// Number of members in this definition, repeated for completeness checks.
+    pub member_count: u32,
+    /// Effective resolved definition kind. For an IfcMaterialLayerSetUsage or
+    /// IfcMaterialProfileSetUsage, this names its referenced set rather than
+    /// the usage entity at `definition_id`.
+    pub kind: String,
+    /// Set name (`IfcMaterialLayerSet.LayerSetName`,
+    /// `IfcMaterialProfileSet.Name`, or `IfcMaterialConstituentSet.Name`).
+    /// `None` for a single material or list.
     pub set_name: Option<String>,
-    /// 0-based index of this layer within its set (0 for a single material).
+    /// 0-based member index within its set or list (0 for a single material).
     pub layer_index: u32,
     /// Material name (`IfcMaterial.Name`).
     pub material_name: String,
+    /// True when `IfcMaterial.Name` is an authored string, including an empty
+    /// string. False for a missing/STEP null name.
+    pub material_name_present: bool,
+    /// Referenced IfcMaterial express id, including unnamed list members.
+    pub material_id: Option<u32>,
+    /// Name of the layer, constituent, or profile member.
+    pub member_name: Option<String>,
+    /// IfcMaterial.Category, distinct from the member's Category.
+    pub material_category: Option<String>,
+    /// IfcMaterialConstituent.Fraction.
+    pub fraction: Option<f64>,
     /// Layer thickness in **metres** (already unit-scaled). `None` for
     /// non-layered materials.
     pub thickness: Option<f64>,

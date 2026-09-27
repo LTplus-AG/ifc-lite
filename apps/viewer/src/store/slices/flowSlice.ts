@@ -28,10 +28,11 @@ export interface FlowRunWindow {
    */
   readonly doc: FlowDocument;
   /**
-   * Ids of the pending mutations this run created: pending when it finished,
-   * not pending when it started. Publish selects by these ids, not by time: an
-   * inclusive millisecond window also took in a manual edit made in the same
-   * millisecond the run ended (#5380 review).
+   * Ids of the pending mutations this run created through the SDK backend,
+   * still pending when it finished. Publish selects by these ids, not by
+   * time: an inclusive millisecond window also took in a manual edit made in
+   * the same millisecond the run ended (#5380 review), and "pending after, not
+   * before" took in a manual edit made while the run was in flight (#5634).
    */
   readonly mutationIds: ReadonlySet<string>;
 }

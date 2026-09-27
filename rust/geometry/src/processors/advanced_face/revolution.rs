@@ -9,7 +9,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 use super::edge_loop::extract_edge_loop_points_for_bounds;
 use super::polyline::sample_curve_polyline;
-use super::surfaces::process_planar_face;
+use super::surfaces::process_planar_face_rebased;
 
 /// Tessellate an `IfcSurfaceOfRevolution` face by sweeping its profile curve
 /// around the axis through the angular extent recovered from the face's edge
@@ -20,6 +20,7 @@ pub(super) fn process_surface_of_revolution_face(
     surface: &DecodedEntity,
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
+    rtc: (f64, f64, f64),
 ) -> Result<(Vec<f32>, Vec<u32>)> {
     use nalgebra::Vector3;
     use std::f64::consts::TAU;
@@ -83,7 +84,7 @@ pub(super) fn process_surface_of_revolution_face(
     };
 
     if profile_pts.len() < 2 {
-        return process_planar_face(face, decoder, quality);
+        return process_planar_face_rebased(face, decoder, quality, Some(rtc));
     }
 
     // Build an orthonormal basis (axis_x, axis_y, axis_dir).
@@ -203,9 +204,9 @@ pub(super) fn process_surface_of_revolution_face(
             let nrx = rx * cos_v - ry * sin_v;
             let nry = rx * sin_v + ry * cos_v;
             let world = axis_origin + axis_x * nrx + axis_y * nry + axis_dir * z;
-            positions.push(world.x as f32);
-            positions.push(world.y as f32);
-            positions.push(world.z as f32);
+            positions.push((world.x - rtc.0) as f32);
+            positions.push((world.y - rtc.1) as f32);
+            positions.push((world.z - rtc.2) as f32);
         }
     }
 
@@ -226,7 +227,7 @@ pub(super) fn process_surface_of_revolution_face(
     }
 
     if positions.is_empty() || indices.is_empty() {
-        return process_planar_face(face, decoder, quality);
+        return process_planar_face_rebased(face, decoder, quality, Some(rtc));
     }
     Ok((positions, indices))
 }

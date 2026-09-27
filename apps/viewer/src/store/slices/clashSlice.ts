@@ -183,9 +183,9 @@ export interface ClashSlice {
    * The focused clash's CONTACT geometry as a flat world-frame line-list (the
    * real shared-face polygon outlines / intersection lines). Preferred over the
    * AABB `clashOverlapBox` when present. `null` when no clash is focused or the
-   * contact could not be computed (then the box is used). (#1402)
+   * contact could not be computed (then the box is used). (#1402) Drawn in `clashOverlap` (#5490).
    */
-  clashContactLines: { vertices: number[]; color: [number, number, number, number] } | null;
+  clashContactLines: { vertices: number[] } | null;
   /**
    * Whether the focused clash's region box is drawn in the 3D view. On by
    * default (#1402): with the tight contact bounds (#1362 Bug B) the box marks
@@ -304,7 +304,7 @@ export interface ClashSlice {
   setClashSelectedId: (id: string | null) => void;
   setClashHighlightColors: (colors: Map<number, [number, number, number, number]> | null) => void;
   setClashOverlapBox: (box: { min: [number, number, number]; max: [number, number, number] } | null) => void;
-  setClashContactLines: (lines: { vertices: number[]; color: [number, number, number, number] } | null) => void;
+  setClashContactLines: (lines: { vertices: number[] } | null) => void;
   setShowClashRegionBox: (show: boolean) => void;
   /** `focusClash` kicked off the on-demand solid compute for the pair now focused. */
   setClashSolidComputing: () => void;

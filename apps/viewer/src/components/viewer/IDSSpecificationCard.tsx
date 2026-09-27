@@ -4,7 +4,7 @@
 
 import { useMemo, useState } from 'react';
 import { Building2, ChevronDown, ChevronRight, Wrench } from 'lucide-react';
-import type { SpecificationResult, SetResult } from '@ifc-lite/ids';
+import type { EntityResult, SpecificationResult, SetResult } from '@ifc-lite/ids';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Separator } from '@/components/ui/separator';
@@ -14,6 +14,7 @@ import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { EntityResultRow, RequirementGroupRow, SetResultRow } from './IDSResultRows';
 import { PassRateBar, StatusIcon } from './IDSPanelStatus';
+import { AnalysisResultList } from './analysis/AnalysisResultList';
 
 interface SpecificationCardProps {
   result: SpecificationResult;
@@ -26,6 +27,44 @@ interface SpecificationCardProps {
    *  a rule-set spec has no correctable IDS facet to write through. */
   onCorrect?: () => void;
   correctable?: boolean;
+}
+
+function entityKey(entity: EntityResult): string {
+  return `${entity.modelId}:${entity.expressId}`;
+}
+
+function EntityResultsList({ entities, onEntityClick }: {
+  entities: EntityResult[];
+  onEntityClick: (modelId: string, expressId: number) => void;
+}) {
+  const [expandedEntities, setExpandedEntities] = useState<Set<string>>(() => new Set());
+  return (
+    <AnalysisResultList
+      data-ids-entity-results
+      className="max-h-64"
+      rowClassName="border-b border-border/60"
+      items={entities}
+      getKey={entityKey}
+      estimateSize={() => 60}
+      overscan={5}
+      renderRow={(entity) => {
+        const key = entityKey(entity);
+        return (
+          <EntityResultRow
+            entity={entity}
+            onClick={() => onEntityClick(entity.modelId, entity.expressId)}
+            detailsOpen={expandedEntities.has(key)}
+            onToggleDetails={() => setExpandedEntities((current) => {
+              const next = new Set(current);
+              if (next.has(key)) next.delete(key);
+              else next.add(key);
+              return next;
+            })}
+          />
+        );
+      }}
+    />
+  );
 }
 
 export function SpecificationCard({
@@ -223,28 +262,13 @@ export function SpecificationCard({
         <CollapsibleContent>
           <Separator />
           <div className="p-2 pt-1 text-xs font-medium text-muted-foreground">{t('idsPanel.byEntity')}</div>
-          <div className="max-h-64 overflow-auto">
-            {filteredEntities.length === 0 ? (
-              <div className="p-3 text-sm text-muted-foreground text-center">
-                {t(filterMode === 'failed' ? 'idsPanel.noFailedEntities' : filterMode === 'passed' ? 'idsPanel.noPassedEntities' : 'idsPanel.noEntities')}
-              </div>
-            ) : (
-              <div className="divide-y">
-                {filteredEntities.slice(0, 100).map((entity) => (
-                  <EntityResultRow
-                    key={`${entity.modelId}:${entity.expressId}`}
-                    entity={entity}
-                    onClick={() => onEntityClick(entity.modelId, entity.expressId)}
-                  />
-                ))}
-                {filteredEntities.length > 100 && (
-                  <div className="p-2 text-xs text-muted-foreground text-center">
-                    {t('idsPanel.showingEntities', { count: filteredEntities.length, shown: formatLocaleNumber(locale, 100), total: formatLocaleNumber(locale, filteredEntities.length) })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          {filteredEntities.length === 0 ? (
+            <div className="p-3 text-sm text-muted-foreground text-center">
+              {t(filterMode === 'failed' ? 'idsPanel.noFailedEntities' : filterMode === 'passed' ? 'idsPanel.noPassedEntities' : 'idsPanel.noEntities')}
+            </div>
+          ) : (
+            <EntityResultsList entities={filteredEntities} onEntityClick={onEntityClick} />
+          )}
         </CollapsibleContent>
       </div>
     </Collapsible>

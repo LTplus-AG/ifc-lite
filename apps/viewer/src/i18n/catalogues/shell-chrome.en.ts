@@ -27,6 +27,20 @@ export const shellChromeEn = {
   'shellChrome.shared.doneCustomizing': 'Done customizing',
   'shellChrome.shared.collapseToIcons': 'Collapse to icons',
 
+  // One task-group vocabulary for the activity rail, ribbon panel browser, and glossary (#5873).
+  'shellChrome.panelGroups.coordinate': 'Coordinate',
+  'shellChrome.panelGroups.coordinateDescription': 'Find model information, shared sources, zones, and placement.',
+  'shellChrome.panelGroups.check': 'Check',
+  'shellChrome.panelGroups.checkDescription': 'Review issues, changes, validation, and model differences.',
+  'shellChrome.panelGroups.quantify': 'Quantify',
+  'shellChrome.panelGroups.quantifyDescription': 'Measure, count, schedule, and estimate model work.',
+  'shellChrome.panelGroups.automate': 'Automate',
+  'shellChrome.panelGroups.automateDescription': 'Run scripts, flows, and extensions.',
+  'shellChrome.panelGroups.site': 'Site',
+  'shellChrome.panelGroups.siteDescription': 'Explore site context and prepare drawings or presentations.',
+  'shellChrome.panelGroups.browse': 'Browse panels',
+  'shellChrome.panelGroups.noPointCloud': 'Load a point cloud to use its display and deviation controls.',
+
   // ActivityBar.tsx
   'shellChrome.activityBar.iconAriaLabelHide': '{title}, activate to hide from the sidebar',
   'shellChrome.activityBar.iconAriaLabelFloating': '{title} (floating)',
@@ -45,7 +59,7 @@ export const shellChromeEn = {
 
   // CustomizeSidebar.tsx
   'shellChrome.customizeSidebar.ariaLabel': 'Customize sidebar panels',
-  'shellChrome.customizeSidebar.resetTitle': 'Reset to default order + show all',
+  'shellChrome.customizeSidebar.resetTitle': 'Reset layout: sidebar order and panels, floating panels, panes',
   'shellChrome.customizeSidebar.resetLabel': 'Reset',
   'shellChrome.customizeSidebar.moveUp': 'Move {title} up',
   'shellChrome.customizeSidebar.moveDown': 'Move {title} down',
@@ -89,23 +103,30 @@ export const shellChromeEn = {
 
   // ViewerLayout.tsx
   'shellChrome.layout.safeModeNotice':
-    'Safe mode: extensions and the active flavor are not loaded for this session. Append {flag} or reload without the flag to resume.',
+    'Safe mode: extensions and the active profile are not loaded for this session. Append {flag} or reload without the flag to resume.',
   'shellChrome.layout.hierarchyLabel': 'Hierarchy',
   'shellChrome.layout.openHierarchyAriaLabel': 'Open Hierarchy',
-  'shellChrome.layout.propertiesLabel': 'Properties',
   'shellChrome.layout.openPropertiesAriaLabel': 'Open Properties',
+  'shellChrome.layout.closePanelsAriaLabel': 'Close panels',
+  'shellChrome.layout.panelsLabel': 'Panels',
+  'shellChrome.layout.openPanelsAriaLabel': 'Open the panel list',
+  'shellChrome.layout.closePanelListAriaLabel': 'Close the panel list',
   'shellChrome.layout.analysisFallback': 'Analysis',
   'shellChrome.layout.addElementLabel': 'Add element',
-  'shellChrome.layout.informationFallback': 'Information',
   'shellChrome.layout.dragToResizeAriaLabel': 'Drag to resize or dismiss',
 
   // StatusBar.tsx
   'shellChrome.statusBar.loadingFallback': 'Loading...',
   'shellChrome.statusBar.ready': 'Ready',
-  'shellChrome.statusBar.cancelStreamTitle': 'Cancel the active point cloud stream',
+  'shellChrome.statusBar.cancelStreamTitle': 'Cancel the model or point cloud that is loading',
   'shellChrome.statusBar.cancelButton': 'Cancel',
   'shellChrome.statusBar.elementsCount': { one: 'element', other: 'elements' },
   'shellChrome.statusBar.trisCount': { one: 'tri', other: 'tris' },
+  'shellChrome.statusBar.hiddenCount': '{count} hidden',
+  'shellChrome.statusBar.ghostedCount': '{count} ghosted',
+  // Presentation entry point (#5508) — opens the `presentation` bottom panel.
+  'shellChrome.statusBar.presentationLabel': 'Present',
+  'shellChrome.statusBar.presentationTooltip': 'Presentation (views: {views}, entities: {entities})',
   'shellChrome.statusBar.fpsUnit': 'FPS',
   'shellChrome.statusBar.webgpuChecking': 'Checking...',
   'shellChrome.statusBar.webgpuLabel': 'WebGPU',
@@ -115,9 +136,12 @@ export const shellChromeEn = {
   'shellChrome.statusBar.ifcliteLinkLabel': 'ifclite.dev →',
 
   // MobileToolbar.tsx
+  'shellChrome.mobileToolbar.openFileAriaLabel': 'Open file',
+  'shellChrome.mobileToolbar.addModelAriaLabel': 'Add model',
+  'shellChrome.mobileToolbar.moreActionsAriaLabel': 'More actions',
+  'shellChrome.mobileToolbar.commands': 'Commands…',
   'shellChrome.mobileToolbar.homeAriaLabel': 'Home',
   'shellChrome.mobileToolbar.fitAllAriaLabel': 'Fit All',
-  'shellChrome.mobileToolbar.showAllAriaLabel': 'Show All',
   'shellChrome.mobileToolbar.selectTool': 'Select',
   'shellChrome.mobileToolbar.measureTool': 'Measure',
   'shellChrome.mobileToolbar.sectionTool': 'Section',
@@ -127,10 +151,7 @@ export const shellChromeEn = {
   'shellChrome.mobileToolbar.frameSelection': 'Frame Selection',
   'shellChrome.mobileToolbar.perspective': 'Perspective',
   'shellChrome.mobileToolbar.orthographic': 'Orthographic',
-  'shellChrome.mobileToolbar.exportGlb': 'Export GLB',
-  'shellChrome.mobileToolbar.exportGlbSuccess': 'Exported GLB ({size} KB)',
-  'shellChrome.mobileToolbar.exportGlbFailed': 'Export failed: {message}',
-  'shellChrome.mobileToolbar.unknownError': 'Unknown error',
+  'shellChrome.mobileToolbar.export': 'Export',
   'shellChrome.mobileToolbar.lightMode': 'Light Mode',
   'shellChrome.mobileToolbar.darkMode': 'Dark Mode',
 } as const satisfies Record<string, TranslationValue>;

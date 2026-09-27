@@ -100,6 +100,11 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_pdf_report` |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 
+`entity_create` accepts an optional `global_id` for the new entity's GlobalId
+(IfcRoot subtypes only; written to attribute 0). It must be a valid 22-character
+IFC GUID not already carried by an entity in the model; an invalid or duplicate
+value is refused with `INVALID_INPUT` and nothing is queued.
+
 `model_diff` compares by GlobalId, which reads a from-scratch re-export as the
 whole model deleted and re-added. Pass `by_content: true` to run the
 `@ifc-lite/diff` engine's content-keyed matching instead; it is data-scope only

@@ -108,6 +108,7 @@ export function buildStepSeedSource(
   const storeyElevations = store.spatialHierarchy?.storeyElevations;
 
   function* iterate(): Generator<StepSeedEntity> {
+    // @raw-entity-enumeration-ok owner-seed passes the mutation-materialized, reparsed share snapshot, whose source index is complete.
     for (const [expressId, ref] of store.entityIndex.byId.entries()) {
       // Resolve EVERYTHING root-attribute-shaped from the columnar entity
       // TABLE, never `extractEntityAttributesOnDemand`: the on-demand helper

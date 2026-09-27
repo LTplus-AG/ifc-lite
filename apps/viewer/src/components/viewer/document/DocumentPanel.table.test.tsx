@@ -102,7 +102,7 @@ function openMenu(trigger: HTMLElement): void {
 }
 
 const wallList = (extra: Partial<ListDefinition> = {}): ListDefinition => ({
-  id: 'saved-walls', name: 'Walls by name', createdAt: 1, updatedAt: 1, entityTypes: [IfcTypeEnum.IfcWall], conditions: [],
+  id: 'saved-walls', name: 'Walls by name', createdAt: 1, updatedAt: 1, entityTypes: [IfcTypeEnum.IfcWall], groups: [],
   columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }, { id: 'storey', source: 'spatial', propertyName: 'Storey' }],
   sortBy: { columnId: 'name', direction: 'desc' },
   ...extra,
@@ -311,11 +311,17 @@ describe('useDocumentTables — what re-runs a list and what does not (review fi
   const statusOf = (ui: HTMLElement, id: string): string | null => ui.querySelector(`[data-block="${id}"]`)?.getAttribute('data-status') ?? null;
 
   it('a streamed geometry batch (new model objects, same data stores) keeps the result; a list with a world-coordinate column re-runs', async () => {
-    const doc = tableDoc([tableBlock('plain', wallList()), tableBlock('geo', wallList({ id: 'geo-list', columns: [{ id: 'x', source: 'geometry', propertyName: 'X' }] }))]);
+    // A world-coordinate filter (#6190: a List value rule, formerly a provider-only row) re-runs too.
+    const geoFilter = wallList({ id: 'geo-filter-list', groups: [{ combinator: 'AND', rules: [
+      { kind: 'listCondition', source: 'geometry', propertyName: 'X', operator: 'gt', value: '-1000000' },
+    ] }] });
+    const doc = tableDoc([tableBlock('plain', wallList()), tableBlock('geo', wallList({ id: 'geo-list', columns: [{ id: 'x', source: 'geometry', propertyName: 'X' }] })),
+      tableBlock('geo-filter', geoFilter)]);
     const ui = render(<TablesProbe document={doc} />);
     await runLists();
     assert.equal(statusOf(ui, 'plain'), 'ok');
     assert.equal(statusOf(ui, 'geo'), 'ok');
+    assert.equal(statusOf(ui, 'geo-filter'), 'ok');
     // What `appendGeometryBatch` does per batch: a new Map with a new model object over the SAME store.
     act(() => {
       const models = new Map(useViewerStore.getState().models);
@@ -324,6 +330,7 @@ describe('useDocumentTables — what re-runs a list and what does not (review fi
     });
     assert.equal(statusOf(ui, 'plain'), 'ok', 'a pset/attribute list must not re-run per geometry batch');
     assert.equal(statusOf(ui, 'geo'), 'resolving', 'world coordinates move with the geometry, so that list re-runs');
+    assert.equal(statusOf(ui, 'geo-filter'), 'resolving', 'so does a list filtered on them');
     assert.equal(frames.length > 0, true, 'a run is queued for the geometry list only');
   });
 

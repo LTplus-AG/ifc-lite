@@ -124,7 +124,6 @@ let modelRoot: TransformNode | null = null;
 let streamRoot: TransformNode | null = null;
 
 let selectedExpressId: number | null = null;
-let hoveredId: number | null = null;
 let selectionHighlight: Mesh | null = null;
 
 // ── Resize ────────────────────────────────────────────────────────────
@@ -188,9 +187,7 @@ canvas.addEventListener('pointermove', (e) => {
   const cy = e.clientY;
   requestAnimationFrame(() => {
     hoverRafPending = false;
-    const id = pickAt(cx, cy);
-    hoveredId = id;
-    canvas.classList.toggle('hovering', id != null);
+    canvas.classList.toggle('hovering', pickAt(cx, cy) != null);
   });
 });
 
@@ -199,7 +196,6 @@ canvas.addEventListener('pointerup', () => {
 });
 
 canvas.addEventListener('mouseleave', () => {
-  hoveredId = null;
   canvas.classList.remove('hovering', 'dragging');
 });
 
@@ -223,10 +219,32 @@ window.addEventListener('keydown', (e) => {
 });
 
 // ── File loading ──────────────────────────────────────────────────────
-fileInput.addEventListener('change', async () => {
+// Two entry points share one load path: the file picker and a drag-and-drop
+// anywhere on the page.
+fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
-  if (!file) return;
+  if (file) void loadFile(file);
+});
 
+window.addEventListener('dragover', (e) => {
+  // preventDefault marks the page as a drop target; without it the browser
+  // navigates to the dropped file instead of firing `drop`.
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+});
+
+window.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const file = e.dataTransfer?.files[0];
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.ifc')) {
+    status.textContent = `Not an IFC file: ${file.name}`;
+    return;
+  }
+  void loadFile(file);
+});
+
+async function loadFile(file: File): Promise<void> {
   status.textContent = `Loading ${file.name}…`;
   clearSelection();
   closePanel();
@@ -422,7 +440,7 @@ fileInput.addEventListener('change', async () => {
     console.error(err);
     status.textContent = `Error: ${(err as Error).message}`;
   }
-});
+}
 
 // ── Selection ─────────────────────────────────────────────────────────
 function selectEntity(expressId: number) {

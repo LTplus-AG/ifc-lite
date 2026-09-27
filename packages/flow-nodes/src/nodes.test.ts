@@ -191,6 +191,21 @@ describe('viewer and write nodes', () => {
     expect(denied.reports[0].error).toMatch(/Capability denied/);
   });
 
+  it('the Script node gets bim.network exactly when the graph holds a network.fetch grant (#5446 review)', async () => {
+    const run = async (networkGrants: ReturnType<typeof grants>) => {
+      const d = doc(
+        [{ id: 'sc', type: 'script.run', params: { code: 'typeof bim.network' } }],
+        [],
+        [{ nodeId: 'sc', port: 'result', label: 'r' }],
+      );
+      const r = await runFlow(d, { host: { bim: createFakeBim().bim, grants: grants('model.read'), networkGrants }, registry });
+      expect(r.ok, JSON.stringify(r.reports)).toBe(true);
+      return (r.outputs.get('sc')?.get('result') as { value?: unknown } | undefined)?.value;
+    };
+    expect(await run(grants('network.fetch:api.example.com'))).toBe('object');
+    expect(await run([])).toBe('undefined');
+  }, 30_000);
+
   it('the same graph produces the same outputs in the browser and headless', async () => {
     const d = doc(
       [
@@ -517,5 +532,37 @@ describe('readXlsxTable — object-valued cells (#5377 review)', () => {
     });
     expect(out.table.rows).toEqual([{ GlobalId: 'W1', Note: 'fire rated' }, { GlobalId: 'W2', Note: null }]);
     expect(out.problems).toEqual(['row 3: column "Note": spreadsheet error #N/A']);
+  });
+});
+
+
+describe('http.request (#5167 phase 3.3/3.5)', () => {
+  it('is registered and declares a network requirement', () => {
+    const def = registry.get('http.request');
+    expect(def).toBeDefined();
+    expect(def?.requires?.network).toBe(true);
+  });
+
+  it('refuses a host with no matching network.fetch grant, without performing any fetch', async () => {
+    const d = doc(
+      [{ id: 'req', type: 'http.request', params: { url: 'https://api.example.invalid/', method: 'GET' } }],
+      [],
+      [{ nodeId: 'req', port: 'status', label: 'status' }],
+    );
+    const r = await runFlow(d, { host: { bim: createFakeBim().bim, networkGrants: [] }, registry, features: headlessFeatures() });
+    expect(r.ok).toBe(false);
+    expect(r.reports.find((x) => x.nodeId === 'req')?.error).toMatch(/network\.fetch refused/);
+  });
+
+  it('refuses a non-https URL even with a matching grant', async () => {
+    const d = doc(
+      [{ id: 'req', type: 'http.request', params: { url: 'http://api.example.invalid/', method: 'GET' } }],
+      [],
+      [{ nodeId: 'req', port: 'status', label: 'status' }],
+    );
+    const netGrants = grants('network.fetch:api.example.invalid');
+    const r = await runFlow(d, { host: { bim: createFakeBim().bim, networkGrants: netGrants }, registry, features: headlessFeatures() });
+    expect(r.ok).toBe(false);
+    expect(r.reports.find((x) => x.nodeId === 'req')?.error).toMatch(/https/);
   });
 });

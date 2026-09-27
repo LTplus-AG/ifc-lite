@@ -9,6 +9,7 @@ import '../test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { getViewerStoreApi } from '@/store';
+import { registerLocale, setLocale } from '@/i18n';
 import {
   closeAllPanelWindows,
   closePanelWindow,
@@ -43,7 +44,13 @@ function fakeWindow() {
     },
     document: {
       title: '',
-      documentElement: { className: '', style: {} as Record<string, string> },
+      documentElement: {
+        className: '',
+        style: {
+          props: {} as Record<string, string>,
+          setProperty(name: string, value: string) { this.props[name] = value; },
+        },
+      },
       head: { appendChild: () => {} },
       body: { style: {} as Record<string, string> },
       createElement: () => ({}),
@@ -76,6 +83,14 @@ describe('panel-windows', () => {
   afterEach(() => {
     closeAllPanelWindows();
     window.open = originalOpen;
+    setLocale('en');
+  });
+
+  it('uses the active registry panel name for a popped-out window (#5858)', async () => {
+    registerLocale('panel-window-name-5858', { 'clashPanel.title': 'Shared clash name' });
+    setLocale('panel-window-name-5858');
+    await openPanelWindow('clash');
+    assert.equal(openedWindows[0].document.title, 'Shared clash name — ifc-lite');
   });
 
   it('opens a popup window and records it in the snapshot', async () => {
@@ -170,6 +185,23 @@ describe('panel-windows', () => {
         .className,
       'dark',
     );
+  });
+
+  it('syncPanelWindowsTheme carries the overlay tokens, not just the class (#5490)', async () => {
+    await openPanelWindow('clash');
+    document.documentElement.style.setProperty('--overlay-clash-a', '#e0af68');
+    document.documentElement.style.setProperty('--unrelated', 'red');
+    try {
+      syncPanelWindowsTheme('dark');
+      const props = (openedWindows[0].document as unknown as {
+        documentElement: { style: { props: Record<string, string> } };
+      }).documentElement.style.props;
+      assert.equal(props['--overlay-clash-a'], '#e0af68');
+      assert.equal(props['--unrelated'], undefined, 'only overlay tokens are mirrored');
+    } finally {
+      document.documentElement.style.removeProperty('--overlay-clash-a');
+      document.documentElement.style.removeProperty('--unrelated');
+    }
   });
 
   it('re-docking a panel via the store (poppedOutIds no longer includes it) closes its window', async () => {

@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Rule, type Combinator, type FilterRule } from '@ifc-lite/rules';
 import { useTranslation } from '@/i18n';
-import { RULE_KIND_LABEL } from './filter-rule-labels';
+import { HOST_READ_KINDS, RULE_KIND_LABEL } from './filter-rule-labels';
 
 export function CombinatorToggle({
   value,
@@ -37,7 +37,7 @@ export function CombinatorToggle({
   const { t } = useTranslation();
   return (
     <div
-      className="inline-flex rounded border border-zinc-200 bg-white p-0.5 text-[11px] dark:border-zinc-800 dark:bg-zinc-950"
+      className="inline-flex rounded border border-zinc-200 bg-white p-0.5 text-2xs dark:border-zinc-800 dark:bg-zinc-950"
       title={t('filterRuleControls.combinatorTitle')}
     >
       {(['AND', 'OR'] as const).map((c) => (
@@ -68,13 +68,13 @@ export function AddRuleMenu({
   /** Restrict which kinds the menu offers — used by the validation rule
    *  editor (#5138) to hide kinds `rule-set-io.ts` would reject for the
    *  block being edited (e.g. an `element` requirement only allows
-   *  `ELEMENT_REQUIREMENT_KINDS`). Every kind shows when omitted, the
-   *  existing search-builder/clash-panel behaviour. */
+   *  `ELEMENT_REQUIREMENT_KINDS`). Every kind but `HOST_READ_KINDS` shows
+   *  when omitted, the existing search-builder/clash-panel behaviour. */
   allowedKinds?: ReadonlySet<FilterRule['kind']>;
 }) {
   const { t } = useTranslation();
   const kinds = (Object.keys(RULE_KIND_LABEL) as FilterRule['kind'][]).filter(
-    (k) => !allowedKinds || allowedKinds.has(k),
+    (k) => (allowedKinds ? allowedKinds.has(k) : !HOST_READ_KINDS.has(k)),
   );
   return (
     <DropdownMenu>
@@ -85,7 +85,7 @@ export function AddRuleMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
-        <DropdownMenuLabel className="text-[10px] uppercase">{t('filterRuleControls.filterDimensionLabel')}</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-2xs uppercase">{t('filterRuleControls.filterDimensionLabel')}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {kinds.map((k) => (
           <DropdownMenuItem key={k} onSelect={() => onAdd(k)}>
@@ -121,5 +121,6 @@ export function blankRuleOfKind(kind: FilterRule['kind']): FilterRule {
     case 'parent':         return Rule.parent('contains', '');
     case 'group':          return Rule.group('isSet', '');
     case 'modelFact':      return Rule.modelFact('georef.crs', 'isSet', '');
+    case 'listCondition':  return Rule.listCondition({ source: 'spatial', propertyName: 'Building', operator: 'equals', value: '' });
   }
 }

@@ -66,7 +66,13 @@ const englishOf = (key: ListsKey): string => {
 };
 
 const mark = (key: ListsKey) => `⟦${key}|${englishOf(key)}⟧`;
-const PSEUDO: Catalogue = Object.fromEntries(OWNED_KEYS.map((key) => [key, mark(key)])) as Catalogue;
+const PSEUDO: Catalogue = {
+  ...Object.fromEntries(OWNED_KEYS.map((key) => [key, mark(key)])),
+  'filterOperators.hasAny': '⟦filterOperators.hasAny|has any of⟧',
+  'filterOperators.hasAll': '⟦filterOperators.hasAll|has all of⟧',
+  'filterOperators.hasNone': '⟦filterOperators.hasNone|has none of⟧',
+  'filterOperators.untagged': '⟦filterOperators.untagged|is untagged⟧',
+} as Catalogue;
 
 function addReadable(root: ParentNode, out: Set<string>): void {
   root.querySelectorAll('*').forEach((element) => {
@@ -143,7 +149,7 @@ function savedList(): ListDefinition {
     createdAt: Date.now(),
     updatedAt: Date.now(),
     entityTypes: [],
-    conditions: [],
+    groups: [],
     columns: [{ id: 'col-1', source: 'attribute', propertyName: 'Name', label: 'Name' }],
   } as unknown as ListDefinition;
 }
@@ -187,7 +193,7 @@ describe('ListPanel + ListLibrary localization (#4918)', { skip: !HAS_CATALOGUE 
   it('translates the library view: header, actions, and per-row controls', () => {
     const list = savedList();
     seedPanelStore([list]);
-    const container = render(<ListPanel onClose={() => {}} />);
+    const container = render(<ListPanel />);
     const english = readableStrings(container);
 
     registerLocale('lists-panel-library-pseudo', PSEUDO);
@@ -196,7 +202,6 @@ describe('ListPanel + ListLibrary localization (#4918)', { skip: !HAS_CATALOGUE 
 
     const libraryKeys: ListsKey[] = [
       'lists.panel.title',
-      'lists.panel.close',
       'lists.library.newList',
       'lists.library.import',
       'lists.library.savedLists',
@@ -233,7 +238,7 @@ describe('ListPanel + ListLibrary localization (#4918)', { skip: !HAS_CATALOGUE 
 
   it('translates the "Use as Template" aria-label on a preset row', () => {
     seedPanelStore([]);
-    const container = render(<ListPanel onClose={() => {}} />);
+    const container = render(<ListPanel />);
 
     // Captured while still English: a preset row's aria-label reads
     // "Use <preset name> as template" (`useAsTemplateAriaLabel`).
@@ -252,7 +257,7 @@ describe('ListPanel + ListLibrary localization (#4918)', { skip: !HAS_CATALOGUE 
   it('translates the results view: header summary and the results-only actions', async () => {
     const list = savedList();
     seedPanelStore([list]);
-    const container = render(<ListPanel onClose={() => {}} />);
+    const container = render(<ListPanel />);
 
     const runButton = container.querySelector(`button[aria-label="Run list ${list.name}"]`);
     assert.ok(runButton, 'expected a Run button for the saved list');
@@ -288,7 +293,7 @@ describe('ListPanel + ListLibrary localization (#4918)', { skip: !HAS_CATALOGUE 
 
   it('translates the builder view chrome (New List / Cancel)', () => {
     seedPanelStore([]);
-    const container = render(<ListPanel onClose={() => {}} />);
+    const container = render(<ListPanel />);
 
     const newListButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('New List'));
     assert.ok(newListButton, 'expected a New List button');
@@ -344,12 +349,13 @@ describe('ListModelTagScopeEditor localization (#4918)', { skip: !HAS_CATALOGUE 
       'lists.modelTagScope.models',
       'lists.modelTagScope.selectAriaLabel',
       'lists.modelTagScope.allModels',
-      'lists.modelTagScope.opHasAny',
-      'lists.modelTagScope.opHasAll',
-      'lists.modelTagScope.opHasNone',
-      'lists.modelTagScope.opUntagged',
       'lists.modelTagScope.pickAtLeastOneTag',
     ]);
+    for (const key of ['hasAny', 'hasAll', 'hasNone', 'untagged']) {
+      assert.ok(after.has(`⟦filterOperators.${key}|${({
+        hasAny: 'has any of', hasAll: 'has all of', hasNone: 'has none of', untagged: 'is untagged',
+      } as Record<string, string>)[key]}⟧`), `shared operator ${key} must translate`);
+    }
   });
 
   it('translates the "runs over" summary hint', () => {

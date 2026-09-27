@@ -228,7 +228,8 @@ describe('a withheld relationship is reported in stats.warnings', () => {
 
     expect(result.stats.warnings).toHaveLength(1);
     expect(result.stats.warnings[0]).toContain('#20');
-    expect(result.stats.warnings[0]).toContain('IFCRELDEFINESBYPROPERTIES');
+    // Canonical IFC EXPRESS spelling, not the raw STEP one (#5533).
+    expect(result.stats.warnings[0]).toContain('IfcRelDefinesByProperties');
     expect(result.stats.warnings[0]).toContain('withheld');
   });
 

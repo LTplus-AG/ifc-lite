@@ -14,10 +14,14 @@ import type { ExtensionHostService } from '@/services/extensions/host.js';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import type { TranslationKey, TranslationParameters } from '@/i18n';
+import { resolveEnglish } from '@/i18n/registry';
+import { panelTitleKey, type WorkspacePanelId } from '@/lib/panels/registry';
+import type { ExportRequest } from './useExportRunner';
+import type { ExtensionExporter } from '@/components/extensions/useExtensionExporters';
 
 export type RightPanel =
-  | 'bcf' | 'validation' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers'
-  | 'collab' | 'sources' | 'zones' | 'loadReport' | 'appearance';
+  | 'bcf' | 'validation' | 'lens' | 'clash' | 'compare' | 'cost' | 'extensions' | 'layers'
+  | 'collab' | 'sources' | 'zones' | 'loadReport' | 'appearance' | 'pointclouds' | 'measurements' | 'changes';
 
 export interface CommandPaletteBuildParams {
   execute: (code: string) => void;
@@ -29,6 +33,10 @@ export interface CommandPaletteBuildParams {
   cesiumAvailable: boolean;
   activateRightPanel: (panel: RightPanel) => void;
   activateBottomPanel: (panel: BottomPanelId) => void;
+  /** Runs an Export row through the toolbars' handlers and dialogs (`useExportRunner`). */
+  runExport: (request: ExportRequest) => void;
+  /** Installed extension exporters, offered as Export rows (#5838). */
+  extensionExporters?: readonly ExtensionExporter[];
 }
 
 /** `labelKey` shorthand: every row that shows fixed UI copy sets exactly
@@ -36,4 +44,10 @@ export interface CommandPaletteBuildParams {
  *  render `label` as-is (see `commandPaletteCommandsCore.ts`'s docblock). */
 export function withKey(labelKey: TranslationKey, labelKeyParams?: TranslationParameters) {
   return { labelKey, labelKeyParams };
+}
+
+/** Display and English search text from the one workspace-panel name. */
+export function withPanelTitle(id: WorkspacePanelId) {
+  const labelKey = panelTitleKey(id);
+  return { labelKey, label: resolveEnglish(labelKey) };
 }

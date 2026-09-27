@@ -17,6 +17,8 @@ import {
   Calendar,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { AnalysisEmptyState } from '../analysis/AnalysisEmptyState';
+import { AnalysisResultList } from '../analysis/AnalysisResultList';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -27,7 +29,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { useTranslation } from '@/i18n';
 import { StatusBadge, PriorityBadge, formatDate, TOPIC_STATUSES } from './bcfHelpers';
@@ -110,19 +111,65 @@ export function BCFTopicList({
       </div>
 
       {/* Topic List */}
-      <ScrollArea className="flex-1">
-        {sortedTopics.length === 0 ? (
+      <AnalysisResultList
+        className="flex-1 min-h-0"
+        rowClassName="border-b border-border"
+        items={sortedTopics}
+        getKey={(topic) => topic.guid}
+        estimateSize={() => 88}
+        renderRow={(topic) => (
+          <button
+            onClick={() => onSelectTopic(topic.guid)}
+            className="w-full text-left p-3 hover:bg-accent/50 transition-colors"
+          >
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <h4 className="font-medium text-sm line-clamp-1 flex-1">
+                {topic.title}
+              </h4>
+              <StatusBadge status={topic.topicStatus} />
+            </div>
+            {topic.description && (
+              <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+                {topic.description}
+              </p>
+            )}
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <PriorityBadge priority={topic.priority} />
+              {topic.creationAuthor && (
+                <span className="flex items-center gap-1">
+                  <User className="h-3 w-3" />
+                  {topic.creationAuthor.split('@')[0]}
+                </span>
+              )}
+              {topic.creationDate && (
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  {formatDate(topic.creationDate)}
+                </span>
+              )}
+              {topic.comments.length > 0 && (
+                <span className="flex items-center gap-1">
+                  <MessageSquare className="h-3 w-3" />
+                  {topic.comments.length}
+                </span>
+              )}
+              {topic.viewpoints.length > 0 && (
+                <span className="flex items-center gap-1">
+                  <Camera className="h-3 w-3" />
+                  {topic.viewpoints.length}
+                </span>
+              )}
+            </div>
+          </button>
+        )}
+      >
+        {sortedTopics.length === 0 && (
           <div className="flex flex-col items-center justify-center py-8 px-4 text-muted-foreground text-sm">
-            <MessageSquare className="h-8 w-8 mb-2 opacity-50" />
-            <p>{t('bcf.topicList.noTopics')}</p>
-            <Button
-              variant="link"
-              size="sm"
-              onClick={onCreateTopic}
-              className="mt-1"
-            >
-              {t('bcf.topicList.createFirstTopic')}
-            </Button>
+            <AnalysisEmptyState
+              icon={<MessageSquare className="size-8" />}
+              title={t('bcf.topicList.noTopics')}
+              action={<Button variant="link" size="sm" onClick={onCreateTopic}>{t('bcf.topicList.createFirstTopic')}</Button>}
+            />
 
             {/* Email setup nudge */}
             <div className="mt-6 w-full max-w-xs">
@@ -193,57 +240,8 @@ export function BCFTopicList({
               )}
             </div>
           </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {sortedTopics.map((topic) => (
-              <button
-                key={topic.guid}
-                onClick={() => onSelectTopic(topic.guid)}
-                className="w-full text-left p-3 hover:bg-accent/50 transition-colors"
-              >
-                <div className="flex items-start justify-between gap-2 mb-1">
-                  <h4 className="font-medium text-sm line-clamp-1 flex-1">
-                    {topic.title}
-                  </h4>
-                  <StatusBadge status={topic.topicStatus} />
-                </div>
-                {topic.description && (
-                  <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
-                    {topic.description}
-                  </p>
-                )}
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <PriorityBadge priority={topic.priority} />
-                  {topic.creationAuthor && (
-                    <span className="flex items-center gap-1">
-                      <User className="h-3 w-3" />
-                      {topic.creationAuthor.split('@')[0]}
-                    </span>
-                  )}
-                  {topic.creationDate && (
-                    <span className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {formatDate(topic.creationDate)}
-                    </span>
-                  )}
-                  {topic.comments.length > 0 && (
-                    <span className="flex items-center gap-1">
-                      <MessageSquare className="h-3 w-3" />
-                      {topic.comments.length}
-                    </span>
-                  )}
-                  {topic.viewpoints.length > 0 && (
-                    <span className="flex items-center gap-1">
-                      <Camera className="h-3 w-3" />
-                      {topic.viewpoints.length}
-                    </span>
-                  )}
-                </div>
-              </button>
-            ))}
-          </div>
         )}
-      </ScrollArea>
+      </AnalysisResultList>
     </div>
   );
 }

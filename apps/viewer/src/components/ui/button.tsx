@@ -23,6 +23,16 @@ const buttonVariants = cva(
         default: 'h-9 px-4 py-2',
         sm: 'h-8 rounded-md px-3 text-xs',
         lg: 'h-10 rounded-md px-8',
+        // 36/32/28 px — all already at or above the WCAG 2.2 2.5.8 24x24 CSS
+        // px minimum, so no hit-slop belongs HERE (#5826 review round): a
+        // uniform pseudo-element on every icon button overlapped adjacent
+        // toolbar buttons spaced by `gap-1` (measured — `elementFromPoint` at
+        // the visual midpoint between two neighbouring icon buttons resolved
+        // to the wrong one), a real click-stealing regression. A caller that
+        // shrinks the visual box below 24px via a `className` override (a
+        // real, shipped pattern: `size="icon-sm" className="h-5 w-5"`) needs
+        // its OWN hit-slop, sized to reach 24px and no further, at its own
+        // call site — see MeasurementList.tsx's `DELETE` for the pattern.
         icon: 'h-9 w-9',
         'icon-sm': 'h-8 w-8',
         'icon-xs': 'h-7 w-7',

@@ -144,6 +144,9 @@ interface Clash {
   rule: string;
   status: 'hard' | 'clearance' | 'touch';
   distance: number;           // signed: <0 penetration depth, >0 gap
+  distanceKind?: 'mesh' | 'estimate';  // measured on the meshes, or read off the AABBs
+  depthFloor?: number;        // hard only: f32 noise floor of `distance` along the direction it was
+                              // measured (the Hard/Touch floor); `isTouching`'s default band (#5639)
   point: [number, number, number];  // TRUE contact/closest point (world Y-up)
   bounds: AABB;               // overlap (hard) or closest-region (clearance) bounds — for framing
   severity: ClashSeverity;
@@ -304,7 +307,7 @@ BCF status persists via the deterministic topic GUID. This is the Navisworks "cl
 
 ### 9.1 Web viewer (`apps/viewer`)
 - New `clashSlice.ts` + `ClashPanel.tsx`, modelled on `IDSPanel`/`BCFPanel`.
-- Highlight via existing actions: `addEntitiesToSelection`, `hideEntitiesInModel`/`showEntitiesInModel` (isolate), renderer `setColorOverrides` (A=red, B=orange), `cameraCallbacks.frameSelection`, and `SectionPlane` for slicing to a clash. "Export to BCF" uses §6 with a viewer snapshot provider; "Open BCF" round-trips status back.
+- Highlight via existing actions: `addEntitiesToSelection`, the shared `isolatedEntities` / `ghostExceptEntities` channels under a `clashVisibilityOwned` record (isolate / X-ray), renderer `setColorOverrides` (A=red, B=orange), `cameraCallbacks.frameSelection`, and `SectionPlane` for slicing to a clash. "Export to BCF" uses §6 with a viewer snapshot provider; "Open BCF" round-trips status back.
 
 ### 9.2 MCP (`packages/mcp`)
 - `clash_check` (`tools/clash.ts`): resolve A/B GlobalId selections via `entityIndex.byType` + `EntityNode`, run the engine (WASM-in-Node), return structured + grouped results honoring `scope:'read'`, `progress`, `signal`.

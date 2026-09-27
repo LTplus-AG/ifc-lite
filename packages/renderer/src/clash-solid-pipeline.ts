@@ -26,7 +26,7 @@
 
 import { SYMBOLIC_FILL_WGSL } from './shaders/symbolic-overlay.wgsl.js';
 import { PIPELINE_CONSTANTS } from './constants.js';
-import { packRteDrawableDelta } from './relative-to-eye.js';
+import { tryPackRteDrawableDelta } from './relative-to-eye.js';
 
 const VERTEX_STRIDE_BYTES = (3 + 4) * 4; // pos.xyz + color.rgba, 4 bytes each
 
@@ -227,7 +227,8 @@ export class ClashSolidPipeline {
     uniform.set(viewProj, 0);
     if (this.origin && rteViewProj && rteCamera) {
       uniform.set(rteViewProj, 16);
-      packRteDrawableDelta(this.origin, rteCamera, uniform, 32);
+      // Outside this camera's RTE envelope: not rasterisable this frame (#6128).
+      if (!tryPackRteDrawableDelta(this.origin, rteCamera, uniform, 32)) return;
       uniform[35] = 1;
     }
     this.device.queue.writeBuffer(this.uniformBuffer, 0, uniform);

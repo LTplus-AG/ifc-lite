@@ -4,9 +4,9 @@
 
 /**
  * The screen-space passes that run after the main scene pass, in order:
- * ambient occlusion (`ao-pass.ts`), separation lines (`post-processor.ts`)
- * and eye-dome lighting (`edl-pass.ts`). Each darkens the resolved canvas
- * colour, reading the scene depth (and object-id) attachments.
+ * ambient occlusion (`ao-pass.ts`), edges (`edge-pass.ts`) and eye-dome
+ * lighting (`edl-pass.ts`). Each darkens the resolved canvas colour, reading
+ * the scene depth (and object-id) attachments.
  *
  * Every pass is built on the first frame that needs it, so a session that
  * never enables one pays nothing for it. A pass whose construction throws
@@ -23,8 +23,8 @@
 
 import { AoPass } from './ao-pass.js';
 import type { WebGPUDevice } from './device.js';
+import { EdgePass } from './edge-pass.js';
 import { EdlPass, type EdlPassOptions } from './edl-pass.js';
-import { PostProcessor } from './post-processor.js';
 import type { Mat4 } from './types.js';
 import { livePostEffects, type ResolvedVisualEnhancement } from './visual-enhancement.js';
 
@@ -49,11 +49,11 @@ export interface PostPassFrame {
   edl: Required<EdlPassOptions> | null;
 }
 
-type PassName = 'ambient occlusion' | 'separation lines' | 'eye-dome lighting';
+type PassName = 'ambient occlusion' | 'edges' | 'eye-dome lighting';
 
 export class PostPassChain {
   private ao: AoPass | null = null;
-  private separation: PostProcessor | null = null;
+  private edges: EdgePass | null = null;
   private edl: EdlPass | null = null;
   private readonly failed = new Set<PassName>();
 
@@ -85,15 +85,22 @@ export class PostPassChain {
       });
     }
 
-    if (live.separationLines) {
-      this.separation ??= this.build('separation lines', () => new PostProcessor(this.device, this.sampleCount));
-      this.separation?.apply(frame.encoder, {
+    if (live.edges) {
+      this.edges ??= this.build('edges', () =>
+        new EdgePass(this.device.getDevice(), this.device.getFormat(), this.sampleCount));
+      this.edges?.encode({
+        encoder: frame.encoder,
         targetView: frame.targetView,
         depthView: frame.depthView,
         objectIdView: frame.objectIdView,
-        quality: ve.separationLines.quality === 'high' ? 'high' : 'low',
-        radius: ve.separationLines.radius * frame.pixelRatio,
-        intensity: ve.separationLines.intensity,
+        params: {
+          projection: frame.projection,
+          width: frame.width,
+          height: frame.height,
+          quality: ve.separationLines.quality === 'high' ? 'high' : 'low',
+          radiusPx: ve.separationLines.radius * frame.pixelRatio,
+          intensity: ve.separationLines.intensity,
+        },
       });
     }
 
@@ -123,8 +130,8 @@ export class PostPassChain {
   destroy(): void {
     this.ao?.destroy();
     this.ao = null;
-    this.separation?.destroy();
-    this.separation = null;
+    this.edges?.destroy();
+    this.edges = null;
     this.edl?.destroy();
     this.edl = null;
   }

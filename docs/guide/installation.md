@@ -226,8 +226,8 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ifc-lite-core = "15"
-ifc-lite-geometry = "15"
+ifc-lite-core = "19"
+ifc-lite-geometry = "19"
 ```
 
 Or install via cargo:
@@ -375,7 +375,7 @@ console.log('Entities:', store.entityCount);
 ```typescript
 import { IfcServerClient } from '@ifc-lite/server-client';
 
-const client = new IfcServerClient({ baseUrl: 'http://localhost:8080' });
+const client = new IfcServerClient({ baseUrl: 'http://localhost:3001' });
 const health = await client.health();
 
 console.log('Server status:', health.status);

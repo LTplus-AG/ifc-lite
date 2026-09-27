@@ -27,6 +27,7 @@ import {
   localIdInOverlay,
   type ForwardModelMapLike,
   type OwnershipView,
+  typeNameOfGlobalId,
 } from './globalId.js';
 import { modelRemovedScope } from './teardown-scope.js';
 
@@ -234,5 +235,41 @@ describe('parse-range vs. overlay ownership — cross-model shadowing', () => {
 
     // And B's own answer for that id is unambiguous, independent of A's overlay.
     assert.equal(localIdInParseRange(modelB, 150), 49);
+  });
+});
+
+describe('typeNameOfGlobalId (#5884)', () => {
+  const storeOf = (types: Record<number, string>) => ({ entities: { getTypeName: (id: number) => types[id] ?? '' } });
+  const models = new Map([
+    ['a', { ifcDataStore: storeOf({ 5: 'IfcWall' }) }],
+    ['b', { ifcDataStore: storeOf({ 5: 'IfcBuildingElementProxy', 900: 'IfcSlab' }) }],
+  ]);
+  // Canonical resolution: offset ids, plus an overlay-allocated id (2900)
+  // that only the store's mutation views know, which the registry does not.
+  // The fake base table holds 900 only to show the lookup lands in the right
+  // model; in the viewer a created entity is not in the parsed base table, so
+  // its class reads undefined (safe: never treated as a proxy marker).
+  const resolve = (id: number) => {
+    if (id === 2900) return { modelId: 'b', expressId: 900 };
+    if (id >= 1000 && id < 2000) return { modelId: 'b', expressId: id - 1000 };
+    if (id < 1000) return { modelId: 'a', expressId: id };
+    return null;
+  };
+  const state = { resolveGlobalIdFromModels: resolve, models };
+
+  it("reads a federated id's class from its OWN model store", () => {
+    assert.equal(typeNameOfGlobalId(state, 1005, storeOf({ 1005: 'IfcDoor' })), 'IfcBuildingElementProxy');
+    assert.equal(typeNameOfGlobalId(state, 5, null), 'IfcWall');
+  });
+
+  it('resolves an overlay-allocated id, and never guesses from the active store', () => {
+    assert.equal(typeNameOfGlobalId(state, 2900, storeOf({ 2900: 'IfcDoor' })), 'IfcSlab');
+    assert.equal(typeNameOfGlobalId(state, 5000, storeOf({ 5000: 'IfcDoor' })), undefined, 'unresolvable: no class');
+  });
+
+  it('with no models loaded (legacy single-model) reads the active store', () => {
+    const legacy = { resolveGlobalIdFromModels: () => null, models: new Map() };
+    assert.equal(typeNameOfGlobalId(legacy, 7, storeOf({ 7: 'IfcSlab' })), 'IfcSlab');
+    assert.equal(typeNameOfGlobalId(legacy, 8, storeOf({})), undefined);
   });
 });

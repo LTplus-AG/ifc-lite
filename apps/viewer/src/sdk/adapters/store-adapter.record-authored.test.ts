@@ -48,6 +48,7 @@ async function fixture() {
     collabRoomId: null,
     collabRoomModels: new Map(),
     canCollabEdit: () => true,
+    editEnabled: true,
     appendGeometryBatch: (_modelId: string, batch: MeshData[]) => { appended.push(...batch); },
     hideEntities: (ids: number[]) => { hidden.push(...ids); },
     mirrorEntityCreate: () => {},
@@ -60,7 +61,7 @@ async function fixture() {
     state = { ...state, ...(updates as Partial<ViewerState>) };
   };
   const store: StoreApi = { getState: () => state, subscribe: () => () => {} };
-  state = { ...state, ...createMutationSlice(setState as never, () => state, {} as never) };
+  state = { ...state, ...createMutationSlice(setState as never, () => state, store as never) };
   assert.ok(getOrCreateMutationView(store, MODEL));
   return { adapter: createStoreAdapter(store), state: () => state, appended, hidden, dataStore };
 }
@@ -133,6 +134,7 @@ describe('bim.store.add* books what it builds', () => {
       collabRoomId: null,
       collabRoomModels: new Map(),
       canCollabEdit: () => true,
+      editEnabled: true,
       appendGeometryBatch: () => { throw new Error('legacy mode has no model entry to append onto'); },
       setGeometryResult: (g: { meshes: MeshData[] }) => { geometry.splice(0, geometry.length, ...g.meshes); },
       mirrorEntityCreate: () => {},
@@ -142,7 +144,7 @@ describe('bim.store.add* books what it builds', () => {
       state = { ...state, ...(updates as Partial<ViewerState>) };
     };
     const store: StoreApi = { getState: () => state, subscribe: () => () => {} };
-    state = { ...state, ...createMutationSlice(setState as never, () => state, {} as never) };
+    state = { ...state, ...createMutationSlice(setState as never, () => state, store as never) };
 
     const ref = createStoreAdapter(store).addColumn('default', 30, { Position: [0, 0, 0], Width: 0.3, Depth: 0.3, Height: 3 });
 

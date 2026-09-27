@@ -84,23 +84,6 @@ export interface LinearElementEditChain {
   profileHeight: number;
 }
 
-function readEntityType(
-  dataStore: IfcDataStore,
-  view: MutablePropertyView,
-  editor: StoreEditor,
-  expressId: number,
-): string | null {
-  const overlay = editor.getNewEntity(expressId);
-  if (overlay) return overlay.type;
-  // Source-buffer entities: the parser's entityIndex.byId stores
-  // type per ref. Pull it through `byType` reverse-walk only if we
-  // can't avoid it. Simpler path: read the attributes via the
-  // source reader; if the reader path returns nothing the entity
-  // either doesn't exist or isn't reachable from where we stand.
-  const ref = dataStore.entityIndex.byId.get(expressId);
-  return ref?.type ?? null;
-}
-
 /**
  * Resolve the chain for an IfcBeam / IfcColumn / IfcMember whose
  * representation matches what `addBeamToStore` / `addColumnToStore`
@@ -114,7 +97,7 @@ export function resolveLinearElementChain(
   editor: StoreEditor,
   expressId: number,
 ): LinearElementEditChain | null {
-  const rawType = readEntityType(dataStore, view, editor, expressId);
+  const rawType = editor.getEntityType(expressId);
   if (!rawType || !LINEAR_ELEMENT_STEP_TYPES.has(rawType.toUpperCase())) return null;
   const elementType = stepTypeToLinearType(rawType);
   if (!elementType) return null;

@@ -181,6 +181,7 @@ export const bcfEn = {
   'bcf.panel.title': 'BCF Topics',
   'bcf.panel.importTitle': 'Import BCF',
   'bcf.panel.exportTitle': 'Export BCF',
+  'bcf.panel.formatBcfzip': 'BCF',
   'bcf.panel.hideMarkers': 'Hide 3D markers',
   'bcf.panel.showMarkers': 'Show 3D markers',
   'bcf.panel.setAuthorTitle': 'Set author',
@@ -191,4 +192,6 @@ export const bcfEn = {
   'bcf.panel.untitledTopic': 'Untitled',
   'bcf.panel.importError': 'Failed to import BCF file',
   'bcf.panel.exportError': 'Failed to export BCF file',
+  'bcf.panel.busy': 'Processing BCF file…',
+  'bcf.panel.captureViewpointFailed': 'Could not capture a viewpoint. Wait for the model to finish loading, then try again.',
 } as const satisfies Record<string, TranslationValue>;

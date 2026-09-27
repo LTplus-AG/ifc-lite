@@ -115,10 +115,11 @@ describe('useBCF applyViewpoint — section cut (#4910)', () => {
     const viewpoint = await capture();
     assert.equal(viewpoint.clippingPlanes?.length, 1, 'the visible cut is captured');
 
-    // The user moves on: another tool, another cut remembered.
+    // The user moves on: another cut, still on screen after leaving the
+    // tool (#5893 — lasting scene state, not tool-coupled).
     await cutInSectionTool('side', 80);
     await act(async () => s().setActiveTool('select'));
-    assert.equal(activeSectionPlane(s()), null);
+    assert.equal(activeSectionPlane(s())?.axis, 'side', 'the moved cut is still on screen');
 
     await act(async () => api!.applyViewpoint(viewpoint, false));
     const shown = activeSectionPlane(s());
@@ -150,5 +151,39 @@ describe('useBCF applyViewpoint — section cut (#4910)', () => {
     await act(async () => api!.applyViewpoint({ guid: '55555555-5555-4555-8555-555555555555' }, false));
     await act(async () => s().setActiveTool('section'));
     assert.equal(s().sectionPlane.enabled, false, 'the cleared cut must not come back');
+  });
+});
+
+/**
+ * #5644: a face-picked plane's `flipped` is relative to its own normal. BCF
+ * captures the cardinal approximation, so it must map the flip to the cardinal
+ * frame: a pick on the -X face keeps the solid, which is the cardinal Side cut
+ * FLIPPED at the same position.
+ */
+describe('useBCF capture — face-picked section (#5644)', () => {
+  it('captures a -X face pick as the flipped cardinal cut at the same position', async () => {
+    await act(async () => {
+      s().setActiveTool('section');
+      s().setSectionPickMode(true);
+      s().setSectionPlaneFromFace([-1, 0, 0], [BOUNDS.min.x, 6, 0], {
+        min: [BOUNDS.min.x, BOUNDS.min.y, BOUNDS.min.z],
+        max: [BOUNDS.max.x, BOUNDS.max.y, BOUNDS.max.z],
+      });
+    });
+    assert.ok(s().sectionPlane.custom, 'the pick committed a custom plane');
+    const picked = (await capture()).clippingPlanes;
+    assert.equal(picked?.length, 1, 'the picked cut is captured');
+
+    const cardinal = async (flipped: boolean) => {
+      await act(async () => {
+        useViewerStore.setState({ sectionPlane: { ...s().sectionPlane, custom: undefined, flipped } });
+      });
+      return (await capture()).clippingPlanes;
+    };
+    const { axis, position } = s().sectionPlane;
+    assert.equal(axis, 'side');
+    assert.deepEqual(picked, await cardinal(true), 'same plane and kept side as the flipped Side cut');
+    assert.equal(s().sectionPlane.position, position);
+    assert.notDeepEqual(picked, await cardinal(false), 'not the unflipped one');
   });
 });

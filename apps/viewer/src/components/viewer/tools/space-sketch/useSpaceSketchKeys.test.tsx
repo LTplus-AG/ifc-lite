@@ -5,20 +5,16 @@
 /**
  * Space Sketch keyboard ownership (#2438).
  *
- * The mechanism these pin is a single `true` argument. `useKeyboardShortcuts`
- * registers a window `keydown` listener in the BUBBLE phase; the sketch
- * registers in CAPTURE, so it runs first, and Escape additionally calls
- * `stopImmediatePropagation()`. Drop the capture flag or the
- * stopImmediatePropagation and:
+ * The shared dispatcher gives the sketch's tool commands priority over global
+ * model commands. If that priority regresses:
  *
  * - the first Escape reaches the global handler, which closes the tool — every
  *   drafted room on every storey is discarded without a confirm;
  * - Ctrl+Z undoes the 3D model's last mutation instead of the sketch's last
  *   plate edit, so the panel's own Undo button and the shortcut disagree.
  *
- * Neither has a visible symptom in source review, so each test below asserts
- * through a BUBBLE-phase spy standing in for the global handler: the spy firing
- * IS the regression.
+ * These tests register an actual lower-priority global command, then assert
+ * it runs only for keys the sketch leaves unclaimed.
  */
 
 import '@/test/setup-dom.js';
@@ -26,6 +22,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { registerKeyboardBinding } from '@/lib/commands/dispatcher';
 import { useSpaceSketchKeys, DOUBLE_ESC_MS, type UseSpaceSketchKeysOptions } from './useSpaceSketchKeys.js';
 
 interface Calls {
@@ -42,9 +39,8 @@ interface Calls {
 let calls: Calls;
 let root: Root | null = null;
 let container: HTMLElement | null = null;
-/** Stands in for `useKeyboardShortcuts`: a BUBBLE-phase window listener. */
-let globalSpy: KeyboardEvent[] = [];
-let onGlobal: ((e: KeyboardEvent) => void) | null = null;
+let globalActions: string[] = [];
+let removeGlobal: (() => void) | null = null;
 
 function options(over: Partial<UseSpaceSketchKeysOptions> = {}): UseSpaceSketchKeysOptions {
   return {
@@ -85,17 +81,20 @@ function release(key: string, init: KeyboardEventInit = {}): void {
 
 beforeEach(() => {
   calls = { undo: 0, redo: 0, closePopovers: 0, abortCurrentOp: 0, closeNow: 0, commitDraw: 0, modifiers: [], status: [] };
-  globalSpy = [];
-  onGlobal = (e: KeyboardEvent) => { globalSpy.push(e); };
-  window.addEventListener('keydown', onGlobal); // bubble, like the real one
+  globalActions = [];
+  removeGlobal = registerKeyboardBinding({
+    id: 'test.global', when: 'global', layer: 'global',
+    keys: [{ key: 'escape' }, { key: 'z', mod: true }, { key: 'z' }, { key: 'enter' }],
+    run: (event) => { globalActions.push(event.key); },
+  });
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
 });
 
 afterEach(() => {
-  if (onGlobal) window.removeEventListener('keydown', onGlobal);
-  onGlobal = null;
+  removeGlobal?.();
+  removeGlobal = null;
   if (root) act(() => root!.unmount());
   root = null;
   container?.remove();
@@ -105,7 +104,7 @@ describe('useSpaceSketchKeys — Escape ownership', () => {
   it('takes the first Escape away from the global handler and does not close', () => {
     mount(options());
     press('Escape');
-    assert.equal(globalSpy.length, 0, 'the global keydown handler must never see Escape');
+    assert.equal(globalActions.length, 0, 'the global action must not handle Escape');
     assert.equal(calls.closeNow, 0, 'a single Escape does not close the tool');
     assert.equal(calls.abortCurrentOp, 1, 'it offers itself to the in-progress op first');
     assert.deepEqual(calls.status, ['Press Esc again to close.']);
@@ -116,7 +115,7 @@ describe('useSpaceSketchKeys — Escape ownership', () => {
     press('Escape');
     press('Escape');
     assert.equal(calls.closeNow, 1, 'the second Escape closes');
-    assert.equal(globalSpy.length, 0, 'and neither one leaked to the global handler');
+    assert.equal(globalActions.length, 0, 'and neither one reached the global action');
   });
 
   it('does not close when the second Escape lands after the window', async () => {
@@ -156,7 +155,7 @@ describe('useSpaceSketchKeys — Ctrl/Cmd+Z ownership', () => {
     mount(options());
     press('z', { ctrlKey: true });
     assert.equal(calls.undo, 1, 'the sketch history handles it');
-    assert.equal(globalSpy.length, 0, 'the model mutation stack never sees it');
+    assert.equal(globalActions.length, 0, 'the model mutation action never runs');
   });
 
   it('routes Ctrl+Shift+Z to redo', () => {
@@ -170,7 +169,7 @@ describe('useSpaceSketchKeys — Ctrl/Cmd+Z ownership', () => {
     mount(options());
     press('z');
     assert.equal(calls.undo, 0);
-    assert.equal(globalSpy.length, 1, 'an unclaimed key still reaches the app');
+    assert.equal(globalActions.length, 1, 'an unclaimed key still reaches the app');
   });
 
   it('leaves native field undo alone while typing', () => {
@@ -190,14 +189,14 @@ describe('useSpaceSketchKeys — Enter and modifiers', () => {
     mount(options({ commitDraw: () => { calls.commitDraw++; } }));
     press('Enter');
     assert.equal(calls.commitDraw, 1);
-    assert.equal(globalSpy.length, 0);
+    assert.equal(globalActions.length, 0);
   });
 
   it('leaves Enter alone when no draw is in progress', () => {
     mount(options());
     press('Enter');
     assert.equal(calls.commitDraw, 0);
-    assert.equal(globalSpy.length, 1, 'Enter belongs to the app when nothing is drawn');
+    assert.equal(globalActions.length, 1, 'Enter belongs to the app when nothing is drawn');
   });
 
   it('leaves Enter alone inside a text field even mid-draw', () => {
@@ -230,6 +229,6 @@ describe('useSpaceSketchKeys — Enter and modifiers', () => {
     press('Alt');
     assert.equal(calls.closeNow + calls.undo + calls.abortCurrentOp + calls.modifiers.length, 0,
       'a closed tool listens for nothing');
-    assert.equal(globalSpy.length, 3, 'and every key is handed back to the app');
+    assert.equal(globalActions.length, 2, 'Escape and model undo are handed back to the app');
   });
 });

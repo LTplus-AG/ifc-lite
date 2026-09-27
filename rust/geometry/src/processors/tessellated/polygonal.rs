@@ -62,15 +62,14 @@ impl PolygonalFaceSetProcessor {
 
         result
     }
-}
 
-impl GeometryProcessor for PolygonalFaceSetProcessor {
-    fn process(
-        &self,
+    /// Mesh the face set; `rtc_file_units` rebases before f32 narrowing
+    /// (see `read_point_list`), so triangulation and orientation also run on
+    /// the rebased, collapse-free positions.
+    fn process_rebased(
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
-        _schema: &IfcSchema,
-        _quality: TessellationQuality,
+        rtc_file_units: Option<(f64, f64, f64)>,
     ) -> Result<Mesh> {
         // IfcPolygonalFaceSet attributes:
         // 0: Coordinates (IfcCartesianPointList3D)
@@ -78,31 +77,14 @@ impl GeometryProcessor for PolygonalFaceSetProcessor {
         // 2: Faces (LIST of IfcIndexedPolygonalFace)
         // 3: PnIndex (optional - point index remapping)
 
-        // Get coordinate entity reference
-        let coords_attr = entity
+        let coord_entity_id = entity
             .get(0)
-            .ok_or_else(|| Error::geometry("PolygonalFaceSet missing Coordinates".to_string()))?;
-
-        let coord_entity_id = coords_attr.as_entity_ref().ok_or_else(|| {
-            Error::geometry("Expected entity reference for Coordinates".to_string())
-        })?;
-
-        // Parse coordinates - try fast path first
-        use ifc_lite_core::extract_coordinate_list_from_entity;
-
-        let positions = if let Some(raw_bytes) = decoder.get_raw_bytes(coord_entity_id) {
-            extract_coordinate_list_from_entity(raw_bytes).unwrap_or_default()
-        } else {
-            // Fallback path
-            let coords_entity = decoder.decode_by_id(coord_entity_id)?;
-            let coord_list_attr = coords_entity.get(0).ok_or_else(|| {
-                Error::geometry("CartesianPointList3D missing CoordList".to_string())
+            .ok_or_else(|| Error::geometry("PolygonalFaceSet missing Coordinates".to_string()))?
+            .as_entity_ref()
+            .ok_or_else(|| {
+                Error::geometry("Expected entity reference for Coordinates".to_string())
             })?;
-            let coord_list = coord_list_attr
-                .as_list()
-                .ok_or_else(|| Error::geometry("Expected coordinate list".to_string()))?;
-            AttributeValue::parse_coordinate_list_3d(coord_list)
-        };
+        let positions = super::read_point_list(decoder, coord_entity_id, rtc_file_units)?;
 
         if positions.is_empty() {
             return Ok(Mesh::new());
@@ -172,7 +154,32 @@ impl GeometryProcessor for PolygonalFaceSetProcessor {
             Self::orient_closed_shell_outward(&positions, &mut indices);
         }
 
-        Ok(Self::build_flat_shaded_mesh(&positions, &indices))
+        let mut mesh = Self::build_flat_shaded_mesh(&positions, &indices);
+        mesh.rtc_applied = rtc_file_units.is_some();
+        Ok(mesh)
+    }
+}
+
+impl GeometryProcessor for PolygonalFaceSetProcessor {
+    fn process(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        _schema: &IfcSchema,
+        _quality: TessellationQuality,
+    ) -> Result<Mesh> {
+        Self::process_rebased(entity, decoder, None)
+    }
+
+    fn process_in_rtc_frame(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        _schema: &IfcSchema,
+        _quality: TessellationQuality,
+        rtc_file_units: (f64, f64, f64),
+    ) -> Option<Result<Mesh>> {
+        Some(Self::process_rebased(entity, decoder, Some(rtc_file_units)))
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

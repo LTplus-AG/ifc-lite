@@ -51,6 +51,9 @@ export {
   type PointResolver, type RefusedAlignment,
 } from './landxml/alignment-mapping.js';
 export type { AlignmentParams, AlignmentResult } from './ifc-creator-alignment.js';
+export type { AlignmentVerticalParams } from './ifc-creator-alignment-vertical.js';
+export type { VerticalSegment, VerticalSegmentType } from './landxml/profile-geometry.js';
+export type { StationEquationParams } from './ifc-creator-alignment-referents.js';
 export type * from './landxml/source-types.js';
 export type * from './landxml/result-types.js';
 
@@ -62,6 +65,40 @@ export { addSlabToStore, type SlabInStoreParams, type SlabRectangleParams, type 
 export { addBeamToStore, type BeamInStoreParams, type BeamBuildResult } from './in-store/beam.js';
 export { addDoorToStore, type DoorInStoreParams, type DoorBuildResult } from './in-store/door.js';
 export { addWindowToStore, type WindowInStoreParams, type WindowBuildResult } from './in-store/window.js';
+export {
+  addOpeningToStore,
+  type OpeningInStoreParams,
+  type WallOpeningInStoreParams,
+  type SlabOpeningInStoreParams,
+  type OpeningBuildResult,
+} from './in-store/opening.js';
+export {
+  addHostedDoorToStore,
+  addHostedWindowToStore,
+  type HostedDoorInStoreParams,
+  type HostedWindowInStoreParams,
+  type HostedFillBuildResult,
+} from './in-store/hosted-fill.js';
+export {
+  addElementTypeToStore,
+  assignTypeInStore,
+  type AuthoringAnchor,
+  type ElementTypeInStoreParams,
+  type ElementTypeBuildResult,
+} from './in-store/element-type.js';
+export {
+  addMaterialToStore,
+  addMaterialLayerSetToStore,
+  addMaterialLayerSetUsageToStore,
+  assignMaterialInStore,
+  type MaterialInStoreParams,
+  type MaterialLayerInStoreParams,
+  type MaterialLayerSetInStoreParams,
+  type MaterialLayerSetBuildResult,
+  type MaterialLayerSetUsageInStoreParams,
+} from './in-store/material.js';
+export type { OneToManyResult } from './in-store/relate.js';
+export { resolveAuthoringAnchor, readRelatedLists, liveEntityType, liveEntityConforms } from './in-store/resolve-relations.js';
 export { addSpaceToStore, type SpaceInStoreParams, type SpaceRectangleParams, type SpacePolygonParams, type SpaceBuildResult } from './in-store/space.js';
 export {
   addSpatialZonesToStore,
@@ -90,8 +127,9 @@ export {
 } from './in-store/cost.js';
 export { removeCostEntityInStore, type CostRemovalReferrers } from './in-store/cost-removal.js';
 export { resolveSpatialAnchor } from './in-store/resolve-anchor.js';
+export { resolveHostAnchor } from './in-store/resolve-host.js';
 export { toNativeLength, fromNativeLength } from './in-store/anchor.js';
-export type { SpatialAnchor } from './in-store/anchor.js';
+export type { SpatialAnchor, HostAnchor, HostBounds, HostKind } from './in-store/anchor.js';
 export {
   duplicateInStore,
   type SourceAttributes,
@@ -250,6 +288,7 @@ export type {
 
   // Properties & quantities
   PropertyType,
+  PropertyMeasureType,
   PropertyDef,
   PropertySetDef,
   QuantityKind,

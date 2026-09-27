@@ -32,6 +32,20 @@ export interface ParsedIfcPropertyValue {
     values?: string[];
     dataType?: string;
     dataTypeMixed?: true;
+    /**
+     * Which `IfcProperty` subtype carried the value, when it is not a single
+     * value. `values` then holds the candidates a rule reads: every member of
+     * an enumerated or list value, every cell of a table (#5475).
+     */
+    structure?: 'enumerated' | 'bounded' | 'list' | 'table' | 'reference' | 'complex';
+}
+
+/** One property as the on-demand extractors return it: the parsed value
+ *  plus its name and, when the file declares one, its explicit unit. */
+export interface ExtractedProperty extends ParsedIfcPropertyValue {
+    name: string;
+    unit?: string;
+    unitSiScale?: number;
 }
 
 /** The IFC type every typed member of a list shares, or `undefined` when a
@@ -75,7 +89,7 @@ export function parsePropertyValue(propEntity: IfcEntity): ParsedIfcPropertyValu
                 // joined display string remains the primary `value`
                 // for visualisation/property-table consumers.
                 const dataType = sharedMemberType(enumValues);
-                return { type: 0, value: values.join(', ') || null, values, ...(dataType ? { dataType } : {}) };
+                return { type: 0, value: values.join(', ') || null, values, structure: 'enumerated', ...(dataType ? { dataType } : {}) };
             }
             return { type: 0, value: null };
         }
@@ -114,6 +128,7 @@ export function parsePropertyValue(propEntity: IfcEntity): ParsedIfcPropertyValu
             return {
                 type: displayValue != null ? 1 : 0,
                 value: display || null,
+                structure: 'bounded',
                 ...(candidates.length > 0 ? { values: candidates } : {}),
                 ...(dataType ? { dataType } : {}),
             };
@@ -128,7 +143,7 @@ export function parsePropertyValue(propEntity: IfcEntity): ParsedIfcPropertyValu
                     return String(v);
                 }).filter(v => v !== 'null' && v !== 'undefined');
                 const dataType = sharedMemberType(listValues);
-                return { type: 0, value: values.join(', ') || null, values, ...(dataType ? { dataType } : {}) };
+                return { type: 0, value: values.join(', ') || null, values, structure: 'list', ...(dataType ? { dataType } : {}) };
             }
             return { type: 0, value: null };
         }
@@ -161,6 +176,7 @@ export function parsePropertyValue(propEntity: IfcEntity): ParsedIfcPropertyValu
                     value: `Table (${rowCount} rows)`,
                     values,
                     dataTypeMixed: true,
+                    structure: 'table',
                 };
             }
             return { type: 0, value: null };
@@ -170,7 +186,7 @@ export function parsePropertyValue(propEntity: IfcEntity): ParsedIfcPropertyValu
             // [Name, Description, PropertyReference]
             const refValue = attrs[2];
             if (typeof refValue === 'number') {
-                return { type: 0, value: `#${refValue}` };
+                return { type: 0, value: `#${refValue}`, structure: 'reference' };
             }
             return { type: 0, value: null };
         }
@@ -352,6 +368,7 @@ export function resolveComplexPropertyValue(
     return {
         type: PropertyValueType.String,
         value: parts.length > 0 ? parts.join(', ') : (usageName || null),
+        structure: 'complex',
         ...(values.length > 0 ? { values } : {}),
     };
 }

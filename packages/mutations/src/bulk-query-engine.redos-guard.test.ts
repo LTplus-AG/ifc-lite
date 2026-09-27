@@ -35,7 +35,6 @@ describe('BulkQueryEngine.select — namePattern ReDoS guard', () => {
       table,
       new MutablePropertyView(null, 'model-1'),
       null,
-      null,
       strings
     );
     const start = performance.now();
@@ -48,7 +47,6 @@ describe('BulkQueryEngine.select — namePattern ReDoS guard', () => {
     const engine = new BulkQueryEngine(
       table,
       new MutablePropertyView(null, 'model-1'),
-      null,
       null,
       strings
     );

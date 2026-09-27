@@ -11,13 +11,15 @@
  * one click.
  */
 import { useCallback, useMemo, useState } from 'react';
-import { FileText, Loader2 } from 'lucide-react';
+import { FileText } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import type { Aggregation, DashboardSpec, ReportPageSetup, ReportSpec } from '@ifc-lite/charts';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n/useTranslation';
-import { posthog } from '@/lib/analytics';
+import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
+import { trackExportCompleted } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { browserReportSeams, generateReportPdf, type ReportPdfSeams } from '@/lib/export/report/generate-report-pdf';
@@ -67,14 +69,14 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
   const [page, setPage] = useState<ReportPageSetup>(isReport(dashboard) ? dashboard.page : { size: 'A4', orientation: 'portrait' });
   const [snapshots, setSnapshots] = useState(isReport(dashboard) ? dashboard.snapshots : true);
   const [fields, setFields] = useState<Record<string, string>>(seeded);
-  const openDialog = useCallback(() => {
+  const reseed = useCallback(() => {
     setFields(seeded);
     if (isReport(dashboard)) {
       setPage(dashboard.page);
       setSnapshots(dashboard.snapshots);
     }
-    setOpen(true);
   }, [seeded, dashboard]);
+  const handleOpenChange = useExportDialogOpenGuard({ busy, setOpen, onOpen: reseed });
 
   const run = useCallback(async () => {
     if (!dashboard) return;
@@ -93,7 +95,7 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
       downloadBlob(result.blob, `${sanitizeFilename(dashboard.name, { fallback: 'report' })}-report.pdf`);
       onSaveReportSetup({ ...dashboard, page, titleBlock: Object.fromEntries(FIELDS.map(([k]) => [k, fields[k] ?? ''])), snapshots });
       // Counts only — never the dashboard name or a chart title.
-      posthog.capture('export_completed', { format: 'pdf', surface: 'charts_report', chart_count: result.charts, page_count: result.pages, snapshot_count: result.snapshots });
+      trackExportCompleted({ format: 'pdf', surface: 'charts_report', chart_count: result.charts, page_count: result.pages, snapshot_count: result.snapshots });
       toast.success(`Report exported: ${result.pages} page${result.pages === 1 ? '' : 's'}, ${result.charts} chart${result.charts === 1 ? '' : 's'}${result.snapshotFailures.length > 0 ? ` (${result.snapshotFailures.length} snapshot${result.snapshotFailures.length === 1 ? '' : 's'} unavailable)` : ''}`);
       setOpen(false);
     } catch (err) {
@@ -108,7 +110,7 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
   const field = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs';
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (next ? openDialog() : setOpen(false))}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={!dashboard || dashboard.charts.length === 0} title={t('reportExportDialog.triggerTitle')}>
           <FileText className="h-3.5 w-3.5 mr-1" />
@@ -143,7 +145,7 @@ export function ReportExportDialog({ dashboard, aggregations, onSaveReportSetup,
         </div>
         <DialogFooter>
           <Button size="sm" className="h-7 px-3 text-xs" disabled={busy || !dashboard} onClick={() => void run()} data-report-export>
-            {busy ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <FileText className="h-3.5 w-3.5 mr-1" />}
+            {busy ? <Spinner size="sm" className="mr-1" /> : <FileText className="h-3.5 w-3.5 mr-1" />}
             {t('reportExportDialog.exportButton')}
           </Button>
         </DialogFooter>

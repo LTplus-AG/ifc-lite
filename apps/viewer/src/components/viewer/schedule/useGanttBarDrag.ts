@@ -28,9 +28,10 @@
  * state changes).
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import type { GanttTimeScale, ScheduleTimeRange } from '@/store';
+import { KEYBOARD_PRIORITY, registerKeyboardCommand } from '@/lib/commands/dispatcher';
 
 export type BarDragMode = 'shift' | 'resize-start' | 'resize-finish';
 
@@ -145,6 +146,8 @@ export interface UseGanttBarDragResult {
 export function useGanttBarDrag(opts: UseGanttBarDragOptions): UseGanttBarDragResult {
   const { range, pixelWidth, scale } = opts;
   const sessionRef = useRef<DragSession | null>(null);
+  const removeCancelRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => { removeCancelRef.current?.(); removeCancelRef.current = null; }, []);
   const [live, setLive] = useState<BarDragLive>({
     taskGlobalId: null, mode: null, liveStartMs: 0, liveFinishMs: 0,
   });
@@ -230,19 +233,12 @@ export function useGanttBarDrag(opts: UseGanttBarDragOptions): UseGanttBarDragRe
     endDrag(false);
   }, [endDrag]);
 
-  const onKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      detach();
-      endDrag(false);
-    }
-  }, [endDrag]);
-
   function detach() {
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
     window.removeEventListener('pointercancel', onPointerCancel);
-    window.removeEventListener('keydown', onKeyDown);
+    removeCancelRef.current?.();
+    removeCancelRef.current = null;
   }
 
   const onPointerDown = useCallback((
@@ -293,13 +289,17 @@ export function useGanttBarDrag(opts: UseGanttBarDragOptions): UseGanttBarDragRe
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerCancel);
-    window.addEventListener('keydown', onKeyDown);
+    removeCancelRef.current?.();
+    removeCancelRef.current = registerKeyboardCommand('schedule.cancelDrag', () => {
+      detach();
+      endDrag(false);
+    }, { allowInTextEntry: true, ignoreModifiers: true, priority: KEYBOARD_PRIORITY.pointerDrag });
 
     setLive({
       taskGlobalId, mode,
       liveStartMs: origStart, liveFinishMs: origFinish,
     });
-  }, [range, pixelWidth, onPointerMove, onPointerUp, onPointerCancel, onKeyDown]);
+  }, [range, pixelWidth, onPointerMove, onPointerUp, onPointerCancel, endDrag]);
 
   return { onPointerDown, live };
 }

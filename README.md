@@ -27,7 +27,7 @@ Open, view, and work with IFC files. Right in the browser.
 
 # IFClite
 
-Parse, view, query, edit, validate, and export IFC files, entirely client-side. A Rust core compiled to WASM does the parsing and geometry, a WebGPU renderer puts it on screen, and 46 npm packages let you pick exactly the pieces you need. Geometry runs on an exact-arithmetic CSG kernel, verified element-by-element against IfcOpenShell across the public benchmark corpus.
+Parse, view, query, edit, validate, and export IFC files, entirely client-side. A Rust core compiled to WASM does the parsing and geometry, a WebGPU renderer puts it on screen, and 51 npm packages let you pick exactly the pieces you need. Geometry runs on an exact-arithmetic CSG kernel, verified element-by-element against IfcOpenShell across the public benchmark corpus.
 
 Works with **IFC2X3**, **IFC4 / IFC4X3** and **IFC5 (IFCX)**. Live demo at [ifclite.com](https://www.ifclite.com/) and more info at [ifclite.dev](https://www.ifclite.dev/).
 
@@ -38,7 +38,7 @@ npx create-ifc-lite my-viewer --template react
 cd my-viewer && npm install && npm run dev
 ```
 
-That gets you a working WebGPU IFC viewer with drag-and-drop, hierarchy, properties, and 2D drawings. Other templates: `basic`, `threejs`, `babylonjs`, `server`, `server-native`.
+That gets you a working WebGPU IFC viewer with drag-and-drop loading and orbit/pan/zoom. Other templates: `basic`, `threejs`, `babylonjs`, `server`, `server-native`.
 
 To add IFClite to an existing project:
 
@@ -252,7 +252,7 @@ Not sure? Start with the browser setup. You can add a server or switch engines l
 | Connect to a server backend | + `@ifc-lite/server-client` |
 | Give AI agents BIM access (MCP) | + `@ifc-lite/mcp` |
 
-Full list: [API Reference](https://ifclite.dev/docs/api/typescript/) (46 npm packages, 7 Rust crates on crates.io, and the `ifclite-geom` Python wheel on PyPI).
+Full list: [API Reference](https://ifclite.dev/docs/api/typescript/) (51 npm packages, 7 Rust crates on crates.io, and the `ifclite-geom` Python wheel on PyPI).
 
 ## Performance
 
@@ -261,7 +261,7 @@ Full list: [API Reference](https://ifclite.dev/docs/api/typescript/) (46 npm pac
 - **Geometry speed:** native (server/CLI, multi-threaded) beats `web-ifc` on most of the benchmark corpus; in the browser the viewer streams geometry across workers so the first triangles render long before the file finishes processing.
 - **Parse speed:** STEP tokenization runs at roughly 1.2 GB/s; a full parse lands around 50 MB/s.
 - **Schema coverage:** 100% of IFC4 (776 entities) and IFC4X3 (876 entities).
-- **Footprint:** one lazily fetched WASM module (~1.2 MB gzipped) plus small per-package JS wrappers.
+- **Footprint:** one lazily fetched WASM module (~2.6 MB gzipped) plus small per-package JS wrappers.
 
 See [benchmarks](https://ifclite.dev/docs/guide/performance/) for full numbers across model sizes and hardware.
 

@@ -4,11 +4,11 @@ Guide to exporting IFC data in various formats.
 
 ## Textured IFC in the web viewer
 
-Normal IFC exports, visible subsets, and Export Changes package retained image
+Normal IFC exports, visible subsets, and Export modified IFC… package retained image
 resources into `.ifczip` automatically. The archive preserves original PNG/JPEG
 bytes, the IFC entry directory, and relative texture paths; authored images use
 content-addressed filenames. Untextured models continue to download as `.ifc`.
-SDK IFC exports and Export Changes omit unreachable appearance resources
+SDK IFC exports and Export modified IFC… omit unreachable appearance resources
 created by tracked commands, while the original session keeps those rows and
 images for Undo/Redo. Imported resources are preserved; this is not general
 cleanup of orphan entities from another authoring session.
@@ -804,6 +804,49 @@ All four take `undefined` for "no isolation filter" and an empty
 exports nothing rather than everything. Pass `undefined`, not
 `new Uint32Array()`, when you do not want to filter.
 
+## Saving Edits Through the Rust Writer
+
+`StepExporter` needs the whole file as one buffer in the JS heap, which fails
+past V8's ArrayBuffer ceiling (~2 GB). `exportStep` takes the session's edits
+as the mutation log `MutablePropertyView.exportMutations()` returns and writes
+them natively, streaming every record the log does not touch:
+
+```typescript
+// `view` is the session's MutablePropertyView, `bytes` the source file.
+const saved = gp.exportStep(bytes, '', undefined, view.exportMutations());
+```
+
+The output is byte-identical to `new StepExporter(store, view).export(...)`
+for the same edits, except the GlobalIds of the records the export generates
+(regenerated property and quantity sets and their relationships), which the
+Rust writer derives instead of drawing at random. The shared parity fixture
+`rust/export/tests/fixtures/step_log_parity_vectors.json` pins this from both
+sides. The log applies property and quantity edits (create, update, delete, whole-set
+deletion), root-attribute and positional edits, retypes, entity deletion (with
+the same reference cleanup: list slots narrowed, relationships withheld) and
+created entities, whose payloads travel in the log's `newEntities` member
+(`view.getNewEntities()`), since a `CREATE_ENTITY` record carries only the id:
+
+```typescript
+const log = { ...JSON.parse(view.exportMutations()), newEntities: view.getNewEntities() };
+const savedWithCreations = gp.exportStep(bytes, '', undefined, JSON.stringify(log));
+```
+
+Georeferencing edits travel in `georefMutations` (the `StepExportOptions`
+shape): an existing `IfcProjectedCRS` / `IfcMapConversion` is edited in place,
+a missing one is created. Like `StepExporter`, the writer refuses them for an
+IFC2X3 output; an IFC2X3 model's georeferencing is its `ePSet_MapConversion` /
+`ePSet_ProjectedCRS` property sets, which are ordinary property edits.
+
+A log the TypeScript replay would throw on (an invalid class name in a retype)
+is refused with an error rather than exported, and so is a log it would save
+WITHOUT an edit: a mutation `type` the writer does not recognise, an attribute
+edit whose value is `null` (clear an attribute with `''`), or a `CREATE_ENTITY`
+whose payload is missing from `newEntities`. A log does not combine with an
+isolation set. Native hosts merging several models pass one log per model to
+`ifc_lite_export::export_merged_models_with_logs`, which bakes each edited model
+the way `MergedExporter.exportAsync` does.
+
 ## Export Pipeline
 
 Chain multiple exports:
@@ -862,6 +905,20 @@ The helper is pure: apply `entityIds` through an atomic mutation transaction, th
 Validation is synchronous, bounded and conservative: a changed record, dependency set, or exceeded work/byte budget throws before replay. Formatting-equivalent rewrites may also require refreshing the command. Source data is assumed immutable within a model; replacement models require new guards. Capture once per command state, not during rendering. Viewer preview planning additionally needs a snapshot-time overlay checkpoint across its asynchronous export/worker interval; a replay dependency guard is not a replacement for that checkpoint.
 
 The guard caps the source index at 200,000 entities before constructing its effective index, authored overlay entities at 100,000, traversed records at 100,000, references at two million and authored values at eight million. Exact UTF-8 accounting uses a fixed scratch buffer before allocating each encoded row. Its 192 MiB effective-row budget covers the planner's bounded 128 MiB source plus 64 MiB output, including higher-precision newly authored UVs. Immutable source records retain identity markers rather than duplicate large source strings in every history checkpoint. Material/type inheritance and material-definition representations are included; sharing a type or material does not pull peer products' geometry into the guard.
+
+### Serializing an element subgraph for re-meshing
+
+`serializeEntitySubgraph(dataStore, mutationView, { targets })` writes a small, standalone STEP file holding the target elements and what the mesher needs to rebuild them. That is each element's forward references, the project's units and representation contexts, and its openings and their fillings with the voiding and filling relationships. It also holds its `IfcRelAssociatesMaterial`, narrowed to the elements in the file. `remeshContextRoots(dataStore, mutationView, targets)` returns those extra roots on their own. Pass them back as `contextRoots` to add or drop context.
+
+```typescript
+import { serializeEntitySubgraph } from '@ifc-lite/export';
+
+const sub = serializeEntitySubgraph(store, mutationView, { targets: new Set([wallId]) });
+// sub.bytes: a complete STEP file; sub.ids: every express id it defines;
+// sub.unreadable: ids whose effective record could not be written faithfully.
+```
+
+The cost follows the targets' own reference closure, not the model size, so it can run on every authoring commit. Queued edits and overlay-created entities are written by the same writers as `StepExporter`, and express ids are kept, overlay-allocated ones included. Styles are left out, so a caller meshing the buffer supplies the model's load-time style wire itself.
 
 ### IFCX texture portability
 

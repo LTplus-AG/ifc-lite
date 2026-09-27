@@ -30,7 +30,7 @@ import { after, afterEach, before, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { StringTable, EntityTableBuilder } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { render, cleanup, click, advance } from '@/test/render.js';
+import { render, cleanup, click, activate, advance } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -98,7 +98,7 @@ function seedStore() {
  * test-only markup in the component.
  */
 function cell(container: HTMLElement, text: string): HTMLElement {
-  const found = [...container.querySelectorAll<HTMLElement>('div')].filter(
+  const found = [...container.querySelectorAll<HTMLElement>('span')].filter(
     (el) => el.children.length === 0 && el.textContent?.trim() === text,
   );
   assert.equal(found.length, 1, `expected exactly one cell reading ${JSON.stringify(text)}, found ${found.length}`);
@@ -107,7 +107,7 @@ function cell(container: HTMLElement, text: string): HTMLElement {
 
 /** Every rendered virtual row. The virtualizer positions each one absolutely. */
 function resultRows(container: HTMLElement): HTMLElement[] {
-  return [...container.querySelectorAll<HTMLElement>('div[style*="position: absolute"]')];
+  return [...container.querySelectorAll<HTMLElement>('button[style*="position: absolute"]')];
 }
 
 describe('advanced Filter tab — clicking a result row', () => {
@@ -148,6 +148,18 @@ describe('advanced Filter tab — clicking a result row', () => {
     assert.equal(s.selectedEntityId, ROW0_GLOBAL_ID);
     assert.equal(s.selectedEntityIds.size, 0, 'the stale box-selection must be cleared');
     assert.deepEqual(s.selectedEntity, { modelId: MODEL_ID, expressId: 42 });
+  });
+
+  it('#5823 selects a result row with Enter and Space', () => {
+    for (const key of ['Enter', ' '] as const) {
+      seedStore();
+      const container = render(<SearchModalFilter />);
+      const row = cell(container, 'Wall A').closest('button');
+      assert.ok(row);
+      activate(row, key);
+      assert.equal(useViewerStore.getState().selectedEntityId, ROW0_GLOBAL_ID);
+      cleanup();
+    }
   });
 
   it('clears BEFORE selecting, so the selection survives', () => {

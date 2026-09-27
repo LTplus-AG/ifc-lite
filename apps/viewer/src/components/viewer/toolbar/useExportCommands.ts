@@ -7,21 +7,24 @@
  * one-click exports (CSV / JSON / screenshot) plus the gating that decides
  * which registry entries are live right now.
  *
- * Both toolbar styles call this hook and render `commands` — the classic strip
- * through `ClassicExportMenuItems`, the ribbon through `RibbonExportGroup` —
- * so the enabled/disabled rule for a format is written once. The dialog-based
- * formats stay dialog components with a `trigger` prop; each style supplies
- * its own trigger element.
+ * The ribbon renders `commands` through `RibbonExportGroup`, while palette
+ * and mobile requests use the same handlers. The enabled/disabled rule for a
+ * format is written once. Dialog formats keep their `trigger` prop.
  */
 
 import { useCallback, useMemo } from 'react';
 import { useIfc } from '@/hooks/useIfc';
+import { useChangedModels } from '@/hooks/useUnexportedChanges';
+import { totalChangeCount } from '@/lib/export/model-changes';
+import { useExtensionExporters } from '@/components/extensions/useExtensionExporters';
 import { useViewerStore } from '@/store';
 import { buildCommandPaletteJsonEntities } from '../commandPaletteJsonExport';
 import { exportCsvFromBytes } from '@/lib/export/csv';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
-import { downloadFile, downloadDataUrl } from '@/lib/export/download';
+import { activeModelName, downloadFile, downloadDataUrl, modelExportFilename } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
+import { trackExportCompleted } from '@/lib/analytics';
+import type { ExportSurface } from '@/lib/analytics-export-events';
 import { EXPORT_COMMANDS, type CsvExportType, type RegisteredExportCommand } from './export-commands';
 
 export type { CsvExportType };
@@ -32,7 +35,15 @@ export interface ResolvedExportCommand {
   disabled: boolean;
 }
 
-export function useExportCommands() {
+/** `spatial` is the one table whose type id does not say what the file holds. */
+const CSV_SUFFIX: Record<CsvExportType, string> = {
+  entities: '_entities',
+  properties: '_properties',
+  quantities: '_quantities',
+  spatial: '_spatial-hierarchy',
+};
+
+export function useExportCommands(surface: ExportSurface) {
   const { ifcDataStore, models, geometryResult } = useIfc();
 
   // Same rule as `useFileCommands.hasModelsLoaded`: federated sessions fill
@@ -40,6 +51,9 @@ export function useExportCommands() {
   const hasModelsLoaded =
     models.size > 0 || Boolean(geometryResult?.meshes && geometryResult.meshes.length > 0);
   const canExport = hasModelsLoaded || Boolean(ifcDataStore);
+  // The same live change set the amber Export modified IFC button counts.
+  const hasChanges = totalChangeCount(useChangedModels()) > 0;
+  const { exporters: extensionExporters, extensionExportRunning, runExtensionExporter } = useExtensionExporters(surface);
 
   /**
    * The data exports (CSV / JSON) read the single `ifcDataStore` slot, which
@@ -69,14 +83,14 @@ export function useExportCommands() {
       const { activeModelId, getMutationView } = useViewerStore.getState();
       const bytes = editedModelBytes(ifcDataStore, activeModelId ? getMutationView(activeModelId) : null);
       const csv = await exportCsvFromBytes(bytes, type, { includeProperties: type === 'entities' });
-      const filename = type === 'spatial' ? 'spatial-hierarchy.csv' : `${type}.csv`;
-      downloadFile(csv, filename, 'text/csv');
+      downloadFile(csv, modelExportFilename(activeModelName(useViewerStore.getState()), 'csv', CSV_SUFFIX[type]), 'text/csv');
+      trackExportCompleted({ format: 'csv', surface });
       toast.success(`Exported ${type} CSV${activeModelOnlyNote}`);
     } catch (err) {
       console.error('CSV export failed:', err);
       toast.error(`CSV export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
-  }, [ifcDataStore, activeModelOnlyNote]);
+  }, [ifcDataStore, activeModelOnlyNote, surface]);
 
   const handleExportJSON = useCallback(() => {
     if (!ifcDataStore) return;
@@ -86,25 +100,28 @@ export function useExportCommands() {
       const entities = buildCommandPaletteJsonEntities(ifcDataStore, activeModelId ? getMutationView(activeModelId) : null);
 
       const json = JSON.stringify({ entities }, null, 2);
-      downloadFile(json, 'model-data.json', 'application/json');
+      downloadFile(json, modelExportFilename(activeModelName(useViewerStore.getState()), 'json', '_data'), 'application/json');
+      trackExportCompleted({ format: 'json', surface, row_count: entities.length });
       toast.success(`Exported ${entities.length} entities as JSON${activeModelOnlyNote}`);
     } catch (err) {
       console.error('JSON export failed:', err);
       toast.error(`JSON export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
-  }, [ifcDataStore, activeModelOnlyNote]);
+  }, [ifcDataStore, activeModelOnlyNote, surface]);
 
   const handleScreenshot = useCallback(() => {
-    const canvas = document.querySelector('canvas');
-    if (!canvas) return;
+    // The 3D viewport's canvas, not merely the first on the page (#5601).
+    const canvas = document.querySelector<HTMLCanvasElement>('canvas[data-viewport="main"]');
     try {
-      downloadDataUrl(canvas.toDataURL('image/png'), 'screenshot.png');
+      if (!canvas) throw new Error('no 3D viewport canvas on screen');
+      downloadDataUrl(canvas.toDataURL('image/png'), modelExportFilename(activeModelName(useViewerStore.getState()), 'png', '_screenshot'));
+      trackExportCompleted({ format: 'png', surface });
       toast.success('Screenshot saved');
     } catch (err) {
       console.error('Screenshot failed:', err);
       toast.error('Screenshot failed');
     }
-  }, []);
+  }, [surface]);
 
   /** Dispatch for the registry's one-click (`kind: 'action'`) commands. */
   const runExportAction = useCallback((action: 'json' | 'screenshot') => {
@@ -115,9 +132,11 @@ export function useExportCommands() {
   const commands = useMemo<ResolvedExportCommand[]>(
     () => EXPORT_COMMANDS.map((command) => ({
       command,
-      disabled: command.requires === 'dataStore' ? !ifcDataStore : !canExport,
+      disabled: command.requires === 'dataStore' ? !ifcDataStore
+        : command.requires === 'changes' ? !hasChanges
+        : !canExport,
     })),
-    [ifcDataStore, canExport],
+    [ifcDataStore, canExport, hasChanges],
   );
 
   return {
@@ -128,5 +147,10 @@ export function useExportCommands() {
     handleExportJSON,
     handleScreenshot,
     runExportAction,
+    /** The registry's runtime half: installed extension exporters (#5838). */
+    extensionExporters,
+    /** One extension export at a time: every extension row is disabled while one runs. */
+    extensionExportRunning,
+    runExtensionExporter,
   };
 }

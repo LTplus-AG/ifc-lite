@@ -18,7 +18,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store/types.js';
 import type { LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics.js';
 import { ModelMetadataPanel } from './ModelMetadataPanel.js';
@@ -126,6 +126,43 @@ after(() => {
 });
 
 describe('ModelMetadataPanel — Elements with Geometry', () => {
+  it('counts live storey deletes and creations from a parsed IFC model (#5249)', async () => {
+    const ifc = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0Project00000000000001',$,'Project',$,$,$,$,$,$);
+#10=IFCBUILDINGSTOREY('0Storey0000000000000010',$,'Level 1',$,$,$,$,$,.ELEMENT.,0.);
+#11=IFCBUILDINGSTOREY('0Storey0000000000000011',$,'Level 2',$,$,$,$,$,.ELEMENT.,3.);
+#20=IFCRELCONTAINEDINSPATIALSTRUCTURE('0RelContained0000000020',$,$,$,(#30),#10);
+#30=IFCWALL('0Wall00000000000000030',$,'Wall',$,$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;`;
+    const bytes = new TextEncoder().encode(ifc);
+    const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(null, 'stats-model');
+    view.setExpressIdWatermark(30);
+    useViewerStore.setState({ mutationViews: new Map([['stats-model', view]]), mutationVersion: 1 });
+    const container = render(model({ ifcDataStore: store, maxExpressId: 30 }));
+    assert.equal(statistic(container, 'Building Storeys'), '2');
+
+    act(() => {
+      view.deleteEntity(10);
+      useViewerStore.setState({ mutationVersion: 2 });
+    });
+    assert.equal(statistic(container, 'Building Storeys'), '1');
+
+    act(() => {
+      view.createEntity('IfcBuildingStorey',
+        ['0Storey0000000000000031', null, 'Level 3', null, null, null, null, null, '.ELEMENT.', 6]);
+      useViewerStore.setState({ mutationVersion: 3 });
+    });
+    assert.equal(statistic(container, 'Building Storeys'), '2');
+  });
+
   it('formats metadata numbers with the active locale', () => {
     registerLocale('de-DE', {});
     setLocale('de-DE');

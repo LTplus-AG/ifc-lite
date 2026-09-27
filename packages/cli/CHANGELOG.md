@@ -1,5 +1,120 @@
 # @ifc-lite/cli
 
+## 0.38.0
+
+### Minor Changes
+
+- [#5935](https://github.com/LTplus-AG/ifc-lite/pull/5935) [`dff671e`](https://github.com/LTplus-AG/ifc-lite/commit/dff671efe29d9bbc4a1f455fc6b0526d85fb461b) Thanks [@louistrue](https://github.com/louistrue)! - Add OpenCDE Documents API flow nodes and `model.openFromSource` ([#5634](https://github.com/LTplus-AG/ifc-lite/issues/5634), [#5167](https://github.com/LTplus-AG/ifc-lite/issues/5167) phase 3.4).
+  
+  `@ifc-lite/flow-nodes` gains `documents.queryVersions` (polls `POST /document-versions` with the previous ETag; outputs a versions table, the new ETag and `changed`, which is `false` on a 304), `documents.download` (downloads a version's file as base64 with its name, size and content type) and `model.openFromSource` (opens downloaded bytes as a model through the new optional `FlowHost.openModel`, gated by the `openModel` backend feature). Every Documents API request goes through `coreNetworkRequest` with the graph's `network.fetch:<host>` grants; the bearer token param takes `{{secret:NAME}}`. `model.select` and `model.byType` gain an optional `modelId` input, so a read can be wired to run after, and on, an opened model.
+  
+  `@ifc-lite/sandbox`: `coreNetworkRequest` accepts `responseType: 'bytes'` and then returns the capped body as `NetworkResponse.bytes`, unmangled by a text decode. A new `allowNotModified: true` option returns a 304 Not Modified as a response; without it a 304 is still refused like every other 3xx, so existing `http.request` and `bim.network.fetch` behaviour is unchanged.
+  
+  `ifc-lite flow run` (`@ifc-lite/cli`) and MCP's `run_flow` (`@ifc-lite/mcp`) implement `openModel` with their own loaders: the opened model becomes the one the rest of the run (and the CLI's `--out`) works on, and MCP registers it for later tool calls. The viewer loads it through `addModel`, the same path as a dropped file.
+
+### Patch Changes
+
+- Updated dependencies [[`a51dd3d`](https://github.com/LTplus-AG/ifc-lite/commit/a51dd3de40b0921f552d0c4a8ba8b9195511d114), [`f64353f`](https://github.com/LTplus-AG/ifc-lite/commit/f64353f10fb643a664a9f3f485ef009b1d2622f8), [`66f3d7e`](https://github.com/LTplus-AG/ifc-lite/commit/66f3d7eb085e77a27e4a0bae096daa70b43620c9), [`dff671e`](https://github.com/LTplus-AG/ifc-lite/commit/dff671efe29d9bbc4a1f455fc6b0526d85fb461b), [`f34299c`](https://github.com/LTplus-AG/ifc-lite/commit/f34299ca63a368dbaa68ad911f628eabb49dbcde), [`96b0404`](https://github.com/LTplus-AG/ifc-lite/commit/96b04045f0f3708a453ed18f23c54a1a0745ed42), [`43f40a1`](https://github.com/LTplus-AG/ifc-lite/commit/43f40a12c9bad0cc3515819b204a9b41339367dc), [`f30de14`](https://github.com/LTplus-AG/ifc-lite/commit/f30de14f957df133a3b6be8aa61fea934d76956a), [`d85e898`](https://github.com/LTplus-AG/ifc-lite/commit/d85e8980fcebe59a2b6886b117056790023cb81b), [`3396e12`](https://github.com/LTplus-AG/ifc-lite/commit/3396e1241d8111c530b546659d006a35b6a5aed6)]:
+  - @ifc-lite/flow-nodes@0.5.0
+  - @ifc-lite/bcf@5.0.0
+  - @ifc-lite/mutations@2.8.0
+  - @ifc-lite/sandbox@2.8.0
+  - @ifc-lite/mcp@0.22.0
+  - @ifc-lite/create@3.1.0
+  - @ifc-lite/export@4.7.4
+  - @ifc-lite/wasm@10.1.2
+  - @ifc-lite/clash@2.4.2
+  - @ifc-lite/sdk@7.1.3
+  - @ifc-lite/rules@0.4.1
+
+## 0.37.0
+
+### Minor Changes
+
+- [#5446](https://github.com/LTplus-AG/ifc-lite/pull/5446) [`e40213f`](https://github.com/LTplus-AG/ifc-lite/commit/e40213f0806bf40fcbd1a93bce68fb7ad791bcef) Thanks [@louistrue](https://github.com/louistrue)! - Add outbound network requests and environment secrets to flow graphs ([#5167](https://github.com/LTplus-AG/ifc-lite/issues/5167) phases 3.3/3.5), deny-by-default throughout.
+  
+  `@ifc-lite/extensions` gains a `secret` capability scope: `secret.read:<NAME>` grants a graph read access to one named env var, with a strict exact-match target (`[A-Z][A-Z0-9_]*`, no glob, no universal wildcard) — the one capability target grammar stricter than the general pattern grammar.
+  
+  `@ifc-lite/sandbox` gains `bim.network.fetch`, gated by a new `network` permission (off by default) plus an exact-host allow-list re-checked on every call against the running graph's actual `network.fetch:<host>` grants. Requests are restricted to `https:`, matched against `new URL(url).hostname` (never the raw URL string, so userinfo/suffix spoofing is rejected by construction), refuse every redirect, cap the response body mid-stream, enforce a combined timeout/abort signal, and strip `Host`/`Cookie`/hop-by-hop headers. The core request logic (`network-request.ts`) is the single implementation shared by the sandbox bridge and the new `HttpRequest` flow node.
+  
+  `@ifc-lite/flow-nodes` gains the `http.request` node and a `secrets.ts` module: a node param may reference `{{secret:NAME}}`, validated against the graph's declared `secret.read:<NAME>` capabilities and the real environment BEFORE a run starts (an undeclared or unset reference is a validation error, never a silently empty string), then substituted into a throwaway copy of the document. Every resolved secret at least 6 characters long is redacted (`<secret:NAME>`) from run logs, node outputs, and errors — applied at the outer boundary, so a secret that comes back inside a fetched response body is still caught.
+  
+  Secrets resolve from `process.env` ONLY in `ifc-lite flow run` (`@ifc-lite/cli`) and MCP's `run_flow` (`@ifc-lite/mcp`), which now also redact their `--json`/tool-result output. The viewer's `HostFeatures.secrets` stays always-empty (the browser has no `process.env`), so a graph referencing a secret is reported `unavailable` before it runs, not mid-run; `HostFeatures.network` is `true` there too, so `http.request` runs subject to the browser's own CORS enforcement, surfacing a blocked cross-origin request as an explicit CORS-likely error rather than a silent empty result.
+  
+  `@ifc-lite/flow` now owns the `{{secret:NAME}}` grammar (`referencedSecrets`, `replaceSecretRefs`), and `checkAvailability` reports a node whose params reference a secret the host lacks as `unavailable`, so `flow validate` no longer calls such a graph runnable.
+
+### Patch Changes
+
+- [#5945](https://github.com/LTplus-AG/ifc-lite/pull/5945) [`ccc491e`](https://github.com/LTplus-AG/ifc-lite/commit/ccc491efac18ce496af47c91b1ef4fc04ebecca5) Thanks [@louistrue](https://github.com/louistrue)! - `@ifc-lite/data` builds for the browser again. 5.3.0 exported `readPackageVersion` and `UNKNOWN_VERSION` from the package root with a static `node:fs` import, so every Vite app that bundles `@ifc-lite/data` failed its production build on `"readFileSync" is not exported by "__vite-browser-external"` ([#5767](https://github.com/LTplus-AG/ifc-lite/issues/5767)). Both now live on a Node-only subpath, `@ifc-lite/data/node`, and are no longer exported from the root (breaking: import them from `@ifc-lite/data/node`). `@ifc-lite/cli` and `@ifc-lite/mcp` import from there. A test bundles the package root for the browser and fails on any Node builtin reaching it.
+- Updated dependencies [[`ca5ff8d`](https://github.com/LTplus-AG/ifc-lite/commit/ca5ff8d98979cbcadd1644e32ddad4990d178eb4), [`7fae2b8`](https://github.com/LTplus-AG/ifc-lite/commit/7fae2b8b2d6264a90af3235d95e0a4f6c257b9d7), [`bf32c6a`](https://github.com/LTplus-AG/ifc-lite/commit/bf32c6a128d9ce1c8d9d2a0efcfe7f8754c3d01c), [`d376d2c`](https://github.com/LTplus-AG/ifc-lite/commit/d376d2c02ff35ea25efca5983626fa0b8073bc90), [`f947f8e`](https://github.com/LTplus-AG/ifc-lite/commit/f947f8e92e23535fe4e6ba21c2ebd2a854540ce5), [`975c430`](https://github.com/LTplus-AG/ifc-lite/commit/975c43086065cc7eaaf841d18f6f5ecbe626f0bd), [`b218ab4`](https://github.com/LTplus-AG/ifc-lite/commit/b218ab440fc09011c6bb1d39524525120e119cb1), [`e095908`](https://github.com/LTplus-AG/ifc-lite/commit/e0959083fa58854ce536c0a68d7b0c52f824f5ef), [`d83d9fe`](https://github.com/LTplus-AG/ifc-lite/commit/d83d9fe4138e0d6ae64a3ed439c8a5c9a280878a), [`91b1340`](https://github.com/LTplus-AG/ifc-lite/commit/91b1340bbba42abc42d9842169e422b540aa96eb), [`dcdc8df`](https://github.com/LTplus-AG/ifc-lite/commit/dcdc8dff3ea9e0588ffcce802b0f3ec781082f2e), [`ccc491e`](https://github.com/LTplus-AG/ifc-lite/commit/ccc491efac18ce496af47c91b1ef4fc04ebecca5), [`7215c2a`](https://github.com/LTplus-AG/ifc-lite/commit/7215c2a9344ede37c90680e1eb2a6c2b70c0ee3d), [`e6ebbef`](https://github.com/LTplus-AG/ifc-lite/commit/e6ebbefde52670adbdb0c35bc19baed0453ca42f), [`e40213f`](https://github.com/LTplus-AG/ifc-lite/commit/e40213f0806bf40fcbd1a93bce68fb7ad791bcef), [`a2e5d2d`](https://github.com/LTplus-AG/ifc-lite/commit/a2e5d2d9aa578efeb6d3becdc94335650b89f67d), [`5c02af8`](https://github.com/LTplus-AG/ifc-lite/commit/5c02af8b7fda4d2fe53f79d3f00b9d192fc664d9), [`356e151`](https://github.com/LTplus-AG/ifc-lite/commit/356e151813f37be4ceaf8699251be09c1149ffca), [`42b3f21`](https://github.com/LTplus-AG/ifc-lite/commit/42b3f214290d6c7d5fb27f697ec8451b323aabd4), [`a0e1bfe`](https://github.com/LTplus-AG/ifc-lite/commit/a0e1bfe567e3a892287faa8ee3e1b3610b59511d), [`11478f7`](https://github.com/LTplus-AG/ifc-lite/commit/11478f7b7e3b530a6111874bb233fada1a36d785), [`ddebcd9`](https://github.com/LTplus-AG/ifc-lite/commit/ddebcd91b999d6304e19358f90d142cd439a420a), [`cddb321`](https://github.com/LTplus-AG/ifc-lite/commit/cddb32122c9d628b635910158a06fa5a94c0071a), [`6bf4181`](https://github.com/LTplus-AG/ifc-lite/commit/6bf418103e872f13666037ae4868e03468e3840c), [`d2cfb9e`](https://github.com/LTplus-AG/ifc-lite/commit/d2cfb9e66affc2674d6de5da44ecdc5d8a76b59e), [`4c7bd47`](https://github.com/LTplus-AG/ifc-lite/commit/4c7bd47e5e8c9bf62d88af6260cc6384a77e0cdf), [`a3dfacb`](https://github.com/LTplus-AG/ifc-lite/commit/a3dfacb2862d1db09267ebe52707193630c35ff7), [`477c1d5`](https://github.com/LTplus-AG/ifc-lite/commit/477c1d5ef5bb5057ff12f9d074270ec2359b39e1), [`db7f991`](https://github.com/LTplus-AG/ifc-lite/commit/db7f991eb63998c65389a28e7331ac984a5448ad)]:
+  - @ifc-lite/flow-nodes@0.4.0
+  - @ifc-lite/bcf@4.2.1
+  - @ifc-lite/clash@2.4.1
+  - @ifc-lite/wasm@10.1.1
+  - @ifc-lite/create@3.0.0
+  - @ifc-lite/data@6.0.0
+  - @ifc-lite/mcp@0.21.0
+  - @ifc-lite/parser@9.0.0
+  - @ifc-lite/rules@0.4.0
+  - @ifc-lite/export@4.7.3
+  - @ifc-lite/extensions@0.10.0
+  - @ifc-lite/sandbox@2.7.0
+  - @ifc-lite/flow@0.4.0
+  - @ifc-lite/ids@3.0.3
+  - @ifc-lite/mutations@2.7.1
+  - @ifc-lite/sdk@7.1.2
+  - @ifc-lite/viewer-core@0.2.23
+  - @ifc-lite/cache@3.6.1
+  - @ifc-lite/geometry@7.5.2
+  - @ifc-lite/ifcx@4.2.1
+  - @ifc-lite/query@2.5.1
+
+## 0.36.1
+
+### Patch Changes
+
+- [#5686](https://github.com/LTplus-AG/ifc-lite/pull/5686) [`90221d2`](https://github.com/LTplus-AG/ifc-lite/commit/90221d2f2928e8580050ddf9c26b5165f26af183) Thanks [@louistrue](https://github.com/louistrue)! - User-facing output uses the canonical IFC EXPRESS class name everywhere, as AGENTS.md requires. STEP stores class names UPPERCASE and `entityIndex.byType` is keyed by that raw spelling, so three surfaces printed `IFCWALLSTANDARDCASE` where `IfcWallStandardCase` belongs:
+  
+  - `ifc-lite info` mapped `typeCounts` through `IFC_ENTITY_NAMES` but not the drop census, so one report showed the same class both ways — `IfcIndexedPolygonalFace` under "Other types" and `IFCINDEXEDPOLYGONALFACE` under "Skipped classes".
+  - `ifc-lite gym`'s observation was raw throughout. That is the machine-readable contract an agent consumes, and it disagreed with `info --json` on the same model.
+  - The export's withheld-entity warning (reached via `ifc-lite anonymize`) named the raw class. The uppercase form is still used for the `IFCREL*` and style-rescue matching it is load-bearing for; only the message changes.
+
+- [#5569](https://github.com/LTplus-AG/ifc-lite/pull/5569) [`019630b`](https://github.com/LTplus-AG/ifc-lite/commit/019630b1d222d60a981d226d9355efe72d58383a) Thanks [@louistrue](https://github.com/louistrue)! - `simplify --json`, `lod --json`, `extract-entities --json` and the `gym` NDJSON protocol now put only their payload on stdout. All four drove the geometry pipeline without first calling `routeConsoleDiagnosticsToStderr()`, so roughly 25 lines of `[IFC-LITE] Opening classifier: …` arrived ahead of the document and `JSON.parse` failed on character 1 — while the exit code stayed 0. `gym`'s consumer got non-JSON on the very first line it read, before it could send a message.
+
+- [#5579](https://github.com/LTplus-AG/ifc-lite/pull/5579) [`e48f59b`](https://github.com/LTplus-AG/ifc-lite/commit/e48f59b0cadf092335a84ce85b4d970e653b7d2c) Thanks [@louistrue](https://github.com/louistrue)! - In-store authoring walks, review follow-up ([#5249](https://github.com/LTplus-AG/ifc-lite/issues/5249)): storeys are enumerated from the edited model (`listStoreys` takes an optional overlay; a deleted storey is no longer listed), a created wall retyped out of the divider set no longer bounds rooms, queued positional edits to containment/aggregation relationships are honoured, and the overlay is snapshotted once per walk. The headless `bim.spaces` backend passes the session's mutation view.
+
+- [#5648](https://github.com/LTplus-AG/ifc-lite/pull/5648) [`e7fc638`](https://github.com/LTplus-AG/ifc-lite/commit/e7fc638d9dc428a46a6581dc1d76de7a03b1dd59) Thanks [@louistrue](https://github.com/louistrue)! - `ifc-lite create storey` works instead of rejecting itself. `storey` was listed in `ELEMENT_TYPES` — so it passed the usage check and appeared in `--help` — but `addElement`'s switch had no case for it, so it fell through to `default` and fataled with `Unknown element type: storey`, printing the very list that had just offered it. `createCommand` already builds the project's storey before dispatching, so the type now returns that storey: a bare project/site/building/storey skeleton, with `--storey` and `--elevation` honoured and `--pset`/`--qset`/`--material` still attaching to something real.
+  
+  The advertised count was wrong in four places at once (28 real, 29 in the error list, "30+" in the CLI help and package README, "29 element types" in the guide). It is 29 everywhere now, and a test drives every entry in `ELEMENT_TYPES` through `addElement` so a listed-but-unbuildable type cannot come back.
+
+- [#5652](https://github.com/LTplus-AG/ifc-lite/pull/5652) [`55922f8`](https://github.com/LTplus-AG/ifc-lite/commit/55922f8da5c781d2c6650b0e4e5f2d867f25bf31) Thanks [@louistrue](https://github.com/louistrue)! - `ifc-lite extract-entities --type IfcWall` selects `IfcWallStandardCase` too, as `query`, `export`, `anonymize` and `mutate` all already do on the same input. It compared `inst.type === t.toUpperCase()` exactly, so the verbatim example in `docs/guide/cli.md` — `--type IfcWall` on a model whose 13 walls are all `IfcWallStandardCase` — selected nothing and exited 1. Because this command runs its own lightweight STEP parse and has no resolved schema version, it uses `expandTypes`' documented no-version union across the bundled schemas rather than picking one table on the caller's behalf.
+  
+  An empty selection also names the selector that came back empty (`nothing in this file matches --type IfcTank`) instead of advising you to use the flag you just used.
+
+- [#5688](https://github.com/LTplus-AG/ifc-lite/pull/5688) [`849b138`](https://github.com/LTplus-AG/ifc-lite/commit/849b1383f6f5e8706ae223df688b7bd6d2edab3d) Thanks [@louistrue](https://github.com/louistrue)! - `ifc-lite mutate --json` no longer reports a mutation that did not happen. `applyAttributeMutations` skips an attribute the entity has no slot for and warns on stderr, but it returned only the rewritten text, so the command could not see the skip: it counted one mutation per target unconditionally and published `mutated: 1, warnings: []` for a record it had left byte-identical. It now returns `{ content, applied, skipped }`, the count excludes entities whose every requested attribute was refused, and the JSON carries a `skipped` array with the express id, the attribute, a machine-readable `reason` and the same sentence that goes to stderr.
+
+- [#5699](https://github.com/LTplus-AG/ifc-lite/pull/5699) [`44d4b2c`](https://github.com/LTplus-AG/ifc-lite/commit/44d4b2c03bb21752bb0bb30d387f6c0ddb1865cf) Thanks [@louistrue](https://github.com/louistrue)! - `--out` is documented where it works, and refused where it does not. It was listed under the global `Options:` block as "Write output to file instead of stdout", but 21 of the 37 commands parse no such flag — so `ifc-lite info model.ifc --json --out info.json` wrote to stdout, created no file, and exited 0. The same was true of `query`, `stats`, `validate`, `props`, `schema`, `diff`, `ask`, `schedule`, `clash` and `ids`. It is now removed from the global list (the 16 commands that do take it already show `--out F` on their own line), and passing it to a command that cannot use it fails with a message naming the redirect to use instead and which commands do accept it.
+
+- [#5714](https://github.com/LTplus-AG/ifc-lite/pull/5714) [`6bd9859`](https://github.com/LTplus-AG/ifc-lite/commit/6bd98593582d0f0f411740b24bbc6181c3f305d8) Thanks [@louistrue](https://github.com/louistrue)! - The CLI refuses a truncated or entity-less IFC file instead of summarising it. A truncated file does not fail to parse — it parses to a prefix — and the loader's only check was `ISO-10303-21` somewhere in the first 256 bytes, so `ifc-lite info` reported "Entities: 59" and exited 0 for the first 4 KB of a real model, and "Schema: IFC4" for a 22-byte `ISO-10303-21;\nHEADER;\n` stub that declares no schema at all. Both now fail with a message saying which is wrong: a missing `END-ISO-10303-21;` terminator means the bytes are truncated, and a file with no `DATA;` section carries no entities. Both scans are bounded (256-byte tail, 64 KB head) so a hundreds-of-megabyte model costs nothing extra.
+
+- [#5586](https://github.com/LTplus-AG/ifc-lite/pull/5586) [`00d6837`](https://github.com/LTplus-AG/ifc-lite/commit/00d68371ac6ab87fafa4bc5f0add2468a7e8a398) Thanks [@louistrue](https://github.com/louistrue)! - The MCP server reports the version you can actually install. `VERSION` was the literal `'0.1.0'`, so `--version`, `--help` and the `serverInfo` block of every MCP `initialize` handshake announced 0.1.0 while the package was at 0.19.0 — in the one field a client UI puts in front of an operator.
+  
+  The CLI had already paid for this exact mistake (a hard-coded `'0.4.0'` that `--version` still reported at 0.22.0) and fixed it with a `readCliVersion` helper. Rather than copy that helper into a second package, it moves to `@ifc-lite/data` as `readPackageVersion`, which both already depend on, so the two shipped servers cannot drift apart on how they answer `--version`. Its behaviour is unchanged: a broken install reports `0.0.0-unknown` on stderr rather than inventing a plausible number.
+
+- [#5692](https://github.com/LTplus-AG/ifc-lite/pull/5692) [`617cf4c`](https://github.com/LTplus-AG/ifc-lite/commit/617cf4c8a3889c2b7f040b9b489e07ba3a6b55d4) Thanks [@louistrue](https://github.com/louistrue)! - `ifc-lite <command> --help` describes that command instead of printing the global help. `main()` answered `--help` before dispatch with the command still in `args`, so all 37 subcommands returned the same page — and the CLI's own docs tell LLM users to "discover all capabilities by running `ifc-lite --help`", with no second level to discover. It also made the real per-command help already written in `layer`, `ref` and `ext` unreachable: those handlers test for `--help` and were never reached. Those three now answer for themselves; every other command gets its entry from the `Commands:` block, continuation lines included, plus a link to the full reference. An unrecognised name still falls back to the global page.
+- Updated dependencies [[`90221d2`](https://github.com/LTplus-AG/ifc-lite/commit/90221d2f2928e8580050ddf9c26b5165f26af183), [`e682e6d`](https://github.com/LTplus-AG/ifc-lite/commit/e682e6da5f939aeca5940a65dd1cd338955e9c0f), [`5cfc6ff`](https://github.com/LTplus-AG/ifc-lite/commit/5cfc6ffd905db7fb512bddf1ddfa392c2156bd09), [`e48f59b`](https://github.com/LTplus-AG/ifc-lite/commit/e48f59b0cadf092335a84ce85b4d970e653b7d2c), [`1909a6a`](https://github.com/LTplus-AG/ifc-lite/commit/1909a6ac6b9934c8793b6e6be8f80dfece3fd44e), [`0d25941`](https://github.com/LTplus-AG/ifc-lite/commit/0d25941ceadd2d5842bcd8a3d15fc21793ecfc63), [`00d6837`](https://github.com/LTplus-AG/ifc-lite/commit/00d68371ac6ab87fafa4bc5f0add2468a7e8a398)]:
+  - @ifc-lite/export@4.7.2
+  - @ifc-lite/clash@2.4.0
+  - @ifc-lite/wasm@10.1.0
+  - @ifc-lite/create@2.9.2
+  - @ifc-lite/extensions@0.9.0
+  - @ifc-lite/sdk@7.1.1
+  - @ifc-lite/mcp@0.20.2
+  - @ifc-lite/data@5.3.0
+  - @ifc-lite/flow-nodes@0.3.1
+  - @ifc-lite/ids@3.0.2
+  - @ifc-lite/rules@0.3.2
+
 ## 0.36.0
 
 ### Minor Changes

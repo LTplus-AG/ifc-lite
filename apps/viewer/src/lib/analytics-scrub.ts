@@ -106,8 +106,7 @@ const SDK_STRUCTURED_KEYS = new Set<string>([
   '$exception_list', '$exception_values', '$exception_types',
 ]);
 
-// Guard against pathological/cyclic payloads: bounded depth, and a seen-set so
-// a self-referencing object can't spin forever.
+// Bound depth and remember objects so pathological/cyclic payloads terminate.
 const MAX_SCRUB_DEPTH = 5;
 
 const scrubProperties = (
@@ -128,6 +127,7 @@ const scrubProperties = (
       if (typeof v === 'string') props[k] = stripQueryAndHash(v);
       continue;
     }
+    if (k === 'model_count' && typeof v === 'number' && Number.isSafeInteger(v) && v >= 0) continue; // aggregate only
     if (SENSITIVE_KEY.test(k)) {
       delete props[k];
       continue;

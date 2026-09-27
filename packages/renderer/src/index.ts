@@ -70,6 +70,9 @@ export {
     ENVIRONMENT_UNIFORM_SIZE,
 } from './environment.js';
 export type { LightingEnvironment, ResolvedEnvironment, SkyGradient, Vec3Color } from './environment.js';
+export type { OverlayTheme, Rgba as OverlayThemeRgba } from './overlay-theme.js';
+export { DEFAULT_OVERLAY_THEME } from './overlay-theme.js';
+import { DEFAULT_OVERLAY_THEME, type OverlayTheme } from './overlay-theme.js';
 export type { Ray, Vec3, Intersection } from './raycaster.js';
 export type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from './snap-detector.js';
 
@@ -136,6 +139,7 @@ import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
 import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
 import { Scene, type InstancedTemplateGPU } from './scene.js';
+import { remapOverrideColors } from './scene-derived-batches.js';
 import type { SceneContents } from './scene-contents.js';
 import { Picker } from './picker.js';
 import { reportableItemId } from './pick-resolve.js';
@@ -162,6 +166,7 @@ import {
     packRteCameraOrigin,
     packRteFragmentSpace,
 } from './mesh-rte-uniforms.js';
+import { packMeshMaterial } from './mesh-material.js';
 import type { CutPolygon2D, DrawingLine2D, LineOverlayChannel } from './section-2d-overlay.js';
 import type { SymbolicFillInput, SymbolicTextInput } from './symbolic-overlay-pipelines.js';
 import { RendererOverlays } from './renderer-overlays.js';
@@ -184,11 +189,12 @@ import { resolveEnvironment } from './environment.js';
 import { ShadowPass, resolveShadowMapResolution } from './shadow-pass.js';
 import { fitSunLightMatrix, cameraFrustumFocusCorners, resolveShadowNormalBiasMetres } from './shadow-light-matrix.js';
 import { collectShadowOccluders } from './shadow-occluders.js';
-import { uploadInstancedRteDeltas } from './instanced-rte.js';
+import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './instanced-rte.js';
 import { shadowOccluderBatches } from './shadow-occluder-batches.js';
 import { captureRendererScreenshot } from './renderer-screenshot.js';
 import { beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrame, type RendererColorFrameCapture } from './renderer-color-readback.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
+import { batchEntityIdAnchor, batchHasColorOverride, packOverrideParams } from './entity-color-table.js';
 import { XRayAlpha, XRayEpochTracker, type AlphaBatchLike } from './xray-alpha.js';
 import { PartialBatchRequests } from './partial-batch-requests.js';
 import { colorSaltByte, packEntityLane } from './scene-geometry.js';
@@ -202,6 +208,8 @@ import {
 } from './pointcloud/point-cloud-stream-lifecycle.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { DeviationComputer, type DeviationComputeOptions, type DeviationComputeResult } from './deviation/deviation-computer.js';
+export type { DeviationAssetStats } from './deviation/deviation-readback.js';
+import type { DeviationAssetStats } from './deviation/deviation-readback.js';
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
 import { recoverRendererDevice, rendererDeviceLostError, type DeviceRecoveryOmission, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
 
@@ -232,10 +240,13 @@ export class Renderer {
     private scene: Scene;
     private picker: Picker | null = null;
     private canvas: HTMLCanvasElement;
+    // The overlay theme (#5484), kept so a pre-init `setOverlayTheme` call
+    // (and a later re-init) still lands — `init()` re-applies it to `pipeline`.
+    private overlayTheme: OverlayTheme = DEFAULT_OVERLAY_THEME;
     /**
      * Section-plane gizmo, 2D section drawing/cap, and the standalone 3D line
      * + symbolic annotation overlays (issue #2425). Created here rather than in
-     * `init()` so a pre-init `setOverlayLineColor` still lands — the GPU
+     * `init()` so a pre-init `setOverlayTheme` still lands — the GPU
      * objects inside stay null until `init()` calls `overlays.init()`.
      */
     private readonly overlays = new RendererOverlays({
@@ -471,6 +482,8 @@ export class Renderer {
     private readonly _xrayEpochs = new XRayEpochTracker();
     private _visibilityVersion: number = 0;
     private _partialBatchEpoch: number = 0;
+    private _xrayAlpha: XRayAlpha | null = null;
+    private _xrayAlphaEpoch: number = -1;
     private _lastColorOverrideGen: number = -1;
     private _xrayVersion: number = 0;
     private _lastHadPartialSources: boolean = false;
@@ -502,6 +515,8 @@ export class Renderer {
     // One 336-byte buffer serves all frame batches/meshes (84 floats including RTE lanes).
     private readonly uniformScratch = new Float32Array(MESH_UNIFORM_FLOATS);
     private readonly uniformScratchU32 = new Uint32Array(this.uniformScratch.buffer, MESH_FLAGS_BYTE_OFFSET, 4);
+    // overrideParams lanes (#6076): zero except inside a painting renderBatch call.
+    private readonly uniformOverrideU32 = new Uint32Array(this.uniformScratch.buffer, MESH_UNIFORM_OFFSET.overrideParams * 4, 4);
 
     // What the last render() actually clipped, so the GPU picker can mirror it and
     // section/crop-clipped geometry stays unpickable, not just invisible. Updated
@@ -623,6 +638,9 @@ export class Renderer {
         }
 
         this.pipeline = new RenderPipeline(this.device, width, height);
+        // Re-apply any theme set before this (re)creation, or set by a prior
+        // init() before a device-loss re-init, so it isn't lost (#5484).
+        this.pipeline.selectionColorUniform.update(this.overlayTheme.selection);
         this.picker = new Picker(this.device, width, height);
         this.overlays.init(
             this.device.getDevice(),
@@ -1127,6 +1145,16 @@ export class Renderer {
      */
     async computeDeviations(opts: DeviationComputeOptions = {}): Promise<DeviationComputeResult> {
         return this.deviationComputer.compute(opts, {
+            device: this.device,
+            scene: this.scene,
+            pointCloudRenderer: this.pointCloudRenderer,
+            requestRender: () => this.requestRender(),
+        });
+    }
+
+    /** Read per-scan-asset signed-distance statistics after a completed run. */
+    async readDeviationAssetStats(): Promise<DeviationAssetStats[]> {
+        return this.deviationComputer.readAssetStats({
             device: this.device,
             scene: this.scene,
             pointCloudRenderer: this.pointCloudRenderer,
@@ -1720,8 +1748,8 @@ export class Renderer {
         const edgeIntensity = Math.min(3.0, Math.max(0.0, visualEnhancement.edgeContrast.intensity));
         const edgeEnabledU32 = edgeEnabled ? 1 : 0;
         const edgeIntensityMilliU32 = Math.round(edgeIntensity * 1000);
-        // Only the separation lines read the object-id attachment after the pass.
-        const needsObjectIdPass = livePostEffects(visualEnhancement, effectsLive).separationLines;
+        // Only the edge pass reads the object-id attachment after the pass.
+        const needsObjectIdPass = livePostEffects(visualEnhancement, effectsLive).edges;
 
         // Check if visibility filtering is active
         const hasHiddenFilter = options.hiddenIds && options.hiddenIds.size > 0;
@@ -1804,10 +1832,6 @@ export class Renderer {
         // no-op when visibility is unchanged.
         this.scene.setInstancedVisibility(options.hiddenIds, options.isolatedIds);
 
-        // Per-frame alpha overrides for X-Ray mode. See RenderOptions.transparencyOverrides.
-        // XRayAlpha snapshots the caller's map so mid-frame mutation can't desync
-        // classification and uniform-write decisions for the same batch/mesh, and
-        // owns the per-entity resolution + the mixed-batch partition (#4129).
         // X-Ray *context* mode (`ghostExceptIds`) feeds the same machinery, so it
         // routes through the transparent pipeline with no extra call sites — and
         // avoids building a Map over every element just to fade "the rest".
@@ -1817,17 +1841,20 @@ export class Renderer {
         // the user asked to fade the building and got a solid facade standing
         // in front of a ghosted interior.
         this.scene.setInstancedGhosting(options.ghostExceptIds ?? null, selectedExpressIds, ghostAlpha);
-        const xray = new XRayAlpha(options, selectedExpressIds);
+        if (this._xrayAlpha === null || this._xrayAlphaEpoch !== this._partialBatchEpoch) {
+            this._xrayAlpha = new XRayAlpha(options, selectedExpressIds);
+            this._xrayAlphaEpoch = this._partialBatchEpoch;
+        }
+        const xray = this._xrayAlpha;
         const alphaForMesh = (expressId: number, fallback: number): number => xray.forEntity(expressId, fallback);
         const alphaForBatch = (batch: AlphaBatchLike, fallback: number): number => xray.forBatch(batch, fallback);
 
         // Lens / Pset color overrides: when an entity has an override, force
-        // its base draw through the opaque pipeline so it writes depth. The
-        // overlay paint pass uses depthCompare 'equal' and otherwise silently
-        // drops fragments belonging to entities whose default pipeline is
-        // transparent (IfcSpace, IfcOpeningElement, glass, …). See issue #677.
-        // Pure routing decision lives in overlay-routing.ts and is unit-tested
-        // there.
+        // its base draw through the opaque pipeline — the only draws the
+        // entity colour table paints (#6076) — or an entity whose default
+        // pipeline is transparent (IfcSpace, IfcOpeningElement, glass, …)
+        // would never show it. See issue #677. Pure routing decision lives in
+        // overlay-routing.ts and is unit-tested there.
         const colorOverrides = this.scene.getColorOverrides();
 
         // PERFORMANCE FIX: Use batch-level visibility filtering instead of creating individual meshes
@@ -1975,6 +2002,11 @@ export class Renderer {
                 }
                 : null;
 
+            // Meshes this camera's RTE frame cannot represent (#6128). Nothing
+            // culls individual meshes before this point, so a far-off mesh (a
+            // stray element, one hydrated for picking) must be skipped, not
+            // allowed to fail every frame.
+            const outsideEyeEnvelope = new Set<Mesh>();
             // Reuse pooled scratch buffer for per-mesh uniform writes
                 const meshBuf = this.uniformScratch;
                 const meshFlags = this.uniformScratchU32;
@@ -1997,9 +2029,7 @@ export class Renderer {
                     meshBuf[34] = mesh.color[2];
                     // Selected meshes always keep their own alpha so highlights stay opaque
                     meshBuf[35] = isSelected ? mesh.color[3] : alphaForMesh(mesh.expressId, mesh.color[3]);
-                    meshBuf[36] = mesh.material?.metallic ?? 0.0;
-                    meshBuf[37] = mesh.material?.roughness ?? 0.6;
-                    meshBuf[38] = 0; meshBuf[39] = 0;
+                    packMeshMaterial(meshBuf, mesh.color[3], mesh.material);
 
                     // Section plane data (offset 40-43)
                     if (sectionPlaneData) {
@@ -2029,7 +2059,10 @@ export class Renderer {
                     packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, meshBuf);
                     const meshOrigin = mesh.rteOrigin
                         ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
-                    relativeToEyeFrame.packDrawableOrigin(meshOrigin, meshBuf, MESH_UNIFORM_OFFSET.drawableDelta);
+                    if (!relativeToEyeFrame.tryPackDrawableOrigin(meshOrigin, meshBuf, MESH_UNIFORM_OFFSET.drawableDelta)) {
+                        outsideEyeEnvelope.add(mesh);
+                        continue;
+                    }
                     meshFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
                     device.queue.writeBuffer(mesh.uniformBuffer, 0, meshBuf);
@@ -2285,6 +2318,7 @@ export class Renderer {
             // only presets that enable the sky — blanked the model on those
             // drivers. Binding while the main pipeline is current keeps it
             // valid for every main-family draw that follows.
+            this.pipeline.setEntityColorTableBuffer(this.scene.getEntityColorTable().getBuffer());
             pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
 
             // Check if we have batched meshes (preferred for performance)
@@ -2502,11 +2536,9 @@ export class Renderer {
                 tpl[20] = 0; tpl[21] = 1; tpl[22] = 0; tpl[23] = 0;
                 tpl[24] = 0; tpl[25] = 0; tpl[26] = 1; tpl[27] = 0;
                 tpl[28] = 0; tpl[29] = 0; tpl[30] = 0; tpl[31] = 1;
-                // Color placeholder — overwritten per batch
-                // tpl[32..35] set per batch
-                tpl[36] = 0.0; // metallic
-                tpl[37] = 0.6; // roughness
-                tpl[38] = 0; tpl[39] = 0; // padding
+                // Colour + material row (tpl[32..39]) are patched per draw; the
+                // instanced passes keep this opaque default.
+                packMeshMaterial(tpl);
                 if (sectionPlaneData) {
                     tpl[40] = sectionPlaneData.normal[0];
                     tpl[41] = sectionPlaneData.normal[1];
@@ -2536,15 +2568,19 @@ export class Renderer {
                 // world plane loses centimetre cuts before the comparison.
                 packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl);
 
-                // Helper function to render a batch — patches color into the shared template
-                const renderBatch = (batch: typeof allBatchedMeshes[0]) => {
+                // Helper function to render a batch — patches color into the shared template.
+                // `paint` = a depth-writing opaque draw: colour overrides shade it from the
+                // entity colour table (#6076); transparent draws keep their own colour.
+                const renderBatch = (batch: typeof allBatchedMeshes[0], paint = false) => {
                     if (!batch.bindGroup || !batch.uniformBuffer) return;
 
-                    // Patch only the per-batch color (4 floats at offset 32)
+                    // Patch the per-batch colour, and the material its AUTHORED
+                    // alpha implies: an X-Ray fade is not glass (#5386).
                     tpl[32] = batch.color[0];
                     tpl[33] = batch.color[1];
                     tpl[34] = batch.color[2];
                     tpl[35] = alphaForBatch(batch, batch.color[3]);
+                    packMeshMaterial(tpl, batch.color[3]);
 
                     // Per-batch local frame: the batch's vertices are stored
                     // RELATIVE to batch.origin (f32-small), so set the model
@@ -2559,7 +2595,7 @@ export class Renderer {
                     // The regular model matrix remains for absolute-space
                     // fragment work (section/shadow); vertex projection uses
                     // this f64-subtracted high/low origin instead.
-                    relativeToEyeFrame.packDrawableOrigin(o ?? [0, 0, 0], tpl, MESH_UNIFORM_OFFSET.drawableDelta);
+                    if (!relativeToEyeFrame.tryPackDrawableOrigin(o ?? [0, 0, 0], tpl, MESH_UNIFORM_OFFSET.drawableDelta)) return;
                     tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
                     // Quantized dequantization params (issue #1682 phase 6);
@@ -2570,7 +2606,10 @@ export class Renderer {
                     tpl[58] = qz ? qz.min[2] : 0;
                     tpl[59] = qz ? qz.step : 0;
 
+                    const painted = paint && batchHasColorOverride(batch, colorOverrides, colorOverrideGen);
+                    packOverrideParams(this.uniformOverrideU32, painted ? batchEntityIdAnchor(batch) : null, painted, options.emphasizeOverrides === true);
                     device.queue.writeBuffer(batch.uniformBuffer, 0, tpl);
+                    this.uniformOverrideU32.fill(0);
 
                     // Single draw call for entire batch! LOD1-selected batches
                     // bind their simplified index range over the same vertices.
@@ -2595,13 +2634,9 @@ export class Renderer {
                 // base fallback here is type-safety, never taken.
                 const pipeFor = (
                     batch: typeof allBatchedMeshes[0],
-                    kind: 'opaque' | 'transparent' | 'overlay',
+                    kind: 'opaque' | 'transparent',
                 ): GPURenderPipeline => {
-                    const base = kind === 'opaque'
-                        ? this.pipeline!.getPipeline()
-                        : kind === 'transparent'
-                            ? this.pipeline!.getTransparentPipeline()
-                            : this.pipeline!.getOverlayPipeline();
+                    const base = kind === 'opaque' ? this.pipeline!.getPipeline() : this.pipeline!.getTransparentPipeline();
                     if (!batch.quantized) return base;
                     return this.pipeline!.getQuantizedPipelineVariant(kind) ?? base;
                 };
@@ -2618,7 +2653,7 @@ export class Renderer {
                 pass.setPipeline(this.pipeline.getPipeline());
                 for (const batch of opaqueBatches) {
                     pass.setPipeline(pipeFor(batch, 'opaque'));
-                    renderBatch(batch);
+                    renderBatch(batch, true);
                 }
                 pass.setPipeline(this.pipeline.getPipeline());
 
@@ -2667,8 +2702,11 @@ export class Renderer {
                     }
                     visibleInstanced = kept;
                 }
+                // Per-template instance runs inside this frame's RTE envelope,
+                // shared by the opaque and transparent instanced sub-passes.
+                let visibleInstancedRuns: InstanceRun[][] = [];
                 if (visibleInstanced.length > 0) {
-                    uploadInstancedRteDeltas(device, visibleInstanced, relativeToEyeFrame.getCameraWorld());
+                    visibleInstancedRuns = uploadInstancedRteDeltas(device, visibleInstanced, relativeToEyeFrame.getCameraWorld());
                     // Opaque instanced pass. flags.x bit 2 marks "instanced pass" so the
                     // shader routes per-instance opacity: opaque (or selected) occurrences
                     // draw here; translucent ones (lens/x-ray/compare overrides) are
@@ -2677,13 +2715,13 @@ export class Renderer {
                     pass.setPipeline(this.pipeline.getInstancedPipeline());
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-                    for (const it of visibleInstanced) {
+                    for (const [i, it] of visibleInstanced.entries()) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
                         pass.setIndexBuffer(it.indexBuffer, 'uint32');
-                        pass.drawIndexed(it.indexCount, it.instanceCount);
-                        frameDrawCalls++;
-                        frameInstancedDrawn++;
+                        const runs = visibleInstancedRuns[i]!;
+                        frameDrawCalls += drawInstanceRuns(pass, it.indexCount, runs);
+                        if (runs.length > 0) frameInstancedDrawn++;
                     }
                     pass.setPipeline(this.pipeline.getPipeline());
                     // The TRANSPARENT instanced sub-pass is drawn later, alongside the
@@ -2719,7 +2757,7 @@ export class Renderer {
                         );
                         if (txAlpha <= 0.01) continue;
                         // Lens / Pset colour override tints the sampled texel — the
-                        // batch overlay paint pass doesn't iterate textured meshes,
+                        // entity colour table is off for textured draws (#6076),
                         // so applying the override here is what recolours them.
                         const txOverride = colorOverrides?.get(tm.expressId);
                         // `world = origin + position`: the vertex buffer stores
@@ -2732,12 +2770,22 @@ export class Renderer {
                         // drew every textured occurrence collapsed toward the
                         // world origin.
                         tpl[28] = tm.origin[0]; tpl[29] = tm.origin[1]; tpl[30] = tm.origin[2];
-                        relativeToEyeFrame.packDrawableOrigin(tm.origin, tpl, MESH_UNIFORM_OFFSET.drawableDelta);
+                        if (!relativeToEyeFrame.tryPackDrawableOrigin(tm.origin, tpl, MESH_UNIFORM_OFFSET.drawableDelta)) continue;
                         tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
                         tpl[32] = txOverride ? txOverride[0] : tm.color[0];
                         tpl[33] = txOverride ? txOverride[1] : tm.color[1];
                         tpl[34] = txOverride ? txOverride[2] : tm.color[2];
                         tpl[35] = txAlpha;
+                        // Same authored-alpha + material contract as the flat/batched
+                        // paths (mesh-material.ts) — a call with neither argument
+                        // silently gave every textured metal or translucent mesh the
+                        // opaque dielectric default (#5623 review). The pipeline
+                        // itself is still opaque/depth-write only (no blend state,
+                        // see `txAlpha` above), so a translucent authored alpha still
+                        // never actually blends here — only the glass/roughness
+                        // CHOICE in the shader follows the same rule as everywhere
+                        // else, for the same reason `tm.material` does.
+                        packMeshMaterial(tpl, tm.color[3], tm.material);
                         device.queue.writeBuffer(tm.uniformBuffer, 0, tpl);
                         pass.setBindGroup(0, tm.bindGroup);
                         pass.setVertexBuffer(0, tm.vertexBuffer);
@@ -2777,7 +2825,7 @@ export class Renderer {
                             // Use opaque or transparent pipeline based on resolved alpha
                             // (not the parent batch's color[3] — that ignores transparencyOverrides).
                             // Promote to opaque if any expressId in the sub-batch carries a
-                            // lens/Pset colour override, so the overlay paint pass finds depth.
+                            // lens/Pset colour override, so the colour table paints it (#6076).
                             const isTransparent = shouldRouteBatchTransparent(
                                 alphaForBatch(subBatch, color[3]),
                                 subBatch.expressIds,
@@ -2795,7 +2843,7 @@ export class Renderer {
                             pass.setPipeline(pipeFor(subBatch, 'opaque'));
                             opaqueSubBatches.push(subBatch);
                             // Render the sub-batch as a single draw call
-                            renderBatch(subBatch);
+                            renderBatch(subBatch, true);
                         }
                     }
                     for (const subBatch of transparentSubBatches) {
@@ -2803,29 +2851,6 @@ export class Renderer {
                         renderBatch(subBatch);
                     }
                     // Reset to opaque pipeline for subsequent rendering
-                    pass.setPipeline(this.pipeline.getPipeline());
-                }
-
-                // Render color overlay batches (lens coloring) on top of ALL opaque geometry.
-                // Placed AFTER partial batches so depth buffer is complete for both full
-                // and partial batches. Uses 'equal' depth compare — only paints where
-                // original geometry wrote depth, so hidden entities never leak through.
-                //
-                // flags.x bit 1 = overlay: tells the shader to preserve baseColor.a
-                // (the overlay pipeline now has src-alpha blending so low-alpha ghost
-                // tints composite correctly against the opaque pass) AND skip the
-                // glass-fresnel branch (which is meant for real glass materials and
-                // would whiten low-alpha colour overrides at grazing angles).
-                const overrideBatches = this.scene.getOverrideBatches();
-                if (overrideBatches.length > 0) {
-                    pass.setPipeline(this.pipeline.getOverlayPipeline());
-                    // bit 1 = overlay; bit 5 (32) = emphasize (pop) — see shader.
-                    tplFlags[0] = options.emphasizeOverrides ? (2 | 32) : 2;
-                    for (const batch of overrideBatches) {
-                        pass.setPipeline(pipeFor(batch, 'overlay'));
-                        renderBatch(batch);
-                    }
-                    tplFlags[0] = 0;  // restore for any downstream use of the template
                     pass.setPipeline(this.pipeline.getPipeline());
                 }
 
@@ -2900,12 +2925,11 @@ export class Renderer {
                     pass.setPipeline(instancedTransparentPipeline);
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-                    for (const it of visibleInstanced) {
+                    for (const [i, it] of visibleInstanced.entries()) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
                         pass.setIndexBuffer(it.indexBuffer, 'uint32');
-                        pass.drawIndexed(it.indexCount, it.instanceCount);
-                        frameDrawCalls++;
+                        frameDrawCalls += drawInstanceRuns(pass, it.indexCount, visibleInstancedRuns[i]!);
                     }
                     pass.setPipeline(this.pipeline.getPipeline());
                 }
@@ -2931,9 +2955,7 @@ export class Renderer {
                         tpl.set(mesh.transform.m, 16);
                         tpl[32] = mesh.color[0]; tpl[33] = mesh.color[1];
                         tpl[34] = mesh.color[2]; tpl[35] = alphaForMesh(mesh.expressId, mesh.color[3]);
-                        tpl[36] = mesh.material?.metallic ?? 0.0;
-                        tpl[37] = mesh.material?.roughness ?? 0.6;
-                        tpl[38] = 0; tpl[39] = 0;
+                        packMeshMaterial(tpl, mesh.color[3], mesh.material);
                         if (sectionPlaneData) {
                             tpl[40] = sectionPlaneData.normal[0];
                             tpl[41] = sectionPlaneData.normal[1];
@@ -2951,7 +2973,7 @@ export class Renderer {
                         tplFlags[3] = edgeIntensityMilliU32;
                         packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl);
                         const transparentOrigin = mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
-                        relativeToEyeFrame.packDrawableOrigin(transparentOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta);
+                        if (!relativeToEyeFrame.tryPackDrawableOrigin(transparentOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta)) continue;
                         tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
                         device.queue.writeBuffer(mesh.uniformBuffer, 0, tpl);
@@ -2993,9 +3015,7 @@ export class Renderer {
                     tpl.set(mesh.transform.m, 16);
                     tpl[32] = mesh.color[0]; tpl[33] = mesh.color[1];
                     tpl[34] = mesh.color[2]; tpl[35] = mesh.color[3];
-                    tpl[36] = mesh.material?.metallic ?? 0.0;
-                    tpl[37] = mesh.material?.roughness ?? 0.6;
-                    tpl[38] = 0; tpl[39] = 0;
+                    packMeshMaterial(tpl, mesh.color[3], mesh.material);
                     if (sectionPlaneData) {
                         tpl[40] = sectionPlaneData.normal[0];
                         tpl[41] = sectionPlaneData.normal[1];
@@ -3013,7 +3033,7 @@ export class Renderer {
                     tplFlags[3] = edgeIntensityMilliU32;
                     packRteFragmentSpace(relativeToEyeFrame, sectionPlaneData, options.clipBox, tpl);
                     const selectedOrigin = mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
-                    relativeToEyeFrame.packDrawableOrigin(selectedOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta);
+                    if (!relativeToEyeFrame.tryPackDrawableOrigin(selectedOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta)) continue;
                     tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
                     device.queue.writeBuffer(mesh.uniformBuffer, 0, tpl);
@@ -3029,6 +3049,7 @@ export class Renderer {
                 // Fallback: render individual meshes (only when no batches exist)
                 // Render opaque meshes with per-mesh bind groups
                 for (const mesh of opaqueMeshes) {
+                    if (outsideEyeEnvelope.has(mesh)) continue;
                     if (mesh.bindGroup) {
                         pass.setBindGroup(0, mesh.bindGroup);
                     } else {
@@ -3044,6 +3065,7 @@ export class Renderer {
                 if (transparentMeshes.length > 0) {
                     pass.setPipeline(this.pipeline.getTransparentPipeline());
                     for (const mesh of transparentMeshes) {
+                        if (outsideEyeEnvelope.has(mesh)) continue;
                         if (mesh.bindGroup) {
                             pass.setBindGroup(0, mesh.bindGroup);
                         } else {
@@ -3401,13 +3423,31 @@ export class Renderer {
     }
 
     /**
-     * Set the colour of the overlay lines (annotation / alignment / grid) and the
-     * section-cut outline (RGBA, 0..1). Defaults to opaque black; theme it to keep
-     * lines legible on a dark canvas. The matching label colour is per-text via
+     * Set the one colour vocabulary every overlay draws in (#5484): the selection
+     * highlight, the section-plane preview (one accent for every axis), every
+     * overlay line channel (section-cut outline, IfcAnnotation, alignment,
+     * IfcGrid, DXF / LandXML) and the clash pair / overlap tints. Call this on
+     * theme change and once after `init()`; the underlying GPU uniforms are
+     * written only here, never per frame. Supersedes `setOverlayLineColor`
+     * (deleted — the app never called it with a themed colour). See
+     * `OverlayTheme` for which fields want linear-light RGBA and which want
+     * sRGB-direct RGBA. The matching label colour is per-text via
      * `SymbolicTextInput.color` on `uploadAnnotationTexts3D`.
      */
-    setOverlayLineColor(color: readonly [number, number, number, number]): void {
-        this.overlays.setOverlayLineColor(color);
+    setOverlayTheme(theme: OverlayTheme): void {
+        const previous = this.overlayTheme;
+        this.overlayTheme = theme;
+        this.pipeline?.selectionColorUniform.update(theme.selection);
+        this.overlays.setTheme(theme);
+        // Clash-pair tints already uploaded to the entity colour table must
+        // follow a theme change as the other clash overlays do (#5490).
+        const installed = this.scene.getColorOverrides();
+        const repainted = installed && remapOverrideColors(installed, [[previous.clashA, theme.clashA], [previous.clashB, theme.clashB]]);
+        const device = this.getGPUDevice();
+        if (repainted && device && this.pipeline) {
+            this.scene.setColorOverrides(repainted, device, this.pipeline);
+            this.requestRender();
+        }
     }
 
     /**
@@ -3421,7 +3461,7 @@ export class Renderer {
      *
      * Every channel is an independent buffer with its own visibility, so
      * setting one leaves the other three untouched. All four share the colour
-     * set by {@link setOverlayLineColor}; label colour is per-text via
+     * set by `Renderer.setOverlayTheme`'s `overlayLine` field; label colour is per-text via
      * `SymbolicTextInput.color` on `uploadAnnotationTexts3D`.
      *
      * The channels differ in exactly one way — whether they grow the scene
@@ -3442,11 +3482,13 @@ export class Renderer {
     /**
      * Show (or clear) the clash-overlap box: the wireframe AABB of a focused
      * clash, drawn in `color` so the overlap region reads as a distinct third
-     * colour next to the two glowing clash elements (#1277). Pass `null` to
-     * clear. `min`/`max` are world-space corners (clash works in world frame).
+     * colour next to the two glowing clash elements (#1277). Omit `color` to
+     * draw it in the overlay theme's `clashOverlap` and keep following it
+     * across `setOverlayTheme` calls (#5490). Pass `null` to clear.
+     * `min`/`max` are world-space corners (clash works in world frame).
      */
     setClashOverlapBox(
-        box: { min: [number, number, number]; max: [number, number, number]; color: [number, number, number, number] } | null,
+        box: { min: [number, number, number]; max: [number, number, number]; color?: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashOverlapBox(box);
     }
@@ -3455,11 +3497,13 @@ export class Renderer {
      * Draw the focused clash's CONTACT geometry as 3D line segments — the real
      * shared-face polygon outlines / intersection lines, not the AABB box.
      * `vertices` is a flat line-list (x,y,z per endpoint, 2 endpoints per
-     * segment) in world frame. Pass `null` to clear. Shares the clash-box line
-     * buffer, so only one of this / setClashOverlapBox is shown at a time.
+     * segment) in world frame. Omit `color` to follow the overlay theme's
+     * `clashOverlap`, as for `setClashOverlapBox`. Pass `null` to clear. Shares
+     * the clash-box line buffer, so only one of this / setClashOverlapBox is
+     * shown at a time.
      */
     setClashContactLines(
-        lines: { vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] } | readonly { localVertices: Float32Array; origin: [number, number, number] }[]; color: [number, number, number, number] } | null,
+        lines: { vertices: Float32Array | { localVertices: Float32Array; origin: [number, number, number] } | readonly { localVertices: Float32Array; origin: [number, number, number] }[]; color?: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashContactLines(lines);
     }
@@ -3471,10 +3515,11 @@ export class Renderer {
      * BIMcollab Zoom / Solibri presentation). Pass `null` to clear. Independent
      * of `setClashOverlapBox` / `setClashContactLines`: the caller decides
      * which one is current for a given clash (solid when the kernel resolved
-     * one, box/lines as the fallback when it didn't).
+     * one, box/lines as the fallback when it didn't). Omit `color` to follow
+     * the overlay theme's `clashOverlap`, as for `setClashOverlapBox`.
      */
     setClashIntersectionSolid(
-        solid: { positions: Float32Array | Float64Array; origin?: [number, number, number]; indices: Uint32Array; color: [number, number, number, number] } | null,
+        solid: { positions: Float32Array | Float64Array; origin?: [number, number, number]; indices: Uint32Array; color?: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashIntersectionSolid(solid);
     }

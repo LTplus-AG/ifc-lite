@@ -21,6 +21,7 @@
 
 import { useCallback, useRef } from 'react';
 import { useViewerStore } from '@/store';
+import { entityRefToString, stringToEntityRef } from '@/store/types';
 
 /** One selectable row: the renderer highlight id plus the model-aware ref. */
 export interface MultiSelectItem {
@@ -46,6 +47,8 @@ export type MultiSelectClickHandler = (
 export interface ListMultiSelect {
   /** Handle a row click (single / toggle / range per modifier keys). */
   select: MultiSelectClickHandler;
+  /** Select rows whose visible item represents several IFC entities. */
+  selectGroups: (items: ReadonlyArray<ReadonlyArray<MultiSelectItem>>, index: number, modifiers: SelectModifiers) => void;
   /**
    * Record the anchor for a row index WITHOUT changing the selection. A panel
    * that routes plain clicks through its own (legacy) selection path calls this
@@ -96,8 +99,9 @@ export function useEntityListMultiSelect(): ListMultiSelect {
     (rows: ReadonlyArray<MultiSelectItem>) => {
       clearEntitySelection();
       if (rows.length === 0) return;
-      setSelectedEntityIds(rows.map((r) => r.globalId));
-      addEntitiesToSelection(rows.map((r) => ({ modelId: r.modelId, expressId: r.expressId })));
+      const unique = [...new Map(rows.map((row) => [row.globalId, row])).values()];
+      setSelectedEntityIds(unique.map((r) => r.globalId));
+      addEntitiesToSelection(unique.map((r) => ({ modelId: r.modelId, expressId: r.expressId })));
     },
     [clearEntitySelection, setSelectedEntityIds, addEntitiesToSelection],
   );
@@ -131,5 +135,44 @@ export function useEntityListMultiSelect(): ListMultiSelect {
     [selectExact, toggleSelection, toggleEntitySelection],
   );
 
-  return { select, setAnchor };
+  const selectGroups = useCallback<ListMultiSelect['selectGroups']>((items, index, modifiers) => {
+    const group = items[index];
+    if (!group || group.length === 0) return;
+    const intent = resolveListSelection(anchorRef.current, index, items.length, modifiers);
+    if (intent.kind === 'range') {
+      selectExact(items.slice(intent.lo, intent.hi + 1).flat());
+      return;
+    }
+    if (intent.kind === 'single') {
+      selectExact(group);
+      anchorRef.current = index;
+      return;
+    }
+
+    const state = useViewerStore.getState();
+    const selectedIds = new Set(state.selectedEntityIds);
+    if (state.selectedEntityId !== null) selectedIds.add(state.selectedEntityId);
+    const selectedRefs = new Map(
+      [...state.selectedEntitiesSet].map((key) => [key, stringToEntityRef(key)] as const),
+    );
+    if (state.selectedEntity) selectedRefs.set(entityRefToString(state.selectedEntity), state.selectedEntity);
+    const remove = group.every((row) => selectedIds.has(row.globalId));
+    for (const row of group) {
+      const ref = { modelId: row.modelId, expressId: row.expressId };
+      const key = entityRefToString(ref);
+      if (remove) {
+        selectedIds.delete(row.globalId);
+        selectedRefs.delete(key);
+      } else {
+        selectedIds.add(row.globalId);
+        selectedRefs.set(key, ref);
+      }
+    }
+    clearEntitySelection();
+    setSelectedEntityIds([...selectedIds]);
+    addEntitiesToSelection([...selectedRefs.values()]);
+    anchorRef.current = index;
+  }, [clearEntitySelection, setSelectedEntityIds, addEntitiesToSelection, selectExact]);
+
+  return { select, selectGroups, setAnchor };
 }

@@ -24,6 +24,7 @@
  */
 
 import { toast } from '@/components/ui/toast';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 
 /**
  * `OpeningReassignSummary` as far as the notices care: how many of the source
@@ -70,7 +71,7 @@ export function formatOpeningReassignSuffix(op: OpeningReassignCounts): string {
  * then; it must not be quiet on ONE of the two commit paths when it is not.
  */
 export function notifyWallSplit(op: OpeningReassignCounts): void {
-  toast.success(`Wall split${formatOpeningReassignSuffix(op)} — Ctrl+Z to undo`);
+  toast.success(`Wall split${formatOpeningReassignSuffix(op)} — ${shortcutLabel('edit.undo')} to undo`);
   if (op.skipped > 0) {
     toast.info(
       `${op.skipped} opening${op.skipped === 1 ? '' : 's'} could not be reassigned and may need manual repositioning`,

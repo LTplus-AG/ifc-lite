@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * TaskEditCard — Inspector card that renders when a single Gantt task is
+ * TaskEditCard — Properties card that renders when a single Gantt task is
  * selected, exposing the edit fields from P1 of the schedule-editing plan.
  *
  * Scope (P1):
@@ -20,7 +20,7 @@
  */
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,6 +34,7 @@ import type { ScheduleTaskInfo } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_IDENTIFICATION_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE, EXPRESS_PREDEFINED_TYPE_ATTRIBUTE } from './express-labels';
+import { PersistentCollapsible } from './PersistentCollapsible';
 
 /** IfcTaskTypeEnum values — same list as the Generate dialog. */
 const TASK_TYPES: readonly string[] = [
@@ -158,28 +159,25 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
   const viewport3DCount = selectedEntityIds.size;
 
   return (
-    <Collapsible
-      defaultOpen
-      className="border-2 border-primary/40 bg-primary/5 w-full max-w-full overflow-hidden"
-    >
-      <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-primary/10 text-left transition-colors overflow-hidden">
+    <PersistentCollapsible id="task-edit" className="border-2 border-primary/40 bg-primary/5 w-full max-w-full overflow-hidden">
+      <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-primary/10 text-left transition-colors overflow-hidden">
         <ClipboardList className="h-3.5 w-3.5 text-primary shrink-0" />
         <span className="font-bold text-xs text-primary truncate flex-1 min-w-0">
           {t('properties.taskEdit.heading')}
         </span>
         {scheduleIsEdited && (
-          <span className="text-[10px] font-medium bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 shrink-0">
+          <span className="text-2xs font-medium bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 shrink-0">
             {t('properties.taskEdit.pendingBadge')}
           </span>
         )}
-        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
       </CollapsibleTrigger>
 
       <CollapsibleContent>
         <div className="border-t-2 border-primary/40 p-3 grid gap-3">
           {/* Identity */}
           <div className="grid gap-1.5">
-            <Label htmlFor="task-name" className="text-[11px]">{EXPRESS_NAME_ATTRIBUTE}</Label>
+            <Label htmlFor="task-name" className="text-2xs">{EXPRESS_NAME_ATTRIBUTE}</Label>
             <Input
               id="task-name"
               value={nameDraft}
@@ -193,7 +191,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
 
           <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
             <div className="grid gap-1.5">
-              <Label htmlFor="task-type" className="text-[11px]">{EXPRESS_PREDEFINED_TYPE_ATTRIBUTE}</Label>
+              <Label htmlFor="task-type" className="text-2xs">{EXPRESS_PREDEFINED_TYPE_ATTRIBUTE}</Label>
               <Select
                 value={task.predefinedType || 'NOTDEFINED'}
                 onValueChange={(v) => updateTask(taskGlobalId, { predefinedType: v })}
@@ -217,12 +215,12 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
           </div>
 
           {/* Time — stacked layout. Two datetime-local inputs side-by-side
-              overflow the narrow default Inspector width (22 % of viewport);
+              overflow the narrow default Properties width (22 % of viewport);
               stacking reads cleaner even at wide widths and gives every
               input enough room to render the browser's picker UI. */}
           <div className="grid gap-2 rounded border border-border/60 p-2">
             <div className="grid gap-1">
-              <Label htmlFor="task-start" className="text-[10px]">{t('properties.taskEdit.startLabel')}</Label>
+              <Label htmlFor="task-start" className="text-2xs">{t('properties.taskEdit.startLabel')}</Label>
               <Input
                 id="task-start"
                 type="datetime-local"
@@ -241,7 +239,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
               />
             </div>
             <div className="grid gap-1">
-              <Label htmlFor="task-finish" className="text-[10px]">{t('properties.taskEdit.finishLabel')}</Label>
+              <Label htmlFor="task-finish" className="text-2xs">{t('properties.taskEdit.finishLabel')}</Label>
               <Input
                 id="task-finish"
                 type="datetime-local"
@@ -261,7 +259,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
               />
             </div>
             <div className="grid gap-1">
-              <Label htmlFor="task-dur" className="text-[10px]">{t('properties.taskEdit.durationLabel')}</Label>
+              <Label htmlFor="task-dur" className="text-2xs">{t('properties.taskEdit.durationLabel')}</Label>
               <Input
                 id="task-dur"
                 type="number"
@@ -282,7 +280,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
                 onBlur={flushTimeCommit}
                 className="h-7 w-full text-xs font-mono"
               />
-              <p className="text-[10px] text-muted-foreground flex items-start gap-1">
+              <p className="text-2xs text-muted-foreground flex items-start gap-1">
                 <Info className="h-3 w-3 shrink-0 mt-px" />
                 {t('properties.taskEdit.timeConsistencyHelp')}
               </p>
@@ -292,8 +290,8 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
           {/* Products */}
           <div className="grid gap-2 rounded border border-border/60 p-2">
             <div className="flex items-center justify-between">
-              <Label className="text-[11px]">{t('properties.taskEdit.productsLabel')}</Label>
-              <span className="text-[11px] font-mono text-muted-foreground">{t('properties.taskEdit.productsAssignedCount', { countDisplay: formatLocaleNumber(locale, task.productExpressIds.length) })}</span>
+              <Label className="text-2xs">{t('properties.taskEdit.productsLabel')}</Label>
+              <span className="text-2xs font-mono text-muted-foreground">{t('properties.taskEdit.productsAssignedCount', { countDisplay: formatLocaleNumber(locale, task.productExpressIds.length) })}</span>
             </div>
             <div className="grid grid-cols-2 gap-1.5">
               <Tooltip>
@@ -337,7 +335,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
           <button
             type="button"
             onClick={() => setShowDetails((s) => !s)}
-            className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground transition-colors"
           >
             <ChevronDown className={`h-3 w-3 transition-transform ${showDetails ? '' : '-rotate-90'}`} />
             {t('properties.taskEdit.detailsToggle')}
@@ -345,7 +343,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
           {showDetails && (
             <div className="grid gap-2">
               <div className="grid gap-1.5">
-                <Label htmlFor="task-ident" className="text-[11px]">{EXPRESS_IDENTIFICATION_ATTRIBUTE}</Label>
+                <Label htmlFor="task-ident" className="text-2xs">{EXPRESS_IDENTIFICATION_ATTRIBUTE}</Label>
                 <Input
                   id="task-ident"
                   value={identDraft}
@@ -357,8 +355,8 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label className="text-[11px]">{EXPRESS_GLOBAL_ID_ATTRIBUTE}</Label>
-                <div className="text-[10px] font-mono text-muted-foreground truncate" title={task.globalId}>
+                <Label className="text-2xs">{EXPRESS_GLOBAL_ID_ATTRIBUTE}</Label>
+                <div className="text-2xs font-mono text-muted-foreground truncate" title={task.globalId}>
                   {task.globalId}
                 </div>
               </div>
@@ -379,7 +377,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
               </Button>
             ) : (
               <>
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-2xs text-muted-foreground">
                   {task.childGlobalIds.length > 0 ? t('properties.taskEdit.confirmDeleteWithDescendants', { count: task.childGlobalIds.length, countDisplay: formatLocaleNumber(locale, task.childGlobalIds.length) }) : t('properties.taskEdit.confirmDelete')}
                 </span>
                 <Button
@@ -406,7 +404,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
           </div>
         </div>
       </CollapsibleContent>
-    </Collapsible>
+    </PersistentCollapsible>
   );
 });
 
@@ -503,7 +501,7 @@ function ToggleRow({ label, icon, checked, onChange }: ToggleRowProps) {
   return (
     <label className="flex items-center gap-1.5 cursor-pointer select-none">
       {icon && <span className="text-muted-foreground">{icon}</span>}
-      <span className="text-[11px] font-medium">{label}</span>
+      <span className="text-2xs font-medium">{label}</span>
       <Switch checked={checked} onCheckedChange={onChange} />
     </label>
   );

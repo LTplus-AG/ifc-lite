@@ -91,6 +91,20 @@ pub fn native_to_baked(
     m
 }
 
+/// Hand a streaming caller the basis its batches are baked in (#5407), from
+/// the SAME frame the router was just given, so the two cannot disagree.
+pub(super) fn publish_baked_basis(
+    out: Option<&std::sync::OnceLock<[f64; 16]>>,
+    frame: crate::mesh_frame::MeshFrame,
+    site_transform: Option<&[f64]>,
+) {
+    if let Some(out) = out {
+        let (x, y, z) = frame.rtc_offset();
+        // `set` fails only if already set: one pass publishes one frame.
+        let _ = out.set(native_to_baked(frame.coordinate_space(), site_transform, [x, y, z]));
+    }
+}
+
 /// Apply the inverse of the site placement's 3×3 rotation to in-place `f32`
 /// triplets (positions or normals). Translation is handled separately via the
 /// router's `rtc_offset`; this only rotates vertices into the site-local axis

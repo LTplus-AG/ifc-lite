@@ -4,25 +4,28 @@
 import { useRef, type PointerEvent } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
+import { useProjectorTick } from '@/components/viewport-ui/scene';
 import { modelCenter } from '@/lib/model-placement/scene';
 import { addTranslation, constrainTranslation, orthogonalAxis, toRenderTranslation, type Translation, type MoveConstraint } from '@/lib/model-placement/translation';
 import { dragTranslation, type DragBasis, type ScreenVector } from '@/lib/model-placement/drag';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
+import { IFC_AXIS_COLORS } from '@/lib/viewport-ui/overlay-theme';
 
 const AXES = ['x', 'y', 'z'] as const;
-const COLORS = ['#ef4444', '#10b981', '#3b82f6'];
+/** The shared X/Y/Z triad (#5490), indexed like `AXES`. */
+const COLORS = AXES.map((axis) => IFC_AXIS_COLORS[axis]);
 interface Drag { start: ScreenVector; basis: DragBasis; before: Translation; constraint: MoveConstraint; ids: readonly string[]; ortho?: 'x' | 'y' | 'z' }
 
-/** Uses the existing gizmo's projection callback and camera tick subscription.
- * All pointer samples preview against the starting displacement; Apply makes one command. */
+/** Uses the existing gizmo's projection callback, woken by the scene
+ * kernel's shared `SceneProjector` tick (#5510) instead of a private
+ * `requestAnimationFrame` poll of the camera pose. All pointer samples
+ * preview against the starting displacement; Apply makes one command. */
 export function PlacementGizmo({ disabled, onError }: { disabled: boolean; onError: (message: string) => void }) {
   const { t } = useTranslation();
   const preview = useViewerStore((state) => state.modelPlacement.preview);
   const project = useViewerStore((state) => state.cameraCallbacks.projectToScreen);
-  const viewpoint = useViewerStore((state) => state.cameraCallbacks.getViewpoint);
   const drag = useRef<Drag | null>(null);
-  useCameraTickSubscription(viewpoint, Boolean(preview) && !disabled);
+  useProjectorTick(Boolean(preview) && !disabled);
   if (!preview || !project || disabled) return null;
   const center = preview.source ? addTranslation(preview.source.point, preview.delta) : modelCenter(preview.modelIds[0]);
   if (!center) return null;

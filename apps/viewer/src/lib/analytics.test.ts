@@ -6,6 +6,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { scrubEvent } from './analytics-scrub.js';
 import { beforeSend, ensureCapturableStack } from './analytics.js';
+import * as analytics from './analytics.js';
 import { __setChunkReloadPendingForTests } from './chunk-version-skew.js';
 
 // `scrubEvent` is the single `before_send` gate every captured event passes
@@ -21,6 +22,37 @@ const exceptionEvent = (value: string, extraProps: Record<string, unknown> = {})
     $exception_list: [{ type: 'Error', value }],
     ...extraProps,
   },
+});
+
+it('stored analytics opt-out suppresses explicit and automatic captures (#5866)', () => {
+  // These additions are checked at runtime so the production-revert oracle
+  // reaches assertions when it removes them from the existing module.
+  const added = analytics as typeof analytics & {
+    setAnalyticsOptOut?: (value: boolean) => void;
+    consentAwareAnalyticsClient?: (target: typeof analytics.posthog) => typeof analytics.posthog;
+  };
+  assert.ok(added.setAnalyticsOptOut);
+  assert.ok(added.consentAwareAnalyticsClient);
+  let explicitEvents = 0;
+  let exceptions = 0;
+  const guarded = added.consentAwareAnalyticsClient({
+    capture: () => { explicitEvents++; return undefined; },
+    captureException: () => { exceptions++; return undefined; },
+  });
+  try {
+    added.setAnalyticsOptOut(true);
+    guarded.capture('command_executed', { command_id: 'test' });
+    guarded.captureException(new Error('test'));
+    assert.equal(beforeSend({ event: 'command_executed', properties: { command_id: 'test' } }), null);
+    assert.equal(explicitEvents, 0);
+    assert.equal(exceptions, 0);
+
+    added.setAnalyticsOptOut(false);
+    guarded.capture('command_executed', { command_id: 'test' });
+    assert.equal(explicitEvents, 1);
+  } finally {
+    added.setAnalyticsOptOut(false);
+  }
 });
 
 describe('scrubEvent — error_kind tagging', () => {

@@ -18,6 +18,7 @@ import { elementsFromStep } from '@ifc-lite/clash/step';
 import { createDataAccessor } from '@ifc-lite/ids/bridge';
 import { IDSNamespace, type IDSSupportedLocale } from '@ifc-lite/sdk';
 import { computeValidationIssues } from '../validate.js';
+import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
 
 /** Reward channels this prototype knows how to compute. */
 export type GymCheck = 'schema' | 'clash' | 'ids';
@@ -132,7 +133,13 @@ export function computeObservation(store: IfcDataStore): Record<string, unknown>
   const entityCounts: Record<string, number> = {};
   // @raw-entity-enumeration-ok gym reset observes originalStore freshly loaded from a file or generated episode, before its edit overlay is applied
   for (const [type, ids] of store.entityIndex.byType) {
-    if (ids.length > 0) entityCounts[type] = ids.length;
+    // `byType` is keyed by the raw STEP spelling (IFCWALLSTANDARDCASE). This is
+    // the machine-readable observation an agent consumes, and `info --json`
+    // already reports IfcPascalCase, so the two disagreed on the same model.
+    if (ids.length > 0) {
+      const displayName = IFC_ENTITY_NAMES[type] ?? type;
+      entityCounts[displayName] = (entityCounts[displayName] ?? 0) + ids.length;
+    }
   }
   const sortedEntityCounts: Record<string, number> = {};
   for (const type of Object.keys(entityCounts).sort()) {

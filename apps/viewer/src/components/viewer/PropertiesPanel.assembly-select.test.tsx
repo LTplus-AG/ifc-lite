@@ -165,8 +165,10 @@ describe('Properties panel -- "Part of Assembly" (#3620)', () => {
   // them report the entities selected BEFORE this click.
   it('clears a stale model-aware multi-selection', async () => {
     await seed(60);
+    // One stale entry: two or more is a live multi-selection, which the
+    // panel summarises instead of showing the part and its badge (#5900).
     useViewerStore.setState({
-      selectedEntitiesSet: new Set([`${MODEL_ID}:60`, `${MODEL_ID}:61`]),
+      selectedEntitiesSet: new Set([`${MODEL_ID}:61`]),
     } as never);
 
     const container = render(<PropertiesPanel />);

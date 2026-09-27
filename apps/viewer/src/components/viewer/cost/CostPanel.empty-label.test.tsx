@@ -80,6 +80,7 @@ afterEach(() => {
 
 function renderPanel(label: string): HTMLElement {
   useViewerStore.setState({
+    editEnabled: true,
     models: new Map([['modelA', model('modelA', buildStoreFromStep(step(label)))]]),
     activeModelId: 'modelA',
   });

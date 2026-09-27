@@ -128,3 +128,28 @@ export function localIdInOverlay(
   if (localId <= model.maxExpressId) return null; // parse-range's business
   return view.getNewEntity(localId) !== null ? localId : null;
 }
+
+/** The store fields {@link typeNameOfGlobalId} reads. */
+export interface TypeNameLookupState {
+  resolveGlobalIdFromModels: (globalId: number) => { modelId: string; expressId: number } | null;
+  models: ReadonlyMap<string, { ifcDataStore?: { entities?: { getTypeName(id: number): string } } | null }>;
+}
+
+/**
+ * The IFC class of a federated global id (e.g. a GPU-instanced occurrence,
+ * which carries no class of its own), read from the id's OWN model store.
+ * Resolves through `resolveGlobalIdFromModels`, the canonical way back from
+ * a global id (it also knows overlay-allocated ids, the registry does not).
+ * The active store is read only with no models loaded (legacy single-model
+ * mode, where global === express).
+ */
+export function typeNameOfGlobalId(
+  state: TypeNameLookupState,
+  globalId: number,
+  activeStore: { entities?: { getTypeName(id: number): string } } | null | undefined,
+): string | undefined {
+  if (state.models.size === 0) return activeStore?.entities?.getTypeName(globalId) || undefined;
+  const loc = state.resolveGlobalIdFromModels(globalId);
+  if (!loc) return undefined;
+  return state.models.get(loc.modelId)?.ifcDataStore?.entities?.getTypeName(loc.expressId) || undefined;
+}

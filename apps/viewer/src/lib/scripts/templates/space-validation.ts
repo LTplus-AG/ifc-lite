@@ -60,18 +60,22 @@ for (const space of spaces) {
     longName: null, category: null, occupancy: null, issues: []
   }
 
-  // Extract quantities
+  // Extract quantities by their standard Qto_SpaceBaseQuantities names, in
+  // priority order. Matching any name that CONTAINS "volume" would take an
+  // exporter's localised duplicate (e.g. ArchiCADQuantities) if it came first.
   const qsets = bim.query.quantities(space)
+  const byName = new Map<string, number>()
   for (const qset of qsets) {
     for (const q of qset.quantities) {
-      const lower = q.name.toLowerCase()
-      if (lower.includes('area') && !lower.includes('wall') && data.area === null) data.area = q.value
-      if (lower.includes('volume') && data.volume === null) data.volume = q.value
-      if (lower.includes('perimeter') && data.perimeter === null) data.perimeter = q.value
-      if (lower.includes('height') && data.height === null) data.height = q.value
+      if (typeof q.value === 'number' && !byName.has(q.name)) byName.set(q.name, q.value)
       if (q.value !== null && q.value !== 0) spaceQtyPaths.add(qset.name + '.' + q.name)
     }
   }
+  const pick = (names: string[]) => names.map(n => byName.get(n)).find(v => v !== undefined) ?? null
+  data.area = pick(['NetFloorArea', 'GrossFloorArea'])
+  data.volume = pick(['NetVolume', 'GrossVolume'])
+  data.perimeter = pick(['GrossPerimeter', 'NetPerimeter'])
+  data.height = pick(['Height', 'FinishCeilingHeight'])
 
   // Extract properties
   const psets = bim.query.properties(space)
@@ -85,7 +89,15 @@ for (const space of spaces) {
     }
   }
 
-  // Also check entity attributes
+  // `LongName` is an EXPRESS attribute of IfcSpace (the room's human name --
+  // "Schlafzimmer", where `Name` is the room number "4"), not a property-set
+  // value, so the pset scan above can never find it. Reading only psets flagged
+  // every room of every model "Missing LongName" and named the schedule rows by
+  // number.
+  if (!data.longName) {
+    const longName = bim.query.attributes(space).find(a => a.name === 'LongName')?.value
+    if (longName !== null && longName !== undefined && longName !== '') data.longName = String(longName)
+  }
   if (!data.longName && space.Description) data.longName = space.Description
 
   // Check for issues
@@ -137,7 +149,8 @@ let totalArea = 0
 let totalVolume = 0
 
 for (const s of sorted) {
-  const name = ((s.entity.Name || '<unnamed>') + '                        ').slice(0, 24)
+  const label = s.longName ? (s.entity.Name ? s.entity.Name + ' ' + s.longName : s.longName) : (s.entity.Name || '<unnamed>')
+  const name = (label + '                        ').slice(0, 24)
   const area = s.area !== null ? (s.area.toFixed(1) + '    ').slice(0, 8) : '-       '
   const vol = s.volume !== null ? (s.volume.toFixed(1) + '     ').slice(0, 9) : '-        '
   const height = s.height !== null ? (s.height.toFixed(2) + '   ').slice(0, 8) : '-       '

@@ -110,6 +110,7 @@ export class WasmKernel implements ClashKernel {
       const status = res.status;
       const distance = res.distance;
       const distanceKind = res.distanceKind;
+      const depthFloor = res.depthFloor;
       const points = res.points;
       const bounds = res.bounds;
       for (let k = 0; k < a.length; k += 1) {
@@ -126,6 +127,8 @@ export class WasmKernel implements ClashKernel {
           // and this table had drifted apart. Fall back to the humbler label
           // rather than claim a measurement the kernel may not have made.
           distanceKind: DISTANCE_KIND[distanceKind[k]] ?? 'estimate',
+          // NaN is the kernel's "no floor" (every non-`hard` record).
+          ...(Number.isNaN(depthFloor[k]) ? {} : { depthFloor: depthFloor[k] }),
           point: [points[k * 3], points[k * 3 + 1], points[k * 3 + 2]],
           bounds: bnds,
         });

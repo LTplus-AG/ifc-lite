@@ -82,7 +82,7 @@ function readable(): Set<string> {
 }
 
 function openDialog(): void {
-  render(<GLBExportDialog />);
+  render(<GLBExportDialog surface="ribbon" />);
   const trigger = [...document.body.querySelectorAll('button')].find((b) =>
     b.textContent?.includes(STRINGS['geometryExport.glb.triggerButton']),
   );

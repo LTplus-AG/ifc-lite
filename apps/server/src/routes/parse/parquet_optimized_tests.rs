@@ -165,9 +165,19 @@ async fn a_second_identical_optimized_request_replays_without_parsing() {
         second_body, SENTINEL_BODY,
         "the second request re-parsed instead of replaying the cached body"
     );
+    // The replay reports the header the live parse wrote, optimization_stats
+    // included, with the one field that describes THIS response rather than
+    // the parse flipped: it came from cache (#5542). Before that fix the
+    // header was replayed verbatim, `from_cache: false` on a hit.
+    let first: serde_json::Value = serde_json::from_str(&first_metadata).unwrap();
+    let second: serde_json::Value = serde_json::from_str(&second_metadata).unwrap();
+    assert_eq!(first["stats"]["from_cache"], false, "the live parse is not from cache");
+    assert_eq!(second["stats"]["from_cache"], true, "a replay must report from_cache: true");
+    let mut expected = first;
+    expected["stats"]["from_cache"] = serde_json::Value::Bool(true);
     assert_eq!(
-        second_metadata, first_metadata,
-        "a replay must report the same metadata header (optimization_stats included)"
+        second, expected,
+        "a replay must otherwise report the same metadata header (optimization_stats included)"
     );
 }
 
@@ -199,7 +209,7 @@ async fn a_cached_flat_response_does_not_satisfy_the_optimized_route() {
     for (key, value) in [
         (flat_key, b"FLAT-GEOMETRY".as_slice()),
         (flat_metadata_key, b"{}".as_slice()),
-        (data_model_cache_key(&cache_key), b"FLAT-DATA-MODEL".as_slice()),
+        (data_model_cache_key(&cache_key, crate::services::DataModelEntities::All), b"FLAT-DATA-MODEL".as_slice()),
         (symbolic_cache_key(&cache_key), b"{}".as_slice()),
     ] {
         state.cache.set_bytes(&key, value).await.expect("seed flat entry");
@@ -242,7 +252,7 @@ async fn a_cached_optimized_response_does_not_satisfy_the_flat_route() {
         (symbolic_cache_key(&cache_key), b"{}".as_slice()),
         // #5129: the optimized route now gates its replay on a current data
         // model too (the #3869 rule), so a hit fixture must seed one.
-        (data_model_cache_key(&cache_key), b"{}".as_slice()),
+        (data_model_cache_key(&cache_key, crate::services::DataModelEntities::All), b"{}".as_slice()),
     ] {
         state
             .cache
@@ -458,7 +468,7 @@ async fn optimized_replay_requires_current_data_model() {
 
     // Simulate a deployment that warmed this cache entry before #5129: delete
     // the data-model key the first (real) parse just wrote.
-    let dm_key = data_model_cache_key(&cache_key);
+    let dm_key = data_model_cache_key(&cache_key, crate::services::DataModelEntities::All);
     state
         .cache
         .remove(&dm_key)

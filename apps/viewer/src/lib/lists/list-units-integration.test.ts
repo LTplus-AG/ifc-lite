@@ -47,7 +47,7 @@ describe('list-export unit wiring end-to-end (#1573)', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall],
-      conditions: [],
+      groups: [],
       columns: [{ id: 'vol', source: 'quantity', psetName: 'Qto', propertyName: 'NetVolume' }],
     };
     const provider = stubProvider([
@@ -91,7 +91,7 @@ describe('list-export unit wiring end-to-end (#1573)', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall],
-      conditions: [],
+      groups: [],
       columns: [{ id: 'vol', source: 'quantity', psetName: 'Qto', propertyName: 'NetVolume' }],
     };
     const provider = stubProvider([

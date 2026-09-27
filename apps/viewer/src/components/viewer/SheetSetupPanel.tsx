@@ -15,8 +15,6 @@
 
 import React, { useCallback, useState, useMemo } from 'react';
 import {
-  X,
-  FileText,
   ChevronDown,
   ChevronRight,
   Ruler,
@@ -27,6 +25,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
@@ -55,7 +54,6 @@ import {
 } from '@ifc-lite/drawing-2d';
 
 interface SheetSetupPanelProps {
-  onClose: () => void;
   onOpenTitleBlockEditor?: () => void;
 }
 
@@ -79,7 +77,7 @@ const TITLE_BLOCK_LAYOUT_OPTIONS: { value: TitleBlockLayout; labelKey: Translati
   { value: 'compact', labelKey: 'sheetsPdf.sheetSetup.layoutCompact' },
 ];
 
-export function SheetSetupPanel({ onClose, onOpenTitleBlockEditor }: SheetSetupPanelProps): React.ReactElement {
+export function SheetSetupPanel({ onOpenTitleBlockEditor }: SheetSetupPanelProps): React.ReactElement {
   const { t } = useTranslation();
   const activeSheet = useViewerStore((s) => s.activeSheet);
   const sheetEnabled = useViewerStore((s) => s.sheetEnabled);
@@ -158,22 +156,15 @@ export function SheetSetupPanel({ onClose, onOpenTitleBlockEditor }: SheetSetupP
   }, [newTemplateName, saveAsTemplate]);
 
   return (
-    <div className="flex flex-col h-full bg-background border-l">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/50">
-        <div className="flex items-center gap-2">
-          <FileText className="h-5 w-5 text-primary" />
-          <h2 className="font-semibold text-sm">{t('sheetsPdf.sheetSetup.header')}</h2>
-        </div>
-        <div className="flex items-center gap-2">
-          <Switch
-            checked={sheetEnabled}
-            onCheckedChange={handleEnableSheet}
-          />
-          <Button variant="ghost" size="icon-sm" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+    <div className="flex flex-col h-full bg-background">
+      {/* The inspector tab (#5495) carries the title; this row keeps only the
+          functional enable/disable toggle, not a redundant close button. */}
+      <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/50">
+        <Label className="text-xs font-medium">{t('sheetsPdf.sheetSetup.enabledToggleLabel')}</Label>
+        <Switch
+          checked={sheetEnabled}
+          onCheckedChange={handleEnableSheet}
+        />
       </div>
 
       {/* Content */}
@@ -446,22 +437,24 @@ export function SheetSetupPanel({ onClose, onOpenTitleBlockEditor }: SheetSetupP
                         >
                           <span className="truncate flex-1">{template.name}</span>
                           <div className="flex gap-1">
-                            <Button
+                            <IconButton
+                              label={t('sheetsPdf.sheetSetup.loadTemplate', { name: template.name })}
                               variant="ghost"
                               size="icon-sm"
                               className="h-6 w-6"
                               onClick={() => loadTemplate(template.id)}
                             >
                               <Plus className="h-3 w-3" />
-                            </Button>
-                            <Button
+                            </IconButton>
+                            <IconButton
+                              label={t('sheetsPdf.sheetSetup.deleteTemplate', { name: template.name })}
                               variant="ghost"
                               size="icon-sm"
                               className="h-6 w-6 text-destructive hover:text-destructive"
                               onClick={() => deleteTemplate(template.id)}
                             >
                               <Trash2 className="h-3 w-3" />
-                            </Button>
+                            </IconButton>
                           </div>
                         </div>
                       ))}

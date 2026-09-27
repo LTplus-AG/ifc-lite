@@ -133,7 +133,7 @@ DATA;#1=IFCCOLOURRGB($,1.,0.,0.);ENDSEC;END-ISO-10303-21;`);
   const view = new MutablePropertyView(data.properties, 'model');
   const editor = new StoreEditor(data, view);
   useViewerStore.setState({ models: new Map([['model', { ...fixtureModel('model'), ifcDataStore: data }]]),
-    activeModelId: 'model', storeEditors: new Map([['model', editor]]) });
+    activeModelId: 'model', editEnabled: true, storeEditors: new Map([['model', editor]]) });
   useViewerStore.getState().registerMutationView('model', view);
   const record = await reference();
   useViewerStore.getState().addAppearanceReference(record);

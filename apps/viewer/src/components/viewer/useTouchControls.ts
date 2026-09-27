@@ -14,10 +14,14 @@ import type { SectionPlane } from '@/store';
 import { invalidateSelectionPick, markTouchSelection, selectViewportTarget } from './referenceSelection.js';
 import { isPivotRaycastTooExpensive } from './orbitPivotCensus.js';
 import { focusedClashOrbitPivot, sceneAnchorOrbitPivot } from './orbitPivot.js';
+import { cameraPoseKey, createZoomSurfacePicker, type SurfacePoint } from './zoomSurface.js';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { resolve as translate } from '@/i18n/registry';
+import { routeMeasureTap } from './touchRouting.js';
+import { openContextMenuAt } from './contextMenuSelection.js';
+import { createTouchLongPress } from './touchLongPress.js';
 
 /** Locked gesture mode for 2-finger interactions */
 type TwoFingerGesture = 'none' | 'pinch' | 'pan';
@@ -54,6 +58,7 @@ export interface UseTouchControlsParams {
   geometryRef: MutableRefObject<MeshData[] | null>;
   isInteractingRef: MutableRefObject<boolean>;
   handlePickForSelection: (pickResult: PickResult | null) => void;
+  openContextMenu: (entityId: number | null, screenX: number, screenY: number) => void;
   getPickOptions: () => { isStreaming: boolean; hiddenIds: Set<number>; isolatedIds: Set<number> | null };
 }
 
@@ -69,6 +74,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     isInteractingRef,
     selectedEntityIdRef,
     handlePickForSelection,
+    openContextMenu,
     getPickOptions,
   } = params;
 
@@ -79,6 +85,21 @@ export function useTouchControls(params: UseTouchControlsParams): void {
 
     const camera = renderer.getCamera();
     const touchState = touchStateRef.current;
+    const pickSurface = createZoomSurfacePicker(renderer, camera, getPickOptions);
+    // The surface a pinch zooms in toward (#5547, the wheel's #5393): picked
+    // once per pinch, on its first zoom-in step, at the pinch midpoint. The
+    // surface step moves the camera along the ray through that point, so it
+    // stays valid while only surface steps move the camera. `pose` is the
+    // pose the last step left; a zoom-out step in between (plain zoom, which
+    // leaves that ray) forces a re-pick. Deliberately not re-picked as the
+    // midpoint drifts: two fingers jitter by more than the wheel's 4 px slop
+    // on every move, and a raycast per touchmove is what the gate is there to
+    // avoid. Cleared when a new two-finger gesture starts.
+    let pinchSurface: { point: SurfacePoint | null; pose: string } | null = null;
+    const longPress = createTouchLongPress((x, y) => {
+      void openContextMenuAt({ canvas, renderer, getPickOptions, openContextMenu }, x, y)
+        .catch((error: unknown) => console.warn('[Viewport] Touch context menu pick failed:', error));
+    });
 
     // Anchor the orbit pivot to the 3D point directly under a finger.
     // Touch UX: prefer the finger's actual hit, then fall back to ray-projection
@@ -126,6 +147,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       // Track multi-touch to prevent false tap-select after pinch/zoom
       if (touchState.touches.length > 1) {
         touchState.multiTouch = true;
+        longPress.cancel();
       }
 
       if (touchState.touches.length === 1 && !touchState.multiTouch) {
@@ -140,6 +162,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
           y: touchState.touches[0].clientY,
         };
         touchState.didMove = false;
+        longPress.begin(touchState.touches[0]);
 
         anchorOrbitPivotUnderFinger(touchState.touches[0]);
       } else if (touchState.touches.length === 1) {
@@ -160,6 +183,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         touchState.twoFingerGesture = 'none';
         touchState.gestureDistanceAccum = 0;
         touchState.gesturePanAccum = 0;
+        pinchSurface = null;
       }
     };
 
@@ -168,6 +192,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       touchState.touches = Array.from(e.touches);
 
       if (touchState.touches.length === 1) {
+        if (longPress.move(touchState.touches[0])) return;
         const dx = touchState.touches[0].clientX - touchState.lastCenter.x;
         const dy = touchState.touches[0].clientY - touchState.lastCenter.y;
 
@@ -195,7 +220,10 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         const panDx = centerX - touchState.lastCenter.x;
         const panDy = centerY - touchState.lastCenter.y;
 
-        const zoomDelta = distance - touchState.lastDistance;
+        // Positive when the fingers close. `Camera.zoom` reads a positive
+        // delta as zoom OUT (as the wheel's scroll-down), so spreading the
+        // fingers zooms in, the mobile convention (#5777).
+        const zoomDelta = touchState.lastDistance - distance;
 
         // Determine dominant gesture if not yet locked
         if (touchState.twoFingerGesture === 'none') {
@@ -215,7 +243,16 @@ export function useTouchControls(params: UseTouchControlsParams): void {
           camera.pan(panDx, panDy, false);
         } else if (touchState.twoFingerGesture === 'pinch') {
           const rect = canvas.getBoundingClientRect();
-          camera.zoom(zoomDelta * 3, false, centerX - rect.left, centerY - rect.top, rect.width, rect.height);
+          const x = centerX - rect.left, y = centerY - rect.top, delta = zoomDelta * 3;
+          // Only a zoom-in step (negative delta, as `Camera.zoom` reads it)
+          // can pass through a surface, so only it picks.
+          if (delta < 0) {
+            if (pinchSurface?.pose !== cameraPoseKey(camera)) pinchSurface = { point: pickSurface(x, y), pose: '' };
+            camera.zoom(delta, false, x, y, rect.width, rect.height, false, pinchSurface.point ?? undefined);
+            pinchSurface.pose = cameraPoseKey(camera);
+          } else {
+            camera.zoom(delta, false, x, y, rect.width, rect.height);
+          }
         }
         // While gesture is 'none' (detecting), don't apply either — avoids jitter
 
@@ -231,6 +268,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       const previousTouchCount = touchState.touches.length;
       const wasMultiTouch = touchState.multiTouch;
       touchState.touches = Array.from(e.touches);
+      const wasLongPress = touchState.touches.length === 0 ? longPress.end() : false;
 
       // Multi-touch → single-touch transition: re-anchor everything to the
       // remaining finger so the next orbit move computes a clean delta from
@@ -263,21 +301,25 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         // - Was a single-finger touch (not after multi-touch gesture)
         // - Tap was quick (< 300ms)
         // - Didn't move significantly
-        // - Tool supports selection (not pan/walk/measure)
+        // - Tool acts on a tap (not pan/walk)
         if (
           previousTouchCount === 1 &&
           !wasMultiTouch &&
+          !wasLongPress &&
           tapDuration < 300 &&
           !touchState.didMove &&
           tool !== 'pan' &&
-          tool !== 'walk' &&
-          tool !== 'measure'
+          tool !== 'walk'
         ) {
           const rect = canvas.getBoundingClientRect();
           const x = touchState.tapStartPos.x - rect.left;
           const y = touchState.tapStartPos.y - rect.top;
 
-          if (tool === 'appearance-face') {
+          if (tool === 'measure') {
+            // The measure logic lives with the mouse controls; touchstart's
+            // preventDefault suppresses the compatibility click, so hand the tap over (#5856).
+            routeMeasureTap(canvas, x, y);
+          } else if (tool === 'appearance-face') {
             // Touchend owns this tap. Record it before routing the exact hit so
             // the browser's compatibility click cannot toggle the same face a
             // second time through handleSelectionClick (#4555).
@@ -306,6 +348,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     // Also reset interaction on touchcancel — mobile browsers can cancel
     // gestures (system gestures, tab switch, lost focus) without touchend.
     const handleTouchCancel = () => {
+      longPress.cancel();
       invalidateSelectionPick(canvas);
       if (isInteractingRef.current) {
         isInteractingRef.current = false;
@@ -321,6 +364,7 @@ export function useTouchControls(params: UseTouchControlsParams): void {
     canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
     canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
     canvas.addEventListener('touchcancel', handleTouchCancel);
+    canvas.addEventListener('contextmenu', longPress.suppressNativeMenu, { capture: true });
 
     // Prevent iOS Safari pull-to-refresh and elastic bounce on the canvas
     const preventOverscroll = (e: TouchEvent) => {
@@ -332,10 +376,12 @@ export function useTouchControls(params: UseTouchControlsParams): void {
 
     return () => {
       invalidateSelectionPick(canvas);
+      longPress.dispose();
       canvas.removeEventListener('touchstart', handleTouchStart);
       canvas.removeEventListener('touchmove', handleTouchMove);
       canvas.removeEventListener('touchend', handleTouchEnd);
       canvas.removeEventListener('touchcancel', handleTouchCancel);
+      canvas.removeEventListener('contextmenu', longPress.suppressNativeMenu, { capture: true });
       document.removeEventListener('touchmove', preventOverscroll);
     };
   }, [isInitialized]);

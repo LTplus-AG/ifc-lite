@@ -16,14 +16,21 @@
  * signal has to go on EVERY endpoint touching that cache — both parse routes,
  * the cache check and the cached-geometry fetch. One that forgets it asks about
  * the other entry. Pinned by `parquet-layout-signal.test.ts`.
+ *
+ * The streaming route takes one more opt-in, `stream_shapes=cross-batch`
+ * (issue #5407), for the same reason one level down: with it a batch's mesh
+ * rows may point at vertices an EARLIER batch carried, which a client decoding
+ * each batch on its own would read out of range. This version's stream reader
+ * keeps earlier batches' shapes, so it opts in; see `parquetStreamQuery`.
  */
 
-import type { ParseRequestOptions } from './client.js';
+import type { ParseRequestOptions } from './parse-options.js';
 
 export function parseQuery(
   options?: ParseRequestOptions,
   flatLayout = false,
-  sha256?: string
+  sha256?: string,
+  crossBatchShapes = false
 ): string {
   const params = new URLSearchParams();
   if (options?.tessellationQuality && options.tessellationQuality !== 'medium') {
@@ -38,6 +45,45 @@ export function parseQuery(
   if (sha256) {
     params.set('sha256', sha256);
   }
+  if (crossBatchShapes) {
+    params.set('stream_shapes', 'cross-batch');
+  }
+  setDataModelEntities(params, options);
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+/**
+ * The query of both `POST /api/v1/parse/parquet-stream` requests, the hash
+ * probe and the upload: the shared-shape layout plus cross-batch sharing. Only
+ * that route reads `stream_shapes`, and it is not part of the cache identity,
+ * so the probe and the upload must agree on it only because they must agree on
+ * how the answer is decoded.
+ */
+export function parquetStreamQuery(options?: ParseRequestOptions, sha256?: string): string {
+  return parseQuery(options, true, sha256, true);
+}
+
+/**
+ * Selects which data-model entry a request writes or asks about (#6034): the
+ * parse routes, the cache check and the data-model fetch all take it, and
+ * they must agree, because the full and rooted-only tables are separate
+ * server cache entries. Sent only when non-default, so a default request's URL
+ * is unchanged.
+ */
+function setDataModelEntities(
+  params: URLSearchParams,
+  options?: Pick<ParseRequestOptions, 'dataModelEntities'>
+): void {
+  if (options?.dataModelEntities === 'rooted') {
+    params.set('data_model_entities', 'rooted');
+  }
+}
+
+/** The query of `GET /api/v1/parse/data-model/{key}`. */
+export function dataModelQuery(options?: Pick<ParseRequestOptions, 'dataModelEntities'>): string {
+  const params = new URLSearchParams();
+  setDataModelEntities(params, options);
   const qs = params.toString();
   return qs ? `?${qs}` : '';
 }

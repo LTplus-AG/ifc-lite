@@ -4,14 +4,24 @@
 
 /**
  * Main rendering shader for IFC geometry.
- * Features: linear-space diffuse lighting of sRGB-authored colours, section
- * plane clipping, selection highlight, glass fresnel, hue-preserving highlight
- * roll-off, screen-space edge enhancement.
+ * Features: linear-space lighting of sRGB-authored colours with a GGX
+ * specular term (specular.wgsl.ts), section plane clipping, selection
+ * highlight, glass, hue-preserving highlight roll-off, screen-space edge
+ * enhancement.
  */
 import { MESH_FLAG_RTE_DRAWABLE } from '../mesh-rte-uniforms.js';
 import { colorTransferWgsl } from './color-transfer.wgsl.js';
 import { mainRteWgsl, mainShadowWgsl } from './main-rte-shadow.wgsl.js';
 import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
+import { specularWgsl } from './specular.wgsl.js';
+import { entityColorTableWgsl } from './entity-color-table.wgsl.js';
+
+/**
+ * Translucent surfaces draw at this fraction of their alpha, so interiors
+ * read through windows and X-Ray ghosts stay faint. A viewer choice that
+ * predates #5386, not optics.
+ */
+const TRANSLUCENT_OPACITY_SCALE = 0.7;
 
 /**
  * Converts the environment's light intensities to linear irradiance.
@@ -36,8 +46,8 @@ export const mainShaderSource = `
           viewProj: mat4x4<f32>,
           model: mat4x4<f32>,
           baseColor: vec4<f32>,
-          metallicRoughness: vec2<f32>, // x = metallic, y = roughness
-          _padding1: vec2<f32>,
+          metallicRoughness: vec2<f32>, // x = metallic, y = roughness (mesh-material.ts)
+          transmission: vec2<f32>,      // x = 1: authored translucent, drawn as glass; y = pad
           sectionPlane: vec4<f32>,      // xyz = plane normal, w = plane distance
           flags: vec4<u32>,             // x = isSelected, y = section/clip bits, z = edgeEnabled, w = edgeIntensityMilli
           clipBoxMin: vec4<f32>,        // xyz = clip-box min corner (world), w = pad
@@ -48,6 +58,7 @@ export const mainShaderSource = `
           drawableDeltaLow: vec4<f32>,
           rteCameraHigh: vec4<f32>,
           rteCameraLow: vec4<f32>,
+          overrideParams: vec4<u32>, // x = draw's id anchor, y = OVERRIDE_* bits (entity-color-table.ts, #6076)
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
         const RTE_DRAWABLE_FLAG: u32 = ${MESH_FLAG_RTE_DRAWABLE}u;
@@ -69,8 +80,16 @@ export const mainShaderSource = `
           _pad2: f32,
         }
         @binding(0) @group(1) var<uniform> env: Environment;
+        // Selection highlight tint (#5484), set by Renderer.setOverlayTheme via
+        // updateSelectionColor — written only on theme change, never per frame.
+        // TRUE LINEAR-LIGHT RGB: re-lit by lightTerm below exactly like the WGSL
+        // constant it replaces, then ACES-tonemapped + gamma-encoded on output.
+        @binding(4) @group(1) var<uniform> selectionColor: vec4<f32>;
         const IRRADIANCE_CALIBRATION: f32 = ${IRRADIANCE_CALIBRATION};
+        const TRANSLUCENT_OPACITY_SCALE: f32 = ${TRANSLUCENT_OPACITY_SCALE};
         ${colorTransferWgsl}
+        ${specularWgsl}
+        ${entityColorTableWgsl}
 
         ${mainShadowWgsl}
 
@@ -88,7 +107,7 @@ export const mainShaderSource = `
           @location(3) viewPos: vec3<f32>,  // For edge detection
           // Per-draw albedo carried from the vertex stage so the fragment shader
           // is shared by the flat path (vs_main writes uniforms.baseColor — the
-          // per-batch / overlay-override colour) AND the instanced path
+          // per-batch colour) AND the instanced path
           // (vs_instanced writes the per-occurrence colour from the instance
           // buffer). For the flat path this is identical to reading
           // uniforms.baseColor directly (the value is constant across the draw).
@@ -198,12 +217,10 @@ export const mainShaderSource = `
           // an 8-bit MATERIAL-COLOUR salt that mergeGeometry/interleaveTextured
           // baked into the HIGH 8 bits of the entityId lane (low 24 = picking id,
           // masked off by encodeId24). Crucially the salt comes from the mesh's
-          // OWN colour, NOT the per-draw baseColor uniform — so the base opaque
-          // pass and the lens/IDS/compare/4D OVERLAY pass (which redraws the same
-          // geometry with a DIFFERENT draw colour) compute the SAME nudge, and
-          // the overlay pipeline's depthCompare:'equal' matches instead of
-          // rejecting every fragment. At 1e-6 per step the max world-space offset
-          // is <3mm at 10m — invisible.
+          // OWN colour, NOT the per-draw baseColor uniform — so every redraw of
+          // the same geometry with a different draw colour (the selection
+          // highlight's greater-equal pass) computes the SAME nudge as its
+          // batch. At 1e-6 per step the max world-space offset is <3mm at 10m.
           let colorSalt = (input.entityId >> 24u) * 2654435761u;
           let zHash = (((input.entityId & 0x00FFFFFFu) ^ colorSalt) * 2654435761u) & 255u;
           output.position.z *= 1.0 + f32(zHash) * 1e-6;
@@ -233,8 +250,8 @@ export const mainShaderSource = `
           let eyePos = rteInstancePosition(linearLocal, inst.anchorHigh.xyz, inst.anchorLow.xyz).xyz;
           output.position = uniforms.rteViewProj * vec4<f32>(eyePos, 1.0);
           // Same per-entity depth nudge as vs_main. No colour salt here: the
-          // instanced path has no base-vs-overlay coincident redraw (yet), so the
-          // raw picking id is enough to separate coplanar entities.
+          // instanced path never redraws an occurrence with a second draw
+          // colour, so the raw picking id is enough to separate coplanar entities.
           let zHash = ((inst.instEntityId & 0x00FFFFFFu) * 2654435761u) & 255u;
           output.position.z *= 1.0 + f32(zHash) * 1e-6;
           output.worldPos = worldPos.xyz;
@@ -245,35 +262,6 @@ export const mainShaderSource = `
           output.eyePos = eyePos;
           output.viewPos = (uniforms.rteViewProj * vec4<f32>(eyePos, 1.0)).xyz;
           return output;
-        }
-
-        // PBR helper functions
-        fn fresnelSchlick(cosTheta: f32, F0: vec3<f32>) -> vec3<f32> {
-          return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-        }
-
-        fn distributionGGX(NdotH: f32, roughness: f32) -> f32 {
-          let a = roughness * roughness;
-          let a2 = a * a;
-          let NdotH2 = NdotH * NdotH;
-          let num = a2;
-          let denomBase = (NdotH2 * (a2 - 1.0) + 1.0);
-          let denom = 3.14159265 * denomBase * denomBase;
-          return num / max(denom, 0.0000001);
-        }
-
-        fn geometrySchlickGGX(NdotV: f32, roughness: f32) -> f32 {
-          let r = (roughness + 1.0);
-          let k = (r * r) / 8.0;
-          let num = NdotV;
-          let denom = NdotV * (1.0 - k) + k;
-          return num / max(denom, 0.0000001);
-        }
-
-        fn geometrySmith(NdotV: f32, NdotL: f32, roughness: f32) -> f32 {
-          let ggx2 = geometrySchlickGGX(NdotV, roughness);
-          let ggx1 = geometrySchlickGGX(NdotL, roughness);
-          return ggx1 * ggx2;
         }
 
         fn encodeId24(id: u32) -> vec4<f32> {
@@ -449,15 +437,9 @@ export const mainShaderSource = `
           let irradiance = lightTerm * (env.exposure * IRRADIANCE_CALIBRATION);
           var color = baseColor * irradiance;
 
-          // flags.x is a bitfield:
-          //   bit 0 (value 1) = isSelected  → selection-highlight + force opaque
-          //   bit 1 (value 2) = isOverlay   → color-override pass; preserve
-          //                                    baseColor.a (overlay pipeline has
-          //                                    src-alpha blending) AND skip the
-          //                                    glass-fresnel branch so low-alpha
-          //                                    ghost tints don't pick up the
-          //                                    near-white reflection tint meant
-          //                                    for real glass materials.
+          // flags.x bit 0 (value 1) = isSelected → selection highlight, forced opaque.
+          // bit 1 (value 2) = isOverlay → legacy overlay pipeline callers;
+          // preserve alpha and skip specular for their blended draw.
           // Selected via the per-draw flag (flat path) OR the per-occurrence flag
           // (instanced path — vs_instanced reads it from the instance buffer).
           let isSelected = ((uniforms.flags.x & 1u) == 1u) || ((input.instSelected & 1u) == 1u);
@@ -467,7 +449,7 @@ export const mainShaderSource = `
           //
           // We override the material albedo with selection-blue and re-light
           // it with the SAME lightTerm used for unselected surfaces, then
-          // discard the view-dependent (fresnel) term below. Two requirements
+          // skip the view-dependent (specular) term below. Two requirements
           // are in tension and this satisfies both:
           //
           //   * No base-material bleed-through. The old fresnel-glow mix left
@@ -491,58 +473,70 @@ export const mainShaderSource = `
           if (isSelected) {
             let shadeLum = dot(irradiance, vec3<f32>(0.299, 0.587, 0.114));
             let shade = clamp(shadeLum, 0.45, 1.2);
-            color = srgbToLinear(vec3<f32>(0.3, 0.6, 1.0)) * shade;
+            // selectionColor is already linear-light (set by Renderer.setOverlayTheme
+            // from the app theme, #5484) — no srgbToLinear here, unlike the constant
+            // it replaces.
+            color = selectionColor.rgb * shade;
           }
 
-          // flags.x bit 5 (value 32) = EMPHASIZE overlay: render the colour
-          // override FULLY UNLIT and saturated (no lighting attenuation, no
-          // wash-to-white) so the focused clash pair reads as a solid, vivid,
-          // distinct colour that pops against the lit model — like a clash tool.
-          // A faint normal-based shade keeps the silhouette from going flat. (#1277)
+          // Public getOverlayPipeline() callers can still use the emphasized
+          // overlay bit even though internal colour overrides now use a table.
           let emphasizedOverlay = isOverlay && (uniforms.flags.x & 32u) != 0u;
           if (emphasizedOverlay) {
             let facet = 0.85 + 0.15 * abs(dot(N, normalize(vec3<f32>(0.3, 1.0, 0.2))));
             color = baseColor * facet;
           }
 
-          // Beautiful fresnel effect for transparent materials (glass)
-          // Skip when selected — the glass shine and desaturation wash out the
-          // blue highlight, making it appear white instead of blue.
-          // Also force alpha to 1.0 for selected objects so the highlight is
-          // fully opaque (the selection pipeline has no alpha blending).
-          // Emphasized clash overlay paints a SOLID vivid fill (force opaque) so
-          // it isn't blended down to a pale tint against the geometry beneath.
+          // Selected objects and emphasized overlays draw fully opaque.
           var finalAlpha = select(input.color.a, 1.0, isSelected || emphasizedOverlay);
-          if (finalAlpha < 0.99 && !isSelected && !isOverlay) {
-            // Calculate view direction for fresnel
-            let V = normalize(-fragmentPos);
-            let NdotV = max(dot(N, V), 0.0);
 
-            // Enhanced fresnel effect - stronger at edges (grazing angles)
-            // Using Schlick's approximation for realistic glass reflection
-            let fresnelPower = 1.5; // Higher = softer edge reflections
-            let fresnel = pow(1.0 - NdotV, fresnelPower);
-
-            // Glass reflection tint (sky/environment reflection at edges)
-            let reflectionTint = vec3<f32>(0.92, 0.96, 1.0);  // Cool sky reflection
-            let reflectionStrength = fresnel * 0.6;  // Strong edge reflections
-
-            // Mix in reflection tint at edges
-            color = mix(color, color * reflectionTint, reflectionStrength);
-
-            // Add realistic glass shine - brighter at edges where light reflects.
-            // Linear amount: 0.06 lifts a mid-tone about as much as the 0.12
-            // the pre-linear pipeline added in display space.
-            let glassShine = fresnel * 0.06;
-            color += glassShine;
-
-            // Slight desaturation at edges (glass reflects environment, not just color)
-            let edgeDesaturation = fresnel * 0.25;
-            let gray = dot(color, vec3<f32>(0.299, 0.587, 0.114));
-            color = mix(color, vec3<f32>(gray), edgeDesaturation);
-
-            // Make glass more transparent (reduce opacity by 30%)
-            finalAlpha = finalAlpha * 0.7;
+          // Specular (#5386; specular.wgsl.ts), after the diffuse above. Not
+          // on the selection highlight or legacy overlay (it would wash out
+          // their colours); a table override is composited without it below. The
+          // sun lobe is scaled exactly like the diffuse sun term, and both
+          // terms like irradiance, so a preset's highlights and diffuse move together.
+          if (!isSelected && !isOverlay) {
+            // Glass is an authored translucent material (mesh-material.ts
+            // also gives it its smooth roughness). An X-Ray or compare fade
+            // only lowers the alpha and stays a fade. Instanced occurrences
+            // are never authored translucent: prepareInstancedRender routes
+            // those to the flat path, so the per-pass lane is ignored there.
+            let instancedPass = (uniforms.flags.x & 4u) != 0u;
+            let translucent = finalAlpha < 0.99;
+            let glass = translucent && uniforms.transmission.x > 0.5 && !instancedPass;
+            let metallic = clamp(uniforms.metallicRoughness.x, 0.0, 1.0);
+            let spec = surfaceSpecular(
+              N,
+              normalize(-input.eyePos),
+              baseColor,
+              metallic,
+              uniforms.metallicRoughness.y,
+              env.sunColor * (env.sunIntensity * sunShadow),
+            );
+            // What the lobe reflects is not there to diffuse; a metal has no
+            // diffuse at all.
+            let diffuse = color * (1.0 - spec.reflectance) * (1.0 - metallic);
+            let reflected = spec.light * (env.exposure * IRRADIANCE_CALIBRATION);
+            if (translucent) {
+              finalAlpha = finalAlpha * TRANSLUCENT_OPACITY_SCALE;
+            }
+            if (glass) {
+              // The transparent pipelines blend straight alpha:
+              // out = c * a + behind * (1 - a). A pane passes what is behind
+              // it except what its body absorbs and its surface reflects, and
+              // its reflection is not dimmed by the body's opacity, so solve
+              // for (c, a). The reflectance rising at grazing angles is what
+              // makes glass more opaque there; a bright sun glint raises the
+              // alpha further so it is not clipped to the body's opacity.
+              let body = finalAlpha;
+              let reflectance = dot(spec.reflectance, vec3<f32>(0.299, 0.587, 0.114));
+              let premultiplied = diffuse * body + reflected;
+              let peak = max(premultiplied.r, max(premultiplied.g, premultiplied.b));
+              finalAlpha = clamp(max(body + reflectance * (1.0 - body), peak), 0.0, 1.0);
+              color = premultiplied / max(finalAlpha, 0.0001);
+            } else {
+              color = diffuse + reflected;
+            }
           }
 
           // Hue-preserving highlight roll-off (color-transfer.wgsl.ts). No
@@ -572,13 +566,14 @@ export const mainShaderSource = `
             length(dpdy(N))
           ));
 
+          var edgeDarken = 1.0;
           if (uniforms.flags.z == 1u) {
             // Threshold filters subtle normal discontinuities at internal
             // triangle edges between coplanar entities in the same batch.
             let edgeFactor = smoothstep(0.02, 0.12, depthGradient * 10.0 + normalGradient * 5.0);
             let edgeIntensity = f32(uniforms.flags.w) / 1000.0;
             let edgeDarkenStrength = clamp(0.25 * edgeIntensity, 0.0, 0.85);
-            let edgeDarken = mix(1.0, 1.0 - edgeDarkenStrength, edgeFactor);
+            edgeDarken = mix(1.0, 1.0 - edgeDarkenStrength, edgeFactor);
             color *= edgeDarken;
           }
 
@@ -586,6 +581,12 @@ export const mainShaderSource = `
 
           var out: FragmentOutput;
           out.color = vec4<f32>(color, finalAlpha);
+          // Colour override from the per-entity table (#6076): only draws the
+          // renderer marks (overrideParams.y), i.e. depth-writing opaque ones.
+          let entityOverride = entityOverrideColor(input.entityId);
+          if (entityOverride.a >= 0.0 && !isSelected) {
+            out.color = paintEntityOverride(out.color, entityOverride, irradiance, N, edgeDarken);
+          }
           out.objectIdEncoded = encodeId24(input.entityId);
           return out;
         }

@@ -48,6 +48,8 @@ export {
   STOREY_ELEVATION_MATCH_TOLERANCE_M,
   findStoreyByElevation,
 } from './storey-elevation.js';
+// The absent-RefDirection fill, one definition shared with the renderer (#5922).
+export { firstProjAxis } from './axis2-placement.js';
 export type { IfcStoreBase, IfcSourceHeader } from './data-store.js';
 export { getAggregatedChildren, collectAggregatedDescendants } from './decomposition.js';
 export type { DecompositionRelationships } from './decomposition.js';

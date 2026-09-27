@@ -12,11 +12,10 @@
  * none of those cases, so every column's value silently came back `null`
  * for every row, for every caller, always — `executeList`'s default case.
  *
- * Separately, the library's `ListDefinition.conditions` is a required
- * (non-optional) array that `resolveSourceSet` reads unconditionally via
- * `conditions.length`; the SDK documents its own `conditions` as optional,
- * so omitting it (a documented-valid call) threw `Cannot read properties
- * of undefined (reading 'length')` instead of running unfiltered.
+ * The SDK documents its own `conditions` as optional. The Lists engine now
+ * requires a Rules `groups` array and reads provider-only predicates through
+ * `legacyConditions`; both omitted and supplied SDK conditions must keep
+ * their documented behavior through that translation (#5894).
  */
 
 import { describe, expect, it } from 'vitest';
@@ -75,7 +74,7 @@ describe('ListNamespace.execute (#column-mapping, #conditions-default)', () => {
     expect(result.rows[1].values).toEqual(['Wall-2', 'GUID-2']);
   });
 
-  it('does not throw when conditions is omitted (documented as optional)', async () => {
+  it('keeps the documented optional-conditions SDK call working through Lists groups (#5894)', async () => {
     const definition: ListDefinition = {
       types: ['IfcWall'],
       columns: [{ header: 'Name', source: 'name' }],

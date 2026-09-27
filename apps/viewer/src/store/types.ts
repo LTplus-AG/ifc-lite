@@ -220,9 +220,12 @@ import type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 import type { LandXmlSchema, LandXmlTinDocument } from '../hooks/ingest/landXmlSemantics.js';
 /**
  * Custom (face-picked) plane override. When present, the renderer uses
- * `normal` + `distance` directly and ignores `axis` / `position`. The
- * cardinal `axis` / `position` / `flipped` fields are still kept in sync
- * (nearest-cardinal for axis, percentage along it for position) so any
+ * `normal` + `distance` directly and ignores `axis` / `position`, and
+ * `SectionPlane.flipped` is relative to `normal`, not to the cardinal axis
+ * (#5644): the shader's `side` multiplies `dot(p, normal) - distance`. The
+ * cardinal `axis` / `position` fields are still kept in sync
+ * (nearest-cardinal for axis, percentage along it for position; read the
+ * matching flip through `cardinalSectionFlipped`) so any
  * downstream reader that pre-dates custom planes (drawings export, BCF
  * snapshots, view controls) still gets a sensible projection rather than
  * crashing or emitting empty data.
@@ -245,12 +248,20 @@ export interface CustomSectionPlane {
   bitangent: [number, number, number];
 }
 
+/** An axis-aligned world-space section box (#5513): the renderer's `ClipBox` without its flag. */
+export interface SectionBox {
+  min: [number, number, number];
+  max: [number, number, number];
+}
+/** One of the six faces of a `SectionBox`, named by corner and axis. */
+export type SectionBoxFace = 'minX' | 'maxX' | 'minY' | 'maxY' | 'minZ' | 'maxZ';
+
 export interface SectionPlane {
   axis: SectionPlaneAxis;
   /** 0-100 percentage of model bounds */
   position: number;
-  enabled: boolean; // the cut is ON SCREEN: only ever true inside the Section tool (store/section-active.ts)
-  parked?: boolean; // a cut the user left the Section tool with; reopening the tool resumes it
+  enabled: boolean; // the cut is defined and turned on; ON SCREEN also requires `sceneState.section.visible` (#5893)
+  parked?: boolean; // enabled, but hidden by the visibility toggle (`sceneState.section.visible === false`, #5893)
   flipped: boolean; // show the opposite side of the cut
   /** Whether to render the filled, hatched cap surface at the plane. Defaults to true. */
   showCap: boolean;
@@ -270,6 +281,8 @@ export interface SectionPlane {
    * `CustomSectionPlane`).
    */
   custom?: CustomSectionPlane;
+  /** Box mode (#5513): the cut is this box, not a plane; exclusive with `custom`. */
+  box?: SectionBox;
 }
 
 // ============================================================================
@@ -380,6 +393,8 @@ export interface CameraCallbacks {
   /** Rotate the camera exactly 90° around the vertical axis. */
   rotateRight?: () => void;
   frameSelection?: (durationMs?: number) => void;
+  /** The world AABB `frameSelection` would frame (same id resolution), or `null` with nothing framable. */
+  selectionBounds?: () => { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null;
   /**
    * Resolve ids to what the 3D renderer can actually highlight, expanding a
    * geometry-less `IfcRelAggregates` assembly (own id has no mesh) to its
@@ -406,14 +421,13 @@ export interface CameraCallbacks {
    */
   frameBuildingExtent?: () => void;
   /**
-   * Replace the Space Sketch draft "ghost" overlay meshes in the 3D scene. These
-   * go straight to the renderer scene (NOT through geometryResult), so frequent
-   * per-edit updates can't trip the streaming reclassifier (which would reset the
-   * camera / un-pick newly created spaces). Pass [] (or use clear) to remove all.
+   * Replace one authoring channel's ghost meshes (Space Sketch rooms, a command
+   * preview; `useAuthoringOverlay.ts`). They bypass geometryResult so per-edit
+   * updates can't trip the streaming reclassifier. [] (or clear) removes them.
    */
-  setSpaceOverlayMeshes?: (meshes: MeshData[]) => void;
-  /** Remove all Space Sketch overlay ghost meshes from the scene. */
-  clearSpaceOverlayMeshes?: () => void;
+  setAuthoringOverlayMeshes?: (channel: AuthoringOverlayChannel, meshes: MeshData[]) => void;
+  /** Remove one authoring channel's overlay ghost meshes from the scene. */
+  clearAuthoringOverlayMeshes?: (channel: AuthoringOverlayChannel) => void;
   /**
    * Frame an explicit world-space box (min/max corners) from the canonical
    * isometric view, animating there. Used to frame a focused clash's contact
@@ -461,6 +475,7 @@ export interface CameraCallbacks {
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
 import type { ModelLoadReportFields } from '../lib/loadReport'; // #3927 load report
+export type AuthoringOverlayChannel = 'spaceSketch' | 'command'; // authoring ghost-mesh channels (#6232)
 /**
  * Compound identifier for entities across multiple models.
  *
@@ -557,8 +572,8 @@ export interface FederatedModel extends ModelLoadReportFields {
   sourceContentHash?: string; // Full-content identity for workspace placements.
   /** Parsed IFC data model */
   ifcDataStore: IfcDataStore | null;
-  /** Non-IFC source semantics, kept outside the IFC data store by design. */
-  landXmlDocument?: LandXmlTinDocument;
+  /** Non-IFC source semantics, kept outside the IFC data store by design; `terrainImagery` is imagery draped on it (#5942), provenance only. */
+  landXmlDocument?: LandXmlTinDocument; terrainImagery?: import('../lib/terrain-imagery/drape-state.js').TerrainImageryDrape;
   /** Truthful source schema; `schemaVersion` remains the compatibility store schema. */
   sourceSchema?: LandXmlSchema;
   /** Pre-tessellated geometry (with globalIds, not original expressIds) */

@@ -52,7 +52,7 @@ import {
 } from './section-2d-overlay.js';
 import { SymbolicOverlays } from './renderer-symbolic-overlays.js';
 import type { SymbolicFillInput, SymbolicTextInput } from './symbolic-overlay-pipelines.js';
-import { ClashSolidPipeline, type ClashSolidInput } from './clash-solid-pipeline.js';
+import { ClashSolidPipeline } from './clash-solid-pipeline.js';
 import { anchoredAabbEdgeLineList } from './aabb-edges.js';
 import { projectedBoundsRange } from './render-section-plane.js';
 import { drawSectionOverlays, type ModelBounds } from './render-section-draw.js';
@@ -60,6 +60,8 @@ import type { RelativeToEyeFrame } from './relative-to-eye.js';
 import type { RenderOptions } from './types.js';
 import type { DeviceRecoveryOmission } from './device-recovery.js';
 import { lineVertexFloatCount, type LineVertices } from './section-2d-line-buffer.js';
+import type { OverlayTheme } from './overlay-theme.js';
+import { OverlayThemeApplier, type ThemedClashSolidInput } from './overlay-theme-uniforms.js';
 
 /**
  * The slice of `Renderer` the overlays need. Deliberately narrow:
@@ -133,9 +135,8 @@ const CHANNEL_EXPANDS_MODEL_BOUNDS: Record<LineOverlayChannel, boolean> = {
 export class RendererOverlays {
     private sectionPlaneRenderer: SectionPlaneRenderer | null = null;
     private section2DOverlayRenderer: Section2DOverlayRenderer | null = null;
-    // Overlay/section-cut line colour, kept here so it survives a
-    // pre-init call and a section2DOverlayRenderer re-creation (re-applied below).
-    private overlayLineColor: readonly [number, number, number, number] = [0, 0, 0, 1];
+    // The overlay theme (#5484) — see overlay-theme-uniforms.ts.
+    private readonly themeApplier = new OverlayThemeApplier();
     private readonly symbolic: SymbolicOverlays;
     private clashSolidPipeline: ClashSolidPipeline | null = null;
 
@@ -162,8 +163,8 @@ export class RendererOverlays {
     init(device: GPUDevice, format: GPUTextureFormat, sampleCount: number): void {
         this.sectionPlaneRenderer = new SectionPlaneRenderer(device, format, sampleCount);
         this.section2DOverlayRenderer = new Section2DOverlayRenderer(device, format, sampleCount);
-        // Re-apply any colour set before this (re)creation so it isn't lost.
-        this.section2DOverlayRenderer.setOverlayLineColor(this.overlayLineColor);
+        // Re-apply any theme set before this (re)creation so it isn't lost.
+        this.themeApplier.reapply(this.sectionPlaneRenderer, this.section2DOverlayRenderer);
         this.symbolic.init(device, format, sampleCount);
         this.clashSolidPipeline = new ClashSolidPipeline(device, format, sampleCount);
     }
@@ -307,12 +308,9 @@ export class RendererOverlays {
         }
     }
 
-    /** See `Renderer.setOverlayLineColor` for the published contract. */
-    setOverlayLineColor(color: readonly [number, number, number, number]): void {
-        // Persist here so a pre-init call (and any later overlay
-        // re-creation) keeps the colour — init() re-applies this.overlayLineColor.
-        this.overlayLineColor = color;
-        this.section2DOverlayRenderer?.setOverlayLineColor(color);
+    /** See `Renderer.setOverlayTheme` for the published contract. */
+    setTheme(theme: OverlayTheme): void {
+        this.themeApplier.set(theme, this.sectionPlaneRenderer, this.section2DOverlayRenderer, this.clashSolidPipeline);
         this.host.requestRender();
     }
 
@@ -345,7 +343,7 @@ export class RendererOverlays {
 
     /** See `Renderer.setClashOverlapBox` for the published contract. */
     setClashOverlapBox(
-        box: { min: [number, number, number]; max: [number, number, number]; color: [number, number, number, number] } | null,
+        box: { min: [number, number, number]; max: [number, number, number]; color?: [number, number, number, number] } | null,
     ): void {
         if (!this.section2DOverlayRenderer) return;
         if (!box) {
@@ -353,7 +351,7 @@ export class RendererOverlays {
             this.host.requestRender();
             return;
         }
-        this.section2DOverlayRenderer.setClashBoxLineColor(box.color);
+        this.section2DOverlayRenderer.setClashBoxLineColor(this.themeApplier.clashLineColor(box.color));
         this.section2DOverlayRenderer.uploadClashBoxLines3D(anchoredAabbEdgeLineList(box.min, box.max));
         this.host.requestRender();
     }
@@ -363,7 +361,7 @@ export class RendererOverlays {
      * clash-box line buffer, so only one of this / setClashOverlapBox shows.
      */
     setClashContactLines(
-        lines: { vertices: LineVertices; color: [number, number, number, number] } | null,
+        lines: { vertices: LineVertices; color?: [number, number, number, number] } | null,
     ): void {
         if (!this.section2DOverlayRenderer) return;
         if (!lines || lineVertexFloatCount(lines.vertices) === 0) {
@@ -371,15 +369,15 @@ export class RendererOverlays {
             this.host.requestRender();
             return;
         }
-        this.section2DOverlayRenderer.setClashBoxLineColor(lines.color);
+        this.section2DOverlayRenderer.setClashBoxLineColor(this.themeApplier.clashLineColor(lines.color));
         this.section2DOverlayRenderer.uploadClashBoxLines3D(lines.vertices);
         this.host.requestRender();
     }
 
     /** See `Renderer.setClashIntersectionSolid` for the published contract. */
-    setClashIntersectionSolid(input: ClashSolidInput | null): void {
+    setClashIntersectionSolid(input: ThemedClashSolidInput | null): void {
         if (!this.clashSolidPipeline) return;
-        this.clashSolidPipeline.upload(input);
+        this.clashSolidPipeline.upload(this.themeApplier.clashSolid(input));
         this.host.requestRender();
     }
 

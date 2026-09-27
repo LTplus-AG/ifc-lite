@@ -1,0 +1,21 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { TranslationValue } from '../types';
+
+/**
+ * The Model workspace's modeling-command HUD (charter #6232, WP2): the
+ * command bar chrome and the units its typed fields show. Each command's own
+ * label, field names and hints live beside it in this catalogue too.
+ */
+export const modelingCommandEn = {
+  'modelingCommand.closeAria': 'Leave the command',
+  'modelingCommand.unit.m': 'm',
+  'modelingCommand.unit.deg': '°',
+  'modelingCommand.unit.count': '',
+  'modelingCommand.split.noTarget': 'Select the element to split first',
+  'modelingCommand.split.noPlane': "This element's storey has no placement that resolves in plan",
+  'modelingCommand.split.needLine': 'Click two points to draw the cut line',
+  'modelingCommand.split.outOfRange': 'Point at the element, or type a distance along it',
+} as const satisfies Record<string, TranslationValue>;

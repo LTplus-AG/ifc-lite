@@ -28,11 +28,11 @@ export function Section({
     <section>
       <div className="mb-2 flex items-center gap-2">
         <span className="h-3 w-1 rounded-full bg-primary/70" aria-hidden />
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
           {label}
         </span>
         {hint !== undefined && (
-          <Badge variant="secondary" className="h-4 px-1.5 text-[10px] font-normal">{hint}</Badge>
+          <Badge variant="secondary" className="h-4 px-1.5 text-2xs font-normal">{hint}</Badge>
         )}
       </div>
       {children}

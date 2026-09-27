@@ -36,9 +36,9 @@ describe('VisualEnhancementResolver ranges (#5384)', () => {
     assert.equal(r.resolve({ contactShading: { intensity: 0.4 } }).contactShading.intensity, 0.4);
   });
 
-  it('keeps the separation-line radius in pixels, clamped to 1-2', () => {
+  it('keeps the edge-pass tap radius in pixels, clamped to 1-3 (#5385: widened from 1-2 for the diagonal taps at high quality)', () => {
     const r = new VisualEnhancementResolver();
-    assert.equal(r.resolve({ separationLines: { radius: 5 } }).separationLines.radius, 2);
+    assert.equal(r.resolve({ separationLines: { radius: 5 } }).separationLines.radius, 3);
     assert.equal(r.resolve({ separationLines: { radius: 0 } }).separationLines.radius, 1);
     assert.equal(r.resolve({ separationLines: { radius: 1.5 } }).separationLines.radius, 1.5);
   });

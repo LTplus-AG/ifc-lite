@@ -15,13 +15,14 @@ import type { ClipBox } from './types.js';
 import { packRteOrigin, type RelativeToEyeFrame } from './relative-to-eye.js';
 import { packRteClipBox, rtePlaneDistance } from './rte-clip-space.js';
 
-export const MESH_UNIFORM_FLOATS = 92;
+export const MESH_UNIFORM_FLOATS = 96;
 export const MESH_UNIFORM_BYTES = MESH_UNIFORM_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 
 export const MESH_UNIFORM_OFFSET = {
   viewProj: 0,
   model: 16,
   baseColor: 32,
+  metallicRoughness: 36,
   sectionPlane: 40,
   flags: 44,
   clipBoxMin: 48,
@@ -29,6 +30,8 @@ export const MESH_UNIFORM_OFFSET = {
   rteViewProj: 60,
   drawableDelta: 76,
   rteCameraOrigin: 84,
+  /** vec4<u32>: per-draw colour-table anchor + mode bits (entity-color-table.ts, #6076). */
+  overrideParams: 92,
 } as const;
 
 /** flags.x: vertex and fragment values are camera-relative RTE coordinates. */

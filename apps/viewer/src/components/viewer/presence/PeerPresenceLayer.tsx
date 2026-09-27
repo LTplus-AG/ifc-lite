@@ -3,23 +3,29 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * DOM-billboard overlay for live peer cursors (collab presence).
+ * Live peer cursors (collab presence) on the shared scene-overlay kernel
+ * (#5511, charter #5478).
  *
- * Each peer broadcasts a world-space cursor point (`cursor3d`) over Yjs
- * awareness; this layer re-projects every peer's point to screen space each
- * frame via the same camera callbacks the annotation layer uses, so a peer's
- * cursor sticks to the model point regardless of *your* camera angle.
+ * Each peer's world-space cursor (`cursor3d`, broadcast over Yjs awareness)
+ * is registered as a `Pin` on the shared `SceneProjector` — the one rAF loop
+ * every scene overlay now shares — instead of the bespoke
+ * `requestAnimationFrame` + `projectToScreen` poll this layer used to run
+ * itself. IMPORTANT: this is a main-bundle component, so it must NOT import
+ * the `@ifc-lite/collab` runtime (yjs/automerge) — it reads only the plain
+ * `collabPeers` presence data the store already holds, and derives
+ * color/label/opacity inline.
  *
- * Mirrors AnnotationLayer's rAF-projection pattern. IMPORTANT: this is a
- * main-bundle component, so it must NOT import the `@ifc-lite/collab` runtime
- * (yjs/automerge) — it reads only the plain `collabPeers` presence data the
- * store already holds, and derives color/label/opacity inline.
+ * A peer's identity colour is data, not a theme token (roadmap §3: "data
+ * palettes stay data"), so the cursor `Pin` uses `fill` to override the
+ * shared ink/accent classes, and the name pill's background is set inline —
+ * same as the pre-kernel version.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { resolve } from '@/i18n/registry';
+import { Pin, AnchoredCard } from '@/components/viewport-ui/scene';
 import type { PresenceState } from '@ifc-lite/collab';
 
 /** `collabPeers` entries carry the awareness clientId (attached in collabSlice). */
@@ -28,14 +34,6 @@ type PeerPresence = PresenceState & { clientId: number };
 /** Fade peers toward transparent as their last update ages (matches presence stale window). */
 const IDLE_FADE_START_MS = 4_000;
 const STALE_MS = 10_000;
-
-interface ProjectedCursor {
-  clientId: number;
-  screen: { x: number; y: number };
-  color: string;
-  label: string;
-  opacity: number;
-}
 
 /** A plain function, not a component — it cannot call `useTranslation()` —
  *  so it resolves directly against the locale registry, the same
@@ -57,100 +55,49 @@ export function PeerPresenceLayer() {
   const { t } = useTranslation();
   const peers = useViewerStore((s) => s.collabPeers) as unknown as PeerPresence[];
   const sessionActive = useViewerStore((s) => s.collabSession !== null);
-  const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
 
-  const [cursors, setCursors] = useState<ProjectedCursor[]>([]);
-
-  // Only peers carrying a world cursor are drawable. Captured per-render; the
-  // rAF tick below reads this closure.
+  // Only peers carrying a world cursor are drawable.
   const drawablePeers = useMemo(
     () => peers.filter((p) => p.cursor3d && typeof p.clientId === 'number'),
     [peers],
   );
 
-  useEffect(() => {
-    const project = cameraCallbacks.projectToScreen;
-    if (!sessionActive || !project || drawablePeers.length === 0) {
-      setCursors([]);
-      return;
-    }
+  if (!sessionActive || drawablePeers.length === 0) return null;
 
-    let raf: number | null = null;
-    let lastSerialized = '';
-
-    const tick = () => {
-      const now = Date.now();
-      const next: ProjectedCursor[] = [];
-      for (const peer of drawablePeers) {
-        const screen = peer.cursor3d ? project(peer.cursor3d) : null;
-        if (!screen) continue;
-        next.push({
-          clientId: peer.clientId,
-          screen,
-          color: peer.user?.color ?? '#5b8def',
-          label: peerLabel(peer, t),
-          opacity: peerOpacity(peer, now),
-        });
-      }
-      const serialized = next
-        // `label` is included so a live locale switch (#4918: `peerLabel` now
-        // routes through `t()`) is detected even when a peer's position and
-        // opacity haven't moved — otherwise the dedup check below would skip
-        // `setCursors` and leave the previous locale's label on screen until
-        // the peer's cursor next moves.
-        .map((c) => `${c.clientId}:${c.screen.x | 0}:${c.screen.y | 0}:${c.opacity.toFixed(2)}:${c.label}`)
-        .join(',');
-      if (serialized !== lastSerialized) {
-        lastSerialized = serialized;
-        setCursors(next);
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => {
-      if (raf !== null) cancelAnimationFrame(raf);
-    };
-  }, [cameraCallbacks, drawablePeers, sessionActive]);
-
-  if (cursors.length === 0) return null;
+  const now = Date.now();
 
   return (
-    <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-label={t('peerPresenceLayer.cursorsAriaLabel')}>
-      {cursors.map((c) => (
-        <div
-          key={c.clientId}
-          className="absolute"
-          style={{ left: c.screen.x, top: c.screen.y, opacity: c.opacity, transition: 'opacity 200ms linear' }}
-        >
-          {/* Cursor arrow (peer color, white outline for contrast). */}
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 18 18"
-            style={{ display: 'block', filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.4))' }}
-            aria-hidden="true"
-          >
-            <path d="M2 2 L2 14 L6 10 L9 16 L11 15 L8 9 L14 9 Z" fill={c.color} stroke="#ffffff" strokeWidth="1.2" />
-          </svg>
-          {/* Name / tool pill. */}
-          <span
-            style={{
-              position: 'absolute',
-              left: 16,
-              top: 10,
-              background: c.color,
-              color: '#ffffff',
-              font: '600 11px/1.4 system-ui, sans-serif',
-              padding: '1px 6px',
-              borderRadius: 4,
-              whiteSpace: 'nowrap',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.25)',
-            }}
-          >
-            {c.label}
-          </span>
-        </div>
-      ))}
+    <div aria-label={t('peerPresenceLayer.cursorsAriaLabel')}>
+      {drawablePeers.map((peer) => {
+        const color = peer.user?.color ?? '#5b8def';
+        const opacity = peerOpacity(peer, now);
+        const label = peerLabel(peer, t);
+        return (
+          <div key={peer.clientId}>
+            <Pin
+              worldPoint={peer.cursor3d ?? null}
+              fill={color}
+              groupProps={{ style: { opacity }, 'data-peer-cursor-id': String(peer.clientId) }}
+            />
+            <AnchoredCard worldPoint={peer.cursor3d ?? null} offset={{ dx: 12, dy: -28 }}>
+              <span
+                style={{
+                  display: 'inline-block',
+                  background: color,
+                  color: '#ffffff',
+                  font: '600 11px/1.4 system-ui, sans-serif',
+                  padding: '1px 6px',
+                  borderRadius: 4,
+                  whiteSpace: 'nowrap',
+                  opacity,
+                }}
+              >
+                {label}
+              </span>
+            </AnchoredCard>
+          </div>
+        );
+      })}
     </div>
   );
 }

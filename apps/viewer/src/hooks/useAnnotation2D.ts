@@ -11,6 +11,8 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
+import { isTextEntryElement } from '@/lib/keyboard-event';
+import { registerKeyboardCommand, registerKeyboardKeyUp } from '@/lib/commands/dispatcher';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type {
   Annotation2DTool, Point2D, TextAnnotation2D,
@@ -259,39 +261,27 @@ export function useAnnotation2D({
   // ── Keyboard shortcuts ────────────────────────────────────────────────
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') {
-        shiftHeldRef.current = true;
-      }
-      if (e.key === 'Escape') {
-        // 1. Cancel in-progress work
-        if (activeTool === 'polygon-area') cancelPolygonArea2D();
-        else if (activeTool === 'cloud') cancelCloudAnnotation2D();
-        else if (activeTool === 'text') setTextAnnotation2DEditing(null);
-        // 2. Exit any creation tool back to select/pan
-        if (activeTool !== 'none') {
-          setActiveTool('none');
-        }
-        // 3. Deselect
-        if (storeRef.current.selectedAnnotation2D) setSelectedAnnotation2D(null);
-      }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && storeRef.current.selectedAnnotation2D) {
-        const activeEl = document.activeElement;
-        if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) return;
-        e.preventDefault();
-        deleteSelectedAnnotation2D();
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') shiftHeldRef.current = false;
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    const removeShift = registerKeyboardCommand('drawing2d.orthogonal', () => {
+      shiftHeldRef.current = true;
+      return false; // Measurement observes the same modifier.
+    }, { ignoreModifiers: true, allowInTextEntry: true });
+    const removeCancel = registerKeyboardCommand('drawing2d.cancel', () => {
+      if (activeTool === 'polygon-area') cancelPolygonArea2D();
+      else if (activeTool === 'cloud') cancelCloudAnnotation2D();
+      else if (activeTool === 'text') setTextAnnotation2DEditing(null);
+      if (activeTool !== 'none') setActiveTool('none');
+      if (storeRef.current.selectedAnnotation2D) setSelectedAnnotation2D(null);
+    }, { active: () => activeTool !== 'none' || Boolean(storeRef.current.selectedAnnotation2D),
+      allowInTextEntry: true, ignoreModifiers: true });
+    const removeDelete = registerKeyboardCommand('drawing2d.delete', () => {
+      if (!storeRef.current.selectedAnnotation2D || isTextEntryElement(document.activeElement)) return false;
+      deleteSelectedAnnotation2D();
+    }, { active: () => Boolean(storeRef.current.selectedAnnotation2D) });
+    const removeKeyUp = registerKeyboardKeyUp((event) => {
+      if (event.key === 'Shift') shiftHeldRef.current = false;
+    });
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      removeShift(); removeCancel(); removeDelete(); removeKeyUp();
     };
   }, [activeTool, setActiveTool, cancelPolygonArea2D, cancelCloudAnnotation2D,
     setTextAnnotation2DEditing, setSelectedAnnotation2D, deleteSelectedAnnotation2D]);

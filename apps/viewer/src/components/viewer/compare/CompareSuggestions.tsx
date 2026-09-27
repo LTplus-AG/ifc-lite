@@ -74,16 +74,16 @@ function SuggestionActions({
         <>
           <select
             aria-label={t('comparePanel.suggestions.candidateAAriaLabel')}
-            className="h-6 max-w-[45%] truncate rounded border border-border bg-background text-[10px]"
+            className="h-6 max-w-[45%] truncate rounded border border-border bg-background text-2xs"
             value={base}
             onChange={(e) => setBase(e.target.value)}
           >
             {row.bases.map((c) => <option key={c.key} value={c.key}>{candidateLabel(c)}</option>)}
           </select>
-          <span className="text-[10px] text-muted-foreground">{t('comparePanel.suggestions.isConnector')}</span>
+          <span className="text-2xs text-muted-foreground">{t('comparePanel.suggestions.isConnector')}</span>
           <select
             aria-label={t('comparePanel.suggestions.candidateBAriaLabel')}
-            className="h-6 max-w-[45%] truncate rounded border border-border bg-background text-[10px]"
+            className="h-6 max-w-[45%] truncate rounded border border-border bg-background text-2xs"
             value={here}
             onChange={(e) => setHere(e.target.value)}
           >
@@ -92,11 +92,11 @@ function SuggestionActions({
         </>
       )}
       <div className="ml-auto flex items-center gap-1">
-        {!open && <span className="text-[10px] text-muted-foreground">{t('comparePanel.suggestions.decidedLabel')}</span>}
+        {!open && <span className="text-2xs text-muted-foreground">{t('comparePanel.suggestions.decidedLabel')}</span>}
         <Button
           variant="outline"
           size="sm"
-          className="h-6 px-2 text-[10px]"
+          className="h-6 px-2 text-2xs"
           disabled={!open}
           onClick={() => onAccept({ row, base, here })}
         >
@@ -105,7 +105,7 @@ function SuggestionActions({
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 px-2 text-[10px]"
+          className="h-6 px-2 text-2xs"
           disabled={!open}
           onClick={() => onReject({ row, base, here })}
         >
@@ -155,11 +155,11 @@ export function CompareSuggestions({
               <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ backgroundColor: rgbaCss(SUGGESTION_COLOR) }} />
               <span className="min-w-0 flex-1 truncate text-xs">{row.name || row.ifcType}</span>
               {row.crossClass && (
-                <span className="shrink-0 rounded border border-border px-1 text-[9px] text-muted-foreground" title={t('comparePanel.suggestions.classChangedTitle')}>
+                <span className="shrink-0 rounded border border-border px-1 text-2xs text-muted-foreground" title={t('comparePanel.suggestions.classChangedTitle')}>
                   {t('comparePanel.suggestions.classChangedLabel')}
                 </span>
               )}
-              <span className="shrink-0 text-[10px] text-muted-foreground">{row.evidence}</span>
+              <span className="shrink-0 text-2xs text-muted-foreground">{row.evidence}</span>
             </button>
             <SuggestionActions
               row={row}
@@ -170,7 +170,7 @@ export function CompareSuggestions({
           </div>
         ))}
         {truncated > 0 && (
-          <p className="px-2 py-1 text-[10px] text-muted-foreground">
+          <p className="px-2 py-1 text-2xs text-muted-foreground">
             {t('comparePanel.moreNotShown', { count: truncated })}
           </p>
         )}

@@ -290,6 +290,30 @@ describe('runExtensionCommand', () => {
     assert.deepStrictEqual(f.activated, [], 'no extension should have been activated');
   });
 
+  // The loader accepts `./commands/check.js` and stores the file under the
+  // normalised `commands/check.js`; a raw lookup reported it missing (#5634).
+  it('resolves a ./-prefixed handler path to the normalised bundle file', async () => {
+    const files = new Map<string, BundleFile>([
+      [HANDLER_PATH, bundleFile(HANDLER_PATH, 'function run() { return "ran-dotted"; }')],
+    ]);
+    const bundle: Bundle = { manifest: manifestFor('demo', `./${HANDLER_PATH}`), files };
+    const sandbox = fakeSandbox(() => {});
+    const deps: RunCommandDeps = {
+      storage: { listExtensions: async () => [installedRecord('demo')] },
+      loader: { getBundle: () => bundle },
+      runtime: {
+        activate: async () => activationRecord('demo', sandbox),
+        deactivate: async () => {},
+      },
+      dispatcher: { fire: async () => [] },
+      sdk: { marker: 'bim-context' },
+    };
+
+    const result = await runExtensionCommand(deps, COMMAND_ID, 'demo');
+
+    assert.equal(await result?.value, 'ran-dotted');
+  });
+
   it('throws when the handler file is missing from the bundle', async () => {
     const bundle: Bundle = { manifest: manifestFor('demo', HANDLER_PATH), files: new Map() };
     const sandbox = fakeSandbox(() => {});

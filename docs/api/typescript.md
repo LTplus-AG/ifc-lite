@@ -835,6 +835,10 @@ For editing an **already-parsed** `IfcDataStore`, the package exposes anchored b
 
 `addColumnToStore`, `addWallToStore`, `addSlabToStore`, `addBeamToStore`, `addDoorToStore`, `addWindowToStore`, `addSpaceToStore`, `addRoofToStore`, `addPlateToStore`, `addMemberToStore`.
 
+Hosted builders take a `HostAnchor` from `resolveHostAnchor(dataStore, hostExpressId, mutationView)` instead: `addOpeningToStore` (IfcOpeningElement + IfcRelVoidsElement in an IfcWall or IfcSlab), `addHostedDoorToStore` and `addHostedWindowToStore` (the opening plus an IfcDoor / IfcWindow filling it through IfcRelFillsElement).
+
+Type objects and materials take the storey-free anchor from `resolveAuthoringAnchor(dataStore, mutationView)`: `addElementTypeToStore` and `assignTypeInStore` (IfcRelDefinesByType), and `addMaterialToStore`, `addMaterialLayerSetToStore`, `addMaterialLayerSetUsageToStore` and `assignMaterialInStore` (IfcRelAssociatesMaterial). The `assign*` builders take the model's existing relationships from `readRelatedLists`.
+
 ```typescript
 import { StoreEditor } from '@ifc-lite/mutations';
 import { addColumnToStore, resolveSpatialAnchor } from '@ifc-lite/create';
@@ -920,7 +924,7 @@ function extractViewpointState(viewpoint: BCFViewpoint): {
 
 ### Utilities
 
-GUID conversion (`uuidToIfcGuid`, `ifcGuidToUuid`, `generateIfcGuid`, `isValidIfcGuid`), ARGB colour helpers (`parseARGBColor`, `toARGBColor`), 3D marker overlay (`computeMarkerPositions`, `BCFOverlayRenderer`), and `createBCFFromIDSReport` to turn an IDS validation report into BCF topics.
+GUID conversion (`uuidToIfcGuid`, `ifcGuidToUuid`, `generateIfcGuid`, `isValidIfcGuid`), ARGB colour helpers (`parseARGBColor`, `toARGBColor`), 3D marker positioning (`computeMarkerPositions`), and `createBCFFromIDSReport` to turn an IDS validation report into BCF topics.
 
 ---
 
@@ -1015,7 +1019,7 @@ Headless model-diff engine: classifies entities as added / modified / deleted / 
 
 ## @ifc-lite/lens
 
-Rule-based 3D filtering and colorization for IFC models: `evaluateLens`, `evaluateAutoColorLens`, `matchesCriteria`, class/data-source discovery (`discoverClasses`, `discoverDataSources`), and `BUILTIN_LENSES` presets.
+Rule-based 3D filtering and colorization for IFC models: `evaluateLens` applies shared rule selections, `evaluateAutoColorLens` groups by data values, and class/data-source discovery (`discoverClasses`, `discoverDataSources`) supports the `BUILTIN_LENSES` presets.
 
 ## @ifc-lite/lists
 

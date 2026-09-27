@@ -542,6 +542,12 @@ pub use processor::{
 // Analysis-ready export document (welded, Z-up, world metres)
 pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryDataExport};
 
+// Optional authored swept-disk descriptions and measurements, keyed by product occurrence ID
+pub use analytic_export::{
+    extract_swept_disk_descriptions, DirectrixMetrics, DirectrixSegmentMetrics,
+    SweptDiskDescriptions, SweptDiskOccurrence,
+};
+
 pub use georeferencing::{
     extract_georeferencing, extract_georeferencing_with_index, Georeferencing,
 };
@@ -551,6 +557,28 @@ pub use types::mesh::{InstanceRecord, MeshData, RawInstanceOccurrence};
 pub use types::response::{CoordinateInfo, ModelMetadata, ParseResponse, ProcessingStats};
 pub use parallel_scan::build_entity_index_parallel;
 ```
+
+`extract_swept_disk_descriptions(ifc_bytes, ids)` returns the outer `Radius`,
+optional `InnerRadius`, and ordered exact line/circular-arc `Directrix` for
+supported `IfcSweptDiskSolid` items. Call `disk.directrix_metrics()` on an
+occurrence to get `Option<DirectrixMetrics>`. A complete description returns
+`Some`, with `total_length` and indexed `segments` containing centreline
+`length` and optional `bend_angle`. Lengths, coordinates, and radii are
+absolute IFC world metres, Z-up. An arc's
+`bend_angle` is the positive sweep magnitude in radians; its signed
+`Directrix::Arc::sweep_angle` retains travel direction. Line segments have no
+bend angle. These geometric measurements do not include fabrication bend
+allowances or deductions. `ids` optionally filters product STEP IDs.
+
+Each record identifies its source solid and mapped-item path.
+`source_modified` identifies an authored CSG operand whose sweep may differ
+from the final body, so its metrics are source geometry measurements rather
+than final fabricated quantities. It does not indicate cuts from external
+`IfcRelVoidsElement` openings. Unsupported curves or transforms have an
+explicit status, no partial directrix, and the method returns `None`. For an
+unsupported transform, radii retain their authored values converted to metres;
+no world circular radius is implied. The existing mesh export remains a
+separate operation.
 
 ### Appearance authoring
 
@@ -627,6 +655,12 @@ pub use merged::{export_merged, export_merged_with_stats, MergedOptions, MergedS
 pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 pub use step::{export_step, export_step_json, export_step_with_stats,
                AttrMutation, PropMutation, StepOptions, StepStats};
+// A `MutablePropertyView.exportMutations()` log, applied with byte parity to
+// the TypeScript `StepExporter` (#5941). `MutationLog::from_json` reads the log.
+pub use step_log::{export_step_with_log, export_step_with_log_to_writer,
+                   export_merged_models_with_logs, MutationLog,
+                   LogMutation, LogNewEntity, MutationKind, GeorefMutations,
+                   LogExportStats, StepCounters};
 pub use model::{build_export_model, stream_export_model, ExportModel /* ... */};
 // `ExportModel` and both streaming entry points carry the model's UnitScales.
 // Attribute values are in the FILE's units, unlike the geometry exporters'
@@ -641,6 +675,25 @@ pub use model::{stream_export_model_with_options, build_export_model_with_option
                 ModelOptions, Placement};
 pub use ifc_lite_core::{AttributeValue, DecodedEntity, IfcType};
 ```
+
+`export_step_with_log` applies the mutation log a `MutablePropertyView`
+records (`exportMutations()`), replayed as `importMutations` replays it into a
+view wired like the viewer's, and writes the file the TypeScript `StepExporter`
+writes for it: byte-identical apart from the GlobalIds of generated records,
+which are derived from the host and the new express id. Records the log does
+not change stream from the source; memory beyond the record index grows with
+the edits. A log carrying a mutation kind the writer does not apply yet, an
+unrecognised mutation `type`, or an `UPDATE_ATTRIBUTE` with a `null` `newValue`
+is an `InvalidInput` error (the TypeScript replay skips the latter two; a native
+save refuses rather than drop an edit), as is combining a log with `StepOptions::included` or
+with the per-edit vectors. `LogExportStats` reports the new and modified entity
+counts the header states and the warnings the TypeScript exporter would give.
+`export_merged_models_with_logs(models, logs, opts)` is `export_merged_models`
+with a log per model: each edited model is first written through
+`export_step_with_log` in its own schema, as `MergedExporter.exportAsync` bakes
+edited models through `StepExporter`, and its georeferencing edits are not
+applied (reported in `MergedStats::warnings`), as the TypeScript bake passes
+none.
 
 `export_step_with_stats` returns `StepStats`. `total` and `written` describe
 the selected entity set. The remaining counters are validity or refusal

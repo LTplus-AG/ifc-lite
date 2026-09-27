@@ -12,7 +12,7 @@ import { pipeNetworks } from './landXmlPipeWasm.js';
 import { buildLandXmlSurfaceComponents, fragmentLandXmlGeometryComponent, type LandXmlGeometryPreflight } from './landXmlIngest.js';
 import { deriveLandXmlRenderFrameFromMeasurement } from './landXmlRenderFrame.js';
 import type { LandXmlAssembledSurface } from './landXmlStreamAssembler.js';
-import { readLandXmlTinSurface } from './landXmlWasm.js';
+import { readLandXmlCoordinateSystem, readLandXmlTinSurface } from './landXmlWasm.js';
 import type { LandXmlTinDocument } from './landXmlSemantics.js';
 
 const MAX_METADATA_RECORD_BYTES = 512 * 1024;
@@ -150,16 +150,7 @@ export class LandXmlStreamPreflightReducer {
     if (kind === 'header') {
       if (this.pipeHeader !== null) throw new Error('LandXML stream emitted multiple metadata headers');
       const terrain = record(envelope.terrain, 'terrain metadata header');
-      const coordinateSystem = terrain.coordinate_system;
-      this.coordinateSystem = coordinateSystem === undefined || coordinateSystem === null
-        ? undefined
-        : (() => {
-          const value = record(coordinateSystem, 'coordinate system');
-          return {
-            ...(typeof value.horizontal_datum === 'string' ? { horizontalDatum: value.horizontal_datum } : {}),
-            ...(typeof value.vertical_datum === 'string' ? { verticalDatum: value.vertical_datum } : {}),
-          };
-        })();
+      this.coordinateSystem = readLandXmlCoordinateSystem(terrain.coordinate_system);
       const pipe = record(envelope.pipe_networks, 'pipe metadata header');
       this.pipeHeader = {
         ...pipe,

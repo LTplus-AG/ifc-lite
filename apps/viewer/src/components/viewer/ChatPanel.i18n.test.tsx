@@ -24,7 +24,7 @@ import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider.js';
 import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
 import type { ExtensionHostService } from '@/services/extensions/host.js';
-import { cleanup, click, render } from '@/test/render.js';
+import { activate, cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { TranslationValue } from '@/i18n/types';
 import type { chatEn as ChatEnType } from '@/i18n/catalogues/chat.en';
@@ -81,10 +81,28 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   act(() => {
     useViewerStore.getState().clearChatMessages();
+    useViewerStore.getState().clearChatAttachments();
   });
 });
 
 describe('chat panel localization (#4918)', () => {
+  it('names attachment removal and removes only its target by keyboard (#5811)', () => {
+    act(() => {
+      const add = useViewerStore.getState().addChatAttachment;
+      add({ id: 'first', name: 'first.csv', type: 'text/csv', size: 1, textContent: 'a' });
+      add({ id: 'second', name: 'second.csv', type: 'text/csv', size: 1, textContent: 'b' });
+    });
+    const ui = renderPanel();
+    registerLocale('chat-attachment-pseudo', pseudoLocale());
+    act(() => setLocale('chat-attachment-pseudo'));
+    const remove = [...ui.querySelectorAll('button')].find(
+      button => button.getAttribute('aria-label') === marked('Remove attachment first.csv'),
+    );
+    assert.ok(remove);
+    activate(remove, ' ');
+    assert.deepEqual(useViewerStore.getState().chatAttachments.map(a => a.id), ['second']);
+  });
+
   it('renders the idle empty state in English by default', () => {
     assert.ok(chatEn, 'chat.en.ts catalogue must exist');
     const ui = renderPanel();

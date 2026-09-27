@@ -7,6 +7,7 @@
  * validated on the way in, and the `.ifclite-document.json` file a document
  * is shared as — the template you re-open on the next revision of the model.
  */
+import { trackExportCompleted } from '@/lib/analytics';
 import { downloadFile, sanitizeFilename } from '../export/download.js';
 import { migrateDocumentSpec, validateDocumentSpec, type DocumentSpec } from './types.js';
 
@@ -48,6 +49,7 @@ export const DOCUMENT_FILE_SUFFIX = '.ifclite-document.json';
 
 export function exportDocument(document: DocumentSpec): void {
   downloadFile(JSON.stringify(document, null, 2), `${sanitizeFilename(document.name, { fallback: 'document' })}${DOCUMENT_FILE_SUFFIX}`, 'application/json');
+  trackExportCompleted({ format: 'json', surface: 'document' });
 }
 
 export const freshDocumentId = (): string => `document-${crypto.randomUUID()}`;

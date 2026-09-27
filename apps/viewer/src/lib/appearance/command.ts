@@ -5,6 +5,7 @@ import { captureAppearanceDependencies, planAuthoredResourceCleanup } from '@ifc
 import { StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
 import { federationRegistry, type Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
+import { mutationDenial } from '@/store/mutation-permission';
 import { preparePreparedOverlayPublication } from '@/store/federation-overlay-publication';
 import { geometryWithAppearance } from './command-geometry.js';
 import { trackAppearanceCommandResources } from './command-resources.js';
@@ -65,6 +66,8 @@ export async function commitAppearance(
   const state = useViewerStore.getState();
   const model = state.models.get(modelId);
   const view = state.mutationViews.get(modelId);
+  const denial = mutationDenial(state, modelId);
+  if (denial) failWithCleanup(new Error(denial), [() => preview.cancel()]);
   if (!model?.ifcDataStore || !view) throw new Error('This model is not ready for appearance editing.');
   if (state.collabRoomId) throw new Error('Leave the shared room before editing appearance, then share the finished model.');
   try { source.validate(view); }
@@ -108,6 +111,8 @@ export async function commitAppearance(
       || appearanceRevision(modelId) !== sourceRevision) {
       throw new Error('The model changed while preparing appearance. Refresh the preview.');
     }
+    const currentDenial = mutationDenial(useViewerStore.getState(), modelId);
+    if (currentDenial) throw new Error(currentDenial);
     source.validate(view);
     prepared.commit();
     // Verify federation publication while every later command step remains

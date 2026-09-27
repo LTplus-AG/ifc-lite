@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { Calendar, CalendarClock, CalendarPlus, Upload, X } from 'lucide-react';
+import { Calendar, CalendarClock, CalendarPlus, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey, TranslationParameters } from '@/i18n';
@@ -18,7 +18,6 @@ interface GanttEmptyStateProps {
   hasWorkPlans?: boolean;
   /** The model has tasks, but the selected IfcWorkSchedule contains none. */
   selectedScheduleEmpty?: boolean;
-  onClose?: () => void;
   onGenerate?: () => void;
   /** Opens the file picker to import an MS Project (MSPDI) / Gantt CSV file. */
   onImport?: () => void;
@@ -45,24 +44,12 @@ export function GanttEmptyState({
   extractionError,
   hasWorkPlans,
   selectedScheduleEmpty,
-  onClose,
   onGenerate,
   onImport,
 }: GanttEmptyStateProps) {
   const { t } = useTranslation();
   return (
     <div className="relative h-full w-full flex flex-col items-center justify-center text-center p-8 gap-3 text-muted-foreground">
-      {onClose && (
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          className="absolute top-2 right-2"
-          onClick={onClose}
-          aria-label={t('schedule.emptyState.closeAriaLabel')}
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      )}
       <div className="relative">
         <Calendar className="h-12 w-12" strokeWidth={1} />
         <CalendarClock className="h-6 w-6 absolute -bottom-1 -right-1 text-primary" strokeWidth={1.5} />

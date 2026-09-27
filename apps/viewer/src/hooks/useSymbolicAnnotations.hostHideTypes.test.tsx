@@ -172,7 +172,6 @@ describe('hideTypes reaches the symbolic 2D overlay (#2934)', () => {
       models: new Map(),
       hiddenEntities: new Set<number>(),
       lensHiddenIds: new Set<number>(),
-      hiddenEntitiesByModel: new Map(),
       hostHiddenIfcTypes: null,
     } as never);
   });

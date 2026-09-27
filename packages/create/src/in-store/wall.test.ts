@@ -122,6 +122,26 @@ describe('addWallToStore', () => {
     )).toThrow(/same storey plane/);
   });
 
+  it('writes the placement Axis alongside its RefDirection (#5469)', () => {
+    // IfcAxis2Placement3D.AxisAndRefDirProvision: both or neither. The wall
+    // rotates its local X onto the wall direction, so the Axis must be there.
+    const store = makeStore(50);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+    const result = addWallToStore(
+      editor,
+      { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54 },
+      { Start: [0, 0, 0], End: [0, 5, 0], Thickness: 0.2, Height: 3 },
+    );
+    const byRef = new Map(view.getNewEntities().map((e) => [`#${e.expressId}`, e]));
+    const placement = byRef.get(`#${result.placementId}`);
+    expect(placement?.attributes[0]).toBe('#54');
+    const axisPlacement = byRef.get(placement?.attributes[1] as string);
+    expect(axisPlacement?.type).toBe('IfcAxis2Placement3D');
+    expect(byRef.get(axisPlacement?.attributes[1] as string)?.attributes[0]).toEqual([0, 0, 1]);
+    expect(byRef.get(axisPlacement?.attributes[2] as string)?.attributes[0]).toEqual([0, 1, 0]);
+  });
+
   it('drops PredefinedType for IFC2X3', () => {
     const store = makeStore(50);
     const view = new MutablePropertyView(null, 'm1');

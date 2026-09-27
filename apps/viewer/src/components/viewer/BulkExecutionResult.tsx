@@ -13,7 +13,9 @@ import { hasActiveTranslation, resolveEnglish } from '@/i18n/registry';
 
 export type BulkRuntimeFailure =
   | { kind: 'entity'; id: number; detail?: string }
-  | { kind: 'execute'; detail?: string };
+  | { kind: 'execute'; detail?: string }
+  /** The user cancelled after `done` of `total`; what was applied is one undo step. */
+  | { kind: 'cancelled'; done: number; total: number };
 
 export function BulkExecutionResult({
   result,
@@ -43,7 +45,12 @@ export function BulkExecutionResult({
       : runtimeFailures.length > 0
         ? runtimeFailures.map((failure) => failure.kind === 'entity'
             ? t('bulkPropertyEditor.entityError', { id: failure.id, detail: failure.detail ?? t('bulkPropertyEditor.unknownError') })
-            : t('bulkPropertyEditor.executionFailed', { detail: failure.detail ?? t('bulkPropertyEditor.unknownError') })).join(', ')
+            : failure.kind === 'cancelled'
+              ? t('bulkPropertyEditor.cancelledAfter', {
+                  done: formatLocaleNumber(locale, failure.done),
+                  total: formatLocaleNumber(locale, failure.total),
+                })
+              : t('bulkPropertyEditor.executionFailed', { detail: failure.detail ?? t('bulkPropertyEditor.unknownError') })).join(', ')
         : t('bulkPropertyEditor.unknownError');
 
   return (

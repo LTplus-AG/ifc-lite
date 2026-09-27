@@ -16,12 +16,12 @@ import { redactSecrets } from './lib/redact-secrets.mjs';
  * model in the list is tried before giving up. All three are verified present
  * on OpenRouter's /models list at the time this was written.
  */
-export const OPENROUTER_REVIEW_MODELS_DEFAULT = ['anthropic/claude-sonnet-5', 'openai/gpt-5.6-sol', 'openai/gpt-5.6-luna'];
-// gpt-5.4-nano FIRST: the cheapest model in the pricing table
+export const OPENROUTER_REVIEW_MODELS_DEFAULT = ['anthropic/claude-sonnet-5', 'openai/gpt-6-sol', 'openai/gpt-6-luna'];
+// gpt-6-luna FIRST: the cheapest OpenAI model in the pricing table
 // (ensemble-reviewer.mjs's MODEL_PRICES_PER_MTOK) that the judge -- a
 // keep/drop-only, no-tools, one-turn pass over already-validated findings --
 // needs no more capability than. Haiku stays as the failover.
-export const OPENROUTER_JUDGE_MODELS_DEFAULT = ['openai/gpt-5.4-nano', 'anthropic/claude-haiku-4.5'];
+export const OPENROUTER_JUDGE_MODELS_DEFAULT = ['openai/gpt-6-luna', 'anthropic/claude-haiku-4.5'];
 
 /** Kept as a plain single-model constant: the first of the review chain. */
 export const OPENROUTER_REVIEW_MODEL = OPENROUTER_REVIEW_MODELS_DEFAULT[0];

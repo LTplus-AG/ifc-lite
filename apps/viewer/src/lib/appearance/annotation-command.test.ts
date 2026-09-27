@@ -52,6 +52,7 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
     const idOffset = federationRegistry.registerModel('annotation', 53);
     const model = { ...fixtureModel('annotation'), idOffset, maxExpressId: 53, ifcDataStore: data, geometryResult: geometry };
     useViewerStore.setState({ models: new Map([...(federated ? [['other', fixtureModel('other')] as const] : []), ['annotation', model]]), activeModelId: 'annotation',
+      editEnabled: true,
       geometryResult: geometry, mutationViews: new Map([['annotation', view]]), storeEditors: new Map([['annotation', editor]]),
       undoStacks: new Map(), redoStacks: new Map(), dirtyModels: new Set(), mutationVersion: 0, collabRoomId: null });
     const priorOverlay = editor.addEntity('IfcColourRgb', [null, 1, 0, 0]);

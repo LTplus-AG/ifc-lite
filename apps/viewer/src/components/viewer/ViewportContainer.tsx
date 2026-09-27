@@ -6,50 +6,48 @@ import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
 import { useFederatedGeometry } from './useFederatedGeometry';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import { useLevelDisplayEffect } from '@/hooks/useLevelDisplayEffect';
 import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { Viewport } from './Viewport';
-import {
-  initialDragOverlayState,
-  reduceDragOverlay,
-  type DragOverlayEvent,
-  type DragOverlayState,
-} from './dragOverlayState';
+import { useWindowFileDrop } from './useWindowFileDrop';
 import { ViewportOverlays } from './ViewportOverlays';
 import { WebGpuTroubleshootingDetails, webGpuBannerBlurb } from './WebGpuTroubleshooting';
 import { ViewportWelcomeCard } from './ViewportWelcomeCard';
+import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
+import { WelcomeFooterChips } from './WelcomeFooterChips';
 import { useTranslation } from '@/i18n';
 import { MergeLayersBanner } from './MergeLayersBanner';
 import { GeometryModeBanner } from './GeometryModeBanner';
 import { LandXmlUnitsRefusalPrompt } from './LandXmlUnitsRefusalPrompt';
-import { LevelDisplayIndicator } from './LevelDisplayIndicator';
+import { VisibilityChips } from '@/components/viewport-ui/hud/VisibilityChips';
 import { ToolOverlays } from './ToolOverlays';
 import { ZoneOverlay, ZoneAssignmentSyncMount } from './tools/ZoneOverlay';
 import { AnnotationLayer } from './annotations/AnnotationLayer';
 import { CollabPresenceLayer } from './CollabPresenceLayer';
-import { Section2DPanel } from './Section2DPanel';
+import { MeasurementSceneLayer } from './scene/MeasurementSceneLayer';
+import { BasepointOverlay } from './BasepointOverlay';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { DrawingRuntimeHost } from './drawing/DrawingRuntimeHost';
-import { BasketPresentationDock } from './BasketPresentationDock';
 import { BCFOverlay } from './bcf/BCFOverlay';
 import { CesiumOverlay } from './CesiumOverlay';
-import { CesiumPlacementEditor } from './CesiumPlacementEditor';
-import { SpaceMousePanel } from './SpaceMousePanel';
+import { CesiumPlacementGizmo } from './placement/CesiumPlacementGizmo';
 import { useSolarEnvironment } from '@/hooks/useSolarEnvironment';
 import { useSolarSweep } from '@/hooks/useSolarSweep';
 import { getViewerStoreApi, useViewerStore } from '@/store';
-import { toGlobalIdFromModels } from '@/store/globalId';
-import { collectIfcBuildingStoreyElementsWithIfcSpace } from '@/store/basketVisibleSet';
 import { isTypeVisible } from '@/store/typeVisibilityFilter';
-import type { AggregationRelationships } from '@/utils/aggregation';
+import { hasInstancedShards } from '@/store/instancedShardModels';
+import { computeVisibilityIsolation, isVisibleResultEmpty } from '@/lib/visibility/effective-empty';
+import { EmptyVisibilityNotice } from './EmptyVisibilityNotice';
 import { useIfc } from '@/hooks/useIfc';
-import { useWebGPU } from '@/hooks/useWebGPU';
+import { useWebGpuOpenGuard } from '@/hooks/useWebGpuOpenGuard';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import {
   supportsFileSystemAccess,
   openIfcFilesWithHandles,
   handlesFromDataTransfer,
 } from '@/services/file-system-access';
-import { FILE_ACCEPT, isGltfBundleFile, isSupportedModelFile } from '@/services/supported-model-files';
+import { FILE_ACCEPT, isModelSidecarFile, isSupportedModelFile } from '@/services/supported-model-files';
 import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
 import {
   SOURCE_DOWNLOAD_EVENT,
@@ -60,9 +58,9 @@ import { useOptionalSourceHost } from '@/services/sources/SourceHostProvider';
 import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
 import { sanitizeFilename } from '@/lib/export/download';
 import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
-import { toast } from '@/components/ui/toast';
-import { describeUnsupportedFormat } from '@/hooks/ingest/unsupportedFormat';
-import { Upload, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, GitMerge } from 'lucide-react';
+import { toast, Toaster } from '@/components/ui/toast';
+import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
+import { Upload, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import type { MeshData, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
@@ -86,6 +84,8 @@ export function ViewportContainer() {
   const setHasTypeGeometry = useViewerStore((s) => s.setHasTypeGeometry);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const classFilter = useViewerStore((s) => s.classFilter);
+  const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
+  const resolveGlobalIdFromModels = useViewerStore((s) => s.resolveGlobalIdFromModels);
   const resetViewerState = useViewerStore((s) => s.resetViewerState);
   const bcfOverlayVisible = useViewerStore((s) => s.bcfOverlayVisible);
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
@@ -99,10 +99,9 @@ export function ViewportContainer() {
   // Subscribe to mutationVersion so Cesium reacts to georef edits
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
   const [showTroubleshooting, setShowTroubleshooting] = useState(false);
   const [recentFiles, setRecentFiles] = useState<RecentFileEntry[]>([]);
-  const webgpu = useWebGPU();
+  const { webgpu, guard: guardWebGpu } = useWebGpuOpenGuard();
   // `webGpuBannerBlurb` is a plain function, not a component — pass this
   // component's own `t` so the banner headline re-renders on a live locale
   // switch instead of reading the registry's non-reactive `resolve` default
@@ -311,34 +310,6 @@ export function ViewportContainer() {
     setCesiumSourceModelId(georef?.sourceModelId ?? null);
   }, [georef?.sourceModelId, setCesiumSourceModelId]);
 
-  // Track drag enter/leave depth so the overlay doesn't flicker when the
-  // cursor moves between child elements (each child boundary fires its own
-  // dragenter/dragleave that bubbles to the container). See dragOverlayState.ts.
-  const dragStateRef = useRef<DragOverlayState>(initialDragOverlayState);
-
-  const applyDragEvent = useCallback((event: DragOverlayEvent) => {
-    dragStateRef.current = reduceDragOverlay(dragStateRef.current, event, webgpu.supported);
-    setIsDragging(dragStateRef.current.dragging);
-  }, [webgpu.supported]);
-
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    applyDragEvent('enter');
-  }, [applyDragEvent]);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    // Needed to allow the drop, but does not toggle drag state (avoids flicker)
-    e.preventDefault();
-    e.stopPropagation();
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    applyDragEvent('leave');
-  }, [applyDragEvent]);
-
   const isSupportedFile = isSupportedModelFile;
 
   // Single routing point for every ingestion path (picker / drop / input). The
@@ -460,86 +431,72 @@ export function ViewportContainer() {
       window.removeEventListener(SOURCE_DOWNLOAD_EVENT, handleSourceDownload);
   }, [addModel, resetViewerState, clearAllModels, sourceHost]);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    applyDragEvent('drop');
-
-    // Block file loading if WebGPU not supported
-    if (!webgpu.supported) {
-      return;
-    }
-
+  // Window drops on any viewer chrome route through the same guarded loader.
+  // Unsupported WebGPU reports through the shared load-error card (#5851).
+  const handleDrop = useCallback((dataTransfer: DataTransfer) => {
     // Capture live handles synchronously — the DataTransferItemList is neutered
-    // once this handler returns, so this must run before any await.
-    const handlesPromise = handlesFromDataTransfer(e.dataTransfer);
+    // once the drop event returns, so this must run before any await.
+    const handlesPromise = handlesFromDataTransfer(dataTransfer);
+    const droppedFiles = Array.from(dataTransfer.files);
+    const attempt = () => {
+      if (!guardWebGpu(attempt)) return;
+      const { dxfFiles, modelFiles: allDropped } = splitDxfFiles(droppedFiles);
+      if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
+      if (allDropped.length === 0) return;
 
-    // DXF reference underlays split off before model routing (issue #1782):
-    // a dropped site plan must never replace or federate with the model.
-    const allDropped0 = Array.from(e.dataTransfer.files);
-    const { dxfFiles, modelFiles: allDropped } = splitDxfFiles(allDropped0);
-    if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
-    if (allDropped.length === 0) return;
+      // Keep glTF sidecars beside the document until they are packed into GLB.
+      const supportedFiles = allDropped.filter(file => isSupportedFile(file) || isModelSidecarFile(file));
 
-    // Keep glTF sidecars beside the document until they are packed into GLB.
-    const supportedFiles = allDropped.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
-
-    if (supportedFiles.length === 0) {
-      // Tell the user *why* — common case is a Recap project / SketchUp
-      // file dropped because they assumed our viewer would understand it.
-      const explained = allDropped.find((f) => describeUnsupportedFormat(f.name));
-      if (explained) {
-        toast.error(`${explained.name}: ${describeUnsupportedFormat(explained.name)}`);
+      if (supportedFiles.length === 0) {
+        reportFileOpenRejected(allDropped);
+        return;
       }
-      return;
-    }
 
-    void handlesPromise.then((opened) => {
-      // Prefer the handle-paired files (Chromium): each file + handle comes from
-      // the same dropped item, so no filename matching is needed. Fall back to
-      // the plain dropped files when no handles were captured (Firefox/Safari).
-      const supportedOpened = (opened ?? []).filter((o) => isSupportedFile(o.file) || isGltfBundleFile(o.file));
-      const useHandles = supportedOpened.length > 0;
-      const files = useHandles ? supportedOpened.map((o) => o.file) : supportedFiles;
-      const handles = useHandles ? supportedOpened.map((o) => o.handle) : undefined;
+      void handlesPromise.then((opened) => {
+        // Prefer the handle-paired files (Chromium): each file + handle comes from
+        // the same dropped item, so no filename matching is needed. Fall back to
+        // the plain dropped files when no handles were captured (Firefox/Safari).
+        const supportedOpened = (opened ?? []).filter((o) => isSupportedFile(o.file) || isModelSidecarFile(o.file));
+        const useHandles = supportedOpened.length > 0;
+        const files = useHandles ? supportedOpened.map((o) => o.file) : supportedFiles;
+        const handles = useHandles ? supportedOpened.map((o) => o.handle) : undefined;
 
-      void prepareAndRoute(files, handles);
-    });
-  }, [prepareAndRoute, applyDragEvent, isSupportedFile, webgpu.supported]);
+        void prepareAndRoute(files, handles);
+      });
+    };
+    attempt();
+  }, [prepareAndRoute, isSupportedFile, guardWebGpu]);
+  // `accept` only steers the drop cursor/overlay; handleDrop's own guard (not
+  // this flag) is what shows the load-error card when unsupported (#5851).
+  const isDragging = useWindowFileDrop(handleDrop, webgpu.supported);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    // Block file loading if WebGPU not supported
-    if (!webgpu.supported) {
-      return;
-    }
-
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    // DXF reference underlays split off before model routing (issue #1782).
-    const { dxfFiles, modelFiles } = splitDxfFiles(Array.from(files));
-    if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
-
-    // Filter to supported files (IFC, IFCX, GLB). The <input> path yields no
-    // live handle, so these models are not refreshable.
-    const supportedFiles = modelFiles.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
-
-    if (supportedFiles.length === 0) {
-      e.target.value = '';
-      return;
-    }
-
-    void prepareAndRoute(supportedFiles);
-
-    // Reset input so same file can be selected again
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    // Reset while the event still owns this input; Retry uses the captured Files.
     e.target.value = '';
-  }, [prepareAndRoute, isSupportedFile, webgpu.supported]);
+    const attempt = () => {
+      if (!guardWebGpu(attempt)) return;
+
+      // DXF reference underlays split off before model routing (issue #1782).
+      const { dxfFiles, modelFiles } = splitDxfFiles(files);
+      if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
+
+      // Filter to supported files (IFC, IFCX, GLB). The <input> path yields no
+      // live handle, so these models are not refreshable.
+      const supportedFiles = modelFiles.filter(file => isSupportedFile(file) || isModelSidecarFile(file));
+
+      if (supportedFiles.length > 0) void prepareAndRoute(supportedFiles);
+      else reportFileOpenRejected(modelFiles);
+    };
+    attempt();
+  }, [prepareAndRoute, isSupportedFile, guardWebGpu]);
 
   // Preferred open path: the File System Access picker (Chromium) captures a
   // live handle per file so the model can be refreshed from disk. Falls back to
   // the hidden <input type="file"> on browsers without the API.
   const handleOpenClick = useCallback(async () => {
-    if (!webgpu.supported) return;
+    if (!guardWebGpu(() => { void handleOpenClick(); })) return;
     if (!supportsFileSystemAccess()) {
       fileInputRef.current?.click();
       return;
@@ -549,22 +506,25 @@ export function ViewportContainer() {
     // DXF reference underlays split off before model routing (issue #1782).
     const dxfPicked = opened.filter((o) => o.file.name.toLowerCase().endsWith('.dxf'));
     if (dxfPicked.length > 0) void ingestDxfFiles(dxfPicked.map((o) => o.file));
-    const supported = opened.filter((o) => isSupportedFile(o.file) || isGltfBundleFile(o.file));
-    if (supported.length === 0) return;
+    const supported = opened.filter((o) => isSupportedFile(o.file) || isModelSidecarFile(o.file));
+    if (supported.length === 0) {
+      reportFileOpenRejected(opened.map((o) => o.file));
+      return;
+    }
 
     const files = supported.map((o) => o.file);
     prepareAndRoute(files, supported.map((o) => o.handle));
-  }, [prepareAndRoute, isSupportedFile, webgpu.supported]);
+  }, [prepareAndRoute, isSupportedFile, guardWebGpu]);
 
   const handleStartBlank = useCallback(async () => {
-    if (!webgpu.supported) return;
+    if (!guardWebGpu(() => { void handleStartBlank(); })) return;
     const file = createBlankIfcFile();
     // Must await: loadFile() calls resetViewerState() internally which
     // resets activeTool back to 'select'. Setting addElement before that
     // races and leaves the user in select mode despite the click.
     await loadFile(file);
     setActiveTool('addElement');
-  }, [webgpu.supported, loadFile, setActiveTool]);
+  }, [guardWebGpu, loadFile, setActiveTool]);
 
   // Issue #540 "Merge Multilayer Walls" reload. The setting changes the produced
   // geometry, so it only takes on a re-load. Re-load the active model IN PLACE
@@ -785,8 +745,8 @@ export function ViewportContainer() {
       // IfcSpace / IfcOpeningElement alpha down to <= 0.3 here, which stomped
       // lens / Pset colour rules even when the user explicitly chose alpha 1.0.
       // Defaults still come from styling.rs / default-materials.ts; the
-      // renderer promotes overridden entities to the opaque pipeline so the
-      // overlay paint pass finds matching depth. See issue #677.
+      // renderer promotes overridden entities to the opaque pipeline, the
+      // only draws its colour table paints (#6076). See issue #677.
       cache.push(mesh);
     }
 
@@ -821,76 +781,24 @@ export function ViewportContainer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mergedGeometryResult, filteredGeometry, geometryVersion]);
 
-  // Compute combined isolation set (storeys + manual isolation)
-  // This is passed to the renderer for batch-level visibility filtering
-  // Now supports multi-model: aggregates elements from all models for selected storeys
-  // IMPORTANT: Returns globalIds (meshes use globalIds after federation registry transformation)
+  // Shared pure intersection for the renderer and the empty-result notice.
   const computedIsolatedIds = useMemo(() => {
-    // Compute storey isolation if storeys are selected
-    let storeyIsolation: Set<number> | null = null;
-    if (selectedStoreys.size > 0) {
-      const combinedGlobalIds = new Set<number>();
+    return computeVisibilityIsolation({
+      models: storeModels, ifcDataStore, selectedStoreys, isolatedEntities,
+      classFilter, resolveGlobalIdFromModels,
+    });
+  }, [storeModels, ifcDataStore, selectedStoreys, isolatedEntities, classFilter, resolveGlobalIdFromModels]);
 
-      // Check each federated model's storeys
-      for (const [, model] of storeModels) {
-        const hierarchy = model.ifcDataStore?.spatialHierarchy;
-        if (!hierarchy) continue;
-        // Pass the relationship graph so storey isolation pulls in the parts of
-        // any decomposing assembly (stair flights, railings, …) — they live off
-        // the spatial tree via IfcRelAggregates and would otherwise vanish (#1133).
-        const relationships = model.ifcDataStore?.relationships as AggregationRelationships | undefined;
-
-        for (const storeyId of selectedStoreys) {
-          const localStoreyId = hierarchy.byStorey.has(storeyId)
-            ? storeyId
-            : storeyId - (model.idOffset ?? 0);
-          const storeyElementIds = collectIfcBuildingStoreyElementsWithIfcSpace(hierarchy, localStoreyId, relationships);
-          if (storeyElementIds) {
-            for (const originalExpressId of storeyElementIds) {
-              combinedGlobalIds.add(toGlobalIdFromModels(storeModels, model.id, originalExpressId));
-            }
-          }
-        }
-      }
-
-      // Legacy single-model mode (offset = 0)
-      if (ifcDataStore?.spatialHierarchy && storeModels.size === 0) {
-        const hierarchy = ifcDataStore.spatialHierarchy;
-        const relationships = ifcDataStore.relationships as AggregationRelationships | undefined;
-        for (const storeyId of selectedStoreys) {
-          const storeyElementIds = collectIfcBuildingStoreyElementsWithIfcSpace(hierarchy, storeyId, relationships);
-          if (storeyElementIds) {
-            for (const id of storeyElementIds) {
-              combinedGlobalIds.add(id);
-            }
-          }
-        }
-      }
-
-      if (combinedGlobalIds.size > 0) {
-        storeyIsolation = combinedGlobalIds;
-      }
-    }
-
-    // Collect all active filters and intersect them
-    const filters: Set<number>[] = [];
-    if (storeyIsolation !== null) filters.push(storeyIsolation);
-    if (classFilter !== null) filters.push(classFilter.ids);
-    if (isolatedEntities !== null) filters.push(isolatedEntities);
-
-    if (filters.length === 0) return null;
-    if (filters.length === 1) return filters[0];
-
-    // Intersect all active filters — start from smallest for efficiency
-    const sorted = filters.sort((a, b) => a.size - b.size);
-    const intersection = new Set<number>();
-    for (const id of sorted[0]) {
-      if (sorted.every(s => s.has(id))) {
-        intersection.add(id);
-      }
-    }
-    return intersection;
-  }, [storeModels, ifcDataStore, selectedStoreys, isolatedEntities, classFilter]);
+  const visibleResultEmpty = useMemo(() => isVisibleResultEmpty({
+    models: storeModels, geometryResult, hiddenEntities,
+  }, {
+    meshes: filteredGeometry,
+    pointClouds: mergedPointClouds,
+    isolatedIds: computedIsolatedIds,
+    hasUnenumeratedInstances: [...storeModels].some(([id, model]) => model.visible
+      && hasInstancedShards(id) && !model.geometryResult?.instancedGeometryHashes?.size),
+  }), [storeModels, geometryResult, filteredGeometry, geometryVersion, mergedPointClouds,
+    computedIsolatedIds, hiddenEntities]);
 
   // Grid Pattern
   const GridPattern = () => (
@@ -923,10 +831,6 @@ export function ViewportContainer() {
       <div
         className="relative h-full w-full bg-white dark:bg-black text-zinc-900 dark:text-zinc-50 overflow-hidden"
         data-viewport
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
       >
         <GridPattern />
 
@@ -939,47 +843,40 @@ export function ViewportContainer() {
           className="hidden"
         />
 
-        {/* Drop overlay */}
-        {isDragging && (
-          <div className="pointer-events-none absolute inset-0 z-50 bg-primary/10 backdrop-blur-[2px] flex items-center justify-center p-8">
+        {/* Drop overlay — full window, since the whole window is the drop target (#5845) */}
+        {isDragging && createPortal(
+          <div className="pointer-events-none fixed inset-0 z-50 bg-primary/10 backdrop-blur-[2px] flex items-center justify-center p-8">
             <div className="border-4 border-dashed border-primary bg-white/90 dark:bg-black/90 p-12 max-w-2xl w-full text-center shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)] transition-all">
               <Upload className="h-20 w-20 mx-auto text-primary mb-6" />
               <p className="text-3xl font-black uppercase tracking-tight text-primary">{t('viewportLighting.container.emptyState.dropOverlay.title')}</p>
             </div>
-          </div>
+          </div>,
+          document.body,
         )}
 
-        {/* WebGPU Not Supported Banner — compact on mobile */}
+        {/* WebGPU Not Supported Banner — compact on mobile; tokens, not the hard-coded Tokyo Night hex (#5504). */}
         {!webgpu.checking && !webgpu.supported && (
           <div className="absolute top-0 left-0 right-0 z-40 max-h-[40vh] overflow-auto">
             {/* Hazard stripes background */}
             <div
               className="absolute inset-0 opacity-10"
-              style={{
-                backgroundImage: `repeating-linear-gradient(
-                  -45deg,
-                  transparent,
-                  transparent 10px,
-                  #f7768e 10px,
-                  #f7768e 20px
-                )`
-              }}
+              style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 10px, var(--color-destructive) 10px, var(--color-destructive) 20px)' }}
             />
-            <div className="relative border-b-4 border-[#f7768e] bg-[#1a1b26] dark:bg-[#1a1b26] px-4 py-5">
+            <div className="relative border-b-4 border-destructive bg-background px-4 py-5">
               <div className="max-w-3xl mx-auto flex items-start gap-4">
                 {/* Icon container with brutalist frame */}
-                <div className="flex-shrink-0 border-2 border-[#f7768e] p-2 bg-[#f7768e]/10">
-                  <AlertTriangle className="h-6 w-6 text-[#f7768e]" />
+                <div className="flex-shrink-0 border-2 border-destructive p-2 bg-destructive/10">
+                  <AlertTriangle className="h-6 w-6 text-destructive" />
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-black text-lg uppercase tracking-wider text-[#f7768e] mb-1">
+                  <h3 className="font-black text-lg uppercase tracking-wider text-destructive mb-1">
                     {t('viewportLighting.container.emptyState.webgpuBanner.heading')}
                   </h3>
-                  <p className="font-mono text-sm text-[#a9b1d6] leading-relaxed">
+                  <p className="font-mono text-sm text-foreground/80 leading-relaxed">
                     {webGpuBannerBlurb(webgpu.category, t)}
                     {webgpu.reason && (
-                      <span className="block mt-1 text-[#565f89]">
+                      <span className="block mt-1 text-muted-foreground">
                         {webgpu.reason}
                       </span>
                     )}
@@ -989,12 +886,12 @@ export function ViewportContainer() {
                       href="https://caniuse.com/webgpu"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-mono uppercase tracking-wide border border-[#3b4261] text-[#7aa2f7] hover:border-[#7aa2f7] hover:bg-[#7aa2f7]/10 transition-colors"
+                      className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-mono uppercase tracking-wide border border-border text-primary hover:border-primary hover:bg-primary/10 transition-colors"
                     >
                       {t('viewportLighting.container.emptyState.webgpuBanner.checkBrowserSupport')}
                       <ExternalLink className="h-3 w-3" />
                     </a>
-                    <span className="inline-flex items-center px-3 py-1 text-xs font-mono text-[#565f89] border border-[#3b4261]">
+                    <span className="inline-flex items-center px-3 py-1 text-xs font-mono text-muted-foreground border border-border">
                       {t('viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers')}
                     </span>
                   </div>
@@ -1002,7 +899,7 @@ export function ViewportContainer() {
                   {/* Troubleshooting Section */}
                   <button
                     onClick={() => setShowTroubleshooting(!showTroubleshooting)}
-                    className="mt-4 flex items-center gap-2 text-xs font-mono uppercase tracking-wide text-[#ff9e64] hover:text-[#e0af68] transition-colors"
+                    className="mt-4 flex items-center gap-2 text-xs font-mono uppercase tracking-wide text-amber-600 hover:text-amber-500 dark:text-amber-400 dark:hover:text-amber-300 transition-colors"
                   >
                     <ChevronDown className={`h-4 w-4 transition-transform ${showTroubleshooting ? 'rotate-180' : ''}`} />
                     {showTroubleshooting
@@ -1018,6 +915,11 @@ export function ViewportContainer() {
             </div>
           </div>
         )}
+
+        {/* One load-error card for every failed open attempt (#5851) —
+            picker, drop, ?model= autoload — shown here too since a failure
+            with nothing loaded yet renders THIS branch, not ViewportOverlays'. */}
+        <ViewportLoadErrorCard />
 
         {/* Empty state content — mobile-optimized padding and scrollable.
             The scroll container must NOT center via justify-center: a flex
@@ -1042,58 +944,11 @@ export function ViewportContainer() {
               dropped: it repeated toolbar affordances without offering an
               action, and its height pushed the welcome card off-screen. */}
 
-          {/* Moonshot callout (#1717): Layer PRs are brand new - nobody knows
-              to multi-drop .ifcx files, so the welcome screen sells the demo. */}
-          <button
-            type="button"
-            onClick={() => {
-              void import('@/lib/layers/demo-stack')
-                .then((m) => m.loadDemoLayerStack())
-                .catch((err: unknown) => toast.error(err instanceof Error ? err.message : String(err)));
-            }}
-            className="group mt-6 hidden md:flex items-center gap-3 max-w-3xl w-full p-3 bg-zinc-100 dark:bg-[#1f2335] border border-primary/40 hover:border-primary transition-colors text-left"
-          >
-            <div className="p-2 bg-white dark:bg-[#16161e] border border-zinc-300 dark:border-[#3b4261] text-primary">
-              <GitMerge className="h-5 w-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className="font-bold uppercase text-sm tracking-wide text-zinc-900 dark:text-[#a9b1d6]">
-                <span className="mr-2 rounded-sm bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">{t('viewportLighting.container.emptyState.layersPromo.badge')}</span>
-                {t('viewportLighting.container.emptyState.layersPromo.title')}
-              </h3>
-              <p className="text-xs font-mono text-zinc-500 dark:text-[#565f89]">
-                {t('viewportLighting.container.emptyState.layersPromo.description')}
-              </p>
-            </div>
-            <span className="text-xs font-mono font-bold text-primary group-hover:translate-x-0.5 transition-transform">
-              {t('viewportLighting.container.emptyState.layersPromo.cta')}
-            </span>
-          </button>
-
-          {/* Footer chips - left: discovery link to the marketing site for first-time
-              visitors, right: shortcuts cue for power users. Both desktop-only.
-              IN FLOW, not absolute: the welcome column scrolls on short
-              viewports, and absolutely-anchored chips ride the scroll and
-              land on top of the content (#1736 follow-up). */}
-          <div className="mt-10 hidden w-full max-w-3xl items-center justify-between gap-4 md:flex">
-            <a
-              href="https://ifclite.dev"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group inline-flex items-center gap-2 text-xs font-mono px-3 py-1.5 bg-zinc-100 dark:bg-[#1f2335] border border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#565f89] hover:border-primary hover:text-primary transition-colors"
-            >
-              <span>{t('viewportLighting.container.emptyState.footer.discoverPrompt')}</span>
-              <span className="font-bold text-primary group-hover:translate-x-0.5 transition-transform">{t('viewportLighting.container.emptyState.footer.discoverLink')}</span>
-            </a>
-            <div className="flex items-center gap-2 text-xs font-mono px-3 py-1.5 bg-zinc-100 dark:bg-[#1f2335] border border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#565f89]">
-              <Command className="h-3 w-3" />
-              <span>{t('viewportLighting.container.emptyState.footer.shortcutsLabel')}</span>
-              <span className="px-1.5 ml-1 font-bold text-primary bg-primary/20">?</span>
-            </div>
-          </div>
+          <WelcomeFooterChips />
 
           </div>
         </div>
+        <Toaster variant="absolute" />
       </div>
     );
   }
@@ -1102,24 +957,21 @@ export function ViewportContainer() {
     <div
       className="relative h-full w-full bg-zinc-50 dark:bg-black overflow-hidden"
       data-viewport
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
     >
-      {/* Drop overlay for when a file is already loaded - shows "Add Model" */}
-      {isDragging && (
-        <div className="pointer-events-none absolute inset-0 z-50 bg-[#9ece6a]/10 backdrop-blur-[2px] flex items-center justify-center">
-          <div className="bg-white dark:bg-[#1a1b26] border-4 border-dashed border-[#9ece6a] p-8 shadow-2xl">
+      {/* Drop overlay for a loaded file - "Add Model"; `status-ok` (tokens, #5504) sets it apart from the plain overlay above. */}
+      {isDragging && createPortal(
+        <div className="pointer-events-none fixed inset-0 z-50 bg-status-ok/10 backdrop-blur-[2px] flex items-center justify-center">
+          <div className="bg-background border-4 border-dashed border-status-ok p-8 shadow-2xl">
             <div className="text-center">
-              <Plus className="h-12 w-12 mx-auto text-[#9ece6a] mb-4" />
-              <p className="text-xl font-black uppercase text-[#9ece6a]">{t('viewportLighting.container.dropOverlay.addModelTitle')}</p>
-              <p className="text-sm font-mono text-zinc-500 dark:text-[#565f89] mt-2">
+              <Plus className="h-12 w-12 mx-auto text-status-ok mb-4" />
+              <p className="text-xl font-black uppercase text-status-ok">{t('viewportLighting.container.dropOverlay.addModelTitle')}</p>
+              <p className="text-sm font-mono text-muted-foreground mt-2">
                 {t('viewportLighting.container.dropOverlay.addModelSubtitle', { count: models.size })}
               </p>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* Cesium 3D world context overlay — rendered behind the WebGPU canvas (web only) */}
@@ -1135,11 +987,8 @@ export function ViewportContainer() {
           storeyElevations={georef.storeyElevations}
         />
       )}
-      {/* SpaceMouse panel — WebHID 3D mouse connection + sensitivity (#1677).
-          Draggable; self-anchored below the ViewCube. */}
-      <SpaceMousePanel />
       {cesiumEnabled && georef?.mapConversion && georef.baseMapConversion && (
-        <CesiumPlacementEditor
+        <CesiumPlacementGizmo
           modelId={georef.sourceModelId}
           mapConversion={georef.mapConversion}
           baseMapConversion={georef.baseMapConversion}
@@ -1162,9 +1011,17 @@ export function ViewportContainer() {
         releaseGeometryAfterStream={false}
         onGeometryReleased={releaseGeometryMemory}
       />
-      <AnnotationLayer />
-      <CollabPresenceLayer />
-      {bcfOverlayVisible && <BCFOverlay />}
+      {/* ONE scene-overlay kernel per viewport (#5486, #5511, #5512, was
+          two roots until `ToolOverlays` (#5502) consolidated here). */}
+      <SceneOverlayRoot>
+        <AnnotationLayer />
+        <CollabPresenceLayer />
+        {bcfOverlayVisible && <BCFOverlay />}
+        <BasepointOverlay />
+        <ZoneOverlay />
+        <MeasurementSceneLayer />
+        <ToolOverlays />
+      </SceneOverlayRoot>
       <ViewportOverlays />
       {/* Issue #540: non-modal "reload to apply" banner anchored to the
           top of the canvas. Only renders when the user has flipped the
@@ -1175,13 +1032,11 @@ export function ViewportContainer() {
       {/* #5175: offers a retry with a user-chosen linear unit when a LandXML
           load refuses because the source declares no <Units>. */}
       <LandXmlUnitsRefusalPrompt />
-      <LevelDisplayIndicator />
-      <ToolOverlays />
-      <ZoneOverlay />
+      <VisibilityChips />
+      <EmptyVisibilityNotice visible={visibleResultEmpty} />
       <ZoneAssignmentSyncMount />
-      <BasketPresentationDock />
       <DrawingRuntimeHost mergedGeometry={mergedGeometryResult} computedIsolatedIds={computedIsolatedIds} />
-      <Section2DPanel />
+      <Toaster variant="absolute" />
     </div>
   );
 }

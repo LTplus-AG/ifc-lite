@@ -3,10 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Workspace-panel toggling shared by the classic toolbar's Panels menu
- * and the ribbon's Analyze / Author tabs. Encodes the single-tenant
- * right-slot and bottom-slot rules (one docked panel per region) plus
- * the analysis-extension handoff, exactly as the toolbar always did.
+ * Workspace-panel toggling for the ribbon's Analyze / Author tabs.
+ * Encodes the single-tenant right-slot and bottom-slot rules plus
+ * analysis-extension handoff.
  */
 
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
@@ -19,6 +18,8 @@ import {
 } from '@/services/analysis-extensions';
 import { closePanelWindow } from '@/services/panel-windows';
 import { BOTTOM_PANEL_IDS, isBottomPanelOpen, type BottomPanelId } from '@/lib/panels/bottom-panels';
+import { useBottomPanelFlags } from '@/hooks/useBottomPanelFlags';
+import { trackPanelOpened, type UiSurface } from '@/store/uiTelemetry';
 
 /** Registry ids, deliberately. This hook used to spell the entity-list panel
  *  `'list'` while the registry and the store spell it `'lists'`, and the cost
@@ -29,7 +30,8 @@ export type BottomPanel = BottomPanelId;
 export type RightPanel = 'bcf' | 'validation' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions' | 'sources' | 'appearance';
 export type WorkspacePanel = BottomPanel | RightPanel | string;
 
-export function useWorkspacePanelControls() {
+/** `surface`: the chrome these controls sit in, reported with each open (#5618). */
+export function useWorkspacePanelControls(surface?: UiSurface) {
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
   const bcfPanelVisible = useViewerStore((state) => state.bcfPanelVisible);
@@ -40,7 +42,6 @@ export function useWorkspacePanelControls() {
   const setClashPanelVisible = useViewerStore((state) => state.setClashPanelVisible);
   const comparePanelVisible = useViewerStore((state) => state.comparePanelVisible);
   const setComparePanelVisible = useViewerStore((state) => state.setComparePanelVisible);
-  const listPanelVisible = useViewerStore((state) => state.listPanelVisible);
   const setListPanelVisible = useViewerStore((state) => state.setListPanelVisible);
   const lensPanelVisible = useViewerStore((state) => state.lensPanelVisible);
   const setLensPanelVisible = useViewerStore((state) => state.setLensPanelVisible);
@@ -48,12 +49,9 @@ export function useWorkspacePanelControls() {
   const setExtensionsPanelVisible = useViewerStore((state) => state.setExtensionsPanelVisible);
   const sourcesPanelVisible = useViewerStore((state) => state.sourcesPanelVisible);
   const setSourcesPanelVisible = useViewerStore((state) => state.setSourcesPanelVisible);
-  const scriptPanelVisible = useViewerStore((state) => state.scriptPanelVisible);
   const setScriptPanelVisible = useViewerStore((state) => state.setScriptPanelVisible);
-  const ganttPanelVisible = useViewerStore((state) => state.ganttPanelVisible);
-  const chartPanelVisible = useViewerStore((state) => state.chartPanelVisible);
-  const flowPanelVisible = useViewerStore((state) => state.flowPanelVisible);
-  const documentPanelVisible = useViewerStore((state) => state.documentPanelVisible);
+  // Every bottom-strip flag from the table, so a new bottom panel needs no row here.
+  const bottomFlags = useBottomPanelFlags();
   const setGanttPanelVisible = useViewerStore((state) => state.setGanttPanelVisible);
   const layersPanelVisible = useViewerStore((state) => state.layersPanelVisible);
   const collabPanelVisible = useViewerStore((state) => state.collabPanelVisible);
@@ -63,8 +61,7 @@ export function useWorkspacePanelControls() {
   const poppedOutIds = useViewerStore((state) => state.poppedOutIds);
   // Zones (#1810) has no dedicated visibility flag — it is a pure sidebar
   // panel, driven by `sidebarActivePanel`. Reading it HERE rather than in each
-  // toolbar is what keeps the classic strip and the ribbon from drifting on
-  // whether the Zones button looks active (#2508).
+  // hook keeps the ribbon's Zones button in sync with the active panel (#2508).
   const sidebarActivePanel = useViewerStore((state) => state.sidebarActivePanel);
   const setRightPanelCollapsed = useViewerStore((state) => state.setRightPanelCollapsed);
 
@@ -96,15 +93,15 @@ export function useWorkspacePanelControls() {
     // Lists panel cleared its dock flag and left the floating window on screen
     // with the toolbar latch off, while the same click from the activity bar
     // (which routes here) brought it home correctly.
-    useViewerStore.getState().toggleBottomPanel(panel);
-  }, [activeAnalysisExtension?.placement]);
+    useViewerStore.getState().toggleBottomPanel(panel, surface);
+  }, [activeAnalysisExtension?.placement, surface]);
 
   const handleToggleRightPanel = useCallback((panel: RightPanel) => {
     if (activeAnalysisExtension?.placement !== 'bottom') {
       closeActiveAnalysisExtension();
     }
     if (panel === 'appearance') {
-      useViewerStore.getState().toggleWorkspacePanel(panel);
+      useViewerStore.getState().toggleWorkspacePanel(panel, surface);
       return;
     }
 
@@ -128,6 +125,12 @@ export function useWorkspacePanelControls() {
     const nextSourcesVisible = panel === 'sources' ? !docked(sourcesPanelVisible) : false;
     const isAddElementActive = activeTool === 'addElement';
     const nextAddElementActive = panel === 'addElement' ? !isAddElementActive : false;
+    // These flags bypass the store's panel actions, so report the open here,
+    // with the side slot's occupant as the store's own actions do.
+    if (panel !== 'addElement' && (nextBcfVisible || nextIdsVisible || nextLensVisible || nextClashVisible || nextCompareVisible || nextExtensionsVisible || nextSourcesVisible)) {
+      const { sidebarMode, sidebarActivePanel } = useViewerStore.getState();
+      trackPanelOpened(panel, surface, sidebarMode === 'expanded' ? sidebarActivePanel : undefined);
+    }
 
     setBcfPanelVisible(nextBcfVisible);
     setIdsPanelVisible(nextIdsVisible);
@@ -174,6 +177,7 @@ export function useWorkspacePanelControls() {
     sourcesPanelVisible,
     floatingPanels,
     poppedOutIds,
+    surface,
   ]);
 
   const handleToggleAnalysisExtension = useCallback((id: string) => {
@@ -241,7 +245,6 @@ export function useWorkspacePanelControls() {
     // activity bar never had the bug because it reads `panelLocation`.
     for (const panel of floatingPanels) panels.add(panel.id);
     for (const id of poppedOutIds) panels.add(id);
-    const bottomFlags = { ganttPanelVisible, scriptPanelVisible, listPanelVisible, chartPanelVisible, documentPanelVisible, flowPanelVisible };
     for (const id of BOTTOM_PANEL_IDS) if (isBottomPanelOpen(bottomFlags, id)) panels.add(id);
     if (bcfPanelVisible) panels.add('bcf');
     if (idsPanelVisible) panels.add('validation');
@@ -256,6 +259,7 @@ export function useWorkspacePanelControls() {
     if (sidebarActivePanel === 'zones') panels.add('zones');
     if (sidebarActivePanel === 'appearance') panels.add('appearance');
     if (sidebarActivePanel === 'loadReport') panels.add('loadReport');
+    if (sidebarActivePanel === 'changes') panels.add('changes');
     if (sidebarActivePanel === 'cost') panels.add('cost');
     if (analysisExtensionState.activeId) panels.add(analysisExtensionState.activeId);
     return panels;
@@ -268,47 +272,17 @@ export function useWorkspacePanelControls() {
     clashPanelVisible,
     comparePanelVisible,
     extensionsPanelVisible,
-    ganttPanelVisible,
-    chartPanelVisible,
-    flowPanelVisible,
-    documentPanelVisible,
+    bottomFlags,
     idsPanelVisible,
     lensPanelVisible,
-    listPanelVisible,
     floatingPanels,
     poppedOutIds,
-    scriptPanelVisible,
     sidebarActivePanel,
     sourcesPanelVisible,
   ]);
 
-  const workspacePanelLabel = useMemo(() => {
-    if (activeWorkspacePanels.size === 0) return null;
-    if (activeWorkspacePanels.size > 1) return 'Multiple Panels';
-    if (activeWorkspacePanels.has('script')) return 'Script Editor';
-    if (activeWorkspacePanels.has('lists')) return 'Lists';
-    if (activeWorkspacePanels.has('gantt')) return 'Schedule';
-    if (activeWorkspacePanels.has('bcf')) return 'BCF Topics';
-    if (activeWorkspacePanels.has('validation')) return 'IDS Validation';
-    if (activeWorkspacePanels.has('lens')) return 'Lens Rules';
-    if (activeWorkspacePanels.has('clash')) return 'Clash Detection';
-    if (activeWorkspacePanels.has('compare')) return 'Compare Models';
-    if (activeWorkspacePanels.has('extensions')) return 'Extensions';
-    if (activeWorkspacePanels.has('sources')) return 'Cloud Sources';
-    if (activeWorkspacePanels.has('addElement')) return 'Add Element';
-    if (activeWorkspacePanels.has('layers')) return 'Layer Stack';
-    if (activeWorkspacePanels.has('collab')) return 'Collaboration Room';
-    if (activeWorkspacePanels.has('zones')) return 'Location Zones';
-    if (activeWorkspacePanels.has('appearance')) return 'Appearance';
-    if (activeWorkspacePanels.has('loadReport')) return 'Load Report';
-    if (activeWorkspacePanels.has('cost')) return 'Cost';
-    if (activeWorkspacePanels.has('flow')) return 'Flow';
-    return activeAnalysisExtension?.label ?? 'Analysis';
-  }, [activeAnalysisExtension?.label, activeWorkspacePanels]);
-
   return {
     activeWorkspacePanels,
-    workspacePanelLabel,
     handleToggleBottomPanel,
     handleToggleRightPanel,
     handleToggleAnalysisExtension,

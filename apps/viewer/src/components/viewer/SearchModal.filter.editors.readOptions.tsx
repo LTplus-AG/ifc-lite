@@ -32,7 +32,7 @@ export function ReadOptionControls({ rule, onChange }: { rule: MeasureRule; onCh
         title={t('searchModal.filterEditors.siUnitsTitle')}
         onClick={() => onChange({ ...rule, valueUnit: si ? undefined : 'si' })}
         className={cn(
-          'h-7 rounded border px-1.5 text-[10px] font-medium',
+          'h-7 rounded border px-1.5 text-2xs font-medium',
           si ? 'border-primary bg-primary text-primary-foreground' : 'border-zinc-300 text-muted-foreground dark:border-zinc-700',
         )}
       >

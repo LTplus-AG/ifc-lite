@@ -54,7 +54,7 @@ export interface ModelLike {
  * Resolve a model by ID — checks the multi-model Map first,
  * then falls back to the legacy single-model state.
  */
-export function getModelForRef(state: ViewerState, modelId: string): ModelLike | undefined {
+export function getModelForRef(state: Pick<ViewerState, 'models' | 'ifcDataStore'>, modelId: string): ModelLike | undefined {
   const model = state.models.get(modelId);
   if (model) return model;
 

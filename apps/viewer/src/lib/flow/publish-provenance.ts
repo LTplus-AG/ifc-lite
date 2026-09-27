@@ -97,8 +97,9 @@ export interface RunMutations {
 
 /**
  * The pending mutations one run produced, by id (recorded when the run
- * finished; see `FlowRunWindow.mutationIds`). An edit made by hand after the
- * run is never among them, even one in the same millisecond.
+ * finished; see `FlowRunWindow.mutationIds`). An edit made by hand is never
+ * among them: not after the run, even in the same millisecond, and not while
+ * the run was in flight.
  */
 export function mutationsInRun<T extends { id: string }>(mutations: readonly T[], run: RunMutations): T[] {
   return mutations.filter((mutation) => run.mutationIds.has(mutation.id));

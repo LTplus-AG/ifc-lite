@@ -12,8 +12,7 @@
  * catalogue — not a hardcoded literal — drives the text) or, for the
  * handful of files whose translated text only ever appears behind a real
  * network round trip (`FederationSetupControls`'s match-review dialog),
- * a `requestAnimationFrame` loop (`PeerPresenceLayer`), or a heavy sibling
- * panel body (`BottomStrip`'s `renderPanelBody`), a direct `resolve()`
+ * or a heavy sibling panel body (`BottomStrip`'s `renderPanelBody`), a direct `resolve()`
  * assertion against the catalogue instead — the sweep's own bar for a
  * "truly trivial" file ("make sure every converted file has SOME test
  * coverage asserting its key(s) resolve").
@@ -37,9 +36,11 @@ import { LoadReportPanel } from './LoadReportPanel';
 import { GeometryModeBanner } from './GeometryModeBanner';
 import { CombinatorToggle, AddRuleMenu } from './FilterRuleControls';
 import { GeometryAxisRow } from './GeometryAxisRow';
-import { LevelDisplayIndicator } from './LevelDisplayIndicator';
+import type { ComponentType } from 'react';
+import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
 import { TextAnnotationEditor } from './TextAnnotationEditor';
-import { SaveMarkupToModelButton } from './SaveMarkupToModelButton';
+import { SaveMarkupToModelMenuItem } from './SaveMarkupToModelButton';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ExportChangesButton } from './ExportChangesButton';
 
 const STORE_RESET = {
@@ -127,6 +128,7 @@ it('FederationSetupControls: mounts without a dialog open, and its catalogue val
 it('ShareScopeField: renders the multi-model caption in English and translates it (#4918)', () => {
   const container = render(
     <ShareScopeField
+      showScope
       scope="all"
       onScopeChange={() => {}}
       editable
@@ -142,6 +144,7 @@ it('ShareScopeField: renders the multi-model caption in English and translates i
   assert.ok(container.textContent?.includes('All 3 loaded models'));
   assert.ok(container.textContent?.includes('Every loaded model is shared as its own model, so recipients see the whole workspace.'));
   assert.ok(container.textContent?.includes('Create link'));
+  assert.ok(container.textContent?.includes('Creating the link uploads the shared model data to the collaboration server'));
 
   registerLocale('sharescopefield-de', { 'shareScopeField.createLink': 'Link erstellen' });
   act(() => setLocale('sharescopefield-de'));
@@ -154,9 +157,9 @@ it('LoadReportPanel: renders the no-models English state and translates it (#491
   const container = render(<LoadReportPanel onClose={() => {}} />);
   assert.ok(container.textContent?.includes('Load report'));
   assert.ok(container.textContent?.includes('No models loaded.'));
-  const exportBtn = [...container.querySelectorAll('button')].find((b) => b.getAttribute('title') === 'Export JSON');
+  const exportBtn = [...container.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Export JSON');
   assert.ok(exportBtn);
-  const closeBtn = [...container.querySelectorAll('button')].find((b) => b.getAttribute('title') === 'Close');
+  const closeBtn = [...container.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Close');
   assert.ok(closeBtn);
 
   registerLocale('loadreportpanel-de', { 'loadReportPanel.noModelsLoaded': 'Keine Modelle geladen.' });
@@ -187,7 +190,9 @@ it('GeometryModeBanner: renders the fast-mode banner in English and translates i
       geometryReloadReason: 'mode',
     });
   });
-  const container = render(<GeometryModeBanner />);
+  // `GeometryModeBanner` portals into `ViewportHud`'s top-center region
+  // (#5504); mount the HUD host alongside it, or `HudItem` renders nothing.
+  const container = render(<><ViewportHud /><GeometryModeBanner /></>);
   assert.ok(container.textContent?.includes('Fast geometry enabled'));
   assert.ok(container.textContent?.includes('Reload model to apply the new setting.'));
   const reloadButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Reload'));
@@ -232,20 +237,27 @@ it('GeometryAxisRow: renders decrease/increase aria-labels in English and transl
   assert.ok(container.querySelector('[aria-label="X verringern"]'));
 });
 
-// ---- LevelDisplayIndicator -----------------------------------------------------
+// ---- VisibilityChips -----------------------------------------------------------
 
-it('LevelDisplayIndicator: renders the exploded/solo labels in English and translates them (#4918)', () => {
+it('VisibilityChips: renders the exploded/solo labels in English and translates them (#5882)', async () => {
+  // Reverting #5882 restores the previous chip instead of leaving this test
+  // unable to load; the assertions then compare the actual old/new UI.
+  const replacementPath = '../viewport-ui/hud/VisibilityChips.js';
+  const previousPath = './LevelDisplayIndicator.js';
+  const StatusChip: ComponentType = await import(replacementPath)
+    .then((module) => module.VisibilityChips)
+    .catch(async () => (await import(previousPath)).LevelDisplayIndicator);
   act(() => useViewerStore.setState({ levelDisplayMode: 'exploded', explodedGap: 2 }));
-  const exploded = render(<LevelDisplayIndicator />);
+  // `VisibilityChips` portals into `ViewportHud`'s top-left region
+  // (#5504); mount the HUD host alongside it, or `HudItem` renders nothing.
+  const exploded = render(<><ViewportHud /><StatusChip /></>);
   assert.ok(exploded.textContent?.includes('Exploded · 2 m gap'));
 
-  registerLocale('leveldisplayindicator-de', { 'levelDisplayIndicator.storeyFallback': 'Geschoss' });
+  registerLocale('visibilitychips-de', { 'visibilityChips.soloCount': 'Solo · {count} Geschoss' });
   act(() => useViewerStore.setState({ levelDisplayMode: 'solo', activeStorey: { modelId: 'm1', expressId: 1 } }));
-  act(() => setLocale('leveldisplayindicator-de'));
-  const solo = render(<LevelDisplayIndicator />);
-  // No matching storey is loaded, so `soloName` falls through to the
-  // translated fallback.
-  assert.ok(solo.textContent?.includes('Solo · Geschoss'));
+  act(() => setLocale('visibilitychips-de'));
+  const solo = render(<><ViewportHud /><StatusChip /></>);
+  assert.ok(solo.textContent?.includes('Solo · 1 Geschoss'));
 });
 
 // ---- EntityContextMenu -----------------------------------------------------
@@ -280,9 +292,10 @@ it('TextAnnotationEditor: renders the placeholder and hint in English and transl
 });
 
 // ---- presence/PeerPresenceLayer -------------------------------------------
-// Cursor pills only enter the DOM via a `requestAnimationFrame` tick against
-// live `collabPeers` awareness data — not worth faking an animation-frame
-// loop just to read its three labels back.
+// `PeerPresenceLayer.test.tsx` covers the component itself on the shared
+// scene-overlay kernel's stub-driven projector (#5511); this is just the
+// lightweight catalogue-resolution guard every trivial file in this sweep
+// gets, so a locale regression is caught even without the fuller test.
 
 it('PeerPresenceLayer: the cursor-pill catalogue values resolve (#4918)', () => {
   assert.equal(resolve('peerPresenceLayer.cursorsAriaLabel'), 'Collaborator cursors');
@@ -301,17 +314,19 @@ it('BottomStrip: the drag-grip catalogue value resolves (#4918)', () => {
 
 // ---- SaveMarkupToModelButton -----------------------------------------------
 
-it('SaveMarkupToModelButton: renders the tooltip title in English and translates it (#4918)', () => {
-  const container = render(<SaveMarkupToModelButton />);
-  const button = container.querySelector('button')!;
-  assert.equal(
-    button.getAttribute('title'),
-    'Save drawing markup into the model (overlay only — Export Changes writes it to a file)',
+it('SaveMarkupToModelMenuItem: renders its label in English and translates it (#4918)', () => {
+  render(
+    <DropdownMenu open>
+      <DropdownMenuTrigger>open</DropdownMenuTrigger>
+      <DropdownMenuContent><SaveMarkupToModelMenuItem /></DropdownMenuContent>
+    </DropdownMenu>,
   );
+  const item = document.querySelector('[role="menuitem"]')!;
+  assert.equal(item.textContent, 'Save Markup to Model');
 
-  registerLocale('savemarkuptomodelbutton-de', { 'saveMarkupToModelButton.title': 'Markup ins Modell speichern' });
+  registerLocale('savemarkuptomodelbutton-de', { 'saveMarkupToModelButton.menuItemLabel': 'Markup ins Modell speichern' });
   act(() => setLocale('savemarkuptomodelbutton-de'));
-  assert.equal(button.getAttribute('title'), 'Markup ins Modell speichern');
+  assert.equal(item.textContent, 'Markup ins Modell speichern');
 });
 
 // ---- ExportChangesButton ----------------------------------------------------
@@ -355,13 +370,13 @@ it('ExportChangesButton: renders the button label and single-change tooltip in E
       mutationViews: new Map([['model-1', makeChangedView()]]),
     });
   });
-  const container = render(<ExportChangesButton />);
-  assert.ok(container.textContent?.includes('Export Changes'));
-  assert.equal(resolve('exportChangesButton.tooltipSingle', { count: 1 }), 'Export IFC with 1 change applied');
-  assert.equal(resolve('exportChangesButton.tooltipSingle', { count: 2 }), 'Export IFC with 2 changes applied');
+  const container = render(<ExportChangesButton surface="ribbon" />);
+  assert.ok(container.textContent?.includes('Export modified IFC…'));
+  assert.equal(resolve('exportChangesButton.tooltipSingle', { count: 1 }), 'Export modified IFC… with 1 change applied');
+  assert.equal(resolve('exportChangesButton.tooltipSingle', { count: 2 }), 'Export modified IFC… with 2 changes applied');
   assert.equal(
     resolve('exportChangesButton.tooltipMulti', { models: 2, count: 3 }),
-    'Export changes in 2 models (3 changes)',
+    'Export modified IFC… for 2 models (3 changes)',
   );
 
   registerLocale('exportchangesbutton-de', { 'exportChangesButton.buttonLabel': 'Änderungen exportieren' });

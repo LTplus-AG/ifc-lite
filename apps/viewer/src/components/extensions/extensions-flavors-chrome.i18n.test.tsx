@@ -8,7 +8,7 @@
  * larger oracle in `FlavorListView.i18n.test.tsx`): `ExtensionsPanel`,
  * `FlavorDialog`, `FlavorMergeDialog`, `FlavorImportPreview`,
  * `FlavorIndicator`, `HelpHint`, `BundlePreview`, `ExtensionDockHost`,
- * `ExtensionExportSlot`, `ExtensionToolbarSlot`.
+ * the export menu's extension rows, `ExtensionToolbarSlot`.
  *
  * Same oracle shape as `FlavorListView.i18n.test.tsx`: `extensionsFlavorsEn`
  * is registered under its own locale id (not literal `'en'` — it isn't
@@ -25,6 +25,8 @@ import { act } from 'react';
 import { createBimContext } from '@ifc-lite/sdk';
 import { DEFAULT_FLAVOR_ID, type Bundle, type BundleFile, type Flavor } from '@ifc-lite/extensions';
 import { cleanup, render, click } from '@/test/render.js';
+import { loadDialogs } from '@/test/dialog-host.js';
+import { latestToast } from '@/test/toasts.js';
 import { Toaster } from '@/components/ui/toast';
 import { registerLocale, setLocale } from '@/i18n';
 import type { Catalogue, TranslationParameters, TranslationValue, PluralTranslation } from '@/i18n';
@@ -45,7 +47,6 @@ import { FlavorIndicator } from './FlavorIndicator.js';
 import { HelpHint } from './HelpHint.js';
 import { BundlePreview } from './BundlePreview.js';
 import { ExtensionDockHost } from './ExtensionDockHost.js';
-import { ExtensionExportSlot } from './ExtensionExportSlot.js';
 import { ExtensionToolbarSlot } from './ExtensionToolbarSlot.js';
 import { flavorSwitchPartial } from './flavor-dialog-feedback.js';
 
@@ -86,14 +87,6 @@ function readableStrings(): Set<string> {
     if (ownText) out.add(ownText);
   });
   return out;
-}
-
-function latestToast(): string {
-  const stack = [...document.body.querySelectorAll('div')].find((element) =>
-    element.className.includes('z-[9999]'),
-  );
-  assert.ok(stack, 'expected a toast stack');
-  return stack.children[stack.children.length - 1]?.textContent ?? '';
 }
 
 interface Occurrence {
@@ -212,7 +205,6 @@ describe('ExtensionsPanel localization (#4918)', () => {
       { key: 'extensionsFlavors.extensionsPanel.tab.ideas' },
       { key: 'extensionsFlavors.extensionsPanel.tab.repair' },
       { key: 'extensionsFlavors.extensionsPanel.tab.audit' },
-      { key: 'extensionsFlavors.extensionsPanel.tab.privacy' },
       { key: 'extensionsFlavors.extensionsPanel.helpHint.intro' },
       { key: 'extensionsFlavors.extensionsPanel.helpHint.tabStripInfo' },
       { key: 'extensionsFlavors.extensionsPanel.helpHint.gettingStarted' },
@@ -364,18 +356,13 @@ describe('ExtensionsPanel localization (#4918)', () => {
       ),
     );
     assert.ok(uninstall);
-    const originalConfirm = globalThis.confirm;
-    let prompt = '';
-    globalThis.confirm = (message) => {
-      prompt = String(message);
-      return false;
-    };
-    try {
-      click(uninstall);
-    } finally {
-      globalThis.confirm = originalConfirm;
-    }
-    assert.equal(prompt, r('extensionsFlavors.extensionsPanel.confirmUninstall', { id: 'ext.demo' }));
+    const { ConfirmDialogHost } = await loadDialogs();
+    render(<ConfirmDialogHost />);
+    click(uninstall);
+    const dialog = document.querySelector('[role="alertdialog"]');
+    assert.ok(dialog);
+    assert.match(dialog.textContent ?? '', new RegExp(r('extensionsFlavors.extensionsPanel.confirmUninstall', { id: 'ext.demo' }).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    click(dialog.querySelector('button')!);
   });
 });
 
@@ -424,19 +411,13 @@ describe('FlavorDialog localization (#4918)', () => {
     );
     assert.ok(deleteButton, 'the inactive flavor delete button must render');
 
-    const originalConfirm = globalThis.confirm;
-    let prompt: string | undefined;
-    globalThis.confirm = (message) => {
-      prompt = String(message);
-      return false;
-    };
-    try {
-      click(deleteButton);
-    } finally {
-      globalThis.confirm = originalConfirm;
-    }
-
-    assert.equal(prompt, r('extensionsFlavors.flavorDialog.confirmDelete', { id: removable.id }));
+    const { ConfirmDialogHost } = await loadDialogs();
+    render(<ConfirmDialogHost />);
+    click(deleteButton);
+    const dialog = document.querySelector('[role="alertdialog"]');
+    assert.ok(dialog);
+    assert.match(dialog.textContent ?? '', new RegExp(r('extensionsFlavors.flavorDialog.confirmDelete', { id: removable.id }).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    click(dialog.querySelector('button')!);
   });
 
   it('uses localized canonical metadata when duplicating the baseline flavor', async () => {
@@ -839,6 +820,24 @@ describe('BundlePreview localization (#4918)', () => {
       { key: 'extensionsFlavors.bundlePreview.copyButton' },
     ]);
   });
+
+  it('keeps file preview selection visible through native list buttons (#5821)', () => {
+    const files = new Map<string, BundleFile>([
+      ['alpha.ts', { path: 'alpha.ts', bytes: new TextEncoder().encode('alpha content'), text: 'alpha content' }],
+      ['beta.ts', { path: 'beta.ts', bytes: new TextEncoder().encode('beta content'), text: 'beta content' }],
+    ]);
+    const bundle = { manifest: {} as Bundle['manifest'], files };
+    const ui = render(<BundlePreview bundle={bundle} />);
+    const choices = [...ui.querySelectorAll<HTMLButtonElement>('ul button')];
+    assert.equal(choices.length, 2);
+    assert.equal(choices[0].getAttribute('aria-pressed'), 'true');
+    assert.equal(ui.querySelector('pre')?.textContent, 'alpha content');
+
+    click(choices[1]);
+    assert.equal(choices[0].getAttribute('aria-pressed'), 'false');
+    assert.equal(choices[1].getAttribute('aria-pressed'), 'true');
+    assert.equal(ui.querySelector('pre')?.textContent, 'beta content');
+  });
 });
 
 describe('ExtensionDockHost localization (#4918)', () => {
@@ -873,26 +872,6 @@ describe('ExtensionDockHost localization (#4918)', () => {
     // <div>{t('...loadingWidget')}</div>`) identical in shape to every
     // other converted string in this file, all of which the other
     // assertion here already proves the mechanism for.
-  });
-});
-
-describe('ExtensionExportSlot localization (#4918)', () => {
-  it('translates the "From extensions" section label', () => {
-    const host = new StubHost();
-    host.slotRegistry.register('ext.a', [
-      {
-        extensionId: 'ext.a',
-        slot: 'exportMenu',
-        payload: { id: 'exp1', name: 'Demo CSV', mimeType: 'text/csv', extension: 'csv', handler: 'x.js' },
-      },
-    ]);
-    render(
-      <ExtensionHostContext.Provider value={host}>
-        <ExtensionExportSlot baseName="model" />
-      </ExtensionHostContext.Provider>,
-    );
-
-    assertAllTranslate([{ key: 'extensionsFlavors.extensionExportSlot.fromExtensionsLabel' }]);
   });
 });
 

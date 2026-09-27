@@ -12,7 +12,7 @@
 //! direction, the one that actually protects the compute routes.
 
 use super::*;
-use axum::{body::Body, http::Request, routing::get, Router};
+use axum::{body::Body, http::{Request, StatusCode}, routing::get, Router};
 use tower::ServiceExt;
 
 /// A `Config` with everything at a fixed, irrelevant value except the token —

@@ -1,5 +1,5 @@
 {
- "_comment": "Shared cross-language pin for STEP schema-conversion attribute padding (#1416 in TypeScript; the Rust port). Both halves run their own converter over every case: rust/export/tests/schema_upconvert_parity.rs and packages/export/src/schema-upconvert-sweep.parity.test.ts. Rows are derived from packages/data/src/ifc-schema/generated/entities-*.ts -- the types whose source attribute NAME list is a strict prefix of the target's -- plus hand-written negative controls. DO NOT hand-edit a row to make a test pass.",
+ "_comment": "Shared cross-language pin for STEP schema-conversion attribute padding (#1416 in TypeScript; the Rust port). Both halves run their own converter over every case: rust/export/tests/schema_upconvert_parity.rs and packages/export/src/schema-upconvert-sweep.parity.test.ts. Rows are derived from packages/data/src/ifc-schema/generated/entities-*.ts -- the types whose source attribute NAME list is a strict prefix of the target's -- plus hand-written negative controls. Exception: the two IFC4 -> IFC4X3 IFCCARTESIANPOINTLIST* rows (#5755) come from the IFC4 EXPRESS, because packages/data's IFC4 table wrongly lists TagList for IFC4. DO NOT hand-edit a row to make a test pass.",
  "cases": [
   {
    "why": "appended attributes are padded (IFCAPPLIEDVALUE 6 -> 10)",
@@ -917,6 +917,20 @@
    "to": "IFC4X3",
    "line": "#7=IFCANNOTATION($,$,$,$,$,$,$);",
    "expect": "#7=IFCANNOTATION($,$,$,$,$,$,$,$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCCARTESIANPOINTLIST2D 1 -> 2, TagList; #5755)",
+   "from": "IFC4",
+   "to": "IFC4X3",
+   "line": "#7=IFCCARTESIANPOINTLIST2D(((0.,0.),(1.,0.)));",
+   "expect": "#7=IFCCARTESIANPOINTLIST2D(((0.,0.),(1.,0.)),$);"
+  },
+  {
+   "why": "appended attributes are padded (IFCCARTESIANPOINTLIST3D 1 -> 2, TagList; #5755)",
+   "from": "IFC4",
+   "to": "IFC4X3",
+   "line": "#7=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.)));",
+   "expect": "#7=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.)),$);"
   },
   {
    "why": "appended attributes are padded (IFCDERIVEDUNIT 3 -> 4)",

@@ -218,8 +218,9 @@ describe.skipIf(!MODEL_AVAILABLE)('gymCommand (fixture: AB22.ifc)', { timeout: A
     expect(reset.observation.storeyCount).toBe(0); // AB22.ifc is an infra model, no storeys
     expect(reset.observation.schema).toBe('IFC4X3');
     const entityCounts = reset.observation.entityCounts;
-    expect(entityCounts.IFCPAVEMENT).toBe(1);
-    expect(entityCounts.IFCPROJECT).toBe(1);
+    // Canonical IFC EXPRESS names, matching `info --json` on the same model (#5533).
+    expect(entityCounts.IfcPavement).toBe(1);
+    expect(entityCounts.IfcProject).toBe(1);
     // Keys must be sorted for determinism.
     expect(Object.keys(entityCounts)).toEqual([...Object.keys(entityCounts)].sort());
 
@@ -433,8 +434,8 @@ describe('gymCommand episode factory (--seed, B2.2)', () => {
     expect(reset.episode).toEqual({ seed: 42, family: 'office', corrupted: false });
     expect(reset.observation.storeyCount).toBe(1);
     const entityCounts = reset.observation.entityCounts;
-    expect(entityCounts.IFCPROJECT).toBe(1);
-    expect(entityCounts.IFCSPACE).toBeGreaterThan(0);
+    expect(entityCounts.IfcProject).toBe(1);
+    expect(entityCounts.IfcSpace).toBeGreaterThan(0);
     expect(reset.channels.schema!.score).toBe(1);
 
     expect(JSON.stringify(run1[0])).toBe(JSON.stringify(run2[0]));

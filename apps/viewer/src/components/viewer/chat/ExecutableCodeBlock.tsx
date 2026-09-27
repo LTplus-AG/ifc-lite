@@ -14,19 +14,10 @@
  */
 
 import { memo, useCallback, useState, useEffect, useRef } from 'react';
-import {
-  Play,
-  Copy,
-  CheckCircle2,
-  AlertCircle,
-  Loader2,
-  FileCode2,
-  RefreshCw,
-  Terminal,
-  ChevronDown,
-  ChevronRight,
-} from 'lucide-react';
+import { Play, Copy, CheckCircle2, AlertCircle, FileCode2, RefreshCw, Terminal, ChevronDown, ChevronRight } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
@@ -198,26 +189,24 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
     <div className="my-2 rounded-md border bg-muted/30 overflow-hidden">
       {/* Code header with action buttons */}
       <div className="flex items-center gap-1 px-2 py-1 bg-muted/50 border-b">
-        <span className="text-[10px] font-mono text-muted-foreground uppercase">
+        <span className="text-2xs font-mono text-muted-foreground uppercase">
           {block.language || t('chat.codeBlock.languageFallback')}
         </span>
         <div className="flex-1" />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-xs" onClick={handleCopy}>
-              {copied ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('chat.codeBlock.copyCode')}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-xs" onClick={handleApplyToEditor}>
-              <FileCode2 className="h-3 w-3" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('chat.codeBlock.applyToSelection')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('chat.codeBlock.copyCode')}
+          size="icon-xs"
+          onClick={handleCopy}
+        >
+          {copied ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+        </IconButton>
+        <IconButton
+          label={t('chat.codeBlock.applyToSelection')}
+          size="icon-xs"
+          onClick={handleApplyToEditor}
+        >
+          <FileCode2 className="h-3 w-3" />
+        </IconButton>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="icon-xs" onClick={handleReplaceAllInEditor}>
@@ -236,7 +225,7 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
               className="gap-1 h-6 px-2 text-xs"
             >
               {isRunning ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <Spinner size="xs" />
               ) : (
                 <Play className="h-3 w-3" />
               )}
@@ -266,9 +255,9 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
               <ChevronRight className="h-3 w-3 shrink-0" />
             )}
             <Terminal className="h-3 w-3 shrink-0" />
-            <span className="text-[10px] font-mono uppercase tracking-wider">{t('chat.codeBlock.console')}</span>
+            <span className="text-2xs font-mono uppercase tracking-wider">{t('chat.codeBlock.console')}</span>
             {isRunning && (
-              <Loader2 className="h-3 w-3 animate-spin ml-1 text-blue-500" />
+              <Spinner size="xs" className="ml-1 text-blue-500" />
             )}
             {result?.status === 'success' && (
               <CheckCircle2 className="h-3 w-3 ml-1 text-emerald-500" />
@@ -277,7 +266,7 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
               <AlertCircle className="h-3 w-3 ml-1 text-destructive" />
             )}
             {result?.durationMs !== undefined && result.status !== 'running' && (
-              <span className="text-[10px] font-mono text-muted-foreground ml-auto">
+              <span className="text-2xs font-mono text-muted-foreground ml-auto">
                 {t('chat.codeBlock.durationBadge', { ms: result.durationMs })}
               </span>
             )}
@@ -289,7 +278,7 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
               {/* Running indicator */}
               {isRunning && (!hasLogs) && (
                 <div className="flex items-center gap-1.5 text-blue-500 py-0.5">
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <Spinner size="xs" />
                   <span>{t('chat.codeBlock.executingScript')}</span>
                 </div>
               )}

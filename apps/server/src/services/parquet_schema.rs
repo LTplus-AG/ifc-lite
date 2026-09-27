@@ -51,7 +51,7 @@ use std::sync::Arc;
 /// `include_rotation` follows the LAYOUT the client asked for
 /// (`ParquetLayout`), not whether anything was actually shared: a v5 request
 /// must come back byte-identical to what this route emitted before #3888, and
-/// a v6 request must carry the columns even from the streaming writer, which
+/// a v6 request must carry the columns even from a batch-local stream, which
 /// shares nothing. That is why this is a parameter rather than being derived
 /// from the payload, unlike `instance_schema`, whose transport HAS a version
 /// byte to disambiguate an absent block from a truncated one.
@@ -129,10 +129,14 @@ pub(super) struct MeshRow<'a> {
 
 /// Where one mesh row's geometry lives and how it is placed. Separate from the
 /// mesh because on the shared-shapes layout the two come apart: the ranges belong to a
-/// shape the occurrence may only borrow.
+/// shape the occurrence may only borrow, possibly one an earlier stream batch
+/// wrote (#5407), which is why the counts travel here rather than being read
+/// off a `MeshData` the row may no longer have.
 pub(super) struct RowPlacement {
     pub v_start: u32,
+    pub vert_count: u32,
     pub i_start: u32,
+    pub index_count: u32,
     /// Y-up metres, already swapped by the caller.
     pub origin: [f64; 3],
     /// Row-major 3x3, Y-up.
@@ -140,24 +144,20 @@ pub(super) struct RowPlacement {
 }
 
 impl<'a> MeshRow<'a> {
-    /// Build one row from an occurrence, the shape it draws, and the placement
-    /// that maps one onto the other.
+    /// Build one row from an occurrence and the placement of the shape block
+    /// it draws.
     ///
     /// Here rather than at the call site so the field order is stated once,
-    /// next to the schema whose column order it feeds. `shape` is `mesh` itself
-    /// on every unshared row, which is every row of a `-parquet-v5` payload.
-    pub fn new(
-        mesh: &'a crate::types::MeshData,
-        shape: &crate::types::MeshData,
-        placement: RowPlacement,
-    ) -> Self {
+    /// next to the schema whose column order it feeds. On every unshared row,
+    /// which is every row of a `-parquet-v5` payload, the block is `mesh`'s own.
+    pub fn new(mesh: &'a crate::types::MeshData, placement: RowPlacement) -> Self {
         Self {
             express_id: mesh.express_id,
             ifc_type: mesh.ifc_type.as_str(),
             v_start: placement.v_start,
-            vert_count: (shape.positions.len() / 3) as u32,
+            vert_count: placement.vert_count,
             i_start: placement.i_start,
-            index_count: shape.indices.len() as u32,
+            index_count: placement.index_count,
             color: mesh.color,
             origin: placement.origin,
             geometry_class: mesh.geometry_class,

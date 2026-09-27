@@ -438,7 +438,7 @@ describe('basketVisibleSet', () => {
         );
       });
 
-      it('re-computes after per-model hidden entities change (no explicit invalidate)', () => {
+      it('re-computes after hidden entities change (no explicit invalidate)', () => {
         useViewerStore.setState({
           selectedEntitiesSet: new Set(),
           selectedEntity: null,
@@ -448,19 +448,18 @@ describe('basketVisibleSet', () => {
           hiddenEntities: new Set(),
           isolatedEntities: null,
           classFilter: null,
-          hiddenEntitiesByModel: new Map(),
           models: new Map([['m1', createFederatedModel({ maxExpressId: 10, geometryResult: createGeometry(meshes) })]]),
         });
         invalidateVisibleBasketCache();
         assert.strictEqual(getVisibleBasketEntityRefsFromStore().length, 3);
 
-        useViewerStore.setState({ hiddenEntitiesByModel: new Map([['m1', new Set([2])]]) });
+        useViewerStore.setState({ hiddenEntities: new Set([2]) });
         assert.deepStrictEqual(
           getVisibleBasketEntityRefsFromStore().map((r) => r.expressId).sort((a, b) => a - b),
           [1, 3],
         );
 
-        useViewerStore.setState({ models: new Map(), hiddenEntitiesByModel: new Map() });
+        useViewerStore.setState({ models: new Map(), hiddenEntities: new Set() });
         invalidateVisibleBasketCache();
       });
     });
@@ -499,7 +498,7 @@ describe('basketVisibleSet', () => {
       // `resetViewerState()` does not clear the federation map, so drop the
       // fixture model explicitly — otherwise it leaks into later suites.
       afterEach(() => {
-        useViewerStore.setState({ models: new Map(), hiddenEntitiesByModel: new Map(), isolatedEntitiesByModel: new Map() });
+        useViewerStore.setState({ models: new Map(), hiddenEntities: new Set(), isolatedEntities: null });
         invalidateVisibleBasketCache();
       });
 
@@ -514,8 +513,6 @@ describe('basketVisibleSet', () => {
           hiddenEntities: new Set(),
           isolatedEntities: null,
           classFilter: null,
-          hiddenEntitiesByModel: new Map(),
-          isolatedEntitiesByModel: new Map(),
           models: new Map([['m1', createFederatedModel({
             idOffset: 1000,
             maxExpressId: 100,
@@ -539,19 +536,19 @@ describe('basketVisibleSet', () => {
         );
       });
 
-      it('applies hiddenEntitiesByModel in the model LOCAL id space, not the global one', () => {
-        // The per-model sets are keyed by local expressId. If the candidate
-        // carried the global id instead, `hiddenEntitiesByModel` would never
-        // match and hiding an element in a federated model would do nothing.
-        seedOffsetModel({ hiddenEntitiesByModel: new Map([['m1', new Set([2])]]) });
+      it('applies a GLOBAL hidden id to the offset model and reports its LOCAL ref', () => {
+        // `hiddenEntities` holds global ids. Matching the candidate's local id
+        // instead would never hit, and hiding an element in a federated model
+        // would do nothing to the basket.
+        seedOffsetModel({ hiddenEntities: new Set([1002]) });
         assert.deepStrictEqual(
           getVisibleBasketEntityRefsFromStore().map(entityRefToString).sort(),
           ['m1:1', 'm1:3'],
         );
       });
 
-      it('applies isolatedEntitiesByModel in the model LOCAL id space', () => {
-        seedOffsetModel({ isolatedEntitiesByModel: new Map([['m1', new Set([3])]]) });
+      it('applies a GLOBAL isolation to the offset model', () => {
+        seedOffsetModel({ isolatedEntities: new Set([1003]) });
         assert.deepStrictEqual(
           getVisibleBasketEntityRefsFromStore().map(entityRefToString),
           ['m1:3'],
@@ -628,15 +625,13 @@ describe('basketVisibleSet', () => {
         );
       });
 
-      it('re-computes after per-model ISOLATED entities change (no explicit invalidate)', () => {
-        // `isolatedEntitiesByModel` is read by the fingerprint but was the one
-        // visibility channel with no cache test — dropping it from the
-        // fingerprint survived the whole store suite (round-four self-audit),
-        // because the per-model isolation test above invalidates by hand.
+      it('re-computes after ISOLATED entities change on an offset model (no explicit invalidate)', () => {
+        // The isolation test above invalidates by hand, so without this a
+        // fingerprint that dropped `isolatedEntities` would survive the suite.
         seedOffsetModel();
         assert.strictEqual(getVisibleBasketEntityRefsFromStore().length, 3);
 
-        useViewerStore.setState({ isolatedEntitiesByModel: new Map([['m1', new Set([3])]]) });
+        useViewerStore.setState({ isolatedEntities: new Set([1003]) });
         assert.deepStrictEqual(
           getVisibleBasketEntityRefsFromStore().map(entityRefToString),
           ['m1:3'],

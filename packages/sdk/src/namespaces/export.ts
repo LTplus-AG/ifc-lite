@@ -20,10 +20,6 @@ export interface ExportCsvOptions {
   separator?: string;
 }
 
-export interface ExportGltfOptions {
-  filename?: string;
-}
-
 export interface ExportStepOptions {
   schema?: 'IFC2X3' | 'IFC4' | 'IFC4X3';
   filename?: string;

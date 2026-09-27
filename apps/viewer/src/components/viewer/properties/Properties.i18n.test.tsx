@@ -35,6 +35,7 @@ import { cleanup, render, click, press, type } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { en } from '@/i18n/en';
 import { useViewerStore } from '@/store';
+import { fixtureDataStore } from '@/test/store-fixture';
 import type { FederatedModel } from '@/store/types.js';
 import { ProjectUnits, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
@@ -240,11 +241,24 @@ function openCollapsibles(container: ParentNode): void {
   }
 }
 
+/**
+ * Clicks a `GerefRow`/`AngleRow`'s value cell to start editing. The row
+ * `<div>` itself (`rowEl`) is never interactive (#5812 review: it must not
+ * nest a `role="button"` around `TerrainHeightButton`'s real `<button>`),
+ * so the click target is the value-cell `<button>` inside it, re-queried
+ * each call since it only exists while not already editing.
+ */
+function clickRow(rowEl: ParentNode): void {
+  const button = rowEl.querySelector('button');
+  assert.ok(button, 'row value-cell button must render to start editing');
+  click(button);
+}
+
 function makeModel(id: string): FederatedModel {
   return {
     id,
     name: `${id}.ifc`,
-    ifcDataStore: null,
+    ifcDataStore: fixtureDataStore(),
     geometryResult: null,
     visible: true,
     collapsed: false,
@@ -260,6 +274,7 @@ function makeModel(id: string): FederatedModel {
  *  the store needs two loaded models for it to render its chrome. */
 function seedStore(): void {
   useViewerStore.setState({
+    editEnabled: true,
     models: new Map([
       ['A', makeModel('A')],
       ['B', makeModel('B')],
@@ -408,6 +423,32 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     assert.doesNotMatch(container.textContent ?? '', /12\.345678/);
   });
 
+  catalogueIt('names georeference icon actions for field and angle edits (#5811)', () => {
+    const container = render(
+      <GeoreferencingPanel
+        georef={{ hasGeoreference: true, mapConversion: MAP_CONVERSION, projectedCRS: PROJECTED_CRS, source: 'mapConversion' }}
+        schemaVersion="IFC4"
+        modelId="A"
+        enableEditing
+      />,
+    );
+    const operation = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Coordinate Operation'));
+    assert.ok(operation);
+    click(operation);
+    const scaleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent === 'Scale');
+    assert.ok(scaleLabel?.parentElement);
+    clickRow(scaleLabel.parentElement);
+    assert.ok(container.querySelector('button[aria-label="Save Scale"]'));
+    const cancelScale = container.querySelector('button[aria-label="Cancel editing Scale"]');
+    assert.ok(cancelScale);
+    click(cancelScale);
+    const angleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent?.includes('Angle to Grid North'));
+    assert.ok(angleLabel?.parentElement);
+    clickRow(angleLabel.parentElement);
+    assert.ok(container.querySelector('button[aria-label="Save Angle to Grid North"]'));
+    assert.ok(container.querySelector('button[aria-label="Cancel editing Angle to Grid North"]'));
+  });
+
   catalogueIt('formats coordinate and terrain measurements with the active locale', () => {
     registerLocale('de-DE', {});
     act(() => {
@@ -448,7 +489,7 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     click(operation);
     const scaleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent === 'Scale');
     assert.ok(scaleLabel?.parentElement);
-    click(scaleLabel.parentElement);
+    clickRow(scaleLabel.parentElement);
     const input = scaleLabel.parentElement.querySelector<HTMLInputElement>('input');
     assert.ok(input);
     type(input, '0,001');
@@ -478,7 +519,7 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     click(operation);
     const scaleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent === 'Scale');
     assert.ok(scaleLabel?.parentElement);
-    click(scaleLabel.parentElement);
+    clickRow(scaleLabel.parentElement);
     const input = scaleLabel.parentElement.querySelector<HTMLInputElement>('input');
     assert.ok(input);
     // The seeded buffer must already be locale-formatted ("0,001", no
@@ -488,7 +529,7 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     // An unchanged buffer is a no-op: nothing is re-parsed, nothing recorded.
     assert.equal(useViewerStore.getState().georefMutations.get('A')?.mapConversion?.scale, undefined);
     // Typing the locale form of a new value still commits through parseLocaleNumber.
-    click(scaleLabel.parentElement);
+    clickRow(scaleLabel.parentElement);
     const again = scaleLabel.parentElement.querySelector<HTMLInputElement>('input');
     assert.ok(again);
     type(again, '0,002');
@@ -517,7 +558,7 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     click(operation);
     const scaleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent === 'Scale');
     assert.ok(scaleLabel?.parentElement);
-    click(scaleLabel.parentElement);
+    clickRow(scaleLabel.parentElement);
     const input = scaleLabel.parentElement.querySelector<HTMLInputElement>('input');
     assert.ok(input);
     press(input, 'Enter');
@@ -546,7 +587,7 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     click(operation);
     const angleLabel = [...container.querySelectorAll('span')].find((span) => span.textContent?.includes('Angle to Grid North'));
     assert.ok(angleLabel?.parentElement);
-    click(angleLabel.parentElement);
+    clickRow(angleLabel.parentElement);
     const input = angleLabel.parentElement.querySelector<HTMLInputElement>('input');
     assert.ok(input);
     type(input, '١٢٫٥');

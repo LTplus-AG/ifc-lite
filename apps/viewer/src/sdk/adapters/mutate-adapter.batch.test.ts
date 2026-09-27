@@ -56,6 +56,7 @@ async function seed(): Promise<void> {
     redoStacks: new Map(),
     mutationBatchTags: new Map(),
     mutationVersion: 0,
+    editEnabled: true,
   });
 }
 
@@ -65,6 +66,15 @@ const rating = (expressId: number) => useViewerStore.getState().getMutationView(
 
 describe('bim.mutate.batch through the viewer mutate adapter', () => {
   beforeEach(seed);
+
+  it('refuses script writes before creating an overlay when Edit mode is off (#5901)', () => {
+    useViewerStore.setState({ editEnabled: false, mutationViews: new Map() });
+    const mutate = createMutateAdapter(useViewerStore);
+    assert.throws(() => mutate.setAttribute(ref(50), 'Name', 'Blocked'), /Turn on Edit mode/);
+    assert.equal(useViewerStore.getState().mutationViews.size, 0);
+    assert.equal(useViewerStore.getState().undoStacks.size, 0);
+    assert.equal(useViewerStore.getState().dirtyModels.has(MODEL_ID), false);
+  });
 
   it('one undo reverts every write the batch enclosed, one redo restores them', () => {
     const mutate = createMutateAdapter(useViewerStore);
@@ -109,6 +119,38 @@ describe('bim.mutate.batch through the viewer mutate adapter', () => {
     assert.deepEqual(walls.map(rating), ['before', null, null]);
     bim.mutate.undo(MODEL_ID);
     assert.deepEqual(walls.map(rating), [null, null, null]);
+  });
+
+  it('an edit made through the store while an async batch is open stays out of the batch (#5634)', async () => {
+    const mutate = createMutateAdapter(useViewerStore);
+    const bim = createBimContext({ backend: { mutate } as never });
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const run = bim.mutate.batchAsync('flow run', async () => {
+      bim.mutate.setProperty(ref(50), 'Pset_WallCommon', 'FireRating', 'run-before');
+      await gate;
+      bim.mutate.setProperty(ref(52), 'Pset_WallCommon', 'FireRating', 'run-after');
+    });
+    // A property-panel edit: straight to the store, never through the SDK.
+    useViewerStore.getState().setProperty(MODEL_ID, 51, 'Pset_WallCommon', 'FireRating', 'manual');
+    release();
+    await run;
+
+    const state = useViewerStore.getState();
+    const stack = state.undoStacks.get(MODEL_ID) ?? [];
+    assert.equal(stack.length, 3);
+    const [runFirst, manual, runLast] = stack;
+    assert.equal(state.mutationBatchTags.get(manual.id), undefined, 'the manual edit carries no batch tag');
+    assert.ok(state.mutationBatchTags.get(runFirst.id));
+    assert.equal(state.mutationBatchTags.get(runFirst.id), state.mutationBatchTags.get(runLast.id));
+
+    // The stack interleaves [run, manual, run]: undo stops at the manual
+    // edit instead of reverting it as part of the run.
+    bim.mutate.undo(MODEL_ID);
+    assert.deepEqual(walls.map(rating), ['run-before', 'manual', null]);
+    bim.mutate.undo(MODEL_ID);
+    assert.deepEqual(walls.map(rating), ['run-before', null, null], 'the manual edit is its own undo step');
   });
 
   it('a mismatched batchEnd is refused and leaves the batch open', () => {

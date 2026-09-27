@@ -32,7 +32,7 @@ pub struct TriMesh {
     /// Number of triangles.
     pub count: usize,
     bvh: Bvh,
-    /// Starting half-size for the expanding-cube probe in `distance_to_surface`:
+    /// Starting half-size for the expanding-cube probe in `closest_on_surface`:
     /// a power-of-two fraction of the mesh's longest axis, scaled down by the
     /// cube root of the triangle count so it lands near the average triangle
     /// size. Derived with exact power-of-two arithmetic (no `powi`/`cbrt`, whose
@@ -211,11 +211,6 @@ impl TriMesh {
         best
     }
 
-    /// [`Self::closest_on_surface`]'s distance alone.
-    pub fn distance_to_surface(&self, p: Vec3) -> f64 {
-        self.closest_on_surface(p).0
-    }
-
     /// Exact distance from `p` to this mesh's surface: the minimum point-to-
     /// triangle distance over the whole mesh.
     ///
@@ -247,7 +242,7 @@ impl TriMesh {
     ///
     /// `min` selects an element rather than accumulating, so visiting a superset
     /// of the argmin in a different order returns the identical `f64`. The TS
-    /// `distanceToSurface` runs the identical sequence of queries on the
+    /// `closestOnSurface` runs the identical sequence of queries on the
     /// identical BVH, keeping the two kernels bit-identical (see the shared probe
     /// fixture in `kernel_tests.rs` / `tri-mesh.test.ts`).
     ///

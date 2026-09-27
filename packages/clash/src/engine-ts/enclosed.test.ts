@@ -124,12 +124,78 @@ describe('enclosed-solid probe (#5473)', () => {
     for (let i = 7; i >= 0; i -= 1) reversed.push(corners[3 * i]!, corners[3 * i + 1]!, corners[3 * i + 2]!);
     const dup = new TriMesh(new Float32Array(reversed), BOX_INDICES.map((i) => 7 - i));
     expect(dup.containsPoint(dup.vertex(0)), 'fixture premise').toBe(false);
-    expect(containedSolidIsBuried(dup, dup)).toBe(true);
+    const bb = fromPositions(new Float32Array(reversed));
+    expect(containedSolidIsBuried(dup, dup, bb, bb)).toBe(true);
   });
 
   it('does not find a box resting on a slab from outside buried in it', () => {
-    const slab = new TriMesh(new Float32Array(boxPositions([0, 0, 0], [5, 5, 1])), BOX_INDICES);
-    const resting = new TriMesh(new Float32Array(boxPositions([0, 0, 1.2], [0.5, 0.5, 0.2])), BOX_INDICES);
-    expect(containedSolidIsBuried(resting, slab)).toBe(false);
+    const slabPos = new Float32Array(boxPositions([0, 0, 0], [5, 5, 1]));
+    const restingPos = new Float32Array(boxPositions([0, 0, 1.2], [0.5, 0.5, 0.2]));
+    const slab = new TriMesh(slabPos, BOX_INDICES);
+    const resting = new TriMesh(restingPos, BOX_INDICES);
+    expect(containedSolidIsBuried(resting, slab, fromPositions(restingPos), fromPositions(slabPos))).toBe(false);
+  });
+});
+
+/** The complement of the L over [1,3]x[0,2] (notch square + arm), z 0..1,
+ *  shifted `dy` along Y. Mirrors the Rust `complementary_l`. */
+function complementaryL(dy: number): { positions: number[]; indices: Uint32Array } {
+  const foot = [[2, 0], [3, 0], [3, 2], [1, 2], [1, 1], [2, 1]];
+  const positions: number[] = [];
+  for (const z of [0, 1]) for (const [x, y] of foot) positions.push(x!, y! + dy, z);
+  const idx = [5, 1, 0, 5, 2, 1, 5, 3, 2, 5, 4, 3, 11, 6, 7, 11, 7, 8, 11, 8, 9, 11, 9, 10];
+  for (let k = 0; k < 6; k += 1) {
+    const n = (k + 1) % 6;
+    idx.push(k, n, n + 6, k, n + 6, k + 6);
+  }
+  return { positions, indices: new Uint32Array(idx) };
+}
+
+const INTERLOCK_PLACEMENTS: Array<[number, number, Vec3]> = [
+  [0, 0, [0, 0, 0]],
+  [0, 0, [7.4, 0, 0]],
+  [0, 0, [3.7, -12.9, 2.35]],
+  [0, 0, [123.456, -45.678, 9.1]],
+  [0, 0, [1000, 0, 0]],
+  [0.3, 0, [0, 0, 0]],
+  [0.3, 0, [123.456, -45.678, 9.1]],
+  [1.1, -0.61, [1000, 0, 0]],
+];
+
+describe('AABB-penetration probe on the contact face (#5751)', () => {
+  // Mirrors the `_5751` tests in `rust/clash/src/tests.rs`: two L prisms
+  // interlocking flush, whose AABB-overlap centre lies ON the shared face.
+  it('reports flush interlocking Ls as a touch at every placement, never the AABB estimate', () => {
+    const touchRule: ClashRule = { ...HARD, reportTouch: true };
+    for (const [yaw, roll, off] of INTERLOCK_PLACEMENTS) {
+      const l = placed('L', L_POSITIONS, L_INDICES, yaw, roll, off);
+      const c = complementaryL(0);
+      const other = placed('C', c.positions, c.indices, yaw, roll, off);
+      expect(testPair(l, mesh(l), other, mesh(other), HARD, 0.001), `yaw ${yaw}, roll ${roll}, offset ${off}`).toBeNull();
+      expect(testPair(l, mesh(l), other, mesh(other), touchRule, 0.001)?.status, `yaw ${yaw}, roll ${roll}, offset ${off}`).toBe('touch');
+    }
+  });
+
+  it('still reports the same Ls driven 20 mm into each other as hard at every placement', () => {
+    for (const [yaw, roll, off] of INTERLOCK_PLACEMENTS) {
+      const l = placed('L', L_POSITIONS, L_INDICES, yaw, roll, off);
+      const c = complementaryL(-0.02);
+      const other = placed('C', c.positions, c.indices, yaw, roll, off);
+      expect(testPair(l, mesh(l), other, mesh(other), HARD, 0.001)?.status, `yaw ${yaw}, roll ${roll}, offset ${off}`).toBe('hard');
+    }
+  });
+
+  it('keeps a 1 mm aligned overlap found through the probe hard 10 km out on an orthogonal axis', () => {
+    // Mirrors `a_1mm_aligned_overlap_through_the_probe_is_hard_far_out_on_an_orthogonal_axis_5751`:
+    // the probe's 0.5 mm clearance along X is judged against the floor
+    // projected onto X, not a 10 km Y magnitude.
+    const rule: ClashRule = { ...HARD };
+    for (const off of [[0, 0, 0], [0, 10_000, 0]] as Vec3[]) {
+      const a = placed('A', boxPositions([0, 0, 0], [5, 0.5, 0.5]), BOX_INDICES, 0, 0, off);
+      const b = placed('B', boxPositions([5.499, 0, 0], [0.5, 0.5, 0.5]), BOX_INDICES, 0, 0, off);
+      const res = testPair(a, mesh(a), b, mesh(b), rule, 0.0001);
+      expect(res?.status, `offset ${off}`).toBe('hard');
+      expect(res!.distance, `offset ${off}`).toBeCloseTo(-0.001, 5);
+    }
   });
 });

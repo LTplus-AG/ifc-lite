@@ -52,6 +52,10 @@ export class StubStoreEditor {
     return this.overlay.get(id) ?? null;
   }
 
+  getEntityType(id: number): string | undefined {
+    return this.overlay.get(id)?.type;
+  }
+
   setPositionalAttribute(id: number, index: number, value: unknown): void {
     let entry = this.positional.get(id);
     if (!entry) {

@@ -31,6 +31,13 @@ export const hierarchyEn = {
   'hierarchy.node.syncFromSource': 'Sync from source',
   'hierarchy.node.removeModelAriaLabel': 'Remove model {name}',
   'hierarchy.node.removeModel': 'Remove model',
+  'hierarchy.removeModelConfirm.title': 'Remove model with unexported changes?',
+  'hierarchy.removeModelConfirm.description': {
+    one: '{name} has {count} change that has not been exported. Removing the model discards it.',
+    other: '{name} has {count} changes that have not been exported. Removing the model discards them.',
+  },
+  'hierarchy.removeModelConfirm.cancel': 'Cancel',
+  'hierarchy.removeModelConfirm.confirm': 'Remove and discard changes',
 
   // HierarchyNode: regular spatial/element row
   'hierarchy.node.collapseAriaLabel': 'Collapse {name}',
@@ -39,6 +46,11 @@ export const hierarchyEn = {
   'hierarchy.node.showAriaLabel': 'Show {name}',
   'hierarchy.node.hide': 'Hide',
   'hierarchy.node.show': 'Show',
+  'hierarchy.node.action.isolate': 'Isolate',
+  'hierarchy.node.action.filter': 'Filter by this',
+  'hierarchy.node.action.solo': 'Solo storey',
+  'hierarchy.node.actionAriaLabel': '{action} {name}',
+  'hierarchy.node.actionsAriaLabel': 'Actions for {name}',
   'hierarchy.node.nameAndSecondaryTitle': '{name} - {secondaryName}',
   'hierarchy.node.elevationTooltip': 'Elevation: {sign}{value}m',
   'hierarchy.node.elevationBadge': '{sign}{value}m',
@@ -119,7 +131,7 @@ export const hierarchyEn = {
   'hierarchy.storeyControls.stacked': 'Stacked',
   'hierarchy.storeyControls.stackedHint': 'Show every storey at its real elevation (the default view)',
   'hierarchy.storeyControls.solo': 'Solo',
-  'hierarchy.storeyControls.soloHint': 'Show only one storey, click a storey below to pick it',
+  'hierarchy.storeyControls.soloHint': 'Show only one storey; choose Solo storey on a row to pick it',
   'hierarchy.storeyControls.exploded': 'Exploded',
   'hierarchy.storeyControls.explodedHint': 'Lift each storey apart vertically for a sectioned, drawing-like view',
   'hierarchy.storeyControls.floorplanAriaLabel': 'Floorplan the active storey',
@@ -127,15 +139,17 @@ export const hierarchyEn = {
   'hierarchy.storeyControls.floorplanPickTooltip': 'Pick a storey to floorplan it',
   'hierarchy.storeyControls.gapLabel': 'Gap',
   'hierarchy.storeyControls.gapUnitLabel': 'm between levels',
-  'hierarchy.storeyControls.soloHintWithStorey': 'Showing only {name} · click another storey to switch, or click it again for all',
-  'hierarchy.storeyControls.soloHintNoStorey': 'Click a storey below to show only it',
-  'hierarchy.storeyControls.stackedHintClickStorey': 'Click a storey below to show only that level',
+  'hierarchy.storeyControls.soloHintWithStorey': 'Showing only {name} · choose Solo storey on another row to switch',
+  'hierarchy.storeyControls.soloHintNoStorey': 'Choose Solo storey on a row to show only it',
+  'hierarchy.storeyControls.stackedHintClickStorey': 'Choose Solo storey on a row to show only that level',
 
   // HierarchyPanel: header / empty states
   'hierarchy.panel.title': 'Hierarchy',
   'hierarchy.panel.noModelTitle': 'No Model',
   'hierarchy.panel.noModelHint': 'Structure will appear here when loaded',
   'hierarchy.panel.searchPlaceholder': 'Search...',
+  'hierarchy.panel.noMatches': 'No matches for “{query}”',
+  'hierarchy.panel.clearSearch': 'Clear search',
 
   // HierarchyPanel: grouping-mode tab strip
   'hierarchy.panel.grouping.spatial': 'Spatial',
@@ -168,5 +182,5 @@ export const hierarchyEn = {
   'hierarchy.panel.escHint': 'ESC',
   'hierarchy.panel.clearAllButton': 'Clear all',
   'hierarchy.panel.modelsFooterHint': '{count} models · Drag divider to resize',
-  'hierarchy.panel.clickToFilterHint': 'Click to filter · Ctrl toggle',
+  'hierarchy.panel.clickToFilterHint': 'Click to select · Ctrl toggle',
 } as const satisfies Record<string, TranslationValue>;

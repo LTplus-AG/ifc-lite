@@ -71,13 +71,19 @@ async fn body_bytes(response: axum::response::Response) -> Vec<u8> {
 // check_cache
 // ---------------------------------------------------------------------------
 
-/// MISS: no parquet entry under the hash's cache key -> 404, empty body.
+/// MISS: no parquet entry under the hash's cache key -> 404, in the shared
+/// `{"error", "code"}` envelope (#5750; the body was empty before).
 #[tokio::test]
 async fn check_cache_returns_404_when_uncached() {
     let state = test_state("check-cache-miss").await;
     let response = get(&state, "/api/v1/cache/check/nosuchhash").await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    assert!(body_bytes(response).await.is_empty());
+    let body: serde_json::Value = serde_json::from_slice(&body_bytes(response).await).unwrap();
+    assert_eq!(body["code"], "NOT_FOUND");
+    assert!(
+        !body.to_string().contains("nosuchhash"),
+        "the caller-supplied hash must not be echoed: {body}"
+    );
 }
 
 /// HIT: a parquet entry exists under the exact key the writer would have used
@@ -105,7 +111,7 @@ async fn seed_current_data_model(state: &AppState, hash: &str, filter: OpeningFi
         &ifc_lite_processing::SymbolicDataWithProvenance::default()).await;
     state
         .cache
-        .set_bytes(&data_model_cache_key(&seed), b"data-model-bytes")
+        .set_bytes(&data_model_cache_key(&seed, crate::services::DataModelEntities::All), b"data-model-bytes")
         .await
         .unwrap();
 }
@@ -270,6 +276,21 @@ async fn get_cached_geometry_returns_full_payload_when_both_present() {
     assert_eq!(body, b"the-parquet-bytes");
 }
 
+/// MISS: the 404 body does not reflect the caller-supplied hash (#5750
+/// review, the sibling of `check_cache_returns_404_when_uncached`).
+#[tokio::test]
+async fn get_cached_geometry_404_does_not_echo_the_hash() {
+    let state = test_state("geometry-miss-no-echo").await;
+    let response = get(&state, "/api/v1/cache/geometry/nosuchgeometryhash").await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body: serde_json::Value = serde_json::from_slice(&body_bytes(response).await).unwrap();
+    assert_eq!(body["code"], "NOT_FOUND");
+    assert!(
+        !body.to_string().contains("nosuchgeometryhash"),
+        "the caller-supplied hash must not be echoed: {body}"
+    );
+}
+
 /// Partial state: parquet present, metadata absent -> 404 (not a 200 with a
 /// missing header, not a 500).
 #[tokio::test]
@@ -339,7 +360,7 @@ async fn get_data_model_202_only_while_fill_in_flight() {
     let state = test_state("data-model-in-flight").await;
     let cache_key = "somehash-default";
 
-    let guard = state.data_model_in_flight.begin(cache_key.to_string());
+    let guard = state.data_model_in_flight.begin(data_model_cache_key(cache_key, crate::services::DataModelEntities::All));
     let response = get(&state, &format!("/api/v1/parse/data-model/{cache_key}")).await;
     assert_eq!(
         response.status(),
@@ -385,7 +406,7 @@ async fn get_data_model_ignores_an_entry_written_under_the_previous_version() {
 async fn get_data_model_returns_200_with_cached_bytes() {
     let state = test_state("data-model-hit").await;
     let cache_key = "somehash-default";
-    let data_model_key = data_model_cache_key(cache_key);
+    let data_model_key = data_model_cache_key(cache_key, crate::services::DataModelEntities::All);
     state
         .cache
         .set_bytes(&data_model_key, b"the-data-model-parquet")
@@ -406,7 +427,7 @@ async fn issue_4459_hash_check_requires_fresh_symbols_before_skipping_upload() {
     let geometry = parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default(), ParquetLayout::Flat);
     state.cache.set_bytes(&geometry, b"unchanged geometry").await.unwrap();
     seed_current_metadata(&state, hash, OpeningFilterMode::Default).await;
-    state.cache.set_bytes(&data_model_cache_key(&seed), b"current data model").await.unwrap();
+    state.cache.set_bytes(&data_model_cache_key(&seed, crate::services::DataModelEntities::All), b"current data model").await.unwrap();
     // Retired: v1 (#4459, no fill provenance), v2 (#4665, pre mesh-frame
     // rebase), v3 (#4706, pre the site tier's translation and rotation coming
     // out of the stream). The list has to keep up with `symbolic_cache_key`:
@@ -418,4 +439,46 @@ async fn issue_4459_hash_check_requires_fresh_symbols_before_skipping_upload() {
     seed_current_data_model(&state, hash, OpeningFilterMode::Default).await;
     assert_eq!(get(&state, &format!("/api/v1/cache/check/{hash}")).await.status(), StatusCode::OK);
     assert_eq!(state.cache.get_bytes(&geometry).await.unwrap().unwrap(), b"unchanged geometry");
+}
+
+/// #5542: this is the warm path of the client's `parseParquet()` (cache check,
+/// then this fetch). The stored header is the one the live parse wrote, so
+/// its stats say `from_cache: false`; replaying it verbatim told a warm caller
+/// its model had just been parsed, and `docs/guide/server.md` prints exactly
+/// that field. The replayed header must report the hit and keep everything
+/// else as stored.
+#[tokio::test]
+async fn issue_5542_get_cached_geometry_reports_from_cache() {
+    let state = test_state("5542-geometry-from-cache").await;
+    let hash = "fromcachehash";
+    let parquet_key = parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default(), ParquetLayout::Flat);
+    let metadata_key =
+        parquet_metadata_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default());
+    let stored = super::parquet::ParquetMetadataHeader {
+        cache_key: cache_key_from_parts(hash, OpeningFilterMode::Default, TessellationQuality::default()),
+        metadata: crate::types::ModelMetadata::default(),
+        stats: crate::types::ProcessingStats { total_meshes: 5, ..Default::default() },
+        mesh_coordinate_space: None,
+        site_transform: None,
+        building_transform: None,
+        data_model_stats: None,
+    };
+    assert!(!stored.stats.from_cache, "seeded as the live parse writes it");
+    state.cache.set_bytes(&parquet_key, b"parquet-bytes").await.unwrap();
+    state
+        .cache
+        .set_bytes(&metadata_key, &serde_json::to_vec(&stored).unwrap())
+        .await
+        .unwrap();
+
+    let response = get(&state, &format!("/api/v1/cache/geometry/{hash}")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let header: serde_json::Value = serde_json::from_str(
+        response.headers().get("X-IFC-Metadata").unwrap().to_str().unwrap(),
+    )
+    .unwrap();
+    assert_eq!(header["stats"]["from_cache"], true, "replayed header: {header}");
+    let mut expected = serde_json::to_value(&stored).unwrap();
+    expected["stats"]["from_cache"] = serde_json::Value::Bool(true);
+    assert_eq!(header, expected, "only from_cache may differ from what was stored");
 }

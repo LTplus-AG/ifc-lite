@@ -3,16 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `ViewportOverlays` reads `selectedStoreys` — a `Set<number>` of
- * model-space `expressId`s written by `HierarchyPanel` from `node.expressIds`
- * / `unified.storeys[].storeyId` (both raw, per-model local ids — see
- * `treeDataBuilder.ts:411` and `:232`, which pair each id with its OWN
- * `modelId`. `selectedStoreys` drops that pairing) — but looks each id up
+ * The storey pill and the hidden-object count read `selectedStoreys` — a
+ * `Set<number>` of model-space `expressId`s written by `HierarchyPanel` from
+ * `node.expressIds` / `unified.storeys[].storeyId` (both raw, per-model local
+ * ids — see `treeDataBuilder.ts:411` and `:232`, which pair each id with its
+ * OWN `modelId`. `selectedStoreys` drops that pairing) — but looked each id up
  * directly in the legacy `ifcDataStore` (`useIfc().ifcDataStore`, which
  * tracks only the ACTIVE model's store, `modelSlice.ts:202`). With a second,
  * federated model whose storey happens to reuse the SAME local expressId as
  * something in the active model (routine for IFC files, which both start
- * numbering at #1), the storey pill reads the ACTIVE model's entity at that
+ * numbering at #1), the storey pill read the ACTIVE model's entity at that
  * id instead of the selected storey's own name.
  *
  * The active model's own entity table has NO entity at expressId 5 at all
@@ -20,9 +20,17 @@
  * not a same-id coincidence: the non-active model's storey #5 ("Storey
  * Two") must resolve through its OWN store, since the active store can't
  * possibly answer for that id.
+ *
+ * Both readouts moved from `ViewportOverlays` into `StatusBar` for desktop
+ * (#5504, charter #5478 item 22), off the shared `useViewportStatusSummary`
+ * derivation — this regression coverage moved with them.
  */
 
 import '@/test/setup-dom.js';
+// `__APP_VERSION__` is a vite `define` (see vite.config.ts) baked in at
+// build time; under plain Node it doesn't exist, so StatusBar's footer
+// version string needs a stand-in before it renders.
+(globalThis as unknown as { __APP_VERSION__: string }).__APP_VERSION__ = '0.0.0-test';
 import { describe, it, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -30,11 +38,27 @@ import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { createBimContext } from '@ifc-lite/sdk';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
-import { TooltipProvider } from '@/components/ui/tooltip.js';
-import { ViewportOverlays } from './ViewportOverlays.js';
+import { ExtensionHostService } from '@/services/extensions/host.js';
+import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
+import { StatusBar } from './StatusBar.js';
 import { FIXTURE_MODEL, FIXTURE_STOREY_2, guid } from './anonymized-export/anonymized-export-fixture.test-support.js';
+
+// StatusBar unconditionally mounts `<FlavorDialog>` / `<FlavorIndicator>`,
+// both of which call `useExtensionHost()` — stub the host rather than pull
+// in the full `<ExtensionHostProvider>` (which needs a live `<BimProvider>`).
+// Same stub shape as `StatusBar.federation.test.tsx`.
+const stubHost = new ExtensionHostService({
+  sdk: createBimContext({
+    transport: {
+      send: () => Promise.reject(new Error('SDK transport is not exercised by this test')),
+      subscribe: () => () => {},
+      close: () => {},
+    },
+  }),
+});
 
 const ID_OFFSET = 1_000_000;
 
@@ -89,9 +113,9 @@ function render(): HTMLElement {
   const root = createRoot(container);
   act(() => {
     root.render(
-      <TooltipProvider>
-        <ViewportOverlays hideViewCube hideAxis hideScale />
-      </TooltipProvider>,
+      <ExtensionHostContext.Provider value={stubHost}>
+        <StatusBar />
+      </ExtensionHostContext.Provider>,
     );
   });
   mounted.push({ root, container });
@@ -127,7 +151,7 @@ beforeEach(async () => {
   });
 });
 
-describe('ViewportOverlays — federation-space storey name lookup', () => {
+describe('StatusBar — federation-space storey name lookup (#5504)', () => {
   it('resolves a non-active model\'s selected storey through its OWN store', () => {
     const container = render();
 

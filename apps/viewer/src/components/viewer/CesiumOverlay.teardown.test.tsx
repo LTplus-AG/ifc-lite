@@ -43,6 +43,7 @@ import { useViewerStore } from '@/store';
 import { BROWSER_ACCESS_BLOCKED, type CustomBasemap } from '@/lib/geo/custom-basemap';
 import { pendingTerrain, resetCesiumStub, stubProviders, stubViewers } from '@/test/cesium-stub.js';
 import { cleanup, render } from '@/test/render.js';
+import { ViewportHud } from '../viewport-ui/hud/ViewportHud.js';
 import { CesiumOverlay } from './CesiumOverlay.js';
 
 const BASEMAP_A: CustomBasemap = {
@@ -113,9 +114,18 @@ function seedStore(basemap: CustomBasemap): void {
   } as never);
 }
 
+/**
+ * `CesiumOverlay`'s status chips are now `HudItem`s (#5504), portaled into
+ * `ViewportHud`'s top-left region — mounting the HUD host alongside the
+ * overlay, in the same container, is what makes `container.querySelector`
+ * see them (a `HudItem` renders nothing until its target region exists).
+ */
 function mount(): HTMLElement {
   return render(
-    <CesiumOverlay mapConversion={MAP_CONVERSION} projectedCRS={PROJECTED_CRS} />,
+    <>
+      <ViewportHud />
+      <CesiumOverlay mapConversion={MAP_CONVERSION} projectedCRS={PROJECTED_CRS} />
+    </>,
   );
 }
 

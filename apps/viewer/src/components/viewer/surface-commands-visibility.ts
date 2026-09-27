@@ -22,17 +22,17 @@ const paletteOnly = ['palette'] as const;
 
 export const VISIBILITY_SURFACE_COMMANDS = [
   {
-    id: 'vis:hide', labelKey: 'commandPalette.vis.hide.label',
+    id: 'vis:hide', labelKey: 'commandPalette.vis.hide.label', ribbonLabelKey: 'ribbon.elements.hide', ribbonTooltipKey: 'ribbon.elements.hideTooltip',
     keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff,
-    surfaces: ['palette', 'mobile', 'context'], enabled: alwaysEnabled, shortcut: 'visibility.hideSelection',
+    surfaces: ['palette', 'mobile', 'context', 'ribbon'], enabled: alwaysEnabled, shortcut: 'visibility.hideSelection',
     mobileLabelKey: () => 'shellChrome.mobileToolbar.hideSelection',
     contextLabelKey: 'entityContextMenu.hide',
     run: (context: SurfaceCommandContext) => runContextOr(context, hideSelectionFromStore),
   },
   {
-    id: 'vis:show', labelKey: ACTION_NAME_KEYS.showAll,
+    id: 'vis:show', labelKey: ACTION_NAME_KEYS.showAll, ribbonTooltipKey: 'ribbon.elements.showAllTooltip',
     keywords: 'unhide reset visible', category: 'Visibility', icon: Eye,
-    surfaces: ['palette', 'mobile', 'context'], enabled: alwaysEnabled, shortcut: 'visibility.showAll',
+    surfaces: ['palette', 'mobile', 'context', 'ribbon'], enabled: alwaysEnabled, shortcut: 'visibility.showAll',
     run: (context: SurfaceCommandContext) => runContextOr(context, () => { showAllFromStore('show_all'); }),
   },
   {
@@ -85,7 +85,10 @@ export const VISIBILITY_SURFACE_COMMANDS = [
     id: 'vis:toggle-presentation', labelKey: 'commandPalette.vis.togglePresentation.label', ribbonLabelKey: panelTitleKey('presentation'),
     searchLabel: 'Toggle Basket Presentation Dock', keywords: 'basket panel carousel thumbnails',
     category: 'Visibility', icon: Layout, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
-    run: () => { useViewerStore.getState().toggleBottomPanel('presentation', 'palette'); },
+    run: ({ surface, activateBottomPanel }: SurfaceCommandContext) => {
+      if (activateBottomPanel) activateBottomPanel('presentation');
+      else useViewerStore.getState().toggleBottomPanel('presentation', surface);
+    },
   },
   {
     id: 'vis:clear-iso', labelKey: 'commandPalette.vis.clearBasket.label',

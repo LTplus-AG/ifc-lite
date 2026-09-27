@@ -23,8 +23,8 @@ it('uses the registry name, icon, and shortcut for ribbon commands (#5878)', asy
   const large = surfaceCommand('file:save-federation-setup', 'ribbon');
   const small = surfaceCommand('vis:toggle-iso', 'ribbon');
   render(<>
-    <RibbonCommandLargeButton commandId={large.id} tooltip="A longer explanation" onClick={() => {}} />
-    <RibbonCommandSmallButton commandId={small.id} onClick={() => {}} />
+    <RibbonCommandLargeButton commandId={large.id} tooltip="A longer explanation" />
+    <RibbonCommandSmallButton commandId={small.id} />
   </>);
 
   for (const command of [large, small]) {
@@ -44,14 +44,17 @@ it('rejects a command not registered for the ribbon (#5878)', async () => {
   const buttons = await loadButtons();
   assert.ok(buttons);
   const { RibbonCommandLargeButton } = buttons;
-  assert.throws(() => render(<RibbonCommandLargeButton commandId="panel:tree" onClick={() => {}} />),
+  assert.throws(() => render(<RibbonCommandLargeButton commandId="panel:tree" />),
     /not registered for ribbon/);
 });
 
 // These are checked by the root test-source typecheck, not by Vitest transpilation.
 // @ts-expect-error A caller cannot hand-write a command label.
-const labelOverride: RibbonCommandButtonProps = { commandId: 'vis:toggle-iso', label: 'Foo', onClick: () => {} };
+const labelOverride: RibbonCommandButtonProps = { commandId: 'vis:toggle-iso', label: 'Foo' };
 // @ts-expect-error A caller cannot invent a command ID.
-const unregisteredId: RibbonCommandButtonProps = { commandId: 'ribbon:made-up', onClick: () => {} };
+const unregisteredId: RibbonCommandButtonProps = { commandId: 'ribbon:made-up' };
+// @ts-expect-error A mounted registered control cannot bypass the shared execution boundary.
+const directAction: RibbonCommandButtonProps = { commandId: 'view:home', onClick: () => {} };
 void labelOverride;
 void unregisteredId;
+void directAction;

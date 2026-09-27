@@ -263,7 +263,7 @@ for (const width of [1280, 1600]) {
         };
       });
       expect(rows, 'the bar rendered').not.toBeNull();
-      expect(rows!.count, 'the bar has visible children').toBeGreaterThan(0);
+      expect(rows!.count, 'draw mode, footprint, overflow, options, confirm, minimize and close remain visible').toBeGreaterThanOrEqual(9);
       expect(
         rows!.maxTop,
         `Space Sketch bar wraps at ${width}px (tier ${rows!.tier}): a child starts at ${rows!.maxTop}px, below another ending at ${rows!.minBottom}px`,

@@ -30,6 +30,15 @@ function button(ui: HTMLElement, label: string): HTMLButtonElement {
   const el = [...ui.querySelectorAll('button')].find((item) => item.textContent === label || item.getAttribute('aria-label') === label);
   assert.ok(el, `button ${label}`); return el;
 }
+function repositionCommand(ui: HTMLElement): HTMLButtonElement {
+  const el = ui.querySelector<HTMLButtonElement>('button[data-command-id="model:reposition"]');
+  assert.ok(el, 'the registered Home reposition command is mounted');
+  assert.equal(el.getAttribute('aria-label'), 'Reposition', 'the ribbon uses its registered accessible name (#5878)');
+  const descriptionId = el.getAttribute('aria-describedby');
+  assert.ok(descriptionId, 'the longer point-cloud guidance remains available');
+  assert.equal(document.getElementById(descriptionId)?.textContent, 'Reposition models and pointclouds');
+  return el;
+}
 function moveReadout(ui: HTMLElement): string {
   const el = ui.querySelector('output[aria-label="Move dimensions"]');
   assert.ok(el, 'move readout'); return el.textContent ?? '';
@@ -65,7 +74,7 @@ describe('model repositioning user interactions (#4226)', () => {
   for (const tool of ['measure', 'section', 'walk'] as const) it(`opens repositioning from ${tool}`, () => {
     useViewerStore.getState().setActiveTool(tool);
     const ui = render(<><HomeTab /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot><LocalTab /></>);
-    click(button(ui, 'Reposition models and pointclouds'));
+    click(repositionCommand(ui));
     assert.ok(ui.querySelector('[aria-label="Reposition models"]'));
     assert.equal(useViewerStore.getState().activeTool, 'select');
     type(input(ui, 'Delta X'), '2 m'); click(button(ui, 'Preview values'));
@@ -74,7 +83,7 @@ describe('model repositioning user interactions (#4226)', () => {
 
   it('opens from the ribbon and moves a cloud without requiring an IFC data store', () => {
     const ui = render(<><HomeTab /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot><LocalTab /></>);
-    click(button(ui, 'Reposition models and pointclouds'));
+    click(repositionCommand(ui));
     assert.ok(ui.querySelector('[aria-label="Reposition models"]'));
     toggle(ui.querySelector('fieldset [role="switch"][aria-label="scan"]')); // move IFC and cloud as a group
     type(input(ui, 'Delta X'), '125 mm');

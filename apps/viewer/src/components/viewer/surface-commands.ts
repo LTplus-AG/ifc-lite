@@ -6,7 +6,7 @@
 
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, ChevronsUpDown,
-  Crosshair, Ellipsis, FolderOpen, Home, Layers3, Maximize2, Orbit, Save,
+  Crosshair, FolderOpen, Home, Layers3, Maximize2, Orbit, Save,
   SquareStack, Sun, Tag,
 } from 'lucide-react';
 import { resolveEnglish } from '@/i18n/registry';
@@ -22,8 +22,10 @@ import { WORKSPACE_SURFACE_COMMANDS } from './surface-commands-workspace';
 import { RIBBON_VIEW_SURFACE_COMMANDS } from './surface-commands-view-ribbon';
 import { VISIBILITY_SURFACE_COMMANDS } from './surface-commands-visibility';
 import { RIBBON_FILE_SURFACE_COMMANDS } from './surface-commands-file-ribbon';
+import { RIBBON_ELEMENTS_SURFACE_COMMANDS } from './surface-commands-elements-ribbon';
+import { RIBBON_AUTHOR_SURFACE_COMMANDS } from './surface-commands-author-ribbon';
 import { MOBILE_SURFACE_COMMANDS } from './surface-commands-mobile';
-import { CONTEXT_SURFACE_COMMANDS, runContextAction, runContextOr } from './surface-commands-context';
+import { CONTEXT_SURFACE_COMMANDS, runContextOr } from './surface-commands-context';
 import { runSurfaceCommand } from './surface-command-run';
 export type { CommandSurface, SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-command-types';
 import type { CommandSurface, SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-command-types';
@@ -77,9 +79,9 @@ const FILE_AND_VIEW_SURFACE_COMMANDS = [
     run: () => { useViewerStore.getState().cameraCallbacks.fitAll?.(); },
   },
   {
-    id: 'view:frame', labelKey: 'commandPalette.view.frame.label',
+    id: 'view:frame', labelKey: 'commandPalette.view.frame.label', ribbonLabelKey: 'ribbon.elements.frame', ribbonTooltipKey: 'ribbon.elements.frameTooltip',
     searchLabel: 'Frame Selection', keywords: 'zoom focus selected', category: 'View', icon: Crosshair,
-    surfaces: ['palette', 'mobile', 'context'], enabled: alwaysEnabled, shortcut: 'camera.frameSelection',
+    surfaces: ['palette', 'mobile', 'context', 'ribbon'], enabled: alwaysEnabled, shortcut: 'camera.frameSelection',
     mobileLabelKey: () => 'shellChrome.mobileToolbar.frameSelection',
     contextLabelKey: 'entityContextMenu.frameSelection',
     contextIcon: Maximize2,
@@ -155,13 +157,23 @@ const FILE_AND_VIEW_SURFACE_COMMANDS = [
     keywords: 'cesium globe earth satellite terrain georeference basemap context site',
     category: 'View', icon: Building2, surfaces: paletteAndRibbon,
     enabled: (state: SurfaceCommandState) => state.cesiumAvailable === true,
-    run: () => { useViewerStore.getState().toggleCesium(); },
+    run: () => {
+      const state = useViewerStore.getState();
+      const wasEnabled = state.cesiumEnabled;
+      state.toggleCesium();
+      if (wasEnabled) {
+        state.setCesiumPlacementEditMode(false);
+        if (state.activeTool === 'cesium-placement') state.setActiveTool('select');
+      }
+    },
   },
   {
     id: 'view:lighting', labelKey: panelTitleKey('environment'), ribbonTooltipKey: 'ribbon.view.lightingTooltip',
     keywords: 'sun sky lighting shadow solar daylight study environment preset hdri panel',
     category: 'View', icon: Sun, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
-    run: () => { useViewerStore.getState().toggleWorkspacePanel('environment', 'palette'); },
+    run: ({ surface }: SurfaceCommandContext) => {
+      useViewerStore.getState().toggleWorkspacePanel('environment', surface);
+    },
   },
   {
     id: 'view:spacemouse', labelKey: 'commandPalette.view.spacemouse.label', ribbonLabelKey: 'ribbon.view.spaceMouse', ribbonTooltipKey: 'ribbon.view.spaceMouseTooltip',
@@ -171,12 +183,6 @@ const FILE_AND_VIEW_SURFACE_COMMANDS = [
     run: () => { openSettings('display'); },
   },
 ] as const satisfies readonly SurfaceCommandDefinition[];
-const RIBBON_ENTITY_ACTIONS_SURFACE_COMMANDS = [{
-  id: 'elements:entity-actions', labelKey: 'entityContextMenu.entityActions',
-  keywords: 'selected entity type storey duplicate delete actions',
-  category: 'Tools', icon: Ellipsis,
-  surfaces: ['ribbon'], enabled: alwaysEnabled, run: runContextAction,
-}] as const satisfies readonly SurfaceCommandDefinition[];
 export type SurfaceCommandId =
   | (typeof FILE_AND_VIEW_SURFACE_COMMANDS)[number]['id']
   | (typeof TOOL_SURFACE_COMMANDS)[number]['id']
@@ -184,9 +190,10 @@ export type SurfaceCommandId =
   | (typeof WORKSPACE_SURFACE_COMMANDS)[number]['id']
   | (typeof RIBBON_VIEW_SURFACE_COMMANDS)[number]['id']
   | (typeof RIBBON_FILE_SURFACE_COMMANDS)[number]['id']
+  | (typeof RIBBON_ELEMENTS_SURFACE_COMMANDS)[number]['id']
+  | (typeof RIBBON_AUTHOR_SURFACE_COMMANDS)[number]['id']
   | (typeof MOBILE_SURFACE_COMMANDS)[number]['id']
   | (typeof CONTEXT_SURFACE_COMMANDS)[number]['id']
-  | (typeof RIBBON_ENTITY_ACTIONS_SURFACE_COMMANDS)[number]['id']
   | (typeof VISIBILITY_SURFACE_COMMANDS)[number]['id'];
 export const SURFACE_COMMANDS: readonly (SurfaceCommandDefinition & { id: SurfaceCommandId })[] = [
   ...FILE_AND_VIEW_SURFACE_COMMANDS,
@@ -195,9 +202,10 @@ export const SURFACE_COMMANDS: readonly (SurfaceCommandDefinition & { id: Surfac
   ...WORKSPACE_SURFACE_COMMANDS,
   ...RIBBON_VIEW_SURFACE_COMMANDS,
   ...RIBBON_FILE_SURFACE_COMMANDS,
+  ...RIBBON_ELEMENTS_SURFACE_COMMANDS,
+  ...RIBBON_AUTHOR_SURFACE_COMMANDS,
   ...MOBILE_SURFACE_COMMANDS,
   ...CONTEXT_SURFACE_COMMANDS,
-  ...RIBBON_ENTITY_ACTIONS_SURFACE_COMMANDS,
   ...VISIBILITY_SURFACE_COMMANDS,
 ];
 

@@ -102,8 +102,8 @@ export const PANEL_SURFACE_COMMANDS = [
   rightCommand('panel:loadReport', 'loadReport', 'geometry diagnostics warnings dropped items csg openings unsupported load report', FileWarning, true),
   rightCommand('panel:pointclouds', 'pointclouds', 'point clouds scan las laz e57 splat classification deviation registration alignment', Scan),
   rightCommand('panel:measurements', 'measurements', 'measure distance polyline angle radius coordinates point quantities area volume list', Ruler),
-  rightCommand('panel:appearance', 'appearance', 'image texture upload UV planar box projection surfaces', Palette),
+  rightCommand('panel:appearance', 'appearance', 'image texture upload UV planar box projection surfaces', Palette, true),
   rightCommand('panel:collab', 'collab', 'collaboration session share invite live multiplayer presence room realtime sync', Users,
     true, (state) => state.collabEnabled === true),
-  rightCommand('panel:extensions', 'extensions', 'extension plugin install manage iflx', Puzzle),
+  rightCommand('panel:extensions', 'extensions', 'extension plugin install manage iflx', Puzzle, true),
 ] as const satisfies readonly SurfaceCommandDefinition[];

@@ -21,7 +21,6 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
-import { MobilePanelLauncher } from './MobilePanelLauncher.js';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
 import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
@@ -79,7 +78,13 @@ afterEach(() => {
 });
 
 describe('mobile Panels sheet (#5853)', () => {
-  it('lists every panel the rail offers and opens each in its mobile home', () => {
+  it('lists every panel the rail offers and opens each in its mobile home', async () => {
+    // This assertion must run before loading the new launcher: when production
+    // is reverted, the mounted viewer should fail for the missing entry point.
+    const viewer = renderViewerLayout();
+    assert.ok(button(viewer, 'Open the panel list'), 'mobile has no panel-list entry point');
+    cleanup();
+    const { MobilePanelLauncher } = await import('./MobilePanelLauncher.js');
     // Mount the real launcher without heavyweight panel bodies: a few panels
     // start remote data requests when their body mounts, which this routing
     // assertion does not need. The tests below mount the full layout.
@@ -153,6 +158,21 @@ describe('mobile Panels sheet (#5853)', () => {
     assert.equal(s.rightPanelCollapsed, false);
     assert.equal(s.sidebarActivePanel, 'properties');
     assert.equal(activeBottomPanel(s), null, 'the stale Lists flag would hide Properties');
+  });
+
+  it('switches from dismissed Add Element to the chosen panel', () => {
+    const container = renderViewerLayout();
+    act(() => useViewerStore.setState({ activeTool: 'addElement', rightPanelCollapsed: true }));
+    openList(container);
+    click(listItem(container, 'clash')!);
+    const state = useViewerStore.getState();
+    assert.equal(state.activeTool, 'select');
+    assert.deepEqual(resolveMobileSheet({
+      hasAnalysisExtension: false,
+      activeTool: state.activeTool,
+      bottomPanel: activeBottomPanel(state),
+      sidebarActivePanel: state.sidebarActivePanel,
+    }), { kind: 'panel', id: 'clash' }, 'Add Element must not retake the sheet');
   });
 
   it('a tap on Hierarchy opens the left sheet', () => {

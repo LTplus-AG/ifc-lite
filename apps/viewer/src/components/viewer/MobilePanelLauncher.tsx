@@ -38,6 +38,7 @@ export function MobilePanelLauncher({ bottomInset }: { bottomInset: number }) {
   const { t } = useTranslation();
   const setLeftPanelCollapsed = useViewerStore((s) => s.setLeftPanelCollapsed);
   const setRightPanelCollapsed = useViewerStore((s) => s.setRightPanelCollapsed);
+  const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const { openInHome, closePanel } = usePanelControls();
   const openBottomPanel = activeBottomPanel(useBottomPanelFlags());
   const railIds = useRailPanelIds();
@@ -45,6 +46,9 @@ export function MobilePanelLauncher({ bottomInset }: { bottomInset: number }) {
 
   const openMobilePanel = (id: WorkspacePanelId) => {
     setListOpen(false);
+    // A dismissed Add Element sheet leaves its tool active. Clear it before
+    // routing to a panel, or it wins the mobile sheet slot again.
+    setActiveTool('select');
     if (getPanelDef(id)?.region === 'left') {
       setRightPanelCollapsed(true);
       openInHome(id);

@@ -29,6 +29,8 @@ import assert from 'node:assert/strict';
 import React, { act } from 'react';
 import { render, click, cleanup } from '@/test/render.js';
 import { useViewerStore } from '@/store';
+import { resolve } from '@/i18n/registry';
+import { panelTitleKey } from '@/lib/panels/registry';
 import { FileTab } from '../ribbon/tabs/FileTab.js';
 import { MainToolbar } from '../MainToolbar.js';
 import { CommandPalette } from '../CommandPalette.js';
@@ -82,7 +84,7 @@ describe('Cloud sources is reachable from both toolbar styles', () => {
   it('opens and closes the panel from the ribbon File tab', () => {
     render(<FileTab fileCommands={FILE_COMMANDS} />);
 
-    const button = byAccessibleName(/^Cloud sources/);
+    const button = byAccessibleName(resolve(panelTitleKey('sources')));
     click(button);
     assert.equal(useViewerStore.getState().sourcesPanelVisible, true, 'first click did not open the panel');
 
@@ -94,7 +96,7 @@ describe('Cloud sources is reachable from both toolbar styles', () => {
     render(<MainToolbar />);
 
     openMenu(byAccessibleName('Panels'));
-    click(byAccessibleName(/Cloud Sources/));
+    click(byAccessibleName(resolve(panelTitleKey('sources'))));
 
     assert.equal(useViewerStore.getState().sourcesPanelVisible, true, 'the Panels menu item did not open the panel');
   });
@@ -107,7 +109,7 @@ describe('Cloud sources is reachable from both toolbar styles', () => {
     );
 
     const row = [...container.ownerDocument.body.querySelectorAll<HTMLElement>('[role="option"], button')]
-      .find((el) => el.textContent?.includes('Cloud Sources'));
+      .find((el) => el.textContent?.includes(resolve(panelTitleKey('sources'))));
     assert.ok(row, 'the palette lists no Cloud Sources command');
     click(row);
     // `runCommand` defers to `requestAnimationFrame` (a file-dialog quirk), so

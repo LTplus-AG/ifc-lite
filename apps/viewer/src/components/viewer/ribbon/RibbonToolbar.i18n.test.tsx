@@ -75,7 +75,9 @@ function readableSlots(root: HTMLElement): Map<string, string> {
   root.querySelectorAll('*').forEach((element, index) => {
     const label = element.getAttribute('aria-label');
     if (label) out.set(`${index}:aria`, label);
-    const description = element.getAttribute('aria-description');
+    const descriptionId = element.getAttribute('aria-describedby');
+    const description = descriptionId?.split(/\s+/).map((id) => root.ownerDocument.getElementById(id)?.textContent?.trim())
+      .filter(Boolean).join(' ');
     if (description) out.set(`${index}:description`, description);
     const ownText = [...element.childNodes]
       .filter((node) => node.nodeType === node.TEXT_NODE)

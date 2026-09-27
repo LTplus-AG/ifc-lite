@@ -48,6 +48,9 @@ describe('workspace panel name parity (#5858)', () => {
     const ribbonButton = [...ribbon.querySelectorAll('button')].find((button) => button.textContent?.includes(TITLE));
     assert.ok(ribbonButton, 'ribbon uses the panel title');
     assert.equal(ribbonButton.getAttribute('aria-label'), TITLE, 'ribbon announces the panel title, not its descriptive tooltip');
+    const descriptionId = ribbonButton.getAttribute('aria-describedby');
+    assert.ok(descriptionId, 'ribbon button links its descriptive tooltip');
+    assert.equal(document.getElementById(descriptionId)?.textContent, 'IDS validation');
     cleanup();
 
     render(

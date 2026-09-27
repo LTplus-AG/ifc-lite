@@ -10,7 +10,7 @@
  * the existing shadcn tokens so light/dark/colorful themes just work.
  */
 
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useId } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -73,13 +73,17 @@ export const RibbonLargeButton = forwardRef<HTMLButtonElement, RibbonButtonProps
     { icon: Icon, label, active, activeClassName, tooltip, shortcut, hasMenu, badge, className, onClick, ...rest },
     ref,
   ) {
+    const descriptionId = useId();
+    // A caller-supplied name owns the accessible name; keep its longer
+    // tooltip as a separate, permanently available description.
+    const description = rest['aria-label'] ? tooltip : undefined;
     return (
       <RibbonTooltip label={label} shortcut={shortcut} tooltip={tooltip}>
         <button
           ref={ref}
           type="button"
           aria-label={tooltip ?? label}
-          aria-description={rest['aria-label'] ? tooltip : undefined}
+          aria-describedby={description ? descriptionId : undefined}
           aria-pressed={active === undefined ? undefined : active}
           onClick={(e) => {
             // Blur to close the tooltip after click (house pattern).
@@ -108,6 +112,7 @@ export const RibbonLargeButton = forwardRef<HTMLButtonElement, RibbonButtonProps
             {hasMenu && <ChevronDown className="h-2.5 w-2.5 shrink-0 opacity-60" aria-hidden="true" />}
           </span>
           {badge}
+          {description && <span id={descriptionId} className="sr-only">{description}</span>}
         </button>
       </RibbonTooltip>
     );

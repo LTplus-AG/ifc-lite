@@ -111,6 +111,41 @@ fn profile_solid_and_occurrence_frames_compose_in_authored_order() {
 }
 
 #[test]
+fn nested_mapping_origins_and_millimetres_compose_before_world_conversion() {
+    let model = mapped_fixture()
+        .replace("#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);",
+            "#3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);")
+        .replace("#14=IFCCARTESIANPOINT((0.,0.,0.));",
+            "#14=IFCCARTESIANPOINT((4.,0.,0.));")
+        .replace("#17=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,$,$);",
+            "#17=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,2.,$);")
+        .replace("#34=IFCPRODUCTDEFINITIONSHAPE($,$,(#33));",
+            "#34=IFCPRODUCTDEFINITIONSHAPE($,$,(#703));")
+        .replace("ENDSEC;\nEND-ISO-10303-21;",
+            "#700=IFCCARTESIANPOINT((0.,5.,0.));\n#701=IFCAXIS2PLACEMENT3D(#700,$,$);\n#704=IFCREPRESENTATIONMAP(#701,#26);\n#705=IFCCARTESIANPOINT((7.,0.,0.));\n#706=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#705,$,$);\n#702=IFCMAPPEDITEM(#704,#706);\n#703=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#702));\nENDSEC;\nEND-ISO-10303-21;");
+    let view = extract_extrusion_definitions(model.as_bytes(), Some(&HashSet::from([38])));
+    assert!(view.diagnostics.is_empty(), "{:?}", view.diagnostics);
+    assert_eq!(view.length_unit_scale, 0.001);
+    assert_eq!(view.sources.len(), 1);
+    let source = &view.sources[0];
+    assert_eq!(source.source.depth, Some(1.0)); // raw file units
+    assert!(matches!(&source.key.context,
+        AnalyticSourceContext::Mapped { representation_map_path }
+            if representation_map_path == &[704, 16]));
+    let instance = &view.instances[&38][0];
+    assert_eq!(instance.mapping_path, [702, 25]);
+    let matrix = Matrix4::from_column_slice(&instance.world_from_source.unwrap());
+    // Product (3,2), outer target (7,0), outer origin (0,5), then
+    // inner scale 2 applied to inner origin (4,0): (18,7) raw millimetres.
+    assert!((matrix[(0, 3)] - 0.018).abs() < 1e-12);
+    assert!((matrix[(1, 3)] - 0.007).abs() < 1e-12);
+    assert!((matrix[(0, 0)] - 0.002).abs() < 1e-12);
+    let corner = matrix * Vector4::new(-0.5, -0.5, 0.0, 1.0);
+    assert!((corner.x - 0.017).abs() < 1e-12);
+    assert!((corner.y - 0.006).abs() < 1e-12);
+}
+
+#[test]
 fn real_revit_window_map_preserves_holed_profile_and_reuses_source() {
     let model = std::fs::read("../geometry/tests/fixtures/issue_098_wall_W.ifc").unwrap();
     let view = extract_extrusion_definitions(&model, Some(&HashSet::from([928638, 928672])));

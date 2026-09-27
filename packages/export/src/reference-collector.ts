@@ -833,6 +833,7 @@ export function getVisibleEntityIds(
   const roots = new Set<number>();
   const hiddenProductIds = new Set<number>();
 
+  // @raw-entity-enumeration-ok Step export supplies its effective index; this fallback serves baked MergeExporter inputs
   const entries: Iterable<[number, { type: string }]> = index ?? dataStore.entityIndex.byId;
   for (const [expressId, entityRef] of entries) {
     const typeUpper = index
@@ -931,12 +932,14 @@ function propagateOpeningExclusions(
   // zero-length Uint8Array is truthy; keeping the byte check scoped to the byte
   // scan is what preserves that behaviour. See #2339.
 
+  // @raw-entity-enumeration-ok Step export supplies effective relationship buckets; MergeExporter reparses edits before this fallback
   const relVoidsIds = (index?.byType ?? dataStore.entityIndex.byType).get('IFCRELVOIDSELEMENT') ?? [];
   if (relVoidsIds.length === 0) return;
 
   const refs: number[] = [];
 
   for (const relId of relVoidsIds) {
+    // @raw-entity-enumeration-ok selected ids come from the effective bucket or a baked merge input above
     const entityRef = index ? index.get(relId) : dataStore.entityIndex.byId.get(relId);
     if (!entityRef) continue;
 

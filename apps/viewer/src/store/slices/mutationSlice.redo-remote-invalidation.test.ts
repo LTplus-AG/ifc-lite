@@ -11,13 +11,15 @@ import { createMutationSlice, type MutationSlice } from './mutationSlice.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { ViewerState } from '../index.js';
+import { fixtureModel } from '@/test/store-fixture.js';
 
 const MODEL = 'm1';
 
 function buildSlice() {
   const view = new MutablePropertyView(null, MODEL);
   let state: Record<string, unknown> = {
-    models: new Map(),
+    models: new Map([[MODEL, fixtureModel(MODEL)]]),
+    editEnabled: true,
     activeModelId: MODEL,
     mutationViews: new Map([[MODEL, view]]),
     undoStacks: new Map(),

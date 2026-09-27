@@ -44,7 +44,7 @@ async function seed(): Promise<MutablePropertyView> {
   } as unknown as GeometryResult;
   const model = { ...fixtureModel(MODEL), ifcDataStore: dataStore, geometryResult: geometry } as FederatedModel;
   useViewerStore.setState({
-    ...fixtureModels(model), geometryResult: geometry,
+    ...fixtureModels(model), geometryResult: geometry, editEnabled: true,
     mutationViews: new Map([[MODEL, view]]), storeEditors: new Map(),
     undoStacks: new Map(), redoStacks: new Map(),
     geometryContentVersion: 0, mutationVersion: 0,

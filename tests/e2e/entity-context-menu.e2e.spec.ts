@@ -41,6 +41,8 @@ test('authored IFC entity menu exposes actions, arrow navigation, submenu and fo
       [...state.models.values()].every((model) => model.ifcDataStore && (model.geometryResult?.meshes.length ?? 0) > 0);
   }, undefined, { timeout: 180_000 });
 
+  await page.getByRole('button', { name: 'Enter edit mode' }).click();
+
   // The real viewport menu is opened by the picking handler, which has already
   // resolved a renderer ID. Supply that same ID to exercise the shell without
   // depending on a particular camera angle or screen-space wall pixel.

@@ -99,6 +99,7 @@ async function activateLens(): Promise<void> {
  *  the federation registry singleton, then `addModel` with that offset. */
 async function loadModel(modelId: string, store: IfcDataStore, maxExpressId: number): Promise<void> {
   await act(async () => {
+    useViewerStore.setState({ editEnabled: true });
     const idOffset = useViewerStore.getState().registerModelOffset(modelId, maxExpressId);
     useViewerStore.getState().addModel({
       id: modelId,

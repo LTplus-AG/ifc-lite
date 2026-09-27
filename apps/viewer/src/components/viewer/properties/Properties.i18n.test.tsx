@@ -273,6 +273,7 @@ function makeModel(id: string): FederatedModel {
  *  the store needs two loaded models for it to render its chrome. */
 function seedStore(): void {
   useViewerStore.setState({
+    editEnabled: true,
     models: new Map([
       ['A', makeModel('A')],
       ['B', makeModel('B')],

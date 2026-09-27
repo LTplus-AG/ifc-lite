@@ -57,6 +57,7 @@ function toggle(el: Element | null | undefined): void {
 describe('model repositioning user interactions (#4226)', () => {
   beforeEach(() => {
     useViewerStore.setState({ ...fixtureModels(fixtureModel('ifc'), { ...fixtureModel('scan'), ifcDataStore: null }),
+      editEnabled: true,
       modelPlacement: emptyPlacementState(), repositionOpen: false, repositionNudge: 0.001, activeTool: 'select' });
   });
   afterEach(cleanup);

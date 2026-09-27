@@ -33,6 +33,7 @@ export async function pdfReferenceAnnotationFixture(page: { contents?: string; r
   const model = { ...fixtureModel('pdf-target'), idOffset, maxExpressId: 53, loadedAt: 123, schemaVersion: 'IFC4' as const,
     ifcDataStore: data, geometryResult: { meshes: [], totalTriangles: 0, totalVertices: 0, coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } } };
   useViewerStore.setState({ models: new Map([['pdf-target', model]]), activeModelId: 'pdf-target', geometryResult: model.geometryResult,
+    editEnabled: true,
     mutationViews: new Map([['pdf-target', view]]), storeEditors: new Map([['pdf-target', editor]]), mutationVersion: 0,
     undoStacks: new Map(), redoStacks: new Map(), dirtyModels: new Set(), collabRoomId: null, modelPlacement: emptyPlacementState(),
     appearanceReferences: new Map(), referenceUndo: [], referenceRedo: [] });

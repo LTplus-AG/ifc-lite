@@ -167,6 +167,7 @@ beforeEach(() => {
   registerLocale(PSEUDO_LOCALE, PSEUDO);
   setLocale(BASELINE_LOCALE);
   useViewerStore.setState({
+    editEnabled: true,
     models: new Map(),
     activeModelId: null,
     ifcDataStore: null,

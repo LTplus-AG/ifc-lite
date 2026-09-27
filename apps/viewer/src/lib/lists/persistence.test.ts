@@ -93,11 +93,23 @@ describe('list definitions persistence', () => {
   });
 
   it('skips a malformed whole entry without hiding the neighboring valid list (#5894)', () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([null, legacy]));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([null, [], { id: 'x' },
+      { ...legacy, groups: [null] }, legacy]));
     const loaded = loadListDefinitions();
     assert.equal(loaded.length, 1);
     assert.equal(loaded[0].id, legacy.id);
     assert.equal(loaded[0].groups?.[0].rules[0].kind, 'property');
+  });
+
+  it('rejects malformed import shapes instead of saving an unusable definition (#5894)', async () => {
+    for (const malformed of [
+      { id: 1, name: 2, entityTypes: {}, columns: {} },
+      { ...legacy, groups: [null] },
+    ]) {
+      await assert.rejects(importListDefinition(new File(
+        [JSON.stringify(malformed)], 'bad.list.json', { type: 'application/json' },
+      )), /Failed to parse list definition file/);
+    }
   });
 
   it('imports the same v1 condition conversion from a .list.json file (#5894)', async () => {

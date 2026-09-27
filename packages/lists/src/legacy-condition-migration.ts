@@ -4,11 +4,35 @@
 
 /** Decode v1 saved List conditions without claiming that unsupported sources
  * have been converted. Unreadable rows remain explicit and active. */
-import { legacyListOperatorToFilterRule, type FilterGroup, type FilterRule } from '@ifc-lite/rules';
+import { isFilterGroup, legacyListOperatorToFilterRule, type FilterGroup, type FilterRule } from '@ifc-lite/rules';
 import { isNamePattern } from './name-pattern.js';
 import type { ListDefinition, PropertyCondition, UnreadableListCondition } from './types.js';
 
 type MigrationResult = { groups: FilterGroup[]; unreadableConditions: UnreadableListCondition[] };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const COLUMN_SOURCES = new Set(['attribute', 'property', 'quantity', 'material', 'classification', 'spatial', 'model', 'zone', 'geometry']);
+const UNREADABLE_REASONS = new Set(['unsupported-source', 'unsupported-attribute', 'name-pattern', 'inherit', 'operator', 'invalid-value']);
+
+/** Saved JSON crosses a trust boundary before the typed Lists API sees it. */
+export function isSavedListShape(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value) || typeof value.id !== 'string' || value.id.length === 0 || typeof value.name !== 'string'
+    || typeof value.createdAt !== 'number' || !Number.isFinite(value.createdAt)
+    || typeof value.updatedAt !== 'number' || !Number.isFinite(value.updatedAt)
+    || !Array.isArray(value.entityTypes) || !value.entityTypes.every((item) => typeof item === 'number' && Number.isInteger(item))
+    || !Array.isArray(value.columns) || !value.columns.every((column) => isRecord(column)
+      && typeof column.id === 'string' && typeof column.source === 'string' && COLUMN_SOURCES.has(column.source)
+      && typeof column.propertyName === 'string')) return false;
+  if (value.groups !== undefined && (!Array.isArray(value.groups) || !value.groups.every(isFilterGroup))) return false;
+  if (value.unreadableConditions !== undefined && (!Array.isArray(value.unreadableConditions)
+    || !value.unreadableConditions.every((row) => isRecord(row) && (
+      (row.reason === 'invalid-condition' && 'condition' in row)
+      || (typeof row.reason === 'string' && UNREADABLE_REASONS.has(row.reason) && isStoredCondition(row.condition))
+    )))) return false;
+  return true;
+}
 
 function isStoredCondition(value: unknown): value is PropertyCondition {
   if (typeof value !== 'object' || value === null) return false;
@@ -72,9 +96,12 @@ export function migrateLegacyListConditions(conditions: readonly unknown[]): Mig
 
 /** Normalize a saved v1 definition before it enters the public Lists API. */
 export function migrateLegacyListDefinition(
-  definition: Omit<ListDefinition, 'groups'> & { groups?: ListDefinition['groups']; conditions?: unknown },
+  definition: unknown,
 ): ListDefinition {
-  const { conditions, ...canonical } = definition;
+  if (!isSavedListShape(definition)) throw new Error('Invalid saved list definition');
+  const { conditions, ...canonical } = definition as Omit<ListDefinition, 'groups'> & {
+    groups?: ListDefinition['groups']; conditions?: unknown;
+  };
   if (canonical.groups !== undefined) return canonical as ListDefinition;
   const migrated = migrateLegacyListConditions(
     conditions === undefined ? [] : Array.isArray(conditions) ? conditions : [conditions],

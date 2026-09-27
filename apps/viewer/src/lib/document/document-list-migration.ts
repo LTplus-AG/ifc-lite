@@ -15,8 +15,12 @@ export function migrateDocumentListBlocks(blocks: unknown): unknown {
       || block.source.kind !== 'list' || !isRecord(block.source.list)) return block;
     const list = block.source.list;
     if (!Array.isArray(list.groups) && !Array.isArray(list.conditions)) return block;
-    return { ...block, source: { ...block.source, list: migrateLegacyListDefinition(
-      list as Parameters<typeof migrateLegacyListDefinition>[0],
-    ) } };
+    try {
+      return { ...block, source: { ...block.source, list: migrateLegacyListDefinition(list) } };
+    } catch (error) {
+      // Validation rejects this document; another saved document can still load.
+      console.warn('[Documents] Saved table list could not be migrated', error);
+      return block;
+    }
   });
 }

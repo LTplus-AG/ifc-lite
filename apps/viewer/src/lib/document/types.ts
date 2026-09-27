@@ -12,7 +12,7 @@
  * The shape is plain JSON: it is what `.ifclite-document.json` carries.
  */
 import { validateChartSpec, type ChartSpec, type ReportPageSetup } from '@ifc-lite/charts';
-import type { ListDefinition } from '@ifc-lite/lists';
+import { isSavedListShape, type ListDefinition } from '@ifc-lite/lists';
 import { migrateDocumentListBlocks } from './document-list-migration.js';
 
 export const DOCUMENT_VERSION = 6;
@@ -330,8 +330,7 @@ function validateTableBlock(block: Record<string, unknown>, at: string, errors: 
     errors.push({ path: `${at}.source`, message: 'expected source.kind list | validation' });
   } else if (source.kind === 'list') {
     const list = source.list;
-    const columnsOk = isRecord(list) && Array.isArray(list.columns) && list.columns.every((c: unknown) => isRecord(c) && isString(c.id));
-    if (!isRecord(list) || !isString(list.id) || list.id.length === 0 || !isString(list.name) || !Array.isArray(list.entityTypes) || !(Array.isArray(list.groups) || Array.isArray(list.conditions)) || !columnsOk) {
+    if (!isSavedListShape(list) || !(Array.isArray(list.groups) || Array.isArray(list.conditions))) {
       errors.push({ path: `${at}.source.list`, message: 'expected a list definition' });
     } else if (list.expressIdsByModel !== undefined) {
       errors.push({ path: `${at}.source.list.expressIdsByModel`, message: 'not allowed in a document' });

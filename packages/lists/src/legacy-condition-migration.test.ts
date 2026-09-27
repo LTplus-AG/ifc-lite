@@ -39,6 +39,17 @@ describe('v1 List condition migration (#5894)', () => {
     expect(migrate(normalized)).toEqual(normalized);
   });
 
+  it('rejects malformed whole definitions and malformed Rules groups before execution (#5894)', async () => {
+    const migrateLegacyListDefinition = (await import('./index.js')).migrateLegacyListDefinition;
+    const valid = { id: 'walls', name: 'Walls', createdAt: 1, updatedAt: 1,
+      entityTypes: [], columns: [], groups: [] };
+    for (const malformed of [[], { id: 'x' }, { ...valid, id: '' }, { ...valid, columns: {} },
+      { ...valid, groups: [null] }, { ...valid, groups: [{ combinator: 'AND', rules: [null] }] }]) {
+      expect(() => migrateLegacyListDefinition(malformed)).toThrow('Invalid saved list definition');
+    }
+    expect(migrateLegacyListDefinition(valid)).toEqual(valid);
+  });
+
   it('preserves every persisted operator in one AND group for the new Rules evaluator', () => {
     const conditions: PropertyCondition[] = [
       'equals', 'notEquals', 'contains', 'exists', 'gt', 'gte', 'lt', 'lte',

@@ -23,8 +23,8 @@ import { ViewTab } from './ViewTab.js';
 
 function environmentButton(container: HTMLElement): HTMLButtonElement {
   const label = resolve(panelTitleKey('environment'));
-  const button = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === label);
-  assert.ok(button, `expected a ribbon button labelled "${label}"`);
+  const button = [...container.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === label);
+  assert.ok(button, `expected a ribbon button named "${label}"`);
   return button as HTMLButtonElement;
 }
 

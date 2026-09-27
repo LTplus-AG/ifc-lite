@@ -20,6 +20,7 @@ import { act } from 'react';
 import { activate, cleanup } from '@/test/render.js';
 import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { useViewerStore } from '@/store';
+import { resolveInitialToolbarStyle, TOOLBAR_STYLE_STORAGE_KEY } from '@/store/constants';
 
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight };
 
@@ -43,7 +44,7 @@ const isMobile = () => useViewerStore.getState().isMobile;
 // A phone: rotation to 844px landscape stays mobile only because it has touch.
 Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 5 });
 
-const RESET = { isMobile: false, leftPanelCollapsed: true, rightPanelCollapsed: true };
+const RESET = { isMobile: false, leftPanelCollapsed: true, rightPanelCollapsed: true, toolbarStyle: 'ribbon' as const };
 
 beforeEach(() => useViewerStore.setState(RESET));
 
@@ -54,6 +55,18 @@ afterEach(() => {
 });
 
 describe('ViewerLayout mobile panel collapse (#5837)', () => {
+  it('#5874 opens the ribbon for a stored classic preference and clears that preference', () => {
+    setViewport(1280, 900);
+    localStorage.setItem(TOOLBAR_STYLE_STORAGE_KEY, 'classic');
+    assert.equal(resolveInitialToolbarStyle(), 'ribbon');
+    assert.equal(localStorage.getItem(TOOLBAR_STYLE_STORAGE_KEY), null);
+
+    // A stale in-memory style must not expose the retired desktop branch.
+    useViewerStore.setState({ toolbarStyle: 'classic' });
+    const ui = renderViewerLayout();
+    assert.ok(ui.querySelector('[data-tour="ribbon-tabs"]'), 'the desktop renders ribbon tabs');
+  });
+
   it('#5823 closes an open mobile sheet when its backdrop is keyboard-activated', () => {
     setViewport(390, 844);
     const ui = renderViewerLayout();

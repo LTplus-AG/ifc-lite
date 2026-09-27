@@ -5,8 +5,7 @@
 /**
  * One-time "the toolbar changed" line under the ribbon. Same contract as
  * `TourInvite`: never a modal, one sentence, one tour link, one way out,
- * and gone forever once dismissed, once the ribbon tour is completed, or
- * once the user has picked a toolbar style by hand (they already know).
+ * and gone forever once dismissed or once the ribbon tour is completed.
  *
  * It also stays out of the way while a walkthrough is running - the tour
  * spotlight owns the screen at that point.
@@ -25,7 +24,6 @@ import { trackUiEvent } from '@/lib/analytics';
 import type { OnboardingAction } from '@/lib/analytics-ui-events';
 import { useTourStore } from '@/lib/tours/tour-store';
 import { useViewerStore } from '@/store';
-import { TOOLBAR_STYLE_STORAGE_KEY } from '@/store/constants';
 import { getRecentFiles } from '@/lib/recent-files';
 import { useTranslation } from '@/i18n';
 
@@ -57,29 +55,15 @@ function isReturningVisitor(): boolean {
   }
 }
 
-/** True once the user has explicitly chosen a toolbar style on this browser. */
-function hasExplicitToolbarChoice(): boolean {
-  try {
-    return localStorage.getItem(TOOLBAR_STYLE_STORAGE_KEY) !== null;
-  } catch (err) {
-    // Locked storage (Safari private mode): treat it as "no choice recorded"
-    // and show the notice. Logged rather than swallowed so a real storage
-    // fault is visible instead of silently re-showing the notice every load.
-    console.warn('[toolbar-style] could not read the toolbar preference; showing the switch notice', err);
-    return false;
-  }
-}
-
 export function RibbonSwitchNotice() {
   const { t } = useTranslation();
-  const setToolbarStyle = useViewerStore((s) => s.setToolbarStyle);
   // `startTour` refuses to run on mobile. Offering "Show me what moved" there
   // would retire the notice on click and then show nothing, so the invitation
   // is only rendered where it can be honoured.
   const isMobile = useViewerStore((s) => s.isMobile);
   const tourStatus = useTourStore((s) => s.status);
   const [dismissed, setDismissed] = useState(
-    () => isNoticeDismissed(NOTICE_ID) || hasExplicitToolbarChoice() || !isReturningVisitor(),
+    () => isNoticeDismissed(NOTICE_ID) || !isReturningVisitor(),
   );
   // Re-read only when a tour ends, so finishing the ribbon tour retires the
   // notice without re-reading localStorage on every ribbon render.
@@ -116,15 +100,6 @@ export function RibbonSwitchNotice() {
           <span aria-hidden="true" className="text-muted-foreground/40">|</span>
         </>
       )}
-      <button
-        className="shrink-0 hover:text-foreground hover:underline"
-        onClick={() => {
-          close('keep_classic');
-          setToolbarStyle('classic');
-        }}
-      >
-        {t('ribbon.notice.keepClassic')}
-      </button>
       <div className="flex-1" />
       <button
         aria-label={t('ribbon.notice.dismissAriaLabel')}

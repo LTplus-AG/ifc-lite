@@ -59,6 +59,21 @@ ENDSEC;END-ISO-10303-21;"""
     assert quantities[1]["kind"] == "IfcQuantityNumber"
     assert quantities[1]["value"] == 1.25
     assert quantities[1]["unit"]["source"] == "dimensionless"
+def test_issue_5787_quantity_join_binding_mapped_sources_and_authored_values():
+    mapped = (REPO / "rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc").read_bytes()
+    view = ifclite_geom.quantity_analysis(mapped, ids={31, 38})
+    assert (view["product_count"], view["source_occurrence_count"], view["unique_source_count"]) == (2, 2, 1)
+    first = view["products"][31]
+    second = view["products"][38]
+    assert first["sources"][0]["source"] == second["sources"][0]["source"]
+    assert first["product_total"] is None
+    assert "source" in first["aggregate_diagnostic"].lower()
+    values = {q["name"]: q for q in first["sources"][0]["quantities"]}
+    assert values["Depth"]["origin"] == "authored_source_parameter"
+    assert values["nominal_volume"]["value"] == pytest.approx(1.0)
+    assert "Unplaced" in values["nominal_volume"]["limitation"]
+    assert ifclite_geom.quantity_analysis(mapped, ids=set())["products"] == {}
+
 TRIMMED_BAR = REPO / "rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc"
 # 4 walls with geometry, placements, and psets attached to their IfcWallType.
 WALLS = REPO / (

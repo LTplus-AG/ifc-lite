@@ -4,7 +4,7 @@
 
 //! #5785: reusable sources retain distinct mapped occurrences and f64 frames.
 
-use ifc_lite_processing::{extract_swept_disk_definitions, extract_swept_disk_descriptions,
+use ifc_lite_processing::{extract_analytic_quantity_sources, extract_swept_disk_definitions, extract_swept_disk_descriptions,
     SweptDiskSourceContext};
 
 fn fixture() -> String {
@@ -149,4 +149,25 @@ fn malformed_source_is_reported_without_partial_instances() {
     assert!(view.sources.is_empty());
     assert!(view.instances.is_empty());
     assert!(view.diagnostics.iter().any(|item| item.contains("product #50, solid #43")));
+}
+
+#[test]
+fn issue_5787_combined_walk_matches_standalone_views_and_ordinals() {
+    let model = fixture().replace(
+        "#48=IFCSHAPEREPRESENTATION(#16,'Body','MappedRepresentation',(#47));",
+        "#1000=IFCCARTESIANPOINT((5000000000.,0.,0.));\n#1001=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1000,$,$);\n#1002=IFCMAPPEDITEM(#45,#1001);\n#48=IFCSHAPEREPRESENTATION(#16,'Body','MappedRepresentation',(#47,#1002));",
+    );
+    let combined = extract_analytic_quantity_sources(model.as_bytes(), None);
+    let descriptions = extract_swept_disk_descriptions(model.as_bytes(), None);
+    let definitions = extract_swept_disk_definitions(model.as_bytes(), None);
+    assert_eq!(serde_json::to_value(&combined.swept_disk_descriptions).unwrap(),
+        serde_json::to_value(&descriptions).unwrap());
+    assert_eq!(serde_json::to_value(&combined.swept_disk_definitions).unwrap(),
+        serde_json::to_value(&definitions).unwrap());
+    assert_eq!(combined.swept_disk_descriptions.elements[&50].len(), 2);
+    for instance in &combined.swept_disk_definitions.instances[&50] {
+        let description = &combined.swept_disk_descriptions.elements[&50][instance.ordinal];
+        assert_eq!(instance.solid_id, description.solid_id);
+        assert_eq!(instance.mapping_path, description.mapping_path);
+    }
 }

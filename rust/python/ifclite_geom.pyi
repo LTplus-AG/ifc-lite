@@ -231,6 +231,44 @@ class AuthoredQuantityAnalysis(TypedDict):
     product_count: int  # IFC product entities, not physical bars or source solids
     products: Dict[int, ProductQuantities]
     diagnostics: List[str]
+
+class DerivedQuantity(TypedDict):
+    name: str
+    value: float
+    unit: str  # m/m2/m3 for disks; raw IFC file units for extrusions
+    formula: str
+    origin: Literal["derived", "authored_source_parameter"]
+    source_solid_ids: List[int]
+    limitation: str
+    status: Literal["complete", "source_modified", "unsupported"]
+
+class QuantitySourceOccurrence(TypedDict):
+    source_kind: Literal["IfcSweptDiskSolid", "IfcExtrudedAreaSolid"]
+    source: AnalyticSourceKey
+    ordinal: int
+    solid_id: int
+    mapping_path: List[int]
+    source_modified: bool
+    status: Literal["complete", "source_modified", "unsupported"]
+    status_reason: Optional[str]
+    quantities: List[DerivedQuantity]
+
+class ProductQuantityAnalysis(TypedDict):
+    ifc_type: str
+    authored: List[AuthoredQuantity]
+    conflicts: List[QuantityConflict]
+    source_occurrence_count: int
+    unique_source_count: int
+    sources: List[QuantitySourceOccurrence]
+    product_total: Optional[float]
+    aggregate_diagnostic: str
+
+class QuantityAnalysis(TypedDict):
+    product_count: int
+    source_occurrence_count: int
+    unique_source_count: int
+    products: Dict[int, ProductQuantityAnalysis]
+    diagnostics: List[str]
 class PropValue(TypedDict):
     name: str
     value: str  # always a string, in the file's OWN units
@@ -397,6 +435,17 @@ def extrusion_definitions(
     world_from_source. The last matrix maps raw IFC file units to absolute IFC
     Z-up world metres. CSG operand sources carry source_modified=True because
     their final body may differ. Unsupported sources retain an explicit status.
+    """
+    ...
+
+def quantity_analysis(
+    ifc_bytes: bytes,
+    ids: Optional[Set[int]] = None,
+) -> QuantityAnalysis:
+    """Join authored quantities and canonical analytic source occurrences.
+
+    Every derived value is nominal; product_total remains None with a reason.
+    Source counts and IFC product counts have distinct meanings.
     """
     ...
 

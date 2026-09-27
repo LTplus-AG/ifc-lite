@@ -8,7 +8,6 @@ import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
-import { MainToolbar } from './MainToolbar';
 import { MobileToolbar } from './MobileToolbar';
 import { RibbonToolbar } from './ribbon/RibbonToolbar';
 import { HierarchyPanel } from './HierarchyPanel';
@@ -155,8 +154,6 @@ export function ViewerLayout() {
     };
   }, [shortcutsDialog]);
 
-  // Desktop toolbar style (issue #1686): classic strip or tabbed ribbon.
-  const toolbarStyle = useViewerStore((s) => s.toolbarStyle);
   const isMobile = useViewerStore((s) => s.isMobile);
   const leftPanelCollapsed = useViewerStore((s) => s.leftPanelCollapsed);
   const rightPanelCollapsed = useViewerStore((s) => s.rightPanelCollapsed);
@@ -282,13 +279,10 @@ export function ViewerLayout() {
             `StatusBar.tsx`; `toolbar/export-commands.ts` owns the `trigger` one. */}
         <AnonymizedExportDialog surface="context_menu" />
 
-        {/* Main Toolbar — compact MobileToolbar on mobile; on desktop the
-            user picks classic strip vs tabbed ribbon (issue #1686). */}
+        {/* The compact mobile controls and the desktop ribbon share command homes. */}
         {isMobile
           ? <MobileToolbar />
-          : toolbarStyle === 'ribbon'
-            ? <RibbonToolbar onShowShortcuts={shortcutsDialog.toggle} />
-            : <MainToolbar onShowShortcuts={shortcutsDialog.toggle} />}
+          : <RibbonToolbar onShowShortcuts={shortcutsDialog.toggle} />}
 
         {/* Main Content Area - Desktop Layout */}
         {!isMobile && (

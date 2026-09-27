@@ -3,13 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Ribbon toolbar (issue #1686) — the tabbed, IFCFlux/Office-style
- * alternative to the classic single-strip `MainToolbar`, and the default
- * toolbar since the ribbon shipped. A slim tab strip selects a command
- * context; the band beneath lays the commands out in labeled groups with
- * visible names, trading one strip of vertical space for zero-recall
- * discovery. Selected per user via `uiSlice.toolbarStyle`; both styles
- * drive the same shared command hooks so behaviour can never fork.
+ * Desktop ribbon toolbar: a slim tab strip selects a command context, and
+ * the band beneath lays commands out in labeled groups with visible names.
  *
  * Office conventions kept: double-click the active tab (or the chevron)
  * to collapse the band to the tab strip; the collapsed state persists.

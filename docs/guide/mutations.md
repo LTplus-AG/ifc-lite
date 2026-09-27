@@ -496,6 +496,26 @@ The column lands in the existing spatial hierarchy, references the model's own o
 
 Builders read the schema from the resolved anchor (`anchor.schema`) and drop attribute-tail slots that don't exist in IFC2X3. For example `IfcWall.PredefinedType` and `IfcDoor.OperationType` are emitted on IFC4 only; on IFC2X3 the corresponding STEP records are 8 / 10 attributes wide. `USERDEFINED` enums round-trip through their companion `User-defined…` slot, so a custom `OperationType: 'USERDEFINED'` + `UserDefinedOperationType: 'Sliding-Curve'` exports as `.USERDEFINED.,'Sliding-Curve'`.
 
+#### Openings and hosted doors / windows
+
+`addOpeningToStore` cuts an `IfcOpeningElement` into an existing `IfcWall` or `IfcSlab` and links it with `IfcRelVoidsElement`; `addHostedDoorToStore` / `addHostedWindowToStore` cut the opening and fill it with an `IfcDoor` / `IfcWindow` through `IfcRelFillsElement`. The host can come from the file or from the overlay. `resolveHostAnchor` reads everything the builders need from the host: its placement, its containing storey (via `IfcRelContainedInSpatialStructure`), and the bounds of its Body geometry.
+
+```typescript
+import { StoreEditor } from '@ifc-lite/mutations';
+import { addHostedDoorToStore, addOpeningToStore, resolveHostAnchor } from '@ifc-lite/create';
+
+const editor = new StoreEditor(dataStore, view);
+const host = resolveHostAnchor(dataStore, wallExpressId, view);
+
+// Wall-local metres: Offset along the wall axis to the centre, Sill above its base.
+const door = addHostedDoorToStore(editor, host, { Offset: 2.5, Width: 0.9, Height: 2.1 });
+// → { fillingId, relFillsId, relContainedId, opening: { openingId, relVoidsId, cutDepth, … }, … }
+
+const hole = addOpeningToStore(editor, host, { Offset: 5, Sill: 1.8, Width: 0.4, Height: 0.4 });
+```
+
+The opening is placed relative to the host's own `IfcLocalPlacement` and is not contained in the storey (IFC reaches it through the element it voids). By default the cut runs through the host's body thickness plus 50 mm per face; pass `CutDepth` to override it, but never with a value thinner than the host. The door or window is placed relative to the opening, centred in the wall, and contained in the host's storey. For a slab host, pass `Position: [x, y]`, `Width` and `Depth` in the slab's local frame. Through the SDK these are `bim.store.addOpening`, `bim.store.addHostedDoor` and `bim.store.addHostedWindow` (`modelId, hostExpressId, params`). In the viewer they write the model and its export, but the host is not re-cut in 3D until overlay re-tessellation lands (#6232 M1).
+
 #### Auto Spaces — generate IfcSpace from a storey's walls
 
 For room generation, `@ifc-lite/create` ships a planar-graph face finder that turns a storey's wall axes into a CCW polygon per enclosed region:
@@ -563,6 +583,7 @@ All paths route through the same `mutationSlice` actions that wrap `StoreEditor`
 | Edit a positional STEP arg on a non-IfcRoot entity (profile dim, cartesian point, …) | `setPositionalAttribute` / `bim.store.setPositionalAttribute` |
 | Inject a small raw STEP entity (a point, a profile, a unit) | `addEntity` / `bim.store.addEntity` |
 | Drop a fully-formed building element with geometry | `addColumnToStore` / `addWallToStore` / `addSlabToStore` / `addBeamToStore` / `addDoorToStore` / `addWindowToStore` / `addSpaceToStore` / `addRoofToStore` / `addPlateToStore` / `addMemberToStore` (or `bim.store.add{Column,Wall,Slab,…}`) |
+| Cut an opening, or put a door / window into an existing wall | `addOpeningToStore` / `addHostedDoorToStore` / `addHostedWindowToStore` (or `bim.store.addOpening` / `addHostedDoor` / `addHostedWindow`) |
 | Generate IfcSpace volumes from a storey's existing walls | `generateSpacesFromWalls` (or **Add Element → Space → Auto Spaces** in the viewer) |
 | Duplicate any IfcRoot product (psets, qsets, materials, type associations preserved) | `duplicateInStore` / right-click → Duplicate |
 | Remove an entity from an existing model | `removeEntity` / `bim.store.removeEntity` |

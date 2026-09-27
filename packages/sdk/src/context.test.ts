@@ -129,6 +129,10 @@ function createMockBackend() {
     connectStructuralMemberToConnection: vi.fn((modelId: string) => ({ modelId, expressId: 306 })),
     connectStructuralActivityToItem: vi.fn((modelId: string) => ({ modelId, expressId: 307 })),
     assignToStructuralGroup: vi.fn((modelId: string) => ({ modelId, expressId: 308 })),
+    // #6232: openings and hosted doors/windows.
+    addOpening: vi.fn((modelId: string) => ({ modelId, expressId: 400 })),
+    addHostedDoor: vi.fn((modelId: string) => ({ modelId, expressId: 401 })),
+    addHostedWindow: vi.fn((modelId: string) => ({ modelId, expressId: 402 })),
   };
   const spatial = {
     queryBounds: vi.fn((_modelId: string, _bounds: AABB): EntityRef[] => []),

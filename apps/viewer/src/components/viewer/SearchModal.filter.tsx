@@ -600,7 +600,7 @@ export function SearchModalFilter() {
       </div>
 
       {/* ── Run bar: status · run/cancel · export ──────────────────────── */}
-      <div className="flex items-center gap-2 border-b px-3 py-2 text-[11px]">
+      <div className="flex items-center gap-2 border-b px-3 py-2 text-2xs">
         <RuleSummary
           ruleCount={filterRuleCount}
           groupCount={searchFilter.groups.length}
@@ -631,7 +631,7 @@ export function SearchModalFilter() {
 
         {!searchFilterRunning && limitHit !== null && (
           <span
-            className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
+            className="rounded bg-amber-100 px-1.5 py-0.5 text-2xs font-semibold text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
             title={t('searchModal.filterRun.limitedToTitle')}
           >
             {t('searchModal.filterRun.limitedToBadge', { limit: limitHit.toLocaleString() })}
@@ -716,7 +716,7 @@ export function SearchModalFilter() {
       </div>
 
       {multiModel && (
-        <div className="border-b bg-zinc-50 px-3 py-1.5 text-[11px] text-muted-foreground dark:bg-zinc-900/30">
+        <div className="border-b bg-zinc-50 px-3 py-1.5 text-2xs text-muted-foreground dark:bg-zinc-900/30">
           {t('searchModal.filterRun.multiModelNote', { count: models.size })}
         </div>
       )}
@@ -783,7 +783,7 @@ function FilterResultTable({ result, selectionKeyIndex, onRowClick }: FilterResu
 
   return (
     <div className="flex flex-1 min-h-0 flex-col">
-      <div className="flex items-center border-b bg-zinc-50/50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground dark:bg-zinc-900/30">
+      <div className="flex items-center border-b bg-zinc-50/50 px-3 py-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground dark:bg-zinc-900/30">
         {result.columns.map((c) => (
           <div key={c} className="flex-1 truncate px-2 font-mono">
             {c}
@@ -807,7 +807,7 @@ function FilterResultTable({ result, selectionKeyIndex, onRowClick }: FilterResu
                   transform: `translateY(${vRow.start}px)`,
                 }}
                 className={cn(
-                  'flex w-full items-center border-b border-zinc-100 px-3 text-left text-[11px] dark:border-zinc-900 focus-visible:ring-2 focus-visible:ring-ring',
+                  'flex w-full items-center border-b border-zinc-100 px-3 text-left text-2xs dark:border-zinc-900 focus-visible:ring-2 focus-visible:ring-ring',
                   clickable && 'cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800',
                 )}
                 onClick={() => onRowClick(row)}

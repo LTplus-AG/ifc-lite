@@ -16,11 +16,12 @@ import {
   Sun, Tag,
 } from 'lucide-react';
 import type { TranslationKey } from '@/i18n';
+import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { resolveEnglish } from '@/i18n/registry';
 import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
-import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { goHomeFromStore, showAllFromStore } from '@/store/homeView';
 import { hideSelectionFromStore } from '@/store/hideSelection';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { openSettings } from '@/lib/settings/open-settings';
@@ -29,7 +30,10 @@ import {
   executeBasketSet, executeBasketToggleVisibility,
 } from '@/store/basket/basketCommands';
 import type { Command } from './commandPaletteSearch';
+import type { RightPanel } from './commandPaletteCommandsTypes';
 import { TOOL_SURFACE_COMMANDS } from './surface-commands-tools';
+import { PANEL_SURFACE_COMMANDS } from './surface-commands-panels';
+import { WORKSPACE_SURFACE_COMMANDS } from './surface-commands-workspace';
 
 export type CommandSurface = 'palette' | 'ribbon' | 'context' | 'mobile';
 
@@ -37,11 +41,14 @@ export interface SurfaceCommandContext {
   surface: CommandSurface;
   execute?: (code: string) => void;
   resetColors?: () => void;
+  activateRightPanel?: (panel: RightPanel) => void;
+  activateBottomPanel?: (panel: BottomPanelId) => void;
 }
 
 export interface SurfaceCommandState {
   canEditInSession: boolean;
   cesiumAvailable?: boolean;
+  collabEnabled?: boolean;
 }
 
 export interface SurfaceCommandDefinition {
@@ -65,6 +72,13 @@ const paletteOnly = ['palette'] as const;
 
 export const SURFACE_COMMANDS = [
   {
+    id: 'file:open', labelKey: 'commandPalette.file.open.label',
+    keywords: 'ifc ifcx glb load model browse',
+    category: 'File', icon: FolderOpen, surfaces: paletteOnly, enabled: alwaysEnabled,
+    immediate: true,
+    run: () => { window.dispatchEvent(new CustomEvent('ifc-lite:open-files')); },
+  },
+  {
     id: 'file:save-federation-setup', labelKey: 'commandPalette.file.saveFederationSetup.label',
     keywords: 'federation setup save export portable models order alignment anchor',
     category: 'File', icon: Save, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
@@ -85,7 +99,7 @@ export const SURFACE_COMMANDS = [
   },
   {
     id: 'view:home', labelKey: 'commandPalette.view.home.label',
-    searchLabel: 'Home', keywords: 'isometric reset camera', category: 'View', icon: Home,
+    searchLabel: 'Home', keywords: 'isometric fit camera', category: 'View', icon: Home,
     surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.home',
     run: () => { goHomeFromStore(); },
   },
@@ -183,6 +197,8 @@ export const SURFACE_COMMANDS = [
     run: () => { openSettings('display'); },
   },
   ...TOOL_SURFACE_COMMANDS,
+  ...PANEL_SURFACE_COMMANDS,
+  ...WORKSPACE_SURFACE_COMMANDS,
   {
     id: 'vis:hide', labelKey: 'commandPalette.vis.hide.label',
     keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff,
@@ -193,14 +209,14 @@ export const SURFACE_COMMANDS = [
     id: 'vis:show', labelKey: ACTION_NAME_KEYS.showAll,
     keywords: 'unhide reset visible', category: 'Visibility', icon: Eye,
     surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'visibility.showAll',
-    run: () => { resetVisibilityForHomeFromStore('show_all'); },
+    run: () => { showAllFromStore('show_all'); },
   },
   {
     id: 'vis:set-iso', labelKey: 'commandPalette.vis.setBasket.label',
     searchLabel: 'Set Basket from Selection',
     keywords: 'basket isolate set selection hierarchy view equals',
     category: 'Visibility', icon: Equal, surfaces: paletteOnly,
-    enabled: alwaysEnabled, shortcut: 'basket.set',
+    enabled: alwaysEnabled,
     run: () => { executeBasketSet(); },
   },
   {
@@ -306,18 +322,19 @@ export function surfaceCommand(id: SurfaceCommandId, surface: CommandSurface): S
 export function paletteSurfaceCommands(
   state: SurfaceCommandState,
   execute: (code: string) => void,
+  context: Pick<SurfaceCommandContext, 'activateRightPanel' | 'activateBottomPanel'> = {},
 ): Command[] {
   return SURFACE_COMMANDS
     .filter((command) => command.surfaces.includes('palette') && command.enabled(state))
     .map((command) => ({
       id: command.id,
-      label: 'searchLabel' in command ? command.searchLabel : resolveEnglish(command.labelKey),
+      label: ('searchLabel' in command ? command.searchLabel : undefined) ?? resolveEnglish(command.labelKey),
       labelKey: command.labelKey,
       keywords: command.keywords,
       category: command.category,
       icon: command.icon,
       shortcut: 'shortcut' in command ? command.shortcut : undefined,
       immediate: 'immediate' in command ? command.immediate : undefined,
-      action: () => command.run({ surface: 'palette', execute }),
+      action: () => command.run({ ...context, surface: 'palette', execute }),
     }));
 }

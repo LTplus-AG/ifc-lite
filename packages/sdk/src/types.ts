@@ -10,13 +10,13 @@
  */
 
 import type { StructuralBackendMethods } from './structural-types.js';
-// Re-exported below via `export * from './schedule-types.js'`; imported by name
-// too because `BimBackend` references it in this file's own scope.
+// Re-exported below via `export *`; imported by name because `BimBackend` uses it here.
 import type { ScheduleBackendMethods } from './schedule-types.js';
 import type { CostBackendMethods } from './cost-types.js';
 import type { SpacesBackendMethods, StyleBackendMethods } from './backend-extension-types.js';
 import type { CostStoreBackendMethods } from './store-cost-types.js';
 import type { StructuralStoreBackendMethods } from './store-structural-types.js';
+import type { ModellingStoreBackendMethods } from './store-modelling-types.js';
 
 // ============================================================================
 // Entity References
@@ -570,7 +570,7 @@ export interface AddMemberInStoreParams extends AddElementCommonParams {
     | 'PURLIN' | 'RAFTER' | 'STRINGER' | 'STRUT' | 'STUD' | 'USERDEFINED' | 'NOTDEFINED';
 }
 
-export interface StoreBackendMethods extends CostStoreBackendMethods, StructuralStoreBackendMethods {
+export interface StoreBackendMethods extends CostStoreBackendMethods, StructuralStoreBackendMethods, ModellingStoreBackendMethods {
   addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef;
   removeEntity(ref: EntityRef): boolean;
   setPositionalAttribute(ref: EntityRef, index: number, value: unknown): void;

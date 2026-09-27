@@ -92,7 +92,7 @@ describe('#5894 Rules-backed Lists over parsed IFC', () => {
       },
     }));
     const def = definition({
-      entityTypes: [IfcTypeEnum.IfcWall], conditions: [zone, building],
+      entityTypes: [IfcTypeEnum.IfcWall],
       groups: [{ rules: [], combinator: 'AND' }],
       unreadableConditions: [
         { condition: zone, reason: 'unsupported-source' },

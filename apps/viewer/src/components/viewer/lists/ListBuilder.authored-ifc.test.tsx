@@ -36,7 +36,7 @@ it('authors and executes an exact Building List filter on one and two Archicad m
     assert.ok(buildingName, 'the authored IFC must contain a named building with walls');
     const initial: ListDefinition = {
       id: 'ac20-building', name: 'AC20 building', createdAt: 1, updatedAt: 1,
-      entityTypes: [IfcTypeEnum.IfcWallStandardCase], conditions: [],
+      entityTypes: [IfcTypeEnum.IfcWallStandardCase], groups: [],
       columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
     };
     let saved: ListDefinition | undefined;

@@ -295,7 +295,7 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     let saved: ListDefinition | undefined;
     const initial: ListDefinition = {
       id: 'compat-authoring', name: 'Compatibility authoring', createdAt: 1, updatedAt: 1,
-      entityTypes: [], conditions: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+      entityTypes: [], groups: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
     };
     const container = render(
       <ListBuilder providers={[buildProvider(store)]} stores={[store]} initial={initial}
@@ -323,7 +323,6 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
       { source: 'zone', psetName: 'takt', propertyName: 'Zone', operator: 'equals', value: 'Takt B' },
       { source: 'spatial', propertyName: 'Building', operator: 'contains', value: 'East' },
     ]);
-    assert.deepEqual(saved?.conditions, saved?.unreadableConditions?.map((row) => row.condition));
   });
 
   it('promotes a now-lossless inherited property into every AND Rules group (#5894)', () => {
@@ -331,7 +330,7 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     let saved: ListDefinition | undefined;
     const initial: ListDefinition = {
       id: 'inherited-property', name: 'Inherited property', createdAt: 1, updatedAt: 1,
-      entityTypes: [], conditions: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+      entityTypes: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
       groups: [{ rules: [], combinator: 'AND' }, { rules: [], combinator: 'AND' }],
       unreadableConditions: [{ condition: {
         source: 'property', psetName: 'Pset_Test', propertyName: 'Code', operator: 'equals', value: 'A', inherit: 'aggregation',
@@ -354,7 +353,7 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     let saved: ListDefinition | undefined;
     const initial: ListDefinition = {
       id: 'or-property', name: 'OR property', createdAt: 1, updatedAt: 1,
-      entityTypes: [], conditions: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+      entityTypes: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
       groups: [{ rules: [], combinator: 'OR' }],
       unreadableConditions: [{ condition: {
         source: 'property', psetName: 'Pset_Test', propertyName: 'Code', operator: 'equals', value: 'A', inherit: 'aggregation',
@@ -404,7 +403,7 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     ];
     const initial = {
       id: 'future-filter', name: 'Future filter', createdAt: 1, updatedAt: 1,
-      entityTypes: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }], conditions: [], groups: [],
+      entityTypes: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }], groups: [],
       unreadableConditions: raw,
     } as unknown as ListDefinition;
     let saved: ListDefinition | undefined;

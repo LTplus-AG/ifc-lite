@@ -314,6 +314,10 @@ export const SURFACE_COMMANDS = [
 
 export type SurfaceCommandId = (typeof SURFACE_COMMANDS)[number]['id'];
 
+export function surfaceCommand<const Id extends SurfaceCommandId>(
+  id: Id,
+  surface: CommandSurface,
+): SurfaceCommandDefinition & { readonly id: Id };
 export function surfaceCommand(id: SurfaceCommandId, surface: CommandSurface): SurfaceCommandDefinition {
   const definition = SURFACE_COMMANDS.find((command) => command.id === id);
   if (!definition) throw new Error(`Unknown surface command: ${id}`);

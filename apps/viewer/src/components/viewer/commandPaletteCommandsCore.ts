@@ -19,24 +19,19 @@
  */
 
 import {
-  MousePointer2, PersonStanding, Ruler, Scissors, Home, Maximize2, Crosshair,
-  ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Box, Building2,
-  Sun, Orbit, FolderOpen, Clock,
-  PenLine, Slice, Layers3, SquareStack, ChevronsUpDown, StickyNote,
+  MousePointer2, PersonStanding, Ruler, Scissors, Crosshair, Box,
+  FolderOpen, Clock, PenLine, Slice, StickyNote,
 } from 'lucide-react';
 import { openRepositionModels } from '@/lib/model-placement/commands';
 import { useViewerStore } from '@/store';
-import { applyLevelDisplayMode } from '@/store/levelDisplay';
-import { goHomeFromStore } from '@/store/homeView';
 import { formatFileSize, getCachedFile } from '@/lib/recent-files';
-import { openSettings } from '@/lib/settings/open-settings';
 import type { Command } from './commandPaletteSearch';
-import { withKey, withPanelTitle, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
+import { withKey, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
 import { paletteSurfaceCommands } from './surface-commands';
 
 export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
   const c: Command[] = [];
-  const shared = paletteSurfaceCommands({ canEditInSession: p.canEditInSession }, p.execute);
+  const shared = paletteSurfaceCommands({ canEditInSession: p.canEditInSession, cesiumAvailable: p.cesiumAvailable }, p.execute);
 
   // ── File ──
   c.push(
@@ -66,47 +61,8 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
     });
   }
 
-  // ── View ──
-  c.push(
-    { id: 'view:home', label: 'Home', ...withKey('commandPalette.view.home.label'), keywords: 'isometric reset camera', category: 'View', icon: Home, shortcut: 'camera.home',
-      action: () => { goHomeFromStore(); } },
-    { id: 'view:fit', label: 'Fit All', ...withKey('commandPalette.view.fit.label'), keywords: 'zoom extents entire model', category: 'View', icon: Maximize2, shortcut: 'camera.fitAll',
-      action: () => { useViewerStore.getState().cameraCallbacks.fitAll?.(); } },
-    { id: 'view:frame', label: 'Frame Selection', ...withKey('commandPalette.view.frame.label'), keywords: 'zoom focus selected', category: 'View', icon: Crosshair, shortcut: 'camera.frameSelection',
-      action: () => { useViewerStore.getState().cameraCallbacks.frameSelection?.(); } },
-    { id: 'view:stacked', label: 'Level — Stacked', ...withKey('commandPalette.view.stacked.label'), keywords: 'level display mode stacked default storey storeys', category: 'View', icon: Layers3,
-      action: () => { applyLevelDisplayMode('stacked'); } },
-    { id: 'view:exploded', label: 'Level — Exploded', ...withKey('commandPalette.view.exploded.label'), keywords: 'level display mode exploded explode lift storey storeys gap', category: 'View', icon: ChevronsUpDown,
-      action: () => { applyLevelDisplayMode('exploded'); } },
-    { id: 'view:solo', label: 'Level — Solo', ...withKey('commandPalette.view.solo.label'), keywords: 'level display mode solo isolate storey single only top', category: 'View', icon: SquareStack,
-      action: () => { applyLevelDisplayMode('solo'); } },
-    { id: 'view:projection', label: 'Projection', ...withKey('commandPalette.view.projection.label'), keywords: 'perspective orthographic ortho toggle switch', category: 'View', icon: Orbit,
-      action: () => { useViewerStore.getState().toggleProjectionMode(); } },
-    { id: 'view:top', label: 'Top View', ...withKey('commandPalette.view.top.label'), keywords: 'camera plan', category: 'View', icon: ArrowUp, shortcut: 'camera.viewTop',
-      action: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('top'); } },
-    { id: 'view:bottom', label: 'Bottom View', ...withKey('commandPalette.view.bottom.label'), keywords: 'camera', category: 'View', icon: ArrowDown, shortcut: 'camera.viewBottom',
-      action: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('bottom'); } },
-    { id: 'view:front', label: 'Front View', ...withKey('commandPalette.view.front.label'), keywords: 'camera elevation', category: 'View', icon: ArrowRight, shortcut: 'camera.viewFront',
-      action: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('front'); } },
-    { id: 'view:back', label: 'Back View', ...withKey('commandPalette.view.back.label'), keywords: 'camera', category: 'View', icon: ArrowLeft, shortcut: 'camera.viewBack',
-      action: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('back'); } },
-    { id: 'view:left', label: 'Left View', ...withKey('commandPalette.view.left.label'), keywords: 'camera', category: 'View', icon: ArrowLeft, shortcut: 'camera.viewLeft',
-      action: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('left'); } },
-    { id: 'view:right', label: 'Right View', ...withKey('commandPalette.view.right.label'), keywords: 'camera', category: 'View', icon: ArrowRight, shortcut: 'camera.viewRight',
-      action: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('right'); } },
-    ...(p.cesiumAvailable ? [{
-      id: 'view:world', label: 'Toggle 3D World Context', ...withKey('commandPalette.view.world.label'), keywords: 'cesium globe earth satellite terrain georeference basemap context site',
-      category: 'View' as const, icon: Building2,
-      action: () => { useViewerStore.getState().toggleCesium(); },
-    }] : []),
-    { id: 'view:lighting', ...withPanelTitle('environment'), keywords: 'sun sky lighting shadow solar daylight study environment preset hdri panel',
-      category: 'View', icon: Sun,
-      action: () => { useViewerStore.getState().toggleWorkspacePanel('environment', 'palette'); } },
-    { id: 'view:spacemouse', label: 'SpaceMouse', ...withKey('commandPalette.view.spacemouse.label'), keywords: '3dconnexion space mouse navigator webhid 3d input device controller preferences settings',
-      category: 'View', icon: Orbit,
-      // Lives in Settings → Display → Navigation (#5509, #5857).
-      action: () => { openSettings('display'); } },
-  );
+  // ── View ── (static rows are generated from the shared table)
+  c.push(...shared.filter((command) => command.category === 'View'));
 
   // ── Tools ──
   c.push(

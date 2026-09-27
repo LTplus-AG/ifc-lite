@@ -11,7 +11,10 @@ import { BimReactContext } from '@/sdk/BimProvider';
 import { render, cleanup, click, advance, press } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
+import { resolve } from '@/i18n/registry';
 import { MobileToolbar } from './MobileToolbar';
+import { SURFACE_COMMANDS } from './surface-commands';
+import { EXPORT_SURFACE_COMMANDS } from './commandPaletteExports';
 
 const initialState = useViewerStore.getState();
 afterEach(() => {
@@ -95,4 +98,35 @@ it('mobile Walk, projection, and theme commands preserve their toggles and live 
   assert.equal(useViewerStore.getState().theme, 'dark');
   await openMore();
   assert.match(command('view:theme').textContent ?? '', /Light Mode/);
+});
+
+it('renders the literal mobile command and export registry matrix with its labels (#5870)', async () => {
+  useViewerStore.setState({
+    ...fixtureModels(fixtureModel('m')),
+    selectedEntityId: 1, selectedEntityIds: new Set([1]), loading: false,
+    projectionMode: 'perspective', theme: 'light',
+  });
+  render(<BimReactContext.Provider value={{} as BimContext}><MobileToolbar /></BimReactContext.Provider>);
+  await openMore();
+
+  const commands = SURFACE_COMMANDS.filter((item) => item.surfaces.some((surface) => surface === 'mobile'));
+  const rows = [...document.querySelectorAll<HTMLElement>('[data-command-id]')];
+  assert.deepEqual(new Set(rows.map((row) => row.dataset.commandId)),
+    new Set(commands.map((item) => item.id)), 'every declared mobile id has one rendered command');
+  const state = { canEditInSession: true, projectionMode: 'perspective' as const, theme: 'light' as const };
+  for (const item of commands) {
+    const row = rows.find((candidate) => candidate.dataset.commandId === item.id);
+    assert.ok(row);
+    const rendered = row.getAttribute('aria-label') ?? row.textContent?.trim();
+    assert.equal(rendered, resolve(item.mobileLabelKey?.(state) ?? item.labelKey), `${item.id} uses its registered label`);
+  }
+
+  const exports = [...document.querySelectorAll<HTMLElement>('[data-export-row]')];
+  assert.deepEqual(new Set(exports.map((row) => row.dataset.exportRow)),
+    new Set(EXPORT_SURFACE_COMMANDS.map((item) => item.id)), 'every export registry row is rendered');
+  for (const item of EXPORT_SURFACE_COMMANDS) {
+    const row = exports.find((candidate) => candidate.dataset.exportRow === item.id);
+    assert.ok(row);
+    assert.equal(row.textContent?.trim(), resolve(item.labelKey), `${item.id} uses its registry label`);
+  }
 });

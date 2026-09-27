@@ -10,6 +10,8 @@ import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider.js';
 import { resolve } from '@/i18n/registry';
 import { posthog } from '@/lib/analytics';
+import { isCollabEnabled } from '@/lib/collab/config';
+import { useViewerStore } from '@/store';
 import { cleanup, click, render, type as typeInto } from '@/test/render.js';
 import type { FileCommands } from './toolbar/useFileCommands.js';
 import { FileTab } from './ribbon/tabs/FileTab.js';
@@ -198,5 +200,33 @@ describe('shared palette and ribbon commands (#5870)', () => {
     assert.deepEqual(events.filter(({ event }) => event === 'command_executed'), [
       { event: 'command_executed', properties: { command_id: 'file:open-federation-setup', surface: 'palette' } },
     ]);
+  });
+
+  it('renders every palette-declared command with its registry label (#5870 matrix)', async () => {
+    const registry = await loadRegistry();
+    const exports = await import('./commandPaletteExports.js');
+    assert.ok(registry);
+    const previous = useViewerStore.getState();
+    useViewerStore.setState({ collabRole: null, cesiumAvailable: false });
+    try {
+      render(<BimReactContext.Provider value={{} as BimContext}>
+        <CommandPalette open onOpenChange={() => {}} />
+      </BimReactContext.Provider>);
+      const state = { canEditInSession: true, cesiumAvailable: false, collabEnabled: isCollabEnabled() };
+      const expected = [...registry.SURFACE_COMMANDS, ...exports.EXPORT_SURFACE_COMMANDS]
+        .filter((command) => command.surfaces.some((surface) => surface === 'palette') && command.enabled(state));
+      const rows = [...document.querySelectorAll<HTMLButtonElement>('[role="option"][data-command-id]')];
+      assert.equal(new Set(expected.map((command) => command.id)).size, expected.length, 'registry ids are unique');
+      assert.deepEqual(new Set(rows.map((row) => row.dataset.commandId)),
+        new Set(expected.map((command) => command.id)), 'declared palette ids equal rendered rows');
+      for (const row of rows) {
+        const command = expected.find((item) => item.id === row.dataset.commandId);
+        assert.ok(command);
+        assert.equal(row.querySelector('span.flex-1')?.textContent, resolve(command.labelKey),
+          `${command.id} renders only its registry label`);
+      }
+    } finally {
+      useViewerStore.setState({ collabRole: previous.collabRole, cesiumAvailable: previous.cesiumAvailable });
+    }
   });
 });

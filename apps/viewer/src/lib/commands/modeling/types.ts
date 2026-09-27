@@ -16,8 +16,14 @@ import type { ComponentType } from 'react';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { TranslationKey } from '@/i18n';
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
-import type { SnapProfile, SnapProfileId, SnapResult, Vec2, Vec3 } from '@/lib/snap/types';
+import type { SnapProfile, SnapResult, Vec2 } from '@/lib/snap/types';
 import type { ViewerState } from '@/store';
+
+/** Render-space 3D point (viewer Y-up), the shape `SnapResult.render` carries. */
+export type Vec3 = readonly [number, number, number];
+
+/** Named snap profiles a command can ask for (WP3 owns the profiles themselves). */
+export type SnapProfileId = 'modeling';
 
 /** A registered command's id (`wall.place`, `element.split`, …); see `registry.ts`. */
 export type CommandId = string;

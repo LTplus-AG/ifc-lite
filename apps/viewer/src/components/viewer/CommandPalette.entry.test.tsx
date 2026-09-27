@@ -18,7 +18,7 @@ beforeEach(() => {
   setLocale('en');
   localStorage.clear();
   useViewerStore.setState({
-    toolbarStyle: 'ribbon', isMobile: false, models: new Map(),
+    isMobile: false, models: new Map(),
     sidebarActivePanel: 'properties', scriptPanelVisible: false, chatPanelVisible: false,
   });
 });

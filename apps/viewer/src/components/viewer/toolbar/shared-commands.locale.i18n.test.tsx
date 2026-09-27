@@ -18,7 +18,6 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cleanup, render } from '@/test/render.js';
@@ -26,7 +25,7 @@ import { registerLocale, setLocale } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { RibbonExportGroup } from '../ribbon/tabs/RibbonExportGroup.js';
 import { RIBBON_EXPORT_ICONS } from '../ribbon/tabs/ribbon-export-icons.js';
-import { BottomPanelMenuItems } from './BottomPanelMenuItems.js';
+import { AnalyzeTab } from '../ribbon/tabs/AnalyzeTab.js';
 import { ClassVisibilityMenuContent } from './ClassVisibilityMenu.js';
 
 /**
@@ -95,12 +94,7 @@ describe('shared command surfaces with a registered locale (#4918 slice 2)', () 
     const container = render(
       <>
         <RibbonExportGroup icons={RIBBON_EXPORT_ICONS} />
-        <DropdownMenu open modal={false}>
-          <DropdownMenuTrigger>Panels</DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <BottomPanelMenuItems active={new Set()} onToggle={() => {}} />
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <AnalyzeTab />
       </>,
     );
 

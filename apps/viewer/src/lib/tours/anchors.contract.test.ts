@@ -12,8 +12,8 @@
  *
  * Templated anchors (`activityAnchor(id)`, `toolAnchor(tool)`,
  * `lensCardAnchor(id)`) called with a literal must match a literal call; one
- * called with a variable (the activity bar's rail, the classic toolbar, the
- * lens cards) renders the whole family, so any member of that family passes.
+ * called with a variable (the activity bar's rail or the lens cards) renders
+ * the whole family, so any member of that family passes.
  */
 
 import { test } from 'node:test';

@@ -57,9 +57,9 @@ was removed with its renderer (#5874).
 The shared-commands catalogue (#4918 slice 2) covers the ribbon, palette and
 mobile command lists: the export registry (`export-commands.ts`, rendered by
 `RibbonExportGroup` and the palette/mobile commands), the camera command registry (`camera-commands.ts`,
-rendered by `CameraCommandMenuItems` / `ViewTab`), the bottom-panel and
-author-panel toggle lists (`BottomPanelMenuItems`, `AuthorPanelMenuItems`),
-and the class-visibility dropdown body (`ClassVisibilityMenuContent`). The
+rendered by `ViewTab`), panel titles rendered by the ribbon's Analyze and
+Author tabs, and the class-visibility dropdown body
+(`ClassVisibilityMenuContent`). The
 two data-only registries carry a translation key per row rather than calling
 `t()` themselves (no React import), the same pattern `sectionConstants.ts`'s
 `AXIS_INFO` uses; their renderers call `t(row.xKey)`. It deliberately does

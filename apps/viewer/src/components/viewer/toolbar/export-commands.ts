@@ -21,8 +21,8 @@
  *
  * Out of scope: exports that belong to a panel rather than a toolbar (IDS
  * reports, BCF, clash BCF, list/schedule tables, compare reports, drawing
- * sheets). Those live in exactly one panel each and are opened the same way
- * from both toolbar styles, so they cannot drift.
+ * sheets). Those live in exactly one panel each, outside the toolbar export
+ * controls.
  */
 
 import type React from 'react';
@@ -55,7 +55,7 @@ interface ExportCommandBase {
    * Short label: ribbon buttons, where the icon carries most of the meaning.
    */
   readonly labelKey: TranslationKey;
-  /** Long label: classic dropdown rows, which have only text to go on. */
+  /** Long label for command-palette rows, which have no icon context. */
   readonly menuLabelKey: TranslationKey;
   /** Tooltip / accessible name. */
   readonly tooltipKey: TranslationKey;
@@ -67,9 +67,8 @@ interface ExportCommandBase {
   readonly requires: 'model' | 'dataStore' | 'changes';
   /**
    * Visual cluster. Consecutive commands sharing a group render as one small
-   * button stack in the ribbon and one separator-delimited block in the
-   * classic menu. Keep a group at three commands or fewer — that is the
-   * ribbon stack's height.
+   * button stack in the ribbon. Keep a group at three commands or fewer —
+   * that is the ribbon stack's height.
    */
   readonly group: number;
   /**
@@ -109,7 +108,7 @@ export type ExportCommand =
 
 /**
  * The registry. Order and grouping here are the order and grouping the user
- * sees in *both* toolbar styles.
+ * sees in the ribbon, palette, and mobile export menu.
  */
 export const EXPORT_COMMANDS = [
   {
@@ -267,8 +266,8 @@ export type RegisteredExportCommand = (typeof EXPORT_COMMANDS)[number];
 export const EXPORT_COMMAND_IDS: readonly ExportCommandId[] = EXPORT_COMMANDS.map((c) => c.id);
 
 /**
- * An icon per export command, supplied by each toolbar style in its own set,
- * plus the one icon every extension-contributed exporter row shares.
+ * An icon per export command, supplied by the ribbon's icon set, plus the
+ * one icon every extension-contributed exporter row shares.
  */
 export type ExportIconSet = Record<ExportCommandId | 'extension', React.ElementType>;
 

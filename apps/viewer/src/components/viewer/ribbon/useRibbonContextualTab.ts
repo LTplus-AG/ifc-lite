@@ -3,8 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Drives `decideRibbonTab` from live store state. Mounted by RibbonToolbar,
- * so the classic strip pays nothing for it.
+ * Drives `decideRibbonTab` from live store state. Mounted by RibbonToolbar.
  *
  * Two things live here rather than in the pure policy: the edge detection
  * (previous context in a ref) and "the user took the wheel" — any tab change

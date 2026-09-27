@@ -8,12 +8,10 @@
 
 import type { StateCreator } from 'zustand';
 import {
-  TOOLBAR_STYLE_STORAGE_KEY,
   RIBBON_COLLAPSED_STORAGE_KEY,
   RIBBON_CONTEXTUAL_TABS_STORAGE_KEY,
   UI_DEFAULTS,
   type RibbonTabId,
-  type ToolbarStyle,
 } from '../constants.js';
 import {
   createGeometryLoadSettings,
@@ -123,12 +121,6 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   separationLinesQuality: SeparationLinesQuality;
   separationLinesIntensity: number;
   separationLinesRadius: number;
-  /**
-   * Desktop toolbar style (issue #1686): tabbed, IFCFlux-style `ribbon`
-   * (default) or the original `classic` strip. Persisted preference —
-   * orthogonal to the mobile toolbar (`isMobile` wins on small screens).
-   */
-  toolbarStyle: ToolbarStyle;
   /** Ribbon collapsed to its tab strip (Office-style double-click). */
   ribbonCollapsed: boolean;
   /**
@@ -174,8 +166,6 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   setSeparationLinesQuality: (quality: SeparationLinesQuality) => void;
   setSeparationLinesIntensity: (intensity: number) => void;
   setSeparationLinesRadius: (radius: number) => void;
-  /** Switch the desktop toolbar style and persist the choice. */
-  setToolbarStyle: (style: ToolbarStyle) => void;
   /** Collapse/expand the ribbon band and persist the choice. */
   setRibbonCollapsed: (collapsed: boolean) => void;
   /** Open a ribbon tab (session-local). */
@@ -221,7 +211,6 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   separationLinesQuality: UI_DEFAULTS.SEPARATION_LINES_QUALITY,
   separationLinesIntensity: UI_DEFAULTS.SEPARATION_LINES_INTENSITY,
   separationLinesRadius: UI_DEFAULTS.SEPARATION_LINES_RADIUS,
-  toolbarStyle: UI_DEFAULTS.TOOLBAR_STYLE,
   ribbonCollapsed: UI_DEFAULTS.RIBBON_COLLAPSED,
   ribbonTab: UI_DEFAULTS.RIBBON_TAB,
   ribbonContextualTabs: UI_DEFAULTS.RIBBON_CONTEXTUAL_TABS,
@@ -357,18 +346,6 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   setSeparationLinesQuality: (separationLinesQuality) => set({ separationLinesQuality }),
   setSeparationLinesIntensity: (separationLinesIntensity) => set({ separationLinesIntensity }),
   setSeparationLinesRadius: (separationLinesRadius) => set({ separationLinesRadius }),
-
-  setToolbarStyle: (toolbarStyle) => {
-    // Persist eagerly so the next page-load boots straight into the chosen
-    // style (constants.ts `resolveInitialToolbarStyle`). Wrap in try/catch —
-    // Safari private mode / locked storage throws.
-    try {
-      localStorage.setItem(TOOLBAR_STYLE_STORAGE_KEY, toolbarStyle);
-    } catch (err) {
-      console.warn('[toolbar-style] persist failed; in-memory only', err);
-    }
-    set({ toolbarStyle });
-  },
 
   setRibbonCollapsed: (ribbonCollapsed) => {
     try {

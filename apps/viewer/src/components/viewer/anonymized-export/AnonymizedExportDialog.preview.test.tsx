@@ -99,7 +99,7 @@ describe('AnonymizedExportDialog — 3D preview isolation', () => {
     const expectedAll = collectRelatedEntities(store, [FIXTURE_WALL_A]).all;
     const expectedGlobalIds = new Set([...expectedAll].map(globalId));
 
-    render(<AnonymizedExportDialog />);
+    render(<AnonymizedExportDialog surface="context_menu" />);
     act(() => { useViewerStore.getState().setAnonymizedExportRequested(true); });
 
     assert.deepEqual(
@@ -121,7 +121,7 @@ describe('AnonymizedExportDialog — 3D preview isolation', () => {
   });
 
   it('restores the prior isolated/hidden/ghostExcept state exactly on close', () => {
-    render(<AnonymizedExportDialog />);
+    render(<AnonymizedExportDialog surface="context_menu" />);
     act(() => { useViewerStore.getState().setAnonymizedExportRequested(true); });
     assert.notDeepEqual(useViewerStore.getState().isolatedEntities, new Set([globalId(9999)]), 'sanity: preview changed the isolation');
 

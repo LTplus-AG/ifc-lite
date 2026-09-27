@@ -4,7 +4,7 @@
 
 /**
  * The one in-viewport load-error card (#5851). Every load path — the file
- * picker, a drop, the ribbon/classic/mobile toolbars' Open, the `?model=`
+ * picker, a drop, the ribbon/mobile Open controls, the `?model=`
  * autoload, and a federated add — reports failure through the shared
  * `showLoadError` helper (`lib/analytics.ts`), which sets `error` on the
  * store; this is the one place that error is shown. It replaces the

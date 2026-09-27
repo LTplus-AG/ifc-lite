@@ -76,6 +76,11 @@ const STOP_FILES = new Set(['components/viewer/surface-commands-workspace.ts']);
 const ALLOWLIST: { surface: Surface; symbol: string; reason: string }[] = [
   {
     surface: 'ribbon',
+    symbol: 'openContextMenu',
+    reason: 'The registered Entity actions ribbon button opens the existing target-aware menu for the selected global ID; classic users reach that menu by viewport right-click. #5874 retires the classic strip, and #6235 removes this guard.',
+  },
+  {
+    surface: 'ribbon',
     symbol: 'leftPanelCollapsed',
     reason: 'Only the palette-only panel:tree registry row reads this field. The shared registry is imported by the ribbon, but neither toolbar renders that row; #5874 retires this classic-vs-ribbon guard.',
   },

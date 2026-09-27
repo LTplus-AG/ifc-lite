@@ -73,6 +73,7 @@ export const chatEn = {
   'chat.panel.contactSupportLink': 'Contact support',
   'chat.panel.attachTooltipEnabled': 'Attach file or image (paste, drag & drop)',
   'chat.panel.attachTooltipDisabled': 'Selected model does not support attachments',
+  'chat.panel.removeAttachment': 'Remove attachment {name}',
   'chat.panel.placeholderNeedsKey': 'Add your {provider} key to chat with this model',
   'chat.panel.placeholderDefault': 'Ask anything...',
   'chat.panel.stopGeneratingTooltip': 'Stop generating',

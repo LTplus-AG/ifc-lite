@@ -1550,12 +1550,14 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                 <Paperclip className="h-3 w-3" />
               )}
               {a.name}
-              <button
-                className="ml-0.5 hover:text-destructive"
+              <IconButton
+                label={t('chat.panel.removeAttachment', { name: a.name })}
+                size="icon-xs"
+                className="ml-0.5 h-4 w-4 p-0 hover:text-destructive"
                 onClick={() => removeAttachment(a.id)}
               >
                 <X className="h-3 w-3" />
-              </button>
+              </IconButton>
             </span>
           ))}
         </div>

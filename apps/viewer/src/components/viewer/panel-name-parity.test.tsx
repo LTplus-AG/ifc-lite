@@ -12,7 +12,7 @@ import { registerLocale, setLocale, type TranslationKey } from '@/i18n';
 import { BimReactContext } from '@/sdk/BimProvider.js';
 import { WORKSPACE_PANELS, type WorkspacePanelId } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
-import { cleanup, render, type as typeInto } from '@/test/render.js';
+import { advance, cleanup, click, render, type as typeInto } from '@/test/render.js';
 import { ActivityBar } from './sidebar/ActivityBar.js';
 import { AnalyzeTab } from './ribbon/tabs/AnalyzeTab.js';
 import { CommandPalette } from './CommandPalette.js';
@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 describe('workspace panel name parity (#5858)', () => {
-  it('renders each available registry panel with the same name across rail, palette and classic menu', () => {
+  it('renders each available registry panel with the same name across rail, palette and classic menu', async () => {
     const titles = new Map(WORKSPACE_PANELS.map(({ id }) => [id, `Canonical ${id} panel`]));
     const translations: Partial<Record<TranslationKey, string>> = {};
     for (const panel of WORKSPACE_PANELS) translations[panel.titleKey] = titles.get(panel.id);
@@ -58,6 +58,16 @@ describe('workspace panel name parity (#5858)', () => {
       typeInto(search, title);
       assert.ok([...document.querySelectorAll('[role="option"]')].some((option) => option.textContent?.includes(title)), `${panel.id} palette name`);
     }
+    const changesTitle = titles.get('changes');
+    assert.ok(changesTitle);
+    typeInto(search, changesTitle);
+    const changesOption = [...document.querySelectorAll<HTMLElement>('[role="option"]')]
+      .find((option) => option.textContent?.includes(changesTitle));
+    assert.ok(changesOption, 'Changes uses the canonical palette title');
+    click(changesOption);
+    await advance(25);
+    assert.equal(useViewerStore.getState().sidebarActivePanel, 'changes',
+      'the palette command opens the Changes panel');
     cleanup();
 
     render(<MainToolbar />);

@@ -22,7 +22,7 @@ import {
   Palette, Puzzle, Sun, Info, Settings,
   CalendarPlus, Sparkles, Eraser, GraduationCap, Layers, Users, PanelRight,
   SlidersHorizontal, ChevronsRight, RotateCcw, GitCompareArrows, Crosshair, Scan,
-  Ruler, Coins,
+  Ruler, Coins, History,
 } from 'lucide-react';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { openSettings } from '@/lib/settings/open-settings';
@@ -59,6 +59,8 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => { p.activateRightPanel('clash'); } },
     { id: 'panel:compare', ...withPanelTitle('compare'), keywords: 'diff revision version change added deleted modified geometry data', category: 'Panels', icon: GitCompareArrows,
       action: () => { p.activateRightPanel('compare'); } },
+    { id: 'panel:changes', ...withPanelTitle('changes'), keywords: 'authored edits modifications properties history review', category: 'Panels', icon: History,
+      action: () => { p.activateRightPanel('changes'); } },
     { id: 'panel:cost', ...withPanelTitle('cost'), keywords: '5d cost schedule item quantity budget estimate', category: 'Panels', icon: Coins,
       action: () => { p.activateRightPanel('cost'); } },
     { id: 'panel:chat', label: 'AI Chat', ...withKey('commandPalette.panel.chat.label'), keywords: 'ai assistant script chat ask model', category: 'Panels', icon: Sparkles,

@@ -1982,7 +1982,7 @@ export const createMutationSlice: StateCreator<
         expressId,
         left.expressId,
         right.expressId,
-        distanceFromStart,
+        distanceFromStart / chain.lengthUnitScale, // openings' local X is native units
         leftChain.localPlacementId,
         rightChain.localPlacementId,
       );

@@ -26,6 +26,8 @@
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
+import type { IfcAttributeValue } from '@ifc-lite/mutations';
+import { asCoordinateTriple, asExpressIdRef, readAttributes, resolvePlacementChain } from '@/lib/placement-core';
 import { MESH_WALL, SPLIT_MODEL_ID as MODEL_ID, SPLIT_STOREY as STOREY, seedSplitFixture } from '@/test/split-fixture';
 
 function created(result: { expressId: number } | { error: string }): number {
@@ -140,6 +142,33 @@ for (const unit of ['metre', 'millimetre'] as const) {
         near(areas, [3, 9], 'halves of a 4 × 3 m slab cut at x = 1 m');
       });
     }
+
+    it('a hosted opening past the cut moves to the far piece at its native-unit offset', () => {
+      const s = useViewerStore.getState();
+      const wall = created(s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.25, Height: 2.8 }));
+      const view = useViewerStore.getState().mutationViews.get(MODEL_ID);
+      const editor = useViewerStore.getState().storeEditors.get(MODEL_ID);
+      const dataStore = useViewerStore.getState().models.get(MODEL_ID)?.ifcDataStore;
+      assert.ok(view && editor && dataStore);
+      const wallPlacement = resolvePlacementChain(dataStore, view, editor, wall)?.localPlacementId;
+      assert.ok(wallPlacement !== undefined);
+      // An opening 3 m along the wall, in the file's own unit.
+      const native = unit === 'metre' ? 1 : 1000;
+      const add = (type: string, attrs: IfcAttributeValue[]) => editor.addEntity(type, attrs).expressId;
+      const point = add('IfcCartesianPoint', [[3 * native, 0, 0]]);
+      const axis = add('IfcAxis2Placement3D', [`#${point}`, null, null]);
+      const placement = add('IfcLocalPlacement', [`#${wallPlacement}`, `#${axis}`]);
+      const opening = add('IfcOpeningElement', ['0pening000000000000001', null, 'o', null, null, `#${placement}`, null, null]);
+      const rel = add('IfcRelVoidsElement', ['0penRel00000000000001', null, null, null, `#${wall}`, `#${opening}`]);
+
+      const split = useViewerStore.getState().splitWallAtDistance(MODEL_ID, wall, 2);
+      assert.ok(split.ok, split.ok ? '' : split.reason);
+      if (!split.ok) return;
+      assert.deepEqual(split.openings, { toLeft: 0, toRight: 1, skipped: 0 });
+      assert.equal(asExpressIdRef(readAttributes(dataStore, view, editor, rel)?.[4]), split.right.expressId);
+      near(asCoordinateTriple(readAttributes(dataStore, view, editor, point)?.[0]) ?? [], [1 * native, 0, 0],
+        'the opening keeps its place: 1 m into the far piece');
+    });
 
     it('an imported mesh-bodied wall is refused with the reason the Split button shows', () => {
       const target = useViewerStore.getState().readSplitTarget(MODEL_ID, MESH_WALL);

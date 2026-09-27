@@ -47,7 +47,25 @@ test('Bulk Query unions two filter groups before applying to an authored IFC (#5
   await dialog.getByPlaceholder('e.g., FireRating').fill('Code');
   await dialog.getByPlaceholder('Value').fill('TWO_GROUPS');
   await page.screenshot({ path: 'docs/architecture/evidence/bulk-filter-groups-5898/two-groups.png' });
-  await dialog.getByRole('button', { name: 'Apply to 4 entities' }).click();
+  // Hosted SwiftShader may lose the drawing device after the IFC has loaded.
+  // Its persistent toast can cover Apply even though Bulk editing itself is
+  // healthy. Dismiss only that specific unrelated notice in software-GPU mode;
+  // a DOM click avoids Radix treating the toast's pointerdown as a dialog exit.
+  const dismissSoftwareGpuLoss = async () => {
+    if (process.env.E2E_GPU_STRICT !== '0') return false;
+    const notice = page.getByRole('alert').filter({ hasText: 'The graphics device was lost, so the 3D view has stopped drawing.' });
+    if (!(await notice.isVisible())) return false;
+    await notice.getByRole('button', { name: 'Dismiss notification' }).evaluate((button: HTMLButtonElement) => button.click());
+    return true;
+  };
+  await dismissSoftwareGpuLoss();
+  const apply = dialog.getByRole('button', { name: 'Apply to 4 entities' });
+  try {
+    await apply.click({ timeout: 10_000 });
+  } catch (error) {
+    if (!(await dismissSoftwareGpuLoss())) throw error;
+    await apply.click();
+  }
   await expect(dialog.getByText('Success', { exact: true })).toBeVisible();
 
   const edited = await page.evaluate((key) => {

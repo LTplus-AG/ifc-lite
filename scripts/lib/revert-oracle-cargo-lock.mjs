@@ -18,10 +18,18 @@ export function partialCargoManifestSelection(cargoLockChanged, productionPaths,
   return changed.map((path) => `${selectedPaths.includes(path) ? 'selected' : 'missing'}: ${path}`);
 }
 
-export function cargoLockPatchPaths(cargoLockChanged, selectedPaths) {
-  return cargoLockChanged && selectedPaths.some(isCargoManifest)
-    ? [...selectedPaths, 'Cargo.lock']
-    : selectedPaths;
+export function cargoLockPatchPaths(cargoLockChanged, selectedPaths, changedPaths = []) {
+  const paths = [...selectedPaths];
+  if (cargoLockChanged && selectedPaths.some(isCargoManifest)) paths.push('Cargo.lock');
+  // The PyO3 wheel owns a separate lockfile. A reverted Cargo.toml can make
+  // maturin rewrite it while testing the base state, so its version change
+  // must be reversed and restored with that manifest (#5800).
+  for (const path of changedPaths) {
+    if (!path.endsWith('/Cargo.lock')) continue;
+    const manifest = `${path.slice(0, -'Cargo.lock'.length)}Cargo.toml`;
+    if (selectedPaths.includes(manifest)) paths.push(path);
+  }
+  return paths;
 }
 
 /** Re-materialize restored tracked paths through Git's checkout filters. */

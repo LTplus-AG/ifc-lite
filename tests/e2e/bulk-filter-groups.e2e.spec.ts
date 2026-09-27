@@ -40,6 +40,12 @@ test('Bulk Query unions two filter groups before applying to an authored IFC (#5
   await dialog.getByPlaceholder('e.g., FireRating').fill('Code');
   await dialog.getByPlaceholder('Value').fill('TWO_GROUPS');
   await page.screenshot({ path: 'docs/architecture/evidence/bulk-filter-groups-5898/two-groups.png' });
+  // A persistent viewer notification can overlap the footer action on CI's
+  // viewport; dismiss it through the same close control a user would use.
+  const toasts = page.locator('[data-toast-seq]');
+  while (await toasts.count()) {
+    await toasts.first().locator('button[aria-label]').click();
+  }
   await dialog.getByRole('button', { name: 'Apply to 4 entities' }).click();
   await expect(dialog.getByText('Success', { exact: true })).toBeVisible();
 

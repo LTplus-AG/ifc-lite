@@ -60,15 +60,14 @@ describe('list definitions persistence', () => {
     assert.ok(Array.isArray(defs));
   });
 
-  it('loads a v1 list with Rules groups and an explicit unreadable legacy row (#5894)', () => {
+  it('loads a v1 list with every condition as a Rules rule (#5894, #6190)', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([legacy]));
     const [migrated] = loadListDefinitions();
 
     assert.equal(migrated.groups?.[0].rules[0].kind, 'property');
     assert.equal(migrated.groups?.[0].combinator, 'AND');
-    assert.deepEqual(migrated.unreadableConditions, [
-      { condition: legacy.conditions[1], reason: 'unsupported-source' },
-    ]);
+    assert.deepEqual(migrated.groups?.[0].rules[1], { kind: 'listCondition', ...legacy.conditions[1] });
+    assert.equal(migrated.unreadableConditions, undefined);
     assert.equal('conditions' in migrated, false, 'the public definition no longer stores v1 conditions');
 
     saveListDefinitions([migrated]);
@@ -94,17 +93,27 @@ describe('list definitions persistence', () => {
 
   it('skips a malformed whole entry without hiding the neighboring valid list (#5894)', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([null, [], { id: 'x' },
-      { ...legacy, groups: [null] }, legacy]));
+      { ...legacy, groups: {} }, legacy]));
     const loaded = loadListDefinitions();
     assert.equal(loaded.length, 1);
     assert.equal(loaded[0].id, legacy.id);
     assert.equal(loaded[0].groups?.[0].rules[0].kind, 'property');
   });
 
+  it('keeps a list whose saved group holds an unreadable rule, with that rule visible (#6190)', async () => {
+    const saved = { ...legacy, id: 'future', conditions: undefined, groups: [{ combinator: 'AND', rules: [null] }] };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([saved]));
+    const [loaded] = loadListDefinitions();
+    assert.equal(loaded?.id, 'future', 'the list is not hidden');
+    assert.deepEqual(loaded?.unreadableConditions, [{ condition: null, reason: 'invalid-condition' }]);
+    const imported = await importListDefinition(new File([JSON.stringify(saved)], 'future.list.json', { type: 'application/json' }));
+    assert.deepEqual(imported.unreadableConditions, loaded?.unreadableConditions);
+  });
+
   it('rejects malformed import shapes instead of saving an unusable definition (#5894)', async () => {
     for (const malformed of [
       { id: 1, name: 2, entityTypes: {}, columns: {} },
-      { ...legacy, groups: [null] },
+      { ...legacy, groups: {} },
     ]) {
       await assert.rejects(importListDefinition(new File(
         [JSON.stringify(malformed)], 'bad.list.json', { type: 'application/json' },
@@ -115,8 +124,8 @@ describe('list definitions persistence', () => {
   it('imports the same v1 condition conversion from a .list.json file (#5894)', async () => {
     const file = new File([JSON.stringify(legacy)], 'saved.list.json', { type: 'application/json' });
     const imported = await importListDefinition(file);
-    assert.equal(imported.groups?.[0].rules[0].kind, 'property');
-    assert.equal(imported.unreadableConditions?.[0].reason, 'unsupported-source');
+    assert.deepEqual(imported.groups?.[0].rules.map((rule) => rule.kind), ['property', 'listCondition']);
+    assert.equal(imported.unreadableConditions, undefined);
     assert.equal('conditions' in imported, false);
     const roundTrip = await importListDefinition(new File(
       [JSON.stringify(imported)], 'migrated.list.json', { type: 'application/json' },

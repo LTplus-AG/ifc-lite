@@ -169,6 +169,8 @@ function mapRule(rule: FilterRule, scaleOf: StoredUnitScaleOf): Mapped {
       return { reason: 'group membership by name or by class-with-subclasses has no IDS facet (partOf matches one exact class)' };
     case 'modelFact':
       return { reason: 'a model-level fact (georeferencing, units, header) has no IDS facet' };
+    case 'listCondition':
+      return { reason: 'a Lists condition reads viewer list data and has no IDS facet' };
     case 'globalId':
       return { facet: { type: 'attribute', name: { type: 'simpleValue', value: 'GlobalId' }, value: simpleOrEnumeration(rule.values) } };
     case 'name':

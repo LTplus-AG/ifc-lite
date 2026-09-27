@@ -13,6 +13,7 @@
  */
 import { validateChartSpec, type ChartSpec, type ReportPageSetup } from '@ifc-lite/charts';
 import { isSavedListShape, type ListDefinition } from '@ifc-lite/lists';
+import { isFilterGroup } from '@ifc-lite/rules';
 import { migrateDocumentListBlocks } from './document-list-migration.js';
 
 export const DOCUMENT_VERSION = 6;
@@ -330,7 +331,7 @@ function validateTableBlock(block: Record<string, unknown>, at: string, errors: 
     errors.push({ path: `${at}.source`, message: 'expected source.kind list | validation' });
   } else if (source.kind === 'list') {
     const list = source.list;
-    if (!isSavedListShape(list) || !Array.isArray(list.groups)) {
+    if (!isSavedListShape(list) || !Array.isArray(list.groups) || !list.groups.every(isFilterGroup)) {
       errors.push({ path: `${at}.source.list`, message: 'expected a list definition' });
     } else if (list.expressIdsByModel !== undefined) {
       errors.push({ path: `${at}.source.list.expressIdsByModel`, message: 'not allowed in a document' });

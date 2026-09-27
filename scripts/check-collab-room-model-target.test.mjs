@@ -38,22 +38,24 @@ const CHECKER = join(SCRIPTS, 'check-collab-room-model-target.mjs');
 
 const COLLAB_REL = 'apps/viewer/src/store/slices/collabSlice.ts';
 const MUTATION_REL = 'apps/viewer/src/store/slices/mutationSlice.ts';
+const WALL_RESIZE_REL = 'apps/viewer/src/store/slices/mutation-wall-resize.ts';
 // The recipient's reconstruct region moved here with #4444 (one model per slot).
 const RECONSTRUCT_REL = 'apps/viewer/src/lib/collab/room-reconstruct.ts';
 
 const realCollab = readFileSync(join(ROOT, COLLAB_REL), 'utf8');
 const realMutation = readFileSync(join(ROOT, MUTATION_REL), 'utf8');
+const realWallResize = readFileSync(join(ROOT, WALL_RESIZE_REL), 'utf8');
 const realReconstruct = readFileSync(join(ROOT, RECONSTRUCT_REL), 'utf8');
 
 /**
- * Writes a (possibly mutated) three-file tree to a temp dir and runs the
+ * Writes a (possibly mutated) four-file tree to a temp dir and runs the
  * checker on it via `--root`. The checker only ever reads these files by
  * their fixed relative path, so nothing else needs to exist in the tree.
  */
-function runOn({ collab = realCollab, mutation = realMutation, reconstruct = realReconstruct }) {
+function runOn({ collab = realCollab, mutation = realMutation, wallResize = realWallResize, reconstruct = realReconstruct }) {
   const dir = mkdtempSync(join(tmpdir(), 'collab-room-model-target-'));
   try {
-    for (const [rel, content] of [[COLLAB_REL, collab], [MUTATION_REL, mutation], [RECONSTRUCT_REL, reconstruct]]) {
+    for (const [rel, content] of [[COLLAB_REL, collab], [MUTATION_REL, mutation], [WALL_RESIZE_REL, wallResize], [RECONSTRUCT_REL, reconstruct]]) {
       const abs = join(dir, rel);
       mkdirSync(dirname(abs), { recursive: true });
       writeFileSync(abs, content);
@@ -75,6 +77,28 @@ test('the unmutated repo passes', () => {
   const { status, out } = runOn({});
   assert.equal(status, 0, out);
   assert.match(out, /check-collab-room-model-target: OK/);
+});
+
+test('wall resize mirror must target the edited model (#6233)', () => {
+  const wallResize = replaceOnce(
+    realWallResize,
+    'get().mirrorEntityGeometry(modelId, expressId, mesh)',
+    'get().mirrorEntityGeometry(get().activeModelId, expressId, mesh)',
+  );
+  const { status, out } = runOn({ wallResize });
+  assert.equal(status, 1, out);
+  assert.match(out, /mutation-wall-resize\.ts:\d+: `mirrorEntityGeometry` is handed/);
+});
+
+test('removing one wall resize mirror call fails the call-site floor (#6233)', () => {
+  const wallResize = replaceOnce(
+    realWallResize,
+    'get().mirrorEntityGeometry(modelId, expressId, mesh)',
+    'void mesh',
+  );
+  const { status, out } = runOn({ wallResize });
+  assert.equal(status, 1, out);
+  assert.match(out, /mirrorEntityGeometry` is called 1×.*expected at least 2/);
 });
 
 test('RED: a template literal spelling the required call, with the real call deleted, must not satisfy the guard', () => {

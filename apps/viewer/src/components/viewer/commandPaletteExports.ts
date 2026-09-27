@@ -15,12 +15,13 @@
  */
 
 import type { TranslationKey } from '@/i18n';
-import { resolveEnglish } from '@/i18n/registry';
 import { EXPORT_COMMANDS, type CsvExportType, type ExportCommandId } from './toolbar/export-commands';
 import { CLASSIC_EXPORT_ICONS } from './toolbar/ClassicExportMenuItems';
 import type { ExportRequest } from './useExportRunner';
 import type { Command } from './commandPaletteSearch';
-import { withKey } from './commandPaletteCommandsTypes';
+import {
+  commandRowFromDefinition, type CommandSurface, type SurfaceCommandContext, type SurfaceCommandDefinition,
+} from './surface-commands';
 import type { ExtensionExporter } from '@/components/extensions/useExtensionExporters';
 
 /** Extra search tokens per format — exhaustive, so a new registry entry must say how it is found. */
@@ -47,6 +48,43 @@ const CSV_LABEL_KEYS: Record<CsvExportType, TranslationKey> = {
 };
 
 /**
+ * Register the toolbar's existing export definitions for shared command
+ * surfaces. The toolbar registry remains the source of formats, order,
+ * labels and CSV tables; no second export catalogue is maintained here.
+ * Dialogs and downloads continue through useExportRunner.
+ */
+export const EXPORT_SURFACE_COMMANDS: readonly SurfaceCommandDefinition[] = EXPORT_COMMANDS.flatMap((command) => {
+  const shared = {
+    keywords: EXPORT_KEYWORDS[command.id],
+    category: 'Export' as const,
+    icon: CLASSIC_EXPORT_ICONS[command.id],
+    surfaces: ['palette', 'mobile'] as const,
+    enabled: () => true,
+  };
+  if (command.kind === 'table-menu') {
+    return command.items.map((item) => ({
+      ...shared,
+      id: `export:csv-${item.type}`,
+      labelKey: CSV_LABEL_KEYS[item.type],
+      keywords: `${shared.keywords} ${item.type}`,
+      run: ({ runExport }: SurfaceCommandContext) => {
+        if (!runExport) throw new Error('Export command requires an export runner');
+        runExport({ id: command.id, table: item.type });
+      },
+    }));
+  }
+  return [{
+    ...shared,
+    id: `export:${command.id}`,
+    labelKey: command.menuLabelKey,
+    run: ({ runExport }: SurfaceCommandContext) => {
+      if (!runExport) throw new Error('Export command requires an export runner');
+      runExport({ id: command.id });
+    },
+  }];
+});
+
+/**
  * The Export rows: the registry's formats, then one row per installed
  * extension exporter (#5838). An exporter's name is extension-supplied, so its
  * row renders `label` as-is (no catalogue key), like other `ext:` rows.
@@ -54,6 +92,7 @@ const CSV_LABEL_KEYS: Record<CsvExportType, TranslationKey> = {
 export function buildExportCommands(
   runExport: (request: ExportRequest) => void,
   extensionExporters: readonly ExtensionExporter[] = [],
+  surface: Extract<CommandSurface, 'palette' | 'mobile'> = 'palette',
 ): Command[] {
   const extensionRows = extensionExporters.map((exporter): Command => ({
     id: `export:ext:${exporter.key}`,
@@ -64,31 +103,7 @@ export function buildExportCommands(
     detail: exporter.extension,
     action: () => runExport({ id: 'extension', key: exporter.key }),
   }));
-  return [...registryRows(runExport), ...extensionRows];
-}
-
-function registryRows(runExport: (request: ExportRequest) => void): Command[] {
-  return EXPORT_COMMANDS.flatMap((command): Command[] => {
-    const icon = CLASSIC_EXPORT_ICONS[command.id];
-    if (command.kind === 'table-menu') {
-      return command.items.map((item) => ({
-        id: `export:csv-${item.type}`,
-        label: resolveEnglish(CSV_LABEL_KEYS[item.type]),
-        ...withKey(CSV_LABEL_KEYS[item.type]),
-        keywords: `${EXPORT_KEYWORDS[command.id]} ${item.type}`,
-        category: 'Export',
-        icon,
-        action: () => runExport({ id: command.id, table: item.type }),
-      }));
-    }
-    return [{
-      id: `export:${command.id}`,
-      label: resolveEnglish(command.menuLabelKey),
-      ...withKey(command.menuLabelKey),
-      keywords: EXPORT_KEYWORDS[command.id],
-      category: 'Export',
-      icon,
-      action: () => runExport({ id: command.id }),
-    }];
-  });
+  const registryRows = EXPORT_SURFACE_COMMANDS.map((command) =>
+    commandRowFromDefinition(command, { surface, runExport }));
+  return [...registryRows, ...extensionRows];
 }

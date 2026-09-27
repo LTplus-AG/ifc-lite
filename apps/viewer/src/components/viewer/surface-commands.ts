@@ -15,8 +15,10 @@ import {
   Minus, Orbit, Palette, Pencil, Plus, RotateCcw, Save, SquareStack, SquareX,
   Sun, Tag,
 } from 'lucide-react';
-import type { TranslationKey } from '@/i18n';
+import type { TranslationKey, TranslationParameters } from '@/i18n';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
+import type { ThemeMode } from '@/store/slices/uiSlice';
+import type { ProjectionMode } from '@/store/types';
 import { resolveEnglish } from '@/i18n/registry';
 import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { panelTitleKey } from '@/lib/panels/registry';
@@ -31,9 +33,12 @@ import {
 } from '@/store/basket/basketCommands';
 import type { Command } from './commandPaletteSearch';
 import type { RightPanel } from './commandPaletteCommandsTypes';
+import type { ExportRequest } from './useExportRunner';
 import { TOOL_SURFACE_COMMANDS } from './surface-commands-tools';
 import { PANEL_SURFACE_COMMANDS } from './surface-commands-panels';
 import { WORKSPACE_SURFACE_COMMANDS } from './surface-commands-workspace';
+import { MOBILE_SURFACE_COMMANDS } from './surface-commands-mobile';
+import { CONTEXT_SURFACE_COMMANDS, runContextOr } from './surface-commands-context';
 
 export type CommandSurface = 'palette' | 'ribbon' | 'context' | 'mobile';
 
@@ -43,12 +48,20 @@ export interface SurfaceCommandContext {
   resetColors?: () => void;
   activateRightPanel?: (panel: RightPanel) => void;
   activateBottomPanel?: (panel: BottomPanelId) => void;
+  runExport?: (request: ExportRequest) => void;
+  openFiles?: () => void;
+  addModel?: () => void;
+  /** The context menu owns the current entity and supplies its target-specific action. */
+  contextAction?: () => void;
 }
 
 export interface SurfaceCommandState {
   canEditInSession: boolean;
   cesiumAvailable?: boolean;
   collabEnabled?: boolean;
+  projectionMode?: ProjectionMode;
+  theme?: ThemeMode;
+  contextEntityType?: string;
 }
 
 export interface SurfaceCommandDefinition {
@@ -59,6 +72,13 @@ export interface SurfaceCommandDefinition {
   keywords: string;
   category: Command['category'];
   icon: Command['icon'];
+  /** State-dependent mobile text/icon live here, alongside the action. */
+  mobileLabelKey?: (state: SurfaceCommandState) => TranslationKey;
+  mobileIcon?: (state: SurfaceCommandState) => Command['icon'];
+  contextLabelKey?: TranslationKey;
+  contextLabelParams?: (state: SurfaceCommandState) => TranslationParameters;
+  contextIcon?: Command['icon'];
+  contextShortcut?: Command['shortcut'];
   surfaces: readonly CommandSurface[];
   enabled: (state: SurfaceCommandState) => boolean;
   run: (context: SurfaceCommandContext) => void;
@@ -74,9 +94,13 @@ export const SURFACE_COMMANDS = [
   {
     id: 'file:open', labelKey: 'commandPalette.file.open.label',
     keywords: 'ifc ifcx glb load model browse',
-    category: 'File', icon: FolderOpen, surfaces: paletteOnly, enabled: alwaysEnabled,
+    category: 'File', icon: FolderOpen, surfaces: ['palette', 'mobile'], enabled: alwaysEnabled,
+    mobileLabelKey: () => 'shellChrome.mobileToolbar.openFileAriaLabel',
     immediate: true,
-    run: () => { window.dispatchEvent(new CustomEvent('ifc-lite:open-files')); },
+    run: ({ openFiles }: SurfaceCommandContext) => {
+      if (openFiles) openFiles();
+      else window.dispatchEvent(new CustomEvent('ifc-lite:open-files'));
+    },
   },
   {
     id: 'file:save-federation-setup', labelKey: 'commandPalette.file.saveFederationSetup.label',
@@ -100,20 +124,27 @@ export const SURFACE_COMMANDS = [
   {
     id: 'view:home', labelKey: 'commandPalette.view.home.label',
     searchLabel: 'Home', keywords: 'isometric fit camera', category: 'View', icon: Home,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.home',
+    surfaces: ['palette', 'mobile'], enabled: alwaysEnabled, shortcut: 'camera.home',
+    mobileLabelKey: () => 'shellChrome.mobileToolbar.homeAriaLabel',
     run: () => { goHomeFromStore(); },
   },
   {
     id: 'view:fit', labelKey: 'commandPalette.view.fit.label',
     searchLabel: 'Fit All', keywords: 'zoom extents entire model', category: 'View', icon: Maximize2,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.fitAll',
+    surfaces: ['palette', 'mobile'], enabled: alwaysEnabled, shortcut: 'camera.fitAll',
+    mobileLabelKey: () => 'shellChrome.mobileToolbar.fitAllAriaLabel',
     run: () => { useViewerStore.getState().cameraCallbacks.fitAll?.(); },
   },
   {
     id: 'view:frame', labelKey: 'commandPalette.view.frame.label',
     searchLabel: 'Frame Selection', keywords: 'zoom focus selected', category: 'View', icon: Crosshair,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.frameSelection',
-    run: () => { useViewerStore.getState().cameraCallbacks.frameSelection?.(); },
+    surfaces: ['palette', 'mobile', 'context'], enabled: alwaysEnabled, shortcut: 'camera.frameSelection',
+    mobileLabelKey: () => 'shellChrome.mobileToolbar.frameSelection',
+    contextLabelKey: 'entityContextMenu.frameSelection',
+    contextIcon: Maximize2,
+    run: (context: SurfaceCommandContext) => runContextOr(context, () => {
+      useViewerStore.getState().cameraCallbacks.frameSelection?.();
+    }),
   },
   {
     id: 'view:stacked', labelKey: 'commandPalette.view.stacked.label',
@@ -136,7 +167,9 @@ export const SURFACE_COMMANDS = [
   {
     id: 'view:projection', labelKey: 'commandPalette.view.projection.label',
     searchLabel: 'Projection', keywords: 'perspective orthographic ortho toggle switch',
-    category: 'View', icon: Orbit, surfaces: paletteOnly, enabled: alwaysEnabled,
+    category: 'View', icon: Orbit, surfaces: ['palette', 'mobile'], enabled: alwaysEnabled,
+    mobileLabelKey: (state: SurfaceCommandState) => state.projectionMode === 'orthographic'
+      ? 'shellChrome.mobileToolbar.perspective' : 'shellChrome.mobileToolbar.orthographic',
     run: () => { useViewerStore.getState().toggleProjectionMode(); },
   },
   {
@@ -199,41 +232,48 @@ export const SURFACE_COMMANDS = [
   ...TOOL_SURFACE_COMMANDS,
   ...PANEL_SURFACE_COMMANDS,
   ...WORKSPACE_SURFACE_COMMANDS,
+  ...MOBILE_SURFACE_COMMANDS,
+  ...CONTEXT_SURFACE_COMMANDS,
   {
     id: 'vis:hide', labelKey: 'commandPalette.vis.hide.label',
     keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'visibility.hideSelection',
-    run: () => { hideSelectionFromStore(); },
+    surfaces: ['palette', 'mobile', 'context'], enabled: alwaysEnabled, shortcut: 'visibility.hideSelection',
+    mobileLabelKey: () => 'shellChrome.mobileToolbar.hideSelection',
+    contextLabelKey: 'entityContextMenu.hide',
+    run: (context: SurfaceCommandContext) => runContextOr(context, hideSelectionFromStore),
   },
   {
     id: 'vis:show', labelKey: ACTION_NAME_KEYS.showAll,
     keywords: 'unhide reset visible', category: 'Visibility', icon: Eye,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'visibility.showAll',
-    run: () => { showAllFromStore('show_all'); },
+    surfaces: ['palette', 'mobile', 'context'], enabled: alwaysEnabled, shortcut: 'visibility.showAll',
+    run: (context: SurfaceCommandContext) => runContextOr(context, () => { showAllFromStore('show_all'); }),
   },
   {
     id: 'vis:set-iso', labelKey: 'commandPalette.vis.setBasket.label',
     searchLabel: 'Set Basket from Selection',
     keywords: 'basket isolate set selection hierarchy view equals',
-    category: 'Visibility', icon: Equal, surfaces: paletteOnly,
+    category: 'Visibility', icon: Equal, surfaces: ['palette', 'context'],
+    contextLabelKey: 'entityContextMenu.setBasket',
     enabled: alwaysEnabled,
-    run: () => { executeBasketSet(); },
+    run: (context: SurfaceCommandContext) => runContextOr(context, () => { executeBasketSet(); }),
   },
   {
     id: 'vis:add-iso', labelKey: 'commandPalette.vis.addBasket.label',
     searchLabel: 'Add to Basket',
     keywords: 'basket plus selection hierarchy view',
-    category: 'Visibility', icon: Plus, surfaces: paletteOnly,
+    category: 'Visibility', icon: Plus, surfaces: ['palette', 'context'],
+    contextLabelKey: 'entityContextMenu.addToBasket',
     enabled: alwaysEnabled, shortcut: 'basket.add',
-    run: () => { executeBasketAdd(); },
+    run: (context: SurfaceCommandContext) => runContextOr(context, () => { executeBasketAdd(); }),
   },
   {
     id: 'vis:remove-iso', labelKey: 'commandPalette.vis.removeBasket.label',
     searchLabel: 'Remove from Basket',
     keywords: 'basket minus selection hierarchy view',
-    category: 'Visibility', icon: Minus, surfaces: paletteOnly,
+    category: 'Visibility', icon: Minus, surfaces: ['palette', 'context'],
+    contextLabelKey: 'entityContextMenu.removeFromBasket',
     enabled: alwaysEnabled, shortcut: 'basket.remove',
-    run: () => { executeBasketRemove(); },
+    run: (context: SurfaceCommandContext) => runContextOr(context, () => { executeBasketRemove(); }),
   },
   {
     id: 'vis:toggle-iso', labelKey: 'commandPalette.vis.toggleBasket.label',
@@ -245,10 +285,14 @@ export const SURFACE_COMMANDS = [
   {
     id: 'vis:save-view', labelKey: 'commandPalette.vis.saveBasketView.label',
     searchLabel: 'Save Basket as View', keywords: 'basket presentation thumbnail',
-    category: 'Visibility', icon: Save, surfaces: paletteOnly, enabled: alwaysEnabled,
-    run: () => { void executeBasketSaveView().catch((err: unknown) => {
-      console.error('[CommandPalette] Failed to save basket view:', err);
-    }); },
+    category: 'Visibility', icon: Save, surfaces: ['palette', 'context'], enabled: alwaysEnabled,
+    contextLabelKey: 'entityContextMenu.saveBasketView',
+    contextShortcut: 'basket.saveView',
+    run: (context: SurfaceCommandContext) => runContextOr(context, () => {
+      void executeBasketSaveView().catch((err: unknown) => {
+        console.error('[CommandPalette] Failed to save basket view:', err);
+      });
+    }),
   },
   {
     id: 'vis:toggle-presentation', labelKey: 'commandPalette.vis.togglePresentation.label',
@@ -325,16 +369,24 @@ export function paletteSurfaceCommands(
   context: Pick<SurfaceCommandContext, 'activateRightPanel' | 'activateBottomPanel'> = {},
 ): Command[] {
   return SURFACE_COMMANDS
-    .filter((command) => command.surfaces.includes('palette') && command.enabled(state))
-    .map((command) => ({
-      id: command.id,
-      label: ('searchLabel' in command ? command.searchLabel : undefined) ?? resolveEnglish(command.labelKey),
-      labelKey: command.labelKey,
-      keywords: command.keywords,
-      category: command.category,
-      icon: command.icon,
-      shortcut: 'shortcut' in command ? command.shortcut : undefined,
-      immediate: 'immediate' in command ? command.immediate : undefined,
-      action: () => command.run({ ...context, surface: 'palette', execute }),
-    }));
+    .filter((command) => command.surfaces.some((surface) => surface === 'palette') && command.enabled(state))
+    .map((command) => commandRowFromDefinition(command, { ...context, surface: 'palette', execute }));
+}
+
+/** One row projection for the palette and mobile command menus. */
+export function commandRowFromDefinition(
+  command: SurfaceCommandDefinition,
+  context: SurfaceCommandContext,
+): Command {
+  return {
+    id: command.id,
+    label: command.searchLabel ?? resolveEnglish(command.labelKey),
+    labelKey: command.labelKey,
+    keywords: command.keywords,
+    category: command.category,
+    icon: command.icon,
+    shortcut: command.shortcut,
+    immediate: command.immediate,
+    action: () => command.run(context),
+  };
 }

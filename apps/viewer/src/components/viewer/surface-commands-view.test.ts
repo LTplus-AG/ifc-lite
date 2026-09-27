@@ -20,7 +20,8 @@ afterEach(() => useViewerStore.setState({ cameraCallbacks: originalCallbacks }))
 
 describe('shared View palette commands (#5870)', () => {
   it('keeps every View row in browse order and gates the 3D world row on availability', () => {
-    const tableRows = SURFACE_COMMANDS.filter((command) => command.category === 'View');
+    const tableRows = SURFACE_COMMANDS.filter((command) =>
+      command.category === 'View' && command.surfaces.some((surface) => surface === 'palette'));
     assert.deepEqual(tableRows.map((command) => command.id), [...VIEW_IDS]);
 
     const unavailable = paletteSurfaceCommands({ canEditInSession: true, cesiumAvailable: false }, () => {});

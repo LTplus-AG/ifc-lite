@@ -20,7 +20,6 @@ import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import type { ThemeMode } from '@/store/slices/uiSlice';
 import type { ProjectionMode } from '@/store/types';
 import type { PanelGroup, WorkspacePanelId } from '@/lib/panels/registry';
-import { resolveEnglish } from '@/i18n/registry';
 import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
@@ -40,7 +39,8 @@ import { PANEL_SURFACE_COMMANDS } from './surface-commands-panels';
 import { WORKSPACE_SURFACE_COMMANDS } from './surface-commands-workspace';
 import { MOBILE_SURFACE_COMMANDS } from './surface-commands-mobile';
 import { CONTEXT_SURFACE_COMMANDS, runContextAction, runContextOr } from './surface-commands-context';
-import { runSurfaceCommand } from './surface-command-run';
+import { commandRowFromDefinition } from './surface-command-row';
+export { commandRowFromDefinition } from './surface-command-row';
 
 export type CommandSurface = 'palette' | 'ribbon' | 'context' | 'mobile';
 
@@ -382,23 +382,4 @@ export function paletteSurfaceCommands(
   return SURFACE_COMMANDS
     .filter((command) => command.surfaces.some((surface) => surface === 'palette') && command.enabled(state))
     .map((command) => commandRowFromDefinition(command, { ...context, surface: 'palette', execute }));
-}
-
-/** One row projection for the palette and mobile command menus. */
-export function commandRowFromDefinition(
-  command: SurfaceCommandDefinition,
-  context: SurfaceCommandContext,
-): Command {
-  return {
-    id: command.id,
-    label: command.searchLabel ?? resolveEnglish(command.labelKey),
-    labelKey: command.labelKey,
-    keywords: command.keywords,
-    category: command.category,
-    icon: command.icon,
-    shortcut: command.shortcut,
-    immediate: command.immediate,
-    registryOwned: true,
-    action: () => runSurfaceCommand(command, context),
-  };
 }

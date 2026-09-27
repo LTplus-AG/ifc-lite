@@ -2,12 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** Registry-backed ribbon controls. Callers own state and execution, not names. */
-import { forwardRef } from 'react';
+/** Registry-backed ribbon controls. Callers supply host inputs; the table owns execution. */
+import { forwardRef, type MouseEvent } from 'react';
 import { useTranslation } from '@/i18n';
-import { surfaceCommand, type SurfaceCommandDefinition, type SurfaceCommandId } from '../surface-commands';
+import { surfaceCommand, type SurfaceCommandContext, type SurfaceCommandDefinition, type SurfaceCommandId } from '../surface-commands';
 import { runSurfaceCommand } from '../surface-command-run';
 import { RibbonLargeButton, RibbonSmallButton, type RibbonButtonProps } from './primitives';
+
+type RibbonCommandContext = Omit<SurfaceCommandContext, 'surface'>
+  | ((event: MouseEvent<HTMLButtonElement>) => Omit<SurfaceCommandContext, 'surface'>);
 
 export type RibbonCommandButtonProps = Omit<
   RibbonButtonProps,
@@ -16,8 +19,10 @@ export type RibbonCommandButtonProps = Omit<
   commandId: SurfaceCommandId;
   /** The ribbon may use its established SVG while the palette uses Lucide. */
   icon?: RibbonButtonProps['icon'];
+  /** Mounted hosts supply only the inputs their registered command needs. */
+  commandContext?: RibbonCommandContext;
 } & (
-  | { onClick: NonNullable<RibbonButtonProps['onClick']>; triggerOnly?: false }
+  | { onClick?: never; triggerOnly?: false }
   | { onClick?: never; triggerOnly: true }
 );
 
@@ -35,11 +40,7 @@ function useRibbonCommandPresentation(commandId: SurfaceCommandId) {
 function mountedTriggerHandlers(
   command: SurfaceCommandDefinition,
   props: Pick<RibbonButtonProps, 'onClick' | 'onPointerDown' | 'onKeyDown' | 'aria-haspopup'>,
-  triggerOnly: boolean | undefined,
 ) {
-  if (!triggerOnly) return {
-    onClick: props.onClick, onPointerDown: props.onPointerDown, onKeyDown: props.onKeyDown,
-  };
   const execute = (action: (() => void) | undefined) => {
     if (!action) throw new Error(`${command.id} requires a mounted menu or dialog trigger`);
     runSurfaceCommand(command, { surface: 'ribbon', contextAction: action });
@@ -66,10 +67,25 @@ function mountedTriggerHandlers(
   };
 }
 
+function commandHandlers(
+  command: SurfaceCommandDefinition,
+  props: Pick<RibbonButtonProps, 'onClick' | 'onPointerDown' | 'onKeyDown' | 'aria-haspopup'>,
+  triggerOnly: boolean | undefined,
+  commandContext: RibbonCommandContext | undefined,
+) {
+  if (triggerOnly) return mountedTriggerHandlers(command, props);
+  return {
+    onClick: (event: MouseEvent<HTMLButtonElement>) => runSurfaceCommand(command, {
+      surface: 'ribbon',
+      ...(typeof commandContext === 'function' ? commandContext(event) : commandContext),
+    }),
+  };
+}
+
 export const RibbonCommandLargeButton = forwardRef<HTMLButtonElement, RibbonCommandButtonProps>(
-  function RibbonCommandLargeButton({ commandId, icon, triggerOnly, ...props }, ref) {
+  function RibbonCommandLargeButton({ commandId, icon, triggerOnly, commandContext, ...props }, ref) {
     const { command, label, tooltip } = useRibbonCommandPresentation(commandId);
-    const handlers = mountedTriggerHandlers(command, props, triggerOnly);
+    const handlers = commandHandlers(command, props, triggerOnly, commandContext);
     return <RibbonLargeButton {...props} ref={ref} data-command-id={command.id}
       data-command-trigger={triggerOnly || undefined}
       icon={icon ?? command.icon} label={label} aria-label={label}
@@ -78,9 +94,9 @@ export const RibbonCommandLargeButton = forwardRef<HTMLButtonElement, RibbonComm
 );
 
 export const RibbonCommandSmallButton = forwardRef<HTMLButtonElement, RibbonCommandButtonProps>(
-  function RibbonCommandSmallButton({ commandId, icon, triggerOnly, ...props }, ref) {
+  function RibbonCommandSmallButton({ commandId, icon, triggerOnly, commandContext, ...props }, ref) {
     const { command, label, tooltip } = useRibbonCommandPresentation(commandId);
-    const handlers = mountedTriggerHandlers(command, props, triggerOnly);
+    const handlers = commandHandlers(command, props, triggerOnly, commandContext);
     return <RibbonSmallButton {...props} ref={ref} data-command-id={command.id}
       data-command-trigger={triggerOnly || undefined}
       icon={icon ?? command.icon} label={label} aria-label={label}

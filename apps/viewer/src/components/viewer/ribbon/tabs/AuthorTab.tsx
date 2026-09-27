@@ -18,8 +18,6 @@ import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
 import { BulkPropertyEditor } from '../../BulkPropertyEditor';
 import { DataConnector } from '../../DataConnector';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
-import { surfaceCommand } from '../../surface-commands';
-import { runSurfaceCommand } from '../../surface-command-run';
 import {
   RibbonGroup,
   RibbonGroupDivider,
@@ -65,20 +63,17 @@ export function AuthorTab() {
           active={editEnabled}
           activeClassName={EDIT_ACTIVE_CLASS}
           disabled={!canEditInSession}
-          onClick={() => runSurfaceCommand(surfaceCommand('tool:edit-mode', 'ribbon'), { surface: 'ribbon' })}
         />
         <RibbonSmallStack>
           <RibbonCommandSmallButton
             commandId="author:undo"
             icon={Undo}
             disabled={!canUndo}
-            onClick={() => runSurfaceCommand(surfaceCommand('author:undo', 'ribbon'), { surface: 'ribbon' })}
           />
           <RibbonCommandSmallButton
             commandId="author:redo"
             icon={Redo}
             disabled={!canRedo}
-            onClick={() => runSurfaceCommand(surfaceCommand('author:redo', 'ribbon'), { surface: 'ribbon' })}
           />
         </RibbonSmallStack>
       </RibbonGroup>
@@ -93,9 +88,7 @@ export function AuthorTab() {
           tooltip={t('ribbon.author.appearanceTooltip')}
           active={activeWorkspacePanels.has('appearance')}
           activeClassName={EDIT_ACTIVE_CLASS}
-          onClick={() => runSurfaceCommand(surfaceCommand('panel:appearance', 'ribbon'), {
-            surface: 'ribbon', activateRightPanel: () => handleToggleRightPanel('appearance'),
-          })}
+          commandContext={{ activateRightPanel: () => handleToggleRightPanel('appearance') }}
         />
         <RibbonCommandLargeButton
           commandId="author:add-element-panel"
@@ -103,9 +96,7 @@ export function AuthorTab() {
           active={activeWorkspacePanels.has('addElement')}
           activeClassName={EDIT_ACTIVE_CLASS}
           disabled={!canEditInSession}
-          onClick={() => runSurfaceCommand(surfaceCommand('author:add-element-panel', 'ribbon'), {
-            surface: 'ribbon', contextAction: () => handleToggleRightPanel('addElement'),
-          })}
+          commandContext={{ contextAction: () => handleToggleRightPanel('addElement') }}
         />
         {/* Space Sketch bakes IfcSpace entities; picking it flips edit
             mode on via the AUTHORING_TOOLS rule in uiSlice, so it can
@@ -117,7 +108,6 @@ export function AuthorTab() {
           active={activeTool === 'spaceSketch'}
           activeClassName={EDIT_ACTIVE_CLASS}
           disabled={!canEditInSession}
-          onClick={() => runSurfaceCommand(surfaceCommand('author:space-sketch', 'ribbon'), { surface: 'ribbon' })}
           {...tourAnchor(toolAnchor('spaceSketch'))}
         />
       </RibbonGroup>
@@ -159,9 +149,7 @@ export function AuthorTab() {
           icon={Extension}
           tooltip={t('ribbon.author.extensionsTooltip')}
           active={activeWorkspacePanels.has('extensions')}
-          onClick={() => runSurfaceCommand(surfaceCommand('panel:extensions', 'ribbon'), {
-            surface: 'ribbon', activateRightPanel: () => handleToggleRightPanel('extensions'),
-          })}
+          commandContext={{ activateRightPanel: () => handleToggleRightPanel('extensions') }}
         />
       </RibbonGroup>
     </>

@@ -26,6 +26,7 @@ import {
   RibbonSmallButton,
   RibbonSmallStack,
 } from '../primitives';
+import { RibbonCommandSmallButton } from '../command-button';
 
 export function ElementsTab() {
   const { t } = useTranslation();
@@ -203,11 +204,9 @@ export function ElementsTab() {
         </DropdownMenu>
         <RibbonSmallStack>
           {[toggleCollection, resetColors].map((command) => (
-            <RibbonSmallButton
+            <RibbonCommandSmallButton
               key={command.id}
-              data-command-id={command.id}
-              icon={command.icon}
-              label={t(command.labelKey)}
+              commandId={command.id}
               tooltip={t(command.labelKey)}
               disabled={!command.enabled({ canEditInSession })}
               onClick={() => runSurfaceCommand(command, {

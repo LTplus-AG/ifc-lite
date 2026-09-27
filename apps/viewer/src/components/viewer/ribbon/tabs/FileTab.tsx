@@ -27,6 +27,7 @@ import {
   RibbonSmallButton,
   RibbonSmallStack,
 } from '../primitives';
+import { RibbonCommandLargeButton, RibbonCommandSmallButton } from '../command-button';
 
 export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
   const { t } = useTranslation();
@@ -89,21 +90,17 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
             onClick={() => { void handleRefresh(); }}
           />
         </RibbonSmallStack>
-        <RibbonLargeButton
-          data-command-id={saveSetup.id}
-          icon={saveSetup.icon}
-          label={t(saveSetup.labelKey)}
+        <RibbonCommandLargeButton
+          commandId={saveSetup.id}
           tooltip={t(saveSetup.labelKey)}
           disabled={!saveSetup.enabled({ canEditInSession })}
           onClick={() => runSurfaceCommand(saveSetup, { surface: 'ribbon' })}
         />
         <RibbonSmallStack className="gap-1">
           {[openSetup, modelTags].map((command) => (
-            <RibbonSmallButton
+            <RibbonCommandSmallButton
               key={command.id}
-              data-command-id={command.id}
-              icon={command.icon}
-              label={t(command.labelKey)}
+              commandId={command.id}
               tooltip={t(command.labelKey)}
               className="min-h-6"
               disabled={!command.enabled({ canEditInSession })}

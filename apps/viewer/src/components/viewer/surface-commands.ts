@@ -192,7 +192,7 @@ export type SurfaceCommandId = (typeof SURFACE_COMMANDS)[number]['id'];
 export function surfaceCommand(id: SurfaceCommandId, surface: CommandSurface): SurfaceCommandDefinition {
   const definition = SURFACE_COMMANDS.find((command) => command.id === id);
   if (!definition) throw new Error(`Unknown surface command: ${id}`);
-  if (!definition.surfaces.includes(surface)) throw new Error(`${id} is not registered for ${surface}`);
+  if (!definition.surfaces.some((registered) => registered === surface)) throw new Error(`${id} is not registered for ${surface}`);
   return definition;
 }
 

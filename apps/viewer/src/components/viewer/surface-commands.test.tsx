@@ -50,7 +50,7 @@ describe('shared palette and ribbon commands (#5870)', () => {
     const registry = await loadRegistry();
     assert.ok(registry, 'the shared registry loads');
     const { SURFACE_COMMANDS, paletteSurfaceCommands } = registry;
-    const registered = new Set(SURFACE_COMMANDS.filter((command) => command.surfaces.includes('ribbon')).map((command) => command.id));
+    const registered = new Set(SURFACE_COMMANDS.filter((command) => command.surfaces.some((surface) => surface === 'ribbon')).map((command) => command.id));
     assert.equal(new Set(SURFACE_COMMANDS.map((command) => command.id)).size, SURFACE_COMMANDS.length,
       'command ids are unique');
     assert.deepEqual(new Set(rendered.map((button) => button.dataset.commandId)), registered,

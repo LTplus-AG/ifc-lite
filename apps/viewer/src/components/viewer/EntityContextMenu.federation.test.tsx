@@ -26,6 +26,8 @@ import { useViewerStore } from '@/store/index.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { FederatedModel } from '@/store/types.js';
 import { EntityContextMenu } from './EntityContextMenu.js';
+import { ElementsTab } from './ribbon/tabs/ElementsTab.js';
+import { TooltipProvider } from '@/components/ui/tooltip.js';
 import { surfaceCommand, SURFACE_COMMANDS } from './surface-commands.js';
 import { DUPLICATE_CONTEXT_DIRECTIONS } from './surface-commands-context.js';
 import { resolveEnglish } from '@/i18n/registry.js';
@@ -61,11 +63,11 @@ function federatedModel(id: string, ifcDataStore: FederatedModel['ifcDataStore']
 }
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
-function render(): HTMLElement {
+function render(withRibbon = false): HTMLElement {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
-  act(() => { root.render(<EntityContextMenu />); });
+  act(() => { root.render(<TooltipProvider>{withRibbon && <ElementsTab />}<EntityContextMenu /></TooltipProvider>); });
   mounted.push({ root, container });
   return container;
 }
@@ -85,6 +87,20 @@ function menuItem(container: HTMLElement, label: string): HTMLButtonElement {
   return btn as HTMLButtonElement;
 }
 
+function openRibbonEntityActions(container: HTMLElement, selectedId: number): void {
+  const button = container.querySelector<HTMLButtonElement>('[data-command-id="elements:entity-actions"]');
+  assert.ok(button, 'the Elements ribbon exposes selected-entity actions');
+  assert.equal(button.getAttribute('aria-label'),
+    resolveEnglish(surfaceCommand('elements:entity-actions', 'ribbon').labelKey),
+    'the ribbon announces the registered command name');
+  assert.ok(button.querySelector('svg'), 'the ribbon renders its entity-actions icon');
+  assert.equal(button.disabled, false);
+  act(() => { button.click(); });
+  assert.equal(useViewerStore.getState().contextMenu.entityId, selectedId,
+    'the ribbon opens the existing entity menu for the selected global ID');
+  assert.ok(container.querySelector('[role="menu"]'), 'the shared menu is visible');
+}
+
 beforeEach(async () => {
   unmountAll();
   const store = await parseFixtureModel();
@@ -102,6 +118,67 @@ beforeEach(async () => {
 });
 
 describe('EntityContextMenu — federation-space selection', () => {
+  for (const twoModels of [false, true]) {
+    it(`opens context-only selection commands from the ribbon in ${twoModels ? 'two-model' : 'one-model'} mode (#5870)`, async () => {
+      if (twoModels) {
+        const store = await parseFixtureModel();
+        useViewerStore.setState({ models: new Map([
+          ['m0', federatedModel('m0', store, 0)],
+          ['m1', federatedModel('m1', store)],
+        ]) });
+      }
+      const selectedId = globalId(FIXTURE_WALL_B);
+      act(() => { useViewerStore.setState({ selectedEntityId: null, selectedEntityIds: new Set([selectedId]) }); });
+      const container = render(true);
+      openRibbonEntityActions(container, selectedId);
+      assert.ok(menuItem(container, 'Select all IfcWall'));
+      assert.ok(menuItem(container, 'Select same storey'));
+      assert.ok(menuItem(container, 'Duplicate'));
+      assert.ok(menuItem(container, 'Delete entity'));
+
+      act(() => { menuItem(container, 'Select all IfcWall').click(); });
+      assert.deepEqual(useViewerStore.getState().selectedEntityIds,
+        new Set([globalId(FIXTURE_WALL_A), globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]));
+      act(() => { useViewerStore.setState({ selectedEntityId: null, selectedEntityIds: new Set([selectedId]) }); });
+      openRibbonEntityActions(container, selectedId);
+      act(() => { menuItem(container, 'Select same storey').click(); });
+      assert.deepEqual(useViewerStore.getState().selectedEntityIds,
+        new Set([globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]));
+      if (twoModels) assert.ok(!useViewerStore.getState().selectedEntityIds.has(FIXTURE_WALL_A));
+    });
+
+    it(`routes ribbon Duplicate and Delete through the existing ${twoModels ? 'two-model' : 'one-model'} IFC menu (#5870)`, async () => {
+      const bytes = await readFile(new URL('../../../public/samples/hello-wall.ifc', import.meta.url));
+      const targetStore = await new IfcParser().parseColumnar(
+        bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+        { disableWorkerScan: true },
+      );
+      const otherStore = useViewerStore.getState().models.get('m1')!.ifcDataStore;
+      useViewerStore.setState({
+        models: twoModels
+          ? new Map([['m0', federatedModel('m0', otherStore, 0)], ['m1', federatedModel('m1', targetStore)]])
+          : new Map([['m1', federatedModel('m1', targetStore)]]),
+      });
+      const selectedId = globalId(1222);
+      useViewerStore.setState({ selectedEntityId: selectedId, selectedEntityIds: new Set([selectedId]) });
+      const container = render(true);
+      openRibbonEntityActions(container, selectedId);
+      assert.equal(menuItem(container, 'Duplicate').disabled, true);
+      assert.equal(menuItem(container, 'Delete entity').disabled, true);
+      act(() => { useViewerStore.setState({ editEnabled: true }); });
+      assert.equal(menuItem(container, 'Duplicate').disabled, false);
+      act(() => { menuItem(container, 'Duplicate').click(); });
+      assert.equal(useViewerStore.getState().undoStacks.get('m1')?.at(-1)?.type, 'CREATE_ENTITY');
+      if (twoModels) assert.equal(useViewerStore.getState().undoStacks.has('m0'), false);
+
+      act(() => { useViewerStore.setState({ selectedEntityId: selectedId, selectedEntityIds: new Set([selectedId]) }); });
+      openRibbonEntityActions(container, selectedId);
+      act(() => { menuItem(container, 'Delete entity').click(); });
+      assert.equal(useViewerStore.getState().mutationViews.get('m1')?.isDeleted(1222), true);
+      if (twoModels) assert.equal(useViewerStore.getState().mutationViews.has('m0'), false);
+    });
+  }
+
   it('renders the literal entity and canvas context registry matrix (#5870)', () => {
     useViewerStore.setState({ editEnabled: true });
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });

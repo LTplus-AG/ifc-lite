@@ -238,6 +238,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                       data-runtime-source={cmd.runtimeSource}
                       data-runtime-command-id={cmd.runtimeSource ? cmd.id : undefined}
                       data-index={flatIdx}
+                      aria-label={cmd.registryOwned ? t(cmd.labelKey, cmd.labelKeyParams) : undefined}
                       aria-selected={flatIdx === selectedIndex}
                       className={cn(
                         'flex items-center gap-3 w-full px-3 py-2 text-left text-sm',

@@ -11,6 +11,7 @@ import { BimReactContext } from '@/sdk/BimProvider.js';
 import { resolve } from '@/i18n/registry';
 import { posthog } from '@/lib/analytics';
 import { isCollabEnabled } from '@/lib/collab/config';
+import { recordRecentFiles } from '@/lib/recent-files';
 import { useViewerStore } from '@/store';
 import { cleanup, click, render, type as typeInto } from '@/test/render.js';
 import type { FileCommands } from './toolbar/useFileCommands.js';
@@ -204,6 +205,30 @@ describe('shared palette and ribbon commands (#5870)', () => {
     ]);
   });
 
+  it('uses the registry accessible name for shortcut rows while retaining runtime file detail (#5878)', () => {
+    recordRecentFiles([{ name: 'authored-sample.ifc', size: 2048 }]);
+    try {
+      render(<BimReactContext.Provider value={{} as BimContext}>
+        <CommandPalette open onOpenChange={() => {}} />
+      </BimReactContext.Provider>);
+      const home = document.querySelector<HTMLButtonElement>('[role="option"][data-command-id="view:home"]');
+      assert.ok(home, 'Home is a mounted registered row');
+      assert.ok(home.querySelector('kbd')?.textContent?.trim(), 'the shortcut is visibly retained');
+      assert.equal(home.getAttribute('aria-label'), resolve('commandPalette.view.home.label'),
+        'shortcut text does not become part of the registered accessible name');
+
+      const recent = document.querySelector<HTMLButtonElement>(
+        '[role="option"][data-runtime-source="recent-file"][data-runtime-command-id="file:recent:authored-sample.ifc"]',
+      );
+      assert.ok(recent, 'the recent authored file has a runtime-owned row');
+      assert.equal(recent.getAttribute('aria-label'), null,
+        'runtime content keeps its native name including the file-size detail');
+      assert.ok(recent.textContent?.includes('2 KB'), 'the runtime detail remains visible');
+    } finally {
+      localStorage.removeItem('ifc-lite:recent-files');
+    }
+  });
+
   it('renders every palette-declared command with its registry label (#5870 matrix)', async () => {
     const registry = await loadRegistry();
     const exports = await import('./commandPaletteExports.js');
@@ -240,11 +265,15 @@ describe('shared palette and ribbon commands (#5870)', () => {
           const prefix = runtimePrefixes[source as keyof typeof runtimePrefixes];
           assert.ok(prefix && row.dataset.runtimeCommandId?.startsWith(prefix),
             `${source} owns its runtime command id`);
+          assert.equal(row.getAttribute('aria-label'), null,
+            `${source} retains its native accessible name and detail`);
           assert.ok(row.querySelector('span.flex-1')?.textContent?.trim(), 'runtime content has a visible name');
           continue;
         }
         const command = expected.find((item) => item.id === row.dataset.commandId);
         assert.ok(command);
+        assert.equal(row.getAttribute('aria-label'), resolve(command.labelKey),
+          `${command.id} exposes its registry name to assistive technology`);
         assert.equal(row.querySelector('span.flex-1')?.textContent, resolve(command.labelKey),
           `${command.id} renders only its registry label`);
       }

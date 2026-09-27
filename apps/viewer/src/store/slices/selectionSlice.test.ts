@@ -419,8 +419,8 @@ describe('SelectionSlice', () => {
       // `selectedEntities` and `selectedEntityId`, and must also clear the
       // legacy global-id set, matching its own comment: "Clear other
       // selection when selecting a model". Otherwise the set survives and
-      // MainToolbar.tsx:352 and ElementsTab.tsx:44 keep reporting the stale
-      // count, and useAnimationLoop.ts:244 keeps painting the stale
+      // the Elements ribbon selection group keeps reporting the stale count,
+      // and useAnimationLoop.ts:244 keeps painting the stale
       // highlight, while the properties panel has already switched to the
       // model.
       state.setSelectedEntityIds([7, 8]);

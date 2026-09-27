@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * SearchInline — always-visible search field in the MainToolbar.
+ * SearchInline — always-visible search field in the ribbon toolbar.
  *
  * P0: Tier-0 linear scan over cached EntityTable columns.
  * P1: Tier-1 per-model inverted token index, built post-load.

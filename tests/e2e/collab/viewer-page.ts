@@ -166,7 +166,7 @@ export async function loadModel(page: Page, filePath: string, timeoutMs = 180_00
   return modelId!;
 }
 
-/** Click the ribbon's File tab when the ribbon is on (a no-op for the classic strip). */
+/** Click the ribbon's File tab before using its file controls. */
 export async function openFileTab(page: Page): Promise<void> {
   const tab = page.getByRole('tab', { name: 'File' });
   if (await tab.count()) await tab.first().click();

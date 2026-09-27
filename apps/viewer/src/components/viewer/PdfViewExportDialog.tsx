@@ -94,7 +94,7 @@ import type {
 export type ViewPdfExporter = (input: ViewPdfExportInput) => Promise<ViewPdfExportResult>;
 
 interface PdfViewExportDialogProps {
-  surface?: ExportSurface;
+  surface: ExportSurface;
   trigger?: React.ReactNode;
   /** Test seam for the exporter. See {@link ViewPdfExporter}. */
   exportViewPdf?: ViewPdfExporter;
@@ -109,7 +109,7 @@ function formatMm(value: number): string {
   return Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1);
 }
 
-export function PdfViewExportDialog({ surface = 'classic', trigger, exportViewPdf }: PdfViewExportDialogProps) {
+export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfViewExportDialogProps) {
   const { t } = useTranslation();
   // Subscribed purely so the readout recomputes when the view changes; the
   // values themselves are read back off `getState()` inside the memo, which

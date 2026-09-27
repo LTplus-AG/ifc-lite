@@ -9,7 +9,7 @@
  * IndexedDB:    actual file blobs — so recent files can be loaded instantly
  *               without the user re-selecting them from the file picker.
  *
- * Shared between MainToolbar (writes) and CommandPalette (reads).
+ * Shared between the ribbon's file commands (writes) and CommandPalette (reads).
  */
 
 const KEY = 'ifc-lite:recent-files';

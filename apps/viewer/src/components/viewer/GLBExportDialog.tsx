@@ -48,11 +48,11 @@ import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogS
 type ColorSource = 'rendering' | 'shading';
 
 interface GLBExportDialogProps {
-  surface?: ExportSurface;
+  surface: ExportSurface;
   trigger?: React.ReactNode;
 }
 
-export function GLBExportDialog({ surface = 'classic', trigger }: GLBExportDialogProps) {
+export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);

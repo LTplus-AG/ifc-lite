@@ -7,7 +7,7 @@
  * `store/teardown.ts`, `store/teardown-registry.ts`).
  *
  * Combines `createModelSlice` with `createLayerStackSlice` in one harness,
- * the same shape `splitToolSlice.teardown.test.ts` uses (`#4249`/`#4289`) —
+ * the shape the retired split tool's teardown test used (`#4249`/`#4289`) —
  * `modelSlice.ts`'s `removeModel` / `clearAllModels` dispatch through the
  * REAL, module-wide `viewerTeardown` (`teardown-registry.ts`), not a
  * per-slice stub, so a harness that exercises those actions is exercising

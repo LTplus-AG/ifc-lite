@@ -27,8 +27,7 @@ describe('decideRibbonTab — landing tab', () => {
     assert.equal(decideRibbonTab(null, LOADED, 'home', NO_TAB_MEMORY), null);
   });
 
-  // Switching over from the classic toolbar mid-session is a first pass with
-  // live context (PR #1880 review).
+  // A first policy pass can begin with live context (PR #1880 review).
   it('opens Author on a first pass while edit mode is already on', () => {
     const d = decideRibbonTab(null, EDITING, 'home', NO_TAB_MEMORY);
     assert.deepEqual(d, { tab: 'author', memory: { autoOpened: 'author', returnTo: 'home' } });
@@ -46,8 +45,7 @@ describe('decideRibbonTab — landing tab', () => {
   });
 
   it('leaves a first pass alone when the user is not on the default tab', () => {
-    // Switching over from the classic toolbar mid-session must not yank the
-    // tab out from under a deliberate choice.
+    // A first policy pass must not yank the tab away from a deliberate choice.
     assert.equal(decideRibbonTab(null, EMPTY, 'analyze', NO_TAB_MEMORY), null);
   });
 });

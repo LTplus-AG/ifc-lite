@@ -75,8 +75,7 @@ function handBack(
 /**
  * Decide the next ribbon tab for a context change.
  *
- * @param prev Context at the previous evaluation, or null on the first pass
- *   (mount, or the user switching over from the classic toolbar).
+ * @param prev Context at the previous evaluation, or null on mount.
  * @param next Context now.
  * @param tab  Tab currently showing.
  * @param memory What we opened last, and the tab to return.
@@ -94,8 +93,7 @@ export function decideRibbonTab(
   // user already made this session.
   if (!prev) {
     if (!next.hasModel && tab === 'home') return takeOver('file', 'home');
-    // Switching over from the classic toolbar mid-session is also a first
-    // pass, and the context that was already live has to count: landing on
+    // The context already live on mount has to count: landing on
     // Home while edit mode is on (or something is selected) would contradict
     // the same precedence the edge branches below apply. Edit outranks
     // selection here too.

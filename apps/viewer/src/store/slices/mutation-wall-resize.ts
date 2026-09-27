@@ -4,37 +4,35 @@
 
 /**
  * Wall endpoint resize (#6233): the metre-space read, the batched write, and
- * the local mesh rebuild that follows a resize and its undo / redo.
+ * the mesh rebuild that follows a resize and its undo / redo.
  *
  * Units: the viewer authors in metres (raycasts, handles, meshes), while the
  * wall's STEP entities hold the file's native length unit. Every value that
  * crosses this module's boundary is metres; `toNativeLength` /
  * `fromNativeLength` convert at the STEP edge.
  *
- * Mesh: the wall's mesh is rebuilt from its current wall-edit chain with
- * `buildElementMesh`, the builder `addWall` uses. Swapping a mesh under the
- * SAME global id takes two steps: the old mesh leaves through the renderer's
- * `pendingMeshRemovals` drain, and the new one is appended only once that
- * drain has run, because the drain removes and prunes by entity id and would
- * take a mesh appended earlier with it. Each swap re-uploads the scene, so a
- * drag rebuilds once, at release (`refreshWallMesh`), not on every frame.
+ * Mesh: the wall is re-meshed by the wasm mesher from its edited IFC data
+ * (`requestRemesh`, #6232), with its openings and the windows and doors in
+ * them, which are placed relative to it. Each batch is remembered for undo /
+ * redo (`remesh-registry.ts`). A drag re-meshes once, at release
+ * (`refreshWallMesh`), not on every frame. Collaborators still receive a
+ * box built from the wall's parameters until the room mirror carries
+ * re-meshed geometry (#6232 PR1.4).
  */
 
-import type { StoreApi } from 'zustand';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { MeshData } from '@ifc-lite/geometry';
-import { hostsOtherEntities } from '@ifc-lite/renderer';
 import { fromNativeLength, toNativeLength } from '@ifc-lite/create';
 import type { ViewerState } from '../index.js';
 import { toGlobalIdFromModels } from '../globalId.js';
 import { resolveWallEditChain } from '@/lib/placement-edit.js';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import { buildElementMesh } from './addElementMeshes.js';
-import { appendAuthoredMesh } from './authoredTreeEntry.js';
+import { rememberRemesh } from '@/lib/remesh/remesh-registry.js';
+import { requestRemesh } from '@/lib/remesh/remesh-service.js';
 
 type Get = () => ViewerState;
-type Subscribe = StoreApi<ViewerState>['subscribe'];
 type Vec3 = [number, number, number];
 
 export interface WallEditContext {
@@ -59,15 +57,6 @@ export function readWallMetres(ctx: WallEditContext, expressId: number) {
   const [dx, dy, dz] = chain.refDirection;
   const end: Vec3 = [start[0] + dx * length, start[1] + dy * length, start[2] + dz * length];
   return { chain, start, end, thickness: m(chain.thickness), height: m(chain.height) };
-}
-
-/** Batch id → the wall it resized, per store, so undo / redo can rebuild its mesh. */
-const resizeBatches = new WeakMap<Get, Map<string, { modelId: string; expressId: number }>>();
-
-function batchesFor(get: Get): Map<string, { modelId: string; expressId: number }> {
-  let batches = resizeBatches.get(get);
-  if (!batches) resizeBatches.set(get, batches = new Map());
-  return batches;
 }
 
 /**
@@ -103,13 +92,9 @@ export function resizeWallMetres(
     { entityId: chain.profileId, index: 3, value: nativeLength },
     { entityId: chain.profileOriginPointId, index: 0, value: [nativeLength / 2, 0] },
   ], batchId);
-  if (tag) batchesFor(get).set(tag, { modelId, expressId });
+  // Moving the start moves the wall's placement, so its openings and fillings follow.
+  if (tag) rememberRemesh(get, tag, modelId, [expressId], 'hostsChanged');
   return { ok: true, newLength: length };
-}
-
-/** The wall a replayed batch resized, if it was a resize. */
-export function wallResizedByBatch(get: Get, batchId: string | undefined) {
-  return batchId === undefined ? undefined : resizeBatches.get(get)?.get(batchId);
 }
 
 function buildWallMesh(get: Get, modelId: string, expressId: number, globalId: number): MeshData | null {
@@ -131,57 +116,14 @@ function buildWallMesh(get: Get, modelId: string, expressId: number, globalId: n
   });
 }
 
-/** Global ids whose swap is waiting on the removal drain → whether to mirror the result. */
-const inFlight = new WeakMap<Get, Map<number, boolean>>();
-
 /**
- * Rebuild the wall's local mesh from its current IFC data. `mirror` also
- * sends the new mesh to collaborators (a local resize does; its undo / redo
- * stays local, like every positional undo). A rebuild requested while one is
- * already waiting on the drain joins it: the mesh is built from the data as
- * it stands when the drain lets it through.
+ * Re-mesh the wall (and what it hosts) from its current IFC data. `mirror`
+ * also sends collaborators a box built from the wall's parameters (a local
+ * resize does; its undo / redo stays local, like every positional undo).
  */
-export function refreshWallMeshIn(get: Get, subscribe: Subscribe, modelId: string, expressId: number, mirror: boolean): void {
-  const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
-  let waiting = inFlight.get(get);
-  if (!waiting) inFlight.set(get, waiting = new Map());
-  if (waiting.has(globalId)) {
-    if (mirror) waiting.set(globalId, true);
-    return;
-  }
-  const append = (mirrorResult: boolean) => {
-    const mesh = buildWallMesh(get, modelId, expressId, globalId);
-    if (!mesh) return;
-    appendAuthoredMesh(get(), modelId, mesh);
-    if (mirrorResult) get().mirrorEntityGeometry(modelId, expressId, mesh);
-  };
-  const model = get().models.get(modelId);
-  const own = ((model ? model.geometryResult : get().geometryResult)?.meshes ?? []).filter((m) => m.expressId === globalId);
-  if (own.length === 0) {
-    append(mirror);
-    return;
-  }
-  if (!own.some((m) => !hostsOtherEntities(m))) {
-    // Colour-merged with other entities: the old mesh can't be taken out, so
-    // a fresh one would render on top of it. Only collaborators get it.
-    if (mirror) {
-      const mesh = buildWallMesh(get, modelId, expressId, globalId);
-      if (mesh) get().mirrorEntityGeometry(modelId, expressId, mesh);
-    }
-    return;
-  }
-  // No replacement to build (e.g. an unset extrusion depth): keep the old mesh
-  // rather than prune it and leave the wall invisible.
-  if (!buildWallMesh(get, modelId, expressId, globalId)) return;
-  // The old mesh leaves the way a delete takes it (store prune + renderer drain).
-  get().pruneGeometryMeshes(new Set([globalId]));
-  get().setPendingMeshRemovals(new Set([globalId]));
-  waiting.set(globalId, mirror);
-  const unsubscribe = subscribe((state) => {
-    if (state.pendingMeshRemovals?.has(globalId)) return;
-    unsubscribe();
-    const mirrorResult = waiting.get(globalId) ?? mirror;
-    waiting.delete(globalId);
-    append(mirrorResult);
-  });
+export function refreshWallMeshIn(get: Get, modelId: string, expressId: number, mirror: boolean): void {
+  void requestRemesh(get, modelId, [expressId], 'hostsChanged');
+  if (!mirror) return;
+  const mesh = buildWallMesh(get, modelId, expressId, toGlobalIdFromModels(get().models, modelId, expressId));
+  if (mesh) get().mirrorEntityGeometry(modelId, expressId, mesh);
 }

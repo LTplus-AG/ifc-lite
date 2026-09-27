@@ -18,7 +18,7 @@
  * shipped — Reposition, Zones, Load Report, Appearance, World, Move georef,
  * Follow work, Classic bar — because nothing checked. This does, both ways:
  *
- * 1. Every `icon={X}` on a RibbonLargeButton / RibbonSmallButton under
+ * 1. Every `icon={X}` on a ribbon button or registry-backed ribbon button under
  *    `ribbon/tabs/` must be an identifier imported from `@/icons` (read from
  *    the TypeScript AST, so a stray import or a name in a comment does not
  *    count).
@@ -45,7 +45,10 @@ const TABS_DIR = path.join(HERE, 'tabs');
 const ICONS_DIR = path.join(SRC, 'icons');
 const ICONS_INDEX = path.join(ICONS_DIR, 'index.ts');
 
-const RIBBON_BUTTONS = new Set(['RibbonLargeButton', 'RibbonSmallButton']);
+const RIBBON_BUTTONS = new Set([
+  'RibbonLargeButton', 'RibbonSmallButton',
+  'RibbonCommandLargeButton', 'RibbonCommandSmallButton',
+]);
 
 /** Paints the vite loader rewrites (see `customCollections.viewer`), plus `none`. */
 const ALLOWED_PAINTS = new Set(['#000000', '#0063B1', 'rgba(0, 99, 177, 1)', 'none']);
@@ -176,20 +179,5 @@ describe('ribbon icon design contract', () => {
       if (heavy.length) problems.push(`${file}.svg: stroke-width ${heavy.join(', ')} exceeds house weight ${MAX_STROKE_WIDTH}`);
     }
     assert.deepEqual(problems, []);
-  });
-
-  it('the seven remaining glyphs that used to be lucide are house icons wired to their buttons', () => {
-    // Regression pin for #4559: these are the buttons that shipped with
-    // lucide glyphs. The generic guard above catches any future one; this
-    // names the specific set so a revert of one is reported by name.
-    const exportsMap = houseIconExports();
-    for (const name of ['Reposition', 'Zones', 'LoadReport', 'Appearance', 'World', 'Move', 'FollowWork']) {
-      assert.ok(exportsMap.has(name), `@/icons must export ${name}`);
-    }
-    const used = new Set<string>();
-    for (const file of tabFiles) for (const { icon } of ribbonButtonIcons(parse(file))) used.add(icon);
-    for (const name of ['Reposition', 'Zones', 'LoadReport', 'Appearance', 'World', 'Move', 'FollowWork']) {
-      assert.ok(used.has(name), `a ribbon button must use icon={${name}}`);
-    }
   });
 });

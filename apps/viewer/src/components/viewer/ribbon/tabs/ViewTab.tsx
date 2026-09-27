@@ -15,14 +15,13 @@ import { openSettings } from '@/lib/settings/open-settings';
 import { useTranslation } from '@/i18n';
 import { useCameraCommands } from '../../toolbar/CameraCommands';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
-import { panelTitleKey } from '@/lib/panels/registry';
+import { CAMERA_RIBBON_COMMAND_IDS } from '../../surface-commands-view-ribbon';
 import {
   RibbonGroup,
   RibbonGroupDivider,
-  RibbonLargeButton,
-  RibbonSmallButton,
   RibbonSmallStack,
 } from '../primitives';
+import { RibbonCommandLargeButton, RibbonCommandSmallButton } from '../command-button';
 
 export function ViewTab() {
   const { t } = useTranslation();
@@ -67,10 +66,9 @@ export function ViewTab() {
   return (
     <>
       <RibbonGroup label={t('ribbon.view.projectionGroup')}>
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="view:projection"
           icon={Orthographic}
-          label={t('ribbon.view.orthographic')}
-          tooltip={t('ribbon.view.orthographicTooltip')}
           active={projectionMode === 'orthographic'}
           onClick={() => toggleProjectionMode()}
         />
@@ -82,12 +80,11 @@ export function ViewTab() {
         {cameraCommands
           .filter((command) => command.group === 'camera')
           .map((command) => (
-            <RibbonLargeButton
+            <RibbonCommandLargeButton
               key={command.id}
+              commandId={CAMERA_RIBBON_COMMAND_IDS[command.id]}
               icon={command.icon}
-              label={t(command.labelKey)}
               tooltip={t(command.tooltipKey)}
-              shortcut={command.shortcut}
               onClick={command.run}
             />
           ))}
@@ -104,11 +101,10 @@ export function ViewTab() {
               .filter((command) => command.group === 'preset')
               .filter((_, index) => index % 2 === column)
               .map((command) => (
-                <RibbonSmallButton
+                <RibbonCommandSmallButton
                   key={command.id}
+                  commandId={CAMERA_RIBBON_COMMAND_IDS[command.id]}
                   icon={command.icon}
-                  label={t(command.labelKey)}
-                  shortcut={command.shortcut}
                   onClick={command.run}
                 />
               ))}
@@ -119,12 +115,11 @@ export function ViewTab() {
         {cameraCommands
           .filter((command) => command.group !== 'camera' && command.group !== 'preset')
           .map((command) => (
-            <RibbonLargeButton
+            <RibbonCommandLargeButton
               key={command.id}
+              commandId={CAMERA_RIBBON_COMMAND_IDS[command.id]}
               icon={command.icon}
-              label={t(command.labelKey)}
               tooltip={t(command.tooltipKey)}
-              shortcut={command.shortcut}
               onClick={command.run}
             />
           ))}
@@ -138,9 +133,9 @@ export function ViewTab() {
             "Move georeference" sub-toggle appears beside it (its amber
             tint signals a modal pose whose exit affordance stays visible). */}
         {cesiumAvailable && (
-          <RibbonLargeButton
+          <RibbonCommandLargeButton
+            commandId="view:world"
             icon={World}
-            label={t('ribbon.view.world')}
             tooltip={cesiumEnabled ? t('ribbon.view.worldHideTooltip') : t('ribbon.view.worldShowTooltip')}
             active={cesiumEnabled}
             activeClassName="bg-teal-600/20 text-foreground ring-1 ring-inset ring-teal-600/50"
@@ -153,20 +148,18 @@ export function ViewTab() {
             }}
           />
         )}
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="view:lighting"
           icon={Lighting}
-          label={t(panelTitleKey('environment'))}
-          aria-label={t(panelTitleKey('environment'))}
-          tooltip={t('ribbon.view.lightingTooltip')}
           active={activeWorkspacePanels.has('environment') || solarEnabled || envSkyEnabled || envPreset !== 'default'}
           activeClassName="bg-amber-500/20 text-foreground ring-1 ring-inset ring-amber-500/50"
           onClick={() => useViewerStore.getState().toggleWorkspacePanel('environment', 'ribbon')}
         />
         <RibbonSmallStack>
           {cesiumAvailable && cesiumEnabled && (
-            <RibbonSmallButton
+            <RibbonCommandSmallButton
+              commandId="view:move-georef"
               icon={Move}
-              label={t('ribbon.view.moveGeoref')}
               tooltip={cesiumPlacementEditMode ? t('ribbon.view.moveGeorefStopTooltip') : t('ribbon.view.moveGeorefStartTooltip')}
               active={cesiumPlacementEditMode}
               activeClassName="bg-amber-500/20 text-foreground ring-1 ring-inset ring-amber-500/50"
@@ -177,10 +170,9 @@ export function ViewTab() {
               }}
             />
           )}
-          <RibbonSmallButton
+          <RibbonCommandSmallButton
+            commandId="view:spacemouse"
             icon={SpaceMouse}
-            label={t('ribbon.view.spaceMouse')}
-            tooltip={t('ribbon.view.spaceMouseTooltip')}
             active={spaceMouseConnected}
             activeClassName="bg-primary/20 text-foreground ring-1 ring-inset ring-primary/50"
             onClick={() => openSettings('display')}
@@ -191,10 +183,9 @@ export function ViewTab() {
       <RibbonGroupDivider />
 
       <RibbonGroup label={t('ribbon.view.interfaceGroup')}>
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="vis:toggle-presentation"
           icon={Viewpoint}
-          label={t(panelTitleKey('presentation'))}
-          aria-label={t(panelTitleKey('presentation'))}
           tooltip={t('ribbon.view.presentTooltip', { views: basketViewCount, entities: pinboardEntities.size })}
           active={activeWorkspacePanels.has('presentation')}
           disabled={!hasModels}
@@ -206,18 +197,16 @@ export function ViewTab() {
           ) : undefined}
         />
         <RibbonSmallStack>
-          <RibbonSmallButton
+          <RibbonCommandSmallButton
+            commandId="view:follow-work"
             icon={FollowWork}
-            label={t('ribbon.view.followWork')}
-            tooltip={t('ribbon.view.followWorkTooltip')}
             active={ribbonContextualTabs}
             onClick={() => setRibbonContextualTabs(!ribbonContextualTabs)}
             {...tourAnchor(TOUR_ANCHORS.ribbonFollowWork)}
           />
-          <RibbonSmallButton
+          <RibbonCommandSmallButton
+            commandId="pref:settings"
             icon={Settings}
-            label={t('ribbon.view.settings')}
-            tooltip={t('ribbon.view.settingsTooltip')}
             onClick={() => openSettings()}
           />
         </RibbonSmallStack>

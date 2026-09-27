@@ -48,7 +48,6 @@ import { layersPanelEn } from './catalogues/layers-panel.en';
 import { landXmlEn } from './catalogues/landxml.en';
 import { terrainImageryEn } from './catalogues/terrain-imagery.en';
 import { lensPanelEn } from './catalogues/lens-panel.en';
-import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { propertyEditorEn } from './catalogues/property-editor.en';
 import { placementPanelEn } from './catalogues/placement-panel.en';
 import { repositionPanelEn } from './catalogues/reposition-panel.en';
@@ -82,6 +81,7 @@ import { viewportLightingEn } from './catalogues/viewport-lighting.en';
 import { spaceSketchEn } from './catalogues/space-sketch.en';
 import { splitToolEn } from './catalogues/split-tool.en';
 import { modelingCommandEn } from './catalogues/modeling-command.en';
+import { remeshEn } from './catalogues/remesh.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
 import { webgpuTroubleshootingEn } from './catalogues/webgpu-troubleshooting.en';
 import { scriptPanelEn } from './catalogues/script-panel.en';
@@ -104,7 +104,6 @@ export const en = {
   ...costPanelEn,
   ...ribbonToolbarEn,
   ...relationshipCardEn,
-  ...mainToolbarEn,
   ...propertyEditorEn,
   ...sharedCommandsEn,
   ...commandPaletteEn,
@@ -128,6 +127,7 @@ export const en = {
   ...spaceSketchEn,
   ...splitToolEn,
   ...modelingCommandEn,
+  ...remeshEn,
   ...documentEn,
   ...documentMenuEn,
   ...drawingUnderlayEn,

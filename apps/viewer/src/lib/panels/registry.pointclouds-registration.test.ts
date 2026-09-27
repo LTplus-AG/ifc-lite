@@ -26,6 +26,6 @@ describe('WORKSPACE_PANELS — point clouds panel registration (#5507)', () => {
     assert.notEqual(entry, undefined, "WORKSPACE_PANELS is missing the 'pointclouds' panel definition");
     assert.equal(entry?.titleKey, 'pointCloudPanel.title');
     assert.equal(entry?.region, 'side');
-    assert.equal(entry?.group, 'inspect');
+    assert.equal(entry?.group, 'site');
   });
 });

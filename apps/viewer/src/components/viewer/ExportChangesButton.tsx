@@ -40,7 +40,7 @@ import {
 } from './ExportChangesReviewDialog';
 
 interface ExportChangesButtonProps {
-  surface?: ExportSurface;
+  surface: ExportSurface;
   /** Optional custom class name */
   className?: string;
   /**
@@ -186,7 +186,7 @@ export function useReviewGroups(
   return [groups, setGroups];
 }
 
-export function ExportChangesButton({ surface = 'classic', className, trigger }: ExportChangesButtonProps) {
+export function ExportChangesButton({ surface, className, trigger }: ExportChangesButtonProps) {
   const { t } = useTranslation();
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<'idle' | 'success' | 'error'>('idle');

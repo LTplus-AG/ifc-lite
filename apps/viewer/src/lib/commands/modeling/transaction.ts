@@ -11,7 +11,8 @@
  *   3. `cmd.commit` inside try;
  *   4. tag everything pushed since the snapshot with one batch id, so one
  *      Ctrl+Z reverts the whole commit however many mutations it wrote;
- *   5. ask for a re-mesh of the touched entities (WP1 seam, no-op default);
+ *   5. re-mesh the touched entities through the wasm re-mesh service and
+ *      remember the batch, so undo / redo re-mesh it too (WP1);
  *   6. apply the command's selection.
  *
  * A commit that throws is reversed: its partial mutations are undone as one
@@ -25,9 +26,9 @@ import type { ViewerState } from '@/store';
 import { mutationDenial } from '@/store/mutation-permission';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { mutationsSince, newMutationBatchId, undoStackLengths } from '@/store/slices/mutation-batch-tags';
+import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
+import type { RemeshCause } from '@/lib/remesh/affected-set';
 import type { AuthoringTransaction, CommandContext, CommitResult, ModelingCommand } from './types.js';
-
-export type RemeshCause = 'shape' | 'created' | 'hostsChanged';
 
 export interface RemeshRequest {
   readonly modelId: string;
@@ -38,14 +39,12 @@ export interface RemeshRequest {
 
 export type RequestRemesh = (get: () => ViewerState, request: RemeshRequest) => void;
 
-const noRemesh: RequestRemesh = () => {};
-let requestRemesh: RequestRemesh = noRemesh;
+/** The wasm re-mesh service (#6297): re-mesh now, and again on undo / redo of the batch. */
+const remeshService: RequestRemesh = (get, { modelId, batchId, expressIds, cause }) =>
+  remeshAfterCommit(get, modelId, batchId, expressIds, cause);
+let requestRemesh: RequestRemesh = remeshService;
 
-/**
- * Inject the re-mesh service (WP1, `lib/remesh/remesh-service.ts`). Until it
- * is wired, commits keep today's mesh paths and this seam does nothing.
- * Returns the function that restores the previous handler.
- */
+/** Replace the re-mesh handler (tests). Returns the function that restores the previous one. */
 export function setRequestRemesh(handler: RequestRemesh): () => void {
   const previous = requestRemesh;
   requestRemesh = handler;
@@ -72,7 +71,7 @@ export function runTransaction(
 
   const before = undoStackLengths(get().undoStacks);
   const redoBefore = get().redoStacks;
-  const overlayBefore = overlayEntityIds(get(), modelId);
+  const overlayBefore = overlayEntityIds(get());
   const batchId = newMutationBatchId();
   const tx: AuthoringTransaction = { modelId, storeyId, workplane, batchId, get store() { return get(); } };
   let result: CommitResult;
@@ -80,7 +79,7 @@ export function runTransaction(
     result = cmd.commit(g, tx);
   } catch (error) {
     rollBack(store, before, redoBefore);
-    dropOverlayEntitiesSince(get(), modelId, overlayBefore);
+    dropOverlayEntitiesSince(get(), overlayBefore);
     const reason = error instanceof Error ? error.message : String(error);
     console.error(`[modeling] ${cmd.id} commit failed; reverted`, error);
     return { ok: false, reason };
@@ -88,10 +87,11 @@ export function runTransaction(
 
   const ids = mutationsSince(get().undoStacks, before);
   if (ids.length > 0) get().tagMutationBatch(ids, batchId);
+  const target = result.modelId ?? modelId;
   if (ids.length > 0 && result.remesh.length > 0) {
-    requestRemesh(get, { modelId, batchId, expressIds: result.remesh, cause: result.created.length > 0 ? 'created' : 'shape' });
+    requestRemesh(get, { modelId: target, batchId, expressIds: result.remesh, cause: result.created.length > 0 ? 'created' : 'shape' });
   }
-  applySelection(get, modelId, result.select);
+  applySelection(get, target, result.select);
   return { ok: true, batchId: ids.length > 0 ? batchId : null, result };
 }
 
@@ -121,20 +121,24 @@ function rollBack(
   });
 }
 
-function overlayEntityIds(state: ViewerState, modelId: string): Set<number> {
-  return new Set(state.mutationViews.get(modelId)?.getNewEntities().map((e) => e.expressId));
+function overlayEntityIds(state: ViewerState): Map<string, Set<number>> {
+  const ids = new Map<string, Set<number>>();
+  for (const [modelId, view] of state.mutationViews) ids.set(modelId, new Set(view.getNewEntities().map((e) => e.expressId)));
+  return ids;
 }
 
 /**
  * A builder writes one CREATE_ENTITY record for the element but also creates
  * its placement, profile and representation entities without history of
  * their own; undoing the element leaves those unreferenced helpers behind.
- * A rolled-back commit must leave the overlay as it found it, so drop them.
+ * A rolled-back commit must leave every model's overlay as it found it (a
+ * command may write to another model than the session's), so drop them.
  */
-function dropOverlayEntitiesSince(state: ViewerState, modelId: string, before: ReadonlySet<number>): void {
-  const view = state.mutationViews.get(modelId);
-  if (!view) return;
-  for (const { expressId } of view.getNewEntities()) if (!before.has(expressId)) view.deleteEntity(expressId);
+function dropOverlayEntitiesSince(state: ViewerState, before: ReadonlyMap<string, ReadonlySet<number>>): void {
+  for (const [modelId, view] of state.mutationViews) {
+    const kept = before.get(modelId) ?? new Set<number>();
+    for (const { expressId } of view.getNewEntities()) if (!kept.has(expressId)) view.deleteEntity(expressId);
+  }
 }
 
 function applySelection(get: () => ViewerState, modelId: string, select: readonly number[] | undefined): void {

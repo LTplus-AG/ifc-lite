@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { setCollabEnabledOverride } from '@/lib/collab/config';
 import { useViewerStore } from '@/store';
 import { buildPanelCommands } from './commandPaletteCommandsPanels.js';
-import { paletteSurfaceCommands, SURFACE_COMMANDS } from './surface-commands.js';
+import { paletteSurfaceCommands, surfaceCommand, SURFACE_COMMANDS } from './surface-commands.js';
 import type { CommandPaletteBuildParams } from './commandPaletteCommandsTypes.js';
 
 const PANEL_IDS = [
@@ -39,6 +39,8 @@ describe('shared panel command homes (#5870)', () => {
   it('generates all static panel rows in browse order and preserves the collab gate', () => {
     const definitions = SURFACE_COMMANDS.filter((command) => command.id.startsWith('panel:'));
     assert.deepEqual(definitions.map((command) => command.id), PANEL_IDS);
+    assert.throws(() => surfaceCommand('panel:tree', 'ribbon'), /not registered for ribbon/,
+      'Tree collapse belongs to the palette and is never a ribbon command');
 
     const hidden = paletteSurfaceCommands({ canEditInSession: true, collabEnabled: false }, () => {})
       .filter((command) => command.id.startsWith('panel:'));

@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildLocus, distanceToLocus, intersectLocusWithGuide, projectOntoLocus, type Locus } from './constraints.js';
+import { buildLocus, intersectLocusWithGuide, projectOntoLocus, type Locus } from './constraints.js';
 import { MODELING_SNAP_PROFILE } from './rank.js';
 import type { Vec2 } from './types.js';
 import { query, rng } from '@/test/snap-fixture.js';

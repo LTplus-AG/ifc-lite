@@ -20,7 +20,7 @@ import { resolveEnglish } from '@/i18n/registry';
 import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
-import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { goHomeFromStore, showAllFromStore } from '@/store/homeView';
 import { hideSelectionFromStore } from '@/store/hideSelection';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { openSettings } from '@/lib/settings/open-settings';
@@ -84,7 +84,7 @@ export const SURFACE_COMMANDS = [
   },
   {
     id: 'view:home', labelKey: 'commandPalette.view.home.label',
-    searchLabel: 'Home', keywords: 'isometric reset camera', category: 'View', icon: Home,
+    searchLabel: 'Home', keywords: 'isometric fit camera', category: 'View', icon: Home,
     surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.home',
     run: () => { goHomeFromStore(); },
   },
@@ -191,14 +191,14 @@ export const SURFACE_COMMANDS = [
     id: 'vis:show', labelKey: ACTION_NAME_KEYS.showAll,
     keywords: 'unhide reset visible', category: 'Visibility', icon: Eye,
     surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'visibility.showAll',
-    run: () => { resetVisibilityForHomeFromStore('show_all'); },
+    run: () => { showAllFromStore('show_all'); },
   },
   {
     id: 'vis:set-iso', labelKey: 'commandPalette.vis.setBasket.label',
     searchLabel: 'Set Basket from Selection',
     keywords: 'basket isolate set selection hierarchy view equals',
     category: 'Visibility', icon: Equal, surfaces: paletteOnly,
-    enabled: alwaysEnabled, shortcut: 'basket.set',
+    enabled: alwaysEnabled,
     run: () => { executeBasketSet(); },
   },
   {

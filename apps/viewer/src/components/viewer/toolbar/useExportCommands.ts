@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useMemo } from 'react';
-import { useIfc } from '@/hooks/useIfc';
+import { selectHasModelsLoaded, selectModelCount } from '@/hooks/model-presence';
 import { useChangedModels } from '@/hooks/useUnexportedChanges';
 import { totalChangeCount } from '@/lib/export/model-changes';
 import { useExtensionExporters } from '@/components/extensions/useExtensionExporters';
@@ -46,12 +46,11 @@ const CSV_SUFFIX: Record<CsvExportType, string> = {
 };
 
 export function useExportCommands(surface: ExportSurface) {
-  const { ifcDataStore, models, geometryResult } = useIfc();
-
+  const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
+  const modelCount = useViewerStore(selectModelCount);
   // Same rule as `useFileCommands.hasModelsLoaded`: federated sessions fill
   // `models` and leave the legacy single-model `geometryResult` null.
-  const hasModelsLoaded =
-    models.size > 0 || Boolean(geometryResult?.meshes && geometryResult.meshes.length > 0);
+  const hasModelsLoaded = useViewerStore(selectHasModelsLoaded);
   const canExport = hasModelsLoaded || Boolean(ifcDataStore);
   // The same live change set the amber Export modified IFC button counts.
   const hasChanges = totalChangeCount(useChangedModels()) > 0;
@@ -72,7 +71,7 @@ export function useExportCommands(surface: ExportSurface) {
    * are unaffected — they go through their own dialogs, which handle the
    * federation themselves.
    */
-  const otherModelCount = Math.max(0, models.size - 1);
+  const otherModelCount = Math.max(0, modelCount - 1);
   const activeModelOnlyNote =
     otherModelCount > 0
       ? ` — active model only, ${otherModelCount} other loaded model${otherModelCount === 1 ? '' : 's'} not included`

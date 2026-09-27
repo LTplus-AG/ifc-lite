@@ -20,6 +20,7 @@ import { SettingsDialogHost } from './settings/SettingsDialog';
 import { ConfirmDialogHost } from '@/components/ui/confirm-dialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { ShellStoreEffects } from './ShellStoreEffects';
+import { selectHasModelsLoaded } from '@/hooks/model-presence';
 import { useActionLogger } from '@/hooks/useActionLogger';
 import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
 import { isSafeMode } from '@/lib/safe-mode';
@@ -241,7 +242,7 @@ export function ViewerLayout() {
   // Hide mobile floating buttons when the empty-state "Load IFC" card shows.
   // A boolean selector, not `useIfc()`: that hook subscribes to `models` and
   // `geometryResult`, so every geometry update re-rendered the whole layout (#6232).
-  const hasModelsLoaded = useViewerStore((s) => s.models.size > 0 || (s.geometryResult?.meshes?.length ?? 0) > 0);
+  const hasModelsLoaded = useViewerStore(selectHasModelsLoaded);
 
   // Mobile/desktop mode; collapses the panels only when ENTERING mobile (#5837).
   useMobileLayoutMode();

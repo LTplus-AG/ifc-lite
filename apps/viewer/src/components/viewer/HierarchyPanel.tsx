@@ -11,7 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useViewerStore, resolveEntityRef } from '@/store';
-import { useIfc } from '@/hooks/useIfc';
+import { useIfcLoader } from '@/hooks/useIfcLoader';
+import { useIfcFederation } from '@/hooks/useIfcFederation';
 import { useEntityListMultiSelect } from '@/hooks/useEntityListMultiSelect';
 import { Rule, activeGroupRules, type FilterRule } from '@ifc-lite/rules';
 import { toast } from '@/components/ui/toast';
@@ -41,19 +42,20 @@ import { HierarchySortControl } from './hierarchy/HierarchySortControl';
 import { hierarchyRowSelection } from './hierarchy/rowSelection';
 import type { HierarchyRowAction } from './hierarchy/HierarchyRowActions';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
+import { createHierarchyModelsSelector, selectLegacyHierarchyGeometry } from './hierarchy/hierarchy-models-selector';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 
 export function HierarchyPanel() {
   const { t } = useTranslation();
-  const {
-    ifcDataStore,
-    geometryResult,
-    models,
-    setActiveModel,
-    setModelVisibility,
-    removeModel,
-    addModel,
-  } = useIfc();
+  // Narrow subscriptions (#6232 perf): `useIfc()` re-rendered the panel and
+  // every row on each geometry update, a re-meshed element included.
+  const [selectHierarchyModels] = useState(createHierarchyModelsSelector);
+  const models = useViewerStore(selectHierarchyModels);
+  const geometryResult = useViewerStore(selectLegacyHierarchyGeometry);
+  const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
+  const setActiveModel = useViewerStore((s) => s.setActiveModel);
+  const setModelVisibility = useViewerStore((s) => s.setModelVisibility);
+  const { addModel, removeModel } = useIfcFederation(useIfcLoader().loadFile);
   const sourceHost = useSourceHost();
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
   const selectedEntityIds = useViewerStore((s) => s.selectedEntityIds);

@@ -30,7 +30,7 @@ export function SunTimeControls() {
   return (
     <div className="flex flex-col gap-1 pt-2 border-t">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {t('viewportLighting.sunTimeControls.title')}
         </span>
         <Switch
@@ -42,8 +42,8 @@ export function SunTimeControls() {
 
       {enabled && (
         <>
-          <label className="flex flex-col gap-0.5">
-            <span className="flex justify-between text-[9px] uppercase tracking-wider text-muted-foreground">
+          <div className="flex flex-col gap-0.5">
+            <span className="flex justify-between text-xs uppercase tracking-wider text-muted-foreground">
               <span>{t('viewportLighting.sunTimeControls.sunTimeLabel')}</span>
               <button
                 type="button"
@@ -56,6 +56,7 @@ export function SunTimeControls() {
             </span>
             <input
               type="range"
+              aria-label={t('viewportLighting.sunTimeControls.sunTimeLabel')}
               min={SUN_DAY_START}
               max={SUN_DAY_END}
               step={0.25}
@@ -63,9 +64,9 @@ export function SunTimeControls() {
               onChange={(e) => setTime(Number(e.target.value))}
               className="w-full accent-primary"
             />
-          </label>
+          </div>
           {solarActive && (
-            <span className="text-[9px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {t('viewportLighting.sunTimeControls.overriddenHint')}
             </span>
           )}

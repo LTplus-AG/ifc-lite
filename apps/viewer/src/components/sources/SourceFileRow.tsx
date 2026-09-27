@@ -73,7 +73,7 @@ export function SourceFileRow({
               {file.modifiedBy && <span>{file.modifiedBy}</span>}
               {file.sizeBytes != null && <span>{formatBytes(file.sizeBytes)}</span>}
               {isUpdateAvailable && (
-                <span className="rounded border border-orange-300 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-orange-600 dark:border-orange-700 dark:text-orange-300">
+                <span className="rounded border border-orange-300 px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-orange-600 dark:border-orange-700 dark:text-orange-300">
                   {t('sources.sourceFileRow.updateAvailable')}
                 </span>
               )}
@@ -98,7 +98,7 @@ export function SourceFileRow({
         {isLoadedInHierarchy && (
           <span className="flex shrink-0 items-center gap-1">
             <span
-              className="rounded border border-emerald-300 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-700 dark:border-emerald-800 dark:text-emerald-300"
+              className="rounded border border-emerald-300 px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-emerald-700 dark:border-emerald-800 dark:text-emerald-300"
               title={
                 loadedModelNames.length > 0
                   ? t('sources.sourceFileRow.loadedTooltip', { names: loadedModelNames.join(', ') })

@@ -95,7 +95,7 @@ export function PanelWindowChromeShell({ title, Icon, kind, onDock, onClose, chi
       <div className="flex items-center gap-2 h-9 shrink-0 px-2 border-b border-border bg-muted/40 select-none">
         {Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
         <span className="text-xs font-medium truncate flex-1 min-w-0">{title}</span>
-        <span className="text-[9px] uppercase tracking-wide text-muted-foreground shrink-0">
+        <span className="text-xs uppercase tracking-wide text-muted-foreground shrink-0">
           {t(kind === 'pip' ? 'shellChrome.panelWindowHost.kindPip' : 'shellChrome.panelWindowHost.kindWindow')}
         </span>
         <button
@@ -117,7 +117,7 @@ export function PanelWindowChromeShell({ title, Icon, kind, onDock, onClose, chi
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
       {/* Decorative hint strip — reinforces that this content is live. */}
-      <div className="flex items-center gap-1.5 h-5 shrink-0 px-2 border-t border-border bg-muted/30 text-[9px] text-muted-foreground select-none">
+      <div className="flex items-center gap-1.5 h-5 shrink-0 px-2 border-t border-border bg-muted/30 text-xs text-muted-foreground select-none">
         <MonitorUp className="h-3 w-3" />
         <span>{t('shellChrome.panelWindowHost.liveSyncedNotice')}</span>
       </div>

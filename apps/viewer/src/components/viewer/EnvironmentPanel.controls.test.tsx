@@ -71,11 +71,9 @@ describe('EnvironmentPanel controls drive the store (#5506 mutation check)', () 
 
   it('the manual time-of-day slider still sets envSunTime', () => {
     const container = render(<EnvironmentPanel />);
-    const label = [...container.querySelectorAll('label')].find((l) => l.textContent?.includes('Sun time'));
-    assert.ok(label, 'expected the "Sun time" control label to render');
-    const slider = label!.querySelector<HTMLInputElement>('input[type="range"]');
-    assert.ok(slider, 'expected the sun-time slider inside the label');
-    setRange(slider!, '9');
+    const slider = container.querySelector<HTMLInputElement>('input[type="range"][aria-label="Sun time"]');
+    assert.ok(slider, 'expected an accessible sun-time slider');
+    setRange(slider, '9');
     assert.strictEqual(useViewerStore.getState().envSunTime, 9);
   });
 });

@@ -31,6 +31,8 @@ export function IdsSummary({ summary, onDismiss }: IdsSummaryProps) {
     });
 
   return (
+    // The dismissible summary contains block content and a button, so output is not valid here.
+    // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
     <div className="mx-3 mb-2 rounded border border-border bg-muted/40 p-2 text-xs" role="status" data-testid="ids-interchange-summary">
       <div className="flex items-start gap-2">
         <p className="flex-1 font-medium">{headline}</p>
@@ -47,7 +49,7 @@ export function IdsSummary({ summary, onDismiss }: IdsSummaryProps) {
       </div>
       {summary.refused.length > 0 && (
         <div className="mt-1.5">
-          <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {t(isExport ? 'validationPanel.idsExport.refusedHeading' : 'validationPanel.idsImport.refusedHeading')}
           </h4>
           <ul className="mt-1 flex flex-col gap-1">
@@ -64,7 +66,7 @@ export function IdsSummary({ summary, onDismiss }: IdsSummaryProps) {
       )}
       {summary.dropped && summary.dropped.length > 0 && (
         <div className="mt-1.5">
-          <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {t('validationPanel.idsImport.droppedHeading')}
           </h4>
           <ul className="ml-3 mt-1 list-disc text-muted-foreground">
@@ -74,7 +76,7 @@ export function IdsSummary({ summary, onDismiss }: IdsSummaryProps) {
       )}
       {summary.notes.length > 0 && (
         <div className="mt-1.5">
-          <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {t('validationPanel.idsSummary.notesHeading')}
           </h4>
           <ul className="ml-3 mt-1 list-disc text-muted-foreground">

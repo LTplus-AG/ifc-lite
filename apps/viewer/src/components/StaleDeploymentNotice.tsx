@@ -33,7 +33,7 @@ export function StaleDeploymentNotice(): ReactNode {
       <button
         type="button"
         onClick={() => window.location.reload()}
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] transition-colors hover:bg-accent"
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition-colors hover:bg-accent"
       >
         <RefreshCw className="h-3 w-3" aria-hidden />
         {t('viewerShell.chunkError.reload')}

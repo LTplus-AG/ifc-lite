@@ -217,10 +217,10 @@ export function FlowPanel() {
             `flow:ext:<extension>:<graph>`, naming the extension that shipped it. */}
         {flowDoc && (!isContributedOpen || openedContributed) && (
           <>
-            <div className="inline-flex rounded border border-border" role="group" aria-label={t('flowPanel.view.ariaLabel')} data-flow-view-toggle>
+            <fieldset className="inline-flex min-w-0 rounded border border-border p-0" aria-label={t('flowPanel.view.ariaLabel')} data-flow-view-toggle>
               <button type="button" className={`px-2 py-0.5 ${view === 'editor' ? 'bg-muted font-medium' : ''}`} aria-pressed={view === 'editor'} onClick={() => setView('editor')}>{t('flowPanel.view.editor')}</button>
               <button type="button" className={`px-2 py-0.5 ${view === 'player' ? 'bg-muted font-medium' : ''}`} aria-pressed={view === 'player'} onClick={() => setView('player')}>{t('flowPanel.view.player')}</button>
-            </div>
+            </fieldset>
             {view === 'editor' && (
               <button type="button" className={`${button} inline-flex items-center gap-1 border-[#7aa2f7] text-[#7aa2f7]`} disabled={!canRun} onClick={() => void run()} title={activeModelId ? t('flowPanel.runHint') : t('flowPanel.noModel')}>
                 <Play className="h-3 w-3" aria-hidden="true" />{flowRunning ? t('flowPanel.running') : t('flowPanel.run')}
@@ -255,7 +255,7 @@ export function FlowPanel() {
       )}
 
       {(lastRun || lastError) && (
-        <div className="flex flex-wrap items-center gap-x-3 border-t border-border px-3 py-1 text-[10px]" data-flow-run-bar>
+        <div className="flex flex-wrap items-center gap-x-3 border-t border-border px-3 py-1 text-2xs" data-flow-run-bar>
           {lastError && <span className="text-red-400">{t('flowPanel.run.failed')}: {lastError}</span>}
           {lastRun && (
             <>

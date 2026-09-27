@@ -265,3 +265,43 @@ describe('PropertyEditor — Real/Integer parse guard (commitSave)', () => {
     assert.equal(toastMessages.length, 0);
   });
 });
+
+describe('PropertyEditor native Boolean choices (#5821)', () => {
+  afterEach(() => {
+    cleanup();
+    setLocale('en');
+  });
+
+  it('activates a visible Boolean label and commits the selected value', async () => {
+    const view = seedStore();
+    const container = render(
+      <PropertyEditor
+        modelId={MODEL_ID}
+        entityId={ENTITY_ID}
+        psetName={PSET}
+        propName={PROP}
+        currentValue={null}
+        currentType={PropertyValueType.Boolean}
+      />,
+    );
+    const editButton = container.querySelector<HTMLButtonElement>('button[title="Click to edit"]');
+    assert.ok(editButton);
+    click(editButton);
+    await advance(0);
+
+    const choices = [...container.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+    assert.deepEqual(choices.map((choice) => choice.value), ['', 'true', 'false']);
+    assert.equal(new Set(choices.map((choice) => choice.name)).size, 1);
+    assert.deepEqual(choices.map((choice) => choice.checked), [true, false, false]);
+
+    const trueLabel = choices[1]?.closest('label');
+    assert.ok(trueLabel, 'the True option has a visible label');
+    assert.equal(trueLabel.textContent?.trim(), 'True');
+    click(trueLabel);
+    await advance(0);
+    assert.deepEqual(choices.map((choice) => choice.checked), [false, true, false]);
+    click(getSaveButton());
+    await advance(0);
+    assert.equal(view.getPropertyValue(ENTITY_ID, PSET, PROP), true);
+  });
+});

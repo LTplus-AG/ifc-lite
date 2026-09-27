@@ -129,6 +129,16 @@ function createMockBackend() {
     connectStructuralMemberToConnection: vi.fn((modelId: string) => ({ modelId, expressId: 306 })),
     connectStructuralActivityToItem: vi.fn((modelId: string) => ({ modelId, expressId: 307 })),
     assignToStructuralGroup: vi.fn((modelId: string) => ({ modelId, expressId: 308 })),
+    // #6232: openings, hosted doors/windows, types and materials.
+    addOpening: vi.fn((modelId: string) => ({ modelId, expressId: 400 })),
+    addHostedDoor: vi.fn((modelId: string) => ({ modelId, expressId: 401 })),
+    addHostedWindow: vi.fn((modelId: string) => ({ modelId, expressId: 402 })),
+    addElementType: vi.fn((modelId: string) => ({ modelId, expressId: 403 })),
+    assignType: vi.fn((modelId: string) => ({ modelId, expressId: 404 })),
+    addMaterial: vi.fn((modelId: string) => ({ modelId, expressId: 405 })),
+    addMaterialLayerSet: vi.fn((modelId: string) => ({ modelId, expressId: 406 })),
+    addMaterialLayerSetUsage: vi.fn((modelId: string) => ({ modelId, expressId: 407 })),
+    assignMaterial: vi.fn((modelId: string) => ({ modelId, expressId: 408 })),
   };
   const spatial = {
     queryBounds: vi.fn((_modelId: string, _bounds: AABB): EntityRef[] => []),

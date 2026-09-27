@@ -4,18 +4,18 @@
 
 /**
  * #5869: one table of the mechanisms that keep geometry off screen drives
- * every user-facing reset (Home, Show all, the "A" key, the context menu).
+ * every user-facing visibility reset (the Show all control, the "A" key, the context menu).
  *
  * For every row, at 1 and 3 federated models: activate that mechanism alone,
- * see the table report it, run Home, and see it gone unless its row says the
- * reset deliberately keeps it. On main, Home left a hidden federated model
+ * see the table report it, run Show all, and see it gone unless its row says the
+ * reset deliberately keeps it. On main, Show all left a hidden federated model
  * hidden, and nothing could say why.
  */
 
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore, type ViewerState } from '@/store';
-import { resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { showAllFromStore } from '@/store/homeView';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import type { VisibilitySlice } from '@/store/slices/visibilitySlice';
 import type { LensSlice } from '@/store/slices/lensSlice';
@@ -160,7 +160,7 @@ it('reports angle- and radius-only scene measurements as a visibility reason (#6
 
 for (const modelCount of [1, 3]) {
   describe(`visibility reasons at ${modelCount} model(s) (#5869)`, () => {
-    it('Home preserves a manual hide overlapping the lens without giving the lens ownership', () => {
+    it('Show all preserves a manual hide overlapping the lens without giving the lens ownership', () => {
       const offset = seedModels(modelCount);
       const manualOverlap = offset + 10;
       const manualOnly = offset + 11;
@@ -172,23 +172,23 @@ for (const modelCount of [1, 3]) {
         lensAppliedHiddenIds: [lensOwned],
       });
 
-      resetVisibilityForHomeFromStore('home');
-      const afterHome = useViewerStore.getState();
-      assert.deepEqual(afterHome.hiddenEntities, new Set([manualOverlap, lensOwned]));
-      assert.deepEqual(afterHome.lensAppliedHiddenIds, [lensOwned]);
-      assert.deepEqual(ids(afterHome), ['lens'], 'Home clears manual-only hides');
+      showAllFromStore('show_all');
+      const afterShowAll = useViewerStore.getState();
+      assert.deepEqual(afterShowAll.hiddenEntities, new Set([manualOverlap, lensOwned]));
+      assert.deepEqual(afterShowAll.lensAppliedHiddenIds, [lensOwned]);
+      assert.deepEqual(ids(afterShowAll), ['lens'], 'Show all clears manual-only hides');
 
       const teardown = planLensHiddenSync({
-        applied: afterHome.lensAppliedHiddenIds,
-        hiddenEntities: afterHome.hiddenEntities,
+        applied: afterShowAll.lensAppliedHiddenIds,
+        hiddenEntities: afterShowAll.hiddenEntities,
         lensHiddenIds: new Set(),
       });
       assert.deepEqual(teardown.show, [lensOwned]);
-      assert.deepEqual(new Set([...afterHome.hiddenEntities].filter((id) => !teardown.show.includes(id))),
+      assert.deepEqual(new Set([...afterShowAll.hiddenEntities].filter((id) => !teardown.show.includes(id))),
         new Set([manualOverlap]), 'deactivating the lens must leave the manual hide in place');
     });
 
-    it('Home owns a new lens match even when no manual hidden reason is active (#5869)', () => {
+    it('Show all owns a new lens match even when no manual hidden reason is active (#5869)', () => {
       const offset = seedModels(modelCount);
       const newMatch = offset + 10;
       useViewerStore.setState({
@@ -198,10 +198,10 @@ for (const modelCount of [1, 3]) {
         lensAppliedHiddenIds: [],
       });
 
-      resetVisibilityForHomeFromStore('home');
-      const afterHome = useViewerStore.getState();
-      assert.deepEqual(afterHome.hiddenEntities, new Set([newMatch]));
-      assert.deepEqual(afterHome.lensAppliedHiddenIds, [newMatch]);
+      showAllFromStore('show_all');
+      const afterShowAll = useViewerStore.getState();
+      assert.deepEqual(afterShowAll.hiddenEntities, new Set([newMatch]));
+      assert.deepEqual(afterShowAll.lensAppliedHiddenIds, [newMatch]);
     });
 
     it('a fresh federation has no active reason', () => {
@@ -219,18 +219,18 @@ for (const modelCount of [1, 3]) {
     });
 
     for (const reason of VISIBILITY_REASONS) {
-      it(`${reason.id}: reported while active; Home ${reason.resetPolicy === 'cleared' ? 'clears it' : 'keeps it'}`, () => {
+      it(`${reason.id}: reported while active; Show all ${reason.resetPolicy === 'cleared' ? 'clears it' : 'keeps it'}`, () => {
         const lastOffset = seedModels(modelCount);
         useViewerStore.setState(ACTIVATE[reason.id](lastOffset));
         assert.deepEqual(ids(useViewerStore.getState()), [reason.id],
           `activating ${reason.id} alone must report exactly that reason`);
 
-        resetVisibilityForHomeFromStore('home');
+        showAllFromStore('show_all');
         const after = ids(useViewerStore.getState());
         if (reason.resetPolicy === 'cleared') {
-          assert.deepEqual(after, [], `Home must clear ${reason.id}`);
+          assert.deepEqual(after, [], `Show all must clear ${reason.id}`);
         } else {
-          assert.deepEqual(after, [reason.id], `Home keeps ${reason.id}, and the table must still name it`);
+          assert.deepEqual(after, [reason.id], `Show all keeps ${reason.id}, and the table must still name it`);
         }
       });
 
@@ -265,11 +265,11 @@ for (const modelCount of [1, 3]) {
   });
 }
 
-describe('Home with a hidden federated model (#5869)', () => {
+describe('Show all with a hidden federated model (#5869)', () => {
   it('shows the model again', () => {
     seedModels(3);
     useViewerStore.getState().setModelsVisibility(['m1'], false);
-    resetVisibilityForHomeFromStore('home');
+    showAllFromStore('show_all');
     assert.deepEqual([...useViewerStore.getState().models.values()].map((m) => m.visible), [true, true, true]);
   });
 });

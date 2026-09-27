@@ -90,7 +90,7 @@ export function HoverTooltip() {
         #{hoverState.entityId}
       </div>
       {hoverState.worldXYZ && (
-        <div className="text-[10px] font-mono text-muted-foreground mt-0.5">
+        <div className="text-2xs font-mono text-muted-foreground mt-0.5">
           {hoverState.worldXYZ.x.toFixed(2)}, {hoverState.worldXYZ.y.toFixed(2)}, {hoverState.worldXYZ.z.toFixed(2)}
         </div>
       )}

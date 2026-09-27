@@ -94,10 +94,23 @@ test('authored IFC entity menu exposes actions, arrow navigation, submenu and fo
   await page.keyboard.press('ArrowLeft');
   await expect(submenu).toBeFocused();
 
+  const selectedOnDismiss = await page.evaluate(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    const id = state.contextMenu.entityId;
+    if (id == null) throw new Error('authored IFC menu has no entity owner');
+    state.setSelectedEntityIds([id]);
+    state.setSelectedEntityId(id);
+    return id;
+  });
   await page.screenshot({ path: info.outputPath('entity-context-menu-authored-ifc.png') });
   await page.keyboard.press('Escape');
   await expect(menu).toBeHidden();
   await expect(page.locator('#context-menu-focus-origin')).toBeFocused();
+  const selectionAfterDismiss = await page.evaluate(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    return { selectedEntityId: state.selectedEntityId, selectedEntityIds: [...state.selectedEntityIds] };
+  });
+  expect(selectionAfterDismiss).toEqual({ selectedEntityId: selectedOnDismiss, selectedEntityIds: [selectedOnDismiss] });
 
   await openWallMenu(page);
   await menu.getByRole('menuitem', { name: 'Hide', exact: true }).click();

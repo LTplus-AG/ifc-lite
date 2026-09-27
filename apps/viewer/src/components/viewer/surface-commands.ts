@@ -21,6 +21,7 @@ import { PANEL_SURFACE_COMMANDS } from './surface-commands-panels';
 import { WORKSPACE_SURFACE_COMMANDS } from './surface-commands-workspace';
 import { RIBBON_VIEW_SURFACE_COMMANDS } from './surface-commands-view-ribbon';
 import { VISIBILITY_SURFACE_COMMANDS } from './surface-commands-visibility';
+import { RIBBON_FILE_SURFACE_COMMANDS } from './surface-commands-file-ribbon';
 import { MOBILE_SURFACE_COMMANDS } from './surface-commands-mobile';
 import { CONTEXT_SURFACE_COMMANDS, runContextAction, runContextOr } from './surface-commands-context';
 import { runSurfaceCommand } from './surface-command-run';
@@ -32,9 +33,9 @@ const paletteAndRibbon = ['palette', 'ribbon'] as const;
 const paletteOnly = ['palette'] as const;
 const FILE_AND_VIEW_SURFACE_COMMANDS = [
   {
-    id: 'file:open', labelKey: 'commandPalette.file.open.label',
+    id: 'file:open', labelKey: 'commandPalette.file.open.label', ribbonLabelKey: 'ribbon.file.open', ribbonTooltipKey: 'ribbon.file.openTooltip',
     keywords: 'ifc ifcx glb load model browse',
-    category: 'File', icon: FolderOpen, surfaces: ['palette', 'mobile'], enabled: alwaysEnabled,
+    category: 'File', icon: FolderOpen, surfaces: ['palette', 'mobile', 'ribbon'], enabled: alwaysEnabled,
     mobileLabelKey: () => 'shellChrome.mobileToolbar.openFileAriaLabel',
     immediate: true,
     run: ({ openFiles }: SurfaceCommandContext) => {
@@ -182,6 +183,7 @@ export type SurfaceCommandId =
   | (typeof PANEL_SURFACE_COMMANDS)[number]['id']
   | (typeof WORKSPACE_SURFACE_COMMANDS)[number]['id']
   | (typeof RIBBON_VIEW_SURFACE_COMMANDS)[number]['id']
+  | (typeof RIBBON_FILE_SURFACE_COMMANDS)[number]['id']
   | (typeof MOBILE_SURFACE_COMMANDS)[number]['id']
   | (typeof CONTEXT_SURFACE_COMMANDS)[number]['id']
   | (typeof RIBBON_ENTITY_ACTIONS_SURFACE_COMMANDS)[number]['id']
@@ -192,6 +194,7 @@ export const SURFACE_COMMANDS: readonly (SurfaceCommandDefinition & { id: Surfac
   ...PANEL_SURFACE_COMMANDS,
   ...WORKSPACE_SURFACE_COMMANDS,
   ...RIBBON_VIEW_SURFACE_COMMANDS,
+  ...RIBBON_FILE_SURFACE_COMMANDS,
   ...MOBILE_SURFACE_COMMANDS,
   ...CONTEXT_SURFACE_COMMANDS,
   ...RIBBON_ENTITY_ACTIONS_SURFACE_COMMANDS,

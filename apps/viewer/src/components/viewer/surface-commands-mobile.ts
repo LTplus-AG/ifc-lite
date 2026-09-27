@@ -10,13 +10,14 @@ import { useViewerStore } from '@/store';
 import type { SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
 
 const mobileOnly = ['mobile'] as const;
+const mobileAndRibbon = ['mobile', 'ribbon'] as const;
 const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 
 export const MOBILE_SURFACE_COMMANDS = [
   {
-    id: 'file:add-model', labelKey: 'shellChrome.mobileToolbar.addModelAriaLabel',
+    id: 'file:add-model', labelKey: 'shellChrome.mobileToolbar.addModelAriaLabel', ribbonLabelKey: 'ribbon.file.addModel', ribbonTooltipKey: 'ribbon.file.addModelTooltip',
     keywords: 'add load federated model', category: 'File', icon: Plus,
-    surfaces: mobileOnly, enabled: alwaysEnabled,
+    surfaces: mobileAndRibbon, enabled: alwaysEnabled,
     run: ({ addModel }: SurfaceCommandContext) => {
       if (!addModel) throw new Error('Add model requires the mobile file input');
       addModel();

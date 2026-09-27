@@ -3,22 +3,48 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
-import { afterEach, it } from 'node:test';
+import { afterEach, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, mouseDown, render } from '@/test/render.js';
+import { click, cleanup, mouseDown, render } from '@/test/render.js';
 import { resolve } from '@/i18n/registry';
+import { posthog } from '@/lib/analytics';
+import { setCollabEnabledOverride } from '@/lib/collab/config';
 import { useViewerStore, type RibbonTabId } from '@/store';
 import { SURFACE_COMMANDS, type SurfaceCommandDefinition } from '../surface-commands.js';
 import { EXPORT_COMMANDS } from '../toolbar/export-commands.js';
+import type { FileCommands } from '../toolbar/useFileCommands.js';
 import { RibbonToolbar } from './RibbonToolbar.js';
+import { FileTab } from './tabs/FileTab.js';
 
 const TABS: RibbonTabId[] = ['file', 'home', 'view', 'elements', 'analyze', 'author'];
 const initialState = useViewerStore.getState();
 
 afterEach(() => {
+  mock.restoreAll();
   cleanup();
+  setCollabEnabledOverride(null);
   act(() => useViewerStore.setState(initialState));
+});
+
+it('#5878 File Share invokes its mounted host once through the registry', () => {
+  setCollabEnabledOverride(true);
+  let shareOpens = 0;
+  const fileCommands: FileCommands = {
+    fileInputs: null, openShareDialog: () => { shareOpens++; },
+    handleOpenClick: async () => {}, handleAddModelClick: async () => {},
+    handleRefresh: async () => {}, canRefresh: false, hasModelsLoaded: true,
+  };
+  const capture = mock.method(posthog, 'capture', () => undefined);
+  const container = render(<FileTab fileCommands={fileCommands} />);
+  const share = container.querySelector<HTMLButtonElement>('button[data-command-id="file:share"]');
+  assert.ok(share, 'Share is mounted when collaboration is enabled');
+  click(share);
+  assert.equal(shareOpens, 1, 'Share reaches the live file host exactly once');
+  assert.deepEqual(capture.mock.calls.filter((call) => call.arguments[0] === 'command_executed')
+    .map((call) => call.arguments), [
+    ['command_executed', { command_id: 'file:share', surface: 'ribbon' }],
+  ]);
 });
 
 it('#5878 mounted ribbon commands use their registry names on every tab', () => {
@@ -72,6 +98,33 @@ it('#5878 mounted ribbon commands use their registry names on every tab', () => 
   // hand-labelled command fails this mounted guard even before its tab is
   // converted to typed IDs. Drop each count to zero with that tab's migration.
   assert.deepEqual(rawByTab, {
-    file: 4, home: 0, view: 0, elements: 13, analyze: 0, author: 9,
+    file: 0, home: 0, view: 0, elements: 13, analyze: 0, author: 9,
   });
+});
+
+it('#5878 enabled collaboration File controls use registered names', () => {
+  setCollabEnabledOverride(true);
+  act(() => useViewerStore.setState({ ribbonTab: 'file', ribbonCollapsed: false }));
+  const container = render(<RibbonToolbar />);
+  const band = container.querySelector('[role="tabpanel"]');
+  assert.ok(band);
+  const buttons = [...band.querySelectorAll<HTMLButtonElement>('button')];
+  const commandIds = buttons.map((button) => button.dataset.commandId);
+  assert.ok(commandIds.includes('file:share'));
+  assert.ok(commandIds.includes('panel:collab'));
+  for (const button of buttons) {
+    if (button.dataset.exportExtension) continue;
+    if (button.dataset.exportCommand) {
+      const exportCommand = EXPORT_COMMANDS.find((item) => item.id === button.dataset.exportCommand);
+      assert.ok(exportCommand);
+      assert.equal(button.getAttribute('aria-label'), resolve(exportCommand.tooltipKey));
+      continue;
+    }
+    const id = button.dataset.commandId;
+    assert.ok(id, 'collaboration adds no raw File command controls');
+    const command: SurfaceCommandDefinition | undefined = SURFACE_COMMANDS.find((item) => item.id === id);
+    assert.ok(command);
+    assert.ok(command.surfaces.includes('ribbon'));
+    assert.equal(button.getAttribute('aria-label'), resolve(command.ribbonLabelKey ?? command.labelKey));
+  }
 });

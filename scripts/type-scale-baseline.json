@@ -47,7 +47,7 @@
   "apps/viewer/src/components/viewer/SunTimeControls.tsx": 3,
   "apps/viewer/src/components/viewer/TextAnnotationEditor.tsx": 1,
   "apps/viewer/src/components/viewer/ViewCube.tsx": 1,
-  "apps/viewer/src/components/viewer/ViewerLayout.tsx": 3,
+  "apps/viewer/src/components/viewer/ViewerLayout.tsx": 1,
   "apps/viewer/src/components/viewer/ViewportWelcomeCard.tsx": 11,
   "apps/viewer/src/components/viewer/ZoneApportionSummary.tsx": 2,
   "apps/viewer/src/components/viewer/annotations/AnnotationDropInput.tsx": 5,

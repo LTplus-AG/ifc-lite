@@ -33,7 +33,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
@@ -44,7 +43,9 @@ import { useClash, type ClashBcfConfig, type ClashBcfGroupBy } from '@/hooks/use
 import type { ClashSeverity } from '@ifc-lite/clash';
 
 interface ClashBcfExportDialogProps {
-  trigger?: React.ReactNode;
+  /** Opened from the Clash export split button (#5834). */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 const SEVERITIES: { key: ClashSeverity; labelKey: TranslationKey; color: string }[] = [
@@ -68,11 +69,10 @@ const DEFAULT_CONFIG: ClashBcfConfig = {
   maxTopics: 500,
 };
 
-export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
+export function ClashBcfExportDialog({ open, onOpenChange: setOpen }: ClashBcfExportDialogProps) {
   const { t } = useTranslation();
   const { result, exportBcf, bcfPreview } = useClash();
 
-  const [open, setOpen] = useState(false);
   const [config, setConfig] = useState<ClashBcfConfig>(DEFAULT_CONFIG);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -113,14 +113,6 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        {trigger ?? (
-          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
-            <Download className="h-3.5 w-3.5 mr-1" />
-            BCF
-          </Button>
-        )}
-      </DialogTrigger>
       <DialogContent className="sm:max-w-[460px] overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

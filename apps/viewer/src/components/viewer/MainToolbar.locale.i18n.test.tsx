@@ -155,7 +155,7 @@ describe('MainToolbar with a registered locale (#4918)', () => {
       'translated key renders in the registered locale',
     );
     assert.ok(strings.has('Walk Mode'), 'untranslated key renders in English');
-    assert.ok(strings.has('Show all (reset filters)') === false); // sanity: catalogue text is case-sensitive
-    assert.ok(strings.has('Show All (Reset Filters)'), 'untranslated key renders in English, exact case');
+    assert.ok(strings.has('Show All (Reset Filters)') === false, 'former per-surface name is gone');
+    assert.ok(strings.has('Show all'), 'canonical action name falls back to English');
   });
 });

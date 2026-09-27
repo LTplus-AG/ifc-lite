@@ -2,9 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Building2, ChevronDown, ChevronRight, Wrench } from 'lucide-react';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import type { EntityResult, SpecificationResult, SetResult } from '@ifc-lite/ids';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -15,6 +14,7 @@ import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { EntityResultRow, RequirementGroupRow, SetResultRow } from './IDSResultRows';
 import { PassRateBar, StatusIcon } from './IDSPanelStatus';
+import { AnalysisResultList } from './analysis/AnalysisResultList';
 
 interface SpecificationCardProps {
   result: SpecificationResult;
@@ -37,46 +37,33 @@ function EntityResultsList({ entities, onEntityClick }: {
   entities: EntityResult[];
   onEntityClick: (modelId: string, expressId: number) => void;
 }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
   const [expandedEntities, setExpandedEntities] = useState<Set<string>>(() => new Set());
-  const virtualizer = useVirtualizer({
-    count: entities.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => 60,
-    getItemKey: (index) => entityKey(entities[index]),
-    overscan: 5,
-  });
-
   return (
-    <div ref={scrollRef} data-ids-entity-results className="max-h-64 overflow-auto">
-      <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-        {virtualizer.getVirtualItems().map((row) => {
-          const entity = entities[row.index];
-          const key = entityKey(entity);
-          return (
-            <div
-              key={row.key}
-              data-index={row.index}
-              ref={virtualizer.measureElement}
-              className="absolute top-0 left-0 w-full border-b border-border/60"
-              style={{ transform: `translateY(${row.start}px)` }}
-            >
-              <EntityResultRow
-                entity={entity}
-                onClick={() => onEntityClick(entity.modelId, entity.expressId)}
-                detailsOpen={expandedEntities.has(key)}
-                onToggleDetails={() => setExpandedEntities((current) => {
-                  const next = new Set(current);
-                  if (next.has(key)) next.delete(key);
-                  else next.add(key);
-                  return next;
-                })}
-              />
-            </div>
-          );
-        })}
-      </div>
-    </div>
+    <AnalysisResultList
+      data-ids-entity-results
+      className="max-h-64"
+      rowClassName="border-b border-border/60"
+      items={entities}
+      getKey={entityKey}
+      estimateSize={() => 60}
+      overscan={5}
+      renderRow={(entity) => {
+        const key = entityKey(entity);
+        return (
+          <EntityResultRow
+            entity={entity}
+            onClick={() => onEntityClick(entity.modelId, entity.expressId)}
+            detailsOpen={expandedEntities.has(key)}
+            onToggleDetails={() => setExpandedEntities((current) => {
+              const next = new Set(current);
+              if (next.has(key)) next.delete(key);
+              else next.add(key);
+              return next;
+            })}
+          />
+        );
+      }}
+    />
   );
 }
 

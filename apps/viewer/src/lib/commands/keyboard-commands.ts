@@ -22,6 +22,7 @@
  */
 
 import type { TranslationKey } from '@/i18n';
+import { ACTION_NAME_KEYS } from './action-names';
 import type { KeyChord } from './chord';
 
 /**
@@ -129,7 +130,7 @@ export const KEY_COMMANDS = [
 
   // ── Visibility ────────────────────────────────────────────────────────
   { id: 'visibility.hideSelection', labelKey: 'commands.visibility.hideSelection', category: 'visibility', when: 'global', keys: [k('delete'), k('backspace'), k(' ')] },
-  { id: 'visibility.showAll', labelKey: 'commands.visibility.showAll', category: 'visibility', when: 'global', keys: [k('a')] },
+  { id: 'visibility.showAll', labelKey: ACTION_NAME_KEYS.showAll, category: 'visibility', when: 'global', keys: [k('a')] },
   { id: 'basket.isolate', labelKey: 'commands.basket.isolate', category: 'visibility', when: 'global', keys: [k('i')] },
   { id: 'basket.set', labelKey: 'commands.basket.set', category: 'visibility', when: 'global', keys: [k('=')] },
   { id: 'basket.add', labelKey: 'commands.basket.add', category: 'visibility', when: 'global', keys: [k('+')] },

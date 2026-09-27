@@ -127,7 +127,7 @@ describe('IDSPanel localization (#4918)', () => {
       percentage: 100,
     };
     // Drive the progress bar through the mounted <IDSPanel/>, not the extracted
-    // IDSValidationProgress component directly: the revert oracle reverses this
+    // progress state (`idsProgressState`, #5834) directly: the revert oracle reverses this
     // PR's whole production diff at once, which deletes IDSPanelStates.tsx (a
     // file this PR introduces) and would make a direct import fail to load
     // rather than fail an assertion (#5030 CI run 35479371310, job

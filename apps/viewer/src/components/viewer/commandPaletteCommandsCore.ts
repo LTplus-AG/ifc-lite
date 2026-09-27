@@ -18,6 +18,8 @@
  * The recent-files loop has no `labelKey`: the filename IS the label.
  */
 
+import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
+import { resolveEnglish } from '@/i18n/registry';
 import {
   MousePointer2, PersonStanding, Ruler, Scissors, Home, Maximize2, Crosshair,
   ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Box, EyeOff, Eye,
@@ -147,7 +149,7 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
   c.push(
     { id: 'vis:hide', label: 'Hide Selection', ...withKey('commandPalette.vis.hide.label'), keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff, shortcut: 'visibility.hideSelection',
       action: () => { hideSelectionFromStore(); } },
-    { id: 'vis:show', label: 'Show All', ...withKey('commandPalette.vis.show.label'), keywords: 'unhide reset visible', category: 'Visibility', icon: Eye, shortcut: 'visibility.showAll',
+    { id: 'vis:show', label: resolveEnglish(ACTION_NAME_KEYS.showAll), ...withKey(ACTION_NAME_KEYS.showAll), keywords: 'unhide reset visible', category: 'Visibility', icon: Eye, shortcut: 'visibility.showAll',
       action: () => { resetVisibilityForHomeFromStore('show_all'); } },
     { id: 'vis:set-iso', label: 'Set Basket from Selection', ...withKey('commandPalette.vis.setBasket.label'), keywords: 'basket isolate set selection hierarchy view equals', category: 'Visibility', icon: Equal, shortcut: 'basket.set',
       action: () => executeBasketSet() },

@@ -159,7 +159,7 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
   const valueCellContent = (
     <>
       <span
-        className={`text-2xs font-mono tabular-nums break-all text-right ${
+        className={`text-xs font-mono tabular-nums break-all text-right ${
           isMutated
             ? 'text-foreground font-semibold'
             : 'text-teal-700 dark:text-teal-400'
@@ -177,11 +177,11 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
 
   const rowBody = (
     <>
-      <span className="text-2xs text-zinc-500 dark:text-zinc-400 shrink-0 pt-0.5 flex items-center gap-0.5 min-w-[110px]">
+      <span className="text-xs text-zinc-500 dark:text-zinc-400 shrink-0 pt-0.5 flex items-center gap-0.5 min-w-[110px]">
         {isComputed && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-2xs text-teal-500">*</span>
+              <span className="text-xs text-teal-500">*</span>
             </TooltipTrigger>
             <TooltipContent>{t('properties.georef.computedTooltip')}</TooltipContent>
           </Tooltip>
@@ -191,7 +191,7 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
       <div className="flex-1 flex flex-col items-end gap-0.5 min-w-0">
         <div className="flex items-start gap-1 w-full justify-end">
           {isMutated && !editing && (
-            <Badge variant="secondary" className="h-4 px-1 text-2xs bg-overlay-accent-soft text-foreground border-overlay-accent/40 shrink-0 mt-0.5">
+            <Badge variant="secondary" className="h-4 px-1 text-xs bg-overlay-accent-soft text-foreground border-overlay-accent/40 shrink-0 mt-0.5">
               {t('properties.georef.editedBadge')}
             </Badge>
           )}
@@ -204,7 +204,7 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
                     aria-label={label}
                     value={editValue}
                     onChange={e => { setEditValue(e.target.value); }}
-                    className="flex-1 text-2xs font-mono px-1.5 py-1 border border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400"
+                    className="flex-1 text-xs font-mono px-1.5 py-1 border border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400"
                   >
                     <option value="">{t('properties.georef.selectPlaceholder')}</option>
                     {hint.suggestions?.map(s => <option key={s} value={s}>{s}</option>)}
@@ -218,7 +218,7 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
                     onChange={e => setEditValue(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder={hint.placeholderKey ? t(hint.placeholderKey) : undefined}
-                    className="flex-1 min-w-0 text-2xs font-mono px-1.5 py-0.5 border border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400 placeholder:text-zinc-400/50"
+                    className="flex-1 min-w-0 text-xs font-mono px-1.5 py-0.5 border border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400 placeholder:text-zinc-400/50"
                   />
                 )}
                 <IconButton label={t('properties.georef.saveField', { field: label })} onClick={() => commitEdit()} className="h-5 w-5 p-0.5 text-green-600 hover:text-green-700 dark:text-green-400 shrink-0">
@@ -235,7 +235,7 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
                     <button
                       key={s}
                       onClick={() => selectSuggestion(s)}
-                      className="text-2xs font-mono px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-teal-400 hover:text-teal-700 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/50 transition-colors"
+                      className="text-xs font-mono px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-teal-400 hover:text-teal-700 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/50 transition-colors"
                     >
                       {s}
                     </button>
@@ -244,7 +244,7 @@ export function GeorefRow({ label, value, suffix, isComputed, isNumber, editable
               )}
               {/* Help text */}
               {hint.helpTextKey && (
-                <span id={helpId} className="text-2xs text-zinc-400 dark:text-zinc-500">{t(hint.helpTextKey)}</span>
+                <span id={helpId} className="text-xs text-zinc-400 dark:text-zinc-500">{t(hint.helpTextKey)}</span>
               )}
             </div>
           ) : (
@@ -314,7 +314,7 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
   const rowClassName = 'flex items-start gap-2 px-3 py-1.5 min-w-0 w-full text-left';
   const valueCellContent = (
     <>
-      <span className="text-2xs font-mono tabular-nums text-teal-700 dark:text-teal-400">
+      <span className="text-xs font-mono tabular-nums text-teal-700 dark:text-teal-400">
         {angle != null ? formatLocaleNumber(locale, angle, { maximumFractionDigits: 6 }) : '-'}
         <span className="text-zinc-400 dark:text-zinc-500 ml-0.5">{t('properties.georef.degUnit')}</span>
       </span>
@@ -326,10 +326,10 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
 
   const rowBody = (
     <>
-      <span className="text-2xs text-zinc-500 dark:text-zinc-400 shrink-0 pt-0.5 flex items-center gap-0.5 min-w-[110px]">
+      <span className="text-xs text-zinc-500 dark:text-zinc-400 shrink-0 pt-0.5 flex items-center gap-0.5 min-w-[110px]">
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="text-2xs text-teal-500">*</span>
+            <span className="text-xs text-teal-500">*</span>
           </TooltipTrigger>
           <TooltipContent>{editable ? t('properties.georef.angleEditTooltip') : t('properties.georef.computedTooltip')}</TooltipContent>
         </Tooltip>
@@ -347,9 +347,9 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
                 onChange={e => setEditValue(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="0.0"
-                className="w-28 text-2xs font-mono px-1.5 py-0.5 border border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400 placeholder:text-zinc-400/50"
+                className="w-28 text-xs font-mono px-1.5 py-0.5 border border-teal-400 dark:border-teal-600 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400 placeholder:text-zinc-400/50"
               />
-              <span className="text-2xs text-zinc-400">{t('properties.georef.degUnit')}</span>
+              <span className="text-xs text-zinc-400">{t('properties.georef.degUnit')}</span>
               <IconButton label={t('properties.georef.saveField', { field: t('properties.georef.angleToGridNorth') })} onClick={commitEdit} className="h-5 w-5 p-0.5 text-green-600 hover:text-green-700 dark:text-green-400 shrink-0">
                 <Check className="h-3 w-3" />
               </IconButton>
@@ -357,7 +357,7 @@ export function AngleRow({ angle, editable, onAngleChange }: AngleRowProps) {
                 <X className="h-3 w-3" />
               </IconButton>
             </div>
-            <span id={axesNoteId} className="text-2xs text-zinc-400 dark:text-zinc-500">{t('properties.georef.angleSetsAxesNote')}</span>
+            <span id={axesNoteId} className="text-xs text-zinc-400 dark:text-zinc-500">{t('properties.georef.angleSetsAxesNote')}</span>
           </div>
         ) : (
           <ValueCell clickable={editable} onClick={startEdit} label={`${label}: ${angle != null ? formatLocaleNumber(locale, angle, { maximumFractionDigits: 6 }) : '-'}${t('properties.georef.degUnit')}`} buttonRef={valueButtonRef}>{valueCellContent}</ValueCell>

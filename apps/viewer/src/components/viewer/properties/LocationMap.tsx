@@ -643,11 +643,11 @@ export function LocationMap({
       {/* Header with search */}
       <div className="flex items-center gap-2 px-3 py-1.5">
         <MapIcon className="h-3 w-3 text-teal-500 shrink-0" />
-        <span className="font-bold text-[11px] text-zinc-700 dark:text-zinc-300 uppercase tracking-wide flex-1">
+        <span className="font-bold text-xs text-zinc-700 dark:text-zinc-300 uppercase tracking-wide flex-1">
           {t('properties.locationMap.heading')}
         </span>
         {latLon && !searchOpen && (
-          <span className="text-[10px] font-mono text-teal-600/70 dark:text-teal-500/60">
+          <span className="text-xs font-mono text-teal-600/70 dark:text-teal-500/60">
             {formatLocaleNumber(locale, latLon.lat, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}, {formatLocaleNumber(locale, latLon.lon, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}
           </span>
         )}
@@ -680,14 +680,14 @@ export function LocationMap({
       {mapState === 'loading' && (
         <div className="flex items-center justify-center h-[180px] bg-zinc-50 dark:bg-zinc-900/50">
           <Spinner size="md" className="text-teal-500" />
-          <span className="text-[10px] text-zinc-400 ml-2">{t('properties.locationMap.resolvingCoordinates')}</span>
+          <span className="text-xs text-zinc-400 ml-2">{t('properties.locationMap.resolvingCoordinates')}</span>
         </div>
       )}
 
       {mapState === 'error' && (
         <div className="flex items-center justify-center h-[60px] bg-zinc-50 dark:bg-zinc-900/50 gap-2 px-3">
           <MapPinOff className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-          <span className="text-[10px] text-zinc-400">{errorKey && t(errorKey)}</span>
+          <span className="text-xs text-zinc-400">{errorKey && t(errorKey)}</span>
         </div>
       )}
 
@@ -700,10 +700,10 @@ export function LocationMap({
                which still drives the reverse projection and the Apply button. */
             <div className="flex flex-col items-center justify-center h-[180px] bg-zinc-50 dark:bg-zinc-900/50 gap-1.5 px-4 text-center">
               <MapPinOff className="h-4 w-4 text-zinc-400" />
-              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">
                 {t('properties.locationMap.unavailableOnDevice')}
               </span>
-              <span className="text-[9px] text-zinc-400 dark:text-zinc-500 max-w-[240px]">
+              <span className="text-xs text-zinc-400 dark:text-zinc-500 max-w-[240px]">
                 {mapUnavailable === 'map_load_failed' ? t('properties.locationMap.mapLoadFailed') : t('properties.locationMap.graphicsUnavailable')}
               </span>
             </div>
@@ -716,7 +716,7 @@ export function LocationMap({
               />
               {/* Edit mode hint overlay */}
               {editable && !pickedLatLon && (
-                <div className="absolute top-2 left-2 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm px-2 py-1 text-[9px] text-zinc-500 dark:text-zinc-400 pointer-events-none shadow-sm border border-zinc-200/50 dark:border-zinc-700/50">
+                <div className="absolute top-2 left-2 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm px-2 py-1 text-xs text-zinc-500 dark:text-zinc-400 pointer-events-none shadow-sm border border-zinc-200/50 dark:border-zinc-700/50">
                   {t('properties.locationMap.clickToPlacePin')}
                 </div>
               )}
@@ -728,7 +728,7 @@ export function LocationMap({
             <div className="bg-overlay-accent-soft border-t border-overlay-accent/40 px-3 py-2">
               <div className="flex items-center gap-2 mb-1.5">
                 <MapPin className="h-3 w-3 text-overlay-accent shrink-0" />
-                <span className="text-[10px] font-semibold text-foreground flex-1">
+                <span className="text-xs font-semibold text-foreground flex-1">
                   {t('properties.locationMap.newPosition')}
                 </span>
                 <button
@@ -740,7 +740,7 @@ export function LocationMap({
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] font-mono mb-2">
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs font-mono mb-2">
                 <div className="text-zinc-500 dark:text-zinc-400">{t('properties.locationMap.latLon')}</div>
                 <div className="text-foreground text-right">
                   {formatLocaleNumber(locale, pickedLatLon.lat, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}, {formatLocaleNumber(locale, pickedLatLon.lon, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}
@@ -779,7 +779,7 @@ export function LocationMap({
                 <button
                   onClick={handleApply}
                   disabled={elevationLoading}
-                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-[10px] font-semibold text-overlay-halo bg-overlay-accent hover:bg-overlay-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-semibold text-overlay-halo bg-overlay-accent hover:bg-overlay-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   <Check className="h-3 w-3" />
                   {pickedElevation !== null
@@ -799,7 +799,7 @@ export function LocationMap({
                     href={googleMapsUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-[10px] text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors"
+                    className="flex items-center gap-1 text-xs text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors"
                   >
                     <ExternalLink className="h-2.5 w-2.5" />
                     {t('properties.locationMap.googleMaps')}
@@ -815,7 +815,7 @@ export function LocationMap({
                     href={openStreetMapUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-[10px] text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors"
+                    className="flex items-center gap-1 text-xs text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors"
                   >
                     <ExternalLink className="h-2.5 w-2.5" />
                     {t('properties.locationMap.openStreetMap')}
@@ -829,7 +829,7 @@ export function LocationMap({
                 <TooltipTrigger asChild>
                   <button
                     onClick={handleExportKmz}
-                    className="flex items-center gap-1 text-[10px] text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors"
+                    className="flex items-center gap-1 text-xs text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors"
                   >
                     <Globe2 className="h-2.5 w-2.5" />
                     {t('properties.locationMap.googleEarth')}
@@ -842,7 +842,7 @@ export function LocationMap({
             {!mapUnavailable && (
               <button
                 onClick={handleStyleToggle}
-                className="ml-auto text-[10px] text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+                className="ml-auto text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
               >
                 {t('properties.locationMap.toggleStyle')}
               </button>

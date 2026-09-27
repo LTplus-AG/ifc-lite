@@ -308,6 +308,7 @@ export const propertiesEn = {
   // GeoreferencingPanel: GeorefRow / AngleRow
   'properties.georef.computedTooltip': 'Computed from XAxisAbscissa and XAxisOrdinate',
   'properties.georef.editedBadge': 'edited',
+  'properties.georef.editField': 'Edit {field}',
   'properties.georef.saveField': 'Save {field}',
   'properties.georef.cancelField': 'Cancel editing {field}',
   'properties.georef.selectPlaceholder': '-- select --',

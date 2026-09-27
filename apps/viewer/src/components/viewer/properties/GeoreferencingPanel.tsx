@@ -347,9 +347,9 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     return (
       <div className="px-2 py-1.5 flex items-center gap-2">
         <Globe className="h-3 w-3 text-teal-500" />
-        <span className="text-[10px] text-zinc-500 dark:text-zinc-400 flex-1">{t('properties.georef.noGeoreferencing')}</span>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400 flex-1">{t('properties.georef.noGeoreferencing')}</span>
         <EpsgLookupDialog onSelect={handleEpsgSelect}>
-          <button className="flex items-center gap-1 text-[10px] text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors px-1.5 py-0.5 border border-teal-300/50 dark:border-teal-700/50 hover:bg-teal-50 dark:hover:bg-teal-950/50">
+          <button className="flex items-center gap-1 text-xs text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors px-1.5 py-0.5 border border-teal-300/50 dark:border-teal-700/50 hover:bg-teal-50 dark:hover:bg-teal-950/50">
             <Globe className="h-2.5 w-2.5" />
             {t('properties.georef.addGeoreferencing')}
           </button>
@@ -365,20 +365,20 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           <div className="flex items-start gap-2">
             <MapPin className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400 shrink-0 mt-0.5" />
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] text-zinc-700 dark:text-zinc-300">
+              <p className="text-xs text-zinc-700 dark:text-zinc-300">
                 {t('properties.georef.reloadPrompt')}
               </p>
               <div className="mt-1.5 flex items-center gap-2">
                 <button
                   onClick={reloadModelsForAlignment}
                   disabled={loading}
-                  className="px-2 py-0.5 text-[10px] font-medium text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-2 py-0.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t('properties.georef.reloadModels')}
                 </button>
                 <button
                   onClick={() => setShowReloadPrompt(false)}
-                  className="px-2 py-0.5 text-[10px] text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-zinc-800"
+                  className="px-2 py-0.5 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-zinc-800"
                 >
                   {t('properties.georef.later')}
                 </button>
@@ -395,7 +395,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       {!canUseStandardGeoreferencing && !mergedCRS && !mergedConversion && (
         <div className="px-3 py-1.5 flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-900">
           <Globe className="h-3 w-3 text-zinc-400 shrink-0" />
-          <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
+          <span className="text-xs text-zinc-500 dark:text-zinc-400">
             {isLegacySiteGeoreference
               ? t('properties.georef.legacySiteNotice')
               : t('properties.georef.unsupportedSchemaNotice')}
@@ -409,18 +409,18 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       <div className="px-2 py-1.5 flex items-center gap-2">
         <Globe className="h-3 w-3 text-teal-500 shrink-0" />
         {mergedCRS?.name && (
-          <span className="text-[10px] font-mono font-semibold text-teal-600 dark:text-teal-400">{mergedCRS.name}</span>
+          <span className="text-xs font-mono font-semibold text-teal-600 dark:text-teal-400">{mergedCRS.name}</span>
         )}
         {!mergedCRS?.name && (
-          <span className="text-[10px] text-zinc-500 dark:text-zinc-400">{t('properties.georef.noProjectedCrs')}</span>
+          <span className="text-xs text-zinc-500 dark:text-zinc-400">{t('properties.georef.noProjectedCrs')}</span>
         )}
         {mergedCRS?.description && (
-          <span className="text-[10px] font-mono text-teal-500/60 truncate">{mergedCRS.description}</span>
+          <span className="text-xs font-mono text-teal-500/60 truncate">{mergedCRS.description}</span>
         )}
         {mergedCRS?.name && <PrecisionGridBadge crsName={mergedCRS.name} />}
         {editable && (
           <EpsgLookupDialog onSelect={handleEpsgSelect}>
-            <button className="relative flex items-center gap-1 text-[9px] text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors ml-auto shrink-0 after:absolute after:inset-x-0 after:-top-1.5 after:-bottom-1.5 after:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <button className="relative flex items-center gap-1 text-xs text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors ml-auto shrink-0 after:absolute after:inset-x-0 after:-top-1.5 after:-bottom-1.5 after:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
               <Search className="h-2.5 w-2.5" />
               {t('properties.georef.epsgButton')}
             </button>
@@ -439,7 +439,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           view, which must not be hidden behind a collapsed section. */}
       {doubleGeoref && (
         <div className="px-3 py-2 border-b border-zinc-100 dark:border-zinc-900 bg-sky-50/60 dark:bg-sky-950/25">
-          <div className="flex items-start gap-1.5 text-[10px] text-sky-700 dark:text-sky-400">
+          <div className="flex items-start gap-1.5 text-xs text-sky-700 dark:text-sky-400">
             <Info className="h-3 w-3 mt-0.5 shrink-0" />
             <span className="leading-snug">
               <strong>{t('properties.georef.doubleGeorefHeading')}</strong>{' '}
@@ -472,9 +472,9 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           >
             <ChevronRight className={`h-3 w-3 text-teal-500 shrink-0 transition-transform ${crsOpen ? 'rotate-90' : ''}`} />
             <Globe className="h-3 w-3 text-teal-500 shrink-0" />
-            <span className="font-bold text-[11px] text-zinc-700 dark:text-zinc-300 uppercase tracking-wide flex-1 text-left">{t('properties.georef.projectedCrsHeading')}</span>
+            <span className="font-bold text-xs text-zinc-700 dark:text-zinc-300 uppercase tracking-wide flex-1 text-left">{t('properties.georef.projectedCrsHeading')}</span>
             {!crsOpen && mergedCRS.name && (
-              <span className="text-[10px] font-mono text-teal-600/70 dark:text-teal-500/60 truncate max-w-[50%]">{mergedCRS.name}</span>
+              <span className="text-xs font-mono text-teal-600/70 dark:text-teal-500/60 truncate max-w-[50%]">{mergedCRS.name}</span>
             )}
           </button>
           {crsOpen && (
@@ -493,9 +493,9 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
 
       {!mergedCRS && editable && mergedConversion && (
         <div className="px-3 py-2 border-b border-zinc-100 dark:border-zinc-900 flex items-center gap-2">
-          <span className="text-[10px] text-zinc-500 dark:text-zinc-400 flex-1">{t('properties.georef.missingCrsNotice')}</span>
+          <span className="text-xs text-zinc-500 dark:text-zinc-400 flex-1">{t('properties.georef.missingCrsNotice')}</span>
           <EpsgLookupDialog onSelect={handleEpsgSelect}>
-            <button className="flex items-center gap-1 text-[9px] text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors shrink-0">
+            <button className="flex items-center gap-1 text-xs text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors shrink-0">
               <Search className="h-2.5 w-2.5" />
               {t('properties.georef.addCrs')}
             </button>
@@ -512,7 +512,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           >
             <ChevronRight className={`h-3 w-3 text-teal-500 shrink-0 transition-transform ${conversionOpen ? 'rotate-90' : ''}`} />
             <MapPin className="h-3 w-3 text-teal-500 shrink-0" />
-            <span className="font-bold text-[11px] text-zinc-700 dark:text-zinc-300 uppercase tracking-wide flex-1 text-left">{t('properties.georef.coordinateOperationHeading')}</span>
+            <span className="font-bold text-xs text-zinc-700 dark:text-zinc-300 uppercase tracking-wide flex-1 text-left">{t('properties.georef.coordinateOperationHeading')}</span>
             {/* A COMPENSATED scale deviation gets no warning glyph: nothing is
                 mis-sized here, and an amber flag on a non-problem is what made
                 the real defect in #2526 easy to miss. */}
@@ -530,7 +530,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
               </Tooltip>
             )}
             {!conversionOpen && (
-              <span className="text-[10px] font-mono text-teal-600/70 dark:text-teal-500/60">
+              <span className="text-xs font-mono text-teal-600/70 dark:text-teal-500/60">
                 {t('properties.georef.eastingNorthingSummary', { easting: formatLocaleNumber(locale, mergedConversion.eastings, { maximumFractionDigits: 0 }), northing: formatLocaleNumber(locale, mergedConversion.northings, { maximumFractionDigits: 0 }) })}
               </span>
             )}
@@ -548,7 +548,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
               <AngleRow angle={angleToGridNorth} editable={editable} onAngleChange={handleAngleChange} />
               <GeorefRow label="Scale" value={mergedConversion.scale} isNumber editable={editable} isMutated={isMutated('mapConversion', 'scale')} fieldEntity="mapConversion" fieldName="scale" onSave={v => handleSave('mapConversion', 'scale', v)} />
               {scaleMismatch && (
-                <div className={`px-3 py-2 flex items-start gap-1.5 text-[10px] leading-snug ${
+                <div className={`px-3 py-2 flex items-start gap-1.5 text-xs leading-snug ${
                   scaleMismatch.compensated
                     ? 'text-zinc-500 dark:text-zinc-400 bg-zinc-50/60 dark:bg-zinc-900/40'
                     : 'text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/20'
@@ -577,10 +577,10 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
 
       {!mergedConversion && editable && mergedCRS && (
         <div className="px-3 py-2 border-b border-zinc-100 dark:border-zinc-900 flex items-center gap-2">
-          <span className="text-[10px] text-zinc-500 dark:text-zinc-400 flex-1">{t('properties.georef.noConversionNotice')}</span>
+          <span className="text-xs text-zinc-500 dark:text-zinc-400 flex-1">{t('properties.georef.noConversionNotice')}</span>
           <button
             onClick={initializeMapConversionDefaults}
-            className="flex items-center gap-1 text-[9px] text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors shrink-0"
+            className="flex items-center gap-1 text-xs text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors shrink-0"
           >
             <MapPin className="h-2.5 w-2.5" />
             {t('properties.georef.addCoordinates')}
@@ -593,17 +593,17 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         <div className="px-3 py-1.5 border-t border-zinc-100 dark:border-zinc-900 space-y-1">
           <div className="flex items-center gap-2">
             <Mountain className="h-3 w-3 text-teal-500 shrink-0" />
-            <span className="text-[10px] text-zinc-600 dark:text-zinc-400 flex-1">{t('properties.georef.visibleSurfaceHeight')}</span>
+            <span className="text-xs text-zinc-600 dark:text-zinc-400 flex-1">{t('properties.georef.visibleSurfaceHeight')}</span>
             {cesiumTerrainHeight !== null ? (
-              <span className="text-[9px] font-mono text-teal-500" title={cesiumTerrainSource ?? undefined}>
+              <span className="text-xs font-mono text-teal-500" title={cesiumTerrainSource ?? undefined}>
                 {t('properties.georef.heightMeters', { value: formatLocaleNumber(locale, cesiumTerrainHeight, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}
               </span>
             ) : (
-              <span className="text-[9px] font-mono text-zinc-400">{t('properties.georef.queryingEllipsis')}</span>
+              <span className="text-xs font-mono text-zinc-400">{t('properties.georef.queryingEllipsis')}</span>
             )}
           </div>
           {cesiumTerrainSource && (
-            <div className="ml-5 text-[9px] text-zinc-500 dark:text-zinc-400">
+            <div className="ml-5 text-xs text-zinc-500 dark:text-zinc-400">
               {t('properties.georef.sampledVia', { source: cesiumTerrainSource })}
             </div>
           )}
@@ -611,7 +611,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
             <div className="flex items-center gap-1 ml-5">
               <button
                 onClick={() => handleSave('mapConversion', 'orthogonalHeight', oHeightForBaseAltitude(cesiumTerrainSaveHeight))}
-                className="text-[9px] text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors flex items-center gap-0.5"
+                className="text-xs text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors flex items-center gap-0.5"
               >
                 <Mountain className="h-2.5 w-2.5" />
                 {t('properties.georef.setOrthogonalHeightButton', { value: formatLocaleNumber(locale, cesiumTerrainHeight, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}
@@ -627,8 +627,8 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
             onCheckedChange={setHeightsAreEllipsoidal}
             containerClassName="ml-5"
             className="mt-0.5 h-3 w-3"
-            label={<span className="text-[9px] text-zinc-600 dark:text-zinc-400">{t('properties.georef.heightsEllipsoidalLabel')}</span>}
-            description={<span className="text-[9px] text-zinc-400 dark:text-zinc-500">{t('properties.georef.heightsEllipsoidalHelp')}</span>}
+            label={<span className="text-xs text-zinc-600 dark:text-zinc-400">{t('properties.georef.heightsEllipsoidalLabel')}</span>}
+            description={<span className="text-xs text-zinc-400 dark:text-zinc-500">{t('properties.georef.heightsEllipsoidalHelp')}</span>}
           />
         </div>
       )}

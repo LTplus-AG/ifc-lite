@@ -48,6 +48,7 @@ import { en } from '@/i18n/en';
 import type { spaceSketchEn as SpaceSketchEnType } from '@/i18n/catalogues/space-sketch.en';
 import type { PluralTranslation } from '@/i18n/types';
 import { useViewerStore } from '@/store';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { SpaceSketchOverlay } from './SpaceSketchOverlay.js';
 import { OptionsPopover, HelpPopover } from './space-sketch/SpaceSketchPopovers.js';
@@ -153,6 +154,20 @@ afterEach(() => {
 describe('Space Sketch localization (#4918)', { skip: !HAS_CATALOGUE && 'space-sketch.en.ts catalogue module not present (revert-oracle probe)' }, () => {
   it('translates the bar and plan card with no model loaded', () => {
     const ui = render(<><ViewportHud /><SpaceSketchOverlay /></>);
+    const assertShortcutTitles = (marked: boolean) => {
+      for (const [key, command] of [
+        ['spaceSketch.tools.undoTitle', 'spaceSketch.undo'],
+        ['spaceSketch.tools.redoTitle', 'spaceSketch.redo'],
+      ] as const) {
+        const template = marked ? mark(key) : CATALOGUE[key];
+        const expected = template.replace('{keys}', shortcutLabel(command));
+        assert.ok(
+          [...ui.querySelectorAll('button')].some((button) => button.title === expected),
+          `${key}: expected complete ${marked ? 'translated' : 'English'} title ${expected}`,
+        );
+      }
+    };
+    assertShortcutTitles(false);
     assertTranslates(ui, [
       'spaceSketch.panel.heading',
       'spaceSketch.bar.storeyAria',
@@ -177,6 +192,7 @@ describe('Space Sketch localization (#4918)', { skip: !HAS_CATALOGUE && 'space-s
       'spaceSketch.footer.closeToolTitle',
       'spaceSketch.footer.doneButton',
     ], 'space-sketch-chrome-pseudo');
+    assertShortcutTitles(true);
   });
 
   it('translates the snap-toggle "off" title on click (pure state, no wasm needed)', () => {

@@ -43,7 +43,7 @@ export function ViewTab() {
   const setCesiumPlacementEditMode = useViewerStore((state) => state.setCesiumPlacementEditMode);
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
-  const { activeWorkspacePanels, handleToggleBottomPanel } = useWorkspacePanelControls();
+  const { activeWorkspacePanels, handleToggleBottomPanel } = useWorkspacePanelControls('ribbon');
 
   // Environment panel state (sky, lighting presets, sun-path study, #5506)
   const solarEnabled = useViewerStore((state) => state.solarEnabled);
@@ -160,7 +160,7 @@ export function ViewTab() {
           tooltip={t('ribbon.view.lightingTooltip')}
           active={activeWorkspacePanels.has('environment') || solarEnabled || envSkyEnabled || envPreset !== 'default'}
           activeClassName="bg-amber-500/20 text-foreground ring-1 ring-inset ring-amber-500/50"
-          onClick={() => useViewerStore.getState().toggleWorkspacePanel('environment')}
+          onClick={() => useViewerStore.getState().toggleWorkspacePanel('environment', 'ribbon')}
         />
         <RibbonSmallStack>
           {cesiumAvailable && cesiumEnabled && (

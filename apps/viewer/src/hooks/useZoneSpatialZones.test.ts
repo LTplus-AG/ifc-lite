@@ -93,6 +93,7 @@ async function seedStore(options: {
 } = {}): Promise<IfcDataStore> {
   const store = await parse(miniIfc(options.schema, options.lengthUnit));
   useViewerStore.setState({
+    editEnabled: true,
     models: new Map([['m1', {
       id: 'm1',
       name: 'zones.ifc',
@@ -159,6 +160,21 @@ describe('emitZoneSpatialZones: what reaches the model', () => {
     // any other overlay consumer.
     const view = useViewerStore.getState().getMutationView('m1');
     view?.setOnDemandExtractor?.((entityId: number) => extractPropertiesOnDemand(store, entityId));
+  });
+
+  it('refuses emit and remove in Edit-off, then records emitted and removed IFC zones in Edit-on (#5901)', () => {
+    useViewerStore.setState({ editEnabled: false });
+    const before = overlay().length;
+    assert.equal(emitZoneSpatialZones(ZONE_SET).blocked, 'edit-mode');
+    assert.equal(removeZoneSpatialZones(ZONE_SET).blocked, 'edit-mode');
+    assert.equal(overlay().length, before);
+    assert.equal(useViewerStore.getState().dirtyModels.size, 0);
+
+    useViewerStore.setState({ editEnabled: true });
+    assert.equal(emitZoneSpatialZones(ZONE_SET).models[0].zonesEmitted, 2);
+    assert.equal(zoneEntities().length, 2);
+    assert.equal(removeZoneSpatialZones(ZONE_SET).removed, 2);
+    assert.equal(zoneEntities().length, 0);
   });
 
   it('selects an overlay-created storey after the source storey is deleted (#5249)', () => {

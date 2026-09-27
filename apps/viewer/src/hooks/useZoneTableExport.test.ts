@@ -88,6 +88,7 @@ async function seed(): Promise<IfcDataStore> {
   );
   const { zoneSetRevision } = await import('@/lib/zones');
   useViewerStore.setState({
+    editEnabled: true,
     models: new Map([['m1', { id: 'm1', name: 'zones.ifc', ifcDataStore: store, visible: true } as never]]),
     zoneSets: [ZONE_SET],
     zoneAssignments: new Map([

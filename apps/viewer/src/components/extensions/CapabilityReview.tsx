@@ -47,6 +47,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useTranslation } from '@/i18n';
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 import { cn } from '@/lib/utils';
@@ -216,43 +217,23 @@ export function CapabilityReview({
           </div>
         )}
 
-        <div className="flex items-center gap-1 border-b" role="tablist" aria-label={t('extensionsPanels.capabilityReview.tabsAriaLabel')}>
-          <button
-            type="button"
-            onClick={() => setTab('capabilities')}
-            role="tab"
-            aria-selected={tab === 'capabilities'}
-            className={cn(
-              'flex items-center gap-1 px-3 py-1.5 text-xs font-medium border-b-2 transition-colors',
-              tab === 'capabilities'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <ShieldCheck className="h-3.5 w-3.5" />
-            {t('extensionsPanels.capabilityReview.capabilitiesTab')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab('source')}
-            role="tab"
-            aria-selected={tab === 'source'}
-            className={cn(
-              'flex items-center gap-1 px-3 py-1.5 text-xs font-medium border-b-2 transition-colors',
-              tab === 'source'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <FileCode2 className="h-3.5 w-3.5" />
-            {t('extensionsPanels.capabilityReview.sourceTab')}
-          </button>
-        </div>
+        <Tabs value={tab} onValueChange={(value) => setTab(value === 'source' ? 'source' : 'capabilities')}>
+          <TabsList className="flex h-auto justify-start gap-1 rounded-none border-b bg-transparent p-0" aria-label={t('extensionsPanels.capabilityReview.tabsAriaLabel')}>
+            <TabsTrigger value="capabilities" className="flex items-center gap-1 rounded-none px-3 py-1.5 text-xs font-medium border-b-2 border-transparent bg-transparent shadow-none data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              {t('extensionsPanels.capabilityReview.capabilitiesTab')}
+            </TabsTrigger>
+            <TabsTrigger value="source" className="flex items-center gap-1 rounded-none px-3 py-1.5 text-xs font-medium border-b-2 border-transparent bg-transparent shadow-none data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
+              <FileCode2 className="h-3.5 w-3.5" />
+              {t('extensionsPanels.capabilityReview.sourceTab')}
+            </TabsTrigger>
+          </TabsList>
 
-        {tab === 'source' ? (
-          <BundlePreview bundle={summary.bundle} />
-        ) : (
-        <ScrollArea className="max-h-72 rounded-md border">
+          <TabsContent value="source" className="mt-0">
+            <BundlePreview bundle={summary.bundle} />
+          </TabsContent>
+          <TabsContent value="capabilities" className="mt-0">
+          <ScrollArea className="max-h-72 rounded-md border">
           <ul className="divide-y">
             {rows.length === 0 && (
               <li className="px-4 py-3 text-sm text-muted-foreground">
@@ -282,10 +263,9 @@ export function CapabilityReview({
               </li>
             ))}
           </ul>
-        </ScrollArea>
-        )}
+          </ScrollArea>
 
-        {needsConfirm && tab === 'capabilities' && (
+        {needsConfirm && (
           <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm">
             <div className="font-medium text-destructive flex items-center gap-2">
               <ShieldAlert className="h-4 w-4" />
@@ -304,6 +284,8 @@ export function CapabilityReview({
             />
           </div>
         )}
+          </TabsContent>
+        </Tabs>
 
         <DialogFooter>
           <Button variant="ghost" onClick={onCancel}>

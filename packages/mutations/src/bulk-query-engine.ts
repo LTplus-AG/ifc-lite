@@ -6,7 +6,7 @@
  * Bulk Query Engine: SQL-like selection and modification for multiple
  * IFC entities at once.
  */
-import type { EntityTable, SpatialHierarchy, PropertyTable } from '@ifc-lite/data';
+import type { EntityTable, SpatialHierarchy } from '@ifc-lite/data';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { MutablePropertyView } from './mutable-property-view.js';
 import type { Mutation, PropertyValue } from './types.js';
@@ -15,32 +15,6 @@ import { compileGuardedRegex } from '@ifc-lite/regex-guard';
 import { effectiveBulkCandidates, effectiveRootAttribute } from './bulk-query-candidates.js';
 import { applyBulkAttribute, bulkAttributeRefusal } from './bulk-attribute-action.js';
 import type { ModelSchema } from './schema-attribute-names.js';
-
-/**
- * Filter operators for property values
- */
-export type FilterOperator =
-  | '='
-  | '!='
-  | '>'
-  | '<'
-  | '>='
-  | '<='
-  | 'CONTAINS'
-  | 'STARTS_WITH'
-  | 'ENDS_WITH'
-  | 'IS_NULL'
-  | 'IS_NOT_NULL';
-
-/**
- * Property filter condition
- */
-export interface PropertyFilter {
-  psetName?: string;
-  propName: string;
-  operator: FilterOperator;
-  value?: PropertyValue;
-}
 
 /**
  * Selection criteria for bulk queries
@@ -56,8 +30,6 @@ export interface SelectionCriteria {
   sites?: number[];
   /** Filter by space IDs */
   spaces?: number[];
-  /** Filter by property conditions */
-  propertyFilters?: PropertyFilter[];
   /** Filter by global IDs */
   globalIds?: string[];
   /** Filter by express IDs */
@@ -133,7 +105,6 @@ export interface BulkQueryResult {
 export class BulkQueryEngine {
   private entities: EntityTable;
   private spatialHierarchy: SpatialHierarchy | null;
-  private properties: PropertyTable | null;
   private mutationView: MutablePropertyView;
   private strings: { get(idx: number): string } | null;
   /** expressId → array index lookup, built once to avoid O(n) scans */
@@ -147,7 +118,6 @@ export class BulkQueryEngine {
     entities: EntityTable,
     mutationView: MutablePropertyView,
     spatialHierarchy?: SpatialHierarchy | null,
-    properties?: PropertyTable | null,
     strings?: { get(idx: number): string } | null,
     canEdit?: MutationGuard,
     schemaVersion?: ModelSchema
@@ -155,7 +125,6 @@ export class BulkQueryEngine {
     this.entities = entities;
     this.mutationView = mutationView;
     this.spatialHierarchy = spatialHierarchy || null;
-    this.properties = properties || null;
     this.strings = strings || null;
     this.canEdit = canEdit;
     this.schemaVersion = schemaVersion;
@@ -267,13 +236,6 @@ export class BulkQueryEngine {
       candidates = candidates.filter((id) => regex.test(this.rootAttribute(id, 'Name')));
     }
 
-    // Filter by property conditions
-    if (criteria.propertyFilters && criteria.propertyFilters.length > 0) {
-      for (const filter of criteria.propertyFilters) {
-        candidates = this.filterByProperty(candidates, filter);
-      }
-    }
-
     return candidates;
   }
 
@@ -354,110 +316,6 @@ export class BulkQueryEngine {
       default:
         return null;
     }
-  }
-
-  /**
-   * Filter candidates by property condition
-   */
-  private filterByProperty(candidates: number[], filter: PropertyFilter): number[] {
-    return candidates.filter((entityId) => {
-      // Get property value from mutation view (includes mutations)
-      const value = filter.psetName
-        ? this.mutationView.getPropertyValue(entityId, filter.psetName, filter.propName)
-        : this.findPropertyByName(entityId, filter.propName);
-
-      return this.matchesFilter(value, filter);
-    });
-  }
-
-  /**
-   * Find a property by name across all property sets
-   */
-  private findPropertyByName(entityId: number, propName: string): PropertyValue | null {
-    if (!this.properties) return null;
-
-    const psets = this.properties.getForEntity(entityId);
-    for (const pset of psets) {
-      for (const prop of pset.properties) {
-        if (prop.name === propName) {
-          return prop.value;
-        }
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Check if a value matches a filter condition
-   */
-  private matchesFilter(value: PropertyValue | null, filter: PropertyFilter): boolean {
-    // Handle null checks
-    if (filter.operator === 'IS_NULL') {
-      return value === null || value === undefined;
-    }
-    if (filter.operator === 'IS_NOT_NULL') {
-      return value !== null && value !== undefined;
-    }
-
-    // For other operators, null values don't match
-    if (value === null || value === undefined) {
-      return false;
-    }
-
-    const filterValue = filter.value;
-
-    // String operations
-    if (typeof value === 'string' && typeof filterValue === 'string') {
-      switch (filter.operator) {
-        case '=':
-          return value === filterValue;
-        case '!=':
-          return value !== filterValue;
-        case 'CONTAINS':
-          return value.toLowerCase().includes(filterValue.toLowerCase());
-        case 'STARTS_WITH':
-          return value.toLowerCase().startsWith(filterValue.toLowerCase());
-        case 'ENDS_WITH':
-          return value.toLowerCase().endsWith(filterValue.toLowerCase());
-        default:
-          return false;
-      }
-    }
-
-    // Numeric operations
-    if (typeof value === 'number' && typeof filterValue === 'number') {
-      switch (filter.operator) {
-        case '=':
-          return value === filterValue;
-        case '!=':
-          return value !== filterValue;
-        case '>':
-          return value > filterValue;
-        case '<':
-          return value < filterValue;
-        case '>=':
-          return value >= filterValue;
-        case '<=':
-          return value <= filterValue;
-        default:
-          return false;
-      }
-    }
-
-    // Boolean operations
-    if (typeof value === 'boolean') {
-      const boolFilterValue = filterValue === true || filterValue === 'true';
-      switch (filter.operator) {
-        case '=':
-          return value === boolFilterValue;
-        case '!=':
-          return value !== boolFilterValue;
-        default:
-          return false;
-      }
-    }
-
-    return false;
   }
 
   /** Effective GlobalId / Name of a candidate (see bulk-query-candidates.ts). */

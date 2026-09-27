@@ -210,6 +210,32 @@ describe('window-level file drop (#5845)', () => {
     const drop = drag(chrome, 'drop', fileTransfer(file));
     assert.equal(drop.defaultPrevented, true, 'the browser does not open the file');
     assert.equal(latestToast(), before, 'nothing is loaded');
+    assert.match(document.body.textContent ?? '', /WebGPU/, 'the rejected drop explains why it was not loaded');
+    assert.equal(typeof useViewerStore.getState().lastLoadRetry, 'function', 'Retry retains the dropped File');
+    stubWebGpu();
+    await act(async () => {
+      useViewerStore.getState().lastLoadRetry?.();
+      await advance(0);
+    });
+    assert.match(latestToast(), /nogpu\.blend/, 'Retry routes the same dropped File after WebGPU recovers');
+  });
+
+  it('explains a file drop while the WebGPU adapter check is still pending', async () => {
+    const original = Object.getOwnPropertyDescriptor(navigator, 'gpu');
+    Object.defineProperty(navigator, 'gpu', {
+      configurable: true,
+      value: { requestAdapter: () => new Promise(() => {}) },
+    });
+    restoreGpu = () => {
+      if (original) Object.defineProperty(navigator, 'gpu', original);
+      else Reflect.deleteProperty(navigator, 'gpu');
+    };
+    render(<ViewportContainer />);
+    await advance(0);
+    const file = new File(['x'], 'pending.blend');
+    const drop = drag(chrome, 'drop', fileTransfer(file));
+    assert.equal(drop.defaultPrevented, true);
+    assert.match(document.body.textContent ?? '', /WebGPU support is still being checked/);
   });
 
   it('a reorder list does not swallow a file dragged over it (Customize sidebar rows)', async () => {

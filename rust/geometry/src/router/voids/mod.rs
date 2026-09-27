@@ -797,36 +797,7 @@ impl GeometryRouter {
         element_id: u32,
         host_world_bounds: ((f32, f32, f32), (f32, f32, f32)),
     ) -> Option<Mesh> {
-        if ctx.merged_openings.is_empty() {
-            return None;
-        }
-        let depth_of = |op: &OpeningType| -> Option<Vector3<f64>> {
-            match op {
-                OpeningType::DiagonalRectangular(_, f) => Some(f.depth),
-                OpeningType::NonRectangular(_, _, _, d) => *d,
-                OpeningType::Rectangular(_, _, d) => *d,
-            }
-        };
-        // Define the wall frame from the first opening whose depth is a
-        // genuinely rotated, ~horizontal axis. Axis-aligned walls find none and
-        // keep their (unchanged) world path.
-        let horizontal_axes = ctx
-            .merged_openings
-            .iter()
-            .filter_map(depth_of)
-            .find(|d| !is_axis_aligned_direction(d) && d.z.abs() <= 0.2)
-            .and_then(wall_frame_from_depth);
-        let axes = match horizontal_axes {
-            Some(axes) => axes,
-            None => vertical_depth_wall_frame(mesh, &ctx.merged_openings)
-                .or_else(|| host_thickness_wall_frame(mesh, &ctx.merged_openings))?,
-        };
-
-        // AABB-only `Rectangular` openings can't be rotated into the frame; a
-        // plan-rotated wall never has them (they'd be diagonal), so bail.
-        if ctx.merged_openings.iter().any(|op| matches!(op, OpeningType::Rectangular(..))) {
-            return None;
-        }
+        let axes = self.wall_frame_axes(mesh, ctx)?;
         let (mn, mx) = mesh.bounds();
         let center = Vector3::new(
             ((mn.x + mx.x) * 0.5) as f64,
@@ -915,8 +886,19 @@ impl GeometryRouter {
         // Forward the WORLD host bounds captured before this rotation so the
         // diagnostic reports world coords, not wall-frame (rotated/centred) ones.
         let diag_before = frame_snap::HostDiagSnapshot::capture(self, element_id);
-        let mut result_local = self
+        // Whether the host reached us stored relative to a per-element origin
+        // (the wasm default): `apply_void_context` then cleared that origin, so
+        // the world bounds it passed differ from the stored ones. A world-frame
+        // host has identical bounds and keeps its established closure test.
+        let (smn, smx) = mesh.bounds();
+        let frame_relative =
+            host_world_bounds != ((smn.x, smn.y, smn.z), (smx.x, smx.y, smx.z));
+        let frame = Matrix3::from_columns(&axes);
+        let center_point = Point3::from(center);
+        let result_local = self
             .apply_void_context_inner(host_local, &local_ctx, element_id, host_world_bounds, false);
+        // Rotation-only positions retain the far centre in `Mesh::origin`.
+        let mut result = rotate_mesh_from_frame(&result_local, &frame, &center_point);
         // #5635: the operands arrive as f32 WORLD positions, so in the frame one
         // authored face can land on dozens of depth values micrometres apart and
         // the cut keeps T-junction seams along them. Only when the cut came back
@@ -927,9 +909,18 @@ impl GeometryRouter {
         // is already closed is never touched, so it stays byte-identical. The
         // host itself need not be closed: an extruded voided profile carries
         // T-junctions of its own that the cut consolidates away.
-        if !result_local.positions.is_empty()
-            && !frame_snap::closed_and_consistently_wound(&result_local)
-        {
+        //
+        // For a frame-relative host the closure is judged on the cut as it will
+        // be emitted: rotated back and after the degenerate-triangle hygiene.
+        // Stored that way, a cut can be closed on the frame's grid only through
+        // µm slivers that hygiene then drops (#5739). The world frame's test is
+        // unchanged, so its output is too.
+        let closed = if frame_relative {
+            frame_snap::closed_as_emitted(&result)
+        } else {
+            frame_snap::closed_and_consistently_wound(&result_local)
+        };
+        if !result_local.positions.is_empty() && !closed {
             let first_volume = frame_snap::enclosed_volume(&result_local);
             // Only the kept run may leave a diagnostics record.
             let diag_first = frame_snap::HostDiagSnapshot::capture(self, element_id);
@@ -937,7 +928,11 @@ impl GeometryRouter {
             // Rebuilt rather than kept from above: the clean path pays nothing.
             let mut host_snapped = mesh_to_frame(mesh, &axes, center);
             let mut openings_snapped = local_ctx.openings.clone();
-            let world_magnitude = [mn.x, mn.y, mn.z, mx.x, mx.y, mx.z]
+            // The WORLD magnitude (a local-frame host's origin folded in), so
+            // the tolerance does not depend on the vertex frame (#5739). For a
+            // world-frame host these are its own bounds, as before.
+            let ((wx0, wy0, wz0), (wx1, wy1, wz1)) = host_world_bounds;
+            let world_magnitude = [wx0, wy0, wz0, wx1, wy1, wz1]
                 .iter()
                 .fold(0.0_f64, |m, v| m.max((*v as f64).abs()));
             frame_snap::snap_to_frame_planes(
@@ -961,15 +956,60 @@ impl GeometryRouter {
             let retry_volume = frame_snap::enclosed_volume(&retry);
             let same_cut = (retry_volume - first_volume).abs()
                 <= 1.0e-3 * first_volume.abs().max(retry_volume.abs());
-            if same_cut && frame_snap::closed_and_consistently_wound(&retry) {
-                result_local = retry;
+            let accepted = if !same_cut {
+                None
+            } else if frame_relative {
+                let emitted = rotate_mesh_from_frame(&retry, &frame, &center_point);
+                frame_snap::closed_as_emitted(&emitted).then_some(emitted)
+            } else {
+                frame_snap::closed_and_consistently_wound(&retry)
+                    .then(|| rotate_mesh_from_frame(&retry, &frame, &center_point))
+            };
+            if let Some(emitted) = accepted {
+                result = emitted;
             } else {
                 diag_first.restore(self, element_id);
             }
         }
-        let frame = Matrix3::from_columns(&axes);
-        // Rotation-only positions retain the far centre in `Mesh::origin`.
-        Some(rotate_mesh_from_frame(&result_local, &frame, &Point3::from(center)))
+        Some(result)
+    }
+
+    /// The #1167 wall frame `[run, height, normal]` for a plan-rotated wall
+    /// whose openings can all be expressed in it, else `None` (the host keeps
+    /// the world path). Translation-invariant, so it gives the same answer for a
+    /// world-stored host and a local-frame one (#5739).
+    fn wall_frame_axes(&self, mesh: &Mesh, ctx: &VoidContext) -> Option<[Vector3<f64>; 3]> {
+        if ctx.merged_openings.is_empty() {
+            return None;
+        }
+        let depth_of = |op: &OpeningType| -> Option<Vector3<f64>> {
+            match op {
+                OpeningType::DiagonalRectangular(_, f) => Some(f.depth),
+                OpeningType::NonRectangular(_, _, _, d) => *d,
+                OpeningType::Rectangular(_, _, d) => *d,
+            }
+        };
+        // Define the wall frame from the first opening whose depth is a
+        // genuinely rotated, ~horizontal axis. Axis-aligned walls find none and
+        // keep their (unchanged) world path.
+        let horizontal_axes = ctx
+            .merged_openings
+            .iter()
+            .filter_map(depth_of)
+            .find(|d| !is_axis_aligned_direction(d) && d.z.abs() <= 0.2)
+            .and_then(wall_frame_from_depth);
+        let axes = match horizontal_axes {
+            Some(axes) => axes,
+            None => vertical_depth_wall_frame(mesh, &ctx.merged_openings)
+                .or_else(|| host_thickness_wall_frame(mesh, &ctx.merged_openings))?,
+        };
+
+        // AABB-only `Rectangular` openings can't be rotated into the frame; a
+        // plan-rotated wall never has them (they'd be diagonal), so bail.
+        if ctx.merged_openings.iter().any(|op| matches!(op, OpeningType::Rectangular(..))) {
+            return None;
+        }
+        Some(axes)
     }
 
     // `host_mutated` is set just before an early `break` (final write unread; kept

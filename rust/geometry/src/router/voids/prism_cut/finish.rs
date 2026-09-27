@@ -4,7 +4,9 @@
 
 //! Final hygiene, ulp welding, and closure audit for analytic cuts.
 
-use super::{closed_enough_to_emit, dedup_cut_vertices, Mesh};
+use super::{dedup_cut_vertices, ClosureVerdict, Mesh};
+#[cfg(test)]
+use super::closed_enough_to_emit;
 
 /// Return an audited cut, preferring the fully hygienic fixed point.
 ///
@@ -14,7 +16,17 @@ use super::{closed_enough_to_emit, dedup_cut_vertices, Mesh};
 /// while cleaning makes strict triangle-count progress. If hygiene opens a
 /// surface, preserve the established compatibility result (the original
 /// candidate welded once) provided that exact returned mesh passes closure.
+#[cfg(test)]
 pub(in crate::router::voids) fn finish_cut(candidate: Mesh, host: &Mesh) -> Option<Mesh> {
+    finish_cut_verdict(candidate, host).map(|(mesh, _)| mesh)
+}
+
+/// [`finish_cut`], also returning whether the returned mesh is strictly
+/// directed-closed (from the same closure walk, not a second one).
+pub(in crate::router::voids) fn finish_cut_verdict(
+    candidate: Mesh,
+    host: &Mesh,
+) -> Option<(Mesh, bool)> {
     let mut hygienic = candidate.clone();
     let before = hygienic.indices.len();
     hygienic.clean_degenerate();
@@ -35,12 +47,16 @@ pub(in crate::router::voids) fn finish_cut(candidate: Mesh, host: &Mesh) -> Opti
         }
         hygienic = dedup_cut_vertices(&hygienic, host);
     }
-    if closed_enough_to_emit(&hygienic) {
-        return Some(hygienic);
+    let verdict = ClosureVerdict::for_mesh(&hygienic);
+    if verdict.closed_enough_to_emit() {
+        return Some((hygienic, verdict.is_directed_closed()));
     }
 
     let compatibility = dedup_cut_vertices(&candidate, host);
-    closed_enough_to_emit(&compatibility).then_some(compatibility)
+    let verdict = ClosureVerdict::for_mesh(&compatibility);
+    verdict
+        .closed_enough_to_emit()
+        .then(|| (compatibility, verdict.is_directed_closed()))
 }
 
 #[cfg(test)]

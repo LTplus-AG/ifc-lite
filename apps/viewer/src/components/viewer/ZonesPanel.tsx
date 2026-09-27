@@ -14,6 +14,7 @@
  * `zonesSlice` already does).
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Box,
@@ -30,6 +31,7 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useViewerStore } from '@/store';
@@ -130,40 +132,37 @@ function ZoneRow({
             (see `ZoneOverlay`). A control that does nothing is worse than no
             control. */}
         {!zone.footprint && (
-          <Button
+          <IconButton
+            label={editing ? t('zonesPanel.zoneRow.stopEditingTitle') : t('zonesPanel.zoneRow.editIn3dTitle')}
             variant={editing ? 'default' : 'ghost'}
-            size="icon"
             className="h-6 w-6"
-            title={editing ? t('zonesPanel.zoneRow.stopEditingTitle') : t('zonesPanel.zoneRow.editIn3dTitle')}
             onClick={onEdit}
           >
             <Pencil className="h-3 w-3" />
-          </Button>
+          </IconButton>
         )}
-        <Button variant="ghost" size="icon" className="h-6 w-6" title={t('zonesPanel.zoneRow.selectTitle')} onClick={onSelect}>
+        <IconButton label={t('zonesPanel.zoneRow.selectTitle')} className="h-6 w-6" onClick={onSelect}>
           <MousePointerClick className="h-3 w-3" />
-        </Button>
+        </IconButton>
         {/* The geometry half of #2508: elements wholly in this zone plus the
             CUT pieces of the straddlers, as one model of this section. */}
-        <Button
-          variant="ghost"
-          size="icon"
+        <IconButton
+          label={t('zonesPanel.zoneRow.exportGeometryAriaLabel', { name: zone.name })}
+          tooltip={exporting ? t('zonesPanel.zoneRow.exportingTitle') : t('zonesPanel.zoneRow.exportGeometryTitle')}
           className="h-6 w-6"
-          title={exporting ? t('zonesPanel.zoneRow.exportingTitle') : t('zonesPanel.zoneRow.exportGeometryTitle')}
-          aria-label={t('zonesPanel.zoneRow.exportGeometryAriaLabel', { name: zone.name })}
           disabled={exporting}
           onClick={onExportGeometry}
         >
           <Scissors className={`h-3 w-3${exporting ? ' animate-pulse' : ''}`} />
-        </Button>
+        </IconButton>
         {exporting && exportProgress && (
           <span className="text-[10px] tabular-nums text-muted-foreground" role="status" aria-live="polite">
             {t('zonesPanel.zoneRow.cuttingProgress', { done: exportProgress.done, total: exportProgress.total })}
           </span>
         )}
-        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" title={t('zonesPanel.zoneRow.deleteZoneTitle')} onClick={onRemove}>
+        <IconButton label={t('zonesPanel.zoneRow.deleteZoneTitle')} className="h-6 w-6 text-destructive" onClick={onRemove}>
           <Trash2 className="h-3 w-3" />
-        </Button>
+        </IconButton>
       </div>
       {/* A PRISM zone (#2508 item 4) owns only its vertical extent: its X/Z
           centre, size and rotation are DERIVED from the footprint, so offering
@@ -282,7 +281,6 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
     createZoneSet(name);
     setNewSetName('');
   }, [newSetName, createZoneSet]);
-
   const handleGenerateFromStoreys = useCallback(() => {
     const result = generateZonesFromStoreys();
     if (!result.ok) {
@@ -293,12 +291,11 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
     replaceZonesInSet(id, result.zones);
     toast.success(t('zonesPanel.generateFromStoreysSuccess', { count: result.zones.length }));
   }, [createZoneSet, replaceZonesInSet, t]);
-
   const handleExport = useCallback(() => {
     const json = exportZoneSetsJSON();
     downloadFile(json, `${sanitizeFilename('zone-sets')}.json`, 'application/json');
+    trackExportCompleted({ format: 'json', surface: 'zones_panel' });
   }, [exportZoneSetsJSON]);
-
   const handleImportFile = useCallback(async (file: File | null | undefined) => {
     if (!file) return;
     try {
@@ -322,9 +319,9 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
         <Box className="h-4 w-4 text-amber-600" />
         <span className="font-medium text-sm flex-1">{t('zonesPanel.header.title')}</span>
         {onClose && (
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleClose}>
+          <IconButton label={t('zonesPanel.header.closeLabel')} className="h-6 w-6" onClick={handleClose}>
             <X className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         )}
       </div>
 
@@ -345,12 +342,12 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
         <Button variant="outline" size="sm" className="h-7 flex-1" onClick={handleGenerateFromStoreys}>
           <Layers3 className="h-3.5 w-3.5" /> {t('zonesPanel.header.generateFromStoreysButton')}
         </Button>
-        <Button variant="ghost" size="icon" className="h-7 w-7" title={t('zonesPanel.header.exportSetsTitle')} onClick={handleExport}>
+        <IconButton label={t('zonesPanel.header.exportSetsTitle')} className="h-7 w-7" onClick={handleExport}>
           <Download className="h-3.5 w-3.5" />
-        </Button>
-        <Button variant="ghost" size="icon" className="h-7 w-7" title={t('zonesPanel.header.importSetsTitle')} onClick={() => importInputRef.current?.click()}>
+        </IconButton>
+        <IconButton label={t('zonesPanel.header.importSetsTitle')} className="h-7 w-7" onClick={() => importInputRef.current?.click()}>
           <Upload className="h-3.5 w-3.5" />
-        </Button>
+        </IconButton>
         <input
           ref={importInputRef}
           type="file"
@@ -371,33 +368,27 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
                 <span className="font-medium text-xs">{zs.name}</span>
                 <span className="text-[10px] text-muted-foreground">{t('zonesPanel.zoneCount', { count: zs.zones.length })}</span>
               </CollapsibleTrigger>
-              <Button
-                variant="ghost"
-                size="icon"
+              <IconButton
+                label={zs.visible ? t('zonesPanel.hideIn3dTitle') : t('zonesPanel.showIn3dTitle')}
                 className="h-6 w-6"
-                title={zs.visible ? t('zonesPanel.hideIn3dTitle') : t('zonesPanel.showIn3dTitle')}
                 onClick={() => setZoneSetVisible(zs.id, !zs.visible)}
               >
                 {zs.visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
+              </IconButton>
+              <IconButton
+                label={t('zonesPanel.addZoneTitle')}
                 className="h-6 w-6"
-                title={t('zonesPanel.addZoneTitle')}
                 onClick={() => addZone(zs.id, { name: `Zone ${zs.zones.length + 1}` })}
               >
                 <Plus className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
+              </IconButton>
+              <IconButton
+                label={t('zonesPanel.deleteZoneSetTitle')}
                 className="h-6 w-6 text-destructive"
-                title={t('zonesPanel.deleteZoneSetTitle')}
                 onClick={() => removeZoneSet(zs.id)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
-              </Button>
+              </IconButton>
             </div>
             <CollapsibleContent className="space-y-1.5 border-t p-1.5">
               <Input
@@ -474,6 +465,7 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
                           : t('zonesPanel.exportNothingToExport'));
                       return;
                     }
+                    trackExportCompleted({ format: 'glb', surface: 'zones_panel' });
                     const { whole, cut, refused, noGeometry, elapsedMs } = result.summary;
                     const elapsed = (elapsedMs / 1000).toFixed(1);
                     const successKey: TranslationKey = refused > 0 && noGeometry > 0

@@ -51,15 +51,18 @@ async fn test_state(label: &str, metrics_enabled: bool) -> AppState {
     }
 }
 
-/// Disabled: 404, plain-text "metrics disabled" body, `Content-Type:
-/// text/plain` (axum's default for a `&str` body) — not just "some 404".
+/// Disabled: 404 with the disabled reason, in the shared `{"error", "code"}`
+/// envelope since #5750 (it was a bare `text/plain` body before) — not just
+/// "some 404".
 #[tokio::test]
 async fn disabled_returns_404_with_the_disabled_reason() {
     let state = test_state("disabled", false).await;
     let response = metrics(axum::extract::State(state)).await.into_response();
     assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
-    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    assert_eq!(body.as_ref(), b"metrics disabled");
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(body["code"], "NOT_FOUND");
+    assert_eq!(body["error"], "Not found: metrics disabled");
 }
 
 /// Enabled: the response MUST advertise the Prometheus text-exposition

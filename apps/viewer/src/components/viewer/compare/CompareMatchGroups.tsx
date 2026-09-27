@@ -85,11 +85,11 @@ function MatchSection({
           >
             <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ backgroundColor: rgbaCss(color) }} />
             <span className="min-w-0 flex-1 truncate text-xs">{row.name || row.ifcType}</span>
-            <span className="shrink-0 text-[10px] text-muted-foreground">{matchRowSummary(row)}</span>
+            <span className="shrink-0 text-2xs text-muted-foreground">{matchRowSummary(row)}</span>
           </button>
         ))}
         {truncated > 0 && (
-          <p className="px-2 py-1 text-[10px] text-muted-foreground">
+          <p className="px-2 py-1 text-2xs text-muted-foreground">
             {t('comparePanel.moreNotShown', { count: truncated })}
           </p>
         )}

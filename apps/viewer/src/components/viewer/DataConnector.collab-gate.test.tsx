@@ -42,6 +42,7 @@ function seedStore(collabRole: 'viewer' | 'editor' | null) {
     mutationViews: new Map(),
     mutationVersion: 0,
     collabRole,
+    editEnabled: true,
   });
 }
 
@@ -76,6 +77,14 @@ describe('DataConnector — collab role gate on CSV import', () => {
       'the Import button must explain why editing is blocked for a viewer role',
     );
     assert.equal(importBtn.disabled, true, 'the Import button must be disabled for a viewer role');
+  });
+
+  it('explains the Edit mode gate on CSV import for an editor-role participant (#5901)', async () => {
+    seedStore('editor');
+    useViewerStore.setState({ editEnabled: false });
+    const importBtn = await openAndFindImportButton();
+    assert.equal(importBtn.disabled, true);
+    assert.equal(importBtn.title, 'Turn on Edit mode to change this model');
   });
 
   it('an editor-role participant sees no collab tooltip on the Import button', async () => {

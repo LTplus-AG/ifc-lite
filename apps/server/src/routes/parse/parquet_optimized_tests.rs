@@ -209,7 +209,7 @@ async fn a_cached_flat_response_does_not_satisfy_the_optimized_route() {
     for (key, value) in [
         (flat_key, b"FLAT-GEOMETRY".as_slice()),
         (flat_metadata_key, b"{}".as_slice()),
-        (data_model_cache_key(&cache_key), b"FLAT-DATA-MODEL".as_slice()),
+        (data_model_cache_key(&cache_key, crate::services::DataModelEntities::All), b"FLAT-DATA-MODEL".as_slice()),
         (symbolic_cache_key(&cache_key), b"{}".as_slice()),
     ] {
         state.cache.set_bytes(&key, value).await.expect("seed flat entry");
@@ -252,7 +252,7 @@ async fn a_cached_optimized_response_does_not_satisfy_the_flat_route() {
         (symbolic_cache_key(&cache_key), b"{}".as_slice()),
         // #5129: the optimized route now gates its replay on a current data
         // model too (the #3869 rule), so a hit fixture must seed one.
-        (data_model_cache_key(&cache_key), b"{}".as_slice()),
+        (data_model_cache_key(&cache_key, crate::services::DataModelEntities::All), b"{}".as_slice()),
     ] {
         state
             .cache
@@ -468,7 +468,7 @@ async fn optimized_replay_requires_current_data_model() {
 
     // Simulate a deployment that warmed this cache entry before #5129: delete
     // the data-model key the first (real) parse just wrote.
-    let dm_key = data_model_cache_key(&cache_key);
+    let dm_key = data_model_cache_key(&cache_key, crate::services::DataModelEntities::All);
     state
         .cache
         .remove(&dm_key)

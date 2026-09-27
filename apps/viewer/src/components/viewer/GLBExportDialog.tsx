@@ -10,10 +10,15 @@
  * metadata toggle. Other knobs Dion flagged (PBR reflectance, embed-
  * transparency, default material picker, coordinate origin, apply
  * mutations) are intentionally absent here and tracked separately.
+ *
+ * Chrome (open/busy/result state, the Dialog shell, the result alert, the
+ * guarded Cancel/Export footer) lives in `ExportDialogShell.tsx` (#5848);
+ * this component keeps only its own options and export logic.
  */
 
+import type { ExportSurface } from '@/lib/analytics-export-events';
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { Download, AlertCircle, Check, Loader2 } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -25,24 +30,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
 import { buildHiddenIfcTypes } from '@/store/typeVisibilityFilter';
 import { resolveExportVisibility } from '@/store/exportVisibility';
-import { posthog } from '@/lib/analytics';
+import { posthog, trackExportCompleted } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { GeometryProcessor, isNoRenderGeometryError, type MeshData } from '@ifc-lite/geometry';
 import { GEOM_CLASS_INSTANCED_TYPE } from '@ifc-lite/geometry/geometry-class';
@@ -53,15 +44,15 @@ import { downloadBlob, modelExportFilename } from '@/lib/export/download';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { displayedTranslation } from '@/lib/model-placement/state';
 import { useTranslation } from '@/i18n';
-import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
-
+import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 type ColorSource = 'rendering' | 'shading';
 
 interface GLBExportDialogProps {
+  surface?: ExportSurface;
   trigger?: React.ReactNode;
 }
 
-export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
+export function GLBExportDialog({ surface = 'classic', trigger }: GLBExportDialogProps) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
@@ -89,7 +80,6 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
   // exporting different model content than the user loaded.
   const mergeLayers = useViewerStore((s) => s.mergeLayers);
 
-  const [open, setOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [colorSource, setColorSource] = useState<ColorSource>('rendering');
   const [visibleOnly, setVisibleOnly] = useState(false);
@@ -97,8 +87,6 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
   // Lit materials shade from normals in external viewers; unlit (#1321) renders
   // the flat apparent base colour. Default lit — most users expect shading.
   const [lit, setLit] = useState(true);
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportResult, setExportResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Model list: federated models first, falling back to the legacy single
   // model when nothing is registered. Mirrors ExportDialog.
@@ -171,11 +159,10 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
     [getExportVisibility],
   );
 
-  const handleExport = useCallback(async () => {
-    if (!selectedModel?.geometryResult) return;
-
-    setIsExporting(true);
-    setExportResult(null);
+  const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+    if (!selectedModel?.geometryResult) {
+      return { success: false, message: t('geometryExport.glb.failedMessage', { reason: t('geometryExport.shared.unknownError') }) };
+    }
 
     // Which of the two assemblers ran, recorded outside the try so a failure
     // report can say which one trapped (they have very different memory
@@ -277,7 +264,6 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
         // when isolation matched nothing (#4328 follow-up). `!= null` catches both
         // `null` (no filter) and `undefined` (`!visibleOnly`).
         const hasIsolation = globalIsolated != null;
-
         const meshes = (exportGeometry.meshes as MeshData[])
           .filter((m) => {
             // Instanced type-library duplicates repeat occurrence geometry at the
@@ -294,17 +280,15 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
               ? ({ ...m, color: m.shadingColor } as MeshData)
               : m,
           );
-
         glb = await exportGlbFromGeometry(exportGeometry, { meshes, includeMetadata, lit });
       }
 
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
       downloadBlob(blob, modelExportFilename(selectedModel.name, 'glb', visibleOnly ? '_visible' : ''));
-
       const msg = t('geometryExport.glb.exportedMessage', { sizeKb: (blob.size / 1024).toFixed(0) });
-      setExportResult({ success: true, message: msg });
       toast.success(msg);
-      posthog.capture('export_completed', {
+      trackExportCompleted({
+        surface,
         format: 'glb',
         visible_only: visibleOnly,
         include_metadata: includeMetadata,
@@ -312,6 +296,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
         lit,
         size_kb: Math.round(blob.size / 1024),
       });
+      return { success: true, message: msg };
     } catch (err) {
       console.error('Export failed:', err);
       const kind = classifyLoadError(err);
@@ -327,7 +312,6 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
         : kind === 'wasm_runtime_crashed'
           ? formatLoadError(err, selectedModel.name)
           : t('geometryExport.glb.failedMessage', { reason: err instanceof Error ? err.message : t('geometryExport.shared.unknownError') });
-      setExportResult({ success: false, message: errMsg });
       toast.error(errMsg);
       // This export failed silently in production: the catch only logged +
       // toasted, so PostHog saw nothing and the trap that started the whole
@@ -345,8 +329,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
       if (!isNoRenderGeometryError(err)) {
         posthog.captureException(err, { context: 'export_glb', error_kind: kind });
       }
-    } finally {
-      setIsExporting(false);
+      return { success: false, message: errMsg };
     }
   }, [
     selectedModel,
@@ -360,161 +343,126 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
     typeVisibility,
     getGlobalHiddenIds,
     getGlobalIsolatedIds,
+    surface,
+    t,
   ]);
 
-  const handleOpenChange = useExportDialogOpenGuard({
-    busy: isExporting,
-    setOpen,
-    onOpen: () => setExportResult(null),
-  });
+  const filenamePreview = selectedModel
+    ? modelExportFilename(selectedModel.name, 'glb', visibleOnly ? '_visible' : '')
+    : undefined;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        {trigger || (
+    <ExportDialogShell
+      trigger={
+        trigger || (
           <Button variant="outline" size="sm">
             <Download className="h-4 w-4 mr-2" />
             {t('geometryExport.glb.triggerButton')}
           </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-lg overflow-hidden">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Download className="h-5 w-5" />
-            {t('geometryExport.glb.dialogTitle')}
-          </DialogTitle>
-          <DialogDescription>
-            {t('geometryExport.glb.dialogDescription')}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto">
-          {/* Model selector — only shown when multiple are loaded */}
-          {modelList.length > 1 && (
-            <div className="flex items-center gap-4">
-              <Label className="w-32">{t('geometryExport.glb.modelLabel')}</Label>
-              <Select value={selectedModelId} onValueChange={setSelectedModelId}>
-                <SelectTrigger>
-                  <SelectValue placeholder={t('geometryExport.glb.selectModelPlaceholder')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {modelList.map((m) => {
-                    const maxLen = 32;
-                    const displayName =
-                      m.name.length > maxLen ? m.name.slice(0, maxLen) + '…' : m.name;
-                    return (
-                      <SelectItem key={m.id} value={m.id} title={m.name}>
-                        {displayName}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {/* Colour source */}
-          <div className="flex items-start gap-4">
-            <div className="w-32 pt-2">
-              <Label>{t('geometryExport.glb.colorSourceLabel')}</Label>
-            </div>
-            <div className="flex-1 space-y-2">
-              <Select
-                value={colorSource}
-                onValueChange={(v) => setColorSource(v as ColorSource)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="rendering">{t('geometryExport.glb.colorSourceRendering')}</SelectItem>
-                  <SelectItem value="shading">{t('geometryExport.glb.colorSourceShading')}</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {colorSource === 'rendering'
-                  ? t('geometryExport.glb.colorSourceRenderingHint')
-                  : t('geometryExport.glb.colorSourceShadingHint')}
-              </p>
-            </div>
-          </div>
-
-          {/* Output format indicator */}
-          <div className="flex items-center gap-4">
-            <Label className="w-32 text-muted-foreground">{t('geometryExport.glb.outputLabel')}</Label>
-            <Badge variant="secondary">{t('geometryExport.glb.outputFormat')}</Badge>
-            <span className="text-xs text-muted-foreground">{t('geometryExport.glb.fileExtension')}</span>
-          </div>
-
-          {/* Visible only */}
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>{t('geometryExport.glb.visibleOnlyLabel')}</Label>
-              <p className="text-xs text-muted-foreground">
-                {t('geometryExport.glb.visibleOnlyHint')}
-              </p>
-            </div>
-            <Switch checked={visibleOnly} onCheckedChange={setVisibleOnly} />
-          </div>
-
-          {/* Include metadata */}
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>{t('geometryExport.glb.includeMetadataLabel')}</Label>
-              <p className="text-xs text-muted-foreground">
-                {t('geometryExport.glb.includeMetadataHint')}
-              </p>
-            </div>
-            <Switch checked={includeMetadata} onCheckedChange={setIncludeMetadata} />
-          </div>
-
-          {/* Lit materials */}
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>{t('geometryExport.glb.litLabel')}</Label>
-              <p className="text-xs text-muted-foreground">
-                {t('geometryExport.glb.litHint')}
-              </p>
-            </div>
-            <Switch checked={lit} onCheckedChange={setLit} />
-          </div>
-
-          {exportResult && (
-            <Alert variant={exportResult.success ? 'default' : 'destructive'}>
-              {exportResult.success ? (
-                <Check className="h-4 w-4" />
-              ) : (
-                <AlertCircle className="h-4 w-4" />
-              )}
-              <AlertTitle>{exportResult.success ? t('geometryExport.glb.successTitle') : t('geometryExport.glb.errorTitle')}</AlertTitle>
-              <AlertDescription>{exportResult.message}</AlertDescription>
-            </Alert>
-          )}
+        )
+      }
+      icon={<Download className="h-5 w-5" />}
+      title={t('geometryExport.glb.dialogTitle')}
+      description={t('geometryExport.glb.dialogDescription')}
+      cancelLabel={t('geometryExport.glb.cancelButton')}
+      exportLabel={t('geometryExport.glb.exportButton')}
+      exportingLabel={t('geometryExport.glb.exportingButton')}
+      exportIcon={<Download className="h-4 w-4 mr-2" />}
+      successTitle={t('geometryExport.glb.successTitle')}
+      errorTitle={t('geometryExport.glb.errorTitle')}
+      filenamePreview={filenamePreview}
+      exportDisabled={!selectedModel?.geometryResult}
+      onExport={handleExport}
+    >
+      {/* Model selector — only shown when multiple are loaded */}
+      {modelList.length > 1 && (
+        <div className="flex items-center gap-4">
+          <Label className="w-32">{t('geometryExport.glb.modelLabel')}</Label>
+          <Select value={selectedModelId} onValueChange={setSelectedModelId}>
+            <SelectTrigger>
+              <SelectValue placeholder={t('geometryExport.glb.selectModelPlaceholder')} />
+            </SelectTrigger>
+            <SelectContent>
+              {modelList.map((m) => {
+                const maxLen = 32;
+                const displayName =
+                  m.name.length > maxLen ? m.name.slice(0, maxLen) + '…' : m.name;
+                return (
+                  <SelectItem key={m.id} value={m.id} title={m.name}>
+                    {displayName}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
         </div>
+      )}
 
-        <DialogFooter>
-          <Button variant="outline" disabled={isExporting} onClick={() => handleOpenChange(false)}>
-            {t('geometryExport.glb.cancelButton')}
-          </Button>
-          <Button
-            onClick={handleExport}
-            disabled={isExporting || !selectedModel?.geometryResult}
+      {/* Colour source */}
+      <div className="flex items-start gap-4">
+        <div className="w-32 pt-2">
+          <Label>{t('geometryExport.glb.colorSourceLabel')}</Label>
+        </div>
+        <div className="flex-1 space-y-2">
+          <Select
+            value={colorSource}
+            onValueChange={(v) => setColorSource(v as ColorSource)}
           >
-            {isExporting ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {t('geometryExport.glb.exportingButton')}
-              </>
-            ) : (
-              <>
-                <Download className="h-4 w-4 mr-2" />
-                {t('geometryExport.glb.exportButton')}
-              </>
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="rendering">{t('geometryExport.glb.colorSourceRendering')}</SelectItem>
+              <SelectItem value="shading">{t('geometryExport.glb.colorSourceShading')}</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {colorSource === 'rendering'
+              ? t('geometryExport.glb.colorSourceRenderingHint')
+              : t('geometryExport.glb.colorSourceShadingHint')}
+          </p>
+        </div>
+      </div>
+
+      {/* Output format indicator */}
+      <div className="flex items-center gap-4">
+        <Label className="w-32 text-muted-foreground">{t('geometryExport.glb.outputLabel')}</Label>
+        <Badge variant="secondary">{t('geometryExport.glb.outputFormat')}</Badge>
+        <span className="text-xs text-muted-foreground">{t('geometryExport.glb.fileExtension')}</span>
+      </div>
+
+      {/* Visible only */}
+      <div className="flex items-center justify-between">
+        <div>
+          <Label>{t('geometryExport.glb.visibleOnlyLabel')}</Label>
+          <p className="text-xs text-muted-foreground">
+            {t('geometryExport.glb.visibleOnlyHint')}
+          </p>
+        </div>
+        <Switch checked={visibleOnly} onCheckedChange={setVisibleOnly} />
+      </div>
+
+      {/* Include metadata */}
+      <div className="flex items-center justify-between">
+        <div>
+          <Label>{t('geometryExport.glb.includeMetadataLabel')}</Label>
+          <p className="text-xs text-muted-foreground">
+            {t('geometryExport.glb.includeMetadataHint')}
+          </p>
+        </div>
+        <Switch checked={includeMetadata} onCheckedChange={setIncludeMetadata} />
+      </div>
+
+      {/* Lit materials */}
+      <div className="flex items-center justify-between">
+        <div>
+          <Label>{t('geometryExport.glb.litLabel')}</Label>
+          <p className="text-xs text-muted-foreground">
+            {t('geometryExport.glb.litHint')}
+          </p>
+        </div>
+        <Switch checked={lit} onCheckedChange={setLit} />
+      </div>
+    </ExportDialogShell>
   );
 }

@@ -4,6 +4,7 @@
 import { useId, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronRight, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import type { ResolvedAssignment } from '@/lib/appearance/assignments/types.js';
 import { useTranslation } from '@/i18n';
 import { AppearanceAssignmentMembers } from './AppearanceAssignmentMembers.js';
@@ -25,7 +26,7 @@ export function AppearanceAssignmentList(props: AppearanceAssignmentListProps) {
   if (!props.rows.length) return null;
   return <section className="space-y-2" aria-label={t('appearanceAssignmentList.sectionAriaLabel')}>
     <div><h3 className="text-xs font-semibold">{t('appearanceAssignmentList.heading')}</h3>
-      <p className="text-[11px] text-muted-foreground">{t('appearanceAssignmentList.description')}</p></div>
+      <p className="text-2xs text-muted-foreground">{t('appearanceAssignmentList.description')}</p></div>
     <ol className="space-y-2">{props.rows.map((row, index) => {
       const item = row.assignment;
       const position = index + 1;
@@ -37,18 +38,33 @@ export function AppearanceAssignmentList(props: AppearanceAssignmentListProps) {
       return <li key={item.id} className="rounded-md border p-2" aria-label={t('appearanceAssignmentList.assignmentAriaLabel', { position, sourceName: item.source.name, modelName: item.model.name })}>
         <div className="flex items-start gap-1">
           <div className="min-w-0 flex-1"><p className="truncate text-xs font-medium">{position}. {item.source.name}</p>
-            <p className="truncate text-[11px] text-muted-foreground">{item.model.name}</p></div>
-          <Button type="button" size="icon" variant="ghost" className="h-6 w-6" disabled={props.disabled || index === 0}
-            aria-label={t('appearanceAssignmentList.moveEarlierAriaLabel', { position })} onClick={() => props.onMove(item.id, -1)}><ArrowUp className="h-3 w-3" /></Button>
-          <Button type="button" size="icon" variant="ghost" className="h-6 w-6" disabled={props.disabled || index === props.rows.length - 1}
-            aria-label={t('appearanceAssignmentList.moveLaterAriaLabel', { position })} onClick={() => props.onMove(item.id, 1)}><ArrowDown className="h-3 w-3" /></Button>
-          <Button type="button" size="icon" variant="ghost" className="h-6 w-6" disabled={props.disabled}
-            aria-label={t('appearanceAssignmentList.removeAriaLabel', { position })} onClick={() => props.onRemove(item.id)}><Trash2 className="h-3 w-3" /></Button>
+            <p className="truncate text-2xs text-muted-foreground">{item.model.name}</p></div>
+          <IconButton
+            label={t('appearanceAssignmentList.moveEarlierAriaLabel', { position })}
+            type="button"
+            className="h-6 w-6"
+            disabled={props.disabled || index === 0}
+            onClick={() => props.onMove(item.id, -1)}
+          ><ArrowUp className="h-3 w-3" /></IconButton>
+          <IconButton
+            label={t('appearanceAssignmentList.moveLaterAriaLabel', { position })}
+            type="button"
+            className="h-6 w-6"
+            disabled={props.disabled || index === props.rows.length - 1}
+            onClick={() => props.onMove(item.id, 1)}
+          ><ArrowDown className="h-3 w-3" /></IconButton>
+          <IconButton
+            label={t('appearanceAssignmentList.removeAriaLabel', { position })}
+            type="button"
+            className="h-6 w-6"
+            disabled={props.disabled}
+            onClick={() => props.onRemove(item.id)}
+          ><Trash2 className="h-3 w-3" /></IconButton>
         </div>
-        <p className="mt-1 text-[11px]">{t('appearanceAssignmentList.summary', {
+        <p className="mt-1 text-2xs">{t('appearanceAssignmentList.summary', {
           products, excluded, overridden,
         })}</p>
-        <Button type="button" variant="ghost" size="sm" className="mt-1 h-6 px-0 text-[11px]" disabled={props.disabled}
+        <Button type="button" variant="ghost" size="sm" className="mt-1 h-6 px-0 text-2xs" disabled={props.disabled}
           aria-label={t('appearanceAssignmentList.reviewAriaLabel', { position })} aria-expanded={expandedId === item.id}
           aria-controls={`${reviewId}-${index}`} onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}>
           <ChevronRight className={`h-3 w-3 ${expandedId === item.id ? 'rotate-90' : ''}`} />{t('appearanceAssignmentList.reviewButton')}

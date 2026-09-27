@@ -68,6 +68,7 @@ import { useViewerStore } from '@/store/index.js';
 // copy could resolve to a second module instance, and the toast spy would then
 // watch an object nothing calls.
 import { toast } from '@/components/ui/toast';
+import { posthog } from '@/lib/analytics';
 import type { FederatedModel } from '@/store/types';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
@@ -104,24 +105,6 @@ function readSource(relativePath: string): string {
 }
 
 /** Import statements (including multi-line named imports), matched as a unit. */
-const IMPORT_STATEMENT =
-  /^import\b[\s\S]*?from\s*['"][^'"]*['"];?[ \t]*$|^import\s+['"][^'"]*['"];?[ \t]*$/gm;
-
-/**
- * The part of a module that actually *does* something. An import is not reach:
- * deleting `<ClassicExportMenuItems />` from `MainToolbar` while leaving the
- * import line behind is exactly the regression the surface test below exists to
- * catch, and matching against the whole file would let it through.
- */
-function bodyWithoutImports(source: string): string {
-  return source.replace(IMPORT_STATEMENT, '');
-}
-
-/** True when `name` is referenced somewhere other than an import statement. */
-function usedOutsideImports(source: string, name: string): boolean {
-  return new RegExp(`\\b${name}\\b`).test(bodyWithoutImports(source));
-}
-
 /**
  * The ribbon's real icons come from `@/icons`, which resolves through
  * `unplugin-icons` and cannot be loaded by the node test runner; the component
@@ -131,8 +114,10 @@ function usedOutsideImports(source: string, name: string): boolean {
 function StubIcon(props: React.SVGProps<SVGSVGElement>) {
   return <svg {...props} />;
 }
+/** Every key an icon set carries: one per registered format, plus the extension-exporter row icon (#5838). */
+const ICON_KEYS: (keyof ExportIconSet)[] = [...EXPORT_COMMAND_IDS, 'extension'];
 const STUB_ICONS = Object.fromEntries(
-  EXPORT_COMMAND_IDS.map((id) => [id, StubIcon]),
+  ICON_KEYS.map((id) => [id, StubIcon]),
 ) as ExportIconSet;
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
@@ -346,6 +331,34 @@ describe('export UI parity (ifc-lite#2511)', () => {
     assert.deepEqual(renderedExportIds(), [...EXPORT_COMMAND_IDS]);
   });
 
+  it('forwards the initiating surface to every registered dialog (#5844)', () => {
+    const seen = new Map<string, Set<string>>();
+    const dialogs = EXPORT_COMMANDS.filter((command) => command.kind === 'dialog');
+    const originals = dialogs.map((command) => ({ command, Dialog: command.Dialog }));
+    try {
+      for (const { command, Dialog } of originals) {
+        Reflect.set(command, 'Dialog', (props: React.ComponentProps<typeof Dialog>) => {
+          const surfaces = seen.get(command.id) ?? new Set<string>();
+          assert.ok(props.surface, 'registry dialogs must carry a surface');
+          surfaces.add(props.surface);
+          seen.set(command.id, surfaces);
+          return <Dialog {...props} />;
+        });
+      }
+      renderClassicExports();
+      assert.deepEqual([...seen.entries()].map(([id, surfaces]) => [id, [...surfaces]]),
+        dialogs.map((command) => [command.id, ['classic']]));
+      unmountAll();
+      seen.clear();
+      renderRibbonExports();
+      assert.deepEqual([...seen.entries()].map(([id, surfaces]) => [id, [...surfaces]]),
+        dialogs.map((command) => [command.id, ['ribbon']]));
+    } finally {
+      unmountAll();
+      for (const { command, Dialog } of originals) Reflect.set(command, 'Dialog', Dialog);
+    }
+  });
+
   it('both toolbar styles expose the same formats in the same order (#2511: two hand-written lists)', () => {
     renderClassicExports();
     const classic = renderedExportIds();
@@ -380,7 +393,7 @@ describe('export UI parity (ifc-lite#2511)', () => {
   });
 
   it('the classic icon set covers every registered format', () => {
-    assert.deepEqual(Object.keys(CLASSIC_EXPORT_ICONS).sort(), [...EXPORT_COMMAND_IDS].sort());
+    assert.deepEqual(Object.keys(CLASSIC_EXPORT_ICONS).sort(), [...ICON_KEYS].sort());
   });
 
   it('the ribbon icon set covers every registered format', () => {
@@ -390,8 +403,8 @@ describe('export UI parity (ifc-lite#2511)', () => {
     // specifier onto a stub, so it can. That matters: the source form counted
     // KEYS THAT LOOK LIKE KEYS, so a key inside a nested object or a commented
     // block counted, and an entry whose value failed to resolve did not.
-    assert.deepEqual(Object.keys(RIBBON_EXPORT_ICONS).sort(), [...EXPORT_COMMAND_IDS].sort());
-    for (const id of EXPORT_COMMAND_IDS) {
+    assert.deepEqual(Object.keys(RIBBON_EXPORT_ICONS).sort(), [...ICON_KEYS].sort());
+    for (const id of ICON_KEYS) {
       assert.ok(RIBBON_EXPORT_ICONS[id], `the ribbon icon for ${id} must resolve to a component`);
     }
   });
@@ -470,7 +483,12 @@ describe('export UI parity (ifc-lite#2511)', () => {
 
   it('the JSON export actually downloads a file from both toolbar styles', async () => {
     loadFakeModel();
+    const events: Array<{ event: string; properties: Record<string, unknown> }> = [];
+    const capture = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      events.push({ event, properties });
+    });
 
+    try {
     renderClassicExports();
     const fromClassic = await captureDownloads(async () => {
       await act(async () => {
@@ -488,6 +506,13 @@ describe('export UI parity (ifc-lite#2511)', () => {
       });
     });
     assert.deepEqual(fromRibbon, ['json'], 'the ribbon JSON button must produce a download');
+    assert.deepEqual(events.filter(({ event }) => event === 'export_completed'), [
+      { event: 'export_completed', properties: { format: 'json', surface: 'classic', row_count: 1 } },
+      { event: 'export_completed', properties: { format: 'json', surface: 'ribbon', row_count: 1 } },
+    ], '#5844: one completion per successful download with its initiating surface');
+    } finally {
+      capture.mock.restore();
+    }
   });
 
   it('the screenshot export saves a PNG from both toolbar styles (#2511: a cross-wired action dispatch would still download something)', async () => {
@@ -500,6 +525,10 @@ describe('export UI parity (ifc-lite#2511)', () => {
     canvas.dataset.viewport = 'main';
     canvas.toDataURL = () => 'data:image/png;base64,iVBORw0KGgo=';
     document.body.appendChild(canvas);
+    const events: Array<{ event: string; properties: Record<string, unknown> }> = [];
+    const capture = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      events.push({ event, properties });
+    });
 
     try {
       renderClassicExports();
@@ -519,7 +548,12 @@ describe('export UI parity (ifc-lite#2511)', () => {
         });
       });
       assert.deepEqual(fromRibbon, ['png'], 'the ribbon Screenshot button must save a PNG');
+      assert.deepEqual(events.filter(({ event }) => event === 'export_completed'), [
+        { event: 'export_completed', properties: { format: 'png', surface: 'classic' } },
+        { event: 'export_completed', properties: { format: 'png', surface: 'ribbon' } },
+      ], '#5844: screenshot completions retain the initiating surface');
     } finally {
+      capture.mock.restore();
       canvas.remove();
     }
   });

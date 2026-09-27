@@ -12,8 +12,12 @@ import { PropertyValueType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { toast } from '@/components/ui/toast';
+import { posthog } from '@/lib/analytics';
+import { downloadedNames, clearDownloads } from '@/test/download-capture';
+import { waitFor } from '@/test/render';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ExportChangesButton } from './ExportChangesButton.js';
+import { FIXTURE_WALL_A, parseFixtureModel } from './anonymized-export/anonymized-export-fixture.test-support';
 
 function makeModel(): FederatedModel {
   return {
@@ -44,15 +48,21 @@ function makeView(): MutablePropertyView {
 }
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
+function unmountAll(): void {
+  for (const { root, container } of mounted.splice(0)) {
+    act(() => root.unmount());
+    container.remove();
+  }
+}
 
-function renderButton(): HTMLElement {
+function renderButton(surface: 'classic' | 'ribbon' | 'palette' = 'classic'): HTMLElement {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
   act(() => {
     root.render(
       <TooltipProvider>
-        <ExportChangesButton />
+        <ExportChangesButton surface={surface} />
       </TooltipProvider>,
     );
   });
@@ -62,15 +72,15 @@ function renderButton(): HTMLElement {
 
 /** The toolbar trigger — distinguishable from the dialog's own "Export" button by its badge text. */
 function findToolbarButton(container: HTMLElement): HTMLButtonElement {
-  const btn = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Export Changes'));
-  assert.ok(btn, 'toolbar "Export Changes" button must render');
+  const btn = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Export modified IFC'));
+  assert.ok(btn, 'toolbar "Export modified IFC" button must render');
   return btn;
 }
 
 /** The dialog's confirm button — Radix portals it into `document.body`. */
 function findDialogExportButton(): HTMLButtonElement {
   const btn = [...document.body.querySelectorAll('button')].find(
-    (b) => b.textContent?.includes('Export') && !b.textContent?.includes('Export Changes'),
+    (b) => b.textContent?.includes('Export') && !b.textContent?.includes('Export modified IFC'),
   );
   assert.ok(btn, 'the dialog Export (confirm) button must render once the review is open');
   return btn;
@@ -82,12 +92,8 @@ function dialogText(): string {
 
 describe('ExportChangesButton — review/export divergence (issue: detect-and-require re-review)', () => {
   beforeEach(() => {
-    for (const { root, container } of mounted.splice(0)) {
-      act(() => {
-        root.unmount();
-      });
-      container.remove();
-    }
+    clearDownloads();
+    unmountAll();
     useViewerStore.setState({
       models: new Map([['model-1', makeModel()]]),
       mutationViews: new Map(),
@@ -98,6 +104,37 @@ describe('ExportChangesButton — review/export divergence (issue: detect-and-re
       scheduleSourceModelId: null,
       ifcDataStore: null,
     });
+  });
+
+  it('records one completion for the reviewed IFC file after the browser download (#5844)', async () => {
+    const ifcDataStore = await parseFixtureModel();
+    const model = { ...makeModel(), ifcDataStore };
+    const view = new MutablePropertyView(null, model.id);
+    view.setAttribute(FIXTURE_WALL_A, 'Name', 'Reviewed edit');
+    useViewerStore.setState({
+      models: new Map([[model.id, model]]),
+      mutationViews: new Map([[model.id, view]]),
+      mutationVersion: 1,
+    });
+    const completions: Record<string, unknown>[] = [];
+    const analytics = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      if (event === 'export_completed') completions.push(properties);
+    });
+    try {
+      for (const [index, surface] of (['classic', 'ribbon', 'palette'] as const).entries()) {
+        const container = renderButton(surface);
+        await act(async () => { findToolbarButton(container).click(); });
+        assert.ok(dialogText().includes('Reviewed edit'), 'the review displays the authored change');
+        await act(async () => { findDialogExportButton().click(); });
+        await waitFor(() => downloadedNames().length === index + 1, 'reviewed IFC file did not download');
+        assert.match(downloadedNames()[index], /\.ifc$/);
+        assert.deepEqual(completions[index], { format: 'ifc', surface, model_count: 1, change_count: 1 });
+        assert.equal(completions.length, index + 1, 'one completion per browser download');
+        unmountAll();
+      }
+    } finally {
+      analytics.mock.restore();
+    }
   });
 
   it('refuses to export and keeps the dialog open when the overlay changes while the review is open, bypassing tracked set()', async () => {

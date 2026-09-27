@@ -14,7 +14,7 @@
 
 import type { StateCreator } from 'zustand';
 
-export type ExtensionsTabView = 'installed' | 'ideas' | 'audit' | 'repair' | 'privacy';
+export type ExtensionsTabView = 'installed' | 'ideas' | 'audit' | 'repair';
 
 export interface ExtensionsSlice {
   extensionsPanelVisible: boolean;

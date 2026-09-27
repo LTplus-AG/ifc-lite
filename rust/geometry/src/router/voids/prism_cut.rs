@@ -73,6 +73,7 @@ use rustc_hash::FxHashMap;
 pub(crate) mod closure_checks;
 mod vertex_dedup;
 mod finish;
+mod tjunction_close;
 mod planar_correction;
 #[cfg(test)]
 #[path = "prism_cut_tests.rs"]
@@ -81,7 +82,7 @@ use closure_checks::{closed_enough_to_emit, directed_closed, ClosureVerdict};
 #[cfg(test)]
 use closure_checks::closed_or_hairline;
 pub(crate) use vertex_dedup::dedup_cut_vertices;
-pub(in crate::router::voids) use finish::finish_cut;
+pub(in crate::router::voids) use finish::finish_cut_verdict;
 pub(super) use planar_correction::correct_planar_overlap;
 
 pub(super) fn enabled() -> bool {
@@ -3051,11 +3052,20 @@ impl GeometryRouter {
         // The finalizer cleans before the ulp weld so discarded slivers cannot
         // choose a surviving seam coordinate, then audits the exact mesh it
         // returns. A closed pre-clean result remains the compatibility fallback.
-        let Some(finished) = finish_cut(out, mesh) else {
+        let Some((finished, directed)) = finish_cut_verdict(out, mesh) else {
             defer(9);
             return None;
         };
         out = finished;
+        // A host stored relative to a per-element origin can keep hairline
+        // seams its world-frame twin does not (#5739): its weld is sized by the
+        // small stored coordinates. Close them when that leaves the cut
+        // strictly closed, else keep it. World-frame cuts are untouched.
+        if mesh.origin != [0.0; 3] && !directed {
+            if let Some(closed) = tjunction_close::close_seams(&out, mesh) {
+                out = closed;
+            }
+        }
 
         // Residual openings in their original classification order.
         residual_idx.sort_unstable();

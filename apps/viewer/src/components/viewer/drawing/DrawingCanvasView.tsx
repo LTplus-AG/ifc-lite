@@ -2,11 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { Spinner } from '@/components/ui/spinner';
+
 /** The Drawing panel's canvas region (#5494): the drawing with its markup and
  *  layers, the generating / error / empty states, and the only thing that
  *  still floats over the paper, the text annotation editor. */
 
-import { Loader2 } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { Drawing2DCanvas } from '../Drawing2DCanvas';
@@ -31,7 +33,7 @@ export function DrawingCanvasView({ vm, layers }: { vm: DrawingViewModel; layers
     >
       {status === 'generating' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80">
-          <Loader2 className="mb-4 h-8 w-8 animate-spin text-primary" />
+          <Spinner className="mb-4 h-8 w-8 text-primary" />
           <div className="text-sm font-medium">{vm.progressPhase}</div>
           <div className="mt-2 h-2 w-48 overflow-hidden rounded-full bg-muted">
             <div className="h-full bg-primary transition-all duration-200" style={{ width: `${vm.progress}%` }} />

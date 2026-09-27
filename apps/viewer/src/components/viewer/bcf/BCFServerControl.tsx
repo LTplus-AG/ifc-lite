@@ -4,7 +4,7 @@
 
 import { useState } from 'react';
 import { Cloud } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n';
 import { BCFServerDialog } from './BCFServerDialog';
 
@@ -14,15 +14,13 @@ export function BCFServerControl() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button
-        variant="ghost"
-        size="icon"
+      <IconButton
+        label={t('bcf.serverControl.title')}
         className="h-7 w-7"
         onClick={() => setOpen(true)}
-        title={t('bcf.serverControl.title')}
       >
         <Cloud className="h-4 w-4" />
-      </Button>
+      </IconButton>
       <BCFServerDialog open={open} onOpenChange={setOpen} />
     </>
   );

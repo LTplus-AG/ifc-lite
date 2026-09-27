@@ -28,6 +28,9 @@ export const geometryExportDialogsEn = {
   'geometryExport.shared.unknownError': 'Unknown error',
   'geometryExport.shared.geometryEngineUnavailableError': 'Geometry engine unavailable',
 
+  // --- ExportDialogShell.tsx (#5848) ---
+  'geometryExport.shell.filenamePreviewLabel': 'Will save as:',
+
   // --- GLBExportDialog.tsx ---
   'geometryExport.glb.triggerButton': 'Export GLB',
   'geometryExport.glb.dialogTitle': 'Export GLB File',

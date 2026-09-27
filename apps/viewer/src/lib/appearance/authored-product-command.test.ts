@@ -47,6 +47,7 @@ for (const federated of [false, true]) test(`native multicolour PDF owner is one
     const idOffset = federationRegistry.registerModel('fill', 53);
     const model = { ...fixtureModel('fill'), idOffset, maxExpressId: 53, ifcDataStore: data, geometryResult: geometry };
     useViewerStore.setState({ models: new Map([...(federated ? [['other', fixtureModel('other')] as const] : []), ['fill', model]]),
+      editEnabled: true,
       activeModelId: 'fill', geometryResult: geometry, mutationViews: new Map([['fill', view]]), storeEditors: new Map([['fill', editor]]),
       undoStacks: new Map(), redoStacks: new Map(), dirtyModels: new Set(), mutationVersion: 0, collabRoomId: null, modelPlacement: emptyPlacementState() });
     const request = JSON.parse(await readFile(new URL('../../../../../docs/architecture/evidence/pdf-fill-annotations/page-1-request.json', import.meta.url), 'utf8')) as PdfFillAnnotationRequest;

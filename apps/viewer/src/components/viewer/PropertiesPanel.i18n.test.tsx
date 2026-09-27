@@ -9,7 +9,7 @@
  * catalogue (#4918 slice: panel outer chrome; see that file's own
  * docblock for the exact surface). This suite renders the panel with the
  * default (no model, no selection) store state, which exercises the
- * empty-state chrome: the "Inspector" header and the no-selection prompt.
+ * empty-state chrome: the Properties header and the no-selection prompt.
  * The entity-header, tabs, and collapsible-section chrome need a loaded
  * model and a real selection to render and are left to manual
  * verification, same reasoning `properties/Properties.i18n.test.tsx`
@@ -29,7 +29,7 @@ import { act } from 'react';
 import { cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { TranslationValue } from '@/i18n/types';
-import { propertiesEn } from '@/i18n/catalogues/properties.en';
+import { propertiesPanelEn as propertiesEn } from '@/i18n/catalogues/properties-panel.en';
 import { useViewerStore } from '@/store';
 import { PropertiesPanel } from './PropertiesPanel.js';
 

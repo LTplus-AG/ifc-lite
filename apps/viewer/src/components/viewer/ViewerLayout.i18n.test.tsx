@@ -24,6 +24,7 @@ import { cleanup } from '@/test/render.js';
 import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { shellChromeEn as ShellChromeEnType } from '@/i18n/catalogues/shell-chrome.en';
+import { propertiesPanelEn } from '@/i18n/catalogues/properties-panel.en';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
 
@@ -68,7 +69,10 @@ const mark = (key: ShellChromeKey) => {
 const LAYOUT_KEYS = (Object.keys(shellChromeEn) as ShellChromeKey[]).filter((key) =>
   key.startsWith('shellChrome.layout.'),
 );
-const PSEUDO: Catalogue = Object.fromEntries(LAYOUT_KEYS.map((key) => [key, mark(key)]));
+const PSEUDO: Catalogue = {
+  ...Object.fromEntries(LAYOUT_KEYS.map((key) => [key, mark(key)])),
+  'properties.panel.title': `⟦properties.panel.title|${propertiesPanelEn['properties.panel.title']}⟧`,
+};
 
 function bodyText(): string {
   return document.body.textContent ?? '';
@@ -105,7 +109,7 @@ describe('ViewerLayout localization (#4918)', () => {
     renderViewerLayout();
     const english = bodyText();
     assert.ok(
-      english.includes('Safe mode: extensions and the active flavor are not loaded for this session.'),
+      english.includes('Safe mode: extensions and the active profile are not loaded for this session.'),
       'expected the safe-mode banner in English',
     );
     assert.ok(english.includes('?safe=0'));
@@ -148,6 +152,6 @@ describe('ViewerLayout localization (#4918)', () => {
     assert.equal(hierarchyBtn!.getAttribute('aria-label'), mark('shellChrome.layout.openHierarchyAriaLabel' as ShellChromeKey));
     assert.equal(propertiesBtn!.getAttribute('aria-label'), mark('shellChrome.layout.openPropertiesAriaLabel' as ShellChromeKey));
     assert.ok(bodyText().includes(mark('shellChrome.layout.hierarchyLabel' as ShellChromeKey)));
-    assert.ok(bodyText().includes(mark('shellChrome.layout.propertiesLabel' as ShellChromeKey)));
+    assert.ok(bodyText().includes(`⟦properties.panel.title|${propertiesPanelEn['properties.panel.title']}⟧`));
   });
 });

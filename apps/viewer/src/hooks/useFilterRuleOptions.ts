@@ -35,7 +35,7 @@ export type FilterRuleOptions = Pick<
   'modelOptions' | 'tagOptions' | 'ifcTypeOptions' | 'storeyOptions' | 'psetQto' | 'valueSchema'
 >;
 
-export function useFilterRuleOptions(rules: readonly FilterRule[]): FilterRuleOptions {
+export function useFilterRuleOptions(rules: readonly FilterRule[], modelIdOverride?: string): FilterRuleOptions {
   const {
     schemaMap,
     models,
@@ -60,39 +60,41 @@ export function useFilterRuleOptions(rules: readonly FilterRule[]): FilterRuleOp
     })),
   );
 
-  const activeModel = activeModelId ? models.get(activeModelId) : undefined;
+  const selectedModelId = modelIdOverride ?? activeModelId;
+
+  const activeModel = selectedModelId ? models.get(selectedModelId) : undefined;
   const activeStore = activeModel?.ifcDataStore ?? null;
-  const activeView = activeModelId ? mutationViews.get(activeModelId) : undefined;
-  const cachedEntry = activeModelId ? schemaMap.get(activeModelId) : undefined;
+  const activeView = selectedModelId ? mutationViews.get(selectedModelId) : undefined;
+  const cachedEntry = selectedModelId ? schemaMap.get(selectedModelId) : undefined;
   const schemaEntry = cachedEntry?.sourceStore === activeStore
     && cachedEntry?.mutationVersion === mutationVersion ? cachedEntry : undefined;
 
   // Cheap schema discovery — runs once per active model.
   useEffect(() => {
-    if (!activeModelId || !activeStore) return;
-    const cached = useViewerStore.getState().searchFilterSchema.get(activeModelId);
+    if (!selectedModelId || !activeStore) return;
+    const cached = useViewerStore.getState().searchFilterSchema.get(selectedModelId);
     if (cached?.sourceStore === activeStore && cached.mutationVersion === mutationVersion) return;
-    setFilterSchema(activeModelId, discoverFilterSchema(activeStore, activeView), {
+    setFilterSchema(selectedModelId, discoverFilterSchema(activeStore, activeView), {
       sourceStore: activeStore, mutationVersion,
     });
-  }, [activeModelId, activeStore, activeView, mutationVersion, schemaMap, setFilterSchema]);
+  }, [selectedModelId, activeStore, activeView, mutationVersion, schemaMap, setFilterSchema]);
 
   // Lazy pset/qto schema — fired the first time a property/quantity rule appears.
   useEffect(() => {
-    if (!activeModelId || !activeStore) return;
-    const cached = useViewerStore.getState().searchFilterSchema.get(activeModelId);
+    if (!selectedModelId || !activeStore) return;
+    const cached = useViewerStore.getState().searchFilterSchema.get(selectedModelId);
     if (cached?.sourceStore !== activeStore || cached.mutationVersion !== mutationVersion || cached.psetQto) return;
     const needs = rules.some((r) => r.kind === 'property' || r.kind === 'quantity');
     if (!needs) return;
-    setFilterPsetQtoSchema(activeModelId, discoverPropertyAndQuantitySchema(activeStore, undefined, activeView));
-  }, [activeModelId, activeStore, activeView, mutationVersion, rules, schemaMap, setFilterPsetQtoSchema]);
+    setFilterPsetQtoSchema(selectedModelId, discoverPropertyAndQuantitySchema(activeStore, undefined, activeView));
+  }, [selectedModelId, activeStore, activeView, mutationVersion, rules, schemaMap, setFilterPsetQtoSchema]);
 
   // Lazy value discovery - distinct material / classification / property /
   // predefined-type values for the chip value suggestions. Fired the first time
   // a rule that benefits from them appears.
   useEffect(() => {
-    if (!activeModelId || !activeStore) return;
-    const cached = useViewerStore.getState().searchFilterSchema.get(activeModelId);
+    if (!selectedModelId || !activeStore) return;
+    const cached = useViewerStore.getState().searchFilterSchema.get(selectedModelId);
     if (cached?.sourceStore !== activeStore || cached.mutationVersion !== mutationVersion || cached.values) return;
     const needs = rules.some(
       (r) =>
@@ -102,8 +104,8 @@ export function useFilterRuleOptions(rules: readonly FilterRule[]): FilterRuleOp
         r.kind === 'predefinedType',
     );
     if (!needs) return;
-    setFilterValueSchema(activeModelId, discoverFilterValues(activeStore, activeView));
-  }, [activeModelId, activeStore, activeView, mutationVersion, rules, schemaMap, setFilterValueSchema]);
+    setFilterValueSchema(selectedModelId, discoverFilterValues(activeStore, activeView));
+  }, [selectedModelId, activeStore, activeView, mutationVersion, rules, schemaMap, setFilterValueSchema]);
 
   const ifcTypeOptions = useMemo<string[]>(() => {
     if (schemaEntry?.basic.ifcTypes && schemaEntry.basic.ifcTypes.length > 0) {

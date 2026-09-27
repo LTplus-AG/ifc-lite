@@ -18,14 +18,18 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
+import { installLayout } from '@/test/dom-layout.js';
 import { setLocale } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import type { IDSDocument, IDSValidationReport } from '@ifc-lite/ids';
 import { IDSPanel } from './IDSPanel.js';
+import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
 
 const initial = useViewerStore.getState();
+installLayout();
 
 const documentFixture: IDSDocument = {
   info: { title: 'Fixture IDS', version: '1.0' },
@@ -74,6 +78,37 @@ afterEach(() => {
 });
 
 describe('IDSPanel re-run and split clear (#5816)', () => {
+  for (const modelCount of [1, 2] as const) {
+    it(`#5820 keeps a stale report visible with a Re-run banner (${modelCount} model(s))`, () => {
+      const models = modelCount === 1
+        ? fixtureModels(fixtureModel('model-a', { entities: [{ expressId: 1, type: 'IfcWall' }] }))
+        : fixtureModels(
+          fixtureModel('model-a', { entities: [{ expressId: 1, type: 'IfcWall' }] }),
+          fixtureModel('model-b', { idOffset: 100, entities: [{ expressId: 1, type: 'IfcWall' }] }),
+        );
+      useViewerStore.setState({ ...models, idsDocument: documentFixture, mutationVersion: 10, geometryContentVersion: 20 });
+      const report = stampAnalysisReport(reportFor('model-a'), captureAnalysisStamp());
+      useViewerStore.setState({ idsValidationReport: report });
+      const ui = render(<IDSPanel />);
+
+      act(() => useViewerStore.setState({ mutationVersion: 11 }));
+      assert.equal(useViewerStore.getState().idsValidationReport, report);
+      assert.match(ui.textContent ?? '', /model changed/i);
+      const bannerRerun = [...ui.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Re-run');
+      assert.ok(bannerRerun);
+      assert.ok(ui.querySelector('.opacity-60'), 'the old result is dimmed');
+      if (modelCount === 1) {
+        // Make the target temporarily unavailable so the banner action has a
+        // distinct observable outcome without running a fake parser fixture.
+        const model = useViewerStore.getState().models.get('model-a');
+        assert.ok(model);
+        act(() => useViewerStore.setState({ models: new Map([['model-a', { ...model, ifcDataStore: null }]]) }));
+        click(bannerRerun);
+        assert.deepEqual(useViewerStore.getState().idsError, { labelKey: 'idsPanel.error.modelNoData' });
+      }
+    });
+  }
+
   it('offers Re-run while a report is on screen, targeting the report model (1 model)', () => {
     // No model loaded: a re-run that names the report's model fails with
     // "model-a is not loaded"; one that fell back to the active model would

@@ -180,6 +180,38 @@ describe('SymbolicTextPipeline anchored instance ABI (#5049)', () => {
   });
 });
 
+describe('SymbolicTextPipeline eye-envelope skip (#6128)', () => {
+  it('draws only the in-envelope label runs instead of throwing for a far label', () => {
+    const { device } = makeDevice();
+    const pipeline = new SymbolicTextPipeline(device, 'bgra8unorm', 1, makeAtlas());
+    const label = (x: number) => ({
+      origin: [x, 0, 0] as [number, number, number], worldPos: [0, 0, 0] as [number, number, number],
+      dirX: 1, dirZ: 0, height: 0.1, content: 'A', alignment: 'bottom-left' as const,
+    });
+    // One glyph per label: instances 0 and 2 are near the camera, 1 is 1,500 km away.
+    pipeline.upload([label(1), label(1_500_000), label(2)]);
+    const draws: number[][] = [];
+    const pass = {
+      setPipeline() {}, setBindGroup() {}, setVertexBuffer() {},
+      draw(...args: number[]) { draws.push(args); },
+    } as unknown as GPURenderPassEncoder;
+    const render = (camera: [number, number, number]) => pipeline.render(
+      pass, new Float32Array(16), 800, 600, [1, 0, 0], [0, 1, 0], 14, new Float32Array(16), camera,
+    );
+
+    render([0, 0, 0]);
+    assert.deepStrictEqual(draws, [[4, 1, 0, 0], [4, 1, 0, 2]], 'the far instance is left out of every run');
+
+    draws.length = 0;
+    render([750_000, 0, 0]);
+    assert.deepStrictEqual(draws, [[4, 3, 0, 0]], 'all three draw as one run when in range');
+
+    draws.length = 0;
+    pipeline.render(pass, new Float32Array(16), 800, 600, [1, 0, 0], [0, 1, 0]);
+    assert.deepStrictEqual(draws, [[4, 3, 0, 0]], 'the legacy projection draws every instance');
+  });
+});
+
 describe('SymbolicTextPipeline glyph halo margin (#5388)', () => {
   it('widens each glyph quad and its UVs by the halo margin without moving the glyph', () => {
     const { device, writes } = makeDevice();

@@ -139,7 +139,7 @@ const imported = manager.importChangeSet(json);
 
 ## Bulk Operations
 
-For updating many entities at once, use the `BulkQueryEngine`:
+For updating many entities at once, use the `BulkQueryEngine`. Evaluate property filters with `@ifc-lite/rules`, then pass the selected Express IDs in `select.expressIds`:
 
 ```typescript
 import { BulkQueryEngine } from '@ifc-lite/mutations';
@@ -152,12 +152,6 @@ const engine = new BulkQueryEngine(entityTable, mutationView);
 const query = {
   select: {
     entityTypes: [10],    // Type enum values (e.g., IfcWall)
-    propertyFilters: [{
-      psetName: 'Pset_WallCommon',
-      propName: 'IsExternal',
-      operator: '=' as const,
-      value: true,
-    }],
   },
   action: {
     type: 'SET_PROPERTY' as const,
@@ -238,6 +232,11 @@ In the IFClite viewer:
 6. **Export** — Save modified IFC with changes applied
 
 ### Properties panel tabs
+
+Use **Find properties** to narrow attributes, property sets, and quantities by
+name or value. Matching rows are highlighted, and matching sections open while
+the search is active. Section chevrons keep your collapsed or expanded choice
+when you select another element or reopen the viewer.
 
 | Tab | Edits | Backed by |
 |---|---|---|

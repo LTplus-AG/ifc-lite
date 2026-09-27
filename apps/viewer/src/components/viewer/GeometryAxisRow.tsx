@@ -9,7 +9,7 @@
  * handler, and the two nudge callbacks.
  */
 
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { useTranslation } from '@/i18n';
 
@@ -26,15 +26,15 @@ export function GeometryAxisRow({ label, value, onChange, onNudgeMinus, onNudgeP
   return (
     <div className="flex items-center gap-1">
       <span className="w-4 text-[11px] font-mono text-muted-foreground">{label}</span>
-      <Button
+      <IconButton
+        label={t('geometryAxisRow.decreaseAriaLabel', { label })}
         variant="ghost"
         size="icon-xs"
         className="h-6 w-6 text-overlay-accent"
         onClick={onNudgeMinus}
-        aria-label={t('geometryAxisRow.decreaseAriaLabel', { label })}
       >
         −
-      </Button>
+      </IconButton>
       <Input
         type="number"
         value={value}
@@ -42,15 +42,15 @@ export function GeometryAxisRow({ label, value, onChange, onNudgeMinus, onNudgeP
         className="h-6 text-xs font-mono px-1 flex-1 border-overlay-accent/40 bg-white dark:bg-zinc-950"
         step="any"
       />
-      <Button
+      <IconButton
+        label={t('geometryAxisRow.increaseAriaLabel', { label })}
         variant="ghost"
         size="icon-xs"
         className="h-6 w-6 text-overlay-accent"
         onClick={onNudgePlus}
-        aria-label={t('geometryAxisRow.increaseAriaLabel', { label })}
       >
         +
-      </Button>
+      </IconButton>
     </div>
   );
 }

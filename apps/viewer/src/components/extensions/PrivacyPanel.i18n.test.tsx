@@ -26,13 +26,16 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { InMemoryFlavorStorage, type Flavor } from '@ifc-lite/extensions';
 import { createBimContext } from '@ifc-lite/sdk';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { extensionsPanelsEn } from '@/i18n/catalogues/extensions-panels.en';
 import { ExtensionHostService } from '@/services/extensions/host.js';
 import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
 import { FlavorService } from '@/services/extensions/flavor-service.js';
 import { PrivacyPanel } from './PrivacyPanel.js';
+import { beforeSend } from '@/lib/analytics.js';
+import { SettingsDialogHost } from '@/components/viewer/settings/SettingsDialog.js';
+import { openSettings } from '@/lib/settings/open-settings.js';
 
 class StubExtensionHost extends ExtensionHostService {
   constructor() {
@@ -123,11 +126,17 @@ function foundText(strings: Set<string>, text: string): boolean {
   return false;
 }
 
+/** Opens `container`'s `HelpHint` — a no-op if it's already open (the
+ *  trigger is a toggle, and Radix's non-modal dismissal, #5817, can close
+ *  a previously-opened popover as a side effect of focus moving anywhere
+ *  else, so a caller re-opening it defensively must not accidentally
+ *  re-close an instance that never actually closed). */
 function openHelpHint(container: HTMLElement): void {
   const button = [...container.querySelectorAll('button')].find((b) =>
     b.getAttribute('aria-label')?.startsWith('Help: '),
   );
   assert.ok(button, 'expected a HelpHint trigger');
+  if (button.getAttribute('aria-expanded') === 'true') return;
   act(() => button.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
 }
 
@@ -165,7 +174,7 @@ async function mountActiveFlavorFixture(host: StubExtensionHost): Promise<HTMLEl
   await host.flavors.activate('flavor-1');
   const container = render(
     <ExtensionHostContext.Provider value={host}>
-      <PrivacyPanel onClose={() => {}} />
+      <PrivacyPanel />
     </ExtensionHostContext.Provider>,
   );
   await act(async () => {
@@ -203,6 +212,29 @@ async function revealProposals(container: HTMLElement): Promise<void> {
 }
 
 describe('PrivacyPanel localization (#4918)', () => {
+  it('opens under Settings and persists analytics opt-out (#5866)', async () => {
+    localStorage.removeItem('ifc-lite:analytics-opt-out');
+    const host = new StubExtensionHost();
+    render(
+      <ExtensionHostContext.Provider value={host}>
+        <SettingsDialogHost />
+      </ExtensionHostContext.Provider>,
+    );
+    act(() => openSettings('privacy'));
+    const dialog = document.querySelector('[data-settings-dialog]');
+    assert.ok(dialog, 'Settings opens its Privacy section');
+    const toggle = dialog.querySelector<HTMLElement>('#settings-analytics-opt-out');
+    assert.ok(toggle, 'Privacy settings disclose product analytics and expose opt-out');
+    assert.equal(toggle.getAttribute('aria-checked'), 'false');
+    click(toggle);
+    assert.equal(toggle.getAttribute('aria-checked'), 'true');
+    assert.equal(localStorage.getItem('ifc-lite:analytics-opt-out'), 'true');
+    assert.equal(beforeSend({ event: 'command_executed', properties: { command_id: 'test' } }), null);
+    click(toggle);
+    assert.equal(toggle.getAttribute('aria-checked'), 'false');
+    assert.equal(localStorage.getItem('ifc-lite:analytics-opt-out'), 'false');
+  });
+
   it('localizes untouched baseline metadata in the active-flavor label', async () => {
     registerLocale('privacy-default-name', {
       'extensionsFlavors.flavorIndicator.defaultLabel': 'BASELINE LOCALISÉE',
@@ -249,7 +281,7 @@ describe('PrivacyPanel localization (#4918)', () => {
     const emptyHost = new StubExtensionHost();
     const emptyContainer = render(
       <ExtensionHostContext.Provider value={emptyHost}>
-        <PrivacyPanel onClose={() => {}} />
+        <PrivacyPanel />
       </ExtensionHostContext.Provider>,
     );
     await act(async () => {
@@ -262,11 +294,29 @@ describe('PrivacyPanel localization (#4918)', () => {
     const activeContainer = await mountActiveFlavorFixture(activeHost);
     await revealProposals(activeContainer);
 
-    const english = new Set<string>([...readableStrings(emptyContainer), ...readableStrings(activeContainer)]);
+    // `readableStrings` reads `document.body` (never scoped to `container`),
+    // but also focuses + blurs every button/input in `container` to reach
+    // Tooltip content — and a `HelpHint`'s popover is now Radix
+    // (`ui/popover.tsx`, #5817), whose non-modal dismissal closes it on any
+    // outside focus change. Cycling focus through the OTHER container's
+    // buttons therefore closes whichever `HelpHint` was open, as a pure
+    // side effect of the oracle itself, not a real interaction — so each
+    // container's popover is (re-)opened immediately before the
+    // `readableStrings` call that needs to see it, rather than assuming
+    // both stay open across the whole `Set` literal.
+    openHelpHint(emptyContainer);
+    const englishEmpty = readableStrings(emptyContainer);
+    openHelpHint(activeContainer);
+    const englishActive = readableStrings(activeContainer);
+    const english = new Set<string>([...englishEmpty, ...englishActive]);
 
     registerLocale('privacy-panel-pseudo', PSEUDO);
     act(() => setLocale('privacy-panel-pseudo'));
-    const after = new Set<string>([...readableStrings(emptyContainer), ...readableStrings(activeContainer)]);
+    openHelpHint(emptyContainer);
+    const afterEmpty = readableStrings(emptyContainer);
+    openHelpHint(activeContainer);
+    const afterActive = readableStrings(activeContainer);
+    const after = new Set<string>([...afterEmpty, ...afterActive]);
 
     const covered = new Set<ExtKey>();
     for (const key of STATIC_KEYS) {
@@ -288,7 +338,7 @@ describe('PrivacyPanel localization (#4918)', () => {
     const emptyHost = new StubExtensionHost();
     const emptyContainer = render(
       <ExtensionHostContext.Provider value={emptyHost}>
-        <PrivacyPanel onClose={() => {}} />
+        <PrivacyPanel />
       </ExtensionHostContext.Provider>,
     );
     await act(async () => {

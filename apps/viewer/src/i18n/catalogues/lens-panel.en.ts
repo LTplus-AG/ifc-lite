@@ -5,15 +5,13 @@
 /**
  * The Lens panel's own chrome (#4918 slice: viewer-panels). Covers
  * `LensPanel.tsx`: the header and its export/import/clear/close controls,
- * the rule-based lens list (`RuleRow`, `RuleEditor`, `LensEditor`), the
+ * the rule-based lens list (`RuleRow`, `LensRuleEditor`, `LensEditor`), the
  * auto-color lens editor (`AutoColorEditor`), the read-only lens card
  * (`LensCard`, its legend sort control and per-lens action tooltips), and
  * the footer status line.
  *
- * The `TYPE_LABELS` (rule-criteria / auto-color source) and
- * `OPERATOR_LABELS` display tables moved to the same data-table-plus-
- * `labelKey` pattern `sectionConstants.ts`'s `AXIS_INFO` and the clash-panel
- * catalogue's `SEVERITY`/`REVIEW_STATUS` tables use.
+ * Criteria and auto-color source names use the type-label table here;
+ * operator names come from the shared filter-operator catalogue (#5892).
  *
  * Deliberately out of scope: the `'New Rule'` default rule name and the
  * `'Color by '` auto-color name prefix are equality-checked SENTINELS this
@@ -35,6 +33,8 @@ export const lensPanelEn = {
   'lensPanel.closeAriaLabel': 'Close',
   'lensPanel.newRuleLensButton': 'New Rule Lens',
   'lensPanel.newAutoColorLensButton': 'New Auto-Color Lens',
+  'lensPanel.emptyTitle': 'No lenses yet',
+  'lensPanel.emptyDescription': 'Create a lens to color or focus model elements.',
 
   // Footer status
   'lensPanel.footer.active': 'Active · {colored} colored · {hidden}',
@@ -63,6 +63,11 @@ export const lensPanelEn = {
   // Rule editor
   'lensPanel.ruleEditor.reorderAriaLabel': 'Reorder rule: drag, or press arrow up or down',
   'lensPanel.ruleEditor.reorderTooltip': 'Drag to reorder (or arrow keys)',
+  'lensPanel.ruleEditor.colorAriaLabel': 'Rule color',
+  'lensPanel.ruleEditor.nameAriaLabel': 'Rule name',
+  'lensPanel.ruleEditor.actionAriaLabel': 'Rule action',
+  'lensPanel.ruleEditor.unreadableCondition': 'Saved condition cannot be read: {reason}',
+  'lensPanel.ruleEditor.replaceCondition': 'Replace condition',
   'lensPanel.ruleEditor.compoundTypeAriaLabel': 'Compound criteria type (read-only, imported)',
   'lensPanel.ruleEditor.criteriaTypeAriaLabel': 'Criteria type',
   'lensPanel.ruleEditor.compoundReadOnlyTooltip':
@@ -83,16 +88,6 @@ export const lensPanelEn = {
   'lensPanel.ruleEditor.classificationSystemPlaceholder': 'System...',
   'lensPanel.ruleEditor.classificationCodePlaceholder': 'Code...',
   'lensPanel.ruleEditor.valuePlaceholder': 'Value...',
-
-  // Lens operators (`LensOperator`)
-  'lensPanel.operator.exists': 'Exists',
-  'lensPanel.operator.equals': 'Equals',
-  'lensPanel.operator.contains': 'Contains',
-  'lensPanel.operator.notEqual': 'Not Equal',
-  'lensPanel.operator.gt': '>',
-  'lensPanel.operator.gte': '>=',
-  'lensPanel.operator.lt': '<',
-  'lensPanel.operator.lte': '<=',
 
   // Rule action (`LensRule['action']`)
   'lensPanel.action.colorize': 'Color',

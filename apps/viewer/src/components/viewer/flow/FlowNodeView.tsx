@@ -33,7 +33,7 @@ function PortRow({ port, side }: { port: PortDef; side: 'in' | 'out' }) {
     // `py-1`, not `py-0.5`: three adjacent ports (the Script node's a/b/c)
     // were ~15px apart at fit-view zoom, close enough that a dropped
     // connection snapped to the neighbour of the one aimed at.
-    <div className={`relative flex items-center gap-1 px-2 py-1 text-[10px] leading-4 ${side === 'in' ? 'justify-start' : 'justify-end'}`} title={`${port.type.kind} · ${port.type.access}${port.optional ? ' · optional' : ''}`}>
+    <div className={`relative flex items-center gap-1 px-2 py-1 text-2xs leading-4 ${side === 'in' ? 'justify-start' : 'justify-end'}`} title={`${port.type.kind} · ${port.type.access}${port.optional ? ' · optional' : ''}`}>
       <Handle
         type={side === 'in' ? 'target' : 'source'}
         position={side === 'in' ? Position.Left : Position.Right}
@@ -55,14 +55,14 @@ function FlowNodeViewInner({ data, selected }: NodeProps<CanvasNode>) {
       className={`min-w-[150px] rounded border bg-card text-card-foreground shadow-sm ${selected ? 'border-[#7aa2f7]' : 'border-border'} ${data.known ? '' : 'border-dashed border-red-400'}`}
       data-flow-node={data.nodeId}
     >
-      <div className="flex items-center gap-1 rounded-t border-b border-border bg-muted/40 px-2 py-1 text-[11px] font-medium">
+      <div className="flex items-center gap-1 rounded-t border-b border-border bg-muted/40 px-2 py-1 text-2xs font-medium">
         <span className="truncate" title={data.type}>{data.label ?? data.title}</span>
-        {data.tracked && <span className="text-[9px] text-[#bb9af7]" title={t('flowPanel.inspector.tracking')}>◎</span>}
-        {data.isInput && <span className="text-[9px] text-[#e0af68]" title={t('flowPanel.inspector.isInput')}>▸</span>}
-        {data.isOutput && <span className="text-[9px] text-[#9ece6a]" title={t('flowPanel.inspector.isOutput')}>▪</span>}
+        {data.tracked && <span className="text-2xs text-[#bb9af7]" title={t('flowPanel.inspector.tracking')}>◎</span>}
+        {data.isInput && <span className="text-2xs text-[#e0af68]" title={t('flowPanel.inspector.isInput')}>▸</span>}
+        {data.isOutput && <span className="text-2xs text-[#9ece6a]" title={t('flowPanel.inspector.isOutput')}>▪</span>}
         <span className="ml-auto" />
         {status && (
-          <span className={`rounded px-1 text-[9px] ${STATUS_CLASS[status] ?? ''}`} title={data.error}>
+          <span className={`rounded px-1 text-2xs ${STATUS_CLASS[status] ?? ''}`} title={data.error}>
             {t(`flowPanel.status.${status}` as const)}{data.lanes !== undefined && data.lanes > 1 ? ` ×${data.lanes}` : ''}
           </span>
         )}
@@ -71,7 +71,7 @@ function FlowNodeViewInner({ data, selected }: NodeProps<CanvasNode>) {
         <div className="flex flex-col">{data.inputs.map((p) => <PortRow key={p.name} port={p} side="in" />)}</div>
         <div className="flex flex-col">{data.outputs.map((p) => <PortRow key={p.name} port={p} side="out" />)}</div>
       </div>
-      {data.summary && <div className="truncate border-t border-border px-2 py-0.5 text-[10px] text-muted-foreground" title={data.summary}>{data.summary}</div>}
+      {data.summary && <div className="truncate border-t border-border px-2 py-0.5 text-2xs text-muted-foreground" title={data.summary}>{data.summary}</div>}
     </div>
   );
 }

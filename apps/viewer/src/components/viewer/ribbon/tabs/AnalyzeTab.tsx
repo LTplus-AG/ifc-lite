@@ -37,7 +37,7 @@ export function AnalyzeTab() {
     handleToggleAnalysisExtension,
     rightAnalysisExtensions,
     bottomAnalysisExtensions,
-  } = useWorkspacePanelControls();
+  } = useWorkspacePanelControls('ribbon');
 
   const analysisExtensions = [...rightAnalysisExtensions, ...bottomAnalysisExtensions];
 
@@ -81,7 +81,7 @@ export function AnalyzeTab() {
           label={t('ribbon.analyze.layers')}
           tooltip={t('ribbon.analyze.layersTooltip')}
           active={activeWorkspacePanels.has('layers')}
-          onClick={() => useViewerStore.getState().toggleWorkspacePanel('layers')}
+          onClick={() => useViewerStore.getState().toggleWorkspacePanel('layers', 'ribbon')}
         />
         {/* Location zones (#1810), reachable from a toolbar for the first time
             (#2508): the ActivityBar rail was its only entry point. */}
@@ -90,7 +90,7 @@ export function AnalyzeTab() {
           label={t('ribbon.analyze.zones')}
           tooltip={t('ribbon.analyze.zonesTooltip')}
           active={activeWorkspacePanels.has('zones')}
-          onClick={() => useViewerStore.getState().toggleWorkspacePanel('zones')}
+          onClick={() => useViewerStore.getState().toggleWorkspacePanel('zones', 'ribbon')}
         />
         {/* Per-model load report (#3927): actionable geometry warnings. */}
         <RibbonLargeButton
@@ -98,7 +98,7 @@ export function AnalyzeTab() {
           label={t('ribbon.analyze.loadReport')}
           tooltip={t('ribbon.analyze.loadReportTooltip')}
           active={activeWorkspacePanels.has('loadReport')}
-          onClick={() => useViewerStore.getState().toggleWorkspacePanel('loadReport')}
+          onClick={() => useViewerStore.getState().toggleWorkspacePanel('loadReport', 'ribbon')}
         />
       </RibbonGroup>
 
@@ -112,7 +112,7 @@ export function AnalyzeTab() {
           label={t('ribbon.analyze.cost')}
           tooltip={t('ribbon.analyze.costTooltip')}
           active={activeWorkspacePanels.has('cost')}
-          onClick={() => useViewerStore.getState().toggleWorkspacePanel('cost')}
+          onClick={() => useViewerStore.getState().toggleWorkspacePanel('cost', 'ribbon')}
         />
         <RibbonLargeButton
           icon={List}

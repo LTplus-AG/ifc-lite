@@ -112,7 +112,7 @@ describe('ExportDialog localization (#4918)', () => {
       'exportDialog.visibleOnlyHint',
       'exportDialog.includeGeometryLabel',
       'exportDialog.applyMutationsLabel',
-      'exportDialog.changesOnlyLabel',
+      'exportDialog.changesOnlyLabel.default',
       'exportDialog.changesOnlyHint.default',
       'exportDialog.cancelButton',
       'exportDialog.exportButton',

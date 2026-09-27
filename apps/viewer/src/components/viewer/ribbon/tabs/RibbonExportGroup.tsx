@@ -56,7 +56,7 @@ function RibbonExportButton({
 
   if (command.kind === 'dialog') {
     const { Dialog } = command;
-    return <Dialog trigger={<Button {...shared} />} />;
+    return <Dialog surface="ribbon" trigger={<Button {...shared} />} />;
   }
 
   if (command.kind === 'table-menu') {
@@ -92,7 +92,9 @@ function RibbonExportButton({
  */
 export function RibbonExportGroup({ icons }: { icons: ExportIconSet }) {
   const { t } = useTranslation();
-  const { commands, handleExportCSV, runExportAction } = useExportCommands();
+  const {
+    commands, handleExportCSV, runExportAction, extensionExporters, extensionExportRunning, runExtensionExporter,
+  } = useExportCommands('ribbon');
   const groups = groupExportCommands(commands, (resolved) => resolved.command.group);
 
   return (
@@ -114,6 +116,22 @@ export function RibbonExportGroup({ icons }: { icons: ExportIconSet }) {
           <RibbonSmallStack key={group[0].command.id}>{buttons}</RibbonSmallStack>
         );
       })}
+      {/* Extension exporters (#5838): stacks of three, like every small group. */}
+      {groupExportCommands(extensionExporters, (_, index) => Math.floor(index / 3)).map((stack) => (
+        <RibbonSmallStack key={stack[0].key}>
+          {stack.map((exporter) => (
+            <RibbonSmallButton
+              key={exporter.key}
+              icon={icons.extension}
+              label={exporter.name}
+              tooltip={exporter.extension}
+              disabled={extensionExportRunning}
+              data-export-extension={exporter.key}
+              onClick={() => void runExtensionExporter(exporter.key)}
+            />
+          ))}
+        </RibbonSmallStack>
+      ))}
     </RibbonGroup>
   );
 }

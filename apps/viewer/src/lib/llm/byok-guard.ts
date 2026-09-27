@@ -32,14 +32,14 @@ export function resolveStreamRoute(modelId: string, keys: ApiKeyConfig): StreamR
     // The workspace id rides with the key — see `anthropic-client.ts`.
     return {
       kind: 'anthropic',
-      model: modelId,
+      model: model?.id ?? modelId,
       credentials: { apiKey, workspaceId: keys.anthropicWorkspaceId.trim() },
     };
   }
   if (source === 'openai') {
     const apiKey = keys.openaiKey.trim();
     if (!apiKey) return { kind: 'missing-key', provider: 'openai' };
-    return { kind: 'openai', model: modelId, apiKey };
+    return { kind: 'openai', model: model?.id ?? modelId, apiKey };
   }
   return { kind: 'proxy', model: modelId };
 }

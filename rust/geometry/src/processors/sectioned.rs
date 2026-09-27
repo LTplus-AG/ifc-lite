@@ -8,12 +8,14 @@
 //!
 //! ## Pipeline
 //!
-//! 1. Parse the directrix into an [`AlignmentCurve`]. If the entity is
-//!    something other than `IfcAlignmentCurve` we fall back to a
-//!    straight-line sweep along the body's local +Y axis.
+//! 1. Parse the directrix into an [`AlignmentCurve`] (`IfcAlignmentCurve`,
+//!    `IfcPolyline`, IFC4x3 `IfcGradientCurve`); anything else falls back
+//!    to a straight-line sweep along the body's local +Y axis.
 //! 2. Decode every cross-section via `ProfileProcessor` and every
-//!    `IfcDistanceExpression` into a structured position (station +
-//!    lateral / vertical / longitudinal offsets + `AlongHorizontal`).
+//!    position — IFC4x1 `IfcDistanceExpression` or IFC4x3
+//!    `IfcAxis2PlacementLinear` → `IfcPointByDistanceExpression` — into a
+//!    structured position (station + lateral / vertical / longitudinal
+//!    offsets + `AlongHorizontal`).
 //! 3. **Adaptive subdivision** — between each pair of authored stations
 //!    we walk the alignment and add intermediate sample stations
 //!    whenever the cumulative heading change exceeds `MAX_ANGLE_STEP`.
@@ -53,6 +55,11 @@
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::{Point2, Point3, Vector3};
 
+#[path = "sectioned_positions.rs"]
+mod sectioned_positions;
+use crate::alignment_arc_length::ArcLengthMap;
+use sectioned_positions::PositionAlongDirectrix;
+
 use crate::{
     alignment::{AlignmentCurve, AlignmentFrame},
     profiles::ProfileProcessor,
@@ -71,87 +78,6 @@ const MAX_ANGLE_STEP_RAD: f64 = 0.0349; // 2°
 /// Hard cap on samples added between any two authored stations. Guards
 /// against runaway subdivision on pathological alignments.
 const MAX_SUBDIVISIONS: usize = 256;
-
-/// Structured IFC4x1 `IfcDistanceExpression`. We carry every attribute
-/// because the offsets matter even when they're zero — they're the
-/// reason girders / railings authored with only two endpoint stations
-/// don't collapse onto the directrix.
-#[derive(Debug, Clone, Copy)]
-struct PositionAlongDirectrix {
-    /// Cumulative distance along the horizontal alignment. The unit is
-    /// the file's length unit (the router applies the metre conversion
-    /// downstream of the processor).
-    distance_along: f64,
-    /// Lateral offset perpendicular to the directrix tangent in the
-    /// horizontal plane. Positive = right of travel (IFC4x1
-    /// convention).
-    offset_lateral: f64,
-    /// Vertical offset along the world +Z axis.
-    offset_vertical: f64,
-    /// Offset along the 3D directrix tangent. Always rare but
-    /// implemented for completeness.
-    offset_longitudinal: f64,
-    /// When `true` (default), `distance_along` is measured along the
-    /// horizontal projection of the directrix. When `false` it's
-    /// measured along the 3D curve including slope.
-    along_horizontal: bool,
-}
-
-impl PositionAlongDirectrix {
-    fn parse(entity: &DecodedEntity) -> Result<Self> {
-        let distance_along = entity.get_float(0).ok_or_else(|| {
-            Error::geometry("IfcDistanceExpression.DistanceAlong is required".to_string())
-        })?;
-        let offset_lateral = entity.get_float(1).unwrap_or(0.0);
-        let offset_vertical = entity.get_float(2).unwrap_or(0.0);
-        let offset_longitudinal = entity.get_float(3).unwrap_or(0.0);
-        // AlongHorizontal defaults to TRUE per IFC4x1 if omitted.
-        let along_horizontal = entity
-            .get(4)
-            .and_then(|v| v.as_enum())
-            .map(|s| s == "T")
-            .unwrap_or(true);
-        Ok(Self {
-            distance_along,
-            offset_lateral,
-            offset_vertical,
-            offset_longitudinal,
-            along_horizontal,
-        })
-    }
-
-    /// Convert `distance_along` to a horizontal-projection station so
-    /// `AlignmentCurve::evaluate` (which is parameterised on horizontal
-    /// station) sees a consistent input. When the IFC author specified
-    /// the distance as 3D arc length we divide out the average slope —
-    /// equivalent to first-order accurate for typical bridge / road
-    /// grades (< 5%), which is the regime where `AlongHorizontal=false`
-    /// is ever authored.
-    fn horizontal_station(&self, alignment: Option<&AlignmentCurve>) -> f64 {
-        if self.along_horizontal {
-            return self.distance_along;
-        }
-        let Some(a) = alignment else {
-            return self.distance_along;
-        };
-        // First-order: divide by sqrt(1 + slope²) at the candidate
-        // station. One Newton-style refinement gives sub-mm accuracy on
-        // realistic grades — see test below.
-        let mut station = self.distance_along;
-        for _ in 0..4 {
-            let frame = a.evaluate(station);
-            // tangent.z = sin(atan(slope)); sec(atan(slope)) = 1/cos =
-            // 1/√(1−tangent.z²)
-            let proj = (1.0 - frame.tangent.z * frame.tangent.z).sqrt().max(1e-9);
-            let next = self.distance_along * proj;
-            if (next - station).abs() < 1e-6 {
-                return next;
-            }
-            station = next;
-        }
-        station
-    }
-}
 
 /// Loft-sweep processor for `IfcSectionedSolidHorizontal`.
 pub struct SectionedSolidHorizontalProcessor {
@@ -244,7 +170,8 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
                 Error::geometry("CrossSectionPosition must be an entity reference".to_string())
             })?;
             let pos_entity = decoder.decode_by_id(pos_id)?;
-            let position = PositionAlongDirectrix::parse(&pos_entity)?;
+            let position =
+                PositionAlongDirectrix::parse(&pos_entity, decoder, &directrix_entity)?;
             authored.push((profile, position));
         }
 
@@ -255,6 +182,11 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
                     .to_string(),
             ));
         }
+        let arc_map = if authored.iter().any(|(_, pos)| !pos.along_horizontal) {
+            alignment.as_ref().map(ArcLengthMap::new)
+        } else {
+            None
+        };
         authored.sort_by(|a, b| {
             a.1.distance_along
                 .partial_cmp(&b.1.distance_along)
@@ -268,7 +200,7 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
         for i in 1..authored.len() {
             let (prev_prof, prev_pos) = (&authored[i - 1].0, authored[i - 1].1);
             let (this_prof, this_pos) = (&authored[i].0, authored[i].1);
-            let n = subdivisions(&prev_pos, &this_pos, alignment.as_ref(), quality);
+            let n = subdivisions(&prev_pos, &this_pos, alignment.as_ref(), arc_map.as_ref(), quality);
             for k in 1..n {
                 let t = k as f64 / n as f64;
                 let interp_profile = interpolate_profile(prev_prof, this_prof, t);
@@ -283,7 +215,7 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
         let mut rings_3d: Vec<Vec<Point3<f64>>> = Vec::with_capacity(samples.len());
         let mut frames: Vec<AlignmentFrame> = Vec::with_capacity(samples.len());
         for (profile, pos) in &samples {
-            let frame = compute_frame(alignment.as_ref(), pos, fixed_axis_vertical);
+            let frame = compute_frame(alignment.as_ref(), arc_map.as_ref(), pos, fixed_axis_vertical);
             rings_3d.push(transform_outer(&profile.outer, &frame));
             frames.push(frame);
         }
@@ -376,10 +308,11 @@ fn evaluate_alignment(alignment: Option<&AlignmentCurve>, station: f64) -> Align
 /// `FixedAxisVertical`, and cant (roll about the tangent).
 fn compute_frame(
     alignment: Option<&AlignmentCurve>,
+    arc_map: Option<&ArcLengthMap>,
     pos: &PositionAlongDirectrix,
     fixed_axis_vertical: bool,
 ) -> AlignmentFrame {
-    let station = pos.horizontal_station(alignment);
+    let station = pos.horizontal_station(arc_map);
     let base = evaluate_alignment(alignment, station);
 
     // Pick the axis pair used to embed the cross-section in 3D.
@@ -418,19 +351,37 @@ fn compute_frame(
         }
     }
 
-    // Apply the IfcDistanceExpression offsets. Right/up are the
-    // unit-length cross-section axes after cant; longitudinal is along
-    // the 3D tangent.
+    // PointByDistanceExpression offsets use the basis curve's tangent
+    // frame, independent of the cross-section orientation and cant.
+    let vertical_normal = base.tangent.cross(&(-base.right)).normalize();
+    let point_up = if pos.linear { vertical_normal } else { up };
+    let point_right = if pos.linear { base.right } else { right };
     let origin = base.origin
         + base.tangent * pos.offset_longitudinal
-        + right * pos.offset_lateral
-        + up * pos.offset_vertical;
+        + point_right * pos.offset_lateral
+        + point_up * pos.offset_vertical;
+
+    if pos.linear && (pos.axis.is_some() || pos.ref_direction.is_some()) {
+        // IFC4x3 placement directions are given in the curve frame:
+        // X along tangent, Y left of travel, Z vertical normal.
+        let to_world = |v: Vector3<f64>| {
+            base.tangent * v.x - base.right * v.y + vertical_normal * v.z
+        };
+        let axis = pos.axis.map(to_world).unwrap_or(vertical_normal);
+        let x = pos.ref_direction.map(to_world).unwrap_or(base.tangent);
+        let x = (x - axis * x.dot(&axis)).try_normalize(1e-12).unwrap_or(base.tangent);
+        let local_right = -axis.cross(&x);
+        right = local_right.normalize();
+        up = axis;
+    }
 
     AlignmentFrame {
         origin,
         right,
         up,
-        tangent: base.tangent,
+        tangent: if pos.linear && (pos.axis.is_some() || pos.ref_direction.is_some()) {
+            up.cross(&right).normalize()
+        } else { base.tangent },
     }
 }
 
@@ -452,6 +403,7 @@ fn subdivisions(
     a: &PositionAlongDirectrix,
     b: &PositionAlongDirectrix,
     alignment: Option<&AlignmentCurve>,
+    arc_map: Option<&ArcLengthMap>,
     quality: TessellationQuality,
 ) -> usize {
     let span = (b.distance_along - a.distance_along).abs();
@@ -461,8 +413,8 @@ fn subdivisions(
     let Some(curve) = alignment else {
         return 1; // Straight directrix: nothing to subdivide.
     };
-    let s_a = a.horizontal_station(Some(curve));
-    let s_b = b.horizontal_station(Some(curve));
+    let s_a = a.horizontal_station(arc_map);
+    let s_b = b.horizontal_station(arc_map);
     const PROBES: usize = 16;
     let mut total_angle = 0.0;
     let mut prev_tan: Option<Vector3<f64>> = None;
@@ -537,6 +489,18 @@ fn lerp_position(
         // we keep `a`'s convention. The IFC schema doesn't permit
         // mixing the two conventions within a single sweep.
         along_horizontal: a.along_horizontal,
+        axis: lerp_direction(a.axis, b.axis, t),
+        ref_direction: lerp_direction(a.ref_direction, b.ref_direction, t),
+        linear: a.linear,
+    }
+}
+
+fn lerp_direction(a: Option<Vector3<f64>>, b: Option<Vector3<f64>>, t: f64) -> Option<Vector3<f64>> {
+    match (a, b) {
+        (Some(a), Some(b)) => (a * (1.0 - t) + b * t).try_normalize(1e-12).or(Some(a)),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (None, None) => None,
     }
 }
 

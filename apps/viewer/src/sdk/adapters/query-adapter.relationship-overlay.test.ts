@@ -36,6 +36,7 @@ function makeStore(dataStore: IfcDataStore): StoreApi {
   const mutationViews = new Map<string, MutablePropertyView>();
   const state = {
     ifcDataStore: dataStore,
+    editEnabled: true,
     models: new Map(),
     mutationViews,
     getMutationView: (modelId: string) => mutationViews.get(modelId) ?? null,

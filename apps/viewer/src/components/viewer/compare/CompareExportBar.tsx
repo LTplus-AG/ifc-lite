@@ -19,7 +19,7 @@ import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
-import { posthog } from '@/lib/analytics';
+import { posthog, trackExportCompleted } from '@/lib/analytics';
 import type { CompareResult } from '@/store/slices/compareSlice';
 import { acceptedForPair } from '@/lib/compare/acceptedIdentity';
 import { downloadCompareReport } from '@/lib/compare/exportReport';
@@ -64,6 +64,7 @@ export function CompareExportBar({ result, reportable }: CompareExportBarProps) 
     }
     if (format === 'identity-map') downloadIdentityMapSidecar(result, identities, accepted);
     else downloadLineageSidecar(result, identities, accepted);
+    trackExportCompleted({ format: 'json', surface: 'compare_panel' });
     posthog.capture('model_compare_export', compareExportPayload(format, result));
   };
 

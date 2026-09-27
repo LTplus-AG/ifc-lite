@@ -51,11 +51,11 @@ export function useFloorplanView() {
     // 2. Set section plane: axis=down (Y), position=calculated, enabled
     setSectionPlaneAxis('down');
     setSectionPlanePosition(percentage);
-    setActiveTool('section');
+    setActiveTool('section', 'programmatic');
 
     // 3. Show the cut: dock the Drawing panel (no forced 3D camera change —
     // "Match 3D" in its header does that on request, #5497).
-    openPanelInHome('drawing');
+    openPanelInHome('drawing', 'programmatic');
   }, [models, geometryResult, setSectionPlaneAxis, setSectionPlanePosition, setActiveTool, openPanelInHome]);
 
   return { availableStoreys, activateFloorplan };

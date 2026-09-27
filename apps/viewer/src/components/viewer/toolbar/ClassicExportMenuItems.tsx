@@ -9,9 +9,10 @@
  */
 
 import React from 'react';
-import { Camera, Download, EyeOff, FileJson, FileSpreadsheet, FileText, Globe2 } from 'lucide-react';
+import { Camera, Download, EyeOff, FileJson, FilePen, FileSpreadsheet, FileText, Globe2, Puzzle } from 'lucide-react';
 import {
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
@@ -25,6 +26,7 @@ import { useExportCommands, type ResolvedExportCommand } from './useExportComman
 export const CLASSIC_EXPORT_ICONS: ExportIconSet = {
   ifc: FileText,
   anonymized: EyeOff,
+  'modified-ifc': FilePen,
   glb: Download,
   kmz: Globe2,
   usd: Download,
@@ -33,6 +35,7 @@ export const CLASSIC_EXPORT_ICONS: ExportIconSet = {
   json: FileJson,
   screenshot: Camera,
   pdf: FileText,
+  extension: Puzzle,
 };
 
 interface ClassicExportRowProps extends ResolvedExportCommand {
@@ -48,6 +51,7 @@ function ClassicExportRow({ command, disabled, onExportCsv, onRunAction }: Class
     const { Dialog } = command;
     return (
       <Dialog
+        surface="classic"
         trigger={
           <DropdownMenuItem
             data-export-command={command.id}
@@ -96,10 +100,14 @@ function ClassicExportRow({ command, disabled, onExportCsv, onRunAction }: Class
   );
 }
 
-/** The rows of the classic export dropdown, in registry order. */
+/** The rows of the classic export dropdown, in registry order, then extension exporters. */
 export function ClassicExportMenuItems() {
-  const { commands, handleExportCSV, runExportAction } = useExportCommands();
+  const { t } = useTranslation();
+  const {
+    commands, handleExportCSV, runExportAction, extensionExporters, extensionExportRunning, runExtensionExporter,
+  } = useExportCommands('classic');
   const groups = groupExportCommands(commands, (resolved) => resolved.command.group);
+  const ExtensionIcon = CLASSIC_EXPORT_ICONS.extension;
 
   return (
     <>
@@ -116,6 +124,26 @@ export function ClassicExportMenuItems() {
           ))}
         </React.Fragment>
       ))}
+      {extensionExporters.length > 0 && (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-xs text-muted-foreground">
+            {t('exportCommands.extension.groupLabel')}
+          </DropdownMenuLabel>
+          {extensionExporters.map((exporter) => (
+            <DropdownMenuItem
+              key={exporter.key}
+              data-export-extension={exporter.key}
+              disabled={extensionExportRunning}
+              onClick={() => void runExtensionExporter(exporter.key)}
+            >
+              <ExtensionIcon className="h-4 w-4 mr-2" />
+              {exporter.name}
+              <span className="ml-auto pl-3 text-xs text-muted-foreground">{exporter.extension}</span>
+            </DropdownMenuItem>
+          ))}
+        </>
+      )}
     </>
   );
 }

@@ -49,6 +49,14 @@ describe('first-run card (#5840)', () => {
     assert.equal(first?.textContent?.trim(), DEMO_LABEL, 'the demo action must be the card\'s first (primary) button');
   });
 
+  it('keeps a visible keyboard focus indicator on the primary action (#5826)', () => {
+    const card = renderCard(() => Promise.resolve());
+    const primary = buttonWithText(card, DEMO_LABEL ?? '');
+    assert.ok(primary, 'the welcome primary action must render');
+    assert.match(primary.className, /\bfocus-visible:ring-1\b/);
+    assert.match(primary.className, /\bfocus-visible:ring-ring\b/);
+  });
+
   it('loads the demo sample through the canonical loadFile', async () => {
     const fetched: string[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL) => {

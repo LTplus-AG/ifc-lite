@@ -64,7 +64,7 @@ async fn seed_current_data_model(state: &AppState, cache_key: &str) {
     state
         .cache
         .set_bytes(
-            &crate::routes::parse::cache_keys::data_model_cache_key(cache_key),
+            &crate::routes::parse::cache_keys::data_model_cache_key(cache_key, crate::services::DataModelEntities::All),
             b"data-model-bytes",
         )
         .await
@@ -120,7 +120,7 @@ async fn seed_cache_from_batches(
 }
 
 async fn replay_sse_payloads(state: &AppState, cache_key: &str) -> Vec<serde_json::Value> {
-    let response = match try_cached_replay(state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal).await {
+    let response = match try_cached_replay(state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await {
         Ok(Some(response)) => response,
         other => panic!("expected a cache hit, got {:?}", other.map(|r| r.is_some())),
     };

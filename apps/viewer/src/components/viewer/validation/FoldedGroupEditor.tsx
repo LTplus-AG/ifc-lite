@@ -12,7 +12,7 @@
  * `FilterGroupEditor` directly, where two independent bounds on the same
  * subject are not a "between" the operator table offers.
  *
- * `RuleRow` / `AddRuleMenu` / `CombinatorToggle` / `GroupTabs` are reused
+ * `RuleRow` / `AddRuleMenu` / `CombinatorToggle` are reused
  * unchanged; only the rule-list loop differs from `FilterGroupEditor`.
  */
 
@@ -25,7 +25,7 @@ import type { FilterGroup } from '@ifc-lite/rules';
 import { useFilterRuleOptions } from '@/hooks/useFilterRuleOptions';
 import { AddRuleMenu, CombinatorToggle, blankRuleOfKind } from '../FilterRuleControls';
 import { RuleRow } from '../SearchModal.filter.editors';
-import { GroupTabs } from '../SearchModal.filter.groupTabs';
+import { GroupTabsPanel } from '../SearchModal.filter.groupTabs';
 import { clampGroupIndex } from '@/store/slices/searchSlice.filterGroups';
 import { foldBetweenPairs, unfoldBetweenChips, isBetweenChip, type FoldedRule } from '@ifc-lite/rules';
 import type { FilterGroupEditorModel, FilterGroupEditorState } from '../FilterGroupEditor';
@@ -112,14 +112,11 @@ export function FoldedGroupEditor({ groups, activeGroup, onChange, allowedKinds,
   );
 
   return (
-    <div className="flex flex-col gap-3">
-      {groups.length > 1 && (
-        <GroupTabs groups={groups} activeIndex={activeIndex} onSelect={setActiveGroup} onRemove={removeGroup} />
-      )}
+    <GroupTabsPanel groups={groups} activeIndex={activeIndex} onSelect={setActiveGroup} onRemove={removeGroup}>
 
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <CombinatorToggle value={active?.combinator ?? 'AND'} onChange={setCombinator} />
-        <Button type="button" variant="ghost" size="sm" onClick={addGroup} className="h-7 gap-1 text-[11px]">
+        <Button type="button" variant="ghost" size="sm" onClick={addGroup} className="h-7 gap-1 text-2xs">
           <Plus className="h-3 w-3" /> {t('filterGroups.addGroup')}
         </Button>
       </div>
@@ -151,7 +148,7 @@ export function FoldedGroupEditor({ groups, activeGroup, onChange, allowedKinds,
         )}
         <AddRuleMenu onAdd={addRuleOfKind} allowedKinds={allowedKinds} />
       </div>
-    </div>
+    </GroupTabsPanel>
   );
 }
 
@@ -178,7 +175,7 @@ function BetweenChipRow({
   };
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded border border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-950">
-      <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+      <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wider text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
         {t('validationEditor.betweenChip.label')}
       </span>
       <span className="font-mono text-xs">{label}</span>

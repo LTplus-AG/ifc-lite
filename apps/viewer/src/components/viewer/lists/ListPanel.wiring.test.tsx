@@ -77,7 +77,7 @@ function definitionWithBadPattern(): ListDefinition {
     createdAt: Date.now(),
     updatedAt: Date.now(),
     entityTypes: [],
-    conditions: [],
+    groups: [],
     columns: [
       { id: 'col-1', source: 'property', psetName: 'Pset_WallCommon', propertyName: '/(a+)+$/', label: 'Bad' },
     ],
@@ -94,7 +94,7 @@ function definitionWithNoMatch(): ListDefinition {
     createdAt: Date.now(),
     updatedAt: Date.now(),
     entityTypes: [],
-    conditions: [],
+    groups: [],
     columns: [
       { id: 'col-1', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'NeverThere', label: 'Missing' },
     ],

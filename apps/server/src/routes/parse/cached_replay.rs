@@ -23,7 +23,7 @@ use super::cache_keys::{
 };
 use super::ParseQuery;
 use ifc_lite_processing::TessellationQuality;
-use crate::services::{ParquetLayout, StreamShapes};
+use crate::services::{DataModelEntities, ParquetLayout, StreamShapes};
 use super::parquet::ParquetMetadataHeader;
 use super::stream_event::ParquetStreamEvent;
 use super::stream_progress::load_stream_progress;
@@ -82,14 +82,21 @@ pub(super) async fn replay_by_client_hash(
     let cache_key = cache_key_from_parts(sha256, query.opening_filter, quality);
 
     let replay = if has_parquet_metadata(&state.cache, &cache_key).await
-        && has_current_data_model(&state.cache, &cache_key).await
+        && has_current_data_model(&state.cache, &cache_key, query.data_model_entities).await
         && has_cached_symbolic(&state.cache, &cache_key).await
     {
         let admission_guard = state
             .admission
             .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
             .await?;
-        let replay = try_cached_replay(state, &cache_key, query.parquet_layout, stream_shapes).await;
+        let replay = try_cached_replay(
+            state,
+            &cache_key,
+            query.parquet_layout,
+            stream_shapes,
+            query.data_model_entities,
+        )
+        .await;
         drop(admission_guard);
         replay?
     } else {
@@ -134,6 +141,7 @@ pub(super) async fn try_cached_replay(
     cache_key: &str,
     layout: ParquetLayout,
     stream_shapes: StreamShapes,
+    data_model_entities: DataModelEntities,
 ) -> Result<Option<axum::response::Response>, ApiError> {
     let parquet_cache_key = parquet_geometry_key(cache_key, layout);
     let metadata_cache_key = parquet_metadata_key(cache_key);
@@ -147,8 +155,10 @@ pub(super) async fn try_cached_replay(
 
     // Replaying skips the parse, and the parse is what writes the data model.
     // A geometry entry that outlived a data-model version bump must therefore
-    // re-parse rather than replay (issue #3869).
-    if !has_current_data_model(&state.cache, cache_key).await
+    // re-parse rather than replay (issue #3869). The same holds for a data
+    // model of the OTHER entities variant (#6034): geometry warmed by a
+    // default request has no rooted table behind it.
+    if !has_current_data_model(&state.cache, cache_key, data_model_entities).await
         || !has_cached_symbolic(&state.cache, cache_key).await {
         tracing::info!(
             cache_key = %cache_key,

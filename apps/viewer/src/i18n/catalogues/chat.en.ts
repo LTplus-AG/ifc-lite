@@ -73,6 +73,7 @@ export const chatEn = {
   'chat.panel.contactSupportLink': 'Contact support',
   'chat.panel.attachTooltipEnabled': 'Attach file or image (paste, drag & drop)',
   'chat.panel.attachTooltipDisabled': 'Selected model does not support attachments',
+  'chat.panel.removeAttachment': 'Remove attachment {name}',
   'chat.panel.placeholderNeedsKey': 'Add your {provider} key to chat with this model',
   'chat.panel.placeholderDefault': 'Ask anything...',
   'chat.panel.stopGeneratingTooltip': 'Stop generating',
@@ -81,4 +82,6 @@ export const chatEn = {
   'chat.panel.usageCredits': '{used}/{limit} credits · resets {resetLabel}',
   'chat.panel.usageRequests': '{used}/{limit} requests · resets {resetLabel}',
   'chat.panel.shiftEnterHint': 'Shift+Enter new line',
+  'chat.panel.closeLabel': 'Close AI chat',
+  'chat.panel.scrollToBottomLabel': 'Scroll to the latest message',
 } as const satisfies Record<string, TranslationValue>;

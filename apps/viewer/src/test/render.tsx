@@ -86,6 +86,22 @@ export function press(target: EventTarget, key: string, init: KeyboardEventInit 
 }
 
 /**
+ * Activate a focused control as a browser does. Happy DOM dispatches the key
+ * events but omits the native button's default click, so supply that default
+ * only for buttons whose keydown was not cancelled. Custom roles must handle
+ * their own keydown; this helper never clicks them on their behalf.
+ */
+export function activate(target: HTMLElement, key: 'Enter' | ' ' = 'Enter'): void {
+  target.focus();
+  act(() => {
+    const down = new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    const proceed = target.dispatchEvent(down);
+    target.dispatchEvent(new window.KeyboardEvent('keyup', { key, bubbles: true, cancelable: true }));
+    if (proceed && target instanceof window.HTMLButtonElement) target.click();
+  });
+}
+
+/**
  * Dispatch the event that arrives at React's `onBlur`. `blur` itself does
  * not bubble (DOM spec), so React delegates it from the ROOT via the
  * bubbling `focusout` instead — dispatching `blur` here would bubble

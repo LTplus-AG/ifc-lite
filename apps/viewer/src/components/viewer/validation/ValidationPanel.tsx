@@ -26,7 +26,7 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { cn } from '@/lib/utils';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { IDSPanel } from '@/components/viewer/IDSPanel';
 import { IDSPanelResults } from '@/components/viewer/IDSPanelResults';
@@ -119,14 +119,14 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
   const hasResults = validationSource === 'rules' && results.report !== null && !info.editing && !info.running;
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <Tabs value={effectiveSource} onValueChange={(value) => setActiveSource(value === 'ids' ? 'ids' : 'rules')} className="h-full flex flex-col bg-background">
       <PanelHeader title={t('validationPanel.title')} onClose={handleClose} />
-      <SourceToggle active={effectiveSource} onChange={setActiveSource} />
-      {effectiveSource === 'ids' ? (
-        <div className="flex-1 min-h-0 flex flex-col">
-          <IDSPanel embedded />
-        </div>
-      ) : info.running ? (
+      <SourceToggle />
+      <TabsContent value="ids" className="mt-0 flex-1 min-h-0 flex flex-col">
+        <IDSPanel embedded />
+      </TabsContent>
+      <TabsContent value="rules" className="mt-0 flex-1 min-h-0 flex flex-col">
+      {info.running ? (
         <RunningState progress={info.progress} totalRules={info.file?.rules.length ?? 0} onCancel={info.cancel} />
       ) : hasResults ? (
         <div className="flex-1 min-h-0 flex flex-col">
@@ -156,7 +156,8 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
           />
         </div>
       )}
-    </div>
+      </TabsContent>
+    </Tabs>
   );
 }
 
@@ -176,30 +177,24 @@ function PanelHeader({ title, onClose }: { title: string; onClose?: () => void }
 /** Persistent source switch (issue #5138's core UX ask): visible in every
  *  non-empty state so the user can move between IDS validation and
  *  Information validation without losing either side's state. */
-function SourceToggle({ active, onChange }: { active: Source; onChange: (source: Source) => void }) {
+function SourceToggle() {
   const { t } = useTranslation();
   const options: [Source, TranslationKey][] = [
     ['ids', 'validationPanel.toggle.ids'],
     ['rules', 'validationPanel.toggle.rules'],
   ];
   return (
-    <div className="flex items-center gap-1 px-3 py-1.5 border-b" role="tablist">
+    <TabsList className="flex h-auto justify-start gap-1 rounded-none border-b bg-transparent px-3 py-1.5">
       {options.map(([source, labelKey]) => (
-        <button
+        <TabsTrigger
           key={source}
-          type="button"
-          role="tab"
-          aria-selected={active === source}
-          onClick={() => onChange(source)}
-          className={cn(
-            'rounded px-2 py-1 text-xs transition-colors',
-            active === source ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted',
-          )}
+          value={source}
+          className="rounded px-2 py-1 text-xs transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none"
         >
           {t(labelKey)}
-        </button>
+        </TabsTrigger>
       ))}
-    </div>
+    </TabsList>
   );
 }
 

@@ -28,7 +28,7 @@ export function RepositionRuntimeHost() {
   // Drawing panel (`DrawingRuntimeHost`, #5493). Runs once per mount — this
   // host only mounts while a session is open (see `ToolOverlays`) — so a
   // user who deliberately switches to another panel mid-session keeps it.
-  useEffect(() => { useViewerStore.getState().openPanelInHome('placement'); }, []);
+  useEffect(() => { useViewerStore.getState().openPanelInHome('placement', 'programmatic'); }, []);
   const models = useViewerStore((s) => s.models);
   const placement = useViewerStore((s) => s.modelPlacement);
   const project = useViewerStore((s) => s.cameraCallbacks.projectToScreen);

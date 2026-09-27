@@ -10,7 +10,7 @@
  */
 
 import { Ruler, RotateCcw } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,7 +24,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
 import { UNIT_ALTERNATIVES, alternativesForUnitType } from '@/lib/units/alternatives';
 import { useTranslation, type TranslationKey } from '@/i18n';
@@ -69,20 +68,15 @@ export function UnitDisplayControl() {
 
   return (
     <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className={`rounded-none hover:bg-zinc-200 dark:hover:bg-zinc-700 ${hasOverrides ? 'text-primary' : ''}`}
-            >
-              <Ruler className="h-3.5 w-3.5" />
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent>{t('properties.unitDisplay.trigger')}</TooltipContent>
-      </Tooltip>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          label={t('properties.unitDisplay.trigger')}
+          size="icon-xs"
+          className={`rounded-none hover:bg-zinc-200 dark:hover:bg-zinc-700 ${hasOverrides ? 'text-primary' : ''}`}
+        >
+          <Ruler className="h-3.5 w-3.5" />
+        </IconButton>
+      </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
           {t('properties.unitDisplay.trigger')}

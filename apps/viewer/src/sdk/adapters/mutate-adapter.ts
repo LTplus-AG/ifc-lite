@@ -7,8 +7,13 @@ import type { StoreApi } from './types.js';
 import { getOrCreateMutationView, normalizeMutationModelId } from './mutation-view.js';
 import { newMutationBatchId } from '../../store/slices/mutation-batch-tags.js';
 import { openBackendWriteCapture, trackBackendWrite, type BackendWriteCapture } from './backend-write-capture.js';
+import { mutationDenial } from '../../store/mutation-permission.js';
 
 export function createMutateAdapter(store: StoreApi): MutateBackendMethods {
+  const assertCanEdit = (operation: string, modelId: string): void => {
+    const denial = mutationDenial(store.getState(), modelId);
+    if (denial) throw new Error(`bim.mutate.${operation}: ${denial}`);
+  };
   // Open `bim.mutate.batch()` scopes, innermost last. A scope holds a
   // backend-write capture; on close, every mutation the SDK backend created
   // meanwhile — property, attribute, positional and store/create mutations
@@ -19,6 +24,7 @@ export function createMutateAdapter(store: StoreApi): MutateBackendMethods {
   const openBatches: Array<{ label: string; capture: BackendWriteCapture }> = [];
   const methods: MutateBackendMethods = {
     setProperty(ref: EntityRef, psetName: string, propName: string, value: string | number | boolean) {
+      assertCanEdit('setProperty', ref.modelId);
       const state = store.getState();
       const normalizedModelId = normalizeMutationModelId(state, ref.modelId);
       if (!getOrCreateMutationView(store, ref.modelId)) return undefined;
@@ -31,6 +37,7 @@ export function createMutateAdapter(store: StoreApi): MutateBackendMethods {
       return undefined;
     },
     setAttribute(ref: EntityRef, attrName: string, value: string) {
+      assertCanEdit('setAttribute', ref.modelId);
       const state = store.getState();
       const normalizedModelId = normalizeMutationModelId(state, ref.modelId);
       if (!getOrCreateMutationView(store, ref.modelId)) return undefined;
@@ -38,6 +45,7 @@ export function createMutateAdapter(store: StoreApi): MutateBackendMethods {
       return undefined;
     },
     deleteProperty(ref: EntityRef, psetName: string, propName: string) {
+      assertCanEdit('deleteProperty', ref.modelId);
       const state = store.getState();
       const normalizedModelId = normalizeMutationModelId(state, ref.modelId);
       if (!getOrCreateMutationView(store, ref.modelId)) return undefined;
@@ -45,6 +53,7 @@ export function createMutateAdapter(store: StoreApi): MutateBackendMethods {
       return undefined;
     },
     undo(modelId: string) {
+      assertCanEdit('undo', modelId);
       const state = store.getState();
       const normalizedModelId = normalizeMutationModelId(state, modelId);
       if (state.canUndo?.(normalizedModelId)) {
@@ -54,6 +63,7 @@ export function createMutateAdapter(store: StoreApi): MutateBackendMethods {
       return false;
     },
     redo(modelId: string) {
+      assertCanEdit('redo', modelId);
       const state = store.getState();
       const normalizedModelId = normalizeMutationModelId(state, modelId);
       if (state.canRedo?.(normalizedModelId)) {

@@ -11,7 +11,7 @@
  * and a teal reposition marker; annotations themselves were amber. Here the
  * real components are mounted under the real stylesheet (the app's
  * `index.css`, compiled by the Tailwind v4 plugin chain), the theme is
- * published by the real `OverlayThemeSync`, and the colour each one actually
+ * published by the store's real `registerOverlayThemeSync`, and the colour each one actually
  * resolves to is compared with what the GPU gets, per theme.
  *
  * Annotation pins moved onto the shared `Pin` scene primitive (#5511) — a
@@ -29,9 +29,8 @@ import postcss from 'postcss';
 import tailwindcss from '@tailwindcss/postcss';
 import { useViewerStore } from '@/store';
 import type { ThemeMode } from '@/store/slices/uiSlice';
-import { cleanup, render } from '@/test/render.js';
-import { OverlayThemeSync } from '@/components/viewport-ui/OverlayThemeSync';
-import { OVERLAY_PALETTES, OVERLAY_TOKENS, overlayCssVar, tokenToLinearRgba } from '@/lib/viewport-ui/overlay-theme';
+import { cleanup } from '@/test/render.js';
+import { OVERLAY_PALETTES, tokenToLinearRgba } from '@/lib/viewport-ui/overlay-theme';
 import { rendererOverlayTheme } from '@/lib/viewport-ui/overlay-theme-renderer';
 import { RectSelectionOverlay } from './RectSelectionOverlay';
 import { Pin } from '@/components/viewport-ui/scene';
@@ -66,12 +65,10 @@ after(() => {
 
 afterEach(() => {
   cleanup();
-  for (const token of OVERLAY_TOKENS) document.documentElement.style.removeProperty(overlayCssVar(token));
 });
 
 function mountTheme(theme: ThemeMode): void {
-  useViewerStore.setState({ theme });
-  render(<OverlayThemeSync />);
+  useViewerStore.getState().setTheme(theme);
 }
 
 /** The GPU's selection tint, as linear RGBA rounded for comparison. */

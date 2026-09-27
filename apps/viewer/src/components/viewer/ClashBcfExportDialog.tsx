@@ -14,7 +14,8 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import { Download, Crosshair, Loader2, ArrowRight, Camera, Layers } from 'lucide-react';
+import { Download, Crosshair, ArrowRight, Camera, Layers } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -134,7 +135,7 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
         <div className="grid gap-4 py-1 max-h-[62vh] overflow-y-auto pr-1">
           {/* Grouping */}
           <div className="space-y-1.5">
-            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <Label className="text-2xs uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
               <Layers className="h-3 w-3" /> {t('clashTools.bcfExport.groupByLabel')}
             </Label>
             <Select
@@ -155,7 +156,7 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
 
           {/* Severity filter */}
           <div className="space-y-1.5">
-            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+            <Label className="text-2xs uppercase tracking-wide text-muted-foreground">
               {t('clashTools.bcfExport.severitiesLabel')}
             </Label>
             <div className="flex flex-wrap gap-1.5">
@@ -186,12 +187,12 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
           <div className="flex items-center justify-center gap-4 rounded-lg border border-border bg-muted/30 px-4 py-3">
             <div className="text-center">
               <div className="text-2xl font-semibold tabular-nums leading-none">{preview.clashes}</div>
-              <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">{t('clashTools.bcfExport.clashesLabel')}</div>
+              <div className="mt-1 text-2xs uppercase tracking-wide text-muted-foreground">{t('clashTools.bcfExport.clashesLabel')}</div>
             </div>
             <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
             <div className="text-center">
               <div className="text-2xl font-semibold tabular-nums leading-none text-[#f7768e]">{preview.topics}</div>
-              <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+              <div className="mt-1 text-2xs uppercase tracking-wide text-muted-foreground">
                 {t('clashTools.bcfExport.topicsLabel', { count: preview.topics })}
               </div>
             </div>
@@ -199,7 +200,7 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
 
           {/* Cap + status note */}
           <div className="space-y-1.5">
-            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">{t('clashTools.bcfExport.maxTopicsLabel')}</Label>
+            <Label className="text-2xs uppercase tracking-wide text-muted-foreground">{t('clashTools.bcfExport.maxTopicsLabel')}</Label>
             <input
               type="number"
               min={1}
@@ -241,7 +242,7 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
           </Button>
           <Button onClick={() => void handleExport()} disabled={!canExport}>
             {exporting ? (
-              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              <Spinner size="md" className="mr-1.5" />
             ) : (
               <Download className="h-4 w-4 mr-1.5" />
             )}

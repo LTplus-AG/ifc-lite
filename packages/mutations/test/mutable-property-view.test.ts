@@ -343,7 +343,6 @@ describe('BulkQueryEngine', () => {
       entities,
       view,
       null,
-      null,
       { get: (idx: number) => strings[idx] },
     );
 

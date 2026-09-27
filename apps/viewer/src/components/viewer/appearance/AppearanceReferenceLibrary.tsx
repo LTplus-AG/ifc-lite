@@ -1,11 +1,13 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { trackExportCompleted } from '@/lib/analytics';
 import { AppearanceAnnotationFields } from './AppearanceAnnotationFields';
 import { referenceFrameStatus } from '@/lib/appearance/reference-runtime/frame.js';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Eye, EyeOff, Lock, Unlock, Trash2, Pencil, Download, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
 import { appearanceAssets } from '@/lib/appearance/model-assets.js';
 import { placementFrameKey } from '@/lib/model-placement/persistence.js';
@@ -96,13 +98,24 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
     <div className="flex items-center justify-between gap-2">
       <h3 id={`${id}-heading`} className="text-xs font-medium">{t('appearance.referenceLibrary.heading')}</h3>
       <div className="flex gap-1">
-        <Button type="button" variant="ghost" size="icon-xs" disabled={blocked}
-          aria-label={t('appearance.referenceLibrary.importTooltip')} title={t('appearance.referenceLibrary.importTooltip')} onClick={() => importPicker.current?.click()}><Upload aria-hidden="true" /></Button>
-        <Button type="button" variant="ghost" size="icon-xs" disabled={blocked || references.size === 0}
-          aria-label={t('appearance.referenceLibrary.exportTooltip')} title={t('appearance.referenceLibrary.exportTooltip')} onClick={() => perform(() => {
+        <IconButton
+          label={t('appearance.referenceLibrary.importTooltip')}
+          type="button"
+          size="icon-xs"
+          disabled={blocked}
+          onClick={() => importPicker.current?.click()}
+        ><Upload aria-hidden="true" /></IconButton>
+        <IconButton
+          label={t('appearance.referenceLibrary.exportTooltip')}
+          type="button"
+          size="icon-xs"
+          disabled={blocked || references.size === 0}
+          onClick={() => perform(() => {
             downloadBlob(new Blob([useViewerStore.getState().exportAppearanceReferences()], { type: 'application/json' }), 'drawing-registration.json');
+            trackExportCompleted({ format: 'json', surface: 'appearance_panel' });
             setNoticeKey('appearance.referenceLibrary.exportedNotice');
-          })}><Download aria-hidden="true" /></Button>
+          })}
+        ><Download aria-hidden="true" /></IconButton>
       </div>
     </div>
     {references.size === 0 && <p className="text-[11px] leading-relaxed text-muted-foreground">{t('appearance.referenceLibrary.emptyState')}</p>}
@@ -117,24 +130,44 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
             <button type="button" className="min-w-0 flex-1 truncate rounded px-1 py-1 text-left text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               aria-label={t('appearance.referenceLibrary.selectAriaLabel', { name })} aria-pressed={selected === reference.id} title={name} disabled={blocked}
               onClick={() => perform(() => useViewerStore.getState().selectAppearanceReference(reference.id))}>{name}</button>
-            <Button type="button" variant="ghost" size="icon-xs" disabled={editsDisabled || wrongFrame}
-              aria-label={reference.visible ? t('appearance.referenceLibrary.hideAriaLabel', { name }) : t('appearance.referenceLibrary.showAriaLabel', { name })}
-              title={reference.visible ? t('appearance.referenceLibrary.hideDrawing') : t('appearance.referenceLibrary.showDrawing')}
-              onClick={() => perform(() => useViewerStore.getState().updateAppearanceReference(reference.id, { visible: !reference.visible }))}>
+            <IconButton
+              label={reference.visible ? t('appearance.referenceLibrary.hideAriaLabel', { name }) : t('appearance.referenceLibrary.showAriaLabel', { name })}
+              tooltip={reference.visible ? t('appearance.referenceLibrary.hideDrawing') : t('appearance.referenceLibrary.showDrawing')}
+              type="button"
+              size="icon-xs"
+              disabled={editsDisabled || wrongFrame}
+              onClick={() => perform(() => useViewerStore.getState().updateAppearanceReference(reference.id, { visible: !reference.visible }))}
+            >
               {reference.visible ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
-            </Button>
-            <Button type="button" variant="ghost" size="icon-xs" disabled={blocked || (wrongFrame && !reference.locked)}
-              aria-label={reference.locked ? t('appearance.referenceLibrary.unlockAriaLabel', { name }) : t('appearance.referenceLibrary.lockAriaLabel', { name })}
-              title={reference.locked ? t('appearance.referenceLibrary.unlockDrawing') : t('appearance.referenceLibrary.lockDrawing')}
-              onClick={() => perform(() => useViewerStore.getState().updateAppearanceReference(reference.id, { locked: !reference.locked }))}>
+            </IconButton>
+            <IconButton
+              label={reference.locked ? t('appearance.referenceLibrary.unlockAriaLabel', { name }) : t('appearance.referenceLibrary.lockAriaLabel', { name })}
+              tooltip={reference.locked ? t('appearance.referenceLibrary.unlockDrawing') : t('appearance.referenceLibrary.lockDrawing')}
+              type="button"
+              size="icon-xs"
+              disabled={blocked || (wrongFrame && !reference.locked)}
+              onClick={() => perform(() => useViewerStore.getState().updateAppearanceReference(reference.id, { locked: !reference.locked }))}
+            >
               {reference.locked ? <Lock aria-hidden="true" /> : <Unlock aria-hidden="true" />}
-            </Button>
-            {onEdit && <Button type="button" variant="ghost" size="icon-xs" disabled={editsDisabled || missing}
-              aria-label={t('appearance.referenceLibrary.editAriaLabel', { name })} title={t('appearance.referenceLibrary.editTooltip')} onClick={() => perform(() => {
+            </IconButton>
+            {onEdit && <IconButton
+   label={t('appearance.referenceLibrary.editAriaLabel', { name })}
+   tooltip={t('appearance.referenceLibrary.editTooltip')}
+   type="button"
+   size="icon-xs"
+   disabled={editsDisabled || missing}
+   onClick={() => perform(() => {
                 useViewerStore.getState().selectAppearanceReference(reference.id); onEdit(reference.id);
-              })}><Pencil aria-hidden="true" /></Button>}
-            <Button type="button" variant="ghost" size="icon-xs" disabled={editsDisabled}
-              aria-label={t('appearance.referenceLibrary.removeAriaLabel', { name })} title={t('appearance.referenceLibrary.removeTooltip')} onClick={() => perform(() => useViewerStore.getState().removeAppearanceReference(reference.id))}><Trash2 aria-hidden="true" /></Button>
+              })}
+ ><Pencil aria-hidden="true" /></IconButton>}
+            <IconButton
+              label={t('appearance.referenceLibrary.removeAriaLabel', { name })}
+              tooltip={t('appearance.referenceLibrary.removeTooltip')}
+              type="button"
+              size="icon-xs"
+              disabled={editsDisabled}
+              onClick={() => perform(() => useViewerStore.getState().removeAppearanceReference(reference.id))}
+            ><Trash2 aria-hidden="true" /></IconButton>
           </div>
           <ReferenceOpacity name={name} value={reference.opacity} disabled={editsDisabled || wrongFrame}
             onCommit={opacity => perform(() => useViewerStore.getState().updateAppearanceReference(reference.id, { opacity }))} />

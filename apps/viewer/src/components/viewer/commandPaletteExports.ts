@@ -6,7 +6,7 @@
  * The command palette's Export category, generated from the toolbar export
  * registry (`toolbar/export-commands.ts`) so the palette offers exactly the
  * formats the classic toolbar and the ribbon do, in the same order (#5601).
- * Every row only hands a request to `usePaletteExportRunner`, which runs the
+ * Every row only hands a request to `useExportRunner`, which runs the
  * toolbars' own handlers and dialogs — see that file's docblock.
  *
  * CSV is a sub-menu in the toolbars; the palette has no sub-menus, so it gets
@@ -18,14 +18,16 @@ import type { TranslationKey } from '@/i18n';
 import { resolveEnglish } from '@/i18n/registry';
 import { EXPORT_COMMANDS, type CsvExportType, type ExportCommandId } from './toolbar/export-commands';
 import { CLASSIC_EXPORT_ICONS } from './toolbar/ClassicExportMenuItems';
-import type { PaletteExportRequest } from './usePaletteExportRunner';
+import type { ExportRequest } from './useExportRunner';
 import type { Command } from './commandPaletteSearch';
 import { withKey } from './commandPaletteCommandsTypes';
+import type { ExtensionExporter } from '@/components/extensions/useExtensionExporters';
 
 /** Extra search tokens per format — exhaustive, so a new registry entry must say how it is found. */
 const EXPORT_KEYWORDS: Record<ExportCommandId, string> = {
   ifc: 'ifc step spf save changes edited model download',
   anonymized: 'anonymize obfuscate isolate scrub redact bug report reproduction privacy scrub-safe',
+  'modified-ifc': 'ifc changes edits edited modified pending unexported save review download',
   glb: '3d model gltf download',
   kmz: 'google earth kml georeferenced download',
   usd: '3d model usd usda openusd omniverse blender usdview download',
@@ -44,7 +46,28 @@ const CSV_LABEL_KEYS: Record<CsvExportType, TranslationKey> = {
   spatial: 'commandPalette.export.csvSpatial.label',
 };
 
-export function buildExportCommands(runExport: (request: PaletteExportRequest) => void): Command[] {
+/**
+ * The Export rows: the registry's formats, then one row per installed
+ * extension exporter (#5838). An exporter's name is extension-supplied, so its
+ * row renders `label` as-is (no catalogue key), like other `ext:` rows.
+ */
+export function buildExportCommands(
+  runExport: (request: ExportRequest) => void,
+  extensionExporters: readonly ExtensionExporter[] = [],
+): Command[] {
+  const extensionRows = extensionExporters.map((exporter): Command => ({
+    id: `export:ext:${exporter.key}`,
+    label: exporter.name,
+    keywords: `extension ${exporter.extension.slice(1)} download`,
+    category: 'Export',
+    icon: CLASSIC_EXPORT_ICONS.extension,
+    detail: exporter.extension,
+    action: () => runExport({ id: 'extension', key: exporter.key }),
+  }));
+  return [...registryRows(runExport), ...extensionRows];
+}
+
+function registryRows(runExport: (request: ExportRequest) => void): Command[] {
   return EXPORT_COMMANDS.flatMap((command): Command[] => {
     const icon = CLASSIC_EXPORT_ICONS[command.id];
     if (command.kind === 'table-menu') {

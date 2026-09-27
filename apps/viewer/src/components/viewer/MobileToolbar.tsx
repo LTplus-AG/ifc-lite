@@ -8,7 +8,7 @@
  * and secondary actions in an overflow menu.
  */
 
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useMemo } from 'react';
 import {
   FolderOpen,
   MousePointer2,
@@ -19,7 +19,6 @@ import {
   Home,
   Maximize2,
   Crosshair,
-  Loader2,
   MoreHorizontal,
   Plus,
   Download,
@@ -27,7 +26,9 @@ import {
   Sun,
   Moon,
   PersonStanding,
+  Search,
 } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -36,19 +37,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
+import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { hideSelectionFromStore } from '@/store/hideSelection';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
-import { exportPlacedModelGlb } from '@/lib/model-placement/quick-glb';
-import { activeModelName, downloadBlob, modelExportFilename } from '@/lib/export/download';
+import { useExportRunner } from './useExportRunner';
+import { buildExportCommands } from './commandPaletteExports';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
-import { toast } from '@/components/ui/toast';
+import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { MOBILE_FILE_ACCEPT, isSupportedMobileModelFile } from '@/services/supported-model-files';
+import { emitOpenCommandPalette } from '@/lib/tours/events';
 
 type Tool = 'select' | 'walk' | 'measure' | 'section';
 
@@ -59,20 +64,16 @@ export function MobileToolbar() {
   const {
     loadFile,
     loading,
-    progress,
-    geometryProgress,
-    metadataProgress,
     geometryResult,
     models,
     loadFilesSequentially,
   } = useIfc();
+  const activeProgress = useViewerStore(selectActiveLoadProgress);
 
   const hasModelsLoaded = models.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
-  const hideEntities = useViewerStore((state) => state.hideEntities);
-  const error = useViewerStore((state) => state.error);
   const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
   const resetViewerState = useViewerStore((state) => state.resetViewerState);
   const clearAllModels = useViewerStore((state) => state.clearAllModels);
@@ -81,13 +82,14 @@ export function MobileToolbar() {
   const theme = useViewerStore((state) => state.theme);
   const toggleTheme = useViewerStore((state) => state.toggleTheme);
 
-  const hasSelection = selectedEntityId !== null;
+  // Multi-selection counts too (#5852): Hide acts on it even with no primary.
+  const hasSelection = useViewerStore((state) => state.selectedEntityIds.size > 0) || selectedEntityId !== null;
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const supportedFiles = Array.from(files).filter(isSupportedMobileModelFile);
-    if (supportedFiles.length === 0) return;
+    if (supportedFiles.length === 0) { reportFileOpenRejected(Array.from(files)); return; }
     recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
     void cacheFileBlobs(supportedFiles);
     if (supportedFiles.length === 1) {
@@ -104,7 +106,7 @@ export function MobileToolbar() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const supportedFiles = Array.from(files).filter(isSupportedMobileModelFile);
-    if (supportedFiles.length === 0) return;
+    if (supportedFiles.length === 0) { reportFileOpenRejected(Array.from(files)); return; }
     recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
     void cacheFileBlobs(supportedFiles);
     loadFilesSequentially(supportedFiles);
@@ -116,34 +118,18 @@ export function MobileToolbar() {
   }, []);
 
   const handleShowAll = useCallback(() => {
-    resetVisibilityForHomeFromStore();
+    resetVisibilityForHomeFromStore('show_all');
   }, []);
-
-  const handleHide = useCallback(() => {
-    if (selectedEntityId !== null) {
-      hideEntities([selectedEntityId]);
-    }
-  }, [selectedEntityId, hideEntities]);
 
   const handleHome = useCallback(() => {
     goHomeFromStore();
   }, []);
 
-  const handleExportGLB = useCallback(async () => {
-    if (!geometryResult) return;
-    try {
-      const glb = await exportPlacedModelGlb(geometryResult);
-      const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
-      downloadBlob(blob, modelExportFilename(activeModelName(useViewerStore.getState()), 'glb'));
-      toast.success(t('shellChrome.mobileToolbar.exportGlbSuccess', { size: (blob.size / 1024).toFixed(0) }));
-    } catch (err) {
-      toast.error(
-        t('shellChrome.mobileToolbar.exportGlbFailed', {
-          message: err instanceof Error ? err.message : t('shellChrome.mobileToolbar.unknownError'),
-        }),
-      );
-    }
-  }, [geometryResult, t]);
+  // Every export the toolbars and the palette offer, from the same registry
+  // rows and through the same handlers and dialogs (#5842). The dialog is
+  // hosted outside the menu so it outlives the menu closing.
+  const { runExport, dialog: exportDialog, extensionExporters } = useExportRunner('mobile');
+  const exportRows = useMemo(() => buildExportCommands(runExport, extensionExporters), [runExport, extensionExporters]);
 
   const toolButtons: { tool: Tool; icon: React.ElementType; label: string }[] = [
     { tool: 'select', icon: MousePointer2, label: t('shellChrome.mobileToolbar.selectTool') },
@@ -183,7 +169,7 @@ export function MobileToolbar() {
         aria-label={t('shellChrome.mobileToolbar.openFileAriaLabel')}
       >
         {loading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Spinner size="md" />
         ) : (
           <FolderOpen className="h-4 w-4" />
         )}
@@ -256,18 +242,13 @@ export function MobileToolbar() {
       <div className="flex-1 min-w-2" />
 
       {/* Loading progress (compact) */}
-      {loading && (geometryProgress || metadataProgress || progress) && (
+      {loading && activeProgress && (
         <div className="flex items-center gap-1.5 mr-1 flex-shrink-0">
-          <Progress value={(geometryProgress ?? metadataProgress ?? progress)?.percent ?? 0} className="w-16 h-1.5" />
+          <Progress value={activeProgress.percent} className="w-16 h-1.5" />
           <span className="text-[10px] text-muted-foreground tabular-nums">
-            {Math.round((geometryProgress ?? metadataProgress ?? progress)?.percent ?? 0)}%
+            {Math.round(activeProgress.percent)}%
           </span>
         </div>
-      )}
-
-      {/* Error */}
-      {error && (
-        <span className="text-[10px] text-destructive mr-1 truncate max-w-24 flex-shrink-0">{error}</span>
       )}
 
       {/* Overflow menu */}
@@ -282,7 +263,12 @@ export function MobileToolbar() {
             <MoreHorizontal className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuContent align="end" className="w-64 max-h-[80vh] overflow-y-auto">
+          <DropdownMenuItem onClick={emitOpenCommandPalette}>
+            <Search className="h-4 w-4 mr-2" aria-hidden="true" />
+            {t('shellChrome.mobileToolbar.commands')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           {/* Walk Mode */}
           <DropdownMenuCheckboxItem
             checked={activeTool === 'walk'}
@@ -299,7 +285,7 @@ export function MobileToolbar() {
             <Eye className="h-4 w-4 mr-2" />
             {t('shellChrome.mobileToolbar.isolateSelection')}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={handleHide} disabled={!hasSelection}>
+          <DropdownMenuItem onClick={hideSelectionFromStore} disabled={!hasSelection}>
             <EyeOff className="h-4 w-4 mr-2" />
             {t('shellChrome.mobileToolbar.hideSelection')}
           </DropdownMenuItem>
@@ -320,13 +306,21 @@ export function MobileToolbar() {
 
           <DropdownMenuSeparator />
 
-          {/* Export */}
-          {geometryResult && (
-            <DropdownMenuItem onClick={() => void handleExportGLB()}>
-              <Download className="h-4 w-4 mr-2" />
-              {t('shellChrome.mobileToolbar.exportGlb')}
+          {/* Export: the registry's rows, same as the command palette. Inline
+              rather than a submenu: a nested Radix submenu closes as a touch
+              leaves its trigger, so its rows could not be tapped on a phone. */}
+          <DropdownMenuLabel data-mobile-export-menu className="flex items-center text-xs text-muted-foreground">
+            <Download className="h-3.5 w-3.5 mr-2" />
+            {t('shellChrome.mobileToolbar.export')}
+          </DropdownMenuLabel>
+          {exportRows.map((row) => (
+            <DropdownMenuItem key={row.id} data-export-row={row.id} onClick={row.action}>
+              <row.icon className="h-4 w-4 mr-2" />
+              {row.labelKey ? t(row.labelKey, row.labelKeyParams) : row.label}
             </DropdownMenuItem>
-          )}
+          ))}
+
+          <DropdownMenuSeparator />
 
           {/* Theme */}
           <DropdownMenuItem onClick={() => toggleTheme()}>
@@ -335,6 +329,7 @@ export function MobileToolbar() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      {exportDialog}
     </div>
   );
 }

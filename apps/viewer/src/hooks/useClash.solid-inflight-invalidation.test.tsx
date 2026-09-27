@@ -289,7 +289,7 @@ describe('an intersection-solid compute in flight across a teardown must not pai
   it('Home / "Show all" mid-compute: the landing compute must not paint the solid', async (t) => {
     if (!ensureWasm(t)) return;
     const clash = await seedAndRun();
-    const unsub = tearDownMidCompute(() => resetVisibilityForHomeFromStore());
+    const unsub = tearDownMidCompute(() => resetVisibilityForHomeFromStore('show_all'));
 
     await focusAndSettle(clash);
     unsub();

@@ -47,15 +47,6 @@ export const listsEn = {
   'lists.modelTagScope.selectAriaLabel': 'Model tag scope',
   'lists.modelTagScope.allModels': 'all models',
   'lists.modelTagScope.pickAtLeastOneTag': 'Pick at least one tag, or the list runs over no model.',
-  // Same four operator words as the advanced filter's OP_LABEL (kept as a
-  // local copy rather than importing that shared map — #4918 review, PR
-  // #5004: OP_LABEL is a plain untranslated Record consumed by unrelated
-  // search-modal editors too, and localizing it here is scoped to what
-  // this editor renders, not a cross-cutting rename of a shared module).
-  'lists.modelTagScope.opHasAny': 'has any of',
-  'lists.modelTagScope.opHasAll': 'has all of',
-  'lists.modelTagScope.opHasNone': 'has none of',
-  'lists.modelTagScope.opUntagged': 'is untagged',
   'lists.modelTagScope.unknownTagName': 'unknown tag',
   // One complete message per operator (not "Runs over {description}." with
   // a preformatted English description substituted in) so a locale
@@ -101,22 +92,24 @@ export const listsEn = {
   // ListScheduleTable
   'lists.scheduleTable.count': 'Count',
   'lists.scheduleTable.countAggregateTitle': 'Count aggregate — the default sort order',
-  'lists.scheduleTable.dragToResizeTitle': 'Drag to resize · double-click to auto-fit',
+  'lists.scheduleTable.dragToResizeTitle': 'Drag to resize · arrow keys to adjust · Home or double-click to reset',
   'lists.scheduleTable.totalGroups': { one: 'Total · {countDisplay} group', other: 'Total · {countDisplay} groups' },
   'lists.scheduleTable.sumIcon': 'Σ',
 
   // ListResultsTable
   'lists.resultsTable.defaultTitle': 'List',
   'lists.resultsTable.filterPlaceholder': 'Filter results...',
+  'lists.resultsTable.noRows': 'No matching rows',
   'lists.resultsTable.rowCount': { one: '{countDisplay} row', other: '{countDisplay} rows' },
   'lists.resultsTable.rowCountOfTotal': { one: '{countDisplay} / {total} row', other: '{countDisplay} / {total} rows' },
   'lists.resultsTable.showingVisibleOnly': 'Showing visible objects only',
   'lists.resultsTable.showingAllObjects': 'Showing all objects',
   'lists.resultsTable.exportAriaLabel': 'Export',
   'lists.resultsTable.exportEllipsis': 'Export…',
+  'lists.resultsTable.exportFailed': 'Export failed: {message}',
   'lists.resultsTable.groupedAriaLabel': 'grouped',
   'lists.resultsTable.groupingLevelAriaLabel': 'grouping level {level}',
-  'lists.resultsTable.dragToResizeTitle': 'Drag to resize · double-click to auto-fit',
+  'lists.resultsTable.dragToResizeTitle': 'Drag to resize · arrow keys to adjust · Home or double-click to reset',
   'lists.resultsTable.totalCount': 'Total · {count}',
   'lists.resultsTable.sumIcon': 'Σ',
 
@@ -195,8 +188,6 @@ export const listsEn = {
   'lists.builder.source.spatial': 'Spatial',
   'lists.builder.source.model': 'Model',
   'lists.builder.source.zone': 'Zone',
-  'lists.builder.operator.contains': 'contains',
-  'lists.builder.operator.isSet': 'is set',
   'lists.builder.spatial.container': 'Container',
   'lists.builder.spatial.storey': 'Storey',
   'lists.builder.spatial.building': 'Building',
@@ -213,4 +204,18 @@ export const listsEn = {
   'lists.builder.valuePlaceholder.zoneBreakdown': 'zone: value, …',
   'lists.builder.valuePlaceholder.zoneName': 'zone name',
   'lists.builder.valuePlaceholder.value': 'value',
+  'lists.builder.unreadableWarning': 'These saved filters could not be converted. Remove malformed entries before running; other entries still narrow results.',
+  'lists.builder.compatibilityFilters': 'List-specific filters',
+  'lists.builder.compatibilityFiltersHint': 'These filters narrow every group and keep the Lists comparison modes.',
+  'lists.builder.compatibilityActiveWarning': 'These filters have no lossless Rules equivalent yet. Lists still applies them to every result.',
+  'lists.builder.compatibilityPresetAriaLabel': 'List filter kind',
+  'lists.builder.compatibilityPreset.zone': 'Zone assignment',
+  'lists.builder.compatibilityPreset.spatial': 'Exact spatial level',
+  'lists.builder.compatibilityPreset.quantity': 'Quantity presence',
+  'lists.builder.compatibilityPreset.material': 'Material presence',
+  'lists.builder.compatibilityPreset.model': 'Model file name',
+  'lists.builder.compatibilityPreset.attribute': 'IFC pseudo-attribute',
+  'lists.builder.compatibilityPreset.property': 'Inherited property',
+  'lists.builder.malformedCondition': 'Malformed saved condition',
+  'lists.builder.removeUnreadable': 'Remove saved filter',
 } as const satisfies Record<string, TranslationValue>;

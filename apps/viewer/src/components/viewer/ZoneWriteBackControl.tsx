@@ -18,9 +18,10 @@
  * quantity set's name.
  */
 
-import { useRef, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { Box, FileOutput, Sheet, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   Select,
   SelectContent,
@@ -30,8 +31,13 @@ import {
 } from '@/components/ui/select';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
+import { mutationDenialKey } from '@/store/mutation-permission';
+import { useMutationDenialReason } from '@/hooks/useMutationDenialReason';
+import { useViewerStore } from '@/store';
+import { canMutate, type MutationDenialReason } from '@/store/mutation-permission';
+import { resolveEntityRef } from '@/store/resolveEntityRef';
 import type { TranslationKey } from '@/i18n';
-import { useZoneWriteBack } from '@/hooks/useZoneWriteBack';
+import { useZoneWriteBack, zonePropertySetNamesOnElement } from '@/hooks/useZoneWriteBack';
 import { useZoneSpatialZones } from '@/hooks/useZoneSpatialZones';
 import { useZoneTableExport, type ZoneTableFormat } from '@/hooks/useZoneTableExport';
 import { emitRefusalText } from '@/lib/zones/emit-spatial-zones';
@@ -47,6 +53,41 @@ const BASES: readonly VolumeBasis[] = ['mesh', 'net', 'gross', 'unqualified'];
 
 export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
   const { t } = useTranslation();
+  const globalDenial = useMutationDenialReason();
+  const assignments = useViewerStore(state => state.zoneAssignments);
+  const views = useViewerStore(state => state.mutationViews);
+  const models = useViewerStore(state => state.models);
+  const targets = useMemo(() => {
+    const assigned = new Set<string>(), write = new Set<string>(), members = new Set<string>();
+    for (const [globalId, record] of assignments) {
+      const { modelId, expressId } = resolveEntityRef(globalId);
+      assigned.add(modelId);
+      if (record[zoneSet.id]?.touchedZoneIds.length) {
+        write.add(modelId);
+        members.add(modelId);
+      } else {
+        const view = views.get(modelId);
+        if (view?.hasChanges(expressId) && zonePropertySetNamesOnElement(view, expressId, zoneSet.id).length > 0) {
+          // A member that left this set may still need its prior write swept.
+          write.add(modelId);
+        }
+      }
+    }
+    const withViews = (ids: ReadonlySet<string>) => new Set([...ids, ...views.keys()]);
+    return { write, removeProperties: withViews(assigned), emit: withViews(members), removeZones: new Set(views.keys()) };
+  }, [assignments, views, models, zoneSet.id]);
+  const reasonFor = (modelIds: ReadonlySet<string>): MutationDenialReason | null => {
+    if (globalDenial) return globalDenial;
+    if (modelIds.size === 0 || [...modelIds].some(modelId => canMutate(useViewerStore.getState(), modelId))) return null;
+    return 'model-unavailable';
+  };
+  const writeDenial = reasonFor(targets.write);
+  const removePropertiesDenial = reasonFor(targets.removeProperties);
+  const emitDenial = reasonFor(targets.emit);
+  const removeZonesDenial = reasonFor(targets.removeZones);
+  const messageFor = (reason: MutationDenialReason | null) => reason ? t(mutationDenialKey(reason)) : undefined;
+  const denialMessage = messageFor(globalDenial ?? writeDenial ?? removePropertiesDenial ?? emitDenial ?? removeZonesDenial);
+  const denialId = useId();
   const [basis, setBasis] = useState<VolumeBasis>('mesh');
   const { write, remove } = useZoneWriteBack();
   const { emit: emitZones, remove: removeZones } = useZoneSpatialZones();
@@ -103,22 +144,25 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
     <div className="space-y-1 rounded border-t pt-1.5">
       <div className="flex items-center gap-1">
         <Select value={basis} onValueChange={(v) => setBasis(v as VolumeBasis)}>
-          <SelectTrigger className="h-6 w-[104px] text-[11px]" aria-label={t('zonesPanel.writeBack.volumeBasisAriaLabel')}>
+          <SelectTrigger className="h-6 w-[104px] text-2xs" aria-label={t('zonesPanel.writeBack.volumeBasisAriaLabel')}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {BASES.map((b) => (
-              <SelectItem key={b} value={b} className="text-[11px]">{volumeBasisLabel(b)}</SelectItem>
+              <SelectItem key={b} value={b} className="text-2xs">{volumeBasisLabel(b)}</SelectItem>
             ))}
           </SelectContent>
         </Select>
         <Button
           variant="outline"
           size="sm"
-          className="h-6 flex-1 text-[11px]"
-          title={t('zonesPanel.writeBack.writeButtonTitle', { psetName: zonePropertySetName(zoneSet.name) })}
+          className="h-6 flex-1 text-2xs"
+          disabled={!!writeDenial}
+          aria-describedby={writeDenial ? denialId : undefined}
+          title={messageFor(writeDenial) ?? t('zonesPanel.writeBack.writeButtonTitle', { psetName: zonePropertySetName(zoneSet.name) })}
           onClick={() => {
             const result = write(zoneSet, basis);
+            if (result.blocked === 'edit-mode') { toast.error(t('mutationPermission.editModeRequired')); return; }
             if (result.blocked === 'collab-role') {
               toast.error(t('zonesPanel.writeBack.collabReadOnlyWrite'));
               return;
@@ -152,14 +196,15 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           <FileOutput className="h-3 w-3 mr-1" />
           {t('zonesPanel.writeBack.writeButtonLabel')}
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
+        <IconButton
+          label={t('zonesPanel.writeBack.removePropsAriaLabel')}
+          tooltip={messageFor(removePropertiesDenial) ?? t('zonesPanel.writeBack.removePropsTitle', { psetName: zonePropertySetName(zoneSet.name) })}
+          disabled={!!removePropertiesDenial}
+          {...(removePropertiesDenial ? { 'aria-describedby': denialId } : {})}
           className="h-6 w-6"
-          title={t('zonesPanel.writeBack.removePropsTitle', { psetName: zonePropertySetName(zoneSet.name) })}
-          aria-label={t('zonesPanel.writeBack.removePropsAriaLabel')}
           onClick={() => {
             const { removed, blocked } = remove(zoneSet);
+            if (blocked === 'edit-mode') { toast.error(t('mutationPermission.editModeRequired')); return; }
             if (blocked === 'collab-role') {
               toast.error(t('zonesPanel.writeBack.collabReadOnlyRemove'));
               return;
@@ -173,11 +218,11 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           }}
         >
           <Undo2 className="h-3 w-3" />
-        </Button>
+        </IconButton>
       </div>
       {/* Named here because the next place these are looked for is another
           tool's property browser, not this panel. */}
-      <p className="text-[10px] text-muted-foreground leading-snug break-words">
+      <p className="text-2xs text-muted-foreground leading-snug break-words">
         {zonePropertySetName(zoneSet.name)} · {zoneQuantitySetName(zoneSet.name, basis)}
       </p>
       {/* The direct answer to #1763's "manual work in Excel": one row per
@@ -188,7 +233,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
             key={format}
             variant="outline"
             size="sm"
-            className="h-6 flex-1 text-[11px]"
+            className="h-6 flex-1 text-2xs"
             disabled={exportingTable !== null}
             title={t('zonesPanel.writeBack.downloadTableTitle', { format: format.toUpperCase() })}
             onClick={() => { void runTableExport(format); }}
@@ -202,10 +247,13 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
         <Button
           variant="outline"
           size="sm"
-          className="h-6 flex-1 text-[11px]"
-          title={t('zonesPanel.writeBack.emitZonesTitle')}
+          className="h-6 flex-1 text-2xs"
+          disabled={!!emitDenial}
+          aria-describedby={emitDenial ? denialId : undefined}
+          title={messageFor(emitDenial) ?? t('zonesPanel.writeBack.emitZonesTitle')}
           onClick={() => {
             const result = emitZones(zoneSet);
+            if (result.blocked === 'edit-mode') { toast.error(t('mutationPermission.editModeRequired')); return; }
             if (result.blocked === 'collab-role') {
               toast.error(t('zonesPanel.writeBack.collabReadOnlyEmit'));
               return;
@@ -262,14 +310,15 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           <Box className="h-3 w-3 mr-1" />
           {t('zonesPanel.writeBack.emitZonesLabel')}
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
+        <IconButton
+          label={t('zonesPanel.writeBack.removeEmittedAriaLabel')}
+          tooltip={messageFor(removeZonesDenial) ?? t('zonesPanel.writeBack.removeEmittedTitle')}
+          disabled={!!removeZonesDenial}
+          {...(removeZonesDenial ? { 'aria-describedby': denialId } : {})}
           className="h-6 w-6"
-          title={t('zonesPanel.writeBack.removeEmittedTitle')}
-          aria-label={t('zonesPanel.writeBack.removeEmittedAriaLabel')}
           onClick={() => {
             const { removed, blocked } = removeZones(zoneSet);
+            if (blocked === 'edit-mode') { toast.error(t('mutationPermission.editModeRequired')); return; }
             if (blocked === 'collab-role') {
               toast.error(t('zonesPanel.writeBack.collabReadOnlyRemove'));
               return;
@@ -283,8 +332,9 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           }}
         >
           <Undo2 className="h-3 w-3" />
-        </Button>
+        </IconButton>
       </div>
+      {denialMessage && <output id={denialId} className="block text-2xs text-muted-foreground">{denialMessage}</output>}
     </div>
   );
 }

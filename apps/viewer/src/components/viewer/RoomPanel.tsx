@@ -16,6 +16,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Check, Link2, LocateFixed, LogOut, Share2, ShieldOff, UserMinus, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
@@ -126,36 +127,28 @@ function PeerRow({
       </div>
       {role && <RoleBadge role={role} />}
       {onJump && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="size-5 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
-              onClick={onJump}
-              aria-label={t('zonesPanel.roomPanel.jumpToAriaLabel', { name })}
-            >
-              <LocateFixed className="size-3" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="left">{t('zonesPanel.roomPanel.jumpToTooltip')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('zonesPanel.roomPanel.jumpToAriaLabel', { name })}
+          tooltip={t('zonesPanel.roomPanel.jumpToTooltip')}
+          tooltipSide="left"
+          size="icon-sm"
+          className="size-5 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+          onClick={onJump}
+        >
+          <LocateFixed className="size-3" />
+        </IconButton>
       )}
       {onKick && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="size-5 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
-              onClick={onKick}
-              aria-label={t('zonesPanel.roomPanel.removePeerAriaLabel', { name })}
-            >
-              <UserMinus className="size-3" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="left">{t('zonesPanel.roomPanel.removeFromRoomTooltip')}</TooltipContent>
-        </Tooltip>
+        <IconButton
+          label={t('zonesPanel.roomPanel.removePeerAriaLabel', { name })}
+          tooltip={t('zonesPanel.roomPanel.removeFromRoomTooltip')}
+          tooltipSide="left"
+          size="icon-sm"
+          className="size-5 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+          onClick={onKick}
+        >
+          <UserMinus className="size-3" />
+        </IconButton>
       )}
     </div>
   );

@@ -14,8 +14,7 @@ import { cn } from '@/lib/utils';
 import { useViewerStore, taskStartEpoch, taskFinishEpoch } from '@/store';
 import type { GanttTimeScale, ScheduleTimeRange } from '@/store';
 import { useTranslation } from '@/i18n';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { IconButton } from '@/components/ui/icon-button';
 import type { FlattenedTask } from './schedule-utils';
 import {
   computeTicks,
@@ -206,25 +205,17 @@ export const GanttTimeline = memo(function GanttTimeline({
         style={{ height: HEADER_HEIGHT }}
       >
         {(data.workCalendars?.length ?? 0) > 0 && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={respectWorkCalendar ? 'secondary' : 'ghost'}
-                size="icon"
-                className="absolute right-1 top-0.5 h-5 w-5 z-20"
-                aria-pressed={respectWorkCalendar}
-                aria-label={t('gantt.workCalendar.toggle.ariaLabel')}
-                onClick={() => setRespectWorkCalendar(!respectWorkCalendar)}
-              >
-                <CalendarOff className="h-3 w-3" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {respectWorkCalendar
-                ? t('gantt.workCalendar.toggle.tooltipOn')
-                : t('gantt.workCalendar.toggle.tooltipOff')}
-            </TooltipContent>
-          </Tooltip>
+          <IconButton
+            label={t('gantt.workCalendar.toggle.ariaLabel')}
+            tooltip={respectWorkCalendar ? t('gantt.workCalendar.toggle.tooltipOn') : t('gantt.workCalendar.toggle.tooltipOff')}
+            tooltipSide="bottom"
+            variant={respectWorkCalendar ? 'secondary' : 'ghost'}
+            className="absolute right-1 top-0.5 h-5 w-5 z-20"
+            aria-pressed={respectWorkCalendar}
+            onClick={() => setRespectWorkCalendar(!respectWorkCalendar)}
+          >
+            <CalendarOff className="h-3 w-3" />
+          </IconButton>
         )}
         <svg width={pixelWidth} height={HEADER_HEIGHT} className="block">
           {ticks.map((t, i) => {

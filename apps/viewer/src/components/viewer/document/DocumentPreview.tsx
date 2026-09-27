@@ -202,10 +202,20 @@ export function DocumentPreview({ document, bindings, aggregations, chartMessage
         <div className="flex flex-col gap-2.5">
           {groupBlocks(document.blocks, bindings, size.h, size.w - 2 * REPORT_MARGIN).map((group) => {
             const wrap = (block: DocumentBlock) => (
-              <div
+              /* DocumentBlock renders figures and divs, which cannot be nested in a button. */
+              // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+              <div role="button"
                 key={block.id}
+                aria-label={block.kind === 'spacer' ? t('document.addBlock.spacer') : block.kind === 'image' && !block.caption ? t('document.addBlock.image') : undefined}
+                tabIndex={0}
                 className={`-mx-1 cursor-pointer rounded px-1 ring-offset-1 hover:ring-1 hover:ring-sky-300 ${selectedBlockId === block.id ? 'ring-1 ring-sky-500' : ''}`}
                 onClick={() => onSelectBlock(block.id)}
+                onKeyDown={(event) => {
+                  if (event.currentTarget === event.target && (event.key === 'Enter' || event.key === ' ')) {
+                    event.preventDefault();
+                    onSelectBlock(block.id);
+                  }
+                }}
                 data-preview-block={block.id}
               >
                 <Block block={block} bindings={bindings} aggregation={aggregations.get(block.id) ?? null} chartMessage={chartMessages.get(block.id)} topic={block.kind === 'topic' ? topics.get(block.guid) : undefined} table={tables?.get(block.id)} contentWidth={Array.isArray(group) ? (contentWidth - BLOCK_GAP * scale) / 2 : contentWidth} scale={scale} pageHeight={size.h} />

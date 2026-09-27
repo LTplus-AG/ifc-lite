@@ -40,7 +40,7 @@ function rows(condition: PropertyCondition): string[] {
   const definition: ListDefinition = {
     id: 'l', name: 'l', createdAt: 0, updatedAt: 0,
     entityTypes: [IfcTypeEnum.IfcPlate],
-    conditions: [condition],
+    groups: [], legacyConditions: [condition],
     columns: [{ id: 'n', source: 'attribute', propertyName: 'Name' }],
   };
   return executeList(definition, provider()).rows.map((r) => String(r.values[0])).sort();

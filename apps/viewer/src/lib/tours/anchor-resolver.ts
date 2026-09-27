@@ -48,7 +48,7 @@ export async function resolveAnchor(
     const detached = s.floatingPanels.some((p) => p.id === step.panel)
       || s.poppedOutIds.includes(step.panel);
     if (detached || !document.querySelector(selector)) {
-      s.showWorkspacePanel(step.panel);
+      s.showWorkspacePanel(step.panel, 'programmatic');
       redocked = detached;
     }
   }

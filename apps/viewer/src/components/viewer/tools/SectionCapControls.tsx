@@ -54,7 +54,7 @@ function hexToRgba(hex: string, alpha: number): [number, number, number, number]
   ];
 }
 
-const CAPTION = 'text-[10px] font-medium uppercase tracking-wider text-muted-foreground';
+const CAPTION = 'text-2xs font-medium uppercase tracking-wider text-muted-foreground';
 const FIELD = 'w-full rounded-sm border border-border bg-background px-1.5 py-0.5 text-xs tabular-nums outline-none focus:ring-1 focus:ring-ring';
 
 export function SectionCapControls(): React.JSX.Element {
@@ -173,15 +173,15 @@ export function SectionCapControls(): React.JSX.Element {
 
         <div className="grid grid-cols-3 gap-2">
           <div>
-            <label htmlFor={spacingId} className="mb-0.5 block text-[10px] text-muted-foreground">{t('sectionCap.spacingLabel')}</label>
+            <label htmlFor={spacingId} className="mb-0.5 block text-2xs text-muted-foreground">{t('sectionCap.spacingLabel')}</label>
             <input id={spacingId} type="number" min="2" max="64" step="1" value={sectionPlane.capStyle.spacingPx} onChange={onSpacing} className={FIELD} />
           </div>
           <div>
-            <label htmlFor={angleId} className="mb-0.5 block text-[10px] text-muted-foreground">{t('sectionCap.angleLabel')}</label>
+            <label htmlFor={angleId} className="mb-0.5 block text-2xs text-muted-foreground">{t('sectionCap.angleLabel')}</label>
             <input id={angleId} type="number" min="-180" max="180" step="5" value={angleDeg} onChange={onAngle} className={FIELD} />
           </div>
           <div>
-            <label htmlFor={widthId} className="mb-0.5 block text-[10px] text-muted-foreground">{t('sectionCap.widthLabel')}</label>
+            <label htmlFor={widthId} className="mb-0.5 block text-2xs text-muted-foreground">{t('sectionCap.widthLabel')}</label>
             <input id={widthId} type="number" min="1" max="16" step="0.5" value={sectionPlane.capStyle.widthPx} onChange={onWidth} className={FIELD} />
           </div>
         </div>

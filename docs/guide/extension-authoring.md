@@ -112,7 +112,7 @@ The manifest is the contract between your bundle and the host. Every field is ha
 | `contextMenu` | Items in `contextMenu.entity` / `contextMenu.canvas` / `contextMenu.tree`. |
 | `keybindings` | Keyboard shortcuts bound to a command. |
 | `lenses` | Visualisation presets registered in the lens library. |
-| `exporters` | Custom export formats added to the export menu. |
+| `exporters` | Custom export formats added to the export menu, the ribbon's Export group and the command palette. The file is named after the active model. |
 | `idsValidators` | Custom IDS rule validators. |
 | `statusBar` | Items in `statusBar.left` / `statusBar.right`. |
 | `flows` | `.flow.json` graphs shipped with the bundle, listed in the viewer's Flow panel (since #5167 Phase 4.2). Older viewers skip this key and load the rest of the extension. |

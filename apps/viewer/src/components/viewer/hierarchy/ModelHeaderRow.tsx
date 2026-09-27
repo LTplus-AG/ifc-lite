@@ -17,9 +17,10 @@ import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import type { TreeNode } from './types';
+import type { HierarchyNodeAriaProps } from './HierarchyNode';
 import { ModelRowTags } from './ModelRowTags';
 
-export interface ModelHeaderRowProps {
+export interface ModelHeaderRowProps extends HierarchyNodeAriaProps {
   node: TreeNode;
   virtualRow: { size: number; start: number };
   modelsCount: number;
@@ -43,6 +44,12 @@ export function ModelHeaderRow({
   onModelHeaderClick,
   sourceBacked = false,
   sourceSyncing = false,
+  ariaLevel = 1,
+  ariaSetSize = 1,
+  ariaPosInSet = 1,
+  tabIndex = -1,
+  rowRef,
+  onRowFocus,
 }: ModelHeaderRowProps) {
   const { t, locale } = useTranslation();
   const modelId = node.modelIds[0];
@@ -59,15 +66,28 @@ export function ModelHeaderRow({
       }}
     >
       <div
+        ref={rowRef}
+        role="treeitem"
+        aria-level={ariaLevel}
+        aria-setsize={ariaSetSize}
+        aria-posinset={ariaPosInSet}
+        aria-expanded={node.hasChildren ? node.isExpanded : undefined}
+        data-node-id={node.id}
+        tabIndex={tabIndex}
+        onFocus={onRowFocus}
         className={cn(
           'flex items-center gap-1 px-2 py-1.5 border-l-4 transition-all group',
           'hover:bg-zinc-50 dark:hover:bg-zinc-900',
+          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2',
           'border-transparent',
           !modelVisible && 'opacity-50',
           node.hasChildren && 'cursor-pointer'
         )}
         style={{ paddingLeft: '8px' }}
-        onClick={() => onModelHeaderClick(modelId, node.id, node.hasChildren)}
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest('button,[data-model-row-tags]')) return;
+          onModelHeaderClick(modelId, node.id, node.hasChildren);
+        }}
       >
         {/* Expand/collapse chevron */}
         {node.hasChildren ? (
@@ -94,7 +114,11 @@ export function ModelHeaderRow({
         <ModelRowTags modelId={modelId} modelName={node.name} />
 
         <button
-          className="p-0.5"
+          // 14px icon, `p-[5px]` a side: 14 + 2*5 = 24, the WCAG 2.2 2.5.8
+          // minimum with no headroom to spare — these buttons sit `gap-1`
+          // (4px) apart, so a bigger hit area (via padding or slop) would
+          // overlap the next one (#5826 review round).
+          className="p-[5px] relative focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           aria-label={t('hierarchy.node.repositionAriaLabel', { name: node.name })}
           title={t('hierarchy.node.repositionTooltip')}
           onClick={(event) => { event.stopPropagation(); openRepositionModels([modelId]); }}
@@ -113,7 +137,7 @@ export function ModelHeaderRow({
                   ? t('hierarchy.node.hideModelAriaLabel', { name: node.name })
                   : t('hierarchy.node.showModelAriaLabel', { name: node.name })
               }
-              className="p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+              className="p-[5px] opacity-0 group-hover:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:opacity-100"
             >
               {modelVisible ? (
                 <Eye className="h-3.5 w-3.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100" />
@@ -137,7 +161,7 @@ export function ModelHeaderRow({
                 }}
                 aria-label={t('hierarchy.node.syncModelAriaLabel', { name: node.name })}
                 className={cn(
-                  'p-0.5 opacity-0 group-hover:opacity-100 transition-opacity',
+                  'p-[5px] opacity-0 group-hover:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:opacity-100',
                   sourceSyncing && 'opacity-100',
                 )}
                 disabled={sourceSyncing}
@@ -167,7 +191,7 @@ export function ModelHeaderRow({
                   onRemoveModel(modelId, e);
                 }}
                 aria-label={t('hierarchy.node.removeModelAriaLabel', { name: node.name })}
-                className="p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="p-[5px] opacity-0 group-hover:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:opacity-100"
               >
                 <X className="h-3.5 w-3.5 text-zinc-400 hover:text-red-500" />
               </button>

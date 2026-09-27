@@ -135,7 +135,7 @@ export function HeroScene({ step, className, onPinFrame }: HeroSceneProps) {
       {unavailable && (
         <div className="flex h-full w-full items-center justify-center px-6 text-center">
           <span
-            className="text-[10px] uppercase tracking-[0.22em]"
+            className="text-2xs uppercase tracking-[0.22em]"
             style={{ color: CAPTION_DIM_CSS, fontFamily: '"JetBrains Mono", ui-monospace, monospace' }}
           >
             {t('mcp.heroScene.webglUnavailable')}

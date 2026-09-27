@@ -214,7 +214,7 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
       coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } };
     const model = { ...fixtureModel('evaluated'), idOffset, maxExpressId: 79, ifcDataStore: data, geometryResult: geometry, schemaVersion: 'IFC4' as const, loadState: 'complete' as const };
     const selection = globalId(25);
-    useViewerStore.setState({ models: new Map([['evaluated', model]]), activeModelId: 'evaluated',
+    useViewerStore.setState({ models: new Map([['evaluated', model]]), activeModelId: 'evaluated', editEnabled: true,
       geometryResult: geometry, mutationViews: new Map([['evaluated', view]]), storeEditors: new Map([['evaluated', new StoreEditor(data, view)]]),
       undoStacks: new Map(), redoStacks: new Map(), dirtyModels: new Set(), mutationVersion: 0, collabRoomId: null,
       appearanceSources: [], appearanceDraft: null, selectedEntityId: selection, selectedEntityIds: new Set([selection]) });

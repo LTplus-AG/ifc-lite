@@ -16,8 +16,8 @@ import { useFilterRuleOptions } from './useFilterRuleOptions.js';
 
 const SAMPLE = new URL('../../public/samples/hello-wall.ifc', import.meta.url);
 
-function Probe() {
-  const options = useFilterRuleOptions([]);
+function Probe({ modelId }: { modelId?: string }) {
+  const options = useFilterRuleOptions([], modelId);
   return <div data-types={options.ifcTypeOptions.join(',')} data-storeys={options.storeyOptions.map(([name]) => name).join(',')} />;
 }
 
@@ -50,6 +50,36 @@ test('filter options refresh after an in-place overlay edit bumps the mutation v
     assert.ok(!(probe.dataset.storeys ?? '').includes('My Storey'));
     assert.match(probe.dataset.types ?? '', /IfcBuildingElementProxy/);
     assert.equal(useViewerStore.getState().searchFilterSchema.get('m1')?.mutationVersion, 1);
+  } finally {
+    cleanup();
+    useViewerStore.setState(initial, true);
+  }
+});
+
+test('#5898 filter suggestions follow the Bulk model picker rather than the active model', async () => {
+  const bytes = await readFile(SAMPLE);
+  const store = await new IfcParser().parseColumnar(
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) as ArrayBuffer,
+    { disableWorkerScan: true },
+  );
+  const view = new MutablePropertyView(store.properties, 'm2');
+  view.setExpressIdWatermark(2000);
+  view.createEntity('IfcBuildingElementProxy', [null, null, 'Authored object']);
+  const initial = useViewerStore.getState();
+  useViewerStore.setState({
+    ...fixtureModels(
+      { ...fixtureModel('m1'), ifcDataStore: store },
+      { ...fixtureModel('m2', { idOffset: 1_000_000 }), ifcDataStore: store },
+    ),
+    activeModelId: 'm1',
+    mutationViews: new Map([['m2', view]]),
+    searchFilterSchema: new Map(),
+  });
+  try {
+    const container = render(<Probe modelId="m2" />);
+    assert.match(container.querySelector('div')?.dataset.types ?? '', /IfcBuildingElementProxy/);
+    assert.equal(useViewerStore.getState().searchFilterSchema.get('m2')?.sourceStore, store);
+    assert.equal(useViewerStore.getState().searchFilterSchema.has('m1'), false);
   } finally {
     cleanup();
     useViewerStore.setState(initial, true);

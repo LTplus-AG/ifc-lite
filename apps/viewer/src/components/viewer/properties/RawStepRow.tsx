@@ -11,7 +11,7 @@
 
 import { useCallback, useState } from 'react';
 import { PenLine, X, Check, AlertCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
 import { isInlineEditableToken, parseRawStepInput } from './raw-step-format';
@@ -212,39 +212,33 @@ export function RawStepRow({
 
         {editing ? (
           <>
-            <Button
-              variant="ghost"
-              size="icon"
+            <IconButton
+              label={t('properties.rawStepRow.saveTooltip')}
               data-raw-step-action="save"
               onMouseDown={(e) => e.preventDefault()}
               onClick={saveEdit}
               className="h-6 w-6 p-0 hover:bg-emerald-100 dark:hover:bg-emerald-950/30"
-              title={t('properties.rawStepRow.saveTooltip')}
             >
               <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
+            </IconButton>
+            <IconButton
+              label={t('properties.rawStepRow.cancelTooltip')}
               data-raw-step-action="cancel"
               onMouseDown={(e) => e.preventDefault()}
               onClick={cancelEdit}
               className="h-6 w-6 p-0 hover:bg-red-100 dark:hover:bg-red-950/30"
-              title={t('properties.rawStepRow.cancelTooltip')}
             >
               <X className="h-3.5 w-3.5 text-red-500 dark:text-red-400" />
-            </Button>
+            </IconButton>
           </>
         ) : editable ? (
-          <Button
-            variant="ghost"
-            size="icon"
+          <IconButton
+            label={t('properties.rawStepRow.editTooltip')}
             onClick={startEdit}
             className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
-            title={t('properties.rawStepRow.editTooltip')}
           >
             <PenLine className="h-3.5 w-3.5 text-overlay-accent" />
-          </Button>
+          </IconButton>
         ) : (
           <span className="h-6 w-6" aria-hidden />
         )}

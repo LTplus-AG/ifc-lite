@@ -9,7 +9,7 @@
  * its size budget (#5508).
  */
 import { Pencil, Timer, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
@@ -47,6 +47,7 @@ export function PresentationViewCard({
     <div className="relative w-[186px] h-full max-h-[130px] shrink-0 snap-start">
       <button
         type="button"
+        aria-label={view.name}
         onClick={() => { if (!isEditing) onSelect(); }}
         className={cn(
           'h-full w-full rounded-md border bg-card text-left overflow-hidden transition-colors',
@@ -102,36 +103,36 @@ export function PresentationViewCard({
         )}
       </div>
 
-      <Button
+      <IconButton
         type="button"
         variant="secondary"
         size="icon-xs"
         className="absolute top-1 right-7"
-        title={t('presentationPanel.renameViewTitle')}
+        label={t('presentationPanel.renameViewTitle')}
         onClick={(e) => { e.stopPropagation(); onStartRename(); }}
       >
         <Pencil className="h-3 w-3" />
-      </Button>
-      <Button
+      </IconButton>
+      <IconButton
         type="button"
         variant="secondary"
         size="icon-xs"
         className="absolute top-1 right-[3.25rem]"
-        title={t('presentationPanel.setTransitionTitle')}
+        label={t('presentationPanel.setTransitionTitle')}
         onClick={(e) => { e.stopPropagation(); onSetTransition(); }}
       >
         <Timer className="h-3 w-3" />
-      </Button>
-      <Button
+      </IconButton>
+      <IconButton
         type="button"
         variant="secondary"
         size="icon-xs"
         className="absolute top-1 right-1"
-        title={t('presentationPanel.deleteViewTitle')}
+        label={t('presentationPanel.deleteViewTitle')}
         onClick={(e) => { e.stopPropagation(); onDelete(); }}
       >
         <Trash2 className="h-3 w-3" />
-      </Button>
+      </IconButton>
     </div>
   );
 }

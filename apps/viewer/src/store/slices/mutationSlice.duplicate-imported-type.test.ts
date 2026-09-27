@@ -102,6 +102,7 @@ describe('duplicateEntity keeps the source IFC type for imported elements (#4933
 
     useViewerStore.setState({
       ...fixtureModels(model),
+      editEnabled: true,
       geometryResult: geometryOf([meshFor(wallId!)]),
       modelPlacement: emptyPlacementState(),
       mutationViews: new Map([[MODEL, new MutablePropertyView(dataStore.properties || null, MODEL)]]),

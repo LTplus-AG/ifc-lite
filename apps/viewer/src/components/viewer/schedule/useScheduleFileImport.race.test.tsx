@@ -24,7 +24,7 @@
  * `pendingImport` is a no-op — rather than relying on the read eventually
  * resolving to the right file.
  *
- * This is a real DOM rendering test (matches `ExtensionExportSlot.test.tsx`)
+ * This is a real DOM rendering test (matches `useExtensionExporters.test.tsx`)
  * rather than calling the hook's internals directly, because the race lives
  * in the interaction between a real `<input type="file">` change event, the
  * hook's internal state, and the store it commits into — there is nothing

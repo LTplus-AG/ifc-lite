@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Real per-model export implementations for the Export Changes flow, plus the
+ * Real per-model export implementations for the Export modified IFC… flow, plus the
  * production `BuildArtifactsDeps` wiring. Kept out of `model-changes.ts` so that
  * module (and its unit tests) stay free of the browser renderer and the store
  * barrel — the pure `buildChangedArtifacts` takes these as injected deps.

@@ -203,7 +203,6 @@ describe.skipIf(!testFile)('IFC Mutations Integration', () => {
         store.entities,
         view,
         store.spatialHierarchy || null,
-        store.properties || null,
         store.strings || null
       );
 
@@ -219,7 +218,6 @@ describe.skipIf(!testFile)('IFC Mutations Integration', () => {
         store.entities,
         view,
         store.spatialHierarchy || null,
-        store.properties || null,
         store.strings || null
       );
 
@@ -247,7 +245,6 @@ describe.skipIf(!testFile)('IFC Mutations Integration', () => {
         store.entities,
         view,
         store.spatialHierarchy || null,
-        store.properties || null,
         store.strings || null
       );
 
@@ -282,7 +279,6 @@ describe.skipIf(!testFile)('IFC Mutations Integration', () => {
         store.entities,
         view,
         store.spatialHierarchy || null,
-        store.properties || null,
         store.strings || null
       );
 

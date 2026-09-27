@@ -18,7 +18,7 @@
 
 import { useCallback, useMemo } from 'react';
 import { FileWarning, Download, Focus, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
@@ -150,20 +150,18 @@ export function LoadReportPanel({ onClose }: LoadReportPanelProps) {
       <div className="flex items-center gap-2 border-b p-3">
         <FileWarning className="h-4 w-4 text-amber-600" />
         <span className="flex-1 text-sm font-medium">{t('loadReportPanel.title')}</span>
-        <Button
-          variant="ghost"
-          size="icon"
+        <IconButton
+          label={t('loadReportPanel.exportJsonTitle')}
           className="h-6 w-6"
           onClick={handleExport}
           disabled={reports.length === 0}
-          title={t('loadReportPanel.exportJsonTitle')}
         >
           <Download className="h-3.5 w-3.5" />
-        </Button>
+        </IconButton>
         {onClose && (
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose} title={t('loadReportPanel.closeTitle')}>
+          <IconButton label={t('loadReportPanel.closeTitle')} className="h-6 w-6" onClick={onClose}>
             <X className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
         )}
       </div>
       <div className="flex-1 overflow-y-auto">

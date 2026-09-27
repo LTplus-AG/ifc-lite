@@ -5,6 +5,10 @@
 //! In-memory marker for "a data-model write is running right now for this
 //! cache key" (issue #5129).
 //!
+//! The key is the data-model ENTRY key (`data_model_cache_key`), not the
+//! request key it is built from (#6034): the full and the rooted-only tables
+//! are separate entries, and a fill of one says nothing about the other.
+//!
 //! `get_data_model` needs to tell a client "not yet, keep polling" apart from
 //! "not for this key, stop asking": the first is 202, the second 404. A cache
 //! miss alone cannot make that distinction — the entry could be absent because

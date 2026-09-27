@@ -26,6 +26,7 @@ import { useState } from 'react';
 import { Camera, Copy, Download, FilePlus, Pencil, RefreshCcw, Upload, X, Check } from 'lucide-react';
 import type { Flavor } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
@@ -241,22 +242,18 @@ export function FlavorListView({
                           }}
                           className="h-7 text-sm"
                         />
-                        <Button
-                          size="icon"
-                          variant="ghost"
+                        <IconButton
+                          label={t('extensionsFlavors.flavorListView.saveNameAriaLabel')}
                           onClick={commitRename}
-                          aria-label={t('extensionsFlavors.flavorListView.saveNameAriaLabel')}
                         >
                           <Check className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
+                        </IconButton>
+                        <IconButton
+                          label={t('extensionsFlavors.flavorListView.cancelRenameAriaLabel')}
                           onClick={cancelRename}
-                          aria-label={t('extensionsFlavors.flavorListView.cancelRenameAriaLabel')}
                         >
                           <X className="h-3.5 w-3.5" />
-                        </Button>
+                        </IconButton>
                       </>
                     ) : (
                       <>
@@ -319,62 +316,48 @@ export function FlavorListView({
                       {t('extensionsFlavors.flavorListView.activateButton')}
                     </Button>
                   )}
-                  <Button
-                    size="icon"
+                  <IconButton
+                    label={t('extensionsFlavors.flavorListView.captureAriaLabel', { name: displayName })}
+                    tooltip={hasUncaptured ? t('extensionsFlavors.flavorListView.captureTitleUncaptured', { name: displayName, count: formatLocaleNumber(locale, uncapturedCount) }) : t('extensionsFlavors.flavorListView.captureTitleSnapshot', { name: displayName })}
                     variant={hasUncaptured ? 'default' : 'ghost'}
                     onClick={() => onCaptureInto(flavor.id)}
                     disabled={busy}
-                    aria-label={t('extensionsFlavors.flavorListView.captureAriaLabel', { name: displayName })}
-                    title={hasUncaptured
-                      ? t('extensionsFlavors.flavorListView.captureTitleUncaptured', {
-                          name: displayName,
-                          count: formatLocaleNumber(locale, uncapturedCount),
-                        })
-                      : t('extensionsFlavors.flavorListView.captureTitleSnapshot', { name: displayName })}
                   >
                     <Camera className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
+                  </IconButton>
+                  <IconButton
+                    label={t('extensionsFlavors.flavorListView.renameAriaLabel', { name: displayName })}
+                    tooltip={t('extensionsFlavors.flavorListView.renameTitle')}
                     onClick={() => startRename(flavor)}
                     disabled={busy || isRenaming}
-                    aria-label={t('extensionsFlavors.flavorListView.renameAriaLabel', { name: displayName })}
-                    title={t('extensionsFlavors.flavorListView.renameTitle')}
                   >
                     <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
+                  </IconButton>
+                  <IconButton
+                    label={t('extensionsFlavors.flavorListView.duplicateAriaLabel', { name: displayName })}
+                    tooltip={t('extensionsFlavors.flavorListView.duplicateTitle')}
                     onClick={() => onDuplicate(flavor.id)}
                     disabled={busy}
-                    aria-label={t('extensionsFlavors.flavorListView.duplicateAriaLabel', { name: displayName })}
-                    title={t('extensionsFlavors.flavorListView.duplicateTitle')}
                   >
                     <Copy className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
+                  </IconButton>
+                  <IconButton
+                    label={t('extensionsFlavors.flavorListView.exportAriaLabel', { name: displayName })}
+                    tooltip={t('extensionsFlavors.flavorListView.exportTitle')}
                     onClick={() => onExport(flavor.id)}
                     disabled={busy}
-                    aria-label={t('extensionsFlavors.flavorListView.exportAriaLabel', { name: displayName })}
-                    title={t('extensionsFlavors.flavorListView.exportTitle')}
                   >
                     <Download className="h-3.5 w-3.5" />
-                  </Button>
+                  </IconButton>
                   {!isActive && (
-                    <Button
-                      size="icon"
-                      variant="ghost"
+                    <IconButton
+                      label={t('extensionsFlavors.flavorListView.deleteAriaLabel', { name: displayName })}
+                      tooltip={t('extensionsFlavors.flavorListView.deleteTitle')}
                       onClick={() => onDelete(flavor.id)}
                       disabled={busy}
-                      aria-label={t('extensionsFlavors.flavorListView.deleteAriaLabel', { name: displayName })}
-                      title={t('extensionsFlavors.flavorListView.deleteTitle')}
                     >
                       <X className="h-3.5 w-3.5" />
-                    </Button>
+                    </IconButton>
                   )}
                 </div>
               </li>

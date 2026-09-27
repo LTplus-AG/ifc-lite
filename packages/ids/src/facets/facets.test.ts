@@ -727,7 +727,26 @@ describe('checkPropertyFacet', () => {
     };
     const result = checkPropertyFacet(facet, 10, accessorWithNull);
     expect(result.passed).toBe(false);
-    expect(result.failure?.type).toBe('PROPERTY_VALUE_MISMATCH');
+    // Absent (null) is "no value", distinct from a wrong value —
+    // `PROPERTY_EMPTY` lets `optional`/`prohibited` cardinality read it
+    // as "not present", matching upstream ifctester (#6117).
+    expect(result.failure?.type).toBe('PROPERTY_EMPTY');
+  });
+
+  it('keeps IFCLABEL("UNKNOWN") distinct from an unknown IfcLogical (#6117)', () => {
+    const accessor = createMockAccessor([
+      { expressId: 11, type: 'IfcWall', properties: [
+        { psetName: 'Pset_WallCommon', propName: 'Status', value: 'UNKNOWN', dataType: 'IFCLABEL' },
+      ] },
+      { expressId: 12, type: 'IfcWall', properties: [
+        { psetName: 'Pset_WallCommon', propName: 'Status', value: 'UNKNOWN', dataType: 'IFCLOGICAL' },
+      ] },
+    ]);
+    const facet: IDSPropertyFacet = {
+      type: 'property', propertySet: sv('Pset_WallCommon'), baseName: sv('Status'), value: sv('UNKNOWN'),
+    };
+    expect(checkPropertyFacet(facet, 11, accessor).passed).toBe(true);
+    expect(checkPropertyFacet(facet, 12, accessor).failure?.type).toBe('PROPERTY_EMPTY');
   });
 });
 
@@ -1384,5 +1403,67 @@ describe('predefinedType matching agrees between entity and partOf facets', () =
       predefinedType: sv('FLOOR'),
     };
     expect(checkEntityFacet(byRawToken, 61, accessor).passed).toBe(true);
+  });
+});
+
+// ============================================================================
+// Property facet — EXPRESS-base string-only classification (#6153 review)
+// ============================================================================
+
+describe('checkPropertyFacet: string-only classification by EXPRESS base', () => {
+  it('an IfcDuration value does not numerically match an enumeration option (cast gate only guards simpleValue, not enumeration)', () => {
+    const accessor = createMockAccessor([
+      {
+        expressId: 70,
+        type: 'IfcWall',
+        properties: [{ psetName: 'Foo_Bar', propName: 'Dur', value: '5.0', dataType: 'IFCDURATION' }],
+      },
+    ]);
+    const facet: IDSPropertyFacet = {
+      type: 'property',
+      propertySet: sv('Foo_Bar'),
+      baseName: sv('Dur'),
+      value: { type: 'enumeration', values: ['5'] },
+    };
+    // ifctester: '5.0' is not string-equal to '5', and IfcDuration is
+    // EXPRESS STRING (an ISO-8601 duration lexical form), not numeric —
+    // so numeric coercion must not apply.
+    expect(checkPropertyFacet(facet, 70, accessor).passed).toBe(false);
+  });
+
+  it('an unrecognised dataType name falls to exact-string comparison, not numeric coercion', () => {
+    const accessor = createMockAccessor([
+      {
+        expressId: 71,
+        type: 'IfcWall',
+        properties: [
+          { psetName: 'Foo_Bar', propName: 'Weird', value: '1.0000001', dataType: 'IFCNOTAREALTYPE' },
+        ],
+      },
+    ]);
+    const facet: IDSPropertyFacet = {
+      type: 'property',
+      propertySet: sv('Foo_Bar'),
+      baseName: sv('Weird'),
+      value: sv('1'),
+    };
+    expect(checkPropertyFacet(facet, 71, accessor).passed).toBe(false);
+  });
+
+  it('control: a real numeric measure (IfcReal) still gets the 1e-6 tolerance', () => {
+    const accessor = createMockAccessor([
+      {
+        expressId: 72,
+        type: 'IfcWall',
+        properties: [{ psetName: 'Foo_Bar', propName: 'Num', value: '1.0000001', dataType: 'IFCREAL' }],
+      },
+    ]);
+    const facet: IDSPropertyFacet = {
+      type: 'property',
+      propertySet: sv('Foo_Bar'),
+      baseName: sv('Num'),
+      value: sv('1'),
+    };
+    expect(checkPropertyFacet(facet, 72, accessor).passed).toBe(true);
   });
 });

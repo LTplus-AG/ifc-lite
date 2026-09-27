@@ -10,9 +10,11 @@
  * `pendingColorUpdates` is a SIGNAL, not state — the flush hands it to
  * `scene.setColorOverrides` and then nulls it out. The scene keeps the map
  * (`getColorOverrides()`), and that retained map is the only durable record of
- * what is currently painted. `setColorOverrides` builds overlay batches ONCE,
- * looking each id up in `meshDataMap`, so an id with no mesh at flush time
- * contributes nothing and, without the catch-up below, nothing revisits it.
+ * what is currently painted. Until #6076 `setColorOverrides` built overlay
+ * batches ONCE, looking each id up in `meshDataMap`, so an id with no mesh at
+ * flush time contributed nothing and only the catch-up below revisited it.
+ * The renderer now paints by id from a per-entity colour table, which reaches
+ * late meshes by itself; re-handing the retained map costs one table upload.
  *
  * ## Why the catch-up waits for the DRAIN, not for the batch counter
  *
@@ -54,10 +56,9 @@
  * NOT COVERED, deliberately: the other colour sink, `updateMeshColors`, which
  * mutates mesh colours in `meshDataMap` in place and retains no map. There is
  * nothing to re-apply for it; giving it one is a new retained-state decision,
- * not a repaint. Deeper still, the renderer could fold a late mesh into the
- * live overlay batches inside `appendToBatches`, which would be incremental
- * and channel-agnostic instead of a whole-set rebuild. That is a renderer
- * change well outside this fix.
+ * not a repaint. The renderer-side fix this paragraph once deferred landed
+ * in #6076: overrides are a per-entity colour table, so a late mesh is painted
+ * by id without any re-application.
  */
 
 import { useCallback, useEffect, useRef, type MutableRefObject } from 'react';

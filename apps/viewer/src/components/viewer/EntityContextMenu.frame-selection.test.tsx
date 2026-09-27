@@ -109,10 +109,10 @@ describe('EntityContextMenu — Frame selection (#5597)', () => {
       ['Frame selection', 'F'],
       // Every chord that hides, from the keyboard command table (#5836).
       ['Hide', 'Del, Backspace, Space'],
-      ['Set Basket', '='],
-      ['Add to Basket', '+'],
-      ['Remove from Basket', '−'],
-      ['Save Basket View', 'B'],
+      ['Set Collection', '='],
+      ['Add to Collection', '+'],
+      ['Remove from Collection', '−'],
+      ['Save Collection View', 'B'],
     ];
     for (const [label, key] of hints) {
       const hint = menuItem(container, label).querySelectorAll('span')[1];
@@ -151,4 +151,12 @@ describe('EntityContextMenu — Duplicate key hint follows the platform (#5836)'
   it('says ⌘D on Apple platforms', () => {
     assert.equal(duplicateHint('MacIntel'), '⌘D');
   });
+});
+
+it('exposes menu and menuitem roles when the entity menu opens (#5819)', () => {
+  act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
+  const container = render();
+  const menu = container.querySelector('[role="menu"]');
+  assert.ok(menu, 'the open context menu has a menu role');
+  assert.equal(menuItem(container, 'Frame selection').getAttribute('role'), 'menuitem');
 });

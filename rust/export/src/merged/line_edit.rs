@@ -276,6 +276,37 @@ pub(super) fn decide_line(line: &str, dropped: &HashSet<u32>) -> LineDecision {
     LineDecision::Rewrite(rebuilt)
 }
 
+/// Append `ids` to the list attribute `n` of `line`, or `None` when that
+/// attribute is not a list (or the line cannot be parsed). Used to fold a later
+/// model's relationship into the one an earlier model wrote (#5774).
+pub(super) fn append_to_list_attr(line: &str, n: usize, ids: &[u32]) -> Option<String> {
+    let (open, close) = arg_span(line)?;
+    let args = split_args(&line[open + 1..close]);
+    let list = args.get(n)?.trim();
+    if !is_list(list) {
+        return None;
+    }
+    let inner = list[1..list.len() - 1].trim();
+    let added: Vec<String> = ids.iter().map(|id| format!("#{id}")).collect();
+    let joined = if inner.is_empty() { added.join(",") } else { format!("{inner},{}", added.join(",")) };
+    let mut rebuilt = String::with_capacity(line.len() + joined.len());
+    rebuilt.push_str(&line[..=open]);
+    for (i, arg) in args.iter().enumerate() {
+        if i > 0 {
+            rebuilt.push(',');
+        }
+        if i == n {
+            rebuilt.push('(');
+            rebuilt.push_str(&joined);
+            rebuilt.push(')');
+        } else {
+            rebuilt.push_str(arg);
+        }
+    }
+    rebuilt.push_str(&line[close..]);
+    Some(rebuilt)
+}
+
 #[cfg(test)]
 #[path = "line_edit_tests.rs"]
 mod line_edit_tests;

@@ -38,7 +38,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { measureEn as MeasureEnType } from '@/i18n/catalogues/measure.en';
 import type { TranslationValue } from '@/i18n/types';
@@ -131,7 +131,7 @@ function openSection(container: HTMLElement, label: string): void {
   const button = [...container.querySelectorAll('[role="tab"]')].find((b) => b.textContent?.trim() === label);
   assert.ok(button, `no tab labelled "${label}" on the Measurements panel`);
   act(() => {
-    button.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    button.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
   });
 }
 
@@ -221,8 +221,8 @@ afterEach(() => {
 /** Static-key keys this suite's render states cannot show, each for a stated
  *  reason. */
 const NOT_RENDERED_IN_THIS_STATE: MeasureKey[] = [
-  // The "Clear all" confirm text goes to window.confirm, not the DOM
-  // (#5598); hooks/useKeyboardShortcuts.measure-clear.test.tsx asserts it.
+  // The "Clear all" text appears only after opening the themed dialog;
+  // hooks/useKeyboardShortcuts.measure-clear.test.tsx asserts it.
   'measure.clearAllConfirm',
   // No fixture in this file records a CLOSED polyline (`closed: true`) — the
   // completed-polyline fixtures used throughout are all open runs, so the
@@ -265,6 +265,16 @@ const NOT_RENDERED_IN_THIS_STATE: MeasureKey[] = [
   'measure.quantities.legend',
   'measure.quantities.massLegend',
   'measure.quantities.massLegendWithEstimated',
+  // MeasurementsVisibilityChip.tsx's own rows (#5893) — a separate,
+  // always-mounted HUD chip this suite's `renderMeasure()` never renders
+  // (it exercises MeasurePanel/MeasureToolbar only); the chip has its own
+  // component, not a test file (mirrors SectionParkedChip's convention).
+  'measure.chip.hideAria',
+  'measure.chip.hideTitle',
+  'measure.chip.showAria',
+  'measure.chip.showTitle',
+  'measure.chip.clearAria',
+  'measure.chip.clearTitle',
 ];
 
 const NOT_RENDERED_PARAMS: MeasureKey[] = [
@@ -276,6 +286,7 @@ const NOT_RENDERED_PARAMS: MeasureKey[] = [
   'measure.quantities.noMeshToMeasure',
   'measure.quantities.meshAreaIncomplete',
   'measure.quantities.rescaledVolume',
+  'measure.chip.label', // MeasurementsVisibilityChip.tsx, see NOT_RENDERED_IN_THIS_STATE above
 ];
 
 /** Runs the shared static-key check for one (english-before, marked-after) pair.
@@ -462,6 +473,10 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
     assertMarked(after, 'measure.angle.apexSetSuffix');
     assertMarked(after, 'measure.radius.indexLabel', { index: 1 });
     assertMarked(after, 'measure.radius.inProgress', { count: 3 });
+    assertMarked(after, 'measure.list.deleteDistance', { index: 1 });
+    assertMarked(after, 'measure.list.deletePolyline', { index: 1 });
+    assertMarked(after, 'measure.list.deleteAngle', { index: 1 });
+    assertMarked(after, 'measure.list.deleteRadius', { index: 1 });
 
     coveredParams.add('measure.polyline.inProgress');
     coveredParams.add('measure.polyline.indexLabel');
@@ -470,6 +485,10 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
     coveredParams.add('measure.angle.inProgress');
     coveredParams.add('measure.radius.indexLabel');
     coveredParams.add('measure.radius.inProgress');
+    coveredParams.add('measure.list.deleteDistance');
+    coveredParams.add('measure.list.deletePolyline');
+    coveredParams.add('measure.list.deleteAngle');
+    coveredParams.add('measure.list.deleteRadius');
     // Static, but sits beside a sibling {} expression in the same element
     // (see `assertMarked`'s own doc comment) so `assertStaticCoverage`'s
     // exact-match pass never finds it; checked explicitly above instead.
@@ -581,6 +600,24 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
     addReadable(document.body, after);
 
     assertStaticCoverage(english, after);
+  });
+
+  it('#5811 names the point-reference actions and lets both controls change the datum', () => {
+    useViewerStore.setState({
+      measurements: [{ id: 'm1', start: mp(0, 0, 0), end: mp(5, 6, 7), distance: 10.6 }],
+    });
+    const container = renderMeasure();
+    openSection(container, 'Point');
+
+    const setButton = container.querySelector('button[aria-label="Set this point as the relative-coordinate reference"]');
+    assert.ok(setButton, 'the reference action has an accessible name');
+    click(setButton);
+    assert.deepEqual(useViewerStore.getState().measureReferencePoint, { x: 5, y: 6, z: 7 });
+
+    const clearButton = container.querySelector('button[aria-label="Clear the reference point"]');
+    assert.ok(clearButton, 'the clear action has an accessible name');
+    click(clearButton);
+    assert.equal(useViewerStore.getState().measureReferencePoint, null);
   });
 
   it('point section: live point (an in-progress drag)', () => {

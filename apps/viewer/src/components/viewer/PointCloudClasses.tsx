@@ -80,13 +80,13 @@ export function PointCloudClasses() {
 
   return (
     <details className="flex flex-col gap-0.5">
-      <summary className="text-[9px] uppercase text-muted-foreground tracking-wider cursor-pointer select-none">
+      <summary className="text-2xs uppercase text-muted-foreground tracking-wider cursor-pointer select-none">
         {t('pointCloudClasses.summaryLabel')} {!allOn && (
-          <span className="text-[9px] normal-case text-amber-500"> · {t('pointCloudClasses.visibleCount', { visible: visibleCount, total: present.length })}</span>
+          <span className="text-2xs normal-case text-amber-500"> · {t('pointCloudClasses.visibleCount', { visible: visibleCount, total: present.length })}</span>
         )}
       </summary>
       {present.length === 0 ? (
-        <span className="text-[10px] text-muted-foreground px-1 py-0.5 leading-tight">
+        <span className="text-2xs text-muted-foreground px-1 py-0.5 leading-tight">
           {t('pointCloudClasses.emptyState')}
         </span>
       ) : (
@@ -95,7 +95,7 @@ export function PointCloudClasses() {
             <button
               type="button"
               onClick={() => setMask([...ALL_POINT_CLOUD_CLASSES_VISIBLE])}
-              className="text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted px-1 py-0.5 rounded text-left"
+              className="text-2xs text-muted-foreground hover:text-foreground hover:bg-muted px-1 py-0.5 rounded text-left"
             >
               {t('pointCloudClasses.showAll')}
             </button>
@@ -106,7 +106,7 @@ export function PointCloudClasses() {
             return (
               <label
                 key={classId}
-                className="flex items-center gap-1.5 text-[10px] cursor-pointer hover:bg-muted/40 rounded px-1 py-0.5"
+                className="flex items-center gap-1.5 text-2xs cursor-pointer hover:bg-muted/40 rounded px-1 py-0.5"
               >
                 <input
                   type="checkbox"

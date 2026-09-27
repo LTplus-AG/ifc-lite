@@ -155,19 +155,25 @@ describe('whole-model renderer placement (#4226)', () => {
     assert.equal(scene.getEntityBoundingBox(2)?.min.x, 13);
   });
 
-  it('keeps same-colour overrides attached to their own federated model', () => {
-    const scene = new Scene(), { device, pipeline } = recordingGpu();
+  it('keeps same-colour overrides attached to their own federated model', async () => {
+    const colorTable = await import('./entity-color-table.js').catch(() => null);
+    assert.ok(colorTable, 'the renderer provides the entity colour table');
+    const { lookupEntityColor } = colorTable;
+    const scene = new Scene(), { device, pipeline, buffers } = recordingGpu();
     scene.appendToBatches([triangle(1, 0), triangle(2, 1, 3)], device, pipeline);
+    const allocated = buffers.length;
     scene.setColorOverrides(new Map([[1, [1, 0, 0, 1]], [2, [1, 0, 0, 1]]]), device, pipeline);
-    const overlays = scene.getOverrideBatches();
-    assert.equal(overlays.length, 2);
-    const before = overlays.map((batch) => ({ batch, origin: batch.origin![0], buffer: batch.vertexBuffer }));
+    // #6076: the override is a colour-table entry, so the only allocation is
+    // the table; the base batch that moves with its model is what gets painted.
+    assert.equal(buffers.length, allocated + 1, 'no overlay geometry is allocated');
+    const before = scene.getBatchedMeshes().map((batch) => ({ batch, origin: batch.origin![0], buffer: batch.vertexBuffer }));
     scene.setModelTranslation(1, [10, 0, 0]);
     for (const { batch, origin, buffer } of before) {
       const expectedModel = batch.expressIds.includes(2) ? 1 : 0;
       assert.ok([...batch.modelIndices!].every((index) => index === expectedModel));
       assert.equal(batch.origin![0], origin + (expectedModel === 1 ? 10 : 0));
-      assert.equal(batch.vertexBuffer, buffer, 'overlay movement does not rebuild its geometry');
+      assert.equal(batch.vertexBuffer, buffer, 'translation does not rebuild the painted batch');
+      assert.deepEqual(lookupEntityColor(scene.getEntityColorTable().getImage(), batch.expressIds[0]), [1, 0, 0, 1]);
     }
   });
 

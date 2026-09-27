@@ -31,15 +31,17 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store/index.js';
+import { posthog } from '@/lib/analytics';
+import { toast } from '@/components/ui/toast';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '@/hooks/useBCF.js';
-import { render, click, cleanup } from '@/test/render.js';
+import { render, click, cleanup, waitFor } from '@/test/render.js';
 import { PdfViewExportDialog, type ViewPdfExporter } from './PdfViewExportDialog.js';
 import type { ViewPdfExportInput } from '@/lib/export/view-pdf/generate-view-pdf.js';
 
@@ -129,9 +131,9 @@ function seedViewer(max: { x: number; y: number; z: number } = BOX_MAX): void {
 
 // ── Dialog driving ──────────────────────────────────────────────────────────
 
-function openDialog(exportViewPdf?: ViewPdfExporter): void {
+function openDialog(exportViewPdf?: ViewPdfExporter, surface: 'classic' | 'ribbon' | 'palette' = 'classic'): void {
   const container = render(
-    <PdfViewExportDialog trigger={<button type="button">Open</button>} exportViewPdf={exportViewPdf} />,
+    <PdfViewExportDialog surface={surface} trigger={<button type="button">Open</button>} exportViewPdf={exportViewPdf} />,
   );
   const trigger = container.querySelector('button');
   assert.ok(trigger, 'the dialog trigger must render');
@@ -401,15 +403,26 @@ describe('PdfViewExportDialog export input (#2042)', () => {
 
   it('exports shaded surfaces unless the user asks otherwise', async () => {
     const { calls, exporter } = recordingExporter();
-    openDialog(exporter);
-    chooseScale('1:100');
-    await runExport();
-
-    assert.equal(calls.length, 1, 'Export must reach the exporter exactly once');
-    // The whole point of the feature: the sheet looks like the viewport, which
-    // is solid and coloured, unless the user opts out.
-    assert.equal(calls[0].renderMode, 'shaded');
-    assert.equal(calls[0].scaleFactor, 100);
+    const completions: Record<string, unknown>[] = [];
+    const analytics = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      if (event === 'export_completed') completions.push(properties);
+    });
+    try {
+      for (const [index, surface] of (['classic', 'ribbon', 'palette'] as const).entries()) {
+        openDialog(exporter, surface);
+        chooseScale('1:100');
+        await runExport();
+        assert.equal(calls.length, index + 1, 'Export reaches the exporter once per surface');
+        assert.equal(calls[index].renderMode, 'shaded');
+        assert.equal(calls[index].scaleFactor, 100);
+        assert.equal(completions.length, index + 1, '#5844: one PDF completion per successful export');
+        assert.equal(completions[index].surface, surface);
+        assert.equal(completions[index].format, 'pdf-3d-view');
+        cleanup();
+      }
+    } finally {
+      analytics.mock.restore();
+    }
   });
 
   it('sends the appearance the user picked, not the one the dialog mounted with', async () => {
@@ -512,5 +525,90 @@ describe('PdfViewExportDialog export input (#2042)', () => {
       release();
       await gate;
     });
+  });
+});
+
+/**
+ * `ExportDialogShell`'s `closeOnSuccess` seam (#5848): this dialog always
+ * closed straight back to the viewport on a successful export rather than
+ * showing a result Alert, and still toasts on failure without an Alert
+ * lingering across a reopen. Deleting the `closeOnSuccess` line from
+ * `PdfViewExportDialog.tsx` leaves every other test in this file green, so
+ * this is the one place that actually exercises the seam through the real
+ * dialog rather than the shell in isolation.
+ */
+describe('PdfViewExportDialog closeOnSuccess (#5848)', () => {
+  beforeEach(() => {
+    seedViewer();
+  });
+
+  afterEach(() => {
+    cleanup();
+    clearGlobalRefs();
+    document.body.innerHTML = '';
+  });
+
+  it('closes the dialog on a successful export, with no error toast', async () => {
+    const errorToast = mock.method(toast, 'error', () => {});
+    try {
+      const exporter: ViewPdfExporter = async () => ({
+        page: { widthMm: 60, heightMm: 50 },
+        filename: '3d-view-1-100.pdf',
+        strokeCount: 12,
+        shading: { widthPx: 237, heightPx: 178, dpi: 150 },
+      });
+      openDialog(exporter);
+      chooseScale('1:100');
+      const button = exportButton();
+      await act(async () => {
+        button.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+      });
+      await waitFor(
+        () => document.body.querySelector('[role="dialog"]') === null,
+        'a successful export must close the dialog instead of showing a result Alert',
+      );
+      assert.equal(errorToast.mock.callCount(), 0, 'a successful export must not toast an error');
+    } finally {
+      errorToast.mock.restore();
+    }
+  });
+
+  it('a failed export shows the error, and a reopen shows no stale alert', async () => {
+    const exporter: ViewPdfExporter = async () => {
+      throw new Error('boom');
+    };
+    openDialog(exporter);
+    chooseScale('1:100');
+    const button = exportButton();
+    await act(async () => {
+      button.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await waitFor(
+      () => document.body.querySelector('[role="alert"]') !== null,
+      'a failed export must still render the result Alert',
+    );
+    assert.ok(
+      document.body.querySelector('[role="dialog"]'),
+      'a failed export must not close the dialog (closeOnSuccess only fires on success)',
+    );
+    assert.match(document.body.textContent ?? '', /boom/);
+
+    await act(async () => {
+      document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    });
+    assert.equal(document.body.querySelector('[role="dialog"]'), null, 'an idle dialog still closes on Escape');
+
+    // Reopen the SAME dialog instance via its trigger (still mounted — only
+    // the Dialog's own portal content unmounted on close) rather than
+    // mounting a fresh one, so this actually proves the reopen guarantee.
+    const reopenTrigger = [...document.body.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Open');
+    assert.ok(reopenTrigger, 'the dialog trigger must still be mounted after closing');
+    click(reopenTrigger);
+    assert.ok(document.body.querySelector('[role="dialog"]'), 'precondition: the dialog reopened');
+    assert.equal(
+      document.body.querySelector('[role="alert"]'),
+      null,
+      'a reopened dialog must not show the previous run\'s stale error',
+    );
   });
 });

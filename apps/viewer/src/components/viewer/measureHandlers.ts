@@ -8,13 +8,14 @@
  */
 
 import type { SnapTarget } from '@ifc-lite/renderer';
-import type { MeasurePoint, SnapVisualization } from '@/store';
-import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3, MeasureMode } from '@/store/types.js';
+import type { MeasurePoint } from '@/store';
+import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3 } from '@/store/types.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import { IFC_AXIS_COLORS } from '@/lib/viewport-ui/overlay-theme';
+import { pickMeasurePoint, updateSnapViz } from './measurePick.js';
 
 /**
  * Projects a world position onto the closest orthogonal constraint axis.
@@ -70,68 +71,6 @@ export function projectOntoConstraintAxis(
 }
 
 /**
- * Compute snap visualization (edge highlights, sliding dot, corner rings, plane indicators).
- * Stores 3D coordinates so edge highlights stay positioned correctly during camera rotation.
- */
-export function updateSnapViz(
-  ctx: MouseHandlerContext,
-  snapTarget: SnapTarget | null,
-  edgeLockInfo?: { edgeT: number; isCorner: boolean; cornerValence: number },
-): void {
-  if (!snapTarget || !ctx.canvas) {
-    ctx.setSnapVisualization(null);
-    return;
-  }
-
-  const viz: Partial<SnapVisualization> = {};
-
-  // For edge snaps: store 3D world coordinates (will be projected to screen by ToolOverlays)
-  if ((snapTarget.type === 'edge' || snapTarget.type === 'vertex') && snapTarget.metadata?.vertices) {
-    const [v0, v1] = snapTarget.metadata.vertices;
-
-    // Store 3D coordinates - these will be projected dynamically during rendering
-    viz.edgeLine3D = {
-      v0: { x: v0.x, y: v0.y, z: v0.z },
-      v1: { x: v1.x, y: v1.y, z: v1.z },
-    };
-
-    // Add sliding dot t-parameter along the edge
-    if (edgeLockInfo) {
-      viz.slidingDot = { t: edgeLockInfo.edgeT };
-
-      // Add corner rings if at a corner with high valence
-      if (edgeLockInfo.isCorner && edgeLockInfo.cornerValence >= 2) {
-        viz.cornerRings = {
-          atStart: edgeLockInfo.edgeT < 0.5,
-          valence: edgeLockInfo.cornerValence,
-        };
-      }
-    } else {
-      // No edge lock info - calculate t from snap position
-      const edge = { x: v1.x - v0.x, y: v1.y - v0.y, z: v1.z - v0.z };
-      const toSnap = { x: snapTarget.position.x - v0.x, y: snapTarget.position.y - v0.y, z: snapTarget.position.z - v0.z };
-      const edgeLenSq = edge.x * edge.x + edge.y * edge.y + edge.z * edge.z;
-      const t = edgeLenSq > 0 ? (toSnap.x * edge.x + toSnap.y * edge.y + toSnap.z * edge.z) / edgeLenSq : 0.5;
-      viz.slidingDot = { t: Math.max(0, Math.min(1, t)) };
-    }
-  }
-
-  // For face snaps: show plane indicator (still screen-space since it's just an indicator)
-  if ((snapTarget.type === 'face' || snapTarget.type === 'face_center') && snapTarget.normal) {
-    const pos = projectToCssScreen(ctx.camera, ctx.canvas, snapTarget.position);
-    if (pos) {
-      viz.planeIndicator = {
-        x: pos.x,
-        y: pos.y,
-        normal: snapTarget.normal,
-      };
-    }
-  }
-
-  ctx.setSnapVisualization(viz);
-}
-
-/**
  * Get approximate world position for an entity (for measurement tool fallback).
  */
 export function getApproximateWorldPosition(
@@ -146,114 +85,32 @@ export function getApproximateWorldPosition(
 }
 
 /**
- * Whether a mousedown on the Measure tool should start the drag-to-measure
- * gesture (`handleMeasureDown`/`activeMeasurement`). `false` in two cases:
- * shift is held (the existing orbit-while-measuring escape hatch), or the
- * tool is in any CLICK-driven mode (polyline #2199, angle #2735), where a
- * click rather than a drag is the only gesture that places a point (see
- * `handlePolylineClick` / `handleAngleClick` in selectionHandlers.ts).
- *
- * This is the single gate that keeps the modes' state machines from ever
- * running at the same time: as long as `useMouseControls.ts`'s mousedown
- * handler consults this before calling `handleMeasureDown`,
- * `activeMeasurement` can never become non-null outside drag mode.
- *
- * Tested as `mode === 'drag'` rather than `mode !== 'polyline'` deliberately.
- * The exclusion form is a DENY-LIST: every new click-driven mode has to
- * remember to add itself, and forgetting means the drag gesture silently runs
- * underneath it - two state machines live at once, which is the exact failure
- * this gate exists to prevent. The allow-list form makes a new mode
- * click-driven by default, which is the safe direction to be wrong in.
- */
-export function shouldStartDragMeasurement(mode: MeasureMode, shiftKey: boolean): boolean {
-  return mode === 'drag' && !shiftKey;
-}
-
-/**
  * Handle mousedown for measurement tool (non-shift).
  * Returns true if the event was handled (caller should early-return).
  */
 export function handleMeasureDown(ctx: MouseHandlerContext, e: PointerEvent): boolean {
-  const { canvas, renderer, camera, mouseState } = ctx;
+  const { canvas, mouseState } = ctx;
 
   mouseState.isDragging = true;
   canvas.style.cursor = 'crosshair';
 
   // Calculate canvas-relative coordinates
   const rect = canvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
+  const measurePoint = pickMeasurePoint(ctx, e.clientX - rect.left, e.clientY - rect.top);
+  if (measurePoint) {
+    ctx.startMeasurement(measurePoint);
 
-  // Use magnetic snap for better edge locking
-  const currentLock = ctx.edgeLockStateRef.current;
-  const result = renderer.raycastSceneMagnetic(x, y, {
-    edge: currentLock.edge,
-    meshExpressId: currentLock.meshExpressId,
-    lockStrength: currentLock.lockStrength,
-  }, {
-    hiddenIds: ctx.hiddenEntitiesRef.current,
-    isolatedIds: ctx.isolatedEntitiesRef.current,
-    snapOptions: ctx.snapEnabledRef.current ? {
-      snapToVertices: true,
-      snapToEdges: true,
-      snapToFaces: true,
-      screenSnapRadius: 60,
-    } : {
-      snapToVertices: false,
-      snapToEdges: false,
-      snapToFaces: false,
-      screenSnapRadius: 0,
-    },
-  });
-
-  if (result.intersection || result.snapTarget) {
-    const snapPoint = result.snapTarget || result.intersection;
-    const pos = snapPoint ? ('position' in snapPoint ? snapPoint.position : snapPoint.point) : null;
-
-    if (pos) {
-      // Project snapped 3D position to screen - measurement starts from indicator, not cursor
-      const screenPos = projectToCssScreen(camera, canvas, pos);
-      const measurePoint: MeasurePoint = {
-        x: pos.x,
-        y: pos.y,
-        z: pos.z,
-        screenX: screenPos?.x ?? x,
-        screenY: screenPos?.y ?? y,
-      };
-
-      ctx.startMeasurement(measurePoint);
-
-      if (result.snapTarget) {
-        ctx.setSnapTarget(result.snapTarget);
-      }
-
-      // Update edge lock state
-      if (result.edgeLock.shouldRelease) {
-        ctx.clearEdgeLock();
-        updateSnapViz(ctx, result.snapTarget || null);
-      } else if (result.edgeLock.shouldLock && result.edgeLock.edge) {
-        ctx.setEdgeLock(result.edgeLock.edge, result.edgeLock.meshExpressId!, result.edgeLock.edgeT);
-        updateSnapViz(ctx, result.snapTarget, {
-          edgeT: result.edgeLock.edgeT,
-          isCorner: result.edgeLock.isCorner,
-          cornerValence: result.edgeLock.cornerValence,
-        });
-      } else {
-        updateSnapViz(ctx, result.snapTarget);
-      }
-
-      // Set up orthogonal constraint for shift+drag - always use world axes
-      ctx.setMeasurementConstraintEdge({
-        axes: {
-          axis1: { x: 1, y: 0, z: 0 },  // World X
-          axis2: { x: 0, y: 1, z: 0 },  // World Y (vertical)
-          axis3: { x: 0, y: 0, z: 1 },  // World Z
-        },
-        // Shared triad (#5490) by IFC meaning: renderer Y is IFC Z (up), renderer Z is IFC Y.
-        colors: { axis1: IFC_AXIS_COLORS.x, axis2: IFC_AXIS_COLORS.z, axis3: IFC_AXIS_COLORS.y },
-        activeAxis: null,
-      });
-    }
+    // Set up orthogonal constraint for shift+drag - always use world axes
+    ctx.setMeasurementConstraintEdge({
+      axes: {
+        axis1: { x: 1, y: 0, z: 0 },  // World X
+        axis2: { x: 0, y: 1, z: 0 },  // World Y (vertical)
+        axis3: { x: 0, y: 0, z: 1 },  // World Z
+      },
+      // Shared triad (#5490) by IFC meaning: renderer Y is IFC Z (up), renderer Z is IFC Y.
+      colors: { axis1: IFC_AXIS_COLORS.x, axis2: IFC_AXIS_COLORS.z, axis3: IFC_AXIS_COLORS.y },
+      activeAxis: null,
+    });
   }
 
   return true;

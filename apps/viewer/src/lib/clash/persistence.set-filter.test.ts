@@ -10,8 +10,7 @@
  * has to earn: the two fields are OPTIONAL and absent means "this side is
  * described by its type selector", which is exactly what every preset written
  * before #3902 means. The tests below pin both directions — an old blob loads
- * unchanged, and a blob whose filter is garbage loads as an old one rather
- * than as a half-built filter.
+ * unchanged, and an unreadable saved filter stays present so a run refuses it.
  */
 
 import { describe, it, beforeEach } from 'node:test';
@@ -46,10 +45,11 @@ const LEGACY_CUSTOM = {
   builtin: false,
 };
 
-const FILTER: ClashSetFilter = {
-  combinator: 'AND',
+const LEGACY_FILTER = {
+  combinator: 'AND' as const,
   rules: [Rule.ifcType(['IfcWall']), Rule.property('Pset_WallCommon', 'IsExternal', 'eq', 'true')],
 };
+const FILTER: ClashSetFilter = [LEGACY_FILTER];
 
 function write(presets: unknown[]): void {
   (g.localStorage as MemoryStorage).setItem(PRESETS_KEY, JSON.stringify({ version: 1, presets }));
@@ -93,22 +93,36 @@ describe('per-side filters round trip through storage', () => {
     assert.deepStrictEqual(loaded?.filterB, FILTER);
   });
 
-  it('keeps a filter it cannot read as UNREADABLE, and drops one that is not a filter at all (#4215)', () => {
+  it('keeps every saved unreadable filter instead of falling back to a wider selector (#4215, #5898)', () => {
     // A newer-app / hand-edited rule inside an otherwise well-formed filter
     // must not vanish: before #4215 it was dropped and the side ran off its
     // selector — with one rule of an AND filter gone, a silently wider set.
-    // Now it loads as an unreadable rule the resolver refuses. A value that is
-    // not a filter (a bare string) still reads as no filter.
+    // Now even a corrupt top-level value stays present and refuses a run.
     write([{ ...LEGACY_CUSTOM, filterA: { combinator: 'AND', rules: [{ kind: 'nope' }] }, filterB: 'IfcWall' }]);
     const loaded = loadCustom('custom-legacy');
     assert.ok(loaded);
-    assert.deepStrictEqual(loaded.filterA, { combinator: 'AND', rules: [], unreadableRules: [{ kind: 'nope' }] });
-    assert.strictEqual(loaded.filterB, undefined);
+    assert.deepStrictEqual(loaded.filterA, [{ combinator: 'AND', rules: [], unreadableRules: [{ kind: 'nope' }] }]);
+    assert.deepStrictEqual(loaded.filterB, [{ combinator: 'AND', rules: [], unreadableGroup: 'IfcWall' }]);
     assert.strictEqual(loaded.selectorA, 'IfcDuct*');
   });
 
+  it('round-trips malformed saved groups without silently dropping their conditions (#5898)', () => {
+    const malformedLegacy = { combinator: 'AND', rules: 'from-a-newer-writer' };
+    const malformedGroup = { combinator: 'OR', rules: [Rule.ifcType(['IfcWall'])], unreadableRules: { future: true } };
+    write([{ ...LEGACY_CUSTOM, filterA: malformedLegacy, filterB: [malformedGroup] }]);
+    const presets = buildInitialPresets();
+    const loaded = presets.find((preset) => preset.id === LEGACY_CUSTOM.id);
+    assert.ok(loaded);
+    assert.deepStrictEqual(loaded.filterA, [{ combinator: 'AND', rules: [], unreadableGroup: malformedLegacy }]);
+    assert.deepStrictEqual(loaded.filterB, [{ combinator: 'AND', rules: [], unreadableGroup: malformedGroup }]);
+    assert.equal(savePresets(presets).ok, true);
+    const again = loadCustom(LEGACY_CUSTOM.id);
+    assert.deepStrictEqual(again?.filterA, loaded.filterA);
+    assert.deepStrictEqual(again?.filterB, loaded.filterB);
+  });
+
   it('an unreadable rule survives a save/load round trip untouched (#4215)', () => {
-    write([{ ...LEGACY_CUSTOM, filterA: { combinator: 'AND', rules: [{ kind: 'nope' }, FILTER.rules[0]] } }]);
+    write([{ ...LEGACY_CUSTOM, filterA: { combinator: 'AND', rules: [{ kind: 'nope' }, FILTER[0].rules[0]] } }]);
     const presets = buildInitialPresets();
     const loaded = presets.find((p) => p.id === 'custom-legacy');
     assert.ok(loaded);
@@ -117,7 +131,7 @@ describe('per-side filters round trip through storage', () => {
     assert.equal(savePresets(presets).ok, true);
     const again = loadCustom('custom-legacy');
     assert.deepStrictEqual(again?.filterA, loaded.filterA);
-    assert.deepStrictEqual(again?.filterA?.unreadableRules, [{ kind: 'nope' }]);
+    assert.deepStrictEqual(again?.filterA?.[0]?.unreadableRules, [{ kind: 'nope' }]);
   });
 
   it('stores a BUILT-IN that differs only by a filter', () => {

@@ -260,8 +260,8 @@ export interface SectionPlane {
   axis: SectionPlaneAxis;
   /** 0-100 percentage of model bounds */
   position: number;
-  enabled: boolean; // the cut is ON SCREEN: only ever true inside the Section tool (store/section-active.ts)
-  parked?: boolean; // a cut the user left the Section tool with; reopening the tool resumes it
+  enabled: boolean; // the cut is defined and turned on; ON SCREEN also requires `sceneState.section.visible` (#5893)
+  parked?: boolean; // enabled, but hidden by the visibility toggle (`sceneState.section.visible === false`, #5893)
   flipped: boolean; // show the opposite side of the cut
   /** Whether to render the filled, hatched cap surface at the plane. Defaults to true. */
   showCap: boolean;
@@ -572,8 +572,8 @@ export interface FederatedModel extends ModelLoadReportFields {
   sourceContentHash?: string; // Full-content identity for workspace placements.
   /** Parsed IFC data model */
   ifcDataStore: IfcDataStore | null;
-  /** Non-IFC source semantics, kept outside the IFC data store by design. */
-  landXmlDocument?: LandXmlTinDocument;
+  /** Non-IFC source semantics, kept outside the IFC data store by design; `terrainImagery` is imagery draped on it (#5942), provenance only. */
+  landXmlDocument?: LandXmlTinDocument; terrainImagery?: import('../lib/terrain-imagery/drape-state.js').TerrainImageryDrape;
   /** Truthful source schema; `schemaVersion` remains the compatibility store schema. */
   sourceSchema?: LandXmlSchema;
   /** Pre-tessellated geometry (with globalIds, not original expressIds) */

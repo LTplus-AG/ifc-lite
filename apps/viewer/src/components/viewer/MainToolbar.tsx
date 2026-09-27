@@ -6,45 +6,8 @@ import { hasWorkspaceHistory, replayWorkspaceHistory } from '@/lib/model-placeme
 import { AuthorPanelMenuItems } from './toolbar/AuthorPanelMenuItems.js';
 import { BottomPanelMenuItems } from './toolbar/BottomPanelMenuItems.js';
 import React, { useCallback, useMemo } from 'react';
-import {
-  FolderOpen,
-  Download,
-  MousePointer2,
-  PersonStanding,
-  Ruler,
-  Scissors,
-  StickyNote,
-  Eye,
-  EyeOff,
-  Equal,
-  Crosshair,
-  GitCompareArrows,
-  Home,
-  Maximize2,
-  Grid3x3,
-  HelpCircle,
-  Loader2,
-  Info,
-  Plus,
-  MessageSquare,
-  ClipboardCheck,
-  Palette,
-  Orbit,
-  Layout,
-  Layers,
-  LayoutTemplate,
-  Globe2,
-  Sun,
-  Move,
-  Move3d,
-  PenLine,
-  PanelTop,
-  Undo2,
-  Redo2,
-  RefreshCw,
-  Share2,
-  Users,
-} from 'lucide-react';
+import { FolderOpen, Download, MousePointer2, PersonStanding, Ruler, Scissors, StickyNote, Eye, EyeOff, Equal, Crosshair, GitCompareArrows, Home, Maximize2, Grid3x3, HelpCircle, Info, Plus, MessageSquare, ClipboardCheck, Palette, Orbit, Layout, Layers, LayoutTemplate, Globe2, Sun, Move, Move3d, PenLine, PanelTop, Undo2, Redo2, RefreshCw, Share2, Users } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -58,10 +21,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
+import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { hideSelectionFromStore } from '@/store/hideSelection';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
@@ -257,13 +222,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const collabPanelVisible = useViewerStore((s) => s.collabPanelVisible);
   const {
     loading,
-    progress,
     geometryProgress,
     metadataProgress,
     geometryResult,
     ifcDataStore,
     models,
   } = useIfc();
+  const activeProgress = useViewerStore(selectActiveLoadProgress);
 
   // Shared command surfaces (also drive the ribbon toolbar): file
   // open/add/refresh incl. the global `ifc-lite:*` load listeners and
@@ -285,7 +250,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     handleToggleAnalysisExtension,
     rightAnalysisExtensions,
     bottomAnalysisExtensions,
-  } = useWorkspacePanelControls();
+  } = useWorkspacePanelControls('classic');
 
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
@@ -300,8 +265,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     collabEditRole === null || collabEditRole === 'editor' || collabEditRole === 'admin';
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
   const selectedEntityIds = useViewerStore((state) => state.selectedEntityIds);
-  const hideEntities = useViewerStore((state) => state.hideEntities);
-  const error = useViewerStore((state) => state.error);
   const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
   const hoverTooltipsEnabled = useViewerStore((state) => state.hoverTooltipsEnabled);
   const toggleHoverTooltips = useViewerStore((state) => state.toggleHoverTooltips);
@@ -340,22 +303,9 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     ? selectedEntityIds.size
     : (selectedEntityId !== null ? 1 : 0);
 
-  const clearSelection = useViewerStore((state) => state.clearSelection);
-
-  const handleHide = useCallback(() => {
-    // Hide ALL selected entities (multi-select or single)
-    const state = useViewerStore.getState();
-    const ids: number[] = state.selectedEntityIds.size > 0
-      ? Array.from(state.selectedEntityIds)
-      : selectedEntityId !== null ? [selectedEntityId] : [];
-    if (ids.length > 0) {
-      hideEntities(ids);
-      clearSelection();
-    }
-  }, [selectedEntityId, hideEntities, clearSelection]);
 
   const handleShowAll = useCallback(() => {
-    resetVisibilityForHomeFromStore();
+    resetVisibilityForHomeFromStore('show_all');
   }, []);
 
   const handleIsolate = useCallback(() => {
@@ -385,7 +335,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             disabled={loading}
           >
             {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Spinner size="md" />
             ) : (
               <FolderOpen className="h-4 w-4" />
             )}
@@ -482,8 +432,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Export Changes Button - shows when there are pending mutations */}
-      <ExportChangesButton />
+      {/* Export modified IFC… Button - shows when there are pending mutations */}
+      <ExportChangesButton surface="classic" />
 
       {/* Share — link-based multiuser collaboration (behind the collab flag) */}
       {collabEnabled && (
@@ -515,7 +465,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
                 <Button
                   variant={collabPanelVisible ? 'secondary' : 'ghost'}
                   size="icon-sm"
-                  onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab')}
+                  onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab', 'classic')}
                   className="relative"
                   aria-label={t('mainToolbar.room')}
                   aria-pressed={collabPanelVisible}
@@ -604,7 +554,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('layers')}
-            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('layers')}
+            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('layers', 'classic')}
           >
             <Layers className="h-4 w-4 mr-2" />
             {t('mainToolbar.layerStack')}
@@ -613,7 +563,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               time (#2508): the ActivityBar rail was its only entry point. */}
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('zones')}
-            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('zones')}
+            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('zones', 'classic')}
           >
             <Box className="h-4 w-4 mr-2" />
             {t('mainToolbar.locationZones')}
@@ -623,7 +573,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               classic's only entry point. */}
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('loadReport')}
-            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('loadReport')}
+            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('loadReport', 'classic')}
           >
             <FileWarning className="h-4 w-4 mr-2" />
             {t('mainToolbar.loadReport')}
@@ -632,7 +582,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               first time — the ActivityBar rail was its only entry point. */}
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('cost')}
-            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('cost')}
+            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('cost', 'classic')}
           >
             <Coins className="h-4 w-4 mr-2" />
             {t('mainToolbar.cost')}
@@ -640,7 +590,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           {collabEnabled && (
             <DropdownMenuCheckboxItem
               checked={activeWorkspacePanels.has('collab')}
-              onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('collab')}
+              onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('collab', 'classic')}
             >
               <Users className="h-4 w-4 mr-2" />
               {t('mainToolbar.collaborationRoom')}
@@ -838,7 +788,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             {t('mainToolbar.selectionCountBadge', { count: selectionCount })}
           </span>
           <ActionButton icon={Equal} label={t('mainToolbar.isolateSelection')} onClick={handleIsolate} shortcut="basket.isolate" />
-          <ActionButton icon={EyeOff} label={t('mainToolbar.hideSelection')} onClick={handleHide} shortcut="visibility.hideSelection" />
+          <ActionButton icon={EyeOff} label={t('mainToolbar.hideSelection')} onClick={hideSelectionFromStore} shortcut="visibility.hideSelection" />
           <ActionButton
             icon={Crosshair}
             label={t('mainToolbar.frameSelection')}
@@ -965,7 +915,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             aria-pressed={activeWorkspacePanels.has('environment')}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
-              useViewerStore.getState().toggleWorkspacePanel('environment');
+              useViewerStore.getState().toggleWorkspacePanel('environment', 'classic');
             }}
             className={cn(
               (activeWorkspacePanels.has('environment') || solarEnabled || envSkyEnabled || envPreset !== 'default')
@@ -1074,28 +1024,21 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       <ExtensionToolbarSlot slot="toolbar.right" />
 
       {/* Loading Progress */}
-      {loading && (geometryProgress || metadataProgress || progress) && (
+      {loading && activeProgress && (
         <div className="flex items-center gap-2 mr-4">
           <span className="text-xs text-muted-foreground">
-            {(geometryProgress ?? metadataProgress ?? progress)?.phase}
+            {activeProgress.phase}
             {geometryProgress && metadataProgress ? ` | ${metadataProgress.phase}` : ''}
           </span>
-          {(geometryProgress ?? metadataProgress ?? progress)?.indeterminate ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+          {activeProgress.indeterminate ? (
+            <Spinner size="sm" className="text-muted-foreground" />
           ) : (
             <>
-              <Progress value={(geometryProgress ?? metadataProgress ?? progress)?.percent ?? 0} className="w-32 h-2" />
-              <span className="text-xs text-muted-foreground">
-                {Math.round((geometryProgress ?? metadataProgress ?? progress)?.percent ?? 0)}%
-              </span>
+              <Progress value={activeProgress.percent} className="w-32 h-2" />
+              <span className="text-xs text-muted-foreground">{Math.round(activeProgress.percent)}%</span>
             </>
           )}
         </div>
-      )}
-
-      {/* Error Display */}
-      {error && (
-        <span className="text-xs text-destructive mr-4">{error}</span>
       )}
 
       {/* Right Side Actions — /mcp moved to the Info dialog header so

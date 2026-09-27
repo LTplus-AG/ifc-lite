@@ -53,6 +53,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, 'fetch-fixtures.mjs');
 const DOWNLOAD_URL = join(HERE, 'download-url.mjs');
 const VALIDATOR = join(HERE, 'manifest-validation.mjs');
+const ZIP_MEMBER = join(HERE, 'zip-member.mjs');
 
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 
@@ -77,6 +78,7 @@ function makeRoot(opts) {
   copyFileSync(SCRIPT, join(scriptDir, 'fetch-fixtures.mjs'));
   copyFileSync(DOWNLOAD_URL, join(scriptDir, 'download-url.mjs'));
   copyFileSync(VALIDATOR, join(scriptDir, 'manifest-validation.mjs'));
+  copyFileSync(ZIP_MEMBER, join(scriptDir, 'zip-member.mjs'));
 
   // Canonical contents for every manifested fixture. The manifest records the
   // hash and size of THESE, so a test that writes something else on disk is
@@ -417,6 +419,32 @@ test('manifest provenance rejects a commit-looking query on a mutable URL', () =
   });
   try {
     assertRed(check(root), 'provenance.source.blob_url', 'pinned https://github.com');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('an upstream-only IFC fixture requires a pinned archive and exact member', () => {
+  const path = 'buildingsmart/bridge.ifc';
+  const bytes = Buffer.from('ISO-10303-21;\nEND-ISO-10303-21;\n');
+  const archive = {
+    blob_url: 'https://github.com/example/models/blob/0123456789abcdef0123456789abcdef01234567/bridge.zip',
+    commit: '0123456789abcdef0123456789abcdef01234567',
+    sha256: 'a'.repeat(64),
+    size: 128,
+    member: 'bridge.ifc',
+  };
+  const manifest = {
+    version: 1,
+    base_url: 'https://example.invalid/fixtures',
+    files: [{ path, sha256: sha256(bytes), size: bytes.length, upstream_archive: archive }],
+  };
+  const root = makeRoot({ fixtures: [], onDisk: { [path]: bytes }, manifest });
+  try {
+    assert.equal(check(root).status, 0);
+    archive.blob_url = archive.blob_url.replace(archive.commit, 'main');
+    writeFileSync(join(root, 'tests/models/manifest.json'), JSON.stringify(manifest));
+    assertRed(check(root), 'upstream_archive.blob_url', 'pinned https://github.com');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

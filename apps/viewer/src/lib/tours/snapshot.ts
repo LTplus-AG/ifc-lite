@@ -95,11 +95,11 @@ export function restoreUiSnapshot(
   // Panels first: showWorkspacePanel is the single sanctioned transition (it
   // re-docks floats/pop-outs and the exclusivity subscription tracks it).
   if (!keep.has('openSidePanel')) {
-    s.showWorkspacePanel(snapshot.openSidePanel ?? 'properties');
+    s.showWorkspacePanel(snapshot.openSidePanel ?? 'properties', 'programmatic');
   }
   if (!keep.has('bottomPanel')) {
     if (snapshot.bottomPanel) {
-      s.showWorkspacePanel(snapshot.bottomPanel);
+      s.showWorkspacePanel(snapshot.bottomPanel, 'programmatic');
     } else {
       store.setState(bottomPanelFlags(null));
     }
@@ -107,7 +107,7 @@ export function restoreUiSnapshot(
 
   // Tool, then editEnabled explicitly - setActiveTool auto-flips it.
   if (!keep.has('activeTool')) {
-    s.setActiveTool(snapshot.activeTool);
+    s.setActiveTool(snapshot.activeTool, 'programmatic');
     s.setEditEnabled(snapshot.editEnabled);
   }
 

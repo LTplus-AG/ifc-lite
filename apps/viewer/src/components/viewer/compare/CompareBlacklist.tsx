@@ -80,7 +80,7 @@ export function CompareBlacklist({
         <span
           key={type}
           title={t('comparePanel.blacklist.chipTitle', { type })}
-          className="inline-flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-[11px] text-foreground"
+          className="inline-flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-2xs text-foreground"
         >
           {shortName(type)}
           <button
@@ -99,7 +99,7 @@ export function CompareBlacklist({
           type="button"
           onClick={onClear}
           title={t('comparePanel.blacklist.clearTitle')}
-          className="ml-0.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          className="ml-0.5 text-2xs text-muted-foreground hover:text-foreground transition-colors"
         >
           {t('comparePanel.blacklist.clearLabel')}
         </button>

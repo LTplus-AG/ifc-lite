@@ -40,7 +40,8 @@ export const exportDialogEn = {
   'exportDialog.visibleOnlyHint': 'Only include entities currently visible in the 3D view',
   'exportDialog.includeGeometryLabel': 'Include Geometry',
   'exportDialog.applyMutationsLabel': 'Apply Property Changes',
-  'exportDialog.changesOnlyLabel': 'Changes Only',
+  'exportDialog.changesOnlyLabel.default': 'Changes only (JSON delta)',
+  'exportDialog.changesOnlyLabel.ifc5': 'Changes only (IFCX overlay)',
   'exportDialog.changesOnlyHint.ifc5': 'Export as IFCX overlay with mutations only',
   'exportDialog.changesOnlyHint.default': 'Export mutations as JSON delta',
   'exportDialog.onlyKnownPropertiesLabel': 'Only Known IFC5 Properties',
@@ -78,8 +79,18 @@ export const exportDialogEn = {
   'exportDialog.landXml.excludedTitle': 'Not included in the IFC',
   'exportDialog.landXml.assumedUnit': 'Coordinates are scaled by an assumed linear unit ({unit}), not one the source declares. The geometry is at an operator-chosen scale.',
   'exportDialog.landXml.missingCrs': 'No coordinate reference system is declared, so no georeferencing is written and the coordinate-order check cannot run.',
-  'exportDialog.landXml.declaredCrs': 'Georeferencing is written for the declared datum ({crs}), but the coordinate-order check cannot run: ifc-lite does not resolve a datum name to its coordinate bounds. A source whose point text was written easting-first produces a mirrored surface that still renders, so verify the source before relying on the position.',
+  'exportDialog.landXml.declaredCrs': 'Georeferencing is written for the declared coordinate reference system ({crs}), but the coordinate-order check cannot run: ifc-lite does not resolve a coordinate reference system to its coordinate bounds. A source whose point text was written easting-first produces a mirrored surface that still renders, so verify the source before relying on the position.',
   'exportDialog.landXml.mergedUnsupported': 'The LandXML mapping converts one file into a standalone IFC4X3 model; it cannot take part in a merged export. Switch the scope to a single model to convert it.',
   'exportDialog.landXml.schemaUnsupported': 'The LandXML mapping derives IFC4X3 STEP only. Choose IFC4X3 to convert this model, or export the original LandXML file.',
   'exportDialog.landXml.exported': 'Converted to IFC4X3: {records}.',
+  // Defensive fallback (#5848): the shell's `exportDisabled` already covers
+  // "no model selected" / "no schema chosen", so this should be unreachable
+  // through the UI — kept only so `onExport` always has an i18n'd message to
+  // return rather than a thrown/untranslated string.
+  'exportDialog.notReadyError': 'Select a model and schema before exporting.',
+  'exportDialog.landXml.imageryExported': 'The draped imagery is textured on the terrain and ships beside the IFC as {entry} in an .ifcZIP.',
+  'exportDialog.landXml.imageryRefused': 'The draped imagery was not exported: {reason}',
+  'exportDialog.landXml.imageryWillExport': 'The draped imagery {name} ({crs}) will be textured on the terrain and shipped beside the IFC in an .ifcZIP. {percent} % of the terrain\'s vertices lie on the image; beyond it, IFC consumers clamp to the image\'s edge pixels rather than showing the flat terrain colour.',
+  'exportDialog.landXml.imageryAssumedUnit': 'The imagery\'s texture mapping inherits the assumed linear unit ({unit}), like every other coordinate in the file.',
+  'exportDialog.landXml.imageryTiles': 'The draped map tiles are shown in the viewer only and are not exported: their bytes are the provider\'s and their coverage depends on the zoom.',
 } as const satisfies Record<string, TranslationValue>;

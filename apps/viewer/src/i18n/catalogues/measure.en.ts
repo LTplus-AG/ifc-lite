@@ -80,6 +80,10 @@ export const measureEn = {
 
   'measure.list.empty': 'No measurements',
   'measure.list.totalCurrent': 'Total (current)',
+  'measure.list.deleteDistance': 'Delete distance measurement {index}',
+  'measure.list.deletePolyline': 'Delete polyline measurement {index}',
+  'measure.list.deleteAngle': 'Delete angle measurement {index}',
+  'measure.list.deleteRadius': 'Delete radius measurement {index}',
   'measure.polyline.inProgress': {
     one: 'Polyline in progress — {count} pt',
     other: 'Polyline in progress — {count} pts',
@@ -200,4 +204,14 @@ export const measureEn = {
 
   // MeasurementVisuals.tsx — in-progress polyline overlay label.
   'measure.visuals.polylineSoFar': '{basis} so far - {count} pts',
+
+  // MeasurementsVisibilityChip.tsx — the HUD chip while the Measure tool is
+  // closed and something is still measured (#5893).
+  'measure.chip.label': '{count} measured',
+  'measure.chip.hideAria': 'Hide measurements',
+  'measure.chip.hideTitle': 'Hide measurements without deleting them',
+  'measure.chip.showAria': 'Show measurements',
+  'measure.chip.showTitle': 'Show measurements again',
+  'measure.chip.clearAria': 'Clear all measurements',
+  'measure.chip.clearTitle': 'Delete every measurement',
 } as const satisfies Record<string, TranslationValue>;

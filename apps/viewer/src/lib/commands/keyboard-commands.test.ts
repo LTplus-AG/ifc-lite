@@ -37,6 +37,8 @@ const DISPATCHER_CONTEXTS = {
   'tool.split': true,
   'tool.addElement': true,
   'tool.spaceSketch': true,
+  command: true,
+  'command.wall.place': true, // Representative command-specific context.
   drawing2d: true,
   flight: true,
   'search.cycle': true,

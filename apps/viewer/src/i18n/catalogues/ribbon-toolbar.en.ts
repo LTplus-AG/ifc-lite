@@ -28,7 +28,7 @@ export const ribbonToolbarEn = {
   'ribbon.expand': 'Expand the ribbon',
   'ribbon.collapse': 'Collapse the ribbon',
 
-  'ribbon.notice.message': 'The tabbed ribbon is now the default toolbar. Same commands, grouped by task.',
+  'ribbon.notice.message': 'The ribbon keeps the same commands, grouped by task.',
   'ribbon.notice.showTour': 'Show me what moved',
   'ribbon.notice.dismissAriaLabel': 'Dismiss toolbar notice',
 

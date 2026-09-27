@@ -4,11 +4,14 @@
 
 import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider.js';
 import { resolve } from '@/i18n/registry';
+import { posthog } from '@/lib/analytics';
+import { isCollabEnabled } from '@/lib/collab/config';
+import { useViewerStore } from '@/store';
 import { cleanup, click, render, type as typeInto } from '@/test/render.js';
 import type { FileCommands } from './toolbar/useFileCommands.js';
 import { FileTab } from './ribbon/tabs/FileTab.js';
@@ -37,7 +40,7 @@ const FILE_COMMANDS: FileCommands = {
   handleRefresh: async () => {}, canRefresh: false, hasModelsLoaded: false,
 };
 
-afterEach(() => cleanup());
+afterEach(() => { cleanup(); mock.restoreAll(); });
 
 describe('shared palette and ribbon commands (#5870)', () => {
   it('renders every declared ribbon home with its one registry name and icon', async () => {
@@ -148,5 +151,82 @@ describe('shared palette and ribbon commands (#5870)', () => {
       'legacy search reaches the renamed command');
     assert.ok(options.every((option) => !option.textContent?.includes('Toggle Basket Visibility')),
       'the old phrase is not displayed as a second command name');
+  });
+
+  it('emits one command event from each registered surface while running its real action (#5870)', async () => {
+    const registry = await loadRegistry();
+    const runner = await import('./surface-command-run.js').catch(() => null);
+    assert.ok(registry && runner, 'shared registry execution boundary loads');
+    const events: Array<{ event: string; properties: Record<string, unknown> }> = [];
+    mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      events.push({ event, properties });
+    });
+    const actions: string[] = [];
+    const palette = registry.paletteSurfaceCommands({ canEditInSession: true, cesiumAvailable: false }, (code) => {
+      actions.push(code);
+    }).find((row) => row.id === 'vis:reset-colors');
+    assert.ok(palette);
+    assert.equal(palette.registryOwned, true);
+    palette.action();
+    runner.runSurfaceCommand(registry.surfaceCommand('file:save-federation-setup', 'ribbon'), { surface: 'ribbon' });
+    runner.runSurfaceCommand(registry.surfaceCommand('file:open', 'mobile'), {
+      surface: 'mobile', openFiles: () => { actions.push('open files'); },
+    });
+    runner.runSurfaceCommand(registry.surfaceCommand('context:duplicate', 'context'), {
+      surface: 'context', contextAction: () => { actions.push('duplicate'); },
+    });
+    assert.ok(actions[0]?.includes('bim.viewer.resetColors()'));
+    assert.deepEqual(actions.slice(1), ['open files', 'duplicate']);
+    assert.deepEqual(events.filter(({ event }) => event === 'command_executed'), [
+      { event: 'command_executed', properties: { command_id: 'vis:reset-colors', surface: 'palette' } },
+      { event: 'command_executed', properties: { command_id: 'file:save-federation-setup', surface: 'ribbon' } },
+      { event: 'command_executed', properties: { command_id: 'file:open', surface: 'mobile' } },
+      { event: 'command_executed', properties: { command_id: 'context:duplicate', surface: 'context' } },
+    ]);
+  });
+
+  it('records a mounted palette registry click only once (#5870)', async () => {
+    const events: Array<{ event: string; properties: Record<string, unknown> }> = [];
+    mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      events.push({ event, properties });
+    });
+    render(<BimReactContext.Provider value={{} as BimContext}>
+      <CommandPalette open onOpenChange={() => {}} />
+    </BimReactContext.Provider>);
+    const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')]
+      .find((row) => row.textContent?.includes('Open Federation Setup'));
+    assert.ok(option);
+    click(option);
+    assert.deepEqual(events.filter(({ event }) => event === 'command_executed'), [
+      { event: 'command_executed', properties: { command_id: 'file:open-federation-setup', surface: 'palette' } },
+    ]);
+  });
+
+  it('renders every palette-declared command with its registry label (#5870 matrix)', async () => {
+    const registry = await loadRegistry();
+    const exports = await import('./commandPaletteExports.js');
+    assert.ok(registry);
+    const previous = useViewerStore.getState();
+    useViewerStore.setState({ collabRole: null, cesiumAvailable: false });
+    try {
+      render(<BimReactContext.Provider value={{} as BimContext}>
+        <CommandPalette open onOpenChange={() => {}} />
+      </BimReactContext.Provider>);
+      const state = { canEditInSession: true, cesiumAvailable: false, collabEnabled: isCollabEnabled() };
+      const expected = [...registry.SURFACE_COMMANDS, ...exports.EXPORT_SURFACE_COMMANDS]
+        .filter((command) => command.surfaces.some((surface) => surface === 'palette') && command.enabled(state));
+      const rows = [...document.querySelectorAll<HTMLButtonElement>('[role="option"][data-command-id]')];
+      assert.equal(new Set(expected.map((command) => command.id)).size, expected.length, 'registry ids are unique');
+      assert.deepEqual(new Set(rows.map((row) => row.dataset.commandId)),
+        new Set(expected.map((command) => command.id)), 'declared palette ids equal rendered rows');
+      for (const row of rows) {
+        const command = expected.find((item) => item.id === row.dataset.commandId);
+        assert.ok(command);
+        assert.equal(row.querySelector('span.flex-1')?.textContent, resolve(command.labelKey),
+          `${command.id} renders only its registry label`);
+      }
+    } finally {
+      useViewerStore.setState({ collabRole: previous.collabRole, cesiumAvailable: previous.cesiumAvailable });
+    }
   });
 });

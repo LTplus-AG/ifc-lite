@@ -6,6 +6,7 @@ import { useId, type ElementType } from 'react';
 import { ChevronRight, CopyPlus } from 'lucide-react';
 import type { DuplicateDirection } from '@/store/slices/mutationSlice';
 import { surfaceCommand } from './surface-commands';
+import { runSurfaceCommand } from './surface-command-run';
 import { DUPLICATE_CONTEXT_DIRECTIONS } from './surface-commands-context';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
@@ -84,7 +85,7 @@ export function DuplicateItems({ onDuplicate, canEdit, reason }: {
         shortcut={duplicate.shortcut}
         primaryShortcut
         commandId={duplicate.id}
-        onClick={() => duplicate.run({ surface: 'context', contextAction: () => onDuplicate('+X') })}
+        onClick={() => runSurfaceCommand(duplicate, { surface: 'context', contextAction: () => onDuplicate('+X') })}
       />
       <ContextMenuSub>
         <ContextMenuSubTrigger disabled={disabled} title={reason} aria-description={reason}>
@@ -98,7 +99,7 @@ export function DuplicateItems({ onDuplicate, canEdit, reason }: {
             return (
               <MenuItem key={id} commandId={id} icon={command.icon} label={t(command.labelKey)}
                 disabled={!command.enabled(commandState)} title={reason}
-                onClick={() => command.run({ surface: 'context', contextAction: () => onDuplicate(direction) })} />
+                onClick={() => runSurfaceCommand(command, { surface: 'context', contextAction: () => onDuplicate(direction) })} />
             );
           })}
         </ContextMenuSubContent>

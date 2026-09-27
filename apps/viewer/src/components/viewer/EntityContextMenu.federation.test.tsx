@@ -16,7 +16,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, beforeEach, after } from 'node:test';
+import { describe, it, beforeEach, after, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { act } from 'react';
@@ -26,8 +26,10 @@ import { useViewerStore } from '@/store/index.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { FederatedModel } from '@/store/types.js';
 import { EntityContextMenu } from './EntityContextMenu.js';
-import { surfaceCommand, type SurfaceCommandId } from './surface-commands.js';
+import { surfaceCommand, SURFACE_COMMANDS } from './surface-commands.js';
+import { DUPLICATE_CONTEXT_DIRECTIONS } from './surface-commands-context.js';
 import { resolveEnglish } from '@/i18n/registry.js';
+import { posthog } from '@/lib/analytics.js';
 import {
   parseFixtureModel,
   FIXTURE_WALL_A,
@@ -75,6 +77,7 @@ function unmountAll(): void {
   }
 }
 after(unmountAll);
+afterEach(() => mock.restoreAll());
 
 function menuItem(container: HTMLElement, label: string): HTMLButtonElement {
   const btn = [...container.querySelectorAll('button')].find((b) =>
@@ -100,25 +103,45 @@ beforeEach(async () => {
 });
 
 describe('EntityContextMenu — federation-space selection', () => {
-  it('renders built-in entity and canvas actions from registered context command ids (#5870)', () => {
+  it('renders the literal entity and canvas context registry matrix (#5870)', () => {
+    useViewerStore.setState({ editEnabled: true });
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
     const container = render();
-    const ids = [
-      'view:frame', 'vis:hide', 'vis:set-iso', 'vis:add-iso', 'vis:remove-iso', 'vis:save-view',
-      'context:select-all-type', 'context:select-same-storey', 'context:copy-global-id',
-      'context:export-anonymized', 'context:duplicate', 'context:delete',
-    ] as const satisfies readonly SurfaceCommandId[];
-    for (const id of ids) {
+    const directions = new Set<string>(DUPLICATE_CONTEXT_DIRECTIONS.map((item) => item.id));
+    const entityIds = SURFACE_COMMANDS.filter((command) =>
+      command.surfaces.some((surface) => surface === 'context')
+      && command.id !== 'vis:show' && !directions.has(command.id)).map((command) => command.id);
+    const rows = [...container.querySelectorAll<HTMLButtonElement>('[data-command-id]')];
+    assert.deepEqual(new Set(rows.map((row) => row.dataset.commandId)), new Set(entityIds),
+      'every entity-context declaration is mounted, without an extra undeclared row');
+    for (const id of entityIds) {
       const definition = surfaceCommand(id, 'context');
-      const row = container.querySelector<HTMLButtonElement>(`[data-command-id="${id}"]`);
+      const row = rows.find((item) => item.dataset.commandId === id);
       assert.ok(row, `${id} has a mounted context-menu action`);
       assert.equal(row.getAttribute('aria-label'), resolveEnglish(definition.contextLabelKey ?? definition.labelKey,
         definition.contextLabelParams?.({ canEditInSession: false, contextEntityType: 'IfcWall' })),
       `${id} uses its registered label`);
     }
+
+    const directionTrigger = [...container.querySelectorAll<HTMLElement>('[role="menuitem"]')]
+      .find((item) => item.textContent?.includes(resolveEnglish('entityContextMenu.duplicateDirectionLabel')));
+    assert.ok(directionTrigger);
+    act(() => { directionTrigger.click(); });
+    const directionRows = [...document.querySelectorAll<HTMLButtonElement>('[data-command-id^="context:duplicate-"]')];
+    assert.deepEqual(new Set(directionRows.map((row) => row.dataset.commandId)), directions,
+      'the directional submenu renders every registered direction');
+    for (const row of directionRows) {
+      const definition = SURFACE_COMMANDS.find((command) => command.id === row.dataset.commandId);
+      assert.ok(definition);
+      assert.equal(row.getAttribute('aria-label'), resolveEnglish(definition.labelKey));
+    }
+
     act(() => { useViewerStore.getState().closeContextMenu(); });
     act(() => { useViewerStore.getState().openContextMenu(null, 10, 10); });
-    assert.ok(container.querySelector('[data-command-id="vis:show"]'), 'canvas Show all uses its registry id');
+    const canvasRows = [...container.querySelectorAll<HTMLButtonElement>('[data-command-id]')];
+    assert.deepEqual(new Set(canvasRows.map((row) => row.dataset.commandId)), new Set(['vis:show']),
+      'the canvas context renders its one registered command');
+    assert.equal(canvasRows[0]?.getAttribute('aria-label'), resolveEnglish(surfaceCommand('vis:show', 'context').labelKey));
   });
 
   for (const twoModels of [false, true]) {
@@ -178,6 +201,10 @@ describe('EntityContextMenu — federation-space selection', () => {
   }
 
   it('"Select all IfcWall" resolves through the model offset', () => {
+    const events: Array<{ event: string; properties: Record<string, unknown> }> = [];
+    mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      events.push({ event, properties });
+    });
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
     const container = render();
 
@@ -189,6 +216,9 @@ describe('EntityContextMenu — federation-space selection', () => {
       new Set([globalId(FIXTURE_WALL_A), globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]),
       'selectedEntityIds must carry renderer-space (offset) ids, not raw model-space expressIds',
     );
+    assert.deepEqual(events.filter(({ event }) => event === 'command_executed'), [
+      { event: 'command_executed', properties: { command_id: 'context:select-all-type', surface: 'context' } },
+    ], 'the mounted context click emits one command event');
   });
 
   it('selects the live class after deletion, creation, and retype (#5249)', () => {

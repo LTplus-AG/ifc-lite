@@ -29,6 +29,8 @@ export interface SurfaceCommandState {
 export interface SurfaceCommandDefinition {
   id: string;
   labelKey: TranslationKey;
+  /** Legacy English search text; display always uses labelKey. */
+  searchLabel?: string;
   keywords: string;
   category: Command['category'];
   icon: Command['icon'];
@@ -63,6 +65,7 @@ export const SURFACE_COMMANDS = [
   },
   {
     id: 'vis:toggle-iso', labelKey: 'commandPalette.vis.toggleBasket.label',
+    searchLabel: 'Toggle Basket Visibility',
     keywords: 'basket show hide', category: 'Visibility', icon: Eye,
     surfaces: paletteAndRibbon, enabled: alwaysEnabled,
     run: () => { executeBasketToggleVisibility(); },
@@ -96,7 +99,7 @@ export function paletteSurfaceCommands(
     .filter((command) => command.surfaces.includes('palette') && command.enabled(state))
     .map((command) => ({
       id: command.id,
-      label: resolveEnglish(command.labelKey),
+      label: 'searchLabel' in command ? command.searchLabel : resolveEnglish(command.labelKey),
       labelKey: command.labelKey,
       keywords: command.keywords,
       category: command.category,

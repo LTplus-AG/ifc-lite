@@ -5,7 +5,8 @@
 import { isInstantiable, isKnownType, normalizeIfcTypeName } from '@ifc-lite/parser';
 import type {
   CostItemParams, CostQuantityParams, CostScheduleParams, CostValueParams,
-  HostedDoorInStoreParams, HostedWindowInStoreParams, OpeningInStoreParams,
+  HostedDoorInStoreParams, HostedWindowInStoreParams, OpeningInStoreParams, ElementTypeInStoreParams,
+  MaterialInStoreParams, MaterialLayerSetInStoreParams, MaterialLayerSetUsageInStoreParams,
   StructuralAnalysisModelInStoreParams,
   StructuralCurveMemberInStoreParams,
   StructuralLinearActionInStoreParams,
@@ -229,20 +230,10 @@ export class StoreNamespace {
     return this.backend.store.addMember(modelId, storeyExpressId, params);
   }
 
-  // -- Openings and hosted fillings (#6232 M3) --------------------------------
-  // The host is an existing IfcWall/IfcSlab (from the file or authored this
-  // session). Params are metres in the HOST's own placement frame.
-
-  /**
-   * Cut a rectangular IfcOpeningElement into a wall or slab, linked by
-   * IfcRelVoidsElement. Wall params: `Offset` (along the wall axis, to the
-   * opening centre), `Sill`, `Width`, `Height`; slab params: `Position` [x, y],
-   * `Width`, `Depth`. The cut depth defaults to the host's body thickness
-   * + 50 mm per side (`CutDepth` overrides; never shallower than the host).
-   *
-   * @example
-   *   bim.store.addOpening('default', wallId, { Offset: 2, Sill: 0.9, Width: 1.2, Height: 1.2 });
-   */
+  // -- Openings, hosted fillings, types and materials (#6232 M3) -------------
+  // Hosts are existing IfcWall/IfcSlab; params are metres in the host's frame.
+  /** Cut an IfcOpeningElement (IfcRelVoidsElement) into a wall (`Offset`, `Sill`, `Width`, `Height`) or
+   *  slab (`Position` [x, y], `Width`, `Depth`); the cut spans the host body + 50 mm per face unless `CutDepth`. */
   addOpening(modelId: string, hostExpressId: number, params: OpeningInStoreParams): EntityRef {
     return this.backend.store.addOpening(modelId, hostExpressId, params);
   }
@@ -255,6 +246,37 @@ export class StoreNamespace {
   /** Add an IfcWindow filling a new opening in a wall (IfcRelFillsElement), bottom edge at `Sill`. */
   addHostedWindow(modelId: string, hostExpressId: number, params: HostedWindowInStoreParams): EntityRef {
     return this.backend.store.addHostedWindow(modelId, hostExpressId, params);
+  }
+
+  // IFC4 practice: IfcMaterialLayerSet on the type, a usage of it on each occurrence.
+  /** Add an IfcElementType subtype (e.g. `{ Type: 'IfcWallType', Name, PredefinedType }`), laid out for the model's schema. */
+  addElementType(modelId: string, params: ElementTypeInStoreParams): EntityRef {
+    return this.backend.store.addElementType(modelId, params);
+  }
+
+  /** Type objects via IfcRelDefinesByType; an object already typed moves to this type. Returns the relationship. */
+  assignType(modelId: string, typeExpressId: number, objectExpressIds: number[]): EntityRef {
+    return this.backend.store.assignType(modelId, typeExpressId, objectExpressIds);
+  }
+
+  /** Add an IfcMaterial. */
+  addMaterial(modelId: string, params: MaterialInStoreParams): EntityRef {
+    return this.backend.store.addMaterial(modelId, params);
+  }
+
+  /** Add an IfcMaterialLayerSet of IfcMaterialLayers (`MaterialLayers[i].LayerThickness` in metres). */
+  addMaterialLayerSet(modelId: string, params: MaterialLayerSetInStoreParams): EntityRef {
+    return this.backend.store.addMaterialLayerSet(modelId, params);
+  }
+
+  /** Add an IfcMaterialLayerSetUsage (default AXIS2/POSITIVE; `OffsetFromReferenceLine` in metres). */
+  addMaterialLayerSetUsage(modelId: string, params: MaterialLayerSetUsageInStoreParams): EntityRef {
+    return this.backend.store.addMaterialLayerSetUsage(modelId, params);
+  }
+
+  /** Associate a material with objects via IfcRelAssociatesMaterial, replacing their previous one. Returns the relationship. */
+  assignMaterial(modelId: string, materialExpressId: number, objectExpressIds: number[]): EntityRef {
+    return this.backend.store.assignMaterial(modelId, materialExpressId, objectExpressIds);
   }
 
   // -- Cost / 5D authoring on a loaded model (#4857 PR A) --------------------

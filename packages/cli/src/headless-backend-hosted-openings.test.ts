@@ -30,7 +30,7 @@ async function context() {
 
 const count = (text: string, type: string) => (text.match(new RegExp(`=${type}\\(`, 'g')) ?? []).length;
 
-describe('#6232 CLI bim.store hosted openings', () => {
+describe('#6232 CLI bim.store modelling surface', () => {
   it('authors a hosted door, a hosted window and a bare opening into the exported file', async () => {
     const bim = await context();
     const door = bim.store.addHostedDoor('default', WALL, { Offset: 8, Width: 0.9, Height: 2.1, Name: 'D1' });
@@ -51,5 +51,38 @@ describe('#6232 CLI bim.store hosted openings', () => {
     const bim = await context();
     expect(() => bim.store.addHostedDoor('default', 42, { Offset: 1, Width: 0.9, Height: 2.1 }))
       .toThrow(/IfcWall and IfcSlab/);
+  });
+
+  it('types the wall and gives it a layer set usage through bim.store, visible after export', async () => {
+    const bim = await context();
+    const type = bim.store.addElementType('default', { Type: 'IfcWallType', Name: 'EW-300', PredefinedType: 'SOLIDWALL' });
+    const typeRel = bim.store.assignType('default', type.expressId, [WALL]);
+    const concrete = bim.store.addMaterial('default', { Name: 'Concrete' });
+    const set = bim.store.addMaterialLayerSet('default', { MaterialLayers: [{ Material: concrete.expressId, LayerThickness: 0.1 }] });
+    const usage = bim.store.addMaterialLayerSetUsage('default', { ForLayerSet: set.expressId, OffsetFromReferenceLine: 0 });
+    bim.store.assignMaterial('default', set.expressId, [type.expressId]);
+    const materialRel = bim.store.assignMaterial('default', usage.expressId, [WALL]);
+
+    const text = bim.export.ifc(undefined, { schema: 'IFC4' }) as string;
+    expect(text).toMatch(new RegExp(`#${typeRel.expressId}=IFCRELDEFINESBYTYPE\\('.{22}',\\$,\\$,\\$,\\(#${WALL}\\),#${type.expressId}\\)`));
+    expect(text).toMatch(new RegExp(`#${materialRel.expressId}=IFCRELASSOCIATESMATERIAL\\('.{22}',\\$,\\$,\\$,\\(#${WALL}\\),#${usage.expressId}\\)`));
+    // The sample's own type relationship typed only the wall, so it is gone.
+    expect(text).not.toMatch(/^#1224=/m);
+    expect(() => bim.store.assignType('default', WALL, [type.expressId])).toThrow(/#1222 is an IFCWALL/);
+  });
+
+  it('refuses relating entities and objects the relationship slot does not take in the schema', async () => {
+    const bim = await context();
+    // #1224 is an IfcRelDefinesByType (its name ends in TYPE), not an IfcTypeObject.
+    expect(() => bim.store.assignType('default', 1224, [WALL])).toThrow(/#1224 is an IFCRELDEFINESBYTYPE, not an IfcTypeObject/);
+    // A type object cannot be typed: RelatedObjects is a SET OF IfcObject.
+    const other = bim.store.addElementType('default', { Type: 'IfcWallType', Name: 'IW-100' });
+    expect(() => bim.store.assignType('default', 388, [other.expressId]))
+      .toThrow(new RegExp(`#${other.expressId} is an IFCWALLTYPE, not an IfcObject`));
+    // #390 IfcMaterialLayer is an IfcMaterialSelect; a relationship is not an object definition.
+    expect(() => bim.store.assignMaterial('default', 391, [1224])).toThrow(/#1224 is an IFCRELDEFINESBYTYPE, not an IfcObjectDefinition or IfcPropertyDefinition/);
+    expect(() => bim.store.assignMaterial('default', 389, [WALL])).toThrow(/#389 is an IFCRELASSOCIATESMATERIAL, not an IfcMaterialSelect/);
+    const text = bim.export.ifc(undefined, { schema: 'IFC4' }) as string;
+    expect(text).toMatch(/^#1224=IFCRELDEFINESBYTYPE\('.{22}',\$,\$,\$,\(#1222\),#388\);$/m);
   });
 });

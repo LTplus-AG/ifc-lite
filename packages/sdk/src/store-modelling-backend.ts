@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Builds `bim.store`'s opening and hosted door/window methods (#6232), for the
+ * Builds `bim.store`'s opening, hosted door/window, type and material methods
+ * (#6232), for the
  * same reason `createStructuralStoreBackend` exists: every host implementing
  * `StoreBackendMethods` (CLI headless backend, viewer store adapter) spreads
  * this in instead of re-deriving the host anchor and re-wiring the builders.
@@ -14,6 +15,20 @@
  */
 
 import {
+  addElementTypeToStore,
+  addMaterialLayerSetToStore,
+  addMaterialLayerSetUsageToStore,
+  addMaterialToStore,
+  assignMaterialInStore,
+  assignTypeInStore,
+  liveEntityConforms,
+  liveEntityType,
+  readRelatedLists,
+  resolveAuthoringAnchor,
+  type ElementTypeInStoreParams,
+  type MaterialInStoreParams,
+  type MaterialLayerSetInStoreParams,
+  type MaterialLayerSetUsageInStoreParams,
   addHostedDoorToStore,
   addHostedWindowToStore,
   addOpeningToStore,
@@ -35,6 +50,24 @@ export function createModellingStoreBackend(resolve: ModellingStoreModelResolver
     return { model, anchor: resolveHostAnchor(model.store, hostExpressId, model.mutationView) };
   };
   const ref = (modelId: string, expressId: number): EntityRef => ({ modelId, expressId });
+  const authoring = (modelId: string) => {
+    const model = resolve(modelId);
+    return { model, anchor: { ...resolveAuthoringAnchor(model.store, model.mutationView), ownerHistoryId: model.ownerHistoryId } };
+  };
+  /**
+   * Refuse, before anything is written, a relating entity or an object that is
+   * not live or is not of a class the relationship slot takes in the model's
+   * schema (`IfcRelDefinesByType.RelatingType` is an IfcTypeObject, and so on).
+   */
+  const requireKinds = (model: CostStoreModelResolution, op: string, checks: Array<[ids: number[], kinds: string[]]>) => {
+    for (const [ids, kinds] of checks) {
+      for (const id of ids) {
+        if (kinds.some((kind) => liveEntityConforms(model.store, id, kind, model.mutationView))) continue;
+        const type = liveEntityType(model.store, id, model.mutationView);
+        throw new Error(`bim.store.${op}: #${id} is ${type ? `an ${type}, not an ${kinds.join(' or ')}` : 'not a live entity'}`);
+      }
+    }
+  };
 
   return {
     addOpening(modelId: string, hostExpressId: number, params: OpeningInStoreParams): EntityRef {
@@ -48,6 +81,35 @@ export function createModellingStoreBackend(resolve: ModellingStoreModelResolver
     addHostedWindow(modelId: string, hostExpressId: number, params: HostedWindowInStoreParams): EntityRef {
       const { model, anchor } = host(modelId, hostExpressId);
       return ref(model.modelId, addHostedWindowToStore(model.editor, anchor, params).fillingId);
+    },
+    addElementType(modelId: string, params: ElementTypeInStoreParams): EntityRef {
+      const { model, anchor } = authoring(modelId);
+      return ref(model.modelId, addElementTypeToStore(model.editor, anchor, params).typeId);
+    },
+    assignType(modelId: string, typeExpressId: number, objectExpressIds: number[]): EntityRef {
+      const { model, anchor } = authoring(modelId);
+      requireKinds(model, 'assignType', [[[typeExpressId], ['IfcTypeObject']], [objectExpressIds, ['IfcObject']]]);
+      const existing = readRelatedLists(model.store, 'IfcRelDefinesByType', model.mutationView);
+      return ref(model.modelId, assignTypeInStore(model.editor, anchor, typeExpressId, objectExpressIds, existing).relId);
+    },
+    addMaterial(modelId: string, params: MaterialInStoreParams): EntityRef {
+      const { model, anchor } = authoring(modelId);
+      return ref(model.modelId, addMaterialToStore(model.editor, anchor, params).materialId);
+    },
+    addMaterialLayerSet(modelId: string, params: MaterialLayerSetInStoreParams): EntityRef {
+      const { model, anchor } = authoring(modelId);
+      return ref(model.modelId, addMaterialLayerSetToStore(model.editor, anchor, params).layerSetId);
+    },
+    addMaterialLayerSetUsage(modelId: string, params: MaterialLayerSetUsageInStoreParams): EntityRef {
+      const { model, anchor } = authoring(modelId);
+      requireKinds(model, 'addMaterialLayerSetUsage', [[[params.ForLayerSet], ['IfcMaterialLayerSet']]]);
+      return ref(model.modelId, addMaterialLayerSetUsageToStore(model.editor, anchor, params).usageId);
+    },
+    assignMaterial(modelId: string, materialExpressId: number, objectExpressIds: number[]): EntityRef {
+      const { model, anchor } = authoring(modelId);
+      requireKinds(model, 'assignMaterial', [[[materialExpressId], ['IfcMaterialSelect']], [objectExpressIds, ['IfcObjectDefinition', 'IfcPropertyDefinition']]]);
+      const existing = readRelatedLists(model.store, 'IfcRelAssociatesMaterial', model.mutationView);
+      return ref(model.modelId, assignMaterialInStore(model.editor, anchor, materialExpressId, objectExpressIds, existing).relId);
     },
   };
 }

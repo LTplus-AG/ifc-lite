@@ -94,6 +94,7 @@ export function AuthorTab() {
         <RibbonLargeButton
           icon={Appearance}
           label={t(panelTitleKey('appearance'))}
+          aria-label={t(panelTitleKey('appearance'))}
           className="w-20"
           tooltip={t('ribbon.author.appearanceTooltip')}
           active={activeWorkspacePanels.has('appearance')}
@@ -159,6 +160,7 @@ export function AuthorTab() {
         <RibbonLargeButton
           icon={Extension}
           label={t(panelTitleKey('extensions'))}
+          aria-label={t(panelTitleKey('extensions'))}
           tooltip={t('ribbon.author.extensionsTooltip')}
           active={activeWorkspacePanels.has('extensions')}
           onClick={() => handleToggleRightPanel('extensions')}

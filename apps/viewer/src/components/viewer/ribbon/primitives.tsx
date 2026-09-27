@@ -78,6 +78,7 @@ export const RibbonLargeButton = forwardRef<HTMLButtonElement, RibbonButtonProps
           ref={ref}
           type="button"
           aria-label={tooltip ?? label}
+          aria-description={rest['aria-label'] ? tooltip : undefined}
           aria-pressed={active === undefined ? undefined : active}
           onClick={(e) => {
             // Blur to close the tooltip after click (house pattern).

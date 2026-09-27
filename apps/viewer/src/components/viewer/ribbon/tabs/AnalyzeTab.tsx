@@ -48,12 +48,14 @@ export function AnalyzeTab() {
         <RibbonLargeButton
           icon={Issue}
           label={t(panelTitleKey('bcf'))}
+          aria-label={t(panelTitleKey('bcf'))}
           active={activeWorkspacePanels.has('bcf')}
           onClick={() => handleToggleRightPanel('bcf')}
         />
         <RibbonLargeButton
           icon={Check}
           label={t(panelTitleKey('validation'))}
+          aria-label={t(panelTitleKey('validation'))}
           tooltip={t('ribbon.analyze.idsTooltip')}
           active={activeWorkspacePanels.has('validation')}
           onClick={() => handleToggleRightPanel('validation')}
@@ -61,6 +63,7 @@ export function AnalyzeTab() {
         <RibbonLargeButton
           icon={Clash}
           label={t(panelTitleKey('clash'))}
+          aria-label={t(panelTitleKey('clash'))}
           tooltip={t('ribbon.analyze.clashTooltip')}
           active={activeWorkspacePanels.has('clash')}
           onClick={() => handleToggleRightPanel('clash')}
@@ -73,6 +76,7 @@ export function AnalyzeTab() {
         <RibbonLargeButton
           icon={Compare}
           label={t(panelTitleKey('compare'))}
+          aria-label={t(panelTitleKey('compare'))}
           tooltip={t('ribbon.analyze.compareTooltip')}
           active={activeWorkspacePanels.has('compare')}
           onClick={() => handleToggleRightPanel('compare')}
@@ -80,6 +84,7 @@ export function AnalyzeTab() {
         <RibbonLargeButton
           icon={Layer}
           label={t(panelTitleKey('layers'))}
+          aria-label={t(panelTitleKey('layers'))}
           tooltip={t('ribbon.analyze.layersTooltip')}
           active={activeWorkspacePanels.has('layers')}
           onClick={() => useViewerStore.getState().toggleWorkspacePanel('layers', 'ribbon')}
@@ -89,6 +94,7 @@ export function AnalyzeTab() {
         <RibbonLargeButton
           icon={Zones}
           label={t(panelTitleKey('zones'))}
+          aria-label={t(panelTitleKey('zones'))}
           tooltip={t('ribbon.analyze.zonesTooltip')}
           active={activeWorkspacePanels.has('zones')}
           onClick={() => useViewerStore.getState().toggleWorkspacePanel('zones', 'ribbon')}
@@ -97,6 +103,7 @@ export function AnalyzeTab() {
         <RibbonLargeButton
           icon={LoadReport}
           label={t(panelTitleKey('loadReport'))}
+          aria-label={t(panelTitleKey('loadReport'))}
           tooltip={t('ribbon.analyze.loadReportTooltip')}
           active={activeWorkspacePanels.has('loadReport')}
           onClick={() => useViewerStore.getState().toggleWorkspacePanel('loadReport', 'ribbon')}
@@ -111,6 +118,7 @@ export function AnalyzeTab() {
         <RibbonLargeButton
           icon={Cost}
           label={t(panelTitleKey('cost'))}
+          aria-label={t(panelTitleKey('cost'))}
           tooltip={t('ribbon.analyze.costTooltip')}
           active={activeWorkspacePanels.has('cost')}
           onClick={() => useViewerStore.getState().toggleWorkspacePanel('cost', 'ribbon')}
@@ -118,6 +126,7 @@ export function AnalyzeTab() {
         <RibbonLargeButton
           icon={List}
           label={t(panelTitleKey('lists'))}
+          aria-label={t(panelTitleKey('lists'))}
           tooltip={t('ribbon.analyze.listsTooltip')}
           active={activeWorkspacePanels.has('lists')}
           onClick={() => handleToggleBottomPanel('lists')}
@@ -125,6 +134,7 @@ export function AnalyzeTab() {
         <RibbonLargeButton
           icon={Schedule}
           label={t(panelTitleKey('gantt'))}
+          aria-label={t(panelTitleKey('gantt'))}
           tooltip={t('ribbon.analyze.scheduleTooltip')}
           active={activeWorkspacePanels.has('gantt')}
           onClick={() => handleToggleBottomPanel('gantt')}
@@ -132,6 +142,7 @@ export function AnalyzeTab() {
         <RibbonLargeButton
           icon={Chart}
           label={t(panelTitleKey('charts'))}
+          aria-label={t(panelTitleKey('charts'))}
           tooltip={t('ribbon.analyze.chartsTooltip')}
           active={activeWorkspacePanels.has('charts')}
           onClick={() => handleToggleBottomPanel('charts')}
@@ -139,6 +150,7 @@ export function AnalyzeTab() {
         <RibbonLargeButton
           icon={Document}
           label={t(panelTitleKey('document'))}
+          aria-label={t(panelTitleKey('document'))}
           tooltip={t('ribbon.analyze.documentTooltip')}
           active={activeWorkspacePanels.has('document')}
           onClick={() => handleToggleBottomPanel('document')}
@@ -146,6 +158,7 @@ export function AnalyzeTab() {
         <RibbonLargeButton
           icon={Drawing}
           label={t(panelTitleKey('drawing'))}
+          aria-label={t(panelTitleKey('drawing'))}
           tooltip={t('ribbon.analyze.drawingTooltip')}
           active={activeWorkspacePanels.has('drawing')}
           onClick={() => handleToggleBottomPanel('drawing')}
@@ -153,6 +166,7 @@ export function AnalyzeTab() {
         <RibbonLargeButton
           icon={Script}
           label={t(panelTitleKey('script'))}
+          aria-label={t(panelTitleKey('script'))}
           tooltip={t('ribbon.analyze.scriptTooltip')}
           active={activeWorkspacePanels.has('script')}
           onClick={() => handleToggleBottomPanel('script')}
@@ -160,6 +174,7 @@ export function AnalyzeTab() {
         <RibbonLargeButton
           icon={Flow}
           label={t(panelTitleKey('flow'))}
+          aria-label={t(panelTitleKey('flow'))}
           tooltip={t('ribbon.analyze.flowTooltip')}
           active={activeWorkspacePanels.has('flow')}
           onClick={() => handleToggleBottomPanel('flow')}
@@ -172,6 +187,7 @@ export function AnalyzeTab() {
         <RibbonLargeButton
           icon={Coloring}
           label={t(panelTitleKey('lens'))}
+          aria-label={t(panelTitleKey('lens'))}
           tooltip={t('ribbon.analyze.lensTooltip')}
           active={activeWorkspacePanels.has('lens')}
           onClick={() => handleToggleRightPanel('lens')}

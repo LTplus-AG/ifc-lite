@@ -45,7 +45,9 @@ describe('workspace panel name parity (#5858)', () => {
     cleanup();
 
     const ribbon = render(<AnalyzeTab />);
-    assert.ok([...ribbon.querySelectorAll('button')].some((button) => button.textContent?.includes(TITLE)), 'ribbon uses the panel title');
+    const ribbonButton = [...ribbon.querySelectorAll('button')].find((button) => button.textContent?.includes(TITLE));
+    assert.ok(ribbonButton, 'ribbon uses the panel title');
+    assert.equal(ribbonButton.getAttribute('aria-label'), TITLE, 'ribbon announces the panel title, not its descriptive tooltip');
     cleanup();
 
     render(

@@ -158,6 +158,7 @@ export function ViewTab() {
         <RibbonLargeButton
           icon={Lighting}
           label={t(panelTitleKey('environment'))}
+          aria-label={t(panelTitleKey('environment'))}
           tooltip={t('ribbon.view.lightingTooltip')}
           active={activeWorkspacePanels.has('environment') || solarEnabled || envSkyEnabled || envPreset !== 'default'}
           activeClassName="bg-amber-500/20 text-foreground ring-1 ring-inset ring-amber-500/50"
@@ -195,6 +196,7 @@ export function ViewTab() {
         <RibbonLargeButton
           icon={Viewpoint}
           label={t(panelTitleKey('presentation'))}
+          aria-label={t(panelTitleKey('presentation'))}
           tooltip={t('ribbon.view.presentTooltip', { views: basketViewCount, entities: pinboardEntities.size })}
           active={activeWorkspacePanels.has('presentation')}
           disabled={!hasModels}

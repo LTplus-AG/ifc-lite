@@ -61,6 +61,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
         <RibbonLargeButton
           icon={CloudSources}
           label={t(panelTitleKey('sources'))}
+          aria-label={t(panelTitleKey('sources'))}
           tooltip={t('ribbon.file.cloudSourcesTooltip')}
           active={activeWorkspacePanels.has('sources')}
           onClick={() => handleToggleRightPanel('sources')}
@@ -112,6 +113,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
             <RibbonLargeButton
               icon={CollabsRoom}
               label={t(panelTitleKey('collab'))}
+              aria-label={t(panelTitleKey('collab'))}
               tooltip={collabRoomId ? t('ribbon.file.roomTooltip') : t('ribbon.file.roomNotJoinedTooltip')}
               active={collabPanelVisible}
               onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab', 'ribbon')}

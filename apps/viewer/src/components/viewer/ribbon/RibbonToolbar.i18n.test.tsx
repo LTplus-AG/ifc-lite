@@ -76,6 +76,8 @@ function readableSlots(root: HTMLElement): Map<string, string> {
   root.querySelectorAll('*').forEach((element, index) => {
     const label = element.getAttribute('aria-label');
     if (label) out.set(`${index}:aria`, label);
+    const description = element.getAttribute('aria-description');
+    if (description) out.set(`${index}:description`, description);
     const ownText = [...element.childNodes]
       .filter((node) => node.nodeType === node.TEXT_NODE)
       .map((node) => node.textContent ?? '')
@@ -159,6 +161,9 @@ describe('RibbonToolbar localization (#4785)', () => {
         const candidates = RIBBON_KEYS.filter((key) =>
           ownedBy(tab, key) &&
           !(slot.endsWith(':text') && key.endsWith('Tooltip')) &&
+          // A panel button announces its visible name; its descriptive tooltip
+          // is checked in the paired aria-description slot instead.
+          !(slot.endsWith(':aria') && before.has(slot.replace(/:aria$/, ':description')) && key.endsWith('Tooltip')) &&
           !ribbonToolbarEn[key].includes('{') && ribbonToolbarEn[key] === text);
         if (candidates.length > 0) {
           const match = candidates.find((key) => shown === mark(key));

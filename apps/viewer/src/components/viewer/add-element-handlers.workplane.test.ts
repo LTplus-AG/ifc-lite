@@ -264,6 +264,30 @@ describe('Add Element workplane: storey-local means storey-local (#6233)', () =>
     const expected: Array<[number, number]> = [[2, -1], [2, -3], [5, -3], [5, -1]];
     params.OuterCurve!.forEach((p, i) => near(p, expected[i], `corner ${i}`));
   });
+
+  it('adds back BOTH offsets a georeferenced model is rendered without (origin shift + wasm RTC), and the mirror removes them again', async () => {
+    // world = render + originShift + rtc. originShift is Y-up (IFC Y = −z);
+    // the RTC offset is IFC Z-up. Renderer (5, ·, −4) = render plan (5, 4)
+    // → world (5 + 10 + 100, 4 + 20 + 200) = (115, 224) → storey A at (3, 3).
+    const coordinateInfo = { originShift: { x: 10, y: 0, z: -20 }, wasmRtcOffset: { x: 100, y: 200, z: 0 } };
+    const model = useViewerStore.getState().models.get(MODEL)!;
+    useViewerStore.setState({
+      models: new Map([[MODEL, { ...model, geometryResult: { coordinateInfo } } as unknown as FederatedModel]]),
+    });
+    const ctx = makeCtx();
+    hits = [null, null];
+    await click(ctx, 5, -4);
+    await click(ctx, 9, -4);
+    near(calls[0].params.Start as number[], [112, 221, 0], 'Start');
+    near(calls[0].params.End as number[], [116, 221, 0], 'End');
+
+    const payload = authoredElementMeshPayload(
+      { kind: 'wall', params: { Start: [112, 221, 0], End: [116, 221, 0], Thickness: 0.2, Height: 3 } },
+      storeyAuthoringFrame(parsed, STOREY_A, coordinateInfo as Parameters<typeof storeyAuthoringFrame>[2]),
+    );
+    if (payload.type !== 'wall') throw new Error('expected a wall payload');
+    near(payload.start, [5, 4, 0], 'mirror start, back under the click');
+  });
 });
 
 describe('Add Element workplane: the instant 3D mirror folds the storey chain back in (#6233)', () => {

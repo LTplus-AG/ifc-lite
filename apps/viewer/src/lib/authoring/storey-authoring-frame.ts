@@ -18,9 +18,11 @@
  * the mirror drew it under the cursor.
  *
  * Same frame algebra as Space Sketch's bake (`useSpaceBake.ts`), reused rather
- * than re-derived: `storeyPlanFrame` composes the chain, and
- * `roomFrameToModelWorld` supplies the survey anchor the wasm path subtracted
- * from the rendered geometry (zero for any model near the origin).
+ * than re-derived: `storeyPlanFrame` composes the chain, and the offset back to
+ * the file's own world frame is the whole `world = render + originShift + rtc`
+ * reconstruction — `roomFramePlanOffsets` (the TS origin shift, which Space
+ * Sketch's room frame already carries) plus `roomFrameToModelWorld` (the survey
+ * anchor the wasm path subtracted). Both are zero for a model near the origin.
  *
  * Unlike Space Sketch this falls back to the identity instead of refusing when
  * the chain will not resolve: that is exactly what the tool did before for
@@ -31,14 +33,14 @@
 import { storeyPlanFrame, toStoreyLocal, fromStoreyLocal, type StoreyPlanFrame } from '@ifc-lite/create';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { roomFrameToModelWorld } from '@/lib/wall-rects-from-meshes';
+import { roomFramePlanOffsets, roomFrameToModelWorld } from '@/lib/wall-rects-from-meshes';
 
 type Vec2 = [number, number];
 
 export interface StoreyAuthoringFrame {
   /** The storey's chain as a planar rigid motion in the model's world frame. */
   plan: StoreyPlanFrame;
-  /** Model-world = rendered model frame + this (the survey anchor). */
+  /** Model-world = rendered model frame + this (origin shift + survey anchor). */
   offset: Vec2;
 }
 
@@ -51,8 +53,9 @@ export function storeyAuthoringFrame(
   coordinateInfo: CoordinateInfo | undefined,
 ): StoreyAuthoringFrame {
   const plan = store ? storeyPlanFrame(store, storeyExpressId) : null;
+  const { cx, cy } = roomFramePlanOffsets(coordinateInfo);
   const { dx, dy } = roomFrameToModelWorld(coordinateInfo);
-  return { plan: plan ?? IDENTITY_PLAN, offset: [dx, dy] };
+  return { plan: plan ?? IDENTITY_PLAN, offset: [cx + dx, cy + dy] };
 }
 
 /** Rendered model-frame plan point → the storey-local frame a builder writes. */

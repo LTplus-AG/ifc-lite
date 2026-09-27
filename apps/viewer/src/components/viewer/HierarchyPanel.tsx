@@ -497,7 +497,7 @@ export function HierarchyPanel() {
       <Button
         variant={groupingMode === 'spatial' ? 'default' : 'outline'}
         size="sm"
-        className="h-6 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider"
+        className="h-6 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider"
         onClick={() => setGroupingMode('spatial')}
         title={t('hierarchy.panel.grouping.spatial')}
       >
@@ -507,7 +507,7 @@ export function HierarchyPanel() {
       <Button
         variant={groupingMode === 'type' ? 'default' : 'outline'}
         size="sm"
-        className="h-6 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider"
+        className="h-6 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider"
         onClick={() => setGroupingMode('type')}
         title={t('hierarchy.panel.grouping.class')}
       >
@@ -517,7 +517,7 @@ export function HierarchyPanel() {
       <Button
         variant={groupingMode === 'ifc-type' ? 'default' : 'outline'}
         size="sm"
-        className="h-6 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider"
+        className="h-6 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider"
         onClick={() => setGroupingMode('ifc-type')}
         title={t('hierarchy.panel.grouping.type')}
       >
@@ -527,7 +527,7 @@ export function HierarchyPanel() {
       <Button
         variant={groupingMode === 'material' ? 'default' : 'outline'}
         size="sm"
-        className="h-6 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider"
+        className="h-6 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider"
         onClick={() => setGroupingMode('material')}
         title={t('hierarchy.panel.grouping.materialsTooltip')}
       >
@@ -537,7 +537,7 @@ export function HierarchyPanel() {
       <Button
         variant={groupingMode === 'groups' ? 'default' : 'outline'}
         size="sm"
-        className="h-6 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider"
+        className="h-6 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider"
         onClick={() => setGroupingMode('groups')}
         title={t('hierarchy.panel.grouping.groupsTooltip')}
       >
@@ -559,7 +559,7 @@ export function HierarchyPanel() {
           variant={groupFilter === value ? 'default' : 'outline'}
           size="sm"
           className={cn(
-            'h-5 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider px-1',
+            'h-5 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider px-1',
             // Inactive (outline) chips inherited a too-light zinc-400 in light
             // mode (2.52:1 at 10px). Pin a darker foreground for light mode only;
             // dark mode kept at zinc-400 which already passes.

@@ -38,7 +38,7 @@ export function CountBadgeTooltip({
       {/* TooltipContent uses the neutral popover surface; secondary copy uses
           its semantic muted token instead of a hardcoded zinc shade. */}
       {rest.map((line) => (
-        <p key={line} className="text-[10px] text-muted-foreground">{line}</p>
+        <p key={line} className="text-2xs text-muted-foreground">{line}</p>
       ))}
     </>
   );

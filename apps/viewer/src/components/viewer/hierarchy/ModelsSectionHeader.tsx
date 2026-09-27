@@ -41,7 +41,7 @@ export function useModelTagView(nodes: TreeNode[]): TreeNode[] {
 
 const chipClass = (active: boolean) =>
   cn(
-    'h-5 rounded-none px-1.5 text-[10px] uppercase tracking-wider',
+    'h-5 rounded-none px-1.5 text-2xs uppercase tracking-wider',
     !active && 'text-zinc-600 dark:text-zinc-400',
   );
 
@@ -151,7 +151,7 @@ export function ModelsSectionHeader({ count }: { count: number }) {
               >
                 {t('hierarchy.modelsSection.clear')}
               </Button>
-              <span className="ml-auto text-[10px] font-mono text-zinc-500" data-model-tag-filter-count>
+              <span className="ml-auto text-2xs font-mono text-zinc-500" data-model-tag-filter-count>
                 {t('hierarchy.modelsSection.matchingCount', { matching: formatLocaleNumber(locale, matching.length), total: formatLocaleNumber(locale, models.size) })}
               </span>
             </>

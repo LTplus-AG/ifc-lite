@@ -37,6 +37,7 @@ function typeOf(store: IfcDataStore, view: MutablePropertyView | null, id: numbe
 
 function isLive(store: IfcDataStore, view: MutablePropertyView | null, id: number): boolean {
   if (view?.getTombstones().has(id)) return false;
+  // @raw-entity-enumeration-ok point lookup of one id; tombstones and overlay creations are answered from the view on the lines around it
   return Boolean(view?.getNewEntity(id)) || store.entityIndex.byId.has(id);
 }
 

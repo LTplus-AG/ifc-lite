@@ -83,6 +83,7 @@ import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
 import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags.js';
+import { remeshAfterCommit } from '@/lib/remesh/remesh-registry.js';
 import { canMutate, mutationDenial } from '../mutation-permission.js';
 import { syncTypeOverride } from './mutation-history-apply.js';
 import { recordMutationBatch, replayHistory } from './mutation-history-replay.js';
@@ -1832,17 +1833,18 @@ export const createMutationSlice: StateCreator<
     }
     const dir: [number, number, number] = [dx / length, dy / length, 0];
 
-    get().setPositionalAttributesBatch(modelId, [
+    const batchId = get().setPositionalAttributesBatch(modelId, [
       { entityId: chain.startPointId, index: 0, value: newStart },
       { entityId: chain.refDirectionId, index: 0, value: dir },
       { entityId: chain.profileId, index: 3, value: length },
       { entityId: chain.profileOriginPointId, index: 0, value: [length / 2, 0] },
     ]);
+    // The start point moves the wall's placement, so its openings and fillings follow.
+    remeshAfterCommit(get, modelId, batchId, [expressId], 'hostsChanged');
 
     // Mirror the resize to peers as a geometry replace: regenerate the wall mesh
     // at the new dimensions (built at its current world position) and swap the
-    // entity's room blob. The owner's own mesh is unchanged here (resize is
-    // data-only locally today); peers re-hydrate the new blob. No-op off-collab.
+    // entity's room blob; peers re-hydrate the new blob. No-op off-collab.
     if (Number.isFinite(chain.height) && chain.height > 0) {
       const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
       const meshes = meshesForOwningModel(get(), modelId);

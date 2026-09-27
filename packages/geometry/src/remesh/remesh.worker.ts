@@ -17,13 +17,12 @@ import { initWasmWithRetry } from '../wasm-init-retry.js';
 import { freeWasmInstanceQuietly } from '../wasm-instance-free.js';
 import { applyRemeshConfig, remeshOnApi, styleWireOnApi, type RemeshConfig } from './remesh-core.js';
 import {
-  meshTransferables, styleWireTransferables, type RemeshWorkerInbound, type RemeshWorkerOutbound,
+  meshTransferables, serialQueue, styleWireTransferables, type RemeshWorkerInbound, type RemeshWorkerOutbound,
 } from './remesh-protocol.js';
 
 const scope = self as unknown as Worker;
 let config: RemeshConfig | null = null;
 let api: IfcAPI | null = null;
-let tail: Promise<void> = Promise.resolve();
 
 function post(message: RemeshWorkerOutbound, transfer: Transferable[] = []): void {
   scope.postMessage(message, transfer);
@@ -96,7 +95,7 @@ async function handle(message: RemeshWorkerInbound): Promise<void> {
   }
 }
 
-scope.onmessage = (event: MessageEvent<RemeshWorkerInbound>) => {
-  const message = event.data;
-  tail = tail.then(() => handle(message));
-};
+// `handle` answers every request itself; this only guards the queue against
+// an escape it did not anticipate, which would otherwise stall it for good.
+const enqueue = serialQueue(handle, (error) => console.error('[remesh.worker] unhandled:', errorMessage(error)));
+scope.onmessage = (event: MessageEvent<RemeshWorkerInbound>) => enqueue(event.data);

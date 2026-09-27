@@ -6166,6 +6166,7 @@
     "RemeshConfig: interface",
     "RemeshRequest: interface",
     "RemeshResult: interface",
+    "StyleWire: interface",
     "filterStyleWire: function"
   ],
   "@ifc-lite/geometry/rtc-rebase": [

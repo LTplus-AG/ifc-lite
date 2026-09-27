@@ -10,6 +10,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useMemo, useState } fr
 import { useViewerStore, resolveEntityRef, resolveGlobalId, toGlobalIdFromModels } from '@/store';
 import type { DuplicateDirection } from '@/store/slices/mutationSlice';
 import { useContextMutationAccess } from './useContextMutationAccess';
+import { effectiveTreeEntityName } from './hierarchy/effectiveTypeEntities';
 import { showAllFromStore } from '@/store/homeView';
 import { hideFromContextMenuFromStore } from '@/store/hideSelection';
 import {
@@ -223,11 +224,16 @@ export function EntityContextMenu() {
     closeContextMenu();
   }, [contextMenu.entityId, closeContextMenu]);
 
-  // Right-clicked entity's type — used in the toast message.
-  const contextEntityType = useMemo(() => {
-    if (!resolvedExpressId || !activeDataStore) return '';
-    return activeDataStore.entities.getTypeName(resolvedExpressId) || '';
-  }, [resolvedExpressId, activeDataStore]);
+  // Right-clicked entity's name and class for the header and toasts, read
+  // through the session's mutation view so an element authored this session
+  // shows its own name and class, not the parsed table's 'Unknown' (#6233).
+  let entityName = '';
+  let entityType = '';
+  if (resolvedExpressId && activeDataStore) {
+    const view = contextEntityRef ? mutationViewFor(contextEntityRef.modelId) : null;
+    entityName = effectiveTreeEntityName(activeDataStore, view, resolvedExpressId, '');
+    entityType = effectiveContextType(activeDataStore, view, resolvedExpressId);
+  }
 
   const { canEdit, editReasonKey, showMutationActions } = useContextMutationAccess(contextEntityRef, contextMenu.isOpen);
   const editReason = editReasonKey ? t(editReasonKey) : undefined;
@@ -265,21 +271,12 @@ export function EntityContextMenu() {
       hideEntity(contextMenu.entityId);
       // Drop the selection so the right panel doesn't cling to a tombstoned id.
       setSelectedEntityId(null);
-      toast.success(`${contextEntityType || 'Entity'} #${contextEntityRef.expressId} deleted — undo to restore`);
+      toast.success(`${entityType || 'Entity'} #${contextEntityRef.expressId} deleted — undo to restore`);
     } else {
       toast.error('Delete failed — entity not found in store overlay');
     }
     closeContextMenu();
-  }, [contextEntityRef, canEdit, contextEntityType, contextMenu.entityId, removeEntity, hideEntity, setSelectedEntityId, closeContextMenu]);
-
-  // Get entity info for display (resolvedExpressId is the original ID for IfcDataStore lookups)
-  let entityName = '';
-  let entityType = '';
-  if (resolvedExpressId && activeDataStore) {
-    entityName = activeDataStore.entities.getName(resolvedExpressId) || '';
-    entityType = effectiveContextType(activeDataStore,
-      contextEntityRef ? mutationViewFor(contextEntityRef.modelId) : null, resolvedExpressId);
-  }
+  }, [contextEntityRef, canEdit, entityType, contextMenu.entityId, removeEntity, hideEntity, setSelectedEntityId, closeContextMenu]);
 
   const contextItem = (id: SurfaceCommandId, action: () => void, options: {
     title?: string; tone?: 'default' | 'destructive';

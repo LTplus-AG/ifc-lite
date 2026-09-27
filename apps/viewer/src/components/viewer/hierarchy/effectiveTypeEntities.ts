@@ -14,11 +14,13 @@ export interface EffectiveTypeEntity {
   name: string;
 }
 
-/** A source or authored entity's Name after live attribute edits. */
+/** A source or authored entity's Name after live attribute edits, or
+ *  `fallback` when it has none. */
 export function effectiveTreeEntityName(
   store: IfcDataStore,
   view: MutablePropertyView | null | undefined,
   expressId: number,
+  fallback = `#${expressId}`,
 ): string {
   const authoredName = view?.getNewEntity(expressId)?.attributes[2] ?? store.entities.getName(expressId);
   const editedName = view?.getAttributeMutationsForEntity(expressId)
@@ -27,7 +29,7 @@ export function effectiveTreeEntityName(
   const effectiveName = positionalName !== undefined ? positionalName
     : editedName !== undefined ? editedName : authoredName;
   return typeof effectiveName === 'string' && effectiveName.length > 0
-    ? effectiveName : `#${expressId}`;
+    ? effectiveName : fallback;
 }
 
 /** Type rows in the edited model, including types created after parsing (#5249). */

@@ -37,16 +37,13 @@ import type { AddElementVec3 } from '@/store/slices/addElementSlice';
 import { OVERLAY_GLOW_FILTER, WorldLabel, useProjectorTick } from '../../viewport-ui/scene';
 import { formatDistance } from './formatDistance';
 import { formatArea } from './computePolygonArea';
-
-type Pt = { x: number; y: number };
-type Project = (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null;
+import { GHOST_OPACITY, GhostPolygon, SingleClickGhost, WorkplaneDropLine, ghostOutline, linearBoxCorners, type Project, type Pt } from './add-element-ghosts';
 
 // The one interaction accent (overlay tokens, #5483): the live stroke is
 // `accent`, fills are `accent-soft`, the about-to-commit ghost box is the
 // accent at half strength.
 const STROKE = 'stroke-overlay-accent';
 const FILL = 'fill-overlay-accent-soft';
-const GHOST_OPACITY = 0.5;
 
 export function AddElementOverlay() {
   const activeTool = useViewerStore((s) => s.activeTool);
@@ -54,6 +51,7 @@ export function AddElementOverlay() {
   const slabMode = useViewerStore((s) => s.addElementSlabMode);
   const pendingPoints = useViewerStore((s) => s.addElementPendingPoints);
   const hoverPoint = useViewerStore((s) => s.addElementHoverPoint);
+  const hoverSnapPoint = useViewerStore((s) => s.addElementHoverSnapPoint);
   const autoSpacePreview = useViewerStore((s) => s.addElementAutoSpacePreview);
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
   const { models, ifcDataStore } = useIfc();
@@ -118,6 +116,11 @@ export function AddElementOverlay() {
       className="absolute inset-0 pointer-events-none z-(--z-scene)"
       style={{ overflow: 'visible' }}
     >
+
+      {/* The snapped point is off the workplane: show where it drops to. */}
+      {hoverPoint && hoverSnapPoint && (
+        <WorkplaneDropLine from={hoverSnapPoint} to={hoverPoint} projection={projection} />
+      )}
 
       {/* Hover-ghost for single-click placements — column/door/window. */}
       {(type === 'column' || type === 'door' || type === 'window') && hoverPoint && (
@@ -227,26 +230,11 @@ function WallBeamPreview({
   const thick = type === 'beam' ? ghost.addElementBeamParams.Width : ghost.addElementMemberParams.Width;
   const height = type === 'beam' ? ghost.addElementBeamParams.Height : ghost.addElementMemberParams.Height;
 
-  let ghostOutline: string | null = null;
-  if (hoverWorld) {
-    const corners = linearBoxCorners(startWorld, hoverWorld, thick, height);
-    const projected = corners.map((c) => projection({ x: c[0], y: c[1], z: c[2] }));
-    if (projected.every((p): p is Pt => p !== null)) {
-      ghostOutline = projectedHullOutline(projected as Pt[]);
-    }
-  }
+  const outline = hoverWorld ? ghostOutline(linearBoxCorners(startWorld, hoverWorld, thick, height), projection) : null;
 
   return (
     <>
-      {ghostOutline && (
-        <polygon
-          points={ghostOutline}
-          className={`${FILL} ${STROKE}`}
-          strokeOpacity={GHOST_OPACITY}
-          strokeWidth={1}
-          strokeDasharray="3,3"
-        />
-      )}
+      {outline && <GhostPolygon points={outline} />}
       <line
         x1={start.x}
         y1={start.y}
@@ -264,124 +252,6 @@ function WallBeamPreview({
       )}
     </>
   );
-}
-
-/**
- * Single-click ghost for column / door / window — projects the
- * about-to-commit axis box at the cursor so the user sees where
- * the leaf / cross-section actually lands before clicking.
- */
-function SingleClickGhost({
-  type,
-  hoverWorld,
-  projection,
-}: {
-  type: 'column' | 'door' | 'window';
-  hoverWorld: AddElementVec3;
-  projection: Project;
-}) {
-  const state = useViewerStore.getState();
-  let sx: number, sy: number, sz: number;
-  if (type === 'column') {
-    const p = state.addElementColumnParams;
-    sx = p.Width; sy = p.Depth; sz = p.Height;
-  } else if (type === 'door') {
-    const p = state.addElementDoorParams;
-    sx = p.Width; sy = p.FrameThickness; sz = p.Height;
-  } else {
-    const p = state.addElementWindowParams;
-    sx = p.Width; sy = p.FrameThickness; sz = p.Height;
-  }
-  // Hover is in renderer-frame; project the axis-aligned box around it.
-  const hx = sx / 2;
-  const hz = sy / 2; // renderer Z
-  const cy = hoverWorld.y;
-  const cx = hoverWorld.x;
-  const cz = hoverWorld.z;
-  const corners: Array<[number, number, number]> = [
-    [cx - hx, cy,        cz - hz],
-    [cx + hx, cy,        cz - hz],
-    [cx + hx, cy,        cz + hz],
-    [cx - hx, cy,        cz + hz],
-    [cx - hx, cy + sz,   cz - hz],
-    [cx + hx, cy + sz,   cz - hz],
-    [cx + hx, cy + sz,   cz + hz],
-    [cx - hx, cy + sz,   cz + hz],
-  ];
-  const projected = corners.map((c) => projection({ x: c[0], y: c[1], z: c[2] }));
-  if (!projected.every((p): p is Pt => p !== null)) return null;
-  const outline = projectedHullOutline(projected as Pt[]);
-  return (
-    <polygon
-      points={outline}
-      className={`${FILL} ${STROKE}`}
-      strokeOpacity={GHOST_OPACITY}
-      strokeWidth={1}
-      strokeDasharray="3,3"
-    />
-  );
-}
-
-/**
- * Eight renderer-frame corners of a thickness-extruded segment
- * (wall / beam / member). Bottom and top rings each track their
- * endpoint's Y so a sloped beam previews as a sloped prism instead of
- * being flattened to the start elevation.
- */
-function linearBoxCorners(
-  startWorld: AddElementVec3,
-  endWorld: AddElementVec3,
-  thickness: number,
-  height: number,
-): Array<[number, number, number]> {
-  const dx = endWorld.x - startWorld.x;
-  const dz = endWorld.z - startWorld.z;
-  const len = Math.hypot(dx, dz);
-  if (len < 1e-6) return [];
-  const ax = dx / len, az = dz / len;
-  // Perpendicular in the ground plane (renderer X/Z, Y is up).
-  const nx = -az, nz = ax;
-  const half = thickness / 2;
-  const startBaseY = startWorld.y;
-  const endBaseY = endWorld.y;
-  const startTopY = startBaseY + height;
-  const endTopY = endBaseY + height;
-  return [
-    [startWorld.x + nx * half, startBaseY, startWorld.z + nz * half],
-    [endWorld.x   + nx * half, endBaseY,   endWorld.z   + nz * half],
-    [endWorld.x   - nx * half, endBaseY,   endWorld.z   - nz * half],
-    [startWorld.x - nx * half, startBaseY, startWorld.z - nz * half],
-    [startWorld.x + nx * half, startTopY,  startWorld.z + nz * half],
-    [endWorld.x   + nx * half, endTopY,    endWorld.z   + nz * half],
-    [endWorld.x   - nx * half, endTopY,    endWorld.z   - nz * half],
-    [startWorld.x - nx * half, startTopY,  startWorld.z - nz * half],
-  ];
-}
-
-/**
- * 2D convex hull of projected screen points → SVG polygon string.
- * The 8 box corners projected to screen don't always trace a clean
- * outline edge-by-edge (back faces overlap), so we just render the
- * silhouette envelope. Andrew's monotone-chain on (x, y).
- */
-function projectedHullOutline(pts: Pt[]): string {
-  if (pts.length < 3) return pts.map((p) => `${p.x},${p.y}`).join(' ');
-  const sorted = [...pts].sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
-  const cross = (o: Pt, a: Pt, b: Pt) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-  const lower: Pt[] = [];
-  for (const p of sorted) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
-    lower.push(p);
-  }
-  const upper: Pt[] = [];
-  for (let i = sorted.length - 1; i >= 0; i--) {
-    const p = sorted[i];
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
-    upper.push(p);
-  }
-  upper.pop();
-  lower.pop();
-  return [...lower, ...upper].map((p) => `${p.x},${p.y}`).join(' ');
 }
 
 function SlabRectanglePreview({

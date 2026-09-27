@@ -319,10 +319,11 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
           )}
 
           {addElementType === 'window' && (
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <NumberField label={t('addElement.dimension.widthUnit', { unit: 'm' })} value={windowParams.Width} min={0.01} onChange={(v) => setWindowParams({ Width: v })} />
               <NumberField label={t('addElement.dimension.heightUnit', { unit: 'm' })} value={windowParams.Height} min={0.01} onChange={(v) => setWindowParams({ Height: v })} />
               <NumberField label={t('addElement.dimension.frameUnit', { unit: 'm' })} value={windowParams.FrameThickness} min={0.005} onChange={(v) => setWindowParams({ FrameThickness: v })} />
+              <NumberField label={t('addElement.dimension.sillUnit', { unit: 'm' })} value={windowParams.SillHeight} min={0} onChange={(v) => setWindowParams({ SillHeight: v })} />
             </div>
           )}
 

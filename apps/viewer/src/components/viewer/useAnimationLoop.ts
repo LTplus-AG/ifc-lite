@@ -23,6 +23,7 @@ import { useViewerStore } from '@/store';
 import { chartAwareRendererSelectionFromStore } from '@/lib/charts/renderer-selection';
 import { preserveClashPaintInSelection } from '@/lib/clash/renderer-selection';
 import { sectionRenderClip } from '@/lib/section/section-render-clip';
+import { withAddElementWorkplane } from './add-element-workplane';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getContributionCullConfig } from '../../utils/renderCullConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
@@ -278,10 +279,9 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             contributionCull,
             lod,
             buildingRotation: coordinateInfoRef.current?.buildingRotation,
-            // The cut: a plane (cap settings, cardinal range, face-picked
-            // normal) or, in box mode, the clip box (#5513). Lasting scene
-            // state (#5893): gated on the visibility toggle, not the tool.
-            ...sectionRenderClip(useViewerStore.getState().sceneState.section.visible, sectionPlaneRef.current, sectionRangeRef.current),
+            // The cut: a plane or, in box mode, the clip box (#5513), gated on the visibility toggle (#5893).
+            // Add Element moves the uncut plane preview to its workplane (#6233).
+            ...withAddElementWorkplane(useViewerStore.getState(), sectionRenderClip(useViewerStore.getState().sceneState.section.visible, sectionPlaneRef.current, sectionRangeRef.current)),
             terrainClipY: terrainClipYRef.current ?? undefined,
           });
         } catch (err) {

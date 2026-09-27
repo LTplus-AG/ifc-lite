@@ -34,7 +34,8 @@ import { resolveNavigationPointerGesture, resolveWheelNavigation } from '@/lib/n
 import { handleMeasureTap, ignoreTouchPointers, setMeasureTapHandler } from './touchRouting.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
 import { routeCommandPointer } from './commandPointer.js';
-import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover, finishPolylineFromDoubleClick, finishRadiusFromDoubleClick } from './selectionHandlers.js';
+import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, finishPolylineFromDoubleClick, finishRadiusFromDoubleClick } from './selectionHandlers.js';
+import { handleAddElementHover } from './add-element-handlers.js';
 import { applyWheelZoom, createFineZoomModifierTracker } from './wheelZoom.js';
 import { createZoomSurfacePicker } from './zoomSurface.js';
 import { createFlyController } from './flyControls.js';

@@ -5,7 +5,7 @@
 /**
  * The command palette's Export category, generated from the toolbar export
  * registry (`toolbar/export-commands.ts`) so the palette offers exactly the
- * formats the classic toolbar and the ribbon do, in the same order (#5601).
+ * formats the ribbon does, in the same order (#5601, #5874).
  * Every row only hands a request to `useExportRunner`, which runs the
  * toolbars' own handlers and dialogs — see that file's docblock.
  *
@@ -16,7 +16,7 @@
 
 import type { TranslationKey } from '@/i18n';
 import { EXPORT_COMMANDS, type CsvExportType, type ExportCommandId } from './toolbar/export-commands';
-import { CLASSIC_EXPORT_ICONS } from './toolbar/ClassicExportMenuItems';
+import { RIBBON_EXPORT_ICONS } from './ribbon/tabs/ribbon-export-icons';
 import type { ExportRequest } from './useExportRunner';
 import type { Command } from './commandPaletteSearch';
 import {
@@ -57,7 +57,7 @@ export const EXPORT_SURFACE_COMMANDS: readonly SurfaceCommandDefinition[] = EXPO
   const shared = {
     keywords: EXPORT_KEYWORDS[command.id],
     category: 'Export' as const,
-    icon: CLASSIC_EXPORT_ICONS[command.id],
+    icon: RIBBON_EXPORT_ICONS[command.id],
     surfaces: ['palette', 'mobile'] as const,
     enabled: () => true,
   };
@@ -99,7 +99,7 @@ export function buildExportCommands(
     label: exporter.name,
     keywords: `extension ${exporter.extension.slice(1)} download`,
     category: 'Export',
-    icon: CLASSIC_EXPORT_ICONS.extension,
+    icon: RIBBON_EXPORT_ICONS.extension,
     detail: exporter.extension,
     action: () => runExport({ id: 'extension', key: exporter.key }),
   }));

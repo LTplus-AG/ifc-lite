@@ -50,24 +50,13 @@ locale is valid.
 The ribbon toolbar catalogue covers the default toolbar's own chrome: tab
 strip, group names, button labels, tooltips and aria-labels on all six tabs,
 and the ribbon switch notice. Labels owned by shared registries (camera
-commands, exporters, extension panels), the classic `MainToolbar`, and the
-rest of the viewer's panels and dialogs are not converted yet.
+commands, exporters, extension panels), and the rest of the viewer's panels
+and dialogs are not converted yet. The retired classic toolbar's catalogue
+was removed with its renderer (#5874).
 
-The main-toolbar catalogue (#4918 slice 1) covers the classic single-strip
-`MainToolbar`'s own chrome: file operations, the Panels/Edit-properties/View
-options menus' own labels, tool buttons, the selection action cluster, and
-the meta cluster (theme, info). It deliberately does not cover the shared
-command surfaces the ribbon also renders — camera commands, the export menu,
-workspace-panel toggle lists, and the class-visibility body — those are
-slice 2 of the #4918 sweep. The #4918 grab-bag slice added one more key,
-`mainToolbar.editModeShortcutHint` ('E'): the bare keyboard-shortcut letter
-next to the Edit-mode toggle trips the gate the same way the Measure
-catalogue's bare "m" unit symbol does (see below).
-
-The shared-commands catalogue (#4918 slice 2) covers the command lists both
-`MainToolbar` and the ribbon render from: the export registry
-(`export-commands.ts`, rendered by `ClassicExportMenuItems` /
-`RibbonExportGroup`), the camera command registry (`camera-commands.ts`,
+The shared-commands catalogue (#4918 slice 2) covers the ribbon, palette and
+mobile command lists: the export registry (`export-commands.ts`, rendered by
+`RibbonExportGroup` and the palette/mobile commands), the camera command registry (`camera-commands.ts`,
 rendered by `CameraCommandMenuItems` / `ViewTab`), the bottom-panel and
 author-panel toggle lists (`BottomPanelMenuItems`, `AuthorPanelMenuItems`),
 and the class-visibility dropdown body (`ClassVisibilityMenuContent`). The

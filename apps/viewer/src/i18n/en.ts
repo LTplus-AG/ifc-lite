@@ -48,7 +48,6 @@ import { layersPanelEn } from './catalogues/layers-panel.en';
 import { landXmlEn } from './catalogues/landxml.en';
 import { terrainImageryEn } from './catalogues/terrain-imagery.en';
 import { lensPanelEn } from './catalogues/lens-panel.en';
-import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { propertyEditorEn } from './catalogues/property-editor.en';
 import { placementPanelEn } from './catalogues/placement-panel.en';
 import { repositionPanelEn } from './catalogues/reposition-panel.en';
@@ -104,7 +103,6 @@ export const en = {
   ...costPanelEn,
   ...ribbonToolbarEn,
   ...relationshipCardEn,
-  ...mainToolbarEn,
   ...propertyEditorEn,
   ...sharedCommandsEn,
   ...commandPaletteEn,

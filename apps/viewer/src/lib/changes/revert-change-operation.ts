@@ -9,6 +9,7 @@ import { hasAppearanceHistoryEntry } from '@/lib/appearance/history';
 import { applyRedoToView, applyUndoToView } from '@/store/slices/mutation-history-apply';
 import { georefPatch } from '@/store/slices/mutation-history-replay';
 import { inverseMutationTargets, revertedMutationIds } from '@/store/slices/mutation-inverse-registry';
+import { mutationPermissionForModels } from '@/store/mutation-permission';
 import { changeOperations, type ChangeOperation } from './change-operations.js';
 
 export type RevertRefusal = 'stale' | 'edit-mode' | 'collab-role' | 'model-unavailable'
@@ -76,17 +77,14 @@ export function revertChangeOperation(store: StoreApi<ViewerState>, requested: C
     || live.mutations.some((mutation, index) => mutation.id !== requested.mutations[index]?.id)) {
     return { ok: false, reason: 'stale' };
   }
-  if (!state.editEnabled) return { ok: false, reason: 'edit-mode' };
+  const permission = mutationPermissionForModels(state, live.modelIds);
+  if (!permission.allowed && permission.reason === 'edit-mode') return { ok: false, reason: 'edit-mode' };
   // The generic history replay writes the local overlay, but property and
   // quantity inverses do not mirror into the room CRDT. Never show a local-only
   // Revert as a successful shared edit (#5902).
   if (state.collabRoomId !== null) return { ok: false, reason: 'shared-room' };
-  if (!state.canCollabEdit()) return { ok: false, reason: 'collab-role' };
+  if (!permission.allowed) return { ok: false, reason: permission.reason };
   for (const modelId of live.modelIds) {
-    const model = state.models.get(modelId);
-    if (!(model?.ifcDataStore ?? (state.models.size === 0 ? state.ifcDataStore : null))) {
-      return { ok: false, reason: 'model-unavailable' };
-    }
     // Preflight every model before the first Undo. replayHistory refuses to
     // advance a non-georef stack without its view; a federated batch must
     // never return success after only its first model was reversed.

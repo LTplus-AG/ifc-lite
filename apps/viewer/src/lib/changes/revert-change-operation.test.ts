@@ -25,7 +25,7 @@ async function install(ids: readonly string[]) {
   const models = new Map(ids.map((id, index) => [id, { ...fixtureModel(id, { idOffset: index * 1_000 }), ifcDataStore: data }] as const));
   useViewerStore.setState({ models, activeModelId: ids[0], ifcDataStore: data, mutationViews: views,
     undoStacks: new Map(), redoStacks: new Map(), mutationBatchTags: new Map(), dirtyModels: new Set(),
-    editEnabled: true, collabRoomId: null, mutationVersion: 0 });
+    editEnabled: true, collabRole: null, collabRoomId: null, mutationVersion: 0 });
   return views;
 }
 
@@ -110,6 +110,26 @@ test('#5902 a missing federated view refuses the whole top batch before any mode
   useViewerStore.getState().recordMutationBatch('B', [second], tag ?? undefined);
   useViewerStore.setState({ mutationViews: new Map([['A', views.get('A')!]]) });
   assert.deepEqual(revertChangeOperation(useViewerStore, rows()[0]), { ok: false, reason: 'missing-view' });
+  assert.equal(views.get('A')!.getPropertyValue(101, 'Pset_Bulk', 'Code'), 'batch');
+  assert.equal(views.get('B')!.getPropertyValue(102, 'Pset_Bulk', 'Code'), 'batch');
+  assert.equal(useViewerStore.getState().undoStacks.get('A')?.length, 1);
+  assert.equal(useViewerStore.getState().undoStacks.get('B')?.length, 1);
+});
+
+test('#5902 canonical role and model permissions preflight a federated Revert before either model changes', async () => {
+  const views = await install(['A', 'B']);
+  const first = views.get('A')!.setProperty(101, 'Pset_Bulk', 'Code', 'batch', PropertyValueType.Label);
+  const tag = useViewerStore.getState().recordMutationBatch('A', [first]);
+  const second = views.get('B')!.setProperty(102, 'Pset_Bulk', 'Code', 'batch', PropertyValueType.Label);
+  useViewerStore.getState().recordMutationBatch('B', [second], tag ?? undefined);
+  const operation = rows()[0];
+
+  useViewerStore.setState({ collabRole: 'viewer' });
+  assert.deepEqual(revertChangeOperation(useViewerStore, operation), { ok: false, reason: 'collab-role' });
+  useViewerStore.setState(state => ({ collabRole: null, models: new Map(state.models).set('B', {
+    ...state.models.get('B')!, ifcDataStore: null,
+  }) }));
+  assert.deepEqual(revertChangeOperation(useViewerStore, operation), { ok: false, reason: 'model-unavailable' });
   assert.equal(views.get('A')!.getPropertyValue(101, 'Pset_Bulk', 'Code'), 'batch');
   assert.equal(views.get('B')!.getPropertyValue(102, 'Pset_Bulk', 'Code'), 'batch');
   assert.equal(useViewerStore.getState().undoStacks.get('A')?.length, 1);

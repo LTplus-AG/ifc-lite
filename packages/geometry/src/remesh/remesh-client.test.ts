@@ -8,7 +8,7 @@
  * The wasm meshing itself is pinned by `scripts/lib/wasm-remesh-contracts.mjs`.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { RemeshClient } from './remesh-client.js';
 import type { RemeshConfig, RemeshRequest, RemeshResult } from './remesh-core.js';
 import type { RemeshWorkerInbound, RemeshWorkerOutbound } from './remesh-protocol.js';
@@ -20,6 +20,7 @@ class ScriptedWorker {
   terminated = false;
   onmessage: ((event: MessageEvent<RemeshWorkerOutbound>) => void) | null = null;
   onerror: ((event: ErrorEvent) => void) | null = null;
+  onmessageerror: (() => void) | null = null;
 
   postMessage(message: RemeshWorkerInbound, transfer: Transferable[] = []): void {
     this.posted.push({ message, transfer });
@@ -35,9 +36,9 @@ class ScriptedWorker {
   }
 }
 
-async function started(): Promise<{ client: RemeshClient; worker: ScriptedWorker }> {
+async function started(requestTimeoutMs?: number): Promise<{ client: RemeshClient; worker: ScriptedWorker }> {
   const worker = new ScriptedWorker();
-  const pending = RemeshClient.create(CONFIG, { createWorker: () => worker as unknown as Worker });
+  const pending = RemeshClient.create(CONFIG, { createWorker: () => worker as unknown as Worker, requestTimeoutMs });
   worker.reply({ type: 'ready' });
   return { client: await pending, worker };
 }
@@ -121,5 +122,50 @@ describe('RemeshClient (#6232)', () => {
     worker.onerror?.({ message: 'boom' } as ErrorEvent);
     await expect(one).rejects.toThrow(/boom/);
     await expect(two).rejects.toThrow(/boom/);
+  });
+
+  it('stays dead after a worker crash: later requests reject at once instead of hanging', async () => {
+    const { client, worker } = await started();
+    worker.onerror?.({ message: 'boom' } as ErrorEvent);
+    expect(client.alive).toBe(false);
+    expect(worker.terminated).toBe(true);
+    const posted = worker.posted.length;
+    await expect(client.remesh(request())).rejects.toThrow(/boom/);
+    await expect(client.styleWire(new Uint8Array(4))).rejects.toThrow(/boom/);
+    expect(worker.posted.length).toBe(posted);
+  });
+
+  it('a request past its deadline kills the worker and rejects everything in flight', async () => {
+    vi.useFakeTimers();
+    try {
+      const { client, worker } = await started(1_000);
+      const slow = client.remesh(request());
+      const queued = client.remesh(request());
+      const answered = expect(slow).rejects.toThrow(/did not answer within 1000 ms/);
+      const second = expect(queued).rejects.toThrow(/did not answer/);
+      vi.advanceTimersByTime(1_000);
+      await answered;
+      await second;
+      expect(worker.terminated).toBe(true);
+      expect(client.alive).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('answers a style-wire request with the wire the worker sends back', async () => {
+    const { client, worker } = await started();
+    const source = new Uint8Array(4);
+    const pending = client.styleWire(source);
+    const sent = worker.posted.at(-1)!;
+    expect(sent.message).toMatchObject({ type: 'style-wire', source });
+    // The model keeps its source, so it is copied, not transferred.
+    expect(sent.transfer).toEqual([]);
+    const wire = {
+      styleIds: Uint32Array.of(7), styleColors: Uint8Array.of(1, 2, 3, 4),
+      materialElementIds: new Uint32Array(), materialColorCounts: new Uint32Array(), materialColors: new Uint8Array(),
+    };
+    worker.reply({ type: 'style-wire', requestId: worker.requestIds().length + 1, wire });
+    await expect(pending).resolves.toBe(wire);
   });
 });

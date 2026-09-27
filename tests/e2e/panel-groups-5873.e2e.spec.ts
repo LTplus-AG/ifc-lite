@@ -21,7 +21,14 @@ test('#5873 groups the rail and ribbon panels around an authored IFC model', asy
   await expect(rail.locator('[data-panel-group="site"]')).toHaveText('Site');
 
   await page.getByRole('tab', { name: 'Analyze' }).click();
-  await page.getByRole('button', { name: 'Browse panels' }).click();
+  const browserButton = page.getByRole('button', { name: 'Browse panels' });
+  const icon = browserButton.locator('svg').first();
+  await expect(icon).toHaveAttribute('viewBox', '0 0 24 24');
+  const paints = await icon.locator('[fill]').evaluateAll((parts) => parts.map((part) => part.getAttribute('fill')));
+  expect(paints).toContain('currentColor');
+  expect(paints).toContain('var(--viewer-icon-accent)');
+  await expect(icon.locator('[stroke-width="2"]')).toHaveCount(0);
+  await browserButton.click();
   const menu = page.getByRole('menu');
   await expect(menu.locator('[data-panel-group="coordinate"]')).toHaveText('Coordinate');
   await expect(menu.locator('[data-panel-group="site"]')).toHaveText('Site');

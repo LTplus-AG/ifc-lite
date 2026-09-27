@@ -777,4 +777,6 @@ const { meshes, csgFailures } = await client.remesh({
 client.dispose(); // terminates the worker; in-flight requests reject
 ```
 
+`client.styleWire(sourceBytes)` runs one whole-file pre-pass in the worker and returns that style wire, for a model whose load did not keep one; the viewer captures it once per model. A client whose worker fails or does not answer within `requestTimeoutMs` (default 30 s) is dead: `alive` turns false, requests still in flight and any later ones reject at once, and the caller creates a new client.
+
 The meshes come back in the same frame and units as the load, so they can replace the element's load-time meshes directly. `scripts/lib/wasm-remesh-contracts.mjs` pins this. For each wall of several fixtures, including one with an RTC shift, it re-meshes the wall from its subgraph and checks the positions, indices, colours and origins against meshing the whole file.

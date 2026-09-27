@@ -11,7 +11,8 @@
  *   3. `cmd.commit` inside try;
  *   4. tag everything pushed since the snapshot with one batch id, so one
  *      Ctrl+Z reverts the whole commit however many mutations it wrote;
- *   5. ask for a re-mesh of the touched entities (WP1 seam, no-op default);
+ *   5. re-mesh the touched entities through the wasm re-mesh service and
+ *      remember the batch, so undo / redo re-mesh it too (WP1);
  *   6. apply the command's selection.
  *
  * A commit that throws is reversed: its partial mutations are undone as one
@@ -25,9 +26,9 @@ import type { ViewerState } from '@/store';
 import { mutationDenial } from '@/store/mutation-permission';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { mutationsSince, newMutationBatchId, undoStackLengths } from '@/store/slices/mutation-batch-tags';
+import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
+import type { RemeshCause } from '@/lib/remesh/affected-set';
 import type { AuthoringTransaction, CommandContext, CommitResult, ModelingCommand } from './types.js';
-
-export type RemeshCause = 'shape' | 'created' | 'hostsChanged';
 
 export interface RemeshRequest {
   readonly modelId: string;
@@ -38,14 +39,12 @@ export interface RemeshRequest {
 
 export type RequestRemesh = (get: () => ViewerState, request: RemeshRequest) => void;
 
-const noRemesh: RequestRemesh = () => {};
-let requestRemesh: RequestRemesh = noRemesh;
+/** The wasm re-mesh service (#6297): re-mesh now, and again on undo / redo of the batch. */
+const remeshService: RequestRemesh = (get, { modelId, batchId, expressIds, cause }) =>
+  remeshAfterCommit(get, modelId, batchId, expressIds, cause);
+let requestRemesh: RequestRemesh = remeshService;
 
-/**
- * Inject the re-mesh service (WP1, `lib/remesh/remesh-service.ts`). Until it
- * is wired, commits keep today's mesh paths and this seam does nothing.
- * Returns the function that restores the previous handler.
- */
+/** Replace the re-mesh handler (tests). Returns the function that restores the previous one. */
 export function setRequestRemesh(handler: RequestRemesh): () => void {
   const previous = requestRemesh;
   requestRemesh = handler;

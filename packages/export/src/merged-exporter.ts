@@ -31,15 +31,18 @@ import { StepExporter } from './step-exporter.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
 import { planInfrastructureUnify, resolvePrimaryContextState, type PrimaryContextState } from './merged-context.js';
 import { remapEntityText } from './merged-remap.js';
+import { PlannerGuids } from './merged-planner-guids.js';
 import {
-  extractGlobalIdFast,
+  isRelationshipType,
   mintUniqueGuid,
   readLeadingGuid,
   replaceGlobalId,
+  readLocalGuids,
 } from './merged-guid.js';
 import {
   planEmptyContainerDrops,
   EMPTY_MODEL_VIEW,
+  isSpatialContainerType,
   isStructureRelation,
   type EmptyContainerModelView,
 } from './merged-empty-containers.js';
@@ -62,11 +65,6 @@ const SHARED_INFRASTRUCTURE_TYPES = new Set([
   'IFCGEOMETRICREPRESENTATIONCONTEXT',
   'IFCGEOMETRICREPRESENTATIONSUBCONTEXT',
 ]);
-
-/** True for IfcRelationship subtypes (objectified relationships). */
-function isRelationshipType(typeUpper: string): boolean {
-  return typeUpper.startsWith('IFCREL');
-}
 
 /** Relative tolerance for comparing two length unit scale factors. */
 const UNIT_SCALE_TOLERANCE = 1e-6;
@@ -801,6 +799,7 @@ export class MergedExporter {
   ): { byModel: Map<string, Set<number>>; count: number } | null {
     if (!options.dropEmptyContainers) return null;
     const claims = new InverseClaims(options.schema || 'IFC4', isStructureRelation);
+    const guids = new PlannerGuids(scale => this.unitsCompatible(scale, setup.primaryScale), isSpatialContainerType);
     const views: EmptyContainerModelView[] = models.map((model, index) => {
       const source = model.dataStore.source;
       if (!source || source.length === 0) return EMPTY_MODEL_VIEW;
@@ -812,7 +811,11 @@ export class MergedExporter {
       }
       const visibility = this.computeIncludedEntityIds(model, options, entities, source);
       const claimParents = () => {
-        const withheld = { sharedRemap, skipEntityIds: new Set<number>(), relMemberStrip: new Map<number, Set<number>>() };
+        const typeOf = (id: number) => entities.get(id)!.type.toUpperCase(); // GlobalId unification the emit pass is sure to repeat (#5937)
+        const unified = guids.plan({ guids: readLocalGuids(entities, source), typeOf, isFirst: index === 0, compatible: mode.compatible, offset: setup.modelOffsets.get(model.id)!,
+          effectiveScale: mode.effectiveScale, isIncluded: id => visibility === null || visibility.included.has(id), keepsGuids: !needsConversion((model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4', options.schema || 'IFC4'),
+          unifiedEarlier: id => sharedRemap.has(id) || (index > 0 && mode.compatible && setup.firstProjectIds.length > 0 && typeOf(id) === 'IFCPROJECT') });
+        const withheld = { sharedRemap: new Map([...sharedRemap, ...unified]), skipEntityIds: new Set<number>(), relMemberStrip: new Map<number, Set<number>>() };
         this.claimParents(model, withheld, visibility, entities, index > 0 && mode.compatible, setup, claims);
         return withheld;
       };
@@ -1107,11 +1110,7 @@ export class MergedExporter {
     const relMemberStrip = new Map<number, Set<number>>();
 
     // One cheap pass to read each rooted entity's GlobalId (first attribute).
-    const localGuids = new Map<number, string>();
-    for (const [id, ref] of completeIndex) {
-      const guid = extractGlobalIdFast(ref, source);
-      if (guid !== null) localGuids.set(id, guid);
-    }
+    const localGuids = readLocalGuids(completeIndex, source);
 
     if (!isFirstModel && compatible) {
       // Remap this model's IfcProject references → first model's IfcProject.

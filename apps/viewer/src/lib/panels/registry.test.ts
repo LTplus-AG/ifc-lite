@@ -15,7 +15,7 @@ import {
 // Pure routing the Alt+digit keyboard shortcut depends on (#1200/#1208). The
 // hook itself needs a DOM to test; this locks the decision it delegates to.
 describe('workspacePanelForShortcutCode (Alt+digit routing #1200/#1208)', () => {
-  it('Digit1 opens the first panel (Information)', () => {
+  it('Digit1 opens the first panel (Properties)', () => {
     assert.strictEqual(workspacePanelForShortcutCode('Digit1'), WORKSPACE_PANELS[0].id);
     assert.strictEqual(workspacePanelForShortcutCode('Digit1'), 'properties');
   });

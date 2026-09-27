@@ -63,7 +63,7 @@ import { useIfcServer } from './useIfcServer.js';
 import { prepareGlbViewerModel } from './ingest/glbTextureValidation.js';
 import { getMaxExpressId, getViewerSchemaVersion, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
 import { isLandXmlFileName } from './ingest/landXmlSniff.js';
-import { loadLandXmlModel } from './ingest/landXmlLoad.js';
+import { drapeIfGeoRaster, loadLandXmlModel } from './ingest/landXmlLoad.js';
 import { landXmlUnitsRefusalPrompt } from './ingest/landXmlUnitsRefusal.js';
 import { applyFederationOffsetToMesh } from './ingest/federationOffset.js';
 import { boundedIteratorReturn } from './ingest/streamCleanup.js';
@@ -287,6 +287,7 @@ export function useIfcLoader() {
       assumedLinearUnit?: string;
     },
   ) => {
+    const draping = drapeIfGeoRaster(file, setLoading); if (draping) return draping; // #5942: imagery, never a model
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
     // Only a primary (destructive, replace-everything) load bumps the session.
     // Federated adds are independent and run concurrently — they capture the
@@ -2025,9 +2026,9 @@ export function useIfcLoader() {
                 if (target.kind === 'federated') {
                   // No placeholder model exists for a federated add (it is only
                   // registered on success via finalizeModel→addModel), so
-                  // updateModel would no-op and the failure would vanish —
-                  // addModel just returns null. Surface it to the user instead.
-                  toast.error(formatLoadError(err, file.name, 'geometry_processing'));
+                  // updateModel would no-op and addModel returns null. Keep
+                  // the same retryable load error used by every other path.
+                  showLoadError(formatLoadError(err, file.name, 'geometry_processing'), 'geometry_processing');
                 } else {
                   updateModel(modelId, {
                     loadState: 'error',

@@ -6,12 +6,13 @@
  * Relationships display component for IFC element structural relationships.
  */
 
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Link2, Focus } from 'lucide-react';
+import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Link2, Focus, ChevronDown } from 'lucide-react';
 import type { EntityRelationshipsData } from '@ifc-lite/sdk';
 import { useState } from 'react';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
+import { PersistentCollapsible } from './PersistentCollapsible';
 
 interface RelationshipsCardProps {
   relationships: EntityRelationshipsData;
@@ -47,8 +48,8 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
   if (totalCount === 0) return null;
 
   return (
-    <Collapsible defaultOpen className="border-2 border-zinc-300 dark:border-zinc-700 bg-zinc-50/20 dark:bg-zinc-950/20 w-full max-w-full overflow-hidden">
-      <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/30 text-left transition-colors overflow-hidden">
+    <PersistentCollapsible id="relationships" className="border-2 border-zinc-300 dark:border-zinc-700 bg-zinc-50/20 dark:bg-zinc-950/20 w-full max-w-full overflow-hidden">
+      <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/30 text-left transition-colors overflow-hidden">
         <Link2 className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-400 shrink-0" />
         <span className="font-bold text-xs text-zinc-700 dark:text-zinc-300 truncate flex-1 min-w-0">
           {t('properties.relationships.heading')}
@@ -56,6 +57,7 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
         <span className="text-[10px] font-mono bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 shrink-0">
           {formatLocaleNumber(locale, totalCount)}
         </span>
+        <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-zinc-300 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-800">
@@ -134,7 +136,7 @@ export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGrou
           )}
         </div>
       </CollapsibleContent>
-    </Collapsible>
+    </PersistentCollapsible>
   );
 }
 

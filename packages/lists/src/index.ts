@@ -12,6 +12,7 @@ export type {
   ColumnDefinition,
   PropertyCondition,
   ConditionOperator,
+  UnreadableListCondition,
   ListClassificationRef,
   ListGrouping,
   ListGroup,
@@ -30,6 +31,7 @@ export {
 
 // Name pattern matching (Bonsai-style `/regex/` set/property names)
 export { compileNameMatcher, isNamePattern } from './name-pattern.js';
+export { migrateLegacyListConditions } from './legacy-condition-migration.js';
 
 // Column discovery
 export { discoverColumns } from './discovery.js';

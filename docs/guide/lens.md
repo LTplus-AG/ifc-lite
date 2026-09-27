@@ -23,7 +23,8 @@ import { evaluateLens, BUILTIN_LENSES } from '@ifc-lite/lens';
 // columns red, beams blue, slabs yellow, footings green
 const structural = BUILTIN_LENSES.find((l) => l.id === 'lens-structural')!;
 
-const result = evaluateLens(structural, provider);
+declare const selectedByRule: ReadonlyMap<string, ReadonlySet<number>>;
+const result = evaluateLens(structural, provider, selectedByRule);
 
 result.colorMap;      // Map<expressId (number), [r, g, b, a]> (0-1 range)
 result.hiddenIds;     // Set<expressId (number)> from 'hide' rules
@@ -47,30 +48,24 @@ The `provider` is a `LensDataProvider`, an adapter interface over your parsed mo
 | `lens-by-model` | By Model | Auto-colors by source model (federation) |
 | `lens-by-zone` | By Zone | Auto-colors by IfcZone/IfcGroup membership |
 
-## Rule Criteria
+## Rule Filters
 
-`LensCriteria.type` selects the axis, and the matching fields provide the values:
+The viewer Lens editor now authors `FilterGroup[]` chips using the same selector
+as Search and Lists. Saved v1 `criteria` are converted when their meaning is
+exactly representable; other saved conditions remain visible with a warning
+until the user explicitly replaces them. For programmatic evaluation, pass a
+map of rule IDs to selected global IDs as the required third argument to
+`evaluateLens`. Missing rule IDs match nothing. During this migration the old
+`LensCriteria` type and standalone `matchesCriteria` helper remain exported,
+but `evaluateLens` applies only the shared selection map.
 
-| Type | Fields | Matches |
-|------|--------|---------|
-| `ifcType` | `ifcType` | Entity class (e.g. `IfcWall`) |
-| `property` | `propertySet`, `propertyName`, `operator?`, `propertyValue?` | A pset property value |
-| `material` | `materialName` | Associated material |
-| `attribute` | `attributeName`, `attributeValue?` | Direct attribute (Name, ObjectType, ...) |
-| `quantity` | `quantitySet`, `quantityName`, `quantityValue?` | A quantity value |
-| `classification` | `classificationSystem`, `classificationCode?` | Classification reference |
-| `model` | `modelId` | Source model in a federation |
-| `group` | `groupName` | IfcZone/IfcGroup membership |
-
-Operators for value comparison (the `property`, `attribute`, and `quantity` criteria types; the other types ignore `operator`): `equals` (exact; booleans compared case-insensitively), `contains` (case-insensitive substring), `exists` (the property is present at all), `ne` (not equal - a case-insensitive string comparison, not a numeric one), and the numeric comparisons `gt`, `gte`, `lt`, `lte` (both sides parsed with `Number.parseFloat`; a non-numeric or non-finite value fails closed rather than matching). The full list is exported as `LENS_OPERATORS`.
-
-A criterion is either a **leaf** (one of the eight types in the table above) or a **compound**: `type: 'and'` or `type: 'or'` with a `conditions` array of member criteria, each a leaf or another nested compound - e.g. `{ type: 'and', conditions: [{ type: 'ifcType', ifcType: 'IfcWall' }, { type: 'property', propertySet: 'Pset_WallCommon', propertyName: 'FireRating', operator: 'gte', propertyValue: '60' }] }` matches walls with FireRating >= 60. `and` requires every member to match, `or` requires at least one; an empty or missing `conditions` array matches nothing (not everything); nesting is capped at `MAX_COMPOUND_DEPTH` (16), beyond which a compound matches nothing rather than recursing further. This is engine-level support only - the viewer's Lens panel does not yet offer an authoring UI for compound rules, though it displays an imported one read-only.
-
-A property rule matches any entity carrying that property, regardless of class. To test a single entity programmatically, use `matchesCriteria(criteria, globalId, provider)`.
+For a standalone check of a saved v1 condition during migration,
+`matchesCriteria(criteria, globalId, provider)` remains available. It does not
+contribute matches to `evaluateLens`.
 
 ## Worked Example: Color by Fire Rating
 
-Hand-authored rules, one per rating value you care about:
+Hand-authored groups, one rule per rating value you care about:
 
 ```typescript
 import { evaluateLens, type Lens } from '@ifc-lite/lens';
@@ -83,13 +78,13 @@ const fireLens: Lens = {
       id: 'fr-90',
       name: 'REI 90',
       enabled: true,
-      criteria: {
-        type: 'property',
-        propertySet: 'Pset_WallCommon',
-        propertyName: 'FireRating',
-        operator: 'equals',
-        propertyValue: '90',
-      },
+      groups: [{
+        combinator: 'AND',
+        rules: [{
+          kind: 'property', setName: 'Pset_WallCommon', setNameKind: 'literal',
+          propertyName: 'FireRating', propertyNameKind: 'literal', op: 'eq', value: '90',
+        }],
+      }],
       action: 'colorize',
       color: '#E53935',
     },
@@ -97,7 +92,10 @@ const fireLens: Lens = {
   ],
 };
 
-const result = evaluateLens(fireLens, provider);
+// Evaluate each rule's groups with @ifc-lite/rules, then map its rows to
+// global IDs before applying the Lens actions.
+declare const selectedByRule: ReadonlyMap<string, ReadonlySet<number>>;
+const result = evaluateLens(fireLens, provider, selectedByRule);
 ```
 
 Or let auto-color enumerate every distinct rating and build the palette and legend for you:
@@ -141,7 +139,8 @@ const sources = discoverDataSources(provider, { properties: true, materials: tru
 ```typescript
 import { evaluateLens, BUILTIN_LENSES } from '@ifc-lite/lens';
 
-const lensResult = evaluateLens(BUILTIN_LENSES[0], provider);
+declare const selectedByRule: ReadonlyMap<string, ReadonlySet<number>>;
+const lensResult = evaluateLens(BUILTIN_LENSES[0], provider, selectedByRule);
 
 // scene is a SceneContents, from renderer.getScene()
 scene.setColorOverrides(lensResult.colorMap, device, pipeline);
@@ -150,7 +149,7 @@ scene.setColorOverrides(lensResult.colorMap, device, pipeline);
 scene.clearColorOverrides();
 ```
 
-Color overrides are rendered as overlay batches on top of the original geometry, so the base model is never modified; `hiddenIds` is applied separately through your visibility mechanism. Ghosted (unmatched) entries carry a shared ghost color you can detect with `isGhostColor` if you want to filter them out of legends.
+Color overrides are shaded from a per-entity color table during opaque model draws, so the base model is never modified or copied. An eligible opaque mesh that streams in after the call is painted too; `hiddenIds` is applied separately through your visibility mechanism. Ghosted (unmatched) entries carry a shared ghost color you can detect with `isGhostColor` if you want to filter them out of legends.
 
 This is exactly how the viewer wires it: the Lens panel evaluates the active lens, pushes `colorMap` into the store, and the geometry streaming hook calls `scene.setColorOverrides` on the next frame. See [Rendering](rendering.md) for the renderer setup.
 
@@ -158,7 +157,7 @@ This is exactly how the viewer wires it: the Lens panel evaluates the active len
 
 | Export | Description |
 |--------|-------------|
-| `evaluateLens(lens, provider)` | Run rule-based lens, returns `LensEvaluationResult` |
+| `evaluateLens(lens, provider, matchedByRule)` | Apply rule actions to shared evaluator global-ID sets; returns `LensEvaluationResult` |
 | `evaluateAutoColorLens(spec, provider)` | Group-by-value colorization with legend |
 | `matchesCriteria(criteria, globalId, provider)` | Test one entity against one criterion |
 | `discoverClasses(provider)` / `discoverDataSources(provider, categories)` | Populate editor UIs |

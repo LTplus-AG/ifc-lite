@@ -38,6 +38,7 @@ import { posthog } from '@/lib/analytics';
 import { addFootprintToMap, removeFootprintFromMap } from './location-map-footprint';
 import { geocodeSearch, type GeocodeResult } from './location-map-geocode';
 import { loadMaplibre, disposeMap, purgeMapContainer } from './location-map-lifecycle';
+import { LocationMapSearchBar } from './location-map-search';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 /** Position picked on the map, ready to be applied to IfcMapConversion */
@@ -652,8 +653,7 @@ export function LocationMap({
         )}
         {editable && (
           <IconButton
-            label={t('properties.locationMap.searchTooltip')}
-            size="icon-xs"
+            label={t('properties.locationMap.searchTooltip')} size="icon-xs"
             onClick={() => { setSearchOpen(!searchOpen); setSearchQuery(''); setSearchResults([]); }}
             className="text-zinc-400 hover:text-teal-600 dark:hover:text-teal-400"
           >
@@ -661,50 +661,19 @@ export function LocationMap({
           </IconButton>
         )}
       </div>
-
-      {/* Search bar */}
+      {/* Search bar + results dropdown (#5817: the dropdown is now a Radix
+          Popover) — extracted to `location-map-search.tsx`. */}
       {editable && searchOpen && (
-        <div className="px-3 pb-1.5 relative">
-          <div className="flex items-center gap-1">
-            <div className="flex-1 relative">
-              <input
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder={t('properties.locationMap.searchPlaceholder')}
-                className="w-full text-[11px] px-2 py-1 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400 focus:border-teal-400 placeholder:text-zinc-400/60"
-                autoFocus
-                onKeyDown={e => { if (e.key === 'Escape') { setSearchOpen(false); setSearchQuery(''); setSearchResults([]); } }}
-              />
-              {searchLoading && (
-                <Spinner size="xs" className="absolute right-2 top-1/2 -translate-y-1/2 text-teal-500" />
-              )}
-            </div>
-            <button
-              onClick={() => { setSearchOpen(false); setSearchQuery(''); setSearchResults([]); }}
-              className="p-0.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-
-          {/* Search results dropdown */}
-          {searchResults.length > 0 && (
-            <div className="absolute left-3 right-3 top-full z-50 mt-0.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 shadow-lg max-h-[160px] overflow-y-auto">
-              {searchResults.map((r, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleSearchSelect(r)}
-                  className="w-full text-left px-2 py-1.5 text-[10px] text-zinc-700 dark:text-zinc-300 hover:bg-teal-50 dark:hover:bg-teal-950/50 border-b border-zinc-100 dark:border-zinc-800 last:border-0 transition-colors"
-                >
-                  <div className="flex items-start gap-1.5">
-                    <MapPin className="h-3 w-3 text-teal-500 shrink-0 mt-0.5" />
-                    <span className="line-clamp-2">{r.display_name}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <LocationMapSearchBar
+          query={searchQuery}
+          onQueryChange={setSearchQuery}
+          results={searchResults}
+          onResultsChange={setSearchResults}
+          loading={searchLoading}
+          placeholder={t('properties.locationMap.searchPlaceholder')}
+          onSelect={handleSearchSelect}
+          onClose={() => { setSearchOpen(false); setSearchQuery(''); setSearchResults([]); }}
+        />
       )}
 
       {/* Map container */}

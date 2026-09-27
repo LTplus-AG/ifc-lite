@@ -66,7 +66,7 @@ export function RuleSetEditor({ file, onChange, models }: RuleSetEditorProps) {
       </div>
 
       <section className="flex flex-col gap-1.5">
-        <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <h3 className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
           {t('validationEditor.ruleSetEditor.targets')}
         </h3>
         <RuleModelPicker

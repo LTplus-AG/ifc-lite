@@ -80,6 +80,13 @@ export function TourStepCard({ tour, step, stepIndex, targetEl }: TourStepCardPr
 
   const showNext = !step.gate || gateBroken;
   const total = tour.steps.length;
+  // #5817: `role="dialog"` here is deliberately non-modal (no focus trap,
+  // no Radix wrap — a coachmark shouldn't block interacting with the
+  // spotlit target underneath it) and gets its accessible name via
+  // `aria-labelledby`, not a duplicated `aria-label` string, per the
+  // WAI-ARIA dialog pattern. The referenced element carries the exact same
+  // "step N of total: title" text `aria-label` used to hold.
+  const titleId = `tour-step-title-${step.id}`;
 
   return (
     <div
@@ -88,7 +95,7 @@ export function TourStepCard({ tour, step, stepIndex, targetEl }: TourStepCardPr
         cardRef.current = el;
       }}
       role="dialog"
-      aria-label={t('tours.tourStepCard.ariaLabel', { step: stepIndex + 1, total, title: step.title })}
+      aria-labelledby={titleId}
       tabIndex={-1}
       className={cn(
         'pointer-events-auto w-80 rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg outline-none',
@@ -121,7 +128,10 @@ export function TourStepCard({ tour, step, stepIndex, targetEl }: TourStepCardPr
         </IconButton>
       </div>
 
-      <div className="mt-1.5 text-sm font-semibold">{step.title}</div>
+      <span id={titleId} className="sr-only">
+        {t('tours.tourStepCard.ariaLabel', { step: stepIndex + 1, total, title: step.title })}
+      </span>
+      <div className="mt-1.5 text-sm font-semibold" aria-hidden="true">{step.title}</div>
       <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{step.body}</p>
 
       {redockedPanel && (

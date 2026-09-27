@@ -35,7 +35,11 @@ import {
   GROUP_ENTITY_TYPES,
   type AuthoredProduct,
 } from './treeDataBuilder';
+import { findNodePath } from './findNodePath';
 import type { HierarchySortMode } from './types';
+// The changed-test oracle removes new production modules. Keep this file
+// loadable under that revert so the missing projection fails an assertion.
+const projection = await import('./treeProjection').catch(() => null);
 
 function createSpatialNode(
   expressId: number,
@@ -1023,6 +1027,8 @@ describe('buildGroupTree (#1622)', () => {
     // #100 has 3 members (2 ports + 1 duct) but they resolve to ONE geometry row.
     assert.strictEqual(groupNode.elementCount, 1);
     assert.deepStrictEqual(groupNode.globalIds, [202], 'isolation ids = resolved host geometry only');
+    assert.deepStrictEqual(groupNode.memberGlobalIds, [201, 202, 203],
+      'selection targets all actual IfcRelAssignsToGroup members, including geometry-less ports');
     const memberRows = nodes.filter((n) => n.type === 'group-member' && n.id.startsWith('groupmember-legacy-100-'));
     assert.strictEqual(memberRows.length, 1);
     assert.strictEqual(memberRows[0].expressIds[0], 202, 'the duct, not the ports');
@@ -1592,4 +1598,119 @@ describe('type-group / ifc-type nodes — memberGlobalIds (deep-review follow-up
     assert.deepStrictEqual(typeNode.memberGlobalIds, [10]);
     assert.deepStrictEqual(typeNode.globalIds, [11, 12]);
   });
+});
+
+describe('findNodePath (#5881)', () => {
+  const expandAll = { has: () => true };
+
+  it('finds a leaf several levels deep and returns its ancestor id chain in order', () => {
+    const dataStore = createSearchDataStore();
+    const expanded = buildTreeData(new Map(), dataStore, expandAll, false, []);
+    const found = findNodePath(expanded, (node) => node.name === 'Target Wall');
+    assert.ok(found);
+    assert.deepStrictEqual(
+      expanded.filter((n) => found.ancestorIds.includes(n.id)).map((n) => n.name),
+      ['Project', 'Site', 'Building', 'Storey 2'],
+    );
+    assert.strictEqual(expanded[found.targetIndex].name, 'Target Wall');
+    assert.strictEqual(found.targetId, expanded[found.targetIndex].id);
+  });
+
+  it('returns null when nothing matches', () => {
+    const dataStore = createSearchDataStore();
+    const expanded = buildTreeData(new Map(), dataStore, expandAll, false, []);
+    assert.strictEqual(findNodePath(expanded, (node) => node.name === 'Nonexistent'), null);
+  });
+
+  it('finds a node inside a federated model contribution only', () => {
+    useViewerStore.setState({ models: new Map() });
+    const offsetA = useViewerStore.getState().registerModelOffset('search-A', 8);
+    const offsetB = useViewerStore.getState().registerModelOffset('search-B', 8);
+    const modelA: FederatedModel = {
+      ...createModel(offsetA),
+      id: 'search-A',
+      name: 'Model A',
+      ifcDataStore: createSortStoreyModelDataStore([7], { 7: 'Wall A' }),
+      maxExpressId: 7,
+    };
+    const modelB: FederatedModel = {
+      ...createModel(offsetB),
+      id: 'search-B',
+      name: 'Model B',
+      ifcDataStore: createSortStoreyModelDataStore([7], { 7: 'Target Wall B' }),
+      maxExpressId: 7,
+    };
+    const models = new Map<string, FederatedModel>([['search-A', modelA], ['search-B', modelB]]);
+    useViewerStore.setState({ models });
+    const unified = buildUnifiedStoreys(models, 'name-asc');
+    const expanded = buildTreeData(models, null, expandAll, true, unified);
+    const targetGlobalId = offsetB + 7;
+
+    const found = findNodePath(
+      expanded,
+      (node) => node.type === 'element' && node.globalIds.includes(targetGlobalId),
+    );
+    assert.ok(found);
+    // The hit is under a unified storey, which the flat array lists BEFORE
+    // 'models-header' (the per-model MODELS section comes after the unified
+    // storeys) — so this hit's own ancestor chain never sees it, matching
+    // filterNodes's 'keeps a federated hit under its own model contribution
+    // only' test.
+    assert.deepStrictEqual(found.ancestorIds, [
+      `unified-${unified[0].key}`,
+      'contrib-search-B-4',
+    ]);
+    assert.strictEqual(expanded[found.targetIndex].id, 'element-search-B-7');
+  });
+});
+
+describe('cached structural tree projection (#5886)', () => {
+  const allExpanded = { has: () => true };
+
+  for (const modelCount of [1, 2]) {
+    for (const mode of ['spatial', 'type', 'ifc-type', 'material', 'groups'] as const) {
+      it(`preserves every visible row and field through scripted expansion in ${mode} mode with ${modelCount} model(s)`, () => {
+        assert.ok(projection, 'the structural tree projection must be available');
+        const makeStore = mode === 'spatial' ? createDataStore
+          : mode === 'material' ? createTypedMaterialDataStore
+          : mode === 'groups' ? createGroupDataStore
+          : createDecompositionDataStore;
+        const models = new Map<string, FederatedModel>();
+        for (let i = 0; i < modelCount; i++) {
+          const id = `projection-${i}`;
+          models.set(id, { ...createModel(i * 1000), id, name: `${id}.ifc`, ifcDataStore: makeStore() });
+        }
+        useViewerStore.setState({ models });
+        const isMultiModel = modelCount > 1;
+        const unified = mode === 'spatial' ? buildUnifiedStoreys(models, 'name-asc') : [];
+        const geometry = new Set<number>([11, 12, 14, 202, 301, 302, 1011, 1012, 1014, 1202, 1301, 1302]);
+        const build = (expanded: { has(id: string): boolean }) => {
+          if (mode === 'spatial') return buildTreeData(models, null, expanded, isMultiModel, unified, 'name-asc');
+          if (mode === 'type') return buildTypeTree(models, null, expanded, isMultiModel, geometry);
+          if (mode === 'ifc-type') return buildIfcTypeTree(models, null, expanded, isMultiModel, geometry);
+          if (mode === 'material') return buildMaterialTree(models, null, expanded, isMultiModel);
+          return buildGroupTree(models, null, expanded, isMultiModel, geometry);
+        };
+
+        const structure = build(allExpanded);
+        const index = projection.indexHierarchyTree(structure);
+        const expandable = structure.filter((node) => node.hasChildren).map((node) => node.id);
+        assert.ok(structure.length > 0, `${mode} fixture must have rows`);
+        if (mode !== 'material') assert.ok(expandable.length > 0, `${mode} fixture must have expandable rows`);
+        const stages = [
+          new Set<string>(),
+          new Set(expandable.slice(0, 1)),
+          new Set(expandable.slice(0, Math.min(3, expandable.length))),
+          new Set(expandable),
+        ];
+        for (const expanded of stages) {
+          assert.deepStrictEqual(
+            projection.flattenVisibleHierarchy(index, expanded),
+            build(expanded),
+            `${mode} ${modelCount}-model visible rows must match the old builder for ${expanded.size} expanded nodes`,
+          );
+        }
+      });
+    }
+  }
 });

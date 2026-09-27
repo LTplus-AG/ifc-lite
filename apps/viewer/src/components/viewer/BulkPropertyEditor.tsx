@@ -8,11 +8,10 @@
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { Search, Play, Eye, Filter, Plus, Trash2, Building2, Layers, Tag } from 'lucide-react';
+import { Play, Eye, Filter, Tag } from 'lucide-react';
+
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -43,7 +42,6 @@ import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { PropertyValueType } from '@ifc-lite/data';
 import {
-  BULK_WRITABLE_ATTRIBUTES,
   BulkQueryEngine,
   MutablePropertyView,
   type SelectionCriteria,
@@ -56,21 +54,21 @@ import {
 import { extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
-import { FILTER_OPERATORS, IFC_TYPE_MAP, classTargetEnums, presentTypeEnums } from './bulk-property-editor-options';
+import { IFC_TYPE_MAP, classTargetEnums, presentTypeEnums } from './bulk-property-editor-options';
+import { BulkQueryCriteria, type PropertyFilterUI } from './BulkQueryCriteria';
+
 import { defaultAuthoringModelId, recordRun } from '@/lib/model-placement/history';
 import { parseBulkSetPropertyValue, type BulkParseResult } from './bulk-property-value';
 import { BulkExecutionResult, type BulkRuntimeFailure } from './BulkExecutionResult';
 import { BulkExecutionProgress } from './BulkExecutionProgress';
+import { BulkActionConfig } from './bulk-property-editor-action-config';
+import { Field } from '@/components/ui/field';
+import { useBulkTargets } from './useBulkTargets';
+import type { BulkTargetSource } from './bulk-targets';
+import { newMutationBatchId } from '@/store/slices/mutation-batch-tags';
+
 
 export { parseBulkSetPropertyValue } from './bulk-property-value';
-
-interface PropertyFilterUI {
-  id: string;
-  psetName: string;
-  propName: string;
-  operator: FilterOperator;
-  value: string;
-}
 
 type ActionType = 'SET_PROPERTY' | 'DELETE_PROPERTY' | 'SET_ATTRIBUTE';
 
@@ -101,6 +99,8 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
 
   const [open, setOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
+  const [targetSource, setTargetSource] = useState<BulkTargetSource>('query');
+  const targetGroups = useBulkTargets(open, targetSource, models);
 
   // Selection criteria
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
@@ -281,6 +281,32 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     );
   }, [open, selectedModel, selectedModelId, mutationViews, canCollabEdit]);
 
+  // Non-query sources can span models; each must write through its own overlay.
+  useEffect(() => {
+    if (!open || targetSource === 'query') return;
+    for (const modelId of targetGroups.keys()) {
+      const dataStore = models.get(modelId)?.ifcDataStore;
+      if (!dataStore || getMutationView(modelId)) continue;
+      const view = new MutablePropertyView(dataStore.properties || null, modelId);
+      configureMutationView(view, dataStore);
+      registerMutationView(modelId, view);
+    }
+  }, [open, targetSource, targetGroups, models, getMutationView, registerMutationView]);
+
+  const targetEngines = useMemo(() => {
+    const engines = new Map<string, BulkQueryEngine>();
+    if (!open || targetSource === 'query') return engines;
+    for (const modelId of targetGroups.keys()) {
+      const dataStore = models.get(modelId)?.ifcDataStore;
+      const view = mutationViews.get(modelId);
+      if (!dataStore || !view) continue;
+      engines.set(modelId, new BulkQueryEngine(dataStore.entities, view,
+        dataStore.spatialHierarchy || null, dataStore.properties || null,
+        dataStore.strings || null, canCollabEdit, dataStore.schemaVersion));
+    }
+    return engines;
+  }, [open, targetSource, targetGroups, models, mutationViews, canCollabEdit]);
+
   // Build selection criteria using pre-computed typeEnum mapping (no entity scan needed)
   const currentCriteria = useMemo((): SelectionCriteria => {
     const criteria: SelectionCriteria = {};
@@ -349,7 +375,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     if (selectTimerRef.current) clearTimeout(selectTimerRef.current);
     if (discoveryTimerRef.current) clearTimeout(discoveryTimerRef.current);
 
-    if (!queryEngine) {
+    if (!queryEngine || targetSource !== 'query') {
       setIsComputing(false);
       setMatchResult({ count: 0, psets: new Map(), allProps: new Set() });
       return;
@@ -419,9 +445,11 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       if (selectTimerRef.current) clearTimeout(selectTimerRef.current);
       if (discoveryTimerRef.current) clearTimeout(discoveryTimerRef.current);
     };
-  }, [queryEngine, currentCriteria, selectedModel]);
+  }, [queryEngine, currentCriteria, selectedModel, targetSource]);
 
-  const liveMatchCount = matchResult.count;
+  const liveMatchCount = targetSource === 'query' ? matchResult.count
+    : [...targetGroups.values()].reduce((count, ids) => count + ids.length, 0);
+  const targetsReady = targetSource === 'query' ? !!queryEngine : targetEngines.size === targetGroups.size;
   const discoveredProperties = { psets: matchResult.psets, allProps: matchResult.allProps };
 
   // Flatten discovered properties for selectors
@@ -479,7 +507,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
 
   // Preview query
   const handlePreview = useCallback(() => {
-    if (!queryEngine) return;
+    if (!targetsReady) return;
 
     setPreviewResult(null);
     setExecuteResult(null);
@@ -495,17 +523,19 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     }
 
     try {
-      const result = queryEngine.preview({ select: currentCriteria, action: built.action });
+      const result = targetSource === 'query' && queryEngine
+        ? queryEngine.preview({ select: currentCriteria, action: built.action })
+        : { matchedEntityIds: [], matchedCount: liveMatchCount, estimatedMutations: liveMatchCount };
       setPreviewResult(result);
     } catch (error) {
       console.error('Preview failed:', error);
       setPreviewResult({ matchedEntityIds: [], matchedCount: 0, estimatedMutations: 0 });
     }
-  }, [queryEngine, currentCriteria, buildAction]);
+  }, [queryEngine, targetsReady, targetSource, liveMatchCount, currentCriteria, buildAction]);
 
   // Execute bulk update — chunked so the UI stays responsive with a live progress bar
   const handleExecute = useCallback(async () => {
-    if (!queryEngine || liveMatchCount === 0 || !canEditInSession) return;
+    if (!targetsReady || liveMatchCount === 0 || !canEditInSession) return;
 
     const built = buildAction();
     // Refuse before touching a single entity — one bad value must not half-apply across the selection.
@@ -528,8 +558,10 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
 
     try {
       // Step 1: select matching IDs
-      const entityIds = queryEngine.select(currentCriteria);
-      const total = entityIds.length;
+      const targets = targetSource === 'query' && queryEngine
+        ? queryEngine.select(currentCriteria).map((id) => ({ modelId: selectedModelId, id }))
+        : [...targetGroups].flatMap(([modelId, ids]) => ids.map((id) => ({ modelId, id })));
+      const total = targets.length;
       setExecuteProgress({ done: 0, total });
 
       // Step 2: chunked mutation — process CHUNK_SIZE entities then yield to browser
@@ -537,38 +569,59 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       const mutations: import('@ifc-lite/mutations').BulkQueryResult['mutations'] = [];
       const errors: string[] = [];
       const failures: BulkRuntimeFailure[] = [];
-
       let processed = 0;
       // The engine writes straight to the view: record each chunk as it lands (#5861, #5958).
-      const record = recordRun(useViewerStore.getState, selectedModelId);
+      const batchId = newMutationBatchId();
+      const recorders = new Map<string, ReturnType<typeof recordRun>>();
+      const activeModelIdAtStart = useViewerStore.getState().activeModelId;
       for (let i = 0; i < total; i += CHUNK_SIZE) {
         if (executeCancelRef.current) break;
 
         const end = Math.min(i + CHUNK_SIZE, total);
         const chunk: typeof mutations = [];
+        const byModel = new Map<string, typeof mutations>();
         for (let j = i; j < end; j++) {
+          const { modelId, id } = targets[j];
           try {
-            const mutation = queryEngine.applyAction(entityIds[j], action);
-            if (mutation) chunk.push(mutation);
+            const engine = targetSource === 'query' ? queryEngine : targetEngines.get(modelId);
+            if (!engine) throw new Error(t('bulkPropertyEditor.modelUnavailable', { modelId }));
+            const mutation = engine.applyAction(id, action);
+            if (mutation) {
+              chunk.push(mutation);
+              const group = byModel.get(modelId) ?? [];
+              group.push(mutation);
+              byModel.set(modelId, group);
+            }
           } catch (error) {
             const detail = error instanceof Error ? error.message : undefined;
             errors.push(t('bulkPropertyEditor.entityError', {
-              id: entityIds[j],
+              id,
               detail: detail ?? t('bulkPropertyEditor.unknownError'),
             }));
-            failures.push({ kind: 'entity', id: entityIds[j], detail });
+            failures.push({ kind: 'entity', id, detail });
           }
         }
 
         mutations.push(...chunk);
-        record(chunk);
+        for (const [modelId, group] of byModel) {
+          let record = recorders.get(modelId);
+          if (!record) {
+            record = recordRun(useViewerStore.getState, modelId, batchId);
+            recorders.set(modelId, record);
+          }
+          record(group);
+        }
 
         processed = end;
         setExecuteProgress({ done: end, total });
         // Yield to browser so progress bar and spinner update
         await new Promise(r => setTimeout(r, 0));
       }
-
+      const state = useViewerStore.getState();
+      const firstRecordedModelId = recorders.keys().next().value;
+      if (firstRecordedModelId && state.activeModelId === activeModelIdAtStart
+        && (!state.activeModelId || !recorders.has(state.activeModelId))
+        && state.models.has(firstRecordedModelId)) state.setActiveModel(firstRecordedModelId);
       const cancelled = executeCancelRef.current && processed < total; // a cancel in the last yield stopped nothing (#5958)
       if (cancelled) failures.push({ kind: 'cancelled', done: processed, total });
       const result: BulkQueryResult = {
@@ -594,7 +647,8 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       setIsExecuting(false);
       setExecuteProgress(null);
     }
-  }, [queryEngine, liveMatchCount, canEditInSession, currentCriteria, buildAction, selectedModelId, t]);
+  }, [queryEngine, targetEngines, targetGroups, targetSource, targetsReady,
+    liveMatchCount, canEditInSession, currentCriteria, buildAction, selectedModelId, t]);
 
   // Reset form
   const handleReset = useCallback(() => {
@@ -639,10 +693,18 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   useEffect(() => {
     if (executeResult) { setExecuteDirty(true); setExecuteResult(null); }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only fire on config changes
-  }, [selectedTypes, selectedStoreys, namePattern, filters, actionType, targetPset, targetProp, targetValue, valueType]);
+  }, [targetSource, targetGroups, selectedModelId, selectedTypes, selectedStoreys, namePattern,
+    filters, actionType, targetPset, targetProp, targetValue, valueType]);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(nextOpen) => {
+      setOpen(nextOpen);
+      if (nextOpen) {
+        const selection = useViewerStore.getState();
+        setTargetSource(selection.models.size > 0
+          && (selection.selectedEntityIds.size > 0 || selection.selectedEntityId !== null) ? 'selection' : 'query');
+      }
+    }}>
       <DialogTrigger asChild>
         {trigger || (
           <Button variant="outline" size="sm">
@@ -663,16 +725,27 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
         </DialogHeader>
 
         <div ref={scrollAreaRef} className="flex-1 overflow-y-auto px-6 py-4">
-        {isInitializing ? (
+        {isInitializing && targetSource === 'query' ? (
           <div className="flex items-center justify-center py-12 gap-2 text-muted-foreground">
             <Spinner size="lg" />
             <span className="text-sm">{t('bulkPropertyEditor.loading')}</span>
           </div>
         ) : (
         <div className="space-y-6">
-          {/* Model selector */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">{t('bulkPropertyEditor.model')}</Label>
+            <Label className="text-sm font-medium">{t('bulkPropertyEditor.targetSource')}</Label>
+            <Select value={targetSource} onValueChange={(value) => setTargetSource(value as BulkTargetSource)}>
+              <SelectTrigger aria-label={t('bulkPropertyEditor.targetSource')}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="selection">{t('bulkPropertyEditor.sourceSelection')}</SelectItem>
+                <SelectItem value="search">{t('bulkPropertyEditor.sourceSearch')}</SelectItem>
+                <SelectItem value="query">{t('bulkPropertyEditor.sourceQuery')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Model selector */}
+          {targetSource === 'query' && <Field label={t('bulkPropertyEditor.model')}>
             <Select value={selectedModelId} onValueChange={setSelectedModelId}>
               <SelectTrigger>
                 <SelectValue placeholder={t('bulkPropertyEditor.selectModel')} />
@@ -683,150 +756,23 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </Field>}
+
 
           <Separator />
 
-          {/* Selection Criteria */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium flex items-center gap-2">
-                <Search className="h-4 w-4" />
-                {t('bulkPropertyEditor.selectionCriteria')}
-              </Label>
-              <Badge variant={liveMatchCount > 0 ? 'default' : 'secondary'} className="text-xs">
-                {isComputing && <Spinner size="xs" className="mr-1" />}
-                {t('bulkPropertyEditor.matched', {
-                  count: liveMatchCount,
-                  countDisplay: formatLocaleNumber(locale, liveMatchCount),
-                })}
-              </Badge>
-            </div>
+          {targetSource === 'query' && <BulkQueryCriteria
+            liveMatchCount={liveMatchCount} isComputing={isComputing}
+            availableTypes={availableTypes} selectedTypes={selectedTypes} setSelectedTypes={setSelectedTypes}
+            availableStoreys={availableStoreys} selectedStoreys={selectedStoreys} setSelectedStoreys={setSelectedStoreys}
+            namePattern={namePattern} setNamePattern={setNamePattern}
+            filters={filters} addFilter={addFilter} removeFilter={removeFilter} updateFilter={updateFilter}
+          />}
 
-            {/* Entity type filter */}
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">{t('bulkPropertyEditor.entityTypes')}</Label>
-              <div className="flex flex-wrap gap-1">
-                {availableTypes.length > 0 ? (
-                  availableTypes.map(({ ifcType, label }) => (
-                    <Badge
-                      key={ifcType}
-                      variant={selectedTypes.includes(ifcType) ? 'default' : 'outline'}
-                      className="cursor-pointer text-xs"
-                      onClick={() => {
-                        setSelectedTypes(prev =>
-                          prev.includes(ifcType)
-                            ? prev.filter(t => t !== ifcType)
-                            : [...prev, ifcType]
-                        );
-                      }}
-                    >
-                      <Building2 className="h-3 w-3 mr-1" />
-                      {label}
-                    </Badge>
-                  ))
-                ) : (
-                  <span className="text-xs text-muted-foreground">{t('bulkPropertyEditor.noTypes')}</span>
-                )}
-              </div>
-            </div>
+          {targetSource !== 'query' && <Badge variant={liveMatchCount ? 'default' : 'secondary'}>
+            {t('bulkPropertyEditor.matched', { count: liveMatchCount, countDisplay: formatLocaleNumber(locale, liveMatchCount) })}
+          </Badge>}
 
-            {/* Storey filter */}
-            {availableStoreys.length > 0 && (
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">{t('bulkPropertyEditor.storeys')}</Label>
-                <div className="flex flex-wrap gap-1">
-                  {availableStoreys.map((storey) => (
-                    <Badge
-                      key={storey.id}
-                      variant={selectedStoreys.includes(storey.id) ? 'default' : 'outline'}
-                      className="cursor-pointer text-xs"
-                      onClick={() => {
-                        setSelectedStoreys(prev =>
-                          prev.includes(storey.id)
-                            ? prev.filter(s => s !== storey.id)
-                            : [...prev, storey.id]
-                        );
-                      }}
-                    >
-                      <Layers className="h-3 w-3 mr-1" />
-                      {storey.name}
-                      {storey.elevation !== undefined && (
-                        <span className="ml-1 opacity-60">
-                          {t('bulkPropertyEditor.storeyElevation', {
-                            sign: storey.elevation >= 0 ? '+' : '',
-                            value: formatLocaleNumber(locale, storey.elevation, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
-                          })}
-                        </span>
-                      )}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Name pattern filter */}
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">{t('bulkPropertyEditor.namePattern')}</Label>
-              <Input
-                placeholder={t('bulkPropertyEditor.namePatternPlaceholder')}
-                value={namePattern}
-                onChange={(e) => setNamePattern(e.target.value)}
-                className="h-8 text-sm"
-              />
-            </div>
-
-            {/* Property filters */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs text-muted-foreground">{t('bulkPropertyEditor.propertyFilters')}</Label>
-                <Button variant="ghost" size="sm" onClick={addFilter}>
-                  <Plus className="h-3 w-3 mr-1" />
-                  {t('bulkPropertyEditor.addFilter')}
-                </Button>
-              </div>
-              {filters.map((filter) => (
-                <div key={filter.id} className="flex items-center gap-2 p-2 border rounded-md bg-muted/30">
-                  <Input
-                    placeholder={t('bulkPropertyEditor.psetOptional')}
-                    value={filter.psetName}
-                    onChange={(e) => updateFilter(filter.id, 'psetName', e.target.value)}
-                    className="h-8 text-xs w-28"
-                  />
-                  <Input
-                    placeholder={t('bulkPropertyEditor.propertyName')}
-                    value={filter.propName}
-                    onChange={(e) => updateFilter(filter.id, 'propName', e.target.value)}
-                    className="h-8 text-xs flex-1"
-                  />
-                  <Select
-                    value={filter.operator}
-                    onValueChange={(v) => updateFilter(filter.id, 'operator', v)}
-                  >
-                    <SelectTrigger className="h-8 w-28">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {FILTER_OPERATORS.map((op) => (
-                        <SelectItem key={op.value} value={op.value}>{t(op.labelKey)}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {filter.operator !== 'IS_NULL' && filter.operator !== 'IS_NOT_NULL' && (
-                    <Input
-                      placeholder={t('bulkPropertyEditor.value')}
-                      value={filter.value}
-                      onChange={(e) => updateFilter(filter.id, 'value', e.target.value)}
-                      className="h-8 text-xs w-20"
-                    />
-                  )}
-                  <IconButton label={t('bulkPropertyEditor.removeFilter')} className="h-8 w-8" onClick={() => removeFilter(filter.id)}>
-                    <Trash2 className="h-3 w-3 text-destructive" />
-                  </IconButton>
-                </div>
-              ))}
-            </div>
-          </div>
 
           <Separator />
 
@@ -837,117 +783,20 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
               {t('bulkPropertyEditor.action')}
             </Label>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">{t('bulkPropertyEditor.actionType')}</Label>
-                <Select value={actionType} onValueChange={(v) => { if ((v === 'SET_ATTRIBUTE') !== (actionType === 'SET_ATTRIBUTE')) setTargetProp(''); setActionType(v as ActionType); }}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="SET_PROPERTY">{t('bulkPropertyEditor.setProperty')}</SelectItem>
-                    <SelectItem value="DELETE_PROPERTY">{t('bulkPropertyEditor.deleteProperty')}</SelectItem>
-                    <SelectItem value="SET_ATTRIBUTE">{t('bulkPropertyEditor.setAttribute')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {actionType !== 'SET_ATTRIBUTE' && (
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">
-                    {t('bulkPropertyEditor.propertySet')}
-                    {psetOptions.length > 0 && (
-                      <span className="ml-1 text-muted-foreground">
-                        {t('bulkPropertyEditor.found', { count: psetOptions.length, countDisplay: formatLocaleNumber(locale, psetOptions.length) })}
-                      </span>
-                    )}
-                  </Label>
-                  <Input
-                    list="pset-options"
-                    placeholder={t('bulkPropertyEditor.psetPlaceholder')}
-                    value={targetPset}
-                    onChange={(e) => setTargetPset(e.target.value)}
-                  />
-                  <datalist id="pset-options">
-                    {psetOptions.map((pset) => (
-                      <option key={pset} value={pset} />
-                    ))}
-                  </datalist>
-                </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">
-                  {actionType === 'SET_ATTRIBUTE' ? t('bulkPropertyEditor.attribute') : t('bulkPropertyEditor.propertyNameLabel')}
-                  {actionType !== 'SET_ATTRIBUTE' && propOptions.length > 0 && (
-                    <span className="ml-1 text-muted-foreground">
-                      {t('bulkPropertyEditor.found', { count: propOptions.length, countDisplay: formatLocaleNumber(locale, propOptions.length) })}
-                    </span>
-                  )}
-                </Label>
-                {actionType === 'SET_ATTRIBUTE' ? (
-                  <Select value={targetProp} onValueChange={setTargetProp}>
-                    <SelectTrigger>
-                      <SelectValue placeholder={t('bulkPropertyEditor.selectAttribute')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {/* Exact EXPRESS names, never translated or aliased; the engine's own list (#5867). */}
-                      {BULK_WRITABLE_ATTRIBUTES.map((attribute) => (
-                        <SelectItem key={attribute} value={attribute}>{attribute}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <>
-                    <Input
-                      list="prop-options"
-                      placeholder={t('bulkPropertyEditor.propertyPlaceholder')}
-                      value={targetProp}
-                      onChange={(e) => setTargetProp(e.target.value)}
-                    />
-                    <datalist id="prop-options">
-                      {propOptions.map((prop) => (
-                        <option key={prop} value={prop} />
-                      ))}
-                    </datalist>
-                  </>
-                )}
-              </div>
-
-              {actionType !== 'DELETE_PROPERTY' && (
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">{t('bulkPropertyEditor.newValue')}</Label>
-                  <Input
-                    placeholder={t('bulkPropertyEditor.value')}
-                    value={targetValue}
-                    onChange={(e) => setTargetValue(e.target.value)}
-                  />
-                </div>
-              )}
-            </div>
-
-            {actionType === 'SET_PROPERTY' && (
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">{t('bulkPropertyEditor.valueType')}</Label>
-                <Select
-                  value={valueType.toString()}
-                  onValueChange={(v) => setValueType(parseInt(v) as PropertyValueType)}
-                >
-                  <SelectTrigger className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={PropertyValueType.String.toString()}>{t('bulkPropertyEditor.string')}</SelectItem>
-                    <SelectItem value={PropertyValueType.Real.toString()}>{t('bulkPropertyEditor.real')}</SelectItem>
-                    <SelectItem value={PropertyValueType.Integer.toString()}>{t('bulkPropertyEditor.integer')}</SelectItem>
-                    <SelectItem value={PropertyValueType.Boolean.toString()}>{t('bulkPropertyEditor.boolean')}</SelectItem>
-                    <SelectItem value={PropertyValueType.Label.toString()}>{t('bulkPropertyEditor.label')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <BulkActionConfig
+              actionType={actionType}
+              onActionTypeChange={setActionType}
+              targetPset={targetPset}
+              onTargetPsetChange={setTargetPset}
+              targetProp={targetProp}
+              onTargetPropChange={setTargetProp}
+              targetValue={targetValue}
+              onTargetValueChange={setTargetValue}
+              valueType={valueType}
+              onValueTypeChange={setValueType}
+              psetOptions={psetOptions}
+              propOptions={propOptions}
+            />
           </div>
 
           {/* Preview Result */}
@@ -990,13 +839,13 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
               <Button variant="outline" onClick={handleReset}>
                 {t('bulkPropertyEditor.reset')}
               </Button>
-              <Button variant="secondary" onClick={handlePreview} disabled={!queryEngine}>
+              <Button variant="secondary" onClick={handlePreview} disabled={!targetsReady}>
                 <Eye className="h-4 w-4 mr-2" />
                 {t('bulkPropertyEditor.preview')}
               </Button>
               <Button
                 onClick={handleExecute}
-                disabled={!canEditInSession || liveMatchCount === 0 || !targetProp || (actionType !== 'SET_ATTRIBUTE' && !targetPset) || !executeDirty}
+                disabled={!canEditInSession || !targetsReady || liveMatchCount === 0 || !targetProp || (actionType !== 'SET_ATTRIBUTE' && !targetPset) || !executeDirty}
                 title={canEditInSession ? undefined : t('bulkPropertyEditor.editorAccessRequired')}
               >
                 <Play className="h-4 w-4 mr-2" />

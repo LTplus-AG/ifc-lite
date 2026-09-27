@@ -7,10 +7,20 @@
  */
 
 import { trackExportCompleted } from '@/lib/analytics';
-import type { ListDefinition } from '@ifc-lite/lists';
+import { migrateLegacyListConditions, type ListDefinition } from '@ifc-lite/lists';
 import { downloadFile, sanitizeFilename } from '../export/download.js';
 
 const STORAGE_KEY = 'ifc-lite-lists';
+
+/** Save the canonical group form alongside v1 conditions during the staged
+ * migration. The old evaluator still reads conditions until #5894's runtime
+ * stack lands; unreadable rows remain explicit instead of disappearing. */
+function withMigratedGroups(definition: ListDefinition): ListDefinition {
+  if (typeof definition !== 'object' || definition === null) return definition;
+  if (definition.groups !== undefined || !Array.isArray(definition.conditions)) return definition;
+  const { groups, unreadableConditions } = migrateLegacyListConditions(definition.conditions);
+  return { ...definition, groups, ...(unreadableConditions.length ? { unreadableConditions } : {}) };
+}
 
 export function loadListDefinitions(): ListDefinition[] {
   try {
@@ -22,7 +32,7 @@ export function loadListDefinitions(): ListDefinition[] {
     // result (`[...listDefinitions, def]`) on the very first list the user
     // creates, so anything non-array here throws "is not iterable" and
     // bricks the List panel at boot instead of just starting empty.
-    return Array.isArray(parsed) ? (parsed as ListDefinition[]) : [];
+    return Array.isArray(parsed) ? (parsed as ListDefinition[]).map(withMigratedGroups) : [];
   } catch {
     return [];
   }
@@ -57,7 +67,7 @@ export function importListDefinition(file: File): Promise<ListDefinition> {
         def.id = crypto.randomUUID();
         def.createdAt = Date.now();
         def.updatedAt = Date.now();
-        resolve(def);
+        resolve(withMigratedGroups(def));
       } catch {
         reject(new Error('Failed to parse list definition file'));
       }

@@ -213,4 +213,15 @@ describe('landXmlExportPlan (#4937)', () => {
     assert.equal(plan?.covered, false);
     assert.equal(plan?.mergedUnsupported, false);
   });
+
+  it('announces draped file imagery for export, and tile imagery as viewer-only (#5942)', () => {
+    const drape = (source: 'file' | 'tiles') => ({
+      sourceName: 'ortho.png', source, imageCrs: 'EPSG:2056', coveredVertices: 67, totalVertices: 105,
+    });
+    const file = landXmlExportPlan(new Map(), { ...landXmlModel(document()), terrainImagery: drape('file') } as never, false);
+    assert.deepEqual(file?.imagery, { name: 'ortho.png', source: 'file', crs: 'EPSG:2056', coveredFraction: 67 / 105 });
+    const tiles = landXmlExportPlan(new Map(), { ...landXmlModel(document()), terrainImagery: drape('tiles') } as never, false);
+    assert.equal(tiles?.imagery?.source, 'tiles');
+    assert.equal(landXmlExportPlan(new Map(), landXmlModel(document()) as never, false)?.imagery, null);
+  });
 });

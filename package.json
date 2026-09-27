@@ -54,6 +54,7 @@
     "check:ifc4-express-corrections": "node scripts/generate-ifc4-express-corrections.mjs --check",
     "check:ifc4-required-slots": "node scripts/generate-ifc4-required-slots.mjs --check",
     "check:enum-reconciliation": "node scripts/generate-enum-reconciliation.mjs --check",
+    "check:step-log-tables": "node scripts/generate-step-log-tables.mjs --check",
     "lint:module-size-baseline": "node scripts/check-module-size.mjs --update",
     "check:unbounded-frame-wait": "node scripts/check-unbounded-frame-wait.mjs",
     "check:icon-button-adoption": "node scripts/check-icon-button-adoption.mjs",
@@ -175,7 +176,8 @@
     },
     "patchedDependencies": {
       "vite-plugin-top-level-await@1.6.0": "patches/vite-plugin-top-level-await@1.6.0.patch",
-      "@swc/core@1.15.8": "patches/@swc__core@1.15.8.patch"
+      "@swc/core@1.15.8": "patches/@swc__core@1.15.8.patch",
+      "@radix-ui/react-popover@1.1.23": "patches/@radix-ui__react-popover@1.1.23.patch"
     }
   }
 }

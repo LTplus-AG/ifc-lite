@@ -65,7 +65,6 @@ const MEASURE_POINT_READOUT = join(VIEWER_DIR, 'tools/MeasurePointReadout.tsx');
 // confirmed by reading the surrounding JSX before adding it here.
 const CHUNK_ERROR_BOUNDARY = join(__dirname, '../../components/ChunkErrorBoundary.tsx');
 const IDS_AUDIT_SUMMARY = join(VIEWER_DIR, 'IDSAuditSummary.tsx');
-const ENTITY_CONTEXT_MENU = join(VIEWER_DIR, 'EntityContextMenu.tsx');
 const ROOM_PANEL = join(VIEWER_DIR, 'RoomPanel.tsx');
 const CUSTOMIZE_SIDEBAR = join(VIEWER_DIR, 'sidebar/CustomizeSidebar.tsx');
 const SECTION_TOOLBAR = join(VIEWER_DIR, 'tools/SectionToolbar.tsx');
@@ -82,7 +81,6 @@ const LAYERS_PANEL = join(VIEWER_DIR, 'layers/LayersPanel.tsx');
 // are deliberately excluded (see the sibling-sweep report, not repeated in
 // this file).
 const LEARN_TAB = join(__dirname, '../../components/tours/LearnTab.tsx');
-const BULK_PROPERTY_EDITOR = join(VIEWER_DIR, 'BulkPropertyEditor.tsx');
 const BYOK_KEY_MODAL = join(VIEWER_DIR, 'chat/ByokKeyModal.tsx');
 const MODEL_SELECTOR = join(VIEWER_DIR, 'chat/ModelSelector.tsx');
 const CLASS_VISIBILITY_MENU = join(VIEWER_DIR, 'toolbar/ClassVisibilityMenu.tsx');
@@ -264,18 +262,6 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
       surface: 'bg-card',
     },
     {
-      name: 'EntityContextMenu "⌘D" duplicate shortcut',
-      file: ENTITY_CONTEXT_MENU,
-      anchor: "<span>{t('entityContextMenu.duplicateLabel')}</span>\n        <span ",
-      surface: 'bg-popover',
-    },
-    {
-      name: 'EntityContextMenu row shortcut hint',
-      file: ENTITY_CONTEXT_MENU,
-      anchor: '{shortcut && (\n        <span ',
-      surface: 'bg-popover',
-    },
-    {
       name: 'RoomPanel "Got an invite?" hint',
       file: ROOM_PANEL,
       anchor: "{t('zonesPanel.roomPanel.createRoomButton')}\n        </Button>\n        <p ",
@@ -350,12 +336,6 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
       file: LEARN_TAB,
       anchor: 'text-xs text-muted-foreground">{tour.description}</div>\n              </div>\n              <span ',
       surface: KEYBOARD_SHORTCUTS_DIALOG_SURFACE,
-    },
-    {
-      name: 'BulkPropertyEditor "(N found)" annotation',
-      file: BULK_PROPERTY_EDITOR,
-      anchor: "{t('bulkPropertyEditor.propertySet')}\n                    {psetOptions.length > 0 && (\n                      <span ",
-      surface: 'bg-background',
     },
     {
       name: 'ByokKeyModal pricing hint',

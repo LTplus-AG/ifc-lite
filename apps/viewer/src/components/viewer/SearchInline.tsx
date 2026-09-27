@@ -25,10 +25,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Clock, X, SlidersHorizontal } from 'lucide-react';
+import { Search, X, SlidersHorizontal } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
-import { selectorYieldsRules } from '@/lib/search/selector-to-rules';
 import { Input } from '@/components/ui/input';
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { cn } from '@/lib/utils';
@@ -41,6 +41,7 @@ import {
   pushRecentSearch,
   clearRecentSearches,
 } from '@/lib/search/recent-searches';
+import { VimCycleHint, RecentsPopoverBody, SearchPopoverBody } from './SearchInlinePopoverBody';
 
 const DEBOUNCE_MS = 80;
 const RESULT_LIMIT = 50;
@@ -352,19 +353,6 @@ export function SearchInline() {
     return () => window.removeEventListener('keydown', handler);
   }, [searchVimCycle, stepVimCycle, exitVimCycle]);
 
-  /** Click-outside closes the popover (but doesn't blur the field). */
-  useEffect(() => {
-    if (!searchOpen) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node | null;
-      if (target && containerRef.current && !containerRef.current.contains(target)) {
-        setSearchOpen(false);
-      }
-    };
-    window.addEventListener('mousedown', handler);
-    return () => window.removeEventListener('mousedown', handler);
-  }, [searchOpen, setSearchOpen]);
-
   const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       // Esc: first press closes popover, second blurs the field. Cycle
@@ -442,291 +430,149 @@ export function SearchInline() {
   const showRecents = searchOpen && queryTrimmedLen === 0 && recents.length > 0;
 
   return (
-    <div ref={containerRef} className="relative w-72">
-      <Input
-        ref={inputRef}
-        type="text"
-        placeholder={t('searchModal.inline.searchPlaceholder')}
-        value={searchQuery}
-        leftIcon={<Search className="h-4 w-4" />}
-        onChange={(e) => {
-          setSearchQuery(e.target.value);
-          if (!searchOpen) setSearchOpen(true);
-        }}
-        onFocus={() => setSearchOpen(true)}
-        onKeyDown={handleInputKeyDown}
-        className={cn(hasFilters ? 'pr-[4.5rem]' : 'pr-9')}
-        aria-label={t('searchModal.inline.searchAriaLabel')}
-        aria-autocomplete="list"
-        aria-expanded={showPopover}
-        aria-controls="search-inline-popover"
-      />
-      {/* Advanced-filter affordance — always visible so structured
-          filtering is discoverable without the ⌘⇧F shortcut. Shows the
-          active rule count and a quick-clear when a filter is applied. */}
-      <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
-        {hasFilters && (
-          <button
-            type="button"
-            aria-label={t('searchModal.inline.clearFiltersAriaLabel')}
-            title={t('searchModal.inline.clearFiltersAriaLabel')}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              clearAllFilterGroups();
+    <Popover
+      open={showPopover}
+      onOpenChange={(next) => {
+        // Radix's own Esc/outside-click dismissal lands here; opening is
+        // still driven by the input's own `onFocus`/`onChange` above (via
+        // `showPopover`'s derived conditions), not by this callback.
+        if (!next) setSearchOpen(false);
+      }}
+    >
+      <PopoverAnchor asChild>
+        <div ref={containerRef} className="relative w-72">
+          <Input
+            ref={inputRef}
+            type="text"
+            placeholder={t('searchModal.inline.searchPlaceholder')}
+            value={searchQuery}
+            leftIcon={<Search className="h-4 w-4" />}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              if (!searchOpen) setSearchOpen(true);
             }}
-            className="rounded p-1 text-muted-foreground transition-colors hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        )}
-        <button
-          type="button"
-          aria-label={hasFilters ? t('searchModal.inline.advancedFilterActiveAriaLabel', { count: activeRuleCount }) : t('searchModal.inline.advancedFilter')}
-          aria-pressed={hasFilters}
-          title={t('searchModal.inline.advancedFilterTitle')}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            openAdvancedFilter();
-          }}
-          className={cn(
-            // Height-only hit-slop to 24px (#5826); `inset-x-0` keeps width
-            // unchanged so it doesn't reach into the 2px gap to the neighbour.
-            'relative flex items-center gap-1 rounded px-1.5 py-1 text-xs transition-colors after:absolute after:inset-x-0 after:-top-px after:-bottom-px after:content-[""] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-            hasFilters
-              ? 'bg-primary/10 text-primary hover:bg-primary/15'
-              : 'text-muted-foreground hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800',
+            onFocus={() => setSearchOpen(true)}
+            onKeyDown={handleInputKeyDown}
+            className={cn(hasFilters ? 'pr-[4.5rem]' : 'pr-9')}
+            aria-label={t('searchModal.inline.searchAriaLabel')}
+            aria-autocomplete="list"
+            aria-expanded={showPopover}
+            aria-controls="search-inline-popover"
+          />
+          {/* Advanced-filter affordance — always visible so structured
+              filtering is discoverable without the ⌘⇧F shortcut. Shows the
+              active rule count and a quick-clear when a filter is applied. */}
+          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+            {hasFilters && (
+              <button
+                type="button"
+                aria-label={t('searchModal.inline.clearFiltersAriaLabel')}
+                title={t('searchModal.inline.clearFiltersAriaLabel')}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  clearAllFilterGroups();
+                }}
+                className="rounded p-1 text-muted-foreground transition-colors hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <button
+              type="button"
+              aria-label={hasFilters ? t('searchModal.inline.advancedFilterActiveAriaLabel', { count: activeRuleCount }) : t('searchModal.inline.advancedFilter')}
+              aria-pressed={hasFilters}
+              title={t('searchModal.inline.advancedFilterTitle')}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                openAdvancedFilter();
+              }}
+              className={cn(
+                // Height-only hit-slop to 24px (#5826); `inset-x-0` avoids the 2px neighbour gap.
+                'relative flex items-center gap-1 rounded px-1.5 py-1 text-xs transition-colors after:absolute after:inset-x-0 after:-top-px after:-bottom-px after:content-[""] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                hasFilters
+                  ? 'bg-primary/10 text-primary hover:bg-primary/15'
+                  : 'text-muted-foreground hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800',
+              )}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              {hasFilters && (
+                <span className="font-mono text-[10px] font-semibold leading-none">{activeRuleCount}</span>
+              )}
+            </button>
+          </div>
+          {/* Vim cycle hint — shows below the input whenever a cycle is active
+              and the popover is closed. Clicking it exits the cycle. */}
+          {searchVimCycle && !showPopover && (
+            <VimCycleHint query={searchVimCycle.query} index={searchVimCycle.index} total={searchVimCycle.results.length} onExit={exitVimCycle} />
           )}
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-          {hasFilters && (
-            <span className="font-mono text-[10px] font-semibold leading-none">{activeRuleCount}</span>
-          )}
-        </button>
-      </div>
-      {/* Vim cycle hint — shows below the input whenever a cycle is active
-          and the popover is closed. Clicking it exits the cycle. */}
-      {searchVimCycle && !showPopover && (
-        <VimCycleHint query={searchVimCycle.query} index={searchVimCycle.index} total={searchVimCycle.results.length} onExit={exitVimCycle} />
-      )}
-      {showPopover && showRecents && (
-        <RecentsPopover
-          recents={recents}
-          onPick={(q) => {
-            setSearchQuery(q);
-            inputRef.current?.focus();
-          }}
-          onClear={() => {
-            clearRecentSearches();
-            setRecents([]);
-          }}
-        />
-      )}
-      {showPopover && !showRecents && (
-        <SearchPopover
-          results={results}
-          query={searchQuery}
-          highlightIndex={searchHighlightIndex}
-          modelsCount={models.size}
-          indexingCount={indexingCount}
-          onSelect={(r, i, additive) => commitResult(r, i, additive)}
-          onHover={(i) => setSearchHighlightIndex(i)}
-          onOpenAdvanced={() => {
-            setSearchOpen(false);
-            setSearchModalTab('search');
-            setSearchModalOpen(true);
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-interface VimCycleHintProps {
-  query: string;
-  index: number;
-  total: number;
-  onExit: () => void;
-}
-
-function VimCycleHint({ query, index, total, onExit }: VimCycleHintProps) {
-  const { t } = useTranslation();
-  return (
-    <div
-      className="absolute left-0 right-0 top-full mt-1 flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-[11px] text-muted-foreground shadow-sm dark:border-zinc-800 dark:bg-zinc-950 z-40"
-      role="status"
-      aria-live="polite"
-    >
-      <span className="font-mono font-semibold text-zinc-700 dark:text-zinc-300">
-        {index + 1} / {total}
-      </span>
-      <span className="truncate">
-        <span className="opacity-70">{t('searchModal.inline.cyclingPrefix')}</span>
-        <span className="font-mono">&quot;{query}&quot;</span>
-        <span className="opacity-70">{t('searchModal.inline.cyclingPressHint')}</span>
-        <kbd className="rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-[10px] dark:border-zinc-700 dark:bg-zinc-900">{t('searchModal.inline.cycleNextKey')}</kbd>
-        <span className="opacity-70"> / </span>
-        <kbd className="rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-[10px] dark:border-zinc-700 dark:bg-zinc-900">{t('searchModal.inline.cyclePrevKey')}</kbd>
-      </span>
-      <button
-        type="button"
-        className="ml-auto rounded p-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-        aria-label={t('searchModal.inline.exitCycleAriaLabel')}
-        onMouseDown={(e) => {
-          e.preventDefault();
-          onExit();
-        }}
-      >
-        <X className="h-3 w-3" />
-      </button>
-    </div>
-  );
-}
-
-interface RecentsPopoverProps {
-  recents: string[];
-  onPick: (query: string) => void;
-  onClear: () => void;
-}
-
-function RecentsPopover({ recents, onPick, onClear }: RecentsPopoverProps) {
-  const { t } = useTranslation();
-  return (
-    <div
-      id="search-inline-popover"
-      role="listbox"
-      className="absolute left-0 right-0 top-full mt-1 rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-950 z-50"
-    >
-      <div className="flex items-center justify-between px-3 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <Clock className="h-3 w-3" />
-          {t('searchModal.inline.recentSearches')}
-        </span>
-        <button
-          type="button"
-          className="text-[10px] normal-case hover:underline"
-          onMouseDown={(e) => {
-            e.preventDefault();
-            onClear();
-          }}
-        >
-          {t('searchModal.inline.clearRecents')}
-        </button>
-      </div>
-      {recents.map((q) => (
-        <button
-          key={q}
-          type="button"
-          role="option"
-          aria-selected={false}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            onPick(q);
-          }}
-          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-zinc-50 dark:hover:bg-zinc-900"
-        >
-          <Search className="h-3 w-3 text-muted-foreground" />
-          <span className="truncate font-mono">{q}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-interface SearchPopoverProps {
-  results: SearchResult[];
-  query: string;
-  highlightIndex: number;
-  modelsCount: number;
-  indexingCount: number;
-  onSelect: (r: SearchResult, index: number, additive: boolean) => void;
-  onHover: (index: number) => void;
-  onOpenAdvanced: () => void;
-}
-
-function SearchPopover({
-  results,
-  query,
-  highlightIndex,
-  modelsCount,
-  indexingCount,
-  onSelect,
-  onHover,
-  onOpenAdvanced,
-}: SearchPopoverProps) {
-  const { t } = useTranslation();
-  if (results.length === 0) {
-    return (
-      <div
+        </div>
+      </PopoverAnchor>
+      {/* This is a combobox listbox, not a dialog: focus stays on the
+          input the whole time (arrow keys / Enter are handled by
+          `handleInputKeyDown` above), so autofocus into — and back out
+          of — the content is suppressed on both ends. Radix still owns
+          Esc and outside-click dismissal (`onOpenChange` above) and the
+          `PointerEvent`s a `mousedown`-based row pick needs pass through
+          unchanged, since neither listener intercepts them.
+          `onFocusOutside` is suppressed for the Anchor: the input is a
+          SIBLING of Content, not a descendant of it, so — without this —
+          Radix's `DismissableLayer` reads every keystroke's focus staying
+          on the input as focus moving OUTSIDE the popover and closes it
+          on the very next render; a combobox needs focus to stay on its
+          input while the list is open, so that "outside" reading is wrong
+          here specifically. `onPointerDownOutside` needs the SAME
+          exemption for the same reason: a `mousedown` in the input (moving
+          the caret) or on the clear-filters/advanced-filter buttons (both
+          siblings of Content inside the Anchor) is, by the same
+          sibling-not-descendant logic, read as "outside" and would close
+          the popover. Real outside clicks still close it via `onOpenChange`. */}
+      <PopoverContent
         id="search-inline-popover"
         role="listbox"
-        className="absolute left-0 right-0 top-full mt-1 rounded-md border border-zinc-200 bg-white px-3 py-4 text-xs text-muted-foreground shadow-lg dark:border-zinc-800 dark:bg-zinc-950 z-50"
+        align="start"
+        sideOffset={4}
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
+        onFocusOutside={(e) => {
+          const target = e.detail.originalEvent.target as Node | null;
+          if (target && containerRef.current?.contains(target)) e.preventDefault();
+        }}
+        onPointerDownOutside={(e) => {
+          const target = e.detail.originalEvent.target as Node | null;
+          if (target && containerRef.current?.contains(target)) e.preventDefault();
+        }}
+        style={{ width: 'var(--radix-popper-anchor-width)' }}
+        className="w-72 rounded-md border border-zinc-200 bg-white p-0 shadow-lg dark:border-zinc-800 dark:bg-zinc-950"
       >
-        {indexingCount > 0
-          ? t('searchModal.inline.indexingHint', { count: indexingCount })
-          : selectorYieldsRules(query) ? t('searchModal.inline.selectorSyntaxHint') : t('searchModal.inline.noResultsHint')}
-      </div>
-    );
-  }
-
-  return (
-    <div
-      id="search-inline-popover"
-      role="listbox"
-      className="absolute left-0 right-0 top-full mt-1 max-h-96 overflow-y-auto rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-950 z-50"
-    >
-      {results.map((r, i) => (
-        <button
-          key={`${r.modelId}:${r.expressId}`}
-          type="button"
-          role="option"
-          aria-selected={i === highlightIndex}
-          onMouseEnter={() => onHover(i)}
-          onMouseDown={(e) => {
-            // mousedown so the input doesn't blur first and tear down the popover.
-            e.preventDefault();
-            onSelect(r, i, e.shiftKey);
-          }}
-          className={cn(
-            'flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors',
-            i === highlightIndex
-              ? 'bg-zinc-100 dark:bg-zinc-800'
-              : 'hover:bg-zinc-50 dark:hover:bg-zinc-900',
-          )}
-        >
-          <span className="shrink-0 rounded bg-zinc-200 px-1.5 py-0.5 font-mono text-[10px] uppercase text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-            {r.typeName}
-          </span>
-          <span className="min-w-0 flex-1 truncate font-medium">
-            {r.name || <span className="italic text-muted-foreground">{t('searchModal.inline.unnamed')}</span>}
-          </span>
-          {r.globalId && (
-            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-              {r.globalId.slice(0, 8)}…
-            </span>
-          )}
-          {modelsCount > 1 && (
-            <span className="shrink-0 rounded border border-zinc-300 px-1 py-0.5 text-[10px] text-muted-foreground dark:border-zinc-700">
-              {r.modelId.slice(0, 6)}
-            </span>
-          )}
-        </button>
-      ))}
-      <div className="flex items-center gap-2 border-t border-zinc-200 px-3 py-1 text-[10px] text-muted-foreground dark:border-zinc-800">
-        <span>
-          {t('searchModal.inline.resultCountHint', { count: results.length })}
-          {indexingCount > 0 && <span className="ml-2 opacity-80">{t('searchModal.inline.indexingCountHint', { count: indexingCount })}</span>}
-        </span>
-        <button
-          type="button"
-          className="ml-auto hover:underline"
-          onMouseDown={(e) => {
-            e.preventDefault();
-            onOpenAdvanced();
-          }}
-        >
-          {t('searchModal.inline.advanced')} <kbd className="ml-0.5 rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-[9px] dark:border-zinc-700 dark:bg-zinc-900">⌘↵</kbd>
-        </button>
-      </div>
-    </div>
+        {showRecents ? (
+          <RecentsPopoverBody
+            recents={recents}
+            onPick={(q) => {
+              setSearchQuery(q);
+              inputRef.current?.focus();
+            }}
+            onClear={() => {
+              clearRecentSearches();
+              setRecents([]);
+            }}
+          />
+        ) : (
+          <SearchPopoverBody
+            results={results}
+            query={searchQuery}
+            highlightIndex={searchHighlightIndex}
+            modelsCount={models.size}
+            indexingCount={indexingCount}
+            onSelect={(r, i, additive) => commitResult(r, i, additive)}
+            onHover={(i) => setSearchHighlightIndex(i)}
+            onOpenAdvanced={() => {
+              setSearchOpen(false);
+              setSearchModalTab('search');
+              setSearchModalOpen(true);
+            }}
+          />
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }

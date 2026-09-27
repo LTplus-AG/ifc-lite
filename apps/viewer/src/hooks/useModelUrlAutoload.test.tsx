@@ -77,14 +77,92 @@ function mount(): void {
 
 describe('?model= autoload (#5851)', () => {
   it('a fetch failure sets the store error, with a Retry closure ready', async () => {
-    setModelParam('/fixtures/does-not-exist.ifc');
-    globalThis.fetch = (async () => new Response(null, { status: 404, statusText: 'Not Found' })) as typeof fetch;
+    setModelParam('model.ifc');
+    const originalLocation = window.location.href;
+    const source = new URL('model.ifc', originalLocation).href;
+    const requestedUrls: string[] = [];
+    globalThis.fetch = (async (input) => {
+      requestedUrls.push(String(input));
+      return new Response(null, { status: 404, statusText: 'Not Found' });
+    }) as typeof fetch;
 
     mount();
 
     await waitFor(() => useViewerStore.getState().error !== null, 'the ?model= fetch failure sets store error');
     assert.match(useViewerStore.getState().error ?? '', /could not be downloaded/i);
     assert.equal(typeof useViewerStore.getState().lastLoadRetry, 'function');
+    try {
+      window.history.pushState(null, '', '/different/path/');
+      useViewerStore.getState().lastLoadRetry?.();
+      await waitFor(() => requestedUrls.length === 2, 'Retry fetches the same model URL');
+      assert.deepEqual(requestedUrls, [source, source]);
+    } finally {
+      window.history.replaceState(null, '', originalLocation);
+    }
+  });
+
+  it('pins a relative source before WebGPU refusal, then retries it after navigation (#5851)', async () => {
+    let adapterCalls = 0;
+    Object.defineProperty(navigator, 'gpu', {
+      configurable: true,
+      value: { requestAdapter: async () => ++adapterCalls === 1 ? null : {} },
+    });
+    setModelParam('model.ifc');
+    const originalLocation = window.location.href;
+    const source = new URL('model.ifc', originalLocation).href;
+    const requestedUrls: string[] = [];
+    globalThis.fetch = (async (input) => {
+      requestedUrls.push(String(input));
+      return new Response(null, { status: 404, statusText: 'Not Found' });
+    }) as typeof fetch;
+
+    mount();
+    await waitFor(() => useViewerStore.getState().lastLoadRetry !== null, 'WebGPU refusal offers Retry');
+    assert.equal(requestedUrls.length, 0);
+    try {
+      window.history.pushState(null, '', '/different/path/');
+      await act(async () => {
+        useViewerStore.getState().lastLoadRetry?.();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      await waitFor(() => requestedUrls.length === 1, 'WebGPU Retry fetches the original source');
+      assert.deepEqual(requestedUrls, [source]);
+      assert.equal(adapterCalls, 2);
+    } finally {
+      window.history.replaceState(null, '', originalLocation);
+    }
+  });
+
+  it('keeps the first relative source when navigation happens during the adapter probe (#5851)', async () => {
+    let resolveAdapter: ((value: object) => void) | undefined;
+    const adapter = new Promise<object>((resolve) => { resolveAdapter = resolve; });
+    Object.defineProperty(navigator, 'gpu', {
+      configurable: true,
+      value: { requestAdapter: () => adapter },
+    });
+    setModelParam('model.ifc');
+    const originalLocation = window.location.href;
+    const source = new URL('model.ifc', originalLocation).href;
+    const requestedUrls: string[] = [];
+    globalThis.fetch = (async (input) => {
+      requestedUrls.push(String(input));
+      return new Response(null, { status: 404, statusText: 'Not Found' });
+    }) as typeof fetch;
+
+    mount();
+    await waitFor(() => resolveAdapter !== undefined, 'the WebGPU adapter probe starts');
+    assert.equal(requestedUrls.length, 0);
+    try {
+      window.history.pushState(null, '', '/different/path/');
+      await act(async () => {
+        resolveAdapter?.({});
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      await waitFor(() => requestedUrls.length === 1, 'autoload fetches the original source');
+      assert.deepEqual(requestedUrls, [source]);
+    } finally {
+      window.history.replaceState(null, '', originalLocation);
+    }
   });
 
   it('a cross-origin URL is refused and reported, never fetched', async () => {

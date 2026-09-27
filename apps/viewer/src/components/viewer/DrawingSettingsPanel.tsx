@@ -14,6 +14,7 @@
 import React, { useCallback, useState, useMemo } from 'react';
 import { Palette, Plus, Trash2, ChevronDown, ChevronRight, GripVertical, Eye, EyeOff, Check, Copy, PenTool, Flame, Building2, Wrench, Printer, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -371,10 +372,11 @@ function CustomRuleItem({
             </span>
           </span>
         </button>
-        <Button
+        <IconButton
+          label={t(rule.enabled ? 'drawingUnderlay.settings.disableRule' : 'drawingUnderlay.settings.enableRule', { name: rule.name })}
           variant="ghost"
           size="icon-sm"
-          className="h-6 w-6 opacity-0 group-hover:opacity-100"
+          className="h-6 w-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
           onClick={(e) => {
             e.stopPropagation();
             onUpdate({ enabled: !rule.enabled });
@@ -385,7 +387,7 @@ function CustomRuleItem({
           ) : (
             <EyeOff className="h-3 w-3 text-muted-foreground" />
           )}
-        </Button>
+        </IconButton>
       </div>
     );
   }

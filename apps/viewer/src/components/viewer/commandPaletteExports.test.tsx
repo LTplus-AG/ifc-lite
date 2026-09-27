@@ -35,7 +35,7 @@ import { posthog } from '@/lib/analytics';
 import { EXPORT_COMMANDS, EXPORT_COMMAND_IDS } from './toolbar/export-commands.js';
 import { buildCommandPaletteCommands, type CommandPaletteBuildParams } from './commandPaletteCommands.js';
 import { CommandPalette } from './CommandPalette.js';
-import { usePaletteExportRunner } from './usePaletteExportRunner.js';
+import { useExportRunner } from './useExportRunner.js';
 import { parseFixtureModel } from './anonymized-export/anonymized-export-fixture.test-support';
 
 const PARAMS: CommandPaletteBuildParams = {
@@ -75,9 +75,9 @@ function renderPalette(): void {
   );
 }
 
-let paletteRunner: ReturnType<typeof usePaletteExportRunner> | null = null;
+let paletteRunner: ReturnType<typeof useExportRunner> | null = null;
 function PaletteRunnerHarness() {
-  paletteRunner = usePaletteExportRunner();
+  paletteRunner = useExportRunner();
   return paletteRunner.dialog;
 }
 

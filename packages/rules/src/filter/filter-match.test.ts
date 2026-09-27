@@ -58,6 +58,30 @@ describe('nameMatches — regex property-set / property names', () => {
     assert.strictEqual(nameMatches('Pset_WallCommon', 'Pset_WallCommonExtra'), false);
   });
 
+  it('keeps v1 List property names case-sensitive when requested (#5894)', () => {
+    const rule = {
+      kind: 'property' as const,
+      setName: 'Pset_WallCommon', propertyName: 'FireRating',
+      nameCaseMode: 'exact' as const,
+      op: 'eq' as const, value: '2HR',
+    };
+    assert.strictEqual(matchPropertyRule(rule, [{ setName: 'PSET_WALLCOMMON', propertyName: 'FireRating', value: '2HR' }]), false);
+    assert.strictEqual(matchPropertyRule(rule, [{ setName: 'Pset_WallCommon', propertyName: 'firerating', value: '2HR' }]), false);
+    assert.strictEqual(matchPropertyRule(rule, [{ setName: 'Pset_WallCommon', propertyName: 'FireRating', value: '2HR' }]), true);
+  });
+
+  it('keeps v1 List first-property comparison without changing normal Rules any/none matching (#5894)', () => {
+    const rule = { kind: 'property' as const, setName: 'Pset_WallCommon', propertyName: 'FireRating',
+      nameCaseMode: 'exact' as const, op: 'eq' as const, value: '2HR' };
+    const rows = [
+      { setName: 'Pset_WallCommon', propertyName: 'FireRating', value: '1HR' },
+      { setName: 'Pset_WallCommon', propertyName: 'FireRating', value: '2HR' },
+    ];
+    assert.strictEqual(matchPropertyRule(rule, rows), true);
+    assert.strictEqual(matchPropertyRule({ ...rule, legacyListFirst: true }, rows), false);
+    assert.strictEqual(matchPropertyRule({ ...rule, legacyListFirst: true, op: 'ne' }, rows), true);
+  });
+
   it('an invalid pattern matches nothing rather than throwing', () => {
     assert.doesNotThrow(() => nameMatches('/Pset_[/', 'Pset_WallCommon'));
     assert.strictEqual(nameMatches('/Pset_[/', 'Pset_WallCommon'), false);

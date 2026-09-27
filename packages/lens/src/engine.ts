@@ -12,7 +12,6 @@ import type {
   AutoColorLegendEntry,
   ClassificationInfo,
 } from './types.js';
-import { matchesCriteria } from './matching.js';
 import { hexToRgba, GHOST_COLOR, uniqueColor } from './colors.js';
 
 /**
@@ -24,11 +23,14 @@ import { hexToRgba, GHOST_COLOR, uniqueColor } from './colors.js';
  *
  * @param lens - Lens configuration to evaluate
  * @param provider - Data provider for entity access
+ * @param matchedByRule - Global IDs selected by the shared FilterGroup
+ *   evaluator for each rule. Missing entries fail closed.
  * @returns Color map, hidden IDs, per-rule counts, and execution time
  */
 export function evaluateLens(
   lens: Lens,
   provider: LensDataProvider,
+  matchedByRule: ReadonlyMap<string, ReadonlySet<number>>,
 ): LensEvaluationResult {
   const startTime = performance.now();
 
@@ -44,25 +46,22 @@ export function evaluateLens(
       executionTime: performance.now() - startTime,
     };
   }
-
   const colorMap = new Map<number, RGBAColor>();
   const hiddenIds = new Set<number>();
   const ruleCounts = new Map<string, number>();
   const ruleEntityIds = new Map<string, number[]>();
 
-  // Initialize rule counts and entity ID lists
   for (const rule of enabledRules) {
     ruleCounts.set(rule.id, 0);
     ruleEntityIds.set(rule.id, []);
   }
 
-  // Evaluate all entities
   provider.forEachEntity((globalId) => {
     let matched = false;
 
     // First matching rule wins
     for (const rule of enabledRules) {
-      if (matchesCriteria(rule.criteria, globalId, provider)) {
+      if (!rule.unreadableLegacy && matchedByRule.get(rule.id)?.has(globalId)) {
         matched = true;
         ruleCounts.set(rule.id, (ruleCounts.get(rule.id) ?? 0) + 1);
         ruleEntityIds.get(rule.id)!.push(globalId);

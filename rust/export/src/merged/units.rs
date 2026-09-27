@@ -115,6 +115,12 @@ pub fn resolve_length_scale(content: &[u8]) -> f64 {
     }
 }
 
+/// The unit every compatible model merges into: the first model's. One home for
+/// the emit loop and the drop plan.
+pub(super) fn primary_scale(models: &[super::MergedModel]) -> f64 {
+    models.first().map_or(1.0, |m| resolve_length_scale(m.content))
+}
+
 /// True when two length scales are equal within [`UNIT_SCALE_TOLERANCE`] (JS
 /// `unitsCompatible`): identical, both zero, or within a relative epsilon.
 pub fn units_compatible(a: f64, b: f64) -> bool {

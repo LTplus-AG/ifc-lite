@@ -34,8 +34,12 @@ function pressQuestionMark(): void {
   });
 }
 
-function activeTab(container: HTMLElement): string | null | undefined {
-  return container.querySelector('[role="tab"][data-state="active"]')?.textContent;
+// `KeyboardShortcutsDialog`'s shell moved onto Radix `Dialog` (#5817), which
+// portals its content straight to `document.body` rather than rendering it
+// inside `render()`'s own container div — so the tab strip has to be found
+// document-wide, not scoped to the returned container.
+function activeTab(): string | null | undefined {
+  return document.querySelector('[role="tab"][data-state="active"]')?.textContent;
 }
 
 afterEach(() => {
@@ -44,16 +48,16 @@ afterEach(() => {
 
 describe('`?` opens the Info dialog on Shortcuts (#5606)', () => {
   it('opens on the Shortcuts tab', () => {
-    const container = render(<Harness />);
-    assert.equal(activeTab(container), undefined, 'the dialog starts closed');
+    render(<Harness />);
+    assert.equal(activeTab(), undefined, 'the dialog starts closed');
     pressQuestionMark();
-    assert.equal(activeTab(container), 'Shortcuts');
+    assert.equal(activeTab(), 'Shortcuts');
   });
 
   it('closes again on a second press', () => {
-    const container = render(<Harness />);
+    render(<Harness />);
     pressQuestionMark();
     pressQuestionMark();
-    assert.equal(activeTab(container), undefined);
+    assert.equal(activeTab(), undefined);
   });
 });

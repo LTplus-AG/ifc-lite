@@ -233,7 +233,7 @@ describe('#2508 zone apportionment reachability', () => {
       // Zones has no visibility flag of its own, so the sidebar exclusivity
       // subscription -- which promotes whichever panel's flag just went
       // off->on -- could never adopt it. The menu item dispatched, every flag
-      // went false, and the docked slot fell back to Information: the panel
+      // went false, and the docked slot fell back to Properties: the panel
       // could not be opened from ANY entry point.
       useViewerStore.getState().showWorkspacePanel('properties');
       assert.equal(useViewerStore.getState().sidebarActivePanel, 'properties');

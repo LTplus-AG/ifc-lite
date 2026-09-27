@@ -5,6 +5,22 @@ import type { Mutation } from '@ifc-lite/mutations';
 import type { ViewerState } from '@/store';
 import { compareOperations } from './operation-order';
 
+/** Replay every model at the top of the same federated Bulk run. Each model's
+ * mutation slice still owns its own stack and applies its own inverse. */
+function replayFederatedMutationRun(state: ViewerState, modelId: string, direction: 'undo' | 'redo'): void {
+  const stacks = state[direction === 'undo' ? 'undoStacks' : 'redoStacks'];
+  const top = stacks.get(modelId)?.at(-1);
+  const tag = top && state.mutationBatchTags.get(top.id);
+  if (!tag) {
+    state[direction](modelId);
+    return;
+  }
+  const modelIds = [...stacks].filter(([, stack]) =>
+    stack.length > 0 && state.mutationBatchTags.get(stack[stack.length - 1].id) === tag,
+  ).map(([id]) => id);
+  for (const id of modelIds) state[direction](id);
+}
+
 /** Preserve active-model authoring scope, interleaving workspace translations
  * by commit order. Redo reverses undo's order (oldest undone operation first). */
 export function replayWorkspaceHistory(state: ViewerState, direction: 'undo' | 'redo'): void {
@@ -18,7 +34,7 @@ export function replayWorkspaceHistory(state: ViewerState, direction: 'undo' | '
   const reference = state[direction === 'undo' ? 'referenceUndo' : 'referenceRedo']?.at(-1);
   const candidates = [
     ...(placement ? [{ command: placement, replay: () => direction === 'undo' ? state.undoModelTranslation() : state.redoModelTranslation() }] : []),
-    ...(mutation && modelId ? [{ command: mutation, replay: () => direction === 'undo' ? state.undo(modelId) : state.redo(modelId) }] : []),
+    ...(mutation && modelId ? [{ command: mutation, replay: () => replayFederatedMutationRun(state, modelId, direction) }] : []),
     ...(reference ? [{ command: reference, replay: () => state.replayAppearanceReference(direction) }] : []),
   ];
   candidates.sort((a, b) => direction === 'undo' ? compareOperations(b.command, a.command) : compareOperations(a.command, b.command));
@@ -46,8 +62,8 @@ export function defaultAuthoringModelId(models: ReadonlyArray<{ id: string }>, a
  * because Ctrl+Z and the ribbon Undo replay only the active model's history
  * (#5958).
  */
-export function recordRun(getState: () => ViewerState, modelId: string): (mutations: readonly Mutation[]) => void {
-  let batchId: string | undefined;
+export function recordRun(getState: () => ViewerState, modelId: string, sharedBatchId?: string): (mutations: readonly Mutation[]) => void {
+  let batchId: string | undefined = sharedBatchId;
   return (mutations) => {
     const state = getState();
     if (mutations.length === 0) return;

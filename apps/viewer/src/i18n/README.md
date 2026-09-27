@@ -473,13 +473,12 @@ The Lens panel catalogue (#4918 viewer-panels slice, `lens-panel.en.ts`,
 prefix `lensPanel.*`) covers `LensPanel.tsx`'s own chrome: the header
 (export/import/clear/close) and footer status line, the rule list
 (`RuleRow`'s isolate tooltip and isolated badge) and its editor
-(`RuleEditor`'s criteria-type/operator/action selects, per-type
-placeholders, duplicate/remove/reorder controls, and the compound-criteria
-read-only state), the auto-color editor (`AutoColorEditor`'s source/pset/
+(`LensRuleEditor`'s shared filter groups, action select, and
+duplicate/remove/reorder controls), the auto-color editor (`AutoColorEditor`'s source/pset/
 property fields and the "Show unclassified" toggle), and the read-only
 lens card (`LensCard`'s edit/delete/duplicate tooltips, rule count, and
 auto-color legend with its sort control). The rule-criteria-type and
-auto-color-source display table and the operator table moved to the same
+auto-color-source display table moved to the same
 data-table-plus-`labelKey` pattern the clash-panel catalogue's `SEVERITY`/
 `REVIEW_STATUS` tables use, relocated into a new sibling module
 (`lens-editor-labels.ts`) to keep `LensPanel.tsx` under its module-size

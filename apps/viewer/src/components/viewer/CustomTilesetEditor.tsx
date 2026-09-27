@@ -18,8 +18,8 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { validateTilesetUrl } from '@/lib/geo/custom-3dtiles';
 
-const FIELD_CLASS = 'w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground text-[10px]';
-const LABEL_CLASS = 'text-[9px] uppercase tracking-wider text-muted-foreground';
+const FIELD_CLASS = 'w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground text-2xs';
+const LABEL_CLASS = 'text-2xs uppercase tracking-wider text-muted-foreground';
 
 export function CustomTilesetEditor() {
   const { t } = useTranslation();
@@ -60,7 +60,7 @@ export function CustomTilesetEditor() {
 
       {/* Privacy, same disclosure as the XYZ basemap: a custom tileset sends
           the viewport to a third party on every pan. */}
-      <p className="text-[9px] leading-tight text-muted-foreground">
+      <p className="text-2xs leading-tight text-muted-foreground">
         {t('cesiumGeo.tileset.privacyNote')}
       </p>
 
@@ -68,7 +68,7 @@ export function CustomTilesetEditor() {
         <button
           type="button"
           onClick={onSave}
-          className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-primary text-primary-foreground"
+          className="px-2 py-0.5 rounded text-2xs font-semibold uppercase bg-primary text-primary-foreground"
         >
           {t('cesiumGeo.tileset.saveButton')}
         </button>
@@ -76,7 +76,7 @@ export function CustomTilesetEditor() {
           <button
             type="button"
             onClick={onRemove}
-            className="px-2 py-0.5 rounded text-[10px] uppercase text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="px-2 py-0.5 rounded text-2xs uppercase text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             {t('cesiumGeo.shared.removeButton')}
           </button>
@@ -84,7 +84,7 @@ export function CustomTilesetEditor() {
       </div>
 
       {problem && (
-        <p role="alert" className="text-[9px] leading-tight text-red-400">{problem}</p>
+        <p role="alert" className="text-2xs leading-tight text-red-400">{problem}</p>
       )}
     </div>
   );

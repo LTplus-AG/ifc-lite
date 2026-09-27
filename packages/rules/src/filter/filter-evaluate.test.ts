@@ -387,6 +387,22 @@ describe('flattenPsets / matchPropertyRule', () => {
     );
   });
 
+  it('keeps Rules presence semantics for missing, null and empty legacy List rows (#5894)', () => {
+    const rows = __internal.flattenPsets([
+      { name: 'Pset_WallCommon', properties: [{ name: 'FireRating', type: 0, value: null }] },
+      { name: 'Pset_WallCommon', properties: [{ name: 'FireRating', type: 0, value: '' }] },
+    ], true);
+    const matches = (name: string, op: 'isSet' | 'isNotSet' | 'isNull' | 'isNotNull' | 'isNonEmpty') =>
+      __internal.matchPropertyRule({ ...Rule.property('Pset_WallCommon', name, op, ''), legacyListFirst: true }, rows);
+    assert.equal(matches('FireRating', 'isSet'), true, 'a null first value still occupies a property row');
+    assert.equal(matches('FireRating', 'isNotSet'), false);
+    assert.equal(matches('FireRating', 'isNull'), true);
+    assert.equal(matches('FireRating', 'isNotNull'), true, 'a later non-null row is visible to Rules presence operators');
+    assert.equal(matches('FireRating', 'isNonEmpty'), false, 'v1 exists still reads only the first scalar');
+    assert.equal(matches('Missing', 'isNotSet'), true);
+    assert.equal(matches('Missing', 'isNull'), true);
+  });
+
   it('contains is case-insensitive over the stringified value', () => {
     const flat = __internal.flattenPsets([
       { name: 'Pset_WallCommon', properties: [{ name: 'Reference', type: 0, value: 'WALL-EXT-A' }] },
@@ -831,7 +847,6 @@ describe('selectIterationSource — index prefilter (AND + op:in)', () => {
   });
 
   it('AND + storey op:in narrows via unionByStorey (previously untested — no fixture built a spatialHierarchy.byStorey bucket)', () => {
-    const store = buildStore(rows);
     // byStorey keys are storey expressIds; unionByStorey resolves each
     // storey's *name* via store.entities.getName(storeyId), so the storey
     // "entity" needs a real row too. Reuse expressId 40 (Slab) as a stand-in

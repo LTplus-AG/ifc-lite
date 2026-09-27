@@ -30,6 +30,7 @@ const csv = listResultToCSV(result);
 - `ListDefinition`: entity types, columns, property conditions, grouping, or an explicit express-ID scope per model
 - Column sources: entity attributes, property sets, quantity sets, materials, classifications, spatial containers (storey, building, site, project), and source model
 - Filtering with typed `PropertyCondition` operators, including Bonsai-style `/regex/` name patterns (`compileNameMatcher`, `isNamePattern`)
+- `migrateLegacyListConditions` decodes saved v1 conditions into a Rules `FilterGroup[]` and reports conditions that cannot be converted without changing results; the v1 evaluator remains active during migration
 - Grouping with per-group summaries (`summariseListRows`)
 - `discoverColumns` finds available columns from the actual model data
 - CSV export with formula-injection guarding (`listResultToCSV`)

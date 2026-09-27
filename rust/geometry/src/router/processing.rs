@@ -384,9 +384,13 @@ impl GeometryRouter {
                 // A textured face set keeps its UV channel (#1781) and, like
                 // any raw item, rebases in its own frame (#5698). A failed
                 // textured build falls through to the untextured paths.
+                // A terrain TIN is a face set that only appends `Flags` (#5942).
                 let texture = texture_index
                     .and_then(|index| index.get(&item.id))
-                    .filter(|_| item.ifc_type == IfcType::IfcTriangulatedFaceSet);
+                    .filter(|_| matches!(
+                        item.ifc_type,
+                        IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork
+                    ));
                 if let Some(map) = texture {
                     let offset = self.element_frame_rtc(element, decoder)?;
                     if self.add_textured_face_set(&item, decoder, map, offset, &mut sub_meshes) {
@@ -847,7 +851,8 @@ impl GeometryRouter {
         offset_meters: Option<(f64, f64, f64)>,
         sub_meshes: &mut SubMeshCollection,
     ) -> bool {
-        if item.ifc_type != IfcType::IfcTriangulatedFaceSet {
+        // A terrain TIN is a face set that only appends `Flags` (#5942).
+        if !matches!(item.ifc_type, IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork) {
             return false;
         }
         let rtc = offset_meters.and_then(|offset| {

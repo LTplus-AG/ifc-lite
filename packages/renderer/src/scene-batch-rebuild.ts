@@ -6,7 +6,6 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { RenderPipeline } from './pipeline.js';
 import type { BatchedMesh } from './types.js';
 import { destroyGpuResources } from './scene-geometry.js';
-import type { RebuiltBucket } from './scene-derived-batches.js';
 
 export interface RebuildableBucket {
   key: string;
@@ -21,19 +20,17 @@ export function rebuildSceneBatches<Bucket extends RebuildableBucket>(options: {
   buckets: Map<string, Bucket>;
   create(meshes: MeshData[], color: [number, number, number, number], device: GPUDevice, pipeline: RenderPipeline, key: string): BatchedMesh;
   dropPartial(batch: BatchedMesh): void;
-}, device: GPUDevice, pipeline: RenderPipeline): RebuiltBucket[] {
-  if (options.pendingKeys.size === 0) return [];
-  const rebuilt: RebuiltBucket[] = [];
-  const staged: Array<{ key: string; bucket: Bucket | undefined; previousQuantized: boolean; replacement?: BatchedMesh }> = [];
+}, device: GPUDevice, pipeline: RenderPipeline): void {
+  if (options.pendingKeys.size === 0) return;
+  const staged: Array<{ key: string; bucket: Bucket | undefined; replacement?: BatchedMesh }> = [];
   try {
     for (const key of options.pendingKeys) {
       const bucket = options.buckets.get(key);
-      const previousQuantized = bucket?.batchedMesh?.quantized !== undefined;
       if (!bucket || bucket.meshData.length === 0) {
-        staged.push({ key, bucket, previousQuantized });
+        staged.push({ key, bucket });
         continue;
       }
-      staged.push({ key, bucket, previousQuantized,
+      staged.push({ key, bucket,
         replacement: options.create(bucket.meshData, bucket.meshData[0].color, device, pipeline, key) });
     }
   } catch (error) {
@@ -41,7 +38,7 @@ export function rebuildSceneBatches<Bucket extends RebuildableBucket>(options: {
     throw error;
   }
 
-  for (const { key, bucket, replacement, previousQuantized } of staged) {
+  for (const { key, bucket, replacement } of staged) {
     if (!bucket || !replacement) {
       if (bucket?.batchedMesh) {
         options.dropPartial(bucket.batchedMesh);
@@ -56,8 +53,6 @@ export function rebuildSceneBatches<Bucket extends RebuildableBucket>(options: {
     }
     bucket.batchedMesh = replacement;
     bucket.frameOrigin = replacement.origin;
-    rebuilt.push({ bucket, previousQuantized });
   }
   options.pendingKeys.clear();
-  return rebuilt;
 }

@@ -242,8 +242,7 @@ export function evaluateOmissionPredicates(
    * prior instance of this class, which took seven rounds because the same
    * decision was recomputed per call site.
    */
-  const isOmittedFromOutput = (id: number): boolean =>
-    (pass.effective.has(id) || pass.effective.isDeleted(id)) && !pass.willBeEmitted(id);
+  const isOmittedFromOutput = (id: number): boolean => isOmittedFromPassOutput(pass, id);
 
   /**
    * "Can ANY id be omitted from this export at all?" — the precondition both
@@ -330,4 +329,15 @@ export function evaluateOmissionPredicates(
     || excludeGeometry
     || hasAnyUnreadableSourceRef();
   return { kind: 'continue', isOmittedFromOutput, mayNameOmittedRefs };
+}
+
+/**
+ * The export's one answer to "is `id` a record this model has (or had) that
+ * the output will not define?" — deleted, hidden by `visibleOnly`/subset, or
+ * unwritable. The relationship filters narrow on it, and the copy-on-write
+ * settle (`step-pset-copy-on-write.ts`) decides on it whether a shared set
+ * still has an owner, so the two cannot disagree (#5794).
+ */
+export function isOmittedFromPassOutput(pass: ExportPass, id: number): boolean {
+  return (pass.effective.has(id) || pass.effective.isDeleted(id)) && !pass.willBeEmitted(id);
 }

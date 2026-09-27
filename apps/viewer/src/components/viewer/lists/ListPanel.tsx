@@ -23,6 +23,7 @@ import {
 } from '@/lib/lists';
 import type { ListDefinition, ListGrouping } from '@/lib/lists';
 import { runListFederated } from '@/lib/lists/run-list';
+import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { useListProviders } from './useListProviders';
 import { ListBuilder } from './ListBuilder';
 import { ListResultsTable } from './ListResultsTable';
@@ -63,13 +64,18 @@ export function ListPanel() {
   }, [pendingListDraft, setPendingListDraft]);
 
   const importInputRef = React.useRef<HTMLInputElement>(null);
+  const listRunRef = React.useRef<AbortController | null>(null);
 
   // Providers + declared units per model, shared with document table blocks (#5142).
   const { pairs: modelProviderPairs, providers: allProviders, stores: allStores, modelUnits, hasData } = useListProviders();
+  React.useEffect(() => () => listRunRef.current?.abort(), [modelProviderPairs]);
   const listModelIds = React.useMemo(() => modelProviderPairs.map((pair) => pair.modelId), [modelProviderPairs]);
 
   const handleExecuteList = useCallback((definition: ListDefinition) => {
     if (!hasData) return;
+    listRunRef.current?.abort();
+    const controller = new AbortController();
+    listRunRef.current = controller;
 
     setListExecuting(true);
     setListError(null);
@@ -77,20 +83,30 @@ export function ListPanel() {
     setEditingList(definition);
 
     // Use requestAnimationFrame to avoid blocking UI during execution
-    requestAnimationFrame(() => {
+    requestAnimationFrame(() => { void (async () => {
       try {
-        setListResult(runListFederated(definition, modelProviderPairs, useViewerStore.getState()));
+        if (controller.signal.aborted) return;
+        const state = useViewerStore.getState();
+        const result = await runListFederated(definition, modelProviderPairs, state, {
+          evaluatorModels: evaluatorModelsFromState(state), signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        setListResult(result);
         setView('results');
       } catch (err) {
+        if (controller.signal.aborted) return;
         // Must be user-visible, not just logged (#4317) — e.g. a name-pattern
         // column compileNameMatcher's ReDoS guard rejects. `view` stays put
         // (never reaches 'results'), so the error box renders over it.
         console.error('[Lists] Execution failed:', err);
         setListError(err instanceof Error ? err.message : String(err));
       } finally {
-        setListExecuting(false);
+        if (listRunRef.current === controller) {
+          listRunRef.current = null;
+          setListExecuting(false);
+        }
       }
-    });
+    })(); });
   }, [hasData, modelProviderPairs, setActiveListId, setListResult, setListExecuting, setListError]);
 
   const handleCreateNew = useCallback(() => {

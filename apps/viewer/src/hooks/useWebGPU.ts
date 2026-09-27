@@ -33,6 +33,79 @@ export interface WebGPUStatus {
   category: WebGPUUnavailableReason | null;
 }
 
+const CHECKING_STATUS: WebGPUStatus = {
+  supported: false,
+  checking: true,
+  reason: null,
+  category: null,
+};
+
+// The viewer mounts the open guard in both the viewport and URL autoload,
+// while the status bar also reads this hook. One browser capability probe is
+// enough for all of them; a new navigator.gpu object or security context
+// (as in a test) starts a new probe.
+let cachedProbe: {
+  gpu: Navigator['gpu'];
+  secureContext: boolean;
+  result: Promise<WebGPUStatus>;
+  status: WebGPUStatus | null;
+} | undefined;
+const subscribers = new Set<(status: WebGPUStatus) => void>();
+
+function publish(status: WebGPUStatus): void {
+  for (const subscriber of subscribers) subscriber(status);
+}
+
+export function getWebGPUStatus(): WebGPUStatus {
+  return cachedProbe !== undefined && cachedProbe.gpu === navigator.gpu && cachedProbe.secureContext === window.isSecureContext
+    ? cachedProbe.status ?? CHECKING_STATUS
+    : CHECKING_STATUS;
+}
+
+function probeWebGPU(force = false): Promise<WebGPUStatus> {
+  const gpu = navigator.gpu;
+  const secureContext = window.isSecureContext;
+  if (!force && cachedProbe !== undefined && cachedProbe.gpu === gpu && cachedProbe.secureContext === secureContext) {
+    return cachedProbe.result;
+  }
+
+  const result = (async (): Promise<WebGPUStatus> => {
+    if (!gpu) {
+      return secureContext
+        ? { supported: false, checking: false, reason: 'WebGPU API not available in this browser', category: 'no-api' }
+        : { supported: false, checking: false, reason: 'This page is not a secure context (WebGPU requires https:// or http://localhost)', category: 'insecure-context' };
+    }
+
+    try {
+      const adapter = await gpu.requestAdapter();
+      return adapter
+        ? { supported: true, checking: false, reason: null, category: null }
+        : { supported: false, checking: false, reason: 'No compatible GPU adapter found', category: 'no-gpu' };
+    } catch (error) {
+      return {
+        supported: false,
+        checking: false,
+        reason: error instanceof Error ? error.message : 'Failed to initialize WebGPU',
+        category: 'no-gpu',
+      };
+    }
+  })();
+  const entry = { gpu, secureContext, result, status: null as WebGPUStatus | null };
+  cachedProbe = entry;
+  publish(CHECKING_STATUS);
+  void result.then((status) => {
+    if (cachedProbe !== entry) return;
+    entry.status = status;
+    publish(status);
+  });
+  return result;
+}
+
+/** Explicit Retry rechecks a settled failure; concurrent callers still share one in-flight probe. */
+export function retryWebGPU(): Promise<WebGPUStatus> {
+  return probeWebGPU(cachedProbe?.status !== null);
+}
+
 /**
  * Robust WebGPU detection hook.
  *
@@ -50,71 +123,13 @@ export interface WebGPUStatus {
  * - Driver issues can prevent adapter creation even with WebGPU support
  */
 export function useWebGPU(): WebGPUStatus {
-  const [status, setStatus] = useState<WebGPUStatus>({
-    supported: false,
-    checking: true,
-    reason: null,
-    category: null,
-  });
+  const [status, setStatus] = useState<WebGPUStatus>(CHECKING_STATUS);
 
   useEffect(() => {
-    async function checkWebGPUSupport() {
-      // Step 1: Check if WebGPU API is available
-      if (!navigator.gpu) {
-        if (!window.isSecureContext) {
-          setStatus({
-            supported: false,
-            checking: false,
-            reason: 'This page is not a secure context (WebGPU requires https:// or http://localhost)',
-            category: 'insecure-context',
-          });
-          return;
-        }
-        setStatus({
-          supported: false,
-          checking: false,
-          reason: 'WebGPU API not available in this browser',
-          category: 'no-api',
-        });
-        return;
-      }
-
-      try {
-        // Step 2: Try to get a GPU adapter
-        // This confirms actual hardware/driver support
-        const adapter = await navigator.gpu.requestAdapter();
-
-        if (!adapter) {
-          setStatus({
-            supported: false,
-            checking: false,
-            reason: 'No compatible GPU adapter found',
-            category: 'no-gpu',
-          });
-          return;
-        }
-
-        // Optional: Check for required features if needed
-        // const features = adapter.features;
-        // const limits = adapter.limits;
-
-        setStatus({
-          supported: true,
-          checking: false,
-          reason: null,
-          category: null,
-        });
-      } catch (error) {
-        setStatus({
-          supported: false,
-          checking: false,
-          reason: error instanceof Error ? error.message : 'Failed to initialize WebGPU',
-          category: 'no-gpu',
-        });
-      }
-    }
-
-    checkWebGPUSupport();
+    subscribers.add(setStatus);
+    setStatus(getWebGPUStatus());
+    void probeWebGPU();
+    return () => { subscribers.delete(setStatus); };
   }, []);
 
   return status;

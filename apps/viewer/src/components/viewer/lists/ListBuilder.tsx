@@ -16,40 +16,33 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { Play, Plus, Trash2, ChevronDown, ChevronRight, ChevronUp, Save, Check, GripVertical, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { InheritSelect } from '../InheritSelect';
 import { ComboInput } from '@/components/ui/combo-input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { IfcTypeEnum } from '@ifc-lite/data';
-import { collectSpatialContainerNames } from '@/utils/spatialHierarchy';
+import type { FilterRule } from '@ifc-lite/rules';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import {
-  discoverFilterStoreys,
-  propValueKey,
-} from '@/lib/search/filter-schema';
 import type {
   ListDataProvider,
   ListDefinition,
   ListModelTagScope,
   ColumnDefinition,
   DiscoveredColumns,
-  PropertyCondition,
-  ConditionOperator,
+  UnreadableListCondition,
 } from '@ifc-lite/lists';
-import { discoverColumns, ENTITY_ATTRIBUTES, groupingColumnIds, isZoneVolumeMode } from '@ifc-lite/lists';
+import { discoverColumns, ENTITY_ATTRIBUTES, groupingColumnIds, migrateLegacyListConditions } from '@ifc-lite/lists';
 
-/** The `zone` column modes that carry a volume. Spelled here in the exact
- *  capitalisation the picker shows and the engine lower-cases, so the label a
- *  user sees IS the stored mode -- the basis cannot be dropped on the way
- *  through. */
+/** The `zone` column mode that carries mesh volume. */
 const ZONE_MODE_VOLUME_LABEL = 'Volume (mesh)';
-const ZONE_MODE_BREAKDOWN_LABEL = 'Volume breakdown (mesh)';
 import { useViewerStore } from '@/store';
 import type { ZoneSet } from '@/lib/zones';
 import { collectScopeTypes } from '@/lib/lists/scope-types';
 import { rebuildGrouping } from './list-table-utils';
 import { Section, Chip } from './ListBuilder.parts';
 import { ListModelTagScopeEditor } from './ListModelTagScopeEditor';
+import { FilterGroupEditor, type FilterGroupEditorState } from '../FilterGroupEditor';
+import { LegacyListFilters } from './ListBuilder.legacyFilters';
+import { isEditableCondition } from '@/lib/lists/compatibility-condition';
 import { formatLocaleCount } from './formatLocaleCount';
 import { PatternHint } from './PatternHint';
 import {
@@ -63,14 +56,7 @@ import {
 } from '@/lib/lists/column-edit';
 import { previewSetPattern } from './pattern-preview';
 import { useTranslation } from '@/i18n/useTranslation';
-import { LIST_OPERATOR_LABEL_KEYS } from '@/lib/filter-operator-labels';
-import {
-  discoverConditionValues,
-  storesWithMutationViews,
-  type ListConditionValues,
-} from './list-builder-discovery';
-
-const NO_OPTIONS: readonly string[] = [];
+import { storesWithMutationViews } from './list-builder-discovery';
 
 /** Column descriptor shared by the quick-add grid. */
 interface CommonColumn {
@@ -81,11 +67,6 @@ interface CommonColumn {
   propertyName: string;
   label: string;
 }
-
-/** Spatial-container levels a `spatial` column / filter can target, fine to
- *  coarse: Container is the element's IMMEDIATE container (any level); Storey
- *  is the default (back-compat). */
-const SPATIAL_LEVELS = ['Container', 'Storey', 'Building', 'Site', 'Project'] as const;
 
 /**
  * The first-class columns: built-in attributes plus the spatial / semantic
@@ -163,78 +144,28 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
     new Set(initial?.entityTypes ?? [])
   );
   const [columns, setColumns] = useState<ColumnDefinition[]>(initial?.columns ?? []);
-  const [conditions, setConditions] = useState<PropertyCondition[]>(initial?.conditions ?? []);
+  const migrated = useMemo(() => initial?.groups === undefined
+    ? migrateLegacyListConditions(initial?.conditions ?? [])
+    : null, [initial]);
+  const [filterState, setFilterState] = useState<FilterGroupEditorState>(() => ({
+    groups: initial?.groups?.length ? initial.groups
+      : migrated?.groups.length ? migrated.groups : [{ rules: [], combinator: 'AND' }],
+    activeGroup: 0,
+  }));
+  const [unreadableConditions, setUnreadableConditions] = useState<UnreadableListCondition[]>(
+    initial?.unreadableConditions ?? migrated?.unreadableConditions ?? [],
+  );
+  const promoteLegacy = useCallback((index: number, rule: FilterRule): boolean => {
+    if (!filterState.groups.every((group) => group.combinator === 'AND')) return false;
+    setFilterState((current) => ({ ...current, groups: current.groups.map((group) => ({ ...group, rules: [...group.rules, rule] })) }));
+    setUnreadableConditions((current) => current.filter((_, i) => i !== index));
+    return true;
+  }, [filterState.groups]);
   // Which federated models the list runs over, by model tag (#4215).
   const [modelTagScope, setModelTagScope] = useState<ListModelTagScope | undefined>(initial?.modelTagScope);
-  // Lazily-discovered distinct values for condition suggestions. This is the
-  // EXPENSIVE sampling pass, so only run it when a property / material /
-  // classification condition exists — storey-only filters never trigger it.
-  const [conditionValuesCache, setConditionValues] = useState<{
-    version: number; source: typeof storeViews; values: ListConditionValues;
-  } | null>(null);
-  const conditionValues = conditionValuesCache?.version === mutationVersion
-    && conditionValuesCache.source === storeViews
-    ? conditionValuesCache.values : null;
-  React.useEffect(() => {
-    if (conditionValues || stores.length === 0) return;
-    const needs = conditions.some(
-      (c) => c.source === 'property' || c.source === 'material' || c.source === 'classification',
-    );
-    if (!needs) return;
-    setConditionValues({ version: mutationVersion, source: storeViews, values: discoverConditionValues(storeViews) });
-  }, [conditions, storeViews, mutationVersion, conditionValues]);
-
-  // Storey names come cheaply from the effective entity set (no value sampling),
-  // so they're always available without the expensive value pass above.
-  const storeyNames = useMemo<string[]>(() => {
-    if (stores.length === 0) return [];
-    const set = new Set<string>();
-    for (const { store, view } of storeViews) {
-      for (const [name] of discoverFilterStoreys(store, view)) set.add(name);
-    }
-    return Array.from(set).sort();
-  }, [storeViews, mutationVersion]);
-
-  // Spatial-filter value suggestions per level. Storey reuses the live
-  // names above; Building / Site / Project come from a cheap spatial-tree walk
-  // (only the handful of container nodes, no element sampling).
-  const spatialNamesByLevel = useMemo<Record<string, string[]>>(() => {
-    const building = new Set<string>();
-    const site = new Set<string>();
-    const project = new Set<string>();
-    const container = new Set<string>();
-    // Reuse the shared collector so the site / building-like / project /
-    // container classification can't drift from the column resolver (#1591 review).
-    for (const store of stores) {
-      const names = collectSpatialContainerNames(store.spatialHierarchy, (id) => store.entities.getName(id));
-      names.sites.forEach((n) => site.add(n));
-      names.buildings.forEach((n) => building.add(n));
-      names.projects.forEach((n) => project.add(n));
-      names.containers.forEach((n) => container.add(n));
-    }
-    const sorted = (s: Set<string>) => Array.from(s).sort();
-    return {
-      Container: sorted(container),
-      Storey: storeyNames,
-      Building: sorted(building),
-      Site: sorted(site),
-      Project: sorted(project),
-    };
-  }, [stores, storeyNames]);
-
-  // Loaded model / file names — value suggestions for a `Model` filter, and the
-  // discriminator the Model column surfaces (issue #1591).
-  const modelNames = useMemo<string[]>(() => {
-    const set = new Set<string>();
-    for (const p of providers) { const n = p.getModelName?.(); if (n) set.add(n); }
-    return Array.from(set).sort();
-  }, [providers]);
-
-  // Location zones (issue #1810): every currently-defined zone set, for the
-  // quick-add column chips and the `zone` filter's set-picker + value
-  // suggestions. Read directly from the store rather than round-tripping
-  // through a provider — zone sets are viewer state, not IFC-model data.
+  // Location zones remain available for quick-add columns.
   const zoneSets = useViewerStore((s) => s.zoneSets);
+  const filterModels = useMemo(() => [...models.values()].map(({ id, name, sourceFingerprint }) => ({ id, name, sourceFingerprint })), [models]);
   // Ordered group-by columns, outermost first (multi-criteria grouping #1790).
   const [groupByColumnIds, setGroupByColumnIds] = useState<string[]>(
     () => groupingColumnIds(initial?.grouping)
@@ -329,16 +260,6 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
     });
   }, []);
 
-  const addCondition = useCallback((condition: PropertyCondition) => {
-    setConditions(prev => [...prev, condition]);
-  }, []);
-  const updateCondition = useCallback((idx: number, condition: PropertyCondition) => {
-    setConditions(prev => prev.map((c, i) => (i === idx ? condition : c)));
-  }, []);
-  const removeCondition = useCallback((idx: number) => {
-    setConditions(prev => prev.filter((_, i) => i !== idx));
-  }, []);
-
   const toggleSumColumn = useCallback((id: string) => {
     setSumColumnIds(prev => {
       const next = new Set(prev);
@@ -385,11 +306,13 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
       // Preserve a filter-snapshot scope (set at creation; not edited here).
       expressIdsByModel: initial?.expressIdsByModel,
       modelTagScope,
-      conditions,
+      conditions: unreadableConditions.flatMap((row) => isEditableCondition(row) ? [row.condition] : []),
+      groups: filterState.groups,
+      unreadableConditions,
       columns,
       grouping,
     };
-  }, [initial, name, description, selectedTypes, modelTagScope, conditions, columns, groupByColumnIds, sumColumnIds]);
+  }, [initial, name, description, selectedTypes, modelTagScope, filterState.groups, unreadableConditions, columns, groupByColumnIds, sumColumnIds]);
 
   const handleSave = useCallback(() => onSave(buildDefinition()), [buildDefinition, onSave]);
   const handleRun = useCallback(() => onExecute(buildDefinition()), [buildDefinition, onExecute]);
@@ -469,17 +392,20 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
           </Section>
 
           {/* Filters */}
-          <Section label={t('lists.builder.sectionFilters')} hint={conditions.length > 0 ? formatLocaleCount(conditions.length, locale) : undefined}>
-            <ConditionsBody
-              conditions={conditions}
-              discovered={discovered}
-              values={conditionValues}
-              spatialNames={spatialNamesByLevel}
-              modelNames={modelNames}
-              zoneSets={zoneSets}
-              onAdd={addCondition}
-              onUpdate={updateCondition}
-              onRemove={removeCondition}
+          <Section label={t('lists.builder.sectionFilters')} hint={filterState.groups.some((group) => group.rules.length > 0) || unreadableConditions.length > 0
+            ? formatLocaleCount(filterState.groups.reduce((count, group) => count + group.rules.length, unreadableConditions.length), locale)
+            : undefined}>
+            <FilterGroupEditor
+              groups={filterState.groups}
+              activeGroup={filterState.activeGroup}
+              onChange={setFilterState}
+              models={filterModels}
+            />
+            <LegacyListFilters
+              rows={unreadableConditions} onChange={setUnreadableConditions}
+              onPromote={promoteLegacy}
+              discovered={discovered} stores={stores} storeViews={storeViews}
+              providers={providers} mutationVersion={mutationVersion} zoneSets={zoneSets}
             />
           </Section>
 
@@ -1069,309 +995,6 @@ function GroupingBody({
           ))}
         </div>
       </div>
-    </div>
-  );
-}
-
-// ============================================================================
-// Filters (conditions)
-// ============================================================================
-
-type ConditionSource = PropertyCondition['source'];
-
-const CONDITION_SOURCES = [
-  'attribute', 'property', 'quantity', 'material', 'classification', 'spatial', 'model', 'zone',
-] as const satisfies readonly ConditionSource[];
-
-function operatorsFor(source: ConditionSource): ConditionOperator[] {
-  switch (source) {
-    case 'quantity':
-      return ['equals', 'notEquals', 'gt', 'gte', 'lt', 'lte', 'exists'];
-    case 'material':
-    case 'classification':
-      return ['contains', 'equals', 'notEquals', 'exists'];
-    default:
-      return ['equals', 'notEquals', 'contains', 'exists'];
-  }
-}
-
-/** `zoneSets` supplies the default zone-SET id for a fresh `zone` condition
- *  (the first defined set, so switching the source dropdown to Zone lands
- *  on something usable rather than an empty set-picker). */
-function defaultConditionFor(source: ConditionSource, zoneSets: ZoneSet[] = []): PropertyCondition {
-  switch (source) {
-    case 'property':
-      return { source, psetName: '', propertyName: '', operator: 'equals', value: '' };
-    case 'quantity':
-      return { source, psetName: '', propertyName: '', operator: 'gt', value: '' };
-    case 'material':
-      return { source, propertyName: 'Material', operator: 'contains', value: '' };
-    case 'classification':
-      return { source, propertyName: 'Classification', operator: 'contains', value: '' };
-    case 'spatial':
-      return { source, propertyName: 'Storey', operator: 'equals', value: '' };
-    case 'model':
-      return { source, propertyName: 'Model', operator: 'equals', value: '' };
-    case 'zone':
-      return { source, psetName: zoneSets[0]?.id ?? '', propertyName: 'Zone', operator: 'equals', value: '' };
-    case 'attribute':
-    default:
-      return { source: 'attribute', propertyName: 'Name', operator: 'contains', value: '' };
-  }
-}
-
-const SELECT_CLASS =
-  'h-7 rounded-md border border-border bg-background px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring';
-
-function ConditionsBody({
-  conditions,
-  discovered,
-  values,
-  spatialNames,
-  modelNames,
-  zoneSets,
-  onAdd,
-  onUpdate,
-  onRemove,
-}: {
-  conditions: PropertyCondition[];
-  discovered: DiscoveredColumns;
-  values: ListConditionValues | null;
-  spatialNames: Record<string, string[]>;
-  modelNames: string[];
-  zoneSets: ZoneSet[];
-  onAdd: (condition: PropertyCondition) => void;
-  onUpdate: (idx: number, condition: PropertyCondition) => void;
-  onRemove: (idx: number) => void;
-}) {
-  const { t } = useTranslation(); return (
-    <div className="space-y-1.5">
-      {conditions.map((condition, idx) => (
-        <ConditionRow
-          key={idx}
-          condition={condition}
-          discovered={discovered}
-          values={values}
-          spatialNames={spatialNames}
-          modelNames={modelNames}
-          zoneSets={zoneSets}
-          onChange={(next) => onUpdate(idx, next)}
-          onRemove={() => onRemove(idx)}
-        />
-      ))}
-      <button
-        onClick={() => onAdd(defaultConditionFor('attribute'))}
-        className="flex items-center gap-1 rounded-md border border-dashed border-border px-2 py-1 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground"
-      >
-        <Plus className="h-3.5 w-3.5" /> {t('lists.builder.addFilter')}
-      </button>
-    </div>
-  );
-}
-
-function ConditionRow({
-  condition,
-  discovered,
-  values,
-  spatialNames,
-  modelNames,
-  zoneSets,
-  onChange,
-  onRemove,
-}: {
-  condition: PropertyCondition;
-  discovered: DiscoveredColumns;
-  values: ListConditionValues | null;
-  spatialNames: Record<string, string[]>;
-  modelNames: string[];
-  zoneSets: ZoneSet[];
-  onChange: (next: PropertyCondition) => void;
-  onRemove: () => void;
-}) {
-  const { t } = useTranslation();
-  const sourceLabels: Record<(typeof CONDITION_SOURCES)[number], string> = {
-    attribute: t('lists.builder.source.attribute'), property: t('lists.builder.source.property'),
-    quantity: t('lists.builder.source.quantity'), material: t('lists.builder.source.material'),
-    classification: t('lists.builder.source.classification'), spatial: t('lists.builder.source.spatial'),
-    model: t('lists.builder.source.model'), zone: t('lists.builder.source.zone'),
-  };
-  const spatialLevelLabels: Record<string, string> = {
-    Container: t('lists.builder.spatial.container'), Storey: t('lists.builder.spatial.storey'),
-    Building: t('lists.builder.spatial.building'), Site: t('lists.builder.spatial.site'),
-    Project: t('lists.builder.spatial.project'),
-  };
-  const ops = operatorsFor(condition.source);
-  const showValue = condition.operator !== 'exists';
-  const isProperty = condition.source === 'property';
-  const isQuantity = condition.source === 'quantity';
-  const isSpatial = condition.source === 'spatial';
-  const isZone = condition.source === 'zone';
-  const showSetFields = isProperty || isQuantity;
-
-  const setNameOptions = useMemo<string[]>(() => {
-    if (isProperty) return Array.from(discovered.properties.keys()).sort();
-    if (isQuantity) return Array.from(discovered.quantities.keys()).sort();
-    return [];
-  }, [discovered, isProperty, isQuantity]);
-
-  const propNameOptions = useMemo<string[]>(() => {
-    const set = condition.psetName ?? '';
-    if (isProperty) return [...(discovered.properties.get(set) ?? [])];
-    if (isQuantity) return [...(discovered.quantities.get(set) ?? [])];
-    return [];
-  }, [discovered, condition.psetName, isProperty, isQuantity]);
-
-  const zoneNameOptions = useMemo<string[]>(() => {
-    if (!isZone) return [];
-    const set = zoneSets.find((zs) => zs.id === condition.psetName);
-    return set ? set.zones.map((z) => z.name) : [];
-  }, [isZone, zoneSets, condition.psetName]);
-
-  const valueOptions = useMemo<readonly string[]>(() => {
-    switch (condition.source) {
-      case 'property':
-        return values?.propertyValues.get(propValueKey(condition.psetName ?? '', condition.propertyName)) ?? NO_OPTIONS;
-      case 'material': return values?.materials ?? NO_OPTIONS;
-      case 'classification': return values?.classifications ?? NO_OPTIONS;
-      case 'spatial': return spatialNames[condition.propertyName] ?? spatialNames.Storey ?? NO_OPTIONS;
-      case 'model': return modelNames;
-      case 'zone':
-        if (condition.propertyName === 'Straddles') return ['true', 'false'];
-        // A volume mode compares against a NUMBER, so offering zone names as
-        // completions would suggest a comparison that can never match.
-        if (isZoneVolumeMode(condition.propertyName) || condition.propertyName === ZONE_MODE_BREAKDOWN_LABEL) return [];
-        return zoneNameOptions;
-      default: return NO_OPTIONS;
-    }
-  }, [condition.source, condition.psetName, condition.propertyName, values, spatialNames, modelNames, zoneNameOptions]);
-
-  const valuePlaceholder =
-    condition.source === 'spatial' ? t('lists.builder.valuePlaceholder.spatial', { level: spatialLevelLabels[condition.propertyName || 'Storey'] ?? condition.propertyName })
-      : condition.source === 'model' ? t('lists.builder.valuePlaceholder.model')
-        : condition.source === 'material' ? t('lists.builder.valuePlaceholder.material')
-          : condition.source === 'classification' ? t('lists.builder.valuePlaceholder.classification')
-            : condition.source === 'zone' ? (
-              condition.propertyName === 'Straddles' ? t('lists.builder.valuePlaceholder.boolean')
-                : isZoneVolumeMode(condition.propertyName) ? t('lists.builder.valuePlaceholder.volume')
-                  : condition.propertyName === ZONE_MODE_BREAKDOWN_LABEL ? t('lists.builder.valuePlaceholder.zoneBreakdown')
-                    : t('lists.builder.valuePlaceholder.zoneName')
-            )
-              : t('lists.builder.valuePlaceholder.value');
-
-  return (
-    <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 py-1.5 text-xs">
-      <select
-        value={condition.source}
-        onChange={(e) => onChange(defaultConditionFor(e.target.value as ConditionSource, zoneSets))}
-        className={SELECT_CLASS}
-        aria-label={t('lists.builder.filterDimensionAriaLabel')}
-      >
-        {CONDITION_SOURCES.map((source) => (
-          <option key={source} value={source}>{sourceLabels[source]}</option>
-        ))}
-      </select>
-
-      {condition.source === 'attribute' && (
-        <select
-          value={condition.propertyName}
-          onChange={(e) => onChange({ ...condition, propertyName: e.target.value })}
-          className={SELECT_CLASS}
-          aria-label={t('lists.builder.attributeAriaLabel')}
-        >
-          {ENTITY_ATTRIBUTES.map((a) => (
-            <option key={a} value={a}>{a}</option>
-          ))}
-        </select>
-      )}
-
-      {isSpatial && (
-        <select
-          value={condition.propertyName || 'Storey'}
-          onChange={(e) => onChange({ ...condition, propertyName: e.target.value, value: '' })}
-          className={SELECT_CLASS}
-          aria-label={t('lists.builder.spatialLevelAriaLabel')}
-        >
-          {SPATIAL_LEVELS.map((level) => (
-            <option key={level} value={level}>{spatialLevelLabels[level] ?? level}</option>
-          ))}
-        </select>
-      )}
-
-      {isZone && (
-        <>
-          <select
-            value={condition.psetName ?? ''}
-            onChange={(e) => onChange({ ...condition, psetName: e.target.value, value: '' })}
-            className={SELECT_CLASS}
-            aria-label={t('lists.builder.zoneSetAriaLabel')}
-          >
-            {zoneSets.length === 0 && <option value="">{t('lists.builder.noZoneSets')}</option>}
-            {zoneSets.map((zs) => (
-              <option key={zs.id} value={zs.id}>{zs.name}</option>
-            ))}
-          </select>
-          <select
-            value={condition.propertyName || 'Zone'}
-            onChange={(e) => onChange({ ...condition, propertyName: e.target.value, value: '' })}
-            className={SELECT_CLASS}
-            aria-label={t('lists.builder.zoneDisplayModeAriaLabel')}
-          >
-            <option value="Zone">{t('lists.builder.zoneOption')}</option>
-            <option value="Straddles">{t('lists.builder.straddlesOption')}</option>
-            <option value={ZONE_MODE_VOLUME_LABEL}>{t('lists.builder.zoneVolumeOption')}</option>
-            <option value={ZONE_MODE_BREAKDOWN_LABEL}>{t('lists.builder.zoneBreakdownOption')}</option>
-          </select>
-        </>
-      )}
-
-      {showSetFields && (
-        <>
-          <ComboInput
-            value={condition.psetName ?? ''}
-            options={setNameOptions}
-            placeholder={isQuantity ? t('lists.builder.qtoPlaceholder') : t('lists.builder.psetPlaceholder')}
-            className="h-7 w-32 text-xs"
-            onChange={(v) => onChange({ ...condition, psetName: v })}
-          />
-          <ComboInput
-            value={condition.propertyName}
-            options={propNameOptions}
-            placeholder={t('lists.builder.namePropertyPlaceholder')}
-            className="h-7 w-28 text-xs"
-            onChange={(v) => onChange({ ...condition, propertyName: v })}
-          />
-          <InheritSelect value={condition.inherit} offered={['aggregation']} onChange={(inherit) => onChange({ ...condition, inherit })} className={SELECT_CLASS} />
-        </>
-      )}
-
-      <select
-        value={condition.operator}
-        onChange={(e) => onChange({ ...condition, operator: e.target.value as ConditionOperator })}
-        className={SELECT_CLASS}
-        aria-label={t('lists.builder.operatorAriaLabel')}
-      >
-        {ops.map((op) => (
-          <option key={op} value={op}>{t(LIST_OPERATOR_LABEL_KEYS[op])}</option>
-        ))}
-      </select>
-
-      {showValue && (
-        <ComboInput
-          value={String(condition.value ?? '')}
-          options={valueOptions}
-          placeholder={valuePlaceholder}
-          className="h-7 w-44 text-xs"
-          onChange={(v) => onChange({ ...condition, value: v })}
-        />
-      )}
-
-      <button
-        onClick={onRemove}
-        aria-label={t('lists.builder.removeFilterAriaLabel')}
-        className="ml-auto shrink-0 text-muted-foreground hover:text-destructive"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
     </div>
   );
 }

@@ -265,6 +265,16 @@ const NOT_RENDERED_IN_THIS_STATE: MeasureKey[] = [
   'measure.quantities.legend',
   'measure.quantities.massLegend',
   'measure.quantities.massLegendWithEstimated',
+  // MeasurementsVisibilityChip.tsx's own rows (#5893) — a separate,
+  // always-mounted HUD chip this suite's `renderMeasure()` never renders
+  // (it exercises MeasurePanel/MeasureToolbar only); the chip has its own
+  // component, not a test file (mirrors SectionParkedChip's convention).
+  'measure.chip.hideAria',
+  'measure.chip.hideTitle',
+  'measure.chip.showAria',
+  'measure.chip.showTitle',
+  'measure.chip.clearAria',
+  'measure.chip.clearTitle',
 ];
 
 const NOT_RENDERED_PARAMS: MeasureKey[] = [
@@ -276,6 +286,7 @@ const NOT_RENDERED_PARAMS: MeasureKey[] = [
   'measure.quantities.noMeshToMeasure',
   'measure.quantities.meshAreaIncomplete',
   'measure.quantities.rescaledVolume',
+  'measure.chip.label', // MeasurementsVisibilityChip.tsx, see NOT_RENDERED_IN_THIS_STATE above
 ];
 
 /** Runs the shared static-key check for one (english-before, marked-after) pair.
@@ -462,6 +473,10 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
     assertMarked(after, 'measure.angle.apexSetSuffix');
     assertMarked(after, 'measure.radius.indexLabel', { index: 1 });
     assertMarked(after, 'measure.radius.inProgress', { count: 3 });
+    assertMarked(after, 'measure.list.deleteDistance', { index: 1 });
+    assertMarked(after, 'measure.list.deletePolyline', { index: 1 });
+    assertMarked(after, 'measure.list.deleteAngle', { index: 1 });
+    assertMarked(after, 'measure.list.deleteRadius', { index: 1 });
 
     coveredParams.add('measure.polyline.inProgress');
     coveredParams.add('measure.polyline.indexLabel');
@@ -470,6 +485,10 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
     coveredParams.add('measure.angle.inProgress');
     coveredParams.add('measure.radius.indexLabel');
     coveredParams.add('measure.radius.inProgress');
+    coveredParams.add('measure.list.deleteDistance');
+    coveredParams.add('measure.list.deletePolyline');
+    coveredParams.add('measure.list.deleteAngle');
+    coveredParams.add('measure.list.deleteRadius');
     // Static, but sits beside a sibling {} expression in the same element
     // (see `assertMarked`'s own doc comment) so `assertStaticCoverage`'s
     // exact-match pass never finds it; checked explicitly above instead.

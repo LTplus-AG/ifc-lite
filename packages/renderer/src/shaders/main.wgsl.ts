@@ -14,6 +14,7 @@ import { colorTransferWgsl } from './color-transfer.wgsl.js';
 import { mainRteWgsl, mainShadowWgsl } from './main-rte-shadow.wgsl.js';
 import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
 import { specularWgsl } from './specular.wgsl.js';
+import { entityColorTableWgsl } from './entity-color-table.wgsl.js';
 
 /**
  * Translucent surfaces draw at this fraction of their alpha, so interiors
@@ -57,6 +58,7 @@ export const mainShaderSource = `
           drawableDeltaLow: vec4<f32>,
           rteCameraHigh: vec4<f32>,
           rteCameraLow: vec4<f32>,
+          overrideParams: vec4<u32>, // x = draw's id anchor, y = OVERRIDE_* bits (entity-color-table.ts, #6076)
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
         const RTE_DRAWABLE_FLAG: u32 = ${MESH_FLAG_RTE_DRAWABLE}u;
@@ -87,6 +89,7 @@ export const mainShaderSource = `
         const TRANSLUCENT_OPACITY_SCALE: f32 = ${TRANSLUCENT_OPACITY_SCALE};
         ${colorTransferWgsl}
         ${specularWgsl}
+        ${entityColorTableWgsl}
 
         ${mainShadowWgsl}
 
@@ -104,7 +107,7 @@ export const mainShaderSource = `
           @location(3) viewPos: vec3<f32>,  // For edge detection
           // Per-draw albedo carried from the vertex stage so the fragment shader
           // is shared by the flat path (vs_main writes uniforms.baseColor — the
-          // per-batch / overlay-override colour) AND the instanced path
+          // per-batch colour) AND the instanced path
           // (vs_instanced writes the per-occurrence colour from the instance
           // buffer). For the flat path this is identical to reading
           // uniforms.baseColor directly (the value is constant across the draw).
@@ -214,12 +217,10 @@ export const mainShaderSource = `
           // an 8-bit MATERIAL-COLOUR salt that mergeGeometry/interleaveTextured
           // baked into the HIGH 8 bits of the entityId lane (low 24 = picking id,
           // masked off by encodeId24). Crucially the salt comes from the mesh's
-          // OWN colour, NOT the per-draw baseColor uniform — so the base opaque
-          // pass and the lens/IDS/compare/4D OVERLAY pass (which redraws the same
-          // geometry with a DIFFERENT draw colour) compute the SAME nudge, and
-          // the overlay pipeline's depthCompare:'equal' matches instead of
-          // rejecting every fragment. At 1e-6 per step the max world-space offset
-          // is <3mm at 10m — invisible.
+          // OWN colour, NOT the per-draw baseColor uniform — so every redraw of
+          // the same geometry with a different draw colour (the selection
+          // highlight's greater-equal pass) computes the SAME nudge as its
+          // batch. At 1e-6 per step the max world-space offset is <3mm at 10m.
           let colorSalt = (input.entityId >> 24u) * 2654435761u;
           let zHash = (((input.entityId & 0x00FFFFFFu) ^ colorSalt) * 2654435761u) & 255u;
           output.position.z *= 1.0 + f32(zHash) * 1e-6;
@@ -249,8 +250,8 @@ export const mainShaderSource = `
           let eyePos = rteInstancePosition(linearLocal, inst.anchorHigh.xyz, inst.anchorLow.xyz).xyz;
           output.position = uniforms.rteViewProj * vec4<f32>(eyePos, 1.0);
           // Same per-entity depth nudge as vs_main. No colour salt here: the
-          // instanced path has no base-vs-overlay coincident redraw (yet), so the
-          // raw picking id is enough to separate coplanar entities.
+          // instanced path never redraws an occurrence with a second draw
+          // colour, so the raw picking id is enough to separate coplanar entities.
           let zHash = ((inst.instEntityId & 0x00FFFFFFu) * 2654435761u) & 255u;
           output.position.z *= 1.0 + f32(zHash) * 1e-6;
           output.worldPos = worldPos.xyz;
@@ -436,15 +437,9 @@ export const mainShaderSource = `
           let irradiance = lightTerm * (env.exposure * IRRADIANCE_CALIBRATION);
           var color = baseColor * irradiance;
 
-          // flags.x is a bitfield:
-          //   bit 0 (value 1) = isSelected  → selection-highlight + force opaque
-          //   bit 1 (value 2) = isOverlay   → color-override pass; preserve
-          //                                    baseColor.a (overlay pipeline has
-          //                                    src-alpha blending) AND skip the
-          //                                    specular term, so an override
-          //                                    paints its colour, lit, and a
-          //                                    low-alpha ghost tint does not
-          //                                    pick up glass reflections.
+          // flags.x bit 0 (value 1) = isSelected → selection highlight, forced opaque.
+          // bit 1 (value 2) = isOverlay → legacy overlay pipeline callers;
+          // preserve alpha and skip specular for their blended draw.
           // Selected via the per-draw flag (flat path) OR the per-occurrence flag
           // (instanced path — vs_instanced reads it from the instance buffer).
           let isSelected = ((uniforms.flags.x & 1u) == 1u) || ((input.instSelected & 1u) == 1u);
@@ -484,28 +479,22 @@ export const mainShaderSource = `
             color = selectionColor.rgb * shade;
           }
 
-          // flags.x bit 5 (value 32) = EMPHASIZE overlay: render the colour
-          // override FULLY UNLIT and saturated (no lighting attenuation, no
-          // wash-to-white) so the focused clash pair reads as a solid, vivid,
-          // distinct colour that pops against the lit model — like a clash tool.
-          // A faint normal-based shade keeps the silhouette from going flat. (#1277)
+          // Public getOverlayPipeline() callers can still use the emphasized
+          // overlay bit even though internal colour overrides now use a table.
           let emphasizedOverlay = isOverlay && (uniforms.flags.x & 32u) != 0u;
           if (emphasizedOverlay) {
             let facet = 0.85 + 0.15 * abs(dot(N, normalize(vec3<f32>(0.3, 1.0, 0.2))));
             color = baseColor * facet;
           }
 
-          // Force alpha to 1.0 for selected objects so the highlight is fully
-          // opaque (the selection pipeline has no alpha blending). Emphasized
-          // clash overlay paints a SOLID vivid fill (force opaque) so it isn't
-          // blended down to a pale tint against the geometry beneath.
+          // Selected objects and emphasized overlays draw fully opaque.
           var finalAlpha = select(input.color.a, 1.0, isSelected || emphasizedOverlay);
 
           // Specular (#5386; specular.wgsl.ts), after the diffuse above. Not
-          // on the selection highlight (it would wash the blue out) nor on a
-          // colour-override overlay. The sun lobe is scaled exactly like the
-          // diffuse sun term, and both terms like irradiance, so a preset's
-          // highlights and its diffuse light move together.
+          // on the selection highlight or legacy overlay (it would wash out
+          // their colours); a table override is composited without it below. The
+          // sun lobe is scaled exactly like the diffuse sun term, and both
+          // terms like irradiance, so a preset's highlights and diffuse move together.
           if (!isSelected && !isOverlay) {
             // Glass is an authored translucent material (mesh-material.ts
             // also gives it its smooth roughness). An X-Ray or compare fade
@@ -577,13 +566,14 @@ export const mainShaderSource = `
             length(dpdy(N))
           ));
 
+          var edgeDarken = 1.0;
           if (uniforms.flags.z == 1u) {
             // Threshold filters subtle normal discontinuities at internal
             // triangle edges between coplanar entities in the same batch.
             let edgeFactor = smoothstep(0.02, 0.12, depthGradient * 10.0 + normalGradient * 5.0);
             let edgeIntensity = f32(uniforms.flags.w) / 1000.0;
             let edgeDarkenStrength = clamp(0.25 * edgeIntensity, 0.0, 0.85);
-            let edgeDarken = mix(1.0, 1.0 - edgeDarkenStrength, edgeFactor);
+            edgeDarken = mix(1.0, 1.0 - edgeDarkenStrength, edgeFactor);
             color *= edgeDarken;
           }
 
@@ -591,6 +581,12 @@ export const mainShaderSource = `
 
           var out: FragmentOutput;
           out.color = vec4<f32>(color, finalAlpha);
+          // Colour override from the per-entity table (#6076): only draws the
+          // renderer marks (overrideParams.y), i.e. depth-writing opaque ones.
+          let entityOverride = entityOverrideColor(input.entityId);
+          if (entityOverride.a >= 0.0 && !isSelected) {
+            out.color = paintEntityOverride(out.color, entityOverride, irradiance, N, edgeDarken);
+          }
           out.objectIdEncoded = encodeId24(input.entityId);
           return out;
         }

@@ -12,10 +12,16 @@
  * `MIGRATED_DIALOG_IDS` is deliberately an explicit allowlist, not "every
  * `kind: 'dialog'` entry": adding an unmigrated id here would fail (the
  * marker is only ever rendered by `ExportDialogShell`), which is the point —
- * this test is the checklist for the rest of #5848. The remaining dialogs
- * (`ifc` / `ExportDialog`, `anonymized` / `AnonymizedExportDialog`,
- * `modified-ifc` / `ExportChangesButton`) are follow-up work; the follow-up
- * PR extends this list as each one migrates.
+ * this test is the checklist for the rest of #5848. `ifc` (`ExportDialog`)
+ * joined this PR. `modified-ifc` (`ExportChangesButton`) remains follow-up
+ * work — its review-then-export flow is a different shape, not this dialog's
+ * options-then-export one. `anonymized` (`AnonymizedExportDialog`) does NOT
+ * join this list: its non-modal, split 3D-preview layout does not fit the
+ * shell's single-column chrome (see that component's own module docblock),
+ * so it never renders `[data-export-dialog-shell]` — it instead reuses the
+ * shell's underlying guard behaviour (`useExportDialogOpenGuard`, #5605)
+ * directly. A future PR extends this list only as each remaining dialog's
+ * layout actually fits the shared chrome.
  */
 
 import '@/test/setup-dom.js';
@@ -30,7 +36,7 @@ afterEach(() => {
   useViewerStore.getState().resetViewerState();
 });
 
-const MIGRATED_DIALOG_IDS = ['glb', 'kmz', 'usd', 'energy', 'pdf'] as const;
+const MIGRATED_DIALOG_IDS = ['glb', 'kmz', 'usd', 'energy', 'pdf', 'ifc'] as const;
 
 function dialogCommand(id: string): ExportDialogCommand {
   const command = EXPORT_COMMANDS.find((c) => c.id === id);

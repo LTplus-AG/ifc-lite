@@ -103,9 +103,19 @@ impl DiskCache {
         self.set_bytes(key, &data).await
     }
 
-    /// Check if a key exists in the cache.
-    pub async fn has(&self, key: &str) -> bool {
-        cacache::metadata(&self.cache_dir, key).await.is_ok()
+    /// Whether the index holds an entry for `key`. An index lookup only: the
+    /// content is not read, so this is the cheap pre-filter, never the
+    /// decision a reader acts on.
+    ///
+    /// `Ok(false)` is "absent"; a lookup that FAILS is an error, not an
+    /// absence, so a caller answering `404` on `false` still answers a broken
+    /// cache store with `500 CACHE_ERROR` (#5750 review). `cacache::metadata`
+    /// answers `Ok(None)` for a key it has no entry for.
+    pub async fn has(&self, key: &str) -> Result<bool, ApiError> {
+        match cacache::metadata(&self.cache_dir, key).await {
+            Ok(entry) => Ok(entry.is_some()),
+            Err(e) => Err(ApiError::Cache(e.to_string())),
+        }
     }
 
     /// Remove a cached entry.

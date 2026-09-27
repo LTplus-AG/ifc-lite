@@ -8,7 +8,7 @@
  *
  * One palette per theme, in TypeScript, so the same values reach three
  * consumers without drifting: CSS custom properties on `<html>` (written by
- * `useOverlayThemeSync`), Tailwind utilities (`@theme` entries in `index.css`
+ * `registerOverlayThemeSync`), Tailwind utilities (`@theme` entries in `index.css`
  * that point at those properties), and the renderer's uniforms
  * (`tokenToRgba` / `tokenToLinearRgba`, consumed by the renderer bridge).
  *

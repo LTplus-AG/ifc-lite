@@ -19,6 +19,7 @@ import { useEffect, type MutableRefObject, type RefObject } from 'react';
 import type { Renderer, VisualEnhancementOptions, LightingEnvironment } from '@ifc-lite/renderer';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { SectionPlane } from '@/store';
+import { useViewerStore } from '@/store';
 import { chartAwareRendererSelectionFromStore } from '@/lib/charts/renderer-selection';
 import { sectionRenderClip } from '@/lib/section/section-render-clip';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
@@ -276,8 +277,9 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             lod,
             buildingRotation: coordinateInfoRef.current?.buildingRotation,
             // The cut: a plane (cap settings, cardinal range, face-picked
-            // normal) or, in box mode, the clip box (#5513).
-            ...sectionRenderClip(activeToolRef.current, sectionPlaneRef.current, sectionRangeRef.current),
+            // normal) or, in box mode, the clip box (#5513). Lasting scene
+            // state (#5893): gated on the visibility toggle, not the tool.
+            ...sectionRenderClip(useViewerStore.getState().sceneState.section.visible, sectionPlaneRef.current, sectionRangeRef.current),
             terrainClipY: terrainClipYRef.current ?? undefined,
           });
         } catch (err) {
@@ -335,8 +337,14 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         lastScaleUpdate = currentTime;
       }
 
-      // 5. Measurement screen coords
-      if (activeToolRef.current === 'measure' && hasPendingMeasurements()) {
+      // 5. Measurement screen coords. Finished measurements are lasting
+      // scene state (#5893): reproject while the Measure tool is open (its
+      // own pending/active point needs it) OR while the visibility toggle
+      // is on (the always-mounted `MeasurementSceneLayer` needs it).
+      if (
+        (activeToolRef.current === 'measure' || useViewerStore.getState().sceneState.measurements.visible) &&
+        hasPendingMeasurements()
+      ) {
         const cameraPos = camera.getPosition();
         const cameraRot = camera.getRotation();
         const cameraDist = camera.getDistance();

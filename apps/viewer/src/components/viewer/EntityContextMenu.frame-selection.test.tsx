@@ -123,3 +123,11 @@ describe('EntityContextMenu — Frame selection (#5597)', () => {
     assert.equal(menuItem(container, 'Show all').querySelectorAll('span')[1]?.textContent, 'A');
   });
 });
+
+it('exposes menu and menuitem roles when the entity menu opens (#5819)', () => {
+  act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
+  const container = render();
+  const menu = container.querySelector('[role="menu"]');
+  assert.ok(menu, 'the open context menu has a menu role');
+  assert.equal(menuItem(container, 'Frame selection').getAttribute('role'), 'menuitem');
+});

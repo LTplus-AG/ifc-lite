@@ -10,7 +10,7 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { useTranslation } from '@/i18n';
-import { IFC_AXIS_COLORS } from '@/lib/viewport-ui/overlay-theme';
+import { IFC_AXIS_COLORS, overlayColor } from '@/lib/viewport-ui/overlay-theme';
 
 interface AxisHelperProps {
   rotationX?: number;
@@ -173,12 +173,19 @@ export const AxisHelper = forwardRef<AxisHelperRef, AxisHelperProps>(({ rotation
           {t('cesiumGeo.axisHelper.labelY')}
         </div>
 
-        {/* Origin point */}
+        {/* Origin point. Inline like the arms above, not Tailwind utilities:
+            the embed renders this component without compiling Tailwind, so a
+            `w-2 bg-overlay-halo` dot had no size or fill there (#5490). */}
         <div
-          className="absolute w-2 h-2 bg-overlay-halo rounded-full border border-overlay-ink-muted"
+          className="absolute"
           style={{
             left: size / 2 - 4,
             top: size / 2 - 4,
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: overlayColor('overlay-halo'),
+            border: `1px solid ${overlayColor('overlay-ink-muted')}`,
           }}
         />
       </div>

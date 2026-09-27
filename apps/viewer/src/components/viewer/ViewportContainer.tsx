@@ -25,6 +25,7 @@ import { ToolOverlays } from './ToolOverlays';
 import { ZoneOverlay, ZoneAssignmentSyncMount } from './tools/ZoneOverlay';
 import { AnnotationLayer } from './annotations/AnnotationLayer';
 import { CollabPresenceLayer } from './CollabPresenceLayer';
+import { MeasurementSceneLayer } from './scene/MeasurementSceneLayer';
 import { BasepointOverlay } from './BasepointOverlay';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { DrawingRuntimeHost } from './drawing/DrawingRuntimeHost';
@@ -46,7 +47,7 @@ import {
   openIfcFilesWithHandles,
   handlesFromDataTransfer,
 } from '@/services/file-system-access';
-import { FILE_ACCEPT, isGltfBundleFile, isSupportedModelFile } from '@/services/supported-model-files';
+import { FILE_ACCEPT, isModelSidecarFile, isSupportedModelFile } from '@/services/supported-model-files';
 import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
 import {
   SOURCE_DOWNLOAD_EVENT,
@@ -430,65 +431,65 @@ export function ViewportContainer() {
       window.removeEventListener(SOURCE_DOWNLOAD_EVENT, handleSourceDownload);
   }, [addModel, resetViewerState, clearAllModels, sourceHost]);
 
-  // The whole window is the drop target (#5845): a file dropped on the
-  // toolbar, sidebar or a panel loads too, and the browser never navigates to
-  // it. While WebGPU is unsupported the drop is refused with the shared
-  // load-error card (#5851), not a silent no-op.
+  // Window drops on any viewer chrome route through the same guarded loader.
+  // Unsupported WebGPU reports through the shared load-error card (#5851).
   const handleDrop = useCallback((dataTransfer: DataTransfer) => {
-    if (!guardWebGpu()) return;
     // Capture live handles synchronously — the DataTransferItemList is neutered
     // once the drop event returns, so this must run before any await.
     const handlesPromise = handlesFromDataTransfer(dataTransfer);
+    const droppedFiles = Array.from(dataTransfer.files);
+    const attempt = () => {
+      if (!guardWebGpu(attempt)) return;
+      const { dxfFiles, modelFiles: allDropped } = splitDxfFiles(droppedFiles);
+      if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
+      if (allDropped.length === 0) return;
 
-    // DXF reference underlays split off before model routing (issue #1782):
-    // a dropped site plan must never replace or federate with the model.
-    const allDropped0 = Array.from(dataTransfer.files);
-    const { dxfFiles, modelFiles: allDropped } = splitDxfFiles(allDropped0);
-    if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
-    if (allDropped.length === 0) return;
+      // Keep glTF sidecars beside the document until they are packed into GLB.
+      const supportedFiles = allDropped.filter(file => isSupportedFile(file) || isModelSidecarFile(file));
 
-    // Keep glTF sidecars beside the document until they are packed into GLB.
-    const supportedFiles = allDropped.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
+      if (supportedFiles.length === 0) {
+        reportFileOpenRejected(allDropped);
+        return;
+      }
 
-    if (supportedFiles.length === 0) {
-      reportFileOpenRejected(allDropped);
-      return;
-    }
+      void handlesPromise.then((opened) => {
+        // Prefer the handle-paired files (Chromium): each file + handle comes from
+        // the same dropped item, so no filename matching is needed. Fall back to
+        // the plain dropped files when no handles were captured (Firefox/Safari).
+        const supportedOpened = (opened ?? []).filter((o) => isSupportedFile(o.file) || isModelSidecarFile(o.file));
+        const useHandles = supportedOpened.length > 0;
+        const files = useHandles ? supportedOpened.map((o) => o.file) : supportedFiles;
+        const handles = useHandles ? supportedOpened.map((o) => o.handle) : undefined;
 
-    void handlesPromise.then((opened) => {
-      // Prefer the handle-paired files (Chromium): each file + handle comes from
-      // the same dropped item, so no filename matching is needed. Fall back to
-      // the plain dropped files when no handles were captured (Firefox/Safari).
-      const supportedOpened = (opened ?? []).filter((o) => isSupportedFile(o.file) || isGltfBundleFile(o.file));
-      const useHandles = supportedOpened.length > 0;
-      const files = useHandles ? supportedOpened.map((o) => o.file) : supportedFiles;
-      const handles = useHandles ? supportedOpened.map((o) => o.handle) : undefined;
-
-      void prepareAndRoute(files, handles);
-    });
+        void prepareAndRoute(files, handles);
+      });
+    };
+    attempt();
   }, [prepareAndRoute, isSupportedFile, guardWebGpu]);
   // `accept` only steers the drop cursor/overlay; handleDrop's own guard (not
   // this flag) is what shows the load-error card when unsupported (#5851).
   const isDragging = useWindowFileDrop(handleDrop, webgpu.supported);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!guardWebGpu()) return;
-
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    // DXF reference underlays split off before model routing (issue #1782).
-    const { dxfFiles, modelFiles } = splitDxfFiles(Array.from(files));
-    if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
-
-    // Filter to supported files (IFC, IFCX, GLB). The <input> path yields no
-    // live handle, so these models are not refreshable.
-    const supportedFiles = modelFiles.filter(file => isSupportedFile(file) || isGltfBundleFile(file));
-
-    if (supportedFiles.length > 0) void prepareAndRoute(supportedFiles);
-    else reportFileOpenRejected(modelFiles);
-    // Reset input so same file can be selected again
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    // Reset while the event still owns this input; Retry uses the captured Files.
     e.target.value = '';
+    const attempt = () => {
+      if (!guardWebGpu(attempt)) return;
+
+      // DXF reference underlays split off before model routing (issue #1782).
+      const { dxfFiles, modelFiles } = splitDxfFiles(files);
+      if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
+
+      // Filter to supported files (IFC, IFCX, GLB). The <input> path yields no
+      // live handle, so these models are not refreshable.
+      const supportedFiles = modelFiles.filter(file => isSupportedFile(file) || isModelSidecarFile(file));
+
+      if (supportedFiles.length > 0) void prepareAndRoute(supportedFiles);
+      else reportFileOpenRejected(modelFiles);
+    };
+    attempt();
   }, [prepareAndRoute, isSupportedFile, guardWebGpu]);
 
   // Preferred open path: the File System Access picker (Chromium) captures a
@@ -505,7 +506,7 @@ export function ViewportContainer() {
     // DXF reference underlays split off before model routing (issue #1782).
     const dxfPicked = opened.filter((o) => o.file.name.toLowerCase().endsWith('.dxf'));
     if (dxfPicked.length > 0) void ingestDxfFiles(dxfPicked.map((o) => o.file));
-    const supported = opened.filter((o) => isSupportedFile(o.file) || isGltfBundleFile(o.file));
+    const supported = opened.filter((o) => isSupportedFile(o.file) || isModelSidecarFile(o.file));
     if (supported.length === 0) {
       reportFileOpenRejected(opened.map((o) => o.file));
       return;
@@ -744,8 +745,8 @@ export function ViewportContainer() {
       // IfcSpace / IfcOpeningElement alpha down to <= 0.3 here, which stomped
       // lens / Pset colour rules even when the user explicitly chose alpha 1.0.
       // Defaults still come from styling.rs / default-materials.ts; the
-      // renderer promotes overridden entities to the opaque pipeline so the
-      // overlay paint pass finds matching depth. See issue #677.
+      // renderer promotes overridden entities to the opaque pipeline, the
+      // only draws its colour table paints (#6076). See issue #677.
       cache.push(mesh);
     }
 
@@ -1018,6 +1019,7 @@ export function ViewportContainer() {
         {bcfOverlayVisible && <BCFOverlay />}
         <BasepointOverlay />
         <ZoneOverlay />
+        <MeasurementSceneLayer />
         <ToolOverlays />
       </SceneOverlayRoot>
       <ViewportOverlays />

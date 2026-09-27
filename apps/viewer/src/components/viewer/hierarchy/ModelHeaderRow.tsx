@@ -17,9 +17,10 @@ import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import type { TreeNode } from './types';
+import type { HierarchyNodeAriaProps } from './HierarchyNode';
 import { ModelRowTags } from './ModelRowTags';
 
-export interface ModelHeaderRowProps {
+export interface ModelHeaderRowProps extends HierarchyNodeAriaProps {
   node: TreeNode;
   virtualRow: { size: number; start: number };
   modelsCount: number;
@@ -43,6 +44,12 @@ export function ModelHeaderRow({
   onModelHeaderClick,
   sourceBacked = false,
   sourceSyncing = false,
+  ariaLevel = 1,
+  ariaSetSize = 1,
+  ariaPosInSet = 1,
+  tabIndex = -1,
+  rowRef,
+  onRowFocus,
 }: ModelHeaderRowProps) {
   const { t, locale } = useTranslation();
   const modelId = node.modelIds[0];
@@ -59,13 +66,19 @@ export function ModelHeaderRow({
       }}
     >
       <div
+        ref={rowRef}
         role="treeitem"
-        tabIndex={0}
-        aria-level={node.depth + 1}
+        aria-level={ariaLevel}
+        aria-setsize={ariaSetSize}
+        aria-posinset={ariaPosInSet}
         aria-expanded={node.hasChildren ? node.isExpanded : undefined}
+        data-node-id={node.id}
+        tabIndex={tabIndex}
+        onFocus={onRowFocus}
         className={cn(
           'flex items-center gap-1 px-2 py-1.5 border-l-4 transition-all group',
           'hover:bg-zinc-50 dark:hover:bg-zinc-900',
+          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2',
           'border-transparent',
           !modelVisible && 'opacity-50',
           node.hasChildren && 'cursor-pointer'
@@ -73,11 +86,6 @@ export function ModelHeaderRow({
         style={{ paddingLeft: '8px' }}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest('button,[data-model-row-tags]')) return;
-          onModelHeaderClick(modelId, node.id, node.hasChildren);
-        }}
-        onKeyDown={(e) => {
-          if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
-          e.preventDefault();
           onModelHeaderClick(modelId, node.id, node.hasChildren);
         }}
       >

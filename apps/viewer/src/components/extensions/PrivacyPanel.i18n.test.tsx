@@ -126,11 +126,17 @@ function foundText(strings: Set<string>, text: string): boolean {
   return false;
 }
 
+/** Opens `container`'s `HelpHint` — a no-op if it's already open (the
+ *  trigger is a toggle, and Radix's non-modal dismissal, #5817, can close
+ *  a previously-opened popover as a side effect of focus moving anywhere
+ *  else, so a caller re-opening it defensively must not accidentally
+ *  re-close an instance that never actually closed). */
 function openHelpHint(container: HTMLElement): void {
   const button = [...container.querySelectorAll('button')].find((b) =>
     b.getAttribute('aria-label')?.startsWith('Help: '),
   );
   assert.ok(button, 'expected a HelpHint trigger');
+  if (button.getAttribute('aria-expanded') === 'true') return;
   act(() => button.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
 }
 
@@ -288,11 +294,29 @@ describe('PrivacyPanel localization (#4918)', () => {
     const activeContainer = await mountActiveFlavorFixture(activeHost);
     await revealProposals(activeContainer);
 
-    const english = new Set<string>([...readableStrings(emptyContainer), ...readableStrings(activeContainer)]);
+    // `readableStrings` reads `document.body` (never scoped to `container`),
+    // but also focuses + blurs every button/input in `container` to reach
+    // Tooltip content — and a `HelpHint`'s popover is now Radix
+    // (`ui/popover.tsx`, #5817), whose non-modal dismissal closes it on any
+    // outside focus change. Cycling focus through the OTHER container's
+    // buttons therefore closes whichever `HelpHint` was open, as a pure
+    // side effect of the oracle itself, not a real interaction — so each
+    // container's popover is (re-)opened immediately before the
+    // `readableStrings` call that needs to see it, rather than assuming
+    // both stay open across the whole `Set` literal.
+    openHelpHint(emptyContainer);
+    const englishEmpty = readableStrings(emptyContainer);
+    openHelpHint(activeContainer);
+    const englishActive = readableStrings(activeContainer);
+    const english = new Set<string>([...englishEmpty, ...englishActive]);
 
     registerLocale('privacy-panel-pseudo', PSEUDO);
     act(() => setLocale('privacy-panel-pseudo'));
-    const after = new Set<string>([...readableStrings(emptyContainer), ...readableStrings(activeContainer)]);
+    openHelpHint(emptyContainer);
+    const afterEmpty = readableStrings(emptyContainer);
+    openHelpHint(activeContainer);
+    const afterActive = readableStrings(activeContainer);
+    const after = new Set<string>([...afterEmpty, ...afterActive]);
 
     const covered = new Set<ExtKey>();
     for (const key of STATIC_KEYS) {

@@ -749,7 +749,7 @@ describe('table block (#5142)', () => {
     const model = ctx.models[0];
     const pairs = [{ modelId: model.id, provider: createListDataProvider(model.store, model.name), store: model.store }];
     const grouping = { columnId: 'storey', columnIds: ['storey'], sumColumnIds: [] };
-    const result = runListFederated(listOf({ grouping }), pairs, { models: new Map([[model.id, {}]]), modelTags: new Map(), modelTagAssignments: new Map() });
+    const result = await runListFederated(listOf({ grouping }), pairs, { models: new Map([[model.id, {}]]), modelTags: new Map(), modelTagAssignments: new Map() });
     const exportModel = buildExportModel({ title: 'Walls', columns: result.columns, rows: result.rows, grouping, numericCols: detectNumericColumns(result.columns, result.rows), columnWidths: [], generatedAt: 'now' });
     const doc = docWith([tableBlock({ maxRows: 1, caption: 'Fire ratings' }), tableBlock({ id: 'tb2', title: 'Pending' })]);
     const { seams, calls } = recordingSeams();
@@ -770,7 +770,7 @@ describe('table block (#5142)', () => {
 
     // The schedule view with a sum: one row per storey with a Count column, then the totals row carrying the element count under Count.
     const scheduleGrouping = { columnId: 'storey', columnIds: ['storey'], sumColumnIds: ['fr'], view: 'schedule' as const };
-    const scheduleResult = runListFederated(listOf({ grouping: scheduleGrouping }), pairs, { models: new Map([[model.id, {}]]), modelTags: new Map(), modelTagAssignments: new Map() });
+    const scheduleResult = await runListFederated(listOf({ grouping: scheduleGrouping }), pairs, { models: new Map([[model.id, {}]]), modelTags: new Map(), modelTagAssignments: new Map() });
     const scheduleModel = buildExportModel({ title: 'Walls', columns: scheduleResult.columns, rows: scheduleResult.rows, grouping: scheduleGrouping, numericCols: detectNumericColumns(scheduleResult.columns, scheduleResult.rows), columnWidths: [], generatedAt: 'now' });
     const sched = recordingSeams();
     await generateDocumentPdf({ document: docWith([tableBlock({ id: 'tb4' })]), bindings: ctx, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map([['tb4', { status: 'ok', model: scheduleModel }]]) }, sched.seams);

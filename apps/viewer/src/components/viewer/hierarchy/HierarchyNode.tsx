@@ -2,17 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { useState } from 'react';
 import { ChevronRight, Layers, Eye, EyeOff, FileBox } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
-import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { isNoGeometryNode, isSpatialContainer, type TreeNode } from './types';
-import { CountBadgeTooltip } from './CountBadgeTooltip';
+import { HierarchyNodeBadges } from './HierarchyNodeBadges';
 import { IFC_ICON_CODEPOINTS, IFC_ICON_DEFAULT } from './ifc-icons';
 import { ModelTagGroupRow } from './ModelTagGroupRow';
 import { ModelHeaderRow } from './ModelHeaderRow';
 import { ModelBadge } from '../ModelBadge';
+import { HierarchyRowActions, type HierarchyRowAction } from './HierarchyRowActions';
 
 /**
  * Resolve the Material Symbols code point for a given IFC type string.
@@ -33,7 +34,24 @@ const NODE_TYPE_ICONS: Record<string, React.ElementType> = {
  *  a storey row 12 px more for its name (#5394). */
 const HIERARCHY_INDENT_STEP_PX = 12;
 
-export interface HierarchyNodeProps {
+/** ARIA tree-row attributes plus the roving-tabIndex/focus wiring every row
+ *  type needs to behave as a `treeitem` (#5883) — computed once per rendered
+ *  list in `HierarchyPanel.tsx` (`ariaTreeAttrs.ts` + `useTreeKeyboard.ts`)
+ *  and threaded through here so `ModelHeaderRow`/`ModelTagGroupRow` apply
+ *  them on their own root element instead of duplicating the computation. */
+export interface HierarchyNodeAriaProps {
+  /** Optional so pre-existing unit tests that construct a row directly (not
+   *  through `HierarchyPanel.tsx`'s `renderNode`) don't all need updating for
+   *  a concern they aren't testing; `HierarchyPanel.tsx` always supplies them. */
+  ariaLevel?: number;
+  ariaSetSize?: number;
+  ariaPosInSet?: number;
+  tabIndex?: 0 | -1;
+  rowRef?: (el: HTMLElement | null) => void;
+  onRowFocus?: () => void;
+}
+
+export interface HierarchyNodeProps extends HierarchyNodeAriaProps {
   node: TreeNode;
   virtualRow: { size: number; start: number };
   isSelected: boolean;
@@ -49,6 +67,8 @@ export interface HierarchyNodeProps {
   onRemoveModel: (modelId: string, e: React.MouseEvent) => void;
   onSyncSourceModel?: (modelId: string, e: React.MouseEvent) => void;
   onModelHeaderClick: (modelId: string, nodeId: string, hasChildren: boolean) => void;
+  actions?: readonly HierarchyRowAction[];
+  onAction?: (node: TreeNode, action: HierarchyRowAction) => void;
   sourceBacked?: boolean;
   sourceSyncing?: boolean;
 }
@@ -69,10 +89,19 @@ export function HierarchyNode({
   onRemoveModel,
   onSyncSourceModel,
   onModelHeaderClick,
+  actions = [],
+  onAction,
   sourceBacked = false,
   sourceSyncing = false,
+  ariaLevel = 1,
+  ariaSetSize = 1,
+  ariaPosInSet = 1,
+  tabIndex = -1,
+  rowRef,
+  onRowFocus,
 }: HierarchyNodeProps) {
-  const { t, locale } = useTranslation();
+  const { t } = useTranslation();
+  const [actionsOpen, setActionsOpen] = useState(false);
   const resolvedType = node.ifcType || node.type;
   // Use Lucide icon for non-IFC structural nodes, Material Symbols for IFC classes
   const LucideIcon = NODE_TYPE_ICONS[node.type];
@@ -94,7 +123,20 @@ export function HierarchyNode({
       : 'text-zinc-700 dark:text-zinc-300';
   const strikeWhenHidden = nodeHidden && 'line-through decoration-zinc-400 dark:decoration-zinc-600';
   const noGeometry = isNoGeometryNode(node);
-  if (node.type === 'model-tag-group') return <ModelTagGroupRow node={node} virtualRow={virtualRow} />;
+  if (node.type === 'model-tag-group') {
+    return (
+      <ModelTagGroupRow
+        node={node}
+        virtualRow={virtualRow}
+        ariaLevel={ariaLevel}
+        ariaSetSize={ariaSetSize}
+        ariaPosInSet={ariaPosInSet}
+        tabIndex={tabIndex}
+        rowRef={rowRef}
+        onRowFocus={onRowFocus}
+      />
+    );
+  }
   // Model header nodes (for visibility control and expansion)
   if (node.type === 'model-header' && node.id.startsWith('model-')) {
     return (
@@ -109,6 +151,12 @@ export function HierarchyNode({
         onModelHeaderClick={onModelHeaderClick}
         sourceBacked={sourceBacked}
         sourceSyncing={sourceSyncing}
+        ariaLevel={ariaLevel}
+        ariaSetSize={ariaSetSize}
+        ariaPosInSet={ariaPosInSet}
+        tabIndex={tabIndex}
+        rowRef={rowRef}
+        onRowFocus={onRowFocus}
       />
     );
   }
@@ -138,13 +186,20 @@ export function HierarchyNode({
       }}
     >
       <div
+        ref={rowRef}
         role="treeitem"
-        tabIndex={0}
-        aria-level={node.depth + 1}
-        aria-expanded={node.hasChildren ? node.isExpanded : undefined}
+        aria-level={ariaLevel}
+        aria-setsize={ariaSetSize}
+        aria-posinset={ariaPosInSet}
+        data-hierarchy-node-type={node.type}
         aria-selected={isSelected}
+        aria-expanded={node.hasChildren ? node.isExpanded : undefined}
+        data-node-id={node.id}
+        tabIndex={tabIndex}
+        onFocus={onRowFocus}
         className={cn(
-          'flex items-center gap-1 px-2 py-1.5 border-l-4 transition-all group hierarchy-item',
+          'relative flex items-center gap-1 px-2 py-1.5 border-l-4 transition-all group hierarchy-item',
+          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2',
           // No selection styling for spatial containers in multi-model mode
           isMultiModel && isSpatialContainer(node.type)
             ? 'border-transparent cursor-default'
@@ -163,25 +218,41 @@ export function HierarchyNode({
             ? 'var(--hierarchy-selected-text)' : undefined,
         }}
         onClick={(e) => {
-          if ((e.target as HTMLElement).closest('button') === null) {
+          // React bubbles through portals even when the menu item is outside
+          // this row in the DOM. Only a physical row click selects entities.
+          if (e.currentTarget.contains(e.target as Node) &&
+              (e.target as HTMLElement).closest('button') === null) {
             onNodeClick(node, e);
           }
         }}
+        // No row-level Enter/Space handler: the tree container's onKeyDown
+        // (useTreeKeyboard) already handles it for every row uniformly —
+        // one here too would double-activate (#5823 part 1 added one, this
+        // #6139 review round removed it).
         onKeyDown={(e) => {
-          if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
-          e.preventDefault();
-          onNodeClick(node, e);
+          if (e.target === e.currentTarget && (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10'))) {
+            e.preventDefault();
+            setActionsOpen(true);
+          }
         }}
         onMouseDown={(e) => {
-          if ((e.target as HTMLElement).closest('button') === null) {
+          if (e.currentTarget.contains(e.target as Node) &&
+              (e.target as HTMLElement).closest('button') === null) {
             e.preventDefault();
           }
+        }}
+        onContextMenu={(e) => {
+          if (actions.length === 0 || !e.currentTarget.contains(e.target as Node)) return;
+          e.preventDefault();
+          setActionsOpen(true);
         }}
       >
         {/* Expand/Collapse */}
         {node.hasChildren ? (
           <button
             disabled={searchActive}
+            // Not in the tab order: the treeitem itself is (roving tabIndex).
+            tabIndex={-1}
             onClick={(e) => {
               e.stopPropagation();
               onToggleExpand(node.id);
@@ -307,42 +378,15 @@ export function HierarchyNode({
           </span>
         )}
 
-        {/* Storey Elevation */}
-        {node.storeyDisplayElevation !== undefined && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="text-[10px] font-mono bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 rounded-none">
-                {t('hierarchy.node.elevationBadge', {
-                  sign: node.storeyDisplayElevation >= 0 ? '+' : '',
-                  value: formatLocaleNumber(locale, node.storeyDisplayElevation, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                })}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p className="text-xs">
-                {t('hierarchy.node.elevationTooltip', {
-                  sign: node.storeyDisplayElevation >= 0 ? '+' : '',
-                  value: formatLocaleNumber(locale, node.storeyDisplayElevation, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                })}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        )}
-
-        {/* Element Count */}
-        {node.elementCount !== undefined && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              {/* Yields first when the tree is narrow (#5394): below 18rem the
-                  name needs the room more than the count does. */}
-              <span data-hierarchy-count-badge className="hidden @2xs:inline text-[10px] font-mono bg-zinc-100 dark:bg-zinc-950 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 rounded-none">
-                {formatLocaleNumber(locale, node.elementCount)}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>
-              <CountBadgeTooltip elementCount={node.elementCount} summary={node.countSummary} />
-            </TooltipContent>
-          </Tooltip>
+        <HierarchyNodeBadges node={node} />
+        {onAction && (
+          <HierarchyRowActions
+            name={node.name}
+            actions={actions}
+            open={actionsOpen}
+            onOpenChange={setActionsOpen}
+            onAction={(action) => onAction(node, action)}
+          />
         )}
       </div>
     </div>

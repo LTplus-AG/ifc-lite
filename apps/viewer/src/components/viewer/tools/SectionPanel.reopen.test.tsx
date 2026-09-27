@@ -3,12 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Reopening the MOUNTED Section tool (#4910).
+ * Reopening the MOUNTED Section tool (#4910, #5893).
  *
  * SectionPanel re-applies the persisted last cardinal mode when it mounts, and
- * those setters enable the cut. So the store alone cannot say whether a cut
- * comes back: leaving the tool must bring it back on reopen, and an explicit
- * clear (SDK `clearSection()`, a BCF viewpoint without planes) must not.
+ * those setters enable the cut. Since #5893 the cut is lasting scene state:
+ * leaving the Section tool must NOT hide it any more (that was the #5893
+ * defect — you could not measure inside a section because opening Measure
+ * parked the cut), so it stays on screen and unchanged across the switch. An
+ * explicit clear (SDK `clearSection()`, a BCF viewpoint without planes) must
+ * still stay cleared on reopen.
  */
 
 import '@/test/setup-dom.js';
@@ -58,10 +61,13 @@ async function cutAt(axis: 'down' | 'front' | 'side', position: number): Promise
 }
 
 describe('Section tool reopen (#4910)', () => {
-  it('leaving the tool hides the cut and reopening it shows the same cut', async () => {
+  it('leaving the tool keeps the cut on screen, and reopening still shows the same cut (#5893)', async () => {
     await cutAt('front', 35);
     await tool('select');
-    assert.equal(s().sectionPlane.enabled, false, 'BUG: the cut is still reported after leaving the tool');
+    assert.equal(s().sectionPlane.enabled, true, 'BUG (pre-#5893): the cut was hidden the moment the tool closed');
+    assert.equal(s().sceneState.section.visible, true);
+    assert.equal(s().sectionPlane.axis, 'front');
+    assert.equal(s().sectionPlane.position, 35);
     await tool('section');
     assert.equal(s().sectionPlane.enabled, true);
     assert.equal(s().sectionPlane.axis, 'front');

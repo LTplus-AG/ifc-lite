@@ -3,12 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The store's `sectionPlane` as the renderer's clip options (#5513): the
- * one place `useAnimationLoop` turns the cut into `RenderOptions`.
+ * The store's `sectionPlane` as the renderer's clip options (#5513, #5893):
+ * the one place `useAnimationLoop` turns the cut into `RenderOptions`.
  *
- * Outside the Section tool nothing clips (`store/section-active.ts` holds
- * the same invariant on the store side). Inside it, box mode
- * (`sectionPlane.box`) hands the renderer its `ClipBox` and NO plane at
+ * Nothing clips while `sceneState.section.visible` is false — the cut is
+ * lasting scene state the user toggles (#5893), no longer tied to the
+ * Section tool being open (`store/section-active.ts` holds the matching
+ * invariant on the store side: `activeSectionPlane()`). While visible, box
+ * mode (`sectionPlane.box`) hands the renderer its `ClipBox` and NO plane at
  * all: the renderer draws a plane's preview quad whenever it is handed one,
  * even disabled (`render-section-draw.ts`), and the cardinal `axis` /
  * `position` the store keeps for the Drawing panel and BCF must not haunt
@@ -23,11 +25,11 @@ import type { SectionPlane } from '@/store/types';
 export type SectionRenderClip = Pick<RenderOptions, 'sectionPlane' | 'clipBox'>;
 
 export function sectionRenderClip(
-  activeTool: string,
+  visible: boolean,
   plane: SectionPlane,
   range: { min: number; max: number } | null,
 ): SectionRenderClip {
-  if (activeTool !== 'section') return {};
+  if (!visible) return {};
   const box = plane.box;
   if (box) return { clipBox: { min: box.min, max: box.max, enabled: plane.enabled } };
   return {

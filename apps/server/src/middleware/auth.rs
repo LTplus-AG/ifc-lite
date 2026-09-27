@@ -15,23 +15,25 @@ use std::sync::Arc;
 
 use axum::{
     extract::State,
-    http::{header, Request, StatusCode},
+    http::{header, HeaderValue, Request, StatusCode},
     middleware::Next,
     response::Response,
 };
 
 use crate::config::Config;
+use crate::error::error_response;
 
 /// Axum middleware enforcing optional bearer-token auth on protected routes.
 ///
 /// If no token is configured the request passes through unchanged. If a token
 /// is configured, the `Authorization: Bearer <token>` header must match exactly
-/// (constant-time compare) or the request is rejected with `401`.
+/// (constant-time compare) or the request is rejected with `401`, in the same
+/// `{"error", "code"}` envelope as every other failure (#5750).
 pub async fn require_bearer_token(
     State(config): State<Arc<Config>>,
     request: Request<axum::body::Body>,
     next: Next,
-) -> Result<Response, StatusCode> {
+) -> Result<Response, Response> {
     // Auth disabled: pass through. (Startup warning is logged once in `main`.)
     let Some(expected) = config.api_token.as_deref() else {
         return Ok(next.run(request).await);
@@ -50,9 +52,23 @@ pub async fn require_bearer_token(
         }
         _ => {
             tracing::warn!("Rejected request to protected route: missing or invalid bearer token");
-            Err(StatusCode::UNAUTHORIZED)
+            Err(unauthorized())
         }
     }
+}
+
+/// The `401`: the shared error envelope plus the `WWW-Authenticate` challenge
+/// naming the scheme this layer accepts.
+fn unauthorized() -> Response {
+    let mut response = error_response(
+        StatusCode::UNAUTHORIZED,
+        "UNAUTHORIZED",
+        "Unauthorized: missing or invalid bearer token",
+    );
+    response
+        .headers_mut()
+        .insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
+    response
 }
 
 /// Length-aware constant-time byte comparison to avoid leaking the token via

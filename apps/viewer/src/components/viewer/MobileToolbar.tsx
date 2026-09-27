@@ -33,7 +33,7 @@ import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { MOBILE_FILE_ACCEPT, isSupportedMobileModelFile } from '@/services/supported-model-files';
 import { surfaceCommand, type SurfaceCommandDefinition, type SurfaceCommandId } from './surface-commands';
-import { runSurfaceCommand } from './surface-command-run';
+import { runSurfaceCommand, trackCommandExecution } from './surface-command-run';
 
 export function MobileToolbar() {
   const { t } = useTranslation();
@@ -274,7 +274,10 @@ export function MobileToolbar() {
             {t('shellChrome.mobileToolbar.export')}
           </DropdownMenuLabel>
           {exportRows.map((row) => (
-            <DropdownMenuItem key={row.id} data-export-row={row.id} onClick={row.action}>
+            <DropdownMenuItem key={row.id} data-export-row={row.id} onClick={() => {
+              if (!row.registryOwned) trackCommandExecution(row.id, 'mobile');
+              row.action();
+            }}>
               <row.icon className="h-4 w-4 mr-2" />
               {row.labelKey ? t(row.labelKey, row.labelKeyParams) : row.label}
             </DropdownMenuItem>

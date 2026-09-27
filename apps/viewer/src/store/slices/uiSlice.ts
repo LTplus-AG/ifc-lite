@@ -60,6 +60,7 @@ const AUTHORING_TOOLS: ReadonlySet<string> = new Set([
   'cesium-placement',
   'split',
   'spaceSketch',
+  'command',
 ]);
 
 /**

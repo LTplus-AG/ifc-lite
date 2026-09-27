@@ -8,7 +8,7 @@ export { HUD_REGIONS, type HudRegionName } from './hud-regions';
 export { HudSurface } from './HudSurface';
 export { HudToolbar } from './HudToolbar';
 export { HudSegmented, type HudSegmentedOption, type HudSegmentedProps } from './HudSegmented';
-export { HudValueField, type HudValueFieldProps } from './HudValueField';
+export { HudValueField, type HudValueFieldHandle, type HudValueFieldProps } from './HudValueField';
 export { HudChip, type HudChipAction, type HudChipProps } from './HudChip';
 export { HudHint } from './HudHint';
 export { HudToggle, HudDivider, type HudToggleProps } from './HudToggle';

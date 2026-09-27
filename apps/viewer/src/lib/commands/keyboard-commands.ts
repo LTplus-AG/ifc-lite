@@ -38,6 +38,10 @@ export type KeyContext =
   | 'tool.split'
   | 'tool.addElement'
   | 'tool.spaceSketch'
+  /** While a modeling command runs (Model workspace, charter #6232). */
+  | 'command'
+  /** One modeling command's own keys, e.g. `command.wall.place`. */
+  | `command.${string}`
   /** The 2D drawing's measure and annotation tools. */
   | 'drawing2d'
   /** While right mouse is held in the 3D view (fly). */
@@ -80,6 +84,8 @@ export interface KeyCommandDefinition {
 
 const k = (key: string, mods: Omit<KeyChord, 'key'> = {}): KeyChord => ({ key, ...mods });
 
+const DIGITS: readonly KeyChord[] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => k(d));
+
 const ALT_DIGITS: readonly KeyChord[] = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
   .map((d) => k(`code:Digit${d}`, { alt: true }));
 
@@ -110,6 +116,12 @@ export const KEY_COMMANDS = [
   { id: 'spaceSketch.redo', labelKey: 'commands.spaceSketch.redo', category: 'tools', when: 'tool.spaceSketch', keys: [k('z', { mod: true, shift: true })] },
   { id: 'spaceSketch.commit', labelKey: 'commands.spaceSketch.commit', category: 'tools', when: 'tool.spaceSketch', keys: [k('enter')] },
   { id: 'spaceSketch.cancel', labelKey: 'commands.spaceSketch.cancel', category: 'tools', when: 'tool.spaceSketch', keys: [k('escape')] },
+  { id: 'command.commit', labelKey: 'commands.command.commit', category: 'tools', when: 'command', keys: [k('enter')] },
+  { id: 'command.cancel', labelKey: 'commands.command.cancel', category: 'tools', when: 'command', keys: [k('escape')] },
+  { id: 'command.undoPoint', labelKey: 'commands.command.undoPoint', category: 'tools', when: 'command', keys: [k('backspace')] },
+  { id: 'command.nextField', labelKey: 'commands.command.nextField', category: 'tools', when: 'command', keys: [k('tab')] },
+  { id: 'command.typeValue', labelKey: 'commands.command.typeValue', category: 'tools', when: 'command', keys: DIGITS, display: 'range' },
+  { id: 'command.toggleSnap', labelKey: 'commands.command.toggleSnap', category: 'tools', when: 'command', keys: [k('s')] },
   { id: 'drawing2d.cancel', labelKey: 'commands.drawing2d.cancel', category: 'tools', when: 'drawing2d', keys: [k('escape')] },
   { id: 'drawing2d.delete', labelKey: 'commands.drawing2d.delete', category: 'tools', when: 'drawing2d', keys: [k('delete'), k('backspace')] },
   { id: 'drawing2d.orthogonal', labelKey: 'commands.drawing2d.orthogonal', category: 'tools', when: 'drawing2d', keys: [k('shift')] },

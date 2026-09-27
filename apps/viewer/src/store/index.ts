@@ -54,6 +54,7 @@ import { createAnnotationsSlice, type AnnotationsSlice } from './slices/annotati
 import { createCollabSlice, type CollabSlice } from './slices/collabSlice.js';
 import { createAddElementSlice, type AddElementSlice } from './slices/addElementSlice.js';
 import { createSplitToolSlice, type SplitToolSlice } from './slices/splitToolSlice.js';
+import { createAuthoringSessionSlice, type AuthoringSessionSlice } from './slices/authoringSessionSlice.js';
 import { createLevelDisplaySlice, type LevelDisplaySlice } from './slices/levelDisplaySlice.js';
 import { createModelPlacementSlice, type ModelPlacementSlice } from './slices/modelPlacementSlice.js';
 import { createPointCloudSlice, type PointCloudSlice } from './slices/pointCloudSlice.js';
@@ -179,7 +180,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   AnnotationsSlice &
   CollabSlice &
   AddElementSlice &
-  SplitToolSlice &
+  SplitToolSlice & AuthoringSessionSlice &
   LevelDisplaySlice &
   PointCloudSlice & ModelPlacementSlice &
   UnitDisplaySlice & SpaceMouseSlice & ZonesSlice & ModelTagsSlice &
@@ -277,7 +278,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createAnnotationsSlice(...args),
   ...createCollabSlice(...args),
   ...createAddElementSlice(...args),
-  ...createSplitToolSlice(...args),
+  ...createSplitToolSlice(...args), ...createAuthoringSessionSlice(...args),
   ...createLevelDisplaySlice(...args),
   ...createPointCloudSlice(...args),
   ...createModelPlacementSlice(...args),

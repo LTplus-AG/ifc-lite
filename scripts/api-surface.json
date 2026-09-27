@@ -4840,6 +4840,7 @@
     "landXmlGlobalId: function",
     "landXmlToIfc: function",
     "listStoreys: function",
+    "liveEntityConforms: function",
     "liveEntityType: function",
     "mapAlignments: function",
     "nestCostItemsInStore: function",

@@ -98,7 +98,7 @@ export {
   type MaterialLayerSetUsageInStoreParams,
 } from './in-store/material.js';
 export type { OneToManyResult } from './in-store/relate.js';
-export { resolveAuthoringAnchor, readRelatedLists, liveEntityType } from './in-store/resolve-relations.js';
+export { resolveAuthoringAnchor, readRelatedLists, liveEntityType, liveEntityConforms } from './in-store/resolve-relations.js';
 export { addSpaceToStore, type SpaceInStoreParams, type SpaceRectangleParams, type SpacePolygonParams, type SpaceBuildResult } from './in-store/space.js';
 export {
   addSpatialZonesToStore,

@@ -36,6 +36,19 @@ export function canonicalEntity(registry: SchemaRegistry, type: string): string 
   return Object.keys(registry.entities).find((name) => name.toUpperCase() === upper) ?? null;
 }
 
+/**
+ * Whether `type` is an `expected` in the schema: the class itself or one of its
+ * subtypes, or (transitively) a member of the `expected` SELECT.
+ */
+export function conformsTo(registry: SchemaRegistry, type: string, expected: string): boolean {
+  const name = canonicalEntity(registry, type);
+  if (!name) return false;
+  const chain = registry.entities[name].inheritanceChain ?? [name];
+  const matches = (target: string, depth: number): boolean =>
+    chain.includes(target) || (depth < 8 && (registry.selects[target] ?? []).some((member) => matches(member, depth + 1)));
+  return matches(expected, 0);
+}
+
 /** Follow defined types down to the underlying primitive (`IfcLengthMeasure` -> `REAL`). */
 function underlying(registry: SchemaRegistry, type: string): string {
   let current = type;

@@ -70,4 +70,19 @@ describe('#6232 CLI bim.store modelling surface', () => {
     expect(text).not.toMatch(/^#1224=/m);
     expect(() => bim.store.assignType('default', WALL, [type.expressId])).toThrow(/#1222 is an IFCWALL/);
   });
+
+  it('refuses relating entities and objects the relationship slot does not take in the schema', async () => {
+    const bim = await context();
+    // #1224 is an IfcRelDefinesByType (its name ends in TYPE), not an IfcTypeObject.
+    expect(() => bim.store.assignType('default', 1224, [WALL])).toThrow(/#1224 is an IFCRELDEFINESBYTYPE, not an IfcTypeObject/);
+    // A type object cannot be typed: RelatedObjects is a SET OF IfcObject.
+    const other = bim.store.addElementType('default', { Type: 'IfcWallType', Name: 'IW-100' });
+    expect(() => bim.store.assignType('default', 388, [other.expressId]))
+      .toThrow(new RegExp(`#${other.expressId} is an IFCWALLTYPE, not an IfcObject`));
+    // #390 IfcMaterialLayer is an IfcMaterialSelect; a relationship is not an object definition.
+    expect(() => bim.store.assignMaterial('default', 391, [1224])).toThrow(/#1224 is an IFCRELDEFINESBYTYPE, not an IfcObjectDefinition or IfcPropertyDefinition/);
+    expect(() => bim.store.assignMaterial('default', 389, [WALL])).toThrow(/#389 is an IFCRELASSOCIATESMATERIAL, not an IfcMaterialSelect/);
+    const text = bim.export.ifc(undefined, { schema: 'IFC4' }) as string;
+    expect(text).toMatch(/^#1224=IFCRELDEFINESBYTYPE\('.{22}',\$,\$,\$,\(#1222\),#388\);$/m);
+  });
 });

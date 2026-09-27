@@ -21,6 +21,7 @@ import {
   addMaterialToStore,
   assignMaterialInStore,
   assignTypeInStore,
+  liveEntityConforms,
   liveEntityType,
   readRelatedLists,
   resolveAuthoringAnchor,
@@ -53,14 +54,19 @@ export function createModellingStoreBackend(resolve: ModellingStoreModelResolver
     const model = resolve(modelId);
     return { model, anchor: { ...resolveAuthoringAnchor(model.store, model.mutationView), ownerHistoryId: model.ownerHistoryId } };
   };
-  /** Refuse ids that are not live entities, and a relating entity of the wrong kind, before anything is written. */
-  const requireLive = (model: CostStoreModelResolution, op: string, relating: number, kind: RegExp, objects: number[]) => {
-    const relatingType = liveEntityType(model.store, relating, model.mutationView);
-    if (!relatingType || !kind.test(relatingType)) {
-      throw new Error(`bim.store.${op}: #${relating} is ${relatingType ? `an ${relatingType}` : 'not a live entity'}`);
+  /**
+   * Refuse, before anything is written, a relating entity or an object that is
+   * not live or is not of a class the relationship slot takes in the model's
+   * schema (`IfcRelDefinesByType.RelatingType` is an IfcTypeObject, and so on).
+   */
+  const requireKinds = (model: CostStoreModelResolution, op: string, checks: Array<[ids: number[], kinds: string[]]>) => {
+    for (const [ids, kinds] of checks) {
+      for (const id of ids) {
+        if (kinds.some((kind) => liveEntityConforms(model.store, id, kind, model.mutationView))) continue;
+        const type = liveEntityType(model.store, id, model.mutationView);
+        throw new Error(`bim.store.${op}: #${id} is ${type ? `an ${type}, not an ${kinds.join(' or ')}` : 'not a live entity'}`);
+      }
     }
-    const missing = objects.filter((id) => liveEntityType(model.store, id, model.mutationView) === null);
-    if (missing.length > 0) throw new Error(`bim.store.${op}: no live entity ${missing.map((id) => `#${id}`).join(', ')}`);
   };
 
   return {
@@ -82,7 +88,7 @@ export function createModellingStoreBackend(resolve: ModellingStoreModelResolver
     },
     assignType(modelId: string, typeExpressId: number, objectExpressIds: number[]): EntityRef {
       const { model, anchor } = authoring(modelId);
-      requireLive(model, 'assignType', typeExpressId, /(TYPE|STYLE)$/, objectExpressIds);
+      requireKinds(model, 'assignType', [[[typeExpressId], ['IfcTypeObject']], [objectExpressIds, ['IfcObject']]]);
       const existing = readRelatedLists(model.store, 'IfcRelDefinesByType', model.mutationView);
       return ref(model.modelId, assignTypeInStore(model.editor, anchor, typeExpressId, objectExpressIds, existing).relId);
     },
@@ -96,12 +102,12 @@ export function createModellingStoreBackend(resolve: ModellingStoreModelResolver
     },
     addMaterialLayerSetUsage(modelId: string, params: MaterialLayerSetUsageInStoreParams): EntityRef {
       const { model, anchor } = authoring(modelId);
-      requireLive(model, 'addMaterialLayerSetUsage', params.ForLayerSet, /^IFCMATERIALLAYERSET$/, []);
+      requireKinds(model, 'addMaterialLayerSetUsage', [[[params.ForLayerSet], ['IfcMaterialLayerSet']]]);
       return ref(model.modelId, addMaterialLayerSetUsageToStore(model.editor, anchor, params).usageId);
     },
     assignMaterial(modelId: string, materialExpressId: number, objectExpressIds: number[]): EntityRef {
       const { model, anchor } = authoring(modelId);
-      requireLive(model, 'assignMaterial', materialExpressId, /^IFCMATERIAL/, objectExpressIds);
+      requireKinds(model, 'assignMaterial', [[[materialExpressId], ['IfcMaterialSelect']], [objectExpressIds, ['IfcObjectDefinition', 'IfcPropertyDefinition']]]);
       const existing = readRelatedLists(model.store, 'IfcRelAssociatesMaterial', model.mutationView);
       return ref(model.modelId, assignMaterialInStore(model.editor, anchor, materialExpressId, objectExpressIds, existing).relId);
     },

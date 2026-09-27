@@ -16,6 +16,7 @@ import type { ExistingRelatedList } from './cost.js';
 import type { AuthoringAnchor } from './element-type.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { safeLengthUnitScale } from './length-unit-scale.js';
+import { conformsTo, schemaRegistry } from './schema-attributes.js';
 
 function refId(value: unknown): number | null {
   if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
@@ -58,4 +59,21 @@ export function readRelatedLists(
 /** The live entity's class in `IfcPascalCase`-insensitive form (upper case), or null when it does not exist. */
 export function liveEntityType(store: IfcDataStore, id: number, view?: MutablePropertyView | null): string | null {
   return new AnchorEntityReader(store, view).entity(id)?.type.toUpperCase() ?? null;
+}
+
+/**
+ * Whether live entity `id` is an `expected` in the model's schema (the class or
+ * a subtype, or a member of the `expected` SELECT), e.g. `'IfcTypeObject'`,
+ * `'IfcObject'` or `'IfcMaterialSelect'`. False when the entity is not live.
+ */
+export function liveEntityConforms(
+  store: IfcDataStore,
+  id: number,
+  expected: string,
+  view?: MutablePropertyView | null,
+): boolean {
+  const type = liveEntityType(store, id, view);
+  if (type === null) return false;
+  const schema = (store.schemaVersion ?? 'IFC4') as SpatialAnchorSchema;
+  return conformsTo(schemaRegistry(schema, 'liveEntityConforms'), type, expected);
 }

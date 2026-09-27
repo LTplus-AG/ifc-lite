@@ -25,6 +25,8 @@ export function ByokTrustDiagram({ apiHost }: ByokTrustDiagramProps) {
     <svg
       viewBox="0 0 520 200"
       xmlns="http://www.w3.org/2000/svg"
+      // SVG artwork needs an image role; an HTML img cannot contain these live vector labels.
+      // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
       role="img"
       aria-label={t('chatByok.trustDiagram.ariaLabel', { apiHost })}
       className="w-full h-auto"

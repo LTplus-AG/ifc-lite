@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import { useTranslation } from '@/i18n';
+import { ChatResizeHandle } from './ChatResizeHandle';
 import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import {
   Play,
@@ -532,10 +533,7 @@ export function ScriptPanel() {
       {/* Right side: AI Chat panel (collapsible, resizable) */}
       {chatPanelVisible && (
         <>
-          <div
-            className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize shrink-0 h-full"
-            onMouseDown={handleChatResizeStart}
-          />
+          <ChatResizeHandle width={chatWidth} onWidthChange={setChatWidth} onMouseDown={handleChatResizeStart} />
           <div style={{ width: chatWidth }} className="shrink-0 h-full min-w-0">
             <ChatPanel onClose={() => setChatPanelVisible(false)} />
           </div>

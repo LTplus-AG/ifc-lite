@@ -80,6 +80,8 @@ export function TextAnnotationEditor({
   }, [text, annotation.id, onConfirm, onCancel]);
 
   return (
+    // The wrapper only stops canvas click placement; the textarea and buttons own keyboard interaction.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       className="absolute z-20 pointer-events-auto"
       style={{

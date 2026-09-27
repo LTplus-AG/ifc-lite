@@ -182,7 +182,10 @@ export function RibbonGroup({ label, children, className }: {
   className?: string;
 }) {
   return (
-    <div role="group" aria-label={label} className={cn('flex h-full shrink-0 flex-col px-1.5', className)}>
+    <div
+      // Ribbon commands need a named ARIA group; a fieldset would add form semantics here.
+      // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+      role="group" aria-label={label} className={cn('flex h-full shrink-0 flex-col px-1.5', className)}>
       <div className="flex min-h-0 flex-1 items-stretch justify-center gap-0.5 pt-1">
         {children}
       </div>

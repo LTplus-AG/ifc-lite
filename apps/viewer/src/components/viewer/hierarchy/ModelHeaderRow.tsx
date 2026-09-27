@@ -65,6 +65,8 @@ export function ModelHeaderRow({
         transform: `translateY(${virtualRow.start}px)`,
       }}
     >
+      {/* The parent role=tree handles Enter/Space for this row via useTreeKeyboard. */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events */}
       <div
         ref={rowRef}
         role="treeitem"

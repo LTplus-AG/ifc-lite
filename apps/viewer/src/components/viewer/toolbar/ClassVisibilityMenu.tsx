@@ -95,6 +95,7 @@ export function useVisibleClassCount(): { visible: number; total: number } {
 
 export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start' | 'end' }) {
   const { t } = useTranslation();
+  const controlId = React.useId();
   const typeVisibility = useViewerStore((state) => state.typeVisibility);
   const toggleTypeVisibility = useViewerStore((state) => state.toggleTypeVisibility);
   const resetTypeVisibility = useViewerStore((state) => state.resetTypeVisibility);
@@ -131,36 +132,30 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
             </span>
           </div>
           <div className="flex gap-1 px-1.5 pb-1.5" role="radiogroup" aria-label={t('classVisibility.viewModeAriaLabel')}>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={typeViewMode === 'model'}
-              onClick={() => setTypeViewMode('model')}
+            <label
               className={cn(
-                'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors',
+                'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors focus-within:ring-2 focus-within:ring-primary',
                 typeViewMode === 'model'
                   ? 'border-primary/40 bg-primary/10 text-foreground'
                   : 'border-transparent text-muted-foreground hover:bg-muted/50',
               )}
             >
+              <input type="radio" name={`${controlId}-type-view-mode`} value="model" checked={typeViewMode === 'model'} onChange={() => setTypeViewMode('model')} className="sr-only" />
               <Boxes className="h-3.5 w-3.5 shrink-0" />
               {t('classVisibility.modelMode')}
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={typeViewMode === 'types'}
-              onClick={() => setTypeViewMode('types')}
+            </label>
+            <label
               className={cn(
-                'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors',
+                'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors focus-within:ring-2 focus-within:ring-primary',
                 typeViewMode === 'types'
                   ? 'border-primary/40 bg-primary/10 text-foreground'
                   : 'border-transparent text-muted-foreground hover:bg-muted/50',
               )}
             >
+              <input type="radio" name={`${controlId}-type-view-mode`} value="types" checked={typeViewMode === 'types'} onChange={() => setTypeViewMode('types')} className="sr-only" />
               <Shapes className="h-3.5 w-3.5 shrink-0" />
               {t('classVisibility.typesMode')}
-            </button>
+            </label>
           </div>
 
           <DropdownMenuSeparator className="my-1" />
@@ -243,7 +238,7 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
           The "· on reload" suffix carries that nuance inline — keeps
           the row identical in shape to the others (no header, no chip
           crowding the long label). */}
-      <label className="group flex items-center justify-between gap-3 rounded-md px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors">
+      <label htmlFor={`${controlId}-merge-layers-switch`} className="group flex items-center justify-between gap-3 rounded-md px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors">
         <span className={cn('flex items-center gap-2.5 min-w-0 transition-opacity', !mergeLayers && 'opacity-50')}>
           <Layers2 className="h-4 w-4 shrink-0 text-primary" />
           <span className="grid gap-0.5 min-w-0">
@@ -253,7 +248,7 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
             </span>
           </span>
         </span>
-        <Switch checked={mergeLayers} onCheckedChange={(next) => setMergeLayers(next === true)} />
+        <Switch id={`${controlId}-merge-layers-switch`} checked={mergeLayers} onCheckedChange={(next) => setMergeLayers(next === true)} />
       </label>
 
       {/* Fast vs Exact geometry — like merge-layers, a load-time geometry
@@ -261,7 +256,7 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
           Fast skips sub-10% detail cuts + auto-lowers density on heavy models
           for quick first paint; Exact keeps every cut at full density for
           display/measure/export fidelity. */}
-      <label className="group flex items-center justify-between gap-3 rounded-md px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors">
+      <label htmlFor={`${controlId}-fast-geometry-switch`} className="group flex items-center justify-between gap-3 rounded-md px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors">
         <span className={cn('flex items-center gap-2.5 min-w-0 transition-opacity', geometryMode !== 'fast' && 'opacity-50')}>
           <Zap className="h-4 w-4 shrink-0 text-primary" />
           <span className="grid gap-0.5 min-w-0">
@@ -274,6 +269,7 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
           </span>
         </span>
         <Switch
+          id={`${controlId}-fast-geometry-switch`}
           checked={geometryMode === 'fast'}
           onCheckedChange={(next) => setGeometryMode(next === true ? 'fast' : 'exact')}
         />

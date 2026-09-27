@@ -148,6 +148,8 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
     }, [onViewChange]);
 
     return (
+      // Mouse dragging changes the cube orientation; the child face buttons provide keyboard views.
+      // eslint-disable-next-line jsx-a11y/no-static-element-interactions
       <div
         className="relative select-none"
         style={{

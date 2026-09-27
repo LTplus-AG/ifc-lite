@@ -10,8 +10,9 @@
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, press, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
+import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { CustomizeSidebar } from './CustomizeSidebar';
 
 afterEach(cleanup);
@@ -30,4 +31,30 @@ it('Reset clears floating panels and tells component layout to reset', () => {
   const after = useViewerStore.getState();
   assert.deepEqual(after.floatingPanels, [], 'floating panels are cleared');
   assert.equal(after.layoutResetEpoch, epochBefore + 1, 'the bottom strip and hierarchy pane are told to reset');
+});
+
+it('Escape closes Customize before the active tool and keeps the selected entity (#5847)', () => {
+  const previousSelection = useViewerStore.getState().selectedEntityId;
+  const previousSelections = useViewerStore.getState().selectedEntityIds;
+  useViewerStore.setState({ selectedEntityId: 42, selectedEntityIds: new Set([42]) });
+  let closes = 0;
+  let toolCancels = 0;
+  let globalEscapes = 0;
+  const removeTool = registerKeyboardCommand('measure.cancel', () => { toolCancels++; });
+  const removeGlobal = registerKeyboardCommand('selection.escape', () => { globalEscapes++; });
+  try {
+    const ui = render(<CustomizeSidebar onClose={() => { closes++; }} />);
+    const surface = ui.querySelector<HTMLElement>('[aria-label="Customize sidebar panels"]');
+    assert.ok(surface, 'the visible customizer owns focus and Escape');
+    press(surface, 'Escape');
+    assert.equal(closes, 1);
+    assert.equal(toolCancels, 0);
+    assert.equal(globalEscapes, 0);
+    assert.equal(useViewerStore.getState().selectedEntityId, 42);
+    assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [42]);
+  } finally {
+    removeTool();
+    removeGlobal();
+    useViewerStore.setState({ selectedEntityId: previousSelection, selectedEntityIds: previousSelections });
+  }
 });

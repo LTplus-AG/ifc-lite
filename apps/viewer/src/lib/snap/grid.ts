@@ -76,8 +76,10 @@ export class UniformGridIndex<T> {
     const x1 = Math.floor((center[0] + radius) / this.cell);
     const y0 = Math.floor((center[1] - radius) / this.cell);
     const y1 = Math.floor((center[1] + radius) / this.cell);
-    // A huge radius relative to the cell would enumerate empty cells; scan the buckets instead.
-    if ((x1 - x0 + 1) * (y1 - y0 + 1) > this.cells.size) {
+    // A huge radius relative to the cell would enumerate empty cells, and a cell
+    // index beyond 2^53 (or a non-finite centre) would never advance: scan the buckets.
+    const safe = Number.isSafeInteger(x0) && Number.isSafeInteger(x1) && Number.isSafeInteger(y0) && Number.isSafeInteger(y1);
+    if (!safe || (x1 - x0 + 1) * (y1 - y0 + 1) > this.cells.size) {
       for (const bucket of this.cells.values()) this.visitBucket(bucket, center, radius, visit);
       return;
     }

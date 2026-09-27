@@ -93,6 +93,13 @@ describe('solveSnap invariants (#6232 WP3)', () => {
     assert.ok(checked > 500);
   });
 
+  it('a NaN cursor or target never snaps', () => {
+    const src = sceneSource([[0, 0]], [[[1, 1], [2, 1]]]);
+    assert.equal(solveSnap(query([NaN, 0]), [src], PROFILE).winner, null);
+    const bad: SnapSource = { id: 'linework', collect: (_q, _r, out) => { out.push({ kind: 'vertex', local: [NaN, 0], source: 'linework' }); } };
+    assert.equal(solveSnap(query([5, 5]), [bad], PROFILE).winner, null);
+  });
+
   it('prefers a farther endpoint over a nearer edge, and falls back to the edge outside the radius', () => {
     const src = sceneSource([], [[[0, 0], [10, 0]]]);
     const near = solveSnap(query([0.1, 0.02]), [src], PROFILE);
@@ -196,6 +203,23 @@ describe('solveSnap locks', () => {
     assert.deepEqual(res.local, [3, 0]);
     assert.ok(res.locked);
     assert.equal(res.guides[0].role, 'lock');
+  });
+
+  it('queries sources at the constrained cursor, so a radius-honouring source finds targets on the lock', () => {
+    // Collects only within `radius` of q.cursor, as the SnapSource contract asks.
+    const strict: SnapSource = {
+      id: 'linework',
+      collect(q, radius, out) {
+        const p: Vec2 = [3.02, 0];
+        if (Math.hypot(p[0] - q.cursor[0], p[1] - q.cursor[1]) <= radius) out.push({ kind: 'vertex', local: p, source: 'linework' });
+      },
+    };
+    // Raw cursor 0.5 m off the ortho line: far outside the radius, but its projection is 2 cm from the vertex.
+    const res = solveSnap(
+      query([3, 0.5], { anchor: [0, 0], modifiers: { shift: true, alt: false } }), [strict], { ...PROFILE, angleStepDeg: 90 },
+    );
+    assert.equal(res.winner?.kind, 'vertex');
+    assert.deepEqual(res.local, [3.02, 0]);
   });
 
   it('a typed length snaps to where the circle crosses an edge', () => {

@@ -39,13 +39,13 @@ function tooltipFor(label: string): string {
   return tooltip.textContent ?? '';
 }
 
-describe('ribbon Undo/Redo key hints (#5836)', () => {
-  it('say Ctrl+Z / Ctrl+Shift+Z off Apple platforms', () => {
+describe('ribbon Undo/Redo key hints (#5836, #5855)', () => {
+  it('shows Ctrl+Z and both supported Redo chords off Apple platforms', () => {
     setPlatform('Win32');
     render(<AuthorTab />);
     assert.match(tooltipFor('Undo'), /\(Ctrl\+Z\)/);
     act(() => (document.activeElement as HTMLElement | null)?.blur());
-    assert.match(tooltipFor('Redo'), /\(Ctrl\+Shift\+Z\)/);
+    assert.match(tooltipFor('Redo'), /\(Ctrl\+Shift\+Z, Ctrl\+Y\)/);
   });
 
   it('say ⌘Z / ⇧⌘Z on Apple platforms', () => {

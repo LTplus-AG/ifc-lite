@@ -45,6 +45,7 @@ export const commandsEn = {
   'commands.measure.finish': 'Finish the polyline as open length, or the radius fit (Measure tool)',
   'commands.addElement.commit': 'Close the slab, roof, plate or space outline (Add element, polygon mode)',
   'commands.addElement.clearPending': 'Clear the points placed so far (Add element)',
+  'commands.addElement.toggleSnap': 'Toggle snapping (Add element)',
   'commands.spaceSketch.undo': 'Undo the last sketch step (Space sketch)',
   'commands.spaceSketch.redo': 'Redo the sketch step (Space sketch)',
   'commands.spaceSketch.commit': 'Close the drawn room (Space sketch)',
@@ -77,14 +78,13 @@ export const commandsEn = {
   'commands.visibility.hideSelection': 'Hide selection',
   'commands.visibility.showAll': 'Show all',
   'commands.basket.isolate': 'Isolate current context (set collection)',
-  'commands.basket.set': 'Set collection from current context',
   'commands.basket.add': 'Add current context to collection',
   'commands.basket.remove': 'Remove current context from collection',
   'commands.basket.toggleDock': 'Toggle presentation dock',
   'commands.basket.saveView': 'Save collection as presentation view',
 
   // Camera
-  'commands.camera.home': 'Home (isometric + reset visibility)',
+  'commands.camera.home': 'Home (isometric camera + fit)',
   'commands.camera.fitAll': 'Fit all (zoom extents)',
   'commands.camera.frameSelection': 'Frame selection',
   'commands.camera.viewTop': 'Top view',

@@ -81,7 +81,7 @@ describe('MainToolbar with a registered locale (#4918)', () => {
     const container = render(<MainToolbar />);
 
     assert.ok(
-      container.querySelector('[role="group"][aria-label="Auswahlaktionen — 3 ausgewählt"]'),
+      container.querySelector('fieldset[aria-label="Auswahlaktionen — 3 ausgewählt"]'),
       'selection actions group carries the interpolated count',
     );
     const strings = readableStrings(container);

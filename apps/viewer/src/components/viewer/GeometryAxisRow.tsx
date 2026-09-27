@@ -25,7 +25,7 @@ export function GeometryAxisRow({ label, value, onChange, onNudgeMinus, onNudgeP
   const { t } = useTranslation();
   return (
     <div className="flex items-center gap-1">
-      <span className="w-4 text-[11px] font-mono text-muted-foreground">{label}</span>
+      <span className="w-4 text-2xs font-mono text-muted-foreground">{label}</span>
       <IconButton
         label={t('geometryAxisRow.decreaseAriaLabel', { label })}
         variant="ghost"

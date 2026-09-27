@@ -11,7 +11,7 @@ const PANEL_EXPORT_SURFACES = [
   'appearance_panel', 'flow_panel', 'layer_review', 'layer_evidence', 'location_map',
   'placement_panel', 'drawing_panel', 'ids_panel', 'compare_panel', 'search_panel',
   'load_report', 'extension_panel', 'mcp_playground', 'federation_panel', 'landxml_refusal',
-  'script',
+  'script', 'changes_panel',
 ] as const;
 export type ExportSurface = UiSurface | (typeof PANEL_EXPORT_SURFACES)[number];
 

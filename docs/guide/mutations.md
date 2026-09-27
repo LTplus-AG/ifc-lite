@@ -227,9 +227,10 @@ In the IFClite viewer:
 1. **Select an entity** in 3D or the hierarchy panel
 2. **Open Properties panel** — Edit properties directly in the panel
 3. **Bulk edit** — Use the Property Editor to update multiple entities
-4. **Track changes** — Modified properties are highlighted
-5. **Undo/Redo** — Ctrl+Z / Ctrl+Shift+Z to undo/redo edits
-6. **Export** — Save modified IFC with changes applied
+4. **Review changes** — Open **Changes** in the sidebar to see edits by model and entity; Bulk and CSV batches appear as one operation
+5. **Jump or revert** — Jump selects and frames an edited entity. Revert uses Undo for the newest operation; an older independent edit is reversed as a new undo step. If newer edits depend on it, the drawer refuses the reversal. Leave a shared room before reverting; room sync cannot publish these local history reversals yet.
+6. **Undo/Redo** — Ctrl+Z / Ctrl+Shift+Z to undo/redo edits
+7. **Export** — Use **Export modified IFC…** or **Changes only (JSON delta)** from Changes. Both open the viewer's existing export flow.
 
 ### Properties panel tabs
 
@@ -545,7 +546,7 @@ The sandbox gates `bim.store.*` behind a `store: true` permission (default `fals
 
 ### Viewer UI
 
-The viewer surfaces store-level edits in three places — see [Viewer Integration](#viewer-integration) below for the full UX:
+The viewer surfaces store-level edits through the following controls — see [Viewer Integration](#viewer-integration) above for the full UX:
 
   - **Raw STEP tab** in the properties panel — inline pen-icon editor on every positional argument. Edited rows show a purple dot; the editor parses the same STEP literal conventions as `setPositionalAttribute`. The tab also opens for overlay-only entities (freshly added or duplicated) so newly-created walls / columns / spaces are immediately inspectable, even before export.
   - **Right-click → Delete entity** — calls `removeEntity`, surfaces a toast with undo support.

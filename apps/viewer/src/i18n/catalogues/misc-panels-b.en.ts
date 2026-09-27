@@ -270,10 +270,10 @@ export const miscPanelsBEn = {
 
   // ---- ExportChangesButton.tsx -----------------------------------------------
   'exportChangesButton.buttonLabel': 'Export modified IFC…',
-  'exportChangesButton.tooltipMulti': 'Export changes in {models} models ({count} changes)',
+  'exportChangesButton.tooltipMulti': 'Export modified IFC… for {models} models ({count} changes)',
   'exportChangesButton.tooltipSingle': {
-    one: 'Export IFC with {count} change applied',
-    other: 'Export IFC with {count} changes applied',
+    one: 'Export modified IFC… with {count} change applied',
+    other: 'Export modified IFC… with {count} changes applied',
   },
 
   // ---- SearchableSelect.tsx ---------------------------------------------------

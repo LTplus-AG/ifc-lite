@@ -54,7 +54,7 @@ import { roomMergeInput, roomMergeVisibility } from '@/lib/collab/room-merged-ex
 import { roomSymbolicSource } from '@/lib/collab/room-symbolic-source';
 import { listExportModels, resolveExportModel } from './export-model-selection';
 import { exportOutputInfo } from './export-output-format.js';
-import { exportChangesJson } from './export-changes-json.js';
+import { activeChangesJsonMutations, exportChangesJson } from './export-changes-json.js';
 import { hasFilterableIfc5Properties } from '@/lib/export/ifc5-filterable-properties.js';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 import { ExportDialogScopeOptions } from './export-dialog-scope-options';
@@ -63,12 +63,11 @@ import { ExportDialogToggleOptions } from './export-dialog-toggle-options';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
-
 interface ExportDialogProps {
-  surface?: ExportSurface;
-  trigger?: React.ReactNode;
+  surface?: ExportSurface; trigger?: React.ReactNode;
+  initialChangesOnly?: boolean;
 }
-export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps) {
+export function ExportDialog({ surface = 'classic', trigger, initialChangesOnly = false }: ExportDialogProps) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
@@ -104,7 +103,7 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
   const [exportScope, setExportScope] = useState<ExportScope>('single');
   const [includeGeometry, setIncludeGeometry] = useState(true);
   const [applyMutations, setApplyMutations] = useState(true);
-  const [changesOnly, setChangesOnly] = useState(false);
+  const [changesOnly, setChangesOnly] = useState(initialChangesOnly);
   const [visibleOnly, setVisibleOnly] = useState(false);
   // How a merged export reconciles models with different length units.
   const [unitReconciliation, setUnitReconciliation] = useState<'auto' | 'normalize' | 'assume-shared'>('auto');
@@ -152,8 +151,9 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
   const handleDialogOpenStateChange = useCallback((open: boolean) => {
     if (open) {
       setSelectedModelId(preferredExportModelId(modelList.map(model => model.id), activeModelId));
+      setChangesOnly(initialChangesOnly);
     }
-  }, [modelList, activeModelId]);
+  }, [modelList, activeModelId, initialChangesOnly]);
 
   const selectedModel = useMemo(
     () => resolveExportModel(models, selectedModelId, legacyIfcDataStore, legacyGeometryResult),
@@ -391,8 +391,8 @@ export function ExportDialog({ surface = 'classic', trigger }: ExportDialogProps
       // data-store guard: a LandXML model has no data store, and this delta
       // never needed one (#5310 review).
       if (changesOnly && !isIfc5) {
-        const jsonMsg = exportChangesJson(
-          selectedModelId, selectedModel.name, mutationView?.getMutations() || []);
+        const jsonMsg = exportChangesJson(selectedModelId, selectedModel.name,
+          activeChangesJsonMutations(selectedModelId, mutationView?.getMutations() || [], useViewerStore));
         exportedFormat = 'json';
         toast.success(jsonMsg);
         return { success: true, message: jsonMsg };

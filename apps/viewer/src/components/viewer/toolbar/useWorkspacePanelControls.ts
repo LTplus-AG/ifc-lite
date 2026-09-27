@@ -264,6 +264,7 @@ export function useWorkspacePanelControls(surface?: UiSurface) {
     if (sidebarActivePanel === 'zones') panels.add('zones');
     if (sidebarActivePanel === 'appearance') panels.add('appearance');
     if (sidebarActivePanel === 'loadReport') panels.add('loadReport');
+    if (sidebarActivePanel === 'changes') panels.add('changes');
     if (sidebarActivePanel === 'cost') panels.add('cost');
     if (analysisExtensionState.activeId) panels.add(analysisExtensionState.activeId);
     return panels;

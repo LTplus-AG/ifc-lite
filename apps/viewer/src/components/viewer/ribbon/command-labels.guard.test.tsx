@@ -72,6 +72,6 @@ it('#5878 mounted ribbon commands use their registry names on every tab', () => 
   // hand-labelled command fails this mounted guard even before its tab is
   // converted to typed IDs. Drop each count to zero with that tab's migration.
   assert.deepEqual(rawByTab, {
-    file: 4, home: 0, view: 19, elements: 13, analyze: 0, author: 9,
+    file: 4, home: 0, view: 0, elements: 13, analyze: 0, author: 9,
   });
 });

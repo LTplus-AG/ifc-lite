@@ -14,6 +14,7 @@ import { useViewerStore } from '@/store';
 import type { SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
 
 const paletteOnly = ['palette'] as const;
+const paletteAndRibbon = ['palette', 'ribbon'] as const;
 const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 
 export const WORKSPACE_SURFACE_COMMANDS = [
@@ -110,9 +111,9 @@ export const WORKSPACE_SURFACE_COMMANDS = [
     run: () => { useViewerStore.getState().toggleHoverTooltips(); },
   },
   {
-    id: 'pref:settings', labelKey: 'commandPalette.pref.settings.label',
+    id: 'pref:settings', labelKey: 'commandPalette.pref.settings.label', ribbonLabelKey: 'ribbon.view.settings', ribbonTooltipKey: 'ribbon.view.settingsTooltip',
     keywords: 'settings preferences options configure theme toolbar spacemouse',
-    category: 'Preferences', icon: Settings, surfaces: paletteOnly, enabled: alwaysEnabled,
+    category: 'Preferences', icon: Settings, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
     run: () => { openSettings(); },
   },
   {

@@ -33,7 +33,7 @@ export const RibbonCommandLargeButton = forwardRef<HTMLButtonElement, RibbonComm
     const { command, label, tooltip } = useRibbonCommandPresentation(commandId);
     return <RibbonLargeButton {...props} ref={ref} data-command-id={command.id}
       icon={icon ?? command.icon} label={label} aria-label={label}
-      tooltip={tooltip ?? props.tooltip} shortcut={command.shortcut} />;
+      tooltip={props.tooltip ?? tooltip} shortcut={command.shortcut} />;
   },
 );
 
@@ -42,6 +42,6 @@ export const RibbonCommandSmallButton = forwardRef<HTMLButtonElement, RibbonComm
     const { command, label, tooltip } = useRibbonCommandPresentation(commandId);
     return <RibbonSmallButton {...props} ref={ref} data-command-id={command.id}
       icon={icon ?? command.icon} label={label} aria-label={label}
-      tooltip={tooltip ?? props.tooltip} shortcut={command.shortcut} />;
+      tooltip={props.tooltip ?? tooltip} shortcut={command.shortcut} />;
   },
 );

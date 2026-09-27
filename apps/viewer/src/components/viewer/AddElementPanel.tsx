@@ -52,7 +52,6 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
   const { t, locale, revision } = useTranslation();
   const models = useModelRoster();
   const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
-
   const addElementType = useViewerStore((s) => s.addElementType);
   const setAddElementType = useViewerStore((s) => s.setAddElementType);
 

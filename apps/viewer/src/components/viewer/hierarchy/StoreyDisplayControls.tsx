@@ -93,7 +93,7 @@ export function StoreyDisplayControls() {
                         aria-pressed={pressed}
                         onClick={() => applyLevelDisplayMode(key)}
                         className={cn(
-                          'flex flex-1 items-center justify-center gap-1 rounded px-1.5 py-1 text-2xs font-medium transition-colors',
+                          'flex min-h-6 flex-1 items-center justify-center gap-1 rounded px-1.5 py-1 text-2xs font-medium transition-colors',
                           pressed
                             ? 'bg-primary text-primary-foreground'
                             : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',

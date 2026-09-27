@@ -6146,6 +6146,14 @@
     "isPlacedGeometryClass: function",
     "isTypeLibraryGeometryClass: function"
   ],
+  "@ifc-lite/geometry/remesh": [
+    "RemeshClient: class",
+    "RemeshClientOptions: interface",
+    "RemeshConfig: interface",
+    "RemeshRequest: interface",
+    "RemeshResult: interface",
+    "filterStyleWire: function"
+  ],
   "@ifc-lite/geometry/rtc-rebase": [
     "RtcConvergeResult: interface",
     "RtcRebaseGeometry: interface",

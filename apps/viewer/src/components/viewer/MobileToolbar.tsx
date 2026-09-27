@@ -8,27 +8,8 @@
  * and secondary actions in an overflow menu.
  */
 
-import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import React, { useRef, useCallback, useMemo } from 'react';
-import {
-  FolderOpen,
-  MousePointer2,
-  Ruler,
-  Scissors,
-  Eye,
-  EyeOff,
-  Home,
-  Maximize2,
-  Crosshair,
-  MoreHorizontal,
-  Plus,
-  Download,
-  Orbit,
-  Sun,
-  Moon,
-  PersonStanding,
-  Search,
-} from 'lucide-react';
+import { Download, MoreHorizontal } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import {
@@ -44,9 +25,6 @@ import { Progress } from '@/components/ui/progress';
 import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import { goHomeFromStore, showAllFromStore } from '@/store/homeView';
-import { hideSelectionFromStore } from '@/store/hideSelection';
-import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { useExportRunner } from './useExportRunner';
@@ -54,9 +32,8 @@ import { buildExportCommands } from './commandPaletteExports';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { MOBILE_FILE_ACCEPT, isSupportedMobileModelFile } from '@/services/supported-model-files';
-import { emitOpenCommandPalette } from '@/lib/tours/events';
-
-type Tool = 'select' | 'walk' | 'measure' | 'section';
+import { surfaceCommand, type SurfaceCommandDefinition, type SurfaceCommandId } from './surface-commands';
+import { runSurfaceCommand, trackCommandExecution } from './surface-command-run';
 
 export function MobileToolbar() {
   const { t } = useTranslation();
@@ -73,15 +50,11 @@ export function MobileToolbar() {
 
   const hasModelsLoaded = models.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
   const activeTool = useViewerStore((state) => state.activeTool);
-  const setActiveTool = useViewerStore((state) => state.setActiveTool);
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
-  const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
   const resetViewerState = useViewerStore((state) => state.resetViewerState);
   const clearAllModels = useViewerStore((state) => state.clearAllModels);
   const projectionMode = useViewerStore((state) => state.projectionMode);
-  const toggleProjectionMode = useViewerStore((state) => state.toggleProjectionMode);
   const theme = useViewerStore((state) => state.theme);
-  const toggleTheme = useViewerStore((state) => state.toggleTheme);
 
   // Multi-selection counts too (#5852): Hide acts on it even with no primary.
   const hasSelection = useViewerStore((state) => state.selectedEntityIds.size > 0) || selectedEntityId !== null;
@@ -114,29 +87,35 @@ export function MobileToolbar() {
     e.target.value = '';
   }, [loadFilesSequentially]);
 
-  const handleIsolate = useCallback(() => {
-    executeBasketIsolate();
-  }, []);
-
-  const handleShowAll = useCallback(() => {
-    showAllFromStore('show_all');
-  }, []);
-
-  const handleHome = useCallback(() => {
-    goHomeFromStore();
-  }, []);
-
   // Every export the toolbars and the palette offer, from the same registry
   // rows and through the same handlers and dialogs (#5842). The dialog is
   // hosted outside the menu so it outlives the menu closing.
   const { runExport, dialog: exportDialog, extensionExporters } = useExportRunner('mobile');
   const exportRows = useMemo(() => buildExportCommands(runExport, extensionExporters, 'mobile'), [runExport, extensionExporters]);
 
-  const toolButtons: { tool: Tool; icon: React.ElementType; label: string }[] = [
-    { tool: 'select', icon: MousePointer2, label: t('shellChrome.mobileToolbar.selectTool') },
-    { tool: 'measure', icon: Ruler, label: t('shellChrome.mobileToolbar.measureTool') },
-    { tool: 'section', icon: Scissors, label: t('shellChrome.mobileToolbar.sectionTool') },
-  ];
+  const mobileState = { canEditInSession: true, projectionMode, theme };
+  const mobileCommand = (id: SurfaceCommandId) => surfaceCommand(id, 'mobile');
+  const mobileLabel = (command: SurfaceCommandDefinition) => t(command.mobileLabelKey?.(mobileState) ?? command.labelKey);
+  const mobileIcon = (command: SurfaceCommandDefinition) => command.mobileIcon?.(mobileState) ?? command.icon;
+  const runMobile = (command: SurfaceCommandDefinition) => runSurfaceCommand(command, { surface: 'mobile' });
+  const openFile = mobileCommand('file:open');
+  const addModel = mobileCommand('file:add-model');
+  const OpenFileIcon = mobileIcon(openFile);
+  const AddModelIcon = mobileIcon(addModel);
+  const toolButtons = ['tool:select', 'tool:measure', 'tool:section'] as const;
+  const quickActions = ['view:home', 'view:fit', 'vis:show'] as const;
+  const walk = mobileCommand('tool:walk');
+  const WalkIcon = mobileIcon(walk);
+  const menuItem = (id: SurfaceCommandId, disabled = false) => {
+    const command = mobileCommand(id);
+    const Icon = mobileIcon(command);
+    return (
+      <DropdownMenuItem key={id} data-command-id={id} disabled={disabled} onClick={() => runMobile(command)}>
+        <Icon className="h-4 w-4 mr-2" />
+        {mobileLabel(command)}
+      </DropdownMenuItem>
+    );
+  };
 
   return (
     <div className="flex items-center gap-0.5 px-1.5 h-11 border-b bg-white dark:bg-black border-zinc-200 dark:border-zinc-800 relative z-50 overflow-x-auto">
@@ -163,16 +142,15 @@ export function MobileToolbar() {
         variant="ghost"
         size="icon-sm"
         className="h-9 w-9 flex-shrink-0"
-        onClick={() => {
-          fileInputRef.current?.click();
-        }}
+        data-command-id={openFile.id}
+        onClick={() => runSurfaceCommand(openFile, { surface: 'mobile', openFiles: () => fileInputRef.current?.click() })}
         disabled={loading}
-        aria-label={t('shellChrome.mobileToolbar.openFileAriaLabel')}
+        aria-label={mobileLabel(openFile)}
       >
         {loading ? (
           <Spinner size="md" />
         ) : (
-          <FolderOpen className="h-4 w-4" />
+          <OpenFileIcon className="h-4 w-4" />
         )}
       </Button>
 
@@ -182,11 +160,12 @@ export function MobileToolbar() {
           variant="ghost"
           size="icon-sm"
           className="h-9 w-9 flex-shrink-0 text-[#9ece6a]"
-          onClick={() => addModelInputRef.current?.click()}
+          data-command-id={addModel.id}
+          onClick={() => runSurfaceCommand(addModel, { surface: 'mobile', addModel: () => addModelInputRef.current?.click() })}
           disabled={loading}
-          aria-label={t('shellChrome.mobileToolbar.addModelAriaLabel')}
+          aria-label={mobileLabel(addModel)}
         >
-          <Plus className="h-4 w-4" />
+          <AddModelIcon className="h-4 w-4" />
         </Button>
       )}
 
@@ -194,50 +173,46 @@ export function MobileToolbar() {
       <div className="w-px h-5 bg-border mx-0.5 flex-shrink-0" />
 
       {/* Tool buttons */}
-      {toolButtons.map(({ tool, icon: Icon, label }) => (
-        <Button
-          key={tool}
-          variant={activeTool === tool ? 'default' : 'ghost'}
-          size="icon-sm"
-          className={cn('h-9 w-9 flex-shrink-0', activeTool === tool && 'bg-primary text-primary-foreground')}
-          onClick={() => setActiveTool(tool)}
-          aria-label={label}
-        >
-          <Icon className="h-4 w-4" />
-        </Button>
-      ))}
+      {toolButtons.map((id) => {
+        const command = mobileCommand(id);
+        const Icon = mobileIcon(command);
+        const active = id === `tool:${activeTool}`;
+        return (
+          <Button
+            key={id}
+            data-command-id={id}
+            variant={active ? 'default' : 'ghost'}
+            size="icon-sm"
+            className={cn('h-9 w-9 flex-shrink-0', active && 'bg-primary text-primary-foreground')}
+            onClick={() => runMobile(command)}
+            aria-label={mobileLabel(command)}
+          >
+            <Icon className="h-4 w-4" />
+          </Button>
+        );
+      })}
 
       {/* Divider */}
       <div className="w-px h-5 bg-border mx-0.5 flex-shrink-0" />
 
       {/* Quick actions: Home, Fit, Show All */}
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        className="h-9 w-9 flex-shrink-0"
-        onClick={handleHome}
-        aria-label={t('shellChrome.mobileToolbar.homeAriaLabel')}
-      >
-        <Home className="h-4 w-4" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        className="h-9 w-9 flex-shrink-0"
-        onClick={() => cameraCallbacks.fitAll?.()}
-        aria-label={t('shellChrome.mobileToolbar.fitAllAriaLabel')}
-      >
-        <Maximize2 className="h-4 w-4" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        className="h-9 w-9 flex-shrink-0"
-        onClick={handleShowAll}
-        aria-label={t(ACTION_NAME_KEYS.showAll)}
-      >
-        <Eye className="h-4 w-4" />
-      </Button>
+      {quickActions.map((id) => {
+        const command = mobileCommand(id);
+        const Icon = mobileIcon(command);
+        return (
+          <Button
+            key={id}
+            data-command-id={id}
+            variant="ghost"
+            size="icon-sm"
+            className="h-9 w-9 flex-shrink-0"
+            onClick={() => runMobile(command)}
+            aria-label={mobileLabel(command)}
+          >
+            <Icon className="h-4 w-4" />
+          </Button>
+        );
+      })}
 
       {/* Spacer */}
       <div className="flex-1 min-w-2" />
@@ -246,7 +221,7 @@ export function MobileToolbar() {
       {loading && activeProgress && (
         <div className="flex items-center gap-1.5 mr-1 flex-shrink-0">
           <Progress value={activeProgress.percent} className="w-16 h-1.5" />
-          <span className="text-[10px] text-muted-foreground tabular-nums">
+          <span className="text-2xs text-muted-foreground tabular-nums">
             {Math.round(activeProgress.percent)}%
           </span>
         </div>
@@ -265,45 +240,29 @@ export function MobileToolbar() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-64 max-h-[80vh] overflow-y-auto">
-          <DropdownMenuItem onClick={emitOpenCommandPalette}>
-            <Search className="h-4 w-4 mr-2" aria-hidden="true" />
-            {t('shellChrome.mobileToolbar.commands')}
-          </DropdownMenuItem>
+          {menuItem('ui:commands')}
           <DropdownMenuSeparator />
           {/* Walk Mode */}
           <DropdownMenuCheckboxItem
+            data-command-id={walk.id}
             checked={activeTool === 'walk'}
-            onCheckedChange={() => setActiveTool(activeTool === 'walk' ? 'select' : 'walk')}
+            onCheckedChange={() => runMobile(walk)}
           >
-            <PersonStanding className="h-4 w-4 mr-2" />
-            {t('shellChrome.mobileToolbar.walkMode')}
+            <WalkIcon className="h-4 w-4 mr-2" />
+            {mobileLabel(walk)}
           </DropdownMenuCheckboxItem>
 
           <DropdownMenuSeparator />
 
           {/* Visibility */}
-          <DropdownMenuItem onClick={handleIsolate}>
-            <Eye className="h-4 w-4 mr-2" />
-            {t('shellChrome.mobileToolbar.isolateSelection')}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={hideSelectionFromStore} disabled={!hasSelection}>
-            <EyeOff className="h-4 w-4 mr-2" />
-            {t('shellChrome.mobileToolbar.hideSelection')}
-          </DropdownMenuItem>
-          {hasSelection && (
-            <DropdownMenuItem onClick={() => cameraCallbacks.frameSelection?.()}>
-              <Crosshair className="h-4 w-4 mr-2" />
-              {t('shellChrome.mobileToolbar.frameSelection')}
-            </DropdownMenuItem>
-          )}
+          {menuItem('vis:isolate')}
+          {menuItem('vis:hide', !hasSelection)}
+          {hasSelection && menuItem('view:frame')}
 
           <DropdownMenuSeparator />
 
           {/* Camera */}
-          <DropdownMenuItem onClick={() => toggleProjectionMode()}>
-            <Orbit className="h-4 w-4 mr-2" />
-            {t(projectionMode === 'orthographic' ? 'shellChrome.mobileToolbar.perspective' : 'shellChrome.mobileToolbar.orthographic')}
-          </DropdownMenuItem>
+          {menuItem('view:projection')}
 
           <DropdownMenuSeparator />
 
@@ -315,7 +274,10 @@ export function MobileToolbar() {
             {t('shellChrome.mobileToolbar.export')}
           </DropdownMenuLabel>
           {exportRows.map((row) => (
-            <DropdownMenuItem key={row.id} data-export-row={row.id} onClick={row.action}>
+            <DropdownMenuItem key={row.id} data-export-row={row.id} onClick={() => {
+              if (!row.registryOwned) trackCommandExecution(row.id, 'mobile');
+              row.action();
+            }}>
               <row.icon className="h-4 w-4 mr-2" />
               {row.labelKey ? t(row.labelKey, row.labelKeyParams) : row.label}
             </DropdownMenuItem>
@@ -324,10 +286,7 @@ export function MobileToolbar() {
           <DropdownMenuSeparator />
 
           {/* Theme */}
-          <DropdownMenuItem onClick={() => toggleTheme()}>
-            {theme === 'dark' ? <Sun className="h-4 w-4 mr-2" /> : <Moon className="h-4 w-4 mr-2" />}
-            {t(theme === 'dark' ? 'shellChrome.mobileToolbar.lightMode' : 'shellChrome.mobileToolbar.darkMode')}
-          </DropdownMenuItem>
+          {menuItem('view:theme')}
         </DropdownMenuContent>
       </DropdownMenu>
       {exportDialog}

@@ -322,7 +322,7 @@ export function RawStepCard({
       {/* Help footer */}
       <div className="flex items-start gap-2 px-3 py-2 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/30">
         <Info className="h-3 w-3 mt-0.5 text-zinc-400 dark:text-zinc-500 shrink-0" />
-        <p className="text-[10.5px] font-mono leading-relaxed text-zinc-500 dark:text-zinc-500">
+        <p className="text-2xs font-mono leading-relaxed text-zinc-500 dark:text-zinc-500">
           {t('properties.rawStep.footerHelp')}
         </p>
       </div>

@@ -4,11 +4,12 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { snapPoint, alignToAxes, type Pt } from './space-snap.js';
+import { snapSketchPoint as snapPoint, alignToAxes, type SketchPt as Pt } from './space-sketch.js';
 
 const seg = (a: Pt, b: Pt): [Pt, Pt] => [a, b];
 
-describe('snapPoint', () => {
+// Characterization suite of the replaced lib/space-snap.ts, run against the engine-backed adapter (#6232 WP3).
+describe('snapSketchPoint', () => {
   it('snaps to the nearest room vertex (corner) within tolerance', () => {
     const r = snapPoint([1.04, 0.97], { vertices: [[1, 1], [5, 5]], tol: 0.2 });
     assert.deepStrictEqual(r.pt, [1, 1]);

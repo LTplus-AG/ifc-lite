@@ -12,14 +12,9 @@
  * snaps to where the lock crosses it. The result can never leave the lock.
  */
 
-import type { Guide, SnapCandidate, SnapProfile, SnapQuery, Vec2 } from './types.js';
+import type { CollectHint, Guide, Locus, SnapCandidate, SnapProfile, SnapQuery, Vec2 } from './types.js';
 
-export type Locus =
-  | { kind: 'free' }
-  | { kind: 'point'; p: Vec2 }
-  | { kind: 'line'; origin: Vec2; dir: Vec2 }
-  | { kind: 'ray'; origin: Vec2; dir: Vec2 }
-  | { kind: 'circle'; center: Vec2; radius: number };
+export type { Locus };
 
 const FREE: Locus = { kind: 'free' };
 const DEG = Math.PI / 180;
@@ -173,22 +168,36 @@ function linearCircleParams(l: Linear, center: Vec2, radius: number): number[] {
 const at = (l: Linear, t: number): Vec2 => [l.o[0] + t * l.d[0], l.o[1] + t * l.d[1]];
 
 /**
+ * An axis-aligned line lock crossing a linear guide, solved on the GUIDE's
+ * parameter: the fixed coordinate is the lock's exactly, and the free one is
+ * interpolated along the guide, so an axis-aligned guide yields its own
+ * coordinate bit-for-bit (the `snapAlongOrtho` formula).
+ */
+function crossAxisLine(l: Extract<Locus, { kind: 'line' }>, g: Linear): Vec2[] {
+  const fixed = l.dir[1] === 0 ? 1 : 0;
+  const free = 1 - fixed;
+  const den = g.d[fixed];
+  if (Math.abs(den) <= 1e-12 * Math.hypot(g.d[0], g.d[1])) return [];
+  const u = (l.origin[fixed] - g.o[fixed]) / den;
+  if (!inRange(u, g)) return [];
+  const f = g.o[free] + u * g.d[free];
+  return [fixed === 1 ? [f, l.origin[1]] : [l.origin[0], f]];
+}
+
+/**
  * All points where the locus meets a guide. Points are computed on the locus so they stay on it.
  * Circle × circle is deliberately unsupported (returns []): circle guides only draw length
  * locks, and no source or inference emits a circular candidate guide.
  */
 export function intersectLocusWithGuide(l: Locus, g: Guide): Vec2[] {
   const gl = toLinear(g);
+  if (l.kind === 'line' && gl && (l.dir[0] === 0 || l.dir[1] === 0)) return crossAxisLine(l, gl);
   if (l.kind === 'line' || l.kind === 'ray') {
     const ll = toLinear(l);
     if (!ll) return [];
     if (gl) {
       const p = intersectLinear(ll, gl);
-      if (!p) return [];
-      // Axis-aligned lock: pin the fixed coordinate exactly.
-      if (l.kind === 'line' && l.dir[1] === 0) return [[p[0], l.origin[1]]];
-      if (l.kind === 'line' && l.dir[0] === 0) return [[l.origin[0], p[1]]];
-      return [p];
+      return p ? [p] : [];
     }
     if (g.kind === 'circle') return linearCircleParams(ll, g.center, g.radius).map((t) => at(ll, t));
     return [];
@@ -220,4 +229,41 @@ export function projectCandidate(c: SnapCandidate, l: Locus, ref: Vec2): Vec2 | 
     if (d < bestD) { bestD = d; best = h; }
   }
   return best;
+}
+
+/**
+ * Cheap SUPERSET test for source-side pruning: can a point target at `p`, or
+ * an edge target on segment a→b, land within `radius` of the constrained
+ * cursor? Never false for a target the solver would accept; may be true for
+ * one it rejects. Scalar only, no allocation.
+ */
+export function mayLandNear(h: CollectHint, radius: number, a: Vec2, b?: Vec2): boolean {
+  const l = h.locus;
+  const cx = h.cursor[0], cy = h.cursor[1];
+  // Slack so this sqrt-based test never rejects what the solver's hypot accepts at the boundary.
+  const r = radius * (1 + 1e-9);
+  if (l.kind === 'free') {
+    let px = a[0], py = a[1];
+    if (b) {
+      const dx = b[0] - a[0], dy = b[1] - a[1];
+      const len2 = dx * dx + dy * dy || 1e-9;
+      const t = Math.max(0, Math.min(1, ((cx - a[0]) * dx + (cy - a[1]) * dy) / len2));
+      px += t * dx;
+      py += t * dy;
+    }
+    return (px - cx) * (px - cx) + (py - cy) * (py - cy) <= r * r;
+  }
+  if (l.kind !== 'line' && l.kind !== 'ray') return l.kind !== 'point';
+  // Along a linear lock a point target lands at its projection; an edge lands
+  // where it crosses the lock, between its ends' projections.
+  const dx = l.dir[0], dy = l.dir[1];
+  const n = Math.sqrt(dx * dx + dy * dy);
+  const sa = ((a[0] - cx) * dx + (a[1] - cy) * dy) / n;
+  if (!b) return Math.abs(sa) <= r || (l.kind === 'ray' && sa < 0);
+  const ox = l.origin[0], oy = l.origin[1];
+  const pa = (a[0] - ox) * dy - (a[1] - oy) * dx;
+  const pb = (b[0] - ox) * dy - (b[1] - oy) * dx;
+  if ((pa > 0 && pb > 0) || (pa < 0 && pb < 0)) return false; // never crosses the lock line
+  const sb = ((b[0] - cx) * dx + (b[1] - cy) * dy) / n;
+  return (Math.min(sa, sb) <= r && Math.max(sa, sb) >= -r) || l.kind === 'ray';
 }

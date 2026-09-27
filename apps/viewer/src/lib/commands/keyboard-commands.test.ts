@@ -34,7 +34,6 @@ const DISPATCHER_CONTEXTS = {
   overlay: true,
   'tool.walk': true,
   'tool.measure': true,
-  'tool.split': true,
   'tool.addElement': true,
   'tool.spaceSketch': true,
   command: true,

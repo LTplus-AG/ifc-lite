@@ -44,7 +44,8 @@ function OptionChrome({ commandId, icon: Icon, label, detail, shortcut, index, s
   return (
     // The option remains a button so Enter and click use the same command action.
     // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
-    <button type="button" role="option" data-command-id={commandId} data-index={index} aria-label={label}
+    <button type="button" role="option" data-command-id={commandId} data-index={index}
+      aria-label={commandId ? label : undefined}
       aria-selected={selected}
       className={cn('flex items-center gap-3 w-full px-3 py-2 text-left text-sm',
         selected ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-accent/50')}

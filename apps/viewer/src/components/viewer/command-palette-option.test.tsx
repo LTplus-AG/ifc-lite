@@ -33,7 +33,8 @@ it('renders a registered palette action by id and keeps runtime rows separate (#
   const command = surfaceCommand('view:frame', 'palette');
   let registeredClicks = 0;
   const runtime: Command = {
-    id: 'recent:authoring-model', label: 'Authoring model.ifc', keywords: '', category: 'File', icon: FolderOpen,
+    id: 'recent:authoring-model', label: 'Authoring model.ifc', detail: '1.4 MB',
+    keywords: '', category: 'File', icon: FolderOpen,
     action: () => {},
   };
   let runtimeClicks = 0;
@@ -55,7 +56,10 @@ it('renders a registered palette action by id and keeps runtime rows separate (#
   const dynamic = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')]
     .find((item) => item.dataset.index === '1');
   assert.ok(dynamic);
-  assert.equal(dynamic.getAttribute('aria-label'), runtime.label);
+  assert.equal(dynamic.hasAttribute('aria-label'), false);
+  assert.ok(dynamic.textContent?.includes(runtime.label));
+  assert.ok(runtime.detail);
+  assert.ok(dynamic.textContent?.includes(runtime.detail));
   assert.equal(dynamic.hasAttribute('data-command-id'), false);
   click(dynamic);
   assert.equal(runtimeClicks, 1);

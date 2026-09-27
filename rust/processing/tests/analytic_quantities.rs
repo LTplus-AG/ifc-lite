@@ -167,3 +167,47 @@ fn csg_operand_and_nonuniform_world_disk_have_no_nominal_product_quantity() {
     assert!(unsupported.directrix_metrics().is_none());
     assert!(unsupported.nominal_quantities().is_none());
 }
+
+#[test]
+fn issue_5787_arc_tighter_than_disk_has_no_nominal_volume() {
+    let source = fixture().replace(
+        "#43=IFCSWEPTDISKSOLID(#42,14.5,$,0.,2750.);",
+        "#43=IFCSWEPTDISKSOLID(#42,14.5,$,$,$);",
+    );
+    let circular = |radius: f64| {
+        let source = source.replace(
+            "#42=IFCTRIMMEDCURVE(#41,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(2750.)),.T.,.PARAMETER.);",
+            &format!("#42=IFCCIRCLE(#13,{radius});"),
+        );
+        assert!(source.contains("#42=IFCCIRCLE(#13,"));
+        sweep(&source)
+    };
+    let valid = circular(20.0);
+    assert_eq!(valid.status, ifc_lite_geometry::analytic::AnalyticStatus::Complete);
+    assert!(valid.nominal_quantities().unwrap().nominal_volume > 0.0);
+
+    let tangent = circular(14.5);
+    assert_eq!(tangent.status, ifc_lite_geometry::analytic::AnalyticStatus::Complete);
+    assert!(tangent.nominal_quantities().is_none());
+
+    let folded = circular(10.0);
+    assert_eq!(folded.status, ifc_lite_geometry::analytic::AnalyticStatus::Complete);
+    assert!(folded.nominal_quantities().is_none());
+}
+
+#[test]
+fn issue_5787_zero_length_directrix_has_no_nominal_volume() {
+    let source = fixture()
+        .replace(
+            "#42=IFCTRIMMEDCURVE(#41,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(2750.)),.T.,.PARAMETER.);",
+            "#42=IFCTRIMMEDCURVE(#41,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(0.)),.T.,.PARAMETER.);",
+        )
+        .replace(
+            "#43=IFCSWEPTDISKSOLID(#42,14.5,$,0.,2750.);",
+            "#43=IFCSWEPTDISKSOLID(#42,14.5,$,$,$);",
+        );
+    let disk = sweep(&source);
+    assert_eq!(disk.status, ifc_lite_geometry::analytic::AnalyticStatus::Complete);
+    assert_eq!(disk.directrix_metrics().unwrap().total_length, 0.0);
+    assert!(disk.nominal_quantities().is_none());
+}

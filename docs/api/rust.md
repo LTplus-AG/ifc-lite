@@ -603,8 +603,9 @@ cross-section area × centreline length (nominal volume), and outer/optional
 inner lateral areas. Areas are in m² and volume in m³. These are estimates of
 the uncut source sweep: self-overlap and mitred joins can change the physical
 body, so they are not IFC-authored `IfcElementQuantity` values or certified net
-quantities. The method returns `None` for an unsupported description or CSG
-operand. JSON and Python directrix exports include the same values under
+quantities. The method returns `None` for an unsupported description, CSG
+operand, zero-length directrix, or arc whose radius does not exceed the disk
+radius. JSON and Python directrix exports include the same values under
 `nominal_quantities`.
 
 `extrusion_nominal_quantities(&source_extrusion)` derives exact net profile

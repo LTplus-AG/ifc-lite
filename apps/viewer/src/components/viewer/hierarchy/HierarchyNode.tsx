@@ -198,7 +198,7 @@ export function HierarchyNode({
         tabIndex={tabIndex}
         onFocus={onRowFocus}
         className={cn(
-          'relative flex items-center gap-1 px-2 py-1.5 border-l-4 transition-all group hierarchy-item',
+          'relative flex items-center gap-1 pl-2 pr-1 py-1.5 border-l-4 transition-all group hierarchy-item',
           'focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2',
           // No selection styling for spatial containers in multi-model mode
           isMultiModel && isSpatialContainer(node.type)

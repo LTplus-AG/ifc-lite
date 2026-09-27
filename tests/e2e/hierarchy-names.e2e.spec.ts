@@ -8,6 +8,7 @@
  * name was the only part that could shrink. Measured on the real model in the
  * real default panel: both FZK-Haus storey Names ("Dachgeschoss",
  * "Erdgeschoss") must render untruncated.
+ * #6310: retain room after shared type-scale and panel chrome changes.
  */
 
 import { test, expect } from '@playwright/test';

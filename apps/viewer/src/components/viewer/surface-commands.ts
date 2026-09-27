@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import type { TranslationKey } from '@/i18n';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
+import type { ThemeMode } from '@/store/slices/uiSlice';
+import type { ProjectionMode } from '@/store/types';
 import { resolveEnglish } from '@/i18n/registry';
 import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { panelTitleKey } from '@/lib/panels/registry';
@@ -35,6 +37,7 @@ import type { ExportRequest } from './useExportRunner';
 import { TOOL_SURFACE_COMMANDS } from './surface-commands-tools';
 import { PANEL_SURFACE_COMMANDS } from './surface-commands-panels';
 import { WORKSPACE_SURFACE_COMMANDS } from './surface-commands-workspace';
+import { MOBILE_SURFACE_COMMANDS } from './surface-commands-mobile';
 
 export type CommandSurface = 'palette' | 'ribbon' | 'context' | 'mobile';
 
@@ -45,12 +48,16 @@ export interface SurfaceCommandContext {
   activateRightPanel?: (panel: RightPanel) => void;
   activateBottomPanel?: (panel: BottomPanelId) => void;
   runExport?: (request: ExportRequest) => void;
+  openFiles?: () => void;
+  addModel?: () => void;
 }
 
 export interface SurfaceCommandState {
   canEditInSession: boolean;
   cesiumAvailable?: boolean;
   collabEnabled?: boolean;
+  projectionMode?: ProjectionMode;
+  theme?: ThemeMode;
 }
 
 export interface SurfaceCommandDefinition {
@@ -61,6 +68,9 @@ export interface SurfaceCommandDefinition {
   keywords: string;
   category: Command['category'];
   icon: Command['icon'];
+  /** State-dependent mobile text/icon live here, alongside the action. */
+  mobileLabelKey?: (state: SurfaceCommandState) => TranslationKey;
+  mobileIcon?: (state: SurfaceCommandState) => Command['icon'];
   surfaces: readonly CommandSurface[];
   enabled: (state: SurfaceCommandState) => boolean;
   run: (context: SurfaceCommandContext) => void;
@@ -76,9 +86,13 @@ export const SURFACE_COMMANDS = [
   {
     id: 'file:open', labelKey: 'commandPalette.file.open.label',
     keywords: 'ifc ifcx glb load model browse',
-    category: 'File', icon: FolderOpen, surfaces: paletteOnly, enabled: alwaysEnabled,
+    category: 'File', icon: FolderOpen, surfaces: ['palette', 'mobile'], enabled: alwaysEnabled,
+    mobileLabelKey: () => 'shellChrome.mobileToolbar.openFileAriaLabel',
     immediate: true,
-    run: () => { window.dispatchEvent(new CustomEvent('ifc-lite:open-files')); },
+    run: ({ openFiles }: SurfaceCommandContext) => {
+      if (openFiles) openFiles();
+      else window.dispatchEvent(new CustomEvent('ifc-lite:open-files'));
+    },
   },
   {
     id: 'file:save-federation-setup', labelKey: 'commandPalette.file.saveFederationSetup.label',
@@ -102,19 +116,22 @@ export const SURFACE_COMMANDS = [
   {
     id: 'view:home', labelKey: 'commandPalette.view.home.label',
     searchLabel: 'Home', keywords: 'isometric fit camera', category: 'View', icon: Home,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.home',
+    surfaces: ['palette', 'mobile'], enabled: alwaysEnabled, shortcut: 'camera.home',
+    mobileLabelKey: () => 'shellChrome.mobileToolbar.homeAriaLabel',
     run: () => { goHomeFromStore(); },
   },
   {
     id: 'view:fit', labelKey: 'commandPalette.view.fit.label',
     searchLabel: 'Fit All', keywords: 'zoom extents entire model', category: 'View', icon: Maximize2,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.fitAll',
+    surfaces: ['palette', 'mobile'], enabled: alwaysEnabled, shortcut: 'camera.fitAll',
+    mobileLabelKey: () => 'shellChrome.mobileToolbar.fitAllAriaLabel',
     run: () => { useViewerStore.getState().cameraCallbacks.fitAll?.(); },
   },
   {
     id: 'view:frame', labelKey: 'commandPalette.view.frame.label',
     searchLabel: 'Frame Selection', keywords: 'zoom focus selected', category: 'View', icon: Crosshair,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.frameSelection',
+    surfaces: ['palette', 'mobile'], enabled: alwaysEnabled, shortcut: 'camera.frameSelection',
+    mobileLabelKey: () => 'shellChrome.mobileToolbar.frameSelection',
     run: () => { useViewerStore.getState().cameraCallbacks.frameSelection?.(); },
   },
   {
@@ -138,7 +155,9 @@ export const SURFACE_COMMANDS = [
   {
     id: 'view:projection', labelKey: 'commandPalette.view.projection.label',
     searchLabel: 'Projection', keywords: 'perspective orthographic ortho toggle switch',
-    category: 'View', icon: Orbit, surfaces: paletteOnly, enabled: alwaysEnabled,
+    category: 'View', icon: Orbit, surfaces: ['palette', 'mobile'], enabled: alwaysEnabled,
+    mobileLabelKey: (state: SurfaceCommandState) => state.projectionMode === 'orthographic'
+      ? 'shellChrome.mobileToolbar.perspective' : 'shellChrome.mobileToolbar.orthographic',
     run: () => { useViewerStore.getState().toggleProjectionMode(); },
   },
   {
@@ -201,16 +220,18 @@ export const SURFACE_COMMANDS = [
   ...TOOL_SURFACE_COMMANDS,
   ...PANEL_SURFACE_COMMANDS,
   ...WORKSPACE_SURFACE_COMMANDS,
+  ...MOBILE_SURFACE_COMMANDS,
   {
     id: 'vis:hide', labelKey: 'commandPalette.vis.hide.label',
     keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'visibility.hideSelection',
+    surfaces: ['palette', 'mobile'], enabled: alwaysEnabled, shortcut: 'visibility.hideSelection',
+    mobileLabelKey: () => 'shellChrome.mobileToolbar.hideSelection',
     run: () => { hideSelectionFromStore(); },
   },
   {
     id: 'vis:show', labelKey: ACTION_NAME_KEYS.showAll,
     keywords: 'unhide reset visible', category: 'Visibility', icon: Eye,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'visibility.showAll',
+    surfaces: ['palette', 'mobile'], enabled: alwaysEnabled, shortcut: 'visibility.showAll',
     run: () => { showAllFromStore('show_all'); },
   },
   {
@@ -327,7 +348,7 @@ export function paletteSurfaceCommands(
   context: Pick<SurfaceCommandContext, 'activateRightPanel' | 'activateBottomPanel'> = {},
 ): Command[] {
   return SURFACE_COMMANDS
-    .filter((command) => command.surfaces.includes('palette') && command.enabled(state))
+    .filter((command) => command.surfaces.some((surface) => surface === 'palette') && command.enabled(state))
     .map((command) => commandRowFromDefinition(command, { ...context, surface: 'palette', execute }));
 }
 

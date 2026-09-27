@@ -198,6 +198,23 @@ describe('solveSnap locks', () => {
     assert.equal(res.guides[0].role, 'lock');
   });
 
+  it('queries sources at the constrained cursor, so a radius-honouring source finds targets on the lock', () => {
+    // Collects only within `radius` of q.cursor, as the SnapSource contract asks.
+    const strict: SnapSource = {
+      id: 'linework',
+      collect(q, radius, out) {
+        const p: Vec2 = [3.02, 0];
+        if (Math.hypot(p[0] - q.cursor[0], p[1] - q.cursor[1]) <= radius) out.push({ kind: 'vertex', local: p, source: 'linework' });
+      },
+    };
+    // Raw cursor 0.5 m off the ortho line: far outside the radius, but its projection is 2 cm from the vertex.
+    const res = solveSnap(
+      query([3, 0.5], { anchor: [0, 0], modifiers: { shift: true, alt: false } }), [strict], { ...PROFILE, angleStepDeg: 90 },
+    );
+    assert.equal(res.winner?.kind, 'vertex');
+    assert.deepEqual(res.local, [3.02, 0]);
+  });
+
   it('a typed length snaps to where the circle crosses an edge', () => {
     const src = sceneSource([], [[[-10, 3], [10, 3]]]);
     const res = solveSnap(query([4.05, 2.9], { anchor: [0, 0], locks: { length: 5 } }), [src], PROFILE);

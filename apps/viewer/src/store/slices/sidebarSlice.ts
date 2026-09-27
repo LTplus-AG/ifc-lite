@@ -71,6 +71,13 @@ const DEFAULT_ORDER: WorkspacePanelId[] = PANEL_GROUPS.flatMap((group) => {
     : ids;
 });
 
+// An unchanged saved order from before task groups should receive the new
+// grouping on upgrade. A reordered list remains the user's own layout.
+const PRE_GROUP_DEFAULT_ORDER: WorkspacePanelId[] = [
+  'hierarchy',
+  ...WORKSPACE_PANELS.map((panel) => panel.id).filter((id) => id !== 'hierarchy'),
+];
+
 function clampWidth(pct: number): number {
   if (!Number.isFinite(pct)) return SIDEBAR_DEFAULT_WIDTH_PCT;
   return Math.max(MIN_WIDTH_PCT, Math.min(MAX_WIDTH_PCT, pct));
@@ -95,6 +102,10 @@ function normalizeOrder(order: unknown): WorkspacePanelId[] {
         out.push(id);
       }
     }
+  }
+  if (out.length >= 10) {
+    const priorOrder = PRE_GROUP_DEFAULT_ORDER.filter((id) => seen.has(id));
+    if (out.every((id, index) => id === priorOrder[index])) return [...DEFAULT_ORDER];
   }
   // Surface registry panels the persisted list never knew about, in
   // DEFAULT_ORDER order. Hierarchy (#1267) is special: its documented home is

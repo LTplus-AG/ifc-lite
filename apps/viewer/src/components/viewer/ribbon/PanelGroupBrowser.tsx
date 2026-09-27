@@ -38,7 +38,6 @@ export function PanelGroupBrowser() {
             icon={PanelsTopLeft}
             label={t('shellChrome.panelGroups.browse')}
             aria-label={t('shellChrome.panelGroups.browse')}
-            tooltip={t('shellChrome.panelGroups.browseDescription')}
             hasMenu
           />
         </DropdownMenuTrigger>

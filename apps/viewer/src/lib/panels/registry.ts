@@ -7,7 +7,7 @@
  *
  * Single source of truth for the panels the unified sidebar switches
  * between, floats, and pops out. Each entry carries its id, labels, icon,
- * an activity-bar `group` (for divider clustering) and a `prefersWide`
+ * a task `group` shared by panel surfaces and a `prefersWide`
  * hint (code/table/timeline panels want a wider sidebar + bigger pop-out).
  *
  * The panel switcher, the activity bar, the keyboard shortcuts (Alt+N by
@@ -157,8 +157,8 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // like 'zones'/'loadReport'/'cost' above (#1869 precedent) — driven purely
   // by `sidebarActivePanel`, no dedicated visibility boolean. APPENDED so the
   // frozen Alt+1..0 mapping stays intact (no Alt shortcut). The activity bar
-  // only shows its rail icon while `pointCloudAssetCount > 0`, the same way
-  // it hides the Room icon while collab is disabled.
+  // keeps its rail icon available before an asset loads; the panel explains
+  // what to load. The Session icon still follows the collaboration flag.
   { id: 'pointclouds', titleKey: 'pointCloudPanel.title', Icon: Scan, group: 'site', region: 'side' },
   // The Measure tool's LIST / POINT / QTY readouts (#5502): they used to expand
   // out of a floating card over the model; the tool's bar now lives on the

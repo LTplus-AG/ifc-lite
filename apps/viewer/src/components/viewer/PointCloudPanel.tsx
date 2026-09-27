@@ -93,9 +93,9 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
     return (
       <div className="flex h-full flex-col">
         {header}
-        <p role="status" className="p-3 text-sm text-muted-foreground">
+        <output className="block p-3 text-sm text-muted-foreground">
           {t('shellChrome.panelGroups.noPointCloud')}
-        </p>
+        </output>
       </div>
     );
   }

@@ -7,8 +7,8 @@
  *
  * A registry-driven vertical icon rail on the viewport's right edge — the
  * evolution of the #1200 panel switcher. Icons follow the user's custom order
- * (`sidebarOrder`) and visible set (`sidebarHiddenIds`), cluster into groups
- * with dividers, highlight the active docked panel, and flag floating / popped
+ * (`sidebarOrder`) and visible set (`sidebarHiddenIds`), show task-group labels,
+ * highlight the active docked panel, and flag floating / popped
  * panels with a dot. The footer toggles customize mode, collapse, and a
  * layout menu. In customize mode every icon becomes drag-reorderable and
  * gains an eye toggle inline.
@@ -107,7 +107,7 @@ export function ActivityBar() {
   let prevGroup: PanelGroup | null = null;
 
   return (
-    <div data-activity-bar className="relative flex flex-col items-center w-14 shrink-0 h-full border-l border-border bg-background">
+    <div data-activity-bar className="relative flex flex-col items-center w-16 shrink-0 h-full border-l border-border bg-background">
       {/* Panels */}
       <div className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden py-1.5 flex flex-col items-center gap-0.5">
         {visibleIds.map((id) => {
@@ -136,15 +136,13 @@ export function ActivityBar() {
           return (
             <div key={id} className="contents">
               {showGroupLabel && (
-                <div
-                  role="heading"
-                  aria-level={3}
+                <h3
                   data-panel-group={def.group}
                   title={t(panelGroupDefinition(def.group).descriptionKey)}
                   className="w-full border-t border-border/70 px-0.5 pt-1.5 pb-0.5 text-center text-2xs font-medium leading-tight text-muted-foreground"
                 >
                   {t(panelGroupDefinition(def.group).labelKey)}
-                </div>
+                </h3>
               )}
               <Tooltip>
                 <TooltipTrigger asChild>

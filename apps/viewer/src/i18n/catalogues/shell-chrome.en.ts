@@ -39,7 +39,6 @@ export const shellChromeEn = {
   'shellChrome.panelGroups.site': 'Site',
   'shellChrome.panelGroups.siteDescription': 'Explore site context and prepare drawings or presentations.',
   'shellChrome.panelGroups.browse': 'Browse panels',
-  'shellChrome.panelGroups.browseDescription': 'Open a panel by task group',
   'shellChrome.panelGroups.noPointCloud': 'Load a point cloud to use its display and deviation controls.',
 
   // ActivityBar.tsx

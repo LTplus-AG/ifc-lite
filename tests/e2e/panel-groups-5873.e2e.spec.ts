@@ -25,6 +25,7 @@ test('#5873 groups the rail and ribbon panels around an authored IFC model', asy
   const menu = page.getByRole('menu');
   await expect(menu.locator('[data-panel-group="coordinate"]')).toHaveText('Coordinate');
   await expect(menu.locator('[data-panel-group="site"]')).toHaveText('Site');
+  await page.screenshot({ path: testInfo.outputPath('authored-ifc-panel-browser.png'), fullPage: true });
   await menu.locator('[data-panel-id="pointclouds"]').click();
   await expect(page.getByRole('status').filter({ hasText: 'Load a point cloud' })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('authored-ifc-panel-groups.png'), fullPage: true });

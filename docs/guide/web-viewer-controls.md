@@ -62,7 +62,12 @@ to load. The Session panel appears only when collaboration is enabled.
 | --- | --- |
 | Collection | A saved working set of selected model objects. Older guides call it a basket. |
 | Session | A shared live workspace with other people. Older guides call it a room. |
+| Profile | A saved viewer setup, including layout and analysis settings. Older guides call it a flavor. |
 | Edge shading | Point-cloud depth enhancement. Technical settings may call it EDL (Eye-Dome Lighting). |
+| Spatial index | A structure that speeds up finding nearby objects. Technical material may call it a BVH. |
+| Tolerance | The permitted measurement difference in a spatial check. Technical material may call it epsilon. |
+| Boundary-crossing element | An element that intersects more than one location zone. Technical material may call it a straddler. |
+| Write zones to model | Create IFC `IfcSpatialZone` entities for the zones; older controls said “emit zones.” |
 | Validation | Checking model information against rules, including IDS requirements. |
 | Clash | A spatial conflict between model objects, with clearance settings when applicable. |
 | Placement | The model's position and orientation, including georeferencing. |

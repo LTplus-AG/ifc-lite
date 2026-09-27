@@ -45,12 +45,25 @@ describe('shortcut meanings (#5855)', () => {
   });
 
   it('Ctrl+Y redoes the last undone workspace translation on non-Apple platforms', () => {
-    const move = previewPlacement(beginPlacement(emptyPlacementState(), ['ifc'], new Set(['ifc'])), [1, 2, 3]);
-    const undone = replayPlacement(commitPlacement(move), 'undo');
-    useViewerStore.setState({ modelPlacement: undone });
-    render(<Harness />);
+    const platform = Object.getOwnPropertyDescriptor(navigator, 'platform');
+    const userAgentData = Object.getOwnPropertyDescriptor(navigator, 'userAgentData');
+    Object.defineProperties(navigator, {
+      platform: { configurable: true, value: 'Win32' },
+      userAgentData: { configurable: true, value: { platform: 'Windows' } },
+    });
+    try {
+      const move = previewPlacement(beginPlacement(emptyPlacementState(), ['ifc'], new Set(['ifc'])), [1, 2, 3]);
+      const undone = replayPlacement(commitPlacement(move), 'undo');
+      useViewerStore.setState({ modelPlacement: undone });
+      render(<Harness />);
 
-    press(window, 'y', { ctrlKey: true });
-    assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'ifc'), [1, 2, 3]);
+      press(window, 'y', { ctrlKey: true });
+      assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'ifc'), [1, 2, 3]);
+    } finally {
+      if (platform) Object.defineProperty(navigator, 'platform', platform);
+      else Reflect.deleteProperty(navigator, 'platform');
+      if (userAgentData) Object.defineProperty(navigator, 'userAgentData', userAgentData);
+      else Reflect.deleteProperty(navigator, 'userAgentData');
+    }
   });
 });

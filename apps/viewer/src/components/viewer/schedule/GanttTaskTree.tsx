@@ -15,6 +15,8 @@ import type { FlattenedTask } from './schedule-utils';
 import { formatDurationShort } from './schedule-utils';
 
 export const GANTT_ROW_HEIGHT = 28;
+/** Keep the focusable clear control visible without desynchronizing the panes. */
+export const GANTT_BOTTOM_GUTTER_HEIGHT = 24;
 /**
  * Height of the sticky column-header row. MUST match the timeline's tick
  * header so scroll-sync between the two panes lands on the same row —
@@ -28,8 +30,8 @@ interface GanttTaskTreeProps {
   hoveredGlobalId: string | null;
   onToggleExpand: (globalId: string) => void;
   onSelect: (globalId: string, multi: boolean) => void;
-  /** Click on empty-space below the rows clears the selection. */
-  onBackgroundClick?: () => void;
+  /** Activate the empty-space control below the rows to clear the selection. */
+  onBackgroundClick: () => void;
   /** User finished a drag — move the source row to the index of the target row. */
   onReorder?: (sourceGlobalId: string, targetIndex: number) => void;
   onHover: (globalId: string | null) => void;
@@ -79,21 +81,11 @@ export const GanttTaskTree = memo(function GanttTaskTree({
     }
   }, [scrollTop]);
 
-  /**
-   * Click on the scroll container itself (not a row/cell/button) clears
-   * the Gantt selection. Uses `e.currentTarget === e.target` so clicks
-   * that bubble up from a row don't also fire deselect.
-   */
-  const handleContainerClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.currentTarget === e.target) onBackgroundClick?.();
-  }, [onBackgroundClick]);
-
   return (
     <div
       ref={containerRef}
-      className="h-full overflow-y-auto overflow-x-hidden border-r bg-background"
+      className="flex h-full flex-col overflow-y-auto overflow-x-hidden border-r bg-background"
       onScroll={handleScroll}
-      onClick={handleContainerClick}
       data-testid="gantt-task-tree"
     >
       {/*
@@ -102,22 +94,23 @@ export const GanttTaskTree = memo(function GanttTaskTree({
         lands on the same row.
       */}
       <div
-        className="sticky top-0 z-10 bg-card/90 backdrop-blur-sm border-b flex items-center justify-between px-2 text-[10px] uppercase tracking-wide text-muted-foreground font-medium"
+        className="sticky top-0 z-10 shrink-0 bg-card/90 backdrop-blur-sm border-b flex items-center justify-between px-2 text-[10px] uppercase tracking-wide text-muted-foreground font-medium"
         style={{ height: GANTT_HEADER_HEIGHT }}
       >
         <span>{t('schedule.taskTree.columnTask')}</span>
         <span>{t('schedule.taskTree.columnDuration')}</span>
       </div>
-      <div style={{ height: rows.length * GANTT_ROW_HEIGHT }}>
+      <div className="shrink-0" style={{ height: rows.length * GANTT_ROW_HEIGHT }}>
         {/*
           ARIA grid semantics: the table is a grid, each <tr> keeps its
           native/`row` role (so `aria-selected` is valid), and the focusable
           primary cell carries `tabIndex` + keyboard handlers. This keeps the
           chevron <button> as a real button (not nested inside a `button`).
         */}
-        <table
+        {/* The native table keeps cell semantics; grid exposes row selection to assistive tech. */}
+        {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role */}
+        <table role="grid"
           className="w-full text-xs border-collapse"
-          role="grid"
           aria-multiselectable="true"
         >
           <tbody>
@@ -136,7 +129,6 @@ export const GanttTaskTree = memo(function GanttTaskTree({
               return (
                 <tr
                   key={task.globalId}
-                  role="row"
                   aria-selected={isSelected}
                   style={{ height: GANTT_ROW_HEIGHT }}
                   className={cn(
@@ -177,7 +169,6 @@ export const GanttTaskTree = memo(function GanttTaskTree({
                   } : undefined}
                 >
                   <td
-                    role="gridcell"
                     tabIndex={0}
                     aria-label={label}
                     className={cn(
@@ -254,17 +245,15 @@ export const GanttTaskTree = memo(function GanttTaskTree({
                         <span
                           className="inline-flex items-center shrink-0"
                           title={t('schedule.taskTree.workCalendar', { name: calendarName })}
-                          aria-label={t('schedule.taskTree.workCalendar', { name: calendarName })}
-                          role="img"
                           data-testid="gantt-task-calendar-badge"
                         >
                           <CalendarDays className="w-3 h-3 text-muted-foreground" aria-hidden />
+                          <span className="sr-only">{t('schedule.taskTree.workCalendar', { name: calendarName })}</span>
                         </span>
                       )}
                     </span>
                   </td>
                   <td
-                    role="gridcell"
                     className="px-2 text-muted-foreground font-mono text-right whitespace-nowrap"
                   >
                     {/*
@@ -282,6 +271,13 @@ export const GanttTaskTree = memo(function GanttTaskTree({
           </tbody>
         </table>
       </div>
+      <button
+        type="button"
+        className="w-full flex-1 cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+        style={{ minHeight: GANTT_BOTTOM_GUTTER_HEIGHT }}
+        aria-label={t('schedule.taskTree.clearSelectionAriaLabel')}
+        onClick={onBackgroundClick}
+      />
     </div>
   );
 });

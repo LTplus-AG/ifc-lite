@@ -9,7 +9,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Search } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useSandbox } from '@/hooks/useSandbox';
@@ -22,7 +21,7 @@ import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
 import { trackCommandExecution } from './surface-command-run';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { buildCommandPaletteCommands, type RightPanel } from './commandPaletteCommands';
-import { shortcutLabel } from '@/lib/commands/shortcut-label';
+import { DynamicPaletteOption, RegisteredPaletteOption, registeredPaletteId } from './command-palette-option';
 import { useExportRunner } from './useExportRunner';
 import {
   type Command,
@@ -228,38 +227,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                   </div>
                 )}
                 {group.items.map(({ cmd, flatIdx }) => {
-                  const Icon = cmd.icon;
-                  return (
-                    // The option remains a button so Enter and click use the same command action.
-                    // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
-                    <button role="option"
-                      key={`${group.category}:${cmd.id}`}
-                      data-command-id={cmd.registryOwned ? cmd.id : undefined}
-                      data-index={flatIdx}
-                      aria-selected={flatIdx === selectedIndex}
-                      className={cn(
-                        'flex items-center gap-3 w-full px-3 py-2 text-left text-sm',
-                        flatIdx === selectedIndex
-                          ? 'bg-accent text-accent-foreground'
-                          : 'text-foreground hover:bg-accent/50',
-                      )}
-                      onClick={() => runCommand(cmd)}
-                      onMouseMove={() => { if (selectedIndex !== flatIdx) setSelectedIndex(flatIdx); }}
-                    >
-                      <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <span className="flex-1 truncate">{cmd.labelKey ? t(cmd.labelKey, cmd.labelKeyParams) : cmd.label}</span>
-                      {cmd.detail && (
-                        <span className="text-xs text-muted-foreground shrink-0">
-                          {cmd.detailKey ? t(cmd.detailKey, cmd.detailKeyParams) : cmd.detail}
-                        </span>
-                      )}
-                      {cmd.shortcut && (
-                        <kbd className="ml-auto hidden sm:inline-flex h-5 min-w-[20px] items-center justify-center rounded border bg-muted px-1.5 text-xs font-medium text-muted-foreground shrink-0">
-                          {shortcutLabel(cmd.shortcut)}
-                        </kbd>
-                      )}
-                    </button>
-                  );
+                  const placement = {
+                    index: flatIdx,
+                    selected: flatIdx === selectedIndex,
+                    onActivate: () => runCommand(cmd),
+                    onHover: () => { if (selectedIndex !== flatIdx) setSelectedIndex(flatIdx); },
+                  };
+                  const commandId = registeredPaletteId(cmd);
+                  return commandId
+                    ? <RegisteredPaletteOption key={`${group.category}:${cmd.id}`} commandId={commandId} {...placement} />
+                    : <DynamicPaletteOption key={`${group.category}:${cmd.id}`} command={cmd} {...placement} />;
                 })}
               </div>
             ))}

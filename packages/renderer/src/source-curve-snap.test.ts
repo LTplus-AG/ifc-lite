@@ -140,6 +140,16 @@ describe('authored source snapping (#5780)', () => {
     assert.ok(sourceCurveSnapCandidate([curve], 0.5, 0, 0.01, project, accepts, clip));
   });
 
+  it('finds the closest valley of an unclipped non-affine cross-CRS line (#6280)', () => {
+    const curve: SourceSnapCurve = { identity, globalId: 42, kind: 'line', length: 1,
+      affineDisplayFrame: false,
+      pointAt: (t) => ({ x: t, y: 0.3 * Math.sin(4 * Math.PI * t), z: 0 }) };
+    const hit = sourceCurveSnapCandidate([curve], 0.5, 0, 0.01, project, accepts);
+    assert.ok(hit, 'another screen-space valley must not hide the point under the cursor');
+    assert.ok(Math.abs((hit.target.metadata?.sourceCurve?.t ?? Infinity) - 0.5) < 1e-7);
+    assert.equal(hit.target.type, SnapType.EDGE);
+  });
+
   it('does not return a point behind a perspective near plane', () => {
     const line: SourceSnapCurve = { identity, globalId: 42, kind: 'line', length: 2,
       pointAt: (t) => ({ x: t, y: 0, z: 1 - 2 * t }) };

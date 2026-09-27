@@ -123,7 +123,8 @@ export function sourceCurveSnapCandidate(
       }
       // Clip boundaries are candidates even when the entire visible piece is
       // narrower than a sampling interval. Interior points use the source equation.
-      const sampled = curve.kind === 'arc' || (curve.affineDisplayFrame === false && !!clip);
+      // Reprojection can give a source line multiple screen-space minima even without a clip.
+      const sampled = curve.kind === 'arc' || curve.affineDisplayFrame === false;
       const subdivisions = !sampled ? 1
         : Math.min(256, Math.max(32, Math.ceil(Math.abs(curve.sweepAngle ?? 0) * (high - low) / (Math.PI / 32))));
       const values: number[] = [];

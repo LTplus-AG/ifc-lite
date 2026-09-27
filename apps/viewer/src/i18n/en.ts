@@ -82,6 +82,7 @@ import { viewportLightingEn } from './catalogues/viewport-lighting.en';
 import { spaceSketchEn } from './catalogues/space-sketch.en';
 import { splitToolEn } from './catalogues/split-tool.en';
 import { modelingCommandEn } from './catalogues/modeling-command.en';
+import { remeshEn } from './catalogues/remesh.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
 import { webgpuTroubleshootingEn } from './catalogues/webgpu-troubleshooting.en';
 import { scriptPanelEn } from './catalogues/script-panel.en';
@@ -128,6 +129,7 @@ export const en = {
   ...spaceSketchEn,
   ...splitToolEn,
   ...modelingCommandEn,
+  ...remeshEn,
   ...documentEn,
   ...documentMenuEn,
   ...drawingUnderlayEn,

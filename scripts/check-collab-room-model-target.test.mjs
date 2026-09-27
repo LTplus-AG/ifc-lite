@@ -90,7 +90,7 @@ test('wall resize mirror must target the edited model (#6233)', () => {
   assert.match(out, /mutation-wall-resize\.ts:\d+: `mirrorEntityGeometry` is handed/);
 });
 
-test('removing one wall resize mirror call fails the call-site floor (#6233)', () => {
+test('removing the wall resize mirror call fails the call-site floor (#6233)', () => {
   const wallResize = replaceOnce(
     realWallResize,
     'get().mirrorEntityGeometry(modelId, expressId, mesh)',
@@ -98,7 +98,7 @@ test('removing one wall resize mirror call fails the call-site floor (#6233)', (
   );
   const { status, out } = runOn({ wallResize });
   assert.equal(status, 1, out);
-  assert.match(out, /mirrorEntityGeometry` is called 1×.*expected at least 2/);
+  assert.match(out, /mirrorEntityGeometry` is called 0×.*expected at least 1/);
 });
 
 test('RED: a template literal spelling the required call, with the real call deleted, must not satisfy the guard', () => {

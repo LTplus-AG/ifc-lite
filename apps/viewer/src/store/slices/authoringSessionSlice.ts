@@ -110,7 +110,13 @@ function launch(set: Set, get: Get, api: StoreApi<ViewerState>, id: CommandId): 
 
 /** Keep the runtime in step with the tool and the session, whoever changed them. */
 function syncRuntime(api: StoreApi<ViewerState>): void {
-  api.subscribe((s) => {
+  api.subscribe((s, prev) => {
+    // The workspace closed under edit mode (its model removed, a file swap):
+    // edit mode goes with it, so the two never disagree.
+    if (prev.workspaceMode === 'model' && s.workspaceMode === 'view' && s.editEnabled) {
+      s.setEditEnabled(false);
+      return;
+    }
     const running = getCommandRuntime().command;
     const commandTool = s.activeTool === 'command';
     if (running && (!commandTool || s.session?.activeCommandId !== running.id)) endCommandRuntime();

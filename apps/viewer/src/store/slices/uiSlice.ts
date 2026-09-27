@@ -260,7 +260,8 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
       const cross = get() as unknown as WorkspaceCrossSlice;
       if (cross.canCollabEdit && !cross.canCollabEdit()) return;
       if (leavingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
-      if (cross.workspaceMode !== 'model') cross.enterModelWorkspace?.();
+      // Authoring happens in the Model workspace; no editable model, no tool.
+      if (cross.workspaceMode !== 'model' && cross.enterModelWorkspace && !cross.enterModelWorkspace()) return;
       set({ activeTool, editEnabled: true, spaceSketchMinimized: false });
       return;
     }
@@ -270,14 +271,16 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   setSpaceSketchMinimized: (spaceSketchMinimized) => set({ spaceSketchMinimized }),
   setEditEnabled: (editEnabled) => {
     // Edit mode is the Model workspace's (#6232): entering or leaving goes
-    // through the session slice, which keeps `editEnabled` in step. Only
-    // with no editable model (no workspace to open) is it the bare flag.
+    // through the session slice, which keeps `editEnabled` in step (no
+    // editable model = no workspace = edit mode stays off). The bare flag is
+    // for a UISlice composed without the session slice.
     const cross = get() as unknown as WorkspaceCrossSlice;
     if (editEnabled) {
       // Collab role gate: only editor/admin (or single-user, role===null)
       // may enter edit mode — the single chokepoint for every authoring surface.
       if (cross.canCollabEdit && !cross.canCollabEdit()) return;
-      if (!cross.enterModelWorkspace?.()) set({ editEnabled: true });
+      if (cross.enterModelWorkspace) cross.enterModelWorkspace();
+      else set({ editEnabled: true });
       return;
     }
     if (cross.workspaceMode === 'model' && cross.exitModelWorkspace) {

@@ -63,6 +63,19 @@ describe('Model workspace entry / exit (#6232 WP2)', () => {
     useViewerStore.setState({ collabRole: null, canCollabEdit: () => true });
   });
 
+  it('edit mode never outlives the workspace: no editable model, or its model removed', () => {
+    useViewerStore.getState().setEditEnabled(true);
+    useViewerStore.getState().removeModel(MODEL_ID);
+    let s = useViewerStore.getState();
+    assert.equal(s.workspaceMode, 'view');
+    assert.equal(s.editEnabled, false, 'removing the session model ends edit mode too');
+    s.setEditEnabled(true);
+    s = useViewerStore.getState();
+    assert.equal(s.editEnabled, false, 'no editable model: no workspace, no edit mode');
+    s.setActiveTool('addElement');
+    assert.equal(useViewerStore.getState().activeTool, 'select', 'nor an authoring tool');
+  });
+
   it('an authoring tool enters the workspace', () => {
     useViewerStore.getState().setActiveTool('addElement');
     assert.equal(useViewerStore.getState().workspaceMode, 'model');

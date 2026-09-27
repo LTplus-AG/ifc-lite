@@ -85,3 +85,33 @@ fn mapped_operator_keeps_fractional_translation_at_five_thousand_kilometres() {
         assert_mesh_matches_analytic_endpoints(&mapped_line(&operator));
     }
 }
+
+#[test]
+fn mapped_operator_keeps_precision_with_an_unmapped_item_in_the_same_product() {
+    let operator = "#1000=IFCCARTESIANPOINT((5000000123.456,0.,0.));\n#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1000,$,$);";
+    let source = String::from_utf8(mapped_line(operator)).unwrap();
+    let source = source.replace(
+        "#48=IFCSHAPEREPRESENTATION(#16,'Body','MappedRepresentation',(#47));",
+        "#48=IFCSHAPEREPRESENTATION(#16,'Body','MappedRepresentation',(#43,#47));",
+    );
+    let ids = HashSet::from([50]);
+    let result = process_geometry_filtered_with_quality_and_ids(
+        source.as_bytes(),
+        OpeningFilterMode::Default,
+        TessellationQuality::High,
+        Some(&ids),
+    );
+    let site_rotation = (result.mesh_coordinate_space == MeshCoordinateSpace::SiteLocal)
+        .then_some(result.site_transform.as_deref())
+        .flatten();
+    let exported = build_geometry_data_export(
+        &result.meshes,
+        result.metadata.coordinate_info.origin_shift,
+        site_rotation,
+    );
+    let mesh = &exported.elements[&50];
+    let low = mesh.vertices.iter().map(|v| v[0]).fold(f64::INFINITY, f64::min);
+    let high = mesh.vertices.iter().map(|v| v[0]).fold(f64::NEG_INFINITY, f64::max);
+    assert!(low < 1.0, "unmapped item missing from product: low X {low:.9}");
+    assert!((high - 5_000_002.873456).abs() < 1e-5, "mapped high X {high:.9}");
+}

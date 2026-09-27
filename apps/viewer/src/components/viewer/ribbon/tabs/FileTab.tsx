@@ -88,14 +88,23 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
             onClick={() => { void handleRefresh(); }}
           />
         </RibbonSmallStack>
-        <RibbonSmallStack>
-          {[saveSetup, openSetup, modelTags].map((command) => (
+        <RibbonLargeButton
+          data-command-id={saveSetup.id}
+          icon={saveSetup.icon}
+          label={t(saveSetup.labelKey)}
+          tooltip={t(saveSetup.labelKey)}
+          disabled={!saveSetup.enabled({ canEditInSession })}
+          onClick={() => saveSetup.run({ surface: 'ribbon' })}
+        />
+        <RibbonSmallStack className="gap-1">
+          {[openSetup, modelTags].map((command) => (
             <RibbonSmallButton
               key={command.id}
               data-command-id={command.id}
               icon={command.icon}
               label={t(command.labelKey)}
               tooltip={t(command.labelKey)}
+              className="min-h-6"
               disabled={!command.enabled({ canEditInSession })}
               onClick={() => command.run({ surface: 'ribbon' })}
             />

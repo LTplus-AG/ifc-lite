@@ -6,14 +6,10 @@
  * Ribbon · Elements tab — selection actions and class visibility.
  */
 
-import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { useCallback, useContext } from 'react';
 import { ClassVisibility, CopyGuid, ElementTooltips, EntityActions, FocusSelected, HideSelected, IsolateSelected, Search, DisplayAll, Spatial, Class, Type, Material, Group } from '@/icons';
 import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { resolveGlobalId, useViewerStore, type HierarchyMode } from '@/store';
-import { executeBasketIsolate } from '@/store/basket/basketCommands';
-import { showAllFromStore } from '@/store/homeView';
-import { hideSelectionFromStore } from '@/store/hideSelection';
+import { resolveGlobalId, useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { surfaceCommand } from '../../surface-commands';
@@ -22,33 +18,23 @@ import { ClassVisibilityMenuContent, useVisibleClassCount } from '../../toolbar/
 import {
   RibbonGroup,
   RibbonGroupDivider,
-  RibbonLargeButton,
-  RibbonSmallButton,
   RibbonSmallStack,
 } from '../primitives';
-import { RibbonCommandSmallButton } from '../command-button';
+import { RibbonCommandLargeButton, RibbonCommandSmallButton } from '../command-button';
 
 export function ElementsTab() {
   const { t } = useTranslation();
   const bim = useContext(BimReactContext);
   const toggleCollection = surfaceCommand('vis:toggle-iso', 'ribbon');
   const resetColors = surfaceCommand('vis:reset-colors', 'ribbon');
-  const entityActions = surfaceCommand('elements:entity-actions', 'ribbon');
   const collabRole = useViewerStore((s) => s.collabRole);
   const canEditInSession = collabRole === null || collabRole === 'editor' || collabRole === 'admin';
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
   const selectedEntityIds = useViewerStore((state) => state.selectedEntityIds);
   const openContextMenu = useViewerStore((state) => state.openContextMenu);
-  const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
   const hoverTooltipsEnabled = useViewerStore((state) => state.hoverTooltipsEnabled);
-  const toggleHoverTooltips = useViewerStore((state) => state.toggleHoverTooltips);
   const mergeLayers = useViewerStore((state) => state.mergeLayers);
-  const setSearchModalOpen = useViewerStore((state) => state.setSearchModalOpen);
-  const setSearchModalTab = useViewerStore((state) => state.setSearchModalTab);
   const hierarchyMode = useViewerStore((state) => state.hierarchyMode);
-  const setHierarchyMode = useViewerStore((state) => state.setHierarchyMode);
-  const setLeftPanelCollapsed = useViewerStore((state) => state.setLeftPanelCollapsed);
-  const setPanelShownInSidebar = useViewerStore((state) => state.setPanelShownInSidebar);
   const { visible: visibleClassCount } = useVisibleClassCount();
 
   // Selection size uses the multi-select set when present; falls back to
@@ -66,12 +52,6 @@ export function ElementsTab() {
     if (globalId) void navigator.clipboard.writeText(globalId);
   }, [selectedEntityId]);
 
-  const handleHierarchyMode = useCallback((mode: HierarchyMode) => {
-    setHierarchyMode(mode);
-    setPanelShownInSidebar('hierarchy', true);
-    setLeftPanelCollapsed(false);
-  }, [setHierarchyMode, setLeftPanelCollapsed, setPanelShownInSidebar]);
-
   return (
     <>
       {/* Selection actions stay put (no appearing/disappearing chrome —
@@ -79,71 +59,57 @@ export function ElementsTab() {
           availability from the disabled state. The group label carries
           the live count so scene state is visible at a glance. */}
       <RibbonGroup label={t('ribbon.elements.elementsGroup')}>
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="elements:search"
           icon={Search}
-          label={t('ribbon.elements.search')}
-          tooltip={t('ribbon.elements.searchTooltip')}
-          onClick={() => {
-            setSearchModalTab('search');
-            setSearchModalOpen(true);
-          }}
+          onClick={() => runSurfaceCommand(surfaceCommand('elements:search', 'ribbon'), { surface: 'ribbon' })}
         />
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="vis:show"
           icon={DisplayAll}
-          label={t(ACTION_NAME_KEYS.showAll)}
-          aria-label={t(ACTION_NAME_KEYS.showAll)}
-          tooltip={t('ribbon.elements.showAllTooltip')}
-          shortcut="visibility.showAll"
-          onClick={() => showAllFromStore('show_all')}
+          onClick={() => runSurfaceCommand(surfaceCommand('vis:show', 'ribbon'), { surface: 'ribbon' })}
         />
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="pref:tooltips"
           icon={ElementTooltips}
-          label={t('ribbon.elements.hoverTips')}
-          tooltip={t('ribbon.elements.hoverTipsTooltip')}
           active={hoverTooltipsEnabled}
-          onClick={() => toggleHoverTooltips()}
+          onClick={() => runSurfaceCommand(surfaceCommand('pref:tooltips', 'ribbon'), { surface: 'ribbon' })}
         />
       </RibbonGroup>
 
       <RibbonGroupDivider />
 
       <RibbonGroup label={hasSelection ? t('ribbon.elements.selectionGroupCount', { count: selectionCount }) : t('ribbon.elements.selectionGroup')}>
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="vis:isolate"
           icon={IsolateSelected}
-          label={t('ribbon.elements.isolate')}
-          tooltip={t('ribbon.elements.isolateTooltip')}
-          shortcut="basket.isolate"
           disabled={!hasSelection}
-          onClick={() => executeBasketIsolate()}
+          onClick={() => runSurfaceCommand(surfaceCommand('vis:isolate', 'ribbon'), { surface: 'ribbon' })}
         />
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="vis:hide"
           icon={HideSelected}
-          label={t('ribbon.elements.hide')}
-          tooltip={t('ribbon.elements.hideTooltip')}
-          shortcut="visibility.hideSelection"
           disabled={!hasSelection}
-          onClick={hideSelectionFromStore}
+          onClick={() => runSurfaceCommand(surfaceCommand('vis:hide', 'ribbon'), { surface: 'ribbon' })}
         />
         <RibbonSmallStack>
-          <RibbonSmallButton
+          <RibbonCommandSmallButton
+            commandId="view:frame"
             icon={FocusSelected}
-            label={t('ribbon.elements.frame')}
-            tooltip={t('ribbon.elements.frameTooltip')}
-            shortcut="camera.frameSelection"
             disabled={!hasSelection}
-            onClick={() => cameraCallbacks.frameSelection?.()}
+            onClick={() => runSurfaceCommand(surfaceCommand('view:frame', 'ribbon'), { surface: 'ribbon' })}
           />
-          <RibbonSmallButton
+          <RibbonCommandSmallButton
+            commandId="context:copy-global-id"
             icon={CopyGuid}
-            label={t(ACTION_NAME_KEYS.copyGlobalId)}
-            tooltip={t(ACTION_NAME_KEYS.copyGlobalId)}
             disabled={selectedEntityId === null}
-            onClick={handleCopyGuid}
+            onClick={() => runSurfaceCommand(surfaceCommand('context:copy-global-id', 'ribbon'), {
+              surface: 'ribbon', contextAction: handleCopyGuid,
+            })}
           />
-          <RibbonSmallButton
-            data-command-id={entityActions.id}
+          <RibbonCommandSmallButton
+            commandId="elements:entity-actions"
             icon={EntityActions}
-            label={t(entityActions.labelKey)}
             disabled={!hasSelection}
             onClick={(event) => {
               const targetId = selectedEntityIds.size > 0
@@ -152,7 +118,7 @@ export function ElementsTab() {
                 : selectedEntityId;
               if (targetId === undefined || targetId === null) return;
               const rect = event.currentTarget.getBoundingClientRect();
-              runSurfaceCommand(entityActions, {
+              runSurfaceCommand(surfaceCommand('elements:entity-actions', 'ribbon'), {
                 surface: 'ribbon',
                 contextAction: () => openContextMenu(targetId, Math.max(1, rect.left + rect.width / 2), Math.max(1, rect.bottom)),
               });
@@ -164,40 +130,35 @@ export function ElementsTab() {
       <RibbonGroupDivider />
 
       <RibbonGroup label={t('ribbon.elements.hierarchyGroup')}>
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="elements:spatial"
           icon={Spatial}
-          label={t('ribbon.elements.spatial')}
-          tooltip={t('ribbon.elements.spatialTooltip')}
           active={hierarchyMode === 'spatial'}
-          onClick={() => handleHierarchyMode('spatial')}
+          onClick={() => runSurfaceCommand(surfaceCommand('elements:spatial', 'ribbon'), { surface: 'ribbon' })}
         />
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="elements:class"
           icon={Class}
-          label={t('ribbon.elements.class')}
-          tooltip={t('ribbon.elements.classTooltip')}
           active={hierarchyMode === 'type'}
-          onClick={() => handleHierarchyMode('type')}
+          onClick={() => runSurfaceCommand(surfaceCommand('elements:class', 'ribbon'), { surface: 'ribbon' })}
         />
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="elements:type"
           icon={Type}
-          label={t('ribbon.elements.type')}
-          tooltip={t('ribbon.elements.typeTooltip')}
           active={hierarchyMode === 'ifc-type'}
-          onClick={() => handleHierarchyMode('ifc-type')}
+          onClick={() => runSurfaceCommand(surfaceCommand('elements:type', 'ribbon'), { surface: 'ribbon' })}
         />
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="elements:materials"
           icon={Material}
-          label={t('ribbon.elements.materials')}
-          tooltip={t('ribbon.elements.materialsTooltip')}
           active={hierarchyMode === 'material'}
-          onClick={() => handleHierarchyMode('material')}
+          onClick={() => runSurfaceCommand(surfaceCommand('elements:materials', 'ribbon'), { surface: 'ribbon' })}
         />
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="elements:groups"
           icon={Group}
-          label={t('ribbon.elements.groups')}
-          tooltip={t('ribbon.elements.groupsTooltip')}
           active={hierarchyMode === 'groups'}
-          onClick={() => handleHierarchyMode('groups')}
+          onClick={() => runSurfaceCommand(surfaceCommand('elements:groups', 'ribbon'), { surface: 'ribbon' })}
         />
       </RibbonGroup>
       <RibbonGroupDivider />
@@ -205,9 +166,10 @@ export function ElementsTab() {
       <RibbonGroup label={t('ribbon.elements.visibilityGroup')}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <RibbonLargeButton
+            <RibbonCommandLargeButton
+              commandId="elements:class-filter"
+              triggerOnly
               icon={ClassVisibility}
-              label={t('ribbon.elements.filter')}
               hasMenu
               tooltip={mergeLayers
                 ? t('ribbon.elements.filterMergedTooltip', { count: visibleClassCount })

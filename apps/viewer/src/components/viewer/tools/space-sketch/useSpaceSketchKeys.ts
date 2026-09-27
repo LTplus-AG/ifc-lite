@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { registerKeyboardBinding, registerKeyboardCommand, registerKeyboardKeyUp } from '@/lib/commands/dispatcher';
+import { KEYBOARD_PRIORITY, registerKeyboardBinding, registerKeyboardCommand, registerKeyboardKeyUp } from '@/lib/commands/dispatcher';
 
 /** Two Escapes within this window close the panel. */
 export const DOUBLE_ESC_MS = 400;
@@ -71,7 +71,7 @@ export function useSpaceSketchKeys({
           ? 'Esc again to close without creating (use Confirm to create).'
           : 'Press Esc again to close.');
       }
-    }, { allowInTextEntry: true, ignoreModifiers: true });
+    }, { allowInTextEntry: true, ignoreModifiers: true, priority: KEYBOARD_PRIORITY.activeGesture });
     const removeCommit = registerKeyboardCommand('spaceSketch.commit', () => {
       if (!commitDraw) return false;
       commitDraw();

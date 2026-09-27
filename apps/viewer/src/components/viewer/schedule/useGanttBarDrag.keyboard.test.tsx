@@ -39,6 +39,8 @@ it('#5841 Gantt Escape aborts the active drag transaction before global Escape',
   useViewerStore.setState({ scheduleData: data, scheduleUndoStack: [], scheduleRedoStack: [],
     scheduleTransaction: { active: false, label: '', pushedAt: -1 } });
   let globalEscapes = 0;
+  let drawingEscapes = 0;
+  const unregisterDrawing = registerKeyboardCommand('drawing2d.cancel', () => { drawingEscapes++; });
   const unregister = registerKeyboardCommand('selection.escape', () => { globalEscapes++; });
   try {
     const ui = render(<Harness />);
@@ -52,11 +54,13 @@ it('#5841 Gantt Escape aborts the active drag transaction before global Escape',
 
     press(window, 'Escape');
     assert.equal(globalEscapes, 0);
+    assert.equal(drawingEscapes, 0, 'a persisted drawing selection cannot intercept active Gantt drag');
     assert.equal(useViewerStore.getState().scheduleTransaction.active, false);
     assert.equal(useViewerStore.getState().scheduleData?.tasks[0]?.taskTime?.scheduleStart, task.taskTime?.scheduleStart);
     assert.equal(useViewerStore.getState().scheduleUndoStack.length, 0);
     assert.equal(ui.querySelector('[data-testid="live-task"]')?.textContent, 'none');
   } finally {
     unregister();
+    unregisterDrawing();
   }
 });

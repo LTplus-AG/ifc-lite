@@ -10,11 +10,15 @@ import { KEY_COMMANDS, type KeyCommandId, type KeyContext } from './keyboard-com
 export type KeyboardLayer = 'global' | 'tool' | 'popover' | 'modal';
 export type CommandRun = (event: KeyboardEvent) => boolean | void;
 
+/** An active gesture must precede a persistent drawing selection in the same layer. */
+export const KEYBOARD_PRIORITY = { drawingMeasure: 1, activeGesture: 2 } as const;
+
 export interface RunnableKeyBinding {
   readonly id: string;
   readonly when: KeyContext;
   readonly keys: readonly KeyChord[];
   readonly layer: KeyboardLayer;
+  readonly priority?: number;
   readonly run: CommandRun;
   readonly active?: () => boolean;
   /** Existing continuous camera movement also accepts held modifiers. */
@@ -76,8 +80,9 @@ export function dispatchKeyboardDown(event: KeyboardEvent): string | null {
     if (overlay === 'modal' && layer !== 'modal') break;
     if (overlay === 'popover' && (layer === 'tool' || layer === 'global')) break;
     const bindings = [...registrations].filter((entry) => entry.layer === layer && (entry.active?.() ?? true));
-    // A two-press binding wins over the single-press binding on press two.
-    bindings.sort((a, b) => Number(Boolean(b.keys.some((chord) => chord.double))) - Number(Boolean(a.keys.some((chord) => chord.double))));
+    // Active gestures win within a layer; double-press wins among equal owners.
+    bindings.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0)
+      || Number(Boolean(b.keys.some((chord) => chord.double))) - Number(Boolean(a.keys.some((chord) => chord.double))));
     for (const entry of bindings) {
       const allowInText = typeof entry.allowInTextEntry === 'function'
         ? entry.allowInTextEntry(event) : entry.allowInTextEntry;
@@ -120,14 +125,14 @@ function syncListener(): void {
 export function registerKeyboardCommand(
   id: KeyCommandId,
   run: CommandRun,
-  options: Pick<RunnableKeyBinding, 'active' | 'allowInTextEntry' | 'ignoreModifiers'> & { layer?: KeyboardLayer } = {},
+  options: Pick<RunnableKeyBinding, 'active' | 'allowInTextEntry' | 'ignoreModifiers' | 'priority'> & { layer?: KeyboardLayer } = {},
 ): () => void {
   const definition = BUILTIN.get(id);
   if (!definition) throw new Error(`Unknown keyboard command: ${id}`);
   return registerKeyboardBinding({
     id, when: definition.when, keys: definition.keys,
     layer: options.layer ?? layerForContext(definition.when),
-    run, active: options.active, allowInTextEntry: options.allowInTextEntry,
+    run, active: options.active, priority: options.priority, allowInTextEntry: options.allowInTextEntry,
     ignoreModifiers: options.ignoreModifiers,
   });
 }

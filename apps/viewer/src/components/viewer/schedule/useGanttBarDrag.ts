@@ -31,7 +31,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import type { GanttTimeScale, ScheduleTimeRange } from '@/store';
-import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
+import { KEYBOARD_PRIORITY, registerKeyboardCommand } from '@/lib/commands/dispatcher';
 
 export type BarDragMode = 'shift' | 'resize-start' | 'resize-finish';
 
@@ -293,7 +293,7 @@ export function useGanttBarDrag(opts: UseGanttBarDragOptions): UseGanttBarDragRe
     removeCancelRef.current = registerKeyboardCommand('schedule.cancelDrag', () => {
       detach();
       endDrag(false);
-    }, { allowInTextEntry: true, ignoreModifiers: true });
+    }, { allowInTextEntry: true, ignoreModifiers: true, priority: KEYBOARD_PRIORITY.activeGesture });
 
     setLive({
       taskGlobalId, mode,

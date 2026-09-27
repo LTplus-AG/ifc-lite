@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import { axisFlipForSection } from '@/hooks/pdfSectionLayout';
-import { registerKeyboardCommand, registerKeyboardKeyUp } from '@/lib/commands/dispatcher';
+import { KEYBOARD_PRIORITY, registerKeyboardCommand, registerKeyboardKeyUp } from '@/lib/commands/dispatcher';
 import { useViewerStore } from '@/store';
 
 // ─── Public interfaces ──────────────────────────────────────────────────────
@@ -224,7 +224,7 @@ export function useMeasure2D({
       if (useViewerStore.getState().annotation2DActiveTool === 'measure') {
         useViewerStore.getState().setAnnotation2DActiveTool('none');
       }
-    }, { allowInTextEntry: true, ignoreModifiers: true });
+    }, { allowInTextEntry: true, ignoreModifiers: true, priority: KEYBOARD_PRIORITY.drawingMeasure });
     const removeKeyUp = registerKeyboardKeyUp((event) => {
       if (event.key === 'Shift') setMeasure2DShiftLocked(false);
     });

@@ -166,7 +166,8 @@ describe('selected centreline overlay (#5778)', () => {
         { modelId: 'second', expressId: 42, occurrenceIndex: 1, segmentIndex: 1 },
       );
       assert.equal(result.vertices.length, 6);
-      assert.deepEqual(result.vertices, [21, 0, 0, 22, 0, 0]);
+      // IFC-to-viewer axis conversion can produce signed zero on the Z axis.
+      assert.deepEqual(result.vertices.map((value) => value === 0 ? 0 : value), [21, 0, 0, 22, 0, 0]);
     } finally {
       useViewerStore.setState(prior);
     }

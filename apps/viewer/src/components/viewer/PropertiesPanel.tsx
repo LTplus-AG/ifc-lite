@@ -18,6 +18,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
 import { mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
+import { effectiveQuantitySets } from './properties/effectiveSets';
 import { useSelectAssembly } from './properties/useSelectAssembly';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
@@ -517,17 +518,11 @@ export function PropertiesPanel() {
 
     if (modelId === 'legacy') modelId = '__legacy__';
 
-    // Try mutation view first to include added quantities from bSDD
+    // The view's answer holds even when empty (a deleted last qset stays deleted).
     const mutationView = modelId ? mutationViews.get(modelId) : null;
-    if (mutationView && expressId) {
-      const merged = mutationView.getQuantitiesForEntity(expressId);
-      if (merged.length > 0) return merged;
-    }
-
-    // Fallback to entity node quantities
-    if (!entityNode) return [];
-    return entityNode.quantities();
-  }, [entityNode, selectedEntity, mutationViews, mutationVersion]);
+    if (!expressId) return entityNode?.quantities() ?? [];
+    return effectiveQuantitySets(mutationView, expressId, (baseId) => (baseId === expressId ? entityNode : modelQuery?.entity(baseId))?.quantities() ?? []);
+  }, [entityNode, modelQuery, selectedEntity, mutationViews, mutationVersion]);
 
   /**
    * The occurrence's quantity sets followed by those it INHERITS from its

@@ -9,6 +9,7 @@ import type { EntityRef } from '@/store/types';
 import { effectiveSelectedClass } from './effectiveSelectedClass';
 import { propertyDisplayValue, quantityDisplayValue } from './propertyDisplayValue';
 import type { PropertySet, QuantitySet } from './encodingUtils';
+import { effectivePropertySets, effectiveQuantitySets } from './effectiveSets';
 
 /**
  * Values are compared across at most this many elements. Counts and the
@@ -118,8 +119,8 @@ export function summarizeSelection(
     for (const attr of view?.getAttributeMutationsForEntity(ref.expressId) ?? []) attributes.set(`\u0000${attr.name}`, String(attr.value));
     attributeValues.push(attributes);
 
-    const edited: PropertySet[] = view?.getForEntity(ref.expressId) ?? [];
-    const psets: PropertySet[] = edited.length > 0 ? edited : node?.properties() ?? [];
+    const query = queryFor(ref.modelId, store);
+    const psets = effectivePropertySets(view, ref.expressId, () => node?.properties() ?? []);
     const properties = new Map<string, string>();
     for (const pset of psets) {
       for (const prop of pset.properties) {
@@ -128,8 +129,7 @@ export function summarizeSelection(
     }
     propertyValues.push(properties);
 
-    const editedQ: QuantitySet[] = view?.getQuantitiesForEntity(ref.expressId) ?? [];
-    const qsets: QuantitySet[] = editedQ.length > 0 ? editedQ : node?.quantities() ?? [];
+    const qsets = effectiveQuantitySets(view, ref.expressId, (baseId) => query?.entity(baseId).quantities() ?? []);
     const quantities = new Map<string, string>();
     for (const qset of qsets) {
       for (const q of qset.quantities) {

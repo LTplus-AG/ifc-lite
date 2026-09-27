@@ -46,7 +46,7 @@ describe('buildLocus (#6232 WP3)', () => {
 
   it('a non-finite or non-positive angle step falls back to ortho', () => {
     const shift = { shift: true, alt: false };
-    for (const angleStepDeg of [Infinity, NaN, 0, -15]) {
+    for (const angleStepDeg of [Infinity, NaN, 0, -15, Number.MIN_VALUE]) {
       const l = buildLocus(query([6, 4], { anchor: A, modifiers: shift }), { ...P, angleStepDeg });
       assert.deepEqual(l, { kind: 'line', origin: A, dir: [1, 0] }, `angleStepDeg ${angleStepDeg}`);
     }
@@ -78,7 +78,29 @@ describe('projectOntoLocus', () => {
     ];
     for (let i = 0; i < 500; i++) {
       const p: Vec2 = [r() * 200 - 100, r() * 200 - 100];
-      for (const l of loci) assert.ok(distanceToLocus(projectOntoLocus(p, l), l) < 1e-9);
+      for (const l of loci) {
+        // Independent oracle (not distanceToLocus, which reuses projectOntoLocus):
+        // the result is ON the locus and is the CLOSEST point of it to p.
+        const x = projectOntoLocus(p, l);
+        const eps = 1e-9 * (1 + Math.hypot(p[0], p[1]));
+        if (l.kind === 'circle') {
+          const v: Vec2 = [x[0] - l.center[0], x[1] - l.center[1]];
+          const w: Vec2 = [p[0] - l.center[0], p[1] - l.center[1]];
+          assert.ok(Math.abs(Math.hypot(v[0], v[1]) - l.radius) < eps, 'on the circle');
+          assert.ok(Math.abs(v[0] * w[1] - v[1] * w[0]) < eps * 100 && v[0] * w[0] + v[1] * w[1] >= 0, 'radially towards p');
+        } else if (l.kind === 'line' || l.kind === 'ray') {
+          const { origin: o, dir: d } = l;
+          const n = Math.hypot(d[0], d[1]);
+          const v: Vec2 = [x[0] - o[0], x[1] - o[1]];
+          assert.ok(Math.abs(v[0] * d[1] - v[1] * d[0]) / n < eps, 'on the line');
+          const along = (p[0] - o[0]) * d[0] + (p[1] - o[1]) * d[1];
+          if (l.kind === 'line' || along > 0) {
+            assert.ok(Math.abs((p[0] - x[0]) * d[0] + (p[1] - x[1]) * d[1]) / n < eps, 'foot of the perpendicular');
+          } else {
+            assert.deepEqual(x, o, 'clamped to the ray origin');
+          }
+        }
+      }
     }
   });
 });

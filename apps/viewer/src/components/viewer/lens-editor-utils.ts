@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Lens, LensRule, LensCriteria, AutoColorSpec } from '@/store/slices/lensSlice';
-import type { FilterRule } from '@ifc-lite/rules';
+import { isFilterRule, type FilterRule } from '@ifc-lite/rules';
 // Import the value directly from the source package (not via the slice) to avoid
 // a circular value import: lensSlice imports the helpers from this module.
 import { MAX_COMPOUND_DEPTH } from '@ifc-lite/lens';
@@ -118,7 +118,7 @@ export function duplicateLensConfig(lens: Lens, generateId: () => string): Lens 
 
 /** Empty chip presets must not turn a saved Lens into an inert filter. */
 function isConfiguredFilterRule(rule: FilterRule): boolean {
-  if (!rule || typeof rule !== 'object') return false;
+  if (!isFilterRule(rule)) return false;
   switch (rule.kind) {
     case 'model':
     case 'ifcType':
@@ -128,9 +128,19 @@ function isConfiguredFilterRule(rule: FilterRule): boolean {
       || (Array.isArray(rule.refs) && rule.refs.length > 0);
     case 'modelTag': return rule.op === 'untagged'
       || (Array.isArray(rule.tagIds) && rule.tagIds.length > 0);
+    case 'name':
+    case 'material':
+    case 'type':
+    case 'parent': return typeof rule.value === 'string' && rule.value.trim().length > 0;
+    case 'classification':
+    case 'group': return typeof rule.value === 'string' &&
+      (rule.op === 'isSet' || rule.op === 'isNotSet' || rule.value.trim().length > 0);
+    case 'elevation': return typeof rule.value === 'number' && Number.isFinite(rule.value);
     case 'attribute': return typeof rule.name === 'string' && rule.name.trim().length > 0;
     case 'property': return typeof rule.propertyName === 'string' && rule.propertyName.trim().length > 0;
-    case 'quantity': return typeof rule.quantityName === 'string' && rule.quantityName.trim().length > 0;
+    case 'quantity': return typeof rule.quantityName === 'string' && rule.quantityName.trim().length > 0
+      && typeof rule.value === 'number' && Number.isFinite(rule.value);
+    case 'modelFact': return true;
     default: return false;
   }
 }

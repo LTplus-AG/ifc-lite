@@ -561,4 +561,20 @@ describe('Lens panel localization (#4918)', () => {
     assert.deepEqual(useViewerStore.getState().savedLenses[0].rules.map((rule) => rule.id),
       ['complete', 'unfinished']);
   });
+
+  it('saves a configured Name rule from the shared editor (#5896)', () => {
+    const nameRule = ifcRule({ id: 'name-rule', groups: [{ combinator: 'AND', rules: [
+      { kind: 'name', op: 'contains', value: 'Wall' },
+    ] }] });
+    useViewerStore.setState({ savedLenses: [ruleLens([nameRule])] });
+    const container = render(<LensPanel />);
+    const edit = container.querySelector<HTMLButtonElement>('button[title="Edit lens"]');
+    assert.ok(edit);
+    act(() => edit.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
+    const save = [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save');
+    assert.ok(save);
+    assert.equal(save.disabled, false, 'a configured Name chip must remain saveable');
+    act(() => save.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
+    assert.deepEqual(useViewerStore.getState().savedLenses[0].rules[0].groups, nameRule.groups);
+  });
 });

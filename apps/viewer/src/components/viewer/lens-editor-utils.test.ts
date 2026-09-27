@@ -14,7 +14,7 @@ import {
   reserveUniqueId,
 } from './lens-editor-utils.js';
 import type { Lens, LensCriteria, LensRule } from '@/store/slices/lensSlice';
-import type { FilterRule } from '@ifc-lite/rules';
+import { Rule, type FilterRule } from '@ifc-lite/rules';
 
 const ruleLens: Lens = {
   id: 'lens-envelope',
@@ -259,6 +259,24 @@ describe('isRuleValid — shared Lens groups (#5896)', () => {
     assert.equal(isRuleValid({ ...rule, groups: [{ combinator: 'AND', rules: [
       { kind: 'modelTag', op: 'untagged', tagIds: [] },
     ] }] }), true, 'Untagged intentionally needs no tag IDs');
+  });
+
+  it('accepts every configured shared rule kind exposed by the Lens editor (#5896)', () => {
+    const configured: FilterRule[] = [
+      Rule.model(['architecture.ifc']), Rule.modelTag('untagged', []), Rule.storey(['Level 1']),
+      Rule.ifcType(['IfcWall']), Rule.predefinedType(['STANDARD']), Rule.name('contains', 'Wall'),
+      Rule.globalId(['325Q7Fhnf67OZC$$r43uzK']), Rule.attribute('Description', 'eq', ''),
+      Rule.property('Pset_WallCommon', 'Reference', 'eq', ''), Rule.quantity('Qto_WallBaseQuantities', 'Length', 'gt', 0),
+      Rule.material('contains', 'Concrete'), Rule.classification('', 'isSet', ''), Rule.elevation('gt', 0),
+      Rule.typeName('contains', 'WT01'), Rule.parent('contains', 'Level 1'), Rule.group('isSet', ''),
+      Rule.modelFact('georef.crs', 'isSet', ''),
+    ];
+    for (const filter of configured) {
+      assert.equal(isRuleValid({ ...rule, groups: [{ rules: [filter], combinator: 'AND' }] }), true,
+        `${filter.kind} must remain saveable`);
+    }
+    assert.equal(isRuleValid({ ...rule, groups: [{ rules: [Rule.name('contains', '')], combinator: 'AND' }] }), false);
+    assert.equal(isRuleValid({ ...rule, groups: [{ rules: [Rule.classification('', 'contains', '')], combinator: 'AND' }] }), false);
   });
 });
 

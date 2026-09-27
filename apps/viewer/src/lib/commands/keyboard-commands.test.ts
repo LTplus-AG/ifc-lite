@@ -10,7 +10,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { chordIdentity, formatChord } from './chord.js';
-import { KEY_COMMANDS, type KeyCommandDefinition } from './keyboard-commands.js';
+import { KEY_COMMANDS, type KeyCommandDefinition, type KeyContext } from './keyboard-commands.js';
 import { formatCommandKeys, primaryShortcutLabel, shortcutLabel } from './shortcut-label.js';
 
 /** Every (context, chord) claimed by more than one command. */
@@ -40,6 +40,28 @@ describe('keyboard command table (#5836)', () => {
     // The same chord in another context is not a clash: a tool context wins
     // over `global` while the tool is active.
     assert.deepEqual(collisions([undo, { ...clash, when: 'tool.spaceSketch' }]), []);
+  });
+
+  it('checks every declared shortcut context independently (#5878)', () => {
+    // Adding a new context without a binding must extend this coverage before
+    // its collision behavior can be trusted.
+    type MissingContext = Exclude<KeyContext, (typeof KEY_COMMANDS)[number]['when']>;
+    const allContextsRepresented: MissingContext extends never ? true : false = true;
+    assert.equal(allContextsRepresented, true);
+
+    const firstByContext = new Map<KeyContext, KeyCommandDefinition>();
+    for (const command of KEY_COMMANDS) {
+      if (!firstByContext.has(command.when)) firstByContext.set(command.when, command);
+    }
+    assert.ok(firstByContext.size > 1);
+    for (const [context, command] of firstByContext) {
+      const duplicate: KeyCommandDefinition = { ...command, id: `test.${context}` };
+      assert.equal(collisions([command, duplicate]).length, command.keys.length, context);
+      for (const other of firstByContext.keys()) {
+        if (other === context) continue;
+        assert.deepEqual(collisions([command, { ...duplicate, when: other }]), [], `${context} vs ${other}`);
+      }
+    }
   });
 
   it('command ids are unique', () => {

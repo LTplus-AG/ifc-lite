@@ -4,6 +4,7 @@
 
 export { default as AddFile } from '~icons/viewer/add-file';
 export { default as CloudSources } from '~icons/viewer/cloud-sources';
+export { default as BrowsePanels } from '~icons/viewer/browse-panels';
 export { default as Loading } from '~icons/viewer/loading';
 export { default as OpenFile } from '~icons/viewer/open-file';
 export { default as Refresh } from '~icons/viewer/refresh';

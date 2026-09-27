@@ -24,6 +24,7 @@ import { discoverDataSources } from '@ifc-lite/lens';
 import { emptyFilterGroup } from '@ifc-lite/rules';
 import { SearchableSelect } from './SearchableSelect';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
 import { downloadFile } from '@/lib/export/download';
@@ -485,31 +486,34 @@ function LensCard({
         </button>
         <div className="flex items-center gap-1">
           {onDuplicate && (
-            <button
+            <IconButton
+              label={lens.builtin ? t('lensPanel.card.duplicateBuiltinTooltip') : t('lensPanel.card.duplicateTooltip')}
+              size="icon-xs"
               onClick={(e) => { e.stopPropagation(); onDuplicate(lens.id); }}
-              className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200 p-0.5"
-              title={lens.builtin ? t('lensPanel.card.duplicateBuiltinTooltip') : t('lensPanel.card.duplicateTooltip')}
+              className="h-6 w-6 p-0.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200"
             >
               <Copy className="h-3 w-3" />
-            </button>
+            </IconButton>
           )}
           {onEdit && !lens.builtin && (
-            <button
+            <IconButton
+              label={t('lensPanel.card.editTooltip')}
+              size="icon-xs"
               onClick={(e) => { e.stopPropagation(); onEdit(lens); }}
-              className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200 p-0.5"
-              title={t('lensPanel.card.editTooltip')}
+              className="h-6 w-6 p-0.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200"
             >
               <Pencil className="h-3 w-3" />
-            </button>
+            </IconButton>
           )}
           {!lens.builtin && onDelete && (
-            <button
+            <IconButton
+              label={t('lensPanel.card.deleteTooltip')}
+              size="icon-xs"
               onClick={(e) => { e.stopPropagation(); onDelete(lens.id); }}
-              className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-red-500 dark:text-zinc-500 dark:hover:text-red-400 p-0.5"
-              title={t('lensPanel.card.deleteTooltip')}
+              className="h-6 w-6 p-0.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-zinc-400 hover:text-red-500 dark:text-zinc-500 dark:hover:text-red-400"
             >
               <Trash2 className="h-3 w-3" />
-            </button>
+            </IconButton>
           )}
         </div>
       </div>
@@ -856,24 +860,22 @@ export function LensPanel({ onClose }: LensPanelProps) {
           </h2>
         </div>
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
+          <IconButton
+            label={t('lensPanel.exportTooltip')}
+            size="icon-xs"
             className="h-7 w-7 p-0 rounded-sm"
             onClick={handleExport}
-            title={t('lensPanel.exportTooltip')}
           >
             <Download className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
+          </IconButton>
+          <IconButton
+            label={t('lensPanel.importTooltip')}
+            size="icon-xs"
             className="h-7 w-7 p-0 rounded-sm"
             onClick={() => fileInputRef.current?.click()}
-            title={t('lensPanel.importTooltip')}
           >
             <Upload className="h-3.5 w-3.5" />
-          </Button>
+          </IconButton>
           <input
             ref={fileInputRef}
             type="file"
@@ -900,15 +902,14 @@ export function LensPanel({ onClose }: LensPanelProps) {
             </Button>
           )}
           {onClose && (
-            <Button
-              variant="ghost"
-              size="sm"
+            <IconButton
+              label={t('lensPanel.closeAriaLabel')}
+              size="icon-xs"
               className="h-7 w-7 p-0 rounded-sm"
-              aria-label={t('lensPanel.closeAriaLabel')}
               onClick={onClose}
             >
               <X className="h-4 w-4" />
-            </Button>
+            </IconButton>
           )}
         </div>
       </div>

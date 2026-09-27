@@ -13,9 +13,8 @@
  * panel cannot reach directly — `LensRuleEditor`/`AutoColorEditor` are exported
  * for exactly this) is driven through the states that surface as much of
  * the catalogue as feasible, the locale is switched live, and every marked
- * string that was visible in English must reappear marked. `LensPanel` uses
- * plain HTML `title`/`aria-label` attributes (no Radix tooltip), so no
- * focus-walk is needed to reach them.
+ * string that was visible in English must reappear marked. Icon actions use
+ * `aria-label`, so their names are available without opening the tooltip.
  *
  * Deliberately NOT a dynamic import of `lens-panel.en.ts` gating a
  * `describe.skip` (the pattern `ClashPanel.i18n.test.tsx` uses): reverting
@@ -162,6 +161,13 @@ function chromeStrings(container: HTMLElement): Set<string> {
   return out;
 }
 
+function getByRole(container: HTMLElement, role: 'button', { name }: { name: string }): HTMLButtonElement {
+  const matches = [...container.querySelectorAll<HTMLButtonElement>(role)]
+    .filter((button) => (button.getAttribute('aria-label') ?? button.textContent?.trim()) === name);
+  assert.equal(matches.length, 1, `expected one ${role} named "${name}"`);
+  return matches[0];
+}
+
 /** Key-specific pseudo translation; keeps every `{placeholder}` and plural category. */
 function markValue(key: LensPanelKey, value: TranslationValue): TranslationValue {
   if (typeof value === 'string') return `⟦${key}|${value}⟧`;
@@ -259,6 +265,32 @@ afterEach(() => {
 });
 
 describe('Lens panel localization (#4918)', () => {
+  it('icon actions have accessible names and keep header actions working (#5811)', () => {
+    let closes = 0;
+    let importOpens = 0;
+    const container = render(<LensPanel onClose={() => { closes += 1; }} />);
+
+    getByRole(container, 'button', { name: 'Export lenses as JSON' });
+    const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]');
+    assert.ok(fileInput);
+    fileInput.click = () => { importOpens += 1; };
+    act(() => getByRole(container, 'button', { name: 'Import lenses from JSON' }).click());
+    act(() => getByRole(container, 'button', { name: 'Close' }).click());
+    assert.equal(importOpens, 1);
+    assert.equal(closes, 1);
+  });
+
+  it('named lens-card icon actions preserve duplicate and delete behavior (#5811)', () => {
+    useViewerStore.setState({ savedLenses: [ruleLens([ifcRule()])] });
+    const container = render(<LensPanel />);
+
+    getByRole(container, 'button', { name: 'Edit lens' });
+    act(() => getByRole(container, 'button', { name: 'Duplicate lens' }).click());
+    assert.equal(useViewerStore.getState().savedLenses.length, 2);
+    act(() => getByRole(container, 'button', { name: 'Delete lens' }).click());
+    assert.equal(useViewerStore.getState().savedLenses.length, 1);
+  });
+
   it('the literal LENS_PANEL_EN mirror stays in sync with lens-panel.en.ts, when that module is importable', async () => {
     // Best-effort only (#4918 revert-oracle): once production is reverted,
     // the catalogue file this imports no longer exists, and a load failure
@@ -550,7 +582,7 @@ describe('Lens panel localization (#4918)', () => {
     ] }] });
     useViewerStore.setState({ savedLenses: [ruleLens([complete, unfinished])] });
     const container = render(<LensPanel />);
-    const edit = container.querySelector<HTMLButtonElement>('button[title="Edit lens"]');
+    const edit = container.querySelector<HTMLButtonElement>('button[aria-label="Edit lens"]');
     assert.ok(edit);
     act(() => edit.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
     const save = [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save');
@@ -567,7 +599,7 @@ describe('Lens panel localization (#4918)', () => {
     ] }] });
     useViewerStore.setState({ savedLenses: [ruleLens([nameRule])] });
     const container = render(<LensPanel />);
-    const edit = container.querySelector<HTMLButtonElement>('button[title="Edit lens"]');
+    const edit = container.querySelector<HTMLButtonElement>('button[aria-label="Edit lens"]');
     assert.ok(edit);
     act(() => edit.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
     const save = [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save');

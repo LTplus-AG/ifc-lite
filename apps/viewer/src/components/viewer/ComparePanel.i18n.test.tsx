@@ -233,7 +233,9 @@ describe('ComparePanel localization (#4918)', () => {
     assertAllTranslate(
       [
         { key: 'comparePanel.panel.title' },
-        { key: 'comparePanel.panel.closeTitle' },
+        // Close / Clear results are the shared analysis chrome (#5834), whose
+        // catalogue `AnalysisPanel.test.tsx` covers.
+        { key: 'comparePanel.panel.needTwoModels' },
         { key: 'comparePanel.panel.loadSecondModel' },
       ],
       englishDom,
@@ -241,7 +243,7 @@ describe('ComparePanel localization (#4918)', () => {
     );
   });
 
-  it('translates the clear-results action, count labels, and the focused change\'s BCF affordance', () => {
+  it('translates the re-run action, count labels, and the focused change\'s BCF affordance', () => {
     useViewerStore.setState({
       models: new Map([
         ['A', model('A')],
@@ -257,7 +259,7 @@ describe('ComparePanel localization (#4918)', () => {
     const afterDom = domAfterPseudo(container);
     assertAllTranslate(
       [
-        { key: 'comparePanel.panel.clearResultsTitle' },
+        { key: 'comparePanel.panel.rerunTitle' },
         { key: 'comparePanel.panel.countUnchanged' },
         { key: 'comparePanel.resultsList.stateChanged' },
         { key: 'comparePanel.bcfFromChange.createButton' },

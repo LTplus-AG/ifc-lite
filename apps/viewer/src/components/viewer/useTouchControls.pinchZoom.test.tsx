@@ -55,6 +55,7 @@ function rig(opts: RigOptions = {}) {
     hiddenEntitiesRef: ref(new Set<number>()), isolatedEntitiesRef: ref(null), selectedEntityIdRef: ref(null),
     selectedModelIndexRef: ref(undefined), clearColorRef: ref([0, 0, 0, 1]), sectionPlaneRef: ref(state.sectionPlane),
     sectionRangeRef: ref(null), geometryRef: ref(null), isInteractingRef: ref(false), handlePickForSelection() {},
+    openContextMenu() {},
     getPickOptions: () => ({ isStreaming: opts.isStreaming ?? false, hiddenIds: new Set<number>(), isolatedIds: null }),
     touchStateRef: ref({ touches: [], lastDistance: 0, lastCenter: { x: 0, y: 0 }, tapStartTime: 0,
       tapStartPos: { x: 0, y: 0 }, didMove: false, multiTouch: false, twoFingerGesture: 'none' as const,

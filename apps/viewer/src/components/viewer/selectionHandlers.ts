@@ -10,6 +10,7 @@
 import { isTouchSelectionClick, selectViewportTarget } from './referenceSelection.js';
 import type { PickResult } from '@ifc-lite/renderer';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
+import { openContextMenuAt } from './contextMenuSelection.js';
 import { useViewerStore } from '@/store';
 import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
 import { pointInPolygon } from '@/lib/polygon-clip';
@@ -1112,17 +1113,12 @@ export function commitAddElementSlabPolygon(): void {
  */
 export async function handleContextMenu(ctx: MouseHandlerContext, e: MouseEvent): Promise<void> {
   e.preventDefault();
-  const { canvas, renderer, mouseState } = ctx;
+  const { mouseState } = ctx;
   // Right-drag is the fly gesture (see useMouseControls). Some browsers
   // still fire `contextmenu` after a tiny right-drag — skip when the
   // user actually moved, so flying never accidentally pops the menu.
   if (mouseState.didDrag) {
     return;
   }
-  const rect = canvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
-  // Uses visibility filtering so hidden elements don't appear in context menu
-  const pickResult = await renderer.pick(x, y, ctx.getPickOptions());
-  ctx.openContextMenu(pickResult?.expressId ?? null, e.clientX, e.clientY);
+  await openContextMenuAt(ctx, e.clientX, e.clientY);
 }

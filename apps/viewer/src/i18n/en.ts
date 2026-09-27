@@ -5,7 +5,7 @@
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { addElementEn } from './catalogues/add-element.en';
-import { analysisStaleEn } from './catalogues/analysis-stale.en';
+import { analysisPanelEn } from './catalogues/analysis-panel.en';
 import { annotationsEn } from './catalogues/annotations.en';
 import { anonymizedExportEn } from './catalogues/anonymized-export.en';
 import { chartsEn } from './catalogues/charts.en';
@@ -62,6 +62,7 @@ import { miscPanelsBEn } from './catalogues/misc-panels-b.en';
 import { miscPanelsAEn } from './catalogues/misc-panels-a.en';
 import { propertiesEn } from './catalogues/properties.en';
 import { propertiesPanelEn } from './catalogues/properties-panel.en';
+import { propertiesSelectionEn } from './catalogues/properties-selection.en';
 import { relationshipCardEn } from './catalogues/relationship-card.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { scheduleEn } from './catalogues/schedule.en';
@@ -86,7 +87,7 @@ import { zonesPanelEn } from './catalogues/zones-panel.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
-  ...analysisStaleEn,
+  ...analysisPanelEn,
   ...addElementEn,
   ...annotationsEn,
   ...anonymizedExportEn,
@@ -132,6 +133,7 @@ export const en = {
   ...hierarchyEn,
   ...propertiesEn,
   ...propertiesPanelEn,
+  ...propertiesSelectionEn,
   ...landXmlEn,
   ...terrainImageryEn,
   ...structuralPropertiesEn,

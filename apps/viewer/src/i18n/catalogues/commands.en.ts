@@ -5,9 +5,10 @@
 import type { TranslationValue } from '../types';
 
 /**
- * Keyboard commands (#5836): what each row of `lib/commands/keyboard-commands.ts`
- * does, as the generated Shortcuts tab says it, plus the category headings and
- * the pointer gestures listed beside the keys. The key glyphs themselves are
+ * Command names and keyboard reference labels (#5836, #5858): what each row
+ * of `lib/commands/keyboard-commands.ts` does, plus the non-key Copy GlobalId
+ * action, category headings, and pointer gestures listed beside the keys.
+ * The key glyphs themselves are
  * not strings here: they are formatted from chords per platform.
  */
 export const commandsEn = {
@@ -27,6 +28,7 @@ export const commandsEn = {
   'commands.edit.toggleEditMode': 'Toggle edit mode (unlocks property + geometry edits)',
   'commands.edit.rotate': 'Rotate selected entity +15° / −15° about Z (requires edit mode)',
   'commands.edit.duplicate': 'Duplicate the selected entity (+X; add Shift for +Z, Alt for +Y)',
+  'commands.edit.copyGlobalId': 'Copy GlobalId',
 
   // Tools
   'commands.tool.select': 'Select tool',

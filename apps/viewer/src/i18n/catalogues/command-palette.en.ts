@@ -61,7 +61,6 @@ export const commandPaletteEn = {
 
   // ── Visibility ──
   'commandPalette.vis.hide.label': 'Hide Selection',
-  'commandPalette.vis.show.label': 'Show All',
   'commandPalette.vis.setBasket.label': 'Set Collection from Selection',
   'commandPalette.vis.addBasket.label': 'Add to Collection',
   'commandPalette.vis.removeBasket.label': 'Remove from Collection',

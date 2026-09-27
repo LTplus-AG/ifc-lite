@@ -8,6 +8,7 @@
  * and secondary actions in an overflow menu.
  */
 
+import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import React, { useRef, useCallback, useMemo } from 'react';
 import {
   FolderOpen,
@@ -233,7 +234,7 @@ export function MobileToolbar() {
         size="icon-sm"
         className="h-9 w-9 flex-shrink-0"
         onClick={handleShowAll}
-        aria-label={t('shellChrome.mobileToolbar.showAllAriaLabel')}
+        aria-label={t(ACTION_NAME_KEYS.showAll)}
       >
         <Eye className="h-4 w-4" />
       </Button>

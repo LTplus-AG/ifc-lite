@@ -13,13 +13,12 @@
  * threaded in, so this file has no behaviour to test beyond wiring.
  */
 
-import { Play, Square } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { DiffScope } from '@ifc-lite/diff';
 import type { DuplicateAuthoredKeyInfo } from '@/lib/compare/authoredKeys';
+import { AnalysisRunButton } from '../analysis/AnalysisRunActions';
 import { CompareBlacklist } from './CompareBlacklist';
 import { CompareKeyProperty } from './CompareKeyProperty';
 import type { ChangedTypeCount } from './changeRow';
@@ -49,7 +48,6 @@ interface CompareRunControlsProps {
   running: boolean;
   onRun: () => void;
   onCancel: () => void;
-  error: string | null;
   /** Show the "no geometry fingerprints" warning (result-dependent). */
   geometryUnavailable: boolean;
   /** Placement fingerprints are still comparing moves (symmetric mesh-less
@@ -82,7 +80,6 @@ export function CompareRunControls({
   running,
   onRun,
   onCancel,
-  error,
   geometryUnavailable,
   placementOnlyGeometry,
   excludedTypes,
@@ -178,18 +175,16 @@ export function CompareRunControls({
         disabled={running}
       />
 
-      <Button
+      <AnalysisRunButton
         size="sm"
-        className="w-full gap-1.5"
-        disabled={!running && !canRun}
-        onClick={running ? onCancel : onRun}
+        running={running}
+        canRun={canRun}
+        onRun={onRun}
+        onCancel={onCancel}
+        runLabel={t('comparePanel.runControls.runComparison')}
+        cancelLabel={t('comparePanel.runControls.cancel')}
         {...tourAnchor(TOUR_ANCHORS.compareRun)}
-      >
-        {running ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-        {t(running ? 'comparePanel.runControls.cancel' : 'comparePanel.runControls.runComparison')}
-      </Button>
-
-      {error && <p className="text-xs text-[#f7768e]">{error}</p>}
+      />
 
       {geometryUnavailable && scope !== 'data' && (
         <p className="text-xs text-[#e0af68]">

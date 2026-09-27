@@ -243,7 +243,6 @@ export const miscPanelsBEn = {
   'entityContextMenu.addToBasket': 'Add to Collection',
   'entityContextMenu.removeFromBasket': 'Remove from Collection',
   'entityContextMenu.saveBasketView': 'Save Collection View',
-  'entityContextMenu.showAll': 'Show all',
 
   // ---- TextAnnotationEditor.tsx ---------------------------------------------
   'textAnnotationEditor.placeholder': 'Type annotation text...',

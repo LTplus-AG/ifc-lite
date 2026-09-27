@@ -38,6 +38,11 @@ export const clashToolsEn = {
   'clashTools.export.bcfTopicButton': 'BCF topic',
   'clashTools.bcfTopic.created': 'Topic created',
   'clashTools.bcfTopic.open': 'Open BCF',
+  'clashTools.export.formatBcf': 'BCF',
+  'clashTools.export.formatCsv': 'CSV',
+  'clashTools.export.bcfArchiveTooltip': 'Export the clashes as a BCF archive for another BCF tool',
+  'clashTools.export.bcfArchiveMenu': 'BCF archive…',
+  'clashTools.export.csvMenu': 'CSV table',
   'clashTools.export.csvTooltip':
     "Download every clash in this run as a CSV table — one row per clash with both GlobalIds, review status and storey — for Excel / Power BI",
 

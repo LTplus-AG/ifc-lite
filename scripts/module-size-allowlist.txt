@@ -63,11 +63,11 @@
   1187 apps/viewer/src/components/mcp/PlaygroundChat.tsx
    750 apps/viewer/src/components/viewer/AddElementPanel.tsx
    415 apps/viewer/src/components/viewer/bcf/BCFTopicDetail.tsx
-   534 apps/viewer/src/components/viewer/BCFPanel.tsx
+   529 apps/viewer/src/components/viewer/BCFPanel.tsx
    623 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
    485 apps/viewer/src/components/viewer/CesiumOverlay.tsx
   1682 apps/viewer/src/components/viewer/ChatPanel.tsx
-  1301 apps/viewer/src/components/viewer/ClashPanel.tsx
+  1243 apps/viewer/src/components/viewer/ClashPanel.tsx
   1052 apps/viewer/src/components/viewer/DataConnector.tsx
   1733 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
    535 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
@@ -89,7 +89,7 @@
    855 apps/viewer/src/components/viewer/properties/LocationMap.tsx
    417 apps/viewer/src/components/viewer/properties/MaterialTotalsPanel.tsx
    510 apps/viewer/src/components/viewer/properties/TaskEditCard.tsx
-  2131 apps/viewer/src/components/viewer/PropertiesPanel.tsx
+  2054 apps/viewer/src/components/viewer/PropertiesPanel.tsx
    581 apps/viewer/src/components/viewer/PropertyEditor.tsx
    535 apps/viewer/src/components/viewer/schedule/AnimationSettingsPopover.tsx
    648 apps/viewer/src/components/viewer/schedule/generate-schedule.ts
@@ -99,7 +99,7 @@
    578 apps/viewer/src/components/viewer/SearchInline.tsx
    508 apps/viewer/src/components/viewer/SearchModal.filter.editors.tsx
    835 apps/viewer/src/components/viewer/SearchModal.filter.tsx
-  1131 apps/viewer/src/components/viewer/selectionHandlers.ts
+  1124 apps/viewer/src/components/viewer/selectionHandlers.ts
    493 apps/viewer/src/components/viewer/SheetSetupPanel.tsx
    435 apps/viewer/src/components/viewer/TitleBlockEditor.tsx
    524 apps/viewer/src/components/viewer/tools/AddElementOverlay.tsx

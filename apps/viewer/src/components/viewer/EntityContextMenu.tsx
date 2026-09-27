@@ -6,6 +6,7 @@
  * Context menu for entity interactions
  */
 
+import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { useCallback, useEffect, useLayoutEffect, useRef, useMemo, useState } from 'react';
 import {
   Equal,
@@ -352,7 +353,7 @@ export function EntityContextMenu() {
 
           <ContextMenuSeparator />
 
-          <MenuItem icon={Copy} label="Copy GlobalId" onClick={handleCopyId} />
+          <MenuItem icon={Copy} label={t(ACTION_NAME_KEYS.copyGlobalId)} onClick={handleCopyId} />
           <MenuItem icon={ShieldQuestion} label="Export anonymized…" onClick={handleExportAnonymized} />
 
           {/* Keep denied actions visible with their reason; an editable view
@@ -375,7 +376,7 @@ export function EntityContextMenu() {
       )}
 
       {!contextMenu.entityId && (
-        <MenuItem icon={Eye} label={t('entityContextMenu.showAll')} shortcut="visibility.showAll" onClick={handleShowAll} />
+        <MenuItem icon={Eye} label={t(ACTION_NAME_KEYS.showAll)} shortcut="visibility.showAll" onClick={handleShowAll} />
       )}
 
       <ExtensionContextItems

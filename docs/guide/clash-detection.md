@@ -135,13 +135,13 @@ const topicStatus = aggregateReviewStatus(members.map((c) => reviews.get(clashRe
 
 ### BCF export
 
-In the viewer, once a result is on screen the collapsed detection header offers **Re-run**. It repeats the run that produced the result ("Detect all clashes", the enabled rule set, a single rule, or "Find duplicates"), with the current mode and tolerance settings, and its tooltip names what it will repeat.
+In the viewer, once a result is on screen the panel header offers **Re-run**, the same place IDS and Compare keep theirs. It repeats the run that produced the result ("Detect all clashes", the enabled rule set, a single rule, or "Find duplicates"), with the current mode and tolerance settings, and its tooltip names what it will repeat. While a run is in flight it reads **Cancel**. Before the first run, with no model of your own open, **Try with demo data** loads the demo revision B, which carries one injected clash.
 
 `groupClashes` clusters related clashes into the unit of a single BCF topic, and `createBCFFromClashResult` (from `@ifc-lite/clash/bcf`) turns those groups into a BCF project you write with `@ifc-lite/bcf`. On export, review status maps to a BCF 2.1 `TopicStatus` through `reviewStatusToBcfTopicStatus`, using only the two universally supported statuses (`Open` and `Closed`) so any BCF tool round-trips the archive. Both `resolved` and `accepted` are terminal and close the topic; the finer distinction is preserved in the topic description rather than the status field. Clash bounds are in the mesher's shifted render frame, so pass `worldOffset: renderFrameWorldOffset(geometryResult.coordinateInfo)` (from `@ifc-lite/geometry/world-frame`) to write world-coordinate cameras; the CLI and the viewer do. See the [BCF Collaboration](bcf.md) guide for the round-trip and the coordinate frames.
 
 ### CSV table export
 
-For spreadsheets and BI tools the run is also a flat table: one row per clash, both elements on the row, keyed by their bare IfcGUIDs so the rows join back to the model's own element tables. In the viewer, the clash panel's **CSV** button downloads the whole run (after exclusions — the panel's review-status and "hide touching" filters are for reading, and a BI reader filters in their own tool); on the CLI it is `--csv <file>`. Both go through `clashTableRows` and the shared `tableToCsv` writer, so the file has the same columns everywhere:
+For spreadsheets and BI tools the run is also a flat table: one row per clash, both elements on the row, keyed by their bare IfcGUIDs so the rows join back to the model's own element tables. In the viewer, the **CSV** format of the clash panel's export split button (beside **BCF**, the archive) downloads the whole run (after exclusions — the panel's review-status and "hide touching" filters are for reading, and a BI reader filters in their own tool); on the CLI it is `--csv <file>`. Both go through `clashTableRows` and the shared `tableToCsv` writer, so the file has the same columns everywhere:
 
 | Column | Meaning |
 |--------|---------|

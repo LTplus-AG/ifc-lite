@@ -113,6 +113,22 @@ export async function loadDemoClashModel(): Promise<void> {
   window.dispatchEvent(new CustomEvent(EVENT_LOAD_FILE, { detail: file }));
 }
 
+/**
+ * The demo IDS together with the model it is authored against: validating an
+ * arbitrary user model against the demo spec would be noise, so the demo
+ * project is swapped in first unless a kit model is already loaded. Shared by
+ * the IDS tour's "Load demo spec" action and the IDS panel's "Try with demo
+ * data" empty state (#5834).
+ */
+export async function loadDemoIdsWithProject(): Promise<void> {
+  const models = [...getViewerStoreApi().getState().models.values()];
+  if (!models.some((m) => isDemoKitModelName(m.name))) {
+    await loadDemoProject();
+    await waitForModelSettled();
+  }
+  await loadDemoIds();
+}
+
 /** Load the bundled IDS spec (parse + audit) without the panel mounted. */
 export async function loadDemoIds(): Promise<void> {
   const res = await fetch(DEMO_KIT_PATHS.ids);
@@ -123,3 +139,20 @@ export async function loadDemoIds(): Promise<void> {
 /** The exact file names the demo variants load as (compare/IDS gate on
  *  these to distinguish the kit from a user's own model). */
 export const DEMO_MODEL_NAMES = { base: BASE_NAME, revB: REV_B_NAME } as const;
+
+/** Exact kit names only, so a user's own similarly-named file is never
+ *  mistaken for the demo. */
+export function isDemoKitModelName(name: string): boolean {
+  return name === BASE_NAME || name === REV_B_NAME;
+}
+
+/**
+ * Whether an analysis panel may offer "Try with demo data" (#5834). Loading
+ * the kit REPLACES the model set, which is only harmless when nothing is
+ * loaded or everything loaded already is the kit; a user's own model is never
+ * swapped out from an empty state.
+ */
+export function demoKitReplacesNothing(models: Iterable<{ name: string }>): boolean {
+  for (const model of models) if (!isDemoKitModelName(model.name)) return false;
+  return true;
+}

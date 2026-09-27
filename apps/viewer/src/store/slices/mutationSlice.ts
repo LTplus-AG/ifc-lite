@@ -521,7 +521,7 @@ export interface MutationSlice extends CostUndoMethods {
   readWallEndpoints: (
     modelId: string,
     expressId: number,
-  ) => { start: [number, number, number]; end: [number, number, number]; thickness: number } | null;
+  ) => { start: [number, number, number]; end: [number, number, number]; thickness: number; height: number } | null;
   /**
    * Split a rectangle-profile wall into two walls at `distance`
    * metres along its axis (measured from the wall's start). Produces
@@ -1884,7 +1884,7 @@ export const createMutationSlice: StateCreator<
       sy + dy * chain.wallLength,
       sz + dz * chain.wallLength,
     ];
-    return { start: [sx, sy, sz], end, thickness: chain.thickness };
+    return { start: [sx, sy, sz], end, thickness: chain.thickness, height: chain.height };
   },
 
   readWallSplitProjection: (modelId, expressId, cursorStoreyLocal) => {

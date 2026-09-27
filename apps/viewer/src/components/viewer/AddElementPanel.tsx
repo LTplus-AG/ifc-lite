@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useViewerStore } from '@/store';
+import { useWallPlaceBridge } from './add-element-wall-command';
 import { canMutate, mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
 import { useIfc } from '@/hooks/useIfc';
 import { EntityNode } from '@ifc-lite/query';
@@ -53,6 +54,7 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
 
   const addElementType = useViewerStore((s) => s.addElementType);
   const setAddElementType = useViewerStore((s) => s.setAddElementType);
+  useWallPlaceBridge();
 
   const addElementModelId = useViewerStore((s) => s.addElementModelId);
   const setAddElementModelId = useViewerStore((s) => s.setAddElementModelId);

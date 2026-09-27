@@ -106,9 +106,9 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   }
 
   // A running modeling command takes the click (#6232, commandPointer.ts).
-  if (tool === 'command') { routeCommandPointer(ctx, 'down', x, y); return; }
+  if (tool === 'command') { routeCommandPointer(ctx, 'down', x, y, e); return; }
 
-  // Add-element tool — multi-click placement (start→end for walls/beams,
+  // Add-element tool — multi-click placement (start→end for beams/members,
   // corner→opposite for slab rectangle, N+Enter for slab polygon, single
   // for columns). Uses magnetic snap so points lock to vertices/edges
   // when the cursor is near them — same UX as the measure tool.
@@ -656,7 +656,8 @@ function finishAddElement(
  * active. Implements a per-type click state machine:
  *
  *   - column: 1 click → place
- *   - wall / beam: 1st click → start, 2nd click → end + place
+ *   - beam / member: 1st click → start, 2nd click → end + place
+ *     (walls: the `wall.place` command)
  *   - slab (rectangle): 1st click → corner, 2nd click → opposite + place
  *   - slab (polygon): N clicks accumulate; Enter / double-click closes
  *     (handled in the keyboard layer; this function only appends)
@@ -698,7 +699,8 @@ async function handleAddElementDrop(
     return;
   }
 
-  if (type === 'wall' || type === 'beam' || type === 'member') {
+  // Walls are drawn by the `wall.place` modeling command (#6232), not here.
+  if (type === 'beam' || type === 'member') {
     const pending = state.addElementPendingPoints;
     if (pending.length === 0) {
       // Start point — store the renderer-frame point and wait for end.
@@ -708,12 +710,7 @@ async function handleAddElementDrop(
     // End point — convert both points to IFC at dispatch time.
     const startIfc = rendererPointToIfcStoreyLocal(pending[0], modelId);
     const endIfc = rendererPointToIfcStoreyLocal(point, modelId);
-    if (type === 'wall') {
-      const p = state.addElementWallParams;
-      finishAddElement(state.addWall(modelId, storeyId, {
-        Start: startIfc, End: endIfc, Thickness: p.Thickness, Height: p.Height,
-      }), modelId, 'Wall');
-    } else if (type === 'beam') {
+    if (type === 'beam') {
       const p = state.addElementBeamParams;
       finishAddElement(state.addBeam(modelId, storeyId, {
         Start: startIfc, End: endIfc, Width: p.Width, Height: p.Height,

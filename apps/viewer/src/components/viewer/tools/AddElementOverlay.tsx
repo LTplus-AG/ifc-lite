@@ -17,8 +17,8 @@
  *
  * What it draws (per element type):
  *   - column: nothing (single click — snap dot is enough)
- *   - wall:   first click → marker; on hover → marker → cursor + length
- *   - beam:   identical to wall
+ *   - beam / member: first click → marker; on hover → marker → cursor + length
+ *     (walls preview through the `wall.place` command's ghost)
  *   - slab rectangle: first click → corner marker; on hover → axis-
  *     aligned rectangle with the diagonal, plus W/D readouts
  *   - slab polygon: pending edges + closing-edge ghost back to start
@@ -129,7 +129,7 @@ export function AddElementOverlay() {
       )}
 
       {/* Two-click axial placements share the same start→end preview. */}
-      {type === 'wall' || type === 'beam' || type === 'member' ? (
+      {type === 'beam' || type === 'member' ? (
         <WallBeamPreview
           pending={screenPending}
           hover={hover}
@@ -224,16 +224,8 @@ function WallBeamPreview({
   // outline matches the about-to-commit element's actual size.
   const ghost = useViewerStore.getState();
   const type = ghost.addElementType;
-  const thick = type === 'wall'
-    ? ghost.addElementWallParams.Thickness
-    : type === 'beam'
-      ? ghost.addElementBeamParams.Width
-      : ghost.addElementMemberParams.Width;
-  const height = type === 'wall'
-    ? ghost.addElementWallParams.Height
-    : type === 'beam'
-      ? ghost.addElementBeamParams.Height
-      : ghost.addElementMemberParams.Height;
+  const thick = type === 'beam' ? ghost.addElementBeamParams.Width : ghost.addElementMemberParams.Width;
+  const height = type === 'beam' ? ghost.addElementBeamParams.Height : ghost.addElementMemberParams.Height;
 
   let ghostOutline: string | null = null;
   if (hoverWorld) {

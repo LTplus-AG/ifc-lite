@@ -13,6 +13,7 @@ import { MobileToolbar } from './MobileToolbar';
 import { RibbonToolbar } from './ribbon/RibbonToolbar';
 import { HierarchyPanel } from './HierarchyPanel';
 import { AddElementPanel } from './AddElementPanel';
+import { selectAddElementPanelOpen } from './add-element-wall-command';
 import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog, type InfoDialogTab } from './KeyboardShortcutsDialog';
@@ -162,7 +163,8 @@ export function ViewerLayout() {
   const rightPanelCollapsed = useViewerStore((s) => s.rightPanelCollapsed);
   const setLeftPanelCollapsed = useViewerStore((s) => s.setLeftPanelCollapsed);
   const setRightPanelCollapsed = useViewerStore((s) => s.setRightPanelCollapsed);
-  const activeTool = useViewerStore((s) => s.activeTool);
+  // The Add Element sheet also stays up while its wall type's command draws.
+  const activeTool = useViewerStore((s) => (selectAddElementPanelOpen(s) ? 'addElement' : s.activeTool));
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   // Which bottom panel the flags say is open (table precedence), and whether
   // it is actually docked here rather than floating / popped out.

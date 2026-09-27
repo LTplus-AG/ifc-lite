@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use ifc_lite_core::{
     attribute_names_for_schema, keyword_eq, AttributeValue, DecodedEntity, EntityDecoder,
-    EntityScanner,
+    EntityScanner, ProjectUnits,
 };
 use ifc_lite_processing::{
     check_swept_disk, extract_swept_disk_views, DirectrixMetrics, SweptDiskCheckError,
@@ -117,6 +117,7 @@ fn attribute(
     schema: &str,
     name: &str,
     scale: f64,
+    area_scale: Option<f64>,
 ) -> Result<Option<AuthoredRebarValue>, &'static str> {
     let names = attribute_names_for_schema(schema, entity.ifc_type.name())
         .ok_or("unknown schema entity")?;
@@ -131,7 +132,7 @@ fn attribute(
     }
     let unit = match name {
         "NominalDiameter" | "BarLength" => Some((scale, "m")),
-        "CrossSectionArea" => Some((scale * scale, "m2")),
+        "CrossSectionArea" => Some((area_scale.ok_or("unresolved project area unit")?, "m2")),
         _ => None,
     };
     if let Some((factor, si_unit)) = unit {
@@ -180,10 +181,13 @@ pub fn build_rebar_schedule(
     let mut type_conflicts: HashMap<u32, Vec<u32>> = HashMap::new();
     let mut type_ref_budget = MAX_TYPE_RELATION_REFERENCES;
     let mut type_ref_budget_reported = false;
+    let mut project_id = None;
     let mut diagnostics = Vec::new();
     let mut scanner = EntityScanner::new(content);
     while let Some((id, kind, start, end)) = scanner.next_entity() {
-        if keyword_eq(kind, "IFCREINFORCINGBAR") {
+        if keyword_eq(kind, "IFCPROJECT") {
+            project_id.get_or_insert(id);
+        } else if keyword_eq(kind, "IFCREINFORCINGBAR") {
             if ids.is_none_or(|wanted| wanted.contains(&id)) {
                 match decoder.decode_at_with_id(id, start, end) {
                     Ok(entity) => {
@@ -221,6 +225,11 @@ pub fn build_rebar_schedule(
             }
         }
     }
+    // IFC assigns area units independently of length units. In particular,
+    // a millimetre model may declare square metres for IfcAreaMeasure.
+    let project_units = project_id.map(|id| ProjectUnits::resolve(&mut decoder, id))
+        .unwrap_or_default();
+    let area_scale = project_units.unit_for_measure("IfcAreaMeasure").map(|unit| unit.si_scale);
     let (descriptions, definitions) = extract_swept_disk_views(
         content,
         Some(&bars.keys().copied().collect::<HashSet<_>>()),
@@ -264,13 +273,13 @@ pub fn build_rebar_schedule(
         }
         if known_schema {
             for &field in FIELDS {
-                let own = attribute(&bar, &schema_label, field, scale);
+                let own = attribute(&bar, &schema_label, field, scale, area_scale);
                 // IfcTypeProduct.Tag identifies the type itself; it is not
                 // inherited as the occurrence's IfcElement.Tag.
                 let inherited = if field == "Tag" {
                     None
                 } else {
-                    bar_type.map(|ty| attribute(ty, &schema_label, field, scale))
+                    bar_type.map(|ty| attribute(ty, &schema_label, field, scale, area_scale))
                 };
                 if let Err(reason) = &own {
                     row.diagnostics

@@ -318,7 +318,7 @@ def test_issue_5759_rebar_schedule_separates_authored_and_derived_values():
     source = read(REBAR).decode()
     source = source.replace(
         "#125=IFCREINFORCINGBAR('0Test0000000000000Ubar',$,'U-bar',$,$,#33,#124,$,$,29.,0.,$,.NOTDEFINED.,$);",
-        "#125=IFCREINFORCINGBAR('0Test0000000000000Ubar',$,'U-bar',$,$,#33,#124,'TAG-1','B500B',29.,0.,900.,.MAIN.,$);",
+        "#125=IFCREINFORCINGBAR('0Test0000000000000Ubar',$,'U-bar',$,$,#33,#124,'TAG-1','B500B',29.,0.00066,900.,.MAIN.,$);",
     )
     schedule = ifclite_geom.rebar_schedule(source.encode())
     assert schedule["bar_entity_count"] == 1
@@ -332,6 +332,10 @@ def test_issue_5759_rebar_schedule_separates_authored_and_derived_values():
     }
     assert row["authored"]["BarLength"]["source"] == "occurrence"
     assert row["authored"]["NominalDiameter"]["value"]["value_si"] == pytest.approx(0.029)
+    assert row["authored"]["CrossSectionArea"]["value"] == {
+        "kind": "measure", "value_file_units": 0.00066,
+        "value_si": pytest.approx(0.00066), "si_unit": "m2",
+    }
     (sweep,) = row["sweeps"]
     assert sweep["source"]["solid_id"] == sweep["solid_id"]
     assert sweep["source"]["context"]["kind"] == "direct"

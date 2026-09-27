@@ -308,7 +308,7 @@ test('the gate passes on the repo and states its counts', () => {
   assert.equal(r.status, 0, output);
   assert.match(
     output,
-    /check-source-text-assertions: OK \(31 allowlisted, \d+ marked, 0 new\)/,
+    /check-source-text-assertions: OK \(30 allowlisted, \d+ marked, 0 new\)/,
     'a pass must state the numbers, not merely exit 0',
   );
 });
@@ -320,7 +320,6 @@ test('the gate passes on the repo and states its counts', () => {
 test('the narrowing kept every file the flat detector flagged', () => {
   const expected = [
     'apps/viewer/src/components/viewer/colorful-popover-opacity.test.ts',
-    'apps/viewer/src/components/viewer/toolbar-parity.test.ts',
     'apps/viewer/src/components/viewer/toolbar/export-ui-parity.test.tsx',
     'apps/viewer/src/hooks/modelLoadedGeometryProps.test.ts',
     'packages/create-ifc-lite/test/config-fixers.test.ts',
@@ -586,8 +585,7 @@ test('a path loop is not tainted just because the path list is', () => {
   // produced PATHS rather than contents. Tainting every `for..of` whose
   // iterable carries file bytes therefore also taints `file`, and
   // `file.endsWith('.ts')` becomes a false hit: measured as 4 of them in
-  // apps/viewer/src/components/viewer/toolbar-parity.test.ts, whose line 323
-  // is exactly `for (const file of files)`.
+  // the former toolbar parity walk, whose file loop bound path names.
   //
   // Nothing lexical separates a tainted array of lines from a tainted array of
   // filenames, so the rule takes only the `.split(` it can prove. Widen it and
@@ -986,7 +984,7 @@ const source = readFileSync('Thing.tsx', 'utf8');
 test('gap 2 stays open, and says so out loud', () => {
   // Not a defect being tolerated silently. Widening the for-of rule to "any
   // iterable carrying file bytes" also taints `for (const file of files)` where
-  // the elements are PATHS -- measured as 4 new hits in toolbar-parity.test.ts.
+  // the elements are PATHS -- previously measured as 4 false hits in the retired toolbar parity test.
   // Nothing in the SYNTAX separates a tainted array of lines from a tainted
   // array of filenames, so parsing does not close this one either. If a future
   // change makes the bound form flag, this test is the place that says the

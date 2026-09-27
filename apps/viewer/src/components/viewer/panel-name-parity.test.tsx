@@ -6,17 +6,15 @@ import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
 import type { BimContext } from '@ifc-lite/sdk';
 import { registerLocale, setLocale, type TranslationKey } from '@/i18n';
 import { BimReactContext } from '@/sdk/BimProvider.js';
-import { WORKSPACE_PANELS, type WorkspacePanelId } from '@/lib/panels/registry';
+import { WORKSPACE_PANELS } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
 import { advance, cleanup, click, render, type as typeInto } from '@/test/render.js';
 import { ActivityBar } from './sidebar/ActivityBar.js';
 import { AnalyzeTab } from './ribbon/tabs/AnalyzeTab.js';
 import { CommandPalette } from './CommandPalette.js';
-import { MainToolbar } from './MainToolbar.js';
 
 const TITLE = 'Unified validation panel';
 
@@ -27,7 +25,7 @@ afterEach(() => {
 });
 
 describe('workspace panel name parity (#5858)', () => {
-  it('renders each available registry panel with the same name across rail, palette and classic menu', async () => {
+  it('renders each available registry panel with the same name across rail and palette', async () => {
     const titles = new Map(WORKSPACE_PANELS.map(({ id }) => [id, `Canonical ${id} panel`]));
     const translations: Partial<Record<TranslationKey, string>> = {};
     for (const panel of WORKSPACE_PANELS) translations[panel.titleKey] = titles.get(panel.id);
@@ -69,24 +67,9 @@ describe('workspace panel name parity (#5858)', () => {
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'changes',
       'the palette command opens the Changes panel');
     cleanup();
-
-    render(<MainToolbar />);
-    const panels = [...document.querySelectorAll('button[aria-haspopup="menu"]')].find((button) => button.getAttribute('aria-label')?.startsWith('Panels'));
-    assert.ok(panels, 'classic Panels menu is mounted');
-    act(() => panels.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true })));
-    act(() => panels.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
-    const classicIds: WorkspacePanelId[] = [
-      'script', 'lists', 'gantt', 'charts', 'document', 'drawing', 'flow',
-      'bcf', 'validation', 'lens', 'clash', 'compare', 'sources',
-      'layers', 'zones', 'loadReport', 'cost', 'appearance', 'extensions',
-    ];
-    const items = [...document.querySelectorAll('[role="menuitemcheckbox"]')];
-    for (const id of classicIds) {
-      assert.ok(items.some((item) => item.textContent?.trim() === titles.get(id)), `${id} classic menu name`);
-    }
   });
 
-  it('renders the same localized validation name in the rail, ribbon, palette, and classic toolbar', () => {
+  it('renders the same localized validation name in the rail, ribbon and palette', () => {
     registerLocale('panel-name-parity-5858', { 'validationPanel.title': TITLE });
     setLocale('panel-name-parity-5858');
     useViewerStore.setState({
@@ -128,12 +111,5 @@ describe('workspace panel name parity (#5858)', () => {
     typeInto(search, 'Drawing (2D)');
     assert.ok([...document.querySelectorAll('[role="option"]')].some((option) => option.textContent?.includes('Drawing')), 'the former drawing name still finds the panel');
     cleanup();
-
-    const classic = render(<MainToolbar />);
-    const panels = [...classic.querySelectorAll('button[aria-haspopup="menu"]')].find((button) => button.getAttribute('aria-label')?.startsWith('Panels'));
-    assert.ok(panels, 'classic Panels menu is mounted');
-    act(() => panels.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true })));
-    act(() => panels.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
-    assert.ok([...document.querySelectorAll('[role="menuitemcheckbox"]')].some((item) => item.textContent?.trim() === TITLE), 'classic menu uses the panel title');
   });
 });

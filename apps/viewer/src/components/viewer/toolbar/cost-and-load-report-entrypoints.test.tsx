@@ -5,14 +5,11 @@
 /**
  * Reachability guard for the Cost and Load Report toolbar entries (#5032).
  *
- * Load Report (#3927) shipped as a ribbon-only Analyze button with no
- * classic Panels-menu entry. Cost (#4858) shipped with no toolbar entry
- * point at all on either surface — the ActivityBar rail was its only way
- * in, the same failure class as Location Zones before #2508.
+ * Cost (#4858) shipped with no toolbar entry point — the ActivityBar rail was
+ * its only way in, the same failure class as Location Zones before #2508.
  *
- * These mount the real `MainToolbar` and ribbon `AnalyzeTab`, click the
- * controls the way a user would, and read `sidebarActivePanel` back —
- * pinning that both surfaces now reach both panels, and that the shared
+ * These mount the ribbon `AnalyzeTab`, click the controls the way a user would,
+ * and read `sidebarActivePanel` back — pinning its reachability and that the shared
  * `useWorkspacePanelControls` hook reports them as open with the right
  * label.
  */
@@ -27,7 +24,6 @@ import { resolve } from '@/i18n/registry';
 import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
 import { useWorkspacePanelControls } from './useWorkspacePanelControls.js';
-import { MainToolbar } from '../MainToolbar.js';
 import { AnalyzeTab } from '../ribbon/tabs/AnalyzeTab.js';
 
 const extraMounts: Array<{ root: Root; container: HTMLElement }> = [];
@@ -52,26 +48,6 @@ function clickEl(element: Element): void {
   act(() => element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })));
 }
 
-/** Radix opens the Panels dropdown on `pointerdown`, not `click`. */
-function openPanelsMenu(container: HTMLElement): void {
-  const trigger = [...container.querySelectorAll('button')].find((b) =>
-    /Panels/i.test(b.textContent ?? '') || /Panels/i.test(b.getAttribute('aria-label') ?? ''),
-  );
-  assert.ok(trigger, 'the classic strip must have a Panels menu');
-  act(() => {
-    trigger.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 } as PointerEventInit));
-  });
-  clickEl(trigger);
-}
-
-function classicMenuItem(label: string): HTMLElement {
-  const found = [...document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')].filter(
-    (e) => e.textContent?.trim() === label,
-  );
-  assert.equal(found.length, 1, `expected one classic Panels menu item labelled "${label}", found ${found.length}`);
-  return found[0];
-}
-
 function ribbonButton(container: HTMLElement, label: string): HTMLElement {
   const found = [...container.querySelectorAll<HTMLElement>('button')].filter(
     (e) => e.getAttribute('aria-label') === label,
@@ -84,20 +60,6 @@ describe('#5032 Load Report + Cost toolbar reachability', () => {
   afterEach(() => {
     unmountExtras();
     useViewerStore.getState().showWorkspacePanel('properties');
-  });
-
-  it('the classic Panels dropdown opens Load Report', () => {
-    const container = mount(<MainToolbar />);
-    openPanelsMenu(container);
-    clickEl(classicMenuItem(resolve(panelTitleKey('loadReport'))));
-    assert.equal(useViewerStore.getState().sidebarActivePanel, 'loadReport');
-  });
-
-  it('the classic Panels dropdown opens Cost', () => {
-    const container = mount(<MainToolbar />);
-    openPanelsMenu(container);
-    clickEl(classicMenuItem(resolve(panelTitleKey('cost'))));
-    assert.equal(useViewerStore.getState().sidebarActivePanel, 'cost');
   });
 
   it('the ribbon Analyze tab opens Cost', () => {

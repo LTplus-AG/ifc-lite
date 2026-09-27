@@ -3,20 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Cloud sources is reachable from every surface that opens a panel.
+ * Cloud sources is reachable from the ribbon and command palette.
  *
  * The `sources` panel (CDE integrations) shipped with the ActivityBar rail as
  * its only entry point — the same gap Location zones had before #2508. The
- * store-symbol parity guard (`../toolbar-parity.test.ts`) cannot see that class
- * of hole and says so: both toolbars already reach `toggleWorkspacePanel` and
- * the panel flags for OTHER panels, so a panel missing from both surfaces
- * leaves the two symbol sets identical and the diff empty.
- *
- * There are THREE such surfaces, not two, and that is the trap this file exists
- * for: Location zones was wired into both toolbars and still never reached the
- * command palette, so "fixed on both toolbars" read as done while a third door
- * stayed shut. A panel is only as reachable as the last surface that learned
- * about it.
+ * A panel is only as reachable as the last surface that learned about it.
  *
  * So this asserts the OUTPUT: click the control each surface ships and check the
  * panel actually opened. A control rendered but not wired, or wired to a handler
@@ -32,7 +23,6 @@ import { useViewerStore } from '@/store';
 import { resolve } from '@/i18n/registry';
 import { panelTitleKey } from '@/lib/panels/registry';
 import { FileTab } from '../ribbon/tabs/FileTab.js';
-import { MainToolbar } from '../MainToolbar.js';
 import { CommandPalette } from '../CommandPalette.js';
 import { BimProvider } from '@/sdk/BimProvider';
 import type { FileCommands } from './useFileCommands.js';
@@ -49,7 +39,7 @@ const FILE_COMMANDS: FileCommands = {
 };
 
 /**
- * `RibbonLargeButton` / the classic menu items both label themselves for the
+ * `RibbonLargeButton` labels itself for the
  * accessibility tree, which is also how a user finds them. Radix portals menu
  * content onto `document.body`, so query there rather than in the container.
  */
@@ -63,15 +53,7 @@ function byAccessibleName(name: string | RegExp): HTMLElement {
   return match;
 }
 
-/** Radix opens a dropdown on pointerdown, not click. */
-function openMenu(trigger: HTMLElement): void {
-  act(() => {
-    trigger.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }));
-  });
-  click(trigger);
-}
-
-describe('Cloud sources is reachable from both toolbar styles', () => {
+describe('Cloud sources is reachable from desktop command surfaces', () => {
   beforeEach(() => {
     useViewerStore.setState({ sourcesPanelVisible: false });
   });
@@ -90,15 +72,6 @@ describe('Cloud sources is reachable from both toolbar styles', () => {
 
     click(button);
     assert.equal(useViewerStore.getState().sourcesPanelVisible, false, 'second click did not close the panel');
-  });
-
-  it('opens the panel from the classic strip Panels menu', () => {
-    render(<MainToolbar />);
-
-    openMenu(byAccessibleName('Panels'));
-    click(byAccessibleName(resolve(panelTitleKey('sources'))));
-
-    assert.equal(useViewerStore.getState().sourcesPanelVisible, true, 'the Panels menu item did not open the panel');
   });
 
   it('opens the panel from the command palette', async () => {

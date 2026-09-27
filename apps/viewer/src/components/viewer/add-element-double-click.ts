@@ -13,7 +13,7 @@
  */
 
 import { useViewerStore } from '@/store';
-import { commitAddElementSlabPolygon } from './selectionHandlers';
+import { commitAddElementSlabPolygon } from './add-element-handlers';
 
 const POLYGON_TYPES = new Set(['slab', 'roof', 'plate', 'space']);
 

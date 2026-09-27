@@ -61,7 +61,7 @@
    525 apps/viewer/src/components/mcp/McpPlayground.tsx
   2051 apps/viewer/src/components/mcp/playground-dispatcher.ts
   1187 apps/viewer/src/components/mcp/PlaygroundChat.tsx
-   750 apps/viewer/src/components/viewer/AddElementPanel.tsx
+   634 apps/viewer/src/components/viewer/AddElementPanel.tsx
    415 apps/viewer/src/components/viewer/bcf/BCFTopicDetail.tsx
    529 apps/viewer/src/components/viewer/BCFPanel.tsx
    623 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
@@ -99,16 +99,15 @@
    578 apps/viewer/src/components/viewer/SearchInline.tsx
    508 apps/viewer/src/components/viewer/SearchModal.filter.editors.tsx
    835 apps/viewer/src/components/viewer/SearchModal.filter.tsx
-  1124 apps/viewer/src/components/viewer/selectionHandlers.ts
+   665 apps/viewer/src/components/viewer/selectionHandlers.ts
    493 apps/viewer/src/components/viewer/SheetSetupPanel.tsx
    435 apps/viewer/src/components/viewer/TitleBlockEditor.tsx
-   524 apps/viewer/src/components/viewer/tools/AddElementOverlay.tsx
    501 apps/viewer/src/components/viewer/tools/measure-modes/radius.ts
    818 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
    677 apps/viewer/src/components/viewer/tools/MeasureQuantities.tsx
   1428 apps/viewer/src/components/viewer/tools/SpaceSketchOverlay.tsx
    970 apps/viewer/src/components/viewer/useGeometryStreaming.ts
-   914 apps/viewer/src/components/viewer/useMouseControls.ts
+   912 apps/viewer/src/components/viewer/useMouseControls.ts
    512 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1776 apps/viewer/src/components/viewer/Viewport.tsx
   1089 apps/viewer/src/components/viewer/ViewportContainer.tsx

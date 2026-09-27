@@ -182,7 +182,7 @@ export function AppearanceCapturePanel() {
         onClick={() => { void create(); }}>{t('appearance.capture.createIfcObject')}</Button>
     </fieldset>
     {room && <p className="text-[11px] text-muted-foreground">{t('appearance.capture.leaveRoomNotice')}</p>}
-    {denialReason && <output className="block text-[11px] text-muted-foreground">{t(mutationDenialKey(denialReason))}</output>}
+    {denialReason && <output className="block text-2xs text-muted-foreground">{t(mutationDenialKey(denialReason))}</output>}
     {busy && <Button type="button" variant="outline" onClick={() => { operation.current?.abort(); setTranslatedMessage('appearance.capture.cancelled'); }}>{t('appearance.capture.cancelCreation')}</Button>}
     {message && <p role={error ? 'alert' : 'status'} className={`text-[11px] ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{message.kind === 'translated' ? t(message.key, captureMessageParams(message, locale)) : message.text}</p>}
   </section>;

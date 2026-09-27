@@ -136,7 +136,7 @@ function diagnoseBody(
   return 'shape';
 }
 
-interface SplitChains { wall: WallEditChain; linear: LinearElementEditChain; slab: SlabEditChain }
+export interface SplitChains { wall: WallEditChain; linear: LinearElementEditChain; slab: SlabEditChain }
 
 /**
  * A commit action's gate: the chain when `target` is the `kind` that action

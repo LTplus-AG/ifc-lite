@@ -22,7 +22,7 @@
 
 import { useEffect, useState } from 'react';
 import { useViewerStore } from '@/store';
-import { notifyElementSplit, notifySplitFailed, notifyWallSplit } from '../wallSplitNotice.js';
+import { notifySplitCommitted, notifySplitFailed } from '../wallSplitNotice.js';
 import { useTranslation } from '@/i18n';
 import { CursorInput } from '../../viewport-ui/scene';
 
@@ -93,8 +93,7 @@ export function SplitCursorInput() {
     // a distance is the same edit on the same result, including the warning
     // when openings could not be reassigned (`openings.skipped`), which this
     // path dropped until #3074.
-    if ('openings' in result) notifyWallSplit(result.openings);
-    else notifyElementSplit();
+    notifySplitCommitted(result);
   };
 
   const commit = (raw: string) => {

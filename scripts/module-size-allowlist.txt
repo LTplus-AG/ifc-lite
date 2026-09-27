@@ -99,7 +99,7 @@
    578 apps/viewer/src/components/viewer/SearchInline.tsx
    508 apps/viewer/src/components/viewer/SearchModal.filter.editors.tsx
    835 apps/viewer/src/components/viewer/SearchModal.filter.tsx
-   642 apps/viewer/src/components/viewer/selectionHandlers.ts
+   641 apps/viewer/src/components/viewer/selectionHandlers.ts
    493 apps/viewer/src/components/viewer/SheetSetupPanel.tsx
    435 apps/viewer/src/components/viewer/TitleBlockEditor.tsx
    501 apps/viewer/src/components/viewer/tools/measure-modes/radius.ts
@@ -160,7 +160,7 @@
    489 apps/viewer/src/store/slices/idsSlice.ts
    820 apps/viewer/src/store/slices/measurementSlice.ts
    630 apps/viewer/src/store/slices/modelSlice.ts
-  2721 apps/viewer/src/store/slices/mutationSlice.ts
+  2305 apps/viewer/src/store/slices/mutationSlice.ts
   1317 apps/viewer/src/store/slices/scheduleSlice.ts
    536 apps/viewer/src/store/slices/scriptSlice.ts
    498 apps/viewer/src/store/slices/sectionSlice.ts

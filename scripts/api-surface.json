@@ -5488,7 +5488,8 @@
     "isWhollyNumeric: function",
     "parsePropertyValue: function",
     "uuidFromSeed: function",
-    "uuidToIfcGuid: function"
+    "uuidToIfcGuid: function",
+    "uuidV5: function"
   ],
   "@ifc-lite/export": [
     "AnonymizeOptions: interface",

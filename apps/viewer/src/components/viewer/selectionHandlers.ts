@@ -15,7 +15,7 @@ import { useViewerStore } from '@/store';
 import { fromGlobalIdFromModels } from '@/store/globalId';
 import { pointInPolygon } from '@/lib/polygon-clip';
 import { toast } from '@/components/ui/toast';
-import { notifyElementSplit, notifySplitFailed, notifyWallSplit } from './wallSplitNotice.js';
+import { notifySplitCommitted, notifySplitFailed } from './wallSplitNotice.js';
 import { pickToSplitLocal, splitAxisToRendererConvention, splitLocalToRenderer } from './split-frame.js';
 import { raycastForPolylinePoint, isNearPolylineStart,
   isDuplicateClickPoint,
@@ -151,8 +151,7 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
       state.setSelectedEntityId(result.right.globalId);
       // Both wall-split commit paths — here and the Split tool's typed
       // distance — announce through the same emitter (`wallSplitNotice.ts`).
-      if ('openings' in result) notifyWallSplit(result.openings);
-      else notifyElementSplit();
+      notifySplitCommitted(result);
       return;
     }
 

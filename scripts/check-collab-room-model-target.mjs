@@ -67,6 +67,7 @@ const ROOT =
 
 const COLLAB_SLICE = 'apps/viewer/src/store/slices/collabSlice.ts';
 const MUTATION_SLICE = 'apps/viewer/src/store/slices/mutationSlice.ts';
+const WALL_RESIZE = 'apps/viewer/src/store/slices/mutation-wall-resize.ts';
 const ROOM_RECONSTRUCT = 'apps/viewer/src/lib/collab/room-reconstruct.ts'; // the recipient's reconstruct, since #4444
 
 /**
@@ -312,6 +313,7 @@ function assertRegion(reg, { banned, required, consequence }) {
 
 const collab = load(COLLAB_SLICE);
 const mutation = load(MUTATION_SLICE);
+const wallResize = load(WALL_RESIZE);
 const reconstruct = load(ROOM_RECONSTRUCT);
 
 // ── 1. The recipient's re-derivation (#2705) ────────────────────────────────
@@ -504,37 +506,33 @@ is the dangerous half.`,
 
 // ── 4. The call sites hand over the EDITED model ───────────────────────────
 //
-// With the gate in the callee, the call site has exactly one job left, and
-// getting it wrong re-opens the corruption one level up: passing
-// `activeModelId` would make the gate approve a private model's edit. Every
-// call is checked (not "at least one"), and the counts are floored so deleting
-// a call site is a deliberate, visible diff rather than a free pass.
-//
-// `mutationSlice.collab-gate.test.ts` pins the same property behaviourally for
-// the three property/attribute mirrors; this covers all of them.
-const CALL_SITE_FLOOR = {
+// Callees gate on the modelId passed here; passing activeModelId can mirror a
+// private edit into the room. Check every call and floor counts per source file.
+// #6270 moved wall geometry mirrors into mutation-wall-resize.ts, so that file
+// needs its own floor. Property/attribute mirrors also have behavioral tests.
+const MUTATION_CALL_SITE_FLOOR = {
   mirrorPropertyEdit: 1,
   mirrorPropertyDelete: 1,
   mirrorAttributeEdit: 1,
   mirrorPlacementEdit: 3,
   mirrorEntityRemove: 1,
   mirrorEntityCreate: 1, // runInStoreElementBuilder: every add*, addColumn included
-  mirrorEntityGeometry: 1,
   readCollabPlacement: 3,
   collabTranslateEntity: 2,
   collabRotateEntity: 1,
 };
-{
+const WALL_RESIZE_CALL_SITE_FLOOR = { mirrorEntityGeometry: 2 };
+for (const [file, floors] of [[mutation, MUTATION_CALL_SITE_FLOOR], [wallResize, WALL_RESIZE_CALL_SITE_FLOOR]]) {
   const entityActionNames = new Set(entityActions.map((a) => a.name));
   const seen = new Map();
   const CALL_RE = /get\(\)\.((?:mirror|collab|readCollab)[A-Za-z]*)\(\s*([A-Za-z0-9_.()!]*)/g;
-  for (const m of mutation.clean.matchAll(CALL_RE)) {
+  for (const m of file.clean.matchAll(CALL_RE)) {
     const [, name, firstArg] = m;
     if (!entityActionNames.has(name)) continue;
     seen.set(name, (seen.get(name) ?? 0) + 1);
     if (firstArg !== 'modelId') {
       fail([
-        `${MUTATION_SLICE}:${mutation.lineOf(m.index)}: \`${name}\` is handed \`${firstArg}\`, not \`modelId\`.`,
+        `${file.rel}:${file.lineOf(m.index)}: \`${name}\` is handed \`${firstArg}\`, not \`modelId\`.`,
         '',
         `The room gate inside \`${name}\` trusts the modelId it is given. Handing it
 anything but the model this edit was made ON — \`activeModelId\` above all —
@@ -543,11 +541,11 @@ defect this guard exists to prevent.`,
       ]);
     }
   }
-  for (const [name, floor] of Object.entries(CALL_SITE_FLOOR)) {
+  for (const [name, floor] of Object.entries(floors)) {
     const count = seen.get(name) ?? 0;
     if (count < floor) {
       fail([
-        `collab call sites: \`${name}\` is called ${count}× in ${MUTATION_SLICE}, expected at least ${floor}.`,
+        `collab call sites: \`${name}\` is called ${count}× in ${file.rel}, expected at least ${floor}.`,
         '',
         'A call site was removed or renamed. If the removal is deliberate, lower the',
         'floor in this guard in the same commit; otherwise an edit path silently',
@@ -565,7 +563,8 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-const callSiteTotal = Object.values(CALL_SITE_FLOOR).reduce((a, b) => a + b, 0);
+const callSiteTotal = [MUTATION_CALL_SITE_FLOOR, WALL_RESIZE_CALL_SITE_FLOOR]
+  .flatMap((floors) => Object.values(floors)).reduce((a, b) => a + b, 0);
 console.log(
   `check-collab-room-model-target: OK (3 regions across 2 files, ${entityActions.length} entity actions self-gated, ` +
     `${callSiteTotal} call sites bound to modelId)`,

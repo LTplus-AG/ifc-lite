@@ -828,6 +828,18 @@ declare const bim: {
     addHostedDoor(modelId: string, hostExpressId: number, params: { Offset: number; Width: number; Height: number; CutDepth?: number; FrameThickness?: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string; GlobalId?: string; Sill?: number; OperationType?: string; UserDefinedOperationType?: string }): { modelId: string; expressId: number };
     /** Add an IfcWindow filling a new opening in an existing IfcWall (IfcRelFillsElement). Sill is the bottom edge height. */
     addHostedWindow(modelId: string, hostExpressId: number, params: { Offset: number; Width: number; Height: number; CutDepth?: number; FrameThickness?: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string; GlobalId?: string; Sill: number; PartitioningType?: string; UserDefinedPartitioningType?: string }): { modelId: string; expressId: number };
+    /** Add an IfcElementType subtype (Type: 'IfcWallType', 'IfcDoorType', ...), laid out for the model's schema. Enum values without dots. */
+    addElementType(modelId: string, params: { Type: string; Name: string; Description?: string; ApplicableOccurrence?: string; Tag?: string; ElementType?: string; PredefinedType?: string; OperationType?: string; UserDefinedOperationType?: string; PartitioningType?: string; UserDefinedPartitioningType?: string; ParameterTakesPrecedence?: boolean; GlobalId?: string }): { modelId: string; expressId: number };
+    /** Type objects via IfcRelDefinesByType; an object already typed moves to this type. Returns the relationship. */
+    assignType(modelId: string, typeExpressId: number, objectExpressIds: number[]): { modelId: string; expressId: number };
+    /** Add an IfcMaterial. */
+    addMaterial(modelId: string, params: { Name: string; Description?: string; Category?: string }): { modelId: string; expressId: number };
+    /** Add an IfcMaterialLayerSet with one IfcMaterialLayer per entry (LayerThickness in metres). */
+    addMaterialLayerSet(modelId: string, params: { MaterialLayers: { Material?: number; LayerThickness: number; IsVentilated?: boolean; Name?: string; Description?: string; Category?: string; Priority?: number }[]; LayerSetName?: string; Description?: string }): { modelId: string; expressId: number };
+    /** Add an IfcMaterialLayerSetUsage (default AXIS2 / POSITIVE; OffsetFromReferenceLine in metres). */
+    addMaterialLayerSetUsage(modelId: string, params: { ForLayerSet: number; LayerSetDirection?: 'AXIS1' | 'AXIS2' | 'AXIS3'; DirectionSense?: 'POSITIVE' | 'NEGATIVE'; OffsetFromReferenceLine: number; ReferenceExtent?: number }): { modelId: string; expressId: number };
+    /** Associate a material with objects via IfcRelAssociatesMaterial, replacing their previous one. Returns the relationship. */
+    assignMaterial(modelId: string, materialExpressId: number, objectExpressIds: number[]): { modelId: string; expressId: number };
     /** Add an IfcCostSchedule to a parsed model. */
     addCostSchedule(modelId: string, params: BimCost.CostScheduleParams): { modelId: string; expressId: number };
     /** Add an IfcCostItem to a parsed model. */

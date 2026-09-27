@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
-export const OPENAI_REVIEW_MODEL = 'gpt-5.6-sol';
+export const OPENAI_REVIEW_MODEL = 'gpt-6-sol';
 
 /**
  * NO TIMEOUT WAS THE BUG HERE TOO (#4981 finding-4). `resolveProviderFallbacks`

@@ -105,6 +105,7 @@ export const KEY_COMMANDS = [
   { id: 'measure.finish', labelKey: 'commands.measure.finish', category: 'tools', when: 'tool.measure', keys: [k('enter')] },
   { id: 'addElement.commit', labelKey: 'commands.addElement.commit', category: 'tools', when: 'tool.addElement', keys: [k('enter')] },
   { id: 'addElement.clearPending', labelKey: 'commands.addElement.clearPending', category: 'tools', when: 'tool.addElement', keys: [k('escape')] },
+  { id: 'addElement.toggleSnap', labelKey: 'commands.addElement.toggleSnap', category: 'tools', when: 'tool.addElement', keys: [k('s')] },
   { id: 'spaceSketch.undo', labelKey: 'commands.spaceSketch.undo', category: 'tools', when: 'tool.spaceSketch', keys: [k('z', { mod: true })] },
   { id: 'spaceSketch.redo', labelKey: 'commands.spaceSketch.redo', category: 'tools', when: 'tool.spaceSketch', keys: [k('z', { mod: true, shift: true })] },
   { id: 'spaceSketch.commit', labelKey: 'commands.spaceSketch.commit', category: 'tools', when: 'tool.spaceSketch', keys: [k('enter')] },

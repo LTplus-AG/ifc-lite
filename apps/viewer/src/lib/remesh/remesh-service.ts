@@ -195,10 +195,20 @@ function isCurrent(get: Get, modelId: string, store: IfcDataStore, stamps: Map<s
   return true;
 }
 
-function groupByGlobalId<T>(globalIds: Iterable<number>, meshes: readonly MeshData[], values: readonly T[]): Map<number, T[]> {
+/**
+ * `values` grouped by their mesh's entity, for the requested entities only.
+ * An entity the mesher produced nothing for is left out, so it keeps the mesh
+ * it has: an edit that leaves an element unmeshable (an unset extrusion depth)
+ * must not make it vanish.
+ */
+function groupByGlobalId<T>(globalIds: ReadonlySet<number>, meshes: readonly MeshData[], values: readonly T[]): Map<number, T[]> {
   const out = new Map<number, T[]>();
-  for (const id of globalIds) out.set(id, []);
-  meshes.forEach((mesh, i) => out.get(mesh.expressId)?.push(values[i]));
+  meshes.forEach((mesh, i) => {
+    if (!globalIds.has(mesh.expressId)) return;
+    const list = out.get(mesh.expressId);
+    if (list) list.push(values[i]);
+    else out.set(mesh.expressId, [values[i]]);
+  });
   return out;
 }
 

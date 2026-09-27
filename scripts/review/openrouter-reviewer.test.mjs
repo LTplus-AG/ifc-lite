@@ -115,8 +115,8 @@ test('resolveModelChain: plural wins, singular becomes a one-element chain, else
 });
 
 test('the default chains are the three/two verified models, sonnet and haiku first', () => {
-  assert.deepEqual(OPENROUTER_REVIEW_MODELS_DEFAULT, ['anthropic/claude-sonnet-5', 'openai/gpt-5.6-sol', 'openai/gpt-5.6-luna']);
-  assert.deepEqual(OPENROUTER_JUDGE_MODELS_DEFAULT, ['openai/gpt-5.4-nano', 'anthropic/claude-haiku-4.5']);
+  assert.deepEqual(OPENROUTER_REVIEW_MODELS_DEFAULT, ['anthropic/claude-sonnet-5', 'openai/gpt-6-sol', 'openai/gpt-6-luna']);
+  assert.deepEqual(OPENROUTER_JUDGE_MODELS_DEFAULT, ['openai/gpt-6-luna', 'anthropic/claude-haiku-4.5']);
   assert.equal(OPENROUTER_REVIEW_MODEL, OPENROUTER_REVIEW_MODELS_DEFAULT[0]);
 });
 

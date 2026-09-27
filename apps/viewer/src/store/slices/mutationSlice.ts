@@ -79,11 +79,11 @@ import {
   computeSlabSplitGeometry,
   type SlabLikeType,
 } from '@/lib/slab-edit.js';
-import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
+import { getModelLengthUnitScale, pointToMetres, pointToNative } from '@/lib/length-unit-scale.js';
+import { readWallMetres, refreshWallMeshIn, resizeWallMetres } from './mutation-wall-resize.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
 import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags.js';
-import { remeshAfterCommit } from '@/lib/remesh/remesh-registry.js';
 import { canMutate, mutationDenial } from '../mutation-permission.js';
 import { syncTypeOverride } from './mutation-history-apply.js';
 import { recordMutationBatch, replayHistory } from './mutation-history-replay.js';
@@ -394,11 +394,13 @@ export interface MutationSlice extends CostUndoMethods {
    * Used by compound operations like `resizeWall` (4 coordinated
    * positional writes) so the user doesn't have to press Ctrl+Z
    * four times to undo one resize. Returns the batchId so callers
-   * can correlate; empty input is a no-op (returns null).
+   * can correlate; empty input is a no-op (returns null). Pass `batchId`
+   * to extend an earlier batch instead of starting one.
    */
   setPositionalAttributesBatch: (
     modelId: string,
     updates: Array<{ entityId: number; index: number; value: IfcAttributeValue }>,
+    batchId?: string,
   ) => string | null;
   /** Tag already-recorded mutations as one undo batch (SDK `bim.mutate.batch`). */
   tagMutationBatch: (mutationIds: readonly string[], batchId: string) => void;
@@ -427,7 +429,8 @@ export interface MutationSlice extends CostUndoMethods {
    */
   recordEntityRemoval: (modelId: string, expressId: number, overlayRecord: NewEntity | null | undefined) => void;
   /**
-   * Translate an IfcProduct by a storey-local delta (IFC Z-up). Walks
+   * Translate an IfcProduct by a storey-local delta (IFC Z-up) in METRES,
+   * whatever the file's length unit (#6233). Walks
    * the placement chain to the terminal `IfcCartesianPoint` and writes
    * the new coordinates via `setPositionalAttribute` so the edit
    * stacks with other overlay mutations and undoes cleanly.
@@ -487,7 +490,7 @@ export interface MutationSlice extends CostUndoMethods {
     expressId: number,
   ) => { yawZ: number; refDirection: [number, number, number] } | null;
   /**
-   * Read the entity's storey-local placement coordinates. Returns
+   * Read the entity's storey-local placement coordinates in metres. Returns
    * null when the placement chain isn't a simple
    * `IfcLocalPlacement → IfcAxis2Placement3D → IfcCartesianPoint`
    * (i.e. when `translateEntity` / `setEntityPosition` wouldn't work
@@ -505,19 +508,27 @@ export interface MutationSlice extends CostUndoMethods {
   ) => [number, number, number] | null;
   /**
    * Resize a rectangular-profile wall by setting new start AND end
-   * points. Atomically updates the placement origin, RefDirection,
-   * profile length, and profile origin. Returns null for walls that
-   * don't follow the `addWallToStore` shape.
+   * points (storey-local metres). Updates the placement origin,
+   * RefDirection, profile length, and profile origin as ONE undo step;
+   * refuses walls that don't follow the `addWallToStore` shape.
+   *
+   * `batchId` joins an ongoing step: an endpoint drag passes one id for
+   * all its frames (as the move gizmo does with `translateEntity`), and
+   * then calls `refreshWallMesh` on release. Without it the local mesh
+   * is rebuilt straight away (see `mutation-wall-resize.ts`).
    */
   resizeWall: (
     modelId: string,
     expressId: number,
     newStart: [number, number, number],
     newEnd: [number, number, number],
+    batchId?: string,
   ) => { ok: true; newLength: number } | { ok: false; reason: string };
+  /** Rebuild a resized wall's mesh locally and for collaborators. */
+  refreshWallMesh: (modelId: string, expressId: number) => void;
   /**
-   * Read a wall's current start/end so the UI can render endpoint
-   * handles. Returns null for non-rectangle walls.
+   * Read a wall's current start/end (storey-local metres) so the UI can
+   * render endpoint handles. Returns null for non-rectangle walls.
    */
   readWallEndpoints: (
     modelId: string,
@@ -1554,11 +1565,11 @@ export const createMutationSlice: StateCreator<
     return stack ? stack[stack.length - 1] : null;
   },
 
-  setPositionalAttributesBatch: (modelId, updates) => {
+  setPositionalAttributesBatch: (modelId, updates, continuing) => {
     if (updates.length === 0) return null;
     // One batch id for every mutation created below, so the undo / redo
     // handlers group them.
-    const batchId = newMutationBatchId();
+    const batchId = continuing ?? newMutationBatchId();
     const ids: string[] = [];
     for (const { entityId, index, value } of updates) {
       const mutation = get().setPositionalAttribute(modelId, entityId, index, value);
@@ -1603,11 +1614,13 @@ export const createMutationSlice: StateCreator<
           'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D → IfcCartesianPoint chain',
       };
     }
+    // `delta` is metres; the point holds the file's native unit (#6233).
     const [x, y, z] = chain.coordinates;
-    const next: [number, number, number] = [x + delta[0], y + delta[1], z + delta[2]];
+    const [nx, ny, nz] = pointToNative(dataStore, delta);
+    const nativeNext: [number, number, number] = [x + nx, y + ny, z + nz];
     // Go through the slice's own `setPositionalAttribute` action so
     // the mutation lands on the undo stack with the standard envelope.
-    const mutation = get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, next);
+    const mutation = get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, nativeNext);
 
     // Push the renderer-frame delta so the visible mesh follows
     // the IFC mutation. IFC is Z-up; renderer is Y-up. Conversion:
@@ -1639,7 +1652,7 @@ export const createMutationSlice: StateCreator<
     // (`usd::xformop`). No-op outside a collab session.
     get().mirrorPlacementEdit(modelId, expressId, delta);
 
-    return { ok: true, newCoordinates: next };
+    return { ok: true, newCoordinates: pointToMetres(dataStore, nativeNext) };
   },
 
   setEntityPosition: (modelId, expressId, position) => {
@@ -1674,12 +1687,13 @@ export const createMutationSlice: StateCreator<
       };
     }
     // Push the IFC → renderer delta for the rendered mesh. Same
-    // Z-up → Y-up conversion as `translateEntity` above.
-    const [oldX, oldY, oldZ] = chain.coordinates;
+    // Z-up → Y-up conversion as `translateEntity` above. `position` is
+    // metres; the point holds the file's native unit (#6233).
+    const [oldX, oldY, oldZ] = pointToMetres(dataStore, chain.coordinates);
     const dx = position[0] - oldX;
     const dy = position[1] - oldY;
     const dz = position[2] - oldZ;
-    const mutation = get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, position);
+    const mutation = get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, pointToNative(dataStore, position));
     if (dx !== 0 || dy !== 0 || dz !== 0) {
       const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
       const rendererDelta: [number, number, number] = [dx, dz, -dy];
@@ -1790,7 +1804,7 @@ export const createMutationSlice: StateCreator<
       const editor = getOrCreateStoreEditor(get, set, modelId);
       if (editor) {
         const chain = resolvePlacementChain(dataStore, view, editor, expressId);
-        if (chain) return chain.coordinates;
+        if (chain) return pointToMetres(dataStore, chain.coordinates);
       }
     }
     // No STEP chain (recipient's IFCX-reconstructed store): fall back to the
@@ -1800,7 +1814,7 @@ export const createMutationSlice: StateCreator<
     return get().readCollabPlacement(modelId, expressId)?.location ?? null;
   },
 
-  resizeWall: (modelId, expressId, newStart, newEnd) => {
+  resizeWall: (modelId, expressId, newStart, newEnd, batchId) => {
     const denial = mutationDenial(get(), modelId);
     if (denial) return { ok: false, reason: denial };
     const view = get().mutationViews.get(modelId);
@@ -1809,62 +1823,13 @@ export const createMutationSlice: StateCreator<
     if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
     const dataStore = get().models.get(modelId)?.ifcDataStore;
     if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
-
-    // resolveWallEditChain reads all four ids without mutating.
-    // The four writes are then committed as a single atomic batch
-    // via setPositionalAttributesBatch — one Ctrl+Z reverts the
-    // whole resize, no walking through inconsistent intermediate
-    // wall states.
-    const chain = resolveWallEditChain(dataStore, view, editor, expressId);
-    if (!chain) {
-      return {
-        ok: false,
-        reason:
-          'Wall does not have a simple IfcRectangleProfileDef → IfcExtrudedAreaSolid representation',
-      };
-    }
-    const dx = newEnd[0] - newStart[0];
-    const dy = newEnd[1] - newStart[1];
-    const dz = newEnd[2] - newStart[2];
-    const length = Math.hypot(dx, dy);
-    if (length < 1e-6) return { ok: false, reason: 'Wall length must be greater than zero' };
-    if (Math.abs(dz) > Math.max(1e-6 * length, 1e-9)) {
-      return { ok: false, reason: 'Start and end must lie on the same storey plane' };
-    }
-    const dir: [number, number, number] = [dx / length, dy / length, 0];
-
-    const batchId = get().setPositionalAttributesBatch(modelId, [
-      { entityId: chain.startPointId, index: 0, value: newStart },
-      { entityId: chain.refDirectionId, index: 0, value: dir },
-      { entityId: chain.profileId, index: 3, value: length },
-      { entityId: chain.profileOriginPointId, index: 0, value: [length / 2, 0] },
-    ]);
-    // The start point moves the wall's placement, so its openings and fillings follow.
-    remeshAfterCommit(get, modelId, batchId, [expressId], 'hostsChanged');
-
-    // Mirror the resize to peers as a geometry replace: regenerate the wall mesh
-    // at the new dimensions (built at its current world position) and swap the
-    // entity's room blob; peers re-hydrate the new blob. No-op off-collab.
-    if (Number.isFinite(chain.height) && chain.height > 0) {
-      const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
-      const meshes = meshesForOwningModel(get(), modelId);
-      const bounds = getEntityBounds(meshes, globalId);
-      const newMesh = buildElementMesh({
-        type: 'wall',
-        globalId,
-        storeyElevation: bounds?.min.y ?? 0, // renderer Y base = IFC Z storey elevation
-        payload: {
-          type: 'wall',
-          params: { Thickness: chain.thickness, Height: chain.height },
-          start: newStart,
-          end: newEnd,
-        },
-      });
-      if (newMesh) get().mirrorEntityGeometry(modelId, expressId, newMesh);
-    }
-
-    return { ok: true, newLength: length };
+    const result = resizeWallMetres(get, { dataStore, view, editor }, modelId, expressId, newStart, newEnd, batchId);
+    // A drag rebuilds the mesh once, on release; a one-off resize right away.
+    if (result.ok && batchId === undefined) get().refreshWallMesh(modelId, expressId);
+    return result;
   },
+
+  refreshWallMesh: (modelId, expressId) => refreshWallMeshIn(get, modelId, expressId, true),
 
   readWallEndpoints: (modelId, expressId) => {
     // Same lazy-create pattern as `readEntityRotation` /
@@ -1872,21 +1837,10 @@ export const createMutationSlice: StateCreator<
     // selection, not after an unrelated mutation has primed the
     // editor cache.
     const view = get().mutationViews.get(modelId);
-    if (!view) return null;
-    const editor = getOrCreateStoreEditor(get, set, modelId);
-    if (!editor) return null;
+    const editor = view ? getOrCreateStoreEditor(get, set, modelId) : null;
     const dataStore = get().models.get(modelId)?.ifcDataStore;
-    if (!dataStore) return null;
-    const chain = resolveWallEditChain(dataStore, view, editor, expressId);
-    if (!chain) return null;
-    const [sx, sy, sz] = chain.startCoordinates;
-    const [dx, dy, dz] = chain.refDirection;
-    const end: [number, number, number] = [
-      sx + dx * chain.wallLength,
-      sy + dy * chain.wallLength,
-      sz + dz * chain.wallLength,
-    ];
-    return { start: [sx, sy, sz], end, thickness: chain.thickness };
+    const wall = view && editor && dataStore ? readWallMetres({ dataStore, view, editor }, expressId) : null;
+    return wall ? { start: wall.start, end: wall.end, thickness: wall.thickness } : null;
   },
 
   readWallSplitProjection: (modelId, expressId, cursorStoreyLocal) => {

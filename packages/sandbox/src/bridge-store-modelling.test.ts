@@ -23,7 +23,7 @@ function method(name: string) {
   return found;
 }
 
-describe('#6232 bim.store hosted openings in the sandbox', () => {
+describe('#6232 bim.store modelling methods in the sandbox', () => {
   it('bridges each method and forwards (modelId, hostExpressId, params)', () => {
     for (const name of NAMES) {
       const target = vi.fn(() => ({ modelId: 'm', expressId: 7 }));
@@ -42,6 +42,25 @@ describe('#6232 bim.store hosted openings in the sandbox', () => {
         .toThrow(/hostExpressId must be a positive integer/);
       expect(() => method(name).call(sdk, ['m', 5, null], CTX)).toThrow(/params is required/);
       expect(target).not.toHaveBeenCalled();
+    }
+  });
+
+  it('bridges the type and material methods and checks id lists at the boundary', () => {
+    for (const name of ['assignType', 'assignMaterial'] as const) {
+      const target = vi.fn(() => ({ modelId: 'm', expressId: 9 }));
+      const sdk = { store: { [name]: target } } as unknown as BimContext;
+      method(name).call(sdk, ['m', 388, [1222]], CTX);
+      expect(target).toHaveBeenCalledWith('m', 388, [1222]);
+      expect(() => method(name).call(sdk, ['m', 388, []], CTX)).toThrow(/non-empty array/);
+      expect(() => method(name).call(sdk, ['m', 388, [1.5]], CTX)).toThrow(/positive integer/);
+      expect(target).toHaveBeenCalledTimes(1);
+    }
+    for (const name of ['addElementType', 'addMaterial', 'addMaterialLayerSet', 'addMaterialLayerSetUsage'] as const) {
+      const target = vi.fn(() => ({ modelId: 'm', expressId: 9 }));
+      const sdk = { store: { [name]: target } } as unknown as BimContext;
+      method(name).call(sdk, ['m', { Name: 'x' }], CTX);
+      expect(target).toHaveBeenCalledWith('m', { Name: 'x' });
+      expect(() => method(name).call(sdk, ['m', undefined], CTX)).toThrow(/params is required/);
     }
   });
 });

@@ -13,8 +13,9 @@
  * (the store's `mutationVersion`) or the storey changes, never per move.
  */
 
+import { mayLandNear } from '../constraints.js';
 import { UniformGridIndex } from '../grid.js';
-import type { SnapCandidate, SnapQuery, SnapSource, Vec2 } from '../types.js';
+import type { CollectHint, SnapCandidate, SnapQuery, SnapSource, Vec2 } from '../types.js';
 import { closestOnSegment } from './linework.js';
 
 export interface WallAxis {
@@ -76,10 +77,27 @@ export function createSemanticSource(deps: SemanticSourceDeps, id = 'semantic'):
   return {
     id,
     rebuilds: () => rebuilds,
-    collect(q: SnapQuery, radius: number, out: SnapCandidate[]): void {
+    collect(q: SnapQuery, radius: number, out: SnapCandidate[], hint?: CollectHint): void {
       ensure();
       if (axes.length === 0) return;
       const entity = (i: number) => ({ modelId: deps.modelId, expressId: axes[i].expressId });
+      if (hint && (hint.locus.kind === 'line' || hint.locus.kind === 'ray')) {
+        // Under a linear lock a far end can still align along it, which a radius
+        // query cannot find: scan the storey's walls with the landing test instead.
+        axes.forEach((w, i) => {
+          const m: Vec2 = [(w.a[0] + w.b[0]) / 2, (w.a[1] + w.b[1]) / 2];
+          if (mayLandNear(hint, radius, w.a)) out.push({ kind: 'endpoint', local: w.a, source: 'semantic', entity: entity(i) });
+          if (mayLandNear(hint, radius, w.b)) out.push({ kind: 'endpoint', local: w.b, source: 'semantic', entity: entity(i) });
+          if (mayLandNear(hint, radius, m)) out.push({ kind: 'midpoint', local: m, source: 'semantic', entity: entity(i) });
+          if (mayLandNear(hint, radius, w.a, w.b)) {
+            out.push({
+              kind: 'edge', local: closestOnSegment(q.cursor, w.a, w.b), source: 'semantic', entity: entity(i),
+              guide: { kind: 'segment', a: w.a, b: w.b, role: 'edge' },
+            });
+          }
+        });
+        return;
+      }
       points.query(q.cursor, radius, (t, p) => {
         out.push({ kind: t.kind, local: p, source: 'semantic', entity: entity(t.axis) });
       });

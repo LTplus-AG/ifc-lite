@@ -7,6 +7,8 @@ import assert from 'node:assert/strict';
 import type { SnapCandidate, Vec2 } from '../types.js';
 import { closestOnSegment } from './linework.js';
 import { createSemanticSource, type WallAxis } from './semantic.js';
+import { solveSnap } from '../solve.js';
+import { MODELING_SNAP_PROFILE } from '../rank.js';
 import { query, rng } from '@/test/snap-fixture.js';
 
 function randomWalls(seed: number, n: number): WallAxis[] {
@@ -47,6 +49,16 @@ describe('createSemanticSource (#6232 WP3)', () => {
       assert.deepEqual(gotInRange, want.map(key).sort(), `query ${k}`);
       for (const c of got) if (c.kind === 'edge') assert.equal(c.guide?.kind, 'segment');
     }
+  });
+
+  it('under an ortho lock offers a far wall end that aligns along the lock', () => {
+    // A wall end 3 m above the horizontal lock line through the anchor, at x = 4.
+    const walls: WallAxis[] = [{ expressId: 7, a: [4, 3], b: [4, 6] }];
+    const src = createSemanticSource({ modelId: 'm', version: () => 1, storeyId: () => 1, loadAxes: () => walls });
+    const q = query([4.05, 0.4], { anchor: [0, 0], modifiers: { shift: true, alt: false }, metresPerPixel: 0.01 });
+    const res = solveSnap(q, [src], { ...MODELING_SNAP_PROFILE, sources: ['semantic'], angleStepDeg: 90 });
+    assert.equal(res.winner?.kind, 'endpoint');
+    assert.deepEqual(res.local, [4, 0]);
   });
 
   it('rebuilds only when the mutation version or the storey changes', () => {

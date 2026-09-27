@@ -96,12 +96,13 @@ test('mobile empty and authored-model screens stay within their axe baselines (#
 test('the Panels sheet opens every available registry panel on a phone (#5865)', async ({ page }) => {
   await loadAuthoredModel(page);
   const available = await page.evaluate(() => {
-    const { sidebarOrder, sidebarHiddenIds, pointCloudAssetCount } = globalThis.__ifc_lite_viewer_store__.getState();
+    const { sidebarOrder, sidebarHiddenIds } = globalThis.__ifc_lite_viewer_store__.getState();
     return sidebarOrder.filter((id) =>
       (!sidebarHiddenIds.includes(id) || id === 'properties') &&
-      id !== 'collab' && (id !== 'pointclouds' || pointCloudAssetCount > 0));
+      id !== 'collab');
   });
-  const registered = WORKSPACE_PANELS.filter(({ id }) => id !== 'collab' && id !== 'pointclouds');
+  const registered = WORKSPACE_PANELS.filter(({ id }) => id !== 'collab');
+  expect(available).toContain('pointclouds'); // #5873: the empty panel is reachable before a scan loads.
   expect([...available].sort()).toEqual(registered.map(({ id }) => id).sort());
 
   const launcher = page.getByRole('button', { name: 'Open the panel list' });

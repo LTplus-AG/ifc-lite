@@ -54,6 +54,11 @@ const NOT_RENDERED_IN_THIS_STATE: RibbonKey[] = [
   'ribbon.view.worldShowTooltip', // Cesium is enabled
   'ribbon.view.moveGeorefStopTooltip', // not in placement mode
   'ribbon.elements.selectionGroup', // a selection exists
+  'ribbon.analyze.validateGroup', // Analyze group browser is closed
+  'ribbon.analyze.compareGroup',
+  'ribbon.analyze.dataGroup',
+  'ribbon.analyze.listsTooltip', // its tooltip is not hovered
+  'ribbon.analyze.styleGroup',
   'ribbon.analyze.appsGroup', // no analysis extensions installed
   'ribbon.author.exitEditTooltip', // edit mode is off
   'ribbon.author.editLockedTooltip', // single-user session can edit

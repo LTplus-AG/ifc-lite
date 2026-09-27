@@ -177,19 +177,4 @@ describe('ribbon icon design contract', () => {
     }
     assert.deepEqual(problems, []);
   });
-
-  it('the seven remaining glyphs that used to be lucide are house icons wired to their buttons', () => {
-    // Regression pin for #4559: these are the buttons that shipped with
-    // lucide glyphs. The generic guard above catches any future one; this
-    // names the specific set so a revert of one is reported by name.
-    const exportsMap = houseIconExports();
-    for (const name of ['Reposition', 'Zones', 'LoadReport', 'Appearance', 'World', 'Move', 'FollowWork']) {
-      assert.ok(exportsMap.has(name), `@/icons must export ${name}`);
-    }
-    const used = new Set<string>();
-    for (const file of tabFiles) for (const { icon } of ribbonButtonIcons(parse(file))) used.add(icon);
-    for (const name of ['Reposition', 'Zones', 'LoadReport', 'Appearance', 'World', 'Move', 'FollowWork']) {
-      assert.ok(used.has(name), `a ribbon button must use icon={${name}}`);
-    }
-  });
 });

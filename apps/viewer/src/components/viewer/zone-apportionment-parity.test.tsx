@@ -37,6 +37,8 @@ import assert from 'node:assert/strict';
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { resolve } from '@/i18n/registry';
+import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
 import { useWorkspacePanelControls } from './toolbar/useWorkspacePanelControls.js';
 import { ZoneApportionSummary } from './ZoneApportionSummary.js';
@@ -127,14 +129,14 @@ function openPanelsMenu(container: HTMLElement): void {
  * `document`.
  */
 function zonesControl(surface: 'classic' | 'ribbon', container: HTMLElement): HTMLElement {
+  const name = resolve(panelTitleKey('zones'));
   const found = surface === 'classic'
     ? [...document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')].filter(
-        (e) => e.textContent?.trim() === 'Location zones')
-    // Matched on the VISIBLE label: `RibbonLargeButton` sets
-    // `aria-label={tooltip ?? label}`, so this button's accessible name is the
-    // tooltip prose, not "Zones".
+        (e) => e.textContent?.trim() === name)
+    // The ribbon button keeps tooltip prose in its description, while its
+    // accessible name is the canonical panel title.
     : [...container.querySelectorAll<HTMLElement>('button')].filter(
-        (e) => e.textContent?.trim() === 'Location zones');
+        (e) => e.getAttribute('aria-label') === name);
   assert.equal(found.length, 1, `${surface}: expected one Zones control, found ${found.length}`);
   return found[0];
 }

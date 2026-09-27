@@ -42,7 +42,6 @@ apps/viewer/src/hooks/modelLoadedGeometryProps.test.ts                    # wiri
 # turns into decoration. It still cannot tell "read a production module and
 # assert on its text" from "read the artifact this tool just GENERATED and
 # assert on it".
-apps/viewer/src/components/viewer/toolbar-parity.test.ts                    # every assertion is on the TypeScript AST. The surviving hits are PATH checks (`spec.startsWith('@/')`, `base.endsWith('.js')`) and an array-key `.startsWith`, on names the flat taint set reaches from an unrelated read -- no assertion reads source text.
 packages/create-ifc-lite/test/config-fixers.test.ts                         # asserts on the `vite.config.ts` the scaffolder writes into a temp dir, i.e. on its OUTPUT. Nothing here reads a production source file.
 
 # --- Added by #3639, when TEST_FILE_RE finally included .mjs ---

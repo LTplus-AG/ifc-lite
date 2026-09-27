@@ -170,6 +170,9 @@ export function refreshWallMeshIn(get: Get, subscribe: Subscribe, modelId: strin
     }
     return;
   }
+  // No replacement to build (e.g. an unset extrusion depth): keep the old mesh
+  // rather than prune it and leave the wall invisible.
+  if (!buildWallMesh(get, modelId, expressId, globalId)) return;
   // The old mesh leaves the way a delete takes it (store prune + renderer drain).
   get().pruneGeometryMeshes(new Set([globalId]));
   get().setPendingMeshRemovals(new Set([globalId]));

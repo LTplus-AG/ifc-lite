@@ -82,5 +82,14 @@ for (const { name, unit, scale: s } of WALL_UNITS) {
       const [undoMin, undoMax] = wallExtentX();
       assert.ok(Math.abs(undoMin - 2) < 1e-4 && Math.abs(undoMax - 6) < 1e-4, `mesh spans ${undoMin}..${undoMax} after undo`);
     });
+
+    it('keeps the old mesh when the resized wall cannot be rebuilt', () => {
+      // IfcExtrudedAreaSolid.Depth (#82, index 3) unset: the chain still
+      // resolves, so the handles show, but there is no height to build from.
+      store().setPositionalAttribute('ifc', 82, 3, null);
+      assert.ok(store().resizeWall('ifc', WALL, [2, 1, 0], [7, 1, 0]).ok);
+      drainRemovals();
+      assert.deepEqual(wallExtentX(), [2, 6], 'the wall keeps its old mesh instead of vanishing');
+    });
   });
 }

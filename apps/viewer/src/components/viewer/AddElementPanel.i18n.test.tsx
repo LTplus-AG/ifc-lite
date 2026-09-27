@@ -131,10 +131,22 @@ describe('Add Element localization (#4918)', () => {
     assert.match(text, /⟦placement missing⟧/);
     assert.match(text, /⟦placement could not be resolved⟧/);
     assert.doesNotMatch(text, /no-placement|placement-not-resolvable/);
+    assert.equal(ui.querySelectorAll('input[type="checkbox"]').length, 0, 'no developer console-logging toggle (#6233)');
 
     registerLocale('ar-EG', {});
     act(() => setLocale('ar-EG'));
     assert.match(ui.textContent ?? '', /٢/, 'Auto Spaces display counts must use active-locale digits');
+  });
+
+  it('keeps API names, debug tooling and non-existent fields out of user hints (#6233)', () => {
+    assert.ok(HAS_CATALOGUE, 'add-element.en.ts catalogue must exist');
+    const offenders = Object.entries(CATALOGUE).flatMap(([key, value]) => {
+      const texts = typeof value === 'string' ? [value] : [value.one, value.other];
+      return texts
+        .filter((text) => /\bIfcRel\w*|\w\.add[A-Z]\w*|\.[A-Z_]{3,}\.|Raw STEP|PredefinedType|console|devtools/.test(text))
+        .map((text) => `${key}: ${text}`);
+    });
+    assert.deepEqual(offenders, []);
   });
 
   it('recomputes unnamed-storey fallbacks and complete unit labels on a live locale change', () => {

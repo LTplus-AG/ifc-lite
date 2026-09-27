@@ -905,7 +905,7 @@ function finishAddElement(
  *   - wall / beam: 1st click → start, 2nd click → end + place
  *   - slab (rectangle): 1st click → corner, 2nd click → opposite + place
  *   - slab (polygon): N clicks accumulate; Enter / double-click closes
- *     (handled in the keyboard layer; this function only appends)
+ *     (keyboard layer / add-element-double-click.ts; this only appends)
  */
 async function handleAddElementDrop(
   point: { x: number; y: number; z: number },
@@ -1047,7 +1047,7 @@ function polygonArea2D(points: Array<[number, number]>): number {
 
 /**
  * Close an in-progress polygon for any slab-style type
- * (slab / roof / plate / space). Triggered by Enter. Requires
+ * (slab / roof / plate / space). Enter or double-click. Requires
  * ≥3 points; the builder's auto-closure handles the trailing edge.
  */
 export function commitAddElementSlabPolygon(): void {

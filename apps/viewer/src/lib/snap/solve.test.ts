@@ -93,6 +93,13 @@ describe('solveSnap invariants (#6232 WP3)', () => {
     assert.ok(checked > 500);
   });
 
+  it('a NaN cursor or target never snaps', () => {
+    const src = sceneSource([[0, 0]], [[[1, 1], [2, 1]]]);
+    assert.equal(solveSnap(query([NaN, 0]), [src], PROFILE).winner, null);
+    const bad: SnapSource = { id: 'linework', collect: (_q, _r, out) => { out.push({ kind: 'vertex', local: [NaN, 0], source: 'linework' }); } };
+    assert.equal(solveSnap(query([5, 5]), [bad], PROFILE).winner, null);
+  });
+
   it('prefers a farther endpoint over a nearer edge, and falls back to the edge outside the radius', () => {
     const src = sceneSource([], [[[0, 0], [10, 0]]]);
     const near = solveSnap(query([0.1, 0.02]), [src], PROFILE);

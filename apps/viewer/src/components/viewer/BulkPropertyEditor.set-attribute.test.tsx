@@ -33,6 +33,7 @@ function seed(entities: FixtureEntity[]): MutablePropertyView {
     dirtyModels: new Set(),
     mutationVersion: 0,
     collabRole: null,
+    editEnabled: true,
   });
   return view;
 }

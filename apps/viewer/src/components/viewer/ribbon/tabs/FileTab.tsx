@@ -15,6 +15,7 @@ import { isCollabEnabled } from '@/lib/collab/config';
 import { useTranslation } from '@/i18n';
 import type { FileCommands } from '../../toolbar/useFileCommands';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
+import { panelTitleKey } from '@/lib/panels/registry';
 import { RibbonExportGroup } from './RibbonExportGroup';
 import { RIBBON_EXPORT_ICONS } from './ribbon-export-icons';
 import {
@@ -59,7 +60,8 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
         />
         <RibbonLargeButton
           icon={CloudSources}
-          label={t('ribbon.file.cloudSources')}
+          label={t(panelTitleKey('sources'))}
+          aria-label={t(panelTitleKey('sources'))}
           tooltip={t('ribbon.file.cloudSourcesTooltip')}
           active={activeWorkspacePanels.has('sources')}
           onClick={() => handleToggleRightPanel('sources')}
@@ -110,7 +112,8 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
                 that its geography stays put rather than appearing mid-session. */}
             <RibbonLargeButton
               icon={CollabsRoom}
-              label={t('ribbon.file.room')}
+              label={t(panelTitleKey('collab'))}
+              aria-label={t(panelTitleKey('collab'))}
               tooltip={collabRoomId ? t('ribbon.file.roomTooltip') : t('ribbon.file.roomNotJoinedTooltip')}
               active={collabPanelVisible}
               onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab', 'ribbon')}

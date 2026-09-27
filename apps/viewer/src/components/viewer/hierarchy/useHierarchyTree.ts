@@ -6,7 +6,7 @@ import { useMemo, useState, useCallback, useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
-import type { TreeNode, UnifiedStorey, HierarchySortMode, ExpansionLookup } from './types';
+import type { TreeNode, UnifiedStorey, HierarchySortMode } from './types';
 import { HIERARCHY_SORT_MODES, DEFAULT_HIERARCHY_SORT } from './types';
 import {
   buildUnifiedStoreys,
@@ -16,17 +16,18 @@ import {
   type AuthoredProduct,
   type GroupSubFilter,
 } from './treeDataBuilder';
-import { buildTreeForGrouping, useExpandedTreeForGrouping, useRevealGlobalId } from './revealGlobalId';
+import { buildTreeForGrouping, useRevealGlobalId } from './revealGlobalId';
 import {
   buildGeometricIdSet,
   collectAnnotationEntityIds,
   collectGeometryReadyModelIds,
 } from './hierarchyGeometry';
+import { flattenVisibleHierarchy, indexHierarchyTree } from './treeProjection';
 
 export type { HierarchyMode } from '@/store';
 
 const SORT_STORAGE_KEY = 'hierarchy-sort';
-const EXPAND_ALL: ExpansionLookup = { has: () => true };
+const EXPAND_ALL = { has: () => true };
 
 /** Read the persisted sort mode, falling back to the default for missing or
  *  stale (e.g. renamed) localStorage values. Reads can throw (private mode,
@@ -241,31 +242,31 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     // mutationVersion bumps on every authoring edit; geometricIds tracks the mesh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mutationViews, models, geometricIds, mutationVersion]);
-  const searchExpansion = searchQuery.trim() ? EXPAND_ALL : expandedNodes;
-
-  // hiddenEntities intentionally NOT in deps - visibility computed lazily
-  const treeData = useMemo(
+  // Build the structural tree once per model/mode/mutation input. Search uses
+  // this same complete tree; reveal uses it too. A chevron click only projects
+  // visible rows and never calls the builder.
+  // hiddenEntities intentionally NOT in deps - visibility computed lazily.
+  const structuralTree = useMemo(
     (): TreeNode[] => buildTreeForGrouping(
-      groupingMode, models, ifcDataStore, searchExpansion, isMultiModel, unifiedStoreys, sortMode,
-      geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations, mutationViews,
+      groupingMode, models, ifcDataStore, EXPAND_ALL, isMultiModel, unifiedStoreys, sortMode,
+      geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds,
+      georefMutations, mutationViews,
     ),
-    [groupingMode, models, ifcDataStore, searchExpansion, isMultiModel, unifiedStoreys, sortMode, geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations, mutationViews, mutationVersion]
+    [groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode,
+      geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds,
+      georefMutations, mutationViews, mutationVersion],
   );
-
-  // Build the fully expanded tree only when a reveal needs it. Streamed
-  // geometry updates can change these inputs many times without a pick.
-  const getExpandedTreeForReveal = useExpandedTreeForGrouping({
-    groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode, geometricIds,
-    classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations,
-    mutationViews, mutationVersion,
-  });
+  const treeIndex = useMemo(() => indexHierarchyTree(structuralTree), [structuralTree]);
+  const getExpandedTreeForReveal = useCallback(() => structuralTree, [structuralTree]);
   const revealGlobalId = useRevealGlobalId(getExpandedTreeForReveal, expandedNodes, setExpandedNodes);
-
-  // Filter nodes based on search
-  const filteredNodes = useMemo(
-    () => filterNodes(treeData, searchQuery),
-    [treeData, searchQuery]
+  const treeData = useMemo(
+    () => searchQuery.trim()
+      ? filterNodes(structuralTree, searchQuery)
+      : flattenVisibleHierarchy(treeIndex, expandedNodes),
+    [structuralTree, treeIndex, searchQuery, expandedNodes],
   );
+
+  const filteredNodes = treeData;
 
   // Split filtered nodes into storeys and models sections (for multi-model mode)
   const { storeysNodes, modelsNodes } = useMemo(

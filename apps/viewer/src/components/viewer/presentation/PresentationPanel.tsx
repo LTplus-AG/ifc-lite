@@ -33,7 +33,7 @@ import {
   Save,
   Square,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { promptDialog } from '@/components/ui/confirm-dialog';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -220,25 +220,25 @@ export function PresentationPanel() {
 
         <div className="flex items-center gap-1.5">
           <div className="flex items-center gap-1 rounded-md border bg-background/70 p-1">
-            <Button type="button" variant="outline" size="icon-sm" onClick={() => applySource('set')} title={t('presentationPanel.setFromContextTitle')}>
+            <IconButton type="button" variant="outline" size="icon-sm" onClick={() => applySource('set')} label={t('presentationPanel.setFromContextTitle')}>
               <Equal className="h-4 w-4" />
-            </Button>
-            <Button type="button" variant="outline" size="icon-sm" onClick={() => applySource('add')} title={t('presentationPanel.addToBasketTitle')}>
+            </IconButton>
+            <IconButton type="button" variant="outline" size="icon-sm" onClick={() => applySource('add')} label={t('presentationPanel.addToBasketTitle')}>
               <Plus className="h-4 w-4" />
-            </Button>
-            <Button
+            </IconButton>
+            <IconButton
               type="button"
               variant="outline"
               size="icon-sm"
               onClick={() => applySource('remove')}
               disabled={pinboardEntities.size === 0}
-              title={t('presentationPanel.removeFromBasketTitle')}
+              label={t('presentationPanel.removeFromBasketTitle')}
             >
               <Minus className="h-4 w-4" />
-            </Button>
+            </IconButton>
           </div>
           <div className="flex items-center gap-1 rounded-md border bg-background/70 p-1">
-            <Button
+            <IconButton
               type="button"
               variant="outline"
               size="icon-sm"
@@ -247,56 +247,56 @@ export function PresentationPanel() {
                 else showPinboard();
               }}
               disabled={pinboardEntities.size === 0}
-              title={basketIsVisible ? t('presentationPanel.hideActiveBasketTitle') : t('presentationPanel.showActiveBasketTitle')}
+              label={basketIsVisible ? t('presentationPanel.hideActiveBasketTitle') : t('presentationPanel.showActiveBasketTitle')}
             >
               {basketIsVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </Button>
-            <Button
+            </IconButton>
+            <IconButton
               type="button"
               variant="outline"
               size="icon-sm"
               onClick={executeBasketClear}
               disabled={pinboardEntities.size === 0}
-              title={t('presentationPanel.clearActiveBasketTitle')}
+              label={t('presentationPanel.clearActiveBasketTitle')}
             >
               <RotateCcw className="h-4 w-4" />
-            </Button>
+            </IconButton>
           </div>
-          <Button
+          <IconButton
             type="button"
             variant="default"
             size="icon-sm"
             onClick={handleSaveCurrent}
             disabled={pinboardEntities.size === 0 || savingThumbnail}
-            title={t('presentationPanel.saveCurrentViewTitle')}
+            label={t('presentationPanel.saveCurrentViewTitle')}
           >
             <Save className="h-4 w-4" />
-          </Button>
-          <Button
+          </IconButton>
+          <IconButton
             type="button"
             variant={playingAll ? 'secondary' : 'outline'}
             size="icon-sm"
             onClick={playingAll ? stopPlayAll : (e) => { void startPlayAll(e.shiftKey); }}
             disabled={basketViews.length === 0}
-            title={playingAll ? t('presentationPanel.stopPlaybackTitle') : t('presentationPanel.playAllTitle')}
+            label={playingAll ? t('presentationPanel.stopPlaybackTitle') : t('presentationPanel.playAllTitle')}
           >
             {playingAll ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-          </Button>
+          </IconButton>
         </div>
       </div>
 
       {/* Saved-view filmstrip */}
       <div className="flex-1 min-h-0 flex items-center gap-2 px-3 py-2">
-        <Button
+        <IconButton
           type="button"
           variant="outline"
           size="icon-sm"
           onClick={() => scrollStrip(-280)}
           disabled={basketViews.length <= 1}
-          title={t('presentationPanel.scrollLeftTitle')}
+          label={t('presentationPanel.scrollLeftTitle')}
         >
           <ChevronLeft className="h-4 w-4" />
-        </Button>
+        </IconButton>
 
         <div
           ref={stripRef}
@@ -332,16 +332,16 @@ export function PresentationPanel() {
           </div>
         </div>
 
-        <Button
+        <IconButton
           type="button"
           variant="outline"
           size="icon-sm"
           onClick={() => scrollStrip(280)}
           disabled={basketViews.length <= 1}
-          title={t('presentationPanel.scrollRightTitle')}
+          label={t('presentationPanel.scrollRightTitle')}
         >
           <ChevronRight className="h-4 w-4" />
-        </Button>
+        </IconButton>
       </div>
     </div>
   );

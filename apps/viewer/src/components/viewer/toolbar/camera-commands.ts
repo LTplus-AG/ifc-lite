@@ -22,6 +22,7 @@
 
 import type { TranslationKey } from '@/i18n';
 import type { CameraCallbacks } from '@/store/types';
+import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
 
 export type CameraCommandId =
   | 'home'
@@ -56,8 +57,8 @@ export interface CameraCommand {
   labelKey: TranslationKey;
   /** Longer tooltip when the label isn't the whole story. */
   tooltipKey: TranslationKey;
-  /** Keyboard shortcut, where one exists (see `useKeyboardShortcuts`). */
-  shortcut?: string;
+  /** Keyboard command naming this action's key, where one exists (`lib/commands`). */
+  shortcut?: KeyCommandId;
   group: CameraCommandGroup;
   /**
    * True when users press it repeatedly (zoom, rotate). Menu surfaces stay
@@ -80,7 +81,7 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
       id: 'home',
       labelKey: 'cameraCommands.home.label',
       tooltipKey: 'cameraCommands.home.tooltip',
-      shortcut: 'H',
+      shortcut: 'camera.home',
       group: 'camera',
       run: () => goHome(),
     },
@@ -104,7 +105,7 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
       id: 'fitAll',
       labelKey: 'cameraCommands.fitAll.label',
       tooltipKey: 'cameraCommands.fitAll.tooltip',
-      shortcut: 'Z',
+      shortcut: 'camera.fitAll',
       group: 'camera',
       run: () => callbacks.fitAll?.(),
     },
@@ -112,7 +113,7 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
       id: 'viewTop',
       labelKey: 'cameraCommands.viewTop.label',
       tooltipKey: 'cameraCommands.viewTop.tooltip',
-      shortcut: '1',
+      shortcut: 'camera.viewTop',
       group: 'preset',
       run: () => callbacks.setPresetView?.('top'),
     },
@@ -120,7 +121,7 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
       id: 'viewBottom',
       labelKey: 'cameraCommands.viewBottom.label',
       tooltipKey: 'cameraCommands.viewBottom.tooltip',
-      shortcut: '2',
+      shortcut: 'camera.viewBottom',
       group: 'preset',
       run: () => callbacks.setPresetView?.('bottom'),
     },
@@ -128,7 +129,7 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
       id: 'viewFront',
       labelKey: 'cameraCommands.viewFront.label',
       tooltipKey: 'cameraCommands.viewFront.tooltip',
-      shortcut: '3',
+      shortcut: 'camera.viewFront',
       group: 'preset',
       run: () => callbacks.setPresetView?.('front'),
     },
@@ -136,7 +137,7 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
       id: 'viewBack',
       labelKey: 'cameraCommands.viewBack.label',
       tooltipKey: 'cameraCommands.viewBack.tooltip',
-      shortcut: '4',
+      shortcut: 'camera.viewBack',
       group: 'preset',
       run: () => callbacks.setPresetView?.('back'),
     },
@@ -144,7 +145,7 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
       id: 'viewLeft',
       labelKey: 'cameraCommands.viewLeft.label',
       tooltipKey: 'cameraCommands.viewLeft.tooltip',
-      shortcut: '5',
+      shortcut: 'camera.viewLeft',
       group: 'preset',
       run: () => callbacks.setPresetView?.('left'),
     },
@@ -152,7 +153,7 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
       id: 'viewRight',
       labelKey: 'cameraCommands.viewRight.label',
       tooltipKey: 'cameraCommands.viewRight.tooltip',
-      shortcut: '6',
+      shortcut: 'camera.viewRight',
       group: 'preset',
       run: () => callbacks.setPresetView?.('right'),
     },

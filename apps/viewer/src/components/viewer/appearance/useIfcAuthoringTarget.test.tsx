@@ -44,7 +44,10 @@ test('both textured creation consumers receive effective IFC bytes from a lazily
   const data = await new IfcParser().parseColumnar(texturedProductSource.slice().buffer);
   data.spatialHierarchy = rebuildSpatialHierarchy(data.entities, data.relationships);
   const model = { ...fixtureModel('lazy'), schemaVersion: 'IFC4' as const, ifcDataStore: data };
-  useViewerStore.setState({ models: new Map([['lazy', model]]), mutationViews: new Map(), collabRoomId: null });
+  useViewerStore.setState({ models: new Map([['lazy', model]]), mutationViews: new Map(), collabRoomId: null, editEnabled: false });
+  await assert.rejects(prepareAuthoredProduct('lazy'), /Edit mode/, 'Edit-off must stop before the lazy overlay is created (#5901)');
+  assert.equal(useViewerStore.getState().mutationViews.size, 0);
+  useViewerStore.setState({ editEnabled: true });
   const prepared = await prepareAuthoredProduct('lazy');
   const canonical = useViewerStore.getState().mutationViews.get('lazy');
   assert.ok(canonical);
@@ -60,7 +63,7 @@ test('both textured creation consumers receive effective IFC bytes from a lazily
 test('selecting a created destination object makes its actual mutation history available after a scan was active #4412', async () => {
   const data = await new IfcParser().parseColumnar(texturedProductSource.slice().buffer);
   const model = { ...fixtureModel('destination'), schemaVersion: 'IFC4' as const, ifcDataStore: data };
-  useViewerStore.setState({ models: new Map([['scan', fixtureModel('scan')], ['destination', model]]), activeModelId: 'scan', mutationViews: new Map(), undoStacks: new Map(), redoStacks: new Map(), collabRoomId: null });
+  useViewerStore.setState({ models: new Map([['scan', fixtureModel('scan')], ['destination', model]]), activeModelId: 'scan', mutationViews: new Map(), undoStacks: new Map(), redoStacks: new Map(), collabRoomId: null, editEnabled: true });
   await prepareAuthoredProduct('destination');
   useViewerStore.getState().setAttribute('destination', 40, 'Name', 'Authored name');
   assert.equal(hasWorkspaceHistory(useViewerStore.getState(), 'undo'), false);

@@ -9,6 +9,7 @@
  */
 
 import type { TranslationKey, TranslationParameters } from '@/i18n';
+import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
 
 export type Category =
   | 'Recent'
@@ -40,7 +41,8 @@ export interface Command {
   keywords: string;           // extra search tokens (no UI display)
   category: Exclude<Category, 'Recent'>;
   icon: React.ElementType;
-  shortcut?: string;
+  /** Keyboard command whose keys the row shows (`lib/commands`). */
+  shortcut?: KeyCommandId;
   detail?: string;            // subtle secondary text (e.g. file size)
   /** Translated counterpart of `detail` — e.g. a tour's "{minutes} min". */
   detailKey?: TranslationKey;

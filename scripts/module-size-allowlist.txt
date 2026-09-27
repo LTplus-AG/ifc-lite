@@ -64,7 +64,7 @@
    750 apps/viewer/src/components/viewer/AddElementPanel.tsx
    415 apps/viewer/src/components/viewer/bcf/BCFTopicDetail.tsx
    534 apps/viewer/src/components/viewer/BCFPanel.tsx
-   871 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
+   623 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
    485 apps/viewer/src/components/viewer/CesiumOverlay.tsx
   1682 apps/viewer/src/components/viewer/ChatPanel.tsx
   1301 apps/viewer/src/components/viewer/ClashPanel.tsx
@@ -72,15 +72,14 @@
   1733 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
    535 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
    409 apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx
-   583 apps/viewer/src/components/viewer/EntityContextMenu.tsx
    644 apps/viewer/src/components/viewer/ExportDialog.tsx
    468 apps/viewer/src/components/viewer/GLBExportDialog.tsx
-  1381 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
-  1146 apps/viewer/src/components/viewer/HierarchyPanel.tsx
+  1369 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
+   782 apps/viewer/src/components/viewer/HierarchyPanel.tsx
    432 apps/viewer/src/components/viewer/IDSCorrectionDialog.tsx
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
-  1533 apps/viewer/src/components/viewer/LensPanel.tsx
-  1411 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
+  1012 apps/viewer/src/components/viewer/LensPanel.tsx
+  1005 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
    521 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
   1132 apps/viewer/src/components/viewer/MainToolbar.tsx
    594 apps/viewer/src/components/viewer/measureHandlers.ts
@@ -247,10 +246,7 @@
    468 packages/ifcx/src/federated-composition.ts
    704 packages/ifcx/src/index.ts
    464 packages/lens/src/engine.ts
-   426 packages/lens/src/matching.ts
-   416 packages/lens/src/types.ts
    812 packages/lists/src/engine.ts
-   412 packages/lists/src/types.ts
    479 packages/mcp/src/backend-query.ts
    544 packages/mcp/src/server.ts
    470 packages/mcp/src/tools/layer-review.ts
@@ -260,7 +256,6 @@
    413 packages/mcp/src/transport/http.ts
    465 packages/merge/src/component-state.ts
    530 packages/merge/src/three-way.ts
-   493 packages/mutations/src/bulk-query-engine.ts
    558 packages/mutations/src/csv-connector.ts
   1879 packages/mutations/src/mutable-property-view.ts
    422 packages/oauth-pkce/src/token-manager.ts
@@ -304,7 +299,7 @@
    673 packages/sandbox/src/sandbox.ts
    458 packages/sdk/src/namespaces/bsdd.ts
    743 packages/sdk/src/types.ts
-  1007 packages/server-client/src/client.ts
+   995 packages/server-client/src/client.ts
    788 packages/server-client/src/data-model-decoder.ts
    444 packages/server-client/src/parquet-tables.ts
    595 packages/server-client/src/types.ts

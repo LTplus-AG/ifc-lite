@@ -29,16 +29,12 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import { runTier0Scan, type SearchResult, type ScanModel } from '@/lib/search/tier0-scan';
-import { queryTier1Indexes, type Tier1Index } from '@/lib/search/tier1-index';
+import type { SearchResult } from '@/lib/search/tier0-scan';
+import { collectSearchResults } from '@/lib/search/collect-results';
 import { pushRecentSearch } from '@/lib/search/recent-searches';
 import { SearchModalText } from './SearchModal.text';
 import { SearchModalFilter } from './SearchModal.filter';
 
-/** Modal-side result cap. Well above what any user scrolls through, small
- *  enough that the score/merge arrays stay cheap. Virtualization keeps
- *  DOM cost constant regardless. */
-const RESULT_LIMIT_MODAL = 5000;
 const DEBOUNCE_MS = 80;
 
 export function SearchModal() {
@@ -73,56 +69,12 @@ export function SearchModal() {
     return () => window.clearTimeout(handle);
   }, [searchQuery]);
 
-  // Split models into the two search tiers. Same logic as SearchInline.
-  const { tier0Models, tier1Indexes, availableModelIds } = useMemo(() => {
-    const t0: ScanModel[] = [];
-    const t1: Tier1Index[] = [];
-    const ids: string[] = [];
-    for (const m of models.values()) {
-      if (!m.ifcDataStore) continue;
-      ids.push(m.id);
-      const record = searchIndexes.get(m.id);
-      if (record?.status === 'ready' && record.index) {
-        t1.push(record.index);
-      } else {
-        t0.push({ id: m.id, ifcDataStore: m.ifcDataStore });
-      }
-    }
-    return { tier0Models: t0, tier1Indexes: t1, availableModelIds: ids };
-  }, [models, searchIndexes]);
+  const availableModelIds = useMemo(() =>
+    [...models.values()].filter((model) => model.ifcDataStore).map((model) => model.id), [models]);
 
   // Full result pool (pre-filter). Filtering happens inside the tab.
-  const results = useMemo<SearchResult[]>(() => {
-    if (!debouncedQuery.trim()) return [];
-    if (tier0Models.length === 0 && tier1Indexes.length === 0) return [];
-
-    const t1Results = tier1Indexes.length > 0
-      ? queryTier1Indexes(tier1Indexes, debouncedQuery, { limit: RESULT_LIMIT_MODAL })
-      : [];
-    const t0Results = tier0Models.length > 0
-      ? runTier0Scan(tier0Models, debouncedQuery, { limit: RESULT_LIMIT_MODAL })
-      : [];
-
-    if (t1Results.length === 0) return t0Results;
-    if (t0Results.length === 0) return t1Results;
-
-    const combined = [...t1Results, ...t0Results];
-    combined.sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      if (a.modelId !== b.modelId) return a.modelId < b.modelId ? -1 : 1;
-      return a.expressId - b.expressId;
-    });
-    const seen = new Set<string>();
-    const out: SearchResult[] = [];
-    for (const r of combined) {
-      const key = `${r.modelId}:${r.expressId}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(r);
-      if (out.length >= RESULT_LIMIT_MODAL) break;
-    }
-    return out;
-  }, [tier0Models, tier1Indexes, debouncedQuery]);
+  const results = useMemo<SearchResult[]>(() =>
+    collectSearchResults(models, searchIndexes, debouncedQuery), [models, searchIndexes, debouncedQuery]);
 
   /** Global ⌘⇧F / Ctrl+⇧F toggle — opens from anywhere, also closes when open.
    *  This is a text-search entry point, so opening always lands on the Search

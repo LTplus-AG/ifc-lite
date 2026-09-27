@@ -102,7 +102,6 @@ export const dataConnectorEn = {
   'dataConnector.errorTitle': 'Error',
 
   'dataConnector.previewMatchesButton': 'Preview Matches',
-  'dataConnector.editRequiresAccessTitle': 'Editing requires editor access in this shared session',
   'dataConnector.importButton': 'Import',
   'dataConnector.importRowsButton': { one: 'Import {countDisplay} row', other: 'Import {countDisplay} rows' },
   'dataConnector.removeMappingLabel': 'Remove mapping',

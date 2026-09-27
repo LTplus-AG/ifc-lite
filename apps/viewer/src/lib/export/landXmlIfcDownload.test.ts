@@ -19,6 +19,7 @@
 import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { downloadLandXmlAsIfc, landXmlIfcExportOutcome } from './landXmlIfcDownload.js';
 import type { LandXmlTinDocument } from '@/hooks/ingest/landXmlSemantics.js';
 
@@ -53,7 +54,7 @@ function document(overrides: Partial<LandXmlTinDocument> = {}): LandXmlTinDocume
 }
 
 /** Record what `downloadBlob` offers the browser, without stubbing it. */
-async function captureDownload(run: () => void): Promise<{ filename: string; text: string }> {
+async function captureDownload(run: () => unknown): Promise<{ filename: string; text: string }> {
   const originalCreate = URL.createObjectURL;
   const originalRevoke = URL.revokeObjectURL;
   const originalClick = HTMLAnchorElement.prototype.click;
@@ -63,7 +64,7 @@ async function captureDownload(run: () => void): Promise<{ filename: string; tex
   URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
   HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) { filename = this.download; };
   try {
-    run();
+    await run();
   } finally {
     URL.createObjectURL = originalCreate;
     URL.revokeObjectURL = originalRevoke;
@@ -74,9 +75,9 @@ async function captureDownload(run: () => void): Promise<{ filename: string; tex
 
 describe('downloadLandXmlAsIfc (#4937)', () => {
   it('offers an IFC4X3 STEP file named after the source', async () => {
-    let result: ReturnType<typeof downloadLandXmlAsIfc> | undefined;
-    const { filename, text } = await captureDownload(() => {
-      result = downloadLandXmlAsIfc({ document: document(), name: 'Example_Terrain.xml' });
+    let result: Awaited<ReturnType<typeof downloadLandXmlAsIfc>> | undefined;
+    const { filename, text } = await captureDownload(async () => {
+      result = await downloadLandXmlAsIfc({ document: document(), name: 'Example_Terrain.xml' });
     });
 
     assert.equal(result?.status, 'exported');
@@ -91,8 +92,8 @@ describe('downloadLandXmlAsIfc (#4937)', () => {
   });
 
   it('writes georeferencing for a declared datum, passed through and not resolved', async () => {
-    const { text } = await captureDownload(() => {
-      downloadLandXmlAsIfc({
+    const { text } = await captureDownload(async () => {
+      await downloadLandXmlAsIfc({
         document: document({ coordinateSystem: { horizontalDatum: 'SWEREF99 TM', verticalDatum: 'RH2000' } }),
         name: 'terrain.xml',
       });
@@ -103,19 +104,48 @@ describe('downloadLandXmlAsIfc (#4937)', () => {
     assert.match(text, /IFCMAPCONVERSION/);
   });
 
+  // Follow-up to #5942: producers (3D-Win, Civil 3D) declare the CRS in
+  // LandXML 1.2's `epsgCode`, and Civil 3D puts a datum NAME in
+  // horizontalDatum. The CRS written is the declared code, the same id the
+  // viewer places and drapes the terrain by — named, not resolved.
+  it('writes the producer epsgCode as the CRS name, ahead of a datum name', async () => {
+    for (const [coordinateSystem, name] of [
+      [{ epsgCode: '3875' }, 'EPSG:3875'],
+      [{ epsgCode: '2269', horizontalDatum: 'NAD83', verticalDatum: 'NAVD88' }, 'EPSG:2269'],
+    ] as const) {
+      const { text } = await captureDownload(async () => {
+        await downloadLandXmlAsIfc({ document: document({ coordinateSystem }), name: 'terrain.xml' });
+      });
+      assert.match(text, new RegExp(`IFCPROJECTEDCRS\\('${name}'`));
+      assert.match(text, /IFCMAPCONVERSION/);
+    }
+  });
+
   it('writes no georeferencing at all when no datum is declared', async () => {
-    const { text } = await captureDownload(() => {
-      downloadLandXmlAsIfc({ document: document(), name: 'terrain.xml' });
+    const { text } = await captureDownload(async () => {
+      await downloadLandXmlAsIfc({ document: document(), name: 'terrain.xml' });
     });
     // A placeholder CRS would be worse than none: it reads as a claim.
     assert.doesNotMatch(text, /IFCPROJECTEDCRS/);
     assert.doesNotMatch(text, /IFCMAPCONVERSION/);
   });
 
+  it('records the SHA-256 of the source bytes as LandXML_Conversion.SourceHash (#5942 follow-up)', async () => {
+    // The real-data run found `SourceHash` empty in every viewer export.
+    const bytes = '<?xml version="1.0"?><LandXML version="1.2"><Surfaces/></LandXML>\n';
+    const expected = createHash('sha256').update(bytes).digest('hex');
+    const { text } = await captureDownload(async () => {
+      await downloadLandXmlAsIfc({
+        document: document(), name: 'terrain.xml', source: new File([bytes], 'terrain.xml'),
+      });
+    });
+    assert.match(text, new RegExp(`IFCPROPERTYSINGLEVALUE\\('SourceHash',\\$,IFCLABEL\\('${expected}'\\)`));
+  });
+
   it('reports the converter refusal instead of downloading an empty file', async () => {
-    let result: ReturnType<typeof downloadLandXmlAsIfc> | undefined;
-    const { filename } = await captureDownload(() => {
-      result = downloadLandXmlAsIfc({
+    let result: Awaited<ReturnType<typeof downloadLandXmlAsIfc>> | undefined;
+    const { filename } = await captureDownload(async () => {
+      result = await downloadLandXmlAsIfc({
         document: document({ surfaces: [], alignments: [{}, {}] as never }),
         name: 'alignment.xml',
       });
@@ -133,9 +163,9 @@ describe('landXmlIfcExportOutcome (#4937, #5848)', () => {
   const t = ((key: string) => key) as never;
 
   it('reports success', async () => {
-    let outcome: ReturnType<typeof landXmlIfcExportOutcome> | undefined;
-    await captureDownload(() => {
-      outcome = landXmlIfcExportOutcome({ document: document(), name: 'terrain.xml' }, t);
+    let outcome: Awaited<ReturnType<typeof landXmlIfcExportOutcome>> | undefined;
+    await captureDownload(async () => {
+      outcome = await landXmlIfcExportOutcome({ document: document(), name: 'terrain.xml' }, t);
     });
 
     assert.equal(outcome?.success, true);
@@ -143,9 +173,9 @@ describe('landXmlIfcExportOutcome (#4937, #5848)', () => {
   });
 
   it('reports a refusal as a failure', async () => {
-    let outcome: ReturnType<typeof landXmlIfcExportOutcome> | undefined;
-    await captureDownload(() => {
-      outcome = landXmlIfcExportOutcome(
+    let outcome: Awaited<ReturnType<typeof landXmlIfcExportOutcome>> | undefined;
+    await captureDownload(async () => {
+      outcome = await landXmlIfcExportOutcome(
         { document: document({ surfaces: [], alignments: [{}] as never }), name: 'alignment.xml' },
         t,
       );
@@ -161,9 +191,9 @@ describe('landXmlIfcExportOutcome (#4937, #5848)', () => {
     const broken = document({
       surfaces: [{ ...SURFACE, faces: [['1', '2', '99']] as Array<readonly [string, string, string]> }],
     });
-    let outcome: ReturnType<typeof landXmlIfcExportOutcome> | undefined;
-    await captureDownload(() => {
-      outcome = landXmlIfcExportOutcome({ document: broken, name: 'broken.xml' }, t);
+    let outcome: Awaited<ReturnType<typeof landXmlIfcExportOutcome>> | undefined;
+    await captureDownload(async () => {
+      outcome = await landXmlIfcExportOutcome({ document: broken, name: 'broken.xml' }, t);
     });
 
     assert.equal(outcome?.success, false);

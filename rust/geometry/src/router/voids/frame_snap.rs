@@ -151,6 +151,17 @@ pub(super) fn closed_and_consistently_wound(mesh: &Mesh) -> bool {
     strictly_paired_at(mesh, 1.0e4) && strictly_paired_at(mesh, 1.0e3)
 }
 
+/// [`closed_and_consistently_wound`] after the degenerate-triangle hygiene the
+/// emitted void-cut mesh gets: `process_element_with_voids` runs
+/// `Mesh::clean_degenerate`, which is `drop_thin_triangles` at the kernel's
+/// `SNAP_GRID`, so this replays both. A cut can be closed only through µm
+/// slivers that hygiene then drops, reopening it (#5739).
+pub(super) fn closed_as_emitted(mesh: &Mesh) -> bool {
+    let mut probe = mesh.clone();
+    probe.clean_degenerate();
+    closed_and_consistently_wound(&probe)
+}
+
 fn strictly_paired_at(mesh: &Mesh, per_unit: f64) -> bool {
     let key = |i: u32| {
         let b = i as usize * 3;

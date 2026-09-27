@@ -57,6 +57,7 @@ async function seed(): Promise<void> {
   configureMutationView(view, dataStore);
   useViewerStore.setState({
     ...fixtureModels(model),
+    editEnabled: true,
     mutationViews: new Map([[MODEL_ID, view]]),
     storeEditors: new Map(),
     undoStacks: new Map(),

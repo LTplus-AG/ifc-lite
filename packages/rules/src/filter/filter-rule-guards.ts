@@ -60,6 +60,11 @@ export function isFilterRule(value: unknown): value is FilterRule {
     );
   }
   if ((kind === 'property' || kind === 'quantity') && !validReadOptions(value)) return false;
+  if (kind === 'property') {
+    const r = value as { nameCaseMode?: unknown; legacyListFirst?: unknown };
+    if (r.nameCaseMode !== undefined && r.nameCaseMode !== 'exact') return false;
+    if (r.legacyListFirst !== undefined && r.legacyListFirst !== true) return false;
+  }
   if ((kind === 'property' || kind === 'attribute') && !validComparison(value)) return false;
   if (kind === 'modelFact') {
     const r = value as { fact?: unknown; op?: unknown; value?: unknown };
@@ -97,10 +102,7 @@ function validComparison(value: object): boolean {
   return (o.caseMode === undefined || o.caseMode === 'fold' || o.caseMode === 'exact'
       || o.caseMode === 'lensBoolean' || o.caseMode === 'ifcBoolean')
     && (o.numericMode === undefined || o.numericMode === 'prefix' || o.numericMode === 'strict')
-    && (o.typeMode === undefined || o.typeMode === 'bulk')
-    && (o.operandType === undefined || o.operandType === 'string' || o.operandType === 'number'
-      || o.operandType === 'boolean' || o.operandType === 'null' || o.operandType === 'undefined'
-      || o.operandType === 'array');
+    && o.typeMode === undefined && o.operandType === undefined;
 }
 
 export function parseFilterRules(raw: unknown): FilterRule[] {

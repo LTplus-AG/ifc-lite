@@ -120,7 +120,7 @@ describe('regex column round-trip through the editor', () => {
     const edited = columnFromDraft({ ...draftFromColumn(original), propName: 'NetVolume' }, original.id);
     const def: ListDefinition = {
       id: 'd', name: 'd', createdAt: 0, updatedAt: 0,
-      entityTypes: [IfcTypeEnum.IfcWall], conditions: [],
+      entityTypes: [IfcTypeEnum.IfcWall], groups: [],
       columns: updateColumnInPlace([original], 'vol', edited),
     };
     assert.equal(executeList(def, provider).rows[0].values[0], 0.28);
@@ -217,7 +217,7 @@ describe('order / binding preservation under edit', () => {
     const columns = updateColumnInPlace(cols, 'v', columnFromDraft({ source: 'quantity', setName: 'Q', propName: 'Z' }, 'v'));
     const def: ListDefinition = {
       id: 'g', name: 'g', createdAt: 0, updatedAt: 0,
-      entityTypes: [IfcTypeEnum.IfcWall], conditions: [], columns,
+      entityTypes: [IfcTypeEnum.IfcWall], groups: [], columns,
       grouping: { columnId: 'cls', sumColumnIds: ['v'] },
     };
     const result = executeList(def, provider);

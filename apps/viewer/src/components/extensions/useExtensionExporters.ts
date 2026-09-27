@@ -24,7 +24,7 @@ import { useViewerStore } from '@/store';
 import { activeModelName, downloadFile, modelExportFilename, normalizeExtension } from '@/lib/export/download';
 import { useTranslation } from '@/i18n';
 import { trackExportCompleted } from '@/lib/analytics';
-import type { UiSurface } from '@/lib/analytics-ui-events';
+import type { ExportSurface } from '@/lib/analytics-export-events';
 
 /** One installed exporter, as the export surfaces render it. */
 export interface ExtensionExporter {
@@ -40,7 +40,7 @@ export interface ExtensionExporter {
   running: boolean;
 }
 
-export function useExtensionExporters(surface: UiSurface) {
+export function useExtensionExporters(surface: ExportSurface) {
   const { t } = useTranslation();
   const host = useOptionalExtensionHost();
   const contributions = useSlotContributions<ExporterContribution>('exportMenu');

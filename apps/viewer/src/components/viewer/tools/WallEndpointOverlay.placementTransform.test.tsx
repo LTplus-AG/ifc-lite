@@ -29,6 +29,7 @@ import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import { render, cleanup } from '@/test/render.js';
 import { WallEndpointOverlay } from './WallEndpointOverlay.js';
+import { fixtureModel } from '@/test/store-fixture.js';
 import type { PlacementState } from '@/lib/model-placement/state.js';
 import type { Translation } from '@/lib/model-placement/translation.js';
 
@@ -74,7 +75,7 @@ describe('WallEndpointOverlay draw position undoes the model reposition placemen
       editEnabled: true,
       activeTool: 'select',
       selectedEntity: { modelId: MODEL_ID, expressId: 7 },
-      models: new Map(),
+      models: new Map([[MODEL_ID, fixtureModel(MODEL_ID, { entities: [{ expressId: 7, type: 'IfcWall' }] })]]),
       readWallEndpoints: () => ({ start: [2, 3, 0], end: [6, 1, 0] }),
       resizeWall: () => ({ ok: true }),
       mutationVersion: 1,

@@ -18,6 +18,7 @@ import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
 import { BulkPropertyEditor } from '../../BulkPropertyEditor';
 import { DataConnector } from '../../DataConnector';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
+import { panelTitleKey } from '@/lib/panels/registry';
 import {
   RibbonGroup,
   RibbonGroupDivider,
@@ -63,7 +64,7 @@ export function AuthorTab() {
           tooltip={canEditInSession
             ? (editEnabled ? t('ribbon.author.exitEditTooltip') : t('ribbon.author.enterEditTooltip'))
             : t('ribbon.author.editLockedTooltip')}
-          shortcut="E"
+          shortcut="edit.toggleEditMode"
           active={editEnabled}
           activeClassName={EDIT_ACTIVE_CLASS}
           disabled={!canEditInSession}
@@ -73,14 +74,14 @@ export function AuthorTab() {
           <RibbonSmallButton
             icon={Undo}
             label={t('ribbon.author.undo')}
-            shortcut="⌘Z"
+            shortcut="edit.undo"
             disabled={!canUndo}
             onClick={() => { replayWorkspaceHistory(useViewerStore.getState(), 'undo'); }}
           />
           <RibbonSmallButton
             icon={Redo}
             label={t('ribbon.author.redo')}
-            shortcut="⌘⇧Z"
+            shortcut="edit.redo"
             disabled={!canRedo}
             onClick={() => { replayWorkspaceHistory(useViewerStore.getState(), 'redo'); }}
           />
@@ -92,7 +93,8 @@ export function AuthorTab() {
       <RibbonGroup label={t('ribbon.author.createGroup')}>
         <RibbonLargeButton
           icon={Appearance}
-          label={t('ribbon.author.appearance')}
+          label={t(panelTitleKey('appearance'))}
+          aria-label={t(panelTitleKey('appearance'))}
           className="w-20"
           tooltip={t('ribbon.author.appearanceTooltip')}
           active={activeWorkspacePanels.has('appearance')}
@@ -157,7 +159,8 @@ export function AuthorTab() {
       <RibbonGroup label={t('ribbon.author.customizeGroup')}>
         <RibbonLargeButton
           icon={Extension}
-          label={t('ribbon.author.extensions')}
+          label={t(panelTitleKey('extensions'))}
+          aria-label={t(panelTitleKey('extensions'))}
           tooltip={t('ribbon.author.extensionsTooltip')}
           active={activeWorkspacePanels.has('extensions')}
           onClick={() => handleToggleRightPanel('extensions')}

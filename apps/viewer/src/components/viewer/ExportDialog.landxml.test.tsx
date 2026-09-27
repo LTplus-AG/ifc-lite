@@ -6,6 +6,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { useViewerStore } from '@/store';
@@ -13,6 +14,7 @@ import { posthog } from '@/lib/analytics';
 import { render, cleanup, click } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { ExportDialog } from './ExportDialog.js';
+import type { TerrainImageryDrape } from '@/lib/terrain-imagery/drape-state.js';
 
 const initialState = useViewerStore.getState();
 
@@ -136,6 +138,29 @@ function captureDownload(run: () => void): { filename: string; bytes?: Blob } {
   return { filename, bytes };
 }
 
+/**
+ * The LandXML conversion runs asynchronously since #5942 (it may call the
+ * appearance planner to write draped imagery), so its download lands after
+ * the click returns. Keep the seams patched until it has.
+ */
+async function captureAsyncDownload(run: () => void): Promise<{ filename: string; bytes?: Blob }> {
+  const originalCreate = URL.createObjectURL;
+  const originalClick = HTMLAnchorElement.prototype.click;
+  let filename = '';
+  let bytes: Blob | undefined;
+  URL.createObjectURL = ((blob: Blob) => { bytes = blob; return 'blob:landxml-test'; }) as typeof URL.createObjectURL;
+  URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+  HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) { filename = this.download; };
+  try {
+    run();
+    for (let tick = 0; tick < 50 && !filename; tick += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+  } finally {
+    URL.createObjectURL = originalCreate;
+    HTMLAnchorElement.prototype.click = originalClick;
+  }
+  return { filename, bytes };
+}
+
 describe('ExportDialog LandXML source-format export (#5175)', () => {
   function sourceButton(): HTMLButtonElement | undefined {
     return [...document.querySelectorAll('button')]
@@ -232,7 +257,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     return model;
   }
 
-  it('records one completed IFC download with the initiating surface (#5844)', () => {
+  it('records one completed IFC download with the initiating surface (#5844)', async () => {
     useViewerStore.setState({
       ...fixtureModels(terrainWithDocument('survey.xml')), dirtyModels: new Set(),
     });
@@ -244,7 +269,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
       for (const [index, surface] of (['classic', 'ribbon', 'palette'] as const).entries()) {
         render(<ExportDialog surface={surface} />);
         openDialog();
-        const { filename } = captureDownload(() => click(exportButton()));
+        const { filename } = await captureAsyncDownload(() => click(exportButton()));
         assert.match(filename, /\.ifc$/, 'the conversion produces an actual IFC download');
         assert.deepEqual(completions[index], { format: 'ifc', surface });
         assert.equal(completions.length, index + 1, 'one completion per IFC file');
@@ -253,6 +278,20 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     } finally {
       analytics.mock.restore();
     }
+  });
+
+  it('writes the loaded source\'s SHA-256 as SourceHash in the file it downloads (#5942 follow-up)', async () => {
+    const source = '<?xml version="1.0"?><LandXML version="1.2"><Surfaces/></LandXML>\n';
+    const terrain = terrainWithDocument('survey.xml');
+    terrain.sourceFile = new File([source], 'survey.xml', { type: 'application/xml' });
+    useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
+    render(<ExportDialog />);
+    openDialog();
+
+    const { bytes } = await captureAsyncDownload(() => click(exportButton()));
+    assert.ok(bytes, 'the conversion was downloaded');
+    const expected = createHash('sha256').update(source).digest('hex');
+    assert.match(await bytes.text(), new RegExp(`'SourceHash',\\$,IFCLABEL\\('${expected}'\\)`));
   });
 
   it('offers the conversion, by record count, for a covered source', () => {
@@ -409,6 +448,65 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     assert.match(text, /SWEREF99 TM/);
     assert.match(text, /coordinate-order check cannot run/);
     assert.doesNotMatch(text, /No coordinate reference system is declared/);
+  });
+
+  it('names the declared CRS a coordinate reference system, not a datum (#5942 follow-up)', () => {
+    // A real 3D-Win terrain declares `epsgCode="3875"`: an EPSG CRS, which
+    // the dialog called a "declared datum".
+    const georeferenced = terrainWithDocument('survey.xml', { coordinateSystem: { horizontalDatum: 'EPSG:3875' } });
+    useViewerStore.setState({ ...fixtureModels(georeferenced), dirtyModels: new Set() });
+    render(<ExportDialog />);
+    openDialog();
+
+    const text = document.body.textContent ?? '';
+    assert.match(text, /declared coordinate reference system \(EPSG:3875\)/);
+    assert.doesNotMatch(text, /datum/);
+  });
+
+  /** The Output row: the badge (format label) and the extension beside it. */
+  function outputRow(): string {
+    const label = [...document.querySelectorAll('label')].find((candidate) => candidate.textContent?.trim() === 'Output');
+    assert.ok(label?.parentElement, 'the dialog shows its Output row');
+    return label.parentElement.textContent ?? '';
+  }
+
+  function draped(source: TerrainImageryDrape['source']): TerrainImageryDrape {
+    return {
+      sourceName: source === 'file' ? 'ortho.png' : 'OpenStreetMap', source, placement: 'world file',
+      imageCrs: 'EPSG:3067', imageCrsSource: 'ortho.prj',
+      projection: {
+        crs: 'EPSG:3875', origin: [157880, 6406970], axisU: [1, 0], axisV: [0, 1],
+        extent: [40, 40], imageSize: [80, 80], deviationPx: 0,
+      },
+      reprojected: true, totalVertices: 3, coveredVertices: 3, displayedGsd: 0.5,
+      flatColour: [0.42, 0.62, 0.32], textureId: -1,
+      ...(source === 'file' ? { image: { bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]), mime: 'image/png' as const, sha256: 'a'.repeat(64) } } : {}),
+    };
+  }
+
+  it('says .ifczip in the Output row when file imagery ships beside the IFC (#5942 follow-up)', () => {
+    // The real-data run wrote an .ifcZIP while this row said "IFC (STEP) .ifc".
+    const terrain = terrainWithDocument('survey.xml');
+    terrain.terrainImagery = draped('file');
+    useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
+    render(<ExportDialog />);
+    openDialog();
+
+    const row = outputRow();
+    assert.match(row, /IFC \+ images/);
+    assert.match(row, /\.ifczip$/);
+  });
+
+  it('keeps .ifc in the Output row, and writes .ifc, when the drape is viewer-only tiles', async () => {
+    const terrain = terrainWithDocument('survey.xml');
+    terrain.terrainImagery = draped('tiles');
+    useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
+    render(<ExportDialog />);
+    openDialog();
+
+    assert.match(outputRow(), /IFC \(STEP\)\.ifc$/);
+    const { filename } = await captureAsyncDownload(() => click(exportButton()));
+    assert.match(filename, /\.ifc$/, 'the row names the file that is written');
   });
 
   it('refuses a merged scope that contains a covered LandXML model, naming the scope as the fix', () => {

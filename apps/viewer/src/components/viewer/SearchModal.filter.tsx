@@ -572,7 +572,7 @@ export function SearchModalFilter() {
       updatedAt: now,
       entityTypes: [],
       expressIdsByModel: byModel,
-      conditions: [],
+      groups: [],
       columns,
     };
     setPendingListDraft(draft);

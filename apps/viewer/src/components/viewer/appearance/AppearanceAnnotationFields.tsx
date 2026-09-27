@@ -7,6 +7,8 @@ import { useIfcAuthoringTarget } from './useIfcAuthoringTarget';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useViewerStore } from '@/store';
+import { mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
+import { useMutationDenialReason } from '@/hooks/useMutationDenialReason';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { createAnnotationFromReference } from '@/lib/appearance/create-annotation';
 import { appearanceSelectClass } from './AppearanceSourceFields';
@@ -22,6 +24,7 @@ export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
 }) {
   const { t } = useTranslation();
   const { modelId, containerId, eligible, containers, setChosenModel, setChosenContainer } = useIfcAuthoringTarget();
+  const denialReason = useMutationDenialReason(modelId || undefined);
   const room = useViewerStore(state => state.collabRoomId);
   const [Name, setName] = useState(name);
   const [expanded, setExpanded] = useState(false);
@@ -37,6 +40,8 @@ export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
   }, [disabled]);
   async function save() {
     if (disabled || room || operation.current || containerId === undefined || !modelId) return;
+    const permission = mutationPermission(useViewerStore.getState(), modelId);
+    if (!permission.allowed) { setError(true); setMessage({ key: mutationDenialKey(permission.reason) }); return; }
     const renderer = getGlobalRenderer();
     if (!renderer) { setError(true); setMessage({ key: 'appearance.annotationFields.rendererNotReady' }); return; }
     const controller = new AbortController(); operation.current = controller;
@@ -74,10 +79,12 @@ export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
           {containers.map(node => <option key={node.expressId} value={node.expressId}>{node.name || t('appearance.annotationFields.containerFallbackName', { expressId: node.expressId })}</option>)}
         </select></label>
         <label className="block text-2xs">{t('appearance.annotationFields.nameLabel')}<Input aria-label={t('appearance.annotationFields.nameAriaLabel')} value={Name} onChange={event => setName(event.target.value)} className="h-8 text-xs" /></label>
-        {representation === 'image' && <Button type="button" variant="outline" size="sm" disabled={!modelId || containerId === undefined || !Name.trim()} onClick={() => { void save(); }}>{t('appearance.annotationFields.createAnnotation')}</Button>}
+        {representation === 'image' && <Button type="button" variant="outline" size="sm" disabled={!modelId || containerId === undefined || !Name.trim() || !!denialReason}
+          title={denialReason ? t(mutationDenialKey(denialReason)) : undefined} onClick={() => { void save(); }}>{t('appearance.annotationFields.createAnnotation')}</Button>}
       </fieldset>
-      {expanded && representation === 'fills' && <PdfAnnotationFields referenceId={referenceId} modelId={modelId} containerId={containerId} Name={Name} disabled={disabled || busy || !!room} />}
+      {expanded && representation === 'fills' && <PdfAnnotationFields referenceId={referenceId} modelId={modelId} containerId={containerId} Name={Name} disabled={disabled || busy || !!room || !!denialReason} />}
       {room && <p className="text-2xs text-muted-foreground">{t('appearance.annotationFields.leaveRoomNotice')}</p>}
+      {denialReason && <output className="block text-2xs text-muted-foreground">{t(mutationDenialKey(denialReason))}</output>}
       {busy && <Button type="button" variant="ghost" size="sm" onClick={() => { operation.current?.abort(); setMessage({ key: 'appearance.annotationFields.cancelled' }); }}>{t('appearance.annotationFields.cancelCreation')}</Button>}
       {message && <p role={error ? 'alert' : 'status'} className={`text-2xs ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{'key' in message ? t(message.key) : message.text}</p>}
     </div>

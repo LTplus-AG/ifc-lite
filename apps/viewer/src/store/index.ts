@@ -108,7 +108,7 @@ export type { DocumentSlice } from './slices/documentSlice.js';
 export type { PinboardSlice } from './slices/pinboardSlice.js';
 
 // Re-export Lens types
-export type { LensSlice, Lens, LensRule, LensCriteria } from './slices/lensSlice.js';
+export type { LensSlice, Lens, LensRule } from './slices/lensSlice.js';
 export type { CompareSlice, CompareResult } from './slices/compareSlice.js';
 export type { LayerStackSlice, LayerStackEntry, LayerStackDiffResult, LayerAuthorKind } from './slices/layerStackSlice.js';
 export type { DockSlice, FloatingPanelState, SnapZone } from './slices/dockSlice.js';

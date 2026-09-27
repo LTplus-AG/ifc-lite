@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import type { BoundaryMode } from '@ifc-lite/create';
 import { useTranslation } from '@/i18n';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import { cn } from '@/lib/utils';
 import {
   HudChip, HudHint, HudItem, HudPopover, HudPopoverContent, HudPopoverTrigger, HudSegmented, HudSurface, HudToolbar,
@@ -183,10 +184,10 @@ export function SpaceSketchBarContent(p: SpaceSketchBarProps & { tier: number; m
         </HudPopover>
       ) : (
         <>
-          <button type="button" className={ICON_BTN} onClick={p.onUndo} disabled={!p.canUndo} title={t('spaceSketch.tools.undoTitle')}>
+          <button type="button" className={ICON_BTN} onClick={p.onUndo} disabled={!p.canUndo} title={t('spaceSketch.tools.undoTitle', { keys: shortcutLabel('spaceSketch.undo') })}>
             <Undo2 aria-hidden className={ICON} />
           </button>
-          <button type="button" className={ICON_BTN} onClick={p.onRedo} disabled={!p.canRedo} title={t('spaceSketch.tools.redoTitle')}>
+          <button type="button" className={ICON_BTN} onClick={p.onRedo} disabled={!p.canRedo} title={t('spaceSketch.tools.redoTitle', { keys: shortcutLabel('spaceSketch.redo') })}>
             <Redo2 aria-hidden className={ICON} />
           </button>
           <Divider />

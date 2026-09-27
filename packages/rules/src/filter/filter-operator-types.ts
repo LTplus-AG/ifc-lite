@@ -39,7 +39,7 @@ export type ValueOp =
   | 'isNull'
   | 'isNotNull';
 
-/** Comparison details needed when a saved Lens, List or Bulk condition is
+/** Comparison details needed when a saved Lens or List condition is
  * converted to the common rule vocabulary (#5892). Defaults keep existing
  * search/validation behavior. */
 export interface ValueComparison {
@@ -47,9 +47,6 @@ export interface ValueComparison {
   caseMode?: 'fold' | 'exact' | 'lensBoolean' | 'ifcBoolean';
   /** Lists use Number(), while search and Lens use parseFloat() for numeric comparisons. */
   numericMode?: 'prefix' | 'strict';
-  /** Bulk uses typed operands (including its boolean-string coercion) rather than search's stringification. */
-  typeMode?: 'bulk';
-  operandType?: 'string' | 'number' | 'boolean' | 'null' | 'undefined' | 'array';
 }
 
 /** Classification value+presence ops. A classification is matched against

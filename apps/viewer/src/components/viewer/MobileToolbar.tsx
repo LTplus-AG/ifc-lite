@@ -8,7 +8,7 @@
  * and secondary actions in an overflow menu.
  */
 
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useMemo } from 'react';
 import {
   FolderOpen,
   MousePointer2,
@@ -37,6 +37,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
 import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
@@ -47,11 +48,9 @@ import { hideSelectionFromStore } from '@/store/hideSelection';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
-import { exportPlacedModelGlb } from '@/lib/model-placement/quick-glb';
-import { activeModelName, downloadBlob, modelExportFilename } from '@/lib/export/download';
-import { trackExportCompleted } from '@/lib/analytics';
+import { useExportRunner } from './useExportRunner';
+import { buildExportCommands } from './commandPaletteExports';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
-import { toast } from '@/components/ui/toast';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { MOBILE_FILE_ACCEPT, isSupportedMobileModelFile } from '@/services/supported-model-files';
 import { emitOpenCommandPalette } from '@/lib/tours/events';
@@ -126,22 +125,11 @@ export function MobileToolbar() {
     goHomeFromStore();
   }, []);
 
-  const handleExportGLB = useCallback(async () => {
-    if (!geometryResult) return;
-    try {
-      const glb = await exportPlacedModelGlb(geometryResult);
-      const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
-      downloadBlob(blob, modelExportFilename(activeModelName(useViewerStore.getState()), 'glb'));
-      trackExportCompleted({ format: 'glb', surface: 'mobile', size_kb: Math.round(blob.size / 1024) });
-      toast.success(t('shellChrome.mobileToolbar.exportGlbSuccess', { size: (blob.size / 1024).toFixed(0) }));
-    } catch (err) {
-      toast.error(
-        t('shellChrome.mobileToolbar.exportGlbFailed', {
-          message: err instanceof Error ? err.message : t('shellChrome.mobileToolbar.unknownError'),
-        }),
-      );
-    }
-  }, [geometryResult, t]);
+  // Every export the toolbars and the palette offer, from the same registry
+  // rows and through the same handlers and dialogs (#5842). The dialog is
+  // hosted outside the menu so it outlives the menu closing.
+  const { runExport, dialog: exportDialog, extensionExporters } = useExportRunner('mobile');
+  const exportRows = useMemo(() => buildExportCommands(runExport, extensionExporters), [runExport, extensionExporters]);
 
   const toolButtons: { tool: Tool; icon: React.ElementType; label: string }[] = [
     { tool: 'select', icon: MousePointer2, label: t('shellChrome.mobileToolbar.selectTool') },
@@ -275,7 +263,7 @@ export function MobileToolbar() {
             <MoreHorizontal className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuContent align="end" className="w-64 max-h-[80vh] overflow-y-auto">
           <DropdownMenuItem onClick={emitOpenCommandPalette}>
             <Search className="h-4 w-4 mr-2" aria-hidden="true" />
             {t('shellChrome.mobileToolbar.commands')}
@@ -318,13 +306,21 @@ export function MobileToolbar() {
 
           <DropdownMenuSeparator />
 
-          {/* Export */}
-          {geometryResult && (
-            <DropdownMenuItem onClick={() => void handleExportGLB()}>
-              <Download className="h-4 w-4 mr-2" />
-              {t('shellChrome.mobileToolbar.exportGlb')}
+          {/* Export: the registry's rows, same as the command palette. Inline
+              rather than a submenu: a nested Radix submenu closes as a touch
+              leaves its trigger, so its rows could not be tapped on a phone. */}
+          <DropdownMenuLabel data-mobile-export-menu className="flex items-center text-xs text-muted-foreground">
+            <Download className="h-3.5 w-3.5 mr-2" />
+            {t('shellChrome.mobileToolbar.export')}
+          </DropdownMenuLabel>
+          {exportRows.map((row) => (
+            <DropdownMenuItem key={row.id} data-export-row={row.id} onClick={row.action}>
+              <row.icon className="h-4 w-4 mr-2" />
+              {row.labelKey ? t(row.labelKey, row.labelKeyParams) : row.label}
             </DropdownMenuItem>
-          )}
+          ))}
+
+          <DropdownMenuSeparator />
 
           {/* Theme */}
           <DropdownMenuItem onClick={() => toggleTheme()}>
@@ -333,6 +329,7 @@ export function MobileToolbar() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      {exportDialog}
     </div>
   );
 }

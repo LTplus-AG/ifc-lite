@@ -43,6 +43,8 @@ import { openSettings } from '@/lib/settings/open-settings';
 import { useFileCommands } from './toolbar/useFileCommands';
 import { ClassicExportMenuItems } from './toolbar/ClassicExportMenuItems';
 import { useWorkspacePanelControls } from './toolbar/useWorkspacePanelControls';
+import { shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label';
+import { panelTitleKey } from '@/lib/panels/registry';
 import { ClassVisibilityMenuContent } from './toolbar/ClassVisibilityMenu';
 import { CameraCommandMenuItems } from './toolbar/CameraCommands';
 
@@ -57,7 +59,7 @@ interface ToolButtonProps {
   tool: Tool;
   icon: React.ElementType;
   label: string;
-  shortcut?: string;
+  shortcut?: KeyCommandId;
   activeTool: string;
   onToolChange: (tool: Tool) => void;
   /**
@@ -101,7 +103,7 @@ function ToolButton({
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        {label} {shortcut && <span className="ml-2 text-xs opacity-60">({shortcut})</span>}
+        {label} {shortcut && <span className="ml-2 text-xs opacity-60">({shortcutLabel(shortcut)})</span>}
       </TooltipContent>
     </Tooltip>
   );
@@ -113,8 +115,7 @@ function ToolButton({
  * the user is actively editing; multi-model undo would need a
  * separate UX). Disabled when the active model's stack is empty.
  *
- * Keyboard shortcuts (Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z) are wired
- * in `useKeyboardShortcuts`.
+ * Their keys (`edit.undo` / `edit.redo`) are listed in `lib/commands`.
  */
 function UndoRedoButtons() {
   const { t } = useTranslation();
@@ -146,7 +147,7 @@ function UndoRedoButtons() {
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          {t('mainToolbar.undo')} <span className="ml-2 text-xs opacity-60">⌘Z</span>
+          {t('mainToolbar.undo')} <span className="ml-2 text-xs opacity-60">{shortcutLabel('edit.undo')}</span>
         </TooltipContent>
       </Tooltip>
       <Tooltip>
@@ -165,7 +166,7 @@ function UndoRedoButtons() {
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          {t('mainToolbar.redo')} <span className="ml-2 text-xs opacity-60">⌘⇧Z</span>
+          {t('mainToolbar.redo')} <span className="ml-2 text-xs opacity-60">{shortcutLabel('edit.redo')}</span>
         </TooltipContent>
       </Tooltip>
     </>
@@ -177,7 +178,7 @@ interface ActionButtonProps {
   icon: React.ElementType;
   label: string;
   onClick: () => void;
-  shortcut?: string;
+  shortcut?: KeyCommandId;
   disabled?: boolean;
 }
 
@@ -200,7 +201,7 @@ function ActionButton({ icon: Icon, label, onClick, shortcut, disabled }: Action
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        {label} {shortcut && <span className="ml-2 text-xs opacity-60">({shortcut})</span>}
+        {label} {shortcut && <span className="ml-2 text-xs opacity-60">({shortcutLabel(shortcut)})</span>}
       </TooltipContent>
     </Tooltip>
   );
@@ -467,7 +468,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
                   size="icon-sm"
                   onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab', 'classic')}
                   className="relative"
-                  aria-label={t('mainToolbar.room')}
+                  aria-label={t(panelTitleKey('collab'))}
                   aria-pressed={collabPanelVisible}
                 >
                   <Users className="h-4 w-4" />
@@ -478,7 +479,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
                   )}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{t('mainToolbar.room')}</TooltipContent>
+              <TooltipContent>{t(panelTitleKey('collab'))}</TooltipContent>
             </Tooltip>
           )}
         </>
@@ -512,35 +513,35 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             onCheckedChange={() => handleToggleRightPanel('bcf')}
           >
             <MessageSquare className="h-4 w-4 mr-2" />
-            {t('mainToolbar.bcfTopics')}
+            {t(panelTitleKey('bcf'))}
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('validation')}
             onCheckedChange={() => handleToggleRightPanel('validation')}
           >
             <ClipboardCheck className="h-4 w-4 mr-2" />
-            {t('mainToolbar.idsValidation')}
+            {t(panelTitleKey('validation'))}
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('lens')}
             onCheckedChange={() => handleToggleRightPanel('lens')}
           >
             <Palette className="h-4 w-4 mr-2" />
-            {t('mainToolbar.lensRules')}
+            {t(panelTitleKey('lens'))}
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('clash')}
             onCheckedChange={() => handleToggleRightPanel('clash')}
           >
             <Crosshair className="h-4 w-4 mr-2" />
-            {t('mainToolbar.clashDetection')}
+            {t(panelTitleKey('clash'))}
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('compare')}
             onCheckedChange={() => handleToggleRightPanel('compare')}
           >
             <GitCompareArrows className="h-4 w-4 mr-2" />
-            {t('mainToolbar.compareModels')}
+            {t(panelTitleKey('compare'))}
           </DropdownMenuCheckboxItem>
           {/* Cloud sources (CDE integrations): the ActivityBar rail was its
               only entry point, exactly as Location Zones was before #2508.
@@ -550,14 +551,14 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             onCheckedChange={() => handleToggleRightPanel('sources')}
           >
             <Cloud className="h-4 w-4 mr-2" />
-            {t('mainToolbar.cloudSources')}
+            {t(panelTitleKey('sources'))}
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('layers')}
             onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('layers', 'classic')}
           >
             <Layers className="h-4 w-4 mr-2" />
-            {t('mainToolbar.layerStack')}
+            {t(panelTitleKey('layers'))}
           </DropdownMenuCheckboxItem>
           {/* Location zones (#1810), reachable from a toolbar for the first
               time (#2508): the ActivityBar rail was its only entry point. */}
@@ -566,7 +567,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('zones', 'classic')}
           >
             <Box className="h-4 w-4 mr-2" />
-            {t('mainToolbar.locationZones')}
+            {t(panelTitleKey('zones'))}
           </DropdownMenuCheckboxItem>
           {/* Per-model load report (#3927): reachable from a toolbar for the
               first time — it shipped ribbon-only, the ActivityBar rail was
@@ -576,7 +577,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('loadReport', 'classic')}
           >
             <FileWarning className="h-4 w-4 mr-2" />
-            {t('mainToolbar.loadReport')}
+            {t(panelTitleKey('loadReport'))}
           </DropdownMenuCheckboxItem>
           {/* IFC 5D cost inspector (#4858): reachable from a toolbar for the
               first time — the ActivityBar rail was its only entry point. */}
@@ -585,7 +586,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('cost', 'classic')}
           >
             <Coins className="h-4 w-4 mr-2" />
-            {t('mainToolbar.cost')}
+            {t(panelTitleKey('cost'))}
           </DropdownMenuCheckboxItem>
           {collabEnabled && (
             <DropdownMenuCheckboxItem
@@ -593,7 +594,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('collab', 'classic')}
             >
               <Users className="h-4 w-4 mr-2" />
-              {t('mainToolbar.collaborationRoom')}
+              {t(panelTitleKey('collab'))}
             </DropdownMenuCheckboxItem>
           )}
           <DropdownMenuSeparator />
@@ -637,14 +638,14 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
 
       <Separator orientation="vertical" className="h-6 mx-1" />
 
-      {/* ── Search (Tier-0 inline; ⌘F or / to focus) ── */}
+      {/* ── Search (Tier-0 inline; `search.focus` keys focus it) ── */}
       <SearchInline />
 
       <Separator orientation="vertical" className="h-6 mx-1" />
 
       {/* ── Navigation Tools ── */}
-      <ToolButton tool="select" icon={MousePointer2} label={t('mainToolbar.toolSelect')} shortcut="V" activeTool={activeTool} onToolChange={setActiveTool} />
-      <ToolButton tool="walk" icon={PersonStanding} label={t('mainToolbar.toolWalk')} shortcut="C" activeTool={activeTool} onToolChange={setActiveTool} />
+      <ToolButton tool="select" icon={MousePointer2} label={t('mainToolbar.toolSelect')} shortcut="tool.select" activeTool={activeTool} onToolChange={setActiveTool} />
+      <ToolButton tool="walk" icon={PersonStanding} label={t('mainToolbar.toolWalk')} shortcut="tool.walk" activeTool={activeTool} onToolChange={setActiveTool} />
 
       {/* ── Edit Mode pill ──
           Single global switch that unlocks every authoring affordance
@@ -714,13 +715,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       <Separator orientation="vertical" className="h-6 mx-1" />
 
       {/* ── Measurement & Section ── */}
-      <ToolButton tool="measure" icon={Ruler} label={t('mainToolbar.toolMeasure')} shortcut="M" activeTool={activeTool} onToolChange={setActiveTool} />
-      <ToolButton tool="section" icon={Scissors} label={t('mainToolbar.toolSection')} shortcut="X" activeTool={activeTool} onToolChange={setActiveTool} />
+      <ToolButton tool="measure" icon={Ruler} label={t('mainToolbar.toolMeasure')} shortcut="tool.measure" activeTool={activeTool} onToolChange={setActiveTool} />
+      <ToolButton tool="section" icon={Scissors} label={t('mainToolbar.toolSection')} shortcut="tool.section" activeTool={activeTool} onToolChange={setActiveTool} />
       <ToolButton
         tool="annotate"
         icon={StickyNote}
         label={t('mainToolbar.toolAnnotate')}
-        shortcut="P"
+        shortcut="tool.annotate"
         activeTool={activeTool}
         onToolChange={setActiveTool}
         activeAccentClass="bg-amber-500 text-white hover:bg-amber-500/90"
@@ -787,19 +788,19 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           >
             {t('mainToolbar.selectionCountBadge', { count: selectionCount })}
           </span>
-          <ActionButton icon={Equal} label={t('mainToolbar.isolateSelection')} onClick={handleIsolate} shortcut="I" />
-          <ActionButton icon={EyeOff} label={t('mainToolbar.hideSelection')} onClick={hideSelectionFromStore} shortcut="Del / Space" />
+          <ActionButton icon={Equal} label={t('mainToolbar.isolateSelection')} onClick={handleIsolate} shortcut="basket.isolate" />
+          <ActionButton icon={EyeOff} label={t('mainToolbar.hideSelection')} onClick={hideSelectionFromStore} shortcut="visibility.hideSelection" />
           <ActionButton
             icon={Crosshair}
             label={t('mainToolbar.frameSelection')}
             onClick={() => cameraCallbacks.frameSelection?.()}
-            shortcut="F"
+            shortcut="camera.frameSelection"
           />
         </div>
       )}
 
-      <ActionButton icon={Eye} label={t('mainToolbar.showAll')} onClick={handleShowAll} shortcut="A" />
-      <ActionButton icon={Maximize2} label={t('mainToolbar.fitAll')} onClick={() => cameraCallbacks.fitAll?.()} shortcut="Z" />
+      <ActionButton icon={Eye} label={t('mainToolbar.showAll')} onClick={handleShowAll} shortcut="visibility.showAll" />
+      <ActionButton icon={Maximize2} label={t('mainToolbar.fitAll')} onClick={() => cameraCallbacks.fitAll?.()} shortcut="camera.fitAll" />
 
       <DropdownMenu>
         <Tooltip>
@@ -841,7 +842,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       <Separator orientation="vertical" className="h-6 mx-1" />
 
       {/* ── Camera & View ── */}
-      <ActionButton icon={Home} label={t('mainToolbar.home')} onClick={handleHome} shortcut="H" />
+      <ActionButton icon={Home} label={t('mainToolbar.home')} onClick={handleHome} shortcut="camera.home" />
 
       {/*
         Cesium 3D World Context — sits next to Home as a raw button so
@@ -911,7 +912,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           <Button
             variant={activeWorkspacePanels.has('environment') ? 'default' : 'ghost'}
             size="icon-sm"
-            aria-label={activeWorkspacePanels.has('environment') ? t('mainToolbar.sunSkyClose') : t('mainToolbar.sunSkyOpen')}
+            aria-label={t(activeWorkspacePanels.has('environment') ? 'mainToolbar.closePanel' : 'mainToolbar.openPanel', { title: t(panelTitleKey('environment')) })}
             aria-pressed={activeWorkspacePanels.has('environment')}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
@@ -925,7 +926,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             <Sun className="h-4 w-4" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>{t('mainToolbar.sunSkyTooltip')}</TooltipContent>
+        <TooltipContent>{t(panelTitleKey('environment'))}</TooltipContent>
       </Tooltip>
 
       {/* SpaceMouse (#1677): its controls live in Settings → Display →

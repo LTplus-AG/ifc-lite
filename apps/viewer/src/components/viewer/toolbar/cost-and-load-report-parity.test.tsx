@@ -23,6 +23,8 @@ import assert from 'node:assert/strict';
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { resolve } from '@/i18n/registry';
+import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
 import { useWorkspacePanelControls } from './useWorkspacePanelControls.js';
 import { MainToolbar } from '../MainToolbar.js';
@@ -72,9 +74,9 @@ function classicMenuItem(label: string): HTMLElement {
 
 function ribbonButton(container: HTMLElement, label: string): HTMLElement {
   const found = [...container.querySelectorAll<HTMLElement>('button')].filter(
-    (e) => e.textContent?.trim() === label,
+    (e) => e.getAttribute('aria-label') === label,
   );
-  assert.equal(found.length, 1, `expected one ribbon button labelled "${label}", found ${found.length}`);
+  assert.equal(found.length, 1, `expected one ribbon button named "${label}", found ${found.length}`);
   return found[0];
 }
 
@@ -87,20 +89,20 @@ describe('#5032 Load Report + Cost toolbar reachability', () => {
   it('the classic Panels dropdown opens Load Report', () => {
     const container = mount(<MainToolbar />);
     openPanelsMenu(container);
-    clickEl(classicMenuItem('Load Report'));
+    clickEl(classicMenuItem(resolve(panelTitleKey('loadReport'))));
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'loadReport');
   });
 
   it('the classic Panels dropdown opens Cost', () => {
     const container = mount(<MainToolbar />);
     openPanelsMenu(container);
-    clickEl(classicMenuItem('Cost'));
+    clickEl(classicMenuItem(resolve(panelTitleKey('cost'))));
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'cost');
   });
 
   it('the ribbon Analyze tab opens Cost', () => {
     const container = mount(<AnalyzeTab />);
-    clickEl(ribbonButton(container, 'Cost'));
+    clickEl(ribbonButton(container, resolve(panelTitleKey('cost'))));
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'cost');
   });
 
@@ -115,7 +117,7 @@ describe('#5032 Load Report + Cost toolbar reachability', () => {
 
     act(() => { useViewerStore.getState().toggleWorkspacePanel('cost'); });
     assert.ok(probe.activeWorkspacePanels.has('cost'), 'Cost must read as an active workspace panel once docked');
-    assert.equal(probe.workspacePanelLabel, 'Cost');
+    assert.equal(probe.workspacePanelLabel, resolve(panelTitleKey('cost')));
   });
 
   it('the shared hook reports Load Report as active with its own label, not a fallback', () => {
@@ -129,6 +131,6 @@ describe('#5032 Load Report + Cost toolbar reachability', () => {
 
     act(() => { useViewerStore.getState().toggleWorkspacePanel('loadReport'); });
     assert.ok(probe.activeWorkspacePanels.has('loadReport'), 'Load Report must read as an active workspace panel once docked');
-    assert.equal(probe.workspacePanelLabel, 'Load Report');
+    assert.equal(probe.workspacePanelLabel, resolve(panelTitleKey('loadReport')));
   });
 });

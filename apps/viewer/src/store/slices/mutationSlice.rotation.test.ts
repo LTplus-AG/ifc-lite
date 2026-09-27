@@ -77,6 +77,7 @@ async function seed(): Promise<void> {
   const model = { ...fixtureModel('ifc'), ifcDataStore: dataStore, geometryResult: geometry } as unknown as FederatedModel;
   useViewerStore.setState({
     ...fixtureModels(model),
+    editEnabled: true,
     geometryResult: geometry,
     modelPlacement: emptyPlacementState(),
     mutationViews: new Map([['ifc', new MutablePropertyView(dataStore.properties || null, 'ifc')]]),

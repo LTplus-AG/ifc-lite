@@ -75,6 +75,8 @@ export interface FilterGroupEditorProps {
    *  itself (only the selector sibling parses text against it) — threaded
    *  through so `RuleBlockEditor` can hold one prop set for both. */
   schemaVersion?: string;
+  /** Scope discovered class/property suggestions to this model when the caller has a model picker. */
+  optionModelId?: string;
   models: ReadonlyArray<FilterGroupEditorModel>;
 }
 
@@ -93,13 +95,14 @@ export function FilterGroupEditor({
   activeGroup,
   onChange,
   allowedKinds,
+  optionModelId,
   models,
 }: FilterGroupEditorProps) {
   const { t } = useTranslation();
   const activeIndex = clampGroupIndex(activeGroup, groups.length);
   const active = groups[activeIndex];
   const activeRules = active?.rules ?? [];
-  const ruleOptions = useFilterRuleOptions(activeRules);
+  const ruleOptions = useFilterRuleOptions(activeRules, optionModelId);
   const modelOptions = models
     .filter((m) => m.sourceFingerprint !== undefined)
     .map((m) => ({ label: m.name, value: m.sourceFingerprint as string }));

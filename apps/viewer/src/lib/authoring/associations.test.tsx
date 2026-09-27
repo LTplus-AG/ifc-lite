@@ -78,6 +78,7 @@ async function seed(text: string): Promise<IfcDataStore> {
     mutationBatchTags: new Map(),
     dirtyModels: new Set(),
     collabRole: null,
+    editEnabled: true,
   });
   return store;
 }
@@ -92,6 +93,23 @@ async function exportAndReparse(store: IfcDataStore, schema: 'IFC4' | 'IFC2X3'):
 
 describe('Add Classification / Add Material create real IFC entities (#5876)', () => {
   let store: IfcDataStore;
+
+  it('blocks classification and material writes while Edit mode is off, then records both (#5901)', async () => {
+    store = await seed(IFC4);
+    useViewerStore.setState({ editEnabled: false });
+    assert.deepEqual(api().addClassificationAssociation('m', 10, { system: 'Uniclass', identification: 'Ss_25' }),
+      { ok: false, reasonKey: 'mutationPermission.editModeRequired' });
+    assert.deepEqual(api().addMaterialAssociation('m', 10, { name: 'Steel' }),
+      { ok: false, reasonKey: 'mutationPermission.editModeRequired' });
+    assert.equal(useViewerStore.getState().mutationViews.size, 0);
+    assert.equal(useViewerStore.getState().undoStacks.size, 0);
+    useViewerStore.setState({ editEnabled: true });
+    assert.deepEqual(api().addClassificationAssociation('m', 10, { system: 'Uniclass', identification: 'Ss_25' }), { ok: true });
+    assert.deepEqual(api().addMaterialAssociation('m', 10, { name: 'Steel' }), { ok: true });
+    assert.ok((useViewerStore.getState().undoStacks.get('m')?.length ?? 0) > 0);
+    assert.equal([...view().getNewEntitiesOfType('IFCRELASSOCIATESCLASSIFICATION')].length, 1);
+    assert.equal([...view().getNewEntitiesOfType('IFCRELASSOCIATESMATERIAL')].length, 1);
+  });
 
   it('reuses source definitions and reparses new associations in an authored SketchUp IFC4 model', async () => {
     // A tracked IFC-manager for SketchUp 2024 export. Its #34 classification,

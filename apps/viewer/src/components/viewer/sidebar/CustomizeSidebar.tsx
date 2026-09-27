@@ -108,6 +108,7 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
         {shownIds.map((id, index) => {
           const def = getPanelDef(id);
           if (!def) return null;
+          const title = t(def.titleKey);
           const Icon = def.Icon;
           const locked = id === 'properties';
           const prevShown = shownIds[index - 1];
@@ -140,12 +141,12 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
             >
               <GripVertical className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" aria-hidden />
               <Icon className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden />
-              <span className="text-xs flex-1 truncate">{def.title}</span>
+              <span className="text-xs flex-1 truncate">{title}</span>
               <button
                 type="button"
                 disabled={index === 0}
                 onClick={() => prevShown && reorder(id, order.indexOf(prevShown))}
-                aria-label={t('shellChrome.customizeSidebar.moveUp', { title: def.title })}
+                aria-label={t('shellChrome.customizeSidebar.moveUp', { title })}
                 className="h-6 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-25 disabled:pointer-events-none transition-colors"
               >
                 <ChevronUp className="h-3.5 w-3.5" />
@@ -154,7 +155,7 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
                 type="button"
                 disabled={index === shownIds.length - 1}
                 onClick={() => nextShown && reorder(id, order.indexOf(nextShown))}
-                aria-label={t('shellChrome.customizeSidebar.moveDown', { title: def.title })}
+                aria-label={t('shellChrome.customizeSidebar.moveDown', { title })}
                 className="h-6 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-25 disabled:pointer-events-none transition-colors"
               >
                 <ChevronDown className="h-3.5 w-3.5" />
@@ -165,8 +166,8 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
                 onClick={() => setShown(id, false)}
                 aria-label={
                   locked
-                    ? t('shellChrome.customizeSidebar.alwaysShownAriaLabel', { title: def.title })
-                    : t('shellChrome.customizeSidebar.hideAriaLabel', { title: def.title })
+                    ? t('shellChrome.customizeSidebar.alwaysShownAriaLabel', { title })
+                    : t('shellChrome.customizeSidebar.hideAriaLabel', { title })
                 }
                 title={t(
                   locked
@@ -193,16 +194,17 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
             {hiddenList.map((id) => {
               const def = getPanelDef(id);
               if (!def) return null;
+              const title = t(def.titleKey);
               const Icon = def.Icon;
               return (
                 <div key={id} className="flex items-center gap-1.5 px-2 py-1.5 mx-1 rounded-md text-muted-foreground">
                   <span className="w-3.5 shrink-0" aria-hidden />
                   <Icon className="h-4 w-4 shrink-0 opacity-60" aria-hidden />
-                  <span className="text-xs flex-1 truncate opacity-70">{def.title}</span>
+                  <span className="text-xs flex-1 truncate opacity-70">{title}</span>
                   <button
                     type="button"
                     onClick={() => setShown(id, true)}
-                    aria-label={t('shellChrome.customizeSidebar.showAriaLabel', { title: def.title })}
+                    aria-label={t('shellChrome.customizeSidebar.showAriaLabel', { title })}
                     title={t('shellChrome.customizeSidebar.showInSidebarTitle')}
                     className="h-6 inline-flex items-center gap-1 rounded px-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                   >

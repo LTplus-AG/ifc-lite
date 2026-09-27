@@ -21,6 +21,7 @@ import { cesiumGeoEn } from './catalogues/cesium-geo.en';
 import { chatEn } from './catalogues/chat.en';
 import { chatByokEn } from './catalogues/chat-byok.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
+import { commandsEn } from './catalogues/commands.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
 import { comparePanelEn } from './catalogues/compare-panel.en';
 import { costPanelEn } from './catalogues/cost-panel.en';
@@ -44,6 +45,7 @@ import { keyboardShortcutsEn } from './catalogues/keyboard-shortcuts.en';
 import { settingsEn } from './catalogues/settings.en';
 import { layersPanelEn } from './catalogues/layers-panel.en';
 import { landXmlEn } from './catalogues/landxml.en';
+import { terrainImageryEn } from './catalogues/terrain-imagery.en';
 import { lensPanelEn } from './catalogues/lens-panel.en';
 import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { propertyEditorEn } from './catalogues/property-editor.en';
@@ -53,6 +55,7 @@ import { listsEn } from './catalogues/lists.en';
 import { mcpEn } from './catalogues/mcp.en';
 import { mcpPlaygroundEn } from './catalogues/mcp-playground.en';
 import { measureEn } from './catalogues/measure.en';
+import { mutationPermissionEn } from './catalogues/mutation-permission.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
 import { miscPanelsBEn } from './catalogues/misc-panels-b.en';
 import { miscPanelsAEn } from './catalogues/misc-panels-a.en';
@@ -101,6 +104,7 @@ export const en = {
   ...propertyEditorEn,
   ...sharedCommandsEn,
   ...commandPaletteEn,
+  ...commandsEn,
   ...ganttWorkCalendarEn,
   ...filterGroupsEn,
   ...filterOperatorsEn,
@@ -115,6 +119,7 @@ export const en = {
   ...viewerShellEn,
   ...shellChromeEn,
   ...measureEn,
+  ...mutationPermissionEn,
   ...spaceSketchEn,
   ...splitToolEn,
   ...documentEn,
@@ -126,6 +131,7 @@ export const en = {
   ...propertiesEn,
   ...propertiesPanelEn,
   ...landXmlEn,
+  ...terrainImageryEn,
   ...structuralPropertiesEn,
   ...appearancePanelEn,
   ...appearancePickersEn,

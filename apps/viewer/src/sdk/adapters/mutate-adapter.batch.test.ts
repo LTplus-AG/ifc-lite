@@ -56,6 +56,7 @@ async function seed(): Promise<void> {
     redoStacks: new Map(),
     mutationBatchTags: new Map(),
     mutationVersion: 0,
+    editEnabled: true,
   });
 }
 
@@ -65,6 +66,15 @@ const rating = (expressId: number) => useViewerStore.getState().getMutationView(
 
 describe('bim.mutate.batch through the viewer mutate adapter', () => {
   beforeEach(seed);
+
+  it('refuses script writes before creating an overlay when Edit mode is off (#5901)', () => {
+    useViewerStore.setState({ editEnabled: false, mutationViews: new Map() });
+    const mutate = createMutateAdapter(useViewerStore);
+    assert.throws(() => mutate.setAttribute(ref(50), 'Name', 'Blocked'), /Turn on Edit mode/);
+    assert.equal(useViewerStore.getState().mutationViews.size, 0);
+    assert.equal(useViewerStore.getState().undoStacks.size, 0);
+    assert.equal(useViewerStore.getState().dirtyModels.has(MODEL_ID), false);
+  });
 
   it('one undo reverts every write the batch enclosed, one redo restores them', () => {
     const mutate = createMutateAdapter(useViewerStore);

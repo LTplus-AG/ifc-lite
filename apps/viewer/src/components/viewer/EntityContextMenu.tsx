@@ -19,11 +19,11 @@ import {
   Building2,
   Save,
   Trash2,
-  CopyPlus,
   ShieldQuestion,
 } from 'lucide-react';
 import { useViewerStore, resolveEntityRef, resolveGlobalId, toGlobalIdFromModels } from '@/store';
 import type { DuplicateDirection } from '@/store/slices/mutationSlice';
+import { useContextMutationAccess } from './useContextMutationAccess';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { hideFromContextMenuFromStore } from '@/store/hideSelection';
 import {
@@ -34,12 +34,11 @@ import {
 } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
-import { useSlotContributions } from '@/hooks/useSlotContributions';
-import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
-import { evaluateWhen, parseWhen, type CommandContribution, type ResolvedContextMenuContribution } from '@ifc-lite/extensions';
-import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
-import { describeRunCommandError } from '@/services/extensions/runtime-errors';
 import { useTranslation } from '@/i18n';
+import {
+  ContextMenu, ContextMenuContent, ContextMenuSeparator, ContextMenuTrigger,
+} from '@/components/ui/context-menu';
+import { DuplicateItems, ExtensionContextItems, MenuItem } from './EntityContextMenuItems';
 
 export function EntityContextMenu() {
   const { t } = useTranslation();
@@ -53,8 +52,10 @@ export function EntityContextMenu() {
   // Store-level mutations
   const removeEntity = useViewerStore((s) => s.removeEntity);
   const duplicateEntity = useViewerStore((s) => s.duplicateEntity);
-  const getMutationView = useViewerStore((s) => s.getMutationView);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const focusReturnRef = useRef<HTMLElement | null>(null);
+  const wasOpenRef = useRef(false);
+  const [radixOpen, setRadixOpen] = useState(false);
   const { ifcDataStore, models } = useIfc();
 
   // Resolve contextMenu.entityId (globalId) to original expressId/model (IfcDataStore uses original expressIds, not globalIds).
@@ -81,42 +82,39 @@ export function EntityContextMenu() {
     };
   }, [contextMenu.entityId, models, ifcDataStore]);
 
-  // Close menu when clicking/tapping outside. Listen on `pointerdown` (with
-  // capture) rather than `mousedown`: the canvas calls `e.preventDefault()`
-  // on its own pointerdown handler, which in some browsers suppresses the
-  // compatibility `mousedown` event — so a plain `mousedown` listener never
-  // fires when the user clicks the 3D viewport to dismiss the menu.
+  // The viewport owns picking and opens the store menu after identifying the
+  // right-clicked entity. Dispatch that same pointer position through Radix's
+  // Trigger so its virtual anchor, focus management, and collision handling
+  // remain authoritative. Root stays mounted for its close/focus lifecycle.
+  useLayoutEffect(() => {
+    if (!contextMenu.isOpen) {
+      wasOpenRef.current = false;
+      setRadixOpen(false);
+      return;
+    }
+    if (!wasOpenRef.current) {
+      focusReturnRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
+    wasOpenRef.current = true;
+    triggerRef.current?.dispatchEvent(new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: contextMenu.screenX,
+      clientY: contextMenu.screenY,
+    }));
+  }, [contextMenu.isOpen, contextMenu.screenX, contextMenu.screenY]);
+
+  // The pointer/keyboard outside dismissal belongs to Radix. Keep the scene
+  // movement guards: a wheel or viewport resize invalidates the anchor.
   useEffect(() => {
     if (!contextMenu.isOpen) return;
-    const handlePointerOutside = (e: PointerEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        closeContextMenu();
-      }
-    };
-    // Also close on scroll/resize — the anchor coords go stale.
     const handleDismiss = () => closeContextMenu();
-    document.addEventListener('pointerdown', handlePointerOutside, true);
     window.addEventListener('resize', handleDismiss);
     window.addEventListener('wheel', handleDismiss, { passive: true });
     return () => {
-      document.removeEventListener('pointerdown', handlePointerOutside, true);
       window.removeEventListener('resize', handleDismiss);
       window.removeEventListener('wheel', handleDismiss);
     };
-  }, [contextMenu.isOpen, closeContextMenu]);
-
-  // Close on escape
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        closeContextMenu();
-      }
-    };
-
-    if (contextMenu.isOpen) {
-      document.addEventListener('keydown', handleEscape);
-      return () => document.removeEventListener('keydown', handleEscape);
-    }
   }, [contextMenu.isOpen, closeContextMenu]);
 
   // Frame like F/search do (#5597): drop the multi-selection `frameSelection` prefers; defer so Viewport's refs catch up.
@@ -253,11 +251,8 @@ export function EntityContextMenu() {
     return activeDataStore.entities.getTypeName(resolvedExpressId) || '';
   }, [resolvedExpressId, activeDataStore]);
 
-  // Mutation view is required to drive bim.store.* — native-metadata-only models don't have one, so Delete stays hidden there.
-  const canEdit = useMemo(() => {
-    if (!contextEntityRef) return false;
-    return getMutationView(contextEntityRef.modelId) !== null;
-  }, [contextEntityRef, getMutationView]);
+  const { canEdit, editReasonKey, showMutationActions } = useContextMutationAccess(contextEntityRef, contextMenu.isOpen);
+  const editReason = editReasonKey ? t(editReasonKey) : undefined;
 
   const handleDuplicate = useCallback(
     (direction: DuplicateDirection = '+X') => {
@@ -299,49 +294,6 @@ export function EntityContextMenu() {
     closeContextMenu();
   }, [contextEntityRef, canEdit, contextEntityType, contextMenu.entityId, removeEntity, hideEntity, setSelectedEntityId, closeContextMenu]);
 
-  // Viewport-constrained placement (mirrors OS context-menu behaviour): flip
-  // up/left when the menu would overflow the bottom/right edges, then clamp
-  // against the opposite edge so it never crosses a viewport side. Two-pass
-  // render: invisible first, then measure/reposition before paint (useLayoutEffect is sync).
-  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
-
-  useLayoutEffect(() => {
-    if (!contextMenu.isOpen) {
-      setPosition(null);
-      return;
-    }
-    const node = menuRef.current;
-    if (!node) return;
-    const rect = node.getBoundingClientRect();
-    const margin = 4;
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const anchorX = contextMenu.screenX;
-    const anchorY = contextMenu.screenY;
-
-    // Horizontal: prefer right of cursor, flip left on overflow, then clamp.
-    let left = anchorX;
-    if (left + rect.width + margin > vw) {
-      const flipped = anchorX - rect.width;
-      left = flipped >= margin ? flipped : Math.max(margin, vw - rect.width - margin);
-    }
-    if (left < margin) left = margin;
-
-    // Vertical: prefer below cursor, flip above on overflow, then clamp.
-    let top = anchorY;
-    if (top + rect.height + margin > vh) {
-      const flipped = anchorY - rect.height;
-      top = flipped >= margin ? flipped : Math.max(margin, vh - rect.height - margin);
-    }
-    if (top < margin) top = margin;
-
-    setPosition({ left, top });
-  }, [contextMenu.isOpen, contextMenu.screenX, contextMenu.screenY, contextMenu.entityId]);
-
-  if (!contextMenu.isOpen) {
-    return null;
-  }
-
   // Get entity info for display (resolvedExpressId is the original ID for IfcDataStore lookups)
   let entityName = '';
   let entityType = '';
@@ -351,17 +303,27 @@ export function EntityContextMenu() {
   }
 
   return (
-    <div
-      ref={menuRef}
-      className="fixed z-50 bg-popover border rounded-lg shadow-lg py-1 min-w-48"
-      style={{
-        left: position?.left ?? contextMenu.screenX,
-        top: position?.top ?? contextMenu.screenY,
-        // Hide the first render: we need a measured rect to compute the constrained
-        // position. `useLayoutEffect` resolves this before paint, so the user never sees the unclamped flash.
-        visibility: position ? 'visible' : 'hidden',
+    <ContextMenu
+      open={contextMenu.isOpen && radixOpen}
+      modal={false}
+      onOpenChange={(open) => {
+        setRadixOpen(open);
+        if (!open) closeContextMenu();
       }}
     >
+      <ContextMenuTrigger
+        ref={triggerRef}
+        aria-hidden="true"
+        className="pointer-events-none fixed h-px w-px"
+        style={{ left: -1, top: -1 }}
+      />
+      <ContextMenuContent
+        aria-label={contextMenu.entityId == null ? t('entityContextMenu.canvasActions') : t('entityContextMenu.entityActions')}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          focusReturnRef.current?.focus();
+        }}
+      >
       {contextMenu.entityId && (
         <>
           {/* Entity Header */}
@@ -372,38 +334,39 @@ export function EntityContextMenu() {
             <div className="text-xs text-muted-foreground">{entityType}</div>
           </div>
 
-          <MenuItem icon={Maximize2} label={t('entityContextMenu.frameSelection')} shortcut="F" onClick={handleFrameSelection} />
-          <MenuItem icon={EyeOff} label={t('entityContextMenu.hide')} shortcut="Del" onClick={handleHide} />
+          <MenuItem icon={Maximize2} label={t('entityContextMenu.frameSelection')} shortcut="camera.frameSelection" onClick={handleFrameSelection} />
+          <MenuItem icon={EyeOff} label={t('entityContextMenu.hide')} shortcut="visibility.hideSelection" onClick={handleHide} />
 
-          <div className="h-px bg-border my-1" />
+          <ContextMenuSeparator />
 
           {/* Basket operations */}
-          <MenuItem icon={Equal} label={t('entityContextMenu.setBasket')} shortcut="=" onClick={handleSetBasket} />
-          <MenuItem icon={Plus} label={t('entityContextMenu.addToBasket')} shortcut="+" onClick={handleAddToBasket} />
-          <MenuItem icon={Minus} label={t('entityContextMenu.removeFromBasket')} shortcut="−" onClick={handleRemoveFromBasket} />
-          <MenuItem icon={Save} label={t('entityContextMenu.saveBasketView')} shortcut="B" onClick={handleSaveBasketView} />
+          <MenuItem icon={Equal} label={t('entityContextMenu.setBasket')} shortcut="basket.set" onClick={handleSetBasket} />
+          <MenuItem icon={Plus} label={t('entityContextMenu.addToBasket')} shortcut="basket.add" onClick={handleAddToBasket} />
+          <MenuItem icon={Minus} label={t('entityContextMenu.removeFromBasket')} shortcut="basket.remove" onClick={handleRemoveFromBasket} />
+          <MenuItem icon={Save} label={t('entityContextMenu.saveBasketView')} shortcut="basket.saveView" onClick={handleSaveBasketView} />
 
-          <div className="h-px bg-border my-1" />
+          <ContextMenuSeparator />
 
           <MenuItem icon={Layers} label={`Select all ${entityType}`} onClick={handleSelectSimilar} />
           <MenuItem icon={Building2} label="Select same storey" onClick={handleSelectSameStorey} />
 
-          <div className="h-px bg-border my-1" />
+          <ContextMenuSeparator />
 
           <MenuItem icon={Copy} label="Copy GlobalId" onClick={handleCopyId} />
           <MenuItem icon={ShieldQuestion} label="Export anonymized…" onClick={handleExportAnonymized} />
 
-          {/* Store-level mutations (bim.store.*). Only surfaced when there's
-              a live mutation view on the model — otherwise these would
-              silently no-op and confuse users. */}
-          {canEdit && (
+          {/* Keep denied actions visible with their reason; an editable view
+              is created on demand when the menu opens in Edit mode. */}
+          {showMutationActions && (
             <>
-              <div className="h-px bg-border my-1" />
-              <DuplicateRow onDuplicate={handleDuplicate} />
+              <ContextMenuSeparator />
+              <DuplicateItems onDuplicate={handleDuplicate} disabled={!canEdit} reason={editReason} />
               <MenuItem
                 icon={Trash2}
                 label="Delete entity"
                 tone="destructive"
+                disabled={!canEdit}
+                title={editReason}
                 onClick={handleDeleteEntity}
               />
             </>
@@ -412,171 +375,14 @@ export function EntityContextMenu() {
       )}
 
       {!contextMenu.entityId && (
-        <MenuItem icon={Eye} label={t('entityContextMenu.showAll')} shortcut="A" onClick={handleShowAll} />
+        <MenuItem icon={Eye} label={t('entityContextMenu.showAll')} shortcut="visibility.showAll" onClick={handleShowAll} />
       )}
 
       <ExtensionContextItems
         slot={contextMenu.entityId != null ? 'contextMenu.entity' : 'contextMenu.canvas'}
         hasEntity={contextMenu.entityId != null}
       />
-    </div>
-  );
-}
-
-/**
- * Renders extension-contributed entries for the entity or canvas context-menu
- * slot. Each contribution is `when`-filtered; clicking dispatches the
- * contributed command through the extension host.
- */
-function ExtensionContextItems({
-  slot,
-  hasEntity,
-}: {
-  slot: 'contextMenu.entity' | 'contextMenu.canvas';
-  hasEntity: boolean;
-}) {
-  // Loader enriches the contextMenu payload with icon + title from the linked command
-  // (see manifestToContributions); fall back to the commandPalette lookup if a manifest omits it.
-  const contributions = useSlotContributions<ResolvedContextMenuContribution>(slot);
-  const commandPalette = useSlotContributions<CommandContribution>('commandPalette');
-  const host = useOptionalExtensionHost();
-  const closeContextMenu = useViewerStore((s) => s.closeContextMenu);
-  if (contributions.length === 0) return null;
-  const whenContext = {
-    'selection.count': hasEntity ? 1 : 0,
-    'model.loaded': true,
-  };
-  const titleFor = (c: ResolvedContextMenuContribution): string => {
-    if (c.title) return c.title;
-    const found = commandPalette.find((cp) => cp.payload.id === c.command);
-    return found?.payload.title ?? c.command;
-  };
-  const visible = contributions.filter((c) => {
-    const when = c.payload.when;
-    if (!when) return true;
-    const parsed = parseWhen(when);
-    if (!parsed.ok) return false;
-    return evaluateWhen(parsed.value, whenContext);
-  });
-  if (visible.length === 0) return null;
-  return (
-    <>
-      <div className="h-px bg-border my-1" />
-      {visible.map((c) => {
-        const Icon = resolveExtensionIcon(c.payload.icon);
-        return (
-          <MenuItem
-            key={`${c.extensionId}:${c.payload.command}`}
-            icon={Icon}
-            label={titleFor(c.payload)}
-            onClick={() => {
-              closeContextMenu();
-              // Pinned to `c.extensionId` (same owner as the React key above)
-              // — command ids are namespaced by convention only, so an
-              // unscoped run could pick a different extension with the same id.
-              host?.runCommand(c.payload.command, c.extensionId).catch((err) => {
-                toast.error(describeRunCommandError(c.payload.command, err));
-              });
-            }}
-          />
-        );
-      })}
-    </>
-  );
-}
-
-type MenuItemTone = 'default' | 'destructive';
-
-interface MenuItemProps {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  /** Right-aligned keyboard hint (e.g. `'⌘D'`). */
-  shortcut?: string;
-  /** Visual tone: `default` muted icon/neutral hover, `destructive`
-   *  red-toned icon and red-tinted hover (Delete entity). */
-  tone?: MenuItemTone;
-}
-
-/**
- * Inline directional duplicate row — primary label on the left (clickable,
- * fires the default +X duplicate), six axis chips on the right for explicit
- * direction control, mirroring the placement axes on the Raw STEP tab. Six
- * chips beat a sub-menu: a flyout for six options wastes real estate, and
- * the chip arrows let the user "see and pick" in one motion.
- */
-function DuplicateRow({ onDuplicate }: { onDuplicate: (dir: DuplicateDirection) => void }) {
-  const { t } = useTranslation();
-  return (
-    <div className="px-3 py-1.5 flex items-center gap-2 hover:bg-muted/40">
-      <button
-        type="button" onClick={() => onDuplicate('+X')}
-        className="flex items-center gap-2 text-sm text-left flex-1 min-w-0 hover:text-foreground"
-        title={t('entityContextMenu.duplicateDefaultTitle')}
-      >
-        <CopyPlus className="h-4 w-4 text-muted-foreground" /><span>{t('entityContextMenu.duplicateLabel')}</span>
-        <span className="ml-auto text-2xs font-mono text-muted-foreground">⌘D</span>
-      </button>
-      <div className="flex items-center gap-0.5 shrink-0 border-l border-border/60 pl-2">
-        <DirectionChip dir="+X" label="→" tooltip="Duplicate +X (east)" onClick={() => onDuplicate('+X')} />
-        <DirectionChip dir="-X" label="←" tooltip="Duplicate −X (west)" onClick={() => onDuplicate('-X')} />
-        <DirectionChip dir="+Y" label="↗" tooltip="Duplicate +Y (north)" onClick={() => onDuplicate('+Y')} />
-        <DirectionChip dir="-Y" label="↙" tooltip="Duplicate −Y (south)" onClick={() => onDuplicate('-Y')} />
-        <DirectionChip dir="+Z" label="↑" tooltip="Duplicate +Z (up)" onClick={() => onDuplicate('+Z')} />
-        <DirectionChip dir="-Z" label="↓" tooltip="Duplicate −Z (down)" onClick={() => onDuplicate('-Z')} />
-      </div>
-    </div>
-  );
-}
-
-function DirectionChip({
-  dir,
-  label,
-  tooltip,
-  onClick,
-}: {
-  dir: DuplicateDirection;
-  label: string;
-  tooltip: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={tooltip}
-      aria-label={tooltip}
-      className="h-5 w-5 flex items-center justify-center rounded text-2xs font-mono leading-none text-muted-foreground hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-foreground transition-colors"
-      data-direction={dir}
-    >
-      {label}
-    </button>
-  );
-}
-
-function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, tone = 'default' }: MenuItemProps) {
-  const iconClass =
-    tone === 'destructive'
-      ? 'h-4 w-4 text-red-500 dark:text-red-400'
-      : 'h-4 w-4 text-muted-foreground';
-  const hoverClass =
-    tone === 'destructive'
-      ? 'hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-700 dark:hover:text-red-300'
-      : 'hover:bg-muted';
-  return (
-    <button
-      className={`w-full px-3 py-1.5 text-sm text-left flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${hoverClass}`}
-      onClick={onClick}
-      disabled={disabled}
-    >
-      <Icon className={iconClass} />
-      <span className="flex-1 min-w-0">{label}</span>
-      {shortcut && (
-        <span className="text-2xs font-mono text-muted-foreground shrink-0">
-          {shortcut}
-        </span>
-      )}
-    </button>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

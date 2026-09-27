@@ -92,12 +92,10 @@ export const shellChromeEn = {
     'Safe mode: extensions and the active profile are not loaded for this session. Append {flag} or reload without the flag to resume.',
   'shellChrome.layout.hierarchyLabel': 'Hierarchy',
   'shellChrome.layout.openHierarchyAriaLabel': 'Open Hierarchy',
-  'shellChrome.layout.propertiesLabel': 'Properties',
   'shellChrome.layout.openPropertiesAriaLabel': 'Open Properties',
   'shellChrome.layout.closePanelsAriaLabel': 'Close panels',
   'shellChrome.layout.analysisFallback': 'Analysis',
   'shellChrome.layout.addElementLabel': 'Add element',
-  'shellChrome.layout.informationFallback': 'Information',
   'shellChrome.layout.dragToResizeAriaLabel': 'Drag to resize or dismiss',
 
   // StatusBar.tsx
@@ -137,10 +135,7 @@ export const shellChromeEn = {
   'shellChrome.mobileToolbar.frameSelection': 'Frame Selection',
   'shellChrome.mobileToolbar.perspective': 'Perspective',
   'shellChrome.mobileToolbar.orthographic': 'Orthographic',
-  'shellChrome.mobileToolbar.exportGlb': 'Export GLB',
-  'shellChrome.mobileToolbar.exportGlbSuccess': 'Exported GLB ({size} KB)',
-  'shellChrome.mobileToolbar.exportGlbFailed': 'Export failed: {message}',
-  'shellChrome.mobileToolbar.unknownError': 'Unknown error',
+  'shellChrome.mobileToolbar.export': 'Export',
   'shellChrome.mobileToolbar.lightMode': 'Light Mode',
   'shellChrome.mobileToolbar.darkMode': 'Dark Mode',
 } as const satisfies Record<string, TranslationValue>;

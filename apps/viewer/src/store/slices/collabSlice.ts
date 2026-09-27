@@ -97,9 +97,8 @@ export type CollabRole = 'viewer' | 'commenter' | 'editor' | 'admin';
 
 /**
  * The single role -> edit rule. `canCollabEdit()` below is its store-bound
- * form, and components that mirror the same gate in their own UI
- * (`BulkPropertyEditor`, `DataConnector`) call this directly off `collabRole`.
- * Keeping one body means a future role change cannot drift the copies apart.
+ * form. The shared mutation permission selector calls that store-bound form,
+ * so Bulk, CSV, Properties, and script authoring share the same role rule.
  * `null` = not in a shared room, so the local single-user editing rules apply
  * (handled by the UI's existing `editEnabled` gate) and this returns true.
  */

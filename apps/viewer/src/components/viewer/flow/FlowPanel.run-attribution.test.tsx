@@ -122,6 +122,7 @@ describe('FlowPanel — a run records only its own mutations (#5634)', () => {
     useViewerStore.setState({
       ...initialState,
       ...fixtureModels(model),
+      editEnabled: true,
       mutationViews: new Map([[MODEL_ID, new MutablePropertyView(dataStore.properties || null, MODEL_ID)]]),
       storeEditors: new Map(),
       undoStacks: new Map(),

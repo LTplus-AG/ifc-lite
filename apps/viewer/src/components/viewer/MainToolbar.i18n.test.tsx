@@ -142,8 +142,6 @@ const NOT_RENDERED_IN_THIS_STATE: MainToolbarKey[] = [
   'mainToolbar.bulkPropertyEditor', // inside the Edit properties menu, which stays closed (disabled trigger)
   'mainToolbar.importDataCsv',
   'mainToolbar.share', // collab feature flag is off under test
-  'mainToolbar.room',
-  'mainToolbar.collaborationRoom', // Panels menu item gated on the same flag
   'mainToolbar.analysisExtensions', // no analysis extensions installed
   'mainToolbar.editModeEnterAriaLabel', // edit mode is on in this render
   'mainToolbar.editModeEnterTooltip',
@@ -153,7 +151,6 @@ const NOT_RENDERED_IN_THIS_STATE: MainToolbarKey[] = [
   'mainToolbar.visibilityMergedTooltip',
   'mainToolbar.cesiumShow', // Cesium is enabled in this render
   'mainToolbar.moveGeorefStop', // not in placement mode
-  'mainToolbar.sunSkyClose', // Sun & Sky panel is closed in this render
 ];
 
 beforeEach(() => {

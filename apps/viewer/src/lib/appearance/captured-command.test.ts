@@ -44,6 +44,7 @@ async function setup(federated = false) {
   const model = { ...fixtureModel('capture'), schemaVersion: 'IFC4' as const, idOffset, maxExpressId: 53, ifcDataStore: data, geometryResult: geometry };
   const other = fixtureModel('other');
   useViewerStore.setState({ models: new Map([...(federated ? [['other', other] as const] : []), ['capture', model]]), activeModelId: 'capture',
+    editEnabled: true,
     geometryResult: geometry, mutationViews: new Map([['capture', view]]), storeEditors: new Map([['capture', editor]]),
     undoStacks: new Map(), redoStacks: new Map(), dirtyModels: new Set(), mutationVersion: 0, collabRoomId: null,
     modelPlacement: { ...emptyPlacementState(), placements: new Map([['capture', testPlacement([10,20,30])]]) } });

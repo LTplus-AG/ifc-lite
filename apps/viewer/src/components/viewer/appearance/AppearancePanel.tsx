@@ -23,7 +23,8 @@ export function AppearancePanel() {
     unavailableReason: assignments.blockedReason,
     affectedCount: assignments.affectedCount, convertedObjects: [], excludedCount: 0, exclusions: [],
     canApply: assignments.status === 'ready' && !assignments.original && !assignments.blockedReason, canDiscard: assignments.hasPreview || assignments.busy,
-    hasPreview: assignments.hasPreview, showingOriginal: assignments.original, onCompareChange: assignments.compare,
+    hasPreview: assignments.hasPreview, assignmentTargetModelIds: assignments.targetModelIds,
+    showingOriginal: assignments.original, onCompareChange: assignments.compare,
     onApply: () => { void assignments.apply(); }, onDiscard: assignments.cancel, assignmentMode: true } : controls;
   return <AppearancePanelView {...combined} renderAssignments={intent === 'apply' ? valid => <AppearanceAssignments controller={assignments} base={appearance} formValid={valid} /> : undefined} scan={intent === 'scan' ? <AppearanceScanPanel /> : undefined} capture={intent === 'capture' ? <AppearanceCapturePanel /> : undefined} intent={intent} onIntentChange={next => {
     controls.onDiscard(); assignments.cancel(); setIntent(next);

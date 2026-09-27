@@ -5,9 +5,8 @@
 /**
  * @ifc-lite/lens — Rule-based 3D filtering and colorization
  *
- * Pure, framework-agnostic lens evaluation engine for IFC models.
- * Evaluate rules that match entities by IFC class, property value, or
- * material name and apply visual actions (colorize, hide, transparent).
+ * Framework-agnostic lens action engine for IFC models. Apply visual actions
+ * (colorize, hide, transparent) to shared FilterGroup selections.
  *
  * @example
  * ```ts
@@ -15,7 +14,8 @@
  * import type { LensDataProvider } from '@ifc-lite/lens';
  *
  * const provider: LensDataProvider = createMyProvider(myData);
- * const result = evaluateLens(BUILTIN_LENSES[0], provider);
+ * declare const selectedByRule: ReadonlyMap<string, ReadonlySet<number>>;
+ * const result = evaluateLens(BUILTIN_LENSES[0], provider, selectedByRule);
  * // result.colorMap  — Map<globalId, RGBAColor>
  * // result.hiddenIds — Set<globalId>
  * // result.ruleCounts — Map<ruleId, count>
@@ -30,8 +30,6 @@ export type {
   LensDataProvider,
   PropertySetInfo,
   ClassificationInfo,
-  LensCriteria,
-  LensOperator,
   LensRule,
   Lens,
   AutoColorSpec,
@@ -46,10 +44,6 @@ export {
   COMMON_IFC_CLASSES as COMMON_IFC_TYPES,
   LENS_PALETTE,
   IFC_SUBTYPE_TO_BASE,
-  LENS_CRITERIA_TYPES,
-  LENS_COMPOUND_TYPES,
-  MAX_COMPOUND_DEPTH,
-  LENS_OPERATORS,
   AUTO_COLOR_SOURCES,
   ENTITY_ATTRIBUTE_NAMES,
 } from './types.js';
@@ -60,12 +54,6 @@ export {
 
 export { evaluateLens, evaluateAutoColorLens } from './engine.js';
 export type { AutoColorEvaluationResult } from './engine.js';
-
-// ============================================================================
-// Matching
-// ============================================================================
-
-export { matchesCriteria } from './matching.js';
 
 // ============================================================================
 // Colors

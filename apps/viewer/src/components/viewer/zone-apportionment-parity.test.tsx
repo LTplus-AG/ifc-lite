@@ -37,6 +37,8 @@ import assert from 'node:assert/strict';
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { resolve } from '@/i18n/registry';
+import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
 import { useWorkspacePanelControls } from './toolbar/useWorkspacePanelControls.js';
 import { ZoneApportionSummary } from './ZoneApportionSummary.js';
@@ -127,14 +129,14 @@ function openPanelsMenu(container: HTMLElement): void {
  * `document`.
  */
 function zonesControl(surface: 'classic' | 'ribbon', container: HTMLElement): HTMLElement {
+  const name = resolve(panelTitleKey('zones'));
   const found = surface === 'classic'
     ? [...document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')].filter(
-        (e) => e.textContent?.trim() === 'Location Zones')
-    // Matched on the VISIBLE label: `RibbonLargeButton` sets
-    // `aria-label={tooltip ?? label}`, so this button's accessible name is the
-    // tooltip prose, not "Zones".
+        (e) => e.textContent?.trim() === name)
+    // The ribbon button keeps tooltip prose in its description, while its
+    // accessible name is the canonical panel title.
     : [...container.querySelectorAll<HTMLElement>('button')].filter(
-        (e) => e.textContent?.trim() === 'Zones');
+        (e) => e.getAttribute('aria-label') === name);
   assert.equal(found.length, 1, `${surface}: expected one Zones control, found ${found.length}`);
   return found[0];
 }
@@ -233,7 +235,7 @@ describe('#2508 zone apportionment reachability', () => {
       // Zones has no visibility flag of its own, so the sidebar exclusivity
       // subscription -- which promotes whichever panel's flag just went
       // off->on -- could never adopt it. The menu item dispatched, every flag
-      // went false, and the docked slot fell back to Information: the panel
+      // went false, and the docked slot fell back to Properties: the panel
       // could not be opened from ANY entry point.
       useViewerStore.getState().showWorkspacePanel('properties');
       assert.equal(useViewerStore.getState().sidebarActivePanel, 'properties');
@@ -583,7 +585,7 @@ describe('#2508 zone apportionment reachability', () => {
       try {
         act(() => probeRoot.render(<Probe />));
         act(() => { useViewerStore.getState().toggleWorkspacePanel('zones'); });
-        assert.equal(seen.at(-1), 'Location Zones');
+        assert.equal(seen.at(-1), 'Location zones');
       } finally {
         act(() => probeRoot.unmount());
         host.remove();

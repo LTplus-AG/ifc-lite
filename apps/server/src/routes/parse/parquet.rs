@@ -93,7 +93,7 @@ pub async fn parse_parquet(
     if let (Some(cached_parquet), Some(cached_metadata_json), true, true) = (
         state.cache.get_bytes(&parquet_cache_key).await?,
         state.cache.get_bytes(&metadata_cache_key).await?,
-        has_current_data_model(&state.cache, &cache_key).await,
+        has_current_data_model(&state.cache, &cache_key, query.data_model_entities).await,
         has_cached_symbolic(&state.cache, &cache_key).await,
     ) {
         tracing::info!(
@@ -135,6 +135,7 @@ pub async fn parse_parquet(
     // that's independent of tokio's blocking thread pool
     let serialize_start = tokio::time::Instant::now();
     let opening_filter = query.opening_filter;
+    let data_model_entities = query.data_model_entities;
     // Guard rides the blocking task (see parse_full): a cancelled handler
     // future must not release the admission slot while the work runs on.
     let (
@@ -146,7 +147,7 @@ pub async fn parse_parquet(
         _admission,
     ) = tokio::task::spawn_blocking(move || {
             // First: extract geometry and the data model in parallel.
-            let (geometry_result, data_model) = rayon::join(
+            let (geometry_result, mut data_model) = rayon::join(
                 || process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality),
                 || extract_data_model(&content),
             );
@@ -158,6 +159,9 @@ pub async fn parse_parquet(
                 relationship_count: data_model.relationships.len(),
                 spatial_node_count: data_model.spatial_hierarchy.nodes.len(),
             };
+            // After the stats (#6034): they describe the MODEL, so the
+            // metadata header both entities variants share stays one value.
+            data_model_entities.apply(&mut data_model);
 
             // Second: the 2D symbol stream (IfcAnnotation + IfcGrid, endpoint
             // parity, issue #900) alongside serializing BOTH geometry and data
@@ -216,7 +220,7 @@ pub async fn parse_parquet(
     );
 
     // Cache data model IMMEDIATELY (not in background) so it's ready when client polls
-    let data_model_cache_key = data_model_cache_key(&cache_key);
+    let data_model_cache_key = data_model_cache_key(&cache_key, data_model_entities);
     if let Err(e) = state
         .cache
         .set_bytes(&data_model_cache_key, &data_model_parquet)

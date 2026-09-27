@@ -46,6 +46,7 @@
 
 import { useMemo, useRef } from 'react';
 import { useViewerStore } from '@/store';
+import { canMutate } from '@/store/mutation-permission';
 import { useIfc } from '@/hooks/useIfc';
 import { useProjectorTick } from '@/components/viewport-ui/scene';
 import { rendererPointToIfcStoreyLocal } from '../selectionHandlers';
@@ -107,6 +108,7 @@ interface ActiveDrag {
 
 export function WallEndpointOverlay() {
   const editEnabled = useViewerStore((s) => s.editEnabled);
+  const collabRole = useViewerStore((s) => s.collabRole);
   const activeTool = useViewerStore((s) => s.activeTool);
   const selectedEntity = useViewerStore((s) => s.selectedEntity);
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
@@ -133,8 +135,9 @@ export function WallEndpointOverlay() {
   // every mutation so any other mutation (translate, rotate) updates
   // the handles. Returns null when the entity isn't a resizable wall.
   const endpoints = useMemo(() => {
-    if (!editEnabled || activeTool !== 'select') return null;
+    if (activeTool !== 'select') return null;
     if (!selectedEntity) return null;
+    if (!canMutate(useViewerStore.getState(), selectedEntity.modelId)) return null;
     const wall = readWallEndpoints(selectedEntity.modelId, selectedEntity.expressId);
     if (!wall) return null;
     // Storey elevation — needed to project endpoints back into renderer
@@ -159,6 +162,7 @@ export function WallEndpointOverlay() {
     // projection refreshes without re-running this memo.
   }, [
     editEnabled,
+    collabRole,
     activeTool,
     selectedEntity,
     models,
@@ -290,4 +294,3 @@ export function WallEndpointOverlay() {
     </svg>
   );
 }
-

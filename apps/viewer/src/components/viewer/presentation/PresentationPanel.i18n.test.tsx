@@ -18,7 +18,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, render } from '@/test/render.js';
+import { activate, cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { resolve } from '@/i18n/registry';
 import { en } from '@/i18n/en';
@@ -113,6 +113,14 @@ const RESET_STATE = {
   activeBasketViewId: null,
 };
 
+function getByRole(container: HTMLElement, role: 'button', { name }: { name: string }): HTMLButtonElement {
+  const buttons = [...container.querySelectorAll<HTMLButtonElement>(role)].filter(
+    (element) => element.getAttribute('aria-label') === name,
+  );
+  assert.equal(buttons.length, 1, `expected one accessible ${role} named ${name}`);
+  return buttons[0]!;
+}
+
 beforeEach(() => {
   registerLocale(PSEUDO_LOCALE, PSEUDO);
   setLocale(BASELINE_LOCALE);
@@ -184,5 +192,43 @@ describe('PresentationPanel localization (#5508)', () => {
       englishDom,
       afterDom,
     );
+  });
+});
+
+describe('PresentationPanel icon controls (#5811)', () => {
+  it('names every action-row control and clears a populated basket by keyboard', () => {
+    useViewerStore.setState({ pinboardEntities: new Set(['1:101']) });
+    const container = render(<PresentationPanel />);
+    const actionKeys = [
+      'setFromContextTitle', 'addToBasketTitle', 'removeFromBasketTitle',
+      'showActiveBasketTitle', 'clearActiveBasketTitle', 'saveCurrentViewTitle',
+      'playAllTitle', 'scrollLeftTitle', 'scrollRightTitle',
+    ];
+    for (const key of actionKeys) {
+      getByRole(container, 'button', { name: resolve(`presentationPanel.${key}` as never) });
+    }
+
+    activate(getByRole(container, 'button', { name: resolve('presentationPanel.clearActiveBasketTitle') }));
+    assert.equal(useViewerStore.getState().pinboardEntities.size, 0);
+    assert.equal(getByRole(container, 'button', { name: resolve('presentationPanel.clearActiveBasketTitle') }).disabled, true);
+  });
+
+  it('names saved-view controls and deletes the selected view by keyboard', () => {
+    useViewerStore.setState({
+      basketViews: [{
+        id: 'view-1', name: 'My View', entityRefs: [], thumbnailDataUrl: null,
+        transitionMs: null, viewpoint: null, section: null, source: 'manual',
+        createdAt: 0, updatedAt: 0,
+      }],
+    });
+    const container = render(<PresentationPanel />);
+    getByRole(container, 'button', { name: 'My View' });
+    for (const key of ['renameViewTitle', 'setTransitionTitle', 'deleteViewTitle']) {
+      getByRole(container, 'button', { name: resolve(`presentationPanel.${key}` as never) });
+    }
+
+    activate(getByRole(container, 'button', { name: resolve('presentationPanel.deleteViewTitle') }), ' ');
+    assert.equal(useViewerStore.getState().basketViews.length, 0);
+    assert.ok(container.textContent?.includes(resolve('presentationPanel.emptyStripHint')));
   });
 });

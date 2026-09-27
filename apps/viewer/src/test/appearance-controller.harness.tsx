@@ -141,7 +141,7 @@ END-ISO-10303-21;`);
       coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } };
     const model = { ...fixtureModel(MODEL), ifcDataStore: data, geometryResult: geometry,
       maxExpressId: 25, loadedAt: 1, schemaVersion: 'IFC4' as const, loadState: 'complete' as const };
-    useViewerStore.setState({ models: new Map([[MODEL, model]]), activeModelId: MODEL, geometryResult: geometry,
+    useViewerStore.setState({ models: new Map([[MODEL, model]]), activeModelId: MODEL, geometryResult: geometry, editEnabled: true,
       mutationViews: new Map([[MODEL, view]]), storeEditors: new Map([[MODEL, editor]]),
       undoStacks: new Map(), redoStacks: new Map(), mutationVersion: 0, collabRoomId: null,
       appearanceSources: [], appearanceDraft: null, selectedEntityId: null, selectedEntityIds: new Set() });

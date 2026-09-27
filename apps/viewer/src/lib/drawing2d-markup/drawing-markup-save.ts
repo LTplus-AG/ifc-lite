@@ -64,6 +64,7 @@ import {
   type TextMarkupParams,
 } from '@ifc-lite/create';
 import { useViewerStore } from '@/store';
+import { mutationPermission, type MutationDenialReason } from '@/store/mutation-permission';
 import { firstEffectiveStoreyId } from '@/lib/first-effective-storey';
 import { getDrawingMarkupModelContext } from './drawing-markup-context.js';
 
@@ -84,7 +85,7 @@ export interface SaveMarkupInput {
   cloudAnnotations2D: Array<{ id: string; points: Array<{ x: number; y: number }>; label: string }>;
 }
 
-export type SaveMarkupRefusal = 'no-model' | 'no-anchor' | 'no-root-context' | 'nothing-to-save' | 'invalid-markup';
+export type SaveMarkupRefusal = MutationDenialReason | 'no-model' | 'no-anchor' | 'no-root-context' | 'nothing-to-save' | 'invalid-markup';
 
 export interface SaveMarkupOutcome {
   measuresSaved: number;
@@ -243,6 +244,8 @@ export function saveDrawingMarkupToModel(
   input: SaveMarkupInput,
   targetView: 'PLAN_VIEW' | 'SECTION_VIEW' = 'PLAN_VIEW',
 ): SaveMarkupOutcome {
+  const permission = mutationPermission(useViewerStore.getState(), modelId);
+  if (!permission.allowed) return { ...EMPTY_COUNTS, refusal: permission.reason === 'model-unavailable' ? 'no-model' : permission.reason };
   const validClouds = input.cloudAnnotations2D.filter(
     (c): c is typeof c & { points: readonly [{ x: number; y: number }, { x: number; y: number }] } =>
       c.points.length === 2,

@@ -71,6 +71,7 @@ beforeEach(async () => {
   configureMutationView(headView, b);
   headView.setExpressIdWatermark(3);
   useViewerStore.setState({
+    editEnabled: true,
     models: new Map([['A', model('A', a)], ['B', model('B', b)]]),
     mutationViews: new Map([['B', headView]]),
     compareBaseModelId: 'A',

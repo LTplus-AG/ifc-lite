@@ -89,7 +89,10 @@ pub async fn parse_parquet_optimized(
     // Cache first, before any processing (issue #3889). The optimized route is
     // the SMALL payload and the one a viewer opens repeatedly, so re-parsing it
     // on every request was the worst of both shapes.
-    if let Some(response) = try_cached_optimized_parquet(&state, &cache_key).await? {
+    let data_model_entities = query.data_model_entities;
+    if let Some(response) =
+        try_cached_optimized_parquet(&state, &cache_key, data_model_entities).await?
+    {
         return Ok(response);
     }
 
@@ -115,7 +118,7 @@ pub async fn parse_parquet_optimized(
             // First: geometry and the data model in parallel, mirroring
             // `parse_parquet` -- independent extractions over the same bytes,
             // each on its own rayon thread.
-            let (mut result, data_model) = rayon::join(
+            let (mut result, mut data_model) = rayon::join(
                 || process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality),
                 || extract_data_model(&content),
             );
@@ -125,6 +128,10 @@ pub async fn parse_parquet_optimized(
                 relationship_count: data_model.relationships.len(),
                 spatial_node_count: data_model.spatial_hierarchy.nodes.len(),
             };
+            // After the stats (#6034): they describe the MODEL, so the header
+            // they go into is the same for both entities variants, and the
+            // one metadata entry both share can never disagree with either.
+            data_model_entities.apply(&mut data_model);
             // Don't include normals by default - client can compute them
             // The frame `result`'s vertices were baked in (#4118): the
             // collator's emitted `rel` is consumed directly by this route, so
@@ -184,7 +191,7 @@ pub async fn parse_parquet_optimized(
     // same ordering `parse_parquet` uses and the same #3869 reasoning: written
     // synchronously, before the response, not in a background task, because a
     // background write races the client's very next request.
-    cache_data_model(&state, &cache_key, &dm_parquet).await;
+    cache_data_model(&state, &cache_key, data_model_entities, &dm_parquet).await;
 
     // Cache the symbolic stream so the client can fetch it via
     // `GET /api/v1/parse/symbolic/{cache_key}`.

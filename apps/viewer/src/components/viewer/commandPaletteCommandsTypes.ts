@@ -14,7 +14,9 @@ import type { ExtensionHostService } from '@/services/extensions/host.js';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import type { TranslationKey, TranslationParameters } from '@/i18n';
-import type { PaletteExportRequest } from './usePaletteExportRunner';
+import { resolveEnglish } from '@/i18n/registry';
+import { panelTitleKey, type WorkspacePanelId } from '@/lib/panels/registry';
+import type { ExportRequest } from './useExportRunner';
 import type { ExtensionExporter } from '@/components/extensions/useExtensionExporters';
 
 export type RightPanel =
@@ -31,8 +33,8 @@ export interface CommandPaletteBuildParams {
   cesiumAvailable: boolean;
   activateRightPanel: (panel: RightPanel) => void;
   activateBottomPanel: (panel: BottomPanelId) => void;
-  /** Runs an Export row through the toolbars' handlers and dialogs (`usePaletteExportRunner`). */
-  runExport: (request: PaletteExportRequest) => void;
+  /** Runs an Export row through the toolbars' handlers and dialogs (`useExportRunner`). */
+  runExport: (request: ExportRequest) => void;
   /** Installed extension exporters, offered as Export rows (#5838). */
   extensionExporters?: readonly ExtensionExporter[];
 }
@@ -42,4 +44,10 @@ export interface CommandPaletteBuildParams {
  *  render `label` as-is (see `commandPaletteCommandsCore.ts`'s docblock). */
 export function withKey(labelKey: TranslationKey, labelKeyParams?: TranslationParameters) {
   return { labelKey, labelKeyParams };
+}
+
+/** Display and English search text from the one workspace-panel name. */
+export function withPanelTitle(id: WorkspacePanelId) {
+  const labelKey = panelTitleKey(id);
+  return { labelKey, label: resolveEnglish(labelKey) };
 }

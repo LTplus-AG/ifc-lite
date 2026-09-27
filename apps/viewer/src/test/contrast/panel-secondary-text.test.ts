@@ -65,7 +65,6 @@ const MEASURE_POINT_READOUT = join(VIEWER_DIR, 'tools/MeasurePointReadout.tsx');
 // confirmed by reading the surrounding JSX before adding it here.
 const CHUNK_ERROR_BOUNDARY = join(__dirname, '../../components/ChunkErrorBoundary.tsx');
 const IDS_AUDIT_SUMMARY = join(VIEWER_DIR, 'IDSAuditSummary.tsx');
-const ENTITY_CONTEXT_MENU = join(VIEWER_DIR, 'EntityContextMenu.tsx');
 const ROOM_PANEL = join(VIEWER_DIR, 'RoomPanel.tsx');
 const CUSTOMIZE_SIDEBAR = join(VIEWER_DIR, 'sidebar/CustomizeSidebar.tsx');
 const SECTION_TOOLBAR = join(VIEWER_DIR, 'tools/SectionToolbar.tsx');
@@ -261,18 +260,6 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
       file: IDS_AUDIT_SUMMARY,
       anchor: '<div key={k} className="flex gap-2">\n                      <span ',
       surface: 'bg-card',
-    },
-    {
-      name: 'EntityContextMenu "⌘D" duplicate shortcut',
-      file: ENTITY_CONTEXT_MENU,
-      anchor: "<span>{t('entityContextMenu.duplicateLabel')}</span>\n        <span ",
-      surface: 'bg-popover',
-    },
-    {
-      name: 'EntityContextMenu row shortcut hint',
-      file: ENTITY_CONTEXT_MENU,
-      anchor: '{shortcut && (\n        <span ',
-      surface: 'bg-popover',
     },
     {
       name: 'RoomPanel "Got an invite?" hint',

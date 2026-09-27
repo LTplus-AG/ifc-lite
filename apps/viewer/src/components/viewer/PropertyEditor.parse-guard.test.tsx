@@ -46,6 +46,7 @@ function seedStore(): MutablePropertyView {
   configureMutationView(view, dataStore);
   useViewerStore.setState({
     ...seeded,
+    editEnabled: true,
     mutationViews: new Map([[MODEL_ID, view]]),
     mutationVersion: 0,
     collabRole: null,

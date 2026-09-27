@@ -44,6 +44,7 @@
 
 import { useMemo, useRef } from 'react';
 import { useViewerStore } from '@/store';
+import { canMutate } from '@/store/mutation-permission';
 import { useIfc } from '@/hooks/useIfc';
 import { useProjectorTick } from '@/components/viewport-ui/scene';
 import { getEntityCenter } from '@/utils/viewportUtils';
@@ -73,6 +74,7 @@ function pickViewerOrigin(meshes: import('@ifc-lite/geometry').MeshData[] | null
 
 export function GizmoOverlay() {
   const editEnabled = useViewerStore((s) => s.editEnabled);
+  const collabRole = useViewerStore((s) => s.collabRole);
   const activeTool = useViewerStore((s) => s.activeTool);
   const selectedEntity = useViewerStore((s) => s.selectedEntity);
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
@@ -98,9 +100,9 @@ export function GizmoOverlay() {
   // user's first selection — no need to wait for an unrelated
   // mutation to prime the editor cache.
   const ready = useMemo(() => {
-    if (!editEnabled) return null;
+    if (!selectedEntity || !canMutate(useViewerStore.getState(), selectedEntity.modelId)) return null;
     if (activeTool !== 'select') return null;
-    if (!selectedEntity || selectedEntityId === null) return null;
+    if (selectedEntityId === null) return null;
     if (!projectToScreen) return null;
 
     const model = models.get(selectedEntity.modelId);
@@ -118,6 +120,7 @@ export function GizmoOverlay() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     editEnabled,
+    collabRole,
     activeTool,
     selectedEntity,
     selectedEntityId,

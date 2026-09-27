@@ -239,18 +239,17 @@ describe('HierarchyPanel ARIA tree (#5883)', () => {
     assert.doesNotMatch(tree.textContent ?? '', /Target Wall/);
   });
 
-  it('Enter activates the focused row exactly like a click (storey selection)', () => {
+  it('Enter selects the focused storey without invoking its explicit Solo action (#5885)', () => {
     const { tree } = mountHierarchy();
     press(tree, 'ArrowDown'); // Site
     press(tree, 'ArrowDown'); // Building
     press(tree, 'ArrowDown'); // Storey
     assert.equal(useViewerStore.getState().selectedStoreys.size, 0);
-    const beforeRevision = useViewerStore.getState().selectionRevision;
-
     press(byName(tree, 'Storey 1'), 'Enter');
 
-    assert.equal(useViewerStore.getState().selectedStoreys.has(4), true, 'Enter selects the focused storey, like a click');
-    assert.equal(useViewerStore.getState().selectionRevision, beforeRevision + 1, 'Enter activates the row once');
+    assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [4], 'Enter selects the same IFC row as a click');
+    assert.equal(useViewerStore.getState().selectedStoreys.size, 0, 'selection does not invoke Solo');
+    assert.equal(byName(tree, 'Storey 1').getAttribute('aria-selected'), 'true');
   });
 
   it('leaves Enter on a nested chevron button to that button', () => {
@@ -287,13 +286,9 @@ describe('HierarchyPanel ARIA tree (#5883)', () => {
     focusFirstWall(tree);
     assert.equal(byName(tree, 'Wall 0').getAttribute('tabindex'), '0');
 
-    // Plain Enter: single-select Wall 0 (the legacy single-select path, which
-    // still seeds the multi-select anchor there, #1463) — carried on
-    // `selectedEntityId`, not the multi-select `selectedEntityIds` set, so
-    // the Shift+Down below extends a range FROM this row.
+    // Plain Enter seeds the same multi-select anchor as a mouse click.
     press(tree, 'Enter');
-    assert.equal(useViewerStore.getState().selectedEntityId, 100);
-    assert.equal(useViewerStore.getState().selectedEntityIds.size, 0);
+    assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [100]);
 
     press(tree, 'ArrowDown', { shiftKey: true });
     assert.equal(byName(tree, 'Wall 1').getAttribute('tabindex'), '0', 'Shift+Down still moves focus');

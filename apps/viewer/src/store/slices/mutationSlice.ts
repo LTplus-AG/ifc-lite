@@ -83,6 +83,7 @@ import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
 import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags.js';
+import { canMutate, mutationDenial } from '../mutation-permission.js';
 import { syncTypeOverride } from './mutation-history-apply.js';
 import { recordMutationBatch, replayHistory } from './mutation-history-replay.js';
 
@@ -905,7 +906,8 @@ function runInStoreElementBuilder(
   element: AuthoredElement,
   build: (editor: StoreEditor, anchor: ReturnType<typeof resolveSpatialAnchor>) => number,
 ): { expressId: number } | { error: string } {
-  if (!get().canCollabEdit()) return { error: 'Editing is disabled for your role in this shared session' };
+  const denial = mutationDenial(get(), modelId);
+  if (denial) return { error: denial };
   const state = get();
   const model = state.models.get(modelId);
   const dataStore = model?.ifcDataStore;
@@ -1118,6 +1120,7 @@ export const createMutationSlice: StateCreator<
 
   setGeorefFields: (modelId, entity, fields) => {
     if (fields.length === 0) return;
+    if (!canMutate(get(), modelId)) return;
     set((state) => {
       const newGeorefMuts = new Map(state.georefMutations);
       const modelMuts = { ...newGeorefMuts.get(modelId) };
@@ -1207,12 +1210,9 @@ export const createMutationSlice: StateCreator<
 
   // Property Mutations
   setProperty: (modelId, entityId, psetName, propName, value, valueType = PropertyValueType.String, dataType) => {
-    // Collab role gate BEFORE the local commit: in a shared session only
-    // editor/admin may write. Gating here (not just at the mirror) keeps the
-    // local view/undo/dirty state consistent with what actually syncs — a
-    // viewer-role user must not build up local-only edits that silently never
-    // reach the room. Single-user sessions (role === null) are unaffected.
-    if (!get().canCollabEdit()) return null;
+    // Apply the shared edit-mode, role, and model gate before touching the
+    // overlay, undo/redo, dirty state, or collaboration mirror (#5901).
+    if (!canMutate(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1250,8 +1250,8 @@ export const createMutationSlice: StateCreator<
   },
 
   deleteProperty: (modelId, entityId, psetName, propName) => {
-    // Collab role gate before the local commit — see setProperty.
-    if (!get().canCollabEdit()) return null;
+    // Shared mutation gate before the local commit — see setProperty.
+    if (!canMutate(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1285,10 +1285,10 @@ export const createMutationSlice: StateCreator<
   },
 
   createPropertySet: (modelId, entityId, psetName, properties) => {
-    // Collab role gate before the local commit — see setProperty. (Pset
+    // Shared mutation gate before the local commit — see setProperty. (Pset
     // creation isn't mirrored yet, which is all the more reason a read-only
     // role must not accumulate local-only psets in a shared session.)
-    if (!get().canCollabEdit()) return null;
+    if (!canMutate(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1317,11 +1317,11 @@ export const createMutationSlice: StateCreator<
   },
 
   deletePropertySet: (modelId, entityId, psetName) => {
-    // Collab role gate before the local commit — see setProperty. Removing a
+    // Shared mutation gate before the local commit — see setProperty. Removing a
     // pset is no less of a write than creating one, and this arm was the one
     // `createPropertySet` and `deleteProperty` were both given the gate and
     // this one was not.
-    if (!get().canCollabEdit()) return null;
+    if (!canMutate(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1363,7 +1363,7 @@ export const createMutationSlice: StateCreator<
     // is a separate, larger gap — see the tests below and the PR discussion.
     // Gating here at least stops an unauthorised writer, and stops the local
     // state diverging further than it already does.
-    if (!get().canCollabEdit()) return null;
+    if (!canMutate(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1393,7 +1393,7 @@ export const createMutationSlice: StateCreator<
 
   createQuantitySet: (modelId, entityId, qsetName, quantities) => {
     // See setQuantity above — same omission, same reason.
-    if (!get().canCollabEdit()) return null;
+    if (!canMutate(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1423,8 +1423,8 @@ export const createMutationSlice: StateCreator<
 
   // Attribute Mutations
   setAttribute: (modelId, entityId, attrName, value, oldValue) => {
-    // Collab role gate before the local commit — see setProperty.
-    if (!get().canCollabEdit()) return null;
+    // Shared mutation gate before the local commit — see setProperty.
+    if (!canMutate(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1458,9 +1458,9 @@ export const createMutationSlice: StateCreator<
 
   // Entity retype (reassign class)
   setEntityType: (modelId, entityId, newType, predefinedType) => {
-    // Collab role gate before the local commit — see setProperty. Reclassing an
+    // Shared mutation gate before the local commit — see setProperty. Reclassing an
     // entity is an attribute write like any other, and `setAttribute` is gated.
-    if (!get().canCollabEdit()) return null;
+    if (!canMutate(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1502,10 +1502,10 @@ export const createMutationSlice: StateCreator<
 
   // Store-Level Mutations
   setPositionalAttribute: (modelId, entityId, index, value) => {
-    // Collab role gate before the local commit — see setProperty. This is the
+    // Shared mutation gate before the local commit — see setProperty. This is the
     // rawest write in the slice (a direct STEP slot overwrite); every named
     // mutation above it is gated, so leaving this one open gated nothing.
-    if (!get().canCollabEdit()) return null;
+    if (!canMutate(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1575,11 +1575,9 @@ export const createMutationSlice: StateCreator<
   },
 
   translateEntity: (modelId, expressId, delta, batchId) => {
-    // Collab role gate: in a shared session only editor/admin may move geometry
-    // (single-user sessions have role === null → allowed).
-    if (!get().canCollabEdit()) {
-      return { ok: false, reason: 'Editing is disabled for your role in this shared session' };
-    }
+    // Shared mutation gate also protects geometry writes.
+    const denial = mutationDenial(get(), modelId);
+    if (denial) return { ok: false, reason: denial };
     // Read the existing placement chain WITHOUT committing the edit
     // yet — we'll route the actual write through `setPositionalAttribute`
     // below so undo/redo + dirty-tracking come for free.
@@ -1644,9 +1642,8 @@ export const createMutationSlice: StateCreator<
   },
 
   setEntityPosition: (modelId, expressId, position) => {
-    if (!get().canCollabEdit()) {
-      return { ok: false, reason: 'Editing is disabled for your role in this shared session' };
-    }
+    const denial = mutationDenial(get(), modelId);
+    if (denial) return { ok: false, reason: denial };
     const view = get().mutationViews.get(modelId);
     if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
     const editor = getOrCreateStoreEditor(get, set, modelId);
@@ -1700,9 +1697,8 @@ export const createMutationSlice: StateCreator<
   },
 
   rotateEntity: (modelId, expressId, deltaYaw) => {
-    if (!get().canCollabEdit()) {
-      return { ok: false, reason: 'Editing is disabled for your role in this shared session' };
-    }
+    const denial = mutationDenial(get(), modelId);
+    if (denial) return { ok: false, reason: denial };
     const view = get().mutationViews.get(modelId);
     const dataStore = get().models.get(modelId)?.ifcDataStore;
     if (view && dataStore) {
@@ -1804,9 +1800,8 @@ export const createMutationSlice: StateCreator<
   },
 
   resizeWall: (modelId, expressId, newStart, newEnd) => {
-    if (!get().canCollabEdit()) {
-      return { ok: false, reason: 'Editing is disabled for your role in this shared session' };
-    }
+    const denial = mutationDenial(get(), modelId);
+    if (denial) return { ok: false, reason: denial };
     const view = get().mutationViews.get(modelId);
     if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
     const editor = getOrCreateStoreEditor(get, set, modelId);
@@ -1916,10 +1911,9 @@ export const createMutationSlice: StateCreator<
   },
 
   splitWallAtDistance: (modelId, expressId, distanceFromStart) => {
-    // Collab role gate — same rule and same return shape as `resizeWall`.
-    if (!get().canCollabEdit()) {
-      return { ok: false, reason: 'Editing is disabled for your role in this shared session' };
-    }
+    // Shared mutation gate — same rule and return shape as `resizeWall`.
+    const denial = mutationDenial(get(), modelId);
+    if (denial) return { ok: false, reason: denial };
     const ctx = resolveSplitContext(get, set, modelId, expressId, 'Wall is not contained in a building storey');
     if ('ok' in ctx) return ctx;
     const { view, editor, dataStore, storeyExpressId } = ctx;
@@ -2066,10 +2060,9 @@ export const createMutationSlice: StateCreator<
   },
 
   splitLinearElementAtDistance: (modelId, expressId, distanceFromStart) => {
-    // Collab role gate — same rule and same return shape as `resizeWall`.
-    if (!get().canCollabEdit()) {
-      return { ok: false, reason: 'Editing is disabled for your role in this shared session' };
-    }
+    // Shared mutation gate — same rule and return shape as `resizeWall`.
+    const denial = mutationDenial(get(), modelId);
+    if (denial) return { ok: false, reason: denial };
     const ctx = resolveSplitContext(get, set, modelId, expressId, 'Element is not contained in a building storey');
     if ('ok' in ctx) return ctx;
     const { view, editor, dataStore, storeyExpressId } = ctx;
@@ -2177,10 +2170,9 @@ export const createMutationSlice: StateCreator<
   },
 
   splitSlabByLine: (modelId, expressId, cutA, cutB) => {
-    // Collab role gate — same rule and same return shape as `resizeWall`.
-    if (!get().canCollabEdit()) {
-      return { ok: false, reason: 'Editing is disabled for your role in this shared session' };
-    }
+    // Shared mutation gate — same rule and return shape as `resizeWall`.
+    const denial = mutationDenial(get(), modelId);
+    if (denial) return { ok: false, reason: denial };
     const ctx = resolveSplitContext(get, set, modelId, expressId, 'Slab is not contained in a building storey');
     if ('ok' in ctx) return ctx;
     const { view, editor, dataStore, storeyExpressId } = ctx;
@@ -2288,7 +2280,7 @@ export const createMutationSlice: StateCreator<
   },
 
   removeEntity: (modelId, expressId, opts) => {
-    if (!get().canCollabEdit()) return false;
+    if (!canMutate(get(), modelId)) return false;
     const view = get().mutationViews.get(modelId);
     if (!view) return false;
     const editor = getOrCreateStoreEditor(get, set, modelId);
@@ -2373,6 +2365,10 @@ export const createMutationSlice: StateCreator<
   },
 
   generateSpacesFromWalls: (modelId, storeyExpressId, options) => {
+    if (!options?.dryRun) {
+      const denial = mutationDenial(get(), modelId);
+      if (denial) return { error: denial };
+    }
     const state = get();
     const model = state.models.get(modelId);
     const dataStore = model?.ifcDataStore;
@@ -2444,7 +2440,8 @@ export const createMutationSlice: StateCreator<
 
   duplicateEntity: (modelId, sourceExpressId, direction = DUPLICATE_DEFAULT_DIRECTION, options) => {
     // Gate before the local commit, as addElementViaBuilder does for creates.
-    if (!get().canCollabEdit()) return { error: 'Editing is disabled for your role in this shared session' };
+    const denial = mutationDenial(get(), modelId);
+    if (denial) return { error: denial };
     const state = get();
     const model = state.models.get(modelId);
     const dataStore = model?.ifcDataStore;

@@ -10,6 +10,7 @@
  */
 
 import { useLayoutEffect, useState } from 'react';
+import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { getPanelDef } from '@/lib/panels/registry';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
@@ -23,6 +24,7 @@ const FLOAT_Z_BASE = 30;
 const SNAP_BOUNDS_SELECTOR = '[data-floating-snap-bounds]';
 
 export function FloatingPanelHost() {
+  const { t } = useTranslation();
   const floatingPanels = useViewerStore((s) => s.floatingPanels);
   const setFloatingPanelRect = useViewerStore((s) => s.setFloatingPanelRect);
   const snapFloatingPanel = useViewerStore((s) => s.snapFloatingPanel);
@@ -102,7 +104,7 @@ export function FloatingPanelHost() {
           <FloatingPanel
             key={panel.id}
             panel={panel}
-            title={def?.title ?? panel.id}
+            title={def ? t(def.titleKey) : panel.id}
             zIndex={FLOAT_Z_BASE + i}
             bounds={snapBounds}
             area={area}

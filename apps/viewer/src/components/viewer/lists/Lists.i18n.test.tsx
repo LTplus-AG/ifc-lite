@@ -149,7 +149,7 @@ function savedList(): ListDefinition {
     createdAt: Date.now(),
     updatedAt: Date.now(),
     entityTypes: [],
-    conditions: [],
+    groups: [],
     columns: [{ id: 'col-1', source: 'attribute', propertyName: 'Name', label: 'Name' }],
   } as unknown as ListDefinition;
 }

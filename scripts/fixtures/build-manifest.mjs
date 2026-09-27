@@ -22,6 +22,7 @@ import { createHash } from 'node:crypto';
 import { resolve, relative, posix } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { assertValidManifest } from './manifest-validation.mjs';
+import { upstreamBlobUrl } from './download-url.mjs';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const MODELS_DIR = resolve(ROOT, 'tests/models');
@@ -293,7 +294,10 @@ if (ignoredFiles.length) {
 // is advisory (regeneration is often exactly to add a legit new public fixture),
 // but it forces a conscious "is this cleared for the public bucket?" check.
 if (newFiles.length) {
-  const releaseFiles = newFiles.filter((path) => !out.files.find((entry) => entry.path === path)?.upstream_archive);
+  const releaseFiles = newFiles.filter((path) => {
+    const entry = out.files.find((candidate) => candidate.path === path);
+    return !entry || upstreamBlobUrl(entry) === null;
+  });
   const upstreamFiles = newFiles.filter((path) => !releaseFiles.includes(path));
   if (upstreamFiles.length) console.error(`\n  New upstream-only fixtures (never uploaded): ${upstreamFiles.join(', ')}`);
   if (releaseFiles.length) {

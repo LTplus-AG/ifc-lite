@@ -114,7 +114,7 @@ function serverDataModelForFixture(): DataModel {
 const DEFINITION: ListDefinition = {
   id: 'parity', name: 'Parity', createdAt: 0, updatedAt: 0,
   entityTypes: [IfcTypeEnum.IfcWall],
-  conditions: [],
+  groups: [],
   columns: [
     { id: 'name', source: 'attribute', propertyName: 'Name' },
     { id: 'type', source: 'attribute', propertyName: 'Type' },

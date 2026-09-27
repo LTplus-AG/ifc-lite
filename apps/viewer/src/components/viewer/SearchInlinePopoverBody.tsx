@@ -12,6 +12,7 @@
 import { Search, Clock, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import { selectorYieldsRules } from '@/lib/search/selector-to-rules';
 import type { SearchResult } from '@/lib/search/tier0-scan';
 
@@ -192,7 +193,7 @@ export function SearchPopoverBody({
             onOpenAdvanced();
           }}
         >
-          {t('searchModal.inline.advanced')} <kbd className="ml-0.5 rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-2xs dark:border-zinc-700 dark:bg-zinc-900">⌘↵</kbd>
+          {t('searchModal.inline.advanced')} <kbd className="ml-0.5 rounded border border-zinc-300 bg-zinc-100 px-1 font-mono text-2xs dark:border-zinc-700 dark:bg-zinc-900">{shortcutLabel('search.openAdvancedFromField')}</kbd>
         </button>
       </div>
     </div>

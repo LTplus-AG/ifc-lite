@@ -48,7 +48,8 @@ function buildSlice(canEdit: boolean, editedModelId = 'm1') {
   const spy = makeViewSpy();
   const mirrors: MirrorCall[] = [];
   let state: Record<string, unknown> = {
-    models: new Map(),
+    models: new Map([[editedModelId, { ifcDataStore: {} }]]),
+    editEnabled: true,
     // Deliberately NOT the edited model in the wiring tests below: a room's
     // mirror gates on the modelId it is handed, so handing it the active model
     // instead of the edited one re-opens the corruption.
@@ -229,6 +230,9 @@ describe('mutationSlice — mirrors are handed the EDITED model, not the active 
   it('readEntityPosition / readEntityRotation forward their own modelId to readCollabPlacement', () => {
     const seen: unknown[] = [];
     const { state } = buildSlice(true, 'edited');
+    // These reads deliberately exercise the no-STEP-chain fallback. The
+    // property-write harness above supplies only a minimal store sentinel.
+    state().models.set('edited', { ifcDataStore: null } as never);
     (state() as unknown as Record<string, unknown>).readCollabPlacement = (modelId: unknown) => {
       seen.push(modelId);
       return null;
@@ -390,6 +394,9 @@ describe('mutationSlice -- every writer is role-gated, not just the sampled ones
     assert.notStrictEqual(s.setEntityType('m1', 1, 'IfcSlab'), null);
     assert.deepStrictEqual(spy.calls, ['deletePropertySet', 'setEntityType']);
 
+    // The positive property-write spy needs a store sentinel; creation tools
+    // need a real parsed IFC store, so exercise their missing-store branch.
+    state().models.set('m1', { ifcDataStore: null } as never);
     const dup = s.duplicateEntity('m1', 1) as { error?: string };
     assert.notStrictEqual(dup.error, ROLE_REASON, 'an editor is past the role gate');
 

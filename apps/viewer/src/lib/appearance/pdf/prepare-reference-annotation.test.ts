@@ -40,6 +40,17 @@ function directPlanner(api: NativeApi, flags: { foreign: boolean }): AppearanceP
   } });
 }
 
+test('PDF reference fixture restores Edit mode after an authoring preview (#5901)', async t => {
+  const api = await nativeApi(t); if (!api) return;
+  const previousEditEnabled = useViewerStore.getState().editEnabled;
+  useViewerStore.setState({ editEnabled: false });
+  try {
+    const fixture = await pdfReferenceAnnotationFixture();
+    fixture.dispose();
+    assert.equal(useViewerStore.getState().editEnabled, false);
+  } finally { useViewerStore.setState({ editEnabled: previousEditEnabled }); api.free(); }
+});
+
 test('original PDF and exact effective IFC bind the native multicolour preview before any authoring (#4406)', async t => {
   const api = await nativeApi(t); if (!api) return;
   const fixture = await pdfReferenceAnnotationFixture(), flags = { foreign: false }, planner = directPlanner(api, flags);

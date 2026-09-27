@@ -5,7 +5,7 @@
 /**
  * The Lens panel's own chrome (#4918 slice: viewer-panels). Covers
  * `LensPanel.tsx`: the header and its export/import/clear/close controls,
- * the rule-based lens list (`RuleRow`, `RuleEditor`, `LensEditor`), the
+ * the rule-based lens list (`RuleRow`, `LensRuleEditor`, `LensEditor`), the
  * auto-color lens editor (`AutoColorEditor`), the read-only lens card
  * (`LensCard`, its legend sort control and per-lens action tooltips), and
  * the footer status line.
@@ -63,6 +63,11 @@ export const lensPanelEn = {
   // Rule editor
   'lensPanel.ruleEditor.reorderAriaLabel': 'Reorder rule: drag, or press arrow up or down',
   'lensPanel.ruleEditor.reorderTooltip': 'Drag to reorder (or arrow keys)',
+  'lensPanel.ruleEditor.colorAriaLabel': 'Rule color',
+  'lensPanel.ruleEditor.nameAriaLabel': 'Rule name',
+  'lensPanel.ruleEditor.actionAriaLabel': 'Rule action',
+  'lensPanel.ruleEditor.unreadableCondition': 'Saved condition cannot be read: {reason}',
+  'lensPanel.ruleEditor.replaceCondition': 'Replace condition',
   'lensPanel.ruleEditor.compoundTypeAriaLabel': 'Compound criteria type (read-only, imported)',
   'lensPanel.ruleEditor.criteriaTypeAriaLabel': 'Criteria type',
   'lensPanel.ruleEditor.compoundReadOnlyTooltip':

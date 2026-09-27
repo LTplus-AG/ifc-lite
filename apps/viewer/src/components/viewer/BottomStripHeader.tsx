@@ -80,7 +80,7 @@ export function BottomStripHeader({
         {tabs.map((id) => {
           const def = getPanelDef(id);
           const Icon = def?.Icon;
-          const label = def?.short ?? id;
+          const label = def ? t(def.titleKey) : id;
           return (
             <div
               key={id}

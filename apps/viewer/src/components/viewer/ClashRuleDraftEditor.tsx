@@ -41,7 +41,7 @@ export interface ClashRuleDraftEditorProps {
   /** Classes in the loaded model matching a selector; null when no model. */
   matchCount: (selector: string) => number | null;
   hasModel: boolean;
-  onChange: (next: ClashRuleDraft) => void;
+  onChange: (updater: (previous: ClashRuleDraft) => ClashRuleDraft) => void;
   onCancel: () => void;
   onSave: () => void;
   canSave: boolean;
@@ -61,14 +61,17 @@ export function ClashRuleDraftEditor({
       </div>
       <input
         value={draft.name}
-        onChange={(e) => onChange({ ...draft, name: e.target.value })}
+        onChange={(e) => {
+          const name = e.target.value;
+          onChange((previous) => ({ ...previous, name }));
+        }}
         placeholder={t('clashTools.ruleEditor.namePlaceholder')}
         className="h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-sm"
       />
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
         <SelectorField
           value={draft.selectorA}
-          onChange={(v) => onChange({ ...draft, selectorA: v })}
+          onChange={(v) => onChange((previous) => ({ ...previous, selectorA: v }))}
           count={matchCount(draft.selectorA)}
           hasModel={hasModel}
           placeholder={t('clashTools.ruleEditor.selectorAPlaceholder')}
@@ -76,7 +79,7 @@ export function ClashRuleDraftEditor({
         <span className="text-xs text-muted-foreground">×</span>
         <SelectorField
           value={draft.selectorB}
-          onChange={(v) => onChange({ ...draft, selectorB: v })}
+          onChange={(v) => onChange((previous) => ({ ...previous, selectorB: v }))}
           count={matchCount(draft.selectorB)}
           hasModel={hasModel}
           placeholder={t('clashTools.ruleEditor.selectorBPlaceholder')}
@@ -89,19 +92,19 @@ export function ClashRuleDraftEditor({
         <ClashSetFilterEditor
           label="Set A"
           filter={draft.filterA}
-          onChange={(filterA) => onChange({ ...draft, filterA })}
+          onChange={(update) => onChange((previous) => ({ ...previous, filterA: update(previous.filterA) }))}
         />
         <ClashSetFilterEditor
           label="Set B"
           filter={draft.filterB}
-          onChange={(filterB) => onChange({ ...draft, filterB })}
+          onChange={(update) => onChange((previous) => ({ ...previous, filterB: update(previous.filterB) }))}
         />
       </div>
 
       <div className="flex items-center gap-2">
         <Select
           value={draft.severity}
-          onValueChange={(v) => onChange({ ...draft, severity: v as ClashSeverity })}
+          onValueChange={(v) => onChange((previous) => ({ ...previous, severity: v as ClashSeverity }))}
         >
           <SelectTrigger className="h-8 w-32"><SelectValue /></SelectTrigger>
           <SelectContent>

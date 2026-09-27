@@ -171,6 +171,8 @@ round-trip — this caveat is scoped to entities created via `createEntity` /
 
 ## Bulk updates
 
+Use `@ifc-lite/rules` to evaluate property filter groups and pass the resulting Express IDs in `select.expressIds`.
+
 ```typescript
 import { BulkQueryEngine } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
@@ -180,12 +182,6 @@ const engine = new BulkQueryEngine(store.entities, view);
 const result = engine.execute({
   select: {
     entityTypes: [/* IfcWall enum value */],
-    propertyFilters: [{
-      psetName: 'Pset_WallCommon',
-      propName: 'IsExternal',
-      operator: '=',
-      value: true,
-    }],
   },
   action: {
     type: 'SET_PROPERTY',
@@ -211,12 +207,6 @@ const engine = new BulkQueryEngine(store.entities, view);
 const bulkQuery: BulkQuery = {
   select: {
     entityTypes: [/* IfcWall enum value */],
-    propertyFilters: [{
-      psetName: 'Pset_WallCommon',
-      propName: 'IsExternal',
-      operator: '=',
-      value: true,
-    }],
   },
   action: {
     type: 'SET_PROPERTY',

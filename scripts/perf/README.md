@@ -799,6 +799,64 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
 Orientation reuses deterministic edge adjacency, triangle filters compact their existing index buffer, and welding/content hashing avoid duplicate map probes. Geometry policy, tolerances and traversal/output order remain unchanged. Own-layer native subset comparisons did not establish a meaningful full-load improvement; sampled leaf CPU and the cumulative result cannot establish a layer-specific gain. Preserve exact output and diagnostic oracles, including invalid/degenerate triangles and reused-buffer capacity. No isolated browser gain is established here; invalid Firefox cohorts and unrun follow-ups remain excluded. Owned-weld, sliver-incidence and alternate meshing experiments are not included.
 
 ### Dead ends (do NOT re-spike without a new mechanism)
+- **Frame-invariant routing for plan-rotated voided walls** (#5739, PR #6035):
+  the two routing fixes were NOT SHIPPED; both were measured on ISSUE_098 against the merge-base. With
+  per-element local frames (the viewer default), the analytic prism cut's route
+  decisions (per-opening partition check, hairline emit gate at its 64-edge cap)
+  read f32 precision in the frame the vertices are stored in, so one 61° wall
+  took a different route than in the world frame and stayed open.
+  (1) *Comparison cut*: when the rotated-face analytic cut was not closed as
+  emitted, make the same cut in the wall frame and keep the better one. It ran
+  377 times and won 29; the losing cuts cost ~13 ms each. Result: +29-33%
+  single-thread geometry, +27-54% end to end. No pre-cut signal separated the
+  winners (defect count, host closure, opening count, edge length, raw or
+  consolidated closure, triangle count).
+  (2) *World-route mirroring*: run the analytic cut on the world-coordinate copy
+  of host and cutters, so a local-frame wall takes exactly the world route.
+  - Cost: pinned single-thread user CPU is at or below base (world 10.18 vs
+    10.25 s; local 10.38 vs 12.16 s). But end-to-end local geometry is +22%:
+    1376-1508 vs 1103-1285 ms over 8 interleaved rounds, and the ranges do not
+    overlap. Three walls (#1691248, #1691510, #1701652) move from a ~40 ms local
+    prism cut to the world's ~400-460 ms exact wall-frame route, and they sit on
+    the critical path.
+  - Quality: local-frame closure regresses to world quality. 179 elements are
+    worse across rvt01, ISSUE_098 and ISSUE_129. ISSUE_098 goes from 306 to 353
+    torn elements.
+  - A cheap world-quantized final gate alone leaves the 61° wall open.
+
+  **Shipped instead (option B, local frame only):** two changes, both scoped
+  to hosts stored relative to a per-element origin:
+  - the wall-frame closure test judges the cut as emitted;
+  - the snap tolerance uses the world magnitude.
+
+  World-frame code and output are unchanged: 33/33 fixture output hashes match
+  base, including ISSUE_098 and Holter. An earlier unscoped version cost a
+  consistent +1.7-2.7% on ISSUE_098 in the world frame, where it was not
+  needed.
+
+  Local frame against merge-base a20989951:
+  - Pinned single-thread user CPU, 6 interleaved runs:
+    - ISSUE_098: 9.05-9.89 s base vs 8.99-10.74 s branch
+    - ISSUE_129: 2.11-2.66 vs 2.12-2.54 s
+    - Holter: 3.30-3.89 vs 3.11-3.70 s
+    - AC20: 0.03 s both
+  - Multi-threaded geometry, median of 8 interleaved rounds:
+    - ISSUE_098: 866 vs 854 ms
+    - ISSUE_129: 971 vs 1010 ms (overlapping ranges; output identical)
+    - Holter: 602 vs 612 ms
+    - AC20: 21 vs 22 ms
+  - Closure: ISSUE_098 local goes from 306 to 305 torn elements, with none
+    worse.
+  - The 61° wall stays open in the local frame; it is pinned as a known
+    residual.
+
+  **Lessons:**
+  - A route decision made at stored precision cannot be made frame-invariant
+    without redoing the frame's computation. The world route is not the better
+    route on real models: the local frame's prism cut closes more walls, more
+    cheaply.
+  - Judge perf by the multi-threaded critical path as well as by CPU: moving
+    work onto a few heavy hosts can lower total CPU and still lengthen the load.
 - **More geometry workers** -> zero CSG speedup: memory-bandwidth bound, not CPU.
 - **Shared entity-index for the VIEWER huge-file path** (#1445): CLOSED, branch
   deleted, REFUTED by an end-to-end 722MB re-measure. The retained-size spike looked

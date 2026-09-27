@@ -100,7 +100,11 @@ function surveyProperties(point: LandXmlIfcCgPoint, location: readonly [number, 
 export function writeSurfaces(
   terrain: TerrainWriter, surfaces: readonly LandXmlIfcSurface[], units: LandXmlIfcUnits, swap: boolean,
   landXmlGlobalId: GlobalIdOf,
-): { surfaces: number; vertices: number; triangles: number; samples: Array<[number, number]> } {
+): {
+  surfaces: number; vertices: number; triangles: number; samples: Array<[number, number]>;
+  elements: Array<{ sourceId: string; expressId: number }>;
+} {
+  const elements: Array<{ sourceId: string; expressId: number }> = [];
   let written = 0;
   let vertices = 0;
   let triangles = 0;
@@ -112,18 +116,19 @@ export function writeSurfaces(
     // Unreachable for an all-hidden surface — `isMappableSurface` refuses it by
     // name first. Kept as a guard because CoordIndex is LIST [1:?].
     if (faces.length === 0) continue;
-    terrain.addSurface({
+    const { elementId } = terrain.addSurface({
       Name: surface.name,
       GlobalId: landXmlGlobalId(surface.sourceId),
       Coordinates: coordinates,
       Triangles: faces,
     });
+    elements.push({ sourceId: surface.sourceId, expressId: elementId });
     written += 1;
     vertices += coordinates.length;
     triangles += faces.length;
     for (const [x, y] of coordinates) samples.push([x, y]);
   }
-  return { surfaces: written, vertices, triangles, samples };
+  return { surfaces: written, vertices, triangles, samples, elements };
 }
 
 export function writeSurveyPoints(

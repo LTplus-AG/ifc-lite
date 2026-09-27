@@ -35,8 +35,8 @@ function createProvider(assignments: Map<number, Assignment>): ListDataProvider 
   };
 }
 
-function walls(columns: ListDefinition['columns'], conditions: ListDefinition['conditions'] = []): ListDefinition {
-  return { id: 't', name: 'T', createdAt: 0, updatedAt: 0, entityTypes: [IfcTypeEnum.IfcWall], conditions, columns };
+function walls(columns: ListDefinition['columns'], conditions: NonNullable<ListDefinition['legacyConditions']> = []): ListDefinition {
+  return { id: 't', name: 'T', createdAt: 0, updatedAt: 0, entityTypes: [IfcTypeEnum.IfcWall], groups: [], legacyConditions: conditions, columns };
 }
 
 describe('zone column/condition (#1810)', () => {

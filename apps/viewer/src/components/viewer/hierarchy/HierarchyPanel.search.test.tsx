@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import { act } from 'react';
 import { IfcTypeEnum } from '@ifc-lite/data';
-import { cleanup, click, render, type } from '@/test/render.js';
+import { cleanup, click, press, render, type } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
 import { useViewerStore } from '@/store';
@@ -89,5 +89,72 @@ describe('HierarchyPanel search (#5880)', () => {
     act(() => useViewerStore.setState({ mergeLayers: false }));
     assert.match(container.textContent ?? '', /Hidden Part/);
     assert.doesNotMatch(container.textContent ?? '', /No matches for/);
+  });
+});
+
+describe('HierarchyPanel explicit row actions (#5885)', () => {
+  it('Class row click selects instances without rewriting the Advanced Filter; Filter by this is explicit', () => {
+    const { container } = mountHierarchy();
+    act(() => useViewerStore.getState().setHierarchyMode('type'));
+    const row = [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')]
+      .find((item) => item.textContent?.includes('IfcWall'));
+    assert.ok(row, 'a class row for the authored fixture wall is visible');
+    const before = structuredClone(useViewerStore.getState().searchFilter.groups);
+
+    click(row);
+    const selected = useViewerStore.getState();
+    assert.deepEqual(selected.selectedEntityIds, new Set([7]));
+    assert.deepEqual(selected.searchFilter.groups, before);
+    assert.equal(selected.classFilter, null);
+    assert.equal(selected.isolatedEntities, null);
+
+    const filterButton = row.querySelector<HTMLButtonElement>('button[aria-label="Filter by this IfcWall"]');
+    assert.ok(filterButton);
+    click(filterButton);
+    assert.ok(useViewerStore.getState().searchFilter.groups.some((group) =>
+      group.rules.some((rule) => rule.kind === 'ifcType')));
+
+    press(row, 'ContextMenu');
+    assert.ok([...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')]
+      .some((item) => item.textContent?.trim() === 'Filter by this'),
+    'keyboard context menu exposes the explicit filter action');
+  });
+
+  it('Material row click selects users of the material without isolating; Isolate is explicit', () => {
+    const model = fixtureModel('material-model', { entities: [
+      { expressId: 7, type: 'IfcWall', name: 'Wall' },
+      { expressId: 10, type: 'IfcMaterial', name: 'Concrete' },
+    ] });
+    Object.assign(model.ifcDataStore!, {
+      entityIndex: {
+        ...model.ifcDataStore!.entityIndex,
+        byId: new Map([
+          [7, { expressId: 7, type: 'IFCWALL' }],
+          [10, { expressId: 10, type: 'IFCMATERIAL' }],
+        ]),
+      },
+      onDemandMaterialMap: new Map([[7, [10]]]),
+    });
+    useViewerStore.setState({
+      ...fixtureModels(model),
+      ifcDataStore: model.ifcDataStore,
+      hierarchyMode: 'material',
+      isolatedEntities: null,
+    });
+    const container = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
+    const row = [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')]
+      .find((item) => item.textContent?.includes('Concrete'));
+    assert.ok(row, 'the material usage row is visible');
+    const groupsBefore = structuredClone(useViewerStore.getState().searchFilter.groups);
+
+    click(row);
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([7]));
+    assert.equal(useViewerStore.getState().isolatedEntities, null);
+    assert.deepEqual(useViewerStore.getState().searchFilter.groups, groupsBefore);
+
+    const isolate = row.querySelector<HTMLButtonElement>('button[aria-label="Isolate Concrete"]');
+    assert.ok(isolate);
+    click(isolate);
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([7]));
   });
 });

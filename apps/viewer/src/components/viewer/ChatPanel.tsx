@@ -50,8 +50,8 @@ import { MAX_PDF_ATTACHMENT_BYTES } from '@/lib/llm/document-text';
 import { attachPdfDocument, createDocumentUploadGate, shouldContinueDocumentUploadBatch } from '@/lib/llm/document-upload';
 import { extractCodeBlocks } from '@/lib/llm/code-extractor';
 import { extractScriptEditOps, filterUnappliedScriptOps } from '@/lib/llm/script-edit-ops';
-import { createPatchDiagnostic, getPrimaryRootCause, type RepairScope } from '@/lib/llm/script-diagnostics';
-import type { ScriptDiagnostic } from '@/lib/llm/script-diagnostics';
+import { createPatchDiagnostic, getPrimaryRootCause, type RepairScope, type ScriptDiagnostic } from '@/lib/llm/script-diagnostics';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import { buildRepairSessionKey, getEscalatedRepairScope, pruneMessagesForRepair } from '@/lib/llm/repair-loop';
 import type { ChatMessage, ChatRepairRequest, FileAttachment } from '@/lib/llm/types';
 import { canUsePlainCodeBlockFallback, type ScriptMutationIntent } from '@/lib/llm/script-preservation';
@@ -1550,12 +1550,14 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                 <Paperclip className="h-3 w-3" />
               )}
               {a.name}
-              <button
-                className="ml-0.5 hover:text-destructive"
+              <IconButton
+                label={t('chat.panel.removeAttachment', { name: a.name })}
+                size="icon-xs"
+                className="ml-0.5 h-4 w-4 p-0 hover:text-destructive"
                 onClick={() => removeAttachment(a.id)}
               >
                 <X className="h-3 w-3" />
-              </button>
+              </IconButton>
             </span>
           ))}
         </div>
@@ -1659,7 +1661,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           ) : (
             <span className="text-[10px] text-muted-foreground">{t('chat.panel.shiftEnterHint')}</span>
           )}
-          <span className="text-[10px] text-muted-foreground">⌘L</span>
+          <span className="text-[10px] text-muted-foreground">{shortcutLabel('chat.focusInput')}</span>
         </div>
       </div>
 

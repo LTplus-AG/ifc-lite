@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BUILD = join(HERE, 'build-manifest.mjs');
 const VALIDATOR = join(HERE, 'manifest-validation.mjs');
+const DOWNLOAD_URL = join(HERE, 'download-url.mjs');
 const sha256 = (buffer) => createHash('sha256').update(buffer).digest('hex');
 const COMMIT = '0123456789abcdef0123456789abcdef01234567';
 
@@ -58,6 +59,7 @@ function makeRoot(bytes, version = 2) {
   mkdirSync(join(modelsDir, 'landxml'), { recursive: true });
   copyFileSync(BUILD, join(scriptsDir, 'build-manifest.mjs'));
   copyFileSync(VALIDATOR, join(scriptsDir, 'manifest-validation.mjs'));
+  copyFileSync(DOWNLOAD_URL, join(scriptsDir, 'download-url.mjs'));
   writeFileSync(join(modelsDir, path), bytes);
   const entry = reviewedEntry(path, bytes);
   writeFileSync(

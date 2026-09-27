@@ -12,7 +12,8 @@
  * The shape is plain JSON: it is what `.ifclite-document.json` carries.
  */
 import { validateChartSpec, type ChartSpec, type ReportPageSetup } from '@ifc-lite/charts';
-import type { ListDefinition } from '@ifc-lite/lists';
+import { isSavedListShape, type ListDefinition } from '@ifc-lite/lists';
+import { migrateDocumentListBlocks } from './document-list-migration.js';
 
 export const DOCUMENT_VERSION = 6;
 
@@ -213,20 +214,22 @@ export function isHalfPairable<T extends { kind: string }>(block: T): block is T
 
 /**
  * `.ifclite-document.json` version 1 -> 2 (#4940) -> 3 (#5142) -> 4 (#5138) -> 5 (#5125) -> 6 (#4940 follow ups):
- * every step is additive for existing blocks/sources (v2 added optional
+ * the version steps are additive for existing blocks/sources (v2 added optional
  * `width`/`height` on chart/image, text styles and the spacer block; v3
  * added the table block over a list; v4 added the table block's validation
  * source; v5 added the separate IDS report block; v6 adds text font, size,
- * and half-width layout), so an older document is
- * the current one with the version number bumped. The bump is still made,
- * so an older viewer refuses a file with a block/source it cannot print
+ * and half-width layout). Embedded v1 Lists conditions are also normalized
+ * into Rules groups (#5894), including in a document already at version 6.
+ * The version bump makes an older viewer refuse a block/source it cannot print
  * instead of misreporting it as broken (see the comment on `TableBlock`).
  * Anything that is not a recognizable older document passes through
  * unchanged so `validateDocumentSpec` reports the real problem.
  */
 export function migrateDocumentSpec(raw: unknown): unknown {
-  if (!isRecord(raw) || (raw.version !== 1 && raw.version !== 2 && raw.version !== 3 && raw.version !== 4 && raw.version !== 5)) return raw;
-  return { ...raw, version: DOCUMENT_VERSION };
+  if (!isRecord(raw)) return raw;
+  const version = raw.version === 1 || raw.version === 2 || raw.version === 3 || raw.version === 4 || raw.version === 5
+    ? DOCUMENT_VERSION : raw.version;
+  return { ...raw, version, blocks: migrateDocumentListBlocks(raw.blocks) };
 }
 
 export interface DocumentValidationError {
@@ -327,8 +330,7 @@ function validateTableBlock(block: Record<string, unknown>, at: string, errors: 
     errors.push({ path: `${at}.source`, message: 'expected source.kind list | validation' });
   } else if (source.kind === 'list') {
     const list = source.list;
-    const columnsOk = isRecord(list) && Array.isArray(list.columns) && list.columns.every((c: unknown) => isRecord(c) && isString(c.id));
-    if (!isRecord(list) || !isString(list.id) || list.id.length === 0 || !isString(list.name) || !Array.isArray(list.entityTypes) || !Array.isArray(list.conditions) || !columnsOk) {
+    if (!isSavedListShape(list) || !Array.isArray(list.groups)) {
       errors.push({ path: `${at}.source.list`, message: 'expected a list definition' });
     } else if (list.expressIdsByModel !== undefined) {
       errors.push({ path: `${at}.source.list.expressIdsByModel`, message: 'not allowed in a document' });

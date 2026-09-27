@@ -120,6 +120,7 @@ async function seedStore(volumeUnitPrefix = '.MILLI.'): Promise<IfcDataStore> {
   const store = await parse(miniIfc(volumeUnitPrefix));
   const { zoneSetRevision } = await import('@/lib/zones');
   useViewerStore.setState({
+    editEnabled: true,
     models: new Map([['m1', {
       id: 'm1',
       name: 'zones.ifc',
@@ -150,6 +151,19 @@ function qsetOn(entityId: number, name: string) {
 describe('zone write-back: what reaches the model', () => {
   beforeEach(async () => {
     await seedStore();
+  });
+
+  it('refuses write and remove before an overlay exists in Edit-off, then writes and removes in Edit-on (#5901)', () => {
+    useViewerStore.setState({ editEnabled: false });
+    assert.equal(applyZoneWriteBack(ZONE_SET, 'mesh').blocked, 'edit-mode');
+    assert.equal(removeZoneWriteBack(ZONE_SET).blocked, 'edit-mode');
+    assert.equal(view(), null);
+    assert.equal(useViewerStore.getState().dirtyModels.size, 0);
+
+    useViewerStore.setState({ editEnabled: true });
+    assert.equal(applyZoneWriteBack(ZONE_SET, 'mesh').summary.written, 2);
+    assert.ok(psetOn(WALL_ID, zonePropertySetName('Takt areas')));
+    assert.ok(removeZoneWriteBack(ZONE_SET).removed > 0);
   });
 
   it('writes the classification onto a straddler and a non-straddler alike', () => {

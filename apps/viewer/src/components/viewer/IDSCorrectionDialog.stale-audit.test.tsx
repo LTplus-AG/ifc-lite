@@ -110,6 +110,7 @@ function seedStore(): void {
   const seeded = fixtureModels(model);
   useViewerStore.setState({
     ...seeded,
+    editEnabled: true,
     mutationViews: new Map(),
     mutationVersion: 0,
     collabRole: null,

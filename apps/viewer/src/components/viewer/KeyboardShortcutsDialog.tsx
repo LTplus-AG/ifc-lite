@@ -11,7 +11,8 @@ import { LearnTab } from '@/components/tours/LearnTab';
 import { navigateToPath } from '@/services/app-navigation';
 import { useTranslation } from '@/i18n';
 import { isTextEntryTarget } from '@/lib/keyboard-event';
-import { AboutTab, ShortcutsTab } from './KeyboardShortcutsDialogTabs';
+import { AboutTab } from './KeyboardShortcutsDialogTabs';
+import { ShortcutsTab } from './ShortcutsTab';
 import { WhatsNewTab } from './KeyboardShortcutsWhatsNewTab';
 
 // Re-exported for `ViewportWelcomeCard.privacy.test.tsx` (#5119): the start

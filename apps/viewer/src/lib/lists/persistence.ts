@@ -7,7 +7,7 @@
  */
 
 import { trackExportCompleted } from '@/lib/analytics';
-import type { ListDefinition } from '@ifc-lite/lists';
+import { migrateLegacyListDefinition, type ListDefinition } from '@ifc-lite/lists';
 import { downloadFile, sanitizeFilename } from '../export/download.js';
 
 const STORAGE_KEY = 'ifc-lite-lists';
@@ -22,8 +22,21 @@ export function loadListDefinitions(): ListDefinition[] {
     // result (`[...listDefinitions, def]`) on the very first list the user
     // creates, so anything non-array here throws "is not iterable" and
     // bricks the List panel at boot instead of just starting empty.
-    return Array.isArray(parsed) ? (parsed as ListDefinition[]) : [];
-  } catch {
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((definition: unknown) => {
+      if (typeof definition !== 'object' || definition === null || Array.isArray(definition)) {
+        console.warn('[Lists] Skipping a malformed saved list entry');
+        return [];
+      }
+      try {
+        return [migrateLegacyListDefinition(definition)];
+      } catch (error) {
+        console.warn('[Lists] Skipping a saved list that could not be migrated', error);
+        return [];
+      }
+    });
+  } catch (error) {
+    console.warn('[Lists] Failed to read list definitions from localStorage', error);
     return [];
   }
 }
@@ -48,16 +61,14 @@ export function importListDefinition(file: File): Promise<ListDefinition> {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const def = JSON.parse(reader.result as string) as ListDefinition;
-        if (!def.id || !def.name || !def.entityTypes || !def.columns) {
+        const raw: unknown = JSON.parse(reader.result as string);
+        if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
           reject(new Error('Invalid list definition file'));
           return;
         }
-        // Generate a new ID to avoid collisions
-        def.id = crypto.randomUUID();
-        def.createdAt = Date.now();
-        def.updatedAt = Date.now();
-        resolve(def);
+        // Imports get fresh timestamps and identity, after the saved shape is checked.
+        const migrated = migrateLegacyListDefinition({ ...raw, createdAt: Date.now(), updatedAt: Date.now() });
+        resolve({ ...migrated, id: crypto.randomUUID() });
       } catch {
         reject(new Error('Failed to parse list definition file'));
       }

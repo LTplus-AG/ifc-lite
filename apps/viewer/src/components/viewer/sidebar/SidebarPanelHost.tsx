@@ -8,7 +8,7 @@
  * Renders the active workspace panel, and, when the user splits it, a SECOND
  * panel stacked beneath it with a draggable divider (Blender-style). Both halves
  * reserve real layout space (the pane is a flex sibling of the viewport), so a
- * split is "model | Information / IDS", never an overlay. Floating (#1201) stays
+ * split is "model | Properties / IDS", never an overlay. Floating (#1201) stays
  * a separate overlay channel.
  *
  * Each panel ships its own header (title + close), so the sidebar adds only a
@@ -24,14 +24,14 @@
  *
  * Render precedence preserves the pre-existing right-slot behavior:
  *   right-placed analysis extension, then Add Element tool, then active panel,
- *   then Information.
+ *   then Properties.
  */
 
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { Grip, ChevronRight, Rows2, X, Check, GripHorizontal } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import { WORKSPACE_PANELS, getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
+import { WORKSPACE_PANELS, type WorkspacePanelId } from '@/lib/panels/registry';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { usePanelDetachDrag } from '@/hooks/usePanelDetachDrag';
@@ -105,7 +105,7 @@ function SplitMenu({ primaryId }: { primaryId: WorkspacePanelId }) {
         {options.map((p) => (
           <DropdownMenuItem key={p.id} onSelect={() => pick(p.id)} className="gap-2">
             <p.Icon className="h-4 w-4 text-muted-foreground" />
-            <span className="flex-1">{p.title}</span>
+            <span className="flex-1">{t(p.titleKey)}</span>
             {secondary === p.id && <Check className="h-3.5 w-3.5 text-primary" />}
           </DropdownMenuItem>
         ))}
@@ -302,9 +302,9 @@ export function SidebarPanelHost() {
     );
   }
 
-  // Information fallback (or empty when Information is detached).
+  // Properties fallback (or empty when Properties is detached).
   if (shown === null || shown === 'properties') {
-    // Empty (Information detached) or no split: render single.
+    // Empty (Properties detached) or no split: render single.
     if (shown === null || !secondaryActive) {
       return (
         <div data-detach-root className="h-full flex flex-col panel-container">
@@ -316,7 +316,7 @@ export function SidebarPanelHost() {
         </div>
       );
     }
-    // Information on top, a second panel below (the canonical example).
+    // Properties on top, a second panel below (the canonical example).
     return (
       <SplitContainer
         containerRef={containerRef}

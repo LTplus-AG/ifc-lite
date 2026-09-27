@@ -171,7 +171,7 @@ async fn optimized_probe_requires_current_data_model() {
 
     let cache_key =
         request_cache_key(content, &ParseQuery::default(), TessellationQuality::default());
-    let dm_key = data_model_cache_key(&cache_key);
+    let dm_key = data_model_cache_key(&cache_key, crate::services::DataModelEntities::All);
     state
         .cache
         .remove(&dm_key)

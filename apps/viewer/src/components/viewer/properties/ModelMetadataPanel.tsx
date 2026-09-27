@@ -34,6 +34,7 @@ import { useTranslation } from '@/i18n';
 import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
 import { EXPRESS_DESCRIPTION_ATTRIBUTE, EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
 import { LandXmlModelSourceNavigation } from './LandXmlModelSourceNavigation';
+import { TerrainImageryCard } from './TerrainImageryCard';
 import { effectiveClassificationSystems } from './effective-classification-systems';
 import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
 
@@ -332,6 +333,8 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
             )}
           </div>
         </div>
+
+        {model.sourceSchema && model.landXmlDocument && <TerrainImageryCard model={model} />}
 
         {model.sourceSchema && model.landXmlDocument && <LandXmlModelSourceNavigation
           modelId={model.id}

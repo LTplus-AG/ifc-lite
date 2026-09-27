@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import { useTranslation } from '@/i18n';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import {
   Play,
   Save,
@@ -28,8 +29,7 @@ import {
   Bot,
   PanelRightClose,
   PanelRightOpen,
-  Undo2,
-  Redo2,
+  Undo2, Redo2,
   Wrench,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -326,12 +326,12 @@ export function ScriptPanel() {
                 {t('scriptPanel.toolbar.runButton')}
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{t('scriptPanel.toolbar.runTooltip')}</TooltipContent>
+            <TooltipContent>{t('scriptPanel.toolbar.runTooltip', { keys: shortcutLabel('script.run') })}</TooltipContent>
           </Tooltip>
 
           <IconButton
             label={t('scriptPanel.toolbar.saveAriaLabel')}
-            tooltip={t('scriptPanel.toolbar.saveTooltip')}
+            tooltip={t('scriptPanel.toolbar.saveTooltip', { keys: shortcutLabel('script.save') })}
             size="icon-xs"
             onClick={handleSave}
           >
@@ -361,7 +361,7 @@ export function ScriptPanel() {
 
           <IconButton
             label={t('scriptPanel.toolbar.undoAriaLabel')}
-            tooltip={t('scriptPanel.toolbar.undoTooltip')}
+            tooltip={t('scriptPanel.toolbar.undoTooltip', { keys: shortcutLabel('script.undo') })}
             size="icon-xs"
             onClick={undoScriptEditor}
             disabled={!scriptCanUndo}
@@ -371,7 +371,7 @@ export function ScriptPanel() {
 
           <IconButton
             label={t('scriptPanel.toolbar.redoAriaLabel')}
-            tooltip={t('scriptPanel.toolbar.redoTooltip')}
+            tooltip={t('scriptPanel.toolbar.redoTooltip', { keys: shortcutLabel('script.redo') })}
             size="icon-xs"
             onClick={redoScriptEditor}
             disabled={!scriptCanRedo}
@@ -522,7 +522,7 @@ export function ScriptPanel() {
                 {/* Empty state */}
                 {!lastError && !lastResult && (
                   <div className="text-muted-foreground py-2 text-center">
-                    {t('scriptPanel.output.emptyState')}
+                    {t('scriptPanel.output.emptyState', { keys: shortcutLabel('script.run') })}
                   </div>
                 )}
               </div>

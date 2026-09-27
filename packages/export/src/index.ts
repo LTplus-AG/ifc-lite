@@ -85,3 +85,7 @@ export { captureAppearanceDependencies } from './appearance-dependencies.js';
 // exporter's own pipeline: read models that must agree with the exported
 // bytes (the cost read model, #4857) read this instead of re-serializing.
 export { effectiveSourceRecord, type EffectiveSourceRecord, effectiveCreatedRecord } from './effective-source-record.js';
+// Schema-aware STEP arguments for a freshly created entity — the serializer
+// the exporter uses for overlay-created records. The LandXML imagery export
+// appends the appearance planner's entities with it (#5942).
+export { serializeEntityArgs } from './attribute-real-slots.js';

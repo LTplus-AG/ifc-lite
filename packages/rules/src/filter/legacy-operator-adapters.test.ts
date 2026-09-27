@@ -5,11 +5,11 @@
 import assert from 'node:assert/strict';
 import { it } from 'vitest';
 import { matchPropertyRule } from './filter-match.js';
-import type { PropertyRule } from './filter-rules.js';
+import { isFilterRule, type PropertyRule } from './filter-rules.js';
 import {
   legacyLensOperatorToFilterRule, legacyListOperatorToFilterRule,
-  legacyBulkOperatorToFilterRule, filterRuleToLegacyLensOperator,
-  filterRuleToLegacyListOperator, filterRuleToLegacyBulkOperator,
+filterRuleToLegacyLensOperator,
+  filterRuleToLegacyListOperator,
 } from './legacy-operator-adapters.js';
 
 const template = (propertyName: string, value: string): PropertyRule => ({
@@ -24,19 +24,18 @@ it('#5892 canonical exact comparison preserves saved Lens text behavior', () => 
   assert.equal(matchPropertyRule(rule, [{ setName: 'Pset_Test', propertyName: 'Text', value: 'Red', valueType: 'string' }]), false);
 });
 
-it('#5892 unknown saved operators stay unreadable across all adapters', () => {
+it('#5892 unknown saved operators stay unreadable across the remaining adapters', () => {
   const seed = template('Text', 'red');
   for (const result of [
     legacyLensOperatorToFilterRule('new-op', seed),
     legacyListOperatorToFilterRule('new-op', seed),
-    legacyBulkOperatorToFilterRule('new-op', seed),
   ]) assert.equal(result.status, 'unreadable');
-  const bulk = legacyBulkOperatorToFilterRule('=', seed, 'red');
-  assert.equal(bulk.status, 'readable');
-  if (bulk.status === 'readable') {
-    assert.equal(filterRuleToLegacyBulkOperator({ ...bulk.value, op: 'matches' }).status, 'unreadable');
-  }
   assert.equal(filterRuleToLegacyLensOperator(seed).status, 'unreadable');
   assert.equal(filterRuleToLegacyListOperator(seed).status, 'unreadable');
-  assert.equal(filterRuleToLegacyBulkOperator(seed).status, 'unreadable');
+});
+
+it('#5898 retired Bulk typed comparisons are unreadable instead of changing meaning', () => {
+  assert.equal(isFilterRule({ ...template('Text', 'red'), comparison: {
+    typeMode: 'bulk', operandType: 'string',
+  } }), false);
 });

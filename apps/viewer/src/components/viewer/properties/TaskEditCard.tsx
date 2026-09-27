@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * TaskEditCard — Inspector card that renders when a single Gantt task is
+ * TaskEditCard — Properties card that renders when a single Gantt task is
  * selected, exposing the edit fields from P1 of the schedule-editing plan.
  *
  * Scope (P1):
@@ -20,7 +20,7 @@
  */
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,6 +34,7 @@ import type { ScheduleTaskInfo } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_IDENTIFICATION_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE, EXPRESS_PREDEFINED_TYPE_ATTRIBUTE } from './express-labels';
+import { PersistentCollapsible } from './PersistentCollapsible';
 
 /** IfcTaskTypeEnum values — same list as the Generate dialog. */
 const TASK_TYPES: readonly string[] = [
@@ -158,11 +159,8 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
   const viewport3DCount = selectedEntityIds.size;
 
   return (
-    <Collapsible
-      defaultOpen
-      className="border-2 border-primary/40 bg-primary/5 w-full max-w-full overflow-hidden"
-    >
-      <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-primary/10 text-left transition-colors overflow-hidden">
+    <PersistentCollapsible id="task-edit" className="border-2 border-primary/40 bg-primary/5 w-full max-w-full overflow-hidden">
+      <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-primary/10 text-left transition-colors overflow-hidden">
         <ClipboardList className="h-3.5 w-3.5 text-primary shrink-0" />
         <span className="font-bold text-xs text-primary truncate flex-1 min-w-0">
           {t('properties.taskEdit.heading')}
@@ -172,7 +170,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
             {t('properties.taskEdit.pendingBadge')}
           </span>
         )}
-        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
       </CollapsibleTrigger>
 
       <CollapsibleContent>
@@ -217,7 +215,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
           </div>
 
           {/* Time — stacked layout. Two datetime-local inputs side-by-side
-              overflow the narrow default Inspector width (22 % of viewport);
+              overflow the narrow default Properties width (22 % of viewport);
               stacking reads cleaner even at wide widths and gives every
               input enough room to render the browser's picker UI. */}
           <div className="grid gap-2 rounded border border-border/60 p-2">
@@ -406,7 +404,7 @@ export const TaskEditCard = memo(function TaskEditCard({ taskGlobalId }: TaskEdi
           </div>
         </div>
       </CollapsibleContent>
-    </Collapsible>
+    </PersistentCollapsible>
   );
 });
 

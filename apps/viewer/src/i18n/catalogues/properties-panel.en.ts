@@ -18,7 +18,11 @@ import type { TranslationValue } from '../types';
  */
 export const propertiesPanelEn = {
   // PropertiesPanel: empty state
-  'properties.panel.title': 'Inspector',
+  'properties.panel.title': 'Properties',
+  'properties.panel.findLabel': 'Find properties',
+  'properties.panel.findPlaceholder': 'Find a property or value',
+  'properties.panel.clearFindLabel': 'Clear property search',
+  'properties.panel.findEmpty': 'No matching properties or attributes',
   'properties.panel.emptyTitle': 'No Selection',
   'properties.panel.emptyHintMultiModel': 'Select a model or element to view details',
   'properties.panel.emptyHintSingleModel': 'Select an element to view details',

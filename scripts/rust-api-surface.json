@@ -363,7 +363,7 @@
     "LandXmlCapabilityDiagnostic": "struct { code: LandXmlCapabilityDiagnosticCode; message: String; source_id: Option<LandXmlSourceId>; source_path: String }",
     "LandXmlCapabilityDiagnosticCode": "enum { AmbiguousReference; MissingElevation; MissingReference; SchemaVersionMismatch; SectionDiscontinuity; UnresolvedPointReference; UnsupportedCorridorExtension; UnsupportedGradeModelReference; UnsupportedParcelReference; UnsupportedPlanFeatureReference; UnsupportedSlopeDistance; UnsupportedStringLineExtension }",
     "LandXmlCgPoint": "struct { code: Option<String>; description: Option<String>; name: Option<String>; ordinal: usize; pnt_ref: Option<String>; point: Option<LandXmlPlanPoint>; properties: LandXmlProperties; scope_id: LandXmlSourceId; source_id: LandXmlSourceId }",
-    "LandXmlCoordinateSystem": "struct { horizontal_datum: Option<String>; vertical_datum: Option<String> }",
+    "LandXmlCoordinateSystem": "struct (non_exhaustive)",
     "LandXmlCrossSection": "struct { ordinal: usize; parent_alignment_source_id: LandXmlSourceId; source_id: LandXmlSourceId; station: f64; surface_source_ids: Vec<LandXmlSourceId> }",
     "LandXmlCrossSectionPoint": "struct { align_ref_station: Option<f64>; alignment_ref: Option<String>; alignment_source_id: Option<LandXmlSourceId>; data_format: LandXmlCrossSectionPointDataFormat; distance: Option<f64>; elevation: Option<f64>; offset: Option<f64>; parcel_ref: Option<String>; parcel_ref_station: Option<f64>; plan_feature_ref: Option<String>; plan_feature_ref_station: Option<f64>; pnt_ref: Option<String>; slope: Option<f64>; source_id: LandXmlSourceId }",
     "LandXmlCrossSectionPointDataFormat": "enum { OffsetElevation; SlopeDistance }",

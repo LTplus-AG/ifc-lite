@@ -391,6 +391,26 @@ describe('useClash gathers a federated model past the first with the offset the 
       'the first model\'s half of the cross-model pair must resolve too',
     );
   });
+
+  it('focus selects the cross-model pair in both id spaces without losing its colours (#5828)', async () => {
+    await seedFederation();
+    await act(async () => { await api!.run([ALL_RULE]); });
+    const clash = useViewerStore.getState().clashResult!.clashes.find((c) => c.a.model !== c.b.model);
+    assert.ok(clash, 'setup sanity: the two model walls overlap');
+
+    await act(async () => { api!.focusClash(clash!, 'highlight'); });
+    const s = useViewerStore.getState();
+    const a = s.resolveGlobalIdInModel(clash!.a.model, clash!.a.ref);
+    const b = s.resolveGlobalIdInModel(clash!.b.model, clash!.b.ref);
+    assert.ok(a && b, 'both global ids must resolve in their own models');
+    assert.deepEqual([...s.selectedEntityIds].sort(), [clash!.a.ref, clash!.b.ref].sort());
+    assert.deepEqual([...s.selectedEntitiesSet].sort(),
+      [`${a.modelId}:${a.expressId}`, `${b.modelId}:${b.expressId}`].sort());
+    assert.deepEqual(s.selectedEntity, a, 'the Inspector primary is element A, even across models');
+    assert.equal(s.selectedEntityId, clash!.a.ref, 'the global primary is the same element A');
+    assert.deepEqual([...s.clashHighlightColors!.keys()].sort(), [clash!.a.ref, clash!.b.ref].sort());
+    assert.deepEqual(s.pendingColorUpdates, s.clashHighlightColors);
+  });
 });
 
 // ─── The other half: elements that have NO durable key ──────────────────────

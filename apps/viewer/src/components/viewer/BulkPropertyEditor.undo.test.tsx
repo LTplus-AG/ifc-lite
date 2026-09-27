@@ -14,6 +14,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { act } from 'react';
 import { render, cleanup, click, advance } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels, type FixtureEntity } from '@/test/store-fixture.js';
@@ -31,11 +32,12 @@ const walls = (count: number): FixtureEntity[] =>
 /** Two loaded models; `model-a` is active. Both overlays exist already. */
 function seed(wallCount = 3): Map<string, MutablePropertyView> {
   const views = new Map(['model-a', 'model-b'].map((id) => [id, new MutablePropertyView(null, id)] as const));
+  const aModel = fixtureModel('model-a', { entities: walls(wallCount) });
+  const bModel = fixtureModel('model-b', { entities: walls(wallCount), idOffset: 100_000 });
+  aModel.maxExpressId = wallCount;
+  bModel.maxExpressId = wallCount;
   useViewerStore.setState({
-    ...fixtureModels(
-      fixtureModel('model-a', { entities: walls(wallCount) }),
-      fixtureModel('model-b', { entities: walls(wallCount), idOffset: 100_000 }),
-    ),
+    ...fixtureModels(aModel, bModel),
     mutationViews: views,
     undoStacks: new Map(),
     redoStacks: new Map(),
@@ -43,6 +45,10 @@ function seed(wallCount = 3): Map<string, MutablePropertyView> {
     dirtyModels: new Set(),
     mutationVersion: 0,
     collabRole: null,
+    editEnabled: true,
+    selectedEntityId: null,
+    selectedEntityIds: new Set<number>(),
+    searchFilterResult: null,
   });
   return views;
 }
@@ -108,6 +114,158 @@ describe('BulkPropertyEditor — the run is one undo step Ctrl+Z can reach (#595
     for (const id of [1, 2, 3]) assert.equal(b.getPropertyValue(id, PSET, PROP), null, `wall #${id} reverted by one Ctrl+Z`);
     redo();
     for (const id of [1, 2, 3]) assert.equal(b.getPropertyValue(id, PSET, PROP), 'X', `wall #${id} re-applied by one Ctrl+Y`);
+  });
+
+  it('#5890: Selection writes only three picked walls across two models, and one undo restores both', async () => {
+    const views = seed();
+    useViewerStore.setState({ selectedEntityIds: new Set([1, 100_001, 100_002]), selectedEntityId: 1 });
+    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+    await openDialog(container);
+    const source = [...document.body.querySelectorAll('button[role="combobox"]')]
+      .find((button) => button.getAttribute('aria-label') === 'Target source');
+    assert.equal(source?.textContent, 'Selection');
+    await execute('PICKED');
+    const a = views.get('model-a')!;
+    const b = views.get('model-b')!;
+    assert.equal(a.getPropertyValue(1, PSET, PROP), 'PICKED');
+    assert.equal(a.getPropertyValue(2, PSET, PROP), null);
+    assert.equal(b.getPropertyValue(1, PSET, PROP), 'PICKED');
+    assert.equal(b.getPropertyValue(2, PSET, PROP), 'PICKED');
+    assert.equal(b.getPropertyValue(3, PSET, PROP), null);
+    undo();
+    for (const view of [a, b]) for (const id of [1, 2, 3])
+      assert.equal(view.getPropertyValue(id, PSET, PROP), null);
+    redo();
+    assert.equal(a.getPropertyValue(1, PSET, PROP), 'PICKED');
+    assert.equal(b.getPropertyValue(1, PSET, PROP), 'PICKED');
+    assert.equal(b.getPropertyValue(2, PSET, PROP), 'PICKED');
+  });
+
+  it('#5890: undo reaches the model that changed when the active selection was a no-op', async () => {
+    const views = seed();
+    useViewerStore.getState().setProperty('model-b', 1, PSET, PROP, 'EXISTING', PropertyValueType.Label);
+    useViewerStore.setState({ activeModelId: 'model-a', selectedEntityIds: new Set([1, 100_001]), selectedEntityId: 1 });
+    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+    await openDialog(container);
+    await choose('Set Property', 'Delete Property');
+    await execute(null);
+
+    assert.equal(views.get('model-a')!.getPropertyValue(1, PSET, PROP), null);
+    assert.equal(views.get('model-b')!.getPropertyValue(1, PSET, PROP), null);
+    assert.equal(useViewerStore.getState().activeModelId, 'model-b', 'Undo targets the model with a recorded mutation');
+    undo();
+    assert.equal(views.get('model-b')!.getPropertyValue(1, PSET, PROP), 'EXISTING');
+  });
+
+  it('#5898: a chunked Query write does not rediscover rule suggestions per chunk', async () => {
+    const views = seed(1001);
+    const original = useViewerStore.getState().setFilterSchema;
+    let discoveries = 0;
+    useViewerStore.setState({ setFilterSchema: (...args) => {
+      discoveries++;
+      original(...args);
+    } });
+    try {
+      const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+      await openDialog(container);
+      setNativeValue(input('e.g., Pset_WallCommon')!, PSET);
+      setNativeValue(input('e.g., FireRating')!, PROP);
+      setNativeValue(input('Value')!, 'CHUNKED');
+      await advance(250);
+      const beforeRun = discoveries;
+      const apply = [...document.body.querySelectorAll('button')].find((button) => button.textContent?.includes('Apply to'));
+      assert.ok(apply);
+      click(apply!);
+      await advance(150);
+      assert.equal(views.get('model-a')!.getPropertyValue(1001, PSET, PROP), 'CHUNKED');
+      assert.ok(discoveries - beforeRun <= 1, 'schema discovery runs at most once after three write chunks');
+    } finally {
+      useViewerStore.setState({ setFilterSchema: original });
+    }
+  });
+
+  it('#5898: Cancel before Query preselection writes nothing and reports cancellation', async () => {
+    const views = seed(1001);
+    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+    await openDialog(container);
+    setNativeValue(input('e.g., Pset_WallCommon')!, PSET);
+    setNativeValue(input('e.g., FireRating')!, PROP);
+    setNativeValue(input('Value')!, 'NEVER');
+    await advance(250);
+    const apply = [...document.body.querySelectorAll('button')].find((button) => button.textContent?.includes('Apply to'));
+    assert.ok(apply);
+    click(apply!);
+    const cancel = [...document.body.querySelectorAll('button')].find((button) => button.textContent === 'Cancel');
+    assert.ok(cancel, 'the running Query exposes Cancel during preselection');
+    click(cancel!);
+    await advance(100);
+    assert.equal(views.get('model-a')!.getPropertyValue(1, PSET, PROP), null);
+    assert.match(document.body.textContent ?? '', /Cancelled after 0 of 0 entities/);
+  });
+
+  it('#5890: Search result targets only the displayed one-model filter rows', async () => {
+    const views = seed();
+    useViewerStore.setState({
+      ...fixtureModels(fixtureModel('model-a', { entities: walls(3) })),
+      mutationViews: new Map([['model-a', views.get('model-a')!]]),
+      searchModalTab: 'filter',
+      searchFilterResult: { columns: ['express_id'], rows: [[1], [3]], runMs: 0 },
+    });
+    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+    await openDialog(container);
+    await choose('Query', 'Search result');
+    await execute('FOUND');
+    const a = views.get('model-a')!;
+    assert.equal(a.getPropertyValue(1, PSET, PROP), 'FOUND');
+    assert.equal(a.getPropertyValue(2, PSET, PROP), null);
+    assert.equal(a.getPropertyValue(3, PSET, PROP), 'FOUND');
+    undo();
+    assert.equal(a.getPropertyValue(1, PSET, PROP), null);
+    assert.equal(a.getPropertyValue(3, PSET, PROP), null);
+  });
+
+  it('#5890: Search result uses the current text search and ignores other walls', async () => {
+    const views = seed();
+    useViewerStore.setState({
+      ...fixtureModels(fixtureModel('model-a', { entities: walls(3) })),
+      mutationViews: new Map([['model-a', views.get('model-a')!]]),
+      searchModalTab: 'search',
+      searchQuery: 'Wall 2',
+      searchIndexes: new Map(),
+      searchFieldFilter: 'all',
+      searchModelFilter: null,
+    });
+    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+    await openDialog(container);
+    await choose('Query', 'Search result');
+    await execute('TEXT');
+    const a = views.get('model-a')!;
+    assert.equal(a.getPropertyValue(1, PSET, PROP), null);
+    assert.equal(a.getPropertyValue(2, PSET, PROP), 'TEXT');
+    assert.equal(a.getPropertyValue(3, PSET, PROP), null);
+    undo();
+    assert.equal(a.getPropertyValue(2, PSET, PROP), null);
+  });
+
+  it('#5890: a closed dialog does not rescan IFC when the Search query changes', async () => {
+    seed();
+    const indexes = new Map();
+    const get = indexes.get.bind(indexes);
+    let indexReads = 0;
+    indexes.get = (key: string) => { indexReads++; return get(key); };
+    useViewerStore.setState({ searchModalTab: 'search', searchQuery: 'Wall', searchIndexes: indexes });
+    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+    await openDialog(container);
+    await choose('Query', 'Search result');
+    assert.ok(indexReads > 0, 'open Search source consults the IFC search index');
+
+    const close = [...document.body.querySelectorAll('button')].find((button) => button.textContent === 'Close');
+    assert.ok(close);
+    click(close!);
+    await advance(0);
+    indexReads = 0;
+    act(() => useViewerStore.setState({ searchQuery: 'Wall 2' }));
+    assert.equal(indexReads, 0, 'closed Bulk dialog leaves Search query changes to the Search panel');
   });
 
   it('the model picker defaults to the active model', async () => {

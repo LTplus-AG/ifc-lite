@@ -49,13 +49,11 @@ const NOT_RENDERED_IN_THIS_STATE: RibbonKey[] = [
   'ribbon.file.shareGroup', // collab feature flag is off under test
   'ribbon.file.share',
   'ribbon.file.shareTooltip',
-  'ribbon.file.room',
   'ribbon.file.roomTooltip',
   'ribbon.file.roomNotJoinedTooltip',
   'ribbon.view.worldShowTooltip', // Cesium is enabled
   'ribbon.view.moveGeorefStopTooltip', // not in placement mode
   'ribbon.elements.selectionGroup', // a selection exists
-  'ribbon.elements.hideShortcut', // shortcut shows only in tooltip content
   'ribbon.analyze.appsGroup', // no analysis extensions installed
   'ribbon.author.exitEditTooltip', // edit mode is off
   'ribbon.author.editLockedTooltip', // single-user session can edit
@@ -77,6 +75,10 @@ function readableSlots(root: HTMLElement): Map<string, string> {
   root.querySelectorAll('*').forEach((element, index) => {
     const label = element.getAttribute('aria-label');
     if (label) out.set(`${index}:aria`, label);
+    const descriptionId = element.getAttribute('aria-describedby');
+    const description = descriptionId?.split(/\s+/).map((id) => root.ownerDocument.getElementById(id)?.textContent?.trim())
+      .filter(Boolean).join(' ');
+    if (description) out.set(`${index}:description`, description);
     const ownText = [...element.childNodes]
       .filter((node) => node.nodeType === node.TEXT_NODE)
       .map((node) => node.textContent ?? '')
@@ -158,7 +160,12 @@ describe('RibbonToolbar localization (#4785)', () => {
         // Owned keys whose English is exactly this text (placeholder keys are
         // interpolated, so they are checked by the literal-catalogue tests).
         const candidates = RIBBON_KEYS.filter((key) =>
-          ownedBy(tab, key) && !ribbonToolbarEn[key].includes('{') && ribbonToolbarEn[key] === text);
+          ownedBy(tab, key) &&
+          !(slot.endsWith(':text') && key.endsWith('Tooltip')) &&
+          // A panel button announces its visible name; its descriptive tooltip
+          // is checked in the paired aria-description slot instead.
+          !(slot.endsWith(':aria') && before.has(slot.replace(/:aria$/, ':description')) && key.endsWith('Tooltip')) &&
+          !ribbonToolbarEn[key].includes('{') && ribbonToolbarEn[key] === text);
         if (candidates.length > 0) {
           const match = candidates.find((key) => shown === mark(key));
           assert.ok(match, `${tab}: "${text}" at ${slot} should be translated, shows "${shown}"`);

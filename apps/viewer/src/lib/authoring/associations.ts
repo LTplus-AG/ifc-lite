@@ -27,6 +27,7 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import { resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import type { TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
+import { mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { roomSlotFor } from '@/lib/collab/room-model-target';
 import { mirrorStoreOverlayDelta, snapshotOverlay } from '@/sdk/adapters/store-adapter-cost';
@@ -43,7 +44,12 @@ interface Target { storeModelId: string; store: IfcDataStore; view: MutablePrope
 
 function resolveTarget(modelId: string): Target | AssociationResult {
   const state = useViewerStore.getState();
-  if (!state.canCollabEdit()) return { ok: false, reasonKey: 'propertyEditor.association.readOnly' };
+  const permission = mutationPermission(state, modelId);
+  if (!permission.allowed) return {
+    ok: false,
+    reasonKey: permission.reason === 'collab-role'
+      ? 'propertyEditor.association.readOnly' : mutationDenialKey(permission.reason),
+  };
   const storeModelId = modelId === 'legacy' ? '__legacy__' : modelId;
   const store = state.models.get(modelId)?.ifcDataStore ?? state.ifcDataStore;
   if (!store) return { ok: false, reasonKey: 'propertyEditor.association.noModel' };

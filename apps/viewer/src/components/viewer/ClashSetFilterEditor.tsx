@@ -2,75 +2,80 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * One side (A or B) of a clash rule, defined as an advanced filter (#3902).
- *
- * Deliberately the SAME rows the search modal's filter builder shows — same
- * `RuleRow`, same AND/OR toggle, same "Add rule" menu, same rule kinds — so a
- * coordinator who can express "external walls above +3.00 m" in the search
- * panel can express it as a clash set without learning a second dialect.
- *
- * An empty rule list is stored as no filter at all, which is what lets the
- * side fall back to its type selector (see `lib/clash/set-filter.ts`).
- */
-
-import { useCallback } from 'react';
+/** One side of a clash rule, edited with the shared OR-of-groups UI (#5898). */
+import { useCallback, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
-import { useFilterRuleOptions } from '@/hooks/useFilterRuleOptions';
-import type { FilterRule } from '@ifc-lite/rules';
-import { unreadableRuleCount, type ClashSetFilter } from '@/lib/clash/set-filter';
-import { AddRuleMenu, CombinatorToggle, blankRuleOfKind } from './FilterRuleControls';
-import { RuleRow } from './SearchModal.filter.editors';
-
-const NO_RULES: FilterRule[] = [];
+import { useViewerStore } from '@/store';
+import { emptyFilterGroup } from '@ifc-lite/rules';
+import {
+  activeClashSetFilter,
+  unreadableRuleCount,
+  type ClashSetFilter,
+} from '@/lib/clash/set-filter';
+import { FilterGroupEditor, type FilterGroupEditorState } from './FilterGroupEditor';
 
 export interface ClashSetFilterEditorProps {
-  /** "Set A" / "Set B" — which side of the rule this defines. */
   label: string;
   filter: ClashSetFilter | undefined;
-  onChange: (next: ClashSetFilter | undefined) => void;
+  /** A functional update keeps consecutive rule/group edits in order. */
+  onChange: (updater: (previous: ClashSetFilter | undefined) => ClashSetFilter | undefined) => void;
 }
 
 export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilterEditorProps) {
   const { t } = useTranslation();
-  const rules = filter?.rules ?? NO_RULES;
-  const combinator = filter?.combinator ?? 'AND';
+  const models = useViewerStore((state) => state.models);
+  const [activeGroup, setActiveGroup] = useState(0);
+  // Empty groups are an editing state. Persist only once a rule exists, but
+  // keep tabs usable when the user adds groups before the first rule.
+  const [emptyGroups, setEmptyGroups] = useState<ClashSetFilter>([emptyFilterGroup()]);
+  const groups = filter ?? emptyGroups;
+  const editorState = useRef<FilterGroupEditorState>({ groups, activeGroup });
+  editorState.current = { groups, activeGroup };
   const unreadable = unreadableRuleCount(filter);
-  const ruleOptions = useFilterRuleOptions(rules);
 
-  const commit = useCallback(
-    (nextRules: readonly FilterRule[], nextCombinator = combinator) => {
-      // No rules is no filter — never an empty filter, which the resolver
-      // would (correctly) read as "this side matches nothing". An edit here
-      // is the user's explicit decision about this filter, so the rules this
-      // build could not read (#4215) are let go with it — the notice below
-      // says so before they touch anything.
-      onChange(
-        nextRules.length === 0 ? undefined : { combinator: nextCombinator, rules: [...nextRules] },
-      );
-    },
-    [combinator, onChange],
-  );
+  const commit = useCallback((updater: (previous: FilterGroupEditorState) => FilterGroupEditorState) => {
+    // FilterGroupEditor updates its selected tab and groups together. The
+    // parent owns the saved groups, so apply the same pure updater to its
+    // latest draft rather than closing over a previous render's filter.
+    const previousState = editorState.current;
+    const preview = updater(previousState);
+    // Keep consecutive clicks ordered even when React batches them before a
+    // render (e.g. add two groups, then add a rule to the newest group).
+    editorState.current = preview;
+    setActiveGroup(preview.activeGroup);
+    if (!activeClashSetFilter(preview.groups)) setEmptyGroups(preview.groups);
+    onChange((previous) => {
+      const previousGroups = previous ?? previousState.groups;
+      const next = updater({ groups: previousGroups, activeGroup: previousState.activeGroup });
+      if (next.groups === previousGroups) return previous; // Selecting a tab is not an edit.
+      // As before #5898, an explicit edit discards unreadable entries only
+      // after the warning above. Retaining them would leave the run refused
+      // even though the user just repaired the visible filter.
+      const editable = next.groups.map((group) => ({ combinator: group.combinator, rules: group.rules }));
+      // Clearing the final rule means selector fallback, never empty members.
+      return activeClashSetFilter(editable) ? editable : undefined;
+    });
+  }, [onChange]);
 
   return (
     <div className="space-y-1.5">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
-          {label}
-        </span>
-        {rules.length > 1 && (
-          <CombinatorToggle value={combinator} onChange={(c) => commit(rules, c)} />
-        )}
-        <AddRuleMenu onAdd={(kind) => commit([...rules, blankRuleOfKind(kind)])} label="Add filter rule" />
-        {rules.length > 0 && (
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
+        {filter && (
           <Button
             type="button"
             variant="ghost"
             size="sm"
             className="h-7 gap-1 text-2xs text-muted-foreground"
-            onClick={() => commit([])}
+            onClick={() => {
+              const reset = [emptyFilterGroup()];
+              editorState.current = { groups: reset, activeGroup: 0 };
+              setEmptyGroups(reset);
+              setActiveGroup(0);
+              onChange(() => undefined);
+            }}
             title={t('clashTools.setFilter.clearTooltip')}
           >
             <Trash2 className="h-3 w-3" /> {t('clashTools.setFilter.clearLabel')}
@@ -84,17 +89,18 @@ export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilter
         </p>
       )}
 
-      {rules.map((rule, i) => (
-        <RuleRow
-          key={i}
-          rule={rule}
-          {...ruleOptions}
-          onChange={(next) => commit(rules.map((r, j) => (j === i ? next : r)))}
-          onRemove={() => commit(rules.filter((_, j) => j !== i))}
-        />
-      ))}
+      <FilterGroupEditor
+        groups={groups}
+        activeGroup={activeGroup}
+        onChange={commit}
+        models={[...models.values()].map((model) => ({
+          id: model.id,
+          name: model.name,
+          sourceFingerprint: model.sourceFingerprint,
+        }))}
+      />
 
-      {rules.length > 0 && (
+      {filter && (
         <p className="text-2xs text-muted-foreground leading-snug">
           {t('clashTools.setFilter.definedByFilter', { label: label.toLowerCase() })}
         </p>

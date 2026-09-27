@@ -126,10 +126,10 @@ console.log(`From cache: ${result.stats.from_cache}`);
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/v1/parse` | POST | Full parse, JSON response |
-| `/api/v1/parse/parquet` | POST | Full parse, Parquet response (~15x smaller) |
-| `/api/v1/parse/parquet/optimized` | POST | Optimized Parquet (~50x smaller); also produces the data model, like `/parse/parquet`; `?sha256=` replays a cache hit with no upload |
+| `/api/v1/parse/parquet` | POST | Full parse, Parquet response (~15x smaller); `?data_model_entities=rooted` writes the [rooted-only data model](#rooted-only-entities-table-opt-in) |
+| `/api/v1/parse/parquet/optimized` | POST | Optimized Parquet (~50x smaller); also produces the data model, like `/parse/parquet`; `?sha256=` replays a cache hit with no upload; `?data_model_entities=rooted` writes the [rooted-only data model](#rooted-only-entities-table-opt-in) |
 | `/api/v1/parse/stream` | POST | Streaming JSON (SSE) |
-| `/api/v1/parse/parquet-stream` | POST | Streaming Parquet (SSE); `?sha256=` replays a cache hit with no upload; `?parquet_layout=shared-shapes&stream_shapes=cross-batch` shares shapes across batches (see [below](#sharing-across-stream-batches-opt-in)) |
+| `/api/v1/parse/parquet-stream` | POST | Streaming Parquet (SSE); `?sha256=` replays a cache hit with no upload; `?parquet_layout=shared-shapes&stream_shapes=cross-batch` shares shapes across batches (see [below](#sharing-across-stream-batches-opt-in)); `?data_model_entities=rooted` fills the [rooted-only data model](#rooted-only-entities-table-opt-in) |
 | `/api/v1/parse/metadata` | POST | Quick metadata only (no geometry) |
 
 All parse endpoints that return geometry also surface the 2D symbol stream
@@ -150,11 +150,11 @@ JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/v1/cache/check/{hash}` | GET | Check if file is cached (200 or 404) |
+| `/api/v1/cache/check/{hash}` | GET | Check if file is cached (200 or 404); pass the same `data_model_entities` the upload would, since a hit requires that data model |
 | `/api/v1/cache/geometry/{hash}` | GET | Fetch cached geometry (no upload) |
 | `/api/v1/cache/{key}` | GET | Retrieve the cached `POST /api/v1/parse` result for the `cache_key` that route returned, with `stats.from_cache: true` (404 when that route has not cached one) |
 | `/api/v1/cache/{key}` | DELETE | Evict every cached representation of the source file that `cache_key` names (`200` with `{ key, deleted }`; `deleted: 0` when nothing was cached) |
-| `/api/v1/parse/data-model/{key}` | GET | Fetch cached data model (200 hit; 202 a fill is running right now for this key; 404 nothing cached and nothing filling it) |
+| `/api/v1/parse/data-model/{key}` | GET | Fetch cached data model (200 hit; 202 a fill is running right now for this key; 404 nothing cached and nothing filling it); `?data_model_entities=rooted` fetches the rooted-only variant |
 | `/api/v1/parse/symbolic/{key}` | GET | Fetch 2D symbol data (`IfcAnnotation` + `IfcGrid`) as JSON |
 
 ### Utility Endpoints
@@ -436,6 +436,42 @@ if (dataModel) {
 }
 ```
 
+#### Rooted-only entities table (opt-in)
+
+By default the data model's entities table carries every STEP instance in the
+file. On a large model most of those rows are geometry and property plumbing
+with no GlobalId (`IfcPolyLoop`, `IfcFace`, `IfcCartesianPoint`,
+`IfcPropertySingleValue`, ...), and that one table can outweigh the optimized
+geometry. A client that only ever looks up objects can ask for
+`data_model_entities=rooted` (issue #6034): the entities table then carries
+
+- every rooted entity (`IfcRoot` subtypes, the rows with a GlobalId), and
+- every non-rooted instance another table of the same data model references by
+  id: the `IfcMaterial`, layer, profile and constituent sets and usages the
+  materials table names, and the `RelatingMaterial` / `RelatingClassification`
+  / `RelatingDocument` of every relationship row.
+
+So every id the relationships, property, quantity, material, classification,
+document and spatial tables name still resolves in the entities table. Those
+tables are byte-identical to the default payload's, `entity_id`s are unchanged,
+and the kept rows stay in file order. The response header's
+`data_model_stats.entity_count` still counts the whole model, in both variants.
+
+The two variants are separate cache entries (`-datamodel-v8` and
+`-datamodel-rooted-v8`), and each is served only to a request that names it, so
+send the SAME value to the parse route, to `/cache/check`, and to
+`GET /api/v1/parse/data-model/{key}`. A rooted parse writes only the rooted
+table; fetching without the parameter afterwards asks for the full one and
+gets `404`. A parse that finds its geometry cached but not the requested
+variant's data model re-parses, as it does for a data model that predates the
+current payload version.
+
+```typescript
+const options = { dataModelEntities: 'rooted' } as const;
+const optimized = await client.parseParquetOptimized(file, options);
+const rootedDataModel = await client.fetchDataModel(optimized.cache_key, options);
+```
+
 #### Fetching Symbolic Data
 
 Symbolic fill records may include `geometry_item_id` for an unambiguous direct
@@ -482,6 +518,10 @@ arrays on the decoded `DataModel` (`classifications`, `materials`, `documents`)
 and decode to empty arrays when served by an older server/cache.
 
 ### Entities
+
+One row per STEP instance in the file, or only the rooted ones plus the
+instances other tables reference with `data_model_entities=rooted` (see
+[Rooted-only entities table](#rooted-only-entities-table-opt-in)).
 
 ```typescript
 interface EntityMetadata {
@@ -730,6 +770,7 @@ Cache keys are derived from file content:
 {SHA256}-{filter}-parquet-v7          # Geometry (parquet_layout=shared-shapes)
 {SHA256}-{filter}-parquet-metadata-v5 # Metadata header
 {SHA256}-{filter}-datamodel-v8        # Properties & hierarchy
+{SHA256}-{filter}-datamodel-rooted-v8 # Same, rooted-only entities table (data_model_entities=rooted)
 {SHA256}-{filter}-symbolic-v3         # 2D symbol stream
 
 # POST /parse/parquet/optimized has its own pair (issue #3889): the optimized

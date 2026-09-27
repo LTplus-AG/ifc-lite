@@ -9,6 +9,7 @@ import '../test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { getViewerStoreApi } from '@/store';
+import { registerLocale, setLocale } from '@/i18n';
 import {
   closeAllPanelWindows,
   closePanelWindow,
@@ -82,6 +83,14 @@ describe('panel-windows', () => {
   afterEach(() => {
     closeAllPanelWindows();
     window.open = originalOpen;
+    setLocale('en');
+  });
+
+  it('uses the active registry panel name for a popped-out window (#5858)', async () => {
+    registerLocale('panel-window-name-5858', { 'clashPanel.title': 'Shared clash name' });
+    setLocale('panel-window-name-5858');
+    await openPanelWindow('clash');
+    assert.equal(openedWindows[0].document.title, 'Shared clash name — ifc-lite');
   });
 
   it('opens a popup window and records it in the snapshot', async () => {

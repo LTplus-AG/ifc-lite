@@ -31,7 +31,7 @@ export function HomeTab() {
         <RibbonLargeButton
           icon={Select}
           label={t('ribbon.home.select')}
-          shortcut="V"
+          shortcut="tool.select"
           active={activeTool === 'select'}
           onClick={() => setActiveTool('select')}
           {...tourAnchor(toolAnchor('select'))}
@@ -39,7 +39,7 @@ export function HomeTab() {
         <RibbonLargeButton
           icon={Walk}
           label={t('ribbon.home.walk')}
-          shortcut="C"
+          shortcut="tool.walk"
           active={activeTool === 'walk'}
           onClick={() => setActiveTool('walk')}
           {...tourAnchor(toolAnchor('walk'))}
@@ -52,7 +52,7 @@ export function HomeTab() {
         <RibbonLargeButton
           icon={Measure}
           label={t('ribbon.home.measure')}
-          shortcut="M"
+          shortcut="tool.measure"
           active={activeTool === 'measure'}
           onClick={() => setActiveTool('measure')}
           {...tourAnchor(toolAnchor('measure'))}
@@ -60,7 +60,7 @@ export function HomeTab() {
         <RibbonLargeButton
           icon={Section}
           label={t('ribbon.home.section')}
-          shortcut="X"
+          shortcut="tool.section"
           active={activeTool === 'section'}
           onClick={() => setActiveTool('section')}
           {...tourAnchor(toolAnchor('section'))}
@@ -68,7 +68,7 @@ export function HomeTab() {
         <RibbonLargeButton
           icon={Annotate}
           label={t('ribbon.home.annotate')}
-          shortcut="P"
+          shortcut="tool.annotate"
           active={activeTool === 'annotate'}
           activeClassName="bg-amber-500/20 text-foreground ring-1 ring-inset ring-amber-500/50"
           onClick={() => setActiveTool('annotate')}
@@ -83,7 +83,7 @@ export function HomeTab() {
           icon={Home}
           label={t('ribbon.home.home')}
           tooltip={t('ribbon.home.homeTooltip')}
-          shortcut="H"
+          shortcut="camera.home"
           onClick={goHomeFromStore}
         />
       </RibbonGroup>

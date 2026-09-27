@@ -13,7 +13,7 @@
  * is what makes them testable without a model.
  */
 
-import { compileNameMatcher, isNamePattern } from '@ifc-lite/lists';
+import { compileNameMatcher, isNamePattern } from '@ifc-lite/regex-guard';
 import type { NumericOp, SetOp, StringOp, TextKind, ValueComparison, ValueOp } from './filter-rules.js';
 
 /**
@@ -44,46 +44,6 @@ function valueEquals(left: string, right: string, opts?: OpMatchOptions & ValueC
     return left === right;
   }
   return fold(left, opts?.caseSensitive) === fold(right, opts?.caseSensitive);
-}
-
-type TypedValueOptions = OpMatchOptions & ValueComparison & {
-  candidateType?: 'string' | 'number' | 'boolean' | 'null' | 'undefined';
-};
-
-/** The saved Bulk filter's typed comparison, expressed with common ValueOps. */
-function bulkValueMatches(op: ValueOp, candidate: string, operand: string, opts: TypedValueOptions): boolean {
-  if (opts.candidateType === 'boolean') {
-    if (op !== 'eq' && op !== 'ne') return false;
-    const expected = (opts.operandType === 'boolean' || opts.operandType === 'string') && operand === 'true';
-    const equal = candidate.toLowerCase() === String(expected);
-    return op === 'eq' ? equal : !equal;
-  }
-  if (opts.candidateType === 'string' && opts.operandType === 'string') {
-    const a = candidate.toLowerCase();
-    const b = operand.toLowerCase();
-    switch (op) {
-      case 'eq': return candidate === operand;
-      case 'ne': return candidate !== operand;
-      case 'contains': return a.includes(b);
-      case 'startsWith': return a.startsWith(b);
-      case 'endsWith': return a.endsWith(b);
-      default: return false;
-    }
-  }
-  if (opts.candidateType === 'number' && opts.operandType === 'number') {
-    const a = Number(candidate);
-    const b = Number(operand);
-    switch (op) {
-      case 'eq': return a === b;
-      case 'ne': return a !== b;
-      case 'gt': return a > b;
-      case 'gte': return a >= b;
-      case 'lt': return a < b;
-      case 'lte': return a <= b;
-      default: return false;
-    }
-  }
-  return false;
 }
 
 /**
@@ -278,11 +238,8 @@ export function valueOpMatches(
   psetVal: string,
   ruleVal: string,
   valueKind?: TextKind,
-  opts?: TypedValueOptions,
+  opts?: OpMatchOptions & ValueComparison,
 ): boolean {
-  if (opts?.typeMode === 'bulk' && op !== 'isNull' && op !== 'isNotNull') {
-    return bulkValueMatches(op, psetVal, ruleVal, opts);
-  }
   switch (op) {
     case 'isSet':       return (psetVal ?? '').length > 0;
     case 'isNotSet':    return (psetVal ?? '').length === 0;

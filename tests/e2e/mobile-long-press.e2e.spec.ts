@@ -15,6 +15,10 @@ declare global {
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
 test('long press on an authored element opens its context menu once (#5859)', async ({ page }, info) => {
+  let deviceLost = false;
+  page.on('console', (message) => {
+    if (message.text().includes('[WebGPU] Device lost:')) deviceLost = true;
+  });
   await page.addInitScript(() => {
     window.localStorage.setItem('ifclite.extensions.privacy-disclosure.v2', 'e2e acknowledged');
   });
@@ -45,7 +49,14 @@ test('long press on an authored element opens its context menu once (#5859)', as
   const device = await page.context().newCDPSession(page);
   await device.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: target.x, y: target.y, id: 1 }] });
   try {
-    await expect(page.getByRole('menu', { name: 'Entity actions' })).toBeVisible({ timeout: 10_000 });
+    try {
+      await expect(page.getByRole('menu', { name: 'Entity actions' })).toBeVisible({ timeout: 10_000 });
+    } catch (error) {
+      if (deviceLost && process.env.E2E_GPU_STRICT === '0') {
+        test.skip(true, 'software WebGPU device was destroyed during this page; entity pick cannot complete');
+      }
+      throw error;
+    }
     await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().contextMenu.entityId))
       .toBe(target.globalId);
     await info.attach('mobile-long-press-entity-menu.png', { body: await page.screenshot(), contentType: 'image/png' });

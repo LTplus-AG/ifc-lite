@@ -127,6 +127,7 @@ pub(super) fn quantity_kind(ty: IfcType) -> Option<&'static str> {
         IfcType::IfcQuantityArea => Some("Area"),
         IfcType::IfcQuantityVolume => Some("Volume"),
         IfcType::IfcQuantityCount => Some("Count"),
+        IfcType::IfcQuantityNumber => Some("Number"),
         IfcType::IfcQuantityWeight => Some("Weight"),
         IfcType::IfcQuantityTime => Some("Time"),
         _ => None,
@@ -168,22 +169,48 @@ pub(super) fn decode_property_set(decoder: &mut EntityDecoder, def: &DecodedEnti
 
 /// Decode one `IfcElementQuantity` definition into our model.
 pub(super) fn decode_quantity_set(decoder: &mut EntityDecoder, def: &DecodedEntity) -> Option<QuantitySet> {
+    let (name, records) = decode_quantity_records(decoder, def, None)?;
+    let quantities = records.into_iter().map(|record| record.value).collect();
+    Some(QuantitySet { name, quantities })
+}
+
+/// The one physical-quantity parser shared by flat exports and the opt-in
+/// provenance analysis. Keep the IFC entity and optional Unit reference until
+/// the latter has been resolved; flat exports deliberately discard both.
+pub(crate) struct QuantityRecord {
+    pub id: u32,
+    pub unit_id: Option<u32>,
+    pub invalid_unit_ref: bool,
+    pub value: QuantityValue,
+}
+
+pub(crate) fn decode_quantity_records(
+    decoder: &mut EntityDecoder, def: &DecodedEntity, max_members: Option<usize>,
+) -> Option<(String, Vec<QuantityRecord>)> {
     let name = def.get(2).and_then(|a| a.as_string()).unwrap_or("").to_string();
     let quantities_attr = def.get(5)?;
+    if max_members.is_some_and(|max| quantities_attr.as_list().is_none_or(|items| items.len() > max)) {
+        return None;
+    }
     let quants = decoder.resolve_ref_list(quantities_attr).ok()?;
-    let mut quantities = Vec::new();
+    let mut records = Vec::new();
     for q in &quants {
         if let Some(kind) = quantity_kind(q.ifc_type.clone()) {
             let qname = match q.get(0).and_then(|a| a.as_string()) {
                 Some(n) if !n.is_empty() => n.to_string(),
                 _ => continue,
             };
-            if let Some(value) = q.get(3).and_then(|a| a.as_float()) {
-                quantities.push(QuantityValue { name: qname, value, kind });
+            if let Some(value) = q.get(3).and_then(|a| a.as_float().or_else(|| a.as_int().map(|n| n as f64))) {
+                records.push(QuantityRecord {
+                    id: q.id,
+                    unit_id: q.get_ref(2),
+                    invalid_unit_ref: q.get(2).is_some_and(|unit| !unit.is_null() && unit.as_entity_ref().is_none()),
+                    value: QuantityValue { name: qname, value, kind },
+                });
             }
         }
     }
-    Some(QuantitySet { name, quantities })
+    Some((name, records))
 }
 
 /// Resolve a list of property/quantity set definition ids into non-empty

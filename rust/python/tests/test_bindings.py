@@ -25,6 +25,38 @@ REPO = Path(__file__).resolve().parents[3]
 # A single reinforcing-style bar: IfcSweptDiskSolid over a composite arc, i.e.
 # the curve-heavy shape the quality knob exists for.
 REBAR = REPO / "rust/geometry/tests/fixtures/swept_disk_composite_arc_ubar.ifc"
+
+
+def test_issue_5787_authored_quantity_binding_preserves_provenance_and_units():
+    ifc = b"""ISO-10303-21;
+HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;
+DATA;
+#1=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#2=IFCUNITASSIGNMENT((#1));
+#3=IFCPROJECT('0PROJECT',$,'P',$,$,$,$,$,#2);
+#5=IFCWALL('0WALL',$,'W',$,$,$,$,$,$);
+#6=IFCQUANTITYLENGTH('Length',$,$,3000.,$);
+#7=IFCELEMENTQUANTITY('0QTO',$,'Qto_WallBaseQuantities',$,$,(#6));
+#8=IFCRELDEFINESBYPROPERTIES('0REL',$,$,$,(#5),#7);
+ENDSEC;END-ISO-10303-21;"""
+    view = ifclite_geom.authored_quantity_analysis(ifc)
+    assert view["product_count"] == 1
+    assert list(view["products"]) == [5]
+    (quantity,) = view["products"][5]["authored"]
+    assert quantity["set_name"] == "Qto_WallBaseQuantities"
+    assert quantity["quantity_name"] == "Length"
+    assert (quantity["set_id"], quantity["quantity_id"]) == (7, 6)
+    assert quantity["value"] == 3000.0
+    assert quantity["unit"]["symbol"] == "mm"
+    assert quantity["unit"]["si_scale"] == 0.001
+    assert ifclite_geom.authored_quantity_analysis(ifc, ids=set())["products"] == {}
+    ifc4x3 = (ifc.replace(b"FILE_SCHEMA(('IFC4'))", b"FILE_SCHEMA(('IFC4X3_ADD2'))")
+        .replace(b"#7=IFCELEMENTQUANTITY", b"#9=IFCQUANTITYNUMBER('Fractional',$,$,1.25,$);\n#7=IFCELEMENTQUANTITY")
+        .replace(b"(#6));", b"(#6,#9));"))
+    quantities = ifclite_geom.authored_quantity_analysis(ifc4x3)["products"][5]["authored"]
+    assert quantities[1]["kind"] == "Number"
+    assert quantities[1]["value"] == 1.25
+    assert quantities[1]["unit"]["source"] == "dimensionless"
 TRIMMED_BAR = REPO / "rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc"
 # 4 walls with geometry, placements, and psets attached to their IfcWallType.
 WALLS = REPO / (

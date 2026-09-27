@@ -7,7 +7,7 @@
  * Full integration with BulkQueryEngine
  */
 
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef, useId } from 'react';
 import { Play, Eye, Filter, Tag } from 'lucide-react';
 
 import { Spinner } from '@/components/ui/spinner';
@@ -97,8 +97,9 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
     const ids = targetSource === 'query' ? [selectedModelId] : targetGroups.keys();
     const result = mutationPermissionForModels(useViewerStore.getState(), ids);
     return result.allowed ? undefined : result.reason;
-  }, [editEnabled, collabEditRole, selectedModelId, targetSource, targetGroups]);
+  }, [editEnabled, collabEditRole, models, legacyIfcDataStore, selectedModelId, targetSource, targetGroups]);
   const canEditInSession = editDenialReason === undefined;
+  const denialId = useId();
 
   const [queryFilterState, setQueryFilterState] = useState<FilterGroupEditorState>({
     groups: [emptyFilterGroup()], activeGroup: 0,
@@ -588,6 +589,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
         </div>
 
         <DialogFooter className="px-6 py-4 border-t shrink-0 gap-2">
+          {editDenialReason && <output id={denialId} className="mr-auto text-xs text-muted-foreground">{t(mutationDenialKey(editDenialReason))}</output>}
           {isExecuting ? (
             <Button variant="destructive" onClick={() => { executeCancelRef.current = true; executeAbortRef.current?.abort(); }}>
               {t('bulkPropertyEditor.cancel')}
@@ -604,7 +606,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
               <Button
                 onClick={handleExecute}
                 disabled={!canEditInSession || !targetsReady || liveMatchCount === 0 || !targetProp || (actionType !== 'SET_ATTRIBUTE' && !targetPset) || !executeDirty}
-                title={editDenialReason ? t(mutationDenialKey(editDenialReason)) : undefined}
+                aria-describedby={editDenialReason ? denialId : undefined}
               >
                 <Play className="h-4 w-4 mr-2" />
                 {t('bulkPropertyEditor.apply', {

@@ -26,7 +26,6 @@ import assert from 'node:assert/strict';
 import React, { act } from 'react';
 import {
   DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cleanup, render } from '@/test/render.js';

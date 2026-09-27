@@ -7,7 +7,6 @@
  */
 
 import type { TypeVisibility } from './types.js';
-import type { TessellationQuality } from '@ifc-lite/geometry';
 
 // Load-time geometry fidelity (mode, tier, sticky `?geomTier=` override) now
 // lives in its own module - it was the largest cohesive block here and this file

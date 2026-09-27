@@ -24,11 +24,17 @@ use rustc_hash::FxHashMap;
 ///
 /// Deliberately narrow, because a general weld is what broke this before: merging
 /// at 1e-4 m collapsed real geometry and took corpus defects from 76 to 90. Here
-/// the tolerance is 4 f32 ulps of the coordinate magnitude, which is below any
-/// real feature and above the reconstruction scatter. Vertices that coincide with
+/// the tolerance is 4 f32 ulps of the coordinate magnitude ([`weld_tolerance`]),
+/// which is below any real feature and above the reconstruction scatter. Vertices that coincide with
 /// a HOST vertex are pinned to the host value exactly, so the cut cannot move a
 /// vertex it did not create; the rest are merged only with each other.
 pub(crate) fn dedup_cut_vertices(cut: &Mesh, host: &Mesh) -> Mesh {
+    dedup_cut_vertices_within(cut, host, false)
+}
+
+/// [`dedup_cut_vertices`], with the tolerance taken from the stored coordinate
+/// magnitude (`world == false`, the established weld) or from the world one.
+pub(super) fn dedup_cut_vertices_within(cut: &Mesh, host: &Mesh, world: bool) -> Mesh {
     let cn = cut.positions.len() / 3;
     if cn == 0 {
         return cut.clone();
@@ -42,18 +48,7 @@ pub(crate) fn dedup_cut_vertices(cut: &Mesh, host: &Mesh) -> Mesh {
             *slot = true;
         }
     }
-    let mut mag = 1.0f32;
-    for &c in &host.positions {
-        mag = mag.max(c.abs());
-    }
-    for (i, point) in cut.positions.chunks_exact(3).enumerate() {
-        if referenced[i] {
-            for &c in point {
-                mag = mag.max(c.abs());
-            }
-        }
-    }
-    let tol = (mag as f64) * (4.0 / 8_388_608.0);
+    let tol = weld_tolerance(cut, host, &referenced, world);
     let tol2 = tol * tol;
     let cell = (tol * 4.0).max(f64::MIN_POSITIVE);
     let key = |p: [f64; 3]| {
@@ -117,4 +112,31 @@ pub(crate) fn dedup_cut_vertices(cut: &Mesh, host: &Mesh) -> Mesh {
         }
     }
     out
+}
+
+/// 4 f32 ulps of the coordinate magnitude of `host` and the referenced vertices
+/// of `cut`: the scatter the analytic cut's arithmetic leaves.
+///
+/// `world` folds `host.origin` in (#5739). A host stored relative to a
+/// per-element origin has small stored coordinates, but its vertices came from
+/// f32 world positions and carry the world quantum, which the stored magnitude
+/// understates by up to ~5x. The established weld keeps the stored magnitude;
+/// for a world-frame host (`origin` zero) the two are identical.
+pub(super) fn weld_tolerance(cut: &Mesh, host: &Mesh, referenced: &[bool], world: bool) -> f64 {
+    let origin = if world { host.origin } else { [0.0; 3] };
+    let mut mag = 1.0f64;
+    let mut fold = |point: &[f32]| {
+        for k in 0..3 {
+            mag = mag.max((point[k] as f64 + origin[k]).abs());
+        }
+    };
+    for point in host.positions.chunks_exact(3) {
+        fold(point);
+    }
+    for (i, point) in cut.positions.chunks_exact(3).enumerate() {
+        if referenced.get(i).copied().unwrap_or(false) {
+            fold(point);
+        }
+    }
+    mag * (4.0 / 8_388_608.0)
 }

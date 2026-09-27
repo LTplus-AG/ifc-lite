@@ -9,14 +9,12 @@
 //! retry ran before rotate-back and degenerate cleanup, and the snap
 //! tolerance came from local-frame bounds. Both are now frame-invariant.
 //!
-//! KNOWN RESIDUAL, 61°: the analytic prism cut's own decisions (per-opening
-//! partition check, hairline emit gate at its 64-edge cap) also read stored
-//! precision. In the local frame this wall passes them with 64 open edges; in
-//! the world frame it fails them and is cut closed in the wall frame. Both
-//! frame-invariant fixes measured for that (a wall-frame comparison cut, and
-//! routing the cut through world coordinates) slowed ISSUE_098 or made local
-//! closure worse; see `scripts/perf/README.md`, "Dead ends". The test pins the
-//! residual so a change to it is noticed.
+//! The analytic prism cut's weld was also sized by the stored magnitude: in the
+//! local frame the 61° wall kept 64 hairline seams (vertices a few world f32
+//! ulps apart, plus T-junctions) that its emit gate tolerates, where the world
+//! frame declined the cut and closed the wall another way. A local-frame cut
+//! that is accepted still open is now re-welded at the world quantum and its
+//! T-junctions split, kept only if that closes it strictly.
 //!
 //! The wall is #5635's (`common::wall_frame_seams`). Both vertex frames are
 //! chosen by an explicit router policy rather than the process-global
@@ -91,29 +89,12 @@ fn assert_leaf_closed(leaf: &MeshData, what: &str) {
 
 const PLAN_ANGLES: [f64; 8] = [-34.3, -12.0, 17.0, 29.0, 41.0, 61.0, 73.3, 133.0];
 
-/// The one angle whose local-frame analytic cut still keeps its seams.
-const KNOWN_RESIDUAL_DEG: f64 = 61.0;
-
 #[test]
 fn leaf_stays_closed_in_world_and_local_vertex_frames_5739() {
     for local_frame in [false, true] {
         for deg in std::iter::once(0.0).chain(PLAN_ANGLES) {
-            if local_frame && deg == KNOWN_RESIDUAL_DEG {
-                continue;
-            }
             let leaf = leaf_in_frame(deg, local_frame);
             assert_leaf_closed(&leaf, &format!("{deg}°, local_frame={local_frame} (#5739)"));
         }
     }
-}
-
-#[test]
-fn known_residual_61_degrees_in_the_local_frame_5739() {
-    let leaf = leaf_in_frame(KNOWN_RESIDUAL_DEG, true);
-    let open = unpaired_directed_edges(&leaf.positions, &leaf.indices);
-    assert_eq!(
-        open, 64,
-        "the 61° local-frame residual changed (64 open edges pinned, see the module doc); \
-         if it closed, move 61° back into the closed set"
-    );
 }

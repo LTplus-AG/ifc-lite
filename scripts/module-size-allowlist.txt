@@ -79,7 +79,7 @@
    432 apps/viewer/src/components/viewer/IDSCorrectionDialog.tsx
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
   1012 apps/viewer/src/components/viewer/LensPanel.tsx
-  1005 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
+   989 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
    521 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
   1132 apps/viewer/src/components/viewer/MainToolbar.tsx
    594 apps/viewer/src/components/viewer/measureHandlers.ts
@@ -290,7 +290,7 @@
    454 packages/renderer/src/shadow-pass.ts
    768 packages/renderer/src/snap-detector.ts
    765 packages/renderer/src/symbolic-overlay-pipelines.ts
-   583 packages/rules/src/filter/filter-evaluate.ts
+   572 packages/rules/src/filter/filter-evaluate.ts
    587 packages/sandbox/src/bridge-create.ts
    421 packages/sandbox/src/bridge-query.ts
    498 packages/sandbox/src/bridge-schema.ts

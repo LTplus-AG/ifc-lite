@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 
 import { afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanup, render } from '@/test/render.js';
+import { advance, cleanup, render } from '@/test/render.js';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
 import { IfcParser } from '@ifc-lite/parser';
@@ -53,14 +53,17 @@ describe('PropertiesPanel effective selected class (#5249)', () => {
     });
 
     const container = render(<PropertiesPanel />);
-    assert.ok(container.textContent?.includes(`Material #${created.expressId}`),
-      'an authored IfcMaterial should take the material totals route');
+    for (let attempt = 0; attempt < 100 && !container.querySelector('h3')?.textContent?.includes('New Material'); attempt++) {
+      await advance(25);
+    }
+    assert.equal(container.querySelector('h3')?.textContent, 'New Material',
+      'an authored IfcMaterial should take the material totals route and show its live name');
 
     editor.setEntityType(created.expressId, 'IfcWallType');
     cleanup();
     useViewerStore.setState({ mutationVersion: 2 });
     const retyped = render(<PropertiesPanel />);
-    assert.ok(!retyped.textContent?.includes(`Material #${created.expressId}`),
+    assert.ok(!retyped.querySelector('h3')?.textContent?.includes('New Material'),
       'a created material retyped to IfcWallType should leave the material totals route');
   });
 });

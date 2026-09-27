@@ -23,7 +23,7 @@ const missingFixture = !existsSync(authoredIfc) && 'Run pnpm fixtures to fetch A
 
 afterEach(() => { cleanup(); setLocale('en'); });
 
-it('authors and executes an exact Building List filter on one and two Archicad models (#5894)', { skip: missingFixture }, async () => {
+it('authors and executes an exact Building List filter on one and two Archicad models (#5894, #6190)', { skip: missingFixture }, async () => {
   const before = useViewerStore.getState();
   try {
     setLocale('en');
@@ -44,19 +44,19 @@ it('authors and executes an exact Building List filter on one and two Archicad m
       <ListBuilder providers={[provider]} stores={[store]} initial={initial}
         onSave={(definition) => { saved = definition; }} onCancel={() => {}} onExecute={() => {}} />,
     );
-    const preset = container.querySelector<HTMLSelectElement>('select[aria-label="List filter kind"]');
-    assert.ok(preset);
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')?.set;
-    assert.ok(setter);
-    act(() => { setter.call(preset, 'spatial'); preset.dispatchEvent(new window.Event('change', { bubbles: true })); });
-    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Add filter') as Element);
+    const trigger = [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Add rule') as Element;
+    act(() => trigger.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true })));
+    act(() => trigger.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
+    click([...document.body.querySelectorAll('[role="menuitem"]')].find((item) => item.textContent?.trim() === 'List value') as Element);
+    assert.equal(container.querySelector<HTMLSelectElement>('select[aria-label="List value source"]')?.value, 'spatial');
     assert.equal(container.querySelector<HTMLSelectElement>('select[aria-label="Spatial level"]')?.value, 'Building');
     typeInto(container.querySelector<HTMLInputElement>('input[placeholder="Building name"]')!, buildingName);
     click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
     assert.ok(saved);
-    assert.deepEqual(saved.unreadableConditions?.map(({ condition }) => condition), [
-      { source: 'spatial', propertyName: 'Building', operator: 'equals', value: buildingName },
-    ]);
+    assert.deepEqual(saved.groups, [{ combinator: 'AND', rules: [
+      { kind: 'listCondition', source: 'spatial', propertyName: 'Building', operator: 'equals', value: buildingName },
+    ] }]);
+    assert.deepEqual(saved.unreadableConditions, []);
 
     const pairs = [
       { modelId: 'm1', provider, store },
@@ -66,9 +66,9 @@ it('authors and executes an exact Building List filter on one and two Archicad m
     const one = await runListFederated(saved, pairs.slice(0, 1), state);
     const many = await runListFederated(saved, pairs, state);
     assert.ok(one.rows.length > 0, 'the saved filter finds the authored building');
-    const absent = await runListFederated({ ...saved, unreadableConditions: [
-      { condition: { source: 'spatial', propertyName: 'Building', operator: 'equals', value: '__absent_building__' }, reason: 'unsupported-source' },
-    ] }, pairs.slice(0, 1), state);
+    const absent = await runListFederated({ ...saved, groups: [{ combinator: 'AND', rules: [
+      { kind: 'listCondition', source: 'spatial', propertyName: 'Building', operator: 'equals', value: '__absent_building__' },
+    ] }] }, pairs.slice(0, 1), state);
     assert.equal(absent.rows.length, 0, 'a different authored Building value removes the result');
     assert.deepEqual(many.rows.map(({ modelId }) => modelId).filter((id) => id === 'm1').length, one.rows.length);
     assert.deepEqual(many.rows.map(({ modelId }) => modelId).filter((id) => id === 'm2').length, one.rows.length);

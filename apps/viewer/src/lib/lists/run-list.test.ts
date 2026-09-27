@@ -216,6 +216,26 @@ describe('#5894 Rules-backed Lists over parsed IFC', () => {
     }
   });
 
+  it('runs a mixed saved numeric geometry predicate through the provider in one and two parsed IFC models (#5894)', async () => {
+    const pairs = (await parsedPairs()).map((pair) => ({
+      ...pair,
+      provider: { ...pair.provider, getWorldPosition: (id: number) => ({ x: id / 10, y: 0, z: 0 }) },
+    }));
+    const mixed = migrateLegacyListDefinition({ ...definition(),
+      groups: [
+        { combinator: 'AND', rules: [Rule.property('Pset_Test', 'Text', 'eq', 'Red')] },
+        { combinator: 'AND', rules: [Rule.property('Pset_Test', 'Text', 'eq', 'Blue')] },
+      ],
+      conditions: [{ source: 'geometry', propertyName: 'X', operator: 'gt', value: 1.5 }],
+    });
+    assert.equal(mixed.unreadableConditions?.[0].reason, 'mixed-groups');
+    for (const selected of [pairs.slice(0, 1), pairs]) {
+      const result = await runListFederated(mixed, selected, state);
+      assert.deepEqual(result.rows.map(({ modelId, entityId }) => [modelId, entityId]),
+        selected.flatMap(({ modelId }) => [[modelId, 20], [modelId, 30]]));
+    }
+  });
+
   it('reports a malformed saved condition for removal instead of evaluating it (#5894)', async () => {
     const [model] = await parsedPairs();
     const migrated = migrateLegacyListConditions([null]);

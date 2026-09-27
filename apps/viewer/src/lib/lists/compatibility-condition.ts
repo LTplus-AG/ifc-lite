@@ -8,7 +8,10 @@ export type ConditionSource = PropertyCondition['source'];
 const EDITABLE_SOURCES: readonly ConditionSource[] = [
   'attribute', 'property', 'quantity', 'material', 'classification', 'spatial', 'model', 'zone',
 ];
+const EXECUTABLE_SOURCES: readonly ConditionSource[] = [...EDITABLE_SOURCES, 'geometry'];
 const EDITABLE_REASONS = ['unsupported-source', 'unsupported-attribute', 'name-pattern', 'inherit', 'operator', 'mixed-groups'] as const;
+const SCALAR_OPERATORS: readonly ConditionOperator[] = ['equals', 'notEquals', 'contains', 'gt', 'gte', 'lt', 'lte', 'exists'];
+const MULTI_VALUE_OPERATORS: readonly ConditionOperator[] = ['equals', 'notEquals', 'contains', 'exists'];
 
 export function operatorsFor(source: ConditionSource): ConditionOperator[] {
   switch (source) {
@@ -20,8 +23,8 @@ export function operatorsFor(source: ConditionSource): ConditionOperator[] {
   }
 }
 
-/** Malformed persisted rows must never enter a native select with no option. */
-export function isEditableCondition(row: unknown): row is Exclude<UnreadableListCondition, { reason: 'invalid-condition' }> {
+/** The provider can execute more persisted conditions than the compatibility editor can author. */
+export function isExecutableCondition(row: unknown): row is Exclude<UnreadableListCondition, { reason: 'invalid-condition' }> {
   if (typeof row !== 'object' || row === null || Array.isArray(row)) return false;
   const saved = row as Record<string, unknown>;
   if (!EDITABLE_REASONS.some((reason) => reason === saved.reason)) return false;
@@ -32,7 +35,16 @@ export function isEditableCondition(row: unknown): row is Exclude<UnreadableList
     || (condition.psetName !== undefined && typeof condition.psetName !== 'string')
     || (condition.inherit !== undefined && condition.inherit !== 'type' && condition.inherit !== 'aggregation')) return false;
   const source = condition.source as ConditionSource;
-  return EDITABLE_SOURCES.includes(source) && operatorsFor(source).includes(condition.operator as ConditionOperator);
+  if (!EXECUTABLE_SOURCES.includes(source)) return false;
+  const operators = source === 'material' || source === 'classification' ? MULTI_VALUE_OPERATORS : SCALAR_OPERATORS;
+  return operators.includes(condition.operator as ConditionOperator);
+}
+
+/** Malformed persisted rows must never enter a native select with no option. */
+export function isEditableCondition(row: unknown): row is Exclude<UnreadableListCondition, { reason: 'invalid-condition' }> {
+  if (!isExecutableCondition(row)) return false;
+  return EDITABLE_SOURCES.includes(row.condition.source)
+    && operatorsFor(row.condition.source).includes(row.condition.operator);
 }
 
 export function describeUneditable(row: unknown, malformedLabel: string): string {

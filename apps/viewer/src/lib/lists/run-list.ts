@@ -22,7 +22,7 @@ import { executeList, summariseListRows } from '@ifc-lite/lists';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { evaluateFilterGroupsFederated, type EvaluatorModel } from '@ifc-lite/rules';
 import { mergeResultColumns } from './merge-result-columns.js';
-import { isEditableCondition } from './compatibility-condition.js';
+import { isExecutableCondition } from './compatibility-condition.js';
 import { scopeModelPairs, type ListModelTagState } from './model-tag-scope.js';
 
 /** One loaded model as the list engine sees it: its provider, keyed by the store's model id. */
@@ -61,7 +61,7 @@ export async function runListFederated(
     // Only explicitly unreadable v1 predicates remain on the legacy path.
     const unreadable: NonNullable<ListDefinition['legacyConditions']> = [];
     for (const row of definition.unreadableConditions ?? []) {
-      if (!isEditableCondition(row)) {
+      if (!isExecutableCondition(row)) {
         throw new Error('This saved list has a malformed condition. Remove it in the list editor before running.');
       }
       unreadable.push(row.condition);

@@ -107,7 +107,7 @@ export function foldBetweenPairs(rules: readonly FilterRule[]): FoldedRule[] {
     const partnerIndex = partnerOf.get(i) as number;
     emitted.add(i);
     emitted.add(partnerIndex);
-    const gteIndex = rules[i].op === 'gte' ? i : partnerIndex;
+    const gteIndex = (rules[i] as Betweenable).op === 'gte' ? i : partnerIndex;
     const lteIndex = gteIndex === i ? partnerIndex : i;
     out.push({ kind: 'between', min: rules[gteIndex] as Betweenable, max: rules[lteIndex] as Betweenable });
   }

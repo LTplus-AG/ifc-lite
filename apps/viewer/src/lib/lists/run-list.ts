@@ -18,11 +18,10 @@
  */
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ListDataProvider, ListDefinition, ListResult } from '@ifc-lite/lists';
-import { executeList, summariseListRows } from '@ifc-lite/lists';
+import { executeList, listConditionMatcher, summariseListRows } from '@ifc-lite/lists';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { evaluateFilterGroupsFederated, type EvaluatorModel } from '@ifc-lite/rules';
 import { mergeResultColumns } from './merge-result-columns.js';
-import { isExecutableCondition } from './compatibility-condition.js';
 import { scopeModelPairs, type ListModelTagState } from './model-tag-scope.js';
 
 /** One loaded model as the list engine sees it: its provider, keyed by the store's model id. */
@@ -54,29 +53,27 @@ export async function runListFederated(
   let scanDuration: number;
   {
     const start = performance.now();
+    // Every filter is a Rules group (#6190). What migration could not read has
+    // no meaning to apply, and dropping it would widen or narrow the list.
+    if ((definition.unreadableConditions?.length ?? 0) > 0) {
+      throw new Error('This saved list has a malformed condition. Remove it in the list editor before running.');
+    }
     // `executeList` remains the source-set and column engine. Its first pass
     // has no columns or presentation work: it applies the list's type/snapshot
-    // scope plus only v1 predicates that lack a lossless Rules representation.
-    // Rules groups stay authoritative even when the user clears every rule.
-    // Only explicitly unreadable v1 predicates remain on the legacy path.
-    const unreadable: NonNullable<ListDefinition['legacyConditions']> = [];
-    for (const row of definition.unreadableConditions ?? []) {
-      if (!isExecutableCondition(row)) {
-        throw new Error('This saved list has a malformed condition. Remove it in the list editor before running.');
-      }
-      unreadable.push(row.condition);
-    }
+    // scope only. Rules groups stay authoritative even when the user clears every rule.
     const candidates = new Map(scoped.map(({ modelId, provider }) => [modelId, executeList({
-      ...definition, groups: [], legacyConditions: unreadable, columns: [], grouping: undefined, sortBy: undefined,
+      ...definition, groups: [], legacyConditions: [], columns: [], grouping: undefined, sortBy: undefined,
     }, provider, modelId).rows.map(({ entityId }) => entityId)] as const));
     const hasRules = definition.groups.some((group) => group.rules.length > 0);
     const matchedByModel = new Map<string, Set<number>>();
     if (hasRules) {
       const canonical = new Map(options.evaluatorModels?.map((model) => [model.id, model] as const));
-      const models: EvaluatorModel[] = scoped.map(({ modelId, store, mutationView }) => ({
+      const models: EvaluatorModel[] = scoped.map(({ modelId, provider, store, mutationView }) => ({
         ...canonical.get(modelId), id: modelId, store,
         tagIds: state.modelTagAssignments.get(modelId),
         mutationView: canonical.get(modelId)?.mutationView ?? mutationView,
+        // `listCondition` rules read through this model's own Lists provider (#6190).
+        listConditions: listConditionMatcher(provider),
       }));
       const matched = await evaluateFilterGroupsFederated(models, definition.groups, {
         candidateExpressIdsByModel: candidates,

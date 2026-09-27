@@ -288,7 +288,7 @@ function matchesAllConditions(
   return true;
 }
 
-function matchesCondition(
+export function matchesCondition(
   entityId: number,
   condition: PropertyCondition,
   provider: ListDataProvider,

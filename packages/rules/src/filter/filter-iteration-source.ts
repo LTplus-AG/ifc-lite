@@ -162,6 +162,8 @@ const RULE_COST: Record<FilterRule['kind'], number> = {
   group:          1,
   // Read once per model (units, georeferencing and header are memoised).
   modelFact:      1,
+  // Host-read Lists predicate (#6190): may parse psets or resolve zones.
+  listCondition:  10,
 };
 
 export function orderRulesByCost(rules: readonly FilterRule[]): FilterRule[] {

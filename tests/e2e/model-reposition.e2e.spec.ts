@@ -8,6 +8,7 @@ import { snapshotRenderedPointCloud } from './federation-control-triplet.renderi
 
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
+  var __ifc_lite_point_cloud_recovery_omitted__: boolean | undefined;
 }
 const IFC = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
 const OFFSET = [10_000, 20_000, 30_000];
@@ -163,6 +164,21 @@ for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan,
   pageErrorLines = [];
   consoleLines = [];
   captureDiagnostics(page, errors);
+  // #6257: a successful recovery toast is independent evidence that the renderer
+  // discarded transient point-cloud handles. Record it before loading either
+  // model: the toast expires after three seconds and may be gone by assertion.
+  await page.addInitScript(() => {
+    globalThis.__ifc_lite_point_cloud_recovery_omitted__ = false;
+    const observe = () => {
+      for (const toast of document.querySelectorAll('[data-toast-seq]')) {
+        const message = toast.textContent ?? '';
+        if (message.includes('The 3D view recovered.') && message.includes('point-clouds')) {
+          globalThis.__ifc_lite_point_cloud_recovery_omitted__ = true;
+        }
+      }
+    };
+    new MutationObserver(observe).observe(document, { childList: true, subtree: true, characterData: true });
+  });
   await page.setViewportSize({ width: 1440, height: 1000 });
   if (scanFirst) {
     // The scan is synthetic and derived from the real IFC fixture. Generate it
@@ -200,7 +216,14 @@ for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan,
       fixed: [...s.models].filter(([, model]) => !isScan(model)).map(([id]) => s.modelPlacement.placements.get(id)?.translation ?? [0, 0, 0]), count: s.pointCloudAssetCount };
   });
   expect(placement.translations).toEqual([OFFSET.map((v) => -v)]);
-  expect(placement.count).toBe(1);
+  if (placement.count === 0 && process.env.E2E_GPU_STRICT === '0') {
+    // reportDeviceRecovery deliberately clears streamed point-cloud handles.
+    // A missing asset is permitted only when this page actually reported that
+    // successful recovery and named point-clouds among the omitted layers.
+    expect(await page.evaluate(() => globalThis.__ifc_lite_point_cloud_recovery_omitted__)).toBe(true);
+  } else {
+    expect(placement.count).toBe(1);
+  }
   expect(placement.identities).toHaveLength(2);
   for (const identity of placement.identities) expect(identity).toMatch(/^placement-sha256-1m-v1:[0-9a-f]{64}$/);
   expect(placement.fixed).toEqual([[0, 0, 0]]);

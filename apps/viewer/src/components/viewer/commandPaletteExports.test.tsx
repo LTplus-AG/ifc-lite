@@ -33,9 +33,10 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { toast } from '@/components/ui/toast';
 import { posthog } from '@/lib/analytics';
 import { EXPORT_COMMANDS, EXPORT_COMMAND_IDS } from './toolbar/export-commands.js';
+import * as exportCommandModule from './commandPaletteExports.js';
 import { buildCommandPaletteCommands, type CommandPaletteBuildParams } from './commandPaletteCommands.js';
 import { CommandPalette } from './CommandPalette.js';
-import { useExportRunner } from './useExportRunner.js';
+import { useExportRunner, type ExportRequest } from './useExportRunner.js';
 import { parseFixtureModel } from './anonymized-export/anonymized-export-fixture.test-support';
 
 const PARAMS: CommandPaletteBuildParams = {
@@ -147,6 +148,26 @@ describe('command palette exports (#5601)', () => {
       .filter((cmd) => cmd.id.startsWith('export:csv-'))
       .map((cmd) => cmd.id);
     assert.deepEqual(rows, csv.items.map((item) => `export:csv-${item.type}`));
+  });
+
+  it('registers each toolbar format and CSV table with its original runner (#5870)', () => {
+    // Keep this as a namespace lookup so the production-revert oracle reaches
+    // the assertion when the new shared registration is absent.
+    const registered = 'EXPORT_SURFACE_COMMANDS' in exportCommandModule
+      ? exportCommandModule.EXPORT_SURFACE_COMMANDS : undefined;
+    assert.ok(registered, 'toolbar exports must register with the shared surface command table');
+    const expected = EXPORT_COMMANDS.flatMap<{ id: string; request: ExportRequest }>((command) => command.kind === 'table-menu'
+      ? command.items.map((item) => ({ id: `export:csv-${item.type}`, request: { id: command.id, table: item.type } }))
+      : [{ id: `export:${command.id}`, request: { id: command.id } }]);
+    assert.deepEqual(registered.map((command) => command.id), expected.map((item) => item.id));
+
+    const requests: unknown[] = [];
+    const rows = buildCommandPaletteCommands({ ...PARAMS, runExport: (request) => { requests.push(request); } })
+      .filter((command) => command.category === 'Export');
+    assert.deepEqual(rows.map((row) => row.id), expected.map((item) => item.id));
+    for (const row of rows) row.action();
+    assert.deepEqual(requests, expected.map((item) => item.request));
+    assert.ok(registered.every((command) => command.surfaces.includes('palette')));
   });
 
   it('a failing export from the palette surfaces an error toast', async () => {

@@ -78,7 +78,7 @@ describe('#5894 Rules-backed Lists over parsed IFC', () => {
   };
   const name: PropertyCondition = { source: 'attribute', propertyName: 'Name', operator: 'contains', value: 'wall' };
 
-  it('keeps authored zone and exact Building filters scoped to the owning model at 1 and N (#5894)', async () => {
+  it('keeps authored zone and exact Building filters scoped to the owning model at 1 and N (#5894, #6190)', async () => {
     const zone: PropertyCondition = { source: 'zone', psetName: 'sections', propertyName: 'Zone', operator: 'equals', value: 'Section A' };
     const building: PropertyCondition = { source: 'spatial', propertyName: 'Building', operator: 'contains', value: 'East' };
     const pairs = (await parsedPairs()).map((pair) => ({
@@ -93,11 +93,7 @@ describe('#5894 Rules-backed Lists over parsed IFC', () => {
     }));
     const def = definition({
       entityTypes: [IfcTypeEnum.IfcWall],
-      groups: [{ rules: [], combinator: 'AND' }],
-      unreadableConditions: [
-        { condition: zone, reason: 'unsupported-source' },
-        { condition: building, reason: 'unsupported-source' },
-      ],
+      groups: [{ rules: [Rule.listCondition(zone), Rule.listCondition(building)], combinator: 'AND' }],
       columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
     });
     for (const selected of [pairs.slice(0, 1), pairs]) {
@@ -123,7 +119,7 @@ describe('#5894 Rules-backed Lists over parsed IFC', () => {
       const result = await runListFederated(def, selected, state, {
         evaluatorModels: selected.map(({ modelId, store, mutationView }) => ({ id: modelId, store, mutationView })),
       });
-      assert.deepEqual(result.rows, old, 'Rules groups, unreadable Name predicate, and live edit retain each model’s rows');
+      assert.deepEqual(result.rows, old, 'Rules groups, the migrated Name predicate, and live edit retain each model’s rows');
       assert.equal(result.rows[0]?.modelId, 'm1');
       assert.equal(result.rows[0]?.entityId, 20);
       if (selected.length === 2) {
@@ -180,29 +176,26 @@ describe('#5894 Rules-backed Lists over parsed IFC', () => {
     }
   });
 
-  it('keeps an unreadable v1 predicate active alongside new Rules groups', async () => {
+  it('keeps a migrated Lists predicate ANDed with existing Rules groups (#6190)', async () => {
     const [model] = await parsedPairs();
-    const migrated = migrateLegacyListConditions([{
-      source: 'attribute', propertyName: 'Name', operator: 'contains', value: 'Missing',
-    }]);
-    const def = definition({
-      ...migrated,
+    const def = migrateLegacyListDefinition({ ...definition(),
       groups: [{ combinator: 'AND', rules: [Rule.property('Pset_Test', 'Text', 'eq', 'Blue')] }],
+      conditions: [{ source: 'attribute', propertyName: 'Name', operator: 'contains', value: 'Missing' }],
     });
     const result = await runListFederated(def, [model], state);
-    assert.deepEqual(result.rows, [], 'the unreadable Name predicate still excludes the Blue wall');
+    assert.deepEqual(result.rows, [], 'the Name predicate still excludes the Blue wall');
+    const without = await runListFederated({ ...def, groups: [{ combinator: 'AND', rules: [Rule.property('Pset_Test', 'Text', 'eq', 'Blue')] }] }, [model], state);
+    assert.equal(without.rows.length, 1, 'positive control: the Blue wall exists');
   });
 
-  it('narrows existing OR groups with mixed saved v1 conditions in one and two parsed IFC models (#5894)', async () => {
+  it('narrows existing OR groups with mixed saved v1 conditions in one and two parsed IFC models (#5894, #6190)', async () => {
     const pairs = await parsedPairs();
-    const mixed = migrateLegacyListDefinition({ ...definition(),
-      groups: [
-        { combinator: 'AND', rules: [Rule.property('Pset_Test', 'Text', 'eq', 'Red')] },
-        { combinator: 'AND', rules: [Rule.property('Pset_Test', 'Text', 'eq', 'Blue')] },
-      ],
-      conditions: [property],
-    });
-    assert.equal(mixed.unreadableConditions?.[0].reason, 'mixed-groups');
+    const original = [
+      { combinator: 'AND' as const, rules: [Rule.property('Pset_Test', 'Text', 'eq', 'Red')] },
+      { combinator: 'AND' as const, rules: [Rule.property('Pset_Test', 'Text', 'eq', 'Blue')] },
+    ];
+    const mixed = migrateLegacyListDefinition({ ...definition(), groups: original, conditions: [property] });
+    assert.equal(mixed.unreadableConditions, undefined, 'every saved condition converts');
     for (const selected of [pairs.slice(0, 1), pairs]) {
       const expected = selected.flatMap(({ modelId, provider }) => executeList({
         ...mixed, groups: [], unreadableConditions: [], legacyConditions: [property],
@@ -210,13 +203,13 @@ describe('#5894 Rules-backed Lists over parsed IFC', () => {
       const result = await runListFederated(mixed, selected, state, {
         evaluatorModels: selected.map(({ modelId, store, mutationView }) => ({ id: modelId, store, mutationView })),
       });
-      const unconstrained = await runListFederated({ ...mixed, unreadableConditions: [] }, selected, state);
+      const unconstrained = await runListFederated({ ...mixed, groups: original }, selected, state);
       assert.ok(unconstrained.rows.length > result.rows.length, 'the saved v1 row narrows the OR union');
       assert.deepEqual(result.rows.map(({ modelId, entityId }) => [modelId, entityId]), expected);
     }
   });
 
-  it('runs a mixed saved numeric geometry predicate through the provider in one and two parsed IFC models (#5894)', async () => {
+  it('runs a mixed saved numeric geometry predicate through the Lists engine in one and two parsed IFC models (#5894, #6190)', async () => {
     const pairs = (await parsedPairs()).map((pair) => ({
       ...pair,
       provider: { ...pair.provider, getWorldPosition: (id: number) => ({ x: id / 10, y: 0, z: 0 }) },
@@ -228,7 +221,7 @@ describe('#5894 Rules-backed Lists over parsed IFC', () => {
       ],
       conditions: [{ source: 'geometry', propertyName: 'X', operator: 'gt', value: 1.5 }],
     });
-    assert.equal(mixed.unreadableConditions?.[0].reason, 'mixed-groups');
+    assert.ok(mixed.groups.every((group) => group.rules.some((rule) => rule.kind === 'listCondition' && rule.source === 'geometry')));
     for (const selected of [pairs.slice(0, 1), pairs]) {
       const result = await runListFederated(mixed, selected, state);
       assert.deepEqual(result.rows.map(({ modelId, entityId }) => [modelId, entityId]),

@@ -41,7 +41,7 @@ export function listFingerprint(list: ListDefinition): string {
 /** `true` when a list reads world coordinates, whose values move with the geometry and render frame. */
 export function listReadsGeometry(list: ListDefinition): boolean {
   return list.columns.some((c) => c.source === 'geometry')
-    || list.unreadableConditions?.some((row) => row.reason !== 'invalid-condition' && row.condition.source === 'geometry') === true;
+    || list.groups.some((group) => group.rules.some((rule) => rule.kind === 'listCondition' && rule.source === 'geometry'));
 }
 
 /** Counts up each time `value` changes identity between renders. */

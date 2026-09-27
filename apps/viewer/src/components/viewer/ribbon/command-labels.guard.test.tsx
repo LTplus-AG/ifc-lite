@@ -40,7 +40,14 @@ it('#5878 mounted ribbon commands use their registry names on every tab', () => 
     const buttons = [...band.querySelectorAll<HTMLButtonElement>('button')];
     assert.ok(buttons.length > 0, `${tab} has command controls`);
     let raw = 0;
+    let panelBrowsers = 0;
     for (const button of buttons) {
+      if (button.dataset.ribbonContent === 'panel-browser') {
+        assert.equal(tab, 'analyze', 'the panel browser belongs to Analyze');
+        assert.equal(button.getAttribute('aria-label'), resolve('shellChrome.panelGroups.browse'));
+        panelBrowsers++;
+        continue;
+      }
       const exportId = button.dataset.exportCommand;
       if (exportId) {
         const exportCommand = EXPORT_COMMANDS.find((item) => item.id === exportId);
@@ -58,6 +65,7 @@ it('#5878 mounted ribbon commands use their registry names on every tab', () => 
       assert.equal(button.getAttribute('aria-label'), resolve(command.ribbonLabelKey ?? command.labelKey),
         `${tab}: ${id} announces its registry label`);
     }
+    assert.equal(panelBrowsers, tab === 'analyze' ? 1 : 0, `${tab}: panel browser trigger count`);
     rawByTab[tab] = raw;
   }
   // The remaining raw controls are a strict migration ratchet: a newly

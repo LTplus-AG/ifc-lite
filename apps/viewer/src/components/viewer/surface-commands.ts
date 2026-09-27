@@ -29,6 +29,7 @@ import {
   executeBasketSet, executeBasketToggleVisibility,
 } from '@/store/basket/basketCommands';
 import type { Command } from './commandPaletteSearch';
+import { TOOL_SURFACE_COMMANDS } from './surface-commands-tools';
 
 export type CommandSurface = 'palette' | 'ribbon' | 'context' | 'mobile';
 
@@ -181,6 +182,7 @@ export const SURFACE_COMMANDS = [
     category: 'View', icon: Orbit, surfaces: paletteOnly, enabled: alwaysEnabled,
     run: () => { openSettings('display'); },
   },
+  ...TOOL_SURFACE_COMMANDS,
   {
     id: 'vis:hide', labelKey: 'commandPalette.vis.hide.label',
     keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff,

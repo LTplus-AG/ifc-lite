@@ -1,0 +1,44 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import '@/test/setup-dom.js';
+import { afterEach, describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { useViewerStore } from '@/store';
+import { paletteSurfaceCommands, SURFACE_COMMANDS } from './surface-commands.js';
+
+const TOOL_IDS = [
+  'tool:select', 'tool:walk', 'model:reposition', 'tool:measure',
+  'tool:section', 'tool:annotate', 'tool:add-element', 'tool:edit-mode', 'tool:split',
+] as const;
+const originalTool = useViewerStore.getState().activeTool;
+afterEach(() => useViewerStore.setState({ activeTool: originalTool }));
+
+describe('shared Tools palette commands (#5870)', () => {
+  it('keeps browse order and hides authoring commands in a read-only session', () => {
+    assert.deepEqual(SURFACE_COMMANDS.filter((command) => command.category === 'Tools').map((command) => command.id),
+      [...TOOL_IDS]);
+    const readonlyRows = paletteSurfaceCommands({ canEditInSession: false }, () => {})
+      .filter((command) => command.category === 'Tools');
+    const editableRows = paletteSurfaceCommands({ canEditInSession: true }, () => {})
+      .filter((command) => command.category === 'Tools');
+    assert.deepEqual(readonlyRows.map((command) => command.id), TOOL_IDS.slice(0, 6));
+    assert.deepEqual(editableRows.map((command) => command.id), [...TOOL_IDS]);
+    for (const row of editableRows) {
+      const definition = SURFACE_COMMANDS.find((command) => command.id === row.id);
+      assert.ok(definition);
+      assert.equal(row.labelKey, definition.labelKey);
+      assert.equal(row.icon, definition.icon);
+    }
+  });
+
+  it('runs the registered tool action through the viewer store', () => {
+    useViewerStore.setState({ activeTool: 'select' });
+    const measure = paletteSurfaceCommands({ canEditInSession: true }, () => {})
+      .find((command) => command.id === 'tool:measure');
+    assert.ok(measure);
+    measure.action();
+    assert.equal(useViewerStore.getState().activeTool, 'measure');
+  });
+});

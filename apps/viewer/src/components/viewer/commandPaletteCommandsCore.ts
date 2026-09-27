@@ -18,12 +18,7 @@
  * The recent-files loop has no `labelKey`: the filename IS the label.
  */
 
-import {
-  MousePointer2, PersonStanding, Ruler, Scissors, Crosshair, Box,
-  FolderOpen, Clock, PenLine, Slice, StickyNote,
-} from 'lucide-react';
-import { openRepositionModels } from '@/lib/model-placement/commands';
-import { useViewerStore } from '@/store';
+import { FolderOpen, Clock } from 'lucide-react';
 import { formatFileSize, getCachedFile } from '@/lib/recent-files';
 import type { Command } from './commandPaletteSearch';
 import { withKey, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
@@ -64,34 +59,8 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
   // ── View ── (static rows are generated from the shared table)
   c.push(...shared.filter((command) => command.category === 'View'));
 
-  // ── Tools ──
-  c.push(
-    { id: 'tool:select', label: 'Select', ...withKey('commandPalette.tool.select.label'), keywords: 'pick click pointer', category: 'Tools', icon: MousePointer2, shortcut: 'tool.select',
-      action: () => { useViewerStore.getState().setActiveTool('select'); } },
-    { id: 'tool:walk', label: 'Walk', ...withKey('commandPalette.tool.walk.label'), keywords: 'first person navigate wasd', category: 'Tools', icon: PersonStanding, shortcut: 'tool.walk',
-      action: () => { useViewerStore.getState().setActiveTool('walk'); } },
-    { id: 'model:reposition', label: 'Reposition models', ...withKey('commandPalette.tool.reposition.label'), keywords: 'move align pointcloud origin offset translate', category: 'Tools', icon: Crosshair, action: () => openRepositionModels() },
-    { id: 'tool:measure', label: 'Measure', ...withKey('commandPalette.tool.measure.label'), keywords: 'distance ruler dimension', category: 'Tools', icon: Ruler, shortcut: 'tool.measure',
-      action: () => { useViewerStore.getState().setActiveTool('measure'); } },
-    { id: 'tool:section', label: 'Section', ...withKey('commandPalette.tool.section.label'), keywords: 'clip cut plane', category: 'Tools', icon: Scissors, shortcut: 'tool.section',
-      action: () => { useViewerStore.getState().setActiveTool('section'); } },
-    { id: 'tool:annotate', label: 'Annotate', ...withKey('commandPalette.tool.annotate.label'), keywords: 'pin note comment marker', category: 'Tools', icon: StickyNote, shortcut: 'tool.annotate',
-      action: () => { useViewerStore.getState().setActiveTool('annotate'); } },
-    ...(p.canEditInSession ? [
-      { id: 'tool:add-element', label: 'Add Element', ...withKey('commandPalette.tool.addElement.label'), keywords: 'wall slab beam column place drop new add element generic', category: 'Tools' as const, icon: Box,
-        action: () => { useViewerStore.getState().setActiveTool('addElement'); } },
-      { id: 'tool:edit-mode', label: 'Toggle Edit Mode', ...withKey('commandPalette.tool.editMode.label'), keywords: 'edit mode pen unlock readonly properties geometry author modify', category: 'Tools' as const, icon: PenLine, shortcut: 'edit.toggleEditMode' as const,
-        action: () => { useViewerStore.getState().toggleEditEnabled(); } },
-      { id: 'tool:split', label: 'Split selected entity', ...withKey('commandPalette.tool.split.label'), keywords: 'split cut knife slice divide segment break wall beam column slab selected', category: 'Tools' as const, icon: Slice, shortcut: 'tool.split' as const,
-        action: () => {
-          const s = useViewerStore.getState();
-          const sel = s.selectedEntity;
-          if (!sel) return;
-          s.setSplitTarget(sel.modelId, sel.expressId);
-          s.setActiveTool('split');
-        } },
-    ] : []),
-  );
+  // ── Tools ── (static rows are generated from the shared table)
+  c.push(...shared.filter((command) => command.category === 'Tools'));
 
   // ── Visibility ── (static rows are generated from the shared table)
   c.push(...shared.filter((command) => command.category === 'Visibility'));

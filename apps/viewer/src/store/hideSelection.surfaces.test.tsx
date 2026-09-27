@@ -42,12 +42,6 @@ function assertBothHiddenAndSelectionCleared(surface: string) {
   assert.equal(state.selectedEntityIds.size, 0, `${surface}: clears the multi-selection`);
 }
 
-function buttonByLabel(label: string): HTMLButtonElement {
-  const button = document.body.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
-  assert.ok(button, `a button labelled "${label}"`);
-  return button;
-}
-
 /** Radix menus open on pointerdown, then click (AGENTS.md). */
 function openRadixMenu(trigger: Element) {
   act(() => {
@@ -85,7 +79,10 @@ describe('Hide selection is one command on every surface (#5852)', () => {
 
   it('ribbon Elements tab', () => {
     render(<ElementsTab />);
-    click(buttonByLabel('Hide selection'));
+    const hide = document.body.querySelector<HTMLButtonElement>('button[data-command-id="vis:hide"]');
+    assert.ok(hide, 'the registered Hide selection command rendered');
+    assert.equal(hide.getAttribute('aria-label'), 'Hide', 'the ribbon uses its canonical short name');
+    click(hide);
     assertBothHiddenAndSelectionCleared('ribbon');
   });
 

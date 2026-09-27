@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * #5838: "Export modified IFC…" is an export-registry entry, so the classic
- * menu, the ribbon and the command palette reach it — on main it was only the
+ * #5838, #5874: "Export modified IFC…" is an export-registry entry, so
+ * the ribbon and command palette reach it — previously it was only the
  * amber toolbar button mounted beside the registry cluster. It is gated on
  * pending edits, and every surface opens the same review dialog.
  */
@@ -18,9 +18,9 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { ClassicExportMenuItems } from './toolbar/ClassicExportMenuItems';
+import { RibbonExportGroup } from './ribbon/tabs/RibbonExportGroup';
+import { RIBBON_EXPORT_ICONS } from './ribbon/tabs/ribbon-export-icons';
 import { buildExportCommands } from './commandPaletteExports';
 import { useExportRunner } from './useExportRunner';
 
@@ -53,17 +53,12 @@ function mount(node: React.ReactNode): void {
   mounted.push({ root, container });
 }
 
-function renderClassicMenu(): void {
-  mount(
-    <DropdownMenu open modal={false}>
-      <DropdownMenuTrigger>Export</DropdownMenuTrigger>
-      <DropdownMenuContent><ClassicExportMenuItems /></DropdownMenuContent>
-    </DropdownMenu>,
-  );
+function renderRibbonExports(): void {
+  mount(<RibbonExportGroup icons={RIBBON_EXPORT_ICONS} />);
 }
 
-function menuRow(): HTMLElement | null {
-  return document.body.querySelector<HTMLElement>('[data-export-command="modified-ifc"]');
+function exportRow(): HTMLButtonElement | null {
+  return document.body.querySelector<HTMLButtonElement>('[data-export-command="modified-ifc"]');
 }
 
 const reviewOpen = () => document.body.querySelector('[role="dialog"]') !== null;
@@ -83,21 +78,21 @@ describe('Export modified IFC… is a registry entry (#5838)', () => {
     }
   });
 
-  it('the classic menu offers it, disabled while nothing is edited', () => {
+  it('the ribbon offers it, disabled while nothing is edited (#5874)', () => {
     seed(false);
-    renderClassicMenu();
-    const row = menuRow();
-    assert.ok(row, 'the menu renders an Export modified IFC… row');
-    assert.equal(row.getAttribute('aria-disabled'), 'true');
+    renderRibbonExports();
+    const row = exportRow();
+    assert.ok(row, 'the ribbon renders an Export modified IFC… button');
+    assert.equal(row.disabled, true);
   });
 
-  it('the classic menu row opens the review when there are edits', async () => {
+  it('the ribbon button opens the review when there are edits (#5874)', async () => {
     seed(true);
-    renderClassicMenu();
-    const row = menuRow();
+    renderRibbonExports();
+    const row = exportRow();
     assert.ok(row);
-    assert.equal(row.getAttribute('aria-disabled'), null);
-    assert.ok(row.textContent?.includes('Export modified IFC…'));
+    assert.equal(row.disabled, false);
+    assert.ok(row.getAttribute('aria-label')?.includes('Modified IFC') || row.textContent?.includes('Modified IFC'));
     await act(async () => { row.click(); });
     assert.ok(reviewOpen(), 'the review dialog opens');
     assert.ok(document.body.textContent?.includes('Edited'), 'it lists the pending edit');

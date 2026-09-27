@@ -3,10 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The shared command surfaces MainToolbar hosts but does not own read the
- * i18n catalogue (#4918 slice 2, following slice 1's `MainToolbar.i18n.test.tsx`):
- * `ClassicExportMenuItems`, `CameraCommandMenuItems`, `BottomPanelMenuItems`,
- * `AuthorPanelMenuItems`, `ClassVisibilityMenuContent`.
+ * The ribbon export group and shared command menus read the i18n catalogue
+ * (#4918, #5874): `RibbonExportGroup`, `CameraCommandMenuItems`,
+ * `BottomPanelMenuItems`, `AuthorPanelMenuItems`, `ClassVisibilityMenuContent`.
  *
  * The oracle is a pseudo-locale that maps every `shared-commands.en.ts` key
  * to a marked copy of its English text. Each surface is mounted (in the
@@ -36,8 +35,7 @@ import { sharedCommandsEn } from '@/i18n/catalogues/shared-commands.en';
 import { useViewerStore } from '@/store';
 import { RibbonLargeButton } from '../ribbon/primitives.js';
 import { RibbonExportGroup } from '../ribbon/tabs/RibbonExportGroup.js';
-import { ClassicExportMenuItems } from './ClassicExportMenuItems.js';
-import { EXPORT_COMMAND_IDS, type ExportIconSet } from './export-commands.js';
+import { EXPORT_COMMANDS, EXPORT_COMMAND_IDS, type ExportIconSet } from './export-commands.js';
 import { CameraCommandMenuItems, useCameraCommands } from './CameraCommands.js';
 import { BottomPanelMenuItems } from './BottomPanelMenuItems.js';
 import { AuthorPanelMenuItems } from './AuthorPanelMenuItems.js';
@@ -45,7 +43,7 @@ import { ClassVisibilityMenuContent } from './ClassVisibilityMenu.js';
 
 /**
  * The ribbon's real icons come from `@/icons`, a Vite-only virtual module
- * (see `export-ui-parity.test.tsx`); this stub keeps `RibbonExportGroup`
+ * (see `export-ui-ribbon.test.tsx`); this stub keeps `RibbonExportGroup`
  * renderable here, the same way that file does.
  */
 function StubIcon(props: React.SVGProps<SVGSVGElement>) {
@@ -83,6 +81,8 @@ function CameraCommandButtons() {
 type SharedKey = keyof typeof sharedCommandsEn;
 const KEYS = Object.keys(sharedCommandsEn) as SharedKey[];
 const STATIC_KEYS = KEYS.filter((key) => !sharedCommandsEn[key].includes('{'));
+// Palette/mobile use these menu labels; the ribbon renders labelKey and tooltipKey.
+const MENU_LABEL_KEYS = new Set<string>(EXPORT_COMMANDS.map((command) => command.menuLabelKey));
 
 /** Key-specific pseudo translation; keeps every `{placeholder}` of the English text. */
 const mark = (key: SharedKey) => `⟦${key}|${sharedCommandsEn[key]}⟧`;
@@ -155,14 +155,13 @@ const RESET = {
  *  - the CSV table-menu's four item labels live in a Radix
  *    `DropdownMenuSub`, which opens on hover/keyboard rather than with its
  *    parent menu's `open` prop — not reachable without driving that
- *    interaction, which the classic/ribbon Export-cluster tests already
- *    cover for presence (`export-ui-parity.test.tsx`); this oracle proves
+ *    interaction; the ribbon export test covers presence. This oracle proves
  *    the *mechanism* (`t(item.labelKey)`) is wired, via the header keys
  *    (`exportCommands.csv.label` / `.menuLabel` / `.tooltip`) instead.
  */
 const NOT_RENDERED_IN_THIS_STATE: SharedKey[] = [
-  // These registry names appear in the activity rail/host; the shared
-  // classic-menu harness below has no live collaboration, layer stack, or
+  // These registry names appear in the activity rail/host; this
+  // harness has no live collaboration, layer stack, or
   // presentation entry, and cannot open multiple panels at once.
   'workspacePanels.multiplePanels',
   'workspacePanels.panel.collab',
@@ -182,19 +181,9 @@ const NOT_RENDERED_IN_THIS_STATE: SharedKey[] = [
 function renderAllSurfaces(): HTMLElement {
   return render(
     <div>
-      {/* Chrome: the ribbon's own rendering of the same two data tables
-          (RibbonExportGroup / a camera-command button cluster), which use
-          `labelKey`/`tooltipKey` fields the classic menus below don't
-          render (menu rows show `menuLabelKey` only; menu items carry no
-          tooltip). */}
+      {/* Ribbon export and camera buttons exercise labelKey/tooltipKey. */}
       <RibbonExportGroup icons={STUB_EXPORT_ICONS} />
       <CameraCommandButtons />
-      <DropdownMenu open modal={false}>
-        <DropdownMenuTrigger>Export</DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <ClassicExportMenuItems />
-        </DropdownMenuContent>
-      </DropdownMenu>
       <DropdownMenu open modal={false}>
         <DropdownMenuTrigger>Camera</DropdownMenuTrigger>
         <DropdownMenuContent>
@@ -238,6 +227,7 @@ describe('shared command surfaces localization (#4918 slice 2)', () => {
 
     const covered = new Set<SharedKey>();
     for (const key of STATIC_KEYS) {
+      if (MENU_LABEL_KEYS.has(key)) continue;
       const text = sharedCommandsEn[key];
       if (!english.has(text)) continue; // not on screen in this render; checked below
       assert.ok(after.has(mark(key)), `${key}: "${text}" must be translated, marked text not found`);
@@ -256,9 +246,9 @@ describe('shared command surfaces localization (#4918 slice 2)', () => {
     const container = renderAllSurfaces();
     const english = readableStrings(container);
 
-    const seen = STATIC_KEYS.filter((key) => english.has(sharedCommandsEn[key]));
+    const seen = STATIC_KEYS.filter((key) => !MENU_LABEL_KEYS.has(key) && english.has(sharedCommandsEn[key]));
     const unaccounted = STATIC_KEYS.filter(
-      (key) => !seen.includes(key) && !NOT_RENDERED_IN_THIS_STATE.includes(key),
+      (key) => !seen.includes(key) && !NOT_RENDERED_IN_THIS_STATE.includes(key) && !MENU_LABEL_KEYS.has(key),
     );
     assert.deepEqual(unaccounted, [], 'key neither rendered nor listed in NOT_RENDERED_IN_THIS_STATE');
 

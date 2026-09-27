@@ -132,6 +132,35 @@ fn analytic_mutations_fail_with_residual_evidence() {
 }
 
 #[test]
+fn issue_5788_missing_cap_flipped_face_and_nonfinite_vertex_fail_mesh_contract() {
+    let (disk, mesh) = compare_model(&synthetic("swept_disk_trimmed_line"), 50).unwrap();
+
+    let mut open = mesh.clone();
+    open.faces.pop();
+    let error = compare_surface(50, &disk, &open).unwrap_err();
+    assert!(
+        error.contains("face uses") && error.contains("edge"),
+        "{error}"
+    );
+
+    let mut flipped = mesh.clone();
+    flipped.faces[0].swap(1, 2);
+    let error = compare_surface(50, &disk, &flipped).unwrap_err();
+    assert!(
+        error.contains("winding sum") && error.contains("edge"),
+        "{error}"
+    );
+
+    let mut non_finite = mesh;
+    non_finite.vertices[0][0] = f64::NAN;
+    let error = compare_surface(50, &disk, &non_finite).unwrap_err();
+    assert!(
+        error.contains("vertex 0") && error.contains("non-finite coordinate"),
+        "{error}"
+    );
+}
+
+#[test]
 fn csg_unsupported_and_multiple_source_records_are_explicitly_excluded() {
     let source = String::from_utf8(synthetic("swept_disk_trimmed_line")).unwrap();
     let shape = "#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#43));";

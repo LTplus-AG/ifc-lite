@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { isBottomPanelDocked } from '@/lib/panels/bottom-panels';
-import { panelTitleKey } from '@/lib/panels/registry';
+import { panelGroupFor, panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
 import type { RightPanel } from './commandPaletteCommandsTypes';
 import type { Command } from './commandPaletteSearch';
@@ -26,7 +26,8 @@ function bottomCommand<const Id extends BottomPanelId>(
   panel: Id, keywords: string, icon: Command['icon'],
 ): SurfaceCommandDefinition & { id: `panel:${Id}` } {
   return {
-    id: `panel:${panel}`, labelKey: panelTitleKey(panel), keywords,
+    id: `panel:${panel}`, panelId: panel, panelGroup: panelGroupFor(panel),
+    labelKey: panelTitleKey(panel), keywords,
     category: 'Panels', icon, surfaces: paletteOnly, enabled: alwaysEnabled,
     run: (context) => {
       if (!context.activateBottomPanel) throw new Error(`Cannot open ${panel} without a panel host`);
@@ -40,7 +41,8 @@ function rightCommand<const Id extends string>(
   enabled: (state: SurfaceCommandState) => boolean = alwaysEnabled,
 ): SurfaceCommandDefinition & { id: Id } {
   return {
-    id, labelKey: panelTitleKey(panel), keywords,
+    id, panelId: panel, panelGroup: panelGroupFor(panel),
+    labelKey: panelTitleKey(panel), keywords,
     category: 'Panels', icon, surfaces: paletteOnly, enabled,
     run: (context) => {
       if (!context.activateRightPanel) throw new Error(`Cannot open ${panel} without a panel host`);
@@ -58,13 +60,15 @@ export const PANEL_SURFACE_COMMANDS = [
   bottomCommand('document', 'document page report template cover sheet label binding pdf print logo', FileText),
   bottomCommand('drawing', 'drawing (2d) section cut plan floor plan elevation sheet dxf svg pdf markup', PencilRuler),
   {
-    id: 'panel:properties', labelKey: panelTitleKey('properties'),
+    id: 'panel:properties', panelId: 'properties', panelGroup: panelGroupFor('properties'),
+    labelKey: panelTitleKey('properties'),
     keywords: 'properties attributes material classification schedule task panel right inspector information',
     category: 'Panels', icon: Layout, surfaces: paletteOnly, enabled: alwaysEnabled,
     run: () => { useViewerStore.getState().showWorkspacePanel('properties', 'palette'); },
   },
   {
-    id: 'panel:tree', labelKey: panelTitleKey('hierarchy'),
+    id: 'panel:tree', panelId: 'hierarchy', panelGroup: panelGroupFor('hierarchy'),
+    labelKey: panelTitleKey('hierarchy'),
     keywords: 'spatial tree hierarchy left panel', category: 'Panels', icon: TreeDeciduous,
     surfaces: paletteOnly, enabled: alwaysEnabled,
     run: () => {
@@ -79,7 +83,8 @@ export const PANEL_SURFACE_COMMANDS = [
   rightCommand('panel:changes', 'changes', 'authored edits modifications properties history review', History),
   rightCommand('panel:cost', 'cost', '5d cost schedule item quantity budget estimate', Coins),
   {
-    id: 'panel:chat', labelKey: 'commandPalette.panel.chat.label', searchLabel: 'AI Chat',
+    id: 'panel:chat', panelId: 'script', panelGroup: panelGroupFor('script'),
+    labelKey: 'commandPalette.panel.chat.label', searchLabel: 'AI Chat',
     keywords: 'ai assistant script chat ask model', category: 'Panels', icon: Sparkles,
     surfaces: paletteOnly, enabled: alwaysEnabled,
     run: (context: SurfaceCommandContext) => {

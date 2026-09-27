@@ -333,7 +333,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       const isChatFocused = document.activeElement === inputRef.current;
       if (isChatFocused && inputText) return false;
       onClose();
-    }, { allowInTextEntry: true });
+    }, { allowInTextEntry: true, layer: 'popover' });
     return () => { removeFocus(); removeClose(); };
   }, [onClose, inputText]);
 

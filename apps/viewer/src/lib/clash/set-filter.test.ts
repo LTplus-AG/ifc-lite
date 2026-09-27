@@ -17,6 +17,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { clashMemberKey, createClashEngine, matchesSelector, rulesFromPresets, type ClashElement, type ClashRule } from '@ifc-lite/clash';
@@ -215,6 +216,23 @@ describe('withResolvedClashSetFilters', () => {
     );
   });
 
+  it('REFUSES malformed persisted groups instead of falling back to the selector (#5898)', async () => {
+    const malformed = [
+      { combinator: 'AND', rules: 'future-format' },
+      [{ combinator: 'OR', rules: [Rule.ifcType(['IfcWall'])], unreadableRules: { future: true } }],
+      'IfcWall',
+    ];
+    const loaded = await models();
+    for (const saved of malformed) {
+      const filterA = parseClashSetFilter(saved);
+      assert.ok(filterA, 'a present but unreadable filter must not disappear');
+      await assert.rejects(
+        withResolvedClashSetFilters([rule], [{ id: 'r1', filterA }], loaded, toGlobalId),
+        /cannot read/,
+      );
+    }
+  });
+
   it('carries an unsatisfiable filter through as an empty member list', async () => {
     const [out] = await withResolvedClashSetFilters(
       [rule],
@@ -274,6 +292,39 @@ it('a saved single-group clash preset finds the same actual pairs after migratio
   assert.deepEqual(await pairKeys(newRule), oldPairs);
 });
 
+it('authored IFC set groups keep external and internal walls distinct across one and two models (#5898)', async () => {
+  const bytes = Uint8Array.from(readFileSync(new URL('../../../public/samples/building-architecture.ifc', import.meta.url)));
+  const store = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true }) as IfcDataStore;
+  const external = Rule.property('Pset_WallCommon', 'IsExternal', 'eq', 'true');
+  const legacy = { combinator: 'AND' as const, rules: [Rule.ifcType(['IfcWall']), external] };
+  const migrated = parseClashSetFilter(JSON.parse(JSON.stringify(legacy)));
+  assert.ok(migrated);
+  const grouped: ClashSetFilter = [migrated[0], { combinator: 'AND', rules: [Rule.name('contains', 'plumbing wall')] }];
+  const rule: ClashRule = { id: 'authored', name: 'Authored wall set', a: 'IfcWall', b: 'IfcDoor', mode: 'hard' };
+
+  for (const count of [1, 2]) {
+    const loaded = Array.from({ length: count }, (_, i) => ({ id: `m${i + 1}`, store }));
+    const globalId = (modelId: string, expressId: number) => (modelId === 'm1' ? 0 : 1_000_000) + expressId;
+    const oldMatches = await evaluateFilterRulesFederated(loaded, legacy.rules, legacy.combinator);
+    const [single] = await withResolvedClashSetFilters(
+      [rule], [{ id: rule.id, filterA: migrated }], loaded, globalId,
+    );
+    assert.deepEqual(single.membersA?.slice().sort(), oldMatches.map((match) => clashMemberKey(match.modelId, globalId(match.modelId, match.expressId))).sort());
+    const [union] = await withResolvedClashSetFilters(
+      [rule], [{ id: rule.id, filterA: grouped }], loaded, globalId,
+    );
+    for (const model of loaded) {
+      assert.ok(single.membersA?.includes(clashMemberKey(model.id, globalId(model.id, 262))), `${model.id}: authored outer wall`);
+      assert.ok(!single.membersA?.includes(clashMemberKey(model.id, globalId(model.id, 353))), `${model.id}: authored plumbing wall is internal`);
+      assert.ok(union.membersA?.includes(clashMemberKey(model.id, globalId(model.id, 353))), `${model.id}: second group adds plumbing wall`);
+    }
+    assert.equal(new Set(union.membersA).size, union.membersA?.length, 'group union has no duplicated members');
+    if (count === 2) {
+      assert.notEqual(clashMemberKey('m1', 262), clashMemberKey('m2', 1_000_262), 'federated members keep model attribution');
+    }
+  }
+});
+
 describe('parseClashSetFilter (persisted shape)', () => {
   it('migrates one legacy group and keeps multi-group arrays (#5898)', () => {
     const wall = { combinator: 'AND', rules: [Rule.ifcType(['IfcWall'])] };
@@ -331,14 +382,15 @@ describe('parseClashSetFilter (persisted shape)', () => {
     assert.equal('unreadableRules' in (parsed?.[0] ?? {}), false);
   });
 
-  it('is undefined for anything that is not a filter, including a rule-less one', () => {
+  it('only absent or intentionally empty filters fall back to the selector (#5898)', () => {
     // A preset saved before #3902 has no filter fields at all — every read
     // path must land here rather than on a half-built object.
     assert.equal(parseClashSetFilter(undefined), undefined);
     assert.equal(parseClashSetFilter(null), undefined);
-    assert.equal(parseClashSetFilter('IfcWall'), undefined);
     assert.equal(parseClashSetFilter({ combinator: 'AND', rules: [] }), undefined);
-    assert.equal(parseClashSetFilter({ combinator: 'AND', rules: 'nope' }), undefined);
+    assert.equal(parseClashSetFilter([]), undefined);
+    assert.equal(unreadableRuleCount(parseClashSetFilter('IfcWall')), 1);
+    assert.equal(unreadableRuleCount(parseClashSetFilter({ combinator: 'AND', rules: 'nope' })), 1);
   });
 
   it('defaults an unknown combinator to AND', () => {

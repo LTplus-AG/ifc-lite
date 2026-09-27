@@ -55,6 +55,9 @@ function parseGroup(raw: unknown, legacy: boolean): ClashFilterGroup {
   // A previously parked whole group remains opaque for a later build.
   if ('unreadableGroup' in value) return unreadableGroup(value.unreadableGroup);
   if (!Array.isArray(value.rules)) return unreadableGroup(raw);
+  // A newer writer may have parked rules in a shape this build cannot decode.
+  // Ignoring that field would let the readable rules run as a broader set.
+  if ('unreadableRules' in value && !Array.isArray(value.unreadableRules)) return unreadableGroup(raw);
   if (!legacy && value.combinator !== 'AND' && value.combinator !== 'OR') return unreadableGroup(raw);
   const candidates = [
     ...value.rules,
@@ -78,7 +81,9 @@ export function parseClashSetFilter(raw: unknown): ClashSetFilter | undefined {
     const groups = raw.map((group) => parseGroup(group, false));
     return activeClashSetFilter(groups);
   }
-  if (!raw || typeof raw !== 'object' || !Array.isArray((raw as { rules?: unknown }).rules)) return undefined;
+  // Only an absent value means "use the selector". Any saved value whose
+  // shape this build cannot read remains present and refuses the run.
+  if (raw === null || raw === undefined) return undefined;
   return activeClashSetFilter([parseGroup(raw, true)]);
 }
 

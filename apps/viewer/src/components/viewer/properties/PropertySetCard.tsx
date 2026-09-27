@@ -19,6 +19,7 @@ import { useTranslation } from '@/i18n';
 import { usePersistentDisclosure } from './usePersistentDisclosure';
 import { PropertySearchHighlight } from './PropertySearchHighlight';
 import { propertyDisplayValue } from './propertyDisplayValue';
+import { CopyValueButton } from './CopyValueButton';
 
 export interface PropertySetCardProps {
   pset: PropertySet;
@@ -125,7 +126,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                 // level down); index disambiguates the React key.
                 key={`${prop.name}-${index}`}
                 data-prop-key={propKey}
-                className={`flex items-start justify-between gap-2 px-3 py-2 text-xs group/prop transition-colors ${
+                className={`flex items-start justify-between gap-2 px-3 py-2 text-xs group/prop group/copyrow transition-colors ${
                   isFocused
                     ? 'bg-amber-100/70 dark:bg-amber-900/40 ring-2 ring-inset ring-amber-400 dark:ring-amber-500 motion-safe:animate-pulse-subtle'
                     : isMutated
@@ -187,6 +188,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                     </span>
                   )}
                 </div>
+                <CopyValueButton name={prop.name} value={display.full} />
               </div>
             );
           })}

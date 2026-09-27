@@ -19,7 +19,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useViewerStore } from '@/store';
 import { mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
 import { useSelectAssembly } from './properties/useSelectAssembly';
-import { AttributeEditorField } from './properties/AttributeEditorField';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';

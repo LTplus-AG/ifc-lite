@@ -89,7 +89,7 @@
    855 apps/viewer/src/components/viewer/properties/LocationMap.tsx
    417 apps/viewer/src/components/viewer/properties/MaterialTotalsPanel.tsx
    510 apps/viewer/src/components/viewer/properties/TaskEditCard.tsx
-  2053 apps/viewer/src/components/viewer/PropertiesPanel.tsx
+  2052 apps/viewer/src/components/viewer/PropertiesPanel.tsx
    577 apps/viewer/src/components/viewer/PropertyEditor.tsx
    535 apps/viewer/src/components/viewer/schedule/AnimationSettingsPopover.tsx
    648 apps/viewer/src/components/viewer/schedule/generate-schedule.ts

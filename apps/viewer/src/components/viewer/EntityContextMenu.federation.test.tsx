@@ -25,6 +25,8 @@ import { IfcParser } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { EntityContextMenu } from './EntityContextMenu.js';
+import { surfaceCommand, type SurfaceCommandId } from './surface-commands.js';
+import { resolveEnglish } from '@/i18n/registry.js';
 import {
   parseFixtureModel,
   FIXTURE_WALL_A,
@@ -92,6 +94,27 @@ beforeEach(async () => {
 });
 
 describe('EntityContextMenu — federation-space selection', () => {
+  it('renders built-in entity and canvas actions from registered context command ids (#5870)', () => {
+    act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
+    const container = render();
+    const ids = [
+      'view:frame', 'vis:hide', 'vis:set-iso', 'vis:add-iso', 'vis:remove-iso', 'vis:save-view',
+      'context:select-all-type', 'context:select-same-storey', 'context:copy-global-id',
+      'context:export-anonymized', 'context:duplicate', 'context:delete',
+    ] as const satisfies readonly SurfaceCommandId[];
+    for (const id of ids) {
+      const definition = surfaceCommand(id, 'context');
+      const row = container.querySelector<HTMLButtonElement>(`[data-command-id="${id}"]`);
+      assert.ok(row, `${id} has a mounted context-menu action`);
+      assert.equal(row.getAttribute('aria-label'), resolveEnglish(definition.contextLabelKey ?? definition.labelKey,
+        definition.contextLabelParams?.({ canEditInSession: false, contextEntityType: 'IfcWall' })),
+      `${id} uses its registered label`);
+    }
+    act(() => { useViewerStore.getState().closeContextMenu(); });
+    act(() => { useViewerStore.getState().openContextMenu(null, 10, 10); });
+    assert.ok(container.querySelector('[data-command-id="vis:show"]'), 'canvas Show all uses its registry id');
+  });
+
   for (const twoModels of [false, true]) {
     it(`disables Delete and Duplicate until Edit mode is on, then deletes only the target ${twoModels ? 'federated' : 'single'} model (#5901)`, async () => {
       if (twoModels) {

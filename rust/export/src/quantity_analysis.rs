@@ -155,6 +155,16 @@ fn add_sets(
             continue;
         };
         if set.ifc_type != IfcType::IfcElementQuantity { continue; }
+        // decode_quantity_records resolves every referenced leaf. Bound those
+        // records before asking the shared parser to decode them.
+        if let Some(oversized_id) = set.get(5).and_then(AttributeValue::as_list)
+            .into_iter().flatten().filter_map(AttributeValue::as_entity_ref)
+            .find(|id| index.get(id).is_some_and(|(start, end)|
+                end.saturating_sub(*start) > MAX_REF_RECORD_BYTES))
+        {
+            diagnostics.push(format!("quantity set #{set_id}: quantity #{oversized_id} record exceeds work budget"));
+            continue;
+        }
         let Some((set_name, records)) = decode_quantity_records(decoder, &set, Some(MAX_REL_MEMBERS)) else {
             diagnostics.push(format!("quantity set #{set_id}: malformed or over work budget"));
             continue;

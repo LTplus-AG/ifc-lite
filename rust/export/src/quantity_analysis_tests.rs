@@ -73,6 +73,19 @@ fn issue_5787_empty_filter_and_bounded_relationship() {
 }
 
 #[test]
+fn issue_5787_oversized_quantity_leaf_is_reported_before_decode() {
+    let oversized = IFC.replace(
+        "#10=IFCQUANTITYLENGTH('NetLength',$,#30,3.,$);",
+        &format!("#10=IFCQUANTITYLENGTH('NetLength','{}',#30,3.,$);",
+            "x".repeat(MAX_REF_RECORD_BYTES)),
+    );
+    let result = analyze_authored_quantities(oversized.as_bytes(), Some(&HashSet::from([5])));
+    assert!(result.products[&5].authored.iter().all(|quantity| quantity.origin == "type"));
+    assert!(result.diagnostics.iter().any(|message|
+        message.contains("quantity set #14") && message.contains("record exceeds work budget")));
+}
+
+#[test]
 fn issue_5787_archicad_authored_quantity_is_an_independent_ifc_value() {
     // AC20-FZK-Haus.ifc is an Archicad 20 export. The STEP text itself has
     // #14963=IFCQUANTITYLENGTH('Höhe',$,$,2.,$) in set #14971, attached

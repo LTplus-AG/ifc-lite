@@ -1,0 +1,255 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Resolve a `HostAnchor` — everything an opening or a hosted door/window needs
+ * to know about the wall or slab it is cut into — from a parsed store plus the
+ * live mutation overlay, so a host authored earlier in the same session works
+ * exactly like one read from the file.
+ *
+ * The in-store builders stay pure: this is the only place that walks the host
+ * graph. It reads the host's placement, its containing storey (via
+ * IfcRelContainedInSpatialStructure) and the bounds of its Body geometry, from
+ * which the opening builder derives the default cut depth.
+ */
+
+import { firstProjAxis } from '@ifc-lite/data';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import type { HostAnchor, HostBounds, HostKind } from './anchor.js';
+import { AnchorEntityReader, resolveSpatialAnchor } from './resolve-anchor.js';
+
+type Vec3 = [number, number, number];
+type Frame3 = { o: Vec3; x: Vec3; y: Vec3; z: Vec3 };
+
+const HOST_KINDS: ReadonlyMap<string, HostKind> = new Map([
+  ['IFCWALL', 'wall'],
+  ['IFCWALLSTANDARDCASE', 'wall'],
+  ['IFCWALLELEMENTEDCASE', 'wall'],
+  ['IFCSLAB', 'slab'],
+  ['IFCSLABSTANDARDCASE', 'slab'],
+  ['IFCSLABELEMENTEDCASE', 'slab'],
+]);
+
+export function resolveHostAnchor(
+  store: IfcDataStore,
+  hostExpressId: number,
+  view?: MutablePropertyView | null,
+): HostAnchor {
+  const reader = new AnchorEntityReader(store, view);
+  const host = reader.entity(hostExpressId);
+  if (!host) throw new Error(`resolveHostAnchor: host #${hostExpressId} does not exist`);
+  const hostKind = HOST_KINDS.get(host.type.toUpperCase());
+  if (!hostKind) {
+    throw new Error(`resolveHostAnchor: #${hostExpressId} is an ${host.type}; openings are supported in IfcWall and IfcSlab hosts`);
+  }
+
+  const hostPlacementId = refId(named(host, 'ObjectPlacement', 5));
+  if (hostPlacementId === null || reader.entity(hostPlacementId)?.type.toUpperCase() !== 'IFCLOCALPLACEMENT') {
+    throw new Error(`resolveHostAnchor: host #${hostExpressId} has no IfcLocalPlacement to cut the opening in`);
+  }
+
+  const storeyId = containingStorey(reader, hostExpressId);
+  if (storeyId === null) {
+    throw new Error(`resolveHostAnchor: host #${hostExpressId} is not contained in a spatial structure element (IfcRelContainedInSpatialStructure)`);
+  }
+  const anchor = resolveSpatialAnchor(store, storeyId, view);
+
+  const shapeId = refId(named(host, 'Representation', 6));
+  const hostBounds = shapeId === null ? null : bodyBounds(reader, shapeId);
+  return { ...anchor, hostId: hostExpressId, hostKind, hostPlacementId, hostBounds };
+}
+
+function named(record: { names: string[]; attributes: unknown[] }, name: string, fallback: number): unknown {
+  const index = record.names.indexOf(name);
+  return record.attributes[index >= 0 ? index : fallback];
+}
+
+/** An entity reference as the source extractor (`42`) or the overlay (`'#42'`) spells it. */
+function refId(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
+  if (typeof value === 'string' && /^#[1-9][0-9]*$/.test(value)) return Number(value.slice(1));
+  return null;
+}
+
+function num(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function containingStorey(reader: AnchorEntityReader, hostId: number): number | null {
+  for (const relId of reader.ids('IFCRELCONTAINEDINSPATIALSTRUCTURE')) {
+    const rel = reader.entity(relId);
+    const related = rel ? named(rel, 'RelatedElements', 4) : null;
+    if (!rel || !Array.isArray(related) || !related.some((v) => refId(v) === hostId)) continue;
+    return refId(named(rel, 'RelatingStructure', 5));
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Body bounds
+// ---------------------------------------------------------------------------
+
+function bodyBounds(reader: AnchorEntityReader, productShapeId: number): HostBounds | null {
+  const shape = reader.entity(productShapeId);
+  const reps = shape ? shape.attributes[2] : null;
+  if (!Array.isArray(reps)) return null;
+  const points: Vec3[] = [];
+  for (const repRef of reps) {
+    const repId = refId(repRef);
+    const rep = repId === null ? null : reader.entity(repId);
+    if (!rep) continue;
+    const identifier = rep.attributes[1];
+    if (typeof identifier === 'string' && identifier.toLowerCase() !== 'body') continue;
+    const items = rep.attributes[3];
+    if (!Array.isArray(items)) continue;
+    for (const item of items) {
+      const itemId = refId(item);
+      if (itemId !== null) collectItemPoints(reader, itemId, points);
+    }
+  }
+  if (points.length === 0) return null;
+  const min: Vec3 = [Infinity, Infinity, Infinity];
+  const max: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (const p of points) {
+    for (let i = 0; i < 3; i++) {
+      min[i] = Math.min(min[i], p[i]);
+      max[i] = Math.max(max[i], p[i]);
+    }
+  }
+  return { min, max };
+}
+
+/**
+ * Points bounding one representation item. A boolean result is bounded by its
+ * FirstOperand (a clipping only removes material, so the operand's bounds are
+ * conservative); the chain is walked iteratively with a visited set because
+ * operand references come from the file.
+ */
+function collectItemPoints(reader: AnchorEntityReader, itemId: number, out: Vec3[]): void {
+  const seen = new Set<number>();
+  let id: number | null = itemId;
+  while (id !== null && !seen.has(id)) {
+    seen.add(id);
+    const item = reader.entity(id);
+    if (!item) return;
+    const type = item.type.toUpperCase();
+    if (type === 'IFCBOOLEANRESULT' || type === 'IFCBOOLEANCLIPPINGRESULT') {
+      id = refId(item.attributes[1]);
+      continue;
+    }
+    if (type === 'IFCEXTRUDEDAREASOLID') extrudedPoints(reader, item.attributes, out);
+    else if (type === 'IFCTRIANGULATEDFACESET' || type === 'IFCPOLYGONALFACESET') {
+      const list = refId(item.attributes[0]);
+      const coords = list === null ? null : reader.entity(list)?.attributes[0];
+      if (Array.isArray(coords)) for (const c of coords) { const p = vec3(c); if (p) out.push(p); }
+    }
+    return;
+  }
+}
+
+/** IfcExtrudedAreaSolid: SweptArea(0), Position(1), ExtrudedDirection(2), Depth(3). */
+function extrudedPoints(reader: AnchorEntityReader, attrs: unknown[], out: Vec3[]): void {
+  const profileId = refId(attrs[0]);
+  const outline = profileId === null ? null : profileOutline(reader, profileId);
+  const depth = num(attrs[3]);
+  const dirId = refId(attrs[2]);
+  const dir = dirId === null ? null : vec3(reader.entity(dirId)?.attributes[0]);
+  if (!outline || depth === null || !dir) return;
+  const len = Math.hypot(dir[0], dir[1], dir[2]);
+  if (len === 0) return;
+  const d: Vec3 = [dir[0] / len * depth, dir[1] / len * depth, dir[2] / len * depth];
+  const frame = axis3d(reader, attrs[1]);
+  for (const [px, py] of outline) {
+    for (const t of [0, 1]) {
+      const local: Vec3 = [px + d[0] * t, py + d[1] * t, d[2] * t];
+      out.push(applyFrame(frame, local));
+    }
+  }
+}
+
+/** Profile outline in the solid's XY, after the profile's own Position. */
+function profileOutline(reader: AnchorEntityReader, profileId: number): Array<[number, number]> | null {
+  const profile = reader.entity(profileId);
+  if (!profile) return null;
+  const type = profile.type.toUpperCase();
+  if (type === 'IFCRECTANGLEPROFILEDEF' || type === 'IFCRECTANGLEHOLLOWPROFILEDEF' || type === 'IFCROUNDEDRECTANGLEPROFILEDEF') {
+    const xd = num(profile.attributes[3]);
+    const yd = num(profile.attributes[4]);
+    if (xd === null || yd === null) return null;
+    const frame = axis2d(reader, profile.attributes[2]);
+    return ([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([sx, sy]) => {
+      const x = sx * xd / 2;
+      const y = sy * yd / 2;
+      return [frame.o[0] + frame.x[0] * x - frame.x[1] * y, frame.o[1] + frame.x[1] * x + frame.x[0] * y];
+    });
+  }
+  if (type === 'IFCARBITRARYCLOSEDPROFILEDEF' || type === 'IFCARBITRARYPROFILEDEFWITHVOIDS') {
+    const curveId = refId(profile.attributes[2]);
+    const curve = curveId === null ? null : reader.entity(curveId);
+    if (!curve) return null;
+    const curveType = curve.type.toUpperCase();
+    let raw: unknown[] = [];
+    if (curveType === 'IFCPOLYLINE' && Array.isArray(curve.attributes[0])) {
+      raw = curve.attributes[0].map((p) => { const id = refId(p); return id === null ? null : reader.entity(id)?.attributes[0]; });
+    } else if (curveType === 'IFCINDEXEDPOLYCURVE') {
+      const listId = refId(curve.attributes[0]);
+      const list = listId === null ? null : reader.entity(listId)?.attributes[0];
+      if (Array.isArray(list)) raw = list;
+    }
+    const pts = raw.map(vec3).filter((p): p is Vec3 => p !== null).map((p): [number, number] => [p[0], p[1]]);
+    return pts.length >= 3 ? pts : null;
+  }
+  return null;
+}
+
+function vec3(value: unknown): Vec3 | null {
+  if (!Array.isArray(value) || value.length < 2) return null;
+  const x = num(value[0]);
+  const y = num(value[1]);
+  const z = value.length >= 3 ? num(value[2]) : 0;
+  return x === null || y === null || z === null ? null : [x, y, z];
+}
+
+function pointOf(reader: AnchorEntityReader, ref: unknown): Vec3 | null {
+  const id = refId(ref);
+  return id === null ? null : vec3(reader.entity(id)?.attributes[0]);
+}
+
+function unit(v: Vec3): Vec3 | null {
+  const len = Math.hypot(v[0], v[1], v[2]);
+  return len > 1e-12 ? [v[0] / len, v[1] / len, v[2] / len] : null;
+}
+
+/** IfcAxis2Placement2D: Location(0), RefDirection(1). */
+function axis2d(reader: AnchorEntityReader, ref: unknown): { o: [number, number]; x: [number, number] } {
+  const id = refId(ref);
+  const placement = id === null ? null : reader.entity(id);
+  const o = placement ? pointOf(reader, placement.attributes[0]) : null;
+  const dir = placement ? pointOf(reader, placement.attributes[1]) : null;
+  const x = dir ? unit([dir[0], dir[1], 0]) : null;
+  return { o: o ? [o[0], o[1]] : [0, 0], x: x ? [x[0], x[1]] : [1, 0] };
+}
+
+/** IfcAxis2Placement3D: Location(0), Axis(1), RefDirection(2), orthonormalised. */
+function axis3d(reader: AnchorEntityReader, ref: unknown): Frame3 {
+  const id = refId(ref);
+  const placement = id === null ? null : reader.entity(id);
+  const o = (placement && pointOf(reader, placement.attributes[0])) ?? [0, 0, 0];
+  const z = (placement && unit(pointOf(reader, placement.attributes[1]) ?? [0, 0, 1])) ?? [0, 0, 1];
+  // An absent RefDirection gets the renderer's fill (#5922), not a local guess.
+  const r = (placement && pointOf(reader, placement.attributes[2])) ?? firstProjAxis(z);
+  const dot = r[0] * z[0] + r[1] * z[1] + r[2] * z[2];
+  const x = unit([r[0] - dot * z[0], r[1] - dot * z[1], r[2] - dot * z[2]]) ?? [1, 0, 0];
+  const y: Vec3 = [z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0]];
+  return { o, x, y, z };
+}
+
+function applyFrame(f: Frame3, p: Vec3): Vec3 {
+  return [
+    f.o[0] + f.x[0] * p[0] + f.y[0] * p[1] + f.z[0] * p[2],
+    f.o[1] + f.x[1] * p[0] + f.y[1] * p[1] + f.z[1] * p[2],
+    f.o[2] + f.x[2] * p[0] + f.y[2] * p[1] + f.z[2] * p[2],
+  ];
+}

@@ -114,7 +114,10 @@ describe('useAnnotation2D — Delete respects the focused widget (#5596)', () =>
     assert.equal(deletes, 0);
   });
 
-  it('#5841 Escape clears the drawing selection before the global viewer action', () => {
+  it('#5841/#5847 Escape clears only the drawing selection and keeps the IFC entity', () => {
+    const priorSelection = useViewerStore.getState().selectedEntityId;
+    const priorSelections = useViewerStore.getState().selectedEntityIds;
+    useViewerStore.setState({ selectedEntityId: 42, selectedEntityIds: new Set([42]) });
     let deselections = 0;
     let globalEscapes = 0;
     const unregister = registerKeyboardCommand('selection.escape', () => { globalEscapes++; });
@@ -123,12 +126,18 @@ describe('useAnnotation2D — Delete respects the focused widget (#5596)', () =>
       press(window, 'Escape');
       assert.equal(deselections, 1);
       assert.equal(globalEscapes, 0);
+      assert.equal(useViewerStore.getState().selectedEntityId, 42);
+      assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [42]);
     } finally {
       unregister();
+      useViewerStore.setState({ selectedEntityId: priorSelection, selectedEntityIds: priorSelections });
     }
   });
 
-  it('#5841 Escape cancels measurement and exits its active drawing tool', () => {
+  it('#5841/#5847 Escape cancels only measurement and keeps the selected IFC entity', () => {
+    const priorSelection = useViewerStore.getState().selectedEntityId;
+    const priorSelections = useViewerStore.getState().selectedEntityIds;
+    useViewerStore.setState({ selectedEntityId: 42, selectedEntityIds: new Set([42]) });
     useViewerStore.getState().setAnnotation2DActiveTool('measure');
     let cancellations = 0;
     let globalEscapes = 0;
@@ -139,8 +148,11 @@ describe('useAnnotation2D — Delete respects the focused widget (#5596)', () =>
       assert.equal(cancellations, 1, 'the in-progress measurement is cancelled');
       assert.equal(useViewerStore.getState().annotation2DActiveTool, 'none', 'the drawing tool exits');
       assert.equal(globalEscapes, 0, 'Escape is owned by the drawing');
+      assert.equal(useViewerStore.getState().selectedEntityId, 42);
+      assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [42]);
     } finally {
       unregister();
+      useViewerStore.setState({ selectedEntityId: priorSelection, selectedEntityIds: priorSelections });
     }
   });
 

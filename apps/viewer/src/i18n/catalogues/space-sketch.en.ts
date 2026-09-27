@@ -73,6 +73,22 @@ export const spaceSketchEn = {
   },
   'spaceSketch.footer.doneButton': 'Done',
 
+  // Status line. {area} arrives formatted with its unit (`formatSquareMetres`),
+  // the same formatter the bar uses (#6233).
+  'spaceSketch.status.pickStorey': 'Pick a storey to derive rooms from its walls.',
+  'spaceSketch.status.derived': {
+    other: '{label}: {count} rooms, {area} · {walls} walls.',
+    one: '{label}: {count} room, {area} · {walls} walls.',
+  },
+  'spaceSketch.status.draftRestored': {
+    other: '{label}: {count} rooms, {area} (your draft).',
+    one: '{label}: {count} room, {area} (your draft).',
+  },
+  'spaceSketch.status.dragDone': {
+    other: 'Drag done — {count} rooms, {area} (conserved).',
+    one: 'Drag done — {count} room, {area} (conserved).',
+  },
+
   // Canvas tooltip
   'spaceSketch.canvas.unboundedBoundaryTitle':
     'Boundary "{boundaryMode}" made no change to this room — no wall offset applies (no wall runs along its edges, or it\'s fully internal in Outer mode).',

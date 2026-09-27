@@ -835,6 +835,10 @@ For editing an **already-parsed** `IfcDataStore`, the package exposes anchored b
 
 `addColumnToStore`, `addWallToStore`, `addSlabToStore`, `addBeamToStore`, `addDoorToStore`, `addWindowToStore`, `addSpaceToStore`, `addRoofToStore`, `addPlateToStore`, `addMemberToStore`.
 
+Hosted builders take a `HostAnchor` from `resolveHostAnchor(dataStore, hostExpressId, mutationView)` instead: `addOpeningToStore` (IfcOpeningElement + IfcRelVoidsElement in an IfcWall or IfcSlab), `addHostedDoorToStore` and `addHostedWindowToStore` (the opening plus an IfcDoor / IfcWindow filling it through IfcRelFillsElement).
+
+Type objects and materials take the storey-free anchor from `resolveAuthoringAnchor(dataStore, mutationView)`: `addElementTypeToStore` and `assignTypeInStore` (IfcRelDefinesByType), and `addMaterialToStore`, `addMaterialLayerSetToStore`, `addMaterialLayerSetUsageToStore` and `assignMaterialInStore` (IfcRelAssociatesMaterial). The `assign*` builders take the model's existing relationships from `readRelatedLists`.
+
 ```typescript
 import { StoreEditor } from '@ifc-lite/mutations';
 import { addColumnToStore, resolveSpatialAnchor } from '@ifc-lite/create';

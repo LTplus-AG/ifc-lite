@@ -44,7 +44,7 @@ export const ribbonToolbarEn = {
   'ribbon.home.annotate': 'Annotate',
   'ribbon.home.sceneGroup': 'Scene',
   'ribbon.home.home': 'Home',
-  'ribbon.home.homeTooltip': 'Home (isometric + reset visibility)',
+  'ribbon.home.homeTooltip': 'Home (isometric camera + fit)',
 
   'ribbon.file.modelGroup': 'Model',
   'ribbon.file.open': 'Open',

@@ -102,7 +102,7 @@ export function Pin({
         {title ? <title>{title}</title> : null}
       </path>
       {children ? (
-        <g transform="translate(0, -11)" className="fill-overlay-halo pointer-events-none text-[9px]">
+        <g transform="translate(0, -11)" className="fill-overlay-halo pointer-events-none text-2xs">
           {children}
         </g>
       ) : null}

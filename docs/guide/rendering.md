@@ -640,19 +640,20 @@ The viewer app provides a **basket** — an incremental isolation set that lets 
 
 | Operation | Keyboard | Toolbar | Context Menu | Description |
 |-----------|----------|---------|--------------|-------------|
-| **Set** | `I` | `=` button | Set as Basket (=) | Replace basket with current selection |
-| **Add** | `+` | `+` button | Add to Basket (+) | Add current selection to basket |
+| **Isolate** | `I` | Isolate button | Isolate selection | Replace basket with current selection and isolate it |
+| **Set** | — | Set button | Set as Basket | Replace basket with current selection |
+| **Add** | `=` or `+` | `+` button | Add to Basket | Add current selection to basket |
 | **Remove** | `-` | `-` button | Remove from Basket (-) | Remove current selection from basket |
 | **Show All** | `A` | Eye icon | Show All | Clear every filter; see below |
 
 **Workflow example:**
 
 1. Click a wall, press `I` — basket now contains just that wall (everything else hidden)
-2. Cmd+Click two doors to multi-select them, press `+` — doors are added to the basket
-3. Click a window, press `+` — window added too
+2. Cmd+Click two doors to multi-select them, press `=` or `+` — doors are added to the basket
+3. Click a window, press `=` or `+` — window added too
 4. Click the wall, press `-` — wall removed from basket, only doors and window remain
 
-The toolbar `=` button shows a badge with the current basket count when active. Multi-select (Cmd/Ctrl+Click) works with all basket operations — select multiple entities first, then press `+` or `-` to add/remove them all at once.
+The toolbar Set button shows a badge with the current basket count when active. Multi-select (Cmd/Ctrl+Click) works with all basket operations — select multiple entities first, then press `=` / `+` or `-` to add/remove them all at once.
 
 **Additional visibility shortcuts:**
 
@@ -663,7 +664,7 @@ The toolbar `=` button shows a badge with the current basket count when active. 
 | `A` | Show all (see below for what it clears and what it keeps) |
 | `Esc` | One step per press: cancel the gesture in progress, else leave the tool, else clear the selection. Never changes visibility |
 
-**What Show All clears.** Show All, the `A` key, the Home button and the context menu's Show all all use one visibility-reason table (`apps/viewer/src/lib/visibility/visibility-reasons.ts`). At 1 model and at N models alike, it clears:
+**What Show All clears.** Show All, the `A` key and the context menu's Show all use one visibility-reason table (`apps/viewer/src/lib/visibility/visibility-reasons.ts`). Home changes the camera pose and fit while leaving visibility intact. At 1 model and at N models alike, Show All clears:
 
 - manual hides outside the active lens's hide set;
 - isolation (and leaves the basket view);

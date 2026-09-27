@@ -906,6 +906,20 @@ Validation is synchronous, bounded and conservative: a changed record, dependenc
 
 The guard caps the source index at 200,000 entities before constructing its effective index, authored overlay entities at 100,000, traversed records at 100,000, references at two million and authored values at eight million. Exact UTF-8 accounting uses a fixed scratch buffer before allocating each encoded row. Its 192 MiB effective-row budget covers the planner's bounded 128 MiB source plus 64 MiB output, including higher-precision newly authored UVs. Immutable source records retain identity markers rather than duplicate large source strings in every history checkpoint. Material/type inheritance and material-definition representations are included; sharing a type or material does not pull peer products' geometry into the guard.
 
+### Serializing an element subgraph for re-meshing
+
+`serializeEntitySubgraph(dataStore, mutationView, { targets })` writes a small, standalone STEP file holding the target elements and what the mesher needs to rebuild them. That is each element's forward references, the project's units and representation contexts, and its openings and their fillings with the voiding and filling relationships. It also holds its `IfcRelAssociatesMaterial`, narrowed to the elements in the file. `remeshContextRoots(dataStore, mutationView, targets)` returns those extra roots on their own. Pass them back as `contextRoots` to add or drop context.
+
+```typescript
+import { serializeEntitySubgraph } from '@ifc-lite/export';
+
+const sub = serializeEntitySubgraph(store, mutationView, { targets: new Set([wallId]) });
+// sub.bytes: a complete STEP file; sub.ids: every express id it defines;
+// sub.unreadable: ids whose effective record could not be written faithfully.
+```
+
+The cost follows the targets' own reference closure, not the model size, so it can run on every authoring commit. Queued edits and overlay-created entities are written by the same writers as `StepExporter`, and express ids are kept, overlay-allocated ones included. Styles are left out, so a caller meshing the buffer supplies the model's load-time style wire itself.
+
 ### IFCX texture portability
 
 `Ifc5Exporter` preserves textured mesh fragments using the declared, versioned

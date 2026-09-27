@@ -59,6 +59,15 @@ export function computePolygonCentroid(points: Point2D[]): Point2D {
 }
 
 /**
+ * A room area in square metres at one decimal, whatever its size: the Space
+ * Sketch bar and its status line both use it, so an empty draft reads
+ * "0.0 m²" in both instead of "0.0 cm²" next to "0.0 m²" (#6233).
+ */
+export function formatSquareMetres(squareMeters: number): string {
+  return `${squareMeters.toFixed(1)} m²`;
+}
+
+/**
  * Format an area value for display with appropriate units.
  */
 export function formatArea(squareMeters: number): string {

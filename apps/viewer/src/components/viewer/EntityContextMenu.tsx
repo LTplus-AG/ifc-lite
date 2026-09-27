@@ -28,7 +28,7 @@ import { useContextMutationAccess } from './useContextMutationAccess';
 import { effectiveTreeEntityName } from './hierarchy/effectiveTypeEntities';
 import { effectiveRowType } from './hierarchy/treeOverlay';
 import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
-import { resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { showAllFromStore } from '@/store/homeView';
 import { hideFromContextMenuFromStore } from '@/store/hideSelection';
 import {
   executeBasketSet,
@@ -132,7 +132,7 @@ export function EntityContextMenu() {
     closeContextMenu();
   }, [contextMenu.entityId, setSelectedEntityIds, setSelectedEntityId, cameraCallbacks, closeContextMenu]);
 
-  // Basket: = Set basket to this entity
+  // Basket: Set basket to this entity
   const handleSetBasket = useCallback(() => {
     executeBasketSet(contextEntityRef);
     closeContextMenu();
@@ -168,7 +168,7 @@ export function EntityContextMenu() {
   }, [contextMenu.entityId, closeContextMenu]);
 
   const handleShowAll = useCallback(() => {
-    resetVisibilityForHomeFromStore('show_all');
+    showAllFromStore('show_all');
     closeContextMenu();
   }, [closeContextMenu]);
 
@@ -344,7 +344,7 @@ export function EntityContextMenu() {
           <ContextMenuSeparator />
 
           {/* Basket operations */}
-          <MenuItem icon={Equal} label={t('entityContextMenu.setBasket')} shortcut="basket.set" onClick={handleSetBasket} />
+          <MenuItem icon={Equal} label={t('entityContextMenu.setBasket')} onClick={handleSetBasket} />
           <MenuItem icon={Plus} label={t('entityContextMenu.addToBasket')} shortcut="basket.add" onClick={handleAddToBasket} />
           <MenuItem icon={Minus} label={t('entityContextMenu.removeFromBasket')} shortcut="basket.remove" onClick={handleRemoveFromBasket} />
           <MenuItem icon={Save} label={t('entityContextMenu.saveBasketView')} shortcut="basket.saveView" onClick={handleSaveBasketView} />

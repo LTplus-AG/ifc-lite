@@ -35,7 +35,7 @@ export function InheritSelect({
       value={value ?? ''}
       onChange={(e) => onChange((e.target.value || undefined) as InheritChoice | undefined)}
       aria-label={t('searchModal.filterEditors.inherit.ariaLabel')}
-      className={className ?? 'h-7 rounded border border-zinc-300 bg-transparent px-1 text-[10px] dark:border-zinc-700'}
+      className={className ?? 'h-7 rounded border border-zinc-300 bg-transparent px-1 text-2xs dark:border-zinc-700'}
     >
       <option value="">{t('searchModal.filterEditors.inherit.own')}</option>
       {offered.map((choice) => <option key={choice} value={choice}>{labels[choice]}</option>)}

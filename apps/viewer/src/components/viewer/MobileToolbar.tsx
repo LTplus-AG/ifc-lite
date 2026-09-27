@@ -44,7 +44,7 @@ import { Progress } from '@/components/ui/progress';
 import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { goHomeFromStore, showAllFromStore } from '@/store/homeView';
 import { hideSelectionFromStore } from '@/store/hideSelection';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
@@ -119,7 +119,7 @@ export function MobileToolbar() {
   }, []);
 
   const handleShowAll = useCallback(() => {
-    resetVisibilityForHomeFromStore('show_all');
+    showAllFromStore('show_all');
   }, []);
 
   const handleHome = useCallback(() => {
@@ -130,7 +130,7 @@ export function MobileToolbar() {
   // rows and through the same handlers and dialogs (#5842). The dialog is
   // hosted outside the menu so it outlives the menu closing.
   const { runExport, dialog: exportDialog, extensionExporters } = useExportRunner('mobile');
-  const exportRows = useMemo(() => buildExportCommands(runExport, extensionExporters), [runExport, extensionExporters]);
+  const exportRows = useMemo(() => buildExportCommands(runExport, extensionExporters, 'mobile'), [runExport, extensionExporters]);
 
   const toolButtons: { tool: Tool; icon: React.ElementType; label: string }[] = [
     { tool: 'select', icon: MousePointer2, label: t('shellChrome.mobileToolbar.selectTool') },

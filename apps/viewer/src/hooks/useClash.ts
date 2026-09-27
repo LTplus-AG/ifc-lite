@@ -928,7 +928,7 @@ export function useClash() {
       // a hook-private ref: `setClashSelectedId` just above already bumped it
       // for this focus, so reading it now captures this request's identity.
       // ANY later call to `setClashSelectedId` or `clearClashSolid` — from
-      // this hook, a tour cleanup, the Home reset, or any future teardown
+      // this hook, a tour cleanup, Show all, or any future teardown
       // path nobody has written yet — bumps it again and this compute drops
       // its result instead of painting over whatever came after it. That is
       // the fix for the class of bug, not just the two reported call sites.

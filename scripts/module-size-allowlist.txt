@@ -141,7 +141,7 @@
    991 apps/viewer/src/lib/llm/script-edit-ops.ts
   1141 apps/viewer/src/lib/llm/script-preflight.ts
    410 apps/viewer/src/lib/llm/stream-client.ts
-   809 apps/viewer/src/lib/llm/system-prompt.ts
+   747 apps/viewer/src/lib/llm/system-prompt.ts
    450 apps/viewer/src/lib/search/tier1-index.ts
    440 apps/viewer/src/lib/slab-edit.ts
    412 apps/viewer/src/lib/sources/persistence.ts
@@ -161,7 +161,7 @@
    489 apps/viewer/src/store/slices/idsSlice.ts
    820 apps/viewer/src/store/slices/measurementSlice.ts
    630 apps/viewer/src/store/slices/modelSlice.ts
-  2779 apps/viewer/src/store/slices/mutationSlice.ts
+  2732 apps/viewer/src/store/slices/mutationSlice.ts
   1317 apps/viewer/src/store/slices/scheduleSlice.ts
    536 apps/viewer/src/store/slices/scriptSlice.ts
    498 apps/viewer/src/store/slices/sectionSlice.ts

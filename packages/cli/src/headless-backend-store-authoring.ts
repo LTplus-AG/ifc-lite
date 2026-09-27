@@ -4,8 +4,8 @@
 
 /**
  * The `bim.store` authoring surfaces the CLI backend composes from shared SDK
- * factories rather than hand-written methods: cost (#4857) and structural
- * analysis (#5167 S.1).
+ * factories rather than hand-written methods: cost (#4857), structural
+ * analysis (#5167 S.1), and openings / hosted doors and windows (#6232).
  *
  * Both take the SAME per-call resolution, and that is the point of keeping
  * them together: an entity authored through one surface must be visible to the
@@ -18,9 +18,11 @@
 
 import {
   createCostStoreBackend,
+  createModellingStoreBackend,
   createStructuralStoreBackend,
   type CostBackendMethods,
   type CostStoreBackendMethods,
+  type ModellingStoreBackendMethods,
   type StructuralStoreBackendMethods,
 } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -39,7 +41,7 @@ export interface StoreAuthoringDeps {
 
 export function createStoreAuthoring(
   deps: StoreAuthoringDeps,
-): CostStoreBackendMethods & StructuralStoreBackendMethods {
+): CostStoreBackendMethods & StructuralStoreBackendMethods & ModellingStoreBackendMethods {
   const resolve = (modelId?: string) => {
     deps.assertModel(modelId ?? '');
     return {
@@ -53,5 +55,6 @@ export function createStoreAuthoring(
   return {
     ...createCostStoreBackend(resolve, deps.cost),
     ...createStructuralStoreBackend(resolve),
+    ...createModellingStoreBackend(resolve),
   };
 }

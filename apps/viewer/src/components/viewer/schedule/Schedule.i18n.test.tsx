@@ -205,6 +205,9 @@ describe('GanttDragTooltip localization (#4918)', () => {
         }}
       />,
     );
+    const liveOutput = container.querySelector('output[aria-live="polite"]');
+    assert.ok(liveOutput, 'the active Gantt drag announces its readout through a native output (#5821)');
+    assert.match(liveOutput.textContent ?? '', /Shifting/);
     const english = visibleStrings(container);
     assert.ok(english.has('Shifting'));
 

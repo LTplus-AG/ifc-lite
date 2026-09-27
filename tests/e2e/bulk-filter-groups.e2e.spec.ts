@@ -53,7 +53,8 @@ test('Bulk Query unions two filter groups before applying to an authored IFC (#5
   // a DOM click avoids Radix treating the toast's pointerdown as a dialog exit.
   const dismissSoftwareGpuLoss = async () => {
     if (process.env.E2E_GPU_STRICT !== '0') return false;
-    const notice = page.getByRole('alert').filter({ hasText: 'The graphics device was lost, so the 3D view has stopped drawing.' });
+    const notice = page.getByRole('alert').locator('[data-toast-seq]')
+      .filter({ hasText: 'The graphics device was lost, so the 3D view has stopped drawing.' });
     if (!(await notice.isVisible())) return false;
     await notice.getByRole('button', { name: 'Dismiss notification' }).evaluate((button: HTMLButtonElement) => button.click());
     return true;

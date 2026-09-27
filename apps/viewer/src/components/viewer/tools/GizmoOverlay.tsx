@@ -25,10 +25,10 @@
  *   delta. No camera matrix inversion required; we lean entirely on
  *   the existing `projectToScreen` callback.
  *
- * The drag commits a single `translateEntity` call per frame (no
- * batching). Each call lands as one mutation on the undo stack,
- * which is intentionally coarse — fine for v1; if it gets noisy we
- * can collapse runs in a later pass.
+ * The drag commits one `translateEntity` call per frame (delta in
+ * metres), every call tagged with the drag's `batchId`, so the whole
+ * drag undoes as ONE step. `WallEndpointOverlay` batches its resize
+ * drag the same way.
  *
  * Re-render wake (#5510): re-projecting the arrows on every camera move
  * used to run its own `requestAnimationFrame` polling loop

@@ -59,6 +59,7 @@ describe('formatOpeningReassignSuffix (pure)', () => {
 
 describe('wall split toast: skipped openings notice', () => {
   const originalSplit = useViewerStore.getState().splitWallAtDistance;
+  const originalReadSplitTarget = useViewerStore.getState().readSplitTarget;
   const originalInfo = toast.info;
   const originalSuccess = toast.success;
   let infoCalls: string[];
@@ -77,13 +78,15 @@ describe('wall split toast: skipped openings notice', () => {
       slabCutAnchor: null,
       clearSplitHover: () => {},
       setSelectedEntityId: () => {},
+      // The click dispatches on the Split button's predicate (#6233).
+      readSplitTarget: () => ({ ok: true, kind: 'wall' }),
     } as Partial<ReturnType<typeof useViewerStore.getState>>);
   });
 
   afterEach(() => {
     (toast as { info: (m: string) => void }).info = originalInfo;
     (toast as { success: (m: string) => void }).success = originalSuccess;
-    useViewerStore.setState({ splitWallAtDistance: originalSplit });
+    useViewerStore.setState({ splitWallAtDistance: originalSplit, readSplitTarget: originalReadSplitTarget });
   });
 
   it('surfaces a toast when the split left openings unreassigned', async () => {

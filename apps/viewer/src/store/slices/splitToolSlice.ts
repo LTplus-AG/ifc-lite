@@ -5,15 +5,17 @@
 /**
  * State for the Split tool.
  *
- * Single-element flow today: user hovers a wall, the overlay
- * projects the cursor onto the wall's axis to compute a candidate
- * cut distance, click commits via `MutationSlice.splitWallAtDistance`.
- *
- * Bigger surface (slab cut-line, multi-element plane split, beam /
- * column / member) is in `docs/architecture/element-splitting.md` and
- * arrives in subsequent phases. The slice is shaped to grow without
- * a breaking rename — `splitMode` covers the future modes;
- * `splitHoverPoint` and `splitTargetExpressId` will be reused.
+ * One element at a time. Which elements split, and which commit action
+ * cuts each, is decided in ONE place — `lib/split-target.ts`, surfaced as
+ * `MutationSlice.readSplitTarget` and shared by the Properties panel's
+ * Split button and every commit path (#6233):
+ *   - walls (`splitWallAtDistance`) and beams / columns / members
+ *     (`splitLinearElementAtDistance`): hover projects the cursor onto the
+ *     element's axis for a candidate cut distance ('aiming'); a click or a
+ *     typed distance commits.
+ *   - slabs / roofs / plates / spaces (`splitSlabByLine`): a two-click cut
+ *     line ('first-anchor' latches the first click).
+ * Multi-element plane splits are in `docs/architecture/element-splitting.md`.
  */
 
 import type { StateCreator } from 'zustand';
@@ -36,7 +38,7 @@ export interface SplitToolSlice {
   splitMode: SplitMode;
   /** Federated model id that owns the hovered target. */
   splitTargetModelId: string | null;
-  /** Express id of the hovered wall. */
+  /** Express id of the element being split. */
   splitTargetExpressId: number | null;
   /**
    * Cursor in storey-local IFC space (Z-up). The overlay reads

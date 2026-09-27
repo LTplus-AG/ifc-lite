@@ -22,10 +22,8 @@
 
 import { useEffect, useState } from 'react';
 import { useViewerStore } from '@/store';
-import { toast } from '@/components/ui/toast';
-import { notifyWallSplit } from '../wallSplitNotice.js';
+import { notifyElementSplit, notifySplitFailed, notifyWallSplit } from '../wallSplitNotice.js';
 import { useTranslation } from '@/i18n';
-import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import { CursorInput } from '../../viewport-ui/scene';
 
 /**
@@ -50,6 +48,7 @@ export function SplitCursorInput() {
   const splitHoverLength = useViewerStore((s) => s.splitHoverLength);
   const splitTargetModelId = useViewerStore((s) => s.splitTargetModelId);
   const splitTargetExpressId = useViewerStore((s) => s.splitTargetExpressId);
+  const readSplitTarget = useViewerStore((s) => s.readSplitTarget);
   const splitWallAtDistance = useViewerStore((s) => s.splitWallAtDistance);
   const splitLinearElementAtDistance = useViewerStore((s) => s.splitLinearElementAtDistance);
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
@@ -72,35 +71,36 @@ export function SplitCursorInput() {
   const commitAt = (distance: number) => {
     if (splitTargetModelId === null || splitTargetExpressId === null) return;
     if (!Number.isFinite(distance) || distance <= 0 || distance >= splitHoverLength) {
-      toast.error(`Distance must be between 0 and ${splitHoverLength.toFixed(2)} m`);
+      notifySplitFailed(`Distance must be between 0 and ${splitHoverLength.toFixed(2)} m`);
       return;
     }
-    const wallTry = splitWallAtDistance(splitTargetModelId, splitTargetExpressId, distance);
-    if (wallTry.ok) {
-      clearSplitHover();
-      setSelectedEntityId(wallTry.right.globalId);
-      // Same notices as the canvas click path — a split committed by typing
-      // a distance is the same edit on the same `splitWallAtDistance` result,
-      // including the warning when openings could not be reassigned
-      // (`openings.skipped`), which this path dropped until #3074.
-      notifyWallSplit(wallTry.openings);
+    // Same predicate + dispatch as the canvas click (#6233).
+    const target = readSplitTarget(splitTargetModelId, splitTargetExpressId);
+    if (!target.ok || target.kind === 'slab') {
+      notifySplitFailed(t(target.ok ? 'splitTool.unavailable.kind' : target.reasonKey));
       return;
     }
-    const linearTry = splitLinearElementAtDistance(splitTargetModelId, splitTargetExpressId, distance);
-    if (linearTry.ok) {
-      clearSplitHover();
-      setSelectedEntityId(linearTry.right.globalId);
-      toast.success(`Element split — ${shortcutLabel('edit.undo')} to undo`);
+    const result = target.kind === 'wall'
+      ? splitWallAtDistance(splitTargetModelId, splitTargetExpressId, distance)
+      : splitLinearElementAtDistance(splitTargetModelId, splitTargetExpressId, distance);
+    if (!result.ok) {
+      notifySplitFailed(t('splitTool.failed', { reason: result.reason }));
       return;
     }
-    const reason = linearTry.ok === false ? linearTry.reason : wallTry.reason;
-    toast.error(`Couldn't split: ${reason}`);
+    clearSplitHover();
+    setSelectedEntityId(result.right.globalId);
+    // Same notices as the canvas click path — a split committed by typing
+    // a distance is the same edit on the same result, including the warning
+    // when openings could not be reassigned (`openings.skipped`), which this
+    // path dropped until #3074.
+    if ('openings' in result) notifyWallSplit(result.openings);
+    else notifyElementSplit();
   };
 
   const commit = (raw: string) => {
     const distance = parseCutDistance(raw, splitHoverDistance ?? 0, splitHoverLength);
     if (distance === null) {
-      toast.error(`Couldn't read "${raw}" as a distance`);
+      notifySplitFailed(`Couldn't read "${raw}" as a distance`);
       return;
     }
     commitAt(distance);

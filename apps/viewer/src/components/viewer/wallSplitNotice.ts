@@ -3,7 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The user-facing notices a committed wall split emits.
+ * The user-facing notices the Split tool emits: a committed wall split, a
+ * committed linear-element split, and a refused split.
+ *
+ * Refusals ({@link notifySplitFailed}) are transient and scoped to the tool
+ * (#6233): they auto-dismiss, and {@link dismissSplitNotices} — run when the
+ * Split tool's scene unmounts, i.e. on every way of leaving the tool — clears
+ * any still on screen, so a stale "Couldn't split" cannot outlive the gesture
+ * it was about.
  *
  * `MutationSlice.splitWallAtDistance` is reached from TWO places — the canvas
  * click handler (`selectionHandlers.ts`) and the Split tool's numeric-distance
@@ -77,4 +84,24 @@ export function notifyWallSplit(op: OpeningReassignCounts): void {
       `${op.skipped} opening${op.skipped === 1 ? '' : 's'} could not be reassigned and may need manual repositioning`,
     );
   }
+}
+
+/** A linear element (beam / column / member) split has been committed. */
+export function notifyElementSplit(): void {
+  toast.success(`Element split — ${shortcutLabel('edit.undo')} to undo`);
+}
+
+/** How long a refusal stays up if the user stays in the tool. */
+const SPLIT_ERROR_MS = 6000;
+const openSplitErrors = new Set<() => void>();
+
+/** Report a refused split; `message` is a complete, already-translated sentence. */
+export function notifySplitFailed(message: string): void {
+  openSplitErrors.add(toast.transientError(message, SPLIT_ERROR_MS));
+}
+
+/** Clear every refusal still on screen — called when the Split tool exits. */
+export function dismissSplitNotices(): void {
+  for (const dismiss of openSplitErrors) dismiss();
+  openSplitErrors.clear();
 }

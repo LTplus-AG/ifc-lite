@@ -282,8 +282,9 @@ function scaleSlabChain(chain: SlabEditChain, scale: number): SlabEditChain {
  * native units, but the rest of the split flow — raycast cut points,
  * preview meshes, selection hit-tests — lives in metres, so the
  * resolved footprint/thickness are scaled to match. Authored overlay
- * entities are skipped: the in-store builders already emit metres, so
- * scaling them would double-apply (re-splitting a freshly-cut half).
+ * entities are scaled too: the in-store builders convert their metre
+ * params to the file's native unit (`toNativePoint3` / `toNativeLength`),
+ * so an authored slab in a millimetre file stores millimetres (#6233).
  */
 export function resolveSlabEditChain(
   dataStore: IfcDataStore,
@@ -297,11 +298,7 @@ export function resolveSlabEditChain(
   const elementType = stepTypeToSlabLike(rawType);
   if (!elementType) return null;
 
-  // Overlay (authored) entities are stored in metres by the in-store
-  // builders; only native STEP reads need the unit scale applied.
-  // `getNewEntity` returns null (not undefined) for source entities.
-  const isAuthored = editor.getNewEntity(expressId) != null;
-  const scale = isAuthored ? 1 : lengthUnitScale;
+  const scale = lengthUnitScale;
 
   const chain = resolvePlacementChain(dataStore, view, editor, expressId);
   if (!chain) return null;

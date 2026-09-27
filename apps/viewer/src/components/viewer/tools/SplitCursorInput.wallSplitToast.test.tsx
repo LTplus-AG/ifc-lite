@@ -76,6 +76,7 @@ describe('parseCutDistance', () => {
 describe('SplitCursorInput: wall-split notices', () => {
   const original = {
     splitWallAtDistance: useViewerStore.getState().splitWallAtDistance,
+    readSplitTarget: useViewerStore.getState().readSplitTarget,
     info: toast.info,
     success: toast.success,
   };
@@ -97,6 +98,8 @@ describe('SplitCursorInput: wall-split notices', () => {
       splitTargetExpressId: 42,
       clearSplitHover: () => {},
       setSelectedEntityId: () => {},
+      // The typed distance dispatches on the Split button's predicate (#6233).
+      readSplitTarget: () => ({ ok: true, kind: 'wall' }),
     } as unknown as Partial<ReturnType<typeof useViewerStore.getState>>);
   });
 
@@ -104,7 +107,7 @@ describe('SplitCursorInput: wall-split notices', () => {
     cleanup();
     (toast as { info: (m: string) => void }).info = original.info;
     (toast as { success: (m: string) => void }).success = original.success;
-    useViewerStore.setState({ splitWallAtDistance: original.splitWallAtDistance, activeTool: 'select', splitMode: 'idle' });
+    useViewerStore.setState({ splitWallAtDistance: original.splitWallAtDistance, readSplitTarget: original.readSplitTarget, activeTool: 'select', splitMode: 'idle' });
   });
 
   it('warns about openings the split could not reassign', () => {

@@ -9,7 +9,7 @@ import {
   computeSlabSplitGeometry,
 } from './slab-edit.js';
 
-import { StubStoreEditor, StubView, makeStubDataStore, type OverlayEntity } from './__test__/stubs.js';
+import { StubStoreEditor, StubView, makeStubDataStore } from './__test__/stubs.js';
 
 const dataStoreStub = makeStubDataStore() as unknown as Parameters<typeof resolveSlabEditChain>[0];
 
@@ -186,19 +186,19 @@ describe('slab-edit', () => {
     });
   }
 
-  it('ignores lengthUnitScale for authored (overlay) entities', () => {
-    // The in-store builders already emit metres, so a freshly-authored
-    // slab must NOT be re-scaled even on a millimetre model — otherwise
-    // re-splitting a just-cut half would shrink it 1000×. The stub serves
-    // overlay entities, so the footprint stays in its given units despite
-    // the 0.001 scale.
+  it('applies lengthUnitScale to authored (overlay) entities too (#6233)', () => {
+    // The in-store builders convert their metre params to the file's
+    // native unit, so an authored slab in a millimetre file stores
+    // millimetres exactly like an imported one. Skipping the scale for
+    // overlay entities left the Split tool comparing a millimetre footprint
+    // against a metre cursor. The stub serves overlay entities.
     const entities = makePolygonSlabFixture();
     const editor = new StubStoreEditor(entities) as unknown as Parameters<typeof resolveSlabEditChain>[2];
     const view = new StubView() as unknown as Parameters<typeof resolveSlabEditChain>[1];
     const chain = resolveSlabEditChain(dataStoreStub, view, editor, 100, 0.001);
     assert.ok(chain);
-    assert.deepStrictEqual(chain.footprint[0], [10, 20]);
-    assert.strictEqual(chain.thickness, 0.25);
+    assert.deepStrictEqual(chain.footprint[0], [0.01, 0.02]);
+    assert.strictEqual(chain.thickness, 0.00025);
   });
 
   it('strips the redundant closing vertex from an IfcPolyline', () => {

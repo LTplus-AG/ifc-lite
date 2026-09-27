@@ -36,6 +36,7 @@
 import { useViewerStore } from '@/store';
 import { formatSplitHoverLabel } from './formatDistance';
 import { WorldLabel, useProjectorTick } from '../../viewport-ui/scene';
+import { splitLocalToRenderer } from '../split-frame.js';
 
 type Vec2 = { x: number; y: number };
 type Vec3 = { x: number; y: number; z: number };
@@ -46,10 +47,6 @@ type Project = (worldPos: Vec3) => Vec2 | null;
 
 const GUIDE_HALF_LENGTH_PX = 30;
 
-/** Storey-local 2D → renderer Y-up world point at the storey floor. */
-function ifc2dToRendererWorld(p: [number, number], storeyElevation: number): Vec3 {
-  return { x: p[0], y: storeyElevation, z: -p[1] };
-}
 
 export function SplitOverlay() {
   const activeTool = useViewerStore((s) => s.activeTool);
@@ -64,7 +61,6 @@ export function SplitOverlay() {
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const slabCutAnchor = useViewerStore((s) => s.slabCutAnchor);
   const slabCutFootprint = useViewerStore((s) => s.slabCutFootprint);
-  const slabCutStoreyElevation = useViewerStore((s) => s.slabCutStoreyElevation);
   const readSlabFootprint = useViewerStore((s) => s.readSlabFootprint);
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
 
@@ -90,15 +86,16 @@ export function SplitOverlay() {
     ?? (splitTargetModelId !== null && splitTargetExpressId !== null
         ? readSlabFootprint(splitTargetModelId, splitTargetExpressId)?.footprint ?? null
         : null);
-  const storeyElevation = slabCutStoreyElevation
-    ?? (splitTargetModelId !== null && splitTargetExpressId !== null
-        ? readSlabFootprint(splitTargetModelId, splitTargetExpressId)?.storeyElevation ?? 0
-        : 0);
-
-  if (slabFootprint) {
+  if (slabFootprint && splitTargetModelId !== null && splitTargetExpressId !== null) {
+    // Storey-local 2D → renderer, through the storey frame and the model's
+    // placement (`split-frame.ts`, #6233) — the frame the cut is committed in.
+    const toScreen = (p: [number, number]): Vec2 | null => {
+      const r = splitLocalToRenderer([p[0], p[1], 0], splitTargetModelId, splitTargetExpressId);
+      return r ? project({ x: r[0], y: r[1], z: r[2] }) : null;
+    };
     // Slab path. Project every footprint vertex; build a polygon.
     const screenVerts = slabFootprint
-      .map((p) => project(ifc2dToRendererWorld(p, storeyElevation)))
+      .map(toScreen)
       .filter((v): v is Vec2 => v !== null);
     if (screenVerts.length < 3) return null;
     const path = screenVerts.map((v, i) => `${i === 0 ? 'M' : 'L'}${v.x} ${v.y}`).join(' ') + ' Z';
@@ -108,12 +105,8 @@ export function SplitOverlay() {
     const cursorXy: [number, number] | null = splitHoverCutPoint
       ? [splitHoverCutPoint[0], splitHoverCutPoint[1]]
       : null;
-    const anchorScreen = slabCutAnchor
-      ? project(ifc2dToRendererWorld(slabCutAnchor, storeyElevation))
-      : null;
-    const cursorScreen = cursorXy
-      ? project(ifc2dToRendererWorld(cursorXy, storeyElevation))
-      : null;
+    const anchorScreen = slabCutAnchor ? toScreen(slabCutAnchor) : null;
+    const cursorScreen = cursorXy ? toScreen(cursorXy) : null;
 
     return (
       <svg className="absolute inset-0 pointer-events-none z-(--z-scene)" style={{ overflow: 'visible' }}>

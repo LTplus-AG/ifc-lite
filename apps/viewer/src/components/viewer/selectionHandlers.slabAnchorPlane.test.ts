@@ -99,6 +99,8 @@ describe("split-tool anchor and cut clicks raycast the same floor plane (#4932 f
         },
       }]]) as unknown as ReturnType<typeof useViewerStore.getState>['models'],
       readSlabFootprint: () => FOOTPRINT,
+      // The click dispatches on the Split button's predicate (#6233).
+      readSplitTarget: () => ({ ok: true, kind: 'slab' }),
       splitSlabByLine: (_modelId: string, _expressId: number, cutA: [number, number], cutB: [number, number]) => {
         cutCall = { cutA, cutB };
         return { ok: true, left: { expressId: 1, globalId: 101 }, right: { expressId: 2, globalId: 102 } };
@@ -120,6 +122,7 @@ describe("split-tool anchor and cut clicks raycast the same floor plane (#4932 f
       slabCutStoreyElevation: original.slabCutStoreyElevation,
       models: original.models,
       readSlabFootprint: original.readSlabFootprint,
+      readSplitTarget: original.readSplitTarget,
       splitSlabByLine: original.splitSlabByLine,
       setSelectedEntityId: original.setSelectedEntityId,
       clearSplitHover: original.clearSplitHover,

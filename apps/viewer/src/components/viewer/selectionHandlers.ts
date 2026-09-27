@@ -15,7 +15,8 @@ import { useViewerStore } from '@/store';
 import { fromGlobalIdFromModels } from '@/store/globalId';
 import { pointInPolygon } from '@/lib/polygon-clip';
 import { toast } from '@/components/ui/toast';
-import { notifyWallSplit } from './wallSplitNotice.js';
+import { notifyElementSplit, notifySplitFailed, notifyWallSplit } from './wallSplitNotice.js';
+import { pickToSplitLocal, splitAxisToRendererConvention, splitLocalToRenderer } from './split-frame.js';
 import { raycastForPolylinePoint, isNearPolylineStart,
   isDuplicateClickPoint,
 } from './measureHandlers.js';
@@ -128,20 +129,48 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
       // doesn't fight the user. The overlay's hint stays visible.
       return;
     }
+    // The Split button's own predicate picks the commit path (#6233), so a
+    // refusal here names the same reason the button's tooltip does.
+    const target = state.readSplitTarget(targetModelId, targetExpressId);
+    if (!target.ok) {
+      notifySplitFailed(translate(target.reasonKey));
+      return;
+    }
 
-    // Slab two-click flow takes precedence when we're mid-anchor.
-    // The second click commits the cut line from anchor → cursor.
-    // Raycast onto the SOURCE SLAB'S floor (not the global active
-    // storey) so federated / non-active-storey splits land at the
-    // right elevation.
+    if (target.kind !== 'slab') {
+      // Single-click element split (wall / beam / column / member) at the
+      // hover preview's projected distance; no preview yet → nothing to cut.
+      const distance = state.splitHoverDistance;
+      if (distance === null) return;
+      const result = target.kind === 'wall'
+        ? state.splitWallAtDistance(targetModelId, targetExpressId, distance)
+        : state.splitLinearElementAtDistance(targetModelId, targetExpressId, distance);
+      if (!result.ok) {
+        notifySplitFailed(translate('splitTool.failed', { reason: result.reason }));
+        return;
+      }
+      state.clearSplitHover();
+      state.setSelectedEntityId(result.right.globalId);
+      // Both wall-split commit paths — here and the Split tool's typed
+      // distance — announce through the same emitter (`wallSplitNotice.ts`).
+      if ('openings' in result) notifyWallSplit(result.openings);
+      else notifyElementSplit();
+      return;
+    }
+
+    // Slab two-click flow. The second click commits the cut line from the
+    // latched anchor → cursor, raycast onto the SOURCE SLAB'S floor (not the
+    // global active storey) so federated / non-active-storey splits land at
+    // the right elevation.
     if (state.splitMode === 'first-anchor' && state.slabCutAnchor) {
       const slabFloorY = resolveSlabFloorY(targetModelId, targetExpressId);
       const cutPoint = raycastStoreyFloor(ctx, x, y, slabFloorY ?? undefined);
       if (!cutPoint) {
-        toast.error("Couldn't read cut point");
+        notifySplitFailed("Couldn't read cut point");
         return;
       }
-      const cursorIfc = rendererPointToModelFrame(cutPoint, targetModelId);
+      const cursorIfc = pickToSplitLocal(cutPoint, targetModelId, targetExpressId);
+      if (!cursorIfc) return;
       const result = state.splitSlabByLine(
         targetModelId,
         targetExpressId,
@@ -149,7 +178,7 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
         [cursorIfc[0], cursorIfc[1]],
       );
       if (!result.ok) {
-        toast.error(`Couldn't split slab: ${result.reason}`);
+        notifySplitFailed(translate('splitTool.failed', { reason: result.reason }));
         return;
       }
       state.clearSplitHover();
@@ -164,68 +193,27 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
       return;
     }
 
-    // Single-click element split (wall / beam / column / member).
-    // Wall first because most edits land on walls; if that returns
-    // null we try the linear-element path.
-    const distance = state.splitHoverDistance;
-    if (distance !== null && distance > 0) {
-      const wallTry = state.splitWallAtDistance(targetModelId, targetExpressId, distance);
-      if (wallTry.ok) {
-        state.clearSplitHover();
-        state.setSelectedEntityId(wallTry.right.globalId);
-        // Both wall-split commit paths — here and the Split tool's
-        // numeric-distance panel — announce the split through the same
-        // emitter (`wallSplitNotice.ts`), so a notice added to one cannot
-        // go missing from the other. That is exactly how `openings.skipped`
-        // stayed silent on the typed-distance path after #3023 taught this
-        // one to report it.
-        notifyWallSplit(wallTry.openings);
-        return;
-      }
-      const linearTry = state.splitLinearElementAtDistance(
-        targetModelId,
-        targetExpressId,
-        distance,
-      );
-      if (linearTry.ok) {
-        state.clearSplitHover();
-        state.setSelectedEntityId(linearTry.right.globalId);
-        toast.success(`Element split — ${shortcutLabel('edit.undo')} to undo`);
-        return;
-      }
-    }
-
-    // Fall through to the slab path: first click latches the
-    // anchor, second click (handled above) commits. Anchor lands
-    // on the source slab's storey floor (not the global active
-    // storey). The RAYCAST plane, unlike the anchor value stored
-    // below, has to be placement-aware (#4932 follow-up): the second
-    // click's plane already goes through `resolveSlabFloorY`, which
-    // adds the model's vertical translation, so this first click used
-    // a DIFFERENT (un-placed) plane than the second — on a vertically
-    // repositioned slab under an oblique camera the two clicks would
-    // raycast against different heights and the anchor would land off
-    // from where the cursor actually was. `resolveSlabFloorY` reads
-    // the same underlying elevation `slabFootprint.storeyElevation`
-    // does, so this is the same value made symmetric, not a new one.
+    // First click latches the anchor on the source slab's storey floor (not
+    // the global active storey). The RAYCAST plane is placement-aware
+    // (#4932 follow-up), the same `resolveSlabFloorY` the second click uses,
+    // so both clicks raycast the same height on a vertically repositioned
+    // slab under an oblique camera; `resolveSlabFloorY` reads the same
+    // elevation `slabFootprint.storeyElevation` does, made symmetric.
     const slabFootprint = state.readSlabFootprint(targetModelId, targetExpressId);
-    if (slabFootprint) {
-      const anchorPlaneY = resolveSlabFloorY(targetModelId, targetExpressId) ?? slabFootprint.storeyElevation;
-      const anchorPoint = raycastStoreyFloor(ctx, x, y, anchorPlaneY);
-      if (!anchorPoint) {
-        toast.error("Couldn't read anchor point");
-        return;
-      }
-      const anchorIfc = rendererPointToModelFrame(anchorPoint, targetModelId);
-      state.setSlabCutAnchor(
-        [anchorIfc[0], anchorIfc[1]],
-        slabFootprint.footprint,
-        slabFootprint.storeyElevation,
-      );
+    if (!slabFootprint) return;
+    const anchorPlaneY = resolveSlabFloorY(targetModelId, targetExpressId) ?? slabFootprint.storeyElevation;
+    const anchorPoint = raycastStoreyFloor(ctx, x, y, anchorPlaneY);
+    if (!anchorPoint) {
+      notifySplitFailed("Couldn't read anchor point");
       return;
     }
-
-    toast.error("Couldn't split: not a splittable element");
+    const anchorIfc = pickToSplitLocal(anchorPoint, targetModelId, targetExpressId);
+    if (!anchorIfc) return;
+    state.setSlabCutAnchor(
+      [anchorIfc[0], anchorIfc[1]],
+      slabFootprint.footprint,
+      slabFootprint.storeyElevation,
+    );
     return;
   }
 
@@ -393,44 +381,35 @@ export function handleSplitHover(ctx: MouseHandlerContext, x: number, y: number)
         if (store.splitMode === 'aiming') store.clearSplitHover();
         return;
       }
-      const cursorIfc = rendererPointToModelFrame(worldPoint, targetModelId);
+      // Storey-local, like every split chain (`split-frame.ts`, #6233); Z is
+      // the height above the floor, which a column's vertical axis needs.
+      const cursorLocal = pickToSplitLocal(worldPoint, targetModelId, targetExpressId);
+      if (!cursorLocal) {
+        if (store.splitMode === 'aiming') store.clearSplitHover();
+        return;
+      }
+      const [cx, cy] = cursorLocal;
 
       // Project onto the target. Try wall (1D), then linear (1D),
       // then slab (2D — uses the cursor XY directly as a candidate
       // cut endpoint).
       const projection =
-        store.readWallSplitProjection(targetModelId, targetExpressId, cursorIfc) ??
-        store.readLinearElementSplitProjection(targetModelId, targetExpressId, cursorIfc);
+        store.readWallSplitProjection(targetModelId, targetExpressId, [cx, cy, 0]) ??
+        store.readLinearElementSplitProjection(targetModelId, targetExpressId, cursorLocal);
       if (projection) {
-        const model = store.models.get(targetModelId);
-        const storeyId = model?.ifcDataStore?.spatialHierarchy?.elementToStorey.get(targetExpressId);
-        const elevation =
-          (storeyId !== undefined
-            ? model?.ifcDataStore?.spatialHierarchy?.storeyElevations?.get(storeyId)
-            : undefined) ?? 0;
-        const [px, py, pz] = projection.cutPoint;
-        // Forward through the target's placement (#4932) so the ghost cut
-        // line the overlay draws lands on the same screen point as the
-        // commit this preview stands in for, on a moved/rotated model too.
-        const modelPoint: Translation = [px, py, pz + elevation];
-        const cutRendererFrame = toRenderTranslation(modelPointToWorkspacePoint(modelPoint, pickPlacement(targetModelId)));
-        store.setSplitHover(
-          cutRendererFrame,
-          projection.distance,
-          projection.length,
-          projection.cutPoint,
-          projection.axis,
-        );
+        // Forward through the storey frame and the model's placement (#4932)
+        // so the ghost cut line lands where the commit will cut.
+        const cutRendererFrame = splitLocalToRenderer(projection.cutPoint, targetModelId, targetExpressId);
+        const axis = splitAxisToRendererConvention(projection.cutPoint, projection.axis, targetModelId, targetExpressId);
+        if (!cutRendererFrame) return;
+        store.setSplitHover(cutRendererFrame, projection.distance, projection.length, projection.cutPoint, axis);
         return;
       }
       // Slab path — the overlay outlines the polygon + ghost cut
-      // line; the cursor's IFC XY is the candidate endpoint.
-      const slabFootprint = store.readSlabFootprint(targetModelId, targetExpressId);
-      if (slabFootprint) {
-        const [cx, cy] = cursorIfc;
-        const modelPoint: Translation = [cx, cy, slabFootprint.storeyElevation];
-        const cursorRendererFrame = toRenderTranslation(modelPointToWorkspacePoint(modelPoint, pickPlacement(targetModelId)));
-        store.setSplitHover(cursorRendererFrame, 0, 0, [cx, cy, 0], null);
+      // line; the cursor's storey-local XY is the candidate endpoint.
+      if (store.readSlabFootprint(targetModelId, targetExpressId)) {
+        const cursorRendererFrame = splitLocalToRenderer([cx, cy, 0], targetModelId, targetExpressId);
+        if (cursorRendererFrame) store.setSplitHover(cursorRendererFrame, 0, 0, [cx, cy, 0], null);
         return;
       }
       // Target isn't a splittable shape (rare — gets latched by

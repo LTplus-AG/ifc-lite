@@ -168,32 +168,17 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
     [modelId, entityId, rotateEntity, t],
   );
 
-  // Resolve whether the selected entity can be split. Three paths:
-  // walls, linear elements (beam / column / member), and slab-like
-  // (slab / roof / plate / space — only slab supports split in v1
-  // but the chain resolver accepts all four). The Split action
-  // surfaces only when the entity matches one of them — keeps
-  // panel chrome out of the user's way for unrelated selections.
-  const readWallEndpoints = useViewerStore((s) => s.readWallEndpoints);
-  const readLinearElementSplitProjection = useViewerStore((s) => s.readLinearElementSplitProjection);
-  const readSlabFootprint = useViewerStore((s) => s.readSlabFootprint);
-  const splittable = useMemo(() => {
-    if (readWallEndpoints(modelId, entityId) !== null) return true;
-    // Probe with [0,0,0] — we only care whether the chain resolves,
-    // not the projection value.
-    if (readLinearElementSplitProjection(modelId, entityId, [0, 0, 0]) !== null) return true;
-    // Slab-like types (IfcSlab / IfcRoof / IfcPlate / IfcSpace)
-    // all share the same chain shape; any of them is splittable.
-    return readSlabFootprint(modelId, entityId) !== null;
+  // Whether the selected entity can be split: the SAME predicate every
+  // split commit path runs (`readSplitTarget`, #6233) — walls, beams,
+  // columns, members, slabs, roofs, plates and spaces whose body is a
+  // profile extrusion. When it can't, the button stays visible but
+  // disabled, and its tooltip names the reason.
+  const readSplitTarget = useViewerStore((s) => s.readSplitTarget);
+  const splitTarget = useMemo(
+    () => readSplitTarget(modelId, entityId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    modelId,
-    entityId,
-    mutationVersion,
-    readWallEndpoints,
-    readLinearElementSplitProjection,
-    readSlabFootprint,
-  ]);
+    [modelId, entityId, mutationVersion, readSplitTarget],
+  );
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const setSplitTarget = useViewerStore((s) => s.setSplitTarget);
   const onSplit = useCallback(() => {
@@ -341,26 +326,30 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
             </div>
           )}
 
-          {/* Actions — split (when applicable) + duplicate + delete.
-              Available even when Move isn't. Split surfaces only
-              for resizable walls so the panel stays uncluttered
-              for selections where the action doesn't apply. */}
+          {/* Actions — split + duplicate + delete. Available even when
+              Move isn't. Split is always shown; an element it can't cut
+              gets a disabled button whose tooltip says why. */}
           <div className="flex items-center gap-1 pt-1 border-t border-overlay-accent/40">
-            {splittable && (
-              <Tooltip>
-                <TooltipTrigger asChild>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                {/* A disabled button fires no pointer events, so the span
+                    carries the tooltip trigger for the unavailable state. */}
+                <span className="flex flex-1" tabIndex={splitTarget.ok ? undefined : 0}>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-7 flex-1 text-xs"
                     onClick={onSplit}
+                    disabled={!splitTarget.ok}
                   >
                     <KnifeIcon className="h-3 w-3 mr-1" /> {t('geometryExport.editCard.splitButton')}
                   </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t('geometryExport.editCard.splitTooltip')}</TooltipContent>
-              </Tooltip>
-            )}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {splitTarget.ok ? t('geometryExport.editCard.splitTooltip') : t(splitTarget.reasonKey)}
+              </TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

@@ -27,6 +27,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { fromNativeLength } from '@ifc-lite/create';
 import {
   asExpressIdRef,
   asCoordinateTriple,
@@ -82,6 +83,12 @@ export interface LinearElementEditChain {
   profileWidth: number;
   /** Profile cross-section height (Y dimension, metres). */
   profileHeight: number;
+  /**
+   * The native-unit → metre factor every length above was scaled by. Raw
+   * STEP reads are native (e.g. millimetres) for imported AND in-store
+   * authored elements alike; a writer divides by this to go back (#6233).
+   */
+  lengthUnitScale: number;
 }
 
 /**
@@ -96,6 +103,7 @@ export function resolveLinearElementChain(
   view: MutablePropertyView,
   editor: StoreEditor,
   expressId: number,
+  lengthUnitScale = 1,
 ): LinearElementEditChain | null {
   const rawType = editor.getEntityType(expressId);
   if (!rawType || !LINEAR_ELEMENT_STEP_TYPES.has(rawType.toUpperCase())) return null;
@@ -185,15 +193,18 @@ export function resolveLinearElementChain(
     return null;
   }
 
+  const m = (native: number) => fromNativeLength({ lengthUnitScale }, native);
+  const [sx, sy, sz] = chain.coordinates;
   return {
     elementType,
     startPointId: chain.cartesianPointId,
-    startCoordinates: chain.coordinates,
+    startCoordinates: [m(sx), m(sy), m(sz)],
     axisDirection,
     extrudedSolidId: solidId,
-    depth: depthRaw,
-    profileWidth,
-    profileHeight,
+    depth: m(depthRaw),
+    profileWidth: m(profileWidth),
+    profileHeight: m(profileHeight),
+    lengthUnitScale,
   };
 }
 
@@ -301,7 +312,8 @@ export function shrinkLinearElementDepth(
   chain: LinearElementEditChain,
   newDepth: number,
 ): void {
-  editor.setPositionalAttribute(chain.extrudedSolidId, 3, newDepth);
+  // `newDepth` is metres like the chain; the slot is native units.
+  editor.setPositionalAttribute(chain.extrudedSolidId, 3, newDepth / chain.lengthUnitScale);
 }
 
 // Re-export the asCoordinateTriple helper so callers that import

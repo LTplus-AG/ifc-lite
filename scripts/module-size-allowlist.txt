@@ -142,7 +142,7 @@
    410 apps/viewer/src/lib/llm/stream-client.ts
    747 apps/viewer/src/lib/llm/system-prompt.ts
    450 apps/viewer/src/lib/search/tier1-index.ts
-   440 apps/viewer/src/lib/slab-edit.ts
+   437 apps/viewer/src/lib/slab-edit.ts
    412 apps/viewer/src/lib/sources/persistence.ts
    426 apps/viewer/src/lib/tours/controller.ts
    812 apps/viewer/src/sdk/adapters/export-adapter.ts

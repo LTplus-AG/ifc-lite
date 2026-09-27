@@ -54,7 +54,7 @@ function clearTimer(id: number) {
  * `MAX_VISIBLE` the oldest toasts are evicted, transient ones before errors:
  * an error stays until dismissed, so newer successes must not push it off.
  */
-function addToast(type: Toast['type'], message: string, durationMs: number | null, action?: Toast['action']) {
+function addToast(type: Toast['type'], message: string, durationMs: number | null, action?: Toast['action']): number {
   const existing = toasts.find((t) => t.type === type && t.message === message);
   const id = existing?.id ?? nextId++;
   const others = toasts.filter((t) => t.id !== id);
@@ -68,6 +68,7 @@ function addToast(type: Toast['type'], message: string, durationMs: number | nul
   clearTimer(id);
   if (durationMs !== null) timers.set(id, setTimeout(() => dismiss(id), durationMs));
   notify();
+  return id;
 }
 
 function dismiss(id: number) {
@@ -78,9 +79,18 @@ function dismiss(id: number) {
 
 /** Imperative toast API. Errors stay until the user dismisses them. */
 export const toast = {
-  success: (message: string, action?: Toast['action']) => addToast('success', message, action ? null : 3000, action),
-  error: (message: string) => addToast('error', message, null),
-  info: (message: string, action?: Toast['action']) => addToast('info', message, action ? null : 3000, action),
+  success: (message: string, action?: Toast['action']): void => { addToast('success', message, action ? null : 3000, action); },
+  error: (message: string): void => { addToast('error', message, null); },
+  info: (message: string, action?: Toast['action']): void => { addToast('info', message, action ? null : 3000, action); },
+  /**
+   * An error about an in-progress tool gesture, which means nothing once the
+   * tool is gone (#6233): it dismisses itself after `durationMs`, and the
+   * returned function dismisses it sooner (e.g. on tool exit).
+   */
+  transientError: (message: string, durationMs: number): (() => void) => {
+    const id = addToast('error', message, durationMs);
+    return () => dismiss(id);
+  },
 };
 
 // ─── React Component ──────────────────────────────────────────────────────

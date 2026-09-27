@@ -10,12 +10,14 @@
  * while the input is interactive.
  */
 
+import { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { HudToolbar } from '../../viewport-ui/hud';
 import { SplitOverlay } from './SplitOverlay';
 import { SplitCursorInput } from './SplitCursorInput';
+import { dismissSplitNotices } from '../wallSplitNotice.js';
 
 export function SplitBar() {
   const { t } = useTranslation();
@@ -39,6 +41,10 @@ export function SplitBar() {
 }
 
 export function SplitScene() {
+  // The scene is mounted exactly while the Split tool is active, so its
+  // unmount is every way of leaving the tool (Esc, K, the bar's close, a
+  // tool switch): a refusal about the last gesture must not outlive it.
+  useEffect(() => dismissSplitNotices, []);
   return (
     <>
       <SplitOverlay />

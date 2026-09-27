@@ -19,7 +19,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { requestRemesh, setRemeshClientFactory, type RemeshClientLike } from './remesh-service';
+import { disposeRemeshClient, requestRemesh, setRemeshClientFactory, watchModelUnloads, type RemeshClientLike } from './remesh-service';
 
 const MODEL_ID = 'ifc';
 const STOREY = 40;
@@ -202,6 +202,36 @@ describe('requestRemesh (#6232)', () => {
     assert.equal(clients.length, 2, 'a new worker is started');
     clients[1].calls[0].resolve(answer([mesh(wall, 3)]));
     assert.equal((await next).status, 'applied');
+  });
+
+  it('unloading a model terminates the worker', async () => {
+    const wall = addWall();
+    const pending = requestRemesh(useViewerStore.getState, MODEL_ID, [wall], 'shape');
+    await flush();
+    clients[0].calls[0].resolve(answer([mesh(wall, 1)]));
+    assert.equal((await pending).status, 'applied');
+    const unwatch = watchModelUnloads(useViewerStore.subscribe);
+    try {
+      useViewerStore.setState({ models: new Map() });
+      await flush();
+      assert.equal(clients[0].alive, false, 'the idle worker is gone with the model');
+    } finally {
+      unwatch();
+    }
+  });
+
+  it('a request cut off by that termination is sent again, not reported as a failure', async () => {
+    const wall = addWall();
+    const pending = requestRemesh(useViewerStore.getState, MODEL_ID, [wall], 'shape');
+    await flush();
+    // Another model unloaded: the worker goes, and its in-flight request rejects.
+    disposeRemeshClient();
+    clients[0].calls[0].reject(new Error('RemeshClient is disposed'));
+    await flush();
+    assert.equal(clients.length, 2, 'a new worker is started');
+    clients[1].calls[0].resolve(answer([mesh(wall, 4)]));
+    assert.equal((await pending).status, 'applied');
+    assert.equal(wallMeshes(wall)[0].positions[0], 4);
   });
 
   it('refuses a model loaded without a wasm frame, and a colour-merged mesh', async () => {

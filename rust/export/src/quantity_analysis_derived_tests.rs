@@ -95,6 +95,29 @@ fn csg_repeated_operand_reports_modification_and_no_product_total() {
 }
 
 #[test]
+fn csg_unsupported_operand_preserves_both_provenance_and_failure_reason() {
+    let source = String::from_utf8(MAPPED.to_vec()).unwrap();
+    let csg = source.replace(
+        "#12=IFCEXTRUDEDAREASOLID(#8,#11,#9,1.0);",
+        "#12=IFCEXTRUDEDAREASOLID(#8,#11,#9,-1.0);",
+    ).replace(
+        "#13=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#12));",
+        "#13=IFCSHAPEREPRESENTATION(#5,'Body','SolidModel',(#500));",
+    ).replace("ENDSEC;\nEND-ISO-10303-21;",
+        "#500=IFCBOOLEANRESULT(.UNION.,#12,#12);\nENDSEC;\nEND-ISO-10303-21;");
+    let view = analyze_quantities(csg.as_bytes(), Some(&HashSet::from([31])));
+    let product = &view.products[&31];
+    assert_eq!(product.source_occurrence_count, 2);
+    for source in &product.sources {
+        assert!(source.source_modified);
+        assert_eq!(source.status, "unsupported");
+        assert!(source.status_reason.as_deref().is_some_and(|reason| reason.contains("Depth")));
+        assert!(source.quantities.is_empty());
+    }
+    assert!(product.product_total.is_none());
+}
+
+#[test]
 fn distinct_solids_in_one_product_are_counted_without_summing() {
     let source = String::from_utf8(MAPPED.to_vec()).unwrap();
     let multiple = source.replace(

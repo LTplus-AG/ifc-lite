@@ -22,6 +22,7 @@ import { join } from 'path';
 
 const STORE = '__ifc_lite_viewer_store__';
 const FIXTURE = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
+const NO_GEOREF_FIXTURE = 'apps/landing/samples/hello-wall.ifc';
 const MIN_TARGET_PX = 24;
 
 interface UndersizedButton {
@@ -150,5 +151,28 @@ test.describe('#5826 target size and focus visibility', () => {
       undersized,
       `${undersized.length} button(s) under 24x24 CSS px:\n${undersized.map((b) => `  ${b.width.toFixed(1)}x${b.height.toFixed(1)} "${b.ariaLabel ?? b.text}"`).join('\n')}`,
     ).toEqual([]);
+  });
+
+  test('authored model without georeferencing: Add Georeferencing target is at least 24x24 CSS px', async ({ page }) => {
+    // #5826 follow-up: the committed Bonsai IFC has no georeference. AC20
+    // does, so its settled metadata card cannot expose the Add control.
+    await page.goto('/');
+    await page.waitForFunction((key) => !!(globalThis as Record<string, unknown>)[key], STORE);
+    await page.locator('input[type="file"]').first().setInputFiles(join(process.cwd(), NO_GEOREF_FIXTURE));
+    await page.waitForFunction((key) => {
+      const store = (globalThis as Record<string, unknown>)[key] as
+        | { getState: () => { models: Map<unknown, { ifcDataStore?: unknown }>; loading: boolean; geometryStreamingActive: boolean } }
+        | undefined;
+      const state = store?.getState();
+      return !!state && state.models.size === 1 && !state.loading && !state.geometryStreamingActive
+        && [...state.models.values()][0].ifcDataStore != null;
+    }, STORE, { timeout: 120000 });
+
+    const addGeoreferencing = page.getByRole('button', { name: 'Add Georeferencing', exact: true });
+    await expect(addGeoreferencing).toBeVisible();
+    await expect.poll(() => addGeoreferencing.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return Math.min(rect.width, rect.height);
+    }).catch(() => 0)).toBeGreaterThanOrEqual(MIN_TARGET_PX);
   });
 });

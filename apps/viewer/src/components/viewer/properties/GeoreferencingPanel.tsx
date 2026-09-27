@@ -349,7 +349,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         <Globe className="h-3 w-3 text-teal-500" />
         <span className="text-xs text-zinc-500 dark:text-zinc-400 flex-1">{t('properties.georef.noGeoreferencing')}</span>
         <EpsgLookupDialog onSelect={handleEpsgSelect}>
-          <button className="flex items-center gap-1 text-xs text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors px-1.5 py-0.5 border border-teal-300/50 dark:border-teal-700/50 hover:bg-teal-50 dark:hover:bg-teal-950/50">
+          <button className="flex min-h-6 items-center gap-1 text-xs text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors px-1.5 py-0.5 border border-teal-300/50 dark:border-teal-700/50 hover:bg-teal-50 dark:hover:bg-teal-950/50">
             <Globe className="h-2.5 w-2.5" />
             {t('properties.georef.addGeoreferencing')}
           </button>

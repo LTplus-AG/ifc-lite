@@ -33,6 +33,7 @@ if (parsed.ok) {
 ## Features
 
 - `FilterRule` / `FilterGroup` vocabulary (`ifcType`, `name`, `property`, `quantity`, `material`, `classification`, `storey`, `model`, `modelTag`, `parent`, `group`, `modelFact`, `elevation`, `type`, `predefinedType`, `attribute`, `globalId`) plus the `Rule` builder helpers.
+- `listCondition`: a saved Lists value predicate (zone, spatial level, model file, quantity/material presence, Lists attributes, inherited properties) inside a `FilterGroup`. The Lists engine answers it through `EvaluatorModel.listConditions` (`listConditionMatcher(provider)` from `@ifc-lite/lists`); a model without one throws, and rule-set files refuse the kind.
 - `legacyLensOperatorToFilterRule` and `legacyListOperatorToFilterRule` convert saved viewer comparisons to this vocabulary. Each returns `{ status: 'readable', value: rule }` or an explicit `{ status: 'unreadable', vocabulary, operator }`; the corresponding `filterRuleToLegacy*Operator` functions convert supported rules back for export. Pass the target property or attribute as the rule template.
 - `evaluateFilterRules` / `evaluateFilterRulesFederated` (sync + async chunked, cancellable, multi-model) — the same Path-B evaluator the viewer's Advanced Filter and Data Validation panel use, with index prefiltering and cheap-first rule ordering for large models.
 - `parseRuleSetFile` / `serializeRuleSet` — validate and round-trip a `<name>.rules.json` file (never throws; failures come back as `{ ok: false, error }`).

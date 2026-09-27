@@ -35,6 +35,7 @@ import { ElevationEditor } from './SearchModal.filter.editors.elevation';
 import { ClassificationEditor, GroupEditor, ModelFactEditor } from './SearchModal.filter.editors.membership';
 import { ReadOptionControls } from './SearchModal.filter.editors.readOptions';
 import { ModelTagRuleEditor } from './ModelTagRuleEditor';
+import { ListConditionEditor } from './lists/ListConditionEditor';
 import type { ModelTag } from '@ifc-lite/rules';
 import {
   SET_OPS,
@@ -170,6 +171,7 @@ export function RuleRow({ rule, modelOptions, tagOptions, ifcTypeOptions, storey
 
       {rule.kind === 'group' && <GroupEditor rule={rule} onChange={onChange} />}
       {rule.kind === 'modelFact' && <ModelFactEditor rule={rule} onChange={onChange} />}
+      {rule.kind === 'listCondition' && <ListConditionEditor rule={rule} onChange={onChange} />}
 
       {rule.kind === 'parent' && (
         <NameEditor

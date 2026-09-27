@@ -120,6 +120,7 @@ export function HierarchyPanel() {
     setSortMode,
     groupFilter,
     setGroupFilter,
+    materialReady,
     filteredNodes: rawFilteredNodes,
     storeysNodes: rawStoreysNodes,
     modelsNodes: rawModelsNodes,
@@ -693,7 +694,7 @@ export function HierarchyPanel() {
       {groupingMode === 'spatial' && <StoreyDisplayControls />}
 
       {/* Tree */}
-      {searchEmptyState ?? <div ref={parentRef} role="tree" tabIndex={legacyTreeKeyboard.containerTabIndex} aria-label={singleTreeSectionTitle} onKeyDown={legacyTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+      {searchEmptyState ?? <div ref={parentRef} role="tree" aria-busy={groupingMode === 'material' && !materialReady} tabIndex={legacyTreeKeyboard.containerTabIndex} aria-label={singleTreeSectionTitle} onKeyDown={legacyTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,

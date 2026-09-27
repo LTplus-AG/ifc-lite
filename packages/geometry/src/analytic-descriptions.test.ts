@@ -33,6 +33,7 @@ describe('GeometryProcessor.extractSweptDiskDescriptions (#5770)', () => {
   it('guards an uninitialized engine and preserves unfiltered versus empty product IDs', async () => {
     const processor = new GeometryProcessor();
     const content = new Uint8Array([73, 70, 67]);
+    expect(typeof processor.extractSweptDiskDescriptions).toBe('function');
     expect(processor.extractSweptDiskDescriptions(content)).toBeNull();
     expect(wasmMocks.extractSweptDiskDescriptions).not.toHaveBeenCalled();
 

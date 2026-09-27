@@ -29,7 +29,7 @@ function FloatingButton({ icon, label, ariaLabel, onClick }: { icon: ReactNode; 
       <span className="grid place-items-center min-h-[44px] min-w-[44px] bg-background/90 backdrop-blur-sm border border-border rounded-md group-active:bg-foreground group-active:text-background transition-colors">
         {icon}
       </span>
-      <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground leading-none">{label}</span>
+      <span className="text-2xs font-bold uppercase tracking-wider text-muted-foreground leading-none">{label}</span>
     </button>
   );
 }

@@ -539,6 +539,12 @@ must produce identical local-frame geometry across native and wasm targets;
 ordinary routers continue to use the target and environment default. The frame
 choice cannot be changed after construction because router caches depend on it.
 
+For repeated `IfcMappedItem` sources, `mapping_origin_transform(source, decoder)`
+parses the source map's origin once. `resolve_scaled_mapped_item_transform_with_origin_loader`
+accepts a loader for that matrix and still parses each item's `MappingTarget`
+before invoking it; both methods use the same target-times-origin composition
+as `resolve_scaled_mapped_item_transform`.
+
 Other notable re-exports: `orient_mesh_outward`, `calculate_normals`, `ClippingProcessor`, `Plane`, `Triangle` (CSG), `hash_mesh_world` / `GeometryHasher` (geometry-diff hashing), instancing encode/decode helpers, and the nalgebra types `Point2`, `Point3`, `Vector2`, `Vector3`.
 
 `embedded_raster_dimensions(step_binary)` returns optional PNG/JPEG dimensions

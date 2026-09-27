@@ -2440,3 +2440,20 @@ and its phase timings within noise. Viadotto again emitted the intended extra
 geometry, so its timing remains non-comparable. The lesson is to check
 complete model output before interpreting alignment timings and to trace
 the lookup cost inside each repeated station evaluation.
+
+## Analytic mapped-source reuse (#5786)
+
+The analytic source walker now reuses a validated representation-map source,
+its immutable item list and parsed MappingOrigin across occurrences in one
+extraction. A real Revit structural model confirmed one source load per
+distinct map, with cached and uncached ordered swept-disk and extrusion output,
+including nominal quantities and diagnostics, identical. Each MappingTarget
+and final world transform still resolves for its own occurrence.
+
+Three interleaved native worker-pool base/branch pairs on AC20 and ISSUE_129
+kept mesh counts and ordered fingerprints byte-identical. Concurrent lint and
+typecheck work overlapped the probes, so the small timing differences do not
+establish a speedup or regression. The direct analytic extraction reduces
+source validation work; no full-load timing claim is made from that counter.
+The lesson is to cache only immutable source facts and measure source reuse
+separately from mesh-worker throughput.

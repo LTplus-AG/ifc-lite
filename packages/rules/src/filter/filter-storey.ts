@@ -100,3 +100,4 @@ export function unionByStorey(store: IfcDataStore, rule: StoreyRule, modelId: st
   }
   return out.length > 0 ? out : null;
 }
+

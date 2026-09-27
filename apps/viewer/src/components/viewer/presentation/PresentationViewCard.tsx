@@ -47,6 +47,7 @@ export function PresentationViewCard({
     <div className="relative w-[186px] h-full max-h-[130px] shrink-0 snap-start">
       <button
         type="button"
+        aria-label={view.name}
         onClick={() => { if (!isEditing) onSelect(); }}
         className={cn(
           'h-full w-full rounded-md border bg-card text-left overflow-hidden transition-colors',

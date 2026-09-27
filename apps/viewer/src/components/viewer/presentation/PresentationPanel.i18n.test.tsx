@@ -222,6 +222,7 @@ describe('PresentationPanel icon controls (#5811)', () => {
       }],
     });
     const container = render(<PresentationPanel />);
+    getByRole(container, 'button', { name: 'My View' });
     for (const key of ['renameViewTitle', 'setTransitionTitle', 'deleteViewTitle']) {
       getByRole(container, 'button', { name: resolve(`presentationPanel.${key}` as never) });
     }

@@ -32,6 +32,8 @@ import {
 } from './revert-oracle-rust-features.mjs';
 import { pythonTestOwner } from './revert-oracle-python.mjs';
 
+const SUPPORT_FIXTURE_PATH = /(^|\/)(?:fixtures?|test-data|testdata|corpus)(\/|$)/;
+
 /** Walk up from `startDir` looking for `filename`, stopping at `root`. */
 export function findUp(startDir, filename, root) {
   let dir = startDir;
@@ -230,13 +232,30 @@ export function planRuns(testPaths, root) {
 
   for (const rel of testPaths) {
     const abs = join(root, rel);
+    // A PyO3 project has a Cargo.toml too. Classify by file language before
+    // walking Cargo ownership or its Python tests become Rust support files.
+    if (rel.endsWith('.py')) {
+      const p = pythonTestOwner(abs, root);
+      if (!p) {
+        const c = cargoTestOwner(abs, root);
+        const within = c && relative(c.dir, abs).split(sep).join('/');
+        if (within && SUPPORT_FIXTURE_PATH.test(within)) { support.push(rel); continue; }
+        unassigned.push({ file: rel, reason: 'no owning Python package found' });
+        continue;
+      }
+      if (!/(^test_.+|.+_test)\.py$/.test(basename(rel))) { support.push(rel); continue; }
+      const relFile = relative(p.dir, abs);
+      const claimed = claimRuntimeAdapter({ kind: 'python', relFile });
+      plans.push({ key: `python:${rel}`, file: rel, dir: p.dir, files: [rel], relFiles: [relFile], script: undefined, crate: null, wheelProject: p.wheelProject, adapter: claimed?.adapter ?? null, runner: claimed?.runner ?? null });
+      continue;
+    }
     const c = cargoTestOwner(abs, root);
     if (c) {
       const within = relative(c.dir, abs).split(sep).join('/');
       const targetMatch = /^tests\/([^/]+)\.rs$/.exec(within);
       const owner = targetMatch ? null : rustModuleOwner(c.dir, abs, c.crate);
       if (!targetMatch && (!owner || owner.ambiguous)) {
-        if (/(^|\/)(?:fixtures?|test-data|testdata|corpus)(\/|$)/.test(within)) {
+        if (SUPPORT_FIXTURE_PATH.test(within)) {
           support.push(rel);
           continue;
         }
@@ -283,15 +302,6 @@ export function planRuns(testPaths, root) {
     }
     if (rel.endsWith('.rs')) { unassigned.push({ file: rel, reason: 'no owning Cargo package found' }); continue; }
     if (rel.endsWith('.go')) { unassigned.push({ file: rel, reason: 'Go test entrypoints have no revert-oracle adapter' }); continue; }
-    if (rel.endsWith('.py')) {
-      const p = pythonTestOwner(abs, root);
-      if (!p) { unassigned.push({ file: rel, reason: 'no owning Python package found' }); continue; }
-      if (!/(^test_.+|.+_test)\.py$/.test(basename(rel))) { support.push(rel); continue; }
-      const relFile = relative(p.dir, abs);
-      const claimed = claimRuntimeAdapter({ kind: 'python', relFile });
-      plans.push({ key: `python:${rel}`, file: rel, dir: p.dir, files: [rel], relFiles: [relFile], script: undefined, crate: null, adapter: claimed?.adapter ?? null, runner: claimed?.runner ?? null });
-      continue;
-    }
     const pkgDir = findUp(dirname(abs), 'package.json', root);
     if (!/\.(test|spec)\.[^/]+$/.test(rel)) {
       support.push(rel);

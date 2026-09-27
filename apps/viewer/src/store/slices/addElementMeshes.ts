@@ -81,7 +81,7 @@ export type ElementMeshPayload =
   | { type: 'member'; params: AddElementMemberParams; start: Vec3; end: Vec3 }
   | { type: 'column'; params: AddElementColumnParams; position: Vec3 }
   | { type: 'door'; params: AddElementDoorParams; position: Vec3 }
-  | { type: 'window'; params: AddElementWindowParams; position: Vec3 }
+  | { type: 'window'; params: Omit<AddElementWindowParams, 'SillHeight'>; position: Vec3 } // sill = position Z
   | { type: 'slab'; params: AddElementSlabParams; corners: Vec3[] }
   | { type: 'space'; params: AddElementSpaceParams; corners: Vec3[] }
   | { type: 'roof'; params: AddElementRoofParams; corners: Vec3[] }

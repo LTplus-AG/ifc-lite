@@ -16,6 +16,8 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { render, cleanup } from '@/test/render.js';
+import { resolveEnglish } from '@/i18n/registry';
+import { panelTitleKey, type WorkspacePanelId } from '@/lib/panels/registry';
 import { AnalyzeTab } from './AnalyzeTab.js';
 
 describe('AnalyzeTab — BCF ribbon button', () => {
@@ -34,5 +36,28 @@ describe('AnalyzeTab — BCF ribbon button', () => {
       !labels.some((t) => /BCF issues/i.test(t)),
       `found a button still labelled "BCF issues": ${JSON.stringify(labels)}`,
     );
+  });
+});
+
+describe('AnalyzeTab — canonical panel groups (#5873)', () => {
+  afterEach(cleanup);
+
+  it('places direct panel shortcuts under the same task labels as the rail', () => {
+    const container = render(<AnalyzeTab />);
+    const groups = [...container.querySelectorAll<HTMLElement>('[role="group"]')];
+    const expected: Array<[WorkspacePanelId, string]> = [
+      ['zones', 'Coordinate'],
+      ['lens', 'Check'],
+      ['cost', 'Quantify'],
+      ['script', 'Automate'],
+      ['drawing', 'Site'],
+    ];
+    for (const [panelId, groupName] of expected) {
+      const group = groups.find((node) => node.getAttribute('aria-label') === groupName);
+      assert.ok(group, `${groupName} group is missing`);
+      const title = resolveEnglish(panelTitleKey(panelId));
+      assert.ok([...group.querySelectorAll('button')].some((button) => button.getAttribute('aria-label') === title),
+        `${title} is outside ${groupName}`);
+    }
   });
 });

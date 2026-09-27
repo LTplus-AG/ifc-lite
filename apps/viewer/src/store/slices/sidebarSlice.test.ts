@@ -175,6 +175,27 @@ describe('sidebarSlice ordering (#1267)', () => {
   });
 });
 
+describe('sidebarSlice task group migration (#5873)', () => {
+  it('groups an unchanged saved rail order and preserves a customized order', () => {
+    const previousDefault = [
+      'hierarchy',
+      ...WORKSPACE_PANELS.map((panel) => panel.id).filter((id) => id !== 'hierarchy'),
+    ] as SidebarSlice['sidebarOrder'];
+    const original = make();
+    original.getState().applySidebarLayout({ order: previousDefault });
+    const migrated = original.getState().sidebarOrder;
+    assert.strictEqual(migrated[0], 'hierarchy');
+    assert.notDeepStrictEqual(migrated, previousDefault);
+    assert.strictEqual(new Set(migrated).size, WORKSPACE_PANELS.length);
+
+    const customized = [...previousDefault];
+    customized.splice(customized.indexOf('extensions'), 1);
+    customized.unshift('extensions');
+    original.getState().applySidebarLayout({ order: customized });
+    assert.deepStrictEqual(original.getState().sidebarOrder, customized);
+  });
+});
+
 describe('sidebarSlice docked split (#1266)', () => {
   it('sets a side panel as the lower split half', () => {
     const s = make();

@@ -4,7 +4,7 @@
 
 /**
  * #4932 follow-up (review note on PR #4953): the PICK direction
- * (`rendererPointToIfcStoreyLocal`) was fixed to invert a model's
+ * (`rendererPointToModelFrame`) was fixed to invert a model's
  * reposition placement, but `WallEndpointOverlay`'s DRAW direction
  * (`ifcStoreyLocalToRenderer`, used to place a selected wall's resize
  * handles) was left as a bare axis swap. Pre-#4953 both directions were

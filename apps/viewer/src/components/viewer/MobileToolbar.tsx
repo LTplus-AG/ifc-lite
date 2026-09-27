@@ -33,6 +33,7 @@ import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { MOBILE_FILE_ACCEPT, isSupportedMobileModelFile } from '@/services/supported-model-files';
 import { surfaceCommand, type SurfaceCommandDefinition, type SurfaceCommandId } from './surface-commands';
+import { runSurfaceCommand, trackCommandExecution } from './surface-command-run';
 
 export function MobileToolbar() {
   const { t } = useTranslation();
@@ -96,7 +97,7 @@ export function MobileToolbar() {
   const mobileCommand = (id: SurfaceCommandId) => surfaceCommand(id, 'mobile');
   const mobileLabel = (command: SurfaceCommandDefinition) => t(command.mobileLabelKey?.(mobileState) ?? command.labelKey);
   const mobileIcon = (command: SurfaceCommandDefinition) => command.mobileIcon?.(mobileState) ?? command.icon;
-  const runMobile = (command: SurfaceCommandDefinition) => command.run({ surface: 'mobile' });
+  const runMobile = (command: SurfaceCommandDefinition) => runSurfaceCommand(command, { surface: 'mobile' });
   const openFile = mobileCommand('file:open');
   const addModel = mobileCommand('file:add-model');
   const OpenFileIcon = mobileIcon(openFile);
@@ -142,7 +143,7 @@ export function MobileToolbar() {
         size="icon-sm"
         className="h-9 w-9 flex-shrink-0"
         data-command-id={openFile.id}
-        onClick={() => openFile.run({ surface: 'mobile', openFiles: () => fileInputRef.current?.click() })}
+        onClick={() => runSurfaceCommand(openFile, { surface: 'mobile', openFiles: () => fileInputRef.current?.click() })}
         disabled={loading}
         aria-label={mobileLabel(openFile)}
       >
@@ -160,7 +161,7 @@ export function MobileToolbar() {
           size="icon-sm"
           className="h-9 w-9 flex-shrink-0 text-[#9ece6a]"
           data-command-id={addModel.id}
-          onClick={() => addModel.run({ surface: 'mobile', addModel: () => addModelInputRef.current?.click() })}
+          onClick={() => runSurfaceCommand(addModel, { surface: 'mobile', addModel: () => addModelInputRef.current?.click() })}
           disabled={loading}
           aria-label={mobileLabel(addModel)}
         >
@@ -273,7 +274,10 @@ export function MobileToolbar() {
             {t('shellChrome.mobileToolbar.export')}
           </DropdownMenuLabel>
           {exportRows.map((row) => (
-            <DropdownMenuItem key={row.id} data-export-row={row.id} onClick={row.action}>
+            <DropdownMenuItem key={row.id} data-export-row={row.id} onClick={() => {
+              if (!row.registryOwned) trackCommandExecution(row.id, 'mobile');
+              row.action();
+            }}>
               <row.icon className="h-4 w-4 mr-2" />
               {row.labelKey ? t(row.labelKey, row.labelKeyParams) : row.label}
             </DropdownMenuItem>

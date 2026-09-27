@@ -109,13 +109,23 @@ describe('RibbonToolbar with a registered locale (#4785)', () => {
     // Only a visitor from before the ribbon gets the notice (#5840).
     window.localStorage.setItem('ifc-lite:ribbon-notice-audience', 'returning');
     registerLocale('ribbon-notice', {
-      'ribbon.notice.keepClassic': 'Klassische Leiste behalten',
+      'ribbon.notice.message': 'Befehle stehen jetzt in der Menüleiste.',
       'ribbon.notice.dismissAriaLabel': 'Hinweis schließen',
     });
     setLocale('ribbon-notice');
     const container = render(<RibbonToolbar />);
     const buttons = [...container.querySelectorAll('button')];
-    assert.ok(buttons.some((button) => button.textContent === 'Klassische Leiste behalten'));
+    assert.ok((container.textContent ?? '').includes('Befehle stehen jetzt in der Menüleiste.'));
+    assert.ok(!buttons.some((button) => button.textContent === 'Klassische Leiste behalten'));
     assert.ok(container.querySelector('button[aria-label="Hinweis schließen"]'));
+  });
+
+  it('#5874 has no route back to the retired classic strip', () => {
+    const container = render(<RibbonToolbar />);
+    showTab(container, 'view');
+    const viewBand = container.querySelector('[role="tabpanel"]');
+    assert.ok(viewBand, 'the View band is mounted');
+    assert.ok([...viewBand.querySelectorAll('button')].some((button) => button.textContent?.includes('Settings')));
+    assert.ok(![...viewBand.querySelectorAll('button')].some((button) => button.textContent?.includes('Classic bar')));
   });
 });

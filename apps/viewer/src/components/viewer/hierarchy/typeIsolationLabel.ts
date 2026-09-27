@@ -5,6 +5,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { fromGlobalIdFromModels } from '@/store/globalId';
 import type { FederatedModel } from '@/store/types';
+import { effectiveRowType, overlayViewFor, type TreeOverlay } from './treeOverlay.js';
 
 /** The subset of `FederatedModel` this helper reads. */
 export type TypeIsolationModelMapLike = ReadonlyMap<
@@ -27,11 +28,16 @@ export type TypeIsolationModelMapLike = ReadonlyMap<
  * (single-model mode never hits this: `fromGlobalIdFromModels` already
  * degrades to `expressId === globalId` internally when there is exactly one
  * model or none).
+ *
+ * Classes are read through `overlay` (the session's mutation views), so an
+ * element authored this session labels as its own class rather than the
+ * parsed table's `'Unknown'`, and a retype shows its new class (#6233).
  */
 export function computeTypeIsolationLabel(
   isolatedEntities: ReadonlySet<number> | null,
   models: TypeIsolationModelMapLike,
   fallbackStore: IfcDataStore | null,
+  overlay?: TreeOverlay,
 ): string | null {
   if (!isolatedEntities || isolatedEntities.size === 0) return null;
 
@@ -41,7 +47,8 @@ export function computeTypeIsolationLabel(
     const loc = fromGlobalIdFromModels(models, id);
     if (!loc) continue;
     const store = models.get(loc.modelId)?.ifcDataStore ?? fallbackStore;
-    const type = store?.entities?.getTypeName(loc.expressId);
+    if (!store) continue;
+    const type = effectiveRowType(store, overlayViewFor(overlay, loc.modelId), loc.expressId);
     if (!type) continue;
     if (sampleType === undefined) {
       sampleType = type;

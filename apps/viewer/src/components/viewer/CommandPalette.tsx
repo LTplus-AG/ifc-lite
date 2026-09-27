@@ -19,8 +19,7 @@ import type { CommandContribution } from '@ifc-lite/extensions';
 import { getRecentFiles, getCachedFileNames } from '@/lib/recent-files';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
-import { trackUiEvent } from '@/lib/analytics';
-import { commandIdForAnalytics } from '@/lib/analytics-ui-events';
+import { trackCommandExecution } from './surface-command-run';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { buildCommandPaletteCommands, type RightPanel } from './commandPaletteCommands';
 import { shortcutLabel } from '@/lib/commands/shortcut-label';
@@ -163,7 +162,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const runCommand = useCallback((cmd: Command) => {
     onOpenChange(false);
     recordUsage(cmd.id);
-    trackUiEvent('command_executed', { command_id: commandIdForAnalytics(cmd.id), surface: 'palette' });
+    if (!cmd.registryOwned) {
+      trackCommandExecution(cmd.id, 'palette');
+    }
     // File-dialog actions must run while user activation is still live; deferring
     // them to a frame later voids it and Chrome silently ignores the dialog.
     if (cmd.immediate) {
@@ -233,6 +234,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                     // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
                     <button role="option"
                       key={`${group.category}:${cmd.id}`}
+                      data-command-id={cmd.registryOwned ? cmd.id : undefined}
                       data-index={flatIdx}
                       aria-selected={flatIdx === selectedIndex}
                       className={cn(

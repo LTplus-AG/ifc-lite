@@ -70,6 +70,12 @@ describe('Settings dialog (#5857)', () => {
     assert.equal(useViewerStore.getState().theme, 'dark');
   });
 
+  it('#5874 keeps General settings while retiring the toolbar-style choice', () => {
+    const dialog = mountAndOpen('general');
+    assert.ok(dialog.querySelector('#settings-theme'), 'General still has its theme control');
+    assert.equal(dialog.querySelector('#settings-toolbar'), null);
+  });
+
   it('Display → performance stats defaults off and toggles the persisted setting (#5868)', () => {
     assert.equal(useViewerStore.getState().showPerformanceStats, false);
     const dialog = mountAndOpen('display');

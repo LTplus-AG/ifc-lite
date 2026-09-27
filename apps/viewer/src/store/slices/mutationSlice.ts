@@ -48,7 +48,7 @@ import { toGlobalIdFromModels } from '../globalId.js';
 import { meshesForOwningModel } from '../owningModelMeshes.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { buildElementMesh } from './addElementMeshes.js';
-import { authoredElementMeshPayload, type AuthoredElement } from './authoredElement.js';
+import { authoredElementMeshPayloadOnStorey, type AuthoredElement } from './authoredElement.js';
 import { appendAuthoredMesh, authoredDataStore, syncAuthoredTreeEntry } from './authoredTreeEntry.js';
 import { ensureStoreyPlacement } from './storeyPlacement.js';
 
@@ -1004,7 +1004,7 @@ function recordAuthoredElementIn(
     type: element.kind,
     globalId,
     storeyElevation,
-    payload: authoredElementMeshPayload(element),
+    payload: authoredElementMeshPayloadOnStorey(element, dataStore, storeyExpressId, get().models.get(modelId)?.geometryResult?.coordinateInfo),
   });
   if (createdMesh) {
     appendAuthoredMesh(get(), modelId, createdMesh);

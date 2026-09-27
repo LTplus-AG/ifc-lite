@@ -8,11 +8,18 @@ import assert from 'node:assert/strict';
 import { resolve } from '@/i18n/registry';
 import { cleanup, render } from '@/test/render';
 import { surfaceCommand } from '../surface-commands';
-import { RibbonCommandLargeButton, RibbonCommandSmallButton, type RibbonCommandButtonProps } from './command-button';
+import type { RibbonCommandButtonProps } from './command-button';
+
+// The production-revert oracle must run the assertion even when it removes
+// the new wrapper module; a static import would fail before the test starts.
+const loadButtons = async () => import('./command-button.js').catch(() => null);
 
 afterEach(cleanup);
 
-it('uses the registry name, icon, and shortcut for ribbon commands (#5878)', () => {
+it('uses the registry name, icon, and shortcut for ribbon commands (#5878)', async () => {
+  const buttons = await loadButtons();
+  assert.ok(buttons, 'registry-backed ribbon buttons are available');
+  const { RibbonCommandLargeButton, RibbonCommandSmallButton } = buttons;
   const large = surfaceCommand('file:save-federation-setup', 'ribbon');
   const small = surfaceCommand('vis:toggle-iso', 'ribbon');
   render(<>
@@ -33,7 +40,10 @@ it('uses the registry name, icon, and shortcut for ribbon commands (#5878)', () 
   assert.equal(document.getElementById(descriptionId)?.textContent, 'A longer explanation');
 });
 
-it('rejects a command not registered for the ribbon (#5878)', () => {
+it('rejects a command not registered for the ribbon (#5878)', async () => {
+  const buttons = await loadButtons();
+  assert.ok(buttons);
+  const { RibbonCommandLargeButton } = buttons;
   assert.throws(() => render(<RibbonCommandLargeButton commandId="panel:tree" onClick={() => {}} />),
     /not registered for ribbon/);
 });

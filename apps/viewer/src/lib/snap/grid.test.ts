@@ -33,12 +33,22 @@ describe('UniformGridIndex', () => {
     assert.equal(idx.size, 2000);
     for (let k = 0; k < 200; k++) {
       const c: Vec2 = [r() * 70 - 35, r() * 70 - 35];
-      const radius = k % 10 === 0 ? 500 : r() * 3; // every tenth query takes the bucket-scan path
+      const radius = k % 10 === 0 ? 25 : r() * 3; // every tenth query takes the bucket-scan path (and still has points beyond it)
       const got: number[] = [];
       idx.query(c, radius, (i) => got.push(i));
       const want = pts.flatMap((p, i) => (Math.hypot(p[0] - c[0], p[1] - c[1]) <= radius ? [i] : []));
       assert.deepEqual(got.sort((a, b) => a - b), want);
     }
+  });
+
+  it('terminates for cell indices beyond 2^53 and for a non-finite centre', () => {
+    const idx = new UniformGridIndex<string>(1);
+    idx.insert([2 ** 53, 0], 'far');
+    const got: string[] = [];
+    idx.query([2 ** 53, 0], 0, (item) => got.push(item));
+    assert.deepEqual(got, ['far']);
+    idx.query([Infinity, 0], 1, (item) => got.push(item));
+    assert.deepEqual(got, ['far']);
   });
 
   it('clear empties it; a bad cell size is a RangeError', () => {

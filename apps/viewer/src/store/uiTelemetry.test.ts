@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { posthog } from '@/lib/analytics';
 import { bottomPanelFlags } from '@/lib/panels/bottom-panels';
 import { useViewerStore } from './index.js';
-import { goHomeFromStore, resetVisibilityForHomeFromStore } from './homeView.js';
+import { goHomeFromStore, showAllFromStore } from './homeView.js';
 
 const state = () => useViewerStore.getState();
 let captured: unknown[][] = [];
@@ -91,12 +91,11 @@ describe('tool events (#5618)', () => {
 });
 
 describe('view_reset (#5618)', () => {
-  it('names the trigger, including Home', () => {
-    resetVisibilityForHomeFromStore('a');
+  it('reports Show all while camera Home leaves visibility telemetry alone (#5855)', () => {
+    showAllFromStore('a');
     goHomeFromStore();
     assert.deepEqual(captured, [
       ['view_reset', { trigger: 'a' }],
-      ['view_reset', { trigger: 'home' }],
     ]);
   });
 });

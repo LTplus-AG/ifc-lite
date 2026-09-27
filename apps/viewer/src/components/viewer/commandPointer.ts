@@ -20,14 +20,14 @@
 
 import { MODELING_SNAP_PROFILE } from '@/lib/snap/rank';
 import { solveSnap } from '@/lib/snap/solve';
-import type { SnapProfile, SnapResult, SnapSource, Vec2, Vec3 } from '@/lib/snap/types';
+import type { SnapProfile, SnapResult, SnapSource, Vec2 } from '@/lib/snap/types';
 import {
   commandPointerDown,
   commandPointerMove,
   getCommandRuntime,
   type CommandRuntimeState,
 } from '@/lib/commands/modeling/runtime';
-import type { ModelingCommand, Workplane } from '@/lib/commands/modeling/types';
+import type { ModelingCommand, Vec3, Workplane } from '@/lib/commands/modeling/types';
 import { commandGhostId } from '@/lib/commands/modeling/ghost';
 import { useViewerStore } from '@/store';
 import { meshSnapSource } from './commandSnapSource.js';

@@ -38,6 +38,7 @@ import { ELEMENT_OPTIONS, SPACE_PREDEFINED_TYPES } from './add-element-options';
 import { formatWallSkipReasons } from './add-element-wall-skip-i18n';
 import { effectiveStoreyIds } from './add-element-storeys';
 import { DropGuidance } from './add-element-guidance';
+import { NumberField } from './add-element-number-field';
 
 interface StoreyOption {
   expressId: number;
@@ -407,13 +408,6 @@ function ModeChip({ selected, onClick, children }: ModeChipProps) {
   );
 }
 
-interface NumberFieldProps {
-  label: string;
-  value: number;
-  min: number;
-  onChange: (v: number) => void;
-}
-
 interface AutoSpacesSectionProps {
   modelId: string | null;
   storeyId: number | null;
@@ -437,8 +431,6 @@ function AutoSpacesSection({ modelId, storeyId, commitAllowed, editReason }: Aut
 
   const ready = modelId !== null && storeyId !== null;
 
-  const [debugLogging, setDebugLogging] = useState(false);
-
   const runPreview = () => {
     if (!ready || busy) return;
     setBusy(true);
@@ -450,7 +442,6 @@ function AutoSpacesSection({ modelId, storeyId, commitAllowed, editReason }: Aut
         namePattern: params.NamePattern,
         predefinedType: params.PredefinedType,
         dryRun: true,
-        debug: debugLogging,
       });
       if ('error' in result) {
         toast.error(result.error);
@@ -495,7 +486,6 @@ function AutoSpacesSection({ modelId, storeyId, commitAllowed, editReason }: Aut
         height: params.Height,
         namePattern: params.NamePattern,
         predefinedType: params.PredefinedType,
-        debug: debugLogging,
       });
       if ('error' in result) {
         toast.error(result.error);
@@ -595,16 +585,6 @@ function AutoSpacesSection({ modelId, storeyId, commitAllowed, editReason }: Aut
         </Button>
       </div>
 
-      <label className="flex items-center gap-1.5 text-2xs font-mono text-zinc-500 dark:text-zinc-400 select-none cursor-pointer">
-        <input
-          type="checkbox"
-          checked={debugLogging}
-          onChange={(e) => setDebugLogging(e.target.checked)}
-          className="h-3 w-3 accent-emerald-600"
-        />
-        {t('addElement.auto.verbose')}
-      </label>
-
       {preview && (
         <div className="rounded-sm border border-emerald-200 dark:border-emerald-900 bg-emerald-50/60 dark:bg-emerald-950/20 px-2 py-1.5 text-2xs font-mono text-emerald-800 dark:text-emerald-300 leading-snug">
           <div>
@@ -651,28 +631,5 @@ function AutoSpacesSection({ modelId, storeyId, commitAllowed, editReason }: Aut
         </div>
       )}
     </section>
-  );
-}
-
-function NumberField({ label, value, min, onChange }: NumberFieldProps) {
-  const id = `add-elem-${label.toLowerCase()}`;
-  return (
-    <div className="space-y-1">
-      <Label htmlFor={id} className="text-2xs font-mono text-zinc-500 dark:text-zinc-400">
-        {label}
-      </Label>
-      <Input
-        id={id}
-        type="number"
-        step={0.05}
-        min={min}
-        value={Number.isFinite(value) ? value : ''}
-        onChange={(e) => {
-          const next = Number(e.target.value);
-          if (Number.isFinite(next) && next >= min) onChange(next);
-        }}
-        className="h-8 font-mono text-xs"
-      />
-    </div>
   );
 }

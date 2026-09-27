@@ -21,7 +21,7 @@
  */
 
 import { useViewerStore } from '@/store';
-import type { Vec3 } from '@/lib/snap/types';
+import type { Vec3 } from '@/lib/commands/modeling/types';
 import type { SplitGesture } from '@/lib/commands/modeling/commands/element-split';
 import { formatSplitHoverLabel } from './formatDistance';
 import { WorldLabel, useProjectorTick } from '../../viewport-ui/scene';

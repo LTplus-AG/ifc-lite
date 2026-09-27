@@ -13,7 +13,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
-import type { Vec3 } from '@/lib/snap/types';
+import type { Vec3 } from './types.js';
 import { buildStoreyWorkplane, composeStoreyWorkplane, isWorkplane } from './workplane.js';
 import type { StoreyWorkplaneFrame } from './workplane.js';
 

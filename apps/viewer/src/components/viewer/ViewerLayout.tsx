@@ -259,7 +259,7 @@ export function ViewerLayout() {
       <div className="flex flex-col h-screen h-[100dvh] w-screen overflow-hidden bg-background text-foreground">
         <ExtensionKeyboardBindings />
         {safeMode && (
-          <div className="flex items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-700 dark:text-amber-300">
+          <div className="flex items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1 text-2xs text-amber-700 dark:text-amber-300">
             <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
             <span>
               {styleInterpolatedValues(t, 'shellChrome.layout.safeModeNotice', [

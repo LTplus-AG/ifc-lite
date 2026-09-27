@@ -26,7 +26,7 @@ import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
-import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { goHomeFromStore, showAllFromStore } from '@/store/homeView';
 import { hideSelectionFromStore } from '@/store/hideSelection';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
@@ -307,7 +307,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
 
 
   const handleShowAll = useCallback(() => {
-    resetVisibilityForHomeFromStore('show_all');
+    showAllFromStore('show_all');
   }, []);
 
   const handleIsolate = useCallback(() => {
@@ -778,9 +778,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         occupy so the spatial location is familiar to muscle memory.
       */}
       {selectionCount > 0 && (
-        <div
+        <fieldset
           className="flex items-center gap-0.5 pl-1.5 pr-0.5 rounded-md border border-primary/30 bg-primary/5 transition-opacity duration-150"
-          role="group"
           aria-label={t('mainToolbar.selectionActionsAriaLabel', { count: selectionCount })}
         >
           <span
@@ -797,7 +796,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             onClick={() => cameraCallbacks.frameSelection?.()}
             shortcut="camera.frameSelection"
           />
-        </div>
+        </fieldset>
       )}
 
       <ActionButton icon={Eye} label={t(ACTION_NAME_KEYS.showAll)} onClick={handleShowAll} shortcut="visibility.showAll" />

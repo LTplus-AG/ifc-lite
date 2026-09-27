@@ -67,7 +67,7 @@ describe('shared palette and ribbon commands (#5870)', () => {
       new Set(SURFACE_COMMANDS.filter((command) => command.surfaces.includes('palette')
         && command.enabled({ canEditInSession: true, cesiumAvailable: false })).map((command) => command.id)),
       'every palette-declared command is available there');
-    assert.deepEqual(palette.filter((command) => command.category === 'Visibility').map((command) => command.id),
+    assert.deepEqual(palette.filter((command) => command.id.startsWith('vis:')).map((command) => command.id),
       [...VISIBILITY_IDS], 'the migrated visibility family keeps its browse order');
     for (const row of palette) {
       const definition = SURFACE_COMMANDS.find((command) => command.id === row.id);
@@ -77,6 +77,14 @@ describe('shared palette and ribbon commands (#5870)', () => {
     }
     assert.equal(palette.find((command) => command.id === 'file:open-federation-setup')?.immediate, true,
       'opening the file picker retains browser user activation');
+    const openFile = palette.find((command) => command.id === 'file:open');
+    assert.ok(openFile);
+    assert.equal(openFile.immediate, true, 'Open File must keep browser user activation');
+    let openEvents = 0;
+    const onOpen = () => { openEvents += 1; };
+    window.addEventListener('ifc-lite:open-files', onOpen);
+    try { openFile.action(); } finally { window.removeEventListener('ifc-lite:open-files', onOpen); }
+    assert.equal(openEvents, 1, 'the shared palette row reaches the real file picker event');
   });
 
   it('runs the same federation setup and tag actions from ribbon and palette', async () => {

@@ -28,7 +28,7 @@ import { GeometryEditCard } from './GeometryEditCard.js';
 
 const STRINGS: Record<string, string> = {
   'geometryExport.editCard.header': 'Geometry',
-  'geometryExport.editCard.positionSectionLabel': 'Storey-local position (IFC Z-up)',
+  'geometryExport.editCard.positionSectionLabel': 'Storey-local position in m (IFC Z-up)',
   'geometryExport.editCard.nudgeStepAriaLabel': 'Nudge step in metres',
   'geometryExport.editCard.nonStandardPlacementHint':
     "Entity has a non-standard placement (mapped representation or 2D-only). Move isn't supported directly — Duplicate and Delete still work.",

@@ -17,11 +17,11 @@
 import { useViewerStore } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { dist } from '@/lib/snap/constraints';
-import type { Vec2, Vec3 } from '@/lib/snap/types';
+import type { Vec2 } from '@/lib/snap/types';
 import { commandGhostId, wallGhostMesh } from '../ghost.js';
 import { commitCommand, getCommandRuntime, updateCommandGesture } from '../runtime.js';
 import { buildStoreyWorkplane, isWorkplane } from '../workplane.js';
-import type { CommandContext, ModelingCommand, Workplane } from '../types.js';
+import type { CommandContext, ModelingCommand, Vec3, Workplane } from '../types.js';
 
 export type WallEnd = 'start' | 'end';
 
@@ -94,9 +94,12 @@ export const WALL_MOVE_ENDPOINT: ModelingCommand<WallEndpointGesture> = {
   commit(g, tx) {
     const next = ends(g);
     if (!g.target || !next) throw new Error('No wall end to move');
-    const result = tx.store.resizeWall(g.target.modelId, g.target.expressId, next.start, next.end);
+    const { modelId, expressId } = g.target;
+    // The transaction's batch id: undo / redo rebuild the mesh by it.
+    const result = tx.store.resizeWall(modelId, expressId, next.start, next.end, tx.batchId);
     if (!result.ok) throw new Error(`Couldn't resize the wall: ${result.reason}`);
-    return { created: [], deleted: [], remesh: [g.target.expressId], select: [g.target.expressId] };
+    tx.store.refreshWallMesh(modelId, expressId);
+    return { created: [], deleted: [], remesh: [expressId], select: [expressId] };
   },
   afterCommit: () => ({ exit: true }),
   cancel: () => 'exit',

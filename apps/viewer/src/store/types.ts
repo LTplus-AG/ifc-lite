@@ -421,12 +421,9 @@ export interface CameraCallbacks {
    */
   frameBuildingExtent?: () => void;
   /**
-   * Replace one authoring channel's "ghost" overlay meshes in the 3D scene
-   * (Space Sketch draft rooms, a modeling command's preview; see
-   * `useAuthoringOverlay.ts`). These go straight to the renderer scene (NOT
-   * through geometryResult), so frequent per-edit updates can't trip the
-   * streaming reclassifier (which would reset the camera / un-pick newly
-   * created spaces). Pass [] (or use clear) to remove the channel's meshes.
+   * Replace one authoring channel's ghost meshes (Space Sketch rooms, a command
+   * preview; `useAuthoringOverlay.ts`). They bypass geometryResult so per-edit
+   * updates can't trip the streaming reclassifier. [] (or clear) removes them.
    */
   setAuthoringOverlayMeshes?: (channel: AuthoringOverlayChannel, meshes: MeshData[]) => void;
   /** Remove one authoring channel's overlay ghost meshes from the scene. */
@@ -478,7 +475,7 @@ export interface CameraCallbacks {
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
 import type { ModelLoadReportFields } from '../lib/loadReport'; // #3927 load report
-import type { AuthoringOverlayChannel } from '../components/viewer/useAuthoringOverlay';
+export type AuthoringOverlayChannel = 'spaceSketch' | 'command'; // authoring ghost-mesh channels (#6232)
 /**
  * Compound identifier for entities across multiple models.
  *

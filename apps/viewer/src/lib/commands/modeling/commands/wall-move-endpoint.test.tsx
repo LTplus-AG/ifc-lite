@@ -21,10 +21,10 @@ import { cleanup, press, render } from '@/test/render.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { WallEndpointOverlay } from '@/components/viewer/tools/WallEndpointOverlay';
 import type { PlacementState } from '@/lib/model-placement/state';
-import type { SnapResult, Vec3 } from '@/lib/snap/types';
+import type { SnapResult } from '@/lib/snap/types';
 import '../builtin.js';
 import { commandPointerMove, getCommandRuntime } from '../runtime.js';
-import type { CommandContext } from '../types.js';
+import type { CommandContext, Vec3 } from '../types.js';
 import { WALL_MOVE_ENDPOINT, beginWallEndpointDrag, type WallEndpointGesture } from './wall-move-endpoint.js';
 
 let wallId = 0;

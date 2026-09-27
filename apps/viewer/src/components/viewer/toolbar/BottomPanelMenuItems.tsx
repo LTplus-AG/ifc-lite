@@ -27,7 +27,7 @@ export function BottomPanelMenuItems({ active, onToggle }: {
 }) {
   const { t } = useTranslation();
   return <>
-    <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">{t('workspacePanels.workspaceLabel')}</DropdownMenuLabel>
+    <DropdownMenuLabel className="text-2xs uppercase tracking-wide text-muted-foreground">{t('workspacePanels.workspaceLabel')}</DropdownMenuLabel>
     {ITEMS.map(({ id, Icon }) => (
       <DropdownMenuCheckboxItem key={id} checked={active.has(id)} onCheckedChange={() => onToggle(id)}>
         <Icon className="h-4 w-4 mr-2" />{t(panelTitleKey(id))}

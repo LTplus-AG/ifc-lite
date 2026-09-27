@@ -12,8 +12,8 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import type { ViewerState } from '@/store';
-import type { Vec2, Vec3 } from '@/lib/snap/types';
-import type { Workplane } from './types.js';
+import type { Vec2 } from '@/lib/snap/types';
+import type { Vec3, Workplane } from './types.js';
 
 const GHOST_COLOR: [number, number, number, number] = [0.25, 0.6, 1, 0.45];
 /**

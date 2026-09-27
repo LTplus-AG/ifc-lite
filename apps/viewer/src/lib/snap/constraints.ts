@@ -26,11 +26,11 @@ const DEG = Math.PI / 180;
 
 export const sub = (a: Vec2, b: Vec2): Vec2 => [a[0] - b[0], a[1] - b[1]];
 export const dot = (a: Vec2, b: Vec2): number => a[0] * b[0] + a[1] * b[1];
-export const cross = (a: Vec2, b: Vec2): number => a[0] * b[1] - a[1] * b[0];
+const cross = (a: Vec2, b: Vec2): number => a[0] * b[1] - a[1] * b[0];
 export const dist = (a: Vec2, b: Vec2): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
 /** Unit direction at `deg`, exact for multiples of 90°. */
-export function unitAt(deg: number): Vec2 {
+function unitAt(deg: number): Vec2 {
   const r = ((deg % 360) + 360) % 360;
   if (r === 0) return [1, 0];
   if (r === 90) return [0, 1];
@@ -39,13 +39,19 @@ export function unitAt(deg: number): Vec2 {
   return [Math.cos(r * DEG), Math.sin(r * DEG)];
 }
 
-/** Direction from `anchor` towards `cursor`, quantised to `stepDeg`. 90° uses the Space Sketch |dx| ≥ |dy| rule. */
+/**
+ * Direction from `anchor` towards `cursor`, quantised to `stepDeg`. 90° uses the
+ * Space Sketch |dx| ≥ |dy| rule, and so does any step that cannot quantise
+ * (non-finite, non-positive, or so small that deg / step overflows).
+ */
 function quantisedDir(cursor: Vec2, anchor: Vec2, stepDeg: number): Vec2 {
   const dx = cursor[0] - anchor[0];
   const dy = cursor[1] - anchor[1];
-  if (stepDeg === 90) return Math.abs(dx) >= Math.abs(dy) ? [1, 0] : [0, 1];
-  const deg = Math.atan2(dy, dx) / DEG;
-  return unitAt(Math.round(deg / stepDeg) * stepDeg);
+  if (stepDeg !== 90 && Number.isFinite(stepDeg) && stepDeg > 0) {
+    const snapped = Math.round(Math.atan2(dy, dx) / DEG / stepDeg) * stepDeg;
+    if (Number.isFinite(snapped)) return unitAt(snapped);
+  }
+  return Math.abs(dx) >= Math.abs(dy) ? [1, 0] : [0, 1];
 }
 
 /** The single locus the query's locks constrain the result to. */
@@ -63,7 +69,7 @@ export function buildLocus(q: SnapQuery, p: SnapProfile): Locus {
     dir = axis === 'u' ? [1, 0] : [0, 1];
   } else if (q.modifiers.shift) {
     const step = p.angleStepDeg ?? 90;
-    dir = quantisedDir(q.cursor, a, step > 0 ? step : 90);
+    dir = quantisedDir(q.cursor, a, step);
   }
   if (dir && hasLength) {
     // A linear lock is two-sided: take the side the cursor is on.
@@ -166,7 +172,11 @@ function linearCircleParams(l: Linear, center: Vec2, radius: number): number[] {
 
 const at = (l: Linear, t: number): Vec2 => [l.o[0] + t * l.d[0], l.o[1] + t * l.d[1]];
 
-/** All points where the locus meets a guide. Points are computed on the locus so they stay on it. */
+/**
+ * All points where the locus meets a guide. Points are computed on the locus so they stay on it.
+ * Circle × circle is deliberately unsupported (returns []): circle guides only draw length
+ * locks, and no source or inference emits a circular candidate guide.
+ */
 export function intersectLocusWithGuide(l: Locus, g: Guide): Vec2[] {
   const gl = toLinear(g);
   if (l.kind === 'line' || l.kind === 'ray') {

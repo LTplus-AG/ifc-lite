@@ -30,9 +30,8 @@ import { effectiveStoreyElevation } from '@/components/viewer/add-element-storey
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import { modelPointToWorkspacePoint, workspacePointToModelFrame, type PointPlacement } from '@/lib/model-placement/rotation';
 import { fromRenderTranslation, toRenderTranslation } from '@/lib/model-placement/translation';
-import type { Vec3 } from '@/lib/snap/types';
 import { invertAffine, applyAffine, sameCrsAlignment, type Affine } from './workplane-alignment.js';
-import type { Ray, Workplane, WorkplaneSpec } from './types.js';
+import type { Ray, Vec3, Workplane, WorkplaneSpec } from './types.js';
 
 export interface StoreyWorkplaneFrame {
   modelId: string;

@@ -3,20 +3,20 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * #5869: Home / Show all, read straight off the store at 1 and 3 federated
+ * #5869: Show all, read straight off the store at 1 and 3 federated
  * models. Each mechanism that keeps geometry off screen is switched on alone
  * (on the LAST model, so a reset that only looks at the first model is caught),
- * then Home runs, and the raw channel must be off unless the reset deliberately
- * keeps it. On main, Home left a hidden federated model hidden.
+ * then Show all runs, and the raw channel must be off unless the reset deliberately
+ * keeps it. On main, Show all left a hidden federated model hidden.
  *
  * Only store APIs that exist without the reason registry are used here, so the
- * behaviour is observed through `resetVisibilityForHomeFromStore` itself.
+ * behaviour is observed through `showAllFromStore` itself.
  */
 
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore, type ViewerState } from '@/store';
-import { resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { showAllFromStore } from '@/store/homeView';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 
 const OFFSET = 1000;
@@ -26,7 +26,7 @@ interface Case {
   activate: (lastModelOffset: number) => Partial<ViewerState>;
   /** true when the mechanism still hides something. */
   active: (state: ViewerState) => boolean;
-  /** Home keeps it on purpose (a preference or host config, not a view filter). */
+  /** Show all keeps it on purpose (a preference or host config, not a view filter). */
   kept?: boolean;
 }
 
@@ -34,7 +34,7 @@ const CASES: Case[] = [
   { name: 'manual hide', activate: (o) => ({ hiddenEntities: new Set([o + 1]) }), active: (s) => s.hiddenEntities.size > 0 },
   { name: 'isolation', activate: (o) => ({ isolatedEntities: new Set([o + 2]) }), active: (s) => s.isolatedEntities !== null },
   {
-    // A lens rule-row click records its claim beside the channel; Home must drop
+    // A lens rule-row click records its claim beside the channel; Show all must drop
     // both, or the row still reads isolated and swallows the next click.
     name: 'lens rule isolation',
     activate: (o) => ({ isolatedEntities: new Set([o + 7]), lensRuleIsolation: { ruleId: 'walls', entityIds: [o + 7] } }),
@@ -84,16 +84,16 @@ function seedModels(count: number): number {
 }
 
 for (const modelCount of [1, 3]) {
-  describe(`Home at ${modelCount} federated model(s) (#5869)`, () => {
+  describe(`Show all at ${modelCount} federated model(s) (#5869)`, () => {
     for (const c of CASES) {
       it(`${c.kept ? 'keeps' : 'clears'} ${c.name}`, () => {
         const lastOffset = seedModels(modelCount);
         useViewerStore.setState(c.activate(lastOffset));
         assert.ok(c.active(useViewerStore.getState()), `precondition: ${c.name} is active`);
 
-        resetVisibilityForHomeFromStore('home');
+        showAllFromStore('show_all');
         assert.equal(c.active(useViewerStore.getState()), c.kept === true,
-          c.kept ? `Home must keep ${c.name}` : `Home must clear ${c.name}`);
+          c.kept ? `Show all must keep ${c.name}` : `Show all must clear ${c.name}`);
       });
     }
   });

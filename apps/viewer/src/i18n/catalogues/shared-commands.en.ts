@@ -79,7 +79,7 @@ export const sharedCommandsEn = {
   'cameraCommands.group.rotate': 'Rotate',
 
   'cameraCommands.home.label': 'Isometric',
-  'cameraCommands.home.tooltip': 'Home (isometric + reset visibility)',
+  'cameraCommands.home.tooltip': 'Home (isometric camera + fit)',
   'cameraCommands.zoomIn.label': 'Zoom in',
   'cameraCommands.zoomIn.tooltip': 'Zoom in',
   'cameraCommands.zoomOut.label': 'Zoom out',

@@ -21,7 +21,7 @@ import { extractWallSegmentsForStorey, storeyPlanFrame } from '@ifc-lite/create'
 import { effectiveStoreyElevation } from '@/components/viewer/add-element-storeys';
 import { ZERO_ROTATION } from '@/lib/model-placement/rotation';
 import { ZERO_TRANSLATION } from '@/lib/model-placement/translation';
-import type { Vec3 } from '@/lib/snap/types';
+import type { Vec3 } from './types.js';
 import { composeStoreyWorkplane } from './workplane.js';
 
 const WASM = new URL('../../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);

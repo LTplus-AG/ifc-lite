@@ -8,10 +8,16 @@
  * it without importing the command (which imports the scene).
  */
 
-import { unitAt } from '@/lib/snap/constraints';
 import type { Vec2 } from '@/lib/snap/types';
 
 export const MIN_WALL_LENGTH = 0.01;
+
+/** Unit direction at `deg` (0 = +x, CCW), exact at multiples of 90° like the solver's angle lock. */
+function unitAt(deg: number): Vec2 {
+  const r = ((deg % 360) + 360) % 360;
+  const exact: Record<number, Vec2> = { 0: [1, 0], 90: [0, 1], 180: [-1, 0], 270: [0, -1] };
+  return exact[r] ?? [Math.cos((r * Math.PI) / 180), Math.sin((r * Math.PI) / 180)];
+}
 
 export interface WallPlaceGesture {
   /** Placed points, oldest first; the last one is the anchor of the next wall. */

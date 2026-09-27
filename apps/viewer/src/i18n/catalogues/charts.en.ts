@@ -25,7 +25,7 @@ import type { TranslationValue } from '../types';
  * data tables — none of these are hardcoded JSX text or a policed attribute
  * the `check-i18n-literals` gate flags (they are read through a variable, not
  * a literal, at their render site) — plus `DashboardMenu.tsx`'s
- * `window.prompt`/toast copy and `ReportExportDialog.tsx`'s toast/error
+ * `DashboardMenu.tsx`'s toast copy and `ReportExportDialog.tsx`'s toast/error
  * copy and its `FIELDS` title-block label table, for the same reason.
  */
 export const chartsEn = {
@@ -90,7 +90,6 @@ export const chartsEn = {
   'chartsPanel.clearSliceTitle': 'Clear the chart selection and show the whole scope again',
   'chartsPanel.clearSliceButton': 'Clear slice ({count})',
   'chartsPanel.addChartButton': 'Add chart',
-  'chartsPanel.closeAriaLabel': 'Close charts',
   'chartsPanel.loadModelEmptyState': 'Load a model to chart it.',
   'chartsPanel.noChartsEmptyState': 'No charts yet.',
   'chartsPanel.addChartEmptyStateButton': 'Add a chart',
@@ -99,6 +98,7 @@ export const chartsEn = {
   'dashboardMenu.actionsAriaLabel': 'Dashboard actions',
   'dashboardMenu.actionsTitle': 'Rename, duplicate, delete, export or import a dashboard',
   'dashboardMenu.renameItem': 'Rename',
+  'dashboardMenu.namePrompt': 'Dashboard name',
   'dashboardMenu.duplicateItem': 'Duplicate',
   'dashboardMenu.deleteItem': 'Delete',
   'dashboardMenu.exportFileItem': 'Export file…',

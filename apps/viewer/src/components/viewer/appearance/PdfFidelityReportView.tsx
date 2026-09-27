@@ -70,12 +70,12 @@ function OmissionRow({ entry, userUnit }: { entry: PdfOmissionSummary; userUnit:
 export function PdfFidelityReportView({ report, userUnit }: { report: PdfFidelityReport; userUnit: number }) {
   const { t, locale } = useTranslation();
   if (report.rasterOnly) {
-    return <p role="alert" className="text-[11px] text-destructive">{t('appearance.pdfFidelity.rasterOnlyNotice')}</p>;
+    return <p role="alert" className="text-2xs text-destructive">{t('appearance.pdfFidelity.rasterOnlyNotice')}</p>;
   }
   if (report.exact) {
-    return <p role="status" className="text-[11px] text-green-700 dark:text-green-400">{t('appearance.pdfFidelity.exactSummary', {
+    return <output className="block text-2xs text-green-700 dark:text-green-400">{t('appearance.pdfFidelity.exactSummary', {
       count: report.convertiblePaths, pathCount: formatLocaleNumber(locale, report.convertiblePaths),
-    })}</p>;
+    })}</output>;
   }
   const visible = report.summary.filter(entry => entry.visibleCount > 0);
   const invisible = report.summary.reduce((count, entry) => count + entry.count - entry.visibleCount, 0);
@@ -93,7 +93,7 @@ export function PdfFidelityReportView({ report, userUnit }: { report: PdfFidelit
         omissionCount: formatLocaleNumber('en', omissions),
         pathCount: formatLocaleNumber('en', report.convertiblePaths),
       });
-  return <div role="status" className="space-y-1 text-[11px]">
+  return <div aria-live="polite" aria-atomic="true" className="space-y-1 text-2xs">
     <p className="text-amber-700 dark:text-amber-400">{summary}</p>
     <ul className="list-disc pl-4" aria-label={t('appearance.pdfFidelity.omissionsAriaLabel')}>{visible.map(entry => <OmissionRow key={entry.kind} entry={entry} userUnit={userUnit} />)}</ul>
     {invisible > 0 && <p className="text-muted-foreground">{t('appearance.pdfFidelity.invisibleItemsNote', {

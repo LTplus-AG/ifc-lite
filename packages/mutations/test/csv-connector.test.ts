@@ -1243,3 +1243,76 @@ describe('CsvConnector.match: overlay-created entities are candidates (#5198, #5
     expect(view.getPropertyValue(created, 'Pset_WallCommon', 'FireRating')).toBe('EI60');
   });
 });
+
+/**
+ * #5958: `generateMutations` used to collect its mutations in a local array
+ * returned only at the end, while writing each one to the view as it went.
+ * A transform (or `setProperty`) that threw partway left the earlier writes
+ * in the view but out of `stats.mutations`, so the host could not record
+ * them for undo.
+ */
+describe('CsvConnector: a mid-import throw keeps the applied writes (#5958)', () => {
+  const rows = [1, 2, 3].map((n) => ({ expressId: n, globalId: `guid-${n}`, name: `Wall ${n}` }));
+  const content = 'GlobalId,Code\nguid-1,A\nguid-2,BOOM\nguid-3,C';
+  const mapping: DataMapping = {
+    matchStrategy: { type: 'globalId', column: 'GlobalId' },
+    propertyMappings: [{
+      sourceColumn: 'Code',
+      targetPset: 'Pset_Test',
+      targetProperty: 'Code',
+      valueType: PropertyValueType.Label,
+      transform: (value) => {
+        if (value === 'BOOM') throw new Error('transform failed');
+        return value;
+      },
+    }],
+  };
+
+  it("['import'] reports every write that reached the view", () => {
+    const { connector, view } = makeConnector(rows);
+    const stats = connector['import'](content, mapping);
+
+    expect(stats.errors).toEqual(['transform failed']);
+    expect(view.getPropertyValue(1, 'Pset_Test', 'Code')).toBe('A');
+    expect(stats.mutations.map((m) => m.entityId)).toEqual([1]);
+    expect(stats.mutationsCreated).toBe(1);
+  });
+
+  it('importAsync reports them and hands each batch to onApplied, the failing one included', async () => {
+    const { connector, view } = makeConnector(rows);
+    const applied: number[][] = [];
+    const stats = await connector.importAsync(content, mapping, () => {}, {
+      batchSize: 1,
+      onApplied: (mutations) => { applied.push(mutations.map((m) => m.entityId)); },
+    });
+
+    expect(stats.errors).toEqual(['transform failed']);
+    expect(view.getPropertyValue(1, 'Pset_Test', 'Code')).toBe('A');
+    expect(view.getPropertyValue(3, 'Pset_Test', 'Code')).toBeNull();
+    expect(stats.mutations.map((m) => m.entityId)).toEqual([1]);
+    expect(stats.mutationsCreated).toBe(1);
+    expect(applied).toEqual([[1]]);
+  });
+
+  it('a throwing onApplied is reported and does not hide the import error', async () => {
+    const { connector } = makeConnector(rows);
+    const stats = await connector.importAsync(content, mapping, () => {}, {
+      batchSize: 10,
+      onApplied: () => { throw new Error('recorder failed'); },
+    });
+    expect(stats.errors).toEqual(['onApplied: recorder failed', 'transform failed']);
+    expect(stats.mutations.map((m) => m.entityId)).toEqual([1]);
+  });
+
+  it('a partial batch before the throw still reaches onApplied', async () => {
+    const { connector } = makeConnector(rows);
+    const applied: number[][] = [];
+    const stats = await connector.importAsync(content, mapping, () => {}, {
+      batchSize: 10,
+      onApplied: (mutations) => { applied.push(mutations.map((m) => m.entityId)); },
+    });
+
+    expect(stats.mutations.map((m) => m.entityId)).toEqual([1]);
+    expect(applied).toEqual([[1]]);
+  });
+});

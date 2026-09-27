@@ -28,8 +28,9 @@ import type { TranslationValue } from '../types';
 export const comparePanelEn = {
   // ComparePanel
   'comparePanel.panel.title': 'Compare models',
-  'comparePanel.panel.clearResultsTitle': 'Clear results',
-  'comparePanel.panel.closeTitle': 'Close',
+  'comparePanel.panel.rerunTitle': 'Re-run the comparison',
+  'comparePanel.panel.comparing': 'Comparing models…',
+  'comparePanel.panel.needTwoModels': 'Two models needed',
   'comparePanel.panel.loadSecondModel':
     'Load a second model to compare. Open two IFC files (federation), then pick version A and version B here.',
   'comparePanel.panel.backToChangesTitle': 'Back to changes',
@@ -70,6 +71,10 @@ export const comparePanelEn = {
 
   // CompareExportBar
   'comparePanel.exportBar.downloadReportLabel': 'Download report',
+  'comparePanel.exportBar.formatCsv': 'CSV',
+  'comparePanel.exportBar.formatJson': 'JSON',
+  'comparePanel.exportBar.reportCsvTitle': 'Download the change report as CSV',
+  'comparePanel.exportBar.reportJsonTitle': 'Download the change report as JSON',
   'comparePanel.exportBar.identityTooltip':
     'Identity map: the pairs you accepted. Lineage: identity, splits, merges and accepted replacements.',
   'comparePanel.exportBar.identityLabel': 'Identity',
@@ -107,14 +112,12 @@ export const comparePanelEn = {
   'comparePanel.runControls.matchByContentLabel': 'Match re-exported elements by content',
   'comparePanel.runControls.matchByContentHint':
     'Re-pairs elements whose GlobalId changed but whose content did not.',
-  'comparePanel.runControls.comparing': 'Comparing…',
   'comparePanel.runControls.runComparison': 'Run comparison',
+  'comparePanel.runControls.cancel': 'Cancel comparison',
   'comparePanel.runControls.geometryUnavailablePlacementOnly':
     'Neither model has mesh geometry fingerprints (loaded outside the WASM mesh path), so SHAPE changes can’t be detected. Placement-driven moves and data changes are still compared.',
   'comparePanel.runControls.geometryUnavailableFull':
     'One model has no geometry fingerprints (loaded outside the WASM mesh path), so geometry changes can’t be detected. Data changes are still accurate — switch to the Data scope for reliable results.',
-  'comparePanel.runControls.unsavedEditsWarning':
-    'A or B has unsaved viewer edits. Compare reads the file as loaded, not those edits — export or undo first for an accurate comparison.',
 
   // CompareSuggestions
   'comparePanel.suggestions.classChangedTitle': 'The IFC class changed on the way',

@@ -56,21 +56,6 @@ fn resolve_included_with_no_counter_still_excludes_the_oversized_reference() {
 }
 
 #[test]
-fn redundant_rel_aggregates_dropped_only_when_fully_shared() {
-    let idx = ModelIndex::build(TWO_STOREYS.as_bytes());
-    let mut skip = HashSet::new();
-    // Both #1 and #2 unified → the rel #3 is redundant.
-    let mut shared = HashMap::from([(1u32, 50u32), (2u32, 51u32)]);
-    skip_redundant_rel_aggregates(&idx, &shared, &mut skip);
-    assert!(skip.contains(&3));
-    // Only relating shared → kept.
-    skip.clear();
-    shared.remove(&2);
-    skip_redundant_rel_aggregates(&idx, &shared, &mut skip);
-    assert!(!skip.contains(&3));
-}
-
-#[test]
 fn parse_ref_helpers() {
     assert_eq!(parse_single_ref(" #42 "), Some(42));
     assert_eq!(parse_single_ref("$"), None);

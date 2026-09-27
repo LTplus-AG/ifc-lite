@@ -20,8 +20,7 @@
 
 import { useCallback, useEffect } from 'react';
 import { Focus, EyeOff, Eye, Ghost } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 
@@ -98,106 +97,83 @@ export function EntityHeaderActions() {
 
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="rounded-none hover:bg-zinc-200 dark:hover:bg-zinc-700"
-            onClick={() => {
-              if (selectedEntityId && cameraCallbacks.frameSelection) {
-                cameraCallbacks.frameSelection();
-              }
-            }}
-          >
-            <Focus className="h-3.5 w-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{t('properties.entityHeaderActions.zoomTo')}</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className={`rounded-none hover:bg-zinc-200 dark:hover:bg-zinc-700 ${isGhosted ? 'text-primary' : ''}`}
-            onClick={() => {
-              if (!selectedEntityId) return;
-              if (isGhosted) {
-                // clearGhost, not setGhostExceptEntities(null): it preserves
-                // isolation, which the setter clears.
-                releaseGhost(true);
-              } else {
-                // Not setGhostExceptEntities: that clears isolatedEntities
-                // unconditionally and nothing captured it, so isolating a zone
-                // and then fading around a member destroyed the isolation for
-                // good. Writing both channels keeps it. The pair is coherent --
-                // isolation filters, ghosting fades what survived it -- and
-                // restoreVisibilityState documents it as reachable and legal.
-                // An isolation that does not contain the selection would hide
-                // the very entity being shown: isEntityVisible rejects every id
-                // absent from isolatedEntities, and ghosting only fades what
-                // survived that filter, so the camera would frame something
-                // invisible. Admit the selection rather than drop the isolation.
-                // Release any fade we still own FIRST, so a move from A to B
-                // computes B's prior isolation from the ORIGINAL set rather than
-                // from the one A widened. Without this, A -> B -> clear restores
-                // the A-widened isolation and leaves A admitted for good.
-                releaseGhost(true);
-                const base = useViewerStore.getState().isolatedEntities;
-                const isolated = base === null
-                  ? null
-                  : base.has(selectedEntityId)
-                    ? base
-                    : new Set([...base, selectedEntityId]);
-                restoreVisibilityState({
-                  isolated,
-                  ghostExcept: new Set([selectedEntityId]),
-                  hidden: useViewerStore.getState().hiddenEntities,
-                });
-                // Read the ghost identity BACK: restoreVisibilityState copies the
-                // set it is given, so the object handed in is not the one
-                // installed. Keep the ORIGINAL isolation, not the widened one.
-                const installed = useViewerStore.getState().ghostExceptEntities;
-                if (installed) ownedClaim = { ghost: installed, priorIsolation: base };
-                cameraCallbacks.frameSelection?.();
-              }
-            }}
-          >
-            <Ghost className="h-3.5 w-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          {isGhosted
-            ? t('properties.entityHeaderActions.clearShowInContext')
-            : t('properties.entityHeaderActions.showInContext')}
-        </TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="rounded-none hover:bg-zinc-200 dark:hover:bg-zinc-700"
-            onClick={() => {
-              if (selectedEntityId) {
-                toggleEntityVisibility(selectedEntityId);
-              }
-            }}
-          >
-            {selectedEntityId && isEntityVisible(selectedEntityId) ? (
-              <EyeOff className="h-3.5 w-3.5" />
-            ) : (
-              <Eye className="h-3.5 w-3.5" />
-            )}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          {selectedEntityId && isEntityVisible(selectedEntityId)
-            ? t('properties.entityHeaderActions.hide')
-            : t('properties.entityHeaderActions.show')}
-        </TooltipContent>
-      </Tooltip>
+      <IconButton
+        label={t('properties.entityHeaderActions.zoomTo')}
+        size="icon-xs"
+        className="rounded-none hover:bg-zinc-200 dark:hover:bg-zinc-700"
+        onClick={() => {
+          if (selectedEntityId && cameraCallbacks.frameSelection) {
+            cameraCallbacks.frameSelection();
+          }
+        }}
+      >
+        <Focus className="h-3.5 w-3.5" />
+      </IconButton>
+      <IconButton
+        label={isGhosted ? t('properties.entityHeaderActions.clearShowInContext') : t('properties.entityHeaderActions.showInContext')}
+        size="icon-xs"
+        className={`rounded-none hover:bg-zinc-200 dark:hover:bg-zinc-700 ${isGhosted ? 'text-primary' : ''}`}
+        onClick={() => {
+          if (!selectedEntityId) return;
+          if (isGhosted) {
+            // clearGhost, not setGhostExceptEntities(null): it preserves
+            // isolation, which the setter clears.
+            releaseGhost(true);
+          } else {
+            // Not setGhostExceptEntities: that clears isolatedEntities
+            // unconditionally and nothing captured it, so isolating a zone
+            // and then fading around a member destroyed the isolation for
+            // good. Writing both channels keeps it. The pair is coherent --
+            // isolation filters, ghosting fades what survived it -- and
+            // restoreVisibilityState documents it as reachable and legal.
+            // An isolation that does not contain the selection would hide
+            // the very entity being shown: isEntityVisible rejects every id
+            // absent from isolatedEntities, and ghosting only fades what
+            // survived that filter, so the camera would frame something
+            // invisible. Admit the selection rather than drop the isolation.
+            // Release any fade we still own FIRST, so a move from A to B
+            // computes B's prior isolation from the ORIGINAL set rather than
+            // from the one A widened. Without this, A -> B -> clear restores
+            // the A-widened isolation and leaves A admitted for good.
+            releaseGhost(true);
+            const base = useViewerStore.getState().isolatedEntities;
+            const isolated = base === null
+              ? null
+              : base.has(selectedEntityId)
+                ? base
+                : new Set([...base, selectedEntityId]);
+            restoreVisibilityState({
+              isolated,
+              ghostExcept: new Set([selectedEntityId]),
+              hidden: useViewerStore.getState().hiddenEntities,
+            });
+            // Read the ghost identity BACK: restoreVisibilityState copies the
+            // set it is given, so the object handed in is not the one
+            // installed. Keep the ORIGINAL isolation, not the widened one.
+            const installed = useViewerStore.getState().ghostExceptEntities;
+            if (installed) ownedClaim = { ghost: installed, priorIsolation: base };
+            cameraCallbacks.frameSelection?.();
+          }
+        }}
+      >
+        <Ghost className="h-3.5 w-3.5" />
+      </IconButton>
+      <IconButton
+        label={selectedEntityId && isEntityVisible(selectedEntityId) ? t('properties.entityHeaderActions.hide') : t('properties.entityHeaderActions.show')}
+        size="icon-xs"
+        className="rounded-none hover:bg-zinc-200 dark:hover:bg-zinc-700"
+        onClick={() => {
+          if (selectedEntityId) {
+            toggleEntityVisibility(selectedEntityId);
+          }
+        }}
+      >
+        {selectedEntityId && isEntityVisible(selectedEntityId) ? (
+          <EyeOff className="h-3.5 w-3.5" />
+        ) : (
+          <Eye className="h-3.5 w-3.5" />
+        )}
+      </IconButton>
     </>
   );
 }

@@ -19,6 +19,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { render, cleanup, click } from '@/test/render.js';
 import { Toaster } from '@/components/ui/toast';
+import { toastsFrom } from '@/test/toasts.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
 import { Rule } from '@ifc-lite/rules';
@@ -39,29 +40,24 @@ function mountWithQuery(searchQuery: string): HTMLElement {
   );
 }
 
-function promote(container: HTMLElement): void {
+/**
+ * Click "add as rule" and return the toasts that click showed, read from the
+ * toast rows rather than the whole container: the promote BUTTON renders the
+ * query too — its label is `Add "IfcWall, type=WT01" as rule` — so a
+ * container-wide match cannot tell a toast that named the dropped part from the
+ * button's own text: deleting the `toast.info` / `toast.error` call left both
+ * assertions green. Only this click's toasts count, since an earlier test's
+ * toast can still be on screen.
+ */
+function promote(container: HTMLElement): string {
   const button = Array.from(container.querySelectorAll('button')).find((b) =>
     b.textContent?.includes('as rule'),
   );
   assert.ok(button, 'no "add as rule" button rendered');
-  click(button);
+  return toastsFrom(container, () => click(button));
 }
 
 const rules = () => useViewerStore.getState().searchFilter.groups[0]?.rules ?? [];
-
-/**
- * The most recent toast's text, scoped to the toast region rather than read off
- * the whole container. The promote BUTTON renders the query too — its label is
- * `Add "IfcWall, type=WT01" as rule` — so a container-wide match cannot tell a
- * toast that named the dropped part from the button's own text: deleting the
- * `toast.info` / `toast.error` call left both assertions green.
- *
- * Read as "the last one": toasts live in a module-level store with a timed
- * dismissal, so an earlier test's toast can still be on screen.
- */
-function latestToast(container: HTMLElement): string {
-  return container.querySelector('[role="status"]')?.lastElementChild?.textContent ?? '';
-}
 
 describe('Filter tab — promoting the search bar query', () => {
   afterEach(cleanup);
@@ -94,9 +90,9 @@ describe('Filter tab — promoting the search bar query', () => {
     // which is what a plain search term looks like after parsing.
     for (const q of ['IFC', 'ifc', 'IFC-Export']) {
       const container = mountWithQuery(q);
-      promote(container);
+      const said = promote(container);
       assert.deepEqual(rules(), [Rule.name('contains', q)], q);
-      assert.equal(latestToast(container), '', q);
+      assert.equal(said, '', q);
       cleanup();
     }
   });
@@ -114,9 +110,9 @@ describe('Filter tab — promoting the search bar query', () => {
     ] as const) {
       const [text, expected] = q;
       const container = mountWithQuery(text);
-      promote(container);
+      const said = promote(container);
       assert.deepEqual(rules(), [expected], text);
-      assert.equal(latestToast(container), '', text);
+      assert.equal(said, '', text);
       cleanup();
     }
   });
@@ -128,19 +124,19 @@ describe('Filter tab — promoting the search bar query', () => {
     // refused permanently by the #4094 decision —
     // takes over pinning "applies the rest, names what it dropped".
     const container = mountWithQuery('IfcWall, query:types.count=0');
-    promote(container);
+    const said = promote(container);
     // The class rule is real and is applied; the `query:` term is named,
     // not dropped and not turned into a Name-contains that matches nothing.
     assert.deepEqual(rules(), [
       Rule.ifcType(['IfcWall', 'IfcWallElementedCase', 'IfcWallStandardCase'], 'in'),
     ]);
-    assert.match(latestToast(container), /query:types\.count=0/);
+    assert.match(said, /query:types\.count=0/);
   });
 
   it('a selector with no rule at all reports instead of adding a guaranteed miss', () => {
     const container = mountWithQuery('query:types.count=0');
-    promote(container);
+    const said = promote(container);
     assert.deepEqual(rules(), []);
-    assert.match(latestToast(container), /query:types\.count=0/);
+    assert.match(said, /query:types\.count=0/);
   });
 });

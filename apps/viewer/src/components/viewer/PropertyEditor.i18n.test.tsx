@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, click, render } from '@/test/render.js';
+import { activate, cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { TranslationValue } from '@/i18n/types';
 import type { propertyEditorEn as PropertyEditorEnType } from '@/i18n/catalogues/property-editor.en';
@@ -46,6 +46,19 @@ afterEach(() => {
 });
 
 describe('Property editor localization (#4918)', () => {
+  it('#5823 opens inline editing from the value with Enter and Space', () => {
+    for (const key of ['Enter', ' '] as const) {
+      const ui = render(
+        <PropertyEditor modelId="model" entityId={1} psetName="Pset_Test" propName="Name" currentValue="Original" />,
+      );
+      const value = ui.querySelector<HTMLButtonElement>('button[title="Click to edit"]');
+      assert.ok(value, 'the inline value must be a keyboard-focusable control');
+      activate(value, key);
+      assert.ok(ui.querySelector('input'), `${key} did not open the editor`);
+      cleanup();
+    }
+  });
+
   it('updates inline editing chrome when the active locale changes', () => {
     assert.ok(propertyEditorEn, 'property-editor.en.ts catalogue must exist');
     const ui = render(
@@ -94,7 +107,9 @@ describe('Property editor localization (#4918)', () => {
     registerLocale('property-editor-triggers-pseudo', pseudoLocale());
     act(() => setLocale('property-editor-triggers-pseudo'));
 
-    const titles = [...ui.querySelectorAll('button[title]')].map((button) => button.getAttribute('title'));
+    // Icon-only triggers are named by IconButton's aria-label; the labelled
+    // Reassign trigger keeps its title.
+    const titles = [...ui.querySelectorAll('button')].flatMap((button) => [button.getAttribute('aria-label'), button.getAttribute('title')]);
     for (const key of [
       'propertyEditor.property.trigger',
       'propertyEditor.quantity.trigger',

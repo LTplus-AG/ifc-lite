@@ -119,7 +119,7 @@ describe('ClashSlice focused-clash presentation teardown', () => {
     state.setClashSelectedId('rule-1 a:1 b:2');
     state.setClashHighlightColors(new Map([[1, [1, 0.6, 0, 1]]]));
     state.setClashOverlapBox({ min: [0, 0, 0], max: [1, 1, 1] });
-    state.setClashContactLines({ vertices: [0, 0, 0, 1, 0, 0], color: [1, 0, 1, 1] });
+    state.setClashContactLines({ vertices: [0, 0, 0, 1, 0, 0] });
     state.setClashSolid(
       { positions: new Float64Array([0, 0, 0]), indices: new Uint32Array([0]) },
       0.42,

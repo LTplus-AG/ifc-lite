@@ -16,9 +16,8 @@
  */
 
 import React, { useCallback, useState, useMemo, useRef, useEffect } from 'react';
-import { AlertCircle, FileText, Trash2, Upload, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { FileText, Trash2, Upload } from 'lucide-react';
+import { IconButton } from '@/components/ui/icon-button';
 import { useIDS } from '@/hooks/useIDS';
 import { openGenericFileDialog } from '@/services/file-dialog';
 import { useViewerStore } from '@/store';
@@ -26,7 +25,8 @@ import { endIdsRowFocusPresentation } from '@/lib/ids/visibility-ownership';
 import { IDSCorrectionDialog, getCorrectableRequirements } from './IDSCorrectionDialog';
 import { useTranslation } from '@/i18n';
 import { IDSPanelResults } from './IDSPanelResults';
-import { IDSPanelStates, IDSValidationProgress } from './IDSPanelStates';
+import { IDSPanelStates, idsProgressState } from './IDSPanelStates';
+import { AnalysisPanel, AnalysisStaleRegion } from './analysis/AnalysisPanel';
 
 // ============================================================================
 // Types
@@ -62,6 +62,7 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
     loadIDSFile,
     clearIDS,
     runValidation,
+    cancelValidation,
     clearValidation,
     focusEntity,
   } = ids;
@@ -168,94 +169,43 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
     focusEntity(modelId, expressId);
   }, [focusEntity]);
 
+  const reportModelId = report?.modelInfo[0]?.modelId ?? null;
+  const validating = loading && progress !== null;
+
   return (
-    <div className="h-full flex flex-col bg-background">
-      {/* Header — dropped entirely when embedded with no document: nothing
-          of it (title, load/clear actions) applies yet, and ValidationPanel's
-          own header + toggle already sit above this. */}
-      {(!embedded || document) && (
-        <div className="flex items-center justify-between p-3 border-b">
-          <div className="flex items-center gap-2">
-            {!embedded && (
-              <>
-                <FileText className="h-4 w-4" />
-                <span className="font-medium text-sm">{t('idsPanel.title')}</span>
-              </>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            {/* Load New IDS */}
-            {document && (
-              <>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".ids,.xml"
-                  className="hidden"
-                  onChange={handleFileSelect}
-                />
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0"
-                      aria-label={t('idsPanel.loadNew')}
-                      onClick={() => { void handleLoadIdsClick(); }}
-                    >
-                      <Upload className="h-3 w-3" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{t('idsPanel.loadNew')}</TooltipContent>
-                </Tooltip>
-              </>
-            )}
-
-            {/* Clear */}
-            {document && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    aria-label={t('idsPanel.clear')}
-                    onClick={() => {
-                      clearIDS();
-                      clearValidation();
-                    }}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t('idsPanel.clear')}</TooltipContent>
-              </Tooltip>
-            )}
-
-            {/* Close */}
-            {onClose && !embedded && (
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label={t('idsPanel.close')} onClick={onClose}>
-                <X className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-        </div>
+    <AnalysisPanel
+      icon={<FileText />}
+      title={t('idsPanel.title')}
+      embedded={embedded}
+      // Embedded with no document, nothing of the header (title, load/clear
+      // actions) applies yet, and ValidationPanel's own header sits above.
+      headerHidden={embedded && !document}
+      onClose={onClose}
+      run={document ? {
+        hasResult: reportModelId !== null,
+        running: validating,
+        busy: loading && !validating,
+        onRerun: () => { void runValidation(reportModelId ?? undefined); },
+        onCancel: cancelValidation,
+        rerunLabel: t('idsPanel.rerun'),
+        cancelLabel: t('idsPanel.cancel'),
+      } : undefined}
+      onClearResults={document ? clearValidation : undefined}
+      actions={document && (
+        <>
+          <input ref={fileInputRef} type="file" accept=".ids,.xml" className="hidden" onChange={handleFileSelect} />
+          <IconButton label={t('idsPanel.loadNew')} className="h-7 w-7" onClick={() => { void handleLoadIdsClick(); }}>
+            <Upload className="h-4 w-4" />
+          </IconButton>
+          <IconButton label={t('idsPanel.unload')} className="h-7 w-7" onClick={() => { clearIDS(); clearValidation(); }}>
+            <Trash2 className="h-4 w-4" />
+          </IconButton>
+        </>
       )}
-
-      {/* Error Display */}
-      {error && (
-        <div className="p-3 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800">
-          <div className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>{typeof error === 'string' ? error : t(error.labelKey, error.params)}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Progress */}
-      {loading && progress && <IDSValidationProgress progress={progress} />}
-
-      {/* Content */}
+      error={error ? (typeof error === 'string' ? error : t(error.labelKey, error.params)) : null}
+      progress={loading && progress ? idsProgressState(progress, t, locale) : null}
+      staleFor={report}
+    >
       <div className="flex-1 min-h-0 flex flex-col">
         <IDSPanelStates
           ids={ids}
@@ -263,19 +213,21 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
           onFileSelect={handleFileSelect}
           onLoadClick={() => { void handleLoadIdsClick(); }}
         />
-        <IDSPanelResults
-          results={ids}
-          runValidation={runValidation}
-          auditReport={ids.auditReport}
-          multiModel={idsMultiModel}
-          models={idsModelList}
-          pendingModelId={pendingModelId}
-          setPendingModelId={setPendingModelId}
-          validating={loading}
-          onEntityClick={handleEntityClick}
-          onCorrect={setCorrectionSpecId}
-          correctableSpecIds={correctableSpecIds}
-        />
+        <AnalysisStaleRegion className="flex-1 min-h-0 flex flex-col">
+          <IDSPanelResults
+            results={ids}
+            runValidation={runValidation}
+            auditReport={ids.auditReport}
+            multiModel={idsMultiModel}
+            models={idsModelList}
+            pendingModelId={pendingModelId}
+            setPendingModelId={setPendingModelId}
+            validating={loading}
+            onEntityClick={handleEntityClick}
+            onCorrect={setCorrectionSpecId}
+            correctableSpecIds={correctableSpecIds}
+          />
+        </AnalysisStaleRegion>
       </div>
 
       {report && correctionSpecResult && (
@@ -287,6 +239,6 @@ export function IDSPanel({ onClose, embedded = false }: IDSPanelProps) {
           onRevalidate={runValidation}
         />
       )}
-    </div>
+    </AnalysisPanel>
   );
 }

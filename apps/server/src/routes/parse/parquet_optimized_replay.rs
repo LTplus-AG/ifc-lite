@@ -17,9 +17,10 @@ use super::cache_keys::{
     parquet_optimized_metadata_cache_key,
 };
 use super::parquet::DataModelStats;
+use super::replay_header::mark_header_from_cache;
 use super::ParseQuery;
 use crate::error::ApiError;
-use crate::services::OptimizedStats;
+use crate::services::{DataModelEntities, OptimizedStats};
 use crate::types::{ModelMetadata, ProcessingStats};
 use crate::AppState;
 use axum::{
@@ -114,15 +115,23 @@ pub(super) fn optimized_parquet_response(
 /// warmed BEFORE that change (or one whose data-model entry has since been
 /// bumped) must re-parse, or nothing ever writes a current one and
 /// `get_data_model` polls a key nobody writes forever.
+///
+/// That gate asks about the entities VARIANT the request selected (#6034): a
+/// body warmed by a default request has no rooted data model behind it, and
+/// replaying it would leave a `?data_model_entities=rooted` client with a
+/// data-model key nobody writes. A miss re-parses; the body and header it
+/// rewrites are the same bytes, because the variant touches only the data
+/// model.
 pub(super) async fn try_cached_optimized_parquet(
     state: &AppState,
     cache_key: &str,
+    data_model_entities: DataModelEntities,
 ) -> Result<Option<Response>, ApiError> {
     if !has_cached_symbolic(&state.cache, cache_key).await {
         return Ok(None);
     }
 
-    if !has_current_data_model(&state.cache, cache_key).await {
+    if !has_current_data_model(&state.cache, cache_key, data_model_entities).await {
         return Ok(None);
     }
 
@@ -151,7 +160,8 @@ pub(super) async fn try_cached_optimized_parquet(
         "Optimized Parquet cache HIT - returning cached response"
     );
 
-    optimized_parquet_response(metadata_json, cached_body.into()).map(Some)
+    // Stored as the live parse wrote it, `from_cache: false` included (#5542).
+    optimized_parquet_response(mark_header_from_cache(metadata_json), cached_body.into()).map(Some)
 }
 
 /// Cache the data model produced alongside this route's geometry (#5129).
@@ -161,8 +171,13 @@ pub(super) async fn try_cached_optimized_parquet(
 /// payload in hand. The caller writes this BEFORE the geometry body and
 /// metadata, so a data model is never missing behind an entry the replay gate
 /// above would otherwise treat as current.
-pub(super) async fn cache_data_model(state: &AppState, cache_key: &str, bytes: &[u8]) {
-    let key = data_model_cache_key(cache_key);
+pub(super) async fn cache_data_model(
+    state: &AppState,
+    cache_key: &str,
+    data_model_entities: DataModelEntities,
+    bytes: &[u8],
+) {
+    let key = data_model_cache_key(cache_key, data_model_entities);
     if let Err(e) = state.cache.set_bytes(&key, bytes).await {
         tracing::error!(error = %e, cache_key = %key, "Failed to cache data model from optimized route");
     } else {
@@ -208,13 +223,13 @@ pub(super) async fn replay_optimized_by_client_hash(
 
     let hit = if has_optimized_metadata(&state.cache, &cache_key).await
         && has_cached_symbolic(&state.cache, &cache_key).await
-        && has_current_data_model(&state.cache, &cache_key).await
+        && has_current_data_model(&state.cache, &cache_key, query.data_model_entities).await
     {
         let admission_guard = state
             .admission
             .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
             .await?;
-        let hit = try_cached_optimized_parquet(state, &cache_key).await;
+        let hit = try_cached_optimized_parquet(state, &cache_key, query.data_model_entities).await;
         drop(admission_guard);
         hit?
     } else {

@@ -35,8 +35,10 @@
  */
 
 import React, { useCallback, useRef, useState } from 'react';
-import { X, Eye, EyeOff, FileUp, Trash2, Layers, ChevronDown, ChevronRight, Loader2, AlertTriangle, Crosshair } from 'lucide-react';
+import { Eye, EyeOff, FileUp, Trash2, ChevronDown, ChevronRight, AlertTriangle, Crosshair } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -50,9 +52,7 @@ import { posthog } from '@/lib/analytics';
 import { ingestDxfFile } from '@/hooks/ingest/dxfIngest';
 import { resolveEffectiveGeoreferenced } from '@/hooks/dxfUnderlayMath';
 import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice';
-
 interface DxfUnderlayPanelProps {
-  onClose: () => void;
   /** Centre the underlay on the generated drawing (offset adjustment). */
   onCenterOnModel: (id: string) => void;
   /** False when the current section is not a cardinal plan view. */
@@ -79,7 +79,7 @@ function PlacementField({
 }): React.ReactElement {
   return (
     <div className="flex flex-col gap-0.5">
-      <Label className="text-[10px] text-muted-foreground">{label}</Label>
+      <Label className="text-2xs text-muted-foreground">{label}</Label>
       <Input
         type="number"
         step={step}
@@ -125,53 +125,49 @@ function UnderlayCard({
     <div className="border rounded-md p-2 space-y-2 bg-muted/20">
       <div className="flex items-center gap-1.5 min-w-0">
         <div className="flex items-center">
-          <Button
-            variant="ghost"
+          <IconButton
+            label={t(state.visible ? 'drawingUnderlay.dxf.hide2DTitle' : 'drawingUnderlay.dxf.show2DTitle')}
             size="icon-sm"
             onClick={() => setDxfUnderlayVisible(state.id, !state.visible)}
-            title={t(state.visible ? 'drawingUnderlay.dxf.hide2DTitle' : 'drawingUnderlay.dxf.show2DTitle')}
           >
             {state.visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-          </Button>
-          <span className="text-[8px] leading-none text-muted-foreground -ml-1">{t('drawingUnderlay.dxf.badge2D')}</span>
+          </IconButton>
+          <span className="text-2xs leading-none text-muted-foreground -ml-1">{t('drawingUnderlay.dxf.badge2D')}</span>
         </div>
         <div className="flex items-center">
-          <Button
-            variant="ghost"
+          <IconButton
+            label={t(state.visible3D ? 'drawingUnderlay.dxf.hide3DTitle' : 'drawingUnderlay.dxf.show3DTitle')}
             size="icon-sm"
             onClick={() => setDxfUnderlayVisible3D(state.id, !state.visible3D)}
-            title={t(state.visible3D ? 'drawingUnderlay.dxf.hide3DTitle' : 'drawingUnderlay.dxf.show3DTitle')}
           >
             {state.visible3D ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-          </Button>
-          <span className="text-[8px] leading-none text-muted-foreground -ml-1">3D</span>
+          </IconButton>
+          <span className="text-2xs leading-none text-muted-foreground -ml-1">3D</span>
         </div>
         <span className="text-xs font-medium truncate flex-1" title={state.name}>{state.name}</span>
-        <Button
-          variant="ghost"
+        <IconButton
+          label={t(planViewActive ? 'drawingUnderlay.dxf.centerOnModelTitle' : 'drawingUnderlay.dxf.centerOnModelDisabledTitle')}
           size="icon-sm"
           onClick={() => onCenterOnModel(state.id)}
           disabled={!planViewActive}
-          title={t(planViewActive ? 'drawingUnderlay.dxf.centerOnModelTitle' : 'drawingUnderlay.dxf.centerOnModelDisabledTitle')}
         >
           <Crosshair className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
+        </IconButton>
+        <IconButton
+          label={t('drawingUnderlay.dxf.removeUnderlayTitle')}
           size="icon-sm"
           onClick={() => removeDxfUnderlay(state.id)}
-          title={t('drawingUnderlay.dxf.removeUnderlayTitle')}
         >
           <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        </IconButton>
       </div>
 
-      <div className="text-[10px] text-muted-foreground px-1">
+      <div className="text-2xs text-muted-foreground px-1">
         {t('drawingUnderlay.dxf.summaryLine', { layers: underlay.layers.length, paths: pathCount, texts: textCount })}
       </div>
 
       {underlay.warnings.length > 0 && (
-        <div className="flex items-start gap-1 text-[10px] text-amber-600 dark:text-amber-500 px-1">
+        <div className="flex items-start gap-1 text-2xs text-amber-600 dark:text-amber-500 px-1">
           <AlertTriangle className="h-3 w-3 mt-px shrink-0" />
           <span>{underlay.warnings[0]}{underlay.warnings.length > 1 ? t('drawingUnderlay.dxf.moreWarningsSuffix', { count: underlay.warnings.length - 1 }) : ''}</span>
         </div>
@@ -186,7 +182,7 @@ function UnderlayCard({
           the common case of "most of it imported, N entities of type X
           did not" was previously silent. */}
       {Object.keys(underlay.skipped).length > 0 && (
-        <div className="flex items-start gap-1 text-[10px] text-amber-600 dark:text-amber-500 px-1">
+        <div className="flex items-start gap-1 text-2xs text-amber-600 dark:text-amber-500 px-1">
           <AlertTriangle className="h-3 w-3 mt-px shrink-0" />
           <span>
             {t('drawingUnderlay.dxf.notImportedLabel')} {Object.entries(underlay.skipped)
@@ -208,7 +204,7 @@ function UnderlayCard({
           that explicit rather than leaving the control silently no-op in
           3D. */}
       <div className="flex items-center gap-2 px-1">
-        <Label className="text-[10px] text-muted-foreground w-12" title={t('drawingUnderlay.dxf.opacityHint')}>
+        <Label className="text-2xs text-muted-foreground w-12" title={t('drawingUnderlay.dxf.opacityHint')}>
           {t('drawingUnderlay.dxf.opacityLabel')}
         </Label>
         <input
@@ -221,7 +217,7 @@ function UnderlayCard({
           className="flex-1 h-1.5 accent-primary"
           title={t('drawingUnderlay.dxf.opacityHint')}
         />
-        <span className="text-[10px] text-muted-foreground w-8 text-right">{Math.round(state.opacity * 100)}%</span>
+        <span className="text-2xs text-muted-foreground w-8 text-right">{Math.round(state.opacity * 100)}%</span>
       </div>
 
       {/* Georeference alignment (issue #1929) — mirrors the .laz/.las
@@ -245,7 +241,7 @@ function UnderlayCard({
                 : t('drawingUnderlay.dxf.georefManualHint')
             }
           >
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               {t('drawingUnderlay.dxf.georefToggleLabel')}{isAuto ? t('drawingUnderlay.dxf.georefAutoSuffix') : ''}
             </span>
             <input
@@ -286,10 +282,10 @@ function UnderlayCard({
                     className="w-2.5 h-2.5 rounded-sm border shrink-0"
                     style={{ backgroundColor: layer.color }}
                   />
-                  <span className={`text-[11px] truncate ${layerVisible ? '' : 'text-muted-foreground'}`}>
+                  <span className={`text-2xs truncate ${layerVisible ? '' : 'text-muted-foreground'}`}>
                     {layer.name}
                   </span>
-                  <span className="text-[10px] text-muted-foreground ml-auto shrink-0">
+                  <span className="text-2xs text-muted-foreground ml-auto shrink-0">
                     {layer.paths.length + layer.fills.length + layer.texts.length}
                   </span>
                 </button>
@@ -343,7 +339,7 @@ function UnderlayCard({
   );
 }
 
-export function DxfUnderlayPanel({ onClose, onCenterOnModel, planViewActive, georeferenceAvailable }: DxfUnderlayPanelProps): React.ReactElement {
+export function DxfUnderlayPanel({ onCenterOnModel, planViewActive, georeferenceAvailable }: DxfUnderlayPanelProps): React.ReactElement {
   const { t } = useTranslation(); const dxfUnderlays = useViewerStore((s) => s.dxfUnderlays);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -366,18 +362,8 @@ export function DxfUnderlayPanel({ onClose, onCenterOnModel, planViewActive, geo
   }, []);
 
   return (
-    <div className="flex flex-col h-full bg-background border-l">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/50">
-        <div className="flex items-center gap-2">
-          <Layers className="h-5 w-5 text-primary" />
-          <h2 className="font-semibold text-sm">{t('drawingUnderlay.dxf.panelTitle')}</h2>
-        </div>
-        <Button variant="ghost" size="icon-sm" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
-
+    <div className="flex flex-col h-full bg-background">
+      {/* The inspector tab (#5495) carries the title; no panel-owned header. */}
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         <input
@@ -396,7 +382,7 @@ export function DxfUnderlayPanel({ onClose, onCenterOnModel, planViewActive, geo
           onClick={() => fileInputRef.current?.click()}
         >
           {importing ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            <Spinner size="md" className="mr-2" />
           ) : (
             <FileUp className="h-4 w-4 mr-2" />
           )}

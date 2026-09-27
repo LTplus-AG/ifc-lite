@@ -10,7 +10,7 @@ import { render, cleanup, click } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { emptyPlacementState } from '@/lib/model-placement/state';
-import { Section2DPanel } from '../Section2DPanel';
+import { DrawingPanel } from './DrawingPanel';
 import { DrawingRuntimeHost } from './DrawingRuntimeHost';
 
 function box(expressId: number, size: number): MeshData {
@@ -24,12 +24,6 @@ function box(expressId: number, size: number): MeshData {
   ]);
   return { expressId, ifcType: 'IfcWall', modelIndex: 0, positions, normals: new Float32Array(positions.length),
     indices, color: [0.5, 0.5, 0.5, 1], geometryClass: 0 };
-}
-
-/** Radix's DropdownMenu trigger opens on pointerdown, then click. */
-function openMenu(trigger: Element): void {
-  act(() => { trigger.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true })); });
-  act(() => { trigger.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })); });
 }
 
 async function readyDrawingOtherThan(previous: unknown) {
@@ -50,15 +44,11 @@ it("a drawing view's Regenerate runs the host's generator (#5492)", async () => 
     drawing2DPanelVisible: true, activeModelId: null, ifcDataStore: null, activeTool: 'select', drawing2D: null, drawing2DStatus: 'idle',
     sectionPlane: { ...s.sectionPlane, axis: 'down', position: 50, enabled: true } });
   try {
-    const ui = render(<><DrawingRuntimeHost mergedGeometry={geometry} /><Section2DPanel /></>);
+    const ui = render(<><DrawingRuntimeHost mergedGeometry={geometry} /><DrawingPanel /></>);
     const first = await readyDrawingOtherThan(null);
 
-    // At the default window width the header collapses to Fit + the overflow menu.
-    const more = ui.querySelector('[title="More options"]');
-    assert.ok(more, 'the drawing view is mounted with its overflow menu');
-    openMenu(more);
-    const regenerate = [...document.body.querySelectorAll('[role="menuitem"]')].find((item) => item.textContent?.includes('Regenerate'));
-    assert.ok(regenerate, 'the overflow menu offers Regenerate');
+    const regenerate = ui.querySelector('[aria-label="Regenerate"]');
+    assert.ok(regenerate, 'the drawing view shows its Regenerate button');
     click(regenerate);
 
     const second = await readyDrawingOtherThan(first);

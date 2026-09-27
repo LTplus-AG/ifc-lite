@@ -70,7 +70,7 @@ export interface ResolvedSheetTransform {
  *     (bounds are exactly what pinning holds constant), the cache stays
  *     valid across a regenerate at a new elevation: the preview kept the
  *     held placement and the print computed a different one. Pin View
- *     defaults ON (`Section2DPanel.tsx`), so this was the default path.
+ *     defaults ON (`drawing/useDrawingViewModel.ts`), so this was the default path.
  *
  * Ownership of the cache stays with the preview: this function only READS
  * it. Printing must never perturb what is on screen, so the export path

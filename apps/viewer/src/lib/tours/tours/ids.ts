@@ -9,9 +9,16 @@
  * isolate state is cleaned up (finish and abort). Target: about 3 minutes.
  */
 
+import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { activityAnchor, TOUR_ANCHORS } from '../anchors';
-import { DEMO_MODEL_NAMES, loadDemoIds, loadDemoProject, waitForModelSettled } from '../demo-kit';
+import { loadDemoIdsWithProject } from '../demo-kit';
 import type { TourDefinition } from '../types';
+
+/** Every in-panel IDS anchor lives on the Data validation panel's IDS side;
+ *  its entry cards (#5138) would otherwise hide them all (#5608). */
+function showIdsSide(): void {
+  setValidationSourceChoice('ids');
+}
 
 /** "modelId:expressId" - the idsFailedEntityIds key format (idsSlice). */
 function looksLikeEntityKey(value: unknown): boolean {
@@ -43,6 +50,7 @@ export const IDS_TOUR: TourDefinition = {
       kind: 'action',
       anchor: TOUR_ANCHORS.idsLoad,
       panel: 'validation',
+      prepare: showIdsSide,
       placement: 'left',
       title: 'Load a spec',
       body: 'Click Load IDS File and pick a .ids file. No spec handy? Load the demo spec instead.',
@@ -51,19 +59,7 @@ export const IDS_TOUR: TourDefinition = {
         // The demo spec is authored against the demo project; validating an
         // arbitrary user model against it would be noise. Swap in the demo
         // project first when it is not already loaded.
-        run: async (store) => {
-          const models = [...store.getState().models.values()];
-          // Exact kit names only, so a user's own similarly-named file is
-          // not mistaken for the demo and the swap is skipped wrongly.
-          const demoLoaded = models.some(
-            (m) => m.name === DEMO_MODEL_NAMES.base || m.name === DEMO_MODEL_NAMES.revB,
-          );
-          if (!demoLoaded) {
-            await loadDemoProject();
-            await waitForModelSettled();
-          }
-          await loadDemoIds();
-        },
+        run: loadDemoIdsWithProject,
       },
       // The demo action may REPLACE the loaded model set; without this the
       // run watcher would treat that as a destructive model change.
@@ -79,6 +75,7 @@ export const IDS_TOUR: TourDefinition = {
       kind: 'action',
       anchor: TOUR_ANCHORS.idsRun,
       panel: 'validation',
+      prepare: showIdsSide,
       placement: 'left',
       title: 'Run validation',
       body: 'Click Run Validation. Checks run in a background worker, so the viewer stays responsive.',
@@ -107,6 +104,7 @@ export const IDS_TOUR: TourDefinition = {
       kind: 'passive',
       anchor: TOUR_ANCHORS.idsSummary,
       panel: 'validation',
+      prepare: showIdsSide,
       placement: 'left',
       title: 'Read the results',
       body: 'The summary counts checked, passed, and failed elements per specification. Failed elements are already tinted red in 3D.',
@@ -116,6 +114,7 @@ export const IDS_TOUR: TourDefinition = {
       kind: 'action',
       anchor: TOUR_ANCHORS.idsResults,
       panel: 'validation',
+      prepare: showIdsSide,
       placement: 'left',
       title: 'Jump to a failure',
       body: 'Expand a failed specification and click a red element. The viewer selects it and zooms straight to it.',
@@ -143,6 +142,7 @@ export const IDS_TOUR: TourDefinition = {
       kind: 'action',
       anchor: TOUR_ANCHORS.idsIsolateFailed,
       panel: 'validation',
+      prepare: showIdsSide,
       placement: 'left',
       title: 'Isolate the failures',
       body: 'Click the crossed-eye button to hide everything that passed. When done, export the report as HTML, JSON, or BCF from this toolbar.',

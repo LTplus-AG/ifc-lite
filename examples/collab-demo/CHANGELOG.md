@@ -1,5 +1,12 @@
 # ifc-lite-collab-demo
 
+## 1.0.8
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @ifc-lite/collab@0.9.1
+
 ## 1.0.7
 
 ### Patch Changes

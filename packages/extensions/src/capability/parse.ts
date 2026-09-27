@@ -33,12 +33,23 @@ const VALID_SCOPES: ReadonlySet<CapabilityScope> = new Set([
   'export',
   'storage',
   'network',
+  'secret',
   'command',
   'ui',
 ]);
 
 const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 const SEGMENT_RE = /^(?:[A-Za-z_][A-Za-z0-9_-]*\*?|\*)$/;
+
+/**
+ * `secret.read:<NAME>` names must look like an environment variable
+ * (`[A-Z][A-Z0-9_]*`) and must be an exact, non-glob single segment.
+ * Secrets are the most sensitive capability target in the grammar — a
+ * glob or multi-segment secret target would let one grant cover more
+ * env vars than the author wrote down, so this scope gets a stricter
+ * check than the general `SEGMENT_RE` grammar allows.
+ */
+const SECRET_NAME_RE = /^[A-Z][A-Z0-9_]*$/;
 
 /**
  * Parse a capability string. Returns `{ ok: true, value }` on success or
@@ -121,6 +132,26 @@ export function parseCapability(raw: string): ValidationResult<Capability> {
       };
     }
     target = parsedTarget.value;
+
+    if (scopeRaw === 'secret') {
+      const seg = target.segments;
+      const isExactLiteral = seg.length === 1 && seg[0].kind === 'literal' && !seg[0].value.endsWith('*');
+      if (!isExactLiteral || !SECRET_NAME_RE.test((seg[0] as { value: string }).value ?? '')) {
+        return fail(
+          '',
+          'invalid_capability',
+          `Capability "${raw}": secret target "${tail}" must be an exact env-var-shaped name, no wildcards.`,
+          'Example: "secret.read:API_TOKEN". Names match [A-Z][A-Z0-9_]*.',
+        );
+      }
+    }
+  } else if (scopeRaw === 'secret') {
+    return fail(
+      '',
+      'invalid_capability',
+      `Capability "${raw}": "secret.${action}" requires a target naming the env var (e.g. "secret.read:API_TOKEN").`,
+      'Secrets always name a specific env var; there is no untargeted or wildcard secret grant.',
+    );
   }
 
   return {

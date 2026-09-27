@@ -1,5 +1,11 @@
 # @ifc-lite/server-client
 
+## 3.2.0
+
+### Minor Changes
+
+- [#5585](https://github.com/LTplus-AG/ifc-lite/pull/5585) [`0200994`](https://github.com/LTplus-AG/ifc-lite/commit/02009943de1ca623b8f0f5bdc590ab6440689b98) Thanks [@louistrue](https://github.com/louistrue)! - `parseParquetStream` now asks the server to share geometry across stream batches (`stream_shapes=cross-batch`, [#5407](https://github.com/LTplus-AG/ifc-lite/issues/5407)), so a streamed model downloads each distinct shape once instead of once per batch. The client keeps the shapes earlier batches sent and decodes each batch against them. It refuses a batch whose stated `vertex_base` / `index_base` does not match what it has received, or whose `batch_number` is out of sequence, instead of drawing one shape's vertices for another or silently losing a batch's meshes. Against a server that predates the option, batches carry no bases and decode on their own, as before.
+
 ## 3.1.0
 
 ### Minor Changes

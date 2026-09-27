@@ -160,10 +160,14 @@ const PINNED_OPEN_EDGES: Option<i64> = None;
 // within 1 mm of the reference host, so two sub-mm slivers the manifold-gate
 // fallback used to drop stay in this mesh. The other configurations did not
 // move (measured 352 with both gates, 6 with the topology gate alone).
+// #5573 (#5410): 382 -> 136 (manifold gate alone) and 352 -> 394 (both
+// gates). Profile-hole walls are now wound out of the solid and this
+// plan-rotated wall is cut in its own frame, which moved the gated fallback's
+// reading in both directions; re-measured, not assumed.
 #[cfg(all(feature = "csg_manifold_gate", not(feature = "csg_topology_gate")))]
-const PINNED_OPEN_EDGES: Option<i64> = Some(382);
+const PINNED_OPEN_EDGES: Option<i64> = Some(136);
 #[cfg(all(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
-const PINNED_OPEN_EDGES: Option<i64> = Some(352);
+const PINNED_OPEN_EDGES: Option<i64> = Some(394);
 
 #[test]
 fn reveal_wall_openings_do_not_leave_flaps() {

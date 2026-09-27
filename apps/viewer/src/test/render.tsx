@@ -86,6 +86,22 @@ export function press(target: EventTarget, key: string, init: KeyboardEventInit 
 }
 
 /**
+ * Activate a focused control as a browser does. Happy DOM dispatches the key
+ * events but omits the native button's default click, so supply that default
+ * only for buttons whose keydown was not cancelled. Custom roles must handle
+ * their own keydown; this helper never clicks them on their behalf.
+ */
+export function activate(target: HTMLElement, key: 'Enter' | ' ' = 'Enter'): void {
+  target.focus();
+  act(() => {
+    const down = new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    const proceed = target.dispatchEvent(down);
+    target.dispatchEvent(new window.KeyboardEvent('keyup', { key, bubbles: true, cancelable: true }));
+    if (proceed && target instanceof window.HTMLButtonElement) target.click();
+  });
+}
+
+/**
  * Dispatch the event that arrives at React's `onBlur`. `blur` itself does
  * not bubble (DOM spec), so React delegates it from the ROOT via the
  * bubbling `focusout` instead — dispatching `blur` here would bubble
@@ -128,4 +144,29 @@ export async function advance(ms: number): Promise<void> {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, ms));
   });
+}
+
+/**
+ * Let React and the code under test run until `done()` holds, then return.
+ *
+ * For async work whose duration is not the test's business (lazy module loads,
+ * real reprojection, a handler's `await` chain): the wait ends on the
+ * condition, not on a tick count. A fixed budget such as 50 x 5 ms passes when
+ * the file runs alone and fails once the runner is loaded (#5977). The
+ * deadline is only a safety net for a condition that will never hold; it
+ * throws `message`, so a real regression fails here, by name, instead of at
+ * whichever assertion happens to read the state next.
+ */
+export async function waitFor(
+  done: () => boolean,
+  message: string,
+  timeoutMs = 15_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!done()) {
+    if (Date.now() > deadline) {
+      throw new Error(`waitFor: gave up after ${timeoutMs} ms: ${message}`);
+    }
+    await advance(5);
+  }
 }

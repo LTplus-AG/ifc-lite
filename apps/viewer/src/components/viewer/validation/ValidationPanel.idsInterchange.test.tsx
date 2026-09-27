@@ -10,13 +10,14 @@
  */
 
 import '@/test/setup-dom.js';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { parseIDS } from '@ifc-lite/ids';
 import { cleanup, click, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { ValidationPanel } from './ValidationPanel.js';
+import { resetValidationPanelFixture } from './validation-test-fixture.js';
 
 const IDS_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema">
@@ -76,6 +77,8 @@ function buttonByText(root: HTMLElement, text: string): HTMLButtonElement {
   assert.ok(button, `no button "${text}"`);
   return button as HTMLButtonElement;
 }
+
+beforeEach(resetValidationPanelFixture);
 
 afterEach(cleanup);
 

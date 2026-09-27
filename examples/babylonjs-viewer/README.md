@@ -26,8 +26,17 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173` and drop an IFC file. Click any element to see its
-IFC data in the side panel.
+Open `http://localhost:5173`, then pick an IFC file with the file input or
+drag-and-drop one anywhere on the page. Click any element to see its IFC data
+in the side panel.
+
+`npm run build` typechecks and writes a production bundle to `dist/`
+(`npm run preview` serves it); `npm run typecheck` runs `tsc` alone.
+
+This folder is self-contained: it depends on the **published** `@ifc-lite/*`
+packages (not `workspace:*`), so you can copy it out of the monorepo and
+install it on its own. Inside the monorepo it installs those same published
+versions rather than the local sources.
 
 ## Key files
 

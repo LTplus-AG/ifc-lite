@@ -4,14 +4,17 @@
 
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, describe, it, mock } from 'node:test';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { useViewerStore } from '@/store';
+import { posthog } from '@/lib/analytics';
 import { render, cleanup, click } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { ExportDialog } from './ExportDialog.js';
+import type { TerrainImageryDrape } from '@/lib/terrain-imagery/drape-state.js';
 
 const initialState = useViewerStore.getState();
 
@@ -45,7 +48,7 @@ describe('ExportDialog LandXML source fidelity (#5042)', () => {
   it('refuses IFC export from a LandXML-only model instead of synthesizing IFC', () => {
     const terrain = landXmlModel('survey.xml');
     useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     assert.match(document.body.textContent ?? '', /LandXML cannot be exported as IFC/);
@@ -56,11 +59,11 @@ describe('ExportDialog LandXML source fidelity (#5042)', () => {
   it('keeps the non-IFC JSON mutation-delta export available', () => {
     const terrain = landXmlModel('survey.xml');
     useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const label = [...document.querySelectorAll('label')]
-      .find((candidate) => candidate.textContent?.trim() === 'Changes Only');
+      .find((candidate) => candidate.textContent?.trim() === 'Changes only (JSON delta)');
     const toggle = label?.parentElement?.parentElement?.querySelector('button[role="switch"]');
     assert.ok(toggle, 'changes-only switch is available for a LandXML source');
     click(toggle);
@@ -73,11 +76,11 @@ describe('ExportDialog LandXML source fidelity (#5042)', () => {
     const terrain = landXmlModel('survey.xml');
     terrain.schemaVersion = 'IFC5';
     useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const label = [...document.querySelectorAll('label')]
-      .find((candidate) => candidate.textContent?.trim() === 'Changes Only');
+      .find((candidate) => candidate.textContent?.trim() === 'Changes only (IFCX overlay)');
     const toggle = label?.parentElement?.parentElement?.querySelector('button[role="switch"]');
     assert.ok(toggle, 'changes-only switch is available');
     click(toggle);
@@ -90,7 +93,7 @@ describe('ExportDialog LandXML source fidelity (#5042)', () => {
     authored.schemaVersion = 'IFC4';
     const terrain = landXmlModel('survey.xml');
     useViewerStore.setState({ ...fixtureModels(authored, terrain), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const scope = document.querySelector('[role="combobox"]');
@@ -135,6 +138,29 @@ function captureDownload(run: () => void): { filename: string; bytes?: Blob } {
   return { filename, bytes };
 }
 
+/**
+ * The LandXML conversion runs asynchronously since #5942 (it may call the
+ * appearance planner to write draped imagery), so its download lands after
+ * the click returns. Keep the seams patched until it has.
+ */
+async function captureAsyncDownload(run: () => void): Promise<{ filename: string; bytes?: Blob }> {
+  const originalCreate = URL.createObjectURL;
+  const originalClick = HTMLAnchorElement.prototype.click;
+  let filename = '';
+  let bytes: Blob | undefined;
+  URL.createObjectURL = ((blob: Blob) => { bytes = blob; return 'blob:landxml-test'; }) as typeof URL.createObjectURL;
+  URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+  HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) { filename = this.download; };
+  try {
+    run();
+    for (let tick = 0; tick < 50 && !filename; tick += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+  } finally {
+    URL.createObjectURL = originalCreate;
+    HTMLAnchorElement.prototype.click = originalClick;
+  }
+  return { filename, bytes };
+}
+
 describe('ExportDialog LandXML source-format export (#5175)', () => {
   function sourceButton(): HTMLButtonElement | undefined {
     return [...document.querySelectorAll('button')]
@@ -145,22 +171,31 @@ describe('ExportDialog LandXML source-format export (#5175)', () => {
     const terrain = landXmlModel('survey.xml');
     terrain.sourceFile = new File(['<LandXML/>'], 'Example_Terrain.xml', { type: 'application/xml' });
     useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const button = sourceButton();
     assert.ok(button, 'the refusal offers the source-format route it points users at');
 
-    const { filename, bytes } = captureDownload(() => click(button));
-    assert.equal(filename, 'Example_Terrain.xml', 'the producer filename and extension survive');
-    assert.equal(bytes, terrain.sourceFile, 'the original bytes are served, not a re-synthesis');
+    const completions: Record<string, unknown>[] = [];
+    const analytics = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      if (event === 'export_completed') completions.push(properties);
+    });
+    try {
+      const { filename, bytes } = captureDownload(() => click(button));
+      assert.equal(filename, 'Example_Terrain.xml', 'the producer filename and extension survive');
+      assert.equal(bytes, terrain.sourceFile, 'the original bytes are served, not a re-synthesis');
+      assert.deepEqual(completions, [{ format: 'xml', surface: 'landxml_refusal' }]);
+    } finally {
+      analytics.mock.restore();
+    }
   });
 
   it('states plainly when the original bytes are no longer held', () => {
     const terrain = landXmlModel('survey.xml');
     delete terrain.sourceFile;
     useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     assert.equal(sourceButton(), undefined, 'no action is offered that cannot be performed');
@@ -172,7 +207,7 @@ describe('ExportDialog LandXML source-format export (#5175)', () => {
     authored.schemaVersion = 'IFC4';
     authored.sourceFile = new File(['ISO-10303-21;'], 'building.ifc');
     useViewerStore.setState({ ...fixtureModels(authored), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     assert.equal(sourceButton(), undefined, 'the route belongs to the LandXML refusal, not to every export');
@@ -222,11 +257,48 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     return model;
   }
 
+  it('records one completed IFC download with the initiating surface (#5844)', async () => {
+    useViewerStore.setState({
+      ...fixtureModels(terrainWithDocument('survey.xml')), dirtyModels: new Set(),
+    });
+    const completions: Record<string, unknown>[] = [];
+    const analytics = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      if (event === 'export_completed') completions.push(properties);
+    });
+    try {
+      for (const [index, surface] of (['classic', 'ribbon', 'palette'] as const).entries()) {
+        render(<ExportDialog surface={surface} />);
+        openDialog();
+        const { filename } = await captureAsyncDownload(() => click(exportButton()));
+        assert.match(filename, /\.ifc$/, 'the conversion produces an actual IFC download');
+        assert.deepEqual(completions[index], { format: 'ifc', surface });
+        assert.equal(completions.length, index + 1, 'one completion per IFC file');
+        cleanup();
+      }
+    } finally {
+      analytics.mock.restore();
+    }
+  });
+
+  it('writes the loaded source\'s SHA-256 as SourceHash in the file it downloads (#5942 follow-up)', async () => {
+    const source = '<?xml version="1.0"?><LandXML version="1.2"><Surfaces/></LandXML>\n';
+    const terrain = terrainWithDocument('survey.xml');
+    terrain.sourceFile = new File([source], 'survey.xml', { type: 'application/xml' });
+    useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
+    render(<ExportDialog surface="ribbon" />);
+    openDialog();
+
+    const { bytes } = await captureAsyncDownload(() => click(exportButton()));
+    assert.ok(bytes, 'the conversion was downloaded');
+    const expected = createHash('sha256').update(source).digest('hex');
+    assert.match(await bytes.text(), new RegExp(`'SourceHash',\\$,IFCLABEL\\('${expected}'\\)`));
+  });
+
   it('offers the conversion, by record count, for a covered source', () => {
     useViewerStore.setState({
       ...fixtureModels(terrainWithDocument('survey.xml')), dirtyModels: new Set(),
     });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const text = document.body.textContent ?? '';
@@ -241,7 +313,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
       ...fixtureModels(terrainWithDocument('survey.xml', { alignments: [{}, {}] })),
       dirtyModels: new Set(),
     });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const text = document.body.textContent ?? '';
@@ -264,7 +336,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
       ...fixtureModels(terrainWithDocument('alignments.xml', { surfaces: [], alignments: fixture.alignments })),
       dirtyModels: new Set(),
     });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const text = document.body.textContent ?? '';
@@ -278,7 +350,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
       ...fixtureModels(terrainWithDocument('alignment.xml', { surfaces: [], alignments: [{}, {}, {}] })),
       dirtyModels: new Set(),
     });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     assert.match(document.body.textContent ?? '', /LandXML cannot be exported as IFC/);
@@ -293,7 +365,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
       },
     });
     useViewerStore.setState({ ...fixtureModels(assumed), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     // The scale is an operator's choice, not the file's. Nothing in the
@@ -305,7 +377,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     useViewerStore.setState({
       ...fixtureModels(terrainWithDocument('survey.xml')), dirtyModels: new Set(),
     });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     // The fixture's own schemaVersion is IFC4. Without this the dialog would
@@ -322,7 +394,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
       useViewerStore.setState({
         ...fixtureModels(terrainWithDocument('survey.xml')), dirtyModels: new Set(),
       });
-      render(<ExportDialog />);
+      render(<ExportDialog surface="ribbon" />);
       openDialog();
 
       const schema = [...document.querySelectorAll('[role="combobox"]')].at(-1);
@@ -343,11 +415,11 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
   it('actually writes the changes-only JSON for a LandXML model, which has no data store', () => {
     const terrain = terrainWithDocument('survey.xml');
     useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const label = [...document.querySelectorAll('label')]
-      .find((candidate) => candidate.textContent?.trim() === 'Changes Only');
+      .find((candidate) => candidate.textContent?.trim() === 'Changes only (JSON delta)');
     const toggle = label?.parentElement?.parentElement?.querySelector('button[role="switch"]');
     assert.ok(toggle, 'changes-only is offered for a LandXML source');
     click(toggle);
@@ -366,7 +438,7 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
       coordinateSystem: { horizontalDatum: 'SWEREF99 TM' },
     });
     useViewerStore.setState({ ...fixtureModels(georeferenced), dirtyModels: new Set() });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     // §2.2's transposition check needs the CRS's coordinate BOUNDS, which this
@@ -378,13 +450,72 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     assert.doesNotMatch(text, /No coordinate reference system is declared/);
   });
 
+  it('names the declared CRS a coordinate reference system, not a datum (#5942 follow-up)', () => {
+    // A real 3D-Win terrain declares `epsgCode="3875"`: an EPSG CRS, which
+    // the dialog called a "declared datum".
+    const georeferenced = terrainWithDocument('survey.xml', { coordinateSystem: { horizontalDatum: 'EPSG:3875' } });
+    useViewerStore.setState({ ...fixtureModels(georeferenced), dirtyModels: new Set() });
+    render(<ExportDialog surface="ribbon" />);
+    openDialog();
+
+    const text = document.body.textContent ?? '';
+    assert.match(text, /declared coordinate reference system \(EPSG:3875\)/);
+    assert.doesNotMatch(text, /datum/);
+  });
+
+  /** The Output row: the badge (format label) and the extension beside it. */
+  function outputRow(): string {
+    const label = [...document.querySelectorAll('label')].find((candidate) => candidate.textContent?.trim() === 'Output');
+    assert.ok(label?.parentElement, 'the dialog shows its Output row');
+    return label.parentElement.textContent ?? '';
+  }
+
+  function draped(source: TerrainImageryDrape['source']): TerrainImageryDrape {
+    return {
+      sourceName: source === 'file' ? 'ortho.png' : 'OpenStreetMap', source, placement: 'world file',
+      imageCrs: 'EPSG:3067', imageCrsSource: 'ortho.prj',
+      projection: {
+        crs: 'EPSG:3875', origin: [157880, 6406970], axisU: [1, 0], axisV: [0, 1],
+        extent: [40, 40], imageSize: [80, 80], deviationPx: 0,
+      },
+      reprojected: true, totalVertices: 3, coveredVertices: 3, displayedGsd: 0.5,
+      flatColour: [0.42, 0.62, 0.32], textureId: -1,
+      ...(source === 'file' ? { image: { bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]), mime: 'image/png' as const, sha256: 'a'.repeat(64) } } : {}),
+    };
+  }
+
+  it('says .ifczip in the Output row when file imagery ships beside the IFC (#5942 follow-up)', () => {
+    // The real-data run wrote an .ifcZIP while this row said "IFC (STEP) .ifc".
+    const terrain = terrainWithDocument('survey.xml');
+    terrain.terrainImagery = draped('file');
+    useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
+    render(<ExportDialog surface="ribbon" />);
+    openDialog();
+
+    const row = outputRow();
+    assert.match(row, /IFC \+ images/);
+    assert.match(row, /\.ifczip$/);
+  });
+
+  it('keeps .ifc in the Output row, and writes .ifc, when the drape is viewer-only tiles', async () => {
+    const terrain = terrainWithDocument('survey.xml');
+    terrain.terrainImagery = draped('tiles');
+    useViewerStore.setState({ ...fixtureModels(terrain), dirtyModels: new Set() });
+    render(<ExportDialog surface="ribbon" />);
+    openDialog();
+
+    assert.match(outputRow(), /IFC \(STEP\)\.ifc$/);
+    const { filename } = await captureAsyncDownload(() => click(exportButton()));
+    assert.match(filename, /\.ifc$/, 'the row names the file that is written');
+  });
+
   it('refuses a merged scope that contains a covered LandXML model, naming the scope as the fix', () => {
     const authored = fixtureModel('building.ifc');
     authored.schemaVersion = 'IFC4';
     useViewerStore.setState({
       ...fixtureModels(authored, terrainWithDocument('survey.xml')), dirtyModels: new Set(),
     });
-    render(<ExportDialog />);
+    render(<ExportDialog surface="ribbon" />);
     openDialog();
 
     const scope = document.querySelector('[role="combobox"]');

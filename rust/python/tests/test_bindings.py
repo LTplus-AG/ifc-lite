@@ -8,6 +8,7 @@ exercise the same binary that ships to PyPI rather than a local cargo build.
 """
 
 import json
+import math
 import struct
 from pathlib import Path
 
@@ -127,6 +128,30 @@ def test_swept_disk_directrix_is_opt_in_and_analytic():
     document = json.loads(ifclite_geom.geometry_data_json(ifc, include_directrices=True))
     assert document["swept_disks"]["125"] == with_curves["swept_disks"][125]
     assert document["directrix_diagnostics"] == with_curves["directrix_diagnostics"]
+
+
+def test_issue_5754_rebar_directrix_metrics_use_world_metres_and_radians():
+    (sweep,) = ifclite_geom.geometry_data_buffers(
+        read(REBAR), include_directrices=True
+    )["swept_disks"][125]
+    metrics = sweep["directrix_metrics"]
+    assert metrics is not None
+    # The millimetre fixture authors 322, 245.685..., and 250 mm straight
+    # runs, with two 101.5 mm radius quarter-circle bends.
+    straight_lengths = [0.322, 0.245685133619932, 0.250]
+    quarter_arc_length = 0.1015 * math.pi / 2
+    assert [part["segment_index"] for part in metrics["segments"]] == list(range(5))
+    assert [part["length"] for part in metrics["segments"]] == pytest.approx(
+        [straight_lengths[0], quarter_arc_length, straight_lengths[1],
+         quarter_arc_length, straight_lengths[2]]
+    )
+    assert [part["bend_angle"] for part in metrics["segments"][::2]] == [None] * 3
+    assert [part["bend_angle"] for part in metrics["segments"][1::2]] == pytest.approx(
+        [math.pi / 2, math.pi / 2]
+    )
+    assert metrics["total_length"] == pytest.approx(
+        sum(straight_lengths) + 2 * quarter_arc_length
+    )
 
 
 def test_swept_disk_directrix_respects_id_filter():

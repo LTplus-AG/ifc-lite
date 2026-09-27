@@ -313,6 +313,7 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     // Track property set IDs and relationship IDs to skip
     skipPropertySetIds: new Set<number>(),
     skipRelationshipIds: new Set<number>(),
+    detachedRelatedObjects: new Map<number, Set<number>>(),
 
     // Written by the georeferencing pass and read again by the final
     // assembly, which is why they are pass state and not phase locals.

@@ -100,7 +100,7 @@ const back = uuidToIfcGuid(uuid);
 ## Also included
 
 - `createBCFFromIDSReport` - turn an IDS validation report into a BCF file, one topic per failing spec
-- `computeMarkerPositions` + `BCFOverlayRenderer` - viewer-agnostic 3D topic markers for any renderer
+- `computeMarkerPositions` - viewer-agnostic 3D topic marker positions for any renderer to draw
 - Camera round-trip helpers (`cameraToPerspective`, `orthogonalToCamera`, ...) and section-plane conversion
 
 ## API

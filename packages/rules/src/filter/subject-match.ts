@@ -17,6 +17,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { PropertyRule, QuantityRule } from './filter-rules.js';
 import { numericOpMatches, valueOpMatches } from './filter-ops.js';
 import { readSubject, type SubjectValue } from './read-subject.js';
+import { NEGATED_VALUE_OP } from './filter-match.js';
 
 /**
  * `subject` with every value that has a unit converted to SI base units.
@@ -66,5 +67,11 @@ export function matchRuleThroughSubject(
   }
   if (rule.op === 'isSet') return subject.present;
   if (rule.op === 'isNotSet') return !subject.present;
+  // Same NONE rule as `matchPropertyRule` for a list / table read member by member (#5475).
+  const positive = NEGATED_VALUE_OP[rule.op];
+  if (positive) {
+    return subject.values.length > 0
+      && !subject.values.some((v) => valueOpMatches(positive, String(v), rule.value, rule.valueKind));
+  }
   return subject.values.some((v) => valueOpMatches(rule.op, String(v), rule.value, rule.valueKind));
 }

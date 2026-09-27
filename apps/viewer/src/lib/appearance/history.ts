@@ -8,7 +8,7 @@
 import type { Mutation, MutablePropertyView } from '@ifc-lite/mutations';
 import type { StoreApi } from 'zustand';
 import type { ViewerState } from '@/store/index.js';
-import { replayCoordinatedAppearanceHistory } from './coordinated-history.js';
+import { hasCoordinatedAppearanceMarker, replayCoordinatedAppearanceHistory } from './coordinated-history.js';
 
 export interface AppearanceHistoryCommand {
   readonly mutations: readonly Mutation[];
@@ -119,6 +119,15 @@ export function prepareAppearanceHistory(
     }));
     return finalMutation;
   };
+}
+
+/**
+ * Whether `mutationId` belongs to an appearance command, i.e. whether
+ * `replayAppearanceHistory` may claim it once it is on top of the stack.
+ * Lets a batched replay commit its pending stack moves before handing over.
+ */
+export function hasAppearanceHistoryEntry(store: StoreApi<ViewerState>, mutationId: string): boolean {
+  return hasCoordinatedAppearanceMarker(store, mutationId) || (registries.get(store.getState)?.entries.has(mutationId) ?? false);
 }
 
 /** Called before generic mutation replay; a failed command never advances either stack. */

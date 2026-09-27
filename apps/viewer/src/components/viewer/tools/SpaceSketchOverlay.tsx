@@ -18,13 +18,19 @@
  * snapshots the plate via `duplicate()`
  * (each clone owns its heap, freed deterministically — never JS GC). 2D plan
  * sketch; 3D-on-model registration is the next step.
+ *
+ * This is the controller and the `TOOL_HUD.spaceSketch.Bar` slot (#5503): it
+ * renders the bar `ToolOverlays` places top-center, and portals the plan
+ * card, the hint and the parked chip through `HudItem` — region + order,
+ * never coordinates. The presentational pieces live in
+ * `space-sketch/SpaceSketchHud`.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useConstructionUnderlay } from '@/hooks/useConstructionUnderlay';
 import { useIfc } from '@/hooks/useIfc';
-import { snapPoint, alignToAxes, type SnapKind } from '@/lib/space-snap';
+import { snapSketchPoint, alignToAxes, type SketchSnapKind } from '@/lib/snap/space-sketch';
 import { editError } from '@/lib/space-edit-error';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { pointerButton, isRemoveModifier } from '@/lib/space-interaction';
@@ -32,11 +38,9 @@ import { type Room, type Boundary } from '@/lib/space-plate-session';
 import { wallRectsFromMeshes, type WallRect } from '@/lib/wall-rects-from-meshes';
 import { polyArea, uniqueVerts, distToSeg, projectOnSeg, sX, sY, wX, wY, PAD, type Pt } from '@/lib/space-sketch-geometry';
 import { type BoundaryMode } from '@ifc-lite/create';
-import { X, Undo2, Redo2, Layers, Maximize, Magnet, SlidersHorizontal, HelpCircle, Eraser, Square, PenLine, Frame, Check, Minus, Building2 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { SpaceSketchCanvas } from './space-sketch/SpaceSketchCanvas';
-import { OptionsPopover, HelpPopover } from './space-sketch/SpaceSketchPopovers';
-import { SpaceSketchReopenPill } from './space-sketch/SpaceSketchReopenPill';
+import { SpaceSketchBar, SpaceSketchHint, SpaceSketchParkedChip, SpaceSketchPlanCard } from './space-sketch/SpaceSketchHud';
 import { useSpaceGhostPreview, type GhostSpec } from './space-sketch/useSpaceGhostPreview';
 import { useSpaceSceneFraming } from './space-sketch/useSpaceSceneFraming';
 import { exteriorPerimeter, perimeterWalls } from './space-sketch/storey-footprint';
@@ -47,6 +51,7 @@ import { useSpaceBake } from './space-sketch/useSpaceBake';
 import { floorToFloorHeight } from './space-sketch/space-bake';
 import type { Hover, SplitTarget, IntentTone } from './space-sketch/types';
 import { useTranslation } from '@/i18n';
+import { formatSquareMetres } from './computePolygonArea';
 
 const PICK_PX = 12;
 const SNAP_PX = 10;
@@ -95,7 +100,6 @@ export function SpaceSketchOverlay() {
   const {
     svgRef, attachSvg, fitRef, fitTick, size, fitToPoints, panBy, svgPoint, resizeHandlers,
   } = useSpaceViewport();
-  const panelRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const rebuildTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Bumped whenever a storey's draft room count changes, to recompute the
@@ -122,12 +126,12 @@ export function SpaceSketchOverlay() {
   const [splitHover, setSplitHover] = useState<Pt | null>(null);
   const [snapPos, setSnapPos] = useState<Pt | null>(null);
   // What the live snap landed on, so the cue can differ for a wall vs a corner.
-  const [snapKind, setSnapKind] = useState<SnapKind>('none');
+  const [snapKind, setSnapKind] = useState<SketchSnapKind>('none');
   // Snap every node to the building's 2D wall lines (corners + along walls).
   // Default on; the magnet toggle in the toolbar turns it off (vertex-only).
   const [snapToBuilding, setSnapToBuilding] = useState(true);
-  // Disclosure popovers (self-managed; no radix Popover primitive here).
-  // Keep the default panel clean.
+  // Disclosure popovers: controlled, so `useSpaceSketchKeys`'s capture-phase
+  // Esc (which stops the event before Radix sees it) can close them itself.
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   // Issue 3: the vertex that an ⌥/Ctrl-click would dissolve — telegraphed live.
@@ -166,7 +170,7 @@ export function SpaceSketchOverlay() {
   // losing the user's edits.
   const buildsRef = useRef<Map<number, { rects: WallRect[]; label: string; extraction: Extraction }>>(new Map());
   const [hist, setHist] = useState(0);
-  const [status, setStatus] = useState('Pick a storey to derive rooms from its walls.');
+  const [status, setStatus] = useState(() => t('spaceSketch.status.pickStorey'));
   const [showBuilding, setShowBuilding] = useState(true);
   const [showDiagnostics, setShowDiagnostics] = useState(false); // Issue 7 — leak diagnostics
   // Default to the wall AXIS (face-based rooms are the gaps between wall
@@ -355,12 +359,12 @@ export function SpaceSketchOverlay() {
         if (snapDeltaTimerRef.current) clearTimeout(snapDeltaTimerRef.current);
         snapDeltaTimerRef.current = setTimeout(() => setSnapDelta(null), 1800);
       }
-      const total = snap.reduce((s, r) => s + r.area, 0);
-      setStatus(`${label}: ${snap.length} room(s), ${total.toFixed(1)} m² · ${rects.length} walls.`);
+      const area = formatSquareMetres(snap.reduce((s, r) => s + r.area, 0));
+      setStatus(t('spaceSketch.status.derived', { label, count: snap.length, area, walls: rects.length }));
     } catch (e) {
       setStatus(`Build failed: ${String(e)}`);
     }
-  }, [buildPlate, resetInteraction, fitToPoints]);
+  }, [buildPlate, resetInteraction, fitToPoints, t]);
 
   // Manual weld-tolerance override (null → 5 cm default). Rebuilds the current
   // plate from its wall rectangles at the chosen tolerance.
@@ -424,10 +428,10 @@ export function SpaceSketchOverlay() {
     fitToPoints(snap.length > 0
       ? snap.flatMap((r) => r.outline)
       : (build?.rects ?? []).flatMap((r) => r.corners));
-    const total = snap.reduce((s, r) => s + r.area, 0);
-    setStatus(`${build?.label ?? `Storey ${storey}`}: ${snap.length} room(s), ${total.toFixed(1)} m² (your draft).`);
+    const area = formatSquareMetres(snap.reduce((s, r) => s + r.area, 0));
+    setStatus(t('spaceSketch.status.draftRestored', { label: build?.label ?? `Storey ${storey}`, count: snap.length, area }));
     return true;
-  }, [sessionsRef, sessionRef, resetInteraction, fitToPoints]);
+  }, [sessionsRef, sessionRef, resetInteraction, fitToPoints, t]);
 
   // On a storey change (and on open): restore that storey's existing draft if we
   // have one, otherwise derive it from the walls. Edits on every storey persist
@@ -802,10 +806,10 @@ export function SpaceSketchOverlay() {
 
   // Cancel: drop ghosts, restore the prior view (X-ray off, isolation and
   // spaces visibility as they were), and leave WITHOUT creating anything.
-  const closeNow = useCallback(() => {
+  const closeNow = useCallback((via?: import('@/lib/analytics-ui-events').ToolExitVia) => {
     clearGhosts();
     restoreScene({ keepSpacesVisible: false });
-    setActiveTool('select');
+    setActiveTool('select', via);
   }, [clearGhosts, restoreScene, setActiveTool]);
 
   // The single confirm: create EVERY storey's draft as IfcSpace at once. On
@@ -881,7 +885,7 @@ export function SpaceSketchOverlay() {
       setHover(null); setDeleteHover(null); setSplitHover(null);
       setAlignGuides({ vRef: null, hRef: null });
       const tol = PICK_PX / fitRef.current.scale;
-      const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
+      const snap = snapSketchPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
       setSnapKind(snap.kind); setSnapPos(snap.kind === 'none' ? null : snap.pt);
       if (rectStartRef.current) {
         setRectPreview(rectCornersFrom(rectStartRef.current, snap.pt, m.shift));
@@ -900,7 +904,7 @@ export function SpaceSketchOverlay() {
       draggedRef.current = true;
       // Snap to other room vertices + building wall lines (corners and along
       // walls), with Shift constraining to ortho from the drag start first.
-      const snap = snapPoint([wx, wy], {
+      const snap = snapSketchPoint([wx, wy], {
         vertices: otherVertsRef.current,
         segments: buildingSegmentsRef.current,
         tol: SNAP_PX / fitRef.current.scale,
@@ -921,7 +925,7 @@ export function SpaceSketchOverlay() {
     if (drawPts.length > 0) {
       const tol = PICK_PX / fitRef.current.scale;
       const anchor = drawPts[drawPts.length - 1];
-      const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol, ortho: m.shift, anchor });
+      const snap = snapSketchPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol, ortho: m.shift, anchor });
       let pt = snap.pt;
       // Axis-align to the drawn corners only when NOT holding Shift — under Shift
       // the ortho constraint is authoritative and alignToAxes (which snaps X and Y
@@ -984,7 +988,7 @@ export function SpaceSketchOverlay() {
     // Empty space → draw a room (or Shift = pan; hide the draw dot then).
     setHover(null); setDeleteHover(null); setSplitHover(null); setAlignGuides({ vRef: null, hRef: null });
     const tol = PICK_PX / fitRef.current.scale;
-    const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
+    const snap = snapSketchPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
     setDrawCursor(m.shift ? null : snap.pt); setSnapKind(snap.kind);
     setIntent(m.shift ? { text: 'Pan', tone: 'pan' } : { text: 'Draw room', tone: 'draw' });
   }, [drawPts, splitPick, rooms, pickEdge, pickVertex, nearestVertPos, resolveSplitTarget, refreshRooms, drawMode, rectCornersFrom]);
@@ -1130,7 +1134,7 @@ export function SpaceSketchOverlay() {
     // 0. Rectangle tool (modal): first click sets a corner, second commits the
     // room. Drag/cut/draw are suspended while it's active.
     if (drawMode === 'rect' && !mod) {
-      const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
+      const snap = snapSketchPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
       if (rectStartRef.current == null) {
         rectStartRef.current = snap.pt;
         setRectPreview(null);
@@ -1144,7 +1148,7 @@ export function SpaceSketchOverlay() {
     // 1. Drawing in progress → add a corner (or close on the first dot).
     if (drawPts.length > 0) {
       const anchor = drawPts[drawPts.length - 1];
-      const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol, ortho: e.shiftKey, anchor });
+      const snap = snapSketchPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol, ortho: e.shiftKey, anchor });
       // Under Shift the ortho point is authoritative; only axis-align when free.
       const p = snap.kind === 'none' && !e.shiftKey ? alignToAxes(snap.pt, drawPts, tol).pt : snap.pt;
       setAlignGuides({ vRef: null, hRef: null });
@@ -1214,7 +1218,7 @@ export function SpaceSketchOverlay() {
       capturePointer(svgRef.current, e.pointerId);
       return;
     }
-    const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
+    const snap = snapSketchPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
     drawRedoRef.current = [];
     setDrawPts([snap.pt]);
     setStatus('Drawing — click to add corners · Enter / double-click / first dot to close · Shift = straight.');
@@ -1232,9 +1236,8 @@ export function SpaceSketchOverlay() {
     const session = sessionRef.current;
     if (draggedRef.current) { session?.commitDrag(); commit(); }
     else session?.cancelDrag(); // a click without a drag → discard the snapshot
-    const total = rooms.reduce((s, r) => s + r.area, 0);
-    if (draggedRef.current) setStatus(`Drag done — ${rooms.length} room(s), ${total.toFixed(1)} m² (conserved).`);
-  }, [rooms, commit]);
+    if (draggedRef.current) setStatus(t('spaceSketch.status.dragDone', { count: rooms.length, area: formatSquareMetres(rooms.reduce((s, r) => s + r.area, 0)) }));
+  }, [rooms, commit, t]);
 
   const f = fitRef.current;
   const total = rooms.reduce((s, r) => s + r.area, 0);
@@ -1258,7 +1261,6 @@ export function SpaceSketchOverlay() {
     for (let y = gy0; y <= gy1; y += gridStep) gridLines.push({ x1: PAD, y1: sY(f, y), x2: size.w - PAD, y2: sY(f, y) });
   }
 
-  const iconBtn = 'inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40';
   const previewEnd = splitHover ?? cursorWorld;
   // The 2D preview (and the created space) use the chosen wall boundary; the
   // editable vertices stay on the centreline (the topology). `center` shows the
@@ -1308,201 +1310,119 @@ export function SpaceSketchOverlay() {
   const leakCount = diagnostics ? diagnostics.filter((s) => !s.bounding).length : 0;
   const badCount = rooms.filter((r) => !r.simple).length;
 
-  // Collapsed (via the header's minimize button): the panel is swapped for a
-  // small reopen pill so the model and the live ghost preview are unobstructed.
-  // The overlay stays mounted, so the sessions + all state survive the collapse;
-  // the pill shows the aggregated pending count across every storey.
+  // Minimized: the bar and plan are swapped for a parked chip so the model
+  // and the live ghost preview are unobstructed. The overlay stays mounted, so
+  // the sessions + all state survive; the chip carries the pending count
+  // across every storey.
   if (minimized) {
-    return <SpaceSketchReopenPill pendingCount={pendingRooms} onReopen={() => setMinimized(false)} />;
+    return <SpaceSketchParkedChip pendingCount={pendingRooms} onReopen={() => setMinimized(false)} />;
   }
 
+  // The in-progress gesture hint while drawing/cutting, else the live status.
+  const hintText = rectStartRef.current
+    ? t('spaceSketch.footer.rectHint')
+    : drawPts.length > 0
+      ? t('spaceSketch.footer.drawHint')
+      : splitPick
+        ? t('spaceSketch.footer.cutHint')
+        : status;
+
   return (
-    <div ref={panelRef} className="absolute left-1/2 top-4 -translate-x-1/2 z-30 rounded-xl border bg-background/95 shadow-xl backdrop-blur p-3 select-none pointer-events-auto"
-         style={{ width: size.w + 24 }}
-         draggable={false}
-         onDragStart={(e) => e.preventDefault()}>
-
-      <div className="flex items-center justify-between mb-2.5">
-        <div className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-          <Layers className="h-4 w-4 shrink-0 text-muted-foreground" /> {t('spaceSketch.panel.heading')}
-          {/* Running total of spaces to create on confirm (all storeys), so the
-              user always knows there is something to confirm before closing. */}
-          {needsConfirm && (
-            <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-              title={t('spaceSketch.panel.pendingBadgeTitle')}>
-              {pendingStoreys > 1 ? t('spaceSketch.panel.pendingBadgeMultiStorey', { count: pendingRooms, floors: pendingStoreys }) : t('spaceSketch.panel.pendingBadge', { count: pendingRooms })}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-0.5">
-          <button className={`${iconBtn} ${helpOpen ? 'bg-muted text-foreground' : ''}`} aria-pressed={helpOpen}
-            onClick={() => { setHelpOpen((v) => !v); setOptionsOpen(false); }} title={t('spaceSketch.panel.helpTitle')}><HelpCircle className="h-4 w-4" /></button>
-          <button className={iconBtn} onClick={() => setMinimized(true)}
-            title={t('spaceSketch.panel.minimizeTitle')}><Minus className="h-4 w-4" /></button>
-          <button className={iconBtn} onClick={closeNow} title={t('spaceSketch.panel.closeTitle')}><X className="h-4 w-4" /></button>
-        </div>
-      </div>
-
-      {/* Storey */}
-      <div className="flex items-center gap-2 mb-2">
-        <select className="h-8 flex-1 min-w-0 rounded-md border bg-background px-2 text-xs" value={storeyId ?? ''}
-          onChange={(e) => setStoreyId(Number(e.target.value))} disabled={!storeys.length}>
-          {storeys.length ? storeys.map((s) => <option key={s.id} value={s.id}>{s.name}</option>) : <option>{t('spaceSketch.panel.noModelOption')}</option>}
-        </select>
-        <button className={iconBtn} onClick={() => void deriveAllStoreys()} disabled={!sketchModelId || derivingAll}
-          title={t('spaceSketch.panel.deriveAllTitle')}>
-          <Building2 className="h-4 w-4" /></button>
-        <span className="shrink-0 pr-0.5 text-[11px] tabular-nums text-muted-foreground">
-          {t('spaceSketch.panel.roomCount', { count: rooms.length })} · {total.toFixed(1)} m²
-        </span>
-      </div>
-
-      {/* Tools + actions: draw mode (Free / Rectangle / Footprint) then history,
-          snap, options, cleanup, fit. Secondary settings hide behind Options. */}
-      <div className="flex items-center gap-1 mb-2">
-        <button className={`${iconBtn} ${drawMode === 'free' ? 'bg-primary/10 text-primary hover:bg-primary/15' : ''}`}
-          onClick={() => selectDrawMode('free')} aria-pressed={drawMode === 'free'}
-          title={t('spaceSketch.tools.editTitle')}><PenLine className="h-4 w-4" /></button>
-        <button className={`${iconBtn} ${drawMode === 'rect' ? 'bg-primary/10 text-primary hover:bg-primary/15' : ''}`}
-          onClick={() => selectDrawMode('rect')} aria-pressed={drawMode === 'rect'}
-          title={t('spaceSketch.tools.rectTitle')}><Square className="h-4 w-4" /></button>
-        <button className={`${iconBtn} ${footprintArmed ? 'bg-destructive/15 text-destructive hover:bg-destructive/20' : ''}`}
-          onClick={() => void addFootprint()} disabled={!sketchModelId}
-          title={footprintArmed
-            ? t('spaceSketch.tools.footprintArmedTitle', { count: rooms.length })
-            : t('spaceSketch.tools.footprintTitle')}><Frame className="h-4 w-4" /></button>
-        <span className="mx-0.5 h-5 w-px bg-border" />
-        <button className={iconBtn} onClick={undo} disabled={!canUndo} title={t('spaceSketch.tools.undoTitle')}><Undo2 className="h-4 w-4" /></button>
-        <button className={iconBtn} onClick={redo} disabled={!canRedo} title={t('spaceSketch.tools.redoTitle')}><Redo2 className="h-4 w-4" /></button>
-        <span className="mx-0.5 h-5 w-px bg-border" />
-        <button className={`${iconBtn} ${snapToBuilding ? 'bg-primary/10 text-primary hover:bg-primary/15' : ''}`}
-          onClick={() => setSnapToBuilding((v) => !v)} aria-pressed={snapToBuilding}
-          title={snapToBuilding ? t('spaceSketch.tools.snapOnTitle') : t('spaceSketch.tools.snapOffTitle')}><Magnet className="h-4 w-4" /></button>
-        <button className={`${iconBtn} relative ${optionsOpen ? 'bg-muted text-foreground' : ''}`} aria-pressed={optionsOpen}
-          onClick={() => { setOptionsOpen((v) => !v); setHelpOpen(false); }} title={t('spaceSketch.tools.optionsTitle')}>
-          <SlidersHorizontal className="h-4 w-4" />
-          {(boundaryMode !== 'center' || snapTol != null || showDiagnostics) && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />}
-        </button>
-        <button className={iconBtn} onClick={cleanupOrphans}
-          disabled={!rooms.length} title={t('spaceSketch.tools.cleanupTitle')}><Eraser className="h-4 w-4" /></button>
-        <button className={`${iconBtn} ml-auto`} onClick={() => fitToPoints(
-            rooms.length > 0
-              ? rooms.flatMap((r) => r.outline)
-              : (lastBuildRef.current?.rects ?? []).flatMap((r) => r.corners),
-          )}
-          disabled={derivedStorey == null} title={t('spaceSketch.tools.fitTitle')}><Maximize className="h-4 w-4" /></button>
-      </div>
-
-      {/* Click-away backdrop for the disclosure popovers (panel-local). */}
-      {(optionsOpen || helpOpen) && (
-        <div className="absolute inset-0 z-10" aria-hidden onMouseDown={() => { setOptionsOpen(false); setHelpOpen(false); }} />
-      )}
-
-      {/* Disclosure popovers (Options / Help) — kept out of the default flow. */}
-      {optionsOpen && (
-        <OptionsPopover
-          boundaryMode={boundaryMode}
-          onBoundaryMode={setBoundaryMode}
-          hasWallData={!!ext}
-          snapDelta={snapDelta}
-          usedTol={usedTol}
-          snapDisabled={derivedStorey == null}
-          onSnap={rebuildWithSnap}
-          snapTol={snapTol}
-          showBuilding={showBuilding}
-          onToggleBuilding={() => setShowBuilding((v) => !v)}
-          showDiagnostics={showDiagnostics}
-          onToggleDiagnostics={() => setShowDiagnostics((v) => !v)}
-        />
-      )}
-      {helpOpen && <HelpPopover />}
-
-      <SpaceSketchCanvas
-        svgRef={attachSvg}
-        width={size.w}
-        height={size.h}
-        cursor={cursor}
-        fit={f}
-        gridLines={gridLines}
-        underlay={underlayEls}
-        rooms={rooms}
-        boundaryInfo={boundaryInfo}
-        boundaryMode={boundaryMode}
-        mergeFaces={mergeRooms}
-        diagnostics={diagnostics}
-        hover={hover}
-        splitPick={splitPick}
-        previewEnd={previewEnd}
-        splitHover={splitHover}
-        snapPos={snapPos}
-        snapKind={snapKind}
-        drawPts={drawPts}
-        drawCursor={drawCursor}
-        rectPreview={rectPreview}
-        alignGuides={alignGuides}
-        deleteHover={deleteHover}
-        intent={optionsOpen || helpOpen ? null : intent}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onDoubleClick={() => { if (drawPts.length > 0) commitDraw(); }}
-        onContextMenu={onContextMenu}
-        onPointerLeave={() => { setHover(null); setSplitHover(null); setDeleteHover(null); setDrawCursor(null); setAlignGuides({ vRef: null, hRef: null }); setIntent(null); }}
+    <>
+      <SpaceSketchBar
+        canAuthor={!!sketchModelId}
+        drawMode={drawMode}
+        onDrawMode={selectDrawMode}
+        footprintArmed={footprintArmed}
+        onFootprint={() => void addFootprint()}
+        roomCount={rooms.length}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={undo}
+        onRedo={redo}
+        snapToBuilding={snapToBuilding}
+        onToggleSnap={() => setSnapToBuilding((v) => !v)}
+        optionsOpen={optionsOpen}
+        onOptionsOpenChange={(open) => { setOptionsOpen(open); if (open) setHelpOpen(false); }}
+        optionsDirty={boundaryMode !== 'center' || snapTol != null || showDiagnostics}
+        options={{
+          boundaryMode,
+          onBoundaryMode: setBoundaryMode,
+          hasWallData: !!ext,
+          snapDelta,
+          usedTol,
+          snapDisabled: derivedStorey == null,
+          onSnap: rebuildWithSnap,
+          snapTol,
+          showBuilding,
+          onToggleBuilding: () => setShowBuilding((v) => !v),
+          showDiagnostics,
+          onToggleDiagnostics: () => setShowDiagnostics((v) => !v),
+        }}
+        helpOpen={helpOpen}
+        onHelpOpenChange={(open) => { setHelpOpen(open); if (open) setOptionsOpen(false); }}
+        needsConfirm={needsConfirm}
+        pendingRooms={pendingRooms}
+        pendingStoreys={pendingStoreys}
+        onConfirm={confirmCreate}
+        onClose={() => closeNow()}
+        onMinimize={() => setMinimized(true)}
       />
 
-      {/* Footer — an in-the-moment hint only while drawing/cutting (the full
-          legend lives behind “?”), the live status, then the confirm/close
-          actions. Drafts become IfcSpace ONLY through Confirm; closing discards
-          them. */}
-      <div className="mt-2.5 space-y-1.5">
-        {(drawPts.length > 0 || splitPick || rectStartRef.current) && (
-          <div className="text-[11px] leading-tight text-primary">
-            {rectStartRef.current
-              ? t('spaceSketch.footer.rectHint')
-              : drawPts.length > 0
-                ? t('spaceSketch.footer.drawHint')
-                : t('spaceSketch.footer.cutHint')}
-          </div>
-        )}
-        {status && drawPts.length === 0 && !splitPick && !rectStartRef.current && (
-          <div className="truncate text-[11px] leading-tight text-muted-foreground" title={status}>{status}</div>
-        )}
-        {unboundedCount > 0 && (
-          <div className="text-[11px] leading-tight text-amber-600 dark:text-amber-500">
-            {t('spaceSketch.footer.unboundedNotice', { count: unboundedCount, boundaryMode })}
-          </div>
-        )}
-        {showDiagnostics && (
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px]">
-            <span className="text-emerald-600 dark:text-emerald-500">{t('spaceSketch.footer.diag.bounds')}</span>
-            <span className="text-red-500">{t('spaceSketch.footer.diag.leak', { count: leakCount })}</span>
-            <span className="text-red-500">{t('spaceSketch.footer.diag.failed', { count: badCount })}</span>
-          </div>
-        )}
-        <button
-          className={`inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-md text-xs font-semibold disabled:opacity-40 ${
-            needsConfirm
-              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-              : 'border text-foreground hover:bg-muted'
-          }`}
-          onClick={needsConfirm ? confirmCreate : closeNow}
-          title={needsConfirm
-            ? t('spaceSketch.footer.confirmTitle')
-            : t('spaceSketch.footer.closeToolTitle')}>
-          {needsConfirm && <Check className="h-4 w-4" />}
-          {needsConfirm ? (pendingStoreys > 1 ? t('spaceSketch.footer.confirmButtonMultiStorey', { count: pendingRooms, floors: pendingStoreys }) : t('spaceSketch.footer.confirmButton', { count: pendingRooms })) : t('spaceSketch.footer.doneButton')}
-        </button>
-      </div>
+      <SpaceSketchPlanCard
+        width={size.w}
+        storeys={storeys}
+        storeyId={storeyId}
+        onStoreyChange={setStoreyId}
+        canAuthor={!!sketchModelId}
+        derivingAll={derivingAll}
+        onDeriveAll={() => void deriveAllStoreys()}
+        roomCount={rooms.length}
+        totalArea={total}
+        canCleanup={rooms.length > 0}
+        onCleanup={cleanupOrphans}
+        canFit={derivedStorey != null}
+        onFit={() => fitToPoints(rooms.length > 0 ? rooms.flatMap((r) => r.outline) : (lastBuildRef.current?.rects ?? []).flatMap((r) => r.corners))}
+        unbounded={unboundedCount > 0 ? { count: unboundedCount, boundaryMode } : null}
+        diagnostics={showDiagnostics ? { leak: leakCount, failed: badCount } : null}
+        resizeHandlers={resizeHandlers}
+      >
+        <SpaceSketchCanvas
+          svgRef={attachSvg}
+          width={size.w}
+          height={size.h}
+          cursor={cursor}
+          fit={f}
+          gridLines={gridLines}
+          underlay={underlayEls}
+          rooms={rooms}
+          boundaryInfo={boundaryInfo}
+          boundaryMode={boundaryMode}
+          mergeFaces={mergeRooms}
+          diagnostics={diagnostics}
+          hover={hover}
+          splitPick={splitPick}
+          previewEnd={previewEnd}
+          splitHover={splitHover}
+          snapPos={snapPos}
+          snapKind={snapKind}
+          drawPts={drawPts}
+          drawCursor={drawCursor}
+          rectPreview={rectPreview}
+          alignGuides={alignGuides}
+          deleteHover={deleteHover}
+          intent={optionsOpen || helpOpen ? null : intent}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onDoubleClick={() => { if (drawPts.length > 0) commitDraw(); }}
+          onContextMenu={onContextMenu}
+          onPointerLeave={() => { setHover(null); setSplitHover(null); setDeleteHover(null); setDrawCursor(null); setAlignGuides({ vRef: null, hRef: null }); setIntent(null); }}
+        />
+      </SpaceSketchPlanCard>
 
-      {/* Resize grip (Issue 4) — drag to grow/shrink the canvas; the plan stays
-          put (hit ⤢ to reframe). */}
-      <div
-        {...resizeHandlers}
-        title={t('spaceSketch.panel.resizeTitle')}
-        className="absolute bottom-1 right-1 h-3.5 w-3.5 cursor-nwse-resize text-muted-foreground/50 hover:text-foreground"
-        style={{ touchAction: 'none' }}>
-        <svg viewBox="0 0 10 10" className="h-full w-full" pointerEvents="none"><path d="M9 2 L2 9 M9 6 L6 9" stroke="currentColor" strokeWidth={1.2} fill="none" /></svg>
-      </div>
-    </div>
+      {/* Drafts become IfcSpace ONLY through Confirm in the bar. */}
+      <SpaceSketchHint text={hintText} />
+    </>
   );
 }

@@ -37,10 +37,12 @@ export function referencedModelTagIds(presets: readonly ClashSetFilters[]): Set<
   const ids = new Set<string>();
   for (const p of presets) {
     for (const filter of [p.filterA, p.filterB]) {
-      for (const rule of filter?.rules ?? []) {
-        if (rule.kind !== 'modelTag') continue;
-        if (rule.op === 'untagged') ids.add(UNTAGGED_INPUT);
-        else for (const id of rule.tagIds) ids.add(id);
+      for (const group of filter ?? []) {
+        for (const rule of group.rules) {
+          if (rule.kind !== 'modelTag') continue;
+          if (rule.op === 'untagged') ids.add(UNTAGGED_INPUT);
+          else for (const id of rule.tagIds) ids.add(id);
+        }
       }
     }
   }

@@ -9,7 +9,7 @@ import { act } from 'react';
 import { advance, cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale } from '@/i18n';
 import { useViewerStore } from '@/store';
-import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import { fixtureModel } from '@/test/store-fixture.js';
 import { PropertyValueType } from '@ifc-lite/data';
 import { BulkPropertyEditor, parseBulkSetPropertyValue } from './BulkPropertyEditor.js';
 import { appliedResultKey } from './bulk-property-editor-options.js';
@@ -22,6 +22,16 @@ afterEach(() => {
 });
 
 describe('BulkPropertyEditor localization (#4918)', () => {
+  it('#5898 retranslates the shared filter-group control after a live locale change', async () => {
+    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+    click(container.querySelector('button')!);
+    await advance(0);
+    assert.match(document.body.textContent ?? '', /Add group/);
+    registerLocale('bulk-shared-group-witness', { 'filterGroups.addGroup': '[Gruppe hinzufügen]' });
+    act(() => setLocale('bulk-shared-group-witness'));
+    assert.match(document.body.textContent ?? '', /\[Gruppe hinzufügen\]/);
+  });
+
   it('pluralizes the progress entity label from the total', () => {
     const singular = render(<BulkExecutionProgress done={0} total={1} />);
     assert.match(singular.textContent ?? '', /0 \/ 1 entity/);
@@ -38,9 +48,7 @@ describe('BulkPropertyEditor localization (#4918)', () => {
       'bulkPropertyEditor.trigger': '[Massenänderung]',
       'bulkPropertyEditor.title': '[Masseneigenschaften]',
       'bulkPropertyEditor.description': '[Elemente wählen und gemeinsam ändern]',
-      'bulkPropertyEditor.selectionCriteria': '[Auswahlkriterien]',
       'bulkPropertyEditor.matched': { one: '[{countDisplay} Treffer]', other: '[{countDisplay} Treffer]' },
-      'bulkPropertyEditor.noTypes': '[Modell laden]',
       'bulkPropertyEditor.action': '[Aktion]',
       'bulkPropertyEditor.apply': { one: '[Auf {countDisplay} Element anwenden]', other: '[Auf {countDisplay} Elemente anwenden]' },
     });
@@ -55,9 +63,7 @@ describe('BulkPropertyEditor localization (#4918)', () => {
     const text = document.body.textContent ?? '';
     assert.match(text, /\[Masseneigenschaften\]/);
     assert.match(text, /\[Elemente wählen und gemeinsam ändern\]/);
-    assert.match(text, /\[Auswahlkriterien\]/);
     assert.match(text, /\[0 Treffer\]/);
-    assert.match(text, /\[Modell laden\]/);
     assert.match(text, /\[Aktion\]/);
     assert.match(text, /\[Auf 0 Elemente anwenden\]/);
     assert.doesNotMatch(text, /Bulk Property Editor|Selection Criteria|entities matched/);
@@ -72,22 +78,6 @@ describe('BulkPropertyEditor localization (#4918)', () => {
     const result = parseBulkSetPropertyValue('abc', PropertyValueType.Real);
     assert.equal(result.ok, false);
     if (!result.ok) assert.equal(result.message, '[abc is no [decimal]]');
-  });
-
-  it('recomputes cached type labels when the mounted locale changes', async () => {
-    useViewerStore.setState(fixtureModels(fixtureModel('model-a', {
-      entities: [{ expressId: 1, type: 'IfcWall', name: 'Wall A' }],
-    })));
-    registerLocale('en-x-bulk-live-label', { 'bulkPropertyEditor.type.wall': '[Mauer]' });
-
-    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
-    click(container.querySelector('button')!);
-    await advance(0);
-    assert.match(document.body.textContent ?? '', /Wall/);
-
-    act(() => setLocale('en-x-bulk-live-label'));
-    await advance(0);
-    assert.match(document.body.textContent ?? '', /\[Mauer\]/);
   });
 
   it('selects complete result messages with both active-locale plural categories', () => {
@@ -149,21 +139,6 @@ describe('BulkPropertyEditor localization (#4918)', () => {
     }));
     await advance(0);
     assert.match(document.body.textContent ?? '', /\[second model\]/);
-  });
-
-  it('invalidates cached type labels when the active catalogue is replaced', async () => {
-    useViewerStore.setState(fixtureModels(fixtureModel('replacement-model', {
-      entities: [{ expressId: 1, type: 'IfcWall', name: 'Wall A' }],
-    })));
-    registerLocale('en-x-bulk-type-replacement', { 'bulkPropertyEditor.type.wall': '[first wall]' });
-    setLocale('en-x-bulk-type-replacement');
-    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
-    click(container.querySelector('button')!);
-    await advance(0);
-    assert.match(document.body.textContent ?? '', /\[first wall\]/);
-    act(() => registerLocale('en-x-bulk-type-replacement', { 'bulkPropertyEditor.type.wall': '[second wall]' }));
-    await advance(0);
-    assert.match(document.body.textContent ?? '', /\[second wall\]/);
   });
 
   it('retranslates unknown runtime failures after a locale switch', () => {

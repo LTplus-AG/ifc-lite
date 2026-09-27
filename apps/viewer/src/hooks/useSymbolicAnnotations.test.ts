@@ -21,7 +21,7 @@ import {
 } from './useSymbolicAnnotations.js';
 
 describe('symbolicAnnotationsOverlayEnabled (issue #2121)', () => {
-  // `Section2DPanel`'s class-level Visibility toggles claim to gate the
+  // The Drawing panel's class-level Visibility toggles claim to gate the
   // section "like the 3D viewport does" (#2060). The mesh cut and the
   // construction-projection profiles both honour `typeVisibility` via
   // `isTypeVisible`; the symbolic IfcAnnotation overlay used to be the one

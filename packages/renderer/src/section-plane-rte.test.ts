@@ -131,8 +131,45 @@ describe('section preview and cap use the same f64 RTE plane at survey coordinat
     const vertices = lastWrite(gpu.writes, 120);
     const uniforms = lastWrite(gpu.writes, 112);
     assert.equal(vertices[1], 5, 'legacy vertices remain in world space for the legacy matrix');
-    assert.deepEqual([...uniforms.slice(0, 16)], [...viewProj], 'legacy matrix occupies the RTE frame slot');
-    assert.deepEqual([...uniforms.slice(SECTION_PLANE_UNIFORM_SLOTS.drawableDelta)], new Array(8).fill(0),
+    assert.deepEqual(Array.from(uniforms.slice(0, 16)), [...viewProj], 'legacy matrix occupies the RTE frame slot');
+    assert.deepEqual(Array.from(uniforms.slice(SECTION_PLANE_UNIFORM_SLOTS.drawableDelta)), new Array(8).fill(0),
       'legacy world vertices use a zero drawable delta');
+  });
+
+  it('skips, rather than throws for, a preview and cap outside the eye envelope (#6128)', () => {
+    const frame = new RelativeToEyeFrame();
+    frame.update({ x: 0, y: 0, z: 0 }, MathUtils.identity(), MathUtils.identity());
+    const bounds = {
+      min: { x: 2_999_999, y: -1, z: -1 },
+      max: { x: 3_000_001, y: 1, z: 1 },
+    };
+    const draws: string[] = [];
+    const pass = {
+      setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, setIndexBuffer() {},
+      draw() { draws.push('draw'); }, drawIndexed() { draws.push('drawIndexed'); },
+    } as unknown as GPURenderPassEncoder;
+
+    const previewGpu = fakeDevice();
+    const preview = new SectionPlaneRenderer(previewGpu.device, 'bgra8unorm' as GPUTextureFormat);
+    preview.draw(pass, { axis: 'down', position: 50, bounds, isPreview: true, relativeToEyeFrame: frame });
+    assert.ok(!previewGpu.writes.some((write) => write.size === 112), 'no preview uniform is uploaded');
+
+    const capGpu = fakeDevice();
+    const cap = new Section2DOverlayRenderer(capGpu.device, 'bgra8unorm' as GPUTextureFormat);
+    cap.uploadDrawing([{
+      polygon: {
+        outer: [{ x: 3_000_000, y: 0 }, { x: 3_000_001, y: 0 }, { x: 3_000_001, y: 1 }], holes: [],
+      }, ifcType: 'IfcWall', expressId: 1,
+    }], [], 'down', 0);
+    cap.draw(pass, {
+      axis: 'down', position: 50, bounds, viewProj: new Float32Array(16),
+      rteViewProj: frame.getViewProjection().m, rteCamera: frame.getCameraWorld(),
+      showFills: true,
+      capStyle: {
+        fillColor: [1, 1, 1, 1], strokeColor: [0, 0, 0, 1], patternId: 0,
+        spacingPx: 8, angleRad: 0, widthPx: 1, secondaryAngleRad: 0,
+      },
+    });
+    assert.deepEqual(draws, [], 'neither the preview nor the cap is drawn with an unwritten delta');
   });
 });

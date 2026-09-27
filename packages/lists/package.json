@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/lists",
-  "version": "2.3.1",
+  "version": "2.3.3",
   "description": "Configurable property tables and schedules from IFC data for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -21,7 +21,8 @@
   "dependencies": {
     "@ifc-lite/data": "workspace:*",
     "@ifc-lite/encoding": "workspace:*",
-    "@ifc-lite/regex-guard": "workspace:*"
+    "@ifc-lite/regex-guard": "workspace:*",
+    "@ifc-lite/rules": "workspace:*"
   },
   "devDependencies": {
     "csv-parse": "7.0.2",

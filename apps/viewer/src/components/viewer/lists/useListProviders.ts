@@ -76,7 +76,8 @@ export function useListProviders(): ListProviders {
           toGlobalId: (expressId: number) => toGlobalId(modelId, expressId),
           getWorldPosition: makeWorldPositionGetter(model.ifcDataStore, model.geometryResult ?? geometryResult, renderFrame, (id) => toGlobalId(modelId, id)),
         };
-        out.push({ modelId, provider: createListDataProvider(model.ifcDataStore, model.name, zoneContext, mutationViews.get(modelId)), store: model.ifcDataStore });
+        const mutationView = mutationViews.get(modelId);
+        out.push({ modelId, provider: createListDataProvider(model.ifcDataStore, model.name, zoneContext, mutationView), store: model.ifcDataStore, mutationView });
       }
     } else if (ifcDataStore) {
       const zoneContext = {
@@ -87,7 +88,7 @@ export function useListProviders(): ListProviders {
         getWorldPosition: makeWorldPositionGetter(ifcDataStore, geometryResult, renderFrame, (id) => toGlobalId('default', id)),
       };
       const view = mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID);
-      out.push({ modelId: 'default', provider: createListDataProvider(ifcDataStore, '', zoneContext, view), store: ifcDataStore });
+      out.push({ modelId: 'default', provider: createListDataProvider(ifcDataStore, '', zoneContext, view), store: ifcDataStore, mutationView: view });
     }
     return out;
   }, [models, ifcDataStore, geometryResult, renderFrame, zoneSets, zoneAssignments, zoneApportionment, volumeScaleByModelId, toGlobalId, mutationViews, mutationVersion]);

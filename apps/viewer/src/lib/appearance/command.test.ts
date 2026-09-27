@@ -113,7 +113,7 @@ END-ISO-10303-21;`);
   const model = { ...fixtureModel(MODEL), loadedAt: 1, ifcDataStore: data, geometryResult: geometry };
   useViewerStore.setState({ models: new Map([[MODEL, model]]), activeModelId: MODEL,
     geometryResult: geometry, mutationViews: new Map([[MODEL, view]]), storeEditors: new Map([[MODEL, editor]]),
-    undoStacks: new Map(), redoStacks: new Map(), dirtyModels: new Set(), mutationVersion: 0, collabRoomId: null });
+    undoStacks: new Map(), redoStacks: new Map(), dirtyModels: new Set(), mutationVersion: 0, collabRoomId: null, editEnabled: true });
   const asset = await appearanceAssets.add(png, { owner });
   const next = view.peekNextExpressId();
   const plan: AppearancePlan = {
@@ -183,6 +183,19 @@ END-ISO-10303-21;`);
 }
 
 describe('appearance command atomicity #4243', () => {
+  it('refuses Edit-off before write and a mid-flight mode change before publication (#5901)', async () => {
+    const off = await fixture(), beforeOff = off.snapshot();
+    useViewerStore.setState({ editEnabled: false });
+    await assert.rejects(off.commit(), /Turn on Edit mode/);
+    assert.deepEqual(off.snapshot(), beforeOff);
+    assert.equal(useViewerStore.getState().dirtyModels.size, 0);
+    const during = await fixture(), beforeDuring = during.snapshot();
+    await assert.rejects(during.commit({ onProgress(phase) {
+      if (phase === 'publishing') useViewerStore.setState({ editEnabled: false });
+    } }), /Turn on Edit mode/);
+    assert.deepEqual(during.snapshot(), beforeDuring);
+    assert.equal(useViewerStore.getState().dirtyModels.size, 0);
+  });
   it('portable export omits history-only authored rows and images without changing Undo/Redo (#4243)', async () => {
     const f = await fixture(); await f.commit();
     const second = await applyNext(f, 2);

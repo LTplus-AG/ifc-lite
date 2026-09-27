@@ -3,11 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * #4444 — the Share dialog makes the federation scope explicit. With one
- * model there is nothing to choose and the room is created on open; with
- * several, the choice is shown, NO room is created until "Create link" is
- * pressed (a room's scope is fixed by its seed), and whichever scope is
- * picked is exactly what `startCollab` is asked to seed.
+ * #4444 — the Share dialog makes the federation scope explicit. With
+ * several models the choice is shown, and whichever scope is picked is
+ * exactly what `startCollab` is asked to seed. #5599 — at ANY model count NO
+ * room is created (nothing is uploaded) until "Create link" is pressed, and
+ * the link defaults to view-only access.
  *
  * Drives the real dialog: the effect mints a (local, serverless) token and
  * calls the store's `startCollab`, which is the one seam replaced here so the
@@ -101,15 +101,30 @@ afterEach(() => {
 });
 
 describe('ShareDialog: explicit federation scope (#4444, #4620)', () => {
-  it('offers no scope with one model, and creates the owner room on open with a valid store seed', async () => {
+  it('with one model, uploads nothing on open: no room until "Create link", which says it uploads (#5599)', async () => {
     useViewerStore.setState({ models: new Map([['a', makeModel('a', 'tower.ifc', 0)]]), activeModelId: 'a' });
     render(<ShareDialog open onOpenChange={() => {}} />);
     await settle();
-    assert.equal(scopeRadios().length, 0, 'no choice to make with one model');
-    assert.equal(createLinkButton(), undefined, 'nothing to confirm with one model');
-    assert.ok(document.querySelector('#share-link'), 'the dialog rendered its link field');
-    assert.equal(starts.length, 1);
+    assert.equal(scopeRadios().length, 0, 'no scope choice to make with one model');
+    assert.equal(starts.length, 0, 'opening the dialog must not create the room (upload the model)');
+    assert.equal(useViewerStore.getState().collabRoomId, null);
+    assert.match(document.body.textContent ?? '', /uploads .*to the collaboration server/, 'the upload is disclosed before consent');
+    assert.match(linkField().value, /Create the link/);
+    const create = createLinkButton();
+    assert.ok(create, 'the consent button is offered');
+    click(create);
+    await settle();
+    assert.equal(starts.length, 1, 'confirming creates the room once');
     assert.deepEqual(starts[0].seed?.models.map((m) => m.modelId), ['a']);
+    assert.equal(createLinkButton(), undefined, 'the room exists: nothing left to confirm');
+  });
+
+  it('defaults the invite to view-only access (#5599)', async () => {
+    useViewerStore.setState({ models: new Map([['a', makeModel('a', 'tower.ifc', 0)]]), activeModelId: 'a' });
+    render(<ShareDialog open onOpenChange={() => {}} />);
+    await settle();
+    const checked = document.querySelector('[role="radiogroup"][aria-label="Access level"] [aria-checked="true"]');
+    assert.equal(checked?.textContent?.trim(), 'View', 'least privilege by default');
   });
 
   it('an owner with nothing seedable still takes the OWNER path: an empty seed, never none', async () => {
@@ -123,6 +138,10 @@ describe('ShareDialog: explicit federation scope (#4444, #4620)', () => {
       activeModelId: 'a',
     });
     render(<ShareDialog open onOpenChange={() => {}} />);
+    await settle();
+    const create = createLinkButton();
+    assert.ok(create);
+    click(create);
     await settle();
     assert.equal(starts.length, 1);
     assert.notEqual(starts[0].seed, undefined, 'the owner always passes a seed');
@@ -149,7 +168,7 @@ describe('ShareDialog: explicit federation scope (#4444, #4620)', () => {
     click(create);
     await settle();
     assert.deepEqual(starts[0].seed?.models.map((m) => m.modelId), ['a', 'c']);
-    assert.match(document.body.textContent ?? '', /This room carries 2 models/);
+    assert.match(document.body.textContent ?? '', /This session carries 2 models/);
   });
 
   it('with two copies loaded, asks first: no room until "Create link", then shares both — active first', async () => {
@@ -186,7 +205,7 @@ describe('ShareDialog: explicit federation scope (#4444, #4620)', () => {
     // The room now exists: the scope is fixed and the dialog reports it.
     for (const radio of scopeRadios()) assert.equal((radio as HTMLButtonElement).disabled, true);
     assert.equal(createLinkButton(), undefined);
-    assert.match(document.body.textContent ?? '', /This room carries 2 models/);
+    assert.match(document.body.textContent ?? '', /This session carries 2 models/);
   });
 
   it('"Active model only" narrows the seed to the active model', async () => {
@@ -210,7 +229,7 @@ describe('ShareDialog: explicit federation scope (#4444, #4620)', () => {
     await settle();
     assert.equal(starts.length, 1);
     assert.deepEqual(starts[0].seed?.models.map((m) => m.modelId), ['b']);
-    assert.match(document.body.textContent ?? '', /This room carries 1 model\./);
+    assert.match(document.body.textContent ?? '', /This session carries 1 model\./);
   });
 
   it('once the room exists the scope is fixed and the dialog reports what the room carries', async () => {
@@ -230,7 +249,7 @@ describe('ShareDialog: explicit federation scope (#4444, #4620)', () => {
     render(<ShareDialog open onOpenChange={() => {}} />);
     await settle();
     for (const radio of scopeRadios()) assert.equal((radio as HTMLButtonElement).disabled, true);
-    assert.match(document.body.textContent ?? '', /This room carries 2 models/);
+    assert.match(document.body.textContent ?? '', /This session carries 2 models/);
     assert.equal(starts.length, 0, 'an existing room is never re-seeded from the dialog');
   });
 });

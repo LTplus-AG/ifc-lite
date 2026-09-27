@@ -1670,10 +1670,9 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.ok(ui.querySelector('button[aria-label="Dashboard actions"]'), 'rename / duplicate / delete / export / import live behind one menu');
   });
 
-  it('the close button runs onClose and unmounting releases the claim the panel installed', async () => {
+  it('unmounting the panel (the strip header owns Close, #5498) releases the claim it installed', async () => {
     const { renderer, charts } = recordingRenderer();
-    let closed = 0;
-    const ui = render(<ChartsPanel renderer={renderer} onClose={() => { closed += 1; }} />);
+    const ui = render(<ChartsPanel renderer={renderer} />);
     await settle();
     click(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')!);
     await settle();
@@ -1683,8 +1682,6 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     const selected = useViewerStore.getState().selectedEntityIds;
     const livePaint = useViewerStore.getState().overlayLayers.get('charts')?.colorOverrides ?? null;
     assert.equal(chartAwareRendererSelectionFromStore(useViewerStore.getState().selectedEntityId, selected, livePaint).selectedIds.size, 0);
-    click(ui.querySelector('button[aria-label="Close charts"]')!);
-    assert.equal(closed, 1);
     cleanup();
     assert.equal(useViewerStore.getState().chartVisibilityOwned, null);
     assert.equal(useViewerStore.getState().ghostExceptEntities, null);

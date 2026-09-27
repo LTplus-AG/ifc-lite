@@ -14,6 +14,16 @@ import {
 import { splitTopLevelStepArgs } from './step-args.js';
 import { PropertyValueType } from '@ifc-lite/data';
 
+/**
+ * These cases predate `applyAttributeMutations` reporting what it applied and
+ * skipped (#5529); they are about the rewritten TEXT, so they read `.content`
+ * through this shim rather than each growing a `.content` at the call site.
+ * The report itself is covered by `mutate-report-accuracy.test.ts`.
+ */
+function rewritten(...args: Parameters<typeof applyAttributeMutations>): string {
+  return applyAttributeMutations(...args).content;
+}
+
 describe('parseWhereFilter', () => {
   it.each([
     ['equals', 'Pset_WallCommon.IsExternal=true', { psetName: 'Pset_WallCommon', propName: 'IsExternal', operator: '=', value: 'true' }],
@@ -276,7 +286,7 @@ describe('applyAttributeMutations', () => {
 
   it('writes Name into slot 2, leaving its neighbours untouched', () => {
     const before = stepFile(1, 'IFCWALL', "'guid',$,'Old',$,$,$,$,$,$");
-    const args = argsOf(applyAttributeMutations(before, [mutation(1, 'Name', 'New')], objectTypeEntities));
+    const args = argsOf(rewritten(before, [mutation(1, 'Name', 'New')], objectTypeEntities));
     expect(args[2]).toBe("'New'");
     expect(args[0]).toBe("'guid'"); // GlobalId must not move
     expect(args[3]).toBe('$'); // Description must not be clobbered
@@ -284,11 +294,11 @@ describe('applyAttributeMutations', () => {
 
   it('writes Description into slot 3 and ObjectType into slot 4', () => {
     const before = stepFile(1, 'IFCWALL', "'guid',$,'Name',$,$,$,$,$,$");
-    const withDesc = applyAttributeMutations(before, [mutation(1, 'Description', 'D')], objectTypeEntities);
+    const withDesc = rewritten(before, [mutation(1, 'Description', 'D')], objectTypeEntities);
     expect(argsOf(withDesc)[3]).toBe("'D'");
     expect(argsOf(withDesc)[2]).toBe("'Name'");
 
-    const withType = applyAttributeMutations(before, [mutation(1, 'ObjectType', 'T')], objectTypeEntities);
+    const withType = rewritten(before, [mutation(1, 'ObjectType', 'T')], objectTypeEntities);
     expect(argsOf(withType)[4]).toBe("'T'");
     expect(argsOf(withType)[3]).toBe('$');
   });
@@ -300,7 +310,7 @@ describe('applyAttributeMutations', () => {
     // in that position.
     const before = stepFile(7, 'IFCFURNITURE', "'guid',$,'Desk',$,$,$,$,$,$");
     const args = argsOf(
-      applyAttributeMutations(before, [mutation(7, 'ObjectType', 'Workstation')], objectTypeEntities),
+      rewritten(before, [mutation(7, 'ObjectType', 'Workstation')], objectTypeEntities),
     );
     expect(args[4]).toBe("'Workstation'");
   });
@@ -313,21 +323,21 @@ describe('applyAttributeMutations', () => {
     for (const type of ['IFCRELAGGREGATES', 'IFCWALLTYPE', 'IFCPROPERTYSET']) {
       expect(objectTypeEntities.has(type), `${type} must not be treated as having ObjectType`).toBe(false);
       const before = stepFile(3, type, "'guid',$,'N',$,$,$,$,$,$");
-      const after = applyAttributeMutations(before, [mutation(3, 'ObjectType', 'X')], objectTypeEntities);
+      const after = rewritten(before, [mutation(3, 'ObjectType', 'X')], objectTypeEntities);
       expect(argsOf(after)[4], `${type} slot 4 must be untouched`).toBe('$');
     }
   });
 
   it('leaves an unrecognised attribute name alone', () => {
     const before = stepFile(1, 'IFCWALL', "'guid',$,'Name',$,$,$,$,$,$");
-    const after = applyAttributeMutations(before, [mutation(1, 'NotAnAttribute', 'X')], objectTypeEntities);
+    const after = rewritten(before, [mutation(1, 'NotAnAttribute', 'X')], objectTypeEntities);
     expect(after).toBe(before);
   });
 
   it('escapes quotes and backslashes so a value cannot break out of the STEP string', () => {
     const before = stepFile(1, 'IFCWALL', "'guid',$,'Name',$,$,$,$,$,$");
     const args = argsOf(
-      applyAttributeMutations(before, [mutation(1, 'Name', "O'Brien\\x")], objectTypeEntities),
+      rewritten(before, [mutation(1, 'Name', "O'Brien\\x")], objectTypeEntities),
     );
     expect(args[2]).toBe("'O''Brien\\\\x'");
   });
@@ -342,7 +352,7 @@ describe('applyAttributeMutations', () => {
     // gone. `step-args.ts`'s header has the walk-through.
     const before = stepFile(2, 'IFCWALL', "'1BBBBBBBBBBBBBBBBBBBBB',$,'John's wall',$,$,$,$,'A's',.NOTDEFINED.");
     expect(() =>
-      applyAttributeMutations(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities),
+      rewritten(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities),
     ).toThrow(/could not be read as a complete argument list/);
   });
 
@@ -359,7 +369,7 @@ describe('applyAttributeMutations', () => {
       "'1BBBBBBBBBBBBBBBBBBBBB',$,IFCLABEL('a's'),$,IFCLABEL('b's'),$,$,'T',.NOTDEFINED.",
     );
     expect(() =>
-      applyAttributeMutations(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities),
+      rewritten(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities),
     ).toThrow(/#2=IFCWALL/);
   });
 
@@ -378,7 +388,7 @@ describe('applyAttributeMutations', () => {
       "'1BBBBBBBBBBBBBBBBBBBBB',/*edited*/,$,'MyName','MyDescription',$,$,$,$,.NOTDEFINED.",
     );
     expect(() =>
-      applyAttributeMutations(before, [mutation(2, 'Description', 'NEWDESC')], objectTypeEntities),
+      rewritten(before, [mutation(2, 'Description', 'NEWDESC')], objectTypeEntities),
     ).toThrow(/a comment inside the argument list/);
   });
 
@@ -387,7 +397,7 @@ describe('applyAttributeMutations', () => {
     // comment, and storey and family names carry slashes constantly, so a
     // scanner that refused these would break `mutate` on ordinary files.
     const before = stepFile(1, 'IFCWALL', "'guid',$,'Level 1/2',$,$,$,$,$,$");
-    const args = argsOf(applyAttributeMutations(before, [mutation(1, 'Name', 'A/B')], objectTypeEntities));
+    const args = argsOf(rewritten(before, [mutation(1, 'Name', 'A/B')], objectTypeEntities));
     expect(args[2]).toBe("'A/B'");
     expect(args[3]).toBe('$');
   });
@@ -395,7 +405,7 @@ describe('applyAttributeMutations', () => {
   it('names the refused record, so the error says which one', () => {
     const before = stepFile(2, 'IFCWALL', "'guid',$,'John's wall',$,$,$,$,'A's',$");
     expect(() =>
-      applyAttributeMutations(before, [mutation(2, 'Name', 'X')], objectTypeEntities),
+      rewritten(before, [mutation(2, 'Name', 'X')], objectTypeEntities),
     ).toThrow(/#2=IFCWALL/);
   });
 
@@ -410,7 +420,7 @@ describe('applyAttributeMutations', () => {
   ])('refuses a record with %s', (_label, args) => {
     const before = stepFile(4, 'IFCWALL', args);
     expect(() =>
-      applyAttributeMutations(before, [mutation(4, 'Name', 'X')], objectTypeEntities),
+      rewritten(before, [mutation(4, 'Name', 'X')], objectTypeEntities),
     ).toThrow(/refusing to rewrite 1 record/);
   });
 
@@ -430,7 +440,7 @@ describe('applyAttributeMutations', () => {
       '$,$,$,$);',
       'ENDSEC;',
     ].join('\n');
-    const after = applyAttributeMutations(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities);
+    const after = rewritten(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities);
     expect(after).toBe(
       ['ISO-10303-21;', 'DATA;', "#2=IFCWALL('guid',$,'NewName',$,$,", '$,$,$,$);', 'ENDSEC;'].join('\n'),
     );
@@ -447,7 +457,7 @@ describe('applyAttributeMutations', () => {
       "#5=IFCRELDEFINESBYPROPERTIES('guid',$,'Old',$,(#3,#4),",
       '#6);',
     ].join('\n');
-    const after = applyAttributeMutations(before, [mutation(5, 'Name', 'NewName')], objectTypeEntities);
+    const after = rewritten(before, [mutation(5, 'Name', 'NewName')], objectTypeEntities);
     expect(after).toBe(
       ['DATA;', "#5=IFCRELDEFINESBYPROPERTIES('guid',$,'NewName',$,(#3,#4),", '#6);'].join('\n'),
     );
@@ -465,7 +475,7 @@ describe('applyAttributeMutations', () => {
     // the merge written to the wrong slot.
     const before = ["#2=IFCWALL('guid',$,'Old',$", '$,$,$,$,.NOTDEFINED.);'].join('\n');
     expect(() =>
-      applyAttributeMutations(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities),
+      rewritten(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities),
     ).toThrow(/#2=IFCWALL/);
   });
 
@@ -475,7 +485,7 @@ describe('applyAttributeMutations', () => {
     // so widening the whitespace sets to refuse the malformed case above
     // must not also refuse this one.
     const before = ["#2=IFCWALL('guid',$,'Old',$,", '$,$,$,$,.NOTDEFINED.);'].join('\n');
-    const after = applyAttributeMutations(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities);
+    const after = rewritten(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities);
     expect(after).toBe(["#2=IFCWALL('guid',$,'NewName',$,", '$,$,$,$,.NOTDEFINED.);'].join('\n'));
   });
 
@@ -487,7 +497,7 @@ describe('applyAttributeMutations', () => {
       'ENDSEC;',
     ].join('\n');
     expect(() =>
-      applyAttributeMutations(
+      rewritten(
         before,
         [mutation(2, 'Name', 'X'), mutation(3, 'Name', 'X')],
         objectTypeEntities,
@@ -504,7 +514,7 @@ describe('applyAttributeMutations', () => {
       "#9=IFCWALL('other',$,'Bob's wall',$,$,$,$,'C's',$);",
       'ENDSEC;',
     ].join('\n');
-    const after = applyAttributeMutations(before, [mutation(2, 'Name', 'New')], objectTypeEntities);
+    const after = rewritten(before, [mutation(2, 'Name', 'New')], objectTypeEntities);
     expect(after.split('\n')[2]).toBe(before.split('\n')[2]);
     expect(after.split('\n')[1]).toContain("'New'");
   });
@@ -518,7 +528,7 @@ describe('applyAttributeMutations', () => {
     // walk (the same rule `StepTokenizer` itself uses) reads past the
     // comment instead of being fooled by it.
     const before = "#1=IFCWALL/* edited */('guid',$,'Old','D',$,$,$,$,.NOTDEFINED.);\n";
-    const after = applyAttributeMutations(before, [mutation(1, 'Name', 'NewName')], objectTypeEntities);
+    const after = rewritten(before, [mutation(1, 'Name', 'NewName')], objectTypeEntities);
     expect(after).toBe("#1=IFCWALL/* edited */('guid',$,'NewName','D',$,$,$,$,.NOTDEFINED.);\n");
   });
 
@@ -536,7 +546,7 @@ describe('applyAttributeMutations', () => {
     // by ',' instead, so it is refused rather than partially rewritten.
     const before = "#6=IFCWALL('a',$,B),$,$,$,$,$,$);\n";
     expect(() =>
-      applyAttributeMutations(before, [mutation(6, 'Name', 'X')], objectTypeEntities),
+      rewritten(before, [mutation(6, 'Name', 'X')], objectTypeEntities),
     ).toThrow(/#6=IFCWALL/);
   });
 
@@ -550,19 +560,19 @@ describe('applyAttributeMutations', () => {
     // rewrite.
     const longComment = `/*${'x'.repeat(400)}*/`;
     const before = `#1=IFCWALL('guid',$,'Old',$,$,$,$,$,$)${longComment};\n`;
-    const after = applyAttributeMutations(before, [mutation(1, 'Name', 'New')], objectTypeEntities);
+    const after = rewritten(before, [mutation(1, 'Name', 'New')], objectTypeEntities);
     expect(after).toBe(`#1=IFCWALL('guid',$,'New',$,$,$,$,$,$)${longComment};\n`);
   });
 
   it('rewrites a well-formed record with a # and a comma inside its Name, byte-for-byte elsewhere', () => {
     const before = stepFile(1, 'IFCWALL', "'guid',#2,'Wall #3, north','Desc',$,#4,$,'TAG',.NOTDEFINED.");
-    const after = applyAttributeMutations(before, [mutation(1, 'Name', 'Renamed')], objectTypeEntities);
+    const after = rewritten(before, [mutation(1, 'Name', 'Renamed')], objectTypeEntities);
     expect(after).toBe(stepFile(1, 'IFCWALL', "'guid',#2,'Renamed','Desc',$,#4,$,'TAG',.NOTDEFINED."));
   });
 
   it('rewrites through doubled-quote escapes and a nested list without touching them', () => {
     const before = stepFile(1, 'IFCWALL', "'guid',$,'it''s',(1.,2.,3.),$,$,$,'T''AG',$");
-    const after = applyAttributeMutations(before, [mutation(1, 'Name', 'New')], objectTypeEntities);
+    const after = rewritten(before, [mutation(1, 'Name', 'New')], objectTypeEntities);
     expect(after).toBe(stepFile(1, 'IFCWALL', "'guid',$,'New',(1.,2.,3.),$,$,$,'T''AG',$"));
   });
 
@@ -574,7 +584,7 @@ describe('applyAttributeMutations', () => {
       "#2=IFCWALL('guid2', $ , 'Rename me' ,$,$,$,$,$,$);",
       'ENDSEC;',
     ].join('\n');
-    const after = applyAttributeMutations(before, [mutation(2, 'Name', 'New')], objectTypeEntities);
+    const after = rewritten(before, [mutation(2, 'Name', 'New')], objectTypeEntities);
     const beforeLines = before.split('\n');
     const afterLines = after.split('\n');
     expect(afterLines[2]).toBe(beforeLines[2]);

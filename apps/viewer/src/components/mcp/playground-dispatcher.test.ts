@@ -118,6 +118,75 @@ describe('meshForClash WASM disposal (#1959 P0 leak)', () => {
   });
 });
 
+it('clash meshes the effective entity set after playground edits (#5249)', async () => {
+  const model = await schemaOnlyModel('0aBcDeFgHiJkLmNoPqRsTA');
+  const created = await dispatch(model, 'entity_create', {
+    type: 'IfcDoor', attributes: ['0aBcDeFgHiJkLmNoPqRsTB', null, 'New door'],
+  });
+  assert.equal(created.isError, false, created.text);
+  const newId = (created.structured as { expressId: number }).expressId;
+  const deleted = await dispatch(model, 'entity_delete', { express_id: 1 });
+  assert.equal(deleted.isError, false, deleted.text);
+
+  const observed: Array<{ source: boolean; created: boolean }> = [];
+  const initMock = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
+  const processMock = mock.method(GeometryProcessor.prototype, 'process', async (_bytes: Uint8Array, index?: Map<number, unknown>) => {
+    assert.ok(index);
+    observed.push({ source: index.has(1), created: index.has(newId) });
+    return { meshes: [] } as unknown as GeometryResult;
+  });
+  const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
+  try {
+    const result = await dispatch(model, 'clash_check', {});
+    assert.equal(result.errorCode, ToolErrorCode.UNSUPPORTED_OPERATION);
+    assert.deepEqual(observed, [{ source: false, created: true }]);
+    assert.equal(disposeMock.mock.callCount(), 1);
+  } finally {
+    initMock.mock.restore();
+    processMock.mock.restore();
+    disposeMock.mock.restore();
+  }
+});
+
+it('clash re-meshes after a later playground edit (#5249)', async () => {
+  const model = await schemaOnlyModel('0aBcDeFgHiJkLmNoPqRsTC');
+  const triangle = {
+    positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    indices: new Uint32Array([0, 1, 2]),
+    color: [1, 1, 1, 1] as [number, number, number, number],
+    expressId: 1,
+  };
+  const seen: number[][] = [];
+  const initMock = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
+  const processMock = mock.method(GeometryProcessor.prototype, 'process', async (_bytes: Uint8Array, index?: Map<number, unknown>) => {
+    assert.ok(index);
+    seen.push([...index.keys()]);
+    return { meshes: [triangle] } as unknown as GeometryResult;
+  });
+  const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
+  try {
+    const first = await dispatch(model, 'entity_create', {
+      type: 'IfcDoor', attributes: ['0aBcDeFgHiJkLmNoPqRsTD', null, 'Door'],
+    });
+    assert.equal(first.isError, false, first.text);
+    assert.equal((await dispatch(model, 'clash_check', {})).isError, false);
+    const second = await dispatch(model, 'entity_create', {
+      type: 'IfcWindow', attributes: ['0aBcDeFgHiJkLmNoPqRsTE', null, 'Window'],
+    });
+    assert.equal(second.isError, false, second.text);
+    assert.equal((await dispatch(model, 'clash_check', {})).isError, false);
+    const secondId = (second.structured as { expressId: number }).expressId;
+    assert.equal(processMock.mock.callCount(), 2, 'a later edit must bypass earlier clash meshes');
+    assert.equal(seen[0].includes(secondId), false);
+    assert.equal(seen[1].includes(secondId), true);
+  } finally {
+    initMock.mock.restore();
+    processMock.mock.restore();
+    disposeMock.mock.restore();
+  }
+});
+
 describe('count_entities group_by:type universe (#3765)', () => {
   it('counts BIM products, not every raw STEP record (owner history, pset, property included)', async () => {
     // One wall, plus non-product STEP records (owner history, a property set

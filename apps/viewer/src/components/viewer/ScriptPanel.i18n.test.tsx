@@ -81,7 +81,7 @@ function renderPanel(): HTMLElement {
   return render(
     <BimReactContext.Provider value={{} as BimContext}>
       <ExtensionHostContext.Provider value={{} as ExtensionHostService}>
-        <ScriptPanel onClose={() => {}} />
+        <ScriptPanel />
       </ExtensionHostContext.Provider>
     </BimReactContext.Provider>,
   );

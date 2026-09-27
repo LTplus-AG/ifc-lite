@@ -8,6 +8,11 @@ rotation, and color are CRDT attributes - drag a wall in tab A and the same wall
 moves in tab B over the websocket server. Peer selections are outlined in each
 user's color, and undo/redo is scoped per tab.
 
+> **Runs inside the ifc-lite monorepo only.** This example depends on
+> `@ifc-lite/collab` via `workspace:*` and on the locally built
+> `@ifc-lite/collab-server`, so it cannot be copied out and installed on its
+> own. Run it from a checkout of this repository.
+
 ## How it works
 
 - `createCollabSession` from `@ifc-lite/collab` opens a Yjs-backed session and
@@ -40,6 +45,9 @@ To run just the frontend (assuming a collab server is already listening on
 # from examples/threejs-collab
 pnpm dev
 ```
+
+`pnpm build` typechecks and bundles the example to `dist/`; `pnpm typecheck`
+runs `tsc` alone.
 
 ## Key files
 

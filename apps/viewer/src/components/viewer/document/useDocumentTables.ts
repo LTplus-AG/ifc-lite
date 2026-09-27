@@ -26,6 +26,7 @@ import type { DocumentSpec, ListTableSource, TableBlock, ValidationTableSource }
 import type { TableState } from '@/lib/document/resolve-table';
 import { resolveValidationTableState } from '@/lib/document/resolve-validation-table';
 import { runListFederated } from '@/lib/lists/run-list';
+import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { buildExportModel } from '@/lib/lists/export/model';
 import { detectNumericColumns } from '../lists/list-table-utils';
 import { useListProviders } from '../lists/useListProviders';
@@ -39,7 +40,8 @@ export function listFingerprint(list: ListDefinition): string {
 
 /** `true` when a list reads world coordinates, whose values move with the geometry and render frame. */
 export function listReadsGeometry(list: ListDefinition): boolean {
-  return list.columns.some((c) => c.source === 'geometry') || list.conditions.some((c) => c.source === 'geometry');
+  return list.columns.some((c) => c.source === 'geometry')
+    || list.groups.some((group) => group.rules.some((rule) => rule.kind === 'listCondition' && rule.source === 'geometry'));
 }
 
 /** Counts up each time `value` changes identity between renders. */
@@ -142,11 +144,12 @@ export function useDocumentTables(document: DocumentSpec | null): ReadonlyMap<st
     for (const b of blocks) definitions.set(fingerprints.get(b.id)!, b.source.list);
 
     let cancelled = false;
+    const controller = new AbortController();
     let cancelFrame: (() => void) | null = null;
     // One list per frame, in sequence: two heavy blocks must not double the stall.
     const runAt = (i: number): void => {
       if (cancelled || i >= wanted.length) return;
-      cancelFrame = nextFrame(() => {
+      cancelFrame = nextFrame(() => { void (async () => {
         if (cancelled) return;
         const fp = wanted[i];
         const list = definitions.get(fp);
@@ -156,7 +159,11 @@ export function useDocumentTables(document: DocumentSpec | null): ReadonlyMap<st
           // `executeList` already applied the list's `sortBy` per model; the export model is built
           // exactly as the Lists panel builds it for its own export.
           const live = providersRef.current;
-          const result = runListFederated(list, live.pairs, useViewerStore.getState());
+          const storeState = useViewerStore.getState();
+          const result = await runListFederated(list, live.pairs, storeState, {
+            evaluatorModels: evaluatorModelsFromState(storeState), signal: controller.signal,
+          });
+          if (cancelled) return;
           const model = buildExportModel({
             title: list.name,
             columns: result.columns,
@@ -170,6 +177,7 @@ export function useDocumentTables(document: DocumentSpec | null): ReadonlyMap<st
           });
           state = { status: 'ok', model };
         } catch (err) {
+          if (cancelled) return;
           // Shown in the block (preview and PDF), like the Lists panel's error box (#4317).
           console.error('[Documents] table block list run failed:', err);
           state = { status: 'error', message: err instanceof Error ? err.message : String(err) };
@@ -179,10 +187,10 @@ export function useDocumentTables(document: DocumentSpec | null): ReadonlyMap<st
           return { key: dataKey, byFingerprint: new Map(base).set(fp, state) };
         });
         runAt(i + 1);
-      });
+      })(); });
     };
     runAt(0);
-    return () => { cancelled = true; cancelFrame?.(); };
+    return () => { cancelled = true; controller.abort(); cancelFrame?.(); };
   }, [dataKey, wantedList, fingerprints, blocks, hasData]);
 
   return useMemo(() => {

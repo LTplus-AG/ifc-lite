@@ -38,19 +38,33 @@ export async function loadIfcModel(filePath: string, opts: LoadIfcOptions = {}):
     }
   }
 
-  let buffer = await readFile(absolute);
+  const buffer = await readFile(absolute);
   if (buffer.byteLength === 0) {
     throw new Error(`'${absolute}' is empty (0 bytes)`);
+  }
+  const loaded = await loadIfcModelFromBytes(buffer, basename(absolute), opts.modelId, absolute);
+  return { ...loaded, filePath: absolute };
+}
+
+/**
+ * Parse IFC bytes already in memory (a flow's `model.openFromSource`) into a
+ * `LoadedModel` — the same unwrap, signature check and parser setup as
+ * {@link loadIfcModel}, which reads the file and calls this. `label` names the
+ * source in errors; it defaults to `name`.
+ */
+export async function loadIfcModelFromBytes(bytes: Uint8Array, name: string, modelId?: string, label = name): Promise<LoadedModel> {
+  if (bytes.byteLength === 0) {
+    throw new Error(`'${label}' is empty (0 bytes)`);
   }
 
   // Transparent .ifcZIP unwrap (issue #1494) — cheap magic-byte no-op for an
   // ordinary .ifc file.
-  buffer = Buffer.from(await unwrapIfcZipView(buffer));
+  const buffer = Buffer.from(await unwrapIfcZipView(bytes));
 
   // Cheap signature check; full parser also bails on malformed STEP.
   const headerSnippet = buffer.subarray(0, Math.min(buffer.byteLength, 256)).toString('ascii');
   if (!headerSnippet.includes('ISO-10303-21')) {
-    throw new Error(`'${absolute}' is not a valid IFC/STEP file`);
+    throw new Error(`'${label}' is not a valid IFC/STEP file`);
   }
 
   const parser = new IfcParser();
@@ -73,25 +87,24 @@ export async function loadIfcModel(filePath: string, opts: LoadIfcOptions = {}):
     console.warn = origWarn;
   }
 
-  const id = opts.modelId ?? deriveModelId(basename(absolute));
-  const backend = new HeadlessLikeBackend(store, basename(absolute), id);
+  const id = modelId ?? deriveModelId(name);
+  const backend = new HeadlessLikeBackend(store, name, id);
   const bim: BimContext = createBimContext({ backend });
 
   return {
     id,
-    name: basename(absolute),
+    name,
     bim,
     store,
     backend,
-    filePath: absolute,
     // Computed from the POST-unwrap bytes, so an .ifcZIP is fingerprinted by
     // the STEP it contains — the viewer's rule (#5138).
-    sourceFingerprint: sourceModelIdentity(basename(absolute), buffer),
+    sourceFingerprint: sourceModelIdentity(name, buffer),
     loadedAt: Date.now(),
   };
 }
 
-function deriveModelId(name: string): string {
+export function deriveModelId(name: string): string {
   // Strip extension, replace spaces with underscores, lowercase. Keeps the
   // ID URL-safe so it round-trips through `Mcp-Session-Id` headers and
   // resource URIs.

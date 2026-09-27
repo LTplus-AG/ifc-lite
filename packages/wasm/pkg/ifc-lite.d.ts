@@ -221,6 +221,7 @@ export class ClashRunResult {
     readonly a: Uint32Array;
     readonly b: Uint32Array;
     readonly bounds: Float64Array;
+    readonly depthFloor: Float64Array;
     readonly distance: Float64Array;
     readonly distanceKind: Uint8Array;
     readonly points: Float64Array;
@@ -683,8 +684,13 @@ export class IfcAPI {
      * when a filter matched nothing (#4659, the STEP twin of #4483/#4484). When
      * set, the forward `#`-reference closure is added so the subset never dangles
      * a reference.
-     * `mutations_json` carries `MutablePropertyView` edits (attribute updates +
-     * property-set synthesis); empty ⇒ none. See `export_step_json` for the shape.
+     * `mutations_json` carries `MutablePropertyView` edits; empty ⇒ none. It is
+     * either the mutation log `MutablePropertyView.exportMutations()` returns
+     * (an object with a `mutations` array, optionally `newEntities` and
+     * `georefMutations`), written with byte parity to the TypeScript
+     * `StepExporter` (#5941), or the older pre-serialized
+     * `{ attributeUpdates, propertyMutations }` shape. A log does not combine
+     * with `included`. See `export_step_json` for both shapes.
      * A non-empty but malformed `mutations_json` throws rather than silently
      * exporting the model with none of the caller's edits applied — mirrors
      * `exportGlb`'s and `exportMerged`'s fail-closed contract on this same API.
@@ -2330,6 +2336,7 @@ export interface InitOutput {
     readonly clashrunresult_a: (a: number, b: number) => void;
     readonly clashrunresult_b: (a: number, b: number) => void;
     readonly clashrunresult_bounds: (a: number, b: number) => void;
+    readonly clashrunresult_depthFloor: (a: number, b: number) => void;
     readonly clashrunresult_distance: (a: number, b: number) => void;
     readonly clashrunresult_distanceKind: (a: number, b: number) => void;
     readonly clashrunresult_points: (a: number, b: number) => void;

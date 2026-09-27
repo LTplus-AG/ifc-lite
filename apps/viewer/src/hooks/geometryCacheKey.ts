@@ -12,8 +12,14 @@ import { FORMAT_VERSION } from '@ifc-lite/cache';
 // #5409: openings now always carry the overlay colour, and class-toggled
 // classes never ride the instanced shard; an older entry would still serve
 // opaque grey openings on the shard, where the Openings toggle cannot reach.
-// Invalidate viewer-generated geometry without changing the public cache format.
-const GEOMETRY_OUTPUT_REVISION = 3;
+// #5743: #5689 corrected LV95 mesh coordinates; revision-3 entries still hold
+// the pre-fix geometry and must be regenerated after a viewer update.
+// Bump for any viewer geometry-output or RTC-frame change without changing
+// the public cache format; old meshes cannot be repaired on a cache hit.
+// IFC4x3 alignments: sectioned solids with IfcAxis2PlacementLinear positions,
+// gradient-curve elevation and dense arc/clothoid sampling changed the meshes of
+// alignment-based models (bridges were cached ~55 m low with no superstructure).
+const GEOMETRY_OUTPUT_REVISION = 5;
 
 /**
  * Build the persisted geometry cache key for a loaded model.

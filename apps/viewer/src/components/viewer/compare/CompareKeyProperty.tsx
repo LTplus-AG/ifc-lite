@@ -108,12 +108,12 @@ export function CompareKeyProperty({ keyProperty, onKeyProperty, duplicateInfo, 
         />
       </label>
       {invalid && (
-        <p className="text-[10px] text-[#e0af68]">
+        <p className="text-2xs text-[#e0af68]">
           {t('compareKeyProperty.invalidNote', { scheme: keyProperty ?? t('compareKeyProperty.globalId') })}
         </p>
       )}
       {!invalid && duplicateInfo && (
-        <p className="text-[10px] text-[#e0af68]">
+        <p className="text-2xs text-[#e0af68]">
           {t('compareKeyProperty.duplicateNote', {
             count: duplicateInfo.count,
             values: duplicateInfo.shown.join(', ') + (duplicateInfo.truncated ? ', …' : ''),

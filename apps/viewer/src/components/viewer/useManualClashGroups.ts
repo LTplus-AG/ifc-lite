@@ -257,7 +257,7 @@ export function useManualClashGroups({
       if (header.length > 0) topic.header = header;
       addTopic(topic);
       if (viewpoint) addViewpoint(topic.guid, viewpoint);
-      setBcfPanelVisible(true);
+      toast.success(t('clashTools.bcfTopic.created'), { label: t('clashTools.bcfTopic.open'), onClick: () => setBcfPanelVisible(true) });
     } catch (error) {
       console.error('[clash] Manual-group BCF topic creation failed:', error);
       toast.error('Could not create a BCF topic for this clash group.');
@@ -265,7 +265,7 @@ export function useManualClashGroups({
       setCreatingTopic(false);
     }
   }, [creatingTopic, resolved, setCreatingTopic, focusClashes, focusMode, setBcfProject,
-    bcfAuthor, createViewpointFromState, headerFilesForViewpoints, addTopic, addViewpoint, setBcfPanelVisible]);
+    bcfAuthor, createViewpointFromState, headerFilesForViewpoints, addTopic, addViewpoint, setBcfPanelVisible, t]);
 
   const dialogProps = useMemo(
     () => getDialogProps(dialog, selected.length, sections),

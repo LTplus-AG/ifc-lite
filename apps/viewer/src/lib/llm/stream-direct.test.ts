@@ -51,7 +51,7 @@ function anthropicSse(events: Array<Record<string, unknown>>): Response {
 }
 
 const HELLO_STREAM: Array<Record<string, unknown>> = [
-  { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-opus-5', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } } },
+  { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-opus-5-5', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } } },
   { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
   { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'hi' } },
   { type: 'content_block_stop', index: 0 },
@@ -68,7 +68,7 @@ async function streamOnce(
   let error: Error | null = null;
   try {
     await streamAnthropicChat(credentials, {
-      model: 'claude-opus-5',
+      model: 'claude-opus-5-5',
       messages: [{ role: 'user', content: 'hi' }],
       system: 'be brief',
       onChunk: () => undefined,
@@ -245,11 +245,39 @@ test('sampling params are sent only for models flagged acceptsSamplingParams', a
     return captured;
   };
 
-  // gpt-5.6-sol carries no flag, so it must not receive a temperature.
-  const reasoning = await bodyFor('gpt-5.6-sol');
+  // GPT-6 carries no flag, so it must not receive a temperature.
+  const reasoning = await bodyFor('gpt-6-sol');
   assert.equal('temperature' in reasoning, false, 'reasoning models reject temperature with a 400');
 
   // An id absent from the registry must fail closed the same way.
   const unknown = await bodyFor('some/model-not-in-the-registry');
   assert.equal('temperature' in unknown, false, 'an unknown model must not be sent sampling params');
+});
+
+test('OpenAI 429 reports the provider cause instead of always claiming a rate limit (#6097)', async () => {
+  const cases = [
+    { code: 'credit_balance_exhausted', message: 'credits exhausted', expected: /API credits are exhausted/ },
+    { code: 'project_spend_limit_exceeded', message: 'project cap', expected: /project spend limit reached/ },
+    { code: 'rate_limit_exceeded', message: 'too many requests', expected: /rate limit reached/ },
+    { code: 'insufficient_quota', message: 'You exceeded your current quota.', expected: /You exceeded your current quota/ },
+    { code: '', message: '', expected: /Check API rate limits, billing, and project limits/ },
+  ];
+
+  for (const { code, message, expected } of cases) {
+    await withMockFetch(
+      async () => jsonResponse({ error: { code, message } }, 429),
+      async () => {
+        const reported: Error[] = [];
+        await streamOpenAiChat('sk-test', {
+          model: 'gpt-6-sol',
+          messages: [{ role: 'user', content: 'hi' }],
+          onChunk: () => undefined,
+          onComplete: () => assert.fail('A rejected request must not complete'),
+          onError: (error) => { reported.push(error); },
+        });
+        assert.equal(reported.length, 1, `expected one error for ${code}`);
+        assert.match(reported[0]?.message ?? '', expected);
+      },
+    );
+  }
 });

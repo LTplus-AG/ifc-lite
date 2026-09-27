@@ -2,13 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
-import { MainToolbar } from './MainToolbar';
 import { MobileToolbar } from './MobileToolbar';
 import { RibbonToolbar } from './ribbon/RibbonToolbar';
 import { HierarchyPanel } from './HierarchyPanel';
@@ -16,15 +15,21 @@ import { AddElementPanel } from './AddElementPanel';
 import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog, type InfoDialogTab } from './KeyboardShortcutsDialog';
+import { SettingsDialogHost } from './settings/SettingsDialog';
+import { ConfirmDialogHost } from '@/components/ui/confirm-dialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useUnexportedChangesGuard } from '@/hooks/useUnexportedChanges';
 import { useSearchIndex } from '@/hooks/useSearchIndex';
 import { useActionLogger } from '@/hooks/useActionLogger';
 import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
 import { isSafeMode } from '@/lib/safe-mode';
-import { capturePointer } from '@/lib/pointer-capture';
+import { MobileBottomSheet, useVisualViewportBottomInset } from './MobileBottomSheet';
+import { MobilePanelLauncher } from './MobilePanelLauncher';
 import { ShieldAlert } from 'lucide-react';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
+import { ExtensionKeyboardBindings } from '@/components/extensions/ExtensionKeyboardBindings';
 import { useIfc } from '@/hooks/useIfc';
+import { useModelUrlAutoload } from '@/hooks/useModelUrlAutoload';
 import { useViewerStore } from '@/store';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { toast } from '@/components/ui/toast';
@@ -34,6 +39,8 @@ import { AnonymizedExportDialog } from './anonymized-export/AnonymizedExportDial
 import { useDuplicateShortcut } from './useDuplicateShortcut';
 import { HoverTooltip } from './HoverTooltip';
 import { BottomStrip } from './BottomStrip';
+import { loadBottomStripOrientation, persistBottomStripOrientation } from '@/lib/panels/bottom-strip-persistence';
+import { LEFT_PANEL_DEFAULT_SIZE } from '@/store/layoutReset';
 import { useOverlayCompositor } from './schedule/useOverlayCompositor';
 import { CommandPalette } from './CommandPalette';
 import { SearchModal } from './SearchModal';
@@ -53,10 +60,12 @@ import { useBottomPanelFlags } from '@/hooks/useBottomPanelFlags';
 import { getPanelDef } from '@/lib/panels/registry';
 import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { usePanelControls } from '@/hooks/usePanelControls';
+import { useMobileLayoutMode } from '@/hooks/useMobileLayoutMode';
+import { useThemeDocumentClass } from './useThemeDocumentClass';
+import { EVENT_OPEN_COMMAND_PALETTE } from '@/lib/tours/events';
+import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 
-/** Technical query flag, not translated prose — kept as a plain constant
- *  (like `PatternHint.tsx`'s `PATTERN_EXAMPLE`) so it can sit inside the
- *  styled `<code>` element `styleInterpolatedValues` substitutes in below. */
+/** Technical query flag rendered as code by the localized safe-mode notice. */
 const SAFE_MODE_QUERY_FLAG = '?safe=0';
 
 export function ViewerLayout() {
@@ -66,6 +75,7 @@ export function ViewerLayout() {
   useKeyboardShortcuts();
   // ⌘D / Ctrl+D to duplicate the current selection.
   useDuplicateShortcut();
+  useUnexportedChangesGuard(); // leaving the page with unexported edits asks first (#5604)
   // THE writer from the overlay-layer registry into the renderer's legacy
   // hiddenEntities / pendingColorUpdates channels. Mounted once, here, for
   // the whole session: a second instance would keep its own ownership map and
@@ -77,49 +87,10 @@ export function ViewerLayout() {
   usePrivacyDisclosure();
   const shortcutsDialog = useKeyboardShortcutsDialog();
 
-  // Auto-load a model from ?model=<URL>. Used by the landing-page iframe to drop
-  // a sample IFC into the viewer on first mount.
-  //
-  // SECURITY: only SAME-ORIGIN model URLs are fetched. `?model=` is fully
-  // attacker-controllable (any link can set it), so honouring an arbitrary
-  // cross-origin URL is a drive-by model-injection vector. We resolve the param
-  // against the current document and require its origin to match
-  // window.location.origin; a cross-origin URL is refused, never fetched.
-  const { addModel: autoloadAddModel } = useIfc();
-  const autoloadDoneRef = useRef(false);
-  useEffect(() => {
-    if (autoloadDoneRef.current) return;
-    const params = new URLSearchParams(window.location.search);
-    const modelUrl = params.get('model');
-    if (!modelUrl) return;
-    autoloadDoneRef.current = true;
-    // Resolve (supports relative paths) and enforce same-origin before fetching.
-    let resolvedUrl: URL;
-    try {
-      resolvedUrl = new URL(modelUrl, window.location.href);
-    } catch {
-      console.error('[viewer] autoload from ?model= refused: malformed URL');
-      return;
-    }
-    if (resolvedUrl.origin !== window.location.origin) {
-      console.error(
-        `[viewer] autoload from ?model= refused: cross-origin URL (${resolvedUrl.origin}) - only same-origin models are auto-loaded`,
-      );
-      return;
-    }
-    (async () => {
-      try {
-        const res = await fetch(resolvedUrl.href);
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        const blob = await res.blob();
-        const filename = resolvedUrl.pathname.split('/').pop() || 'model.ifc';
-        const file = new File([blob], filename, { type: blob.type || 'application/x-step' });
-        await autoloadAddModel(file);
-      } catch (err) {
-        console.error('[viewer] autoload from ?model=… failed:', err);
-      }
-    })();
-  }, [autoloadAddModel]);
+  // Auto-load a model from ?model=<URL> (extracted to its own hook, #5851:
+  // a malformed/cross-origin/failed fetch now shows the load-error card
+  // instead of only `console.error`; see the hook's docblock).
+  useModelUrlAutoload();
 
   // Deep-link collaboration join: a share link is `?room=…&t=…`. The recipient
   // joins the room; with seed-into-room the model hydrates from the Y.Doc, so
@@ -158,16 +129,11 @@ export function ViewerLayout() {
   // Command palette state
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
-  // Ctrl+K / Cmd+K to open command palette
+  // The shared dispatcher owns the Ctrl+K chord and text-entry exception.
   useEffect(() => {
-    const handler = (e: globalThis.KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        setCommandPaletteOpen((prev) => !prev);
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    return registerKeyboardCommand('ui.commandPalette', () => {
+      setCommandPaletteOpen((prev) => !prev);
+    }, { allowInTextEntry: true });
   }, []);
 
   useEffect(() => {
@@ -180,20 +146,15 @@ export function ViewerLayout() {
       else shortcutsDialog.toggle();
     };
 
-    window.addEventListener('ifc-lite:open-command-palette', openCommandPalette);
+    window.addEventListener(EVENT_OPEN_COMMAND_PALETTE, openCommandPalette);
     window.addEventListener('ifc-lite:show-shortcuts', showShortcuts);
     return () => {
-      window.removeEventListener('ifc-lite:open-command-palette', openCommandPalette);
+      window.removeEventListener(EVENT_OPEN_COMMAND_PALETTE, openCommandPalette);
       window.removeEventListener('ifc-lite:show-shortcuts', showShortcuts);
     };
   }, [shortcutsDialog]);
 
-  // Initialize theme on mount
-  const theme = useViewerStore((s) => s.theme);
-  // Desktop toolbar style (issue #1686): classic strip or tabbed ribbon.
-  const toolbarStyle = useViewerStore((s) => s.toolbarStyle);
   const isMobile = useViewerStore((s) => s.isMobile);
-  const setIsMobile = useViewerStore((s) => s.setIsMobile);
   const leftPanelCollapsed = useViewerStore((s) => s.leftPanelCollapsed);
   const rightPanelCollapsed = useViewerStore((s) => s.rightPanelCollapsed);
   const setLeftPanelCollapsed = useViewerStore((s) => s.setLeftPanelCollapsed);
@@ -212,6 +173,21 @@ export function ViewerLayout() {
     [floatingPanels, poppedOutIds],
   );
   const dockedBottomPanel = bottomPanel && !detachedIds.has(bottomPanel) ? bottomPanel : null;
+
+  // Side-by-side 2D/3D layout preset (#5515): a persisted dock-side choice
+  // ("does Drawing go beside the viewport or below it") that only takes
+  // effect while Drawing is the actual docked panel — switching the strip's
+  // tab to anything else falls back to the normal bottom dock for it, same
+  // as detaching Drawing itself already does above.
+  const [stripOrientation, setStripOrientation] = useState(() => loadBottomStripOrientation());
+  const toggleStripOrientation = useCallback(() => {
+    setStripOrientation((prev) => {
+      const next = prev === 'side' ? 'bottom' : 'side';
+      persistBottomStripOrientation(next);
+      return next;
+    });
+  }, []);
+  const sideBySideDrawing = stripOrientation === 'side' && dockedBottomPanel === 'drawing';
 
   // ── Mobile bottom sheet ──
   // Mobile shows exactly ONE panel at a time, so resolve which, then render it
@@ -253,6 +229,8 @@ export function ViewerLayout() {
     if (leftPanelCollapsed && !panel.isCollapsed()) panel.collapse();
     else if (!leftPanelCollapsed && panel.isCollapsed()) panel.expand();
   }, [leftPanelCollapsed]);
+  const layoutResetEpoch = useViewerStore((s) => s.layoutResetEpoch); // "Reset layout" (#5854) restores the pane width
+  useEffect(() => { if (layoutResetEpoch > 0) leftPanelRef.current?.resize(`${LEFT_PANEL_DEFAULT_SIZE}%`); }, [layoutResetEpoch]);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -265,39 +243,18 @@ export function ViewerLayout() {
   const { models, geometryResult } = useIfc();
   const hasModelsLoaded = models.size > 0 || ((geometryResult?.meshes?.length ?? 0) > 0);
 
-  // Detect mobile viewport — use both width check AND touch capability
-  useEffect(() => {
-    const checkMobile = () => {
-      const narrowScreen = window.innerWidth < 768;
-      const hasTouchScreen = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-      const mobile = narrowScreen || (hasTouchScreen && window.innerWidth < 1024);
-      setIsMobile(mobile);
-      // Auto-collapse panels on mobile
-      if (mobile) {
-        setLeftPanelCollapsed(true);
-        setRightPanelCollapsed(true);
-      }
-    };
+  // Mobile/desktop mode; collapses the panels only when ENTERING mobile (#5837).
+  useMobileLayoutMode();
 
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, [setIsMobile, setLeftPanelCollapsed, setRightPanelCollapsed]);
-
-  // Keep DOM class in sync when theme changes (initial class is set by inline script in index.html)
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-    document.documentElement.classList.toggle('colorful', theme === 'colorful');
-  }, [theme]);
-
-
+  useThemeDocumentClass();
   const safeMode = isSafeMode();
 
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex flex-col h-screen h-[100dvh] w-screen overflow-hidden bg-background text-foreground">
+        <ExtensionKeyboardBindings />
         {safeMode && (
-          <div className="flex items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-700 dark:text-amber-300">
+          <div className="flex items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1 text-2xs text-amber-700 dark:text-amber-300">
             <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
             <span>
               {styleInterpolatedValues(t, 'shellChrome.layout.safeModeNotice', [
@@ -306,30 +263,26 @@ export function ViewerLayout() {
             </span>
           </div>
         )}
-        {/* Keyboard Shortcuts Dialog */}
         <KeyboardShortcutsDialog open={shortcutsDialog.open} onClose={shortcutsDialog.close} initialTab={shortcutsDialog.tab} />
-
-        {/* Global Overlays */}
+        <SettingsDialogHost />
+        <ConfirmDialogHost />
+        {/* Global dialogs above, overlays below */}
         <EntityContextMenu />
         <HoverTooltip />
         <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
         <SearchModal />
         <TourHost />
         {/* Trigger-less: this instance exists so the entity context menu's
-            "Export anonymized…" and the Command Palette's "export:anonymized"
-            (both only set `anonymizedExportRequested`, no trigger of their own)
-            have a mounted dialog regardless of whether the export toolbar
+            "Export anonymized…" (which only sets `anonymizedExportRequested`,
+            no trigger of its own) has a mounted dialog regardless of whether the export toolbar
             dropdown is open. Same host pattern as `FlavorDialog` in
             `StatusBar.tsx`; `toolbar/export-commands.ts` owns the `trigger` one. */}
-        <AnonymizedExportDialog />
+        <AnonymizedExportDialog surface="context_menu" />
 
-        {/* Main Toolbar — compact MobileToolbar on mobile; on desktop the
-            user picks classic strip vs tabbed ribbon (issue #1686). */}
+        {/* The compact mobile controls and the desktop ribbon share command homes. */}
         {isMobile
           ? <MobileToolbar />
-          : toolbarStyle === 'ribbon'
-            ? <RibbonToolbar onShowShortcuts={shortcutsDialog.toggle} />
-            : <MainToolbar onShowShortcuts={shortcutsDialog.toggle} />}
+          : <RibbonToolbar onShowShortcuts={shortcutsDialog.toggle} />}
 
         {/* Main Content Area - Desktop Layout */}
         {!isMobile && (
@@ -342,7 +295,7 @@ export function ViewerLayout() {
                   {/* Left Panel - Hierarchy */}
                   <Panel
                     id="left-panel"
-                    defaultSize={22}
+                    defaultSize={LEFT_PANEL_DEFAULT_SIZE}
                     minSize={10}
                     collapsible
                     collapsedSize={0}
@@ -365,13 +318,37 @@ export function ViewerLayout() {
                   <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize" />
 
                   {/* Center - Viewport */}
-                  <Panel id="viewport-panel" defaultSize={78} minSize={30}>
+                  <Panel id="viewport-panel" defaultSize={100 - LEFT_PANEL_DEFAULT_SIZE} minSize={30}>
                     {/* data-floating-snap-bounds: edge-docked floating panels
                         (#1201) snap to THIS region, not the whole window, so a
                         dock never hides under the toolbar (its own close control
                         with it) or over the hierarchy / sidebar (#1245). */}
                     <div data-floating-snap-bounds className="h-full w-full overflow-hidden relative">
-                      <ViewportContainer />
+                      {sideBySideDrawing ? (
+                        // Side-by-side 2D/3D preset (#5515): the drawing docks
+                        // beside the 3D view instead of below it, in its own
+                        // resizable split — same docked BottomStrip instance
+                        // (tabs, maximize, close), just placed here instead of
+                        // spanning the strip below.
+                        <PanelGroup orientation="horizontal" className="h-full w-full">
+                          <Panel id="viewport-3d-panel" defaultSize={60} minSize={20}>
+                            <ViewportContainer />
+                          </Panel>
+                          <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize" />
+                          <Panel id="drawing-side-panel" defaultSize={40} minSize={20}>
+                            <BottomStrip
+                              dockedPanel={dockedBottomPanel}
+                              analysisExtension={null}
+                              containerRef={containerRef}
+                              closePanel={closePanel}
+                              orientation="side"
+                              onToggleOrientation={toggleStripOrientation}
+                            />
+                          </Panel>
+                        </PanelGroup>
+                      ) : (
+                        <ViewportContainer />
+                      )}
                     </div>
                   </Panel>
                 </PanelGroup>
@@ -383,12 +360,14 @@ export function ViewerLayout() {
 
             {/* Bottom strip — Schedule / Script / Lists / analysis ext. Launched from the
                 sidebar rail but docked here (their home region); a panel dragged out to
-                float / another screen is skipped. */}
+                float / another screen, or side-by-side (#5515), is skipped. */}
             <BottomStrip
-              dockedPanel={dockedBottomPanel}
+              dockedPanel={sideBySideDrawing ? null : dockedBottomPanel}
               analysisExtension={activeBottomAnalysisExtension}
               containerRef={containerRef}
               closePanel={closePanel}
+              orientation="bottom"
+              onToggleOrientation={toggleStripOrientation}
             />
 
             {/* Floating / docked workspace-panel windows (#1201) */}
@@ -406,8 +385,8 @@ export function ViewerLayout() {
 
             {/* Backdrop overlay when sheet is open */}
             {(!leftPanelCollapsed || !rightPanelCollapsed) && (
-              <div
-                className="absolute inset-0 bg-black/40 z-30 animate-in fade-in duration-200"
+              <button type="button" aria-label={t('shellChrome.layout.closePanelsAriaLabel')}
+                className="absolute inset-0 z-30 border-0 bg-black/40 p-0 animate-in fade-in duration-200"
                 onClick={() => {
                   setLeftPanelCollapsed(true);
                   setRightPanelCollapsed(true);
@@ -433,7 +412,7 @@ export function ViewerLayout() {
                 floating host and the pop-out windows render from. */}
             {!rightPanelCollapsed && (
               <MobileBottomSheet
-                title={mobileSheet.kind === 'extension' ? (activeAnalysisExtension?.label ?? t('shellChrome.layout.analysisFallback')) : mobileSheet.kind === 'addElement' ? t('shellChrome.layout.addElementLabel') : getPanelDef(mobileSheet.id)?.title ?? t('shellChrome.layout.informationFallback')}
+                title={mobileSheet.kind === 'extension' ? (activeAnalysisExtension?.label ?? t('shellChrome.layout.analysisFallback')) : mobileSheet.kind === 'addElement' ? t('shellChrome.layout.addElementLabel') : t(getPanelDef(mobileSheet.id)?.titleKey ?? 'properties.panel.title')}
                 bottomInset={bottomViewportInset}
                 onClose={() => {
                   setRightPanelCollapsed(true);
@@ -458,32 +437,10 @@ export function ViewerLayout() {
               </MobileBottomSheet>
             )}
 
-            {/* Mobile Floating Buttons — top-left, brutalist vocabulary (tight radii, visible
-                borders, uppercase caption) matching panel headers across the app.
-                Hidden in the empty state so the "Load IFC" card stays unobstructed. */}
+            {/* Mobile Floating Buttons: Hierarchy, Properties and the Panels list
+                (#5853). Hidden in the empty state so the "Load IFC" card stays unobstructed. */}
             {leftPanelCollapsed && rightPanelCollapsed && hasModelsLoaded && (
-              <div className="absolute top-4 left-4 flex flex-col gap-2.5 z-20">
-                <button
-                  className="flex flex-col items-center gap-1 group touch-manipulation"
-                  onClick={() => { setRightPanelCollapsed(true); setLeftPanelCollapsed(false); }}
-                  aria-label={t('shellChrome.layout.openHierarchyAriaLabel')}
-                >
-                  <span className="grid place-items-center min-h-[44px] min-w-[44px] bg-background/90 backdrop-blur-sm border border-border rounded-md group-active:bg-foreground group-active:text-background transition-colors">
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h10M4 18h7" /></svg>
-                  </span>
-                  <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground leading-none">{t('shellChrome.layout.hierarchyLabel')}</span>
-                </button>
-                <button
-                  className="flex flex-col items-center gap-1 group touch-manipulation"
-                  onClick={() => { setLeftPanelCollapsed(true); setRightPanelCollapsed(false); }}
-                  aria-label={t('shellChrome.layout.openPropertiesAriaLabel')}
-                >
-                  <span className="grid place-items-center min-h-[44px] min-w-[44px] bg-background/90 backdrop-blur-sm border border-border rounded-md group-active:bg-foreground group-active:text-background transition-colors">
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
-                  </span>
-                  <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground leading-none">{t('shellChrome.layout.propertiesLabel')}</span>
-                </button>
-              </div>
+              <MobilePanelLauncher bottomInset={bottomViewportInset} />
             )}
           </div>
         )}
@@ -504,176 +461,5 @@ export function ViewerLayout() {
         <PanelWindowHost />
       </div>
     </TooltipProvider>
-  );
-}
-
-/**
- * Tracks the gap between the layout viewport (innerHeight) and the visual
- * viewport: how tall the iOS Safari URL bar overlay (or virtual keyboard) is.
- */
-function useVisualViewportBottomInset(): number {
-  const [inset, setInset] = useState(0);
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const update = () => {
-      const gap = window.innerHeight - vv.height - vv.offsetTop;
-      setInset(Math.max(0, Math.round(gap)));
-    };
-    update();
-    vv.addEventListener('resize', update);
-    vv.addEventListener('scroll', update);
-    return () => {
-      vv.removeEventListener('resize', update);
-      vv.removeEventListener('scroll', update);
-    };
-  }, []);
-  return inset;
-}
-
-/**
- * Mobile bottom sheet with three snap states (dismissed / default / expanded).
- * Drag the handle: down to shrink/dismiss, up to enlarge. Velocity-based flicks
- * cross thresholds instantly; otherwise the sheet snaps to the closest state.
- * `bottomInset` lifts the sheet above the iOS Safari URL bar overlay.
- */
-function MobileBottomSheet({
-  title,
-  onClose,
-  bottomInset,
-  children,
-}: {
-  title: ReactNode;
-  onClose: () => void;
-  bottomInset: number;
-  children: ReactNode;
-}) {
-  const { t } = useTranslation();
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ startY: number; startT: number; startHeight: number; active: boolean }>({
-    startY: 0,
-    startT: 0,
-    startHeight: 0,
-    active: false,
-  });
-
-  const SPRING = 'height 220ms cubic-bezier(0.2, 0, 0, 1)';
-
-  const getSnapPoints = useCallback(() => {
-    const h = window.visualViewport?.height ?? window.innerHeight;
-    return {
-      collapsed: 0,
-      defaultH: Math.round(h * 0.6),
-      expanded: Math.round(h * 0.92),
-    };
-  }, []);
-
-  const onPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    const sheet = sheetRef.current;
-    if (!sheet) return;
-    dragRef.current = { startY: e.clientY, startT: performance.now(), startHeight: sheet.getBoundingClientRect().height, active: true };
-    sheet.style.transition = 'none';
-    capturePointer(e.currentTarget, e.pointerId);
-  }, []);
-
-  const onPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    const sheet = sheetRef.current;
-    if (!dragRef.current.active || !sheet) return;
-    const dy = e.clientY - dragRef.current.startY;
-    const { expanded } = getSnapPoints();
-    const newHeight = Math.max(0, Math.min(expanded, dragRef.current.startHeight - dy));
-    sheet.style.height = `${newHeight}px`;
-  }, [getSnapPoints]);
-
-  const onPointerUp = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    const sheet = sheetRef.current;
-    if (!dragRef.current.active || !sheet) return;
-    dragRef.current.active = false;
-    const dy = e.clientY - dragRef.current.startY;
-    const dt = Math.max(1, performance.now() - dragRef.current.startT);
-    // Positive velocity = upward drag (intent: enlarge).
-    const upwardVelocity = -dy / dt; // px/ms
-    const { collapsed, defaultH, expanded } = getSnapPoints();
-    const currentHeight = sheet.getBoundingClientRect().height;
-
-    sheet.style.transition = SPRING;
-
-    const snapTo = (h: number) => {
-      sheet.style.height = `${h}px`;
-    };
-
-    // Velocity-driven decisions take precedence over position.
-    if (upwardVelocity > 0.5) {
-      snapTo(expanded);
-      return;
-    }
-    if (upwardVelocity < -0.5) {
-      // Downward flick: from expanded → default, from default → dismiss.
-      if (dragRef.current.startHeight >= expanded - 8) {
-        snapTo(defaultH);
-      } else {
-        snapTo(collapsed);
-        window.setTimeout(onClose, 200);
-      }
-      return;
-    }
-
-    // Position-based snap: closest of the three targets.
-    const targets: Array<{ state: 'collapsed' | 'default' | 'expanded'; h: number }> = [
-      { state: 'collapsed', h: collapsed },
-      { state: 'default', h: defaultH },
-      { state: 'expanded', h: expanded },
-    ];
-    let closest = targets[1];
-    for (const t of targets) {
-      if (Math.abs(currentHeight - t.h) < Math.abs(currentHeight - closest.h)) closest = t;
-    }
-    snapTo(closest.h);
-    if (closest.state === 'collapsed') window.setTimeout(onClose, 200);
-  }, [getSnapPoints, onClose]);
-
-  // Initial height = default snap. Recompute when viewport changes (URL bar collapses).
-  useEffect(() => {
-    const sheet = sheetRef.current;
-    if (!sheet) return;
-    const { defaultH } = getSnapPoints();
-    sheet.style.height = `${defaultH}px`;
-  }, [getSnapPoints]);
-
-  return (
-    <div
-      ref={sheetRef}
-      className="absolute inset-x-0 flex flex-col bg-background border-t rounded-t-2xl shadow-2xl z-40 animate-in slide-in-from-bottom duration-300"
-      style={{ bottom: `${bottomInset}px` }}
-    >
-      {/* Drag affordance — generously sized for touch */}
-      <div
-        className="grid place-items-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none select-none"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        role="button"
-        aria-label={t('shellChrome.layout.dragToResizeAriaLabel')}
-      >
-        <div className="w-10 h-1.5 rounded-full bg-muted-foreground/40" />
-      </div>
-      <div className="flex items-center justify-between px-4 pb-2 shrink-0">
-        <span className="font-semibold text-sm">{title}</span>
-        <button
-          className="p-2 -mr-2 hover:bg-muted rounded-full active:bg-muted/80 touch-manipulation"
-          onClick={onClose}
-          aria-label={t('viewerShell.dialog.close')}
-        >
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-      <div className="flex-1 min-h-0 overflow-auto overscroll-contain border-t">
-        {children}
-      </div>
-    </div>
   );
 }

@@ -839,6 +839,36 @@ fn preserves_only_the_root_landxml_coordinate_system_as_structured_metadata(
     Ok(())
 }
 
+/// Follow-up to #5942: real producers declare the CRS in LandXML 1.2's
+/// `epsgCode` attribute, not as an EPSG id in `horizontalDatum`. These are the
+/// `CoordinateSystem` records of a 3D-Win 6.6.4 export (buildingSMART Finland
+/// InfraModel M3 terrain) and a Civil 3D 2022 export, verbatim apart from the
+/// Civil 3D `ogcWktCode`, which is cut short. Dropping `epsgCode` made both
+/// read as "no coordinate system", refusing every CRS-dependent step.
+#[test]
+fn captures_the_producer_epsg_code_attribute() -> Result<(), Box<dyn std::error::Error>> {
+    let valid = String::from_utf8(document("grade")).expect("fixture is UTF-8");
+    for (record, epsg, horizontal) in [
+        (
+            r#"<CoordinateSystem name="GK21" epsgCode="3875" rotationAngle="0" verticalCoordinateSystemName="N2000"/>"#,
+            "3875",
+            None,
+        ),
+        (
+            r#"<CoordinateSystem desc="NAD83 Oregon State Planes (Polyconic), North Zone, Intn&apos;l Foot" epsgCode="2269" ogcWktCode="PROJCS[&quot;OR83-NIF&quot;]" horizontalDatum="NAD83" verticalDatum="NAVD88"/>"#,
+            "2269",
+            Some("NAD83"),
+        ),
+    ] {
+        let parsed = parse(valid.replace("<Units>", &format!("{record}<Units>")).as_bytes())?;
+        let coordinate_system = parsed.coordinate_system.expect("source CoordinateSystem");
+        assert_eq!(coordinate_system.epsg_code.as_deref(), Some(epsg), "{record}");
+        // Still raw and separate: a datum name is never promoted to a CRS id.
+        assert_eq!(coordinate_system.horizontal_datum.as_deref(), horizontal, "{record}");
+    }
+    Ok(())
+}
+
 #[test]
 fn duplicate_root_coordinate_system_preserves_prior_last_declaration_behavior(
 ) -> Result<(), Box<dyn std::error::Error>> {

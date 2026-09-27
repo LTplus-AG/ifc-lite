@@ -1,6 +1,6 @@
 # @ifc-lite/lists
 
-Configurable property tables and schedules from IFC data. Define a list once (entity types, columns, filter conditions, grouping) and execute it against any model through a `ListDataProvider` interface to get typed rows, group summaries, and CSV output. This is the engine behind entity tables and schedules in the ifc-lite viewer.
+Configurable property tables and schedules from IFC data. Define a list once (entity types, Rules filter groups, columns, grouping) and execute it against model data to get typed rows, group summaries, and CSV output. The viewer evaluates Rules filters before the provider-only Lists engine builds rows.
 
 ## Install
 
@@ -27,9 +27,10 @@ const csv = listResultToCSV(result);
 
 ## Features
 
-- `ListDefinition`: entity types, columns, property conditions, grouping, or an explicit express-ID scope per model
+- `ListDefinition`: entity types, Rules `FilterGroup[]`, columns, grouping, or an explicit express-ID scope per model
 - Column sources: entity attributes, property sets, quantity sets, materials, classifications, spatial containers (storey, building, site, project), and source model
-- Filtering with typed `PropertyCondition` operators, including Bonsai-style `/regex/` name patterns (`compileNameMatcher`, `isNamePattern`)
+- Viewer filtering uses `@ifc-lite/rules` for `groups`. The provider-only `executeList` projects an already-filtered source set and rejects nonempty Rules filters, so callers cannot silently skip them.
+- `migrateLegacyListDefinition` converts v1 JSON and earlier provider-only rows to `groups`: a property comparison becomes a `property` rule and every other Lists predicate a `listCondition` rule the Lists engine answers (`listConditionMatcher(provider)`). Only unreadable data stays in `unreadableConditions`. `legacyConditions` is for provider-only `executeList` callers (the SDK's flat conditions).
 - Grouping with per-group summaries (`summariseListRows`)
 - `discoverColumns` finds available columns from the actual model data
 - CSV export with formula-injection guarding (`listResultToCSV`)

@@ -132,6 +132,7 @@ async function seed(): Promise<FederatedModel> {
 
   useViewerStore.setState({
     ...fixtureModels(model),
+    editEnabled: true,
     geometryResult,
     modelPlacement: emptyPlacementState(),
     mutationViews: new Map([

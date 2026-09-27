@@ -39,7 +39,7 @@ describe('WORKSPACE_PANELS — cost panel registration (#4858)', () => {
   it('registers a cost entry', () => {
     const entry = WORKSPACE_PANELS.find((p) => p.id === 'cost');
     assert.notEqual(entry, undefined, "WORKSPACE_PANELS is missing the 'cost' panel definition");
-    assert.equal(entry?.title, 'Cost');
-    assert.equal(entry?.group, 'inspect');
+    assert.equal(entry?.titleKey, 'costPanel.title');
+    assert.equal(entry?.group, 'quantify');
   });
 });

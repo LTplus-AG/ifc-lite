@@ -296,11 +296,18 @@ fn request_cache_key_separates_content_filter_and_quality() {
                 opening_filter: mode,
                 tessellation_quality: None,
                 parquet_layout: ParquetLayout::Flat,
+                // Not cache identity either (#5407): both stream modes fill
+                // the same entry. Set to the non-default so a leak would show.
+                stream_shapes: crate::services::StreamShapes::CrossBatch,
                 // A client-supplied hash is a SELECTOR for the hash-only
                 // stream probe (#3901); it is not part of the cache identity
                 // a body-carrying request builds. Set to a value that would
                 // be visible if it leaked in.
                 sha256: Some("f".repeat(64)),
+                // Selects the data-model ENTRY (#6034), never the request
+                // key the geometry and metadata hang off: both variants share
+                // those. Non-default so a leak would show.
+                data_model_entities: crate::services::DataModelEntities::Rooted,
             };
             let key = request_cache_key(data, &query, quality);
             assert!(key.starts_with(&hash), "the file hash must lead the key: {key}");
@@ -321,16 +328,14 @@ fn request_cache_key_separates_content_filter_and_quality() {
     assert_ne!(other, request_cache_key(data, &default_query, TessellationQuality::default()));
 }
 
-/// The data-model payload's columns changed (issue #3860), so the suffix
-/// must have moved off `v5`: a warm cache would otherwise serve a blob
-/// written before the `rel_id` column existed, and absence of the column
-/// reads to the decoder exactly like an older server — silently correct,
-/// silently wrong.
+/// A warm cache from before #5296 has partial material rows and must be
+/// bypassed so material value checks receive the complete v8 payload.
 #[test]
 fn data_model_cache_key_is_versioned_and_retires_the_previous_payload() {
     let request_key = "0ab20f4e4014-default";
-    let key = data_model_cache_key(request_key);
-    assert_eq!(key, format!("{request_key}-datamodel-v7"));
+    let key = data_model_cache_key(request_key, crate::services::DataModelEntities::All);
+    assert_eq!(key, format!("{request_key}-datamodel-v8"));
+    assert_ne!(key, format!("{request_key}-datamodel-v7"));
     assert_ne!(
         key,
         format!("{request_key}-datamodel-v5"),
@@ -339,6 +344,20 @@ fn data_model_cache_key_is_versioned_and_retires_the_previous_payload() {
     assert_ne!(key, request_key);
     assert_ne!(key, symbolic_cache_key(request_key));
     assert_ne!(key, json_response_cache_key(request_key));
+}
+
+/// #6034: the default entities variant keeps the pre-#6034 key, so a warm
+/// cache still answers default requests, and the rooted variant gets its own
+/// entry under the SAME version, so one payload bump retires both.
+#[test]
+fn issue_6034_data_model_variants_are_separate_entries_under_one_version() {
+    use crate::services::DataModelEntities;
+    let request_key = "0ab20f4e4014-default";
+    let all = data_model_cache_key(request_key, DataModelEntities::All);
+    let rooted = data_model_cache_key(request_key, DataModelEntities::Rooted);
+    assert_eq!(all, format!("{request_key}-datamodel-v8"), "the default key must not move");
+    assert_eq!(rooted, format!("{request_key}-datamodel-rooted-v8"));
+    assert_ne!(all, rooted);
 }
 
 /// The derived keys are all distinct namespaces over the same seed, so a
@@ -351,7 +370,8 @@ fn derived_keys_never_collide_with_each_other() {
         seed.to_string(),
         json_response_cache_key(seed),
         symbolic_cache_key(seed),
-        data_model_cache_key(seed),
+        data_model_cache_key(seed, crate::services::DataModelEntities::All),
+        data_model_cache_key(seed, crate::services::DataModelEntities::Rooted),
         parquet_cache_key(
             "0ab20f4e4014",
             OpeningFilterMode::Default,
@@ -437,7 +457,7 @@ fn optimized_parquet_keys_are_a_distinct_namespace_from_the_flat_route() {
         assert_ne!(optimized, flat);
         assert_ne!(optimized, flat_metadata);
         assert_ne!(optimized, symbolic_cache_key(&seed));
-        assert_ne!(optimized, data_model_cache_key(&seed));
+        assert_ne!(optimized, data_model_cache_key(&seed, crate::services::DataModelEntities::All));
         assert_ne!(optimized, json_response_cache_key(&seed));
     }
 }

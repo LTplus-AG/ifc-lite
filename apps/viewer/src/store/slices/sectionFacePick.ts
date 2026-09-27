@@ -36,6 +36,7 @@
  */
 
 import { QUANT_STEP } from '@ifc-lite/renderer';
+import type { SectionPlane } from '../types.js';
 
 /** Absolute inset floor, in metres: two quantized-vertex lattice steps. */
 export const FACE_PICK_MIN_INSET_M = 2 * QUANT_STEP;
@@ -65,4 +66,17 @@ export function facePickInset(point: Vec3, bounds?: { min: Vec3; max: Vec3 }): n
 export function facePickPlaneDistance(unit: Vec3, point: Vec3, bounds?: { min: Vec3; max: Vec3 }): number {
   const faceDistance = point[0] * unit[0] + point[1] * unit[1] + point[2] * unit[2];
   return faceDistance - facePickInset(point, bounds);
+}
+
+/**
+ * `flipped` for a reader that approximates the cut by its cardinal `axis` /
+ * `position` (BCF viewpoints, SDK `getSection()`/`setSection()`, Reset to
+ * axis), where the flip is relative to the +axis normal. A face-picked plane's `flipped` is relative to its own
+ * `custom.normal` (that is how the renderer applies it), so a normal that
+ * points down the negative axis inverts it (#5644).
+ */
+export function cardinalSectionFlipped(plane: Pick<SectionPlane, 'axis' | 'flipped' | 'custom'>): boolean {
+  if (!plane.custom) return plane.flipped;
+  const along = plane.custom.normal[plane.axis === 'side' ? 0 : plane.axis === 'down' ? 1 : 2];
+  return plane.flipped !== (along < 0);
 }

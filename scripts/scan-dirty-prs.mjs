@@ -46,6 +46,8 @@ import {
   scanPrs,
 } from './lib/dirty-pr-scan.mjs';
 import { expandJobNames, matrixSkipAliases } from './lib/pr-review-signal.mjs';
+// Small pieces with 5xx retry, not one heavy `gh pr list` (#5729).
+import { fetchOpenPrs } from './lib/open-pr-fetch.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(SCRIPTS_DIR, '..');
@@ -139,26 +141,6 @@ function gh(args, what) {
   }
 }
 
-function fetchOpenPrs({ repo, limit }) {
-  return gh(
-    [
-      'pr',
-      'list',
-      '--state',
-      'open',
-      '--json',
-      // `baseRefName` is load-bearing, not decoration: without it `classifyPr`
-      // cannot tell a stacked PR from a conflicted one and fails closed.
-      'number,title,url,baseRefName,mergeable,mergeStateStatus,isDraft,statusCheckRollup',
-      '--limit',
-      String(limit),
-      '--repo',
-      repo,
-    ],
-    'the open PR list',
-  );
-}
-
 /**
  * The cadence half (#3776): when did this workflow last run, and was the gap
  * long enough that `main` was carrying a stale verdict?
@@ -243,7 +225,11 @@ async function main() {
         'Pass `--repo owner/name` or set GITHUB_REPOSITORY (or use `--state-file` for tests).',
       );
     }
-    prs = fetchOpenPrs({ repo: args.repo, limit: args.limit });
+    prs = await fetchOpenPrs({
+      repo: args.repo,
+      limit: args.limit,
+      fail: (reason, message) => new DirtyPrScanError(reason, message),
+    });
   }
 
   const results = scanPrs(prs, required, baseBranches, aliases);

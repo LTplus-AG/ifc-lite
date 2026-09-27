@@ -84,7 +84,11 @@ jobs:
         # `always()` is load-bearing: setup/test failures and a timed-out
         # canary leave `rc` unset, which must mean "lane down", not "skip the
         # reporter".
-        if: always() && steps.canary.outputs.rc != '0'
+        # ONLY FROM THE DEFAULT BRANCH. A `workflow_dispatch` on a branch is how a
+        # canary change is proven before merge (#5621); its verdict is about that
+        # branch's canary, not the lane on main, so it must neither comment on nor
+        # close the ops issue.
+        if: always() && steps.canary.outputs.rc != '0' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -105,7 +109,7 @@ jobs:
       # Closing the loop: a canary that only ever shouts is one people mute. When
       # it passes and an issue is open, say so and close it.
       - name: All clear
-        if: steps.canary.outputs.rc == '0'
+        if: steps.canary.outputs.rc == '0' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

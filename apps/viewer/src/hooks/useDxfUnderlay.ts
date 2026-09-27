@@ -12,7 +12,7 @@
  * anchor's effective georeference the SAME way the DXF export path does
  * (`resolveDxfExportGeoreference`, which folds in `georefMutations` edits)
  * and builds the inverse-IfcMapConversion transform underlays flagged
- * `georeferenced` need. `Section2DPanel`'s "Center on model" handler uses
+ * `georeferenced` need. `useDrawingLayers`'s "Center on model" handler uses
  * it too, so centering agrees with what's actually rendered.
  *
  * PR #1965 review: also returns `available` — whether an anchor

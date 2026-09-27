@@ -15,12 +15,14 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, after } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { advance, waitFor } from '@/test/render.js';
 import { useProjectedLatLon } from './geo-readout.js';
 import type { AnchorGeoreference } from '@/lib/geo/useAnchorGeoreference';
+import { resolveProjection } from '@/lib/geo/reproject';
 
 /**
  * building-architecture.ifc's georeference (EPSG:32760, UTM 60S), the same
@@ -52,21 +54,21 @@ after(() => {
 });
 
 /**
- * Flush pending promise jobs inside `act` until `done()` holds, so a resolved
- * reprojection is committed before the next assertion reads it. Polled rather
- * than a fixed number of ticks: `resolveProjection` loads its definition
- * lazily, so the number of microtask hops is an implementation detail.
+ * Resolve the fixture CRS once, up front, and await it (#5977).
+ *
+ * The first resolution loads the bundled EPSG index, which is the one slow,
+ * load-sensitive step between a pick and its lat/lon. Awaiting it here makes
+ * that cost a deterministic `await` instead of something a render-poll has to
+ * outlast, and it is the check that the fixture CRS resolves at all: with an
+ * unknown code the suite fails right here, saying so, rather than timing out.
+ * The hook still takes its own async hop afterwards (`reprojectPointToLatLon`
+ * awaits `resolveProjection` even when the definition is cached), so the
+ * in-flight window the first test pins is still real.
  */
-async function settle(done: () => boolean = () => true): Promise<void> {
-  for (let i = 0; i < 50 && !done(); i++) {
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 5));
-    });
-  }
-  await act(async () => {
-    await new Promise((r) => setTimeout(r, 5));
-  });
-}
+before(async () => {
+  const def = await resolveProjection(ANCHOR.eff.projectedCRS);
+  assert.ok(def, `the fixture CRS ${ANCHOR.eff.projectedCRS.name} must resolve, or this test proves nothing`);
+});
 
 describe('the picked point\'s lat/lon never lags behind the point', () => {
   it('clears the previous coordinates while the new ones are in flight', async () => {
@@ -82,9 +84,9 @@ describe('the picked point\'s lat/lon never lags behind the point', () => {
     mounted.push({ root, host });
 
     act(() => root.render(<Probe point={{ x: 0, y: 0, z: 0 }} />));
-    await settle(() => seen.at(-1) !== null && seen.at(-1) !== undefined);
+    await waitFor(() => seen.at(-1) != null, 'the first lat/lon never resolved');
     const first = seen.at(-1);
-    assert.ok(first, 'the fixture CRS must actually resolve, or this test proves nothing');
+    assert.ok(first);
 
     // A point 20 km east (viewer units are metres): far enough that its lat/lon
     // differs beyond any rounding, near enough to stay inside the projection.
@@ -96,7 +98,7 @@ describe('the picked point\'s lat/lon never lags behind the point', () => {
       `the render right after the pick still showed the old point's lat/lon: ${JSON.stringify(seen)}`,
     );
 
-    await settle(() => seen.at(-1) !== null && seen.at(-1) !== undefined);
+    await waitFor(() => seen.at(-1) != null, 'the new coordinates never arrived');
     const second = seen.at(-1);
     assert.ok(second, 'and the new coordinates must arrive');
     assert.notDeepEqual(second, first, 'a 50 km move must change the lat/lon');
@@ -114,11 +116,11 @@ describe('the picked point\'s lat/lon never lags behind the point', () => {
     mounted.push({ root, host });
 
     act(() => root.render(<Probe anchor={ANCHOR} />));
-    await settle(() => seen.at(-1) !== null && seen.at(-1) !== undefined);
-    assert.ok(seen.at(-1), 'resolved with an anchor');
+    await waitFor(() => seen.at(-1) != null, 'the lat/lon never resolved with an anchor');
+    assert.ok(seen.at(-1));
 
     act(() => root.render(<Probe anchor={null} />));
-    await settle();
+    await advance(5);
     assert.equal(seen.at(-1), null, 'dropping the georeference must drop the readout');
   });
 });

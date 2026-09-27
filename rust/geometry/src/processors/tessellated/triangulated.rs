@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::{Error, Mesh, Result, TessellationQuality};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
+use ifc_lite_core::{parse_indices_direct, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use crate::router::GeometryProcessor;
 
@@ -24,9 +24,11 @@ impl TriangulatedFaceSetProcessor {
     /// shell was winding-flipped — the texture path needs it to keep the
     /// parallel `TexCoordIndex` in lockstep (#961). Shared by `process` and
     /// [`Self::process_with_texture`] so there is one parse/orient code path.
+    /// `rtc_file_units` rebases before f32 narrowing (see `read_point_list`).
     fn parse_positions_and_orient(
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
+        rtc_file_units: Option<(f64, f64, f64)>,
     ) -> Result<(Vec<f32>, Vec<u32>, bool)> {
         // IfcTriangulatedFaceSet attributes:
         // 0: Coordinates (IfcCartesianPointList3D)
@@ -34,38 +36,13 @@ impl TriangulatedFaceSetProcessor {
         // 2: Closed (optional)
         // 3: CoordIndex (list of list of IfcPositiveInteger)
 
-        // Get coordinate entity reference
         let coords_attr = entity.get(0).ok_or_else(|| {
             Error::geometry("TriangulatedFaceSet missing Coordinates".to_string())
         })?;
-
         let coord_entity_id = coords_attr.as_entity_ref().ok_or_else(|| {
             Error::geometry("Expected entity reference for Coordinates".to_string())
         })?;
-
-        // FAST PATH: Try direct parsing of raw bytes (3-5x faster)
-        // This bypasses Token/AttributeValue allocations entirely
-        use ifc_lite_core::{extract_coordinate_list_from_entity, parse_indices_direct};
-
-        let positions = if let Some(raw_bytes) = decoder.get_raw_bytes(coord_entity_id) {
-            // Fast path: parse coordinates directly from raw bytes
-            // Use extract_coordinate_list_from_entity to skip entity header (#N=IFCTYPE...)
-            extract_coordinate_list_from_entity(raw_bytes).unwrap_or_default()
-        } else {
-            // Fallback path: use standard decoding
-            let coords_entity = decoder.decode_by_id(coord_entity_id)?;
-
-            let coord_list_attr = coords_entity.get(0).ok_or_else(|| {
-                Error::geometry("CartesianPointList3D missing CoordList".to_string())
-            })?;
-
-            let coord_list = coord_list_attr
-                .as_list()
-                .ok_or_else(|| Error::geometry("Expected coordinate list".to_string()))?;
-
-            use ifc_lite_core::AttributeValue;
-            AttributeValue::parse_coordinate_list_3d(coord_list)
-        };
+        let positions = super::read_point_list(decoder, coord_entity_id, rtc_file_units)?;
 
         // Get face indices - try fast path first
         let indices_attr = entity
@@ -129,7 +106,21 @@ impl TriangulatedFaceSetProcessor {
         decoder: &mut EntityDecoder,
         map: &crate::processors::texture::ResolvedTextureMap,
     ) -> Result<(Mesh, Vec<f32>)> {
-        let (positions, indices, flipped) = Self::parse_positions_and_orient(entity, decoder)?;
+        self.process_with_texture_rebased(entity, decoder, map, None)
+    }
+
+    /// [`Self::process_with_texture`]; `rtc_file_units` rebases positions
+    /// before f32 narrowing, as [`GeometryProcessor::process_in_rtc_frame`]
+    /// does, and marks the mesh `rtc_applied` (#5698).
+    pub(crate) fn process_with_texture_rebased(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        map: &crate::processors::texture::ResolvedTextureMap,
+        rtc_file_units: Option<(f64, f64, f64)>,
+    ) -> Result<(Mesh, Vec<f32>)> {
+        let (positions, indices, flipped) =
+            Self::parse_positions_and_orient(entity, decoder, rtc_file_units)?;
         let tex_coord_index = match &map.tex_coord_index {
             Some(authored) => {
                 let mut idx = authored.clone();
@@ -156,20 +147,18 @@ impl TriangulatedFaceSetProcessor {
             &tex_coord_index,
         );
         mesh.validate_indices();
+        mesh.rtc_applied = rtc_file_units.is_some();
         Ok((mesh, uvs))
     }
-}
 
-impl GeometryProcessor for TriangulatedFaceSetProcessor {
-    #[inline]
-    fn process(
-        &self,
+    /// Mesh the face set; `rtc_file_units` rebases before f32 narrowing.
+    fn process_rebased(
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
-        _schema: &IfcSchema,
-        _quality: TessellationQuality,
+        rtc_file_units: Option<(f64, f64, f64)>,
     ) -> Result<Mesh> {
-        let (positions, indices, _flipped) = Self::parse_positions_and_orient(entity, decoder)?;
+        let (positions, indices, _flipped) =
+            Self::parse_positions_and_orient(entity, decoder, rtc_file_units)?;
 
         // Flat-shade by duplicating vertices per-triangle. Without this, the
         // downstream per-vertex normal accumulator (`csg::calculate_normals`)
@@ -186,7 +175,32 @@ impl GeometryProcessor for TriangulatedFaceSetProcessor {
         // models, gate this on per-edge crease angle.
         let mut mesh = PolygonalFaceSetProcessor::build_flat_shaded_mesh(&positions, &indices);
         mesh.validate_indices();
+        mesh.rtc_applied = rtc_file_units.is_some();
         Ok(mesh)
+    }
+}
+
+impl GeometryProcessor for TriangulatedFaceSetProcessor {
+    #[inline]
+    fn process(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        _schema: &IfcSchema,
+        _quality: TessellationQuality,
+    ) -> Result<Mesh> {
+        Self::process_rebased(entity, decoder, None)
+    }
+
+    fn process_in_rtc_frame(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        _schema: &IfcSchema,
+        _quality: TessellationQuality,
+        rtc_file_units: (f64, f64, f64),
+    ) -> Option<Result<Mesh>> {
+        Some(Self::process_rebased(entity, decoder, Some(rtc_file_units)))
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

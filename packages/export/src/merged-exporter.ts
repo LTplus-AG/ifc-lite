@@ -31,18 +31,22 @@ import { StepExporter } from './step-exporter.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
 import { planInfrastructureUnify, resolvePrimaryContextState, type PrimaryContextState } from './merged-context.js';
 import { remapEntityText } from './merged-remap.js';
+import { PlannerGuids } from './merged-planner-guids.js';
 import {
-  extractGlobalIdFast,
+  isRelationshipType,
   mintUniqueGuid,
   readLeadingGuid,
   replaceGlobalId,
+  readLocalGuids,
 } from './merged-guid.js';
 import {
   planEmptyContainerDrops,
   EMPTY_MODEL_VIEW,
+  isSpatialContainerType,
+  isStructureRelation,
   type EmptyContainerModelView,
 } from './merged-empty-containers.js';
-import { skipRedundantRelAggregates, applyRelAggregateStrip, collectRelAggregatePairs } from './merged-rel-aggregates.js';
+import { InverseClaims, claimInverses, applyRelMemberStrip, applyInverseFolds, type InverseClaimInput } from './merged-inverse-claims.js';
 
 /**
  * UTF-8 decode of `[start, end)` of a model's source, accepting either the raw
@@ -61,11 +65,6 @@ const SHARED_INFRASTRUCTURE_TYPES = new Set([
   'IFCGEOMETRICREPRESENTATIONCONTEXT',
   'IFCGEOMETRICREPRESENTATIONSUBCONTEXT',
 ]);
-
-/** True for IfcRelationship subtypes (objectified relationships). */
-function isRelationshipType(typeUpper: string): boolean {
-  return typeUpper.startsWith('IFCREL');
-}
 
 /** Relative tolerance for comparing two length unit scale factors. */
 const UNIT_SCALE_TOLERANCE = 1e-6;
@@ -104,8 +103,8 @@ interface MergeSetup {
   firstProjectIds: number[];
   /** Spatial lookup built from the primary model. */
   spatialLookup: SpatialLookup;
-  /** Aggregation edges actually declared by the primary model. */
-  primaryAggregatePairs: Set<string>;
+  /** Final ids that already fill a single-valued inverse of the output schema: primary's, grown per later model (#5471, #5726, #5774). */
+  parentClaims: InverseClaims;
   /** Length unit scale of the primary model — the unit other models merge into. */
   primaryScale: number;
   /** Area unit scale (m² per unit) of the primary model — target for area values. */
@@ -172,14 +171,11 @@ interface ModelMergePlan {
    *  naming one is narrowed, or withheld with it. */
   droppedContainerIds?: ReadonlySet<number>;
   /**
-   * Local express id of a kept (not fully redundant) IFCRELAGGREGATES → the
-   * local ids of its RelatedObjects members that must be dropped from the
-   * emitted list because they were unified with an object the first model's
-   * OWN relationship already aggregates the same RelatingObject to (see
-   * {@link MergedExporter.skipRedundantRelAggregates}). Emitting them
-   * unmodified would list that member twice under the same parent.
+   * Local express id of a kept (not fully redundant) rel → the local ids of its
+   * claimed members to drop from the written list because they already fill
+   * that single-valued inverse in the output (#5471, #5726, see `claimInverses`).
    */
-  relAggregateStrip: Map<number, Set<number>>;
+  relMemberStrip: Map<number, Set<number>>;
 }
 
 /**
@@ -528,6 +524,7 @@ export class MergedExporter {
       if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings); }
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
+      this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
       const written = (id: number) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id);
       if (schema === 'IFC2X3') {
         // @raw-entity-enumeration-ok sync merge rejects overlays, so this is an unedited source index
@@ -545,7 +542,7 @@ export class MergedExporter {
 
       isFirstModel = false;
     }
-    for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings()]) normalizeWarnings.add(warning);
+    for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings(), ...applyInverseFolds(allEntityLines, setup.parentClaims)]) normalizeWarnings.add(warning); // #5774 folds
 
     // Assemble final file as Uint8Array chunks to avoid V8 string length limit
     if (onProgress) onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: allEntityLines.length, entitiesTotal: allEntityLines.length });
@@ -669,6 +666,7 @@ export class MergedExporter {
       if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings); }
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
+      this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
       const written = (id: number) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id);
       if (schema === 'IFC2X3') {
         // @raw-entity-enumeration-ok async merge first bakes and reparses edited models into source snapshots
@@ -706,7 +704,7 @@ export class MergedExporter {
 
       isFirstModel = false;
     }
-    for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings()]) normalizeWarnings.add(warning);
+    for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings(), ...applyInverseFolds(allEntityLines, setup.parentClaims)]) normalizeWarnings.add(warning); // #5774 folds
 
     // Assembly phase
     if (onProgress) {
@@ -791,7 +789,8 @@ export class MergedExporter {
    * Plan the empty spatial containers of the whole merge (#3643), or `null` when
    * the caller did not ask for the drop. Reproduces the same spatial unification
    * {@link planModel} will, so emptiness is judged on the containers the merge
-   * actually keeps rather than on each file in isolation.
+   * actually keeps rather than on each file in isolation. It runs its own
+   * {@link claimParents} pass first (#5725, see `EmptyContainerModelView.claimParents`).
    */
   private planContainerDrops(
     options: MergeExportOptions,
@@ -799,6 +798,8 @@ export class MergedExporter {
     setup: MergeSetup,
   ): { byModel: Map<string, Set<number>>; count: number } | null {
     if (!options.dropEmptyContainers) return null;
+    const claims = new InverseClaims(options.schema || 'IFC4', isStructureRelation);
+    const guids = new PlannerGuids(scale => this.unitsCompatible(scale, setup.primaryScale), isSpatialContainerType);
     const views: EmptyContainerModelView[] = models.map((model, index) => {
       const source = model.dataStore.source;
       if (!source || source.length === 0) return EMPTY_MODEL_VIEW;
@@ -808,20 +809,33 @@ export class MergedExporter {
       if (index > 0 && mode.compatible) {
         this.unifySpatialEntities(model.dataStore, setup.spatialLookup, setup.firstModelOffset, mode.lengthFactor, sharedRemap, new Set(), setup);
       }
-      return {
-        entities,
-        source: asSourceBytes(source),
-        included: this.computeIncludedEntityIds(model, options, entities, source)?.included ?? null,
-        sharedRemap,
-        offset: setup.modelOffsets.get(model.id)!,
-        compatible: mode.compatible,
+      const visibility = this.computeIncludedEntityIds(model, options, entities, source);
+      const claimParents = () => {
+        const typeOf = (id: number) => entities.get(id)!.type.toUpperCase(); // GlobalId unification the emit pass is sure to repeat (#5937)
+        const unified = guids.plan({ guids: readLocalGuids(entities, source), typeOf, isFirst: index === 0, compatible: mode.compatible, offset: setup.modelOffsets.get(model.id)!,
+          effectiveScale: mode.effectiveScale, isIncluded: id => visibility === null || visibility.included.has(id), keepsGuids: !needsConversion((model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4', options.schema || 'IFC4'),
+          unifiedEarlier: id => sharedRemap.has(id) || (index > 0 && mode.compatible && setup.firstProjectIds.length > 0 && typeOf(id) === 'IFCPROJECT') });
+        const withheld = { sharedRemap: new Map([...sharedRemap, ...unified]), skipEntityIds: new Set<number>(), relMemberStrip: new Map<number, Set<number>>() };
+        this.claimParents(model, withheld, visibility, entities, index > 0 && mode.compatible, setup, claims);
+        return withheld;
       };
+      return { entities, source: asSourceBytes(source), included: visibility?.included ?? null, sharedRemap, offset: setup.modelOffsets.get(model.id)!, compatible: mode.compatible, claimParents };
     });
     const plan = planEmptyContainerDrops(views);
     return {
       byModel: new Map(models.map((model, index) => [model.id, plan.droppedByModel[index]])),
       count: plan.droppedCount,
     };
+  }
+
+  /** One written rel per single-valued inverse (#5471, #5726, #5774): record this model's claims, stripping or folding ones already made. */
+  private claimParents(model: MergeModelInput, plan: Pick<InverseClaimInput, 'sharedRemap' | 'skipEntityIds' | 'relMemberStrip'> & Pick<ModelMergePlan, 'droppedContainerIds'>, visibility: { included: ReadonlySet<number>; hiddenProductIds: ReadonlySet<number> } | null, completeIndex: CompleteEntityIndex, dedupe: boolean, setup: MergeSetup, claims = setup.parentClaims): void {
+    const hidden = visibility?.hiddenProductIds;
+    claimInverses({
+      ...plan, dataStore: model.dataStore, idOffset: setup.modelOffsets.get(model.id)!, dedupe,
+      isIncluded: id => visibility === null || visibility.included.has(id),
+      isEmitted: id => !plan.droppedContainerIds?.has(id) && (hidden === undefined || (!hidden.has(id) && completeIndex.has(id))),
+    }, claims, this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this));
   }
 
   /** Fold a model's dropped containers into its plan: the container lines are
@@ -883,9 +897,7 @@ export class MergedExporter {
       firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale),
       firstProjectIds: this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT'),
       spatialLookup: this.buildSpatialLookup(firstModel.dataStore),
-      primaryAggregatePairs: collectRelAggregatePairs(
-        firstModel.dataStore, this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this), firstModelOffset,
-      ),
+      parentClaims: new InverseClaims(options.schema || 'IFC4'),
       primaryScale,
       primaryAreaScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'AREAUNIT', primaryScale, 2),
       primaryVolumeScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'VOLUMEUNIT', primaryScale, 3),
@@ -1095,14 +1107,10 @@ export class MergedExporter {
     const sharedRemap = new Map<number, number>();
     const skipEntityIds = new Set<number>();
     const guidRewrite = new Map<number, string>();
-    const relAggregateStrip = new Map<number, Set<number>>();
+    const relMemberStrip = new Map<number, Set<number>>();
 
     // One cheap pass to read each rooted entity's GlobalId (first attribute).
-    const localGuids = new Map<number, string>();
-    for (const [id, ref] of completeIndex) {
-      const guid = extractGlobalIdFast(ref, source);
-      if (guid !== null) localGuids.set(id, guid);
-    }
+    const localGuids = readLocalGuids(completeIndex, source);
 
     if (!isFirstModel && compatible) {
       // Remap this model's IfcProject references → first model's IfcProject.
@@ -1121,14 +1129,6 @@ export class MergedExporter {
       // Under normalize, this model's raw elevations are in its own unit, so the
       // elevation match is done in the primary unit (rawElevation * lengthFactor).
       this.unifySpatialEntities(model.dataStore, setup.spatialLookup, setup.firstModelOffset, lengthFactor, sharedRemap, skipEntityIds, setup);
-
-      // Skip IfcRelAggregates that become fully redundant after unification,
-      // and strip individually-duplicated members from ones only partially so.
-      skipRedundantRelAggregates(
-        model.dataStore, sharedRemap, skipEntityIds, relAggregateStrip,
-        setup.primaryAggregatePairs,
-        this.findEntitiesByType.bind(this), this.extractStepAttribute.bind(this),
-      );
     }
 
     if (!isFirstModel) {
@@ -1160,7 +1160,7 @@ export class MergedExporter {
       }
     }
 
-    return { sharedRemap, skipEntityIds, guidRewrite, localGuids, relAggregateStrip };
+    return { sharedRemap, skipEntityIds, guidRewrite, localGuids, relMemberStrip };
   }
 
   /**
@@ -1230,14 +1230,11 @@ export class MergedExporter {
       entityText = kept;
     }
 
-    // Drop RelatedObjects members a partially redundant IFCRELAGGREGATES
-    // already shares with the first model's OWN relationship to the same
-    // (now-unified) RelatingObject — see skipRedundantRelAggregates /
-    // applyRelAggregateStrip (merged-rel-aggregates.ts). Runs in LOCAL id
-    // space, before the remap below. `null` (the filter would withhold the
-    // whole line) propagates like the two passes above: every edge the line
-    // declared already exists in the primary model.
-    const stripped = applyRelAggregateStrip(entityText, localId, plan.relAggregateStrip);
+    // Drop the claimed members of a partially redundant rel that already fill
+    // that single-valued inverse in the output (#5471, #5726) — see
+    // claimInverses / applyRelMemberStrip. Runs in LOCAL id
+    // space, before the remap below. `null` propagates like the passes above.
+    const stripped = applyRelMemberStrip(entityText, localId, plan.relMemberStrip);
     if (stripped === null) return null;
     entityText = stripped;
 

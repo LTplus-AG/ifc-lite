@@ -62,6 +62,8 @@ describe('parseCapability — happy path', () => {
   });
 
   it('parses each scope', () => {
+    // `secret` is excluded: unlike the others, `secret.read` always
+    // requires a target (see the dedicated `secret` grammar tests below).
     const scopes = ['model', 'viewer', 'export', 'storage', 'network', 'command', 'ui'];
     for (const s of scopes) {
       const r = parseCapability(`${s}.read`);
@@ -72,6 +74,47 @@ describe('parseCapability — happy path', () => {
   it('accepts identifiers with hyphens and underscores', () => {
     const r = parseCapability('storage.local-cache');
     expect(r.ok).toBe(true);
+  });
+});
+
+describe('parseCapability — secret grammar', () => {
+  it('accepts an exact env-var-shaped secret name', () => {
+    const r = parseCapability('secret.read:API_TOKEN');
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.target?.segments).toEqual([{ kind: 'literal', value: 'API_TOKEN' }]);
+      expect(r.value.target?.isUniversalWildcard).toBe(false);
+    }
+  });
+
+  it('rejects a secret capability with no target', () => {
+    const r = parseCapability('secret.read');
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects a universal wildcard secret target', () => {
+    const r = parseCapability('secret.read:*');
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects a glob-suffixed secret target', () => {
+    const r = parseCapability('secret.read:API_*');
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects a multi-segment (dotted) secret target', () => {
+    const r = parseCapability('secret.read:API.TOKEN');
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects a lowercase secret name', () => {
+    const r = parseCapability('secret.read:api_token');
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects a secret name starting with a digit', () => {
+    const r = parseCapability('secret.read:1TOKEN');
+    expect(r.ok).toBe(false);
   });
 });
 

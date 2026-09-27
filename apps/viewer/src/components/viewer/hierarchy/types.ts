@@ -4,6 +4,9 @@
 
 import type { ObjectCountSummary } from './objectCountSummary';
 
+/** Builders need only an expansion decision, so search can project a fully expanded tree without changing user state. */
+export type ExpansionLookup = Pick<ReadonlySet<string>, 'has'>;
+
 /** Node types for the hierarchy tree */
 export type NodeType =
   | 'unified-storey'      // Grouped storey across models (multi-model only)
@@ -49,17 +52,18 @@ export interface TreeNode {
    */
   globalIds: number[];
   /**
-   * Index-aligned with `expressIds`: each member's OWN global ID, never a
-   * substituted aggregated part. Only populated on grouping nodes
-   * (`type-group`, `ifc-type`) where `globalIds` above is not aligned —
-   * lets a click resolve "the first member of this group" to the group's
-   * own first entity instead of an arbitrary aggregated part of it.
+   * Each actual member's OWN global ID, never a substituted geometry part.
+   * Aligned with `expressIds` on type and class groups. On an IfcGroup row,
+   * `expressIds` contains the group entity itself while this holds members;
+   * `globalIds` instead holds resolved geometry for isolation.
    */
   memberGlobalIds?: number[];
   /** Structured entity expressId for selectable non-element nodes (for example IFC type entities) */
   entityExpressId?: number;
   /** Model IDs this node belongs to */
   modelIds: string[];
+  /** Owning model for a row representing one model; absent for cross-model groups. */
+  modelId?: string;
   name: string;
   /**
    * Secondary descriptive label rendered muted after `name`, currently the IFC

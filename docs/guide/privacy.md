@@ -22,9 +22,11 @@ All four live in your browser's IndexedDB. None of it is sent off-device unless 
 
 The action and audit logs are held in an in-memory ring buffer and mirrored to IndexedDB, so they survive a reload (both are hydrated from IDB on startup). Clearing a log wipes both the in-memory copy and its persisted copy.
 
-## The Privacy panel
+## Settings → Privacy
 
-Open the Extensions panel (Command Palette → "Extensions") and click the **Privacy** tab. Three sections:
+Open **Settings → Privacy** to control product analytics and inspect or clear local data. The hosted viewer sends anonymous, coarse usage and error events unless you opt out. The switch is stored in this browser and stops both explicit event calls and PostHog automatic capture. A self-hosted viewer without a PostHog key sends no product analytics.
+
+The page also contains these local-data controls:
 
 ### What we store locally
 
@@ -79,7 +81,7 @@ What is **never** in the log:
 
 ## Memory extractor
 
-The Privacy panel's **Extract from chat** button runs a rule-based scanner over your current session transcript. It looks for stable preferences (sentences starting with `Always`, `Never`, `I prefer`, etc.) and proposes them as overlay additions.
+Settings → Privacy's **Extract from chat** button runs a rule-based scanner over your current session transcript. It looks for stable preferences (sentences starting with `Always`, `Never`, `I prefer`, etc.) and proposes them as overlay additions.
 
 The extractor is **privacy-first by design**:
 
@@ -96,9 +98,9 @@ The customisation system itself does not make network calls, and the model-loadi
 
 1. **Hosted viewer product analytics.** The hosted viewer at ifclite.com emits anonymous, coarse product-usage events via PostHog. This is the only telemetry in the project, and it lives only in the viewer app (`apps/viewer`). The published npm packages (`@ifc-lite/*`) contain no analytics code at all, and a viewer you build yourself with no PostHog key configured (`VITE_POSTHOG_KEY` / `VITE_POSTHOG_HOST`) sends nothing.
 
-   What it records: coarse product events such as `ifc_model_loaded` (schema string and integer counts/sizes), `export_completed`, `ids_validation_completed`, `clash_detection_run`, `lens_applied`, tour progress, `ai_chat_message_sent`, and crash/error reports tagged with the build version for regression triage. Events are anonymous by default (PostHog `person_profiles: 'identified_only'`, no autocapture, no page-view capture).
+   What it records: coarse product events such as `ifc_model_loaded` (schema string and integer counts/sizes), `export_completed`, `ids_validation_completed`, `clash_detection_run`, `lens_applied`, tour progress, `ai_chat_message_sent`, UI interaction events (`command_executed`, `panel_opened`, `panel_replaced`, `tool_activated`, `tool_exited`, `view_reset`, `error_shown`, `file_open_rejected`, `onboarding_surface`: which command, panel, tool or surface was used, as fixed ids only; opens the app makes by itself are not counted), and crash/error reports tagged with the build version for regression triage. Events are anonymous by default (PostHog `person_profiles: 'identified_only'`, no autocapture, no page-view capture).
 
-   What it never records: every event passes through a `before_send` scrubber (`apps/viewer/src/lib/analytics-scrub.ts`) that strips any property whose key looks like a file name, model name, title, path, comment, query, or property/pset name; redacts string values that look like a file path or a model file name; and removes the query string and hash from URLs (keeping only the route). Model content, GlobalIds, property values, and file names never leave the browser through analytics.
+   What it never records: every event passes through a `before_send` scrubber (`apps/viewer/src/lib/analytics-scrub.ts`) that strips any property whose key looks like a file name, model name, title, path, comment, query, or property/pset name; redacts string values that look like a file path or a model file name; and removes the query string and hash from URLs (keeping only the route). The UI interaction events are held to a stricter allowlist (`apps/viewer/src/lib/analytics-ui-events.ts`): any property not declared for the event, and any value that is not a plain id, is dropped. Model content, GlobalIds, property values, and file names never leave the browser through analytics.
 
 2. **Chat with the AI assistant.** When you send a chat message, your prompt + the (cached) system prompt + any attachments + recent conversation goes to your chosen provider (Anthropic / OpenAI), either through the BYOK direct flow or the proxy. Attachments can include model content (GlobalIds, property values, selected entities), so attaching model context to a chat message deliberately sends that content off-device to the provider. The chat panel's existing privacy notes apply.
 
@@ -108,9 +110,10 @@ The customisation system itself does not make network calls, and the model-loadi
 
 | Goal | How |
 |------|-----|
-| Audit what's stored | Privacy tab → **Export JSON** on the action log; Audit tab → **Export** on the audit log |
-| Wipe pattern suggestions | Privacy tab → **Clear** the action log |
-| Stop the assistant from "remembering" preferences | Privacy tab → clear the textarea + Save overlay |
+| Audit what's stored | Settings → Privacy → **Export JSON** on the action log; Extensions → Audit → **Export** on the audit log |
+| Wipe pattern suggestions | Settings → Privacy → **Clear** the action log |
+| Stop the assistant from "remembering" preferences | Settings → Privacy → clear the textarea + Save overlay |
+| Stop product analytics | Settings → Privacy → **Opt out of product analytics** |
 | Stop the miner entirely | Disable every action log emit by clearing the log; the miner has no input to act on |
 | Forget an extension | Extensions tab → trash icon — removes bundle bytes, install record, granted capabilities |
 | Forget a flavor | Flavors dialog → delete on the row (active flavor can't be deleted; switch first) |
@@ -121,9 +124,9 @@ The customisation system itself does not make network calls, and the model-loadi
 
 On the first launch where the extensions subsystem comes up, a one-time toast surfaces the headline:
 
-> IFClite keeps a local, content-free action log to suggest one-click tools. Manage or delete it in Extensions → Privacy.
+> IFClite stores an action log on your device. The hosted viewer also sends anonymous product analytics unless you opt out in Privacy settings.
 
-The acknowledgement is persisted in localStorage so you only see it once per browser. To re-show it (e.g. on a different device), clear the `ifclite.extensions.privacy-disclosure.v1` key.
+The toast has a **Privacy settings** action that opens the opt-out switch and local-data controls. The acknowledgement is persisted in localStorage so you only see it once per browser. To re-show it, clear the `ifclite.extensions.privacy-disclosure.v2` key.
 
 ## Source-of-truth references
 

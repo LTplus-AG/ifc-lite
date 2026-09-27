@@ -24,6 +24,7 @@
 
 import { getViewerStoreApi } from '@/store';
 import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
+import { resolve } from '@/i18n/registry';
 
 interface DocumentPictureInPictureApi {
   requestWindow(options?: { width?: number; height?: number }): Promise<Window>;
@@ -75,6 +76,7 @@ function bridgeStyles(target: Document): void {
   });
   // Mirror theme classes (dark / colorful) + language onto the child root.
   target.documentElement.className = document.documentElement.className;
+  mirrorOverlayTokens(target);
   target.documentElement.lang = document.documentElement.lang || 'en';
   // Make the body fill the window with the app background.
   target.documentElement.style.height = '100%';
@@ -165,7 +167,7 @@ export async function openPanelWindow(id: WorkspacePanelId): Promise<PanelWindow
   if (!win) return null; // blocked by a popup blocker
 
   try {
-    win.document.title = `${def?.title ?? id} — ifc-lite`;
+    win.document.title = `${def ? resolve(def.titleKey) : id} — ifc-lite`;
     bridgeStyles(win.document);
   } catch {
     /* about:blank not ready in some engines — portal still mounts into body */
@@ -202,13 +204,31 @@ export function closeAllPanelWindows(): void {
   for (const id of [...open.keys()]) detach(id, true);
 }
 
-/** Push the current theme class onto every open window (parent theme changed). */
+/**
+ * Copy the overlay tokens onto a child root. `registerOverlayThemeSync` writes them
+ * inline on `<html>` as `--overlay-*` (#5483), which the stylesheet clone above
+ * does not carry, so without this a popped-out panel's token utilities
+ * (`bg-clash-a`, `text-clash-overlap`, #5490) would resolve to nothing.
+ */
+function mirrorOverlayTokens(target: Document): void {
+  const source = document.documentElement.style;
+  for (let i = 0; i < source.length; i++) {
+    const name = source.item(i);
+    if (name.startsWith('--overlay-')) target.documentElement.style.setProperty(name, source.getPropertyValue(name));
+  }
+}
+
+/** Push the current theme class and overlay tokens onto every open window (parent theme changed). */
 export function syncPanelWindowsTheme(className: string): void {
   for (const { win } of open.values()) {
     try {
-      if (!win.closed) win.document.documentElement.className = className;
-    } catch {
-      /* noop */
+      if (win.closed) continue;
+      win.document.documentElement.className = className;
+      mirrorOverlayTokens(win.document);
+    } catch (error) {
+      // A window torn down between the `closed` check and the write; the next
+      // theme change (or re-opening it) themes it again.
+      console.warn('[panel-windows] could not sync theme to a popped-out window', error);
     }
   }
 }

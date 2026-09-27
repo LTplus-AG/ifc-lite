@@ -206,7 +206,9 @@ describe('#3875 subsetEntityIds: a shared presentation layer assignment', () => 
     // …and the result SAYS which entity went missing, naming it and its type.
     const withheld = result.stats.warnings.filter((w) => w.includes('#50'));
     expect(withheld).toHaveLength(1);
-    expect(withheld[0]).toContain('IFCPRESENTATIONLAYERASSIGNMENT');
+    // Canonical IFC EXPRESS spelling, not the raw STEP one: the warning is
+    // read by a person (#5533).
+    expect(withheld[0]).toContain('IfcPresentationLayerAssignment');
     expect(withheld[0]).toContain('withheld');
 
     // Withholding is the step most able to strand a reference — the closure

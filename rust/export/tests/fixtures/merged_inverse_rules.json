@@ -1,0 +1,606 @@
+{
+  "rows": [
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELAGGREGATES",
+      "inverse": "Decomposes",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELASSIGNSTASKS",
+      "inverse": "ScheduleTimeControlAssigned",
+      "claimed": 7,
+      "partner": 6,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 8
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELASSIGNSTOGROUP",
+      "inverse": "IsGroupedBy",
+      "claimed": 6,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": true,
+      "arity": 7
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELCONNECTSPORTS",
+      "inverse": "ConnectedTo",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 7
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELCONNECTSPORTS",
+      "inverse": "ConnectedFrom",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 7
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELCONNECTSPORTTOELEMENT",
+      "inverse": "ContainedIn",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELCONNECTSSTRUCTURALACTIVITY",
+      "inverse": "AssignedToStructuralItem",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELCONTAINEDINSPATIALSTRUCTURE",
+      "inverse": "ContainedInStructure",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELCOVERSBLDGELEMENTS",
+      "inverse": "Covers",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELCOVERSSPACES",
+      "inverse": "CoversSpaces",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELDEFINESBYPROPERTIES",
+      "inverse": "PropertyDefinitionOf",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": true,
+      "arity": 6
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELDEFINESBYTYPE",
+      "inverse": "IsDefinedBy",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6,
+      "where": "IfcObject.WR1"
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELDEFINESBYTYPE",
+      "inverse": "ObjectTypeOf",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": true,
+      "arity": 6
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELFILLSELEMENT",
+      "inverse": "FillsVoids",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELFLOWCONTROLELEMENTS",
+      "inverse": "AssignedToFlowElement",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELFLOWCONTROLELEMENTS",
+      "inverse": "HasControlElements",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": true,
+      "arity": 6
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELNESTS",
+      "inverse": "Decomposes",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELOVERRIDESPROPERTIES",
+      "inverse": "PropertyDefinitionOf",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": true,
+      "arity": 7,
+      "onePartner": true
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELPROJECTSELEMENT",
+      "inverse": "ProjectsElements",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELSERVICESBUILDINGS",
+      "inverse": "ServicesBuildings",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": false,
+      "partnerList": true,
+      "arity": 6
+    },
+    {
+      "schema": "IFC2X3",
+      "relType": "IFCRELVOIDSELEMENT",
+      "inverse": "VoidsElements",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELAGGREGATES",
+      "inverse": "Decomposes",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELCONNECTSPORTS",
+      "inverse": "ConnectedTo",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 7
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELCONNECTSPORTS",
+      "inverse": "ConnectedFrom",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 7
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELCONNECTSPORTTOELEMENT",
+      "inverse": "ContainedIn",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELCONNECTSSTRUCTURALACTIVITY",
+      "inverse": "AssignedToStructuralItem",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELCONTAINEDINSPATIALSTRUCTURE",
+      "inverse": "ContainedInStructure",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELCOVERSBLDGELEMENTS",
+      "inverse": "CoversElements",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELCOVERSSPACES",
+      "inverse": "CoversSpaces",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELDECLARES",
+      "inverse": "HasContext",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELDEFINESBYOBJECT",
+      "inverse": "IsDeclaredBy",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELDEFINESBYTYPE",
+      "inverse": "IsTypedBy",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELDEFINESBYTYPE",
+      "inverse": "Types",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": true,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELFILLSELEMENT",
+      "inverse": "FillsVoids",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELFLOWCONTROLELEMENTS",
+      "inverse": "AssignedToFlowElement",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELFLOWCONTROLELEMENTS",
+      "inverse": "HasControlElements",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": true,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELNESTS",
+      "inverse": "Nests",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELPROJECTSELEMENT",
+      "inverse": "ProjectsElements",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELSERVICESBUILDINGS",
+      "inverse": "ServicesBuildings",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": false,
+      "partnerList": true,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4",
+      "relType": "IFCRELVOIDSELEMENT",
+      "inverse": "VoidsElements",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELADHERESTOELEMENT",
+      "inverse": "AdheresToElement",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELAGGREGATES",
+      "inverse": "Decomposes",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELCONNECTSPORTS",
+      "inverse": "ConnectedTo",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 7
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELCONNECTSPORTS",
+      "inverse": "ConnectedFrom",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 7
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELCONNECTSPORTTOELEMENT",
+      "inverse": "ContainedIn",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELCONNECTSSTRUCTURALACTIVITY",
+      "inverse": "AssignedToStructuralItem",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELCONTAINEDINSPATIALSTRUCTURE",
+      "inverse": "ContainedInStructure",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELCOVERSBLDGELEMENTS",
+      "inverse": "CoversElements",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELCOVERSSPACES",
+      "inverse": "CoversSpaces",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELDECLARES",
+      "inverse": "HasContext",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELDEFINESBYOBJECT",
+      "inverse": "IsDeclaredBy",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELDEFINESBYTYPE",
+      "inverse": "IsTypedBy",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELDEFINESBYTYPE",
+      "inverse": "Types",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": true,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELFILLSELEMENT",
+      "inverse": "FillsVoids",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELFLOWCONTROLELEMENTS",
+      "inverse": "AssignedToFlowElement",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELFLOWCONTROLELEMENTS",
+      "inverse": "HasControlElements",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": true,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELNESTS",
+      "inverse": "Nests",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": true,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELPROJECTSELEMENT",
+      "inverse": "ProjectsElements",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELSERVICESBUILDINGS",
+      "inverse": "ServicesBuildings",
+      "claimed": 4,
+      "partner": 5,
+      "claimedList": false,
+      "partnerList": true,
+      "arity": 6
+    },
+    {
+      "schema": "IFC4X3",
+      "relType": "IFCRELVOIDSELEMENT",
+      "inverse": "VoidsElements",
+      "claimed": 5,
+      "partner": 4,
+      "claimedList": false,
+      "partnerList": false,
+      "arity": 6
+    }
+  ]
+}

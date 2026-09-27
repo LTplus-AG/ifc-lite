@@ -7,6 +7,8 @@ import { useIfcAuthoringTarget } from './useIfcAuthoringTarget';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useViewerStore } from '@/store';
+import { mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
+import { useMutationDenialReason } from '@/hooks/useMutationDenialReason';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { createAnnotationFromReference } from '@/lib/appearance/create-annotation';
 import { appearanceSelectClass } from './AppearanceSourceFields';
@@ -22,6 +24,7 @@ export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
 }) {
   const { t } = useTranslation();
   const { modelId, containerId, eligible, containers, setChosenModel, setChosenContainer } = useIfcAuthoringTarget();
+  const denialReason = useMutationDenialReason(modelId || undefined);
   const room = useViewerStore(state => state.collabRoomId);
   const [Name, setName] = useState(name);
   const [expanded, setExpanded] = useState(false);
@@ -37,6 +40,8 @@ export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
   }, [disabled]);
   async function save() {
     if (disabled || room || operation.current || containerId === undefined || !modelId) return;
+    const permission = mutationPermission(useViewerStore.getState(), modelId);
+    if (!permission.allowed) { setError(true); setMessage({ key: mutationDenialKey(permission.reason) }); return; }
     const renderer = getGlobalRenderer();
     if (!renderer) { setError(true); setMessage({ key: 'appearance.annotationFields.rendererNotReady' }); return; }
     const controller = new AbortController(); operation.current = controller;
@@ -55,31 +60,33 @@ export function AppearanceAnnotationFields({ referenceId, name, disabled }: {
     }
   }
   return <details className="mt-2 border-t pt-2" onToggle={event => { setExpanded(event.currentTarget.open); if (!event.currentTarget.open) operation.current?.abort(); }}>
-    <summary className="cursor-pointer text-[11px] font-medium">{t('appearance.annotationFields.summary')}</summary>
+    <summary className="cursor-pointer text-2xs font-medium">{t('appearance.annotationFields.summary')}</summary>
     <div className="mt-2 space-y-2" aria-busy={busy}>
-      <p className="text-[11px] text-muted-foreground">{t('appearance.annotationFields.description')}</p>
+      <p className="text-2xs text-muted-foreground">{t('appearance.annotationFields.description')}</p>
       <fieldset disabled={disabled || busy || !!room} className="space-y-2">
-        <label className="block text-[11px]">{t('appearance.annotationFields.representationLabel')}<select aria-label={t('appearance.annotationFields.representationAriaLabel')} className={appearanceSelectClass} value={representation}
+        <label className="block text-2xs">{t('appearance.annotationFields.representationLabel')}<select aria-label={t('appearance.annotationFields.representationAriaLabel')} className={appearanceSelectClass} value={representation}
           onChange={event => setRepresentation(event.target.value === 'fills' ? 'fills' : 'image')}>
           <option value="image">{t('appearance.annotationFields.representationImage')}</option><option value="fills" disabled={!pdf}>{t('appearance.annotationFields.representationPdfVectors')}</option>
         </select></label>
-        <label className="block text-[11px]">{t('appearance.annotationFields.modelLabel')}<select aria-label={t('appearance.annotationFields.modelAriaLabel')} className={appearanceSelectClass} value={modelId}
+        <label className="block text-2xs">{t('appearance.annotationFields.modelLabel')}<select aria-label={t('appearance.annotationFields.modelAriaLabel')} className={appearanceSelectClass} value={modelId}
           onChange={event => { setChosenModel(event.target.value); setChosenContainer(undefined); setMessage(null); }}>
           {!eligible.length && <option value="">{t('appearance.annotationFields.noEligibleModel')}</option>}
           {eligible.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select></label>
-        <label className="block text-[11px]">{t('appearance.annotationFields.containerLabel')}<select aria-label={t('appearance.annotationFields.containerAriaLabel')} className={appearanceSelectClass} value={containerId ?? ''}
+        <label className="block text-2xs">{t('appearance.annotationFields.containerLabel')}<select aria-label={t('appearance.annotationFields.containerAriaLabel')} className={appearanceSelectClass} value={containerId ?? ''}
           onChange={event => setChosenContainer(Number(event.target.value))}>
           {!containers.length && <option value="">{t('appearance.annotationFields.noContainer')}</option>}
           {containers.map(node => <option key={node.expressId} value={node.expressId}>{node.name || t('appearance.annotationFields.containerFallbackName', { expressId: node.expressId })}</option>)}
         </select></label>
-        <label className="block text-[11px]">{t('appearance.annotationFields.nameLabel')}<Input aria-label={t('appearance.annotationFields.nameAriaLabel')} value={Name} onChange={event => setName(event.target.value)} className="h-8 text-xs" /></label>
-        {representation === 'image' && <Button type="button" variant="outline" size="sm" disabled={!modelId || containerId === undefined || !Name.trim()} onClick={() => { void save(); }}>{t('appearance.annotationFields.createAnnotation')}</Button>}
+        <label className="block text-2xs">{t('appearance.annotationFields.nameLabel')}<Input aria-label={t('appearance.annotationFields.nameAriaLabel')} value={Name} onChange={event => setName(event.target.value)} className="h-8 text-xs" /></label>
+        {representation === 'image' && <Button type="button" variant="outline" size="sm" disabled={!modelId || containerId === undefined || !Name.trim() || !!denialReason}
+          title={denialReason ? t(mutationDenialKey(denialReason)) : undefined} onClick={() => { void save(); }}>{t('appearance.annotationFields.createAnnotation')}</Button>}
       </fieldset>
-      {expanded && representation === 'fills' && <PdfAnnotationFields referenceId={referenceId} modelId={modelId} containerId={containerId} Name={Name} disabled={disabled || busy || !!room} />}
-      {room && <p className="text-[11px] text-muted-foreground">{t('appearance.annotationFields.leaveRoomNotice')}</p>}
+      {expanded && representation === 'fills' && <PdfAnnotationFields referenceId={referenceId} modelId={modelId} containerId={containerId} Name={Name} disabled={disabled || busy || !!room || !!denialReason} />}
+      {room && <p className="text-2xs text-muted-foreground">{t('appearance.annotationFields.leaveRoomNotice')}</p>}
+      {denialReason && <output className="block text-2xs text-muted-foreground">{t(mutationDenialKey(denialReason))}</output>}
       {busy && <Button type="button" variant="ghost" size="sm" onClick={() => { operation.current?.abort(); setMessage({ key: 'appearance.annotationFields.cancelled' }); }}>{t('appearance.annotationFields.cancelCreation')}</Button>}
-      {message && <p role={error ? 'alert' : 'status'} className={`text-[11px] ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{'key' in message ? t(message.key) : message.text}</p>}
+      {message && <p role={error ? 'alert' : 'status'} className={`text-2xs ${error ? 'text-destructive' : 'text-muted-foreground'}`}>{'key' in message ? t(message.key) : message.text}</p>}
     </div>
   </details>;
 }

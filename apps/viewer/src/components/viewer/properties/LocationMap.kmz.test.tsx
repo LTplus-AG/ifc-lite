@@ -36,7 +36,8 @@ import { act } from 'react';
 import type { CoordinateInfo, GeometryResult, MeshData, KmzAltitudeMode } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
-import { render, cleanup } from '@/test/render.js';
+import { render, cleanup, waitFor } from '@/test/render.js';
+import { downloadedNames, clearDownloads } from '@/test/download-capture.js';
 import { toast } from '@/components/ui/toast.js';
 import { LocationMap } from './LocationMap.js';
 import type { KmzProcessor } from '@/lib/geo/kmz-exporter.js';
@@ -129,6 +130,7 @@ function makeStub() {
 async function exportViaButton(
   instancedModelRange?: { idOffset: number; maxExpressId: number } | null,
   processor?: KmzProcessor,
+  modelName?: string,
 ): Promise<RecordedCall[]> {
   const { gp, calls } = makeStub();
   const container = render(
@@ -140,28 +142,35 @@ async function exportViaButton(
       lengthUnitScale={1}
       createKmzProcessor={() => processor ?? gp}
       instancedModelRange={instancedModelRange}
+      modelName={modelName}
     />,
   );
 
   // The button is gated on `latLon`, which the panel resolves asynchronously —
   // and `resolveProjection` loads the generated EPSG index, so this is real I/O
-  // and NOT reachable by flushing microtasks. Poll on a timer instead. (The
-  // index is cached after the first resolve, which is why a microtask-only
+  // and NOT reachable by flushing microtasks. Wait for the button itself.
+  // (The index is cached after the first resolve, which is why a microtask-only
   // flush passed for whichever test happened to run third and failed for the
   // rest — a source of order-dependent flake, not a real pass.)
-  let button: HTMLButtonElement | undefined;
-  for (let i = 0; i < 200 && !button; i++) {
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 25)); });
-    button = Array.from(container.querySelectorAll('button'))
-      .find(b => (b.textContent ?? '').includes('Google Earth'));
-  }
-  assert.ok(button, 'expected the Google Earth button to render once the pin resolved');
+  const googleEarth = () => Array.from(container.querySelectorAll('button'))
+    .find(b => (b.textContent ?? '').includes('Google Earth'));
+  await waitFor(() => googleEarth() !== undefined,
+    'expected the Google Earth button to render once the pin resolved');
 
-  await act(async () => {
-    button!.click();
-    // Let the handler's awaits settle (reproject → build → download).
-    await new Promise(resolve => setTimeout(resolve, 50));
-  });
+  // The handler awaits reproject -> build and then ends in exactly one of two
+  // observable ways: a download, or an error toast. Wait for that ending rather
+  // than a fixed 50 ms, which the handler outlives on a loaded runner (#5977).
+  const downloadsBefore = downloadedNames().length;
+  let errorToasts = 0;
+  const showError = toast.error;
+  toast.error = (message: string) => { errorToasts++; showError(message); };
+  try {
+    act(() => { googleEarth()!.click(); });
+    await waitFor(() => downloadedNames().length > downloadsBefore || errorToasts > 0,
+      'the Google Earth export never finished (no download, no error toast)');
+  } finally {
+    toast.error = showError;
+  }
   return calls;
 }
 
@@ -259,6 +268,14 @@ describe('LocationMap — Google Earth (KMZ) export', () => {
       placement(calls[0]),
       'the panel and the dialog must place the same model identically',
     );
+  });
+
+  // #5833: this button downloaded every model as `model.kmz`, while the Export
+  // KMZ dialog named the same model's file after the model.
+  it('files the KMZ under the model name, as the Export KMZ dialog does', async () => {
+    clearDownloads();
+    await exportViaButton(null, undefined, 'Haus.ifc');
+    assert.deepStrictEqual(downloadedNames(), ['Haus.kmz']);
   });
 
   it('shows a visible error when the now-fallible KMZ exporter rejects the model', async () => {

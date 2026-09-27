@@ -19,11 +19,13 @@ import type { CompareResult } from '@/store/slices/compareSlice';
 import { hasReportableChanges, type CompareMatchRow, type CompareRow } from './changeRow';
 import { CompareMatchGroups } from './CompareMatchGroups';
 import { CompareSuggestions, type SuggestionDecision } from './CompareSuggestions';
+import { AnalysisResultList } from '../analysis/AnalysisResultList';
 import type { SuggestionDecisions, SuggestionRow } from '@/lib/compare/suggestions';
 
+/** Every changed entry of one state, listed in full through the virtualised
+ *  analysis result list (#5834) - no display cap. */
 export interface CompareBucket {
   rows: CompareRow[];
-  truncated: number;
 }
 
 /** States listed in the panel (unchanged only affects 3D ghosting). */
@@ -58,8 +60,8 @@ export function CountBadge({
       <span className="text-sm font-semibold tabular-nums" style={{ color: rgbaCss([color[0], color[1], color[2], 1]) }}>
         {value.toLocaleString()}
       </span>
-      <span className="text-[10px] text-muted-foreground">{label}</span>
-      {hint && <span className="text-[9px] text-muted-foreground">{hint}</span>}
+      <span className="text-2xs text-muted-foreground">{label}</span>
+      {hint && <span className="text-2xs text-muted-foreground">{hint}</span>}
     </div>
   );
 }
@@ -131,18 +133,21 @@ export function CompareResultsList({
                   <Icon className="h-3.5 w-3.5" style={{ color: rgbaCss(color) }} />
                   <span>{label}</span>
                   {/* Products-first, matching the count badges above: the raw
-                      `rows + truncated` total conflates products and type
+                      bucket length conflates products and type
                       objects, and two totals for one quantity in one panel is
                       the confusion the split exists to remove. */}
                   <span className="text-muted-foreground">
-                    ({split ? groupHeaderCount(split, state) : bucket.rows.length + bucket.truncated})
+                    ({split ? groupHeaderCount(split, state) : bucket.rows.length})
                   </span>
                   <MousePointerClick className="h-3 w-3 ml-auto opacity-0 group-hover:opacity-60 transition-opacity" />
                 </button>
-                <div className="space-y-0.5">
-                  {bucket.rows.map((row) => (
+                <AnalysisResultList
+                  className="max-h-80"
+                  items={bucket.rows}
+                  getKey={(row) => row.key}
+                  estimateSize={() => 26}
+                  renderRow={(row) => (
                     <button
-                      key={row.key}
                       onClick={() => onFocus(row)}
                       className={cn(
                         'w-full text-left rounded px-2 py-1 flex items-center gap-2 hover:bg-muted transition-colors min-w-0',
@@ -151,19 +156,14 @@ export function CompareResultsList({
                     >
                       <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ backgroundColor: rgbaCss(color) }} />
                       <span className="min-w-0 flex-1 truncate text-xs">{row.name || row.ifcType}</span>
-                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                      <span className="shrink-0 text-2xs text-muted-foreground">
                         {state === 'modified' && row.changeKinds.length > 0
                           ? row.changeKinds.join(' · ')
                           : row.ifcType.replace(/^Ifc/, '')}
                       </span>
                     </button>
-                  ))}
-                  {bucket.truncated > 0 && (
-                    <p className="px-2 py-1 text-[10px] text-muted-foreground">
-                      {t('comparePanel.moreNotShown', { count: bucket.truncated })}
-                    </p>
                   )}
-                </div>
+                />
               </div>
             );
           })}

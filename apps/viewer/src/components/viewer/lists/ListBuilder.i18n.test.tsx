@@ -16,8 +16,7 @@
  *
  * `ListBuilder` has more mutually-exclusive UI states than one render can
  * surface at once (a filter-snapshot list vs. a type-scoped one; an empty
- * grouping level 0 vs. a second "then by" level; a zone/spatial filter
- * dimension vs. the default attribute one), so this file drives several
+ * grouping level 0 vs. a second "then by" level), so this file drives several
  * small renders and a few real clicks/typed values — the same oracle shape
  * as `MainToolbar.i18n.test.tsx`: mark every key, render in English,
  * capture the visible/focusable strings, switch locale live, and assert
@@ -29,7 +28,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { StringTable, EntityTableBuilder } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { ListDefinition, ListDataProvider } from '@ifc-lite/lists';
+import { migrateLegacyListDefinition, type ListDefinition, type ListDataProvider } from '@ifc-lite/lists';
 import { render, cleanup, click, type as typeInto } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { en } from '@/i18n/en';
@@ -61,6 +60,9 @@ type ListsKey = keyof typeof CATALOGUE;
 const KEYS = Object.keys(CATALOGUE) as ListsKey[];
 const OWNED_KEYS = KEYS.filter((k) => k.startsWith('lists.builder.'));
 const STATIC_KEYS = OWNED_KEYS.filter((key) => {
+  // Option labels from an unopened compatibility row can coincide with
+  // ordinary column labels. Exercise those keys in a rendered row below.
+  if (/^lists\.builder\.(source\.|spatial\.|zone|valuePlaceholder\.|filterDimension|attributeAria|spatialLevel|qtoPlaceholder|psetPlaceholder|namePropertyPlaceholder|operatorAria|removeFilterAria)/.test(key)) return false;
   const v = CATALOGUE[key];
   return typeof v === 'string' && !v.includes('{');
 });
@@ -144,12 +146,7 @@ function buildStore(): IfcDataStore {
     entityIndex: { byId: { ranges: new Uint32Array(0), index: new Map() }, byType: new Map([['IFCWALL', [42]]]) },
     strings,
     entities: builder.build(),
-    // A stub, not `undefined`: a `property`/`quantity`/`material`/
-    // `classification` filter condition triggers `ListBuilder`'s expensive
-    // `discoverConditionValues` sampling pass (issue #4215's suggestion
-    // effect), which falls back to `store.properties.getForEntity` when
-    // `source` is empty — `undefined` throws there instead of yielding "no
-    // properties found", which is what this fixture actually means.
+    // Empty base tables let the shared filter editor discover an empty model.
     properties: { getForEntity: () => [] },
     quantities: { getForEntity: () => [] },
     relationships: { count: 0, getRelated: () => [] },
@@ -200,12 +197,7 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     act(() => setLocale('list-builder-default-pseudo'));
     const after = readableStrings(container);
 
-    const conditionOnlyPrefixes = [
-      'lists.builder.source.', 'lists.builder.operator.', 'lists.builder.spatial.',
-      'lists.builder.zoneVolumeOption', 'lists.builder.zoneBreakdownOption',
-    ];
-    const covered = assertCoverage(english, after,
-      STATIC_KEYS.filter((key) => !conditionOnlyPrefixes.some((prefix) => key.startsWith(prefix))));
+    const covered = assertCoverage(english, after, STATIC_KEYS);
 
     for (const key of [
       'lists.builder.namePlaceholder',
@@ -215,7 +207,6 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
       'lists.builder.sectionFilters',
       'lists.builder.sectionColumns',
       'lists.builder.noTypeSelected',
-      'lists.builder.addFilter',
       'lists.builder.customColumn',
       'lists.builder.customColumnHint',
       'lists.builder.run',
@@ -241,7 +232,7 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
       createdAt: Date.now(),
       updatedAt: Date.now(),
       entityTypes: [],
-      conditions: [],
+      groups: [],
       columns: [],
       expressIdsByModel: { default: [42] },
     } as unknown as ListDefinition;
@@ -260,66 +251,112 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     assert.ok(after.has(expectedHint), 'filterSnapshotHint must be translated with its interpolated count');
   });
 
-  it('translates a filter row (dimension / attribute / operator / remove) and the zone dimension\'s own controls', () => {
+  it('opens a saved provider-only condition as a List value rule in the shared editor (#6190)', () => {
     const store = buildStore();
     const provider = buildProvider(store);
+    // What localStorage held while the scoped compatibility editor existed.
+    const initial = migrateLegacyListDefinition({
+      id: 'legacy-filter', name: 'Legacy filter', createdAt: 1, updatedAt: 1,
+      entityTypes: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+      groups: [], unreadableConditions: [{
+        condition: { source: 'attribute', propertyName: 'GlobalId', operator: 'contains', value: 'Wall' },
+        reason: 'unsupported-attribute',
+      }],
+    });
+    let saved: ListDefinition | undefined;
     const container = render(
-      <ListBuilder providers={[provider]} stores={[store]} initial={null} onSave={() => {}} onCancel={() => {}} onExecute={() => {}} />,
+      <ListBuilder providers={[provider]} stores={[store]} initial={initial} onSave={(value) => { saved = value; }} onCancel={() => {}} onExecute={() => {}} />,
     );
-
-    const addFilterButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Add filter'));
-    assert.ok(addFilterButton, 'expected the "Add filter" button');
-    click(addFilterButton as Element);
+    assert.equal(container.querySelector<HTMLSelectElement>('select[aria-label="List value source"]')?.value, 'attribute');
+    assert.equal(container.querySelector<HTMLSelectElement>('select[aria-label="Attribute"]')?.value, 'GlobalId');
+    assert.equal(container.querySelector<HTMLInputElement>('input[placeholder="value"]')?.value, 'Wall');
+    assert.equal(container.querySelector('[role="alert"]'), null, 'a converted condition is not reported as unreadable');
 
     const english = readableStrings(container);
-    registerLocale('list-builder-filter-row-pseudo', PSEUDO);
-    act(() => setLocale('list-builder-filter-row-pseudo'));
+    registerLocale('list-builder-legacy-pseudo', PSEUDO);
+    act(() => setLocale('list-builder-legacy-pseudo'));
     const after = readableStrings(container);
-
-    assertCoverage(english, after, [
-      'lists.builder.filterDimensionAriaLabel',
-      'lists.builder.attributeAriaLabel',
-      'lists.builder.operatorAriaLabel',
-      'lists.builder.removeFilterAriaLabel',
-      'lists.builder.source.attribute',
-      'lists.builder.source.property',
-      'lists.builder.source.quantity',
-      'lists.builder.source.material',
-      'lists.builder.source.classification',
-      'lists.builder.source.spatial',
-      'lists.builder.source.model',
-      'lists.builder.source.zone',
-      'lists.builder.operator.contains',
-      'lists.builder.operator.isSet',
-    ]);
+    const covered = assertCoverage(english, after, ['lists.builder.listValueSourceAriaLabel', 'lists.builder.attributeAriaLabel', 'lists.builder.operatorAriaLabel']);
+    assert.equal(covered.size, 3);
     act(() => setLocale('en'));
 
-    // Switch the row's dimension to "Zone": reveals the zone-set / display
-    // mode selects, the "(no zone sets)" option (no zone sets defined in
-    // this render's store), and the Zone/Straddles option labels.
-    const dimensionSelect = container.querySelector('select[aria-label="Filter dimension"]') as HTMLSelectElement;
-    assert.ok(dimensionSelect, 'expected the filter-dimension select');
-    selectValue(dimensionSelect, 'zone');
+    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
+    assert.deepEqual(saved?.groups, [{ combinator: 'AND', rules: [
+      { kind: 'listCondition', source: 'attribute', propertyName: 'GlobalId', operator: 'contains', value: 'Wall' },
+    ] }]);
+    assert.deepEqual(saved?.unreadableConditions, []);
+  });
 
-    const modeSelect = container.querySelector('select[aria-label="Zone display mode"]') as HTMLSelectElement;
-    const modeLabels = [...modeSelect.options].map((option) => option.textContent);
-    assert.ok(modeLabels.includes('Volume (mesh)'), 'the localized label must preserve the mesh basis');
-    assert.ok(modeLabels.includes('Volume breakdown (mesh)'), 'the localized label must preserve volume and mesh semantics');
+  it('keeps a malformed saved condition visible and removable without evaluating its fields (#5894)', () => {
+    const store = buildStore();
+    const initial: ListDefinition = {
+      id: 'malformed-filter', name: 'Malformed filter', createdAt: 1, updatedAt: 1,
+      entityTypes: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }], groups: [],
+      unreadableConditions: [{ condition: null, reason: 'invalid-condition' }],
+    };
+    let saved: ListDefinition | undefined;
+    const container = render(
+      <ListBuilder providers={[buildProvider(store)]} stores={[store]} initial={initial}
+        onSave={(value) => { saved = value; }} onCancel={() => {}} onExecute={() => {}} />,
+    );
+    assert.ok(container.querySelector('[role="alert"]')?.textContent?.includes('Malformed saved condition'));
+    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
+    assert.deepEqual(saved?.unreadableConditions, initial.unreadableConditions);
+    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Remove saved filter') as Element);
+    assert.equal(container.querySelector('[role="alert"]'), null);
+    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
+    assert.deepEqual(saved?.unreadableConditions, []);
+  });
 
-    const zoneEnglish = readableStrings(container);
-    registerLocale('list-builder-zone-row-pseudo', PSEUDO);
-    act(() => setLocale('list-builder-zone-row-pseudo'));
-    const zoneAfter = readableStrings(container);
+  it('warns and preserves future source/operator and invalid-value filters instead of rendering broken editors (#5894, #6190)', () => {
+    const store = buildStore();
+    const raw = [
+      { condition: { source: 'future', propertyName: 'X', operator: 'equals', value: 'a' }, reason: 'unsupported-source' },
+      { condition: { source: 'property', psetName: 'Pset_Test', propertyName: 'Code', operator: 'equals', value: { raw: 1 } }, reason: 'invalid-value' },
+      { condition: { source: 'property', psetName: 'Pset_Test', propertyName: 'Code', operator: 'futureOp', value: 'A' }, reason: 'operator' },
+      { condition: null, reason: 'unsupported-source' },
+      null,
+    ];
+    const initial = {
+      id: 'future-filter', name: 'Future filter', createdAt: 1, updatedAt: 1,
+      entityTypes: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }], groups: [],
+      unreadableConditions: raw,
+    } as unknown as ListDefinition;
+    let saved: ListDefinition | undefined;
+    const container = render(
+      <ListBuilder providers={[buildProvider(store)]} stores={[store]} initial={initial}
+        onSave={(definition) => { saved = definition; }} onCancel={() => {}} onExecute={() => {}} />,
+    );
+    const warning = container.querySelector('[role="alert"]');
+    assert.match(warning?.textContent ?? '', /future X equals \(unsupported-source\)/);
+    assert.match(warning?.textContent ?? '', /property Code equals \(invalid-value\)/);
+    assert.match(warning?.textContent ?? '', /property Code futureOp \(operator\)/);
+    assert.match(warning?.textContent ?? '', /Malformed saved condition/);
+    assert.equal(container.querySelectorAll('select[aria-label="List value source"]').length, 0, 'no editor for data it cannot read');
+    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
+    assert.deepEqual(saved?.unreadableConditions, raw);
+    click([...warning!.querySelectorAll('button')][0]);
+    assert.doesNotMatch(container.querySelector('[role="alert"]')?.textContent ?? '', /future: X/);
+    assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /invalid-value/);
+  });
 
-    assertCoverage(zoneEnglish, zoneAfter, [
-      'lists.builder.zoneSetAriaLabel',
-      'lists.builder.noZoneSets',
-      'lists.builder.zoneDisplayModeAriaLabel',
-      'lists.builder.zoneOption',
-      'lists.builder.straddlesOption',
-      'lists.builder.zoneVolumeOption',
-      'lists.builder.zoneBreakdownOption',
-    ]);
+  it('saves group edits from the shared FilterGroupEditor (#5894)', () => {
+    const store = buildStore();
+    let saved: ListDefinition | undefined;
+    const initial: ListDefinition = {
+      id: 'group-edits', name: 'Group edits', createdAt: 1, updatedAt: 1,
+      entityTypes: [], groups: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    };
+    const container = render(
+      <ListBuilder providers={[buildProvider(store)]} stores={[store]} initial={initial} onSave={(value) => { saved = value; }} onCancel={() => {}} onExecute={() => {}} />,
+    );
+    const addGroup = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Add group'));
+    assert.ok(addGroup);
+    click(addGroup);
+    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
+    assert.equal(saved?.groups?.length, 2);
+    assert.deepEqual(saved?.groups?.map(({ combinator }) => combinator), ['AND', 'AND']);
+    assert.deepEqual(saved?.unreadableConditions, []);
   });
 
   it('translates the custom-column editor: Property/Quantity chips, placeholders, pattern hint, and add/close actions', () => {
@@ -548,51 +585,6 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     act(() => setLocale('list-builder-invalid-pattern-pseudo'));
     const after = readableStrings(container);
     assert.ok(after.has(mark('lists.builder.invalidPatternHint')), 'invalidPatternHint must be translated');
-  });
-
-  it('translates the filter row\'s spatial-level select and the property/quantity pset+name placeholders', () => {
-    const store = buildStore();
-    const provider = buildProvider(store);
-    const container = render(
-      <ListBuilder providers={[provider]} stores={[store]} initial={null} onSave={() => {}} onCancel={() => {}} onExecute={() => {}} />,
-    );
-    click([...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Add filter')) as Element);
-    const dimensionSelect = container.querySelector('select[aria-label="Filter dimension"]') as HTMLSelectElement;
-
-    selectValue(dimensionSelect, 'spatial');
-    const spatialEnglish = readableStrings(container);
-    assert.ok(spatialEnglish.has('Container'), 'expected the localized spatial-level options to render');
-    registerLocale('list-builder-spatial-pseudo', PSEUDO);
-    act(() => setLocale('list-builder-spatial-pseudo'));
-    const spatialAfter = readableStrings(container);
-    assertCoverage(spatialEnglish, spatialAfter, [
-      'lists.builder.spatialLevelAriaLabel',
-      'lists.builder.spatial.container',
-      'lists.builder.spatial.storey',
-      'lists.builder.spatial.building',
-      'lists.builder.spatial.site',
-      'lists.builder.spatial.project',
-    ]);
-    assert.ok(spatialAfter.has(mark('lists.builder.valuePlaceholder.spatial').replace('{level}', mark('lists.builder.spatial.storey'))));
-    act(() => setLocale('en'));
-
-    selectValue(dimensionSelect, 'property');
-    const propEnglish = readableStrings(container);
-    assert.ok(propEnglish.has('Pset_…'), 'expected the filter row\'s own (shorter) pset placeholder');
-    assert.ok(propEnglish.has('name'), 'expected the filter row\'s property-name placeholder');
-    registerLocale('list-builder-property-filter-pseudo', PSEUDO);
-    act(() => setLocale('list-builder-property-filter-pseudo'));
-    const propAfter = readableStrings(container);
-    assertCoverage(propEnglish, propAfter, ['lists.builder.psetPlaceholder', 'lists.builder.namePropertyPlaceholder']);
-    act(() => setLocale('en'));
-
-    selectValue(dimensionSelect, 'quantity');
-    const qtyEnglish = readableStrings(container);
-    assert.ok(qtyEnglish.has('Qto_…'), 'expected the filter row\'s own (shorter) qto placeholder');
-    registerLocale('list-builder-quantity-filter-pseudo', PSEUDO);
-    act(() => setLocale('list-builder-quantity-filter-pseudo'));
-    const qtyAfter = readableStrings(container);
-    assertCoverage(qtyEnglish, qtyAfter, ['lists.builder.qtoPlaceholder']);
   });
 
   // `lists.builder.added` (PickerItem's "already added" marker, shown for a

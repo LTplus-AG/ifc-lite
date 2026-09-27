@@ -176,18 +176,18 @@ export class ListNamespace {
     const dataName = '@ifc-lite/data';
     const data = await import(/* webpackIgnore: true */ dataName) as Record<string, unknown>;
     const convert = data.IfcTypeEnumFromString as (s: string) => number;
+    const { conditions, ...sdkDefinition } = definition;
     const libraryDef = {
-      ...definition,
+      ...sdkDefinition,
       entityTypes: (definition.types ?? []).map(t => convert(t)),
-      // `conditions` is required (non-optional) on the library's
-      // ListDefinition; the SDK documents it as optional, and
-      // resolveSourceSet() does `conditions.length` unconditionally, so
-      // omitting it threw "Cannot read properties of undefined" instead of
-      // running unfiltered. Each supplied condition is also translated
-      // (toLibraryCondition) — passed through raw, an SDK-shaped condition
-      // matched none of the library's sources and silently emptied the
-      // result instead of filtering it (PR #2841 review).
-      conditions: (definition.conditions ?? []).map(toLibraryCondition),
+      // SDK list queries predate saved Rules groups. They execute the
+      // supplied conditions through the provider-only path, so pass an
+      // explicit empty group set to the library's current definition shape.
+      groups: [],
+      // SDK conditions remain provider-only predicates. The Lists engine
+      // reads those through legacyConditions after the Rules migration;
+      // omitting conditions still means an unfiltered query (#5894).
+      legacyConditions: (conditions ?? []).map(toLibraryCondition),
       columns: definition.columns.map(toLibraryColumn),
     };
     return (mod.executeList as AnyFn)(libraryDef, provider, modelId ?? 'default');

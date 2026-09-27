@@ -15,8 +15,10 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, mouseDown, render } from '@/test/render.js';
 import { registerLocale, setLocale } from '@/i18n';
+import { resolve } from '@/i18n/registry';
+import { panelTitleKey } from '@/lib/panels/registry';
 import { TOOLBAR_STYLE_STORAGE_KEY } from '@/store/constants';
 import { useViewerStore, type RibbonTabId } from '@/store';
 import { RibbonToolbar } from './RibbonToolbar.js';
@@ -26,7 +28,7 @@ const TABS: RibbonTabId[] = ['file', 'home', 'view', 'elements', 'analyze', 'aut
 function showTab(container: HTMLElement, tab: RibbonTabId): void {
   const target = container.querySelectorAll('[role="tab"]')[TABS.indexOf(tab)];
   assert.ok(target, `tab ${tab} is rendered`);
-  click(target);
+  mouseDown(target, { button: 0 });
   assert.equal(useViewerStore.getState().ribbonTab, tab);
 }
 
@@ -81,7 +83,13 @@ describe('RibbonToolbar with a registered locale (#4785)', () => {
     showTab(container, 'view');
     const { basketViews, pinboardEntities } = useViewerStore.getState();
     const expected = `Präsentation (${basketViews.length} Ansichten, ${pinboardEntities.size} Elemente)`;
-    assert.ok(container.querySelector(`button[aria-label="${expected}"]`), 'present tooltip');
+    const presentButton = [...container.querySelectorAll('button')].find(
+      (button) => button.getAttribute('aria-label') === resolve(panelTitleKey('presentation')),
+    );
+    assert.ok(presentButton, 'present button announces its canonical panel name');
+    const descriptionId = presentButton.getAttribute('aria-describedby');
+    assert.ok(descriptionId, 'present button links its translated tooltip');
+    assert.equal(container.ownerDocument.getElementById(descriptionId)?.textContent, expected);
   });
 
   it('falls back to English per key for a partial locale', () => {
@@ -98,14 +106,26 @@ describe('RibbonToolbar with a registered locale (#4785)', () => {
 
   it('localizes the one-time ribbon switch notice', () => {
     window.localStorage.removeItem(TOOLBAR_STYLE_STORAGE_KEY);
+    // Only a visitor from before the ribbon gets the notice (#5840).
+    window.localStorage.setItem('ifc-lite:ribbon-notice-audience', 'returning');
     registerLocale('ribbon-notice', {
-      'ribbon.notice.keepClassic': 'Klassische Leiste behalten',
+      'ribbon.notice.message': 'Befehle stehen jetzt in der Menüleiste.',
       'ribbon.notice.dismissAriaLabel': 'Hinweis schließen',
     });
     setLocale('ribbon-notice');
     const container = render(<RibbonToolbar />);
     const buttons = [...container.querySelectorAll('button')];
-    assert.ok(buttons.some((button) => button.textContent === 'Klassische Leiste behalten'));
+    assert.ok((container.textContent ?? '').includes('Befehle stehen jetzt in der Menüleiste.'));
+    assert.ok(!buttons.some((button) => button.textContent === 'Klassische Leiste behalten'));
     assert.ok(container.querySelector('button[aria-label="Hinweis schließen"]'));
+  });
+
+  it('#5874 has no route back to the retired classic strip', () => {
+    const container = render(<RibbonToolbar />);
+    showTab(container, 'view');
+    const viewBand = container.querySelector('[role="tabpanel"]');
+    assert.ok(viewBand, 'the View band is mounted');
+    assert.ok([...viewBand.querySelectorAll('button')].some((button) => button.textContent?.includes('Settings')));
+    assert.ok(![...viewBand.querySelectorAll('button')].some((button) => button.textContent?.includes('Classic bar')));
   });
 });

@@ -11,16 +11,20 @@
  * export).
  */
 
-import { useState, useCallback, useMemo, useLayoutEffect } from 'react';
-import { Download, Loader2, Check, AlertCircle } from 'lucide-react';
+import type { ExportSurface } from '@/lib/analytics-export-events';
+import { trackExportCompleted } from '@/lib/analytics';
+import { useState, useCallback, useLayoutEffect, cloneElement, isValidElement, type MouseEvent, type ReactNode } from 'react';
+import { Download, Check, AlertCircle } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { zip, strToU8 } from 'fflate';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
+import { useChangedModels } from '@/hooks/useUnexportedChanges';
 import { useTranslation } from '@/i18n';
 import { toast } from '@/components/ui/toast';
-import { downloadFile } from '@/lib/export/download';
+import { buildExportFilename, downloadFile } from '@/lib/export/download';
 import {
   collectChangedModels,
   totalChangeCount,
@@ -36,8 +40,16 @@ import {
 } from './ExportChangesReviewDialog';
 
 interface ExportChangesButtonProps {
+  surface: ExportSurface;
   /** Optional custom class name */
   className?: string;
+  /**
+   * The export registry's dialog contract (`ExportDialogComponent`, #5838):
+   * a menu row, ribbon button or palette auto-trigger that opens the review.
+   * Without it this renders the standing amber toolbar button, shown only
+   * while there are unexported edits.
+   */
+  trigger?: ReactNode;
 }
 
 /** YYYY-MM-DD for filenames. */
@@ -174,19 +186,8 @@ export function useReviewGroups(
   return [groups, setGroups];
 }
 
-export function ExportChangesButton({ className }: ExportChangesButtonProps) {
+export function ExportChangesButton({ surface, className, trigger }: ExportChangesButtonProps) {
   const { t } = useTranslation();
-  // Subscribe to everything that can change the pending-changes count so the
-  // badge stays live. `mutationVersion` bumps on every property / quantity /
-  // attribute / georef mutation; schedule edits are watched explicitly.
-  const models = useViewerStore((s) => s.models);
-  const mutationVersion = useViewerStore((s) => s.mutationVersion);
-  const georefMutations = useViewerStore((s) => s.georefMutations);
-  const scheduleData = useViewerStore((s) => s.scheduleData);
-  const scheduleIsEdited = useViewerStore((s) => s.scheduleIsEdited);
-  const scheduleSourceModelId = useViewerStore((s) => s.scheduleSourceModelId);
-  const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
-
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<'idle' | 'success' | 'error'>('idle');
   // Two-step export (issue #1915): the toolbar button opens a review dialog
@@ -194,12 +195,8 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
   // confirm step that actually runs `handleExport` below.
   const [reviewOpen, setReviewOpen] = useState(false);
 
-  const changed = useMemo(
-    () => collectChangedModels(useViewerStore.getState()),
-    // getState() reads the live snapshot; these deps drive recomputation.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [models, mutationVersion, georefMutations, scheduleData, scheduleIsEdited, scheduleSourceModelId, legacyIfcDataStore],
-  );
+  // The same live change set the unexported-edits guards read (#5604).
+  const changed = useChangedModels();
 
   const totalCount = totalChangeCount(changed);
   const modelCount = changed.models.length;
@@ -259,7 +256,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
       const date = formatDate();
       if (files.length === 1) {
         const f = files[0];
-        downloadFile(f.content, `${f.base}_${date}.${f.ext}`, f.mime);
+        downloadFile(f.content, buildExportFilename(`${f.base}_${date}`, f.ext), f.mime);
       } else {
         const zipped = await zipArtifacts(files);
         downloadFile(zipped, `ifc-lite-changes_${date}.zip`, 'application/zip');
@@ -269,6 +266,12 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
       setTimeout(() => setExportStatus('idle'), 2000);
 
       const exportedChanges = files.reduce((n, f) => n + f.changeCount, 0);
+      trackExportCompleted({
+        format: files.length === 1 ? files[0].ext : 'zip',
+        surface,
+        model_count: files.length,
+        change_count: exportedChanges,
+      });
       const unrepresented = files.reduce((n, f) => n + f.skippedCount, 0);
       if (skipped.length > 0) {
         // The empty-pset note rides along: a skipped model must not hide it (#5201).
@@ -291,7 +294,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
     } finally {
       setIsExporting(false);
     }
-  }, []);
+  }, [surface]);
 
   const handleConfirm = useCallback(() => {
     // Re-derive fresh, synchronously, at click time — comparing against
@@ -318,6 +321,29 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
     setReviewOpen(false);
     void handleExport(freshGroups);
   }, [groups, handleExport]);
+
+  const review = (
+    <ExportChangesReviewDialog
+      open={reviewOpen}
+      onOpenChange={setReviewOpen}
+      groups={groups}
+      totalCount={totalCount}
+      isExporting={isExporting}
+      onConfirm={handleConfirm}
+    />
+  );
+
+  // A registry surface's own trigger; it composes with (not replaces) the
+  // trigger's click handler, and the surface gates it on pending changes.
+  if (isValidElement<{ onClick?: (event: MouseEvent) => void }>(trigger)) {
+    const own = trigger.props.onClick;
+    return (
+      <>
+        {cloneElement(trigger, { onClick: (event: MouseEvent) => { own?.(event); setReviewOpen(true); } })}
+        {review}
+      </>
+    );
+  }
 
   // Nothing to export — but keep rendering while an export is in flight so a
   // mid-export clear (count -> 0) doesn't unmount the button and drop state.
@@ -347,7 +373,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
             className={`border-amber-500/60 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 ${className ?? ''}`}
           >
             {isExporting ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <Spinner size="md" className="mr-2" />
             ) : exportStatus === 'success' ? (
               <Check className="h-4 w-4 mr-2 text-green-500" />
             ) : exportStatus === 'error' ? (
@@ -363,14 +389,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
         </TooltipTrigger>
         <TooltipContent>{tooltip}</TooltipContent>
       </Tooltip>
-      <ExportChangesReviewDialog
-        open={reviewOpen}
-        onOpenChange={setReviewOpen}
-        groups={groups}
-        totalCount={totalCount}
-        isExporting={isExporting}
-        onConfirm={handleConfirm}
-      />
+      {review}
     </>
   );
 }

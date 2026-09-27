@@ -36,7 +36,6 @@ export function ClashResultSummary({
   shown,
   issueCount,
   manualGroupCount,
-  resultView,
   effectiveView,
   setResultView,
   clusterEpsilon,
@@ -60,7 +59,7 @@ export function ClashResultSummary({
   return (
     <>
       {total > 0 && (
-        <div className="mb-1.5 inline-flex overflow-hidden rounded-md border border-border text-[11px]" title={t('clashGroups.viewTitle', { distance: clusterEpsilon })}>
+        <div className="mb-1.5 inline-flex overflow-hidden rounded-md border border-border text-2xs" title={t('clashGroups.viewTitle', { distance: clusterEpsilon })}>
           {(['pairs', 'issues', 'groups'] as const).filter((view) => !duplicateSetView || view !== 'issues').map((view) => (
             <button
               key={view}
@@ -85,7 +84,7 @@ export function ClashResultSummary({
               <div key={severity} style={{ width: `${(bySeverity[severity] / total) * 100}%`, background: SEVERITY[severity].color }} />
             ) : null)}
           </div>
-          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
+          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-2xs">
             {ORDER.filter((severity) => bySeverity[severity] > 0).map((severity) => (
               <span key={severity} className="inline-flex items-center gap-1 text-muted-foreground">
                 <span className="h-2 w-2 rounded-full" style={{ background: SEVERITY[severity].color }} />

@@ -13,12 +13,12 @@ const PATTERN_EXAMPLE = '/Qto_.*BaseQuantities/';
 export function PatternHint({ preview }: { preview: SetPatternPreview }) {
   const { t, locale } = useTranslation();
   if (preview.isInvalid) {
-    return <p className="text-[11px] leading-relaxed text-destructive">{t('lists.builder.invalidPatternHint')}</p>;
+    return <p className="text-2xs leading-relaxed text-destructive">{t('lists.builder.invalidPatternHint')}</p>;
   }
   if (preview.isPattern) {
     const facts = matchHintFacts(preview.matches);
     return (
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
+      <p className="text-2xs leading-relaxed text-muted-foreground">
         {facts.count === 0
           ? t('lists.builder.patternMatchesNone')
           : t(facts.extra > 0 ? 'lists.builder.patternMatchesWithMore' : 'lists.builder.patternMatches', {
@@ -31,10 +31,10 @@ export function PatternHint({ preview }: { preview: SetPatternPreview }) {
     );
   }
   return (
-    <p className="text-[11px] leading-relaxed text-muted-foreground">
+    <p className="text-2xs leading-relaxed text-muted-foreground">
       {styleInterpolatedValues(t, 'lists.builder.patternHint', [
-        ['delimiter', <code key="delimiter" className="rounded bg-muted px-1 font-mono text-[10px]">{PATTERN_DELIMITER}</code>],
-        ['example', <code key="example" className="rounded bg-muted px-1 font-mono text-[10px]">{PATTERN_EXAMPLE}</code>],
+        ['delimiter', <code key="delimiter" className="rounded bg-muted px-1 font-mono text-2xs">{PATTERN_DELIMITER}</code>],
+        ['example', <code key="example" className="rounded bg-muted px-1 font-mono text-2xs">{PATTERN_EXAMPLE}</code>],
       ])}
     </p>
   );

@@ -382,21 +382,30 @@ canvas.addEventListener('pointermove', (event) => {
 IFC files may use large georeferenced coordinates. The geometry processor handles this automatically:
 
 ```typescript
+import { renderFrameWorldOffset, viewerToIfcAxes } from '@ifc-lite/geometry/world-frame';
+
 const result = await processor.process(new Uint8Array(buffer));
 
-if (result.coordinateInfo.hasLargeCoordinates) {
-  const shift = result.coordinateInfo.originShift;
-  console.log(`Coordinates shifted by (${shift.x}, ${shift.y}, ${shift.z})`);
+// Render-frame -> IFC world translation, in IFC Z-up metres. `world-frame` is
+// the one place that folds in BOTH offsets: `wasmRtcOffset` (Z-up, what the
+// WASM mesh pass removes for a georeferenced model) and `originShift` (Y-up,
+// the JS-side fallback), and performs the axis swap.
+//
+// Do NOT gate this on `hasLargeCoordinates` and add back `originShift` alone:
+// that flag tracks only the JS path and is `false` whenever WASM already
+// re-based the model, which is the usual case. See
+// [Geometry -> Auto Origin Shift](../guide/geometry.md#auto-origin-shift).
+const offset = renderFrameWorldOffset(result.coordinateInfo);
 
-  // The shift was SUBTRACTED from the mesh positions, so to recover the
-  // original file coordinates (e.g. for geolocation) add it back:
-  function toOriginal(local: THREE.Vector3): THREE.Vector3 {
-    return new THREE.Vector3(
-      local.x + shift.x,
-      local.y + shift.y,
-      local.z + shift.z,
-    );
-  }
+// A point read off a mesh is in the Y-up render frame: convert to IFC Z-up,
+// then add the offset, to get IFC world coordinates.
+function toWorldCoords(renderFramePoint: THREE.Vector3) {
+  const zUp = viewerToIfcAxes({
+    x: renderFramePoint.x,
+    y: renderFramePoint.y,
+    z: renderFramePoint.z,
+  });
+  return { x: zUp.x + offset.x, y: zUp.y + offset.y, z: zUp.z + offset.z };
 }
 ```
 

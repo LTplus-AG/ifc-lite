@@ -12,18 +12,19 @@
  * checksum fail closed: the artifact is unlinked and an error thrown.
  *
  * Failing closed on a missing sidecar cannot break a supported install:
- * binary.ts derives the release tag from this package's own version, so a
- * given published version only ever downloads its own release, and every
- * release cut at or after the version that ships this code publishes one
- * sidecar per archive (.github/workflows/server-binaries.yml, "Create
+ * binary.ts derives the release tag from this package's own version, and
+ * every release cut at or after the version that ships this code publishes
+ * one sidecar per archive (.github/workflows/server-binaries.yml, "Create
  * Checksum Sidecar" - enforced by scripts/check-server-bin-targets.mjs).
- * Releases without sidecars are only downloaded by older published package
- * versions, which carry their own fail-open copy of this check.
+ * When that release is missing, binary.ts falls back to an older release
+ * (release-fallback.ts), and only to one whose asset list carries a checksum,
+ * which is then verified here exactly like the primary download.
  */
 
 import { existsSync, unlinkSync, createReadStream } from 'fs';
 import { pipeline } from 'stream/promises';
 import { createHash } from 'crypto';
+import { parseExpectedSha256 } from './checksum-parse.js';
 
 /**
  * Compute the SHA-256 of a file, streamed so large archives are not buffered
@@ -33,32 +34,6 @@ async function computeFileSha256(filePath: string): Promise<string> {
   const hash = createHash('sha256');
   await pipeline(createReadStream(filePath), hash);
   return hash.digest('hex');
-}
-
-/**
- * Parse an expected SHA-256 hex digest for the given archive file name out of a
- * checksum body. Supports both the single-digest sidecar form ("<hex>" or
- * "<hex>  <name>") and the multi-line SHA256SUMS form ("<hex>  <name>" per
- * line). Returns the lowercased 64-char hex digest, or null if not found.
- */
-function parseExpectedSha256(body: string, archiveName: string): string | null {
-  const lines = body.split('\n');
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line) continue;
-    // Each line is "<hex>" or "<hex>  <filename>" (filename may have a leading '*').
-    const match = line.match(/^([0-9a-fA-F]{64})(?:[ \t]+\*?(.+))?$/);
-    if (!match) continue;
-    const [, digest, name] = match;
-    // A bare single-digest sidecar (no filename) always applies to this asset.
-    if (!name) return digest.toLowerCase();
-    // SHA256SUMS lists many files; only accept the line for this archive.
-    const fileName = name.trim();
-    if (fileName === archiveName || fileName.endsWith(`/${archiveName}`)) {
-      return digest.toLowerCase();
-    }
-  }
-  return null;
 }
 
 /**
@@ -124,7 +99,7 @@ export async function verifyArchiveChecksum(
       `  2. A network problem blocked the checksum fetch\n` +
       `  3. The release is incomplete - report at https://github.com/LTplus-AG/ifc-lite/issues\n` +
       `Alternatives:\n` +
-      `  - Use Docker: npx create-ifc-lite my-app --template server\n` +
+      `  - Pin a version whose release carries verified binaries: npm i @ifc-lite/server-bin@X.Y.Z\n` +
       `  - Build from source: cargo build --release -p ifc-lite-server`
     );
   }

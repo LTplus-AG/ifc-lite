@@ -41,7 +41,7 @@ import type {
 import {
   esc, stepLine, num, vecLen, vecNorm, vecCross,
   optStr, optEnum,
-  NON_ELEMENT_TYPES, assertPositiveFinite, assertFinitePoint3,
+  NON_ELEMENT_TYPES, assertPositiveFinite, assertFinitePoint3, completePlacementAxes,
 } from './ifc-creator-math.js';
 import { emitWorkCalendar, emitTaskTime } from './ifc-creator-scheduling.js';
 import {
@@ -151,9 +151,6 @@ export class IfcCreator {
   constructor(params: ProjectParams = {}) {
     this.projectParams = params;
     this.schema = params.Schema ?? 'IFC4';
-    if (params.FileSchemaIdentifier !== undefined && this.schema !== 'IFC4X3') {
-      throw new Error(`IfcCreator: FileSchemaIdentifier '${params.FileSchemaIdentifier}' requires Schema 'IFC4X3', not '${this.schema}'`);
-    }
     this.fixedTimestampMs = params.Timestamp === undefined
       ? null
       : typeof params.Timestamp === 'number' ? params.Timestamp : params.Timestamp.getTime();
@@ -2233,9 +2230,8 @@ export class IfcCreator {
    */
   addLocalPlacement(relativeTo: number, placement: Placement3D): number {
     const originId = this.addCartesianPoint(placement.Location);
-    const axisId = placement.Axis ? this.addDirection(placement.Axis) : undefined;
-    const refDirId = placement.RefDirection ? this.addDirection(placement.RefDirection) : undefined;
-    const axis2Id = this.addAxis2Placement3D(originId, axisId, refDirId);
+    const axes = completePlacementAxes(placement.Axis, placement.RefDirection); // both or neither (#5469)
+    const axis2Id = this.addAxis2Placement3D(originId, axes && this.addDirection(axes.Axis), axes && this.addDirection(axes.RefDirection));
 
     const id = this.id();
     this.line(id, 'IFCLOCALPLACEMENT', `#${relativeTo},#${axis2Id}`);

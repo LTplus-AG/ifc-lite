@@ -255,3 +255,89 @@ describe('ifc-lite flow', () => {
     expect(JSON.parse(await readFile(join(dir, 'columns.tracking.json'), 'utf-8')).sets).toEqual({});
   });
 });
+
+describe('ifc-lite flow run — secrets (#5167 phase 3.5)', () => {
+  it('refuses a {{secret:NAME}} reference the graph does not declare, before the run starts', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-secret-'));
+    const graph = join(dir, 'undeclared.flow.json');
+    await writeFile(graph, JSON.stringify({
+      flowVersion: 1, id: 's', name: 's', capabilities: [], inputs: [], outputs: [],
+      nodes: [{ id: 'req', type: 'http.request', params: { url: 'https://api.example.invalid/', headers: { Authorization: 'Bearer {{secret:API_TOKEN}}' } } }],
+      edges: [],
+    }));
+    const c = capture();
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('exit'); }) as never);
+    await expect(flowCommand(['run', graph, SAMPLE_IFC])).rejects.toThrow('exit');
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(c.err.join('')).toMatch(/does not declare "secret\.read:API_TOKEN"/);
+  });
+
+  it('refuses a declared-but-unset secret reference, before the run starts', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-secret-'));
+    const graph = join(dir, 'unset.flow.json');
+    await writeFile(graph, JSON.stringify({
+      flowVersion: 1, id: 's', name: 's', capabilities: ['secret.read:DEFINITELY_NOT_SET_5167'], inputs: [], outputs: [],
+      nodes: [{ id: 'req', type: 'http.request', params: { url: 'https://api.example.invalid/{{secret:DEFINITELY_NOT_SET_5167}}' } }],
+      edges: [],
+    }));
+    expect(process.env.DEFINITELY_NOT_SET_5167).toBeUndefined();
+    const c = capture();
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('exit'); }) as never);
+    await expect(flowCommand(['run', graph, SAMPLE_IFC])).rejects.toThrow('exit');
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(c.err.join('')).toMatch(/declared but not set/);
+  });
+
+  it('a declared+set secret runs, but the request is still refused for reaching an ungranted host — never a silent success', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-secret-'));
+    const graph = join(dir, 'granted-but-no-host.flow.json');
+    await writeFile(graph, JSON.stringify({
+      flowVersion: 1, id: 's', name: 's', capabilities: ['secret.read:IFC_LITE_TEST_TOKEN_5167'], inputs: [],
+      outputs: [{ nodeId: 'req', port: 'status', label: 'status' }],
+      nodes: [{ id: 'req', type: 'http.request', params: { url: 'https://api.example.invalid/', headers: { Authorization: 'Bearer {{secret:IFC_LITE_TEST_TOKEN_5167}}' } } }],
+      edges: [],
+    }));
+    process.env.IFC_LITE_TEST_TOKEN_5167 = 'super-secret-token-value-abc123';
+    try {
+      const c = capture();
+      const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('exit'); }) as never);
+      await expect(flowCommand(['run', graph, SAMPLE_IFC, '--json'])).rejects.toThrow('exit');
+      expect(exit).toHaveBeenCalledWith(1);
+      const summary = c.json() as { ok: boolean; errors: Array<{ message: string }> };
+      expect(summary.ok).toBe(false);
+      expect(summary.errors[0].message).toMatch(/network\.fetch refused/);
+      // The secret value never appears anywhere the run printed, redacted or not.
+      expect(c.out.join('')).not.toContain('super-secret-token-value-abc123');
+    } finally {
+      delete process.env.IFC_LITE_TEST_TOKEN_5167;
+    }
+  });
+
+  it('redacts a secret a granted server echoes back into the run output (#5446 review)', async () => {
+    // A granted host and a response that echoes the Authorization header: the
+    // request really runs, so this fails if the output redaction is removed.
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-secret-'));
+    const graph = join(dir, 'echo.flow.json');
+    await writeFile(graph, JSON.stringify({
+      flowVersion: 1, id: 's', name: 's',
+      capabilities: ['secret.read:IFC_LITE_TEST_ECHO_5446', 'network.fetch:api.example.com'], inputs: [],
+      outputs: [{ nodeId: 'req', port: 'body', label: 'body' }],
+      nodes: [{ id: 'req', type: 'http.request', params: { url: 'https://api.example.com/echo', headers: { Authorization: 'Bearer {{secret:IFC_LITE_TEST_ECHO_5446}}' } } }],
+      edges: [],
+    }));
+    process.env.IFC_LITE_TEST_ECHO_5446 = 'echoed-secret-value-5446';
+      const echo = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) =>
+        new Response(JSON.stringify({ receivedAuthorization: new Headers(init?.headers).get('authorization') }), { status: 200 }));
+    try {
+      const c = capture();
+      await flowCommand(['run', graph, SAMPLE_IFC, '--json']);
+      expect(echo).toHaveBeenCalledOnce();
+      const printed = c.out.join('');
+      expect(printed).toContain('<secret:IFC_LITE_TEST_ECHO_5446>');
+      expect(printed).not.toContain('echoed-secret-value-5446');
+    } finally {
+      echo.mockRestore();
+      delete process.env.IFC_LITE_TEST_ECHO_5446;
+    }
+  });
+});

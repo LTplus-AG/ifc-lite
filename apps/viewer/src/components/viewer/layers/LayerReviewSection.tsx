@@ -11,6 +11,7 @@
  * synthetic per parse and never persisted.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, MessageSquarePlus, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -51,11 +52,11 @@ function TopicRow({ topic, onSelect }: { topic: RegistryReviewTopic; onSelect: (
       className="rounded border bg-card/40 px-1.5 py-1 text-left hover:bg-muted/60"
       title={t('layersPanel.review.selectEntityTitle')}
     >
-      <span className="block truncate text-[11px] font-medium">{topic.title}</span>
+      <span className="block truncate text-2xs font-medium">{topic.title}</span>
       {topic.description && (
-        <span className="block truncate text-[10px] text-muted-foreground">{topic.description}</span>
+        <span className="block truncate text-2xs text-muted-foreground">{topic.description}</span>
       )}
-      <span className="block text-[10px] text-muted-foreground">
+      <span className="block text-2xs text-muted-foreground">
         {t(metaKey, { tail, author, date, ...(topic.componentKey ? { componentKey: topic.componentKey } : {}) })}
       </span>
     </button>
@@ -188,6 +189,7 @@ export function LayerReviewSection({
         if (t.viewpoint) addViewpointToTopic(topic, t.viewpoint as unknown as BCFViewpoint);
       }
       downloadBlob(await writeBCF(project), `review-${review.id.slice(0, 8)}.bcfzip`);
+      trackExportCompleted({ format: 'bcfzip', surface: 'layer_review' });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -197,7 +199,7 @@ export function LayerReviewSection({
 
   return (
     <div className="flex flex-col gap-1 rounded border bg-card/40 px-1.5 py-1">
-      <div className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+      <div className="flex items-center gap-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
         <span>{t('layersPanel.review.title')}</span>
         {review && <span className="normal-case">({review.status})</span>}
         <Button
@@ -213,7 +215,7 @@ export function LayerReviewSection({
           <Button
             variant="ghost"
             size="sm"
-            className="h-5 gap-0.5 px-1 text-[10px]"
+            className="h-5 gap-0.5 px-1 text-2xs"
             onClick={() => void exportBcf()}
             disabled={busy}
             aria-label={t('layersPanel.review.exportAriaLabel')}
@@ -224,7 +226,7 @@ export function LayerReviewSection({
         )}
       </div>
       {!review && (
-        <Button size="sm" variant="outline" className="h-6 self-start px-2 text-[11px]" disabled={busy} onClick={() => void openReview()}>
+        <Button size="sm" variant="outline" className="h-6 self-start px-2 text-2xs" disabled={busy} onClick={() => void openReview()}>
           {t('layersPanel.review.openReviewButton')}
         </Button>
       )}
@@ -243,7 +245,7 @@ export function LayerReviewSection({
                 : t('layersPanel.review.commentPlaceholderNoEntity')
             }
             aria-label={t('layersPanel.review.commentTitleAriaLabel')}
-            className="h-6 rounded border bg-background px-1.5 text-[11px] placeholder:text-muted-foreground/60"
+            className="h-6 rounded border bg-background px-1.5 text-2xs placeholder:text-muted-foreground/60"
           />
           <textarea
             value={description}
@@ -251,10 +253,10 @@ export function LayerReviewSection({
             rows={2}
             placeholder={t('layersPanel.review.descriptionPlaceholder')}
             aria-label={t('layersPanel.review.descriptionAriaLabel')}
-            className="resize-y rounded border bg-background px-1.5 py-1 text-[11px] placeholder:text-muted-foreground/60"
+            className="resize-y rounded border bg-background px-1.5 py-1 text-2xs placeholder:text-muted-foreground/60"
           />
           <div className="flex items-center gap-1.5">
-            <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <label className="flex items-center gap-1 text-2xs text-muted-foreground">
               <input
                 type="checkbox"
                 checked={withViewpoint}
@@ -264,7 +266,7 @@ export function LayerReviewSection({
             </label>
             <Button
               size="sm"
-              className="ml-auto h-6 gap-1 px-2 text-[11px]"
+              className="ml-auto h-6 gap-1 px-2 text-2xs"
               disabled={busy || !selectedPath || title.trim().length === 0}
               onClick={() => void postComment()}
             >

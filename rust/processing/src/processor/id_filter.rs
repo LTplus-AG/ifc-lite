@@ -54,7 +54,7 @@ where
         content.as_ref(),
         opening_filter,
         full_pass_options(tessellation_quality),
-        entity_ids,
+        super::baked_basis::PassScope { entity_ids, baked_basis_out: None },
         |_, _, _| {},
         |_| {},
         |_| {},

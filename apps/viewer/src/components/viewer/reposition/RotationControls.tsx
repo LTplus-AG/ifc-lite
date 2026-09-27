@@ -4,13 +4,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import { parseRotationDegrees, radiansToDegrees, isZeroRotation, type ModelRotation } from '@/lib/model-placement/rotation';
 import { addTranslation, finiteTranslation, type Translation } from '@/lib/model-placement/translation';
 import { modelCenter } from '@/lib/model-placement/scene';
 import { rotationRefusal } from '@/lib/model-placement/rotation-refusal';
 
-const button = 'border px-2 py-1 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40';
 const AXES = ['X', 'Y'] as const;
 
 /** A stored pivot is in the model's un-translated frame; the panel shows and
@@ -77,26 +78,26 @@ export function RotationControls({ selected, onError }: { selected: readonly str
   const refusal = rotationRefusal({ models }, selected);
   if (refusal) {
     return <fieldset className="space-y-1 border-t pt-2"><legend className="font-medium">{t('repositionPanel.rotation.legend')}</legend>
-      <p className="text-zinc-500">{refusal}</p></fieldset>;
+      <p className="text-muted-foreground">{refusal}</p></fieldset>;
   }
   return <fieldset className="space-y-1 border-t pt-2">
     <legend className="font-medium">{t('repositionPanel.rotation.legend')}</legend>
-    <p className="text-zinc-500">{t('repositionPanel.rotation.description')}</p>
-    <label className="block">{t('repositionPanel.rotation.headingLabel')}
-      <input aria-label={t('repositionPanel.rotation.angleAriaLabel')} className="border w-24 bg-transparent p-1 ml-2 font-mono"
+    <p className="text-muted-foreground">{t('repositionPanel.rotation.description')}</p>
+    <label className="flex items-center gap-2">{t('repositionPanel.rotation.headingLabel')}
+      <Input aria-label={t('repositionPanel.rotation.angleAriaLabel')} className="w-24 font-mono"
         value={degrees} onChange={(event) => setDegrees(event.target.value)}
         onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); applyRotation(degrees, pivot); } }} /> °
     </label>
-    <div className="grid grid-cols-2 gap-1">{AXES.map((axis, index) => <label key={axis}>{t('repositionPanel.rotation.pivotAxisLabel', { axis })}
-      <input aria-label={t('repositionPanel.rotation.pivotAxisAriaLabel', { axis })} className="border w-full bg-transparent p-1 font-mono"
+    <div className="grid grid-cols-2 gap-1">{AXES.map((axis, index) => <label key={axis} className="flex flex-col gap-0.5">{t('repositionPanel.rotation.pivotAxisLabel', { axis })}
+      <Input aria-label={t('repositionPanel.rotation.pivotAxisAriaLabel', { axis })} className="font-mono"
         value={pivot[index]} onChange={(event) => setPivot((previous) =>
           (index === 0 ? [event.target.value, previous[1]] : [previous[0], event.target.value]))}
         onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); applyRotation(degrees, pivot); } }} /></label>)}
     </div>
-    <p className="text-zinc-500">{t('repositionPanel.rotation.pivotNote')}</p>
+    <p className="text-muted-foreground">{t('repositionPanel.rotation.pivotNote')}</p>
     <div className="flex flex-wrap gap-1">
-      <button className={button} onClick={() => applyRotation(degrees, pivot)}>{t('repositionPanel.rotation.applyButton')}</button>
-      <button className={button} onClick={() => applyRotation('0', pivot)}>{t('repositionPanel.rotation.clearButton')}</button>
+      <Button size="sm" variant="outline" onClick={() => applyRotation(degrees, pivot)}>{t('repositionPanel.rotation.applyButton')}</Button>
+      <Button size="sm" variant="outline" onClick={() => applyRotation('0', pivot)}>{t('repositionPanel.rotation.clearButton')}</Button>
     </div>
     {selected.map((id) => <p key={id} className="font-mono truncate">{t('repositionPanel.rotation.summaryRow', {
       name: models.get(id)?.name ?? '',

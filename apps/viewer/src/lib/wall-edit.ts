@@ -293,10 +293,11 @@ export type WallResizeResult =
 
 /**
  * Resize a rectangular-profile wall by setting new start AND end
- * points. Updates four entities atomically (from the caller's
- * perspective — the four writes still land as four mutations on
- * the undo stack today; a batched-mutation primitive is a planned
- * follow-up so a drag interaction collapses to one undo step).
+ * points, in the wall's native STEP units, straight through the
+ * editor with no history. The viewer's undoable resize is
+ * `MutationSlice.resizeWall` (`store/slices/mutation-wall-resize.ts`):
+ * it works in metres, writes the same four entities as one batched
+ * undo step, and folds an endpoint drag's frames into that step.
  *
  *   - wall placement origin (IfcCartesianPoint)
  *   - RefDirection (IfcDirection)  → new normalised (end-start)

@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 
 import type { Bundle, BundleFile, ExtensionManifest, InstalledExtensionRecord } from '@ifc-lite/extensions';
 import { NodeRegistry, type NodeDef } from '@ifc-lite/flow';
+import { loadPlayerValues, savePlayerValues } from '@/lib/flow/player-values';
 import {
   contributedFlowId,
   isContributedFlowId,
@@ -270,5 +271,34 @@ describe('forgetContributedFlowState (#5431 review)', () => {
 
     assert.equal(BrowserTrackingStore.read(mine), undefined, 'a reinstall starts without the removed graph\'s tracking');
     assert.ok(BrowserTrackingStore.read(other), 'another extension\'s graphs keep theirs');
+  });
+
+  it('clears the last-used Player values of that extension\'s graphs only (#5634)', () => {
+    const store = new Map<string, string>();
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        get length() { return store.size; },
+        key: (i: number) => [...store.keys()][i] ?? null,
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => { store.set(k, v); },
+        removeItem: (k: string) => { store.delete(k); },
+      },
+    });
+    const mine = contributedFlowId(EXT_ID, 'check');
+    const mineToo = contributedFlowId(EXT_ID, 'report');
+    const other = contributedFlowId('com.other', 'check');
+    // Shares EXT_ID as a string prefix but is a different extension.
+    const lookalike = contributedFlowId(`${EXT_ID}x`, 'check');
+    const saved = 'a-saved-graph-uuid';
+    for (const id of [mine, mineToo, other, lookalike, saved]) savePlayerValues(id, { 'src.value': 7 });
+
+    forgetContributedFlowState(EXT_ID);
+
+    assert.deepEqual(loadPlayerValues(mine), {}, 'a reinstall starts from the graph\'s own defaults');
+    assert.deepEqual(loadPlayerValues(mineToo), {});
+    assert.deepEqual(loadPlayerValues(other), { 'src.value': 7 }, 'another extension\'s graphs keep theirs');
+    assert.deepEqual(loadPlayerValues(lookalike), { 'src.value': 7 });
+    assert.deepEqual(loadPlayerValues(saved), { 'src.value': 7 }, 'the user\'s own graphs keep theirs');
   });
 });

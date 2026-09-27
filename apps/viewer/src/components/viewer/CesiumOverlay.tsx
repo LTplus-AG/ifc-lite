@@ -20,8 +20,11 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { AlertCircle, AlertTriangle } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
+import { HudChip, HudItem } from '../viewport-ui/hud';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumBridge } from '@/lib/geo/cesium-bridge';
@@ -34,7 +37,6 @@ import { useCesiumModel } from './cesium/useCesiumModel';
 import { useCesiumSolar } from './cesium/useCesiumSolar';
 import { useCesiumCameraSync } from './cesium/useCesiumCameraSync';
 import { CesiumViewerLifetime } from './cesium/cesium-viewer-lifetime';
-
 export interface CesiumOverlayProps {
   mapConversion?: MapConversion;
   cameraMapConversion?: MapConversion;
@@ -453,33 +455,30 @@ export function CesiumOverlay({
 
   return (
     <>
-      <div
-        ref={containerRef}
-        className="absolute inset-0 z-0"
-        style={{ pointerEvents: 'none' }}
-      />
+      <div ref={containerRef} className="absolute inset-0 z-0" style={{ pointerEvents: 'none' }} />
       {(status === 'loading' || (status === 'error' && error) || basemapWarning) && (
-      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-1.5">
-        {status === 'loading' && (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded text-xs text-white font-mono">
-            <div className="h-3 w-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            {t('cesiumGeo.overlay.loadingLabel')}
+        // Top-left HudChips (#5504, charter #5478 item 22), stacked below the
+        // level-display and edit-mode chips — one HudItem so all three share
+        // a parent and lay out in the region's own column, never overlapping.
+        <HudItem region="top-left" order={2}>
+          <div className="flex flex-col items-start gap-1.5">
+            {status === 'loading' && (
+              <HudChip icon={<Spinner size="sm" className="text-muted-foreground" />}>
+                {t('cesiumGeo.overlay.loadingLabel')}
+              </HudChip>
+            )}
+            {status === 'error' && error && (
+              <HudChip icon={<AlertCircle className="h-3.5 w-3.5 text-status-danger" aria-hidden />}>
+                {error}
+              </HudChip>
+            )}
+            {basemapWarning && (
+              <HudChip role="status" icon={<AlertTriangle className="h-3.5 w-3.5 text-status-warn" aria-hidden />}>
+                {basemapWarning}
+              </HudChip>
+            )}
           </div>
-        )}
-        {status === 'error' && error && (
-          <div className="px-3 py-1.5 bg-red-900/80 backdrop-blur-sm rounded text-xs text-red-200 font-mono">
-            {error}
-          </div>
-        )}
-        {basemapWarning && (
-          <div
-            role="status"
-            className="max-w-md px-3 py-1.5 bg-amber-900/80 backdrop-blur-sm rounded text-xs text-amber-100"
-          >
-            {basemapWarning}
-          </div>
-        )}
-      </div>
+        </HudItem>
       )}
     </>
   );

@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { IfcTypeEnum, PropertyValueType, type PropertySet } from '@ifc-lite/data';
+import { Rule } from '@ifc-lite/rules';
 import { executeList, listResultToCSV, summariseListRows, groupPathKey, toScheduleRows } from './engine.js';
 import { discoverColumns } from './discovery.js';
 import { LIST_PRESETS } from './presets.js';
@@ -147,6 +148,14 @@ function createMockProvider(): ListDataProvider {
 // ============================================================================
 
 describe('executeList', () => {
+  it('rejects unevaluated Rules groups instead of silently widening a list (#5894)', () => {
+    const definition: ListDefinition = {
+      ...LIST_PRESETS[0],
+      groups: [{ combinator: 'AND', rules: [Rule.property('Pset_WallCommon', 'FireRating', 'eq', 'REI 90')] }],
+    };
+    expect(() => executeList(definition, createMockProvider())).toThrow(/Rules groups.*evaluated/);
+  });
+
   it('returns rows for matching entity types', () => {
     const provider = createMockProvider();
     const def: ListDefinition = {
@@ -155,7 +164,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'name', source: 'attribute', propertyName: 'Name' },
         { id: 'class', source: 'attribute', propertyName: 'Class' },
@@ -178,7 +187,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'name', source: 'attribute', propertyName: 'Name' },
         { id: 'predef', source: 'attribute', propertyName: 'PredefinedType' },
@@ -201,7 +210,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'name', source: 'attribute', propertyName: 'Name' },
         { id: 'ext', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'IsExternal' },
@@ -226,7 +235,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'name', source: 'attribute', propertyName: 'Name' },
         { id: 'len', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length' },
@@ -251,7 +260,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcSlab],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'area', source: 'quantity', psetName: 'Qto_SlabBaseQuantities', propertyName: 'GrossArea' },
       ],
@@ -271,7 +280,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'u', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'ThermalTransmittance' },
       ],
@@ -289,7 +298,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'missing', source: 'quantity', psetName: 'Qto_SlabBaseQuantities', propertyName: 'GrossArea' },
       ],
@@ -307,7 +316,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'name', source: 'attribute', propertyName: 'Name' },
         { id: 'mat', source: 'material', propertyName: 'Material' },
@@ -334,7 +343,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'name', source: 'attribute', propertyName: 'Name' },
         { id: 'model', source: 'model', propertyName: 'Model' },
@@ -363,7 +372,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'name', source: 'attribute', propertyName: 'Name' },
         { id: 'container', source: 'spatial', propertyName: 'Container' },
@@ -386,7 +395,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [{ id: 'sp', source: 'spatial', propertyName: '' }],
     }, provider);
     expect(result.rows[0].values[0]).toBe('Level 0');
@@ -431,7 +440,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [],
-      conditions: [{ source, propertyName, operator, value }],
+      groups: [], legacyConditions: [{ source, propertyName, operator, value }],
       columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
     };
 
@@ -464,7 +473,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [],
-      conditions: [{ source: 'property', psetName: 'Pset_WallCommon', propertyName: 'IsExternal', operator, value }],
+      groups: [], legacyConditions: [{ source: 'property', psetName: 'Pset_WallCommon', propertyName: 'IsExternal', operator, value }],
       columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
     };
 
@@ -489,7 +498,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [],
-      conditions: [{ source: 'attribute', propertyName: 'GlobalId', operator, value }],
+      groups: [], legacyConditions: [{ source: 'attribute', propertyName: 'GlobalId', operator, value }],
       columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
     };
 
@@ -527,7 +536,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [],
-      conditions: [{ source, psetName, propertyName, operator, value }],
+      groups: [], legacyConditions: [{ source, psetName, propertyName, operator, value }],
       columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
     };
 
@@ -546,7 +555,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'name', source: 'attribute', propertyName: 'Name' },
         { id: 'vol', source: 'quantity', psetName: '/Qto_.*BaseQuantities/', propertyName: 'NetVolume' },
@@ -568,7 +577,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcSlab],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'name', source: 'attribute', propertyName: 'Name' },
         { id: 'ext', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'IsExternal' },
@@ -589,7 +598,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'name', source: 'attribute', propertyName: 'Name' },
       ],
@@ -608,7 +617,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
       expressIdsByModel: { default: [1, 3, 999] },
     }, provider);
@@ -621,7 +630,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [],
-      conditions: [{ source: 'attribute', propertyName: 'Class', operator: 'equals', value: 'IfcWall' }],
+      groups: [], legacyConditions: [{ source: 'attribute', propertyName: 'Class', operator: 'equals', value: 'IfcWall' }],
       columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
       expressIdsByModel: { default: [1, 2, 3] },
     }, provider);
@@ -636,7 +645,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
       // Same local id 1 means different elements in model a vs b — picking by
       // modelId keeps them apart.
@@ -654,7 +663,7 @@ describe('executeList', () => {
     delete (provider as { getAllEntityIds?: unknown }).getAllEntityIds;
     const result = executeList({
       id: 'noall', name: 'T', createdAt: 0, updatedAt: 0, entityTypes: [],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
     }, provider);
     expect(result.totalCount).toBe(0);
@@ -668,7 +677,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'name', source: 'attribute', propertyName: 'Name' },
       ],
@@ -694,7 +703,7 @@ describe('executeList', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'name', source: 'attribute', propertyName: 'Name' },
         { id: 'predef', source: 'attribute', propertyName: 'PredefinedType' },
@@ -717,7 +726,7 @@ describe('grouping & summary', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'class', source: 'attribute', propertyName: 'Class' },
         { id: 'len', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length' },
@@ -748,7 +757,7 @@ describe('grouping & summary', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'fire', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'NonExistent' },
       ],
@@ -767,7 +776,7 @@ describe('grouping & summary', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'class', source: 'attribute', propertyName: 'Class' },
         { id: 'name', source: 'attribute', propertyName: 'Name' },
@@ -806,7 +815,7 @@ describe('grouping & summary', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'class', source: 'attribute', propertyName: 'Class' },
         { id: 'name', source: 'attribute', propertyName: 'Name' },
@@ -827,7 +836,7 @@ describe('grouping & summary', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'a', source: 'attribute', propertyName: 'Name' },
         { id: 'b', source: 'attribute', propertyName: 'Tag' },
@@ -855,7 +864,7 @@ describe('grouping & summary', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'a', source: 'attribute', propertyName: 'Class' },
         { id: 'b', source: 'attribute', propertyName: 'Name' },
@@ -884,7 +893,7 @@ describe('grouping & summary', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'a', source: 'attribute', propertyName: 'Class' },
         { id: 'b', source: 'attribute', propertyName: 'Name' },
@@ -907,7 +916,7 @@ describe('grouping & summary', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'a', source: 'attribute', propertyName: 'Name' },
         { id: 'n', source: 'quantity', propertyName: 'Length' },
@@ -926,7 +935,7 @@ describe('grouping & summary', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [{ id: 'a', source: 'attribute', propertyName: 'Name' }],
       grouping: { columnId: 'gone', columnIds: ['gone'], sumColumnIds: [] },
     };
@@ -945,7 +954,7 @@ describe('grouping & summary', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
     };
     const result = executeList(def, provider);
@@ -967,7 +976,7 @@ describe('toScheduleRows', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'class', source: 'attribute', propertyName: 'Class' },
         { id: 'len', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length' },
@@ -990,7 +999,7 @@ describe('toScheduleRows', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'class', source: 'attribute', propertyName: 'Class' },
         { id: 'name', source: 'attribute', propertyName: 'Name' },
@@ -1057,7 +1066,7 @@ describe('listResultToCSV', () => {
       createdAt: 0,
       updatedAt: 0,
       entityTypes: [IfcTypeEnum.IfcWall],
-      conditions: [],
+      groups: [], legacyConditions: [],
       columns: [
         { id: 'name', source: 'attribute', propertyName: 'Name' },
         { id: 'fire', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating', label: 'Fire Rating' },

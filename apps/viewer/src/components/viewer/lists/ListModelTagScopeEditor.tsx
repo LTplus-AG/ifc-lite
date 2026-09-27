@@ -6,11 +6,8 @@
  * The list builder's MODEL scope by tag (#4215): which federated models the
  * list runs over, in the same four words search and clash use. Sits inside
  * the builder's Scope section, under the entity-type chips those models are
- * then filtered by. The operator labels read the same four words as the
- * advanced filter's `OP_LABEL` ("has any of" etc.), but as this editor's
- * own localized copy (`OP_LABEL_KEY`, #4918 review, PR #5004) rather than
- * importing that shared, untranslated map — see the catalogue's own
- * comment.
+ * then filtered by. The operator select uses the shared filter-operator
+ * labels; the "Runs over" hint remains a complete sentence per operator.
  *
  * A tag id the scope names but that no longer exists is drawn as an amber
  * "Unknown tag" chip, not hidden — the run refuses such a scope
@@ -30,16 +27,7 @@ import { ModelTagChip } from '@/components/viewer/hierarchy/ModelTagChip';
 import { Chip } from './ListBuilder.parts';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { TranslationKey } from '@/i18n/en';
-
-/** Localized operator labels for this editor's own select (#4918 review,
- *  PR #5004) — see the catalogue's own comment on why this is a local copy
- *  rather than a shared-module rename. */
-const OP_LABEL_KEY: Record<ModelTagOp, TranslationKey> = {
-  hasAny: 'lists.modelTagScope.opHasAny',
-  hasAll: 'lists.modelTagScope.opHasAll',
-  hasNone: 'lists.modelTagScope.opHasNone',
-  untagged: 'lists.modelTagScope.opUntagged',
-};
+import { FILTER_OPERATOR_LABEL_KEYS } from '@/lib/filter-operator-labels';
 
 /** Translation key for the "Runs over …" sentence, one per operator so each
  *  is a complete, independently-translatable message (not an English
@@ -78,7 +66,7 @@ export function ListModelTagScopeEditor({ value, onChange }: ListModelTagScopeEd
 
   return (
     <div className="mt-3 space-y-1.5" data-list-model-tag-scope>
-      <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
+      <label className="flex items-center gap-2 text-2xs text-muted-foreground">
         <span className="shrink-0">{t('lists.modelTagScope.models')}</span>
         <select
           aria-label={t('lists.modelTagScope.selectAriaLabel')}
@@ -88,7 +76,7 @@ export function ListModelTagScopeEditor({ value, onChange }: ListModelTagScopeEd
         >
           <option value="all">{t('lists.modelTagScope.allModels')}</option>
           {MODEL_TAG_OPS.map((op) => (
-            <option key={op} value={op}>{t(OP_LABEL_KEY[op])}</option>
+            <option key={op} value={op}>{t(FILTER_OPERATOR_LABEL_KEYS[op])}</option>
           ))}
         </select>
       </label>
@@ -105,9 +93,9 @@ export function ListModelTagScopeEditor({ value, onChange }: ListModelTagScopeEd
         </div>
       )}
       {value && value.op !== 'untagged' && value.tagIds.length === 0 ? (
-        <p className="text-[10px] text-muted-foreground">{t('lists.modelTagScope.pickAtLeastOneTag')}</p>
+        <p className="text-2xs text-muted-foreground">{t('lists.modelTagScope.pickAtLeastOneTag')}</p>
       ) : value && (
-        <p className="text-[10px] text-muted-foreground" data-list-model-tag-scope-hint>
+        <p className="text-2xs text-muted-foreground" data-list-model-tag-scope-hint>
           {value.op === 'untagged'
             ? t('lists.modelTagScope.runsOverUntagged')
             : t(RUNS_OVER_KEY[value.op], {
@@ -116,7 +104,7 @@ export function ListModelTagScopeEditor({ value, onChange }: ListModelTagScopeEd
         </p>
       )}
       {unresolved.length > 0 && (
-        <p role="alert" className="text-[10px] text-amber-700 dark:text-amber-400">
+        <p role="alert" className="text-2xs text-amber-700 dark:text-amber-400">
           {t('lists.modelTagScope.unresolvedTagsWarning', { count: unresolved.length })}
         </p>
       )}

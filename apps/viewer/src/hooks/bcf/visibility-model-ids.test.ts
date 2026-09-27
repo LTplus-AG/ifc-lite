@@ -27,13 +27,10 @@ describe('visibilityModelIdsForCapture', () => {
       mutationViews: new Map(),
       hiddenEntities: new Set([101]),
       isolatedEntities: null,
-      hiddenEntitiesByModel: new Map(),
-      isolatedEntitiesByModel: new Map(),
       resolveGlobalIdInModel,
     } as unknown as Pick<ViewerState,
       | 'models' | 'ifcDataStore' | 'mutationViews'
       | 'hiddenEntities' | 'isolatedEntities'
-      | 'hiddenEntitiesByModel' | 'isolatedEntitiesByModel'
       | 'resolveGlobalIdInModel'>;
 
     assert.deepEqual(visibilityModelIdsForCapture(state, () => 'SHARED'), ['owner']);

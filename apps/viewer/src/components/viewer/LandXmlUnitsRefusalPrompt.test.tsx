@@ -16,6 +16,7 @@ import { afterEach, describe, it } from 'node:test';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { render, cleanup, click } from '@/test/render';
+import { ViewportHud } from '../viewport-ui/hud/ViewportHud.js';
 import { LandXmlUnitsRefusalPrompt } from './LandXmlUnitsRefusalPrompt.js';
 
 const initialState = useViewerStore.getState();
@@ -25,6 +26,14 @@ afterEach(() => {
   useViewerStore.setState(initialState);
 });
 
+/**
+ * `LandXmlUnitsRefusalPrompt` portals into `ViewportHud`'s top-center region
+ * (#5504); mount the HUD host alongside it, or `HudItem` renders nothing.
+ */
+function renderPrompt(): HTMLElement {
+  return render(<><ViewportHud /><LandXmlUnitsRefusalPrompt /></>);
+}
+
 function retryButton(): HTMLButtonElement | undefined {
   return [...document.querySelectorAll('button')]
     .find((b) => /retry|reload|load/i.test(b.textContent ?? '') && !/dismiss|close/i.test(b.textContent ?? ''));
@@ -32,13 +41,13 @@ function retryButton(): HTMLButtonElement | undefined {
 
 describe('LandXmlUnitsRefusalPrompt (#5175)', () => {
   it('renders nothing until a units refusal is published', () => {
-    render(<LandXmlUnitsRefusalPrompt />);
+    renderPrompt();
     assert.equal(document.body.textContent?.trim(), '', 'no refusal means no prompt');
   });
 
   it('starts with no unit chosen, so retry is unavailable', () => {
     useViewerStore.setState({ landXmlUnitsRefusal: { fileName: 'a.xml', retry: () => {} } });
-    render(<LandXmlUnitsRefusalPrompt />);
+    renderPrompt();
     const retry = retryButton();
     assert.ok(retry, 'the prompt offers a retry control');
     assert.equal(retry.disabled, true, 'retry stays disabled until the user picks a unit');
@@ -47,7 +56,7 @@ describe('LandXmlUnitsRefusalPrompt (#5175)', () => {
   it('does not carry a unit chosen for one file into the next refusal', () => {
     const first = { fileName: 'a.xml', retry: () => {} };
     useViewerStore.setState({ landXmlUnitsRefusal: first });
-    render(<LandXmlUnitsRefusalPrompt />);
+    renderPrompt();
 
     // Choose a unit for the first file through the real picker.
     const trigger = document.querySelector('[role="combobox"]');

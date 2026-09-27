@@ -17,6 +17,7 @@ import { useEffect, useState } from 'react';
 import { Palette } from 'lucide-react';
 import type { Flavor } from '@ifc-lite/extensions';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
+import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import { localizedFlavorDescription, localizedFlavorName } from './localized-flavor-metadata';
 
@@ -75,14 +76,19 @@ export function FlavorIndicator({ onClick }: FlavorIndicatorProps) {
             : t('extensionsFlavors.flavorIndicator.activeTitle', { name: name ?? flavor.name })
           : t('extensionsFlavors.flavorIndicator.inactiveTitle')
       }
-      className={
+      className={cn(
+        // Width (~71px) already clears 24px; the chip's own height (~21px)
+        // is short by ~3px (#5826). `inset-x-0` keeps width unchanged — the
+        // surrounding row separates items with dedicated `Separator`s, so
+        // only height needs the hit-slop.
+        'relative flex items-center gap-1 rounded-md border px-1.5 py-0.5 transition-colors after:absolute after:inset-x-0 after:-top-0.5 after:-bottom-0.5 after:content-[\'\'] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
         flavor
-          ? 'flex items-center gap-1 rounded-md border border-primary/40 bg-primary/5 px-1.5 py-0.5 text-foreground hover:bg-primary/10 transition-colors'
-          : 'flex items-center gap-1 rounded-md border border-dashed border-muted-foreground/40 px-1.5 py-0.5 text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors'
-      }
+          ? 'border-primary/40 bg-primary/5 text-foreground hover:bg-primary/10'
+          : 'border-dashed border-muted-foreground/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+      )}
     >
       <Palette className="h-3.5 w-3.5" />
-      <span className="max-w-[140px] truncate text-[11px] font-medium">{label}</span>
+      <span className="max-w-[140px] truncate text-2xs font-medium">{label}</span>
     </button>
   );
 }

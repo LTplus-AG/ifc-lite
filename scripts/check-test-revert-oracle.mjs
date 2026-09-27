@@ -395,7 +395,7 @@ if (opts.mutation) {
   patchText = readFileSync(resolve(opts.mutation), 'utf8');
   console.log(`  mutation: ${opts.mutation} (${patchText.split('\n').length} lines, reverse-applied)`);
 } else {
-  const patchPaths = cargoLockPatchPaths(cargoLockChanged, prodPaths);
+  const patchPaths = cargoLockPatchPaths(cargoLockChanged, prodPaths, entries.map((entry) => entry.path));
   restorationPaths = patchPaths;
   patchText = gitOrDie(['diff', '--binary', mergeBase, headSha, '--', ...patchPaths]);
 }

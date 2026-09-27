@@ -205,6 +205,9 @@ describe('GanttDragTooltip localization (#4918)', () => {
         }}
       />,
     );
+    const liveOutput = container.querySelector('output[aria-live="polite"]');
+    assert.ok(liveOutput, 'the active Gantt drag announces its readout through a native output (#5821)');
+    assert.match(liveOutput.textContent ?? '', /Shifting/);
     const english = visibleStrings(container);
     assert.ok(english.has('Shifting'));
 
@@ -316,6 +319,7 @@ describe('GanttTaskTree localization (#4918)', () => {
         onToggleExpand={() => {}}
         onSelect={() => {}}
         onHover={() => {}}
+        onBackgroundClick={() => {}}
         calendarNamesByGlobalId={new Map([['cal-1', 'Standard']])}
         scrollTop={0}
         onScroll={() => {}}
@@ -332,11 +336,13 @@ describe('GanttTaskTree localization (#4918)', () => {
 
     assert.ok(after.has(mark('schedule.taskTree.columnTask')));
     assert.ok(after.has(mark('schedule.taskTree.columnDuration')));
+    assert.ok(after.has(mark('schedule.taskTree.clearSelectionAriaLabel')));
     assert.ok([...after].some(s => s.startsWith('⟦schedule.taskTree.collapseAriaLabel|')), 'interpolated collapse aria-label not marked');
     assert.ok([...after].some(s => s.startsWith('⟦schedule.taskTree.expandAriaLabel|')), 'interpolated expand aria-label not marked');
     assert.ok([...after].some(s => s.startsWith('⟦schedule.taskTree.workCalendar|')), 'interpolated work-calendar label not marked');
     covered.add('schedule.taskTree.columnTask');
     covered.add('schedule.taskTree.columnDuration');
+    covered.add('schedule.taskTree.clearSelectionAriaLabel');
   });
 });
 
@@ -426,7 +432,7 @@ describe('GenerateAdvancedPanel localization (#4918)', () => {
 describe('GanttEmptyState localization (#4918)', () => {
   it('translates the "load a model" and helper-text states', () => {
     const container = render(
-      <GanttEmptyState loading={false} hasModel={false} canGenerate onImport={() => {}} onClose={() => {}} />,
+      <GanttEmptyState loading={false} hasModel={false} canGenerate onImport={() => {}} />,
     );
     const english = visibleStrings(container);
     assert.ok(english.has('Load a model with IfcTasks'));
@@ -622,7 +628,7 @@ describe('GanttToolbar localization (#4918)', () => {
       scheduleUndoStack: [{} as unknown as never],
       scheduleRedoStack: [{} as unknown as never],
     });
-    const container = render(<GanttToolbar onClose={() => {}} onOpenGenerate={() => {}} onOpenImport={() => {}} canGenerate />);
+    const container = render(<GanttToolbar onOpenGenerate={() => {}} onOpenImport={() => {}} canGenerate />);
     const english = visibleStrings(container);
     assert.ok(english.has('Jump to start'));
     assert.ok(english.has('Week')); // default ganttTimeScale

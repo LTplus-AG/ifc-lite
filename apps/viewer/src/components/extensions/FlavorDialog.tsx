@@ -16,12 +16,14 @@
  * Spec: docs/architecture/ai-customization/05-flavors-and-sharing.md §6.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Palette } from 'lucide-react';
 import type { Flavor, UnpackedFlavor } from '@ifc-lite/extensions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { downloadFile } from '@/lib/export/download';
 import { FlavorMergeDialog } from './FlavorMergeDialog';
 import { FlavorListView } from './FlavorListView';
@@ -81,7 +83,6 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
     }
     if (mergeTarget) setMergeTarget(null);
   }, [open, preview, mergeTarget]);
-
   const handleExport = async (id: string) => {
     setBusy(true);
     try {
@@ -89,6 +90,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       // downloadFile copies the (possibly ArrayBufferLike / Shared) bytes into a
       // fresh ArrayBuffer-backed view, so DOM Blob typings accept them.
       downloadFile(bytes, `${id || 'flavor'}.iflv`, 'application/octet-stream');
+      trackExportCompleted({ format: 'iflv', surface: 'extension_panel' });
       toast.success(t('extensionsFlavors.flavorDialog.toast.exported', { filename: `${id}.iflv` }));
     } catch (err) {
       toast.error(failure(t('extensionsFlavors.flavorDialog.operation.export'), err));
@@ -96,7 +98,6 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       setBusy(false);
     }
   };
-
   const handleActivate = async (id: string) => {
     setBusy(true);
     try {
@@ -124,7 +125,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm(t('extensionsFlavors.flavorDialog.confirmDelete', { id }))) return;
+    if (!await confirmDialog({ description: t('extensionsFlavors.flavorDialog.confirmDelete', { id }), destructive: true })) return;
     setBusy(true);
     try {
       await host.flavors.delete(id);
@@ -286,7 +287,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
   };
 
   const handleReset = async () => {
-    if (!confirm(t('extensionsFlavors.flavorDialog.confirmReset'))) return;
+    if (!await confirmDialog({ description: t('extensionsFlavors.flavorDialog.confirmReset'), destructive: true })) return;
     setBusy(true);
     try {
       await host.flavors.resetToDefaults();
@@ -389,7 +390,6 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
             />
           </>
         )}
-
         <FlavorMergeDialog
           open={!!mergeTarget}
           theirs={mergeTarget}

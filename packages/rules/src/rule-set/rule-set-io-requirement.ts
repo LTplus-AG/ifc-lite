@@ -52,6 +52,7 @@ export function parseRuleBlock(raw: unknown, where: string, allowedKinds: Readon
 function validateBlockRules(group: FilterGroup, where: string, allowedKinds: ReadonlySet<FilterRule['kind']> | null): void {
   for (const rule of group.rules) {
     if (rule.kind === 'elevation') fail(`${where}: "elevation" rules are not allowed (no aggregate meaning, plan §3)`);
+    if (rule.kind === 'listCondition') fail(`${where}: "listCondition" rules only run inside a list (they need its data provider, #6190)`);
     if (rule.kind === 'storey' && 'refs' in rule && rule.refs) {
       fail(`${where}: a storey rule with "refs" (local runtime ids) cannot be saved to a rule-set file`);
     }

@@ -74,6 +74,7 @@ export interface RunInWorkerArgs {
    */
   entityVisibility?: EntityVisibilitySnapshot;
   onProgress?: (progress: ValidationProgress) => void;
+  signal?: AbortSignal;
 }
 
 /**
@@ -87,6 +88,10 @@ export function runValidationInWorker(
   args: RunInWorkerArgs
 ): Promise<IDSValidationReport> {
   return new Promise((resolve, reject) => {
+    if (args.signal?.aborted) {
+      reject(args.signal.reason ?? new DOMException('Validation cancelled', 'AbortError'));
+      return;
+    }
     let worker: Worker;
     try {
       worker = new Worker(
@@ -106,12 +111,19 @@ export function runValidationInWorker(
 
 
     const settle = (fn: () => void) => {
+      args.signal?.removeEventListener('abort', onAbort);
       worker.onmessage = null;
       worker.onerror = null;
       worker.onmessageerror = null;
       worker.terminate();
       fn();
     };
+    const onAbort = () => settle(() => reject(args.signal?.reason ?? new DOMException('Validation cancelled', 'AbortError')));
+    args.signal?.addEventListener('abort', onAbort, { once: true });
+    if (args.signal?.aborted) {
+      onAbort();
+      return;
+    }
 
     worker.onmessage = (event: MessageEvent<IdsWorkerResponse>) => {
       const msg = event.data;
@@ -160,4 +172,3 @@ export function runValidationInWorker(
     }
   });
 }
-

@@ -59,6 +59,12 @@ export const TEARDOWN_EXEMPTIONS: Readonly<Record<string, string>> = {
     'preference persisted to localStorage, mirroring dockSlice — deliberately outlives a ' +
     'file load. It names no modelId or expressId.',
 
+  drawingInspectorSlice:
+    'Drawing inspector layout (open tab id, column width) is a cross-file workspace ' +
+    'preference persisted to localStorage, mirroring dockSlice and sidebarSlice: deliberately ' +
+    "NOT cleared on a new file load (see the slice's module doc, #5495). It names no " +
+    'modelId or expressId.',
+
   solarSlice:
     'Solar-study intent (studied instant, display toggles) and the resolved sun readout are ' +
     'continuously recomputed from the live active model\'s georeference while the study is ' +

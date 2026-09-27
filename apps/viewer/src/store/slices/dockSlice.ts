@@ -125,6 +125,13 @@ export interface DockSlice {
   bringFloatingPanelToFront: (id: WorkspacePanelId) => void;
   /** Drop every floating panel back to the docked layout. */
   resetDockLayout: () => void;
+  /**
+   * Bumped by the one "Reset layout" (`store/layoutReset.ts`). Layout that is
+   * held in components rather than the store (the bottom strip's height, the
+   * hierarchy pane's width) resets itself when this changes.
+   */
+  layoutResetEpoch: number;
+  bumpLayoutResetEpoch: () => void;
 }
 
 export const createDockSlice: StateCreator<DockSlice, [], [], DockSlice> = (set, get) => ({
@@ -176,4 +183,7 @@ export const createDockSlice: StateCreator<DockSlice, [], [], DockSlice> = (set,
     persist([]);
     set({ floatingPanels: [] });
   },
+
+  layoutResetEpoch: 0,
+  bumpLayoutResetEpoch: () => set({ layoutResetEpoch: get().layoutResetEpoch + 1 }),
 });

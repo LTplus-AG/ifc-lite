@@ -72,7 +72,7 @@ function readable(): Set<string> {
 function openDialog(): void {
   render(<ClashRevisionCompareDialog />);
   const trigger = [...document.body.querySelectorAll('button')].find(
-    (b) => b.getAttribute('title') === CATALOGUE['clashTools.revisionCompare.triggerTooltip'],
+    (b) => b.getAttribute('aria-label') === CATALOGUE['clashTools.revisionCompare.triggerTooltip'],
   );
   assert.ok(trigger, 'compare trigger button not found');
   click(trigger!);

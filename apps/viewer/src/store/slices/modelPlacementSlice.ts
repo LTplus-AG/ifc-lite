@@ -63,7 +63,7 @@ export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelP
     const state = get();
     const ids = modelIds ?? (state.activeModelId ? [state.activeModelId] : [...state.models.keys()].slice(0, 1));
     const modelPlacement = beginPlacement(state.modelPlacement, ids, new Set(state.models.keys()));
-    state.setActiveTool('select');
+    state.setActiveTool('select', 'programmatic');
     set({ modelPlacement, repositionOpen: true });
   },
   closeReposition: () => set((state) => ({ repositionOpen: false, modelPlacement: cancelPlacement(state.modelPlacement) })),

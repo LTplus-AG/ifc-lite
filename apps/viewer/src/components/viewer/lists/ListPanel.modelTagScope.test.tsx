@@ -51,7 +51,7 @@ function definition(modelTagScope: ListModelTagScope | undefined): ListDefinitio
     createdAt: Date.now(),
     updatedAt: Date.now(),
     entityTypes: [],
-    conditions: [],
+    groups: [],
     modelTagScope,
     columns: [
       { id: 'col-1', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'NeverThere', label: 'Missing' },

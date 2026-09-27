@@ -3,11 +3,18 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useViewerStore } from './index.js';
+import { resetVisibilityReasons } from '@/lib/visibility/visibility-reasons';
+import { trackUiEvent } from '@/lib/analytics';
+import type { ViewResetTrigger } from '@/lib/analytics-ui-events';
 
-export function resetVisibilityForHomeFromStore(): void {
+/** Show all clears visibility filters and selection, recording its entry point (#5618). */
+export function showAllFromStore(trigger: ViewResetTrigger): void {
+  trackUiEvent('view_reset', { trigger });
+  // Every mechanism the reason table marks `cleared`; the ones it keeps (an
+  // active lens, the class-type toggles, the view mode, host types) stay and
+  // are named there (#5869).
+  resetVisibilityReasons(useViewerStore);
   const state = useViewerStore.getState();
-  state.showAllInAllModels();
-  state.clearStoreySelection();
   state.clearHierarchyBasketSelection();
   state.clearEntitySelection();
   state.clearBasket();
@@ -18,8 +25,8 @@ export function resetVisibilityForHomeFromStore(): void {
   // `clearClashFocus()` is the clash slice's one complete spelling of that
   // teardown — the tint, the marker, the solid, the selected id and the
   // `clashSolidRequestSeq` bump. Without the bump, a resolved (or still
-  // in-flight) `focusClash` solid could keep rendering opaque after Home /
-  // "Show all" brings the rest of the model back, with nothing selected
+  // in-flight) `focusClash` solid could keep rendering opaque after Show all
+  // brings the rest of the model back, with nothing selected
   // (#2574 review). Called rather than re-listing the fields so this path
   // cannot drift out of sync with the others (#2654 review).
   state.clearClashFocus();
@@ -28,7 +35,5 @@ export function resetVisibilityForHomeFromStore(): void {
 }
 
 export function goHomeFromStore(): void {
-  resetVisibilityForHomeFromStore();
-  const state = useViewerStore.getState();
-  state.cameraCallbacks.home?.();
+  useViewerStore.getState().cameraCallbacks.home?.();
 }

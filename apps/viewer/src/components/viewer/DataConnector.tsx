@@ -9,22 +9,10 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect, type DragEvent } from 'react';
-import {
-  Upload,
-  FileSpreadsheet,
-  Link2,
-  ArrowRight,
-  Check,
-  AlertCircle,
-  Loader2,
-  Trash2,
-  Plus,
-  Eye,
-  Play,
-  Wand2,
-  ChevronRight,
-} from 'lucide-react';
+import { Upload, FileSpreadsheet, Link2, ArrowRight, Check, AlertCircle, Trash2, Plus, Eye, Play, Wand2, ChevronRight } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -62,9 +50,10 @@ import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { useViewerStore } from '@/store';
 import { useTranslation, localeCount } from '@/i18n';
-import { roleCanEdit } from '@/store/slices/collabSlice';
+import { canMutate, mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
 import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
+import { defaultAuthoringModelId, recordRun } from '@/lib/model-placement/history';
 import { PropertyValueType } from '@ifc-lite/data';
 import {
   CsvConnector,
@@ -103,20 +92,10 @@ export function DataConnector({ trigger }: DataConnectorProps) {
   const { models } = useIfc();
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
-  // Collab role gate, two layers deep. (1) canCollabEdit is injected straight into
-  // CsvConnector's constructor (see mutation-guard.ts): CSV import reaches the
-  // mutation view's setProperty directly via generateMutations/importAsync,
-  // bypassing the store's own setProperty action (and its canCollabEdit() check)
-  // entirely, so the connector itself refuses a write for a viewer/commenter role
-  // as containment. (2) canEditInSession mirrors that same role check here in the
-  // component, the same way MainToolbar/AuthorTab gate Edit mode, so the Import
-  // button is disabled and never gets clicked in the first place. Both layers read
-  // the one shared `roleCanEdit` rule that `canCollabEdit()` is itself built from,
-  // so a future role change cannot leave them disagreeing. null role = single-user,
-  // always editable.
-  const canCollabEdit = useViewerStore((s) => s.canCollabEdit);
+  // CSV writes bypass mutationSlice, so both its live guard and the Import
+  // affordance use the same edit-mode, collaboration, and model policy.
+  const editEnabled = useViewerStore((s) => s.editEnabled);
   const collabEditRole = useViewerStore((s) => s.collabRole);
-  const canEditInSession = roleCanEdit(collabEditRole);
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
@@ -125,6 +104,9 @@ export function DataConnector({ trigger }: DataConnectorProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
+  const editPermission = useMemo(() => mutationPermission(useViewerStore.getState(), selectedModelId),
+    [editEnabled, collabEditRole, selectedModelId, models]);
+  const canEditInSession = editPermission.allowed;
 
   // Raw CSV content
   const [csvContent, setCsvContent] = useState<string>('');
@@ -186,10 +168,10 @@ export function DataConnector({ trigger }: DataConnectorProps) {
     return models.get(selectedModelId);
   }, [models, selectedModelId, legacyIfcDataStore, legacyGeometryResult]);
 
-  // Auto-select first model
+  // Default to the active model: Undo replays the active model's history (#5958).
   useMemo(() => {
     if (modelList.length > 0 && !selectedModelId) {
-      setSelectedModelId(modelList[0].id);
+      setSelectedModelId(defaultAuthoringModelId(modelList, useViewerStore.getState().activeModelId));
     }
   }, [modelList, selectedModelId]);
 
@@ -224,9 +206,9 @@ export function DataConnector({ trigger }: DataConnectorProps) {
       dataStore.entities,
       mutationView,
       dataStore.strings || null,
-      canCollabEdit
+      () => canMutate(useViewerStore.getState(), selectedModelId)
     );
-  }, [selectedModel, selectedModelId, getMutationView, canCollabEdit]);
+  }, [selectedModel, selectedModelId, getMutationView]);
 
   // Parse CSV file
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -467,16 +449,14 @@ export function DataConnector({ trigger }: DataConnectorProps) {
         return;
       }
 
-      const stats = await csvConnector.importAsync(
-        csvContent,
-        dataMapping,
-        (progress) => setImportProgress(progress)
-      );
+      // The connector writes the view directly: record each applied batch as it lands (#5861, #5958).
+      const stats = await csvConnector.importAsync(csvContent, dataMapping, (progress) => setImportProgress(progress), {
+        onApplied: recordRun(useViewerStore.getState, selectedModelId),
+      });
 
       setImportStats(stats);
       setImportProgress(null);
       setImportDirty(false);
-
       if (stats.errors.length > 0) {
         setError(stats.errors.join('\n'));
       }
@@ -486,7 +466,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
     } finally {
       setIsProcessing(false);
     }
-  }, [csvConnector, csvContent, canEditInSession, buildDataMapping]);
+  }, [csvConnector, csvContent, canEditInSession, buildDataMapping, selectedModelId]);
 
   // Scroll to bottom of the body area — double rAF ensures DOM is painted
   const scrollToBottom = useCallback(() => {
@@ -539,20 +519,20 @@ export function DataConnector({ trigger }: DataConnectorProps) {
   // Drag-and-drop handlers
   const [isDragging, setIsDragging] = useState(false);
 
-  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
+  const handleDragOver = useCallback((e: DragEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(true);
   }, []);
 
-  const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
+  const handleDragLeave = useCallback((e: DragEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
   }, []);
 
   const handleDrop = useCallback(
-    (e: DragEvent<HTMLDivElement>) => {
+    (e: DragEvent<HTMLElement>) => {
       e.preventDefault();
       e.stopPropagation();
       setIsDragging(false);
@@ -654,7 +634,6 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                 </p>
               )}
             </div>
-
             {/* File Upload - Drag and Drop Zone */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">{t('dataConnector.csvFileLabel')}</Label>
@@ -666,27 +645,28 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                 className="hidden"
               />
               {!fileName ? (
-                <div
+                <button
+                  type="button"
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                   onClick={() => fileInputRef.current?.click()}
-                  className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 cursor-pointer transition-colors ${
+                  className={`flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-ring ${
                     isDragging
                       ? 'border-primary bg-primary/5'
                       : 'border-muted-foreground/25 hover:border-muted-foreground/50 hover:bg-muted/50'
                   }`}
                 >
                   <Upload className={`h-8 w-8 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
-                  <div className="text-center">
-                    <p className="text-sm font-medium">
+                  <span className="text-center">
+                    <span className="block text-sm font-medium">
                       {isDragging ? t('dataConnector.dropHereText') : t('dataConnector.dragDropText')}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
+                    </span>
+                    <span className="block text-xs text-muted-foreground mt-1">
                       {t('dataConnector.clickToBrowseText')}
-                    </p>
-                  </div>
-                </div>
+                    </span>
+                  </span>
+                </button>
               ) : (
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary" className="gap-1.5">
@@ -918,14 +898,13 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                             </SelectContent>
                           </Select>
 
-                          <Button
-                            variant="ghost"
-                            size="icon"
+                          <IconButton
+                            label={t('dataConnector.removeMappingLabel')}
                             className="h-8 w-8"
                             onClick={() => removeMapping(mapping.id)}
                           >
                             <Trash2 className="h-3 w-3 text-destructive" />
-                          </Button>
+                          </IconButton>
                         </div>
                       ))}
                     </div>
@@ -953,7 +932,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm text-muted-foreground">
                       <span className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <Spinner size="md" />
                         {importProgress.phase === 'parsing' && t('dataConnector.phaseParsing')}
                         {importProgress.phase === 'matching' && t('dataConnector.phaseMatching')}
                         {importProgress.phase === 'applying' && t('dataConnector.phaseApplying')}
@@ -1013,7 +992,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
             disabled={!csvConnector || !csvContent || !matchColumn || isProcessing}
           >
             {isProcessing ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <Spinner size="md" className="mr-2" />
             ) : (
               <Eye className="h-4 w-4 mr-2" />
             )}
@@ -1030,11 +1009,11 @@ export function DataConnector({ trigger }: DataConnectorProps) {
               isProcessing ||
               !importDirty
             }
-            title={canEditInSession ? undefined : t('dataConnector.editRequiresAccessTitle')}
+            title={editPermission.allowed ? undefined : t(mutationDenialKey(editPermission.reason))}
           >
             {isProcessing && importProgress ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Spinner size="md" className="mr-2" />
                 {Math.round(importProgress.percent * 100)}%
               </>
             ) : (

@@ -89,6 +89,10 @@ IFC_LITE_SKIP_DOWNLOAD=1 npm install @ifc-lite/server-bin
 npx @ifc-lite/server-bin download
 ```
 
+## When a version has no release binaries
+
+The binary is downloaded from the GitHub release `v<package version>`. If that release is missing, or has no archive for your platform (every URL returns 404), the downloader uses the newest **older** `vX.Y.Z` release that has your platform's archive and a checksum. It verifies that archive the same way and prints a warning naming both versions. The warning is repeated on every run that uses the fallback binary. To try the exact version again, run `npx @ifc-lite/server-bin download`. A network error, 5xx response or rate limit never triggers the fallback. If `GITHUB_TOKEN` or `GH_TOKEN` is set, the release lookup is authenticated.
+
 ## Falling back
 
 If pre-built binaries don't fit (unsupported platform, locked-down corp environment, custom config), fall back to:

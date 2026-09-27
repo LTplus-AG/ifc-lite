@@ -79,5 +79,13 @@ export function flattenMaterials(
       }
       break;
   }
+  if (matInfo.unresolved && matInfo.type !== 'Material') {
+    out.push({ name: '', unresolved: true });
+  }
+  if (!matInfo.unresolved && out.length === 0) {
+    // A fully read association with no authored name/category still proves
+    // presence. The empty candidate yields a definite value mismatch.
+    out.push({ name: '' });
+  }
   return out;
 }

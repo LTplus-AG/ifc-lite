@@ -14,7 +14,7 @@
  * `resolveDxfExportGeoreference`'s threading, not the hook's call site, and
  * no test imports `useDxfMapToWorldTransform`." This file imports and
  * mounts the hook itself, through the Zustand store, exactly as
- * `Section2DPanel`/`useDxfUnderlaysForDrawing` do, and asserts on the
+ * `useDrawingLayers`/`useDxfUnderlaysForDrawing` do, and asserts on the
  * transform it publishes for a map-absolute legacy-store model. Deleting
  * the `legacyCoordinateInfo` line under test fails the "identity axis"
  * assertion below (the guard would never fire without it, and the

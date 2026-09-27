@@ -14,7 +14,8 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import { Download, Crosshair, Loader2, ArrowRight, Camera, Layers } from 'lucide-react';
+import { Download, Crosshair, ArrowRight, Camera, Layers } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -32,17 +33,19 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
+import { useExportDialogOpenGuard } from '@/hooks/useExportDialogOpenGuard';
 import { useClash, type ClashBcfConfig, type ClashBcfGroupBy } from '@/hooks/useClash';
 import type { ClashSeverity } from '@ifc-lite/clash';
 
 interface ClashBcfExportDialogProps {
-  trigger?: React.ReactNode;
+  /** Opened from the Clash export split button (#5834). */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 const SEVERITIES: { key: ClashSeverity; labelKey: TranslationKey; color: string }[] = [
@@ -66,11 +69,10 @@ const DEFAULT_CONFIG: ClashBcfConfig = {
   maxTopics: 500,
 };
 
-export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
+export function ClashBcfExportDialog({ open, onOpenChange: setOpen }: ClashBcfExportDialogProps) {
   const { t } = useTranslation();
   const { result, exportBcf, bcfPreview } = useClash();
 
-  const [open, setOpen] = useState(false);
   const [config, setConfig] = useState<ClashBcfConfig>(DEFAULT_CONFIG);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -105,25 +107,12 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
     }
   }, [config, exportBcf, preview.topics]);
 
+  // The snapshot loop drives the live renderer (camera + isolation), and there's
+  // no UI to resume into if the dialog vanishes mid-export.
+  const handleOpenChange = useExportDialogOpenGuard({ busy: exporting, setOpen });
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        // Don't let Esc / backdrop close the dialog mid-export: the snapshot loop
-        // is driving the live renderer (camera + isolation), and there's no UI to
-        // resume into if the dialog vanishes. Mirrors the IDS export dialog.
-        if (exporting) return;
-        setOpen(v);
-      }}
-    >
-      <DialogTrigger asChild>
-        {trigger ?? (
-          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
-            <Download className="h-3.5 w-3.5 mr-1" />
-            BCF
-          </Button>
-        )}
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[460px] overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -138,7 +127,7 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
         <div className="grid gap-4 py-1 max-h-[62vh] overflow-y-auto pr-1">
           {/* Grouping */}
           <div className="space-y-1.5">
-            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <Label className="text-2xs uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
               <Layers className="h-3 w-3" /> {t('clashTools.bcfExport.groupByLabel')}
             </Label>
             <Select
@@ -159,7 +148,7 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
 
           {/* Severity filter */}
           <div className="space-y-1.5">
-            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+            <Label className="text-2xs uppercase tracking-wide text-muted-foreground">
               {t('clashTools.bcfExport.severitiesLabel')}
             </Label>
             <div className="flex flex-wrap gap-1.5">
@@ -190,12 +179,12 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
           <div className="flex items-center justify-center gap-4 rounded-lg border border-border bg-muted/30 px-4 py-3">
             <div className="text-center">
               <div className="text-2xl font-semibold tabular-nums leading-none">{preview.clashes}</div>
-              <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">{t('clashTools.bcfExport.clashesLabel')}</div>
+              <div className="mt-1 text-2xs uppercase tracking-wide text-muted-foreground">{t('clashTools.bcfExport.clashesLabel')}</div>
             </div>
             <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
             <div className="text-center">
               <div className="text-2xl font-semibold tabular-nums leading-none text-[#f7768e]">{preview.topics}</div>
-              <div className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+              <div className="mt-1 text-2xs uppercase tracking-wide text-muted-foreground">
                 {t('clashTools.bcfExport.topicsLabel', { count: preview.topics })}
               </div>
             </div>
@@ -203,7 +192,7 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
 
           {/* Cap + status note */}
           <div className="space-y-1.5">
-            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">{t('clashTools.bcfExport.maxTopicsLabel')}</Label>
+            <Label className="text-2xs uppercase tracking-wide text-muted-foreground">{t('clashTools.bcfExport.maxTopicsLabel')}</Label>
             <input
               type="number"
               min={1}
@@ -240,12 +229,12 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
               {t('clashTools.bcfExport.capturingSnapshotsProgress', { done: progress.done, total: progress.total })}
             </span>
           )}
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={exporting}>
+          <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={exporting}>
             {t('clashTools.bcfExport.cancelButton')}
           </Button>
           <Button onClick={() => void handleExport()} disabled={!canExport}>
             {exporting ? (
-              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              <Spinner size="md" className="mr-1.5" />
             ) : (
               <Download className="h-4 w-4 mr-1.5" />
             )}

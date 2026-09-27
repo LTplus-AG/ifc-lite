@@ -27,6 +27,28 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Renderer colour override table (#6076, PR #6148)
+
+A base-versus-branch browser run on a real Archicad architectural IFC, followed
+by a 55-file federation of distinct real IFCs from the same test-model folder,
+showed that the colour table removes the overlay draw and allocation cost in
+both cases. The coloured images stayed visually consistent with the base.
+This is a positive end-to-end verdict for those models; the original larger
+55-model federation, alpha/emphasis/X-Ray states, and coloured streaming
+still need their own acceptance run. The lesson is to measure both draw calls
+and GPU-process private memory after applying a lens: the renderer's resident
+geometry counter alone omits the allocation that dominated the old path.
+See the [browser evidence](evidence/color-overrides-6148/README.md).
+
+## Derived swept-disk metrics (#5754)
+
+The length/bend calculations run only when an analytic description is
+requested or serialized, outside normal mesh production. Verdict: default mesh
+output is byte-identical (same ordered mesh hash on both revisions); a
+default-load probe cannot measure this code's cost, and timing on a contested
+host was unresolved. Measure opt-in analytic extraction on representative
+swept-disk models separately from ordinary mesh loading.
+
 ## Opt-in swept-disk source descriptions (#5559)
 
 The analytic reader runs only when called explicitly; normal mesh loading does
@@ -43,6 +65,35 @@ Verdict: no mesh-output regression on this ordinary load, and no reliable
 performance claim from the contested host. The opt-in extraction's own cost
 needs a caller-level measurement on representative swept-disk models if it
 becomes a frequent operation; the default pipeline cannot measure that cost.
+
+## Raw-world RTC before f32 narrowing (#5698)
+
+Every built-in raw-coordinate processor now removes the model RTC offset in
+f64 through `process_in_rtc_frame`, and element walkers express that offset in
+the item frame. Interleaved native probes on a loaded host showed no stable
+timing change on AC20-FZK-Haus, ISSUE_129, ISSUE_098 or Holter: run-to-run
+spread exceeded any base-versus-branch difference. Only the output of
+`860_solid_stratum` changed across the fetched corpus: its national-grid TIN
+now keeps its surveyed vertices instead of a 0.5 m f32 grid. The rebase costs
+one extra first-vertex probe per raw-coordinate item on models with an RTC
+offset; the f64 coordinate parse runs only for items that are actually rebased.
+Measure A/B on a shared host by process CPU time and minima, not wall medians:
+wall medians swung 10-20% between identical binaries under load.
+Element-frame rebasing must go through the cached item path, keyed by its
+offset: a bespoke path silently drops content dedup and instancing.
+
+## LV95 site-local vertices and RTC frames (#5684)
+
+Interleaved base-versus-branch native probes on AC20-FZK-Haus and ISSUE_129
+showed no stable timing change across run orders. Both fixtures kept identical
+mesh, vertex and triangle counts and ordered mesh fingerprints. A private bridge
+IFC reproduced the intended geometry change: a site-local thin
+member recovered faces lost when the old path subtracted the national-grid RTC
+offset from already-f32 vertices. The lesson is to rebase early only when doing
+so reduces object-space coordinate magnitude. For genuine raw-world coordinates
+in millimetre files, the guarded subtraction must still precede f32 unit
+scaling or a small face can quantize at national-grid magnitude. Items
+processed in different RTC frames must receive placement before they are merged.
 
 ## LandXML credited-stream acceptance (#5050)
 
@@ -308,6 +359,32 @@ The viewer's own federated "Add" currently takes the non-streaming
 `appendToBatches` path and never reached this finalize, so the win is for
 `@ifc-lite/renderer` hosts that stream federated models, and for any finalize
 that runs with other models resident.
+
+## Cross-batch shared shapes on the Parquet stream (#5407)
+
+**Won, opt-in.** `?parquet_layout=shared-shapes&stream_shapes=cross-batch` on
+`/parse/parquet-stream` sends each distinct shape once per stream instead of once
+per batch. Across five fixtures (office, advanced_model, skolebygg, Holter
+Tower, and a 342 MB architectural model), the client payload dropped 2.2x to
+6.8x against the batch-local shared stream. It planned exactly the buffered
+route's vertex rows, and landed 8-43% above the buffered route's bytes, which is
+per-batch Parquet framing (17-132 batches). Peak server RSS stayed within
+run-to-run noise of the batch-local stream, and every unchanged mode was
+byte-identical to base.
+
+Two lessons, both found by measuring rather than by design:
+
+- **A content-hash registry alone is not enough.** Hash-only sharing across
+  batches recovered only a third of the gap on the office model (841k vs 295k
+  buffered vertices), because rotated repeats are not bit-identical. Stage 1
+  (the rotation-aware collator) had to reach across batches too. That means
+  keeping each instanced representation's first emitted mesh, not only
+  collator templates: a representation seen once per batch is never collated
+  inside any one batch.
+- **The stream needs the baked basis before its first batch.** Without it,
+  site-rotated models (skolebygg, advanced_model, DigitalHub) matched only the
+  buffered route run with no basis, 2-5x worse. The frame is chosen before
+  meshing, so `process_geometry_streaming_filtered_with_baked_basis` publishes it then.
 
 ## The native probe (`perf_probe`)
 
@@ -722,6 +799,64 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
 Orientation reuses deterministic edge adjacency, triangle filters compact their existing index buffer, and welding/content hashing avoid duplicate map probes. Geometry policy, tolerances and traversal/output order remain unchanged. Own-layer native subset comparisons did not establish a meaningful full-load improvement; sampled leaf CPU and the cumulative result cannot establish a layer-specific gain. Preserve exact output and diagnostic oracles, including invalid/degenerate triangles and reused-buffer capacity. No isolated browser gain is established here; invalid Firefox cohorts and unrun follow-ups remain excluded. Owned-weld, sliver-incidence and alternate meshing experiments are not included.
 
 ### Dead ends (do NOT re-spike without a new mechanism)
+- **Frame-invariant routing for plan-rotated voided walls** (#5739, PR #6035):
+  the two routing fixes were NOT SHIPPED; both were measured on ISSUE_098 against the merge-base. With
+  per-element local frames (the viewer default), the analytic prism cut's route
+  decisions (per-opening partition check, hairline emit gate at its 64-edge cap)
+  read f32 precision in the frame the vertices are stored in, so one 61° wall
+  took a different route than in the world frame and stayed open.
+  (1) *Comparison cut*: when the rotated-face analytic cut was not closed as
+  emitted, make the same cut in the wall frame and keep the better one. It ran
+  377 times and won 29; the losing cuts cost ~13 ms each. Result: +29-33%
+  single-thread geometry, +27-54% end to end. No pre-cut signal separated the
+  winners (defect count, host closure, opening count, edge length, raw or
+  consolidated closure, triangle count).
+  (2) *World-route mirroring*: run the analytic cut on the world-coordinate copy
+  of host and cutters, so a local-frame wall takes exactly the world route.
+  - Cost: pinned single-thread user CPU is at or below base (world 10.18 vs
+    10.25 s; local 10.38 vs 12.16 s). But end-to-end local geometry is +22%:
+    1376-1508 vs 1103-1285 ms over 8 interleaved rounds, and the ranges do not
+    overlap. Three walls (#1691248, #1691510, #1701652) move from a ~40 ms local
+    prism cut to the world's ~400-460 ms exact wall-frame route, and they sit on
+    the critical path.
+  - Quality: local-frame closure regresses to world quality. 179 elements are
+    worse across rvt01, ISSUE_098 and ISSUE_129. ISSUE_098 goes from 306 to 353
+    torn elements.
+  - A cheap world-quantized final gate alone leaves the 61° wall open.
+
+  **Shipped instead (option B, local frame only):** two changes, both scoped
+  to hosts stored relative to a per-element origin:
+  - the wall-frame closure test judges the cut as emitted;
+  - the snap tolerance uses the world magnitude.
+
+  World-frame code and output are unchanged: 33/33 fixture output hashes match
+  base, including ISSUE_098 and Holter. An earlier unscoped version cost a
+  consistent +1.7-2.7% on ISSUE_098 in the world frame, where it was not
+  needed.
+
+  Local frame against merge-base a20989951:
+  - Pinned single-thread user CPU, 6 interleaved runs:
+    - ISSUE_098: 9.05-9.89 s base vs 8.99-10.74 s branch
+    - ISSUE_129: 2.11-2.66 vs 2.12-2.54 s
+    - Holter: 3.30-3.89 vs 3.11-3.70 s
+    - AC20: 0.03 s both
+  - Multi-threaded geometry, median of 8 interleaved rounds:
+    - ISSUE_098: 866 vs 854 ms
+    - ISSUE_129: 971 vs 1010 ms (overlapping ranges; output identical)
+    - Holter: 602 vs 612 ms
+    - AC20: 21 vs 22 ms
+  - Closure: ISSUE_098 local goes from 306 to 305 torn elements, with none
+    worse.
+  - The 61° wall stays open in the local frame; it is pinned as a known
+    residual.
+
+  **Lessons:**
+  - A route decision made at stored precision cannot be made frame-invariant
+    without redoing the frame's computation. The world route is not the better
+    route on real models: the local frame's prism cut closes more walls, more
+    cheaply.
+  - Judge perf by the multi-threaded critical path as well as by CPU: moving
+    work onto a few heavy hosts can lower total CPU and still lengthen the load.
 - **More geometry workers** -> zero CSG speedup: memory-bandwidth bound, not CPU.
 - **Shared entity-index for the VIEWER huge-file path** (#1445): CLOSED, branch
   deleted, REFUTED by an end-to-end 722MB re-measure. The retained-size spike looked
@@ -980,6 +1115,21 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
 Reuse checked ID-prefix accumulation and the scanner's existing ASCII proof; obtain native geometry flags from one immutable classification lookup. Generated type parsing checks canonical names before normalization, and schema detection retains the original match priority. Own-layer native subset comparisons showed a modest full-load improvement, not a corpus-wide or browser result. Keep the cumulative verdict separate and exclude invalid Firefox cohorts and unrun follow-ups. Scalar tokenizer dispatch, scanner dictionaries and ordinal transport are separate experiments, not part of this change.
 
 ### Measured feature costs (not levers — recorded so nobody re-measures)
+- **Re-meshing an edited wall through the wasm mesher (#6232 WP1, measured
+  2026-09-27, real-GPU Windows Chrome over CDP, production `vite build`).**
+  Commit → rendered frame for `resizeWall` on a wall hosting a window, 20
+  resizes each: demo project p50 64 ms / p95 98 ms; AC20-FZK-Haus p50 74 ms /
+  p95 83 ms. The re-mesh itself is a small part of that: serialize the
+  subgraph ~1 ms, worker pre-pass + produce ~3-6 ms (`scripts/perf/remesh-latency.mjs`,
+  node/wasm, AC20 walls with openings: p50 4.4 ms total). The rest is the
+  viewer re-rendering on two store updates: the commit's own mutations (~30 ms
+  before the worker's answer is even read) and the geometry replacement
+  (~18 ms to the drained frame). That is the design's 50 ms p50 budget missed
+  by React work the re-mesh does not add, so the lever is fewer re-renders per
+  geometry update, not the mesher. In a dev build the same loop is ~200 ms
+  (React dev mode dominates a CPU profile). The first request per model also
+  pays a one-time whole-file pre-pass for the style wire (AC20: ~170 ms).
+
 - **Local-frame void-cut origin preservation** (#3446, measured 2026-08-31,
   base = `2edd144329`, arm64 native). This correctness fix keeps a rotated
   local-frame cut's centre and nested origin out of absolute-world `f32`.
@@ -1950,6 +2100,11 @@ counts are identical on all three; ISSUE_129 and Holter fingerprints differ
 only in normals of holed extrusions, which the output orienter used to flip and
 recompute. The lesson: an extruder's winding is an input contract of the
 kernel, not a rendering detail the output orienter may repair afterwards.
+After review folded the three side-wall builders onto one shared orientation
+helper, a re-run against `ea4cc3718` (eight interleaved rounds) gave AC20 and
+ISSUE_129 byte-identical fingerprints to main; ISSUE_129 per-round best totals
+spread 1,178-1,951 ms on main and 1,143-1,873 ms on the branch on a loaded
+host, so the medians' order (1,391 vs 1,476 ms) is not a signal either way.
 
 ## Structural curved/oriented edge rendering, no reach into either fixture (#4206, #5020)
 
@@ -2092,3 +2247,23 @@ and provenance are retained. Lesson: a large inclusive React sample bucket does
 not establish that removing a framework or a few subscriptions buys the same
 wall time; test the actual change, and measure the avoidable upload work before
 committing to permanent renderer pages.
+
+## IFC4x3 alignment geometry on Viadotto Acerno (#5327)
+
+Five interleaved native base-versus-branch runs covered AC20-FZK-Haus and the
+source-verified Viadotto Acerno fixture. AC20 emitted identical mesh, vertex,
+and triangle counts. Its parse, geometry, and total timings all fell within
+the wide run-to-run noise. Viadotto emitted additional meshes and triangles
+because the branch now generates its sectioned solids; its timing comparison
+is therefore not like-for-like. No measurable end-to-end speed verdict follows
+from either fixture. The numeric A/B evidence is in the PR.
+
+The incremental clothoid sampler avoids repeatedly integrating from the
+origin for each station. A follow-up review found that inverting 3D station
+length still rescanned every densely sampled horizontal segment and vertical
+profile segment at each integration point; those lookups now use their sorted
+station keys. The final interleaved A/B kept AC20's output counts identical
+and its phase timings within noise. Viadotto again emitted the intended extra
+geometry, so its timing remains non-comparable. The lesson is to check
+complete model output before interpreting alignment timings and to trace
+the lookup cost inside each repeated station evaluation.

@@ -99,6 +99,7 @@ tests/models/**/*.xml
 tests/models/**/*.XML
 tests/models/landxml/**/*.json
 tests/models/landxml/**/*.xyz
+tests/models/landxml/**/*.tif
 # Partial downloads from the fetcher.
 tests/models/**/*.part
 

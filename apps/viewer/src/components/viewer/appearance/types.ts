@@ -12,6 +12,8 @@ export interface AppearancePanelViewProps {
   capture?: React.ReactNode;
   renderAssignments?(formValid: boolean): React.ReactNode;
   assignmentMode?: boolean;
+  /** Models in the frozen assignment preview, which may differ from modelId. */
+  assignmentTargetModelIds?: readonly string[];
   scan?: React.ReactNode;
   onIntentChange?(intent: 'apply' | 'reference' | 'capture' | 'scan'): void;
   /** Advertise PDF upload only once a controller provides document ingestion. */

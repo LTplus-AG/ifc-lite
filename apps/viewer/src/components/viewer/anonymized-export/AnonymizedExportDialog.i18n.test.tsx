@@ -90,7 +90,7 @@ describe('AnonymizedExportDialog localization (#4918)', () => {
     // Trigger-less host instance: opens via the store's
     // `anonymizedExportRequested` flag, same as `ViewerLayout.tsx`'s
     // "Global Overlays" mount — see the component's own docblock.
-    const container = render(<AnonymizedExportDialog />);
+    const container = render(<AnonymizedExportDialog surface="context_menu" />);
     const english = readableStrings(document.body);
 
     registerLocale(PSEUDO_LOCALE, pseudoLocale());

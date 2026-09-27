@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useCallback, useState } from 'react';
-import { Check, Eye, Loader2 } from 'lucide-react';
+import { Check, Eye } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { AppearancePdfFields, AppearancePdfPassword } from './AppearancePdfFields.js';
 import { AppearanceSourceFields } from './AppearanceSourceFields.js';
@@ -12,6 +13,8 @@ import { AppearanceReferenceLibrary } from './AppearanceReferenceLibrary.js';
 import { AppearanceMappingFields } from './AppearanceMappingFields.js';
 import type { AppearancePanelViewProps } from './types.js';
 import { useTranslation } from '@/i18n';
+import { mutationDenialKey } from '@/store/mutation-permission';
+import { useMutationDenialReason } from '@/hooks/useMutationDenialReason';
 import { resolveLocalizedMessage } from './localized-message.js';
 
 /** Controlled dock content. Preview, selection, asset lifetimes and commands live in the controller. */
@@ -28,10 +31,13 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
     });
   }, []);
   const reference = props.intent === 'reference';
+  const denialReason = useMutationDenialReason(props.assignmentMode && props.assignmentTargetModelIds?.length
+    ? props.assignmentTargetModelIds : undefined);
+  const denialMessage = !reference && denialReason ? t(mutationDenialKey(denialReason)) : undefined;
   const applying = props.status === 'applying';
   const busy = applying || props.status === 'preparing' || props.sourceBusy || props.pdf?.busy || props.pdfPassword?.busy;
   const blocked = !!props.pdfPassword || !!props.pdf?.error || !!props.unavailableReason || (!reference && !props.modelId) || !props.sourceId;
-  const applyDisabled = !props.canApply || !props.hasPreview || (!props.assignmentMode && blocked) || busy || (!props.assignmentMode && invalidFields.size > 0) || (!reference && props.affectedCount === 0) || props.status !== 'ready';
+  const applyDisabled = !!denialMessage || !props.canApply || !props.hasPreview || (!props.assignmentMode && blocked) || busy || (!props.assignmentMode && invalidFields.size > 0) || (!reference && props.affectedCount === 0) || props.status !== 'ready';
   const controllerMessage = resolveLocalizedMessage(props.unavailableReason ?? props.statusMessage, t);
   const message = !props.assignmentMode && invalidFields.size ? t('appearance.panelView.invalidFieldsMessage') :
     controllerMessage ?? ({
@@ -43,18 +49,18 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
       error: t('appearance.panelView.status.error'),
     }[props.status]);
   const sourceActions = <>
-      {props.onIntentChange && <div className="grid grid-cols-1 gap-1 rounded-md border p-1" role="group" aria-label={t('appearance.panelView.sourceActionAriaLabel')}>
+      {props.onIntentChange && <fieldset className="min-w-0 grid grid-cols-1 gap-1 rounded-md border p-1" aria-label={t('appearance.panelView.sourceActionAriaLabel')}>
         <Button type="button" variant={props.intent === 'apply' ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={props.intent === 'apply'} onClick={() => props.onIntentChange?.('apply')}>{t('appearance.panelView.applyToIfc')}</Button>
         <Button type="button" variant={reference ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={reference} onClick={() => props.onIntentChange?.('reference')}>{t('appearance.panelView.placeAsReference')}</Button>
         <Button type="button" variant={props.intent === 'capture' ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={props.intent === 'capture'} onClick={() => props.onIntentChange?.('capture')}>{t('appearance.panelView.createFromScan')}</Button>
         <Button type="button" variant={props.intent === 'scan' ? 'secondary' : 'ghost'} size="sm" disabled={applying} aria-pressed={props.intent === 'scan'} onClick={() => props.onIntentChange?.('scan')}>{t('appearance.panelView.alignScan')}</Button>
-      </div>}
+      </fieldset>}
   </>;
   if (props.intent === 'scan') return <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background p-3" aria-label={t('appearance.panelView.workspaceAriaLabel')}>{sourceActions}{props.scan}</div>;
   if (props.intent === 'capture') return <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background p-3" aria-label={t('appearance.panelView.workspaceAriaLabel')}>{sourceActions}{props.capture}</div>;
   return <div className="flex h-full min-h-0 flex-col bg-background" aria-label={t('appearance.panelView.workspaceAriaLabel')} aria-busy={!!busy}>
     <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-3">
-      <div><h2 className="text-sm font-semibold">{t('appearance.panelView.heading')}</h2><p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{props.allowPdf ? t('appearance.panelView.descriptionPdf') : t('appearance.panelView.descriptionImageOnly')}</p></div>
+      <div><h2 className="text-sm font-semibold">{t('appearance.panelView.heading')}</h2><p className="mt-1 text-xs leading-relaxed text-muted-foreground">{props.allowPdf ? t('appearance.panelView.descriptionPdf') : t('appearance.panelView.descriptionImageOnly')}</p></div>
       {sourceActions}
       <AppearanceSourceFields {...props} disabled={applying} />
       {props.pdfPassword && <AppearancePdfPassword key={props.pdfPassword.documentName} prompt={props.pdfPassword} disabled={applying} />}
@@ -68,9 +74,9 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
     </div>
     <footer className="shrink-0 space-y-2 border-t bg-background p-3">
       <div role={props.status === 'error' || invalidFields.size ? 'alert' : 'status'} aria-live="polite"
-        className={`flex max-h-24 items-start gap-2 overflow-y-auto text-[11px] leading-relaxed ${props.status === 'error' || invalidFields.size ? 'text-destructive' : 'text-muted-foreground'}`}>
-        {busy && <Loader2 className="mt-0.5 h-3 w-3 shrink-0 animate-spin" aria-hidden="true" />}
-        <span>{message}</span>
+        className={`flex max-h-24 items-start gap-2 overflow-y-auto text-xs leading-relaxed ${props.status === 'error' || invalidFields.size ? 'text-destructive' : 'text-muted-foreground'}`}>
+        {busy && <Spinner size="xs" className="mt-0.5 shrink-0" />}
+        <span>{denialMessage ?? message}</span>
       </div>
       {!reference && <Button type="button" variant="ghost" size="sm" className="w-full" aria-pressed={props.showingOriginal}
         disabled={!props.hasPreview || applying} onClick={() => props.onCompareChange(!props.showingOriginal)}>
@@ -78,7 +84,7 @@ export function AppearancePanelView(props: AppearancePanelViewProps) {
       </Button>}
       <div className="grid grid-cols-2 gap-2">
         <Button type="button" variant="outline" size="sm" disabled={!props.canDiscard} onClick={() => { setInputReset(value => value + 1); setInvalidFields(new Set()); props.onDiscard(); }}>{t('appearance.panelView.discard')}</Button>
-        <Button type="button" size="sm" disabled={!!applyDisabled} onClick={props.onApply}><Check aria-hidden="true" />{reference ? (props.editingReference ? t('appearance.panelView.saveRegistration') : t('appearance.panelView.placeReference')) : t('appearance.panelView.apply')}</Button>
+        <Button type="button" size="sm" disabled={!!applyDisabled} title={denialMessage} onClick={props.onApply}><Check aria-hidden="true" />{reference ? (props.editingReference ? t('appearance.panelView.saveRegistration') : t('appearance.panelView.placeReference')) : t('appearance.panelView.apply')}</Button>
       </div>
     </footer>
   </div>;

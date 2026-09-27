@@ -41,12 +41,86 @@ afterEach(async () => {
   if (current) await act(async () => current.unmount());
   container?.remove();
   container = null;
+  useViewerStore.getState().setSidebarSecondaryPanel(null);
+  useViewerStore.getState().closeFloatingPanel('clash');
+  useViewerStore.getState().setPanelPoppedOut('clash', false);
+  useViewerStore.getState().setClashPanelVisible(false);
   // The whole app shares ONE Zustand store across node:test files, so anything
   // this suite seeds has to go back.
   useViewerStore.getState().clearClashFocus();
 });
 
 describe('ClashPanel unmount ends the focused-clash presentation (#2654 review)', () => {
+  it('keeps pair selection and colours while a still-open panel is remounted into a split (#5828)', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    useViewerStore.setState({ clashPanelVisible: true });
+    await act(async () => root!.render(<ClashPanel />));
+
+    const colours = new Map<number, [number, number, number, number]>([
+      [1, [1, 0.6, 0, 1]], [2, [0, 0.8, 1, 1]],
+    ]);
+    await act(async () => {
+      useViewerStore.setState({
+        selectedEntityIds: new Set([1, 2]),
+        selectedEntity: { modelId: 'model', expressId: 1 },
+        clashSelectedId: 'pair',
+        clashHighlightColors: colours,
+      });
+    });
+
+    const first = root;
+    root = null;
+    await act(async () => first!.unmount());
+    assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [1, 2]);
+    assert.equal(useViewerStore.getState().selectedEntity?.expressId, 1);
+    assert.equal(useViewerStore.getState().clashHighlightColors, colours);
+
+    root = createRoot(container);
+    await act(async () => root!.render(<ClashPanel />));
+    await act(async () => useViewerStore.getState().setClashPanelVisible(false));
+    const closing = root;
+    root = null;
+    await act(async () => closing!.unmount());
+    assert.equal(useViewerStore.getState().selectedEntityIds.size, 0);
+    assert.equal(useViewerStore.getState().clashHighlightColors, null);
+  });
+
+  it('keeps a secondary Clash pair through float reparenting, then clears it on close (#5828)', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    useViewerStore.setState({ sidebarActivePanel: 'properties', clashPanelVisible: false });
+    useViewerStore.getState().setSidebarSecondaryPanel('clash');
+    await act(async () => root!.render(<ClashPanel />));
+
+    const colours = new Map<number, [number, number, number, number]>([
+      [3, [1, 0.6, 0, 1]], [4, [0, 0.8, 1, 1]],
+    ]);
+    await act(async () => {
+      useViewerStore.setState({ selectedEntityIds: new Set([3, 4]), clashHighlightColors: colours });
+      useViewerStore.getState().floatPanel('clash');
+    });
+    const docked = root;
+    root = null;
+    await act(async () => docked!.unmount());
+    assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [3, 4]);
+    assert.equal(useViewerStore.getState().clashHighlightColors, colours);
+
+    root = createRoot(container);
+    await act(async () => root!.render(<ClashPanel />));
+    await act(async () => {
+      useViewerStore.getState().setSidebarSecondaryPanel(null);
+      useViewerStore.getState().closeFloatingPanel('clash');
+    });
+    const floating = root;
+    root = null;
+    await act(async () => floating!.unmount());
+    assert.equal(useViewerStore.getState().selectedEntityIds.size, 0);
+    assert.equal(useViewerStore.getState().clashHighlightColors, null);
+  });
+
   it('retracts the contact-line overlay, not just the solid and the tint', async () => {
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -62,7 +136,7 @@ describe('ClashPanel unmount ends the focused-clash presentation (#2654 review)'
         clashSelectedId: 'rule-1 m:1 m:2',
         clashHighlightColors: new Map<number, [number, number, number, number]>([[1, [1, 0.6, 0, 1]]]),
         clashOverlapBox: null,
-        clashContactLines: { vertices: [0, 0, 0, 1, 0, 0], color: [1, 0, 1, 1] },
+        clashContactLines: { vertices: [0, 0, 0, 1, 0, 0] },
         clashSolidStatus: 'solid',
         clashSolidMesh: { positions: new Float64Array([0, 0, 0]), indices: new Uint32Array([0]) },
         clashSolidVolumeM3: 0.42,

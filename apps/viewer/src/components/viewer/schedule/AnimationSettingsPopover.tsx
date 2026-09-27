@@ -19,9 +19,10 @@
  * 20 px clickable preview bound to a native `<input type="color">`.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useId } from 'react';
 import { Sparkles, RotateCcw, Paintbrush, Palette, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -145,26 +146,22 @@ export function AnimationSettingsPopover({
 
   return (
     <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              size="icon-sm"
-              variant={animationEnabled ? 'default' : 'ghost'}
-              aria-label={t('schedule.animation.settingsAriaLabel')}
-            >
-              <Sparkles className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent>{t('schedule.animation.settingsTooltip')}</TooltipContent>
-      </Tooltip>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          label={t('schedule.animation.settingsAriaLabel')}
+          tooltip={t('schedule.animation.settingsTooltip')}
+          size="icon-sm"
+          variant={animationEnabled ? 'default' : 'ghost'}
+        >
+          <Sparkles className="h-4 w-4" />
+        </IconButton>
+      </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[360px] p-3 max-h-[min(80vh,700px)] overflow-y-auto">
         {/* ── Master toggle ────────────────────────────────────────── */}
         <div className="flex items-center justify-between gap-3 pb-2">
           <div className="grid gap-0.5">
             <span className="text-sm font-medium">{t('schedule.animation.title')}</span>
-            <span className="text-[11px] text-muted-foreground">{t('schedule.animation.titleDescription')}</span>
+            <span className="text-2xs text-muted-foreground">{t('schedule.animation.titleDescription')}</span>
           </div>
           <Switch checked={animationEnabled} onCheckedChange={onToggleAnimation} />
         </div>
@@ -173,7 +170,7 @@ export function AnimationSettingsPopover({
 
         {/* ── Style tiles — two ways to visualize the schedule ─────── */}
         <div className="grid gap-1.5 py-2">
-          <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">{t('schedule.animation.styleLabel')}</Label>
+          <Label className="text-2xs uppercase tracking-wide text-muted-foreground">{t('schedule.animation.styleLabel')}</Label>
           <div className="grid grid-cols-2 gap-2">
             <StyleTile
               icon={<Eye className="h-3.5 w-3.5" />}
@@ -199,9 +196,9 @@ export function AnimationSettingsPopover({
             <div className="grid gap-1.5 py-2">
               <div className="flex items-center gap-1.5">
                 <Paintbrush className="h-3 w-3 text-primary" />
-                <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">{t('schedule.animation.taskTypePaletteLabel')}</Label>
+                <Label className="text-2xs uppercase tracking-wide text-muted-foreground">{t('schedule.animation.taskTypePaletteLabel')}</Label>
               </div>
-              <span className="text-[11px] text-muted-foreground">{t('schedule.animation.paletteHint')}</span>
+              <span className="text-2xs text-muted-foreground">{t('schedule.animation.paletteHint')}</span>
               <div className="grid grid-cols-1 gap-0.5 pt-1">
                 {PALETTE_LEGEND.map(entry => {
                   const current = palette[entry.key] ?? DEFAULT_PALETTE[entry.key];
@@ -235,7 +232,7 @@ export function AnimationSettingsPopover({
                 <Palette className="h-3.5 w-3.5 text-primary" />
                 <span className="text-xs font-medium">{t('schedule.animation.switchToPhasedCta')}</span>
               </div>
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-2xs text-muted-foreground">
                 {t('schedule.animation.switchToPhasedHint')}
               </span>
             </button>
@@ -246,7 +243,7 @@ export function AnimationSettingsPopover({
 
         {/* ── Timing-layer toggles (always visible) ────────────────── */}
         <div className="grid gap-2 py-2">
-          <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">{t('schedule.animation.timingLabel')}</Label>
+          <Label className="text-2xs uppercase tracking-wide text-muted-foreground">{t('schedule.animation.timingLabel')}</Label>
           <ToggleRow
             label={t('schedule.animation.hideUpcomingLabel')}
             description={t('schedule.animation.hideUpcomingDescription')}
@@ -273,7 +270,7 @@ export function AnimationSettingsPopover({
 
             {/* ── Colour-layer toggles ─────────────────────────────── */}
             <div className="grid gap-2 py-2">
-              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              <Label className="text-2xs uppercase tracking-wide text-muted-foreground">
                 {t('schedule.animation.colourOverlaysLabel')}
               </Label>
               <ToggleRow
@@ -293,7 +290,7 @@ export function AnimationSettingsPopover({
                 <div className="flex items-center justify-between gap-3 pl-2 pt-1 border-l-2 border-primary/30">
                   <span className="grid gap-0.5 min-w-0">
                     <span className="text-xs font-medium">{t('schedule.animation.ghostColourLabel')}</span>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-2xs text-muted-foreground">
                       {t('schedule.animation.ghostColourDescription')}
                     </span>
                   </span>
@@ -317,7 +314,7 @@ export function AnimationSettingsPopover({
                 <div className="flex items-center justify-between gap-3 pl-2 pt-1 border-l-2 border-primary/30">
                   <span className="grid gap-0.5 min-w-0">
                     <span className="text-xs font-medium">{t('schedule.animation.completedColourLabel')}</span>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-2xs text-muted-foreground">
                       {t('schedule.animation.completedColourDescription')}
                     </span>
                   </span>
@@ -369,7 +366,7 @@ export function AnimationSettingsPopover({
                   onChange={(e) => patch({ paletteIntensity: Number(e.target.value) / 100 })}
                   className="w-full accent-primary"
                 />
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-2xs text-muted-foreground">
                   {t('schedule.animation.colourIntensityHint')}
                 </span>
               </div>
@@ -413,7 +410,7 @@ function StyleTile({ icon, label, description, active, onSelect }: StyleTileProp
         <span className={active ? 'text-primary' : 'text-muted-foreground'}>{icon}</span>
         <span className="text-xs font-medium">{label}</span>
       </span>
-      <span className="text-[10px] text-muted-foreground">{description}</span>
+      <span className="text-2xs text-muted-foreground">{description}</span>
     </button>
   );
 }
@@ -424,15 +421,15 @@ interface ToggleRowProps {
   checked: boolean;
   onChange: (next: boolean) => void;
 }
-
 function ToggleRow({ label, description, checked, onChange }: ToggleRowProps) {
+  const switchId = useId();
   return (
-    <label className="flex items-center justify-between gap-3 cursor-pointer">
+    <label htmlFor={switchId} className="flex items-center justify-between gap-3 cursor-pointer">
       <span className="grid gap-0.5 min-w-0">
         <span className="text-xs font-medium truncate">{label}</span>
-        <span className="text-[10px] text-muted-foreground">{description}</span>
+        <span className="text-2xs text-muted-foreground">{description}</span>
       </span>
-      <Switch checked={checked} onCheckedChange={onChange} />
+      <Switch id={switchId} checked={checked} onCheckedChange={onChange} />
     </label>
   );
 }
@@ -465,7 +462,7 @@ function PaletteRow({ label, colorKey, rgba, onChange, onResetEntry, isDefault }
         <span className="text-xs font-medium truncate" title={colorKey}>
           {label}
         </span>
-        <span className="text-[10px] font-mono text-muted-foreground">
+        <span className="text-2xs font-mono text-muted-foreground">
           {rgbaToHex(rgba).toUpperCase()}
           {!isDefault && <span className="ml-1 text-primary">• {t('schedule.animation.modifiedTag')}</span>}
         </span>

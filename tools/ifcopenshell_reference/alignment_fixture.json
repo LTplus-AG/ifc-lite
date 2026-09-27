@@ -148,6 +148,18 @@
       "declaredLength": 100.0
      }
     }
+   ],
+   "stationEquations": [
+    {
+     "sourceId": "landxml:alignment:1:station-equation:1",
+     "staInternal": 1200.0,
+     "staAhead": 1250.0,
+     "staBack": 1200.0,
+     "staIncrement": "increasing"
+    }
+   ],
+   "profileSourceIds": [
+    "landxml:profile:landxml:alignment:1:1:design:P-Left"
    ]
   },
   {
@@ -329,6 +341,9 @@
       "declaredLength": 80.0
      }
     }
+   ],
+   "profileSourceIds": [
+    "landxml:profile:landxml:alignment:2:1:design:P-Right"
    ]
   },
   {
@@ -510,7 +525,141 @@
       "declaredLength": 50.0
      }
     }
+   ],
+   "stationEquations": [
+    {
+     "sourceId": "landxml:alignment:3:station-equation:1",
+     "staInternal": 330.0,
+     "staAhead": 200.0,
+     "staBack": 330.0,
+     "staIncrement": "increasing"
+    },
+    {
+     "sourceId": "landxml:alignment:3:station-equation:2",
+     "staInternal": 400.0,
+     "staAhead": 500.0,
+     "staBack": 270.0,
+     "staIncrement": "decreasing"
+    },
+    {
+     "sourceId": "landxml:alignment:3:station-equation:3",
+     "staInternal": 520.0,
+     "staAhead": 2000.0,
+     "staBack": null,
+     "staIncrement": "increasing"
+    }
    ]
+  }
+ ],
+ "profiles": [
+  {
+   "sourceId": "landxml:profile:landxml:alignment:1:1:design:P-Left",
+   "parentAlignmentSourceId": "landxml:alignment:1",
+   "ordinal": 1,
+   "name": "P-Left",
+   "kind": "design",
+   "pvis": [
+    {
+     "sourceId": "landxml:profile:landxml:alignment:1:1:design:P-Left:pvi:1",
+     "station": 1000.0,
+     "elevation": 20.0
+    },
+    {
+     "sourceId": "landxml:profile:landxml:alignment:1:1:design:P-Left:pvi:2",
+     "station": 1150.0,
+     "elevation": 23.0
+    },
+    {
+     "sourceId": "landxml:profile:landxml:alignment:1:1:design:P-Left:pvi:3",
+     "station": 1350.0,
+     "elevation": 21.5
+    },
+    {
+     "sourceId": "landxml:profile:landxml:alignment:1:1:design:P-Left:pvi:4",
+     "station": 1470.0,
+     "elevation": 18.9
+    },
+    {
+     "sourceId": "landxml:profile:landxml:alignment:1:1:design:P-Left:pvi:5",
+     "station": 1580.0,
+     "elevation": 20.0
+    }
+   ],
+   "verticalCurves": [
+    {
+     "sourceId": "landxml:profile:landxml:alignment:1:1:design:P-Left:curve:1",
+     "kind": "parabolic",
+     "station": 1150.0,
+     "elevation": 23.0,
+     "length": 80.0,
+     "lengthIn": null,
+     "lengthOut": null,
+     "radius": null
+    },
+    {
+     "sourceId": "landxml:profile:landxml:alignment:1:1:design:P-Left:curve:2",
+     "kind": "circular",
+     "station": 1470.0,
+     "elevation": 18.9,
+     "length": 63.322166,
+     "lengthIn": null,
+     "lengthOut": null,
+     "radius": 2000.0
+    }
+   ],
+   "gradeLines": []
+  },
+  {
+   "sourceId": "landxml:profile:landxml:alignment:2:1:design:P-Right",
+   "parentAlignmentSourceId": "landxml:alignment:2",
+   "ordinal": 1,
+   "name": "P-Right",
+   "kind": "design",
+   "pvis": [
+    {
+     "sourceId": "landxml:profile:landxml:alignment:2:1:design:P-Right:pvi:1",
+     "station": 0.0,
+     "elevation": 50.0
+    },
+    {
+     "sourceId": "landxml:profile:landxml:alignment:2:1:design:P-Right:pvi:2",
+     "station": 120.0,
+     "elevation": 47.0
+    },
+    {
+     "sourceId": "landxml:profile:landxml:alignment:2:1:design:P-Right:pvi:3",
+     "station": 260.0,
+     "elevation": 49.8
+    },
+    {
+     "sourceId": "landxml:profile:landxml:alignment:2:1:design:P-Right:pvi:4",
+     "station": 415.0,
+     "elevation": 46.7
+    }
+   ],
+   "verticalCurves": [
+    {
+     "sourceId": "landxml:profile:landxml:alignment:2:1:design:P-Right:curve:1",
+     "kind": "parabolic",
+     "station": 120.0,
+     "elevation": 47.0,
+     "length": 100.0,
+     "lengthIn": null,
+     "lengthOut": null,
+     "radius": null
+    },
+    {
+     "sourceId": "landxml:profile:landxml:alignment:2:1:design:P-Right:curve:2",
+     "kind": "unsymmetrical_parabolic",
+     "station": 260.0,
+     "elevation": 49.8,
+     "length": null,
+     "lengthIn": 40.0,
+     "lengthOut": 70.0,
+     "radius": null
+    }
+   ],
+   "gradeLines": []
   }
  ],
  "authored": {
@@ -600,5 +749,181 @@
     6406336.608993
    ]
   ]
+ },
+ "authoredVertical": {
+  "A-Left": {
+   "staStart": 1000.0,
+   "heights": [
+    [
+     1000.0,
+     20.0
+    ],
+    [
+     1110.0,
+     22.2
+    ],
+    [
+     1130.0,
+     22.525
+    ],
+    [
+     1150.0,
+     22.7
+    ],
+    [
+     1170.0,
+     22.724999999999998
+    ],
+    [
+     1190.0,
+     22.6
+    ],
+    [
+     1300.0,
+     21.5
+    ],
+    [
+     1388.341840575,
+     19.585926787551216
+    ],
+    [
+     1404.172381998,
+     19.305617585721848
+    ],
+    [
+     1420.0,
+     19.150665943712056
+    ],
+    [
+     1420.00292342,
+     19.150648894699998
+    ],
+    [
+     1435.833464843,
+     19.120991578639632
+    ],
+    [
+     1451.664006266,
+     19.216640062663373
+    ],
+    [
+     1530.0,
+     20.0
+    ]
+   ]
+  },
+  "A-Right": {
+   "staStart": 0.0,
+   "heights": [
+    [
+     0.0,
+     50.0
+    ],
+    [
+     70.0,
+     48.25
+    ],
+    [
+     95.0,
+     47.765625
+    ],
+    [
+     120.0,
+     47.5625
+    ],
+    [
+     145.0,
+     47.640625
+    ],
+    [
+     170.0,
+     48.0
+    ],
+    [
+     220.0,
+     49.0
+    ],
+    [
+     247.5,
+     49.309374999999996
+    ],
+    [
+     260.0,
+     49.29090909090909
+    ],
+    [
+     275.0,
+     49.18571428571428
+    ],
+    [
+     302.5,
+     48.87142857142857
+    ],
+    [
+     330.0,
+     48.4
+    ],
+    [
+     415.0,
+     46.7
+    ]
+   ]
+  }
+ },
+ "referents": {
+  "A-Left": {
+   "startStation": 1000.0,
+   "equations": [
+    {
+     "distanceAlong": 200.0,
+     "station": 1250.0,
+     "incomingStation": 1200.0,
+     "hasIncreasingStation": true,
+     "point": [
+      157971.306492,
+      6407003.004241
+     ]
+    }
+   ]
+  },
+  "A-Compound": {
+   "startStation": 250.0,
+   "equations": [
+    {
+     "distanceAlong": 80.0,
+     "station": 200.0,
+     "incomingStation": 330.0,
+     "hasIncreasingStation": true,
+     "point": [
+      159156.57345,
+      6406443.436371
+     ]
+    },
+    {
+     "distanceAlong": 150.0,
+     "station": 500.0,
+     "incomingStation": 270.0,
+     "hasIncreasingStation": false,
+     "point": [
+      159208.481592,
+      6406396.551705
+     ]
+    },
+    {
+     "distanceAlong": 270.0,
+     "station": 2000.0,
+     "incomingStation": 380.0,
+     "hasIncreasingStation": true,
+     "point": [
+      159317.19287,
+      6406348.483322
+     ]
+    }
+   ]
+  },
+  "A-Right": {
+   "startStation": 0.0,
+   "equations": []
+  }
  }
 }

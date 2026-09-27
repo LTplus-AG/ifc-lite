@@ -14,6 +14,9 @@ use nalgebra::Matrix4;
 
 mod transform;
 use transform::transform_disk;
+mod metrics;
+pub use metrics::{DirectrixMetrics, DirectrixSegmentMetrics};
+mod occurrence;
 mod operands;
 use operands::{is_boolean_operand, is_csg_select};
 mod placement;
@@ -26,20 +29,17 @@ const MAX_VISITED_ITEMS: usize = 100_000;
 const MAX_ITEM_DEPTH: usize = 128;
 
 /// One authored `IfcSweptDiskSolid` in an occurrence's body representation.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct SweptDiskOccurrence {
     pub solid_id: u32,
     pub directrix_id: u32,
     pub mapping_path: Vec<u32>,
     /// True when this solid is an operand of an enclosing CSG construction.
     pub source_modified: bool,
-    #[serde(rename = "Radius")]
     /// Effective world radius for a complete description; source radius in
     /// metres when status is unsupported (no world circular radius is implied).
     pub radius: f64,
-    #[serde(rename = "InnerRadius")]
     pub inner_radius: Option<f64>,
-    #[serde(rename = "Directrix")]
     pub directrix: Vec<AnalyticCurveSegment>,
     pub status: AnalyticStatus,
 }
@@ -245,8 +245,18 @@ pub fn extract_swept_disk_descriptions(
                             if matches!(disk.status, AnalyticStatus::Complete) {
                                 match transform_disk(&mut disk.segments, disk.radius, disk.inner_radius, &node.transform, unit_scale) {
                                     Ok((radius, inner_radius)) => {
-                                        disk.radius = radius;
-                                        disk.inner_radius = inner_radius;
+                                        match DirectrixMetrics::from_segments(&disk.segments) {
+                                            Ok(_) => {
+                                                disk.radius = radius;
+                                                disk.inner_radius = inner_radius;
+                                            }
+                                            Err(reason) => {
+                                                disk.status = AnalyticStatus::Unsupported(reason.to_string());
+                                                disk.segments.clear();
+                                                disk.radius *= unit_scale;
+                                                disk.inner_radius = disk.inner_radius.map(|r| r * unit_scale);
+                                            }
+                                        }
                                     }
                                     Err(reason) => {
                                         disk.status = AnalyticStatus::Unsupported(reason);

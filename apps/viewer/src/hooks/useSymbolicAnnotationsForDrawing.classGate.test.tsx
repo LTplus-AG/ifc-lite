@@ -9,18 +9,18 @@
  * that the predicate itself returns the right boolean in isolation (that's
  * `useSymbolicAnnotations.test.ts`).
  *
- * `Section2DPanel.tsx` (the file issue #2121 is about) cannot be rendered
+ * the 2D drawing view (`drawing/useDrawingLayers.ts` today; the file issue #2121 was about) cannot be rendered
  * under this repo's `tsx --test` runner: it imports `useIfc`, which imports
  * `src/utils/ifcConfig.ts`, which reads `import.meta.env` — `tsx` does not
  * populate that (Vite-only), so the import throws before any test body runs.
- * No existing test file in this repo imports `Section2DPanel` (verified:
- * `grep -rln "Section2DPanel" src --include="*.test.*"` is empty), so this is
+ * (Historical: no test then imported the drawing view; verified as
+ * `grep -rln "Section2DPanel" src --include="*.test.*"` being empty), so this is
  * a pre-existing gap, not something this change introduced.
  * `symbolicAnnotationsOverlayEnabled` was pulled out into
- * `useSymbolicAnnotations.ts` specifically so the gate `Section2DPanel` now
+ * `useSymbolicAnnotations.ts` specifically so the gate `useDrawingLayers` now
  * calls has a real, importable test surface; this file drives it through the
- * exact hook `Section2DPanel` calls, with the exact expression
- * `Section2DPanel` now uses at its call site.
+ * exact hook `useDrawingLayers` calls, with the exact expression
+ * `useDrawingLayers` now uses at its call site.
  */
 
 import '@/test/setup-dom.js';
@@ -142,7 +142,7 @@ async function parseAnnotationStore(): Promise<IfcDataStore> {
 // ─── Harness ────────────────────────────────────────────────────────────────
 
 /** Renders the real hook with `enabled` computed by the same expression
- *  `Section2DPanel.tsx` now uses at its `useSymbolicAnnotationsForDrawing`
+ *  `useDrawingLayers.ts` now uses at its `useSymbolicAnnotationsForDrawing`
  *  call site: `symbolicAnnotationsOverlayEnabled(showIfcAnnotations, status,
  *  typeVisibility.ifcAnnotations)`. `status='ready'` and `showIfcAnnotations
  *  = true` are held fixed (both already covered elsewhere); the variable

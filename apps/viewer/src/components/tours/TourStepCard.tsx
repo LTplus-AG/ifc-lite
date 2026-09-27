@@ -14,10 +14,13 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { computePosition, autoUpdate, offset, flip, shift, type Placement } from '@floating-ui/dom';
-import { Loader2, X } from 'lucide-react';
+import { X } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
+import { isTextEntryElement } from '@/lib/keyboard-event';
 import { abortTour, nextStep, runStepAction, skipStep } from '@/lib/tours/controller';
 import { useTourStore } from '@/lib/tours/tour-store';
 import type { TourDefinition, TourStep } from '@/lib/tours/types';
@@ -71,22 +74,29 @@ export function TourStepCard({ tour, step, stepIndex, targetEl }: TourStepCardPr
   // the card controls, without stealing focus from an input mid-typing.
   const cardRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const active = document.activeElement;
-    if (active instanceof HTMLElement && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+    if (isTextEntryElement(document.activeElement)) return;
     cardRef.current?.focus({ preventScroll: true });
   }, [stepIndex]);
 
   const showNext = !step.gate || gateBroken;
   const total = tour.steps.length;
+  // #5817: `role="dialog"` here is deliberately non-modal (no focus trap,
+  // no Radix wrap — a coachmark shouldn't block interacting with the
+  // spotlit target underneath it) and gets its accessible name via
+  // `aria-labelledby`, not a duplicated `aria-label` string, per the
+  // WAI-ARIA dialog pattern. The referenced element carries the exact same
+  // "step N of total: title" text `aria-label` used to hold.
+  const titleId = `tour-step-title-${step.id}`;
 
   return (
-    <div
+    // The anchored nonmodal card needs its measured div and dialog semantics.
+    // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+    <div role="dialog"
       ref={(el) => {
         ref.current = el;
         cardRef.current = el;
       }}
-      role="dialog"
-      aria-label={t('tours.tourStepCard.ariaLabel', { step: stepIndex + 1, total, title: step.title })}
+      aria-labelledby={titleId}
       tabIndex={-1}
       className={cn(
         'pointer-events-auto w-80 rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg outline-none',
@@ -109,33 +119,35 @@ export function TourStepCard({ tour, step, stepIndex, targetEl }: TourStepCardPr
             />
           ))}
         </div>
-        <Button
-          variant="ghost"
+        <IconButton
+          label={t('tours.tourStepCard.endTourAriaLabel')}
           size="icon-xs"
-          aria-label={t('tours.tourStepCard.endTourAriaLabel')}
           onClick={() => abortTour('close')}
           className="-mr-1.5 -mt-1.5 text-muted-foreground"
         >
           <X />
-        </Button>
+        </IconButton>
       </div>
 
-      <div className="mt-1.5 text-sm font-semibold">{step.title}</div>
-      <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{step.body}</p>
+      <span id={titleId} className="sr-only">
+        {t('tours.tourStepCard.ariaLabel', { step: stepIndex + 1, total, title: step.title })}
+      </span>
+      <div className="mt-1.5 text-sm font-semibold" aria-hidden="true">{step.title}</div>
+      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{step.body}</p>
 
       {redockedPanel && (
-        <p className="mt-2 text-[11px] text-muted-foreground">
+        <p className="mt-2 text-xs text-muted-foreground">
           {t('tours.tourStepCard.redockedNotice')}
         </p>
       )}
       {hintVisible && !showNext && (
-        <p className="mt-2 text-[11px] text-muted-foreground">
+        <p className="mt-2 text-xs text-muted-foreground">
           {t('tours.tourStepCard.stuckHint')}
         </p>
       )}
 
       <div className="mt-3 flex items-center justify-between gap-2">
-        <span className="text-[11px] tabular-nums text-muted-foreground">
+        <span className="text-xs tabular-nums text-muted-foreground">
           {stepIndex + 1} / {total}
         </span>
         <div className="flex items-center gap-1.5">
@@ -146,7 +158,7 @@ export function TourStepCard({ tour, step, stepIndex, targetEl }: TourStepCardPr
               disabled={demoLoading}
               onClick={() => void runStepAction()}
             >
-              {demoLoading && <Loader2 className="animate-spin" />}
+              {demoLoading && <Spinner />}
               {step.action.label}
             </Button>
           )}

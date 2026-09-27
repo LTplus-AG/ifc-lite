@@ -7,7 +7,6 @@
  */
 
 import type { TypeVisibility } from './types.js';
-import type { TessellationQuality } from '@ifc-lite/geometry';
 
 // Load-time geometry fidelity (mode, tier, sticky `?geomTier=` override) now
 // lives in its own module - it was the largest cohesive block here and this file
@@ -26,6 +25,7 @@ export {
   type GeometryMode,
 } from './geometryFidelity.js';
 import { getGeomTierOverride, getInitialGeometryMode } from './geometryFidelity.js';
+export { GEOM_WORKERS_STORAGE_KEY, getGeomWorkerOverride, clearGeomWorkerOverride } from './geomWorkerOverride.js';
 
 // ============================================================================
 // Camera Defaults
@@ -129,11 +129,6 @@ function getInitialMergeLayers(): boolean {
 }
 
 /**
- * localStorage key for the geometry-worker-count A/B override.
- */
-export const GEOM_WORKERS_STORAGE_KEY = 'ifc-lite-geom-workers';
-
-/**
  * localStorage key for the source-decoupled mesh-only cache KILL SWITCH. The
  * tier is on by default; this key holds `'0'` only when the user disabled it via
  * `?meshCache=0` (absent = default on). See `isMeshOnlyCacheEnabled`.
@@ -142,43 +137,6 @@ export const MESH_ONLY_CACHE_STORAGE_KEY = 'ifc-lite-mesh-cache';
 
 /** localStorage key for the active Hierarchy view mode. */
 export const HIERARCHY_MODE_STORAGE_KEY = 'hierarchy-mode';
-
-/**
- * Resolve an explicit geometry-worker count override for A/B tuning, or
- * `undefined` to use the engine's cores/memory heuristic.
- *
- * The optimal worker count is hardware-specific (thermal throttle on fanless
- * laptops vs sustained throughput on actively-cooled Pro/Max machines), so the
- * only honest way to find a host's sweet spot is to measure it. `?geomWorkers=N`
- * in the URL sets the override AND persists it to localStorage, so it survives
- * the reload that re-measuring a model requires (and a shared link carries it).
- * `?geomWorkers=0` (or `auto`) clears the override. The engine still clamps the
- * value to the memory budget — see `computeWorkerCount` — so this can't OOM.
- *
- * Sanity-bounded to [1, 16]; anything outside is ignored.
- */
-export function getGeomWorkerOverride(): number | undefined {
-  if (typeof window === 'undefined') return undefined;
-  try {
-    const param = new URLSearchParams(window.location.search).get('geomWorkers');
-    if (param != null) {
-      if (param === '0' || param === 'auto') {
-        localStorage.removeItem(GEOM_WORKERS_STORAGE_KEY);
-        return undefined;
-      }
-      const n = Number.parseInt(param, 10);
-      if (Number.isFinite(n) && n >= 1 && n <= 16) {
-        localStorage.setItem(GEOM_WORKERS_STORAGE_KEY, String(n));
-        return n;
-      }
-    }
-    const stored = Number.parseInt(localStorage.getItem(GEOM_WORKERS_STORAGE_KEY) ?? '', 10);
-    if (Number.isFinite(stored) && stored >= 1 && stored <= 16) return stored;
-  } catch {
-    /* SSR / blocked storage — fall through to the heuristic */
-  }
-  return undefined;
-}
 
 /**
  * Pure decision for the source-decoupled mesh-only cache tier, split out for
@@ -235,34 +193,24 @@ export function isMeshOnlyCacheEnabled(): boolean {
 }
 
 /**
- * localStorage key for the desktop toolbar style (issue #1686). `classic`
- * is the original single-strip toolbar; `ribbon` is the tabbed,
- * IFCFlux-style ribbon. Same sticky-preference pattern as the theme.
+ * Retired desktop-toolbar preference key. Keep only for one-time migration
+ * when a viewer opened before #5874 stored a classic choice.
  */
 export const TOOLBAR_STYLE_STORAGE_KEY = 'ifc-lite-toolbar-style';
 
-export type ToolbarStyle = 'classic' | 'ribbon';
-
-/**
- * Resolve the initial toolbar style from localStorage; default `ribbon`.
- *
- * The ribbon is the default toolbar. Only an explicitly stored `classic`
- * wins, so a user who switched back keeps the classic strip forever while
- * everyone else (and every new browser) lands on the ribbon. Exported for
- * the unit test - the module-level `UI_DEFAULTS` is computed once at import
- * and cannot be re-seeded from a test.
- */
-export function resolveInitialToolbarStyle(): ToolbarStyle {
-  if (typeof window === 'undefined') return 'ribbon';
+/** Clear the retired preference on startup; the ribbon is the only desktop toolbar. */
+export function clearRetiredToolbarStylePreference(): void {
+  if (typeof window === 'undefined') return;
   try {
-    return localStorage.getItem(TOOLBAR_STYLE_STORAGE_KEY) === 'classic' ? 'classic' : 'ribbon';
+    if (localStorage.getItem(TOOLBAR_STYLE_STORAGE_KEY) !== null) {
+      localStorage.removeItem(TOOLBAR_STYLE_STORAGE_KEY);
+    }
   } catch (err) {
-    // Blocked storage (Safari private mode): fall back to the default so the
-    // toolbar still renders, but say why the preference didn't stick.
-    console.warn('[toolbar-style] storage unavailable; using ribbon', err);
-    return 'ribbon';
+    console.warn('[toolbar-style] could not clear retired preference', err);
   }
 }
+
+clearRetiredToolbarStylePreference();
 
 /** Ribbon tab strip contexts, in strip order. */
 export type RibbonTabId = 'file' | 'home' | 'view' | 'elements' | 'analyze' | 'author';
@@ -351,12 +299,6 @@ export const UI_DEFAULTS = {
    * `undefined` = automatic tier selection, the normal case.
    */
   GEOM_TIER_OVERRIDE: getGeomTierOverride(),
-  /**
-   * Desktop toolbar style (issue #1686): the tabbed `ribbon` (default) or
-   * the original `classic` single strip. Read from localStorage on boot so
-   * the choice survives reloads.
-   */
-  TOOLBAR_STYLE: resolveInitialToolbarStyle(),
   /** Ribbon band collapsed to the tab strip only. */
   RIBBON_COLLAPSED: getInitialRibbonCollapsed(),
   /** Ribbon tab open on boot; session-local, never persisted. */

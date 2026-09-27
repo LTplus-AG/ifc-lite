@@ -18,6 +18,14 @@
 //! re-encoded per-batch blob matches what the live per-batch serializer
 //! (`serialize_to_parquet`, base offsets 0/0) would have produced for that
 //! same batch.
+//!
+//! A cross-batch client (`stream_shapes=cross-batch`, #5407) gets each batch
+//! as written instead, whole-stream offsets and all, with its bases stated
+//! beside it: [`split_into_stream_batches`]. A blob a cross-batch
+//! stream wrote cannot be re-based batch-locally at all, since its rows point
+//! into earlier row groups, so [`split_into_batches`] refuses it and a
+//! batch-local client is replayed the whole blob as one batch, which decodes
+//! correctly, only not progressively.
 
 use super::parquet::{frame_sections, write_parquet_buffer};
 use arrow::array::{Array, ArrayRef, UInt32Array};
@@ -35,6 +43,9 @@ pub struct ReplayBatch {
     /// per-batch `Batch` event carries.
     pub data: Bytes,
     pub mesh_count: usize,
+    /// `(vertex_base, index_base)` for a cross-batch replay; `None` when the
+    /// batch is batch-local.
+    pub bases: Option<(u32, u32)>,
 }
 
 /// Split a cached geometry blob (the inner section framing
@@ -67,7 +78,9 @@ pub fn split_into_batches(geometry: &[u8]) -> Option<Vec<ReplayBatch>> {
         // instead: this mesh row group's own `vertex_count` / `index_count`
         // columns must account for exactly the rows in the vertex / index
         // row groups beside it. (The index table is one row per TRIANGLE
-        // while `index_count` counts indices, hence the /3.)
+        // while `index_count` counts indices, hence the /3.) A group with a
+        // row pointing into an EARLIER one (a cross-batch blob, #5407) names
+        // more rows than it holds, and fails here.
         let vertex_rows = column_sum(&mesh_rb, "vertex_count", 1)?;
         let index_rows = column_sum(&mesh_rb, "index_count", 3)?;
         if vertex_rows != vertex_rb.num_rows() as u64 || index_rows != index_rb.num_rows() as u64 {
@@ -75,17 +88,90 @@ pub fn split_into_batches(geometry: &[u8]) -> Option<Vec<ReplayBatch>> {
         }
 
         let localized_mesh = localize_mesh_batch(&mesh_rb)?;
-        let mesh_buf = write_parquet_buffer(&localized_mesh).ok()?;
-        let vertex_buf = write_parquet_buffer(&vertex_rb).ok()?;
-        let index_buf = write_parquet_buffer(&index_rb).ok()?;
-        let framed = frame_sections(&mesh_buf, &vertex_buf, &index_buf).ok()?;
-
-        batches.push(ReplayBatch {
-            data: framed,
-            mesh_count: localized_mesh.num_rows(),
-        });
+        batches.push(encode_batch(&localized_mesh, &vertex_rb, &index_rb, None)?);
     }
     Some(batches)
+}
+
+/// Split a cached geometry blob into its batches for a CROSS-BATCH client
+/// (#5407): each batch keeps its whole-stream offsets and states the bases its
+/// vertex and index tables start at, exactly as the live cross-batch stream
+/// does. Works on a blob either kind of stream wrote, because a batch-local
+/// stream's cache rows are whole-stream too and simply never point backwards.
+///
+/// The batches are the MESH table's row groups; the vertex and index tables
+/// are not split by theirs. A batch whose every row points back emits no
+/// vertices, and an empty `write` adds no row group, so those two tables can
+/// hold fewer groups than there were batches. What locates a batch's slice
+/// instead is the planner's own invariant: a batch appends its new shapes
+/// contiguously at the running end, and every shape it emits is referenced by
+/// one of its rows, so the batch ends at the furthest range its rows name.
+/// The spans must tile both tables exactly, or the blob is refused (`None`).
+pub fn split_into_stream_batches(geometry: &[u8]) -> Option<Vec<ReplayBatch>> {
+    let (mesh_bytes, vertex_bytes, index_bytes) = split_geometry_sections(geometry)?;
+    let mesh = Section::open(mesh_bytes)?;
+    let vertex = Section::open(vertex_bytes)?.read_all()?;
+    let index = Section::open(index_bytes)?.read_all()?;
+    if mesh.row_groups() <= 1 {
+        return None;
+    }
+
+    let (mut vertex_base, mut index_base) = (0u64, 0u64);
+    let mut batches = Vec::with_capacity(mesh.row_groups());
+    for i in 0..mesh.row_groups() {
+        let mesh_rb = mesh.read_row_group(i)?;
+        let vertex_end = furthest_range_end(&mesh_rb, "vertex_start", "vertex_count")?.max(vertex_base);
+        let index_end = furthest_range_end(&mesh_rb, "index_start", "index_count")?.max(index_base);
+        if index_end % 3 != 0 || vertex_end > vertex.num_rows() as u64 || index_end / 3 > index.num_rows() as u64 {
+            return None;
+        }
+        let bases = (u32::try_from(vertex_base).ok()?, u32::try_from(index_base).ok()?);
+        let vertex_rb = vertex.slice(vertex_base as usize, (vertex_end - vertex_base) as usize);
+        let index_rb = index.slice((index_base / 3) as usize, ((index_end - index_base) / 3) as usize);
+        batches.push(encode_batch(&mesh_rb, &vertex_rb, &index_rb, Some(bases))?);
+        vertex_base = vertex_end;
+        index_base = index_end;
+    }
+    // Every vertex and triangle belongs to exactly one batch.
+    if vertex_base != vertex.num_rows() as u64 || index_base != 3 * index.num_rows() as u64 {
+        return None;
+    }
+    Some(batches)
+}
+
+fn encode_batch(
+    mesh: &RecordBatch,
+    vertex: &RecordBatch,
+    index: &RecordBatch,
+    bases: Option<(u32, u32)>,
+) -> Option<ReplayBatch> {
+    let mesh_buf = write_parquet_buffer(mesh).ok()?;
+    let vertex_buf = write_parquet_buffer(vertex).ok()?;
+    let index_buf = write_parquet_buffer(index).ok()?;
+    Some(ReplayBatch {
+        data: frame_sections(&mesh_buf, &vertex_buf, &index_buf).ok()?,
+        mesh_count: mesh.num_rows(),
+        bases,
+    })
+}
+
+/// The furthest `start + count` any row of `rb` names (0 for no rows).
+/// `None` when either column is missing or not `UInt32`.
+fn furthest_range_end(rb: &RecordBatch, start: &str, count: &str) -> Option<u64> {
+    let column = |name: &str| -> Option<UInt32Array> {
+        let idx = rb.schema().index_of(name).ok()?;
+        rb.column(idx).as_any().downcast_ref::<UInt32Array>().cloned()
+    };
+    let (starts, counts) = (column(start)?, column(count)?);
+    Some(
+        starts
+            .values()
+            .iter()
+            .zip(counts.values().iter())
+            .map(|(&s, &c)| u64::from(s) + u64::from(c))
+            .max()
+            .unwrap_or(0),
+    )
 }
 
 /// One Parquet section of the cached blob, with its footer parsed ONCE.
@@ -101,6 +187,18 @@ impl Section {
     fn open(bytes: Bytes) -> Option<Self> {
         let metadata = ArrowReaderMetadata::load(&bytes, ArrowReaderOptions::new()).ok()?;
         Some(Self { bytes, metadata })
+    }
+
+    /// The whole table as one `RecordBatch`, however many row groups it has
+    /// (none included).
+    fn read_all(&self) -> Option<RecordBatch> {
+        let schema = self.metadata.schema().clone();
+        let reader =
+            ParquetRecordBatchReaderBuilder::new_with_metadata(self.bytes.clone(), self.metadata.clone())
+                .build()
+                .ok()?;
+        let parts: Vec<RecordBatch> = reader.collect::<Result<_, _>>().ok()?;
+        arrow::compute::concat_batches(&schema, &parts).ok()
     }
 
     fn row_groups(&self) -> usize {

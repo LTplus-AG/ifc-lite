@@ -222,6 +222,7 @@ export class Sandbox {
     this.config = {
       permissions: { ...DEFAULT_PERMISSIONS, ...config.permissions },
       limits: { ...DEFAULT_LIMITS, ...config.limits },
+      network: config.network ?? { grants: [] },
     };
   }
 
@@ -265,9 +266,7 @@ export class Sandbox {
       this.vm = this.runtime.newContext();
 
       // Build the bim API inside the sandbox
-      const { logs, resetLogs, hostWork, dispose } = buildBridge(this.vm, this.sdk, this.config.permissions, {
-        sandboxSessionId: this.sessionId,
-      });
+      const { logs, resetLogs, hostWork, dispose } = buildBridge(this.vm, this.sdk, this.config.permissions, { sandboxSessionId: this.sessionId }, this.config.network.grants, this.config.network.transport);
       this.logs = logs;
       this.resetLogs = resetLogs;
       this.hostWork = hostWork;

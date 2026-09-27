@@ -22,17 +22,11 @@
  *   3. outbound, the user's edits on their PRIVATE model were mirrored into the
  *      shared room and applied to whatever entity the id resolved to there.
  *
- * The fixes are `applyRoomModelData` (room-model-apply.ts) and the resolvers in
- * room-model-target.ts, both unit-tested. THIS file pins the wiring, which is
- * the half that was wrong and the half no test holds: reverting the call sites
- * leaves `tsc --noEmit` clean and the whole viewer suite green, because the
- * collab session path needs jsdom, module mocking, `import.meta.env`,
- * IndexedDB and a websocket and so cannot be driven under `tsx --test`.
+ * `applyRoomModelData` and room-model-target.ts are unit-tested. This guard
+ * pins their call sites, which a typecheck or unit test does not cover: the
+ * collab session needs jsdom, IndexedDB, module mocks and a websocket.
  *
- * An absence claim over a few regions of two files is a lint, not a unit test,
- * so it lives here — `scripts/check-source-text-assertions.mjs` forbids exactly
- * this shape inside a test file, and `check-unbounded-frame-wait.mjs` /
- * `check-wasm-disposal.mjs` are the same shape for the same reason.
+ * The source guard belongs here; tests cannot assert on source text.
  *
  * Every check below fails closed: a region that cannot be located, or that no
  * longer routes through the by-id helper, is an error rather than a silent
@@ -67,6 +61,7 @@ const ROOT =
 
 const COLLAB_SLICE = 'apps/viewer/src/store/slices/collabSlice.ts';
 const MUTATION_SLICE = 'apps/viewer/src/store/slices/mutationSlice.ts';
+const MUTATION_WALL_RESIZE = 'apps/viewer/src/store/slices/mutation-wall-resize.ts';
 const ROOM_RECONSTRUCT = 'apps/viewer/src/lib/collab/room-reconstruct.ts'; // the recipient's reconstruct, since #4444
 
 /**
@@ -312,6 +307,7 @@ function assertRegion(reg, { banned, required, consequence }) {
 
 const collab = load(COLLAB_SLICE);
 const mutation = load(MUTATION_SLICE);
+const mutationWallResize = load(MUTATION_WALL_RESIZE);
 const reconstruct = load(ROOM_RECONSTRUCT);
 
 // ── 1. The recipient's re-derivation (#2705) ────────────────────────────────
@@ -519,7 +515,7 @@ const CALL_SITE_FLOOR = {
   mirrorPlacementEdit: 3,
   mirrorEntityRemove: 1,
   mirrorEntityCreate: 1, // runInStoreElementBuilder: every add*, addColumn included
-  mirrorEntityGeometry: 1,
+  mirrorEntityGeometry: 1, // refreshWallMeshIn: one mirror of the resized wall (#6232 re-mesh replaced the TS rebuild's two append paths)
   readCollabPlacement: 3,
   collabTranslateEntity: 2,
   collabRotateEntity: 1,
@@ -528,26 +524,28 @@ const CALL_SITE_FLOOR = {
   const entityActionNames = new Set(entityActions.map((a) => a.name));
   const seen = new Map();
   const CALL_RE = /get\(\)\.((?:mirror|collab|readCollab)[A-Za-z]*)\(\s*([A-Za-z0-9_.()!]*)/g;
-  for (const m of mutation.clean.matchAll(CALL_RE)) {
-    const [, name, firstArg] = m;
-    if (!entityActionNames.has(name)) continue;
-    seen.set(name, (seen.get(name) ?? 0) + 1);
-    if (firstArg !== 'modelId') {
-      fail([
-        `${MUTATION_SLICE}:${mutation.lineOf(m.index)}: \`${name}\` is handed \`${firstArg}\`, not \`modelId\`.`,
-        '',
-        `The room gate inside \`${name}\` trusts the modelId it is given. Handing it
+  for (const file of [mutation, mutationWallResize]) {
+    for (const m of file.clean.matchAll(CALL_RE)) {
+      const [, name, firstArg] = m;
+      if (!entityActionNames.has(name)) continue;
+      seen.set(name, (seen.get(name) ?? 0) + 1);
+      if (firstArg !== 'modelId') {
+        fail([
+          `${file.rel}:${file.lineOf(m.index)}: \`${name}\` is handed \`${firstArg}\`, not \`modelId\`.`,
+          '',
+          `The room gate inside \`${name}\` trusts the modelId it is given. Handing it
 anything but the model this edit was made ON — \`activeModelId\` above all —
 approves mirroring a PRIVATE model's edit into the shared room, which is the
 defect this guard exists to prevent.`,
-      ]);
+        ]);
+      }
     }
   }
   for (const [name, floor] of Object.entries(CALL_SITE_FLOOR)) {
     const count = seen.get(name) ?? 0;
     if (count < floor) {
       fail([
-        `collab call sites: \`${name}\` is called ${count}× in ${MUTATION_SLICE}, expected at least ${floor}.`,
+        `collab call sites: \`${name}\` is called ${count}× across ${MUTATION_SLICE} and ${MUTATION_WALL_RESIZE}, expected at least ${floor}.`,
         '',
         'A call site was removed or renamed. If the removal is deliberate, lower the',
         'floor in this guard in the same commit; otherwise an edit path silently',

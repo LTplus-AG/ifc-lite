@@ -132,15 +132,23 @@ const PINNED_VOLUME_M3: Option<f64> = None;
 // faces whose centroid is within 1 mm of the reference host; the manifold-gate
 // fallback carried a few such slivers and now keeps them, which also reads
 // 0.021 m3 more of the wall. Both gates together stayed at 552 / 24.103.
+//
+// #5573 (#5410): 422 -> 214 and 24.977 -> 33.474 m3 (manifold gate alone);
+// 552 -> 702 and 24.103 -> 34.559 m3 (both gates). Profile-hole side walls
+// are now wound out of the solid, and plan-rotated walls whose openings author
+// no depth are cut in the wall's own frame, so the gated fallback no longer
+// loses a third of the wall: both volumes now sit next to the default build's
+// 33.398 m3. Its unpaired edges moved in opposite directions under the two
+// gate combinations, so both are re-measured here, not assumed.
 #[cfg(all(feature = "csg_manifold_gate", not(feature = "csg_topology_gate")))]
-const PINNED_OPEN_EDGES: Option<i64> = Some(422);
+const PINNED_OPEN_EDGES: Option<i64> = Some(214);
 #[cfg(all(feature = "csg_manifold_gate", not(feature = "csg_topology_gate")))]
-const PINNED_VOLUME_M3: Option<f64> = Some(24.977);
+const PINNED_VOLUME_M3: Option<f64> = Some(33.474);
 
 #[cfg(all(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
-const PINNED_OPEN_EDGES: Option<i64> = Some(552);
+const PINNED_OPEN_EDGES: Option<i64> = Some(702);
 #[cfg(all(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
-const PINNED_VOLUME_M3: Option<f64> = Some(24.103);
+const PINNED_VOLUME_M3: Option<f64> = Some(34.559);
 
 #[test]
 fn v5c_dense_reveal_wall_not_torn() {
@@ -159,9 +167,10 @@ fn v5c_dense_reveal_wall_not_torn() {
              re-pinning."
         ),
     }
-    // The volume regression is the more serious half: the fallback does not
-    // merely re-fragment the surface, it removes a fifth to a quarter more of
-    // the wall. The remaining pinned configurations still regress here.
+    // Before #5573 the volume was the more serious half: the gated fallback
+    // removed a fifth to a quarter more of the wall. It now lands within ~1.2
+    // m3 of the default build's ~33.4 (a little over, not under); the pins keep
+    // any further movement visible.
     match PINNED_VOLUME_M3 {
         None => assert!(vol > 30.0, "V5C under-cut: volume {vol:.3} m³ collapsed (was ~33.4)"),
         Some(pinned) => assert!(

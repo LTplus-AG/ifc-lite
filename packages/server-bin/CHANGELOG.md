@@ -1,5 +1,29 @@
 # @ifc-lite/server-bin
 
+## 1.22.1
+
+### Patch Changes
+
+- [#5949](https://github.com/LTplus-AG/ifc-lite/pull/5949) [`68bf0f5`](https://github.com/LTplus-AG/ifc-lite/commit/68bf0f5a35c32b28574a95c184637206420d9bda) Thanks [@louistrue](https://github.com/louistrue)! - The release fallback no longer picks a release whose shared `SHA256SUMS` doesn't list this platform's archive. That release would download and then fail checksum verification, which aborted the install even when an older release could have worked. A SHA256SUMS-only release now counts only after its body is seen to list the archive; otherwise the lookup moves on to the next older release.
+
+## 1.22.0
+
+### Minor Changes
+
+- [#5734](https://github.com/LTplus-AG/ifc-lite/pull/5734) [`6c98f57`](https://github.com/LTplus-AG/ifc-lite/commit/6c98f579bdbd255573961732d49da1fddf87a831) Thanks [@louistrue](https://github.com/louistrue)! - Fall back to the newest older GitHub release that carries this platform's binary when the package version's own `v<version>` release is missing ([#5525](https://github.com/LTplus-AG/ifc-lite/issues/5525)). `npx @ifc-lite/server-bin` 404'd on every platform for 1.20.0 and 1.21.0 because those versions reached npm without a matching release. The fallback is found through the GitHub releases API, only considers releases that also publish a checksum, is SHA-256 verified like the primary download, and prints a warning naming both the requested and the used version. It only triggers on a 404, never on a network or server error. When no fallback is available, the error now says how to pin a version that has binaries instead of recommending the Docker template.
+
+### Patch Changes
+
+- [#5741](https://github.com/LTplus-AG/ifc-lite/pull/5741) [`f0e92a0`](https://github.com/LTplus-AG/ifc-lite/commit/f0e92a0e2f5acd0214d3d373facc286f2f8eef9d) Thanks [@louistrue](https://github.com/louistrue)! - Fix `GET /api/v1/cache/{key}` never hitting for the `cache_key` a `POST /api/v1/parse` returned, so `getCached(result.cache_key)` from `@ifc-lite/server-client` now returns the cached response instead of `null`: the route looks up the entry under the key the JSON parse route actually writes. Every Parquet replay (`POST /api/v1/parse/parquet` and `/parquet/optimized` hits, `GET /api/v1/cache/geometry/{hash}`, and the `parquet-stream` replay's `complete` event) now reports `stats.from_cache: true`, so `parseParquet()` no longer says `from_cache: false` on a warm cache.
+
+## 1.21.0
+
+### Minor Changes
+
+- [#5581](https://github.com/LTplus-AG/ifc-lite/pull/5581) [`4044f73`](https://github.com/LTplus-AG/ifc-lite/commit/4044f736ace389d7eaf043bba76dce691122985e) Thanks [@louistrue](https://github.com/louistrue)! - The streaming Parquet route can now share geometry across batches ([#5407](https://github.com/LTplus-AG/ifc-lite/issues/5407)). With `?parquet_layout=shared-shapes&stream_shapes=cross-batch`, `POST /api/v1/parse/parquet-stream` sends each distinct shape once for the whole stream, as `POST /api/v1/parse/parquet` already did for the whole model, instead of once per batch. You no longer have to pick between the small shared payload and the bounded memory of a streamed parse. A batch carries only the shapes no earlier batch sent. Its mesh rows can point back into earlier batches, and every `batch` event states `vertex_base` / `index_base`. Server memory stays bounded: across batches it keeps where each distinct shape landed, plus at most 256 MiB of template meshes for rotated repeats. On five fixtures, the streamed payload is 2.2x to 6.8x smaller than the batch-local shared stream, with the same vertex rows as the buffered route.
+  
+  It is a separate opt-in because a client that decodes each batch on its own would misread rows that point back. Without it, and on every other route, output is byte-identical to before. `stream_shapes=cross-batch` on the default flat layout answers `400`.
+
 ## 1.20.0
 
 ### Minor Changes

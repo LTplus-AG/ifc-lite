@@ -69,6 +69,7 @@ export type CapabilityScope =
   | 'export'
   | 'storage'
   | 'network'
+  | 'secret'
   | 'command'
   | 'ui';
 

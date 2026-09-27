@@ -28,8 +28,14 @@ export type ResolvedVisualEnhancement = {
     };
 };
 
-/** Accepted `separationLines.radius`, in pixels. */
-export const SEPARATION_RADIUS_RANGE_PX = { min: 1, max: 2 } as const;
+/**
+ * Accepted `separationLines.radius`, in pixels: the tap distance the edge
+ * pass (#5385) offsets its cardinal and (at `high` quality) diagonal
+ * samples by. Widened from 1-2 to 1-3 when the pass gained diagonal taps and
+ * a normal-crease/silhouette test alongside the entity-id test, so `high`
+ * quality has room to space its 8 taps out from the 4-tap `low` default.
+ */
+export const SEPARATION_RADIUS_RANGE_PX = { min: 1, max: 3 } as const;
 
 /**
  * `value` clamped to [min, max]; a missing or non-finite value keeps
@@ -95,7 +101,8 @@ export class VisualEnhancementResolver {
 export interface LivePostEffects {
     /** The quality to run ambient occlusion at, or null when it does not run. */
     ambientOcclusion: AoQuality | null;
-    separationLines: boolean;
+    /** The edge pass (#5385): entity-id, normal-crease and silhouette lines. Option name stays `separationLines`. */
+    edges: boolean;
 }
 
 /**
@@ -107,6 +114,6 @@ export function livePostEffects(ve: ResolvedVisualEnhancement, effectsLive: bool
     const aoQuality = ve.contactShading.quality;
     return {
         ambientOcclusion: live && aoQuality !== 'off' ? aoQuality : null,
-        separationLines: live && ve.separationLines.enabled && ve.separationLines.quality !== 'off',
+        edges: live && ve.separationLines.enabled && ve.separationLines.quality !== 'off',
     };
 }

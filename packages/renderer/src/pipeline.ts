@@ -11,12 +11,14 @@ import { mainShaderSource } from './shaders/main.wgsl.js';
 import { texturedShaderSource } from './shaders/textured.wgsl.js';
 import { packClipBox } from './clip-box.js';
 import { MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_BYTES, MESH_UNIFORM_FLOATS } from './mesh-rte-uniforms.js';
+import { packMeshMaterial } from './mesh-material.js';
 import {
     ENVIRONMENT_UNIFORM_SIZE,
     packEnvironmentUniforms,
     resolveEnvironment,
     type LightingEnvironment,
 } from './environment.js';
+import { SelectionColorUniform } from './overlay-theme-uniforms.js';
 
 /**
  * Bytes of the sun shadow uniform (#2670): lightViewProj mat4 (64) + two vec4
@@ -32,12 +34,15 @@ export class RenderPipeline {
     private instancedPipeline!: GPURenderPipeline;  // GPU-instancing: template (slot 0) + per-instance buffer (slot 1)
     private instancedTransparentPipeline: GPURenderPipeline | null = null;  // instanced pipeline with alpha blend (lens/x-ray/compare overlays); lazily built, null if unbuilt/rejected
     private makeInstancedTransparentPipeline: (() => GPURenderPipeline) | null = null;  // deferred factory (see constructor)
-    private makeQuantizedPipelineAsync: ((kind: 'opaque' | 'transparent' | 'overlay') => Promise<GPURenderPipeline>) | null = null;
+    private makeQuantizedPipelineAsync: ((kind: 'opaque' | 'transparent') => Promise<GPURenderPipeline>) | null = null;
     private quantizedPipelines: Partial<Record<'opaque' | 'transparent' | 'overlay', GPURenderPipeline>> = {};
     private instancedTransparentPipelineTried = false;  // built-or-failed once; don't retry a rejecting backend every frame
     private selectionPipeline: GPURenderPipeline;  // Pipeline for selected meshes (renders on top)
     private transparentPipeline: GPURenderPipeline;  // Pipeline for transparent meshes with alpha blending
-    private overlayPipeline: GPURenderPipeline;  // Pipeline for color overlays (lens) - renders at exact same depth
+    private overlayPipeline: GPURenderPipeline | null = null;  // deprecated equal-depth overlay (#6076); built only if getOverlayPipeline() is called
+    private makeOverlayPipeline!: () => GPURenderPipeline;
+    private readonly emptyEntityColorTable: GPUBuffer;  // header-only table bound until a scene writes one (#6076)
+    private entityColorTableBuffer: GPUBuffer;
     private texturedPipeline: GPURenderPipeline;  // Pipeline for textured meshes (#961): UV lane + albedo texture/sampler
     private texturedBindGroupLayout: GPUBindGroupLayout;  // group(0): uniform + texture + sampler
     private depthTexture: GPUTexture;
@@ -81,6 +86,7 @@ export class RenderPipeline {
     private dummyShadowTexture: GPUTexture;
     private dummyShadowView: GPUTextureView;
     private currentShadowView: GPUTextureView;
+    readonly selectionColorUniform: SelectionColorUniform; // (#5484) — Renderer.setOverlayTheme writes it via .update()
     private currentWidth: number;
     private currentHeight: number;
 
@@ -125,11 +131,8 @@ export class RenderPipeline {
             this.multisampleTextureView = this.multisampleTexture.createView();
         }
 
-        // Create uniform buffer for camera matrices, PBR material, section plane + clip box
-        // Layout: viewProj (64 bytes) + model (64 bytes) + baseColor (16 bytes) + metallicRoughness (8 bytes) +
-        //         sectionPlane (16 bytes: vec3 normal + float distance) + flags (16 bytes) +
-        //         clipBoxMin/max + quant params + appended RTE frame/origin = 336 bytes
-        // WebGPU requires uniform buffers to be aligned to 16 bytes
+        // Per-draw mesh uniform: camera, model, colour, material, section/clip, quant params,
+        // the appended RTE frame and overrideParams (MESH_UNIFORM_OFFSET, mesh-rte-uniforms.ts).
         this.uniformBuffer = this.device.createBuffer({
             size: this.getUniformBufferSize(), // keep in lockstep with the WGSL Uniforms struct
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -168,11 +171,9 @@ export class RenderPipeline {
                     visibility: GPUShaderStage.FRAGMENT,
                     sampler: { type: 'comparison' },
                 },
-                {
-                    binding: 3,
-                    visibility: GPUShaderStage.FRAGMENT,
-                    buffer: { type: 'uniform' },
-                },
+                { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // selectionColorUniform (#5484)
+                { binding: 5, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } }, // entity colour table (#6076)
             ],
         });
         this.environmentBuffer = this.device.createBuffer({
@@ -180,6 +181,7 @@ export class RenderPipeline {
             size: ENVIRONMENT_UNIFORM_SIZE,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
+        this.selectionColorUniform = new SelectionColorUniform(this.device);
         // Shadow-sampling resources. The comparison direction mirrors the
         // reverse-Z depth pass (a receiver is lit when its depth is ≥ the stored
         // closest-occluder depth). The dummy 1×1 depth texture is bound whenever
@@ -203,6 +205,8 @@ export class RenderPipeline {
         });
         this.dummyShadowView = this.dummyShadowTexture.createView();
         this.currentShadowView = this.dummyShadowView;
+        this.emptyEntityColorTable = this.device.createBuffer({ label: 'entity-color-table-empty', size: 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+        this.entityColorTableBuffer = this.emptyEntityColorTable;
         this.environmentBindGroup = this.buildEnvironmentBindGroup();
         this.updateEnvironment();
 
@@ -421,16 +425,8 @@ export class RenderPipeline {
                 vertex: instancedVertexStage,
             } as GPURenderPipelineDescriptor);
 
-        // Create overlay pipeline for lens color overrides
-        // Uses depthCompare 'equal' so it ONLY renders where original geometry already wrote depth.
-        // This prevents hidden entities from "leaking through" overlay batches.
-        // depthWriteEnabled: false — don't disturb the depth buffer for subsequent passes.
-        //
-        // Src-alpha blending on the COLOR target only — the second target is the
-        // objectId buffer used for GPU picking and must stay unblended so low-alpha
-        // ghosts don't corrupt picks. With srcFactor=src-alpha, alpha=1.0 callers
-        // (lens, active-phase paints) still composite fully opaque, so this is
-        // backward-compatible for every caller that doesn't set alpha < 1.
+        // Equal-depth overlay pipeline: unused since colour overrides shade in the base pass
+        // (#6076); built only on request, for the deprecated public getOverlayPipeline().
         const overlayPipelineDescriptor: GPURenderPipelineDescriptor = {
             layout: pipelineLayout,
             vertex: {
@@ -475,7 +471,7 @@ export class RenderPipeline {
             },
         } as GPURenderPipelineDescriptor;
 
-        this.overlayPipeline = this.device.createRenderPipeline(overlayPipelineDescriptor);
+        this.makeOverlayPipeline = () => this.device.createRenderPipeline(overlayPipelineDescriptor);
 
         // ── Quantized-vertex pipeline variants (issue #1682 phase 6) ──
         // Same fragment/blend/depth state as their f32 bases, but the
@@ -497,10 +493,7 @@ export class RenderPipeline {
             ],
         };
         this.makeQuantizedPipelineAsync = (kind) => {
-            const base =
-                kind === 'opaque' ? pipelineDescriptor :
-                kind === 'transparent' ? transparentPipelineDescriptor :
-                overlayPipelineDescriptor;
+            const base = kind === 'opaque' ? pipelineDescriptor : transparentPipelineDescriptor;
             return this.device.createRenderPipelineAsync({ ...base, vertex: quantizedVertex });
         };
 
@@ -592,7 +585,7 @@ export class RenderPipeline {
     ): void {
         // Create buffer with proper alignment:
         // viewProj (16) + model (16) + baseColor (4) + metallicRoughness (2) + padding (2)
-        // + sectionPlane/flags/clip (16) + quant(4) + RTE frame/origin/camera(32) = 92 floats.
+        // + sectionPlane/flags/clip (16) + quant(4) + RTE frame/origin/camera(32) + overrideParams(4) = 96 floats.
         const buffer = new Float32Array(MESH_UNIFORM_FLOATS);
         const flagBuffer = new Uint32Array(buffer.buffer, MESH_FLAGS_BYTE_OFFSET, 4); // flags at byte 176
 
@@ -610,13 +603,8 @@ export class RenderPipeline {
             buffer.set([1.0, 1.0, 1.0, 1.0], 32);
         }
 
-        // metallicRoughness: vec2<f32> at offset 36 (2 floats)
-        const metallic = material?.metallic ?? 0.0;
-        const roughness = material?.roughness ?? 0.6;
-        buffer[36] = metallic;
-        buffer[37] = roughness;
-
-        // padding at offset 38-39 (2 floats)
+        // metallicRoughness: vec2<f32> at offset 36 (2 floats) + padding
+        packMeshMaterial(buffer, color?.[3], material);
 
         // sectionPlane: vec4<f32> at offset 40 (4 floats - normal xyz + distance w)
         if (sectionPlane) {
@@ -656,7 +644,7 @@ export class RenderPipeline {
     async ensureQuantizedPipelines(): Promise<boolean> {
         const factory = this.makeQuantizedPipelineAsync;
         if (!factory) return false;
-        const kinds = ['opaque', 'transparent', 'overlay'] as const;
+        const kinds = ['opaque', 'transparent'] as const;
         try {
             for (const kind of kinds) {
                 if (!this.quantizedPipelines[kind]) {
@@ -671,7 +659,7 @@ export class RenderPipeline {
         }
     }
 
-    /** Cache-only reader for the quantized variants (see ensureQuantizedPipelines). */
+    /** Cache-only reader for the quantized variants (see ensureQuantizedPipelines); `'overlay'` is never built since #6076. */
     getQuantizedPipelineVariant(kind: 'opaque' | 'transparent' | 'overlay'): GPURenderPipeline | null {
         return this.quantizedPipelines[kind] ?? null;
     }
@@ -716,8 +704,18 @@ export class RenderPipeline {
                 { binding: 1, resource: this.currentShadowView },
                 { binding: 2, resource: this.shadowSampler },
                 { binding: 3, resource: { buffer: this.shadowUniformBuffer } },
+                { binding: 4, resource: { buffer: this.selectionColorUniform.buffer } },
+                { binding: 5, resource: { buffer: this.entityColorTableBuffer } },
             ],
         });
+    }
+
+    /** Bind the scene's entity colour table (#6076); null binds the empty one. Rebuilds only on change. */
+    setEntityColorTableBuffer(buffer: GPUBuffer | null): void {
+        const next = buffer ?? this.emptyEntityColorTable;
+        if (next === this.entityColorTableBuffer) return;
+        this.entityColorTableBuffer = next;
+        this.environmentBindGroup = this.buildEnvironmentBindGroup();
     }
 
     /**
@@ -846,8 +844,9 @@ export class RenderPipeline {
         return this.transparentPipeline;
     }
 
+    /** @deprecated Unused since #6076 (overrides shade from the entity colour table). TODO(remove-by: next major, #6076) */
     getOverlayPipeline(): GPURenderPipeline {
-        return this.overlayPipeline;
+        return (this.overlayPipeline ??= this.makeOverlayPipeline());
     }
 
     /** Textured-mesh pipeline (#961). */
@@ -919,8 +918,8 @@ export class RenderPipeline {
     }
 
     getUniformBufferSize(): number {
-        // 92 floats * 4 bytes: legacy material/clip/quant fields plus appended
-        // RTE view-projection and drawable high/low lanes. Must match WGSL and
+        // 96 floats * 4 bytes: legacy material/clip/quant fields plus appended
+        // RTE view-projection, drawable high/low lanes and overrideParams. Must match WGSL and
         // renderer's uniformScratch length.
         return MESH_UNIFORM_BYTES;
     }
@@ -943,6 +942,8 @@ export class RenderPipeline {
         this.uniformBuffer.destroy();
         this.environmentBuffer.destroy();
         this.shadowUniformBuffer.destroy();
+        this.selectionColorUniform.destroy();
         this.dummyShadowTexture.destroy();
+        this.emptyEntityColorTable.destroy();
     }
 }

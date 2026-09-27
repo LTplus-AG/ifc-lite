@@ -212,7 +212,7 @@ describe('useIfcLoader — a superseded cache-hit load must not fall through to 
   });
 });
 
-describe('useIfcLoader — the source-persisting tier gates on mtime before serving (#4269)', () => {
+describe('useIfcLoader — source-persisting cache invalidation (#4269, #5743)', () => {
   /** Wrap `setProgress` to count entries into the local WASM path, and prove
    *  the hook re-rendered over the wrapper (same technique as above). */
   async function countWasmEntries(): Promise<() => number> {
@@ -265,6 +265,34 @@ describe('useIfcLoader — the source-persisting tier gates on mtime before serv
     });
     return cacheKey;
   }
+
+  it('enters fresh parsing for unchanged source instead of serving revision-3 LV95 geometry (#5743)', async () => {
+    const file = buildStepFile('cache-lv95-revision.ifc', CACHE_SIZE_THRESHOLD + 16384);
+    const buffer = await file.arrayBuffer();
+    const currentKey = cacheKeyFor(buffer);
+    const oldKey = currentKey.replace(/-g\d+(?=-|$)/, '-g3');
+    assert.notEqual(oldKey, currentKey, 'the corrected geometry needs a new cache output revision');
+
+    const entryBuffer = await new BinaryCacheWriter().write(
+      buildMinimalCacheDataStore(),
+      undefined,
+      buffer,
+      { includeGeometry: false, omitSourceHash: true },
+    );
+    await setCached(oldKey, entryBuffer as ArrayBuffer, file.name, buffer.byteLength, buffer, {
+      lastModified: file.lastModified,
+    });
+    assert.ok(await getCached(oldKey), 'the old cache entry must exist before loading');
+    assert.equal(await getCached(currentKey), null, 'the new key must miss the old entry');
+
+    const wasmEntries = await countWasmEntries();
+    await act(async () => {
+      await Promise.allSettled([hookApi!.loadFile(file)]);
+    });
+
+    assert.equal(wasmEntries(), 1, 'the loader must enter the fresh WASM path');
+    assert.ok(await getCached(oldKey), 'the old entry was not the one served or overwritten');
+  });
 
   it('a hit whose stored mtime differs from the file is PURGED and reparsed, not served', async () => {
     // The #4269 defect: an in-place edit that preserves the byte length is

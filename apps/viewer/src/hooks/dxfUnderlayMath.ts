@@ -306,7 +306,7 @@ export function dxfUnderlayToDrawing(
  * Returns `null` (not NaN bounds) whenever any corner is non-finite (PR
  * #1965 review): a malformed `IfcMapConversion` that slips a NaN into
  * `mapToWorld` used to make `Math.min`/`Math.max` return NaN silently, and
- * the caller (`Section2DPanel.handleCenterDxfUnderlay`) would then write
+ * the caller (`useDrawingLayers`'s `handleCenterDxfUnderlay`) would then write
  * `offsetX: NaN, offsetY: NaN` straight into the stored placement — a
  * corruption that survives even toggling georeferencing back off, since the
  * NaN is now IN the placement, not just in the transform. A NaN bound is a
@@ -364,9 +364,10 @@ export function dxfUnderlayDrawingBounds(
  * this first iteration; fills (hatches) and text labels are not (tracked as
  * follow-up, not silently dropped — see the PR description). Per-DXF-layer
  * color is also not carried through: the renderer's 3D reference-line
- * pipeline (`setLineOverlay('dxf', …)` / `Renderer.setOverlayLineColor`) shares one
- * color across the grid/alignment/annotation/DXF overlay family, the same
- * way grid and alignment already do — see `section-2d-overlay.ts`.
+ * pipeline (`setLineOverlay('dxf', …)` / `Renderer.setOverlayTheme`'s
+ * `overlayLine` field) shares one color across the grid/alignment/annotation/DXF
+ * overlay family, the same way grid and alignment already do — see
+ * `section-2d-overlay.ts`.
  */
 export function dxfUnderlayToWorldLines3D(
   entry: DxfUnderlayState,

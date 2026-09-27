@@ -11,6 +11,7 @@
  * references versus embeds, and how alignment is replayed rather than baked in.
  */
 
+import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore, type FederatedModel } from '../store/index.js';
@@ -69,6 +70,7 @@ export function useFederationSetup() {
       ? sanitizeFilename(models[0].name, { fallback: 'federation' })
       : `federation-setup-${models.length}-models`;
     downloadFile(json, `${sanitizeFilename(stem, { fallback: 'federation' })}.federation.json`, 'application/json;charset=utf-8;');
+    trackExportCompleted({ format: 'json', surface: 'federation_panel' });
     return { ok: true };
   }, [anchorModelIdOverride]);
 

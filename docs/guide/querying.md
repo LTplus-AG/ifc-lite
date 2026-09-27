@@ -355,7 +355,7 @@ interface RelationshipsTable {
 
 ```sql
 -- Find walls with their storey names
--- ContainsElements edges run storey (source_id) -> element (target_id)
+-- IfcRelContainedInSpatialStructure edges run storey (source_id) -> element (target_id)
 SELECT
   e.express_id,
   e.name as wall_name,
@@ -364,7 +364,7 @@ FROM entities e
 JOIN relationships r ON e.express_id = r.target_id
 JOIN entities s ON r.source_id = s.express_id
 WHERE e.type LIKE 'IfcWall%'
-  AND r.rel_type = 'ContainsElements'
+  AND r.rel_type = 'IfcRelContainedInSpatialStructure'
   AND s.type = 'IfcBuildingStorey';
 
 -- Calculate total area by entity type

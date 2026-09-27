@@ -207,18 +207,20 @@ describe('robustFitBounds: incremental accumulator matches full rescan', () => {
 // 8. The fixtures below reproduce those measured layouts.
 
 /** An axis-aligned box mesh: its 8 corners, repeated up to `verts` vertices. */
-function box(min: [number, number, number], max: [number, number, number], verts = 24): RobustFitMeshInput {
+function box(min: [number, number, number], max: [number, number, number], verts = 24, ifcType?: string): RobustFitMeshInput {
   const positions = new Float32Array(verts * 3);
   for (let i = 0; i < verts; i++) {
     positions[i * 3] = i & 1 ? max[0] : min[0];
     positions[i * 3 + 1] = i & 2 ? max[1] : min[1];
     positions[i * 3 + 2] = i & 4 ? max[2] : min[2];
   }
-  return { positions };
+  return ifcType ? { positions, ifcType } : { positions };
 }
 
+const PROXY = 'IfcBuildingElementProxy';
+
 /** The geo-reference glyph: 1.6 x 0.1 x 1.7, 1272 vertices, ~30 m out. */
-const GLYPH = () => box([-29.6, -1.35, 13.3], [-28, -1.25, 15], 1272);
+const GLYPH = () => box([-29.6, -1.35, 13.3], [-28, -1.25, 15], 1272, PROXY);
 
 type Box = { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
 function assertBox(actual: Box | null | undefined, min: number[], max: number[], what: string) {
@@ -275,7 +277,7 @@ describe('robustFitBounds drops detached coordination markers (#5387)', () => {
     // under a tenth of the model's size, so the "tiny" branch drops it.
     const meshes: RobustFitMeshInput[] = [];
     for (let i = 0; i < 20; i++) meshes.push(box([8 + i * 1.8, -3.5, -57 + i], [10 + i * 1.8, 7.8, -50 + i]));
-    meshes.push(box([-0.9, 0.05, -0.9], [0.9, 0.15, 0.9], 1272));
+    meshes.push(box([-0.9, 0.05, -0.9], [0.9, 0.15, 0.9], 1272, PROXY));
     const result = robustFitBoundsFull(meshes);
     assert.ok(result?.robust, 'a robust box is produced');
     assert.ok(result.robust.min.x >= 8 - 1e-6, `the glyph is framed out: min.x ${result.robust.min.x}`);
@@ -299,8 +301,64 @@ describe('robustFitBounds drops detached coordination markers (#5387)', () => {
     assert.equal(robustFitBoundsFull(meshes)?.robust, null);
   });
 
-  it('never drops a majority: three meshes far apart stay framed together', () => {
-    const meshes = [box([0, 0, 0], [1, 1, 1]), box([100, 0, 0], [101, 1, 1]), box([200, 0, 0], [201, 1, 1])];
+  it('never drops a majority: two model meshes and two far markers stay framed together (#5633)', () => {
+    // The markers alone qualify as detached (tiny proxies far out); only the
+    // strict-minority guard keeps them: dropping 2 of 4 is not a minority.
+    const meshes = [
+      box([0, 0, 0], [10, 3, 5]), box([10, 0, 0], [20, 3, 5]),
+      box([-60, 0, 0], [-59, 0.1, 1], 24, PROXY), box([80, 0, 0], [81, 0.1, 1], 24, PROXY),
+    ];
     assert.equal(robustFitBoundsFull(meshes)?.robust, null);
+  });
+
+  it('never drops a majority summed across clustering passes (#5633)', () => {
+    // 3 model meshes, 2 tiny proxies beside them, 2 stray points 5 km out.
+    // Pass 1 drops the strays (2 of 7), pass 2 the proxies (2 of 5): each a
+    // minority on its own, 4 of 7 together. Only the cross-pass guard keeps
+    // the framing box from shrinking to 3 of 7 meshes.
+    const meshes = [
+      box([0, 0, 0], [10, 3, 5]), box([10, 0, 0], [20, 3, 5]), box([20, 0, 0], [30, 3, 5]),
+      box([-60, 0, 0], [-59, 0.1, 1], 24, PROXY), box([90, 0, 0], [91, 0.1, 1], 24, PROXY),
+      box([5000, 0, 0], [5000.01, 0.01, 0.01], 1), box([5000, 0, 3], [5000.01, 0.01, 3.01], 1),
+    ];
+    assert.equal(robustFitBoundsFull(meshes)?.robust ?? null, null);
+  });
+
+  // #5633 (follow-up review of #5460) ------------------------------------
+  /** A 25 x 8 x 20 m house of 20 wall-like meshes. */
+  const house = (): RobustFitMeshInput[] => {
+    const m: RobustFitMeshInput[] = [];
+    for (let i = 0; i < 20; i++) m.push(box([(i % 5) * 5, 0, Math.floor(i / 5) * 5], [(i % 5) * 5 + 5, 8, Math.floor(i / 5) * 5 + 5], 24, 'IfcWall'));
+    return m;
+  };
+
+  it('keeps a lamp post 0.8 model lengths from the house (#5633)', () => {
+    const meshes = [...house(), box([45, 0, 10], [45.5, 3, 10.5], 24, 'IfcLamp')];
+    assert.equal(robustFitBoundsFull(meshes)?.robust, null);
+  });
+
+  it('keeps two shrubs beside the house (#5633)', () => {
+    const meshes = [...house(), box([45, 0, 0], [46, 1, 1], 24, 'IfcGeographicElement'), box([45, 0, 18], [46, 1, 19], 24, 'IfcGeographicElement')];
+    assert.equal(robustFitBoundsFull(meshes)?.robust, null);
+  });
+
+  it('still drops the same object when it is a coordination-marker proxy (#5633)', () => {
+    const meshes = [...house(), box([45, 0, 10], [45.5, 3, 10.5], 24, PROXY)];
+    const robust = robustFitBoundsFull(meshes)?.robust;
+    assert.ok(robust && robust.max.x <= 25 + 1e-6, `marker framed out: ${JSON.stringify(robust)}`);
+  });
+
+  it('a stray point a kilometre out does not hide the glyph from a second clustering pass (#5633)', () => {
+    const houseA: RobustFitMeshInput[] = [];
+    for (let i = 0; i < 12; i++) houseA.push(box([3 + (i % 4), 0, -9 + (i % 3)], [6 + (i % 4), 3 + (i % 2), -4 + (i % 3)]));
+    const meshes = [...houseA, GLYPH(), box([1000, 0, 0], [1000.01, 0.01, 0.01], 1)];
+    assertBox(robustFitBoundsFull(meshes)?.robust, [3, 0, -9], [9, 4, -2], 'house framing');
+  });
+
+  it('does not act on a partial first streaming batch (#5633)', () => {
+    // Three columns of a larger model arrive first: framing a "main cluster"
+    // of two would crop the third, which is real structure.
+    const first = [box([0, 0, 0], [0.4, 3, 0.4], 24, 'IfcColumn'), box([6, 0, 0], [6.4, 3, 0.4], 24, 'IfcColumn'), box([40, 0, 0], [40.4, 3, 0.4], 24, 'IfcColumn')];
+    assert.equal(createRobustFitBoundsAccumulator().update(first, { streaming: true })?.robust, null);
   });
 });

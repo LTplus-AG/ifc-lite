@@ -15,6 +15,8 @@
 import type { TerrainWriter } from '../ifc-creator-terrain.js';
 import { isMappableSurface } from './refusals.js';
 import type { MappedAlignment } from './alignment-mapping.js';
+import type { MappedProfile } from './profile-mapping.js';
+import type { StationEquationMapping } from './station-equations.js';
 import type { LandXmlIfcCgPoint, LandXmlIfcSurface, LandXmlIfcUnits } from './source-types.js';
 
 /** Deterministic GlobalId from a LandXML source id, passed in to avoid an import cycle. */
@@ -98,7 +100,11 @@ function surveyProperties(point: LandXmlIfcCgPoint, location: readonly [number, 
 export function writeSurfaces(
   terrain: TerrainWriter, surfaces: readonly LandXmlIfcSurface[], units: LandXmlIfcUnits, swap: boolean,
   landXmlGlobalId: GlobalIdOf,
-): { surfaces: number; vertices: number; triangles: number; samples: Array<[number, number]> } {
+): {
+  surfaces: number; vertices: number; triangles: number; samples: Array<[number, number]>;
+  elements: Array<{ sourceId: string; expressId: number }>;
+} {
+  const elements: Array<{ sourceId: string; expressId: number }> = [];
   let written = 0;
   let vertices = 0;
   let triangles = 0;
@@ -110,18 +116,19 @@ export function writeSurfaces(
     // Unreachable for an all-hidden surface — `isMappableSurface` refuses it by
     // name first. Kept as a guard because CoordIndex is LIST [1:?].
     if (faces.length === 0) continue;
-    terrain.addSurface({
+    const { elementId } = terrain.addSurface({
       Name: surface.name,
       GlobalId: landXmlGlobalId(surface.sourceId),
       Coordinates: coordinates,
       Triangles: faces,
     });
+    elements.push({ sourceId: surface.sourceId, expressId: elementId });
     written += 1;
     vertices += coordinates.length;
     triangles += faces.length;
     for (const [x, y] of coordinates) samples.push([x, y]);
   }
-  return { surfaces: written, vertices, triangles, samples };
+  return { surfaces: written, vertices, triangles, samples, elements };
 }
 
 export function writeSurveyPoints(
@@ -161,14 +168,33 @@ export function writeSurveyPoints(
  */
 export function writeAlignments(
   terrain: TerrainWriter, alignments: readonly MappedAlignment[], landXmlGlobalId: GlobalIdOf,
+  profiles: readonly MappedProfile[] = [],
+  stationing: ReadonlyMap<string, StationEquationMapping> = new Map(),
 ): Array<[number, number]> {
   const samples: Array<[number, number]> = [];
   for (const alignment of alignments) {
+    // At most one: `mapProfiles` refuses every design profile of an alignment
+    // that has more than one (§12.2).
+    const profile = profiles.find((candidate) => candidate.alignmentSourceId === alignment.sourceId);
     terrain.addAlignment({
+      ...(profile ? {
+        Vertical: { Name: profile.name, GlobalId: landXmlGlobalId(profile.sourceId), Segments: profile.segments },
+      } : {}),
       Name: alignment.name,
       GlobalId: landXmlGlobalId(alignment.sourceId),
       StartStation: alignment.startStation,
       Segments: alignment.segments,
+      // §14: each written equation is an IfcReferent whose GlobalId derives
+      // from the equation's own source id.
+      StationEquations: (stationing.get(alignment.sourceId)?.equations ?? []).map((equation) => ({
+        DistanceAlong: equation.distanceAlong,
+        Station: equation.station,
+        IncomingStation: equation.incomingStation,
+        HasIncreasingStation: equation.increasing,
+        Role: equation.sourceId.startsWith(`${alignment.sourceId}:`)
+          ? equation.sourceId.slice(alignment.sourceId.length + 1)
+          : equation.sourceId,
+      })),
       guidFor: (role) => landXmlGlobalId(`${alignment.sourceId}:${role}`),
     });
     for (const segment of alignment.segments) samples.push([segment.start[0], segment.start[1]]);

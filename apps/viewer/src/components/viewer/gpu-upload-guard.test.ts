@@ -97,7 +97,7 @@ describe('runGpuUpload error-tracking dedupe (#4885)', () => {
   it('tags device_lost_at_time on a gpu_alloc_failed capture when the caller reports the device lost', () => {
     const capture = mock.method(posthog, 'captureException', () => undefined);
     try {
-      runGpuUpload('setSpaceOverlayMeshes', () => { throw new RangeError(GPU_OOM); }, {
+      runGpuUpload('setAuthoringOverlayMeshes:spaceSketch', () => { throw new RangeError(GPU_OOM); }, {
         isDeviceLost: () => true,
       });
       const props = capture.mock.calls[0]?.arguments[1] as Record<string, unknown>;

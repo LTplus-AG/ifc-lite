@@ -9,7 +9,8 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import { Loader2, XCircle } from 'lucide-react';
+import { XCircle } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -366,7 +367,7 @@ export function BCFServerConnectForm({
 
       <div className="flex justify-end">
         <Button onClick={() => void handleConnect()} disabled={connectDisabled}>
-          {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {busy && <Spinner size="md" className="mr-2" />}
           {t('bcf.serverConnect.connect')}
         </Button>
       </div>

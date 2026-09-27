@@ -15,6 +15,7 @@
 use crate::types::MeshData;
 use ifc_lite_geometry::{collate_refs_in_basis, InstanceMeshRef, Matrix4};
 use rustc_hash::FxHashMap;
+use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};
 
 /// Content-hash fallback used by BOTH writers: `collate_rotation_aware_placements`
@@ -299,13 +300,18 @@ pub(crate) const IDENTITY_ROTATION: [f32; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.
 /// or `None` when the caller genuinely has no `ProcessingResult` to read it off
 /// (a per-batch streaming writer, a test over synthetic meshes) and the
 /// vertices are therefore native.
-pub(crate) fn collate_rotation_aware_placements(
-    meshes: &[MeshData],
+///
+/// Generic over [`Borrow`] so the streaming route can put an earlier batch's
+/// retained templates in front of the current batch (#5407) as a slice of
+/// references, without cloning the batch to build one contiguous slice.
+pub(crate) fn collate_rotation_aware_placements<M: Borrow<MeshData>>(
+    meshes: &[M],
     baked_basis: Option<&Matrix4<f64>>,
 ) -> FxHashMap<usize, RotatedPlacement> {
     let refs: Vec<InstanceMeshRef> = meshes
         .iter()
-        .map(|m| InstanceMeshRef {
+        .map(Borrow::borrow)
+        .map(|m: &MeshData| InstanceMeshRef {
             positions: &m.positions,
             normals: &m.normals,
             indices: &m.indices,
@@ -331,6 +337,7 @@ pub(crate) fn collate_rotation_aware_placements(
     for tmpl in &collated.templates {
         let is_rigid = tmpl.occurrences.iter().any(|o| {
             meshes[o.mesh_index]
+                .borrow()
                 .instance
                 .as_ref()
                 .and_then(|m| m.canonical_transform)
@@ -339,12 +346,12 @@ pub(crate) fn collate_rotation_aware_placements(
         if is_rigid {
             continue;
         }
-        let template = &meshes[tmpl.template_index];
+        let template = meshes[tmpl.template_index].borrow();
         let mut group: Vec<(usize, [f64; 3], [f64; 9])> =
             Vec::with_capacity(tmpl.occurrences.len());
         let mut all_verified = true;
         for occ in &tmpl.occurrences {
-            let target = &meshes[occ.mesh_index];
+            let target = meshes[occ.mesh_index].borrow();
             let rel: [f64; 16] = occ.transform.map(|v| v as f64);
             let (max_err, origin_zup, rotation_zup) =
                 verify_and_derive_placement(template, target, &rel);

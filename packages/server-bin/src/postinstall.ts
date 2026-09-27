@@ -45,8 +45,7 @@ async function main() {
     console.warn(
       `\n[ifc-lite-server] Warning: Failed to download binary.\n` +
       `Error: ${error instanceof Error ? error.message : String(error)}\n` +
-      `You can download manually later with: npx @ifc-lite/server-bin download\n` +
-      `Or use Docker: npx create-ifc-lite my-app --template server`
+      `You can download manually later with: npx @ifc-lite/server-bin download`
     );
   }
 }

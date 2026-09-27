@@ -83,8 +83,6 @@ import {
   matchPropertyRule,
   matchQuantityRule,
   matchAttributeRule,
-  defaultStoreyName,
-  storeyMatchesRefs,
   materialNamesOf, materialMatchCandidates,
   matchClassificationRule, matchParentRule,
   elevationOf,
@@ -92,9 +90,11 @@ import {
   type PsetRows,
   type QtyRows,
 } from './filter-match.js';
+import { defaultStoreyName, storeyMatchesRefs } from './filter-storey.js';
 import { resolveEntityPredefinedType } from './entity-predefined-type.js';
 import { matchGroupRule } from './filter-group-rule.js';
 import { matchModelFactRule } from './filter-model-fact.js';
+import { assertListConditionsAnswerable, matchListConditionRule, type ListConditionMatcher } from './filter-list-condition.js';
 import { readsThroughSubject } from './subject-read-options.js';
 import { matchRuleThroughSubject } from './subject-match.js';
 
@@ -128,6 +128,8 @@ export interface EvaluateOptions {
    *  UNRESOLVED and matches nothing — absent means "no tags exist", so every
    *  rule naming a tag is unresolved, never silently broad. */
   definedModelTagIds?: ReadonlySet<string>;
+  /** Answers `listCondition` rules for this model (#6190); see `EvaluatorModel.listConditions`. */
+  listConditions?: ListConditionMatcher;
 }
 
 const DEFAULT_LIMIT = 5_000;
@@ -149,6 +151,7 @@ export function evaluateFilterRules(
   options: EvaluateOptions = {},
 ): FilteredElement[] {
   if (rules.length === 0) return [];
+  assertListConditionsAnswerable(rules, [{ id: modelId, store, listConditions: options.listConditions }]);
 
   const limit = options.limit ?? DEFAULT_LIMIT;
   const orderedRules = orderRulesByCost(rules);
@@ -156,23 +159,11 @@ export function evaluateFilterRules(
     selectIterationSource(store, rules, combinator, options.candidateExpressIds, modelId),
   );
   const out: FilteredElement[] = [];
-  const ctx: EvalContext = {
-    store,
-    modelId,
-    scope: {
-      filterIdentity: options.modelFilterIdentity ?? modelId,
-      tagIds: options.modelTagIds,
-      definedModelTagIds: options.definedModelTagIds ?? NO_MODEL_TAGS,
-    },
-    table: store.entities,
-    options,
-    hasPropertyRule: orderedRules.some((r) => r.kind === 'property'),
-    hasQuantityRule: orderedRules.some((r) => r.kind === 'quantity'),
-    hasMaterialRule: orderedRules.some((r) => r.kind === 'material'),
-    hasClassificationRule: orderedRules.some((r) => r.kind === 'classification'),
-    hasAttributeRule: orderedRules.some((r) => r.kind === 'attribute'),
-    typePsetCache: new Map(),
-  };
+  const ctx = evalContext(store, modelId, {
+    filterIdentity: options.modelFilterIdentity ?? modelId,
+    tagIds: options.modelTagIds,
+    definedModelTagIds: options.definedModelTagIds ?? NO_MODEL_TAGS,
+  }, options, orderedRules, undefined, options.listConditions);
 
   for (const expressId of iterIds) {
     if (out.length >= limit) break;
@@ -220,6 +211,8 @@ export interface EvaluatorModel {
   filterIdentity?: string;
   tagIds?: ReadonlySet<string>;
   store: IfcDataStore | null; mutationView?: MutablePropertyView; // #4946
+  /** Host reader for `listCondition` rules (#6190): `@ifc-lite/lists`' `listConditionMatcher(provider)`. */
+  listConditions?: ListConditionMatcher;
 }
 
 export async function evaluateFilterRulesFederated(
@@ -229,6 +222,7 @@ export async function evaluateFilterRulesFederated(
   options: FederatedEvaluateOptions = {},
 ): Promise<FilteredElement[]> {
   if (rules.length === 0) return [];
+  assertListConditionsAnswerable(rules, models);
 
   const limit = options.limit ?? DEFAULT_LIMIT;
   const chunkSize = options.chunkSize ?? DEFAULT_CHUNK_SIZE;
@@ -243,6 +237,7 @@ export async function evaluateFilterRulesFederated(
     modelId: string;
     scope: ModelScope;
     store: IfcDataStore; mutationView: MutablePropertyView | undefined; // #4946
+    listConditions: ListConditionMatcher | undefined;
     iter: ArrayLike<number> | Iterable<number>;
     total: number;
   }
@@ -266,7 +261,7 @@ export async function evaluateFilterRulesFederated(
     plans.push({
       modelId: m.id,
       scope,
-      store: m.store, mutationView: m.mutationView,
+      store: m.store, mutationView: m.mutationView, listConditions: m.listConditions,
       iter: arr ?? source,
       total: arr ? arr.length : -1,
     });
@@ -279,19 +274,7 @@ export async function evaluateFilterRulesFederated(
     if (out.length >= limit) break;
     if (signal?.aborted) throwAbort(signal);
 
-    const ctx: EvalContext = {
-      store: plan.store,
-      modelId: plan.modelId,
-      scope: plan.scope, mutationView: plan.mutationView,
-      table: plan.store.entities,
-      options,
-      hasPropertyRule: orderedRules.some((r) => r.kind === 'property'),
-      hasQuantityRule: orderedRules.some((r) => r.kind === 'quantity'),
-      hasMaterialRule: orderedRules.some((r) => r.kind === 'material'),
-      hasClassificationRule: orderedRules.some((r) => r.kind === 'classification'),
-      hasAttributeRule: orderedRules.some((r) => r.kind === 'attribute'),
-      typePsetCache: new Map(),
-    };
+    const ctx = evalContext(plan.store, plan.modelId, plan.scope, options, orderedRules, plan.mutationView, plan.listConditions);
 
     // Walk the per-model iter in chunkSize-sized strides, yielding the
     // event loop between chunks. ArrayLike fast-path uses index access;
@@ -366,6 +349,20 @@ interface EvalContext {
    *  one parse per distinct type — see the AGENTS.md §2 large-loop
    *  warning this module already guards against for instance psets. */
   typePsetCache: Map<number, TypePsetList>;
+  listConditions?: ListConditionMatcher;
+}
+
+function evalContext(
+  store: IfcDataStore, modelId: string, scope: ModelScope, options: EvaluateOptions,
+  rules: readonly FilterRule[], mutationView?: MutablePropertyView, listConditions?: ListConditionMatcher,
+): EvalContext {
+  const has = (kind: FilterRule['kind']) => rules.some((r) => r.kind === kind);
+  return {
+    store, modelId, scope, mutationView, table: store.entities, options,
+    hasPropertyRule: has('property'), hasQuantityRule: has('quantity'), hasMaterialRule: has('material'),
+    hasClassificationRule: has('classification'), hasAttributeRule: has('attribute'),
+    typePsetCache: new Map(), listConditions,
+  };
 }
 
 function evaluateOneEntity(
@@ -381,23 +378,24 @@ function evaluateOneEntity(
   // rules check first; AND short-circuit on a cheap miss skips the
   // parse entirely.
   let psetCache: PsetRows | null = null;
+  let legacyPsetCache: PsetRows | null = null;
+  let sourcePsets: [TypePsetList, TypePsetList] | null = null;
   let qtyCache: QtyRows | null = null;
   let matCache: string[] | null = null;
   let classCache: readonly ClassificationInfo[] | null = null;
   let attrCache: AttrRows | null = null;
-  const psetsFor = (): PsetRows => {
-    if (!psetCache) {
-      const ownSets = ownPropertySetsFor(ctx.store, expressId, ctx.mutationView); // #4946, mutation-aware
-      const typeSets = getInheritedTypePsets(ctx, expressId);
-      // IFC inheritance is per-PROPERTY, not per-set, and the occurrence's
-      // own value wins on a name collision — same rule the IDS bridge
-      // already applies (`mergeInheritedPropertySets`, packages/parser).
-      // A type-only pset (nothing on the instance) is appended as-is, so
-      // `isSet`/`isNotSet` now also see properties that exist ONLY on the
-      // type — a deliberate presence-semantics change (was instance-only).
-      psetCache = flattenPsets(mergeInheritedPropertySets(ownSets, typeSets));
+  const psetsFor = (legacyListFirst = false): PsetRows => {
+    sourcePsets ??= [ownPropertySetsFor(ctx.store, expressId, ctx.mutationView),
+      getInheritedTypePsets(ctx, expressId)]; // #4946, mutation-aware
+    if (legacyListFirst) {
+      // V1 Lists search ALL occurrence sets before the TYPE fallback. A
+      // per-property merge could insert a type value into the first own set
+      // ahead of a matching value in the second own set.
+      return legacyPsetCache ??= flattenPsets([...sourcePsets[0], ...sourcePsets[1]], true);
     }
-    return psetCache;
+    // Canonical Rules inheritance is per-property: own values win a name
+    // collision, while type-only properties remain visible in a shared set.
+    return psetCache ??= flattenPsets(mergeInheritedPropertySets(sourcePsets[0], sourcePsets[1]));
   };
   const qtysFor = (): QtyRows => {
     if (!qtyCache) qtyCache = flattenQtys(quantitySetsFor(ctx.store, expressId, ctx.mutationView));
@@ -484,7 +482,7 @@ function evaluateRule(
   rule: FilterRule,
   ctx: EvalContext,
   expressId: number,
-  psetsFor: (() => PsetRows) | null,
+  psetsFor: ((legacyListFirst?: boolean) => PsetRows) | null,
   qtysFor: (() => QtyRows) | null,
   matNamesFor: (() => string[]) | null,
   classFor: (() => readonly ClassificationInfo[]) | null,
@@ -525,7 +523,7 @@ function evaluateRule(
     }
     case 'property':
       if (readsThroughSubject(rule)) return matchRuleThroughSubject(rule, ctx.store, expressId);
-      return psetsFor ? matchPropertyRule(rule, psetsFor()) : false;
+      return psetsFor ? matchPropertyRule(rule, psetsFor(rule.legacyListFirst)) : false;
     case 'quantity':
       if (readsThroughSubject(rule)) return matchRuleThroughSubject(rule, ctx.store, expressId);
       return qtysFor ? matchQuantityRule(rule, qtysFor()) : false;
@@ -550,6 +548,7 @@ function evaluateRule(
     case 'parent': return matchParentRule(rule, ctx.store, expressId);
     case 'group': return matchGroupRule(rule, ctx.store, expressId);
     case 'modelFact': return matchModelFactRule(rule, ctx.store);
+    case 'listCondition': return matchListConditionRule(rule, expressId, ctx.listConditions);
   }
 }
 
@@ -568,15 +567,6 @@ function relatingTypeNameOf(ctx: EvalContext, expressId: number): string | undef
 // ── Exposed for tests ────────────────────────────────────────────────────────
 
 export const __internal = {
-  flattenPsets,
-  flattenQtys,
-  stringifyValue,
-  matchPropertyRule,
-  matchQuantityRule,
-  matchAttributeRule,
-  materialNamesOf,
-  matchClassificationRule,
-  elevationOf,
-  orderRulesByCost,
-  selectIterationSource,
+  flattenPsets, flattenQtys, stringifyValue, matchPropertyRule, matchQuantityRule, matchAttributeRule,
+  materialNamesOf, matchClassificationRule, elevationOf, orderRulesByCost, selectIterationSource,
 };

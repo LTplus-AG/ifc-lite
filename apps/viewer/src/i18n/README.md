@@ -50,27 +50,16 @@ locale is valid.
 The ribbon toolbar catalogue covers the default toolbar's own chrome: tab
 strip, group names, button labels, tooltips and aria-labels on all six tabs,
 and the ribbon switch notice. Labels owned by shared registries (camera
-commands, exporters, extension panels), the classic `MainToolbar`, and the
-rest of the viewer's panels and dialogs are not converted yet.
+commands, exporters, extension panels), and the rest of the viewer's panels
+and dialogs are not converted yet. The retired classic toolbar's catalogue
+was removed with its renderer (#5874).
 
-The main-toolbar catalogue (#4918 slice 1) covers the classic single-strip
-`MainToolbar`'s own chrome: file operations, the Panels/Edit-properties/View
-options menus' own labels, tool buttons, the selection action cluster, and
-the meta cluster (theme, info). It deliberately does not cover the shared
-command surfaces the ribbon also renders — camera commands, the export menu,
-workspace-panel toggle lists, and the class-visibility body — those are
-slice 2 of the #4918 sweep. The #4918 grab-bag slice added one more key,
-`mainToolbar.editModeShortcutHint` ('E'): the bare keyboard-shortcut letter
-next to the Edit-mode toggle trips the gate the same way the Measure
-catalogue's bare "m" unit symbol does (see below).
-
-The shared-commands catalogue (#4918 slice 2) covers the command lists both
-`MainToolbar` and the ribbon render from: the export registry
-(`export-commands.ts`, rendered by `ClassicExportMenuItems` /
-`RibbonExportGroup`), the camera command registry (`camera-commands.ts`,
-rendered by `CameraCommandMenuItems` / `ViewTab`), the bottom-panel and
-author-panel toggle lists (`BottomPanelMenuItems`, `AuthorPanelMenuItems`),
-and the class-visibility dropdown body (`ClassVisibilityMenuContent`). The
+The shared-commands catalogue (#4918 slice 2) covers the ribbon, palette and
+mobile command lists: the export registry (`export-commands.ts`, rendered by
+`RibbonExportGroup` and the palette/mobile commands), the camera command registry (`camera-commands.ts`,
+rendered by `ViewTab`), panel titles rendered by the ribbon's Analyze and
+Author tabs, and the class-visibility dropdown body
+(`ClassVisibilityMenuContent`). The
 two data-only registries carry a translation key per row rather than calling
 `t()` themselves (no React import), the same pattern `sectionConstants.ts`'s
 `AXIS_INFO` uses; their renderers call `t(row.xKey)`. It deliberately does
@@ -89,7 +78,7 @@ under its module-size budget. Recent-file names, script-template labels,
 tour titles, and extension-contributed labels stay uncatalogued, same
 reasoning as slice 2: each is runtime content, not a literal in this repo.
 
-The Measure tool catalogue (#4918 slice 6, tools) covers `MeasurePanel.tsx`,
+The Measure tool catalogue (#4918 slice 6, tools) covers `MeasurePanel.tsx` (now the HUD bar `MeasureToolbar.tsx`, `MeasureHudReadouts.tsx` and the `MeasurementsPanel.tsx` side panel, #5502),
 `MeasureQuantities.tsx`, `MeasurePointReadout.tsx`, `MeasurementVisuals.tsx`,
 and the shared georeferenced readout `measure-modes/geo-readout.tsx`
 (`measure.en.ts`). Measurement unit *symbols* (`m`, `m²`, `mm`, `°`) stay
@@ -114,10 +103,11 @@ The saved-list builder catalogue (#4918 slice 6, lists) covers
 `lists.scheduleTable.*`, `lists.groupingBar.*`, `lists.modelTagScope.*`,
 `lists.columnMenu.*`, `lists.errorBox.*`).
 
-The 2D-section workspace catalogue (#4918 viewer-panels slice) covers
-`Section2DPanel.tsx`: header controls and overflow menus, drawing modes,
-annotation tools and guidance, export/print prompts, generation/error states,
-empty-state and resize accessibility text (`section-2d.en.ts`). Runtime drawing
+The Drawing panel catalogue (#4918 viewer-panels slice, reshaped by #5494)
+covers `components/viewer/drawing/`: the header, toolbar row (markup tools,
+display chips, settings drawers, zoom), Export menu, status-line hints and
+facts, export/print prompts, generation/error and empty states
+(`section-2d.en.ts`). Runtime drawing
 phase text and IFC/DXF data remain supplied by their owning systems.
 
 The hierarchy catalogue (#4918 slice 4) covers the spatial tree's own
@@ -372,7 +362,7 @@ literals, and stay out of the catalogue. `ChartCard.tsx`'s computed
 aggregation subtitle (`subtitleFor`, `describeAggregation`, `EMPTY_HINTS`),
 the `TYPE_LABELS`/`SOURCE_LABELS`/`FOCUS_LABEL`/`SCOPE_LABEL`/
 `FAMILY_LABELS` select-option data tables, and `DashboardMenu.tsx`'s
-`window.prompt`/toast copy and `ReportExportDialog.tsx`'s toast/error copy
+toast copy and `ReportExportDialog.tsx`'s toast/error copy
 and title-block field table are out of scope for this slice — none of them
 are hardcoded JSX text or a policed attribute the ending gate below flags —
 and remain for a later slice.
@@ -438,8 +428,8 @@ geometry-merge setting's reload banner), not the same feature under a new
 name.
 
 The Annotate tool catalogue (#4918 slice: annotations, `annotations.en.ts`)
-covers the canvas-overlay pin (`AnnotationPin.tsx`), the DOM-billboard layer
-that projects pins into screen space (`AnnotationLayer.tsx`), the read/edit
+covers the canvas-overlay pin (the shared `Pin` scene primitive, registered on
+the projector by `AnnotationLayer.tsx` — #5511), the read/edit
 popover for an existing pin (`AnnotationPopover.tsx`), and the inline
 commit-or-cancel input shown while dropping a fresh pin
 (`AnnotationDropInput.tsx`), including the relative-time phrasing
@@ -472,13 +462,12 @@ The Lens panel catalogue (#4918 viewer-panels slice, `lens-panel.en.ts`,
 prefix `lensPanel.*`) covers `LensPanel.tsx`'s own chrome: the header
 (export/import/clear/close) and footer status line, the rule list
 (`RuleRow`'s isolate tooltip and isolated badge) and its editor
-(`RuleEditor`'s criteria-type/operator/action selects, per-type
-placeholders, duplicate/remove/reorder controls, and the compound-criteria
-read-only state), the auto-color editor (`AutoColorEditor`'s source/pset/
+(`LensRuleEditor`'s shared filter groups, action select, and
+duplicate/remove/reorder controls), the auto-color editor (`AutoColorEditor`'s source/pset/
 property fields and the "Show unclassified" toggle), and the read-only
 lens card (`LensCard`'s edit/delete/duplicate tooltips, rule count, and
 auto-color legend with its sort control). The rule-criteria-type and
-auto-color-source display table and the operator table moved to the same
+auto-color-source display table moved to the same
 data-table-plus-`labelKey` pattern the clash-panel catalogue's `SEVERITY`/
 `REVIEW_STATUS` tables use, relocated into a new sibling module
 (`lens-editor-labels.ts`) to keep `LensPanel.tsx` under its module-size
@@ -676,8 +665,8 @@ and every derived caption/notice the dialog renders); `LoadReportPanel.tsx`
 table and per-entity summary line); `GeometryModeBanner.tsx` (the
 reload-to-apply Fast/Exact geometry banner); `FilterRuleControls.tsx` (the
 shared AND/OR combinator toggle and "Add rule" menu); `GeometryAxisRow.tsx`
-(the Geometry edit card's X/Y/Z nudge row); `LevelDisplayIndicator.tsx` (the
-Exploded/Solo viewport chip); `TextAnnotationEditor.tsx` (the 2D-drawing
+(the Geometry edit card's X/Y/Z nudge row); `VisibilityChips.tsx` (the
+viewport visibility reasons); `TextAnnotationEditor.tsx` (the 2D-drawing
 text annotation inline editor); `presence/PeerPresenceLayer.tsx` (the live
 collaborator-cursor DOM overlay); `BottomStrip.tsx`'s detach grip;
 `SaveMarkupToModelButton.tsx` and `ExportChangesButton.tsx` (the two
@@ -705,11 +694,12 @@ privacy disclosure's intro/WASM link/verification line, the app name,
 version, homepage/docs/GitHub/report-issue links, license, and the
 package-count disclosure), the What's New tab (the current-version banner,
 per-release version/viewer-badge/change-count, and the Feature/Fix/Perf
-legend), and the Shortcuts tab's own "Learn more" row. Shortcut CATEGORY
-names, DESCRIPTIONS, and key-combination glyphs (`⌘`, `Ctrl`, `⇧`) come
-from `KEYBOARD_SHORTCUTS` (`@/hooks/keyboard-shortcuts-list`) and stay out
-of the catalogue as model content, same reasoning as every other data
-table in this sweep; the `F12` key name in the privacy disclosure is
+legend), and the Shortcuts tab's own "Learn more" row. The Shortcuts tab's
+rows are generated from the keyboard command table
+(`@/lib/commands/keyboard-commands`, #5836): their category names and
+descriptions live in `commands.en.ts`, and their key glyphs are not strings
+at all but chords formatted per platform (`⌘⇧Z` on Apple, `Ctrl+Shift+Z`
+elsewhere); the `F12` key name in the privacy disclosure is
 likewise routed through `t()` without translation, the same house rule
 that keeps `GlobalId` and IFC EXPRESS names spelled exactly while still
 satisfying the ending gate. `LearnTab.tsx` (the fourth tab) has its own

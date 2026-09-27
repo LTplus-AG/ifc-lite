@@ -307,17 +307,23 @@ if (entityRef) {
 }
 
 // Get spatial hierarchy
-import { IfcTypeEnum } from '@ifc-lite/data';
+import { IfcTypeEnum, type SpatialNode } from '@ifc-lite/data';
 
 const hierarchy = store.spatialHierarchy;
 console.log(`Project: ${hierarchy.project.name}`);
 
+// Storeys are NOT direct children of the project: the tree is
+// Project -> Site -> Building -> Storey, so walk it rather than reading
+// `project.children` directly.
+function* storeysOf(node: SpatialNode): Generator<SpatialNode> {
+  if (node.type === IfcTypeEnum.IfcBuildingStorey) yield node;
+  for (const child of node.children ?? []) yield* storeysOf(child);
+}
+
 // List storeys (SpatialNode.type is a numeric IfcTypeEnum, keyed by expressId)
-for (const storey of hierarchy.project.children) {
-  if (storey.type === IfcTypeEnum.IfcBuildingStorey) {
-    const elements = hierarchy.byStorey.get(storey.expressId) ?? [];
-    console.log(`${storey.name}: ${elements.length} elements`);
-  }
+for (const storey of storeysOf(hierarchy.project)) {
+  const elements = hierarchy.byStorey.get(storey.expressId) ?? [];
+  console.log(`${storey.name}: ${elements.length} elements`);
 }
 ```
 
@@ -486,7 +492,7 @@ renderer.render({
 ```
 
 !!! tip "Basket Isolation in the Viewer App"
-    The viewer app provides an interactive **basket** for building isolation sets incrementally. Use `I` to set, `+` to add, `-` to remove entities. Cmd/Ctrl+Click to multi-select, then use basket shortcuts on the whole selection. See the [Rendering Guide](rendering.md#basket-isolation-viewer-app) for details.
+    The viewer app provides an interactive **basket** for building isolation sets incrementally. Use `I` to isolate, `=` or `+` to add, and `-` to remove entities. Cmd/Ctrl+Click to multi-select, then use basket shortcuts on the whole selection. See the [Rendering Guide](rendering.md#basket-isolation-viewer-app) for details.
 
 ## Data Flow Diagram
 

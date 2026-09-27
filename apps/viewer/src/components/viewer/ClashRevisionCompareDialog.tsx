@@ -27,6 +27,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { GitCompare, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
@@ -107,7 +108,7 @@ function Bucket({ title, clashes, tone }: BucketProps) {
       </div>
       <ul className="space-y-0.5 max-h-28 overflow-y-auto pr-1">
         {clashes.map((c) => (
-          <li key={c.id} className="text-[11px] text-foreground/80 truncate" title={clashLabel(c)}>
+          <li key={c.id} className="text-xs text-foreground/80 truncate" title={clashLabel(c)}>
             {clashLabel(c)}
           </li>
         ))}
@@ -157,9 +158,9 @@ export function ClashRevisionCompareDialog() {
   return (
     <Dialog onOpenChange={(open) => { if (!open) setComparison(null); }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-7 w-7" title={t('clashTools.revisionCompare.triggerTooltip')}>
+        <IconButton label={t('clashTools.revisionCompare.triggerTooltip')} className="h-7 w-7">
           <GitCompare className="h-4 w-4" />
-        </Button>
+        </IconButton>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
@@ -211,7 +212,7 @@ export function ClashRevisionCompareDialog() {
           {comparison && (
             <div className="space-y-3 rounded-md border border-border p-2.5">
               {comparison.unretested.length > 0 && (
-                <div className="rounded-md bg-muted/50 p-2 text-[11px] text-muted-foreground space-y-0.5">
+                <div className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground space-y-0.5">
                   <div className="font-medium text-foreground">
                     {t('clashTools.revisionCompare.unretestedCount', { count: comparison.unretested.length })}
                   </div>

@@ -65,7 +65,13 @@ fn moderate_degree_with_real_knots_completes_fast() {
     let bspline = decoder.decode_by_id(surface_id as u32).unwrap();
 
     let start = Instant::now();
-    let result = process_bspline_face(&bspline, &mut decoder, None, TessellationQuality::Medium);
+    let result = process_bspline_face(
+        &bspline,
+        &mut decoder,
+        None,
+        TessellationQuality::Medium,
+        (0.0, 0.0, 0.0),
+    );
     let elapsed = start.elapsed();
 
     assert!(result.is_ok(), "a well-formed degree-40 surface must tessellate: {result:?}");
@@ -82,12 +88,12 @@ fn moderate_degree_with_real_knots_completes_fast() {
 /// `f64::INFINITY` rather than erroring the entity — so a corrupt or
 /// hostile file can genuinely produce this without any test-only hook.
 ///
-/// Entered through the stable, unchanged-signature `process_planar_face`
-/// seam (not the private `triangulate_planar_indices` helper it delegates
-/// to) so that reverting the fix is observed as a failing ASSERTION (the
-/// pre-fix code returns `Ok` with the hole silently filled in) rather than
-/// a compile error: `triangulate_planar_indices` did not exist before this
-/// change, so a unit test that named it directly could never survive a
+/// Entered through the `process_planar_face_rebased` seam (formerly
+/// `process_planar_face`, merged with its RTC twin by #5698), not the private
+/// `triangulate_planar_indices` helper it delegates to, so that reverting
+/// the fix is observed as a failing ASSERTION (the pre-fix code returns `Ok`
+/// with the hole silently filled in) rather than a compile error:
+/// `triangulate_planar_indices` did not exist before this change, so a unit test that named it directly could never survive a
 /// production revert to prove the regression.
 #[test]
 fn failed_hole_triangulation_never_falls_back_to_a_filled_outer_fan() {
@@ -104,7 +110,8 @@ fn failed_hole_triangulation_never_falls_back_to_a_filled_outer_fan() {
     let face = decoder.decode_by_id(14).unwrap();
 
     let error =
-        process_planar_face(&face, &mut decoder, TessellationQuality::Medium).unwrap_err();
+        process_planar_face_rebased(&face, &mut decoder, TessellationQuality::Medium, None)
+            .unwrap_err();
     assert!(
         error.to_string().contains("triangulation with holes failed"),
         "a failed holed face must be rejected instead of filling the opening: {error}"
@@ -118,9 +125,14 @@ fn legitimate_bspline_surface_still_tessellates() {
     let content = small_surface_content(2, 2);
     let mut decoder = EntityDecoder::new(&content);
     let bspline = decoder.decode_by_id(10).unwrap();
-    let (positions, indices) =
-        process_bspline_face(&bspline, &mut decoder, None, TessellationQuality::Medium)
-            .expect("degree-2 3x3 control grid must tessellate");
+    let (positions, indices) = process_bspline_face(
+        &bspline,
+        &mut decoder,
+        None,
+        TessellationQuality::Medium,
+        (0.0, 0.0, 0.0),
+    )
+    .expect("degree-2 3x3 control grid must tessellate");
     assert!(!positions.is_empty() && !indices.is_empty());
 }
 
@@ -141,7 +153,13 @@ fn pathological_degree_fails_fast_not_hangs() {
     let bspline = decoder.decode_by_id(10).unwrap();
 
     let start = Instant::now();
-    let result = process_bspline_face(&bspline, &mut decoder, None, TessellationQuality::Medium);
+    let result = process_bspline_face(
+        &bspline,
+        &mut decoder,
+        None,
+        TessellationQuality::Medium,
+        (0.0, 0.0, 0.0),
+    );
     let elapsed = start.elapsed();
 
     let err = result.expect_err("a degree past MAX_BSPLINE_DEGREE must be a typed failure");
@@ -196,7 +214,13 @@ fn pathological_sample_work_fails_fast_not_hangs() {
     let bspline = decoder.decode_by_id(surface_id as u32).unwrap();
 
     let start = Instant::now();
-    let result = process_bspline_face(&bspline, &mut decoder, None, TessellationQuality::Highest);
+    let result = process_bspline_face(
+        &bspline,
+        &mut decoder,
+        None,
+        TessellationQuality::Highest,
+        (0.0, 0.0, 0.0),
+    );
     let elapsed = start.elapsed();
 
     let err = result.expect_err("an oversized sample-work estimate must be a typed failure");
@@ -239,7 +263,13 @@ fn pathological_ragged_row_count_fails_fast_not_hangs() {
     let bspline = decoder.decode_by_id(surface_id as u32).unwrap();
 
     let start = Instant::now();
-    let result = process_bspline_face(&bspline, &mut decoder, None, TessellationQuality::Highest);
+    let result = process_bspline_face(
+        &bspline,
+        &mut decoder,
+        None,
+        TessellationQuality::Highest,
+        (0.0, 0.0, 0.0),
+    );
     let elapsed = start.elapsed();
 
     let err = result.expect_err("a many-row, thin-column grid must be a typed failure too");

@@ -9,7 +9,8 @@
 # docs/architecture/pure-rust-csg-kernel.md), so this is just the pinned
 # Rust nightly + wasm-pack + the cargo cache.
 #
-# Used by test.yml, release.yml, sdk-canary.yml and benchmark.yml so they
+# Used by test.yml, release.yml, sdk-canary.yml, benchmark.yml and
+# export-schema-conformance.yml (#5942) so they
 # stay in lock-step — a toolchain change here updates all of them at once,
 # instead of one drifting (which is how sdk-canary once shipped without a
 # toolchain piece and went red on an unrelated PR).

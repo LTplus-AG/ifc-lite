@@ -80,7 +80,7 @@ describe('AnonymizedExportDialog — empty selection', () => {
     const store = await parseFixtureModel();
     useViewerStore.setState({ models: new Map([['m1', federatedModel('m1', store)]]) });
 
-    render(<AnonymizedExportDialog />);
+    render(<AnonymizedExportDialog surface="context_menu" />);
     act(() => { useViewerStore.getState().setAnonymizedExportRequested(true); });
 
     assert.match(
@@ -104,7 +104,7 @@ describe('AnonymizedExportDialog — empty selection', () => {
       selectedEntityIds: new Set([FIXTURE_WALL_A, 2_000_000 + FIXTURE_WALL_B]),
     });
 
-    render(<AnonymizedExportDialog />);
+    render(<AnonymizedExportDialog surface="context_menu" />);
     act(() => { useViewerStore.getState().setAnonymizedExportRequested(true); });
 
     assert.match(

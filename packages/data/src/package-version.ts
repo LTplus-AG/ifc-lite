@@ -9,7 +9,6 @@
  * that bin's top-level `main()`, and so the two shipped servers -- the CLI and
  * the MCP server -- cannot drift apart on how they answer `--version`.
  */
-
 import { readFileSync } from 'node:fs';
 
 /** Reported when `package.json` can't be read — deliberately not a plausible

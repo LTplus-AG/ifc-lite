@@ -59,7 +59,7 @@ END-ISO-10303-21;`;
 
   const definition: ListDefinition = {
     id: 'walls', name: 'Walls', createdAt: 0, updatedAt: 0,
-    entityTypes: [IfcTypeEnum.IfcWall], conditions: [],
+    entityTypes: [IfcTypeEnum.IfcWall], groups: [],
     columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
   };
   assert.deepEqual(executeList(definition, provider).rows.map((row) => row.values[0]), ['Wall A', 'Converted wall']);

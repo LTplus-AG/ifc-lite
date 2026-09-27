@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * ScheduleCard — surface 4D / construction-schedule data in the Inspector.
+ * ScheduleCard — surface 4D / construction-schedule data in Properties.
  *
  * Two complementary views, picked automatically based on the selection:
  *   • Selected entity is a *product* controlled by one or more IfcTasks →
@@ -19,11 +19,12 @@
  */
 
 import { useMemo } from 'react';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { CalendarClock, Diamond, Flag } from 'lucide-react';
+import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { CalendarClock, Diamond, Flag, ChevronDown } from 'lucide-react';
 import type { ScheduleExtraction, ScheduleTaskInfo } from '@ifc-lite/parser';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
+import { PersistentCollapsible } from './PersistentCollapsible';
 
 interface ScheduleCardProps {
   /** Schedule data from the viewer's slice (parsed or generated). */
@@ -60,35 +61,36 @@ export function ScheduleCard({
   if (tasks.length === 0) return null;
 
   return (
-    <Collapsible
-      defaultOpen
+    <PersistentCollapsible
+      id="schedule"
       className="border-2 border-sky-200 dark:border-sky-800 bg-sky-50/20 dark:bg-sky-950/20 w-full max-w-full overflow-hidden"
     >
-      <CollapsibleTrigger className="flex items-center gap-2 w-full p-2.5 hover:bg-sky-50 dark:hover:bg-sky-900/30 text-left transition-colors overflow-hidden">
+      <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-sky-50 dark:hover:bg-sky-900/30 text-left transition-colors overflow-hidden">
         <CalendarClock className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
         <span className="font-bold text-xs text-sky-700 dark:text-sky-400 truncate flex-1 min-w-0">
           {t('properties.schedule.heading')}
         </span>
         {isGenerated && (
           <span
-            className="flex items-center gap-1 text-[10px] font-medium bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 shrink-0"
+            className="flex items-center gap-1 text-2xs font-medium bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 shrink-0"
             title={t('properties.schedule.pendingTooltip')}
           >
             <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />
             {t('properties.schedule.pendingBadge')}
           </span>
         )}
-        <span className="text-[10px] font-mono bg-sky-100 dark:bg-sky-900/50 px-1.5 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 shrink-0">
+        <span className="text-2xs font-mono bg-sky-100 dark:bg-sky-900/50 px-1.5 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 shrink-0">
           {t('properties.schedule.taskCount', {
             count: tasks.length,
             countDisplay: formatLocaleNumber(locale, tasks.length),
           })}
         </span>
+        <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-sky-200 dark:border-sky-800">
           {isGenerated && (
-            <div className="px-3 py-1.5 text-[10px] text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-900/20 border-b border-amber-200/60 dark:border-amber-800/50">
+            <div className="px-3 py-1.5 text-2xs text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-900/20 border-b border-amber-200/60 dark:border-amber-800/50">
               {t('properties.schedule.generatedLocallyNote')}
             </div>
           )}
@@ -99,7 +101,7 @@ export function ScheduleCard({
           </div>
         </div>
       </CollapsibleContent>
-    </Collapsible>
+    </PersistentCollapsible>
   );
 }
 
@@ -137,12 +139,12 @@ function TaskRow({ task, scheduleNames, locale }: TaskRowProps) {
           {task.name || task.identification || task.globalId.slice(0, 12)}
         </span>
         {task.predefinedType && (
-          <span className="text-[9px] font-mono bg-sky-100 dark:bg-sky-900/50 px-1 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-600 dark:text-sky-300 shrink-0">
+          <span className="text-2xs font-mono bg-sky-100 dark:bg-sky-900/50 px-1 py-0.5 border border-sky-200 dark:border-sky-800 text-sky-600 dark:text-sky-300 shrink-0">
             {task.predefinedType}
           </span>
         )}
       </div>
-      <div className="grid grid-cols-[minmax(60px,auto)_1fr] gap-x-2 gap-y-0.5 ml-1 text-[11px]">
+      <div className="grid grid-cols-[minmax(60px,auto)_1fr] gap-x-2 gap-y-0.5 ml-1 text-2xs">
         {start && (
           <>
             <span className="text-muted-foreground">{t('properties.schedule.start')}</span>

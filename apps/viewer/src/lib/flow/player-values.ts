@@ -49,3 +49,21 @@ export function clearPlayerValues(graphId: string): void {
     // not a crash.
   }
 }
+
+/**
+ * Drops the stored values of every graph whose id starts with `idPrefix`
+ * (an uninstalled extension's `ext:<id>:` graphs, #5634), mirroring
+ * `BrowserTrackingStore.clearByIdPrefix`.
+ */
+export function clearPlayerValuesByIdPrefix(idPrefix: string): void {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(PREFIX + idPrefix)) keys.push(key);
+    }
+    for (const key of keys) localStorage.removeItem(key);
+  } catch {
+    // Storage unavailable: nothing was stored to clear.
+  }
+}

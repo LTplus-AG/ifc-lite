@@ -25,8 +25,6 @@
 export const clashPanelEn = {
   'clashPanel.title': 'Clash detection',
   'clashPanel.helpTooltip': 'How clash detection works',
-  'clashPanel.clearResultsTooltip': 'Clear results',
-  'clashPanel.closeTooltip': 'Close',
 
   // Help disclosure (#1272, #1274)
   'clashPanel.help.hardLabel': 'Hard',
@@ -53,10 +51,12 @@ export const clashPanelEn = {
   // Detection controls
   'clashPanel.detectionSectionLabel': 'Detection',
   'clashPanel.rerunTooltip': 'Re-run detection on the whole model',
-  'clashPanel.rerun': 'Re-run',
+  'clashPanel.rerunTooltipMatrix': 'Re-run the enabled rule set',
+  'clashPanel.rerunTooltipPreset': 'Re-run rule "{name}"',
+  'clashPanel.rerunTooltipDuplicates': 'Re-run the duplicate scan',
+  'clashPanel.cancel': 'Cancel detection',
   'clashPanel.tolLabelTooltip': 'Touch band (m): surface contact within this distance is ignored',
   'clashPanel.gapLabelTooltip': 'Minimum required separation (m); elements closer than this are flagged',
-  'clashPanel.detecting': 'Detecting…',
   'clashPanel.detectAll': 'Detect all clashes',
   'clashPanel.findDuplicatesTooltip': 'Find duplicate or fully-overlapping objects in the loaded geometry',
   'clashPanel.findDuplicates': 'Find duplicates',
@@ -145,6 +145,7 @@ export const clashPanelEn = {
   'clashPanel.review.commentPlaceholder': 'Add a comment (optional)',
 
   // Empty / no-match / no-comparison states
+  'clashPanel.empty.title': 'No clash results yet',
   'clashPanel.empty.singleModelHint':
     'Check this model in seconds: “Detect all clashes” finds every overlap inside it, and “Find duplicates” catches coincident objects — no discipline setup needed.',
   'clashPanel.empty.multiModelHint':

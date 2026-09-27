@@ -80,8 +80,8 @@ describe('AnonymizedExportDialog — host/trigger gating (#3309)', () => {
   it('the store flag opens exactly one dialog with both a host and a triggered instance mounted', () => {
     render(
       <>
-        <AnonymizedExportDialog />
-        <AnonymizedExportDialog trigger={<button type="button">Open via trigger</button>} />
+        <AnonymizedExportDialog surface="context_menu" />
+        <AnonymizedExportDialog surface="ribbon" trigger={<button type="button">Open via trigger</button>} />
       </>,
     );
     assert.equal(openDialogRoots().length, 0, 'sanity: nothing open before the flag is set');
@@ -98,8 +98,8 @@ describe('AnonymizedExportDialog — host/trigger gating (#3309)', () => {
   it('closing a triggered instance does not clear the store flag', () => {
     render(
       <>
-        <AnonymizedExportDialog />
-        <AnonymizedExportDialog trigger={<button type="button">Open via trigger</button>} />
+        <AnonymizedExportDialog surface="context_menu" />
+        <AnonymizedExportDialog surface="ribbon" trigger={<button type="button">Open via trigger</button>} />
       </>,
     );
 
@@ -136,8 +136,8 @@ describe('AnonymizedExportDialog — host/trigger gating (#3309)', () => {
   it('closing the host instance clears the store flag so it cannot re-open the dialog forever', () => {
     render(
       <>
-        <AnonymizedExportDialog />
-        <AnonymizedExportDialog trigger={<button type="button">Open via trigger</button>} />
+        <AnonymizedExportDialog surface="context_menu" />
+        <AnonymizedExportDialog surface="ribbon" trigger={<button type="button">Open via trigger</button>} />
       </>,
     );
 

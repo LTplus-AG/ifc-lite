@@ -27,6 +27,7 @@
  */
 
 import * as Y from 'yjs';
+import { firstProjAxis } from '@ifc-lite/data';
 import { ENTITY_KEY, entitiesMap } from './schema.js';
 
 /** IFCX/USD transform attribute key (mirrors `@ifc-lite/ifcx` `ATTR.TRANSFORM`). */
@@ -49,7 +50,8 @@ export interface UsdXformOp {
  * Normalized local placement — an `IfcAxis2Placement3D`:
  *   - `location`     storey-local origin (IFC Z-up)
  *   - `axis`         local +Z direction (defaults to world +Z)
- *   - `refDirection` local +X direction (defaults to world +X)
+ *   - `refDirection` local +X direction (defaults to `firstProjAxis(axis)`,
+ *                    world +X for the default axis)
  */
 export interface LocalPlacement {
   location: [number, number, number];
@@ -86,7 +88,8 @@ function cross(a: Vec3, b: Vec3): Vec3 {
 export function placementToMatrix(p: LocalPlacement): Mat4 {
   const z = normalize((p.axis ?? [0, 0, 1]) as Vec3);
   const zAxis: Vec3 = z[0] === 0 && z[1] === 0 && z[2] === 0 ? [0, 0, 1] : z;
-  const refRaw = (p.refDirection ?? [1, 0, 0]) as Vec3;
+  // An absent refDirection takes the renderer's fill for a `$` (#5922).
+  const refRaw = (p.refDirection ?? firstProjAxis(zAxis)) as Vec3;
   // Gram–Schmidt: project refDirection off the Z axis so X ⟂ Z.
   const d = dot(refRaw, zAxis);
   let x = normalize([refRaw[0] - d * zAxis[0], refRaw[1] - d * zAxis[1], refRaw[2] - d * zAxis[2]]);

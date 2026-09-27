@@ -16,7 +16,7 @@
  */
 
 import { clashMemberKey, type ClashRule } from '@ifc-lite/clash';
-import { evaluateFilterRulesFederated, type EvaluatorModel } from '@ifc-lite/rules';
+import { evaluateFilterGroupsFederated, type EvaluatorModel } from '@ifc-lite/rules';
 import { unresolvedModelTagIds } from '@ifc-lite/rules';
 import {
   CLASH_SET_FILTER_LIMIT,
@@ -62,7 +62,7 @@ export async function resolveClashSetFilter(
   const unreadable = unreadableRuleCount(filter);
   if (unreadable > 0) {
     throw new Error(
-      `A clash set filter has ${unreadable === 1 ? 'a rule' : `${unreadable} rules`} this version cannot read. ` +
+      `A clash set filter has ${unreadable === 1 ? 'an entry' : `${unreadable} entries`} this version cannot read. ` +
         'Open the rule and fix or remove the filter — the run was refused rather than run on the readable rules alone.',
     );
   }
@@ -71,7 +71,9 @@ export async function resolveClashSetFilter(
   // safe: a side that quietly resolves to zero members reports zero clashes
   // with nothing on screen to say the rule was broken. Refuse instead (#4215).
   const defined = options.definedModelTagIds ?? new Set<string>();
-  const unresolved = filter.rules.flatMap((r) => (r.kind === 'modelTag' ? unresolvedModelTagIds(r, defined) : []));
+  const unresolved = filter.flatMap((group) => group.rules.flatMap(
+    (rule) => (rule.kind === 'modelTag' ? unresolvedModelTagIds(rule, defined) : []),
+  ));
   if (unresolved.length > 0) {
     throw new Error(
       `A clash set filter refers to ${unresolved.length === 1 ? 'a model tag' : `${unresolved.length} model tags`} that no longer exist${unresolved.length === 1 ? 's' : ''}. ` +
@@ -80,7 +82,7 @@ export async function resolveClashSetFilter(
   }
   // Ask for one past the cap so a set that lands EXACTLY on it is told apart
   // from one the evaluator stopped short of.
-  const matched = await evaluateFilterRulesFederated(models, filter.rules, filter.combinator, {
+  const matched = await evaluateFilterGroupsFederated(models, filter, {
     limit: limit + 1,
     signal: options.signal,
     definedModelTagIds: options.definedModelTagIds,

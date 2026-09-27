@@ -109,6 +109,40 @@ export function buildExportFilename(
   return `${stem}${sanitizedExt}`;
 }
 
+/**
+ * The download filename for anything exported FROM a model: the model's name
+ * without its source extension, plus an optional `suffix`, as `ext`
+ * (`Haus.ifc` + `_visible` + `glb` -> `Haus_visible.glb`). Every model export
+ * names its file through this, so the same model in the same format comes out
+ * under the same name whichever surface started it (#5833).
+ *
+ * `suffix` is a code constant (`_visible`, `_merged`, `_entities`), never user
+ * text. The stem is truncated before the suffix is appended, so a long model
+ * name loses its tail rather than the suffix that says what the file is.
+ */
+export function modelExportFilename(modelName: string, extension: string, suffix = ''): string {
+  const maxLength = 60;
+  const extReserve = Math.min(EXTENSION_MAX_LENGTH, normalizeExtension(extension).length - 1) + 1;
+  const stem = sanitizeFilename(stripExtension(modelName), {
+    fallback: 'model',
+    maxLength: Math.max(1, maxLength - extReserve - suffix.length),
+  });
+  return buildExportFilename(`${stem}${suffix}`, extension, maxLength);
+}
+
+/**
+ * The model name an export of "the model on screen" is filed under: the ACTIVE
+ * model's, since that is the one the one-click exports read (`ifcDataStore`
+ * follows `setActiveModel`). A legacy single-model session has no `models`
+ * entry, so this is `''` and {@link modelExportFilename} falls back to `model`.
+ */
+export function activeModelName(state: {
+  activeModelId: string | null;
+  models: ReadonlyMap<string, { name: string }>;
+}): string {
+  return (state.activeModelId ? state.models.get(state.activeModelId)?.name : undefined) ?? '';
+}
+
 /** True when we can actually trigger a download (browser context). */
 function canDownload(): boolean {
   return typeof document !== 'undefined' && typeof URL !== 'undefined';

@@ -40,7 +40,7 @@
  */
 
 import { Crosshair, Globe, MapPin, XCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n/useTranslation';
 // Side-effect import: merges the measure catalogue into the runtime `en`
@@ -61,11 +61,11 @@ import { projectedEnh, useProjectedLatLon, type Vec3Like } from './measure-modes
 function CoordRow({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="flex items-baseline gap-2 whitespace-nowrap">
-      <span className="w-[4.5rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+      <span className="w-[4.5rem] shrink-0 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
         {label}
       </span>
-      <span className="font-mono text-[11px] tabular-nums">{value}</span>
-      {hint && <span className="font-mono text-[9px] text-muted-foreground">{hint}</span>}
+      <span className="font-mono text-2xs tabular-nums">{value}</span>
+      {hint && <span className="font-mono text-2xs text-muted-foreground">{hint}</span>}
     </div>
   );
 }
@@ -93,7 +93,7 @@ export function MeasurePointReadout() {
 
   if (!livePoint) {
     return (
-      <div className="border-t px-2 py-2 text-center text-[10px] text-muted-foreground">
+      <div className="px-3 py-8 text-center text-xs text-muted-foreground">
         {t('measure.point.emptyPrompt')}
       </div>
     );
@@ -116,30 +116,30 @@ export function MeasurePointReadout() {
   const enh = showGeo && anchor ? projectedEnh(livePoint, anchor) : null;
 
   return (
-    <div className="border-t px-2 py-2 space-y-1.5">
+    <div className="space-y-1.5 px-3 py-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-primary">
+        <span className="flex items-center gap-1 font-mono text-2xs uppercase tracking-wider text-foreground">
           <Crosshair className="h-3 w-3" />
           {activeMeasurement ? t('measure.point.live') : t('measure.point.last')}
         </span>
         <div className="flex items-center gap-1">
-          <Button
+          <IconButton
             variant="ghost"
             size="icon-sm"
-            title={t('measure.point.setReferenceTitle')}
+            label={t('measure.point.setReferenceTitle')}
             onClick={() => setReferencePoint({ x: livePoint.x, y: livePoint.y, z: livePoint.z })}
           >
             <MapPin className="h-3 w-3" />
-          </Button>
+          </IconButton>
           {referencePoint && (
-            <Button
+            <IconButton
               variant="ghost"
               size="icon-sm"
-              title={t('measure.point.clearReferenceTitle')}
+              label={t('measure.point.clearReferenceTitle')}
               onClick={() => setReferencePoint(null)}
             >
               <XCircle className="h-3 w-3" />
-            </Button>
+            </IconButton>
           )}
         </div>
       </div>
@@ -192,7 +192,7 @@ export function MeasurePointReadout() {
       </div>
 
       {frame.rebased && (
-        <div className="font-mono text-[9px] leading-tight text-muted-foreground">
+        <div className="font-mono text-2xs leading-tight text-muted-foreground">
           {t('measure.point.rebasedNote', {
             name: frame.anchorName ? frame.anchorName : t('measure.point.anchorModelFallback'),
           })}
@@ -200,7 +200,7 @@ export function MeasurePointReadout() {
       )}
 
       {enh && anchor && (
-        <div className="flex items-center gap-1 font-mono text-[9px] text-muted-foreground">
+        <div className="flex items-center gap-1 font-mono text-2xs text-muted-foreground">
           <Globe className="h-2.5 w-2.5" />
           {anchor.eff.projectedCRS.name}
         </div>

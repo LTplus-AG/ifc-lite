@@ -61,7 +61,7 @@ mod symbolic;
 mod types;
 
 pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryDataExport};
-pub use analytic_export::{extract_swept_disk_descriptions, SweptDiskDescriptions, SweptDiskOccurrence};
+pub use analytic_export::{extract_swept_disk_descriptions, DirectrixMetrics, DirectrixSegmentMetrics, SweptDiskDescriptions, SweptDiskOccurrence};
 pub use georeferencing::{
     extract_georeferencing, extract_georeferencing_with_index, Georeferencing,
 };
@@ -81,6 +81,7 @@ pub use processor::{
     process_geometry_filtered_with_quality, process_geometry_filtered_with_quality_and_ids,
     process_geometry_with_index,
     process_geometry_streaming, process_geometry_streaming_filtered,
+    process_geometry_streaming_filtered_with_baked_basis,
     process_geometry_streaming_filtered_with_options, process_geometry_streaming_with_options,
     process_geometry_streaming_with_options_and_bootstrap,
     OpeningFilterMode, ProcessingResult, StreamingOptions,

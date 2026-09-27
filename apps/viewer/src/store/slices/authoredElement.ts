@@ -21,6 +21,11 @@ import type {
   WindowInStoreParams,
 } from '@ifc-lite/create';
 import type { ElementMeshPayload } from './addElementMeshes.js';
+import type { CoordinateInfo } from '@ifc-lite/geometry';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { storeyAuthoringFrame, storeyLocalToModelPlan, type StoreyAuthoringFrame } from '@/lib/authoring/storey-authoring-frame';
+
+type Vec3 = [number, number, number];
 
 /** An element one of the `@ifc-lite/create` in-store builders makes, with the params it took. */
 export type AuthoredElement =
@@ -35,8 +40,43 @@ export type AuthoredElement =
   | { kind: 'plate'; params: PlateInStoreParams }
   | { kind: 'member'; params: MemberInStoreParams };
 
-/** The renderer-frame mesh description for an authored element. */
-export function authoredElementMeshPayload(element: AuthoredElement): ElementMeshPayload {
+/**
+ * The renderer-frame mesh description for an authored element. Builder params
+ * are STOREY-LOCAL, so every point is folded through the storey's chain
+ * (`frame`) back into the model frame the mesh is drawn in — otherwise an
+ * element authored on a storey that does not sit at the model origin draws a
+ * whole storey offset away from where it will reload (#6233).
+ */
+export function authoredElementMeshPayload(element: AuthoredElement, frame?: StoreyAuthoringFrame): ElementMeshPayload {
+  const at = (p: Vec3): Vec3 => {
+    if (!frame) return p;
+    const [x, y] = storeyLocalToModelPlan(frame, [p[0], p[1]]);
+    return [x, y, p[2]];
+  };
+  const payload = storeyLocalPayload(element);
+  switch (payload.type) {
+    case 'wall': case 'beam': case 'member':
+      return { ...payload, start: at(payload.start), end: at(payload.end) };
+    case 'column': case 'door': case 'window':
+      return { ...payload, position: at(payload.position) };
+    default:
+      // Space Sketch's `previewCorners` are already in the model frame.
+      if (element.kind === 'space' && element.previewCorners) return payload;
+      return { ...payload, corners: payload.corners.map(at) };
+  }
+}
+
+/** {@link authoredElementMeshPayload} on `storeyExpressId`'s authoring frame. */
+export function authoredElementMeshPayloadOnStorey(
+  element: AuthoredElement,
+  store: IfcDataStore,
+  storeyExpressId: number,
+  coordinateInfo: CoordinateInfo | undefined,
+): ElementMeshPayload {
+  return authoredElementMeshPayload(element, storeyAuthoringFrame(store, storeyExpressId, coordinateInfo));
+}
+
+function storeyLocalPayload(element: AuthoredElement): ElementMeshPayload {
   switch (element.kind) {
     case 'column': {
       const p = element.params;

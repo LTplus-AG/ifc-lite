@@ -6,9 +6,9 @@ import type { TranslationValue } from '../types';
 
 /**
  * The Annotate tool's own chrome (#4918 slice: annotations), covering the
- * canvas-overlay pin (`AnnotationPin.tsx`), the DOM-billboard layer that
- * projects pins into screen space (`AnnotationLayer.tsx`), the read/edit
- * popover for an existing pin (`AnnotationPopover.tsx`), and the inline
+ * canvas-overlay pin (the shared `Pin` scene primitive, `AnnotationLayer.tsx`
+ * registers it on the projector — #5511), the read/edit popover for an
+ * existing pin (`AnnotationPopover.tsx`), and the inline
  * commit-or-cancel input shown while dropping a fresh pin
  * (`AnnotationDropInput.tsx`). An annotation's own note TEXT and its
  * resolved entity TYPE NAME are model/runtime content and stay out of the
@@ -28,7 +28,7 @@ export const annotationsEn = {
   'annotations.layer.ariaLabel': 'Annotations layer',
   'annotations.layer.emptyNotePreview': '(empty note)',
 
-  // AnnotationPin
+  // AnnotationLayer's Pin instances
   'annotations.pin.ariaLabelWithPreview': 'Annotation {index}: {preview}',
   'annotations.pin.ariaLabelNoPreview': 'Annotation {index}',
 

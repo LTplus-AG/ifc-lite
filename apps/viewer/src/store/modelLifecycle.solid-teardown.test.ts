@@ -95,7 +95,7 @@ function seedResolvedSolidPresentation(): void {
     // world space over models that are gone.
     clashHighlightColors: new Map(PAIR_TINT),
     clashOverlapBox: { min: [0, 0, 0], max: [1, 1, 1] },
-    clashContactLines: { vertices: [0, 0, 0, 1, 0, 0], color: [1, 0, 1, 1] },
+    clashContactLines: { vertices: [0, 0, 0, 1, 0, 0] },
   });
 }
 

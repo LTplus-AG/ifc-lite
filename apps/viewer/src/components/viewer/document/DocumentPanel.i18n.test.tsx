@@ -26,7 +26,6 @@ const TEST_LOCALE: Catalogue = {
   'document.addBlock.text': 'Text mit Feldern',
   'document.addBlock.image': 'Bild / Logo',
   'document.panel.exportTitle': 'Diese Seite als PDF drucken',
-  'document.panel.closeAriaLabel': 'Dokumentbereich schließen',
   'document.panel.emptyBlocks': 'Noch keine Blöcke — "Block hinzufügen" oben.',
   'document.panel.exportSuccessWithProblems': {
     one: 'Dokument exportiert: {countDisplay} Seite ({problems})',
@@ -65,13 +64,11 @@ describe('DocumentPanel localization (#4918)', () => {
   });
 
   it('translates the header chrome, the "Add block" menu, and falls back to English per missing key', async () => {
-    const onClose = (): void => {};
-    const ui = render(<DocumentPanel onClose={onClose} />);
+    const ui = render(<DocumentPanel />);
     await settle();
 
     assert.ok(ui.querySelector('select[aria-label="Document"]'));
     assert.equal(ui.textContent?.includes('Page'), true);
-    assert.ok(ui.querySelector('button[aria-label="Close document panel"]'));
     const trigger = [...ui.querySelectorAll('button')].find((b) => b.title === 'Add a block to the page')!;
     assert.ok(trigger);
     openMenu(trigger);
@@ -84,7 +81,6 @@ describe('DocumentPanel localization (#4918)', () => {
 
     assert.ok(ui.querySelector('select[aria-label="Dokument"]'));
     assert.equal(ui.textContent?.includes('Seite'), true);
-    assert.ok(ui.querySelector('button[aria-label="Dokumentbereich schließen"]'));
     const translatedTrigger = [...ui.querySelectorAll('button')].find((b) => b.title === 'Einen Block zur Seite hinzufügen')!;
     assert.ok(translatedTrigger, 'the trigger picks up the registered title');
     assert.equal(translatedTrigger.textContent?.includes('Block hinzufügen'), true);

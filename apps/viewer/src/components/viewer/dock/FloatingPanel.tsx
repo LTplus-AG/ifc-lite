@@ -31,7 +31,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import type { FloatingPanelState, SnapZone } from '@/store';
-import { computeFloatingPanelStyle, type SnapBounds } from './floating-panel-geometry';
+import { computeFloatingPanelStyle, type FloatingArea, type SnapBounds } from './floating-panel-geometry';
 
 export type { SnapBounds };
 
@@ -48,6 +48,8 @@ interface FloatingPanelProps {
   zIndex: number;
   /** The viewport region edge snaps confine to; null until measured. */
   bounds: SnapBounds | null;
+  /** The window size free-floating panels are clamped into; null until measured. */
+  area: FloatingArea | null;
   children: ReactNode;
   onRect: (rect: Partial<Pick<FloatingPanelState, 'x' | 'y' | 'w' | 'h'>>) => void;
   onSnap: (snap: SnapZone) => void;
@@ -62,6 +64,7 @@ export function FloatingPanel({
   title,
   zIndex,
   bounds,
+  area,
   children,
   onRect,
   onSnap,
@@ -93,7 +96,10 @@ export function FloatingPanel({
     const w = rect.width;
     const h = rect.height;
     const maxX = Math.max(0, (el.offsetParent as HTMLElement | null ? (el.offsetParent as HTMLElement).clientWidth : window.innerWidth) - w);
-    const maxY = Math.max(0, (el.offsetParent as HTMLElement | null ? (el.offsetParent as HTMLElement).clientHeight : window.innerHeight) - h);
+    // Never above the toolbar bottom: a header dropped under the z-50 toolbar
+    // could not be grabbed again (#5957).
+    const minY = area?.top ?? 0;
+    const maxY = Math.max(minY, (el.offsetParent as HTMLElement | null ? (el.offsetParent as HTMLElement).clientHeight : window.innerHeight) - h);
     const px = e.clientX;
     const py = e.clientY;
     if (panel.snap !== 'free') onSnap('free');
@@ -101,7 +107,7 @@ export function FloatingPanel({
 
     const move = (ev: MouseEvent) => {
       const x = Math.max(0, Math.min(maxX, startX + ev.clientX - px));
-      const y = Math.max(0, Math.min(maxY, startY + ev.clientY - py));
+      const y = Math.max(minY, Math.min(maxY, startY + ev.clientY - py));
       onRect({ x, y });
     };
     const up = () => {
@@ -179,7 +185,7 @@ export function FloatingPanel({
   return (
     <div
       ref={ref}
-      style={{ ...computeFloatingPanelStyle(panel, bounds), zIndex }}
+      style={{ ...computeFloatingPanelStyle(panel, bounds, area), zIndex }}
       onMouseDown={onFocus}
       className="absolute pointer-events-auto flex flex-col rounded-lg border border-border bg-background shadow-2xl overflow-hidden"
     >

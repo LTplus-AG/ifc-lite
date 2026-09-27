@@ -34,6 +34,7 @@ import { useTranslation } from '@/i18n';
 import { formatLocaleDate, formatLocaleNumber } from '@/i18n/intlFormat';
 import { EXPRESS_DESCRIPTION_ATTRIBUTE, EXPRESS_GLOBAL_ID_ATTRIBUTE, EXPRESS_NAME_ATTRIBUTE } from './express-labels';
 import { LandXmlModelSourceNavigation } from './LandXmlModelSourceNavigation';
+import { TerrainImageryCard } from './TerrainImageryCard';
 import { effectiveClassificationSystems } from './effective-classification-systems';
 import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
 
@@ -178,7 +179,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
 
         {/* Schema badge */}
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono bg-primary/10 border border-primary/30 px-2 py-1 text-primary font-bold uppercase">
+          <span className="text-2xs font-mono bg-primary/10 border border-primary/30 px-2 py-1 text-primary font-bold uppercase">
             {model.sourceSchema ?? model.schemaVersion}
           </span>
         </div>
@@ -272,7 +273,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
                 <div className="flex items-center gap-3 px-3 py-2">
                   <Hash className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
                   <span className="text-xs text-zinc-500">{EXPRESS_GLOBAL_ID_ATTRIBUTE}</span>
-                  <code className="text-[10px] font-mono text-zinc-600 dark:text-zinc-400 ml-auto truncate max-w-[60%]">
+                  <code className="text-2xs font-mono text-zinc-600 dark:text-zinc-400 ml-auto truncate max-w-[60%]">
                     {projectData.globalId}
                   </code>
                 </div>
@@ -332,6 +333,8 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
             )}
           </div>
         </div>
+
+        {model.sourceSchema && model.landXmlDocument && <TerrainImageryCard model={model} />}
 
         {model.sourceSchema && model.landXmlDocument && <LandXmlModelSourceNavigation
           modelId={model.id}

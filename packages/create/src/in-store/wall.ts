@@ -22,7 +22,7 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 import { vecNorm, assertFinitePoint3 } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
-import { assertPositiveFinite, ownerHistoryRef, productGuid } from './_emit-helpers.js';
+import { assertPositiveFinite, emitLocalPlacement, ownerHistoryRef, productGuid } from './_emit-helpers.js';
 
 export interface WallInStoreParams {
   /** Start of the wall axis, in storey-local coordinates (metres). */
@@ -93,19 +93,9 @@ export function addWallToStore(
   }
   const dir: Point3D = vecNorm([dx, dy, 0]);
 
-  // Placement at Start with local X = wall direction. Z stays default
-  // (up); STEP's IfcAxis2Placement3D fills the missing axis from there.
-  const wallOriginPt = editor.addEntity('IfcCartesianPoint', [params.Start]).expressId;
-  const refDirVec = editor.addEntity('IfcDirection', [dir]).expressId;
-  const wallAxis = editor.addEntity('IfcAxis2Placement3D', [
-    `#${wallOriginPt}`,
-    null,
-    `#${refDirVec}`,
-  ]).expressId;
-  const placementId = editor.addEntity('IfcLocalPlacement', [
-    `#${storeyPlacementId}`,
-    `#${wallAxis}`,
-  ]).expressId;
+  // Placement at Start with local X = wall direction and local Z up. The
+  // Axis is written explicitly: IFC forbids a RefDirection without it (#5469).
+  const placementId = emitLocalPlacement(editor, storeyPlacementId, params.Start, undefined, dir);
 
   // Rectangle profile centred at (wallLen/2, 0) so the swept solid
   // spans 0..wallLen along local X and -thickness/2..+thickness/2 on Y.

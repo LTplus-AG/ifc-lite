@@ -47,7 +47,7 @@ async fn read_response(response: axum::response::Response) -> (StatusCode, Strin
 }
 
 /// The shape guard. The hash is concatenated into a cache key, so a value
-/// that is not a bare digest is a caller-shaped key: `sha256=<key>-datamodel-v7`
+/// that is not a bare digest is a caller-shaped key: `sha256=<key>-datamodel-v8`
 /// would address another request's data-model slot through the optimized
 /// reader. Anything but 64 lowercase hex characters is a `400`, not a lookup.
 #[tokio::test]
@@ -59,7 +59,7 @@ async fn optimized_probe_rejects_non_digest_with_400() {
         // Right alphabet, wrong length.
         "abc123",
         // A well-formed digest with a namespace suffix glued on.
-        &format!("{real}-default-datamodel-v7"),
+        &format!("{real}-default-datamodel-v8"),
         // Uppercase: `DiskCache::generate_key` only ever emits lowercase.
         &real.to_uppercase(),
     ] {
@@ -115,7 +115,8 @@ async fn optimized_probe_404_when_nothing_cached() {
 
 /// The headline property: a hash-only hit is indistinguishable from the
 /// upload that warmed the entry -- same status, same `X-IFC-Metadata` header
-/// (`optimization_stats` included), same body bytes.
+/// (`optimization_stats` included; only `stats.from_cache` differs, #5542),
+/// same body bytes.
 #[tokio::test]
 async fn optimized_probe_replays_after_upload() {
     let state = test_state("optimized-hash-replay").await;
@@ -136,9 +137,16 @@ async fn optimized_probe_replays_after_upload() {
         StatusCode::OK,
         "a warm entry must be replayable from the hash alone"
     );
+    // Same header the upload's live parse reported, except that a hit says
+    // it is one (#5542).
+    let upload: serde_json::Value = serde_json::from_str(&upload_metadata).unwrap();
+    let probe: serde_json::Value = serde_json::from_str(&probe_metadata).unwrap();
+    assert_eq!(probe["stats"]["from_cache"], true, "a hash-only hit is a cache hit");
+    let mut expected = upload;
+    expected["stats"]["from_cache"] = serde_json::Value::Bool(true);
     assert_eq!(
-        probe_metadata, upload_metadata,
-        "a hash-only hit must report the same X-IFC-Metadata header"
+        probe, expected,
+        "a hash-only hit must otherwise report the same X-IFC-Metadata header"
     );
     assert_eq!(
         probe_body, upload_body,
@@ -163,7 +171,7 @@ async fn optimized_probe_requires_current_data_model() {
 
     let cache_key =
         request_cache_key(content, &ParseQuery::default(), TessellationQuality::default());
-    let dm_key = data_model_cache_key(&cache_key);
+    let dm_key = data_model_cache_key(&cache_key, crate::services::DataModelEntities::All);
     state
         .cache
         .remove(&dm_key)

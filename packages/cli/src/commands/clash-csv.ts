@@ -24,6 +24,7 @@ export async function writeClashCsv(
   modelId: string,
 ): Promise<number> {
   const storeyOf = (ref: ClashElementRef): string | undefined => {
+    // @raw-entity-enumeration-ok label a clash in this CLI run's freshly parsed, overlay-free model
     const storeyId = store.spatialHierarchy?.elementToStorey.get(ref.ref);
     return storeyId ? store.entities.getName(storeyId) || undefined : undefined;
   };

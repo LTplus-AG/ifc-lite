@@ -47,6 +47,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useTranslation } from '@/i18n';
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 import { cn } from '@/lib/utils';
@@ -161,7 +162,7 @@ export function CapabilityReview({
               <div className="text-muted-foreground mt-0.5">
                 {styleInterpolatedValues(t, 'extensionsPanels.capabilityReview.signedByLabel', [[
                   'fingerprint',
-                  <code key="fingerprint" className="font-mono text-[10px]" title={summary.signature.fingerprint}>
+                  <code key="fingerprint" className="font-mono text-xs" title={summary.signature.fingerprint}>
                     {summary.signature.fingerprint.slice(0, 23)}…
                   </code>,
                 ]], { date: formatExtensionDate(summary.signature.signedAt, locale) })}
@@ -191,11 +192,11 @@ export function CapabilityReview({
             </div>
             {newSinceUpgrade.size > 0 && (
               <div className="mt-1">
-                <span className="text-[10px] uppercase tracking-wide font-semibold text-amber-600">
+                <span className="text-xs uppercase tracking-wide font-semibold text-amber-600">
                   {t('extensionsPanels.capabilityReview.newLabel')}
                 </span>{' '}
                 {[...newSinceUpgrade].map((c) => (
-                  <code key={c} className="font-mono text-[10px] mr-1 bg-amber-500/20 rounded px-1 py-0.5">
+                  <code key={c} className="font-mono text-xs mr-1 bg-amber-500/20 rounded px-1 py-0.5">
                     {c}
                   </code>
                 ))}
@@ -203,11 +204,11 @@ export function CapabilityReview({
             )}
             {droppedSinceUpgrade.length > 0 && (
               <div className="mt-1">
-                <span className="text-[10px] uppercase tracking-wide font-semibold text-amber-600">
+                <span className="text-xs uppercase tracking-wide font-semibold text-amber-600">
                   {t('extensionsPanels.capabilityReview.droppedLabel')}
                 </span>{' '}
                 {droppedSinceUpgrade.map((c) => (
-                  <code key={c} className="font-mono text-[10px] mr-1 line-through opacity-70">
+                  <code key={c} className="font-mono text-xs mr-1 line-through opacity-70">
                     {c}
                   </code>
                 ))}
@@ -216,43 +217,23 @@ export function CapabilityReview({
           </div>
         )}
 
-        <div className="flex items-center gap-1 border-b" role="tablist" aria-label={t('extensionsPanels.capabilityReview.tabsAriaLabel')}>
-          <button
-            type="button"
-            onClick={() => setTab('capabilities')}
-            role="tab"
-            aria-selected={tab === 'capabilities'}
-            className={cn(
-              'flex items-center gap-1 px-3 py-1.5 text-xs font-medium border-b-2 transition-colors',
-              tab === 'capabilities'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <ShieldCheck className="h-3.5 w-3.5" />
-            {t('extensionsPanels.capabilityReview.capabilitiesTab')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab('source')}
-            role="tab"
-            aria-selected={tab === 'source'}
-            className={cn(
-              'flex items-center gap-1 px-3 py-1.5 text-xs font-medium border-b-2 transition-colors',
-              tab === 'source'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <FileCode2 className="h-3.5 w-3.5" />
-            {t('extensionsPanels.capabilityReview.sourceTab')}
-          </button>
-        </div>
+        <Tabs value={tab} onValueChange={(value) => setTab(value === 'source' ? 'source' : 'capabilities')}>
+          <TabsList className="flex h-auto justify-start gap-1 rounded-none border-b bg-transparent p-0" aria-label={t('extensionsPanels.capabilityReview.tabsAriaLabel')}>
+            <TabsTrigger value="capabilities" className="flex items-center gap-1 rounded-none px-3 py-1.5 text-xs font-medium border-b-2 border-transparent bg-transparent shadow-none data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              {t('extensionsPanels.capabilityReview.capabilitiesTab')}
+            </TabsTrigger>
+            <TabsTrigger value="source" className="flex items-center gap-1 rounded-none px-3 py-1.5 text-xs font-medium border-b-2 border-transparent bg-transparent shadow-none data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
+              <FileCode2 className="h-3.5 w-3.5" />
+              {t('extensionsPanels.capabilityReview.sourceTab')}
+            </TabsTrigger>
+          </TabsList>
 
-        {tab === 'source' ? (
-          <BundlePreview bundle={summary.bundle} />
-        ) : (
-        <ScrollArea className="max-h-72 rounded-md border">
+          <TabsContent value="source" className="mt-0">
+            <BundlePreview bundle={summary.bundle} />
+          </TabsContent>
+          <TabsContent value="capabilities" className="mt-0">
+          <ScrollArea className="max-h-72 rounded-md border">
           <ul className="divide-y">
             {rows.length === 0 && (
               <li className="px-4 py-3 text-sm text-muted-foreground">
@@ -282,10 +263,9 @@ export function CapabilityReview({
               </li>
             ))}
           </ul>
-        </ScrollArea>
-        )}
+          </ScrollArea>
 
-        {needsConfirm && tab === 'capabilities' && (
+        {needsConfirm && (
           <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm">
             <div className="font-medium text-destructive flex items-center gap-2">
               <ShieldAlert className="h-4 w-4" />
@@ -294,16 +274,19 @@ export function CapabilityReview({
             <p className="mt-1 text-xs text-muted-foreground">
               {t('extensionsPanels.capabilityReview.confirmInstruction', { phrase: APPROVE_PHRASE })}
             </p>
-            <Input
+            {/* Confirmation appears after an explicit action and requires a typed phrase. */}
+            {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+            <Input autoFocus
               className="mt-2"
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
               placeholder={APPROVE_PHRASE}
               aria-label={t('extensionsPanels.capabilityReview.confirmAriaLabel', { phrase: APPROVE_PHRASE })}
-              autoFocus
             />
           </div>
         )}
+          </TabsContent>
+        </Tabs>
 
         <DialogFooter>
           <Button variant="ghost" onClick={onCancel}>
@@ -334,7 +317,7 @@ function RiskBadge({ tier }: { tier: RiskTier }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide',
+        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium uppercase tracking-wide',
         tier === 'red' && 'bg-destructive/20 text-destructive',
         tier === 'yellow' && 'bg-amber-500/20 text-amber-600 dark:text-amber-400',
         tier === 'green' && 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400',

@@ -22,6 +22,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { WebGPUDevice } from '../device.js';
 import type { Scene } from '../scene.js';
 import type { PointCloudRenderer } from '../pointcloud/point-cloud-renderer.js';
+import { readDeviationAssetStats, type DeviationAssetStats } from './deviation-readback.js';
 
 /**
  * Build a deterministic fingerprint of the BVH input mesh set so
@@ -100,6 +101,7 @@ export interface DeviationComputeResult {
  */
 export class DeviationComputer {
     private pipeline: DeviationPipeline | null = null;
+    private computedBuffers: WeakSet<GPUBuffer> | null = null;
     /**
      * Cache of which mesh-set the BVH was built from. We rebuild on
      * `computeDeviations` only when the cached "fingerprint" misses,
@@ -127,6 +129,23 @@ export class DeviationComputer {
         this.pipeline?.destroy();
         this.pipeline = new DeviationPipeline(device);
         this.bvhFingerprint = null;
+        this.computedBuffers = null;
+    }
+
+    /** Export-only GPU readback; each row belongs to one scan asset. */
+    async readAssetStats(ctx: DeviationComputeContext): Promise<DeviationAssetStats[]> {
+        const computed = this.computedBuffers;
+        if (!computed || !ctx.pointCloudRenderer) {
+            throw new Error('No completed deviation run to export.');
+        }
+        const rows = await readDeviationAssetStats(
+            ctx.device.getDevice(), ctx.pointCloudRenderer.getInternalNodes(),
+            (buffer) => computed.has(buffer),
+        );
+        if (this.computedBuffers !== computed) {
+            throw new Error('Deviation results changed during export. Recompute and try again.');
+        }
+        return rows;
     }
 
     /**
@@ -153,6 +172,7 @@ export class DeviationComputer {
         if (!this.pipeline || !ctx.pointCloudRenderer) {
             throw new Error('Renderer not initialised — call init() first.');
         }
+        this.computedBuffers = null;
         const meshes = collectAllSceneMeshes(ctx.scene);
         // Fingerprint folds in per-mesh expressId / modelIndex /
         // positions length / triangle count, so two distinct meshes
@@ -176,6 +196,7 @@ export class DeviationComputer {
         const encoder = ctx.device.getDevice().createCommandEncoder({ label: 'pointcloud-deviation' });
         let chunksProcessed = 0;
         let pointsProcessed = 0;
+        const computedBuffers = new WeakSet<GPUBuffer>();
         const nodes = ctx.pointCloudRenderer.getInternalNodes();
         for (const node of nodes) {
             for (const chunk of node.chunks) {
@@ -194,6 +215,7 @@ export class DeviationComputer {
                 if (ok) {
                     chunksProcessed++;
                     pointsProcessed += chunk.pointCount;
+                    computedBuffers.add(chunk.deviationBuffer);
                 }
             }
         }
@@ -212,6 +234,7 @@ export class DeviationComputer {
             // them.
             this.pipeline.releaseTransientParams();
         }
+        this.computedBuffers = computedBuffers;
         ctx.requestRender();
 
         // Suggest a default half-range = max(0.01m, max-extent / 1000).
@@ -244,5 +267,6 @@ export class DeviationComputer {
         this.pipeline?.destroy();
         this.pipeline = null;
         this.bvhFingerprint = null;
+        this.computedBuffers = null;
     }
 }

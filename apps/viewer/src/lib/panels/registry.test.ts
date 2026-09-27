@@ -4,6 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { resolveEnglish } from '@/i18n/registry';
 import {
   WORKSPACE_PANELS,
   isBottomPanel,
@@ -15,7 +16,7 @@ import {
 // Pure routing the Alt+digit keyboard shortcut depends on (#1200/#1208). The
 // hook itself needs a DOM to test; this locks the decision it delegates to.
 describe('workspacePanelForShortcutCode (Alt+digit routing #1200/#1208)', () => {
-  it('Digit1 opens the first panel (Information)', () => {
+  it('Digit1 opens the first panel (Properties)', () => {
     assert.strictEqual(workspacePanelForShortcutCode('Digit1'), WORKSPACE_PANELS[0].id);
     assert.strictEqual(workspacePanelForShortcutCode('Digit1'), 'properties');
   });
@@ -96,10 +97,10 @@ describe('migratePanelId (#5138 registry rename)', () => {
 // Comment, Error, Warning, Info), so "issues" narrowed and contradicted the
 // spec (#4096). Pin the corrected label so it can't regress silently.
 describe('BCF panel title', () => {
-  it('says "BCF topics", not "BCF issues" (#4096)', () => {
+  it('says "BCF Topics", not "BCF issues" (#4096)', () => {
     const bcf = WORKSPACE_PANELS.find((p) => p.id === 'bcf');
     assert.ok(bcf, 'expected a bcf panel entry in the registry');
-    assert.strictEqual(bcf.title, 'BCF topics');
+    assert.strictEqual(resolveEnglish(bcf.titleKey), 'BCF Topics');
   });
 });
 
@@ -109,11 +110,11 @@ describe('BCF panel title', () => {
 // (Digit0) via the shortcut map — 'gantt' (Digit9) was never checked here,
 // so dropping it from `isBottomPanel`'s own condition went unnoticed.
 describe('isBottomPanel', () => {
-  it('is true for exactly script, gantt, lists, charts, document and flow — the bottom-strip panels', () => {
+  it('is true for exactly script, gantt, lists, charts, document, flow, drawing and presentation — the bottom-strip panels', () => {
     for (const id of WORKSPACE_PANELS.map((p) => p.id)) {
       assert.strictEqual(
         isBottomPanel(id),
-        id === 'script' || id === 'gantt' || id === 'lists' || id === 'charts' || id === 'document' || id === 'flow',
+        id === 'script' || id === 'gantt' || id === 'lists' || id === 'charts' || id === 'document' || id === 'flow' || id === 'drawing' || id === 'presentation',
         `isBottomPanel('${id}')`,
       );
     }

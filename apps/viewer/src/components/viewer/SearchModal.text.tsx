@@ -21,29 +21,10 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useTranslation, type TranslationKey } from '@/i18n';
+import { useTranslation } from '@/i18n';
 import type { SearchResult } from '@/lib/search/tier0-scan';
-import type { SearchFieldFilter } from '@/store/slices/searchSlice';
-
-const ROW_HEIGHT = 36;
-
-const FIELD_FILTERS: { value: SearchFieldFilter; labelKey: TranslationKey }[] = [
-  { value: 'all', labelKey: 'searchModal.text.fieldAll' },
-  { value: 'name', labelKey: 'searchModal.text.fieldName' },
-  { value: 'type', labelKey: 'searchModal.text.fieldType' },
-  { value: 'globalId', labelKey: 'searchModal.text.fieldGuid' },
-  { value: 'description', labelKey: 'searchModal.text.fieldDescription' },
-  { value: 'objectType', labelKey: 'searchModal.text.fieldObjectType' },
-];
-
-export interface SearchModalTextProps {
-  /** Full result pool from the parent modal (before filter chips). */
-  results: SearchResult[];
-  /** All modelIds currently loaded (for the model-filter chips). */
-  availableModelIds: readonly string[];
-  /** Close the parent modal — invoked on Enter-commit from a row. */
-  onClose: () => void;
-}
+import { FIELD_FILTERS, ROW_HEIGHT, resultOptionId, type SearchModalTextProps } from './SearchModal.text.model';
+export type { SearchModalTextProps } from './SearchModal.text.model';
 
 export function SearchModalText({ results, availableModelIds, onClose }: SearchModalTextProps) {
   const { t } = useTranslation();
@@ -248,7 +229,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
               <button
                 type="button"
                 onClick={clearSearchModelFilter}
-                className="ml-1 text-[10px] text-muted-foreground underline hover:text-foreground"
+                className="ml-1 text-2xs text-muted-foreground underline hover:text-foreground"
               >
                 {t('searchModal.text.resetModelFilter')}
               </button>
@@ -258,13 +239,25 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
       </div>
 
       {/* ── Virtualized results list ── */}
-      <div
+      {/* Rich virtual rows cannot be represented by native select/options. */}
+      {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
+      <div role="listbox"
         ref={scrollRef}
         className="flex-1 min-h-0 overflow-y-auto"
-        role="listbox"
         aria-label={t('searchModal.text.resultsAriaLabel')}
+        aria-activedescendant={filtered[searchHighlightIndex] ? resultOptionId(filtered[searchHighlightIndex]) : undefined}
         tabIndex={0}
+        onClick={(event) => {
+          const option = (event.target as Element).closest<HTMLElement>('[data-result-index]');
+          if (!option || !event.currentTarget.contains(option)) return;
+          const index = Number(option.dataset.resultIndex);
+          const target = filtered[index];
+          if (!target) return;
+          if (event.shiftKey) toggleAdditive(target);
+          else commit(target, index);
+        }}
         onKeyDown={(e) => {
+          if (e.target instanceof HTMLInputElement && e.target.type === 'checkbox') return;
           if (filtered.length === 0) return;
           if (e.key === 'ArrowDown') {
             e.preventDefault();
@@ -274,7 +267,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
             e.preventDefault();
             const next = (searchHighlightIndex - 1 + filtered.length) % filtered.length;
             setSearchHighlightIndex(next);
-          } else if (e.key === 'Enter') {
+          } else if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             const target = filtered[searchHighlightIndex];
             if (target) {
@@ -296,9 +289,13 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
               const isChecked = selectedEntitiesSet.has(key);
               const isHighlighted = vRow.index === searchHighlightIndex;
               return (
-                <div
+                // Virtual options contain a checkbox and rich IFC metadata.
+                // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+                <div role="option"
                   key={key}
-                  role="option"
+                  id={resultOptionId(r)}
+                  tabIndex={-1}
+                  data-result-index={vRow.index}
                   aria-selected={isHighlighted}
                   style={{
                     position: 'absolute',
@@ -313,10 +310,6 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
                     isHighlighted && 'bg-zinc-100 dark:bg-zinc-800',
                   )}
                   onMouseEnter={() => setSearchHighlightIndex(vRow.index)}
-                  onClick={(e) => {
-                    if (e.shiftKey) toggleAdditive(r);
-                    else commit(r, vRow.index);
-                  }}
                 >
                   <input
                     type="checkbox"
@@ -326,23 +319,23 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
                     aria-label={t('searchModal.text.toggleRowAriaLabel', { name: r.name || r.globalId })}
                     className="shrink-0 cursor-pointer"
                   />
-                  <Badge variant="secondary" className="shrink-0 font-mono text-[10px] uppercase">
+                  <Badge variant="secondary" className="shrink-0 font-mono text-2xs uppercase">
                     {r.typeName}
                   </Badge>
                   <span className="min-w-0 flex-1 truncate font-medium">
                     {r.name || <span className="italic text-muted-foreground">{t('searchModal.text.unnamed')}</span>}
                   </span>
                   {r.globalId && (
-                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                    <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                       {r.globalId.slice(0, 10)}…
                     </span>
                   )}
                   {availableModelIds.length > 1 && (
-                    <span className="shrink-0 rounded border border-zinc-300 px-1 py-0.5 text-[10px] text-muted-foreground dark:border-zinc-700">
+                    <span className="shrink-0 rounded border border-zinc-300 px-1 py-0.5 text-2xs text-muted-foreground dark:border-zinc-700">
                       {(models.get(r.modelId)?.name ?? r.modelId).slice(0, 8)}
                     </span>
                   )}
-                  <span className="shrink-0 text-[10px] uppercase text-muted-foreground opacity-60">
+                  <span className="shrink-0 text-2xs uppercase text-muted-foreground opacity-60">
                     {r.matchField}
                   </span>
                 </div>

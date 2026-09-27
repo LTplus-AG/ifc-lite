@@ -4,7 +4,7 @@
 
 /**
  * Registered-locale behaviour of the shared command surfaces (#4918 slice
- * 2, following slice 1's `MainToolbar.locale.i18n.test.tsx`): the one
+ * 2, updated for the ribbon-only desktop toolbar in #5874): the one
  * interpolated key (`classVisibility.pinnedDetail.label`, `{tier}`) and
  * per-key English fallback for a partial locale.
  *
@@ -18,14 +18,14 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cleanup, render } from '@/test/render.js';
 import { registerLocale, setLocale } from '@/i18n';
 import { useViewerStore } from '@/store';
-import { ClassicExportMenuItems } from './ClassicExportMenuItems.js';
-import { BottomPanelMenuItems } from './BottomPanelMenuItems.js';
+import { RibbonExportGroup } from '../ribbon/tabs/RibbonExportGroup.js';
+import { RIBBON_EXPORT_ICONS } from '../ribbon/tabs/ribbon-export-icons.js';
+import { AnalyzeTab } from '../ribbon/tabs/AnalyzeTab.js';
 import { ClassVisibilityMenuContent } from './ClassVisibilityMenu.js';
 
 /**
@@ -86,32 +86,22 @@ describe('shared command surfaces with a registered locale (#4918 slice 2)', () 
 
   it('falls back to English per key for a partial locale', () => {
     registerLocale('shared-commands-partial', {
-      'exportCommands.ifc.menuLabel': 'IFC exportieren (mit Änderungen)',
-      'workspacePanels.bottom.lists': 'Listen',
+      'exportCommands.ifc.label': 'IFC exportieren (mit Änderungen)',
+      'lists.panel.title': 'Listen',
     });
     setLocale('shared-commands-partial');
 
     const container = render(
       <>
-        <DropdownMenu open modal={false}>
-          <DropdownMenuTrigger>Export</DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <ClassicExportMenuItems />
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <DropdownMenu open modal={false}>
-          <DropdownMenuTrigger>Panels</DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <BottomPanelMenuItems active={new Set()} onToggle={() => {}} />
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <RibbonExportGroup icons={RIBBON_EXPORT_ICONS} />
+        <AnalyzeTab />
       </>,
     );
 
     const strings = readableStrings(container);
     assert.ok(strings.has('IFC exportieren (mit Änderungen)'), 'translated key renders in the registered locale');
     assert.ok(strings.has('Listen'), 'translated key renders in the registered locale');
-    assert.ok(strings.has('Export GLB (3D Model)'), 'untranslated key renders in English, exact case');
+    assert.ok(strings.has('GLB'), 'untranslated key renders in English, exact case');
     assert.ok(strings.has('Schedule (Gantt)'), 'untranslated key renders in English, exact case');
   });
 });

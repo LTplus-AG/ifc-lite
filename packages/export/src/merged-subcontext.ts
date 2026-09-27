@@ -53,6 +53,7 @@ const USER_DEFINED_TARGET_VIEW_ATTR = 9;
 function decodeEntity(dataStore: IfcDataStore, expressId: number): string | null {
   const source = dataStore.source;
   if (!source) return null;
+  // @raw-entity-enumeration-ok decode one source subcontext's STEP byte span during an overlay-free merge
   const ref = dataStore.entityIndex.byId.get(expressId);
   if (!ref) return null;
   return asSourceBytes(source).decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);

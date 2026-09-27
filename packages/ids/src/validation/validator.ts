@@ -601,7 +601,7 @@ function checkRequirement(
       } else {
         const missingFailures = new Set([
           'ATTRIBUTE_MISSING',
-          'PROPERTY_MISSING',
+          'PROPERTY_MISSING', 'PROPERTY_EMPTY', // absent value (#6117)
           'PSET_MISSING',
           'CLASSIFICATION_MISSING',
           'MATERIAL_MISSING',

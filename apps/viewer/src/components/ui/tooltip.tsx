@@ -7,7 +7,24 @@ import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 import { cn } from '@/lib/utils';
 import { usePortalContainer } from './portal-container';
 
-const TooltipProvider = TooltipPrimitive.Provider;
+/** True below a `TooltipProvider`. Radix throws when a `Tooltip` has no
+ *  provider above it, so a primitive that may be rendered outside the app
+ *  shell's provider (a tour card, a standalone dialog) checks this and brings
+ *  its own (`IconButton`). */
+const TooltipProviderPresence = React.createContext(false);
+
+function TooltipProvider(props: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
+  return (
+    <TooltipProviderPresence.Provider value={true}>
+      <TooltipPrimitive.Provider {...props} />
+    </TooltipProviderPresence.Provider>
+  );
+}
+
+/** Whether a `TooltipProvider` is mounted above the caller. */
+function useHasTooltipProvider(): boolean {
+  return React.useContext(TooltipProviderPresence);
+}
 const Tooltip = TooltipPrimitive.Root;
 const TooltipTrigger = TooltipPrimitive.Trigger;
 
@@ -29,4 +46,4 @@ const TooltipContent = React.forwardRef<
 ));
 TooltipContent.displayName = TooltipPrimitive.Content.displayName;
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider };
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, useHasTooltipProvider };

@@ -153,8 +153,9 @@ impl GeometryRouter {
                 continue;
             }
 
-            // Textured tessellated face set → its own part with per-vertex UVs (#961).
-            if item.ifc_type == IfcType::IfcTriangulatedFaceSet {
+            // Textured tessellated face set → its own part with per-vertex UVs (#961);
+            // a terrain TIN is a face set that only appends `Flags` (#5942).
+            if matches!(item.ifc_type, IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork) {
                 if let Some(map) = texture_index.get(&item.id) {
                     let proc = crate::processors::TriangulatedFaceSetProcessor::new();
                     if let Ok((mut sub_mesh, sub_uvs)) =

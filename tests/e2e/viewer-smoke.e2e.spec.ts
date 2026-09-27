@@ -19,6 +19,7 @@ import { test, expect, Page } from '@playwright/test';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { ViewerBenchmarkPage } from '../benchmark/viewer-benchmark-page';
+import { checkAxeBaseline } from './axe-baseline';
 
 const FIXTURE = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
 // Keep in sync with tests/benchmark/viewer-benchmark.spec.ts expectedMeshCounts.
@@ -200,7 +201,7 @@ test.describe('Viewer functional smoke (AC20-FZK-Haus)', () => {
     // ── 3. Section plane: slider move auto-enables and keeps rendering ─
     // Regression #243 at the integration level: moving the position must
     // auto-enable clipping. The cut is on screen only inside the Section tool (#4910).
-    await storeAction(page, "state.setSuppressNextSection2DPanelAutoOpen(true); state.setActiveTool('section'); state.setSectionPlanePosition(1.5)");
+    await storeAction(page, "state.setActiveTool('section'); state.setSectionPlanePosition(1.5)");
     await page.waitForTimeout(300);
     const section = await storeState<{ enabled: boolean; position: number }>(
       page,
@@ -274,5 +275,22 @@ test.describe('Viewer functional smoke (AC20-FZK-Haus)', () => {
             !/popErrorScope|GPUDevice|GPUAdapter|device.*lost|createBuffer/i.test(e),
         );
     expect(relevant, `uncaught page errors:\n${relevant.join('\n')}`).toEqual([]);
+  });
+
+  // #5607: axe-core over the empty screen and the loaded model, against a
+  // committed baseline of known violations (see ./axe-baseline.ts). Both
+  // states are scanned before asserting so one failure reports both.
+  test('axe finds no accessibility violations beyond the committed baseline', async ({ page }) => {
+    const viewer = new ViewerBenchmarkPage(page);
+    await viewer.setup();
+    const empty = await checkAxeBaseline(page, 'empty');
+
+    await viewer.loadFile(join(process.cwd(), FIXTURE));
+    await waitForMeshCount(viewer, page, 120000);
+    await page.waitForTimeout(2000); // same settle as the clean-load test above
+    const loaded = await checkAxeBaseline(page, 'loaded');
+
+    const failures = [empty.failure, loaded.failure].filter((f): f is string => f !== null);
+    expect(failures, failures.join('\n\n')).toEqual([]);
   });
 });

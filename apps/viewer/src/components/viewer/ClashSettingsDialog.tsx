@@ -19,6 +19,7 @@ import {
   Settings2, Plus, Pencil, Trash2, RotateCcw, Upload, Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -181,9 +182,9 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
     <Dialog>
       <DialogTrigger asChild>
         {trigger ?? (
-          <Button variant="ghost" size="icon" className="h-7 w-7" title={t('clashTools.settings.title')}>
+          <IconButton label={t('clashTools.settings.title')} className="h-7 w-7">
             <Settings2 className="h-4 w-4" />
-          </Button>
+          </IconButton>
         )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[540px] overflow-hidden">
@@ -318,23 +319,23 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-xs font-medium">
                         {p.name}
-                        {!p.builtin && <span className="ml-1.5 text-[10px] text-muted-foreground">{t('clashTools.settings.customBadge')}</span>}
+                        {!p.builtin && <span className="ml-1.5 text-2xs text-muted-foreground">{t('clashTools.settings.customBadge')}</span>}
                       </div>
-                      <div className="truncate text-[10px] text-muted-foreground">
+                      <div className="truncate text-2xs text-muted-foreground">
                         <SetSummary selector={p.selectorA} filter={p.filterA} />
                         <span className="opacity-60"> × </span>
                         <SetSummary selector={p.selectorB} filter={p.filterB} />
                       </div>
                     </div>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" title={t('clashTools.settings.editTooltip')} onClick={() => startEdit(p)}>
+                    <IconButton label={t('clashTools.settings.editTooltip')} className="h-6 w-6" onClick={() => startEdit(p)}>
                       <Pencil className="h-3 w-3" />
-                    </Button>
+                    </IconButton>
                     {p.builtin ? (
                       <span className="w-6" />
                     ) : (
-                      <Button variant="ghost" size="icon" className="h-6 w-6" title={t('clashTools.settings.deleteTooltip')} onClick={() => reportSaveFailure(deletePreset(p.id))}>
+                      <IconButton label={t('clashTools.settings.deleteTooltip')} className="h-6 w-6" onClick={() => reportSaveFailure(deletePreset(p.id))}>
                         <Trash2 className="h-3 w-3" />
-                      </Button>
+                      </IconButton>
                     )}
                   </div>
                 ))}
@@ -348,7 +349,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
                 severityLabel={(sev) => t(SEVERITY[sev].labelKey)}
                 matchCount={matchCount}
                 hasModel={classes !== null}
-                onChange={setDraft}
+                onChange={(update) => setDraft((previous) => previous ? update(previous) : previous)}
                 onCancel={() => setDraft(null)}
                 onSave={saveDraft}
                 canSave={draftValid}

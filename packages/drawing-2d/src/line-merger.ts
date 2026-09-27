@@ -26,7 +26,7 @@ import {
 export interface LineMergerOptions {
   /** Angle tolerance for considering lines collinear (radians) */
   angleTolerance: number;
-  /** Distance tolerance for considering lines on same line */
+  /** Perpendicular distance tolerance for considering lines on the same line (metres) */
   distanceTolerance: number;
   /** Gap tolerance for merging non-touching collinear segments */
   gapTolerance: number;
@@ -34,7 +34,7 @@ export interface LineMergerOptions {
 
 const DEFAULT_OPTIONS: LineMergerOptions = {
   angleTolerance: 0.01, // ~0.5 degrees
-  distanceTolerance: 0.001,
+  distanceTolerance: 1e-6,
   gapTolerance: 0.01,
 };
 

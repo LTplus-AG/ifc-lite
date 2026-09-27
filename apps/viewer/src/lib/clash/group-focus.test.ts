@@ -33,7 +33,7 @@ describe('manual clash group focus (#4921)', () => {
       cameraCallbacks: {}, lensAppliedColors: new Map(), models: new Map(),
       mutationViews: new Map(),
       hiddenEntities: new Set(), isolatedEntities: null, ghostExceptEntities: null,
-      hiddenEntitiesByModel: new Map(), isolatedEntitiesByModel: new Map(), mutationVersion: 0,
+      mutationVersion: 0,
       colorPresentationRevision: 0,
       selectedStoreys: new Set(), levelDisplayMode: 'stacked',
       appliedStoreyOffsets: new Map(), pendingMeshTranslations: null, classFilter: null,

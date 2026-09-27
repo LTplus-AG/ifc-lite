@@ -28,6 +28,9 @@ export const geometryExportDialogsEn = {
   'geometryExport.shared.unknownError': 'Unknown error',
   'geometryExport.shared.geometryEngineUnavailableError': 'Geometry engine unavailable',
 
+  // --- ExportDialogShell.tsx (#5848) ---
+  'geometryExport.shell.filenamePreviewLabel': 'Will save as:',
+
   // --- GLBExportDialog.tsx ---
   'geometryExport.glb.triggerButton': 'Export GLB',
   'geometryExport.glb.dialogTitle': 'Export GLB File',
@@ -147,7 +150,7 @@ export const geometryExportDialogsEn = {
 
   // --- GeometryEditCard.tsx ---
   'geometryExport.editCard.header': 'Geometry',
-  'geometryExport.editCard.positionSectionLabel': 'Storey-local position (IFC Z-up)',
+  'geometryExport.editCard.positionSectionLabel': 'Storey-local position in m (IFC Z-up)',
   'geometryExport.editCard.nudgeStepAriaLabel': 'Nudge step in metres',
   'geometryExport.editCard.nudgeStepOption': '±{step} m',
   'geometryExport.editCard.nonStandardPlacementHint':
@@ -158,7 +161,7 @@ export const geometryExportDialogsEn = {
   'geometryExport.editCard.applyXyzButton': 'Apply XYZ',
   'geometryExport.editCard.enterNumericError': 'Enter numeric X, Y, Z coordinates',
   'geometryExport.editCard.moveFailedError': "Couldn't move: {reason}",
-  'geometryExport.editCard.movedSuccess': 'Moved to ({coordinates})',
+  'geometryExport.editCard.movedSuccess': 'Moved to ({coordinates}) m',
   'geometryExport.editCard.yawReadout': 'yaw {degrees}°',
   'geometryExport.editCard.yawReadoutEmpty': 'yaw —',
   'geometryExport.editCard.rotateMinus15AriaLabel': 'Rotate −15°',

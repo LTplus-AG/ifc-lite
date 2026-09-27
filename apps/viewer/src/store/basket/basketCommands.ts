@@ -72,7 +72,12 @@ export async function executeBasketSaveView(source: BasketViewSource = 'manual')
   const state = useViewerStore.getState();
   if (state.pinboardEntities.size === 0) return null;
   const id = await saveBasketViewWithThumbnailFromStore(source);
-  state.setBasketPresentationVisible(true);
+  // Dock the `presentation` bottom panel exclusively (#5508) — setting the
+  // flag directly left it true ALONGSIDE another bottom panel's flag (e.g.
+  // Script), and by the table's precedence rule (`activeBottomPanel`,
+  // `lib/panels/bottom-panels.ts`) presentation sorts last, so the save
+  // silently failed to surface the new view behind whichever panel was open.
+  state.openPanelInHome('presentation', 'programmatic');
   return id;
 }
 

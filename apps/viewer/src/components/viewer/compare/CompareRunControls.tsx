@@ -13,13 +13,12 @@
  * threaded in, so this file has no behaviour to test beyond wiring.
  */
 
-import { Loader2, Play } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { DiffScope } from '@ifc-lite/diff';
 import type { DuplicateAuthoredKeyInfo } from '@/lib/compare/authoredKeys';
+import { AnalysisRunButton } from '../analysis/AnalysisRunActions';
 import { CompareBlacklist } from './CompareBlacklist';
 import { CompareKeyProperty } from './CompareKeyProperty';
 import type { ChangedTypeCount } from './changeRow';
@@ -48,18 +47,13 @@ interface CompareRunControlsProps {
   canRun: boolean;
   running: boolean;
   onRun: () => void;
-  error: string | null;
+  onCancel: () => void;
   /** Show the "no geometry fingerprints" warning (result-dependent). */
   geometryUnavailable: boolean;
   /** Placement fingerprints are still comparing moves (symmetric mesh-less
    *  pair) — the warning must not claim geometry changes are undetectable
    *  while the panel's own rows report placement-driven ones. */
   placementOnlyGeometry: boolean;
-  /** #5312 (#5214 finding 2, warn half): either the A/B picker or the
-   *  currently-shown result's compared pair has unsaved viewer edits, so
-   *  Compare's data channel is reading the file as loaded rather than the
-   *  edited state. Warn only — this does not make Compare read the overlay. */
-  unsavedEditsWarning: boolean;
   excludedTypes: string[];
   changedTypeCounts: ChangedTypeCount[];
   onAddExcludedType: (type: string) => void;
@@ -85,10 +79,9 @@ export function CompareRunControls({
   canRun,
   running,
   onRun,
-  error,
+  onCancel,
   geometryUnavailable,
   placementOnlyGeometry,
-  unsavedEditsWarning,
   excludedTypes,
   changedTypeCounts,
   onAddExcludedType,
@@ -166,7 +159,7 @@ export function CompareRunControls({
         />
         <span>
           {t('comparePanel.runControls.matchByContentLabel')}
-          <span className="block text-[10px] opacity-70">
+          <span className="block text-2xs opacity-70">
             {t('comparePanel.runControls.matchByContentHint')}
           </span>
         </span>
@@ -182,24 +175,16 @@ export function CompareRunControls({
         disabled={running}
       />
 
-      <Button
+      <AnalysisRunButton
         size="sm"
-        className="w-full gap-1.5"
-        disabled={!canRun}
-        onClick={onRun}
+        running={running}
+        canRun={canRun}
+        onRun={onRun}
+        onCancel={onCancel}
+        runLabel={t('comparePanel.runControls.runComparison')}
+        cancelLabel={t('comparePanel.runControls.cancel')}
         {...tourAnchor(TOUR_ANCHORS.compareRun)}
-      >
-        {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-        {running ? t('comparePanel.runControls.comparing') : t('comparePanel.runControls.runComparison')}
-      </Button>
-
-      {error && <p className="text-xs text-[#f7768e]">{error}</p>}
-
-      {unsavedEditsWarning && (
-        <p className="text-xs text-[#e0af68]">
-          {t('comparePanel.runControls.unsavedEditsWarning')}
-        </p>
-      )}
+      />
 
       {geometryUnavailable && scope !== 'data' && (
         <p className="text-xs text-[#e0af68]">

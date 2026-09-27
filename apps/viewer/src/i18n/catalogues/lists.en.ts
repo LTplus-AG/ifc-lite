@@ -47,15 +47,6 @@ export const listsEn = {
   'lists.modelTagScope.selectAriaLabel': 'Model tag scope',
   'lists.modelTagScope.allModels': 'all models',
   'lists.modelTagScope.pickAtLeastOneTag': 'Pick at least one tag, or the list runs over no model.',
-  // Same four operator words as the advanced filter's OP_LABEL (kept as a
-  // local copy rather than importing that shared map — #4918 review, PR
-  // #5004: OP_LABEL is a plain untranslated Record consumed by unrelated
-  // search-modal editors too, and localizing it here is scoped to what
-  // this editor renders, not a cross-cutting rename of a shared module).
-  'lists.modelTagScope.opHasAny': 'has any of',
-  'lists.modelTagScope.opHasAll': 'has all of',
-  'lists.modelTagScope.opHasNone': 'has none of',
-  'lists.modelTagScope.opUntagged': 'is untagged',
   'lists.modelTagScope.unknownTagName': 'unknown tag',
   // One complete message per operator (not "Runs over {description}." with
   // a preformatted English description substituted in) so a locale
@@ -78,7 +69,6 @@ export const listsEn = {
   'lists.panel.editConfiguration': 'Edit Configuration',
   'lists.panel.backToLists': 'Back to Lists',
   'lists.panel.cancel': 'Cancel',
-  'lists.panel.close': 'Close',
   'lists.panel.copyName': '{name} (Copy)',
 
   // ListLibrary
@@ -102,22 +92,24 @@ export const listsEn = {
   // ListScheduleTable
   'lists.scheduleTable.count': 'Count',
   'lists.scheduleTable.countAggregateTitle': 'Count aggregate — the default sort order',
-  'lists.scheduleTable.dragToResizeTitle': 'Drag to resize · double-click to auto-fit',
+  'lists.scheduleTable.dragToResizeTitle': 'Drag to resize · arrow keys to adjust · Home or double-click to reset',
   'lists.scheduleTable.totalGroups': { one: 'Total · {countDisplay} group', other: 'Total · {countDisplay} groups' },
   'lists.scheduleTable.sumIcon': 'Σ',
 
   // ListResultsTable
   'lists.resultsTable.defaultTitle': 'List',
   'lists.resultsTable.filterPlaceholder': 'Filter results...',
+  'lists.resultsTable.noRows': 'No matching rows',
   'lists.resultsTable.rowCount': { one: '{countDisplay} row', other: '{countDisplay} rows' },
   'lists.resultsTable.rowCountOfTotal': { one: '{countDisplay} / {total} row', other: '{countDisplay} / {total} rows' },
   'lists.resultsTable.showingVisibleOnly': 'Showing visible objects only',
   'lists.resultsTable.showingAllObjects': 'Showing all objects',
   'lists.resultsTable.exportAriaLabel': 'Export',
   'lists.resultsTable.exportEllipsis': 'Export…',
+  'lists.resultsTable.exportFailed': 'Export failed: {message}',
   'lists.resultsTable.groupedAriaLabel': 'grouped',
   'lists.resultsTable.groupingLevelAriaLabel': 'grouping level {level}',
-  'lists.resultsTable.dragToResizeTitle': 'Drag to resize · double-click to auto-fit',
+  'lists.resultsTable.dragToResizeTitle': 'Drag to resize · arrow keys to adjust · Home or double-click to reset',
   'lists.resultsTable.totalCount': 'Total · {count}',
   'lists.resultsTable.sumIcon': 'Σ',
 
@@ -174,7 +166,6 @@ export const listsEn = {
   'lists.builder.groupCountHint': 'Each group shows its element count.',
   'lists.builder.totalsHint': 'Σ Totals — sum these columns per group and overall',
   'lists.builder.sumIcon': 'Σ',
-  'lists.builder.addFilter': 'Add filter',
   'lists.builder.filterDimensionAriaLabel': 'Filter dimension',
   'lists.builder.attributeAriaLabel': 'Attribute',
   'lists.builder.spatialLevelAriaLabel': 'Spatial level',
@@ -187,7 +178,6 @@ export const listsEn = {
   'lists.builder.psetPlaceholder': 'Pset_…',
   'lists.builder.namePropertyPlaceholder': 'name',
   'lists.builder.operatorAriaLabel': 'Operator',
-  'lists.builder.removeFilterAriaLabel': 'Remove filter',
   'lists.builder.source.attribute': 'Attribute',
   'lists.builder.source.property': 'Property',
   'lists.builder.source.quantity': 'Quantity',
@@ -196,8 +186,11 @@ export const listsEn = {
   'lists.builder.source.spatial': 'Spatial',
   'lists.builder.source.model': 'Model',
   'lists.builder.source.zone': 'Zone',
-  'lists.builder.operator.contains': 'contains',
-  'lists.builder.operator.isSet': 'is set',
+  'lists.builder.source.geometry': 'World coordinate',
+  'lists.builder.listValueSourceAriaLabel': 'List value source',
+  'lists.builder.chooseZoneSet': 'Choose a zone set',
+  'lists.builder.missingZoneSet': 'Missing zone set ({id})',
+  'lists.builder.axisAriaLabel': 'Coordinate axis',
   'lists.builder.spatial.container': 'Container',
   'lists.builder.spatial.storey': 'Storey',
   'lists.builder.spatial.building': 'Building',
@@ -214,4 +207,7 @@ export const listsEn = {
   'lists.builder.valuePlaceholder.zoneBreakdown': 'zone: value, …',
   'lists.builder.valuePlaceholder.zoneName': 'zone name',
   'lists.builder.valuePlaceholder.value': 'value',
+  'lists.builder.unreadableWarning': 'These saved filters could not be read, so the list cannot run. Remove them to run it.',
+  'lists.builder.malformedCondition': 'Malformed saved condition',
+  'lists.builder.removeUnreadable': 'Remove saved filter',
 } as const satisfies Record<string, TranslationValue>;

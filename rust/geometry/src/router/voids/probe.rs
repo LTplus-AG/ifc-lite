@@ -508,7 +508,14 @@ impl GeometryRouter {
             };
 
             for item in items {
-                let mut mesh = match self.process_representation_item(&item, decoder) {
+                // A raw national-grid cutter rebases in this opening's own
+                // frame, like the host it cuts (#5698).
+                let item_mesh = match self.process_raw_item_for_element(&item, element, decoder) {
+                    Ok(Some(mesh)) => Ok(mesh),
+                    Ok(None) => self.process_representation_item(&item, decoder),
+                    Err(error) => Err(error),
+                };
+                let mut mesh = match item_mesh {
                     Ok(m) if !m.is_empty() => m,
                     _ => continue,
                 };

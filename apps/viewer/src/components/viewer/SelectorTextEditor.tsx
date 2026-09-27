@@ -89,7 +89,7 @@ export function SelectorTextEditor({ groups, onChange, schemaVersion }: Selector
           variant="secondary"
           onClick={apply}
           disabled={text.trim().length === 0}
-          className="h-7 gap-1 text-[11px]"
+          className="h-7 gap-1 text-2xs"
           title={t('searchModal.filterSelector.applyTitle')}
         >
           <Wand2 className="h-3 w-3" /> {t('searchModal.filterSelector.apply')}
@@ -110,7 +110,7 @@ export function SelectorTextEditor({ groups, onChange, schemaVersion }: Selector
 
       {currentAsText.length > 0 && (
         <p
-          className="truncate font-mono text-[10px] text-muted-foreground"
+          className="truncate font-mono text-2xs text-muted-foreground"
           title={t('filterGroups.readbackTitle')}
         >
           {currentAsText}

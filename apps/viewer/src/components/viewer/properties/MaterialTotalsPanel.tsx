@@ -20,6 +20,7 @@ import { Layers, Calculator, Boxes, Info } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
+import { useEffectiveMaterialStores } from '@/hooks/useEffectiveMaterialStores';
 import {
   buildMaterialUsageIndex,
   getMaterialDisplay,
@@ -28,7 +29,6 @@ import {
   extractTypeQuantitiesOnDemand,
   extractProjectUnits,
   ProjectUnits,
-  type IfcDataStore,
 } from '@ifc-lite/parser';
 import { QuantityType, RelationshipType } from '@ifc-lite/data';
 import { resolveQuantityDisplay } from '@/lib/units/display';
@@ -180,25 +180,19 @@ function formatTotal(
 export function MaterialTotalsPanel({ materialId, modelId }: { materialId: number; modelId: string }) {
   const { t, locale, revision } = useTranslation();
   const { ifcDataStore, models } = useIfc();
+  const { stores: effectiveStores, ready: materialsReady } = useEffectiveMaterialStores(
+    models, ifcDataStore, true,
+  );
   // Display-unit converter overrides (issue #1573 proposal 2).
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
 
   // The store the selected material lives in, plus every loaded store (so the
   // totals merge same-named materials across a federation).
   const { selectedStore, allStores } = useMemo(() => {
-    const stores: IfcDataStore[] = [];
-    if (models.size > 0) {
-      for (const [, m] of models) {
-        if (m.ifcDataStore) stores.push(m.ifcDataStore as IfcDataStore);
-      }
-    } else if (ifcDataStore) {
-      stores.push(ifcDataStore as IfcDataStore);
-    }
-    const sel = modelId !== 'legacy'
-      ? (models.get(modelId)?.ifcDataStore as IfcDataStore | undefined) ?? (ifcDataStore as IfcDataStore | null) ?? undefined
-      : (ifcDataStore as IfcDataStore | null) ?? undefined;
-    return { selectedStore: sel, allStores: stores.length > 0 ? stores : (sel ? [sel] : []) };
-  }, [models, ifcDataStore, modelId]);
+    const stores = [...effectiveStores.values()];
+    const sel = effectiveStores.get(modelId) ?? effectiveStores.get('legacy');
+    return { selectedStore: sel, allStores: stores };
+  }, [effectiveStores, modelId]);
 
   const display = useMemo(() => {
     if (!selectedStore) return { name: t('properties.materialTotals.fallbackName', { id: materialId }), type: 'IfcMaterial' };
@@ -264,6 +258,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
         for (const { entityId, weight } of usage.entries) {
           result.elementCount += 1;
 
+          // @raw-entity-enumeration-ok effectiveStores holds a reparsed STEP snapshot with pending edits baked in.
           const ifcClass = store.entityIndex.byId.get(entityId)?.type || usage.ifcClass;
           classCounts.set(ifcClass, (classCounts.get(ifcClass) ?? 0) + 1);
 
@@ -305,6 +300,10 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
   }, [allStores, display.name]);
   const psetCount = psetGroups.reduce((sum, g) => sum + g.psets.length, 0);
 
+  if (!materialsReady) {
+    return <output aria-busy="true">{t('sources.sourceEntityList.loading')}</output>;
+  }
+
   return (
     <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
       {/* Header */}
@@ -343,13 +342,13 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
               )}
             </div>
             {totals.elementCount > 0 && !totals.hasVolume && (
-              <div className="flex items-start gap-1.5 px-2.5 py-2 text-[10px] text-zinc-500 dark:text-zinc-400 border-t border-amber-100 dark:border-amber-900/30">
+              <div className="flex items-start gap-1.5 px-2.5 py-2 text-2xs text-zinc-500 dark:text-zinc-400 border-t border-amber-100 dark:border-amber-900/30">
                 <Info className="h-3 w-3 shrink-0 mt-px" />
                 <span>{t('properties.materialTotals.noVolumeQuantities')}</span>
               </div>
             )}
             {totals.hasVolume && totals.elementsWithVolume < totals.elementCount && (
-              <div className="flex items-start gap-1.5 px-2.5 py-2 text-[10px] text-zinc-500 dark:text-zinc-400 border-t border-amber-100 dark:border-amber-900/30">
+              <div className="flex items-start gap-1.5 px-2.5 py-2 text-2xs text-zinc-500 dark:text-zinc-400 border-t border-amber-100 dark:border-amber-900/30">
                 <Info className="h-3 w-3 shrink-0 mt-px" />
                 <span>
                   {t('properties.materialTotals.partialVolumeNote', { counted: formatLocaleNumber(locale, totals.elementsWithVolume), total: formatLocaleNumber(locale, totals.elementCount) })}
@@ -379,7 +378,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
           {/* Material property sets */}
           {psetCount > 0 && (
             <div className="space-y-3">
-              <div className="flex items-center gap-2 px-1 pt-1 pb-0.5 text-[11px] text-amber-600/70 dark:text-amber-400/60 uppercase tracking-wider font-semibold">
+              <div className="flex items-center gap-2 px-1 pt-1 pb-0.5 text-2xs text-amber-600/70 dark:text-amber-400/60 uppercase tracking-wider font-semibold">
                 <Layers className="h-3 w-3 shrink-0" />
                 <span className="truncate">{t('properties.materialTotals.materialPropertiesHeading')}</span>
               </div>

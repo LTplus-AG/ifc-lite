@@ -135,8 +135,6 @@ export interface Drawing2DState {
   drawing2DError: string | null;
   /** Whether the 2D panel is visible */
   drawing2DPanelVisible: boolean;
-  /** Suppress auto-opening 2D panel on next section tool activation */
-  suppressNextSection2DPanelAutoOpen: boolean;
   /** SVG content for export (cached) */
   drawing2DSvgContent: string | null;
   /** Display options */
@@ -176,6 +174,13 @@ export interface Drawing2DState {
     scanSectionOpacity: number;
     /** Include the scan layer's dots in SVG export/print. */
     scanSectionIncludeInExport: boolean;
+    /**
+     * Print preview (#5496): forces the direct-mode canvas to white paper
+     * with black ink regardless of the active app theme, previewing what
+     * exports already produce. Off by default — the canvas otherwise
+     * follows the theme (dark paper in dark theme).
+     */
+    showPrintPreview: boolean;
   };
   /** Available graphic override presets */
   graphicOverridePresets: GraphicOverridePreset[];
@@ -244,7 +249,6 @@ export interface Drawing2DSlice extends Drawing2DState {
   setDrawing2DProgress: (progress: number, phase: string) => void;
   setDrawing2DError: (error: string | null) => void;
   setDrawing2DPanelVisible: (visible: boolean) => void;
-  setSuppressNextSection2DPanelAutoOpen: (suppress: boolean) => void;
   toggleDrawing2DPanel: () => void;
   setDrawing2DSvgContent: (svg: string | null) => void;
   updateDrawing2DDisplayOptions: (options: Partial<Drawing2DState['drawing2DDisplayOptions']>) => void;
@@ -362,6 +366,7 @@ const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] =
   scanSectionThickness: DEFAULT_SCAN_SECTION_THICKNESS,
   scanSectionOpacity: 0.9,
   scanSectionIncludeInExport: true,
+  showPrintPreview: false,
 });
 
 export const getDefaultDrawing2DState = (): Drawing2DState => ({
@@ -371,7 +376,6 @@ export const getDefaultDrawing2DState = (): Drawing2DState => ({
   drawing2DPhase: '',
   drawing2DError: null,
   drawing2DPanelVisible: false,
-  suppressNextSection2DPanelAutoOpen: false,
   drawing2DSvgContent: null,
   drawing2DDisplayOptions: getDefaultDisplayOptions(),
   // Graphic overrides
@@ -427,7 +431,6 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
   }),
 
   setDrawing2DPanelVisible: (visible) => set({ drawing2DPanelVisible: visible }),
-  setSuppressNextSection2DPanelAutoOpen: (suppress) => set({ suppressNextSection2DPanelAutoOpen: suppress }),
 
   toggleDrawing2DPanel: () => set((state) => ({ drawing2DPanelVisible: !state.drawing2DPanelVisible })),
 

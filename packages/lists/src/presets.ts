@@ -22,7 +22,7 @@ function makePreset(
     createdAt: 0,
     updatedAt: 0,
     entityTypes,
-    conditions: [],
+    groups: [],
     columns,
   };
 }

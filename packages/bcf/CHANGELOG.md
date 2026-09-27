@@ -1,5 +1,19 @@
 # @ifc-lite/bcf
 
+## 5.0.0
+
+### Major Changes
+
+- [#5970](https://github.com/LTplus-AG/ifc-lite/pull/5970) [`f64353f`](https://github.com/LTplus-AG/ifc-lite/commit/f64353f10fb643a664a9f3f485ef009b1d2622f8) Thanks [@louistrue](https://github.com/louistrue)! - Removed `BCFOverlayRenderer` and `BCFOverlayRendererOptions` ([#5511](https://github.com/LTplus-AG/ifc-lite/issues/5511), charter [#5478](https://github.com/LTplus-AG/ifc-lite/issues/5478)). The framework-agnostic DOM overlay class — and the injected `<style>` stylesheet it carried — is gone; the viewer's `BCFOverlay` was its only consumer and now renders markers, connector lines and hover tooltips as `Pin` / `AnchoredCard` primitives on the viewport's shared scene-overlay projector instead of running its own `requestAnimationFrame` polling loop against this class. `computeMarkerPositions` and every other export of `@ifc-lite/bcf` are unchanged — marker *position* computation stays a pure, viewer-agnostic function; only the DOM rendering class is removed. A consumer still wanting a plain-DOM BCF overlay (no React) needs to render markers itself from `computeMarkerPositions`' output.
+
+## 4.2.1
+
+### Patch Changes
+
+- [#5804](https://github.com/LTplus-AG/ifc-lite/pull/5804) [`7fae2b8`](https://github.com/LTplus-AG/ifc-lite/commit/7fae2b8b2d6264a90af3235d95e0a4f6c257b9d7) Thanks [@louistrue](https://github.com/louistrue)! - `BCFOverlayRenderer` now takes its colours from the host page's CSS custom properties instead of a hard-coded dark palette, so the marker tooltip is legible on light pages as well as dark ones ([#5491](https://github.com/LTplus-AG/ifc-lite/issues/5491)). The tooltip reads `--color-popover`, `--color-popover-foreground`, `--color-muted-foreground` and `--color-border`; pins read `--overlay-status-danger` / `-warn` / `-ok` (open / in progress / resolved), `--overlay-ink-muted` (closed), `--overlay-ink` (any other status) and `--overlay-halo` (outline and index); the active marker is ringed in `--overlay-accent`. Every property has a light fallback, so a page that defines none of them still gets a readable dark-on-white tooltip.
+
+- [#5906](https://github.com/LTplus-AG/ifc-lite/pull/5906) [`e6ebbef`](https://github.com/LTplus-AG/ifc-lite/commit/e6ebbefde52670adbdb0c35bc19baed0453ca42f) Thanks [@louistrue](https://github.com/louistrue)! - Write ZIP archives with "version needed to extract" 2.0 on DEFLATE entries, as the ZIP APPNOTE requires. JSZip hardcodes 1.0 on every entry, so `writeBCF` (.bcfzip) and `ParquetExporter.exportBOS` (.bos) now pack with fflate, which writes 2.0 itself. Found while investigating [#3612](https://github.com/LTplus-AG/ifc-lite/issues/3612); this is not shown to be the cause of the Solibri import failure reported there.
+
 ## 4.2.0
 
 ### Minor Changes

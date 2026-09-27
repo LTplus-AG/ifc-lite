@@ -19,7 +19,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, click, render } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { resolve } from '@/i18n/registry';
 import { en } from '@/i18n/en';
@@ -30,6 +30,7 @@ import type { CompareResult } from '@/store/slices/compareSlice';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
 import type { ModelDiff } from '@ifc-lite/diff';
 import { ComparePanel } from './ComparePanel.js';
+import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
 
 const CATALOGUE: Catalogue = Object.fromEntries(
   Object.entries(en).filter(
@@ -193,6 +194,38 @@ afterEach(() => {
 });
 
 describe('ComparePanel localization (#4918)', () => {
+  for (const modelCount of [2, 3] as const) {
+    it(`#5820 retains a stale comparison and shows Re-run (${modelCount} models)`, () => {
+      useViewerStore.setState({
+        models: new Map(Array.from({ length: modelCount }, (_, index) => {
+          const id = String.fromCharCode(65 + index);
+          return [id, model(id)] as const;
+        })),
+        compareBaseModelId: 'A',
+        compareHeadModelId: 'B',
+        mutationVersion: 10,
+        geometryContentVersion: 20,
+      });
+      const report = stampAnalysisReport(oneModifiedEntryResult(), captureAnalysisStamp());
+      useViewerStore.setState({ compareResult: report });
+      const ui = render(<ComparePanel />);
+      assert.equal(ui.querySelector('output'), null);
+
+      act(() => useViewerStore.setState({ mutationVersion: 11 }));
+      assert.equal(useViewerStore.getState().compareResult, report);
+      assert.match(ui.querySelector('output')?.textContent ?? '', /model changed/i);
+      assert.ok(ui.querySelector('.opacity-60'), 'the old comparison is dimmed');
+      const rerun = ui.querySelector<HTMLButtonElement>('output button');
+      assert.equal(rerun?.textContent?.trim(), 'Re-run');
+      if (modelCount === 2) {
+        assert.ok(rerun);
+        click(rerun);
+        assert.equal(useViewerStore.getState().compareError, 'Version A is not fully loaded yet.');
+        assert.equal(useViewerStore.getState().compareResult, report, 'a failed re-run leaves the stale report visible');
+      }
+    });
+  }
+
   it('translates the header and the "load a second model" empty state with fewer than two models', () => {
     const container = render(<ComparePanel onClose={() => {}} />);
     const englishDom = readableStrings(container);
@@ -200,7 +233,9 @@ describe('ComparePanel localization (#4918)', () => {
     assertAllTranslate(
       [
         { key: 'comparePanel.panel.title' },
-        { key: 'comparePanel.panel.closeTitle' },
+        // Close / Clear results are the shared analysis chrome (#5834), whose
+        // catalogue `AnalysisPanel.test.tsx` covers.
+        { key: 'comparePanel.panel.needTwoModels' },
         { key: 'comparePanel.panel.loadSecondModel' },
       ],
       englishDom,
@@ -208,7 +243,7 @@ describe('ComparePanel localization (#4918)', () => {
     );
   });
 
-  it('translates the clear-results action, count labels, and the focused change\'s BCF affordance', () => {
+  it('translates the re-run action, count labels, and the focused change\'s BCF affordance', () => {
     useViewerStore.setState({
       models: new Map([
         ['A', model('A')],
@@ -224,7 +259,7 @@ describe('ComparePanel localization (#4918)', () => {
     const afterDom = domAfterPseudo(container);
     assertAllTranslate(
       [
-        { key: 'comparePanel.panel.clearResultsTitle' },
+        { key: 'comparePanel.panel.rerunTitle' },
         { key: 'comparePanel.panel.countUnchanged' },
         { key: 'comparePanel.resultsList.stateChanged' },
         { key: 'comparePanel.bcfFromChange.createButton' },

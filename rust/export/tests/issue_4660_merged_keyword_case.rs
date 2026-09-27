@@ -3,8 +3,8 @@
 //! `EntityScanner::next_entity` returns the keyword exactly as the file wrote
 //! it. The merged/federated export path reads `ModelIndex::type_of` with
 //! case-sensitive comparisons — a `match` on `"IFCSITE" | "IFCBUILDING" |
-//! "IFCBUILDINGSTOREY"` in `unify_spatial`, `!= Some("IFCRELAGGREGATES")` in
-//! `skip_redundant_rel_aggregates`, `starts_with("IFCREL")` in
+//! "IFCBUILDINGSTOREY"` in `unify_spatial`, `== "IFCRELAGGREGATES"` before
+//! the one-parent rule in the emit loop, `starts_with("IFCREL")` in
 //! `is_relationship_type` and in the empty-container pruner, and an exact
 //! `CONTAINER_TYPES.contains` in `is_container_type`. If `type_of` were stored
 //! as written rather than folded once at population, a merged model spelling

@@ -98,6 +98,24 @@ describe('mobile Panels sheet (#5853)', () => {
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'bcf');
   });
 
+  it('the direct Properties button clears a dismissed bottom panel before reopening the sheet', () => {
+    const container = renderViewerLayout();
+    openList(container);
+    click(button(container, getPanelDef('lists')!.title)!);
+    assert.equal(activeBottomPanel(useViewerStore.getState()), 'lists');
+    const backdrop = button(container, 'Close panels');
+    assert.ok(backdrop);
+    click(backdrop);
+    assert.equal(useViewerStore.getState().rightPanelCollapsed, true);
+    assert.equal(activeBottomPanel(useViewerStore.getState()), 'lists', 'backdrop leaves the bottom flag set');
+
+    click(button(container, 'Open Properties')!);
+    const s = useViewerStore.getState();
+    assert.equal(s.rightPanelCollapsed, false);
+    assert.equal(s.sidebarActivePanel, 'properties');
+    assert.equal(activeBottomPanel(s), null, 'the stale Lists flag would hide Properties');
+  });
+
   it('a tap on Hierarchy opens the left sheet', () => {
     const container = renderViewerLayout();
     openList(container);

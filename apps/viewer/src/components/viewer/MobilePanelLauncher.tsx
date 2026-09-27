@@ -43,7 +43,7 @@ export function MobilePanelLauncher({ bottomInset }: { bottomInset: number }) {
   const railIds = useRailPanelIds();
   const [listOpen, setListOpen] = useState(false);
 
-  const openFromList = (id: WorkspacePanelId) => {
+  const openMobilePanel = (id: WorkspacePanelId) => {
     setListOpen(false);
     if (getPanelDef(id)?.region === 'left') {
       setRightPanelCollapsed(true);
@@ -66,13 +66,13 @@ export function MobilePanelLauncher({ bottomInset }: { bottomInset: number }) {
           icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h10M4 18h7" /></svg>}
           label={t('shellChrome.layout.hierarchyLabel')}
           ariaLabel={t('shellChrome.layout.openHierarchyAriaLabel')}
-          onClick={() => { setRightPanelCollapsed(true); setLeftPanelCollapsed(false); }}
+          onClick={() => openMobilePanel('hierarchy')}
         />
         <FloatingButton
           icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>}
           label={t('properties.panel.title')}
           ariaLabel={t('shellChrome.layout.openPropertiesAriaLabel')}
-          onClick={() => { setLeftPanelCollapsed(true); setRightPanelCollapsed(false); }}
+          onClick={() => openMobilePanel('properties')}
         />
         <FloatingButton
           icon={<LayoutGrid className="h-5 w-5" />}
@@ -101,7 +101,7 @@ export function MobilePanelLauncher({ bottomInset }: { bottomInset: number }) {
                   <li key={id} className={divider ? 'border-t border-border/70' : undefined}>
                     <button
                       className="flex w-full items-center gap-3 px-4 min-h-[44px] text-sm text-left active:bg-muted touch-manipulation"
-                      onClick={() => openFromList(id)}
+                      onClick={() => openMobilePanel(id)}
                     >
                       <def.Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
                       {def.title}

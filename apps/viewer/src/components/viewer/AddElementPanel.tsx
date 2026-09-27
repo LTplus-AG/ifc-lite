@@ -31,7 +31,6 @@ import { useViewerStore } from '@/store';
 import { canMutate, mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
 import { useIfc } from '@/hooks/useIfc';
 import { EntityNode } from '@ifc-lite/query';
-import type { AddElementType } from '@/store/slices/addElementSlice';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { ELEMENT_OPTIONS, SPACE_PREDEFINED_TYPES } from './add-element-options';

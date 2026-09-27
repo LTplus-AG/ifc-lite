@@ -69,7 +69,7 @@ function publish(next: Partial<CommandRuntimeState>): void {
   for (const listener of listeners) listener();
 }
 
-export function subscribeCommandRuntime(listener: () => void): () => void {
+function subscribeCommandRuntime(listener: () => void): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
 }
@@ -183,7 +183,7 @@ export function commitCommand(): boolean {
 }
 
 /** Escape: reset a progressed gesture; on an untouched one, end the command. */
-export function cancelCommand(): boolean {
+function cancelCommand(): boolean {
   const { command, ctx, gesture, dirty } = state;
   if (!command || !ctx) return false;
   const verdict = command.cancel ? command.cancel(gesture) : dirty ? 'reset' : 'exit';
@@ -196,7 +196,7 @@ export function cancelCommand(): boolean {
 }
 
 /** Backspace: the command's own "drop the last point", when it has one. */
-export function undoCommandPoint(): boolean {
+function undoCommandPoint(): boolean {
   const { command } = state;
   if (!command?.undoPoint) return false;
   publish({ gesture: command.undoPoint(state.gesture) });

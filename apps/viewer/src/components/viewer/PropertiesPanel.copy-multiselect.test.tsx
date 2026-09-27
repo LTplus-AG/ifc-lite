@@ -19,6 +19,8 @@ import { latestToast } from '@/test/toasts.js';
 import { Toaster } from '@/components/ui/toast.js';
 import { useViewerStore } from '@/store';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { configureMutationView } from '@/utils/configureMutationView.js';
 import { PropertiesPanel } from './PropertiesPanel.js';
 
 const guid = (name: string) => (name + '0'.repeat(22)).slice(0, 22);
@@ -195,6 +197,54 @@ describe('Properties panel value copy and multi-selection summary (#5900)', () =
       .find((candidate) => candidate.firstElementChild?.textContent === 'AcousticRating');
     assert.equal(row?.children[1].firstElementChild?.textContent, 'Rw50');
     assert.ok(copyButton(row!, 'AcousticRating'), 'an agreed value is copyable');
+  });
+
+  /** Views wired exactly as the viewer wires them (`configureMutationView`). */
+  function registerViews(): { a: MutablePropertyView; b: MutablePropertyView } {
+    const a = new MutablePropertyView(storeA.properties || null, 'a');
+    const b = new MutablePropertyView(storeB.properties || null, 'b');
+    configureMutationView(a, storeA);
+    configureMutationView(b, storeB);
+    useViewerStore.getState().registerMutationView('a', a);
+    useViewerStore.getState().registerMutationView('b', b);
+    return { a, b };
+  }
+  const summaryRow = (panel: HTMLElement, name: string) => [...panel.querySelectorAll<HTMLElement>('.group\\/copyrow')]
+    .find((row) => row.firstElementChild?.textContent === name);
+
+  it('keeps a deleted last property set and quantity set deleted in the summary (#5900 review)', async () => {
+    seed({ primary: ['b', 72], set: ['a:72', 'a:73', 'b:72'] });
+    const views = registerViews();
+    // An untouched overlay shows the source sets.
+    let panel = mount();
+    assert.ok(summaryRow(panel, 'FireRating'), 'untouched psets still summarised');
+    assert.equal(summaryRow(panel, 'Width')?.children[1].firstElementChild?.textContent, '0.2 m', 'untouched qsets still summarised');
+    cleanup();
+    act(() => {
+      for (const [view, ids] of [[views.a, [72, 73]], [views.b, [72]]] as const) {
+        for (const id of ids) {
+          view.deletePropertySet(id, 'Pset_WallCommon');
+          view.deleteQuantitySet(id, 'Qto_WallBaseQuantities');
+        }
+      }
+      useViewerStore.setState((state) => ({ mutationVersion: (state.mutationVersion ?? 0) + 1 }) as never);
+    });
+    panel = mount();
+    assert.equal(summaryRow(panel, 'FireRating'), undefined, 'a deleted pset must not be resurrected from the source node');
+    assert.equal(summaryRow(panel, 'Width'), undefined, 'a deleted qset must not be resurrected from the source node');
+    assert.ok(summaryRow(panel, 'AcousticRating'), 'the other pset is still there');
+  });
+
+  it('keeps a deleted last quantity set deleted for a single selected element (#5900 review)', async () => {
+    seed({ primary: ['a', 72] });
+    const views = registerViews();
+    act(() => {
+      views.a.deleteQuantitySet(72, 'Qto_WallBaseQuantities');
+      useViewerStore.setState((state) => ({ mutationVersion: (state.mutationVersion ?? 0) + 1 }) as never);
+    });
+    const panel = mount();
+    assert.equal(panel.querySelector('button[aria-label="Copy Width"]'), null, 'the deleted qset\'s Width row is gone');
+    assert.ok(panel.querySelector('button[aria-label="Copy FireRating"]'), 'properties are unaffected');
   });
 
   it('narrows the selection to an element clicked in the summary', async () => {

@@ -397,7 +397,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
                   <button className="flex min-w-0 flex-1 items-center gap-1 hover:text-foreground" onClick={() => handleHeaderClick(colIdx)}>
                     {groupedBy && <ChevronDown className="h-3 w-3 shrink-0 text-primary" aria-label={t('lists.resultsTable.groupedAriaLabel')} />}
                     {groupedBy && groupColumnIds.length > 1 && (
-                      <span className="shrink-0 text-[9px] font-semibold tabular-nums text-primary" aria-label={t('lists.resultsTable.groupingLevelAriaLabel', { level: groupLevel + 1 })}>
+                      <span className="shrink-0 text-2xs font-semibold tabular-nums text-primary" aria-label={t('lists.resultsTable.groupingLevelAriaLabel', { level: groupLevel + 1 })}>
                         {groupLevel + 1}
                       </span>
                     )}
@@ -458,7 +458,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
                           <>
                             {expanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                             <span className="truncate" title={item.label}>{item.label}</span>
-                            <span className="ml-1 shrink-0 rounded-full bg-foreground/10 px-1.5 text-[10px] tabular-nums text-muted-foreground">{formatLocaleCount(item.count, locale)}</span>
+                            <span className="ml-1 shrink-0 rounded-full bg-foreground/10 px-1.5 text-2xs tabular-nums text-muted-foreground">{formatLocaleCount(item.count, locale)}</span>
                           </>
                         )}
                         {sumColumnIds.includes(col.id) && (

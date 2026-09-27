@@ -66,7 +66,7 @@ export function ListModelTagScopeEditor({ value, onChange }: ListModelTagScopeEd
 
   return (
     <div className="mt-3 space-y-1.5" data-list-model-tag-scope>
-      <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
+      <label className="flex items-center gap-2 text-2xs text-muted-foreground">
         <span className="shrink-0">{t('lists.modelTagScope.models')}</span>
         <select
           aria-label={t('lists.modelTagScope.selectAriaLabel')}
@@ -93,9 +93,9 @@ export function ListModelTagScopeEditor({ value, onChange }: ListModelTagScopeEd
         </div>
       )}
       {value && value.op !== 'untagged' && value.tagIds.length === 0 ? (
-        <p className="text-[10px] text-muted-foreground">{t('lists.modelTagScope.pickAtLeastOneTag')}</p>
+        <p className="text-2xs text-muted-foreground">{t('lists.modelTagScope.pickAtLeastOneTag')}</p>
       ) : value && (
-        <p className="text-[10px] text-muted-foreground" data-list-model-tag-scope-hint>
+        <p className="text-2xs text-muted-foreground" data-list-model-tag-scope-hint>
           {value.op === 'untagged'
             ? t('lists.modelTagScope.runsOverUntagged')
             : t(RUNS_OVER_KEY[value.op], {
@@ -104,7 +104,7 @@ export function ListModelTagScopeEditor({ value, onChange }: ListModelTagScopeEd
         </p>
       )}
       {unresolved.length > 0 && (
-        <p role="alert" className="text-[10px] text-amber-700 dark:text-amber-400">
+        <p role="alert" className="text-2xs text-amber-700 dark:text-amber-400">
           {t('lists.modelTagScope.unresolvedTagsWarning', { count: unresolved.length })}
         </p>
       )}

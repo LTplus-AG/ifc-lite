@@ -10,15 +10,20 @@
  */
 
 import {
-  Box, Building2, Equal, Eye, EyeOff, FolderOpen, Layout, Minus, Palette,
-  Pencil, Plus, RotateCcw, Save, SquareX, Tag,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Box, Building2, ChevronsUpDown,
+  Crosshair, Equal, Eye, EyeOff, FolderOpen, Home, Layers3, Layout, Maximize2,
+  Minus, Orbit, Palette, Pencil, Plus, RotateCcw, Save, SquareStack, SquareX,
+  Sun, Tag,
 } from 'lucide-react';
 import type { TranslationKey } from '@/i18n';
 import { resolveEnglish } from '@/i18n/registry';
 import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
+import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
-import { resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { hideSelectionFromStore } from '@/store/hideSelection';
+import { applyLevelDisplayMode } from '@/store/levelDisplay';
+import { openSettings } from '@/lib/settings/open-settings';
 import {
   executeBasketAdd, executeBasketClear, executeBasketRemove, executeBasketSaveView,
   executeBasketSet, executeBasketToggleVisibility,
@@ -35,6 +40,7 @@ export interface SurfaceCommandContext {
 
 export interface SurfaceCommandState {
   canEditInSession: boolean;
+  cesiumAvailable?: boolean;
 }
 
 export interface SurfaceCommandDefinition {
@@ -75,6 +81,105 @@ export const SURFACE_COMMANDS = [
     keywords: 'model tags label discipline federation organise organize',
     category: 'File', icon: Tag, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
     run: () => { window.dispatchEvent(new CustomEvent('ifc-lite:edit-model-tags')); },
+  },
+  {
+    id: 'view:home', labelKey: 'commandPalette.view.home.label',
+    searchLabel: 'Home', keywords: 'isometric reset camera', category: 'View', icon: Home,
+    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.home',
+    run: () => { goHomeFromStore(); },
+  },
+  {
+    id: 'view:fit', labelKey: 'commandPalette.view.fit.label',
+    searchLabel: 'Fit All', keywords: 'zoom extents entire model', category: 'View', icon: Maximize2,
+    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.fitAll',
+    run: () => { useViewerStore.getState().cameraCallbacks.fitAll?.(); },
+  },
+  {
+    id: 'view:frame', labelKey: 'commandPalette.view.frame.label',
+    searchLabel: 'Frame Selection', keywords: 'zoom focus selected', category: 'View', icon: Crosshair,
+    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.frameSelection',
+    run: () => { useViewerStore.getState().cameraCallbacks.frameSelection?.(); },
+  },
+  {
+    id: 'view:stacked', labelKey: 'commandPalette.view.stacked.label',
+    searchLabel: 'Level — Stacked', keywords: 'level display mode stacked default storey storeys',
+    category: 'View', icon: Layers3, surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { applyLevelDisplayMode('stacked'); },
+  },
+  {
+    id: 'view:exploded', labelKey: 'commandPalette.view.exploded.label',
+    searchLabel: 'Level — Exploded', keywords: 'level display mode exploded explode lift storey storeys gap',
+    category: 'View', icon: ChevronsUpDown, surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { applyLevelDisplayMode('exploded'); },
+  },
+  {
+    id: 'view:solo', labelKey: 'commandPalette.view.solo.label',
+    searchLabel: 'Level — Solo', keywords: 'level display mode solo isolate storey single only top',
+    category: 'View', icon: SquareStack, surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { applyLevelDisplayMode('solo'); },
+  },
+  {
+    id: 'view:projection', labelKey: 'commandPalette.view.projection.label',
+    searchLabel: 'Projection', keywords: 'perspective orthographic ortho toggle switch',
+    category: 'View', icon: Orbit, surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { useViewerStore.getState().toggleProjectionMode(); },
+  },
+  {
+    id: 'view:top', labelKey: 'commandPalette.view.top.label',
+    searchLabel: 'Top View', keywords: 'camera plan', category: 'View', icon: ArrowUp,
+    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.viewTop',
+    run: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('top'); },
+  },
+  {
+    id: 'view:bottom', labelKey: 'commandPalette.view.bottom.label',
+    searchLabel: 'Bottom View', keywords: 'camera', category: 'View', icon: ArrowDown,
+    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.viewBottom',
+    run: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('bottom'); },
+  },
+  {
+    id: 'view:front', labelKey: 'commandPalette.view.front.label',
+    searchLabel: 'Front View', keywords: 'camera elevation', category: 'View', icon: ArrowRight,
+    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.viewFront',
+    run: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('front'); },
+  },
+  {
+    id: 'view:back', labelKey: 'commandPalette.view.back.label',
+    searchLabel: 'Back View', keywords: 'camera', category: 'View', icon: ArrowLeft,
+    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.viewBack',
+    run: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('back'); },
+  },
+  {
+    id: 'view:left', labelKey: 'commandPalette.view.left.label',
+    searchLabel: 'Left View', keywords: 'camera', category: 'View', icon: ArrowLeft,
+    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.viewLeft',
+    run: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('left'); },
+  },
+  {
+    id: 'view:right', labelKey: 'commandPalette.view.right.label',
+    searchLabel: 'Right View', keywords: 'camera', category: 'View', icon: ArrowRight,
+    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'camera.viewRight',
+    run: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('right'); },
+  },
+  {
+    id: 'view:world', labelKey: 'commandPalette.view.world.label',
+    searchLabel: 'Toggle 3D World Context',
+    keywords: 'cesium globe earth satellite terrain georeference basemap context site',
+    category: 'View', icon: Building2, surfaces: paletteOnly,
+    enabled: (state: SurfaceCommandState) => state.cesiumAvailable === true,
+    run: () => { useViewerStore.getState().toggleCesium(); },
+  },
+  {
+    id: 'view:lighting', labelKey: panelTitleKey('environment'),
+    keywords: 'sun sky lighting shadow solar daylight study environment preset hdri panel',
+    category: 'View', icon: Sun, surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { useViewerStore.getState().toggleWorkspacePanel('environment', 'palette'); },
+  },
+  {
+    id: 'view:spacemouse', labelKey: 'commandPalette.view.spacemouse.label',
+    searchLabel: 'SpaceMouse',
+    keywords: '3dconnexion space mouse navigator webhid 3d input device controller preferences settings',
+    category: 'View', icon: Orbit, surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { openSettings('display'); },
   },
   {
     id: 'vis:hide', labelKey: 'commandPalette.vis.hide.label',

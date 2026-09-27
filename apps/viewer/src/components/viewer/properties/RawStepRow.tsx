@@ -117,7 +117,7 @@ export function RawStepRow({
        *  IFC attribute tables and STEP documentation (GlobalId = #1).
        *  The `index` prop stays 0-based for store/overlay addressing. */}
       <span
-        className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 tabular-nums tracking-wide"
+        className="text-2xs font-mono text-zinc-400 dark:text-zinc-500 tabular-nums tracking-wide"
         aria-label={t('properties.rawStepRow.positionalIndexAriaLabel', { index: index + 1 })}
       >
         [{index + 1}]
@@ -248,7 +248,7 @@ export function RawStepRow({
       {error && (
         <p
           id={`raw-step-err-${entityId}-${index}`}
-          className="col-span-4 -mt-1 mb-1 ml-[36px] flex items-center gap-1 text-[11px] text-red-600 dark:text-red-400"
+          className="col-span-4 -mt-1 mb-1 ml-[36px] flex items-center gap-1 text-2xs text-red-600 dark:text-red-400"
         >
           <AlertCircle className="h-3 w-3 shrink-0" />
           <span>{error}</span>

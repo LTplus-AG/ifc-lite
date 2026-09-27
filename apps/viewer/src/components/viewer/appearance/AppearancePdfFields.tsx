@@ -27,9 +27,9 @@ export function AppearancePdfFields({ pdf, disabled, onInvalid }: {
   return <section className="space-y-3 rounded-lg border p-3" aria-label={t('appearance.pdfFields.pageSettingsAriaLabel')} aria-busy={!!pdf.busy}>
     <div className="flex items-center justify-between gap-2">
       <h3 className="text-xs font-medium">{t('appearance.pdfFields.heading')}</h3>
-      {pdf.busy && <span role="status" className="flex items-center gap-1 text-[10px] text-muted-foreground"><Spinner size="xs" />{t('appearance.pdfFields.updatingPage')}</span>}
+      {pdf.busy && <output className="flex items-center gap-1 text-2xs text-muted-foreground"><Spinner size="xs" />{t('appearance.pdfFields.updatingPage')}</output>}
     </div>
-    <p className="truncate text-[11px] text-muted-foreground" title={pdf.documentName}>{pdf.documentName}</p>
+    <p className="truncate text-2xs text-muted-foreground" title={pdf.documentName}>{pdf.documentName}</p>
     <fieldset disabled={disabled} className="space-y-3">
       <div className="flex items-center gap-2">
         <IconButton
@@ -40,7 +40,7 @@ export function AppearancePdfFields({ pdf, disabled, onInvalid }: {
           disabled={disabled || pdf.pageNumber <= 1}
           onClick={() => pdf.onPageChange(pdf.pageNumber - 1)}
         ><ChevronLeft aria-hidden="true" /></IconButton>
-        <label className="flex min-w-0 flex-1 items-center justify-center gap-2 text-[11px] text-muted-foreground">
+        <label className="flex min-w-0 flex-1 items-center justify-center gap-2 text-2xs text-muted-foreground">
           <span>{t('appearance.pdfFields.pageLabel')}</span><Input aria-label={t('appearance.pdfFields.pageNumberAriaLabel')} type="number" min="1" max={pdf.pageCount} step="1" value={pageText}
             aria-invalid={!pageValid} className="h-8 min-w-0 max-w-20 text-center text-xs aria-[invalid=true]:border-destructive"
             onChange={event => {
@@ -58,15 +58,15 @@ export function AppearancePdfFields({ pdf, disabled, onInvalid }: {
           onClick={() => pdf.onPageChange(pdf.pageNumber + 1)}
         ><ChevronRight aria-hidden="true" /></IconButton>
       </div>
-      {!pageValid && <p role="alert" className="text-[10px] text-destructive">{t('appearance.pdfFields.pageRangeError', { count: pdf.pageCount })}</p>}
+      {!pageValid && <p role="alert" className="text-2xs text-destructive">{t('appearance.pdfFields.pageRangeError', { count: pdf.pageCount })}</p>}
       <div className="grid grid-cols-2 gap-2">
-        <label className="space-y-1 text-[11px] text-muted-foreground"><span>{t('appearance.pdfFields.rotationLabel')}</span>
+        <label className="space-y-1 text-2xs text-muted-foreground"><span>{t('appearance.pdfFields.rotationLabel')}</span>
           <select aria-label={t('appearance.pdfFields.rotationAriaLabel')} className={appearanceSelectClass} value={pdf.rotation} onChange={event => {
             const rotation = Number(event.target.value);
             if (rotation === 0 || rotation === 90 || rotation === 180 || rotation === 270) pdf.onRotationChange(rotation);
           }}><option value="0">{t('appearance.pdfFields.rotationOriginal')}</option><option value="90">{t('appearance.pdfFields.rotation90')}</option><option value="180">{t('appearance.pdfFields.rotation180')}</option><option value="270">{t('appearance.pdfFields.rotation270')}</option></select>
         </label>
-        <label className="space-y-1 text-[11px] text-muted-foreground"><span>{t('appearance.pdfFields.qualityLabel')}</span>
+        <label className="space-y-1 text-2xs text-muted-foreground"><span>{t('appearance.pdfFields.qualityLabel')}</span>
           <select aria-label={t('appearance.pdfFields.qualityAriaLabel')} className={appearanceSelectClass} value={pdf.requestedDpi} onChange={event => pdf.onDpiChange(Number(event.target.value))}>
             <option value="72">{t('appearance.pdfFields.qualityDraft')}</option><option value="144">{t('appearance.pdfFields.qualityStandard')}</option><option value="216">{t('appearance.pdfFields.qualityFine')}</option><option value="300">{t('appearance.pdfFields.qualityHigh')}</option>
             {![72, 144, 216, 300].includes(pdf.requestedDpi) && <option value={pdf.requestedDpi}>{t('appearance.pdfFields.qualityCustomDpi', { dpi: pdf.requestedDpi })}</option>}
@@ -74,11 +74,11 @@ export function AppearancePdfFields({ pdf, disabled, onInvalid }: {
         </label>
       </div>
     </fieldset>
-    {pdf.effectiveDpi !== undefined && pdf.effectiveDpi < pdf.requestedDpi && <p className="text-[10px] leading-relaxed text-muted-foreground">
+    {pdf.effectiveDpi !== undefined && pdf.effectiveDpi < pdf.requestedDpi && <p className="text-2xs leading-relaxed text-muted-foreground">
       {t('appearance.pdfFields.effectiveDpiNote', { dpi: Math.round(pdf.effectiveDpi) })}
     </p>}
     {pageReady && <AppearancePdfCrop pdf={pdf} disabled={disabled || !!pdf.busy} onInvalid={cropInvalid} />}
-    {pdf.error && <p role="alert" className="text-[11px] leading-relaxed text-destructive">{pdf.error}</p>}
+    {pdf.error && <p role="alert" className="text-2xs leading-relaxed text-destructive">{pdf.error}</p>}
   </section>;
 }
 
@@ -90,9 +90,9 @@ export function AppearancePdfPassword({ prompt, disabled }: { prompt: Appearance
     if (!disabled && !prompt.busy && password.length > 0) { prompt.onSubmit(password); setPassword(''); }
   }}>
     <p className="text-xs font-medium">{t('appearance.pdfFields.unlockPdfHeading')}</p>
-    <p className="break-words text-[11px] text-muted-foreground">{t('appearance.pdfFields.needsPassword', { documentName: prompt.documentName })}</p>
-    {prompt.incorrect && <p role="alert" className="text-[11px] text-destructive">{t('appearance.pdfFields.incorrectPassword')}</p>}
-    <label className="block space-y-1 text-[11px] text-muted-foreground"><span>{t('appearance.pdfFields.passwordLabel')}</span>
+    <p className="break-words text-2xs text-muted-foreground">{t('appearance.pdfFields.needsPassword', { documentName: prompt.documentName })}</p>
+    {prompt.incorrect && <p role="alert" className="text-2xs text-destructive">{t('appearance.pdfFields.incorrectPassword')}</p>}
+    <label className="block space-y-1 text-2xs text-muted-foreground"><span>{t('appearance.pdfFields.passwordLabel')}</span>
       <Input type="password" aria-label={t('appearance.pdfFields.passwordAriaLabel')} autoComplete="off" value={password} disabled={disabled || prompt.busy}
         className="h-8 text-xs" onChange={event => setPassword(event.currentTarget.value)} />
     </label>

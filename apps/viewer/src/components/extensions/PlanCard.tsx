@@ -14,7 +14,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Check, ChevronRight, Edit3, ShieldAlert, Sparkles, X } from 'lucide-react';
+import { Check, ChevronRight, ShieldAlert, Sparkles, X } from 'lucide-react';
 import {
   computeRisks,
   overallTier,
@@ -103,7 +103,7 @@ export function PlanCard({ plan, onApprove, onCancel, readOnly }: PlanCardProps)
       <p className="text-xs text-muted-foreground leading-relaxed">{draft.rationale}</p>
 
       <div className="space-y-1.5">
-        <Label className="text-[11px] uppercase tracking-wide">{t('extensionsPanels.planCard.contributionsLabel')}</Label>
+        <Label className="text-2xs uppercase tracking-wide">{t('extensionsPanels.planCard.contributionsLabel')}</Label>
         {draft.contributions.length === 0 ? (
           <div className="text-xs text-muted-foreground italic">{t('extensionsPanels.planCard.noContributions')}</div>
         ) : (
@@ -111,10 +111,10 @@ export function PlanCard({ plan, onApprove, onCancel, readOnly }: PlanCardProps)
             {draft.contributions.map((c, i) => (
               <li key={i} className="flex items-center gap-2 text-xs rounded-md border bg-muted/30 px-2 py-1.5">
                 <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
-                <span className="font-mono uppercase text-[10px] text-muted-foreground shrink-0">{c.kind}</span>
+                <span className="font-mono uppercase text-2xs text-muted-foreground shrink-0">{c.kind}</span>
                 <span className="flex-1 min-w-0 truncate">{c.label}</span>
                 {c.slot && (
-                  <code className="text-[10px] text-muted-foreground font-mono">{c.slot}</code>
+                  <code className="text-2xs text-muted-foreground font-mono">{c.slot}</code>
                 )}
                 {!readOnly && (
                   <IconButton
@@ -132,7 +132,7 @@ export function PlanCard({ plan, onApprove, onCancel, readOnly }: PlanCardProps)
       </div>
 
       <div className="space-y-1.5">
-        <Label className="text-[11px] uppercase tracking-wide">{t('extensionsPanels.planCard.capabilitiesLabel')}</Label>
+        <Label className="text-2xs uppercase tracking-wide">{t('extensionsPanels.planCard.capabilitiesLabel')}</Label>
         {draft.capabilities.length === 0 ? (
           <div className="text-xs text-muted-foreground italic">{t('extensionsPanels.planCard.noCapabilitiesRequested')}</div>
         ) : (
@@ -153,10 +153,10 @@ export function PlanCard({ plan, onApprove, onCancel, readOnly }: PlanCardProps)
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <code className="font-mono text-[10px]">{risk.capability.raw}</code>
+                    <code className="font-mono text-2xs">{risk.capability.raw}</code>
                     <RiskBadge tier={risk.tier} />
                   </div>
-                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  <div className="mt-0.5 text-2xs text-muted-foreground">
                     {localizeCapabilityRisk(risk, t)}
                   </div>
                 </div>
@@ -167,25 +167,25 @@ export function PlanCard({ plan, onApprove, onCancel, readOnly }: PlanCardProps)
       </div>
 
       <div className="space-y-1.5">
-        <Label className="text-[11px] uppercase tracking-wide">{t('extensionsPanels.planCard.triggersLabel')}</Label>
+        <Label className="text-2xs uppercase tracking-wide">{t('extensionsPanels.planCard.triggersLabel')}</Label>
         <div className="flex flex-wrap gap-1">
           {draft.triggers.map((trigger) => (
-            <code key={trigger} className="text-[10px] font-mono rounded bg-muted px-1.5 py-0.5">{trigger}</code>
+            <code key={trigger} className="text-2xs font-mono rounded bg-muted px-1.5 py-0.5">{trigger}</code>
           ))}
         </div>
       </div>
 
       {draft.tests.length > 0 && (
         <div className="space-y-1.5">
-          <Label className="text-[11px] uppercase tracking-wide">{t('extensionsPanels.planCard.testsLabel')}</Label>
+          <Label className="text-2xs uppercase tracking-wide">{t('extensionsPanels.planCard.testsLabel')}</Label>
           <ul className="space-y-1">
             {draft.tests.map((test, i) => (
               <li key={i} className="text-xs rounded-md border bg-muted/30 px-2 py-1.5">
                 <div className="font-medium">{test.name}</div>
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-2xs text-muted-foreground">
                   {t('extensionsPanels.planCard.fixtureLabel')} <code className="font-mono">{test.fixture}</code>
                 </div>
-                <div className="text-[11px] text-muted-foreground italic mt-0.5">
+                <div className="text-2xs text-muted-foreground italic mt-0.5">
                   {test.assertionSummary}
                 </div>
               </li>
@@ -195,7 +195,7 @@ export function PlanCard({ plan, onApprove, onCancel, readOnly }: PlanCardProps)
       )}
 
       {draft.notes && (
-        <div className="text-[11px] text-muted-foreground italic border-l-2 border-muted pl-2">
+        <div className="text-2xs text-muted-foreground italic border-l-2 border-muted pl-2">
           {draft.notes}
         </div>
       )}
@@ -220,7 +220,7 @@ function RiskBadge({ tier }: { tier: RiskTier }) {
   const { t } = useTranslation();
   return (
     <span className={cn(
-      'inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide',
+      'inline-flex items-center rounded-full px-1.5 py-0.5 text-2xs font-medium uppercase tracking-wide',
       tier === 'red' && 'bg-destructive/20 text-destructive',
       tier === 'yellow' && 'bg-amber-500/20 text-amber-600 dark:text-amber-400',
       tier === 'green' && 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400',

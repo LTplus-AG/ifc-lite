@@ -69,7 +69,7 @@ export function LandXmlUnitsRefusalPrompt() {
         }}
       >
         <Select value={selectedUnit} onValueChange={setSelectedUnit}>
-          <SelectTrigger aria-label={t('landXml.unitsPrompt.selectLabel')} className="h-7 w-36 text-[11px]">
+          <SelectTrigger aria-label={t('landXml.unitsPrompt.selectLabel')} className="h-7 w-36 text-2xs">
             <SelectValue placeholder={t('landXml.unitsPrompt.selectPlaceholder')} />
           </SelectTrigger>
           <SelectContent>
@@ -82,7 +82,7 @@ export function LandXmlUnitsRefusalPrompt() {
           size="sm"
           variant="default"
           disabled={!selectedUnit}
-          className="h-7 px-2.5 gap-1.5 text-[11px] font-semibold uppercase tracking-wider"
+          className="h-7 px-2.5 gap-1.5 text-2xs font-semibold uppercase tracking-wider"
           onClick={handleRetry}
         >
           {t('landXml.unitsPrompt.retry')}

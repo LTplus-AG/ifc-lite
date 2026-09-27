@@ -31,6 +31,7 @@ import {
 } from '@/store/basket/basketCommands';
 import type { Command } from './commandPaletteSearch';
 import type { RightPanel } from './commandPaletteCommandsTypes';
+import type { ExportRequest } from './useExportRunner';
 import { TOOL_SURFACE_COMMANDS } from './surface-commands-tools';
 import { PANEL_SURFACE_COMMANDS } from './surface-commands-panels';
 import { WORKSPACE_SURFACE_COMMANDS } from './surface-commands-workspace';
@@ -43,6 +44,7 @@ export interface SurfaceCommandContext {
   resetColors?: () => void;
   activateRightPanel?: (panel: RightPanel) => void;
   activateBottomPanel?: (panel: BottomPanelId) => void;
+  runExport?: (request: ExportRequest) => void;
 }
 
 export interface SurfaceCommandState {
@@ -326,15 +328,23 @@ export function paletteSurfaceCommands(
 ): Command[] {
   return SURFACE_COMMANDS
     .filter((command) => command.surfaces.includes('palette') && command.enabled(state))
-    .map((command) => ({
-      id: command.id,
-      label: ('searchLabel' in command ? command.searchLabel : undefined) ?? resolveEnglish(command.labelKey),
-      labelKey: command.labelKey,
-      keywords: command.keywords,
-      category: command.category,
-      icon: command.icon,
-      shortcut: 'shortcut' in command ? command.shortcut : undefined,
-      immediate: 'immediate' in command ? command.immediate : undefined,
-      action: () => command.run({ ...context, surface: 'palette', execute }),
-    }));
+    .map((command) => commandRowFromDefinition(command, { ...context, surface: 'palette', execute }));
+}
+
+/** One row projection for the palette and mobile command menus. */
+export function commandRowFromDefinition(
+  command: SurfaceCommandDefinition,
+  context: SurfaceCommandContext,
+): Command {
+  return {
+    id: command.id,
+    label: command.searchLabel ?? resolveEnglish(command.labelKey),
+    labelKey: command.labelKey,
+    keywords: command.keywords,
+    category: command.category,
+    icon: command.icon,
+    shortcut: command.shortcut,
+    immediate: command.immediate,
+    action: () => command.run(context),
+  };
 }

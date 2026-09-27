@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { migrateLegacyListDefinition } from '@ifc-lite/lists';
+import { isFilterGroup } from '@ifc-lite/rules';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -15,6 +16,10 @@ export function migrateDocumentListBlocks(blocks: unknown): unknown {
       || block.source.kind !== 'list' || !isRecord(block.source.list)) return block;
     const list = block.source.list;
     if (!Array.isArray(list.groups) && !Array.isArray(list.conditions)) return block;
+    // A document has no list editor to remove an unreadable rule from, so a
+    // malformed embedded group is left for validation to reject whole (#5894)
+    // rather than migrated into removable rows as the Lists panel does (#6190).
+    if (Array.isArray(list.groups) && !list.groups.every(isFilterGroup)) return block;
     try {
       return { ...block, source: { ...block.source, list: migrateLegacyListDefinition(list) } };
     } catch (error) {

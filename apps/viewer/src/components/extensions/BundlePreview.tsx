@@ -50,14 +50,14 @@ export function BundlePreview({ bundle }: BundlePreviewProps) {
     <div className="flex h-[420px] gap-3">
       {/* File list */}
       <ul
-        className="w-48 shrink-0 overflow-y-auto rounded border bg-muted/30 text-[11px]"
-        role="listbox"
+        className="w-48 shrink-0 overflow-y-auto rounded border bg-muted/30 text-xs"
         aria-label={t('extensionsFlavors.bundlePreview.bundleFilesAriaLabel')}
       >
         {paths.map((path) => (
-          <li key={path} role="option" aria-selected={selected === path}>
+          <li key={path}>
             <button
               type="button"
+              aria-pressed={selected === path}
               onClick={() => setSelected(path)}
               aria-label={t('extensionsFlavors.bundlePreview.viewFileAriaLabel', { path })}
               className={cn(
@@ -73,7 +73,7 @@ export function BundlePreview({ bundle }: BundlePreviewProps) {
 
       {/* Source */}
       <div className="flex-1 min-w-0 flex flex-col rounded border">
-        <div className="flex items-center justify-between border-b px-2 py-1 bg-muted/30 text-[11px]">
+        <div className="flex items-center justify-between border-b px-2 py-1 bg-muted/30 text-xs">
           <code className="font-mono">{selected}</code>
           <Button
             size="sm"
@@ -86,7 +86,7 @@ export function BundlePreview({ bundle }: BundlePreviewProps) {
           </Button>
         </div>
         <ScrollArea className="flex-1">
-          <pre className="px-3 py-2 text-[11px] font-mono whitespace-pre-wrap break-all">
+          <pre className="px-3 py-2 text-xs font-mono whitespace-pre-wrap break-all">
             {text}
           </pre>
         </ScrollArea>

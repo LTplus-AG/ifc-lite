@@ -1297,7 +1297,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         <ByokStreamingPill modelId={activeModel} className="ml-1" />
         {authoringTelemetry && (
           <span
-            className="ml-1 text-[10px] uppercase tracking-wide font-semibold bg-primary/15 text-primary rounded px-1.5 py-0.5"
+            className="ml-1 text-xs uppercase tracking-wide font-semibold bg-primary/15 text-primary rounded px-1.5 py-0.5"
             title={t('chat.panel.authoringBadgeTooltip', { intent: authoringTelemetry.intent })}
           >
             {t('chat.panel.authoringBadge', {
@@ -1506,14 +1506,14 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-5 px-2 text-[10px]"
+                className="h-5 px-2 text-xs"
                 onClick={handleContinue}
               >
                 {t('chat.panel.continueButton')}
               </Button>
             )}
             {showSupportEmail && (
-              <a className="underline text-[10px]" href="mailto:louis@ltplus.com">
+              <a className="underline text-xs" href="mailto:louis@ltplus.com">
                 {t('chat.panel.contactSupportLink')}
               </a>
             )}
@@ -1630,7 +1630,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         </div>
         <div className="flex items-center justify-between mt-1 px-0.5">
           {isActive ? (
-            <span className="text-[10px] text-muted-foreground">{t('chat.panel.streamingIndicator')}</span>
+            <span className="text-xs text-muted-foreground">{t('chat.panel.streamingIndicator')}</span>
           ) : displayUsage ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1642,7 +1642,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                       style={{ width: `${Math.min(100, displayUsage.pct)}%` }}
                     />
                   </div>
-                  <span className="text-[10px] text-muted-foreground tabular-nums">{displayUsage.pct}%</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{displayUsage.pct}%</span>
                 </div>
               </TooltipTrigger>
               <TooltipContent>
@@ -1653,9 +1653,9 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
               </TooltipContent>
             </Tooltip>
           ) : (
-            <span className="text-[10px] text-muted-foreground">{t('chat.panel.shiftEnterHint')}</span>
+            <span className="text-xs text-muted-foreground">{t('chat.panel.shiftEnterHint')}</span>
           )}
-          <span className="text-[10px] text-muted-foreground">{shortcutLabel('chat.focusInput')}</span>
+          <span className="text-xs text-muted-foreground">{shortcutLabel('chat.focusInput')}</span>
         </div>
       </div>
 

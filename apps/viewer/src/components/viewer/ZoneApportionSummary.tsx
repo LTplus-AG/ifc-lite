@@ -42,7 +42,7 @@ export function ZoneApportionSummary({ zoneSet }: { zoneSet: ZoneSet }) {
       <Button
         variant="outline"
         size="sm"
-        className="h-6 w-full text-[11px]"
+        className="h-6 w-full text-xs"
         disabled={straddlers === 0}
         title={straddlers === 0
           ? t('zonesPanel.apportionSummary.noStraddlersTitle')
@@ -60,7 +60,7 @@ export function ZoneApportionSummary({ zoneSet }: { zoneSet: ZoneSet }) {
         {t('zonesPanel.apportionSummary.splitVolumesButton', { count: straddlers })}
       </Button>
       {entry && (
-        <p className="text-[10px] text-muted-foreground leading-snug">
+        <p className="text-xs text-muted-foreground leading-snug">
           {t('zonesPanel.apportionSummary.splitSummary', {
             count: coverage.apportioned.toLocaleString(),
             ms: entry.elapsedMs.toFixed(0),

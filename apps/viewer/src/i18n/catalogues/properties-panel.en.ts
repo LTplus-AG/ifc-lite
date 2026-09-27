@@ -40,8 +40,6 @@ export const propertiesPanelEn = {
   'properties.panel.attributesHeading': 'Attributes',
   'properties.panel.structureHeading': 'Structure',
   'properties.panel.zonesHeading': 'Zones',
-  'properties.panel.attributeEditor.emptyValue': 'empty',
-  'properties.panel.attributeEditor.editTooltip': 'Edit attribute',
 
   // PropertiesPanel: tabs
   'properties.panel.tab.properties': 'Properties',

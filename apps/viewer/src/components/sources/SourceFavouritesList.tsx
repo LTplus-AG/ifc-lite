@@ -125,7 +125,7 @@ export function SourceFavouritesList({
 
   return (
     <div className="border-b px-3 py-2">
-      <div className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+      <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
         {t('sources.sourceFavouritesList.heading')}
       </div>
       <ul className="flex flex-col">

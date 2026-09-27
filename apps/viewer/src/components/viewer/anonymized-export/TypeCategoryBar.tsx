@@ -33,13 +33,13 @@ export function TypeCategoryBar({ categories, onToggle }: TypeCategoryBarProps) 
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
           {heading}
         </div>
-        <div className="text-[11px] text-muted-foreground">
+        <div className="text-xs text-muted-foreground">
           {excludedCount > 0
             ? t('anonymizedExport.typeCategoryBar.blockedClickToBlockHint', { count: excludedCount })
             : t('anonymizedExport.typeCategoryBar.clickToBlockHint')}
         </div>
       </div>
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label={heading}>
+      <fieldset className="min-w-0 flex flex-wrap gap-1.5 border-0 p-0" aria-label={heading}>
         {categories.map((c) => (
           <button
             key={c.typeName}
@@ -68,10 +68,10 @@ export function TypeCategoryBar({ categories, onToggle }: TypeCategoryBarProps) 
             )}
           >
             <span>{c.typeName}</span>
-            <span className="rounded-full bg-background/60 px-1 text-[10px] tabular-nums">{c.count}</span>
+            <span className="rounded-full bg-background/60 px-1 text-xs tabular-nums">{c.count}</span>
           </button>
         ))}
-      </div>
+      </fieldset>
     </div>
   );
 }

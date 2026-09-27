@@ -161,8 +161,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
           <SearchInline />
         </div>
 
-        {/* Extension toolbar contributions (right-aligned, same slot as
-            the classic toolbar). */}
+        {/* Extension toolbar contributions, right-aligned beside search. */}
         <ExtensionToolbarSlot slot="toolbar.right" />
 
         {/* Export modified IFC… — pending-mutation affordance must stay visible

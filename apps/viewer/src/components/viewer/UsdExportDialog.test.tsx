@@ -38,7 +38,7 @@ function unmountAll(): void {
   }
 }
 
-function renderDialog(surface: 'classic' | 'ribbon' | 'palette' = 'classic'): HTMLElement {
+function renderDialog(surface: 'classic' | 'ribbon' | 'palette' = 'ribbon'): HTMLElement {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);

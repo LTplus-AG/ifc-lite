@@ -31,7 +31,7 @@ function openDialogFor(schemaVersion: FederatedModel['schemaVersion'], initialCh
   const model = fixtureModel('model');
   model.schemaVersion = schemaVersion;
   useViewerStore.setState({ ...fixtureModels(model), dirtyModels: new Set() });
-  const ui = render(<ExportDialog initialChangesOnly={initialChangesOnly} />);
+  const ui = render(<ExportDialog surface="ribbon" initialChangesOnly={initialChangesOnly} />);
   const trigger = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Export IFC'));
   assert.ok(trigger, 'the dialog trigger must render');
   click(trigger);

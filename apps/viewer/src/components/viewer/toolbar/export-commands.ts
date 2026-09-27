@@ -55,7 +55,7 @@ interface ExportCommandBase {
    * Short label: ribbon buttons, where the icon carries most of the meaning.
    */
   readonly labelKey: TranslationKey;
-  /** Long label: classic dropdown rows, which have only text to go on. */
+  /** Long label for command-palette rows, which have no icon context. */
   readonly menuLabelKey: TranslationKey;
   /** Tooltip / accessible name. */
   readonly tooltipKey: TranslationKey;
@@ -67,9 +67,8 @@ interface ExportCommandBase {
   readonly requires: 'model' | 'dataStore' | 'changes';
   /**
    * Visual cluster. Consecutive commands sharing a group render as one small
-   * button stack in the ribbon and one separator-delimited block in the
-   * classic menu. Keep a group at three commands or fewer — that is the
-   * ribbon stack's height.
+   * button stack in the ribbon. Keep a group at three commands or fewer —
+   * that is the ribbon stack's height.
    */
   readonly group: number;
   /**

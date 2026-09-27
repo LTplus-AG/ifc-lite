@@ -70,11 +70,11 @@ const FORMATS: Record<EnergyFormat, {
 };
 
 interface EnergyModelExportDialogProps {
-  surface?: ExportSurface;
+  surface: ExportSurface;
   trigger?: React.ReactNode;
 }
 
-export function EnergyModelExportDialog({ surface = 'classic', trigger }: EnergyModelExportDialogProps) {
+export function EnergyModelExportDialog({ surface, trigger }: EnergyModelExportDialogProps) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const getMutationView = useViewerStore((s) => s.getMutationView);

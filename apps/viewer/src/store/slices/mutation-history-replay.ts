@@ -21,6 +21,7 @@ import type { Mutation } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
 import { hasAppearanceHistoryEntry, replayAppearanceHistory } from '@/lib/appearance/history.js';
 import { applyRedoToView, applyUndoToView } from './mutation-history-apply.js';
+import { inverseMutationTargets, pruneInverseMutationTargets, revertedMutationIds } from './mutation-inverse-registry.js';
 import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags.js';
 
 type Get = () => ViewerState;
@@ -50,31 +51,35 @@ function moveTop(s: ViewerState, direction: Direction, modelId: string, moved: r
 
 /** Georeference edits live in `georefMutations`, not in the view. */
 function replayGeorefStep(set: Set, modelId: string, mutation: Mutation, direction: Direction): void {
+  set((s) => ({ ...moveTop(s, direction, modelId, [mutation]), ...georefPatch(s, modelId, mutation, direction) }));
+}
+
+export function georefPatch(s: ViewerState, modelId: string, mutation: Mutation, direction: Direction): Partial<ViewerState> {
   const [, entityKey, field] = mutation.attributeName!.split('.');
   const entity = entityKey as 'projectedCRS' | 'mapConversion';
   const value = direction === 'undo' ? mutation.oldValue : mutation.newValue;
-  set((s) => {
-    const georefMutations = new Map(s.georefMutations);
-    const modelMuts = { ...georefMutations.get(modelId) };
-    const entityMuts = { ...modelMuts[entity] } as Record<string, unknown>;
-    if (value !== undefined && value !== null) entityMuts[field] = value;
-    else delete entityMuts[field];
-    if (Object.keys(entityMuts).length === 0) delete modelMuts[entity];
-    else modelMuts[entity] = entityMuts as typeof modelMuts[typeof entity];
-    if (Object.keys(modelMuts).length === 0) georefMutations.delete(modelId);
-    else georefMutations.set(modelId, modelMuts);
-    return { ...moveTop(s, direction, modelId, [mutation]), georefMutations };
-  });
+  const georefMutations = new Map(s.georefMutations);
+  const modelMuts = { ...georefMutations.get(modelId) };
+  const entityMuts = { ...modelMuts[entity] } as Record<string, unknown>;
+  if (value !== undefined && value !== null) entityMuts[field] = value;
+  else delete entityMuts[field];
+  if (Object.keys(entityMuts).length === 0) delete modelMuts[entity];
+  else modelMuts[entity] = entityMuts as typeof modelMuts[typeof entity];
+  if (Object.keys(modelMuts).length === 0) georefMutations.delete(modelId);
+  else georefMutations.set(modelId, modelMuts);
+  return { georefMutations };
 }
 
 /** One undo or redo: the top mutation, or the whole batch it belongs to. */
 export function replayHistory(get: Get, set: Set, api: StoreApi<ViewerState>, modelId: string, direction: Direction): void {
+  pruneInverseMutationTargets(api);
   const { source } = stackKeys(direction);
   const moved: Mutation[] = [];
   const flush = () => {
     if (moved.length === 0) return;
     const run = moved.splice(0);
     set((s) => moveTop(s, direction, modelId, run));
+    if (direction === 'undo') for (const mutation of run) revertedMutationIds(api).add(mutation.id);
   };
 
   let batchId: string | undefined;
@@ -85,6 +90,24 @@ export function replayHistory(get: Get, set: Set, api: StoreApi<ViewerState>, mo
     const tag = get().mutationBatchTags.get(mutation.id);
     if (!first && (batchId === undefined || tag !== batchId)) break;
     batchId = tag;
+
+    const inverseTarget = inverseMutationTargets(api).get(mutation.id);
+    if (inverseTarget) {
+      // The synthetic step replays the original command in the opposite
+      // direction. Flush older members before a georef state update, as the
+      // ordinary georef path below does.
+      if (isGeorefMutation(inverseTarget)) {
+        flush();
+        set((s) => georefPatch(s, modelId, inverseTarget, direction === 'undo' ? 'redo' : 'undo'));
+      } else {
+        const view = get().mutationViews.get(modelId);
+        if (!view) break;
+        if (direction === 'undo') applyRedoToView(get, set, modelId, view, inverseTarget);
+        else applyUndoToView(get, set, modelId, view, inverseTarget);
+      }
+      moved.push(mutation);
+      continue;
+    }
 
     if (hasAppearanceHistoryEntry(api, mutation.id)) {
       flush();
@@ -102,6 +125,7 @@ export function replayHistory(get: Get, set: Set, api: StoreApi<ViewerState>, mo
     moved.push(mutation);
   }
   flush();
+  pruneInverseMutationTargets(api);
 }
 
 /**

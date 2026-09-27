@@ -28,6 +28,7 @@ import { ListPanel } from '@/components/viewer/lists/ListPanel';
 import { RoomPanel } from '@/components/viewer/RoomPanel';
 import { ZonesPanel } from '@/components/viewer/ZonesPanel';
 import { LoadReportPanel } from '@/components/viewer/LoadReportPanel';
+import { ChangesPanel } from '@/components/viewer/ChangesPanel';
 import { CostPanel } from '@/components/viewer/CostPanel';
 import { EnvironmentPanel } from '@/components/viewer/EnvironmentPanel';
 import { PointCloudPanel } from '@/components/viewer/PointCloudPanel';
@@ -143,6 +144,7 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'collab': return <RoomPanel onClose={onClose} />;
     case 'zones': return <ZonesPanel onClose={onClose} />;
     case 'loadReport': return <LoadReportPanel onClose={onClose} />;
+    case 'changes': return <ChangesPanel onClose={onClose} />;
     case 'layers': return <LayersPanelBody onClose={onClose} />;
     case 'sources': return <SourcesPanelBody onClose={onClose} />;
     case 'charts': return <ChartsPanelBody />;

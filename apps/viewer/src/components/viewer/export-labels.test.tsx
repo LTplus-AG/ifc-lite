@@ -27,11 +27,11 @@ afterEach(() => {
   useViewerStore.setState(initialState);
 });
 
-function openDialogFor(schemaVersion: FederatedModel['schemaVersion']): string {
+function openDialogFor(schemaVersion: FederatedModel['schemaVersion'], initialChangesOnly = false): string {
   const model = fixtureModel('model');
   model.schemaVersion = schemaVersion;
   useViewerStore.setState({ ...fixtureModels(model), dirtyModels: new Set() });
-  const ui = render(<ExportDialog />);
+  const ui = render(<ExportDialog initialChangesOnly={initialChangesOnly} />);
   const trigger = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Export IFC'));
   assert.ok(trigger, 'the dialog trigger must render');
   click(trigger);
@@ -61,5 +61,12 @@ describe('export labels say what the export contains (#5835)', () => {
 
   it('the toolbar button that exports whole edited files says so', () => {
     assert.equal(resolveEnglish('exportChangesButton.buttonLabel'), 'Export modified IFC…');
+  });
+
+  it('the Changes drawer opens the shared dialog with JSON delta selected (#5902)', () => {
+    openDialogFor('IFC4', true);
+    const delta = [...document.body.querySelectorAll('[role="switch"]')]
+      .find(element => element.parentElement?.textContent?.includes('Changes only (JSON delta)'));
+    assert.equal(delta?.getAttribute('data-state'), 'checked');
   });
 });

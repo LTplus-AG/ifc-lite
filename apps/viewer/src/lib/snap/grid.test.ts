@@ -41,6 +41,16 @@ describe('UniformGridIndex', () => {
     }
   });
 
+  it('terminates for cell indices beyond 2^53 and for a non-finite centre', () => {
+    const idx = new UniformGridIndex<string>(1);
+    idx.insert([2 ** 53, 0], 'far');
+    const got: string[] = [];
+    idx.query([2 ** 53, 0], 0, (item) => got.push(item));
+    assert.deepEqual(got, ['far']);
+    idx.query([Infinity, 0], 1, (item) => got.push(item));
+    assert.deepEqual(got, ['far']);
+  });
+
   it('clear empties it; a bad cell size is a RangeError', () => {
     const idx = new UniformGridIndex<string>(1);
     idx.insert([0, 0], 'a');

@@ -16,6 +16,7 @@ import {
   Sun, Tag,
 } from 'lucide-react';
 import type { TranslationKey } from '@/i18n';
+import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { resolveEnglish } from '@/i18n/registry';
 import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { panelTitleKey } from '@/lib/panels/registry';
@@ -29,7 +30,9 @@ import {
   executeBasketSet, executeBasketToggleVisibility,
 } from '@/store/basket/basketCommands';
 import type { Command } from './commandPaletteSearch';
+import type { RightPanel } from './commandPaletteCommandsTypes';
 import { TOOL_SURFACE_COMMANDS } from './surface-commands-tools';
+import { PANEL_SURFACE_COMMANDS } from './surface-commands-panels';
 
 export type CommandSurface = 'palette' | 'ribbon' | 'context' | 'mobile';
 
@@ -37,11 +40,14 @@ export interface SurfaceCommandContext {
   surface: CommandSurface;
   execute?: (code: string) => void;
   resetColors?: () => void;
+  activateRightPanel?: (panel: RightPanel) => void;
+  activateBottomPanel?: (panel: BottomPanelId) => void;
 }
 
 export interface SurfaceCommandState {
   canEditInSession: boolean;
   cesiumAvailable?: boolean;
+  collabEnabled?: boolean;
 }
 
 export interface SurfaceCommandDefinition {
@@ -183,6 +189,7 @@ export const SURFACE_COMMANDS = [
     run: () => { openSettings('display'); },
   },
   ...TOOL_SURFACE_COMMANDS,
+  ...PANEL_SURFACE_COMMANDS,
   {
     id: 'vis:hide', labelKey: 'commandPalette.vis.hide.label',
     keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff,
@@ -306,18 +313,19 @@ export function surfaceCommand(id: SurfaceCommandId, surface: CommandSurface): S
 export function paletteSurfaceCommands(
   state: SurfaceCommandState,
   execute: (code: string) => void,
+  context: Pick<SurfaceCommandContext, 'activateRightPanel' | 'activateBottomPanel'> = {},
 ): Command[] {
   return SURFACE_COMMANDS
     .filter((command) => command.surfaces.includes('palette') && command.enabled(state))
     .map((command) => ({
       id: command.id,
-      label: 'searchLabel' in command ? command.searchLabel : resolveEnglish(command.labelKey),
+      label: ('searchLabel' in command ? command.searchLabel : undefined) ?? resolveEnglish(command.labelKey),
       labelKey: command.labelKey,
       keywords: command.keywords,
       category: command.category,
       icon: command.icon,
       shortcut: 'shortcut' in command ? command.shortcut : undefined,
       immediate: 'immediate' in command ? command.immediate : undefined,
-      action: () => command.run({ surface: 'palette', execute }),
+      action: () => command.run({ ...context, surface: 'palette', execute }),
     }));
 }

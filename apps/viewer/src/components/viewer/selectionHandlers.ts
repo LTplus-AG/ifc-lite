@@ -23,9 +23,7 @@ import { raycastForPolylinePoint, isNearPolylineStart,
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { displayedTranslation } from '@/lib/model-placement/state.js';
 import { resolve as translate } from '@/i18n/registry';
-import { toRenderTranslation, type Translation } from '@/lib/model-placement/translation.js';
-import { modelPointToWorkspacePoint } from '@/lib/model-placement/rotation.js';
-import { pickPlacement, raycastFloorPlane, rendererPointToModelFrame, storeyFloorY } from './pick-frame.js';
+import { raycastFloorPlane, storeyFloorY } from './pick-frame.js';
 import { resolveWorkplaneStorey } from './add-element-workplane.js';
 import { handleAddElementClick } from './add-element-handlers.js';
 import { shortcutLabel } from '@/lib/commands/shortcut-label';

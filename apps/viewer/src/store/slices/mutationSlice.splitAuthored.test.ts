@@ -28,7 +28,7 @@ import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import type { IfcAttributeValue } from '@ifc-lite/mutations';
 import { asCoordinateTriple, asExpressIdRef, readAttributes, resolvePlacementChain } from '@/lib/placement-core';
-import { MESH_WALL, MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
+import { MESH_WALL, MODEL_ID, ROTATED_BEAM, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 
 function created(result: { expressId: number } | { error: string }): number {
   assert.ok('expressId' in result, `builder failed: ${'error' in result ? result.error : ''}`);
@@ -168,6 +168,14 @@ for (const unit of ['metre', 'millimetre'] as const) {
       assert.equal(asExpressIdRef(readAttributes(dataStore, view, editor, rel)?.[4]), split.right.expressId);
       near(asCoordinateTriple(readAttributes(dataStore, view, editor, point)?.[0]) ?? [], [1 * native, 0, 0],
         'the opening keeps its place: 1 m into the far piece');
+    });
+
+    it('an imported beam extruded along a rotated solid position is refused, not cut along the wrong axis', () => {
+      // AC20's `Unterzug-1` shape: the reader used to take the placement's
+      // +Z for its axis, so Split offered to cut a horizontal beam vertically.
+      const target = useViewerStore.getState().readSplitTarget(MODEL_ID, ROTATED_BEAM);
+      assert.deepEqual(target, { ok: false, reasonKey: 'splitTool.unavailable.shape' });
+      assert.equal(useViewerStore.getState().readLinearElementSplitProjection(MODEL_ID, ROTATED_BEAM, [0, 0, 0]), null);
     });
 
     it('an imported mesh-bodied wall is refused with the reason the Split button shows', () => {

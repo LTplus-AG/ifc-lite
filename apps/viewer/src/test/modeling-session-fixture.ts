@@ -8,7 +8,8 @@
  * the singleton store with edit mode on — enough for `addWall` and friends.
  *
  * It also carries one imported wall (#50) whose body is a triangulated mesh —
- * the shape of the demo project's walls, which Split cannot cut (#6233).
+ * the shape of the demo project's walls, which Split cannot cut — and one
+ * imported beam (#80) extruded along a rotated solid position (#6233).
  *
  * Options (#6233): `unit` picks the file's length unit — the demo project is
  * millimetres, which is where authored elements failed to split (the in-store
@@ -28,6 +29,12 @@ export const MODEL_ID = 'ifc';
 export const STOREY = 40;
 /** The imported wall with a mesh (IfcTriangulatedFaceSet) body. */
 export const MESH_WALL = 50;
+/**
+ * An imported beam laid out like AC20's `Unterzug-1`: a rectangle extrusion
+ * whose solid position turns the extrusion onto local +Y, off a non-centred
+ * profile. Its length does not run along the placement axis.
+ */
+export const ROTATED_BEAM = 80;
 
 export interface ModelingSessionOptions {
   unit?: 'metre' | 'millimetre';
@@ -64,7 +71,21 @@ DATA;
 #58=IFCSHAPEREPRESENTATION(#20,'Body','Tessellation',(#57));
 #60=IFCPRODUCTDEFINITIONSHAPE($,$,(#58));
 #70=IFCRELAGGREGATES('0kTvXnbbzCWw8lcMd1dR4o',$,$,$,#1,(#40));
-#71=IFCRELCONTAINEDINSPATIALSTRUCTURE('1kTvXnbbzCWw8lcMd1dR4o',$,$,$,(#50),#40);
+#71=IFCRELCONTAINEDINSPATIALSTRUCTURE('1kTvXnbbzCWw8lcMd1dR4o',$,$,$,(#50,#80),#40);
+#80=IFCBEAM('3tCgZT92j6fw8fXgwCL3Jm',$,'rotated beam',$,$,#81,#90,$,$);
+#81=IFCLOCALPLACEMENT(#41,#82);
+#82=IFCAXIS2PLACEMENT3D(#83,$,$);
+#83=IFCCARTESIANPOINT((0.,0.,${2.5 * k}));
+#84=IFCCARTESIANPOINT((${-0.12 * k},0.));
+#85=IFCAXIS2PLACEMENT2D(#84,$);
+#86=IFCRECTANGLEPROFILEDEF(.AREA.,$,#85,${0.24 * k},${0.2 * k});
+#87=IFCAXIS2PLACEMENT3D(#22,#88,#89);
+#88=IFCDIRECTION((0.,1.,0.));
+#89=IFCDIRECTION((0.,0.,1.));
+#91=IFCDIRECTION((0.,0.,1.));
+#92=IFCEXTRUDEDAREASOLID(#86,#87,#91,${4 * k}.);
+#93=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#92));
+#90=IFCPRODUCTDEFINITIONSHAPE($,$,(#93));
 ENDSEC;
 END-ISO-10303-21;
 `;

@@ -3,13 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Ribbon toolbar (issue #1686) — the tabbed, IFCFlux/Office-style
- * alternative to the classic single-strip `MainToolbar`, and the default
- * toolbar since the ribbon shipped. A slim tab strip selects a command
- * context; the band beneath lays the commands out in labeled groups with
- * visible names, trading one strip of vertical space for zero-recall
- * discovery. Selected per user via `uiSlice.toolbarStyle`; both styles
- * drive the same shared command hooks so behaviour can never fork.
+ * Desktop ribbon toolbar: a slim tab strip selects a command context, and
+ * the band beneath lays commands out in labeled groups with visible names.
  *
  * Office conventions kept: double-click the active tab (or the chevron)
  * to collapse the band to the tab strip; the collapsed state persists.
@@ -149,13 +144,11 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
 
         <div className="flex-1" />
 
-        {/* Inline search — the very component the classic strip hosts, not
-            a ribbon copy of it, so `/` and ⌘F focus a field here too, the
-            n/N result cycle is reachable, and the recent-search popover
-            plus the "N filter rules active" badge (with its one-click
-            clear) exist in both styles. It sits in the tab strip rather
-            than inside a tab so it survives collapse and tab switches,
-            matching the classic strip's always-visible field.
+        {/* Inline search uses the shared SearchInline component, so `/` and
+            ⌘F focus this field. The n/N result cycle, recent-search popover,
+            and "N filter rules active" badge (with its one-click
+            clear) remain available. It sits in the tab strip rather than
+            inside a tab so it survives collapse and tab switches.
 
             Right-oriented: the tab strip's left edge is tab geography, so
             a field parked there competes with the tabs for the same
@@ -166,8 +159,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
           <SearchInline />
         </div>
 
-        {/* Extension toolbar contributions (right-aligned, same slot as
-            the classic toolbar). */}
+        {/* Extension toolbar contributions, right-aligned beside search. */}
         <ExtensionToolbarSlot slot="toolbar.right" />
 
         {/* Export modified IFC… — pending-mutation affordance must stay visible

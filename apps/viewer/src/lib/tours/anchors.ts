@@ -99,12 +99,10 @@ export const TOUR_ANCHORS = {
   bcfCaptureViewpoint: 'bcf-capture-viewpoint',
   /** BCFPanel header Export BCF button (disabled until a topic exists). */
   bcfExport: 'bcf-export',
-  /** RibbonToolbar tab strip (ribbon style only; the classic strip has none). */
+  /** RibbonToolbar tab strip. */
   ribbonTabs: 'ribbon-tabs',
   /** Ribbon collapse/expand chevron in the tab strip. */
   ribbonCollapse: 'ribbon-collapse',
-  /** ViewTab "Classic bar" button (only while the View tab is open). */
-  ribbonClassicSwitch: 'ribbon-classic-switch',
   /** ViewTab "Follow work" contextual-tabs toggle (View tab open). */
   ribbonFollowWork: 'ribbon-follow-work',
 } as const;
@@ -115,7 +113,7 @@ export function activityAnchor(id: WorkspacePanelId): `activity-${WorkspacePanel
   return `activity-${id}`;
 }
 
-/** MainToolbar tool button (one templated attribute serves every
+/** Ribbon tool button (one templated attribute serves every
  *  toolbar-tool mini-tour, e.g. measure, section). */
 export function toolAnchor(tool: string): `tool-${string}` {
   return `tool-${tool}`;

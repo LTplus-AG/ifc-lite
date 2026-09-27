@@ -8,8 +8,10 @@ import { SectionOverlay } from '@/components/viewer/tools/SectionPanel';
 import { SectionToolbar } from '@/components/viewer/tools/SectionToolbar';
 import { AddElementOverlay } from '@/components/viewer/tools/AddElementOverlay';
 import { SelectEditScene } from '@/components/viewer/tools/SelectEditScene';
-import { SplitBar, SplitScene } from '@/components/viewer/tools/SplitHud';
 import { SpaceSketchOverlay } from '@/components/viewer/tools/SpaceSketchOverlay';
+import { CommandBar, CommandScene } from '@/components/viewer/tools/command/CommandHud';
+// Registers the built-in modeling commands the `command` row renders.
+import '@/lib/commands/modeling/builtin';
 
 /**
  * `TOOL_HUD` registry (#5485, #5503; charter #5478 item 3).
@@ -35,7 +37,6 @@ export const TOOL_IDS = [
   'measure',
   'section',
   'addElement',
-  'split',
   'spaceSketch',
   'annotate',
   'cesium-placement',
@@ -44,6 +45,7 @@ export const TOOL_IDS = [
   'cloud',
   'text',
   'walk',
+  'command',
   'none',
 ] as const;
 
@@ -84,7 +86,6 @@ export const TOOL_HUD: Record<ToolId, ToolHudEntry> = {
   // scene side renders it rather than this table's static `hint` key.
   section: { Bar: SectionToolbar, Scene: SectionOverlay },
   addElement: { Scene: AddElementOverlay },
-  split: { Bar: SplitBar, Scene: SplitScene, hint: 'splitTool.hint' },
   spaceSketch: { Bar: SpaceSketchOverlay },
   annotate: {},
   'cesium-placement': {},
@@ -93,5 +94,8 @@ export const TOOL_HUD: Record<ToolId, ToolHudEntry> = {
   cloud: {},
   text: {},
   walk: {},
+  // The running modeling command's HUD (#6232): bar, scene and hint come
+  // from `ModelingCommand.hud`; the bar also renders the hint.
+  command: { Bar: CommandBar, Scene: CommandScene },
   none: {},
 };

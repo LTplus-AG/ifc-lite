@@ -80,15 +80,12 @@ function cancelMeasurement(): boolean {
 
 function splitSelected(): void {
   const state = useViewerStore.getState();
-  if (state.activeTool === 'split') {
-    state.clearSplitHover();
-    state.setActiveTool('select');
+  if (state.session?.activeCommandId === 'element.split') {
+    state.endCommand('cancel');
     return;
   }
-  const selected = state.selectedEntity;
-  if (!selected) return;
-  state.setSplitTarget(selected.modelId, selected.expressId);
-  state.setActiveTool('split');
+  if (state.selectedEntityId === null) return;
+  state.startCommand('element.split');
 }
 
 function hideSelected(event: KeyboardEvent): boolean {
@@ -121,11 +118,6 @@ const RUNNERS: readonly [KeyCommandId, CommandRun][] = [
   ['ui.toggleSidebar', () => { useViewerStore.getState().cycleSidebarMode(); }],
   ['edit.toggleEditMode', () => { useViewerStore.getState().toggleEditEnabled(); }],
   ['tool.split', () => { splitSelected(); }],
-  ['split.exit', () => {
-    const state = useViewerStore.getState();
-    state.clearSplitHover();
-    state.setActiveTool('select', 'esc');
-  }],
   ['edit.rotate', rotateSelected],
   ['basket.isolate', () => { executeBasketIsolate(); }],
   ['basket.add', () => { executeBasketAdd(); }],
@@ -163,7 +155,6 @@ const RUNNERS: readonly [KeyCommandId, CommandRun][] = [
 ];
 
 const TOOL_CONTEXT: Partial<Record<KeyCommandId, string>> = {
-  'split.exit': 'split',
   'addElement.commit': 'addElement',
   'addElement.clearPending': 'addElement',
   'addElement.toggleSnap': 'addElement',

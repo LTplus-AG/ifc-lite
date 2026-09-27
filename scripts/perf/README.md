@@ -1115,6 +1115,21 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
 Reuse checked ID-prefix accumulation and the scanner's existing ASCII proof; obtain native geometry flags from one immutable classification lookup. Generated type parsing checks canonical names before normalization, and schema detection retains the original match priority. Own-layer native subset comparisons showed a modest full-load improvement, not a corpus-wide or browser result. Keep the cumulative verdict separate and exclude invalid Firefox cohorts and unrun follow-ups. Scalar tokenizer dispatch, scanner dictionaries and ordinal transport are separate experiments, not part of this change.
 
 ### Measured feature costs (not levers — recorded so nobody re-measures)
+- **Re-meshing an edited wall through the wasm mesher (#6232 WP1, measured
+  2026-09-27, real-GPU Windows Chrome over CDP, production `vite build`).**
+  Commit → rendered frame for `resizeWall` on a wall hosting a window, 20
+  resizes each: demo project p50 64 ms / p95 98 ms; AC20-FZK-Haus p50 74 ms /
+  p95 83 ms. The re-mesh itself is a small part of that: serialize the
+  subgraph ~1 ms, worker pre-pass + produce ~3-6 ms (`scripts/perf/remesh-latency.mjs`,
+  node/wasm, AC20 walls with openings: p50 4.4 ms total). The rest is the
+  viewer re-rendering on two store updates: the commit's own mutations (~30 ms
+  before the worker's answer is even read) and the geometry replacement
+  (~18 ms to the drained frame). That is the design's 50 ms p50 budget missed
+  by React work the re-mesh does not add, so the lever is fewer re-renders per
+  geometry update, not the mesher. In a dev build the same loop is ~200 ms
+  (React dev mode dominates a CPU profile). The first request per model also
+  pays a one-time whole-file pre-pass for the style wire (AC20: ~170 ms).
+
 - **Local-frame void-cut origin preservation** (#3446, measured 2026-08-31,
   base = `2edd144329`, arm64 native). This correctness fix keeps a rotated
   local-frame cut's centre and nested origin out of absolute-world `f32`.

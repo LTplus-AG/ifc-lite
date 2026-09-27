@@ -25,7 +25,7 @@ const loadRegistry = async () => import('./surface-commands.js').catch(() => nul
 
 const EXPECTED_IDS = [
   'file:save-federation-setup', 'file:open-federation-setup', 'file:model-tags',
-  'vis:toggle-iso', 'vis:reset-colors',
+  'vis:toggle-iso', 'vis:reset-colors', 'elements:entity-actions',
 ] as const;
 const VISIBILITY_IDS = [
   'vis:hide', 'vis:show', 'vis:set-iso', 'vis:add-iso', 'vis:remove-iso',

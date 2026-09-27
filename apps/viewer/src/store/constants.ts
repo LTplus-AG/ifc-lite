@@ -7,7 +7,6 @@
  */
 
 import type { TypeVisibility } from './types.js';
-import type { TessellationQuality } from '@ifc-lite/geometry';
 
 // Load-time geometry fidelity (mode, tier, sticky `?geomTier=` override) now
 // lives in its own module - it was the largest cohesive block here and this file
@@ -194,34 +193,24 @@ export function isMeshOnlyCacheEnabled(): boolean {
 }
 
 /**
- * localStorage key for the desktop toolbar style (issue #1686). `classic`
- * is the original single-strip toolbar; `ribbon` is the tabbed,
- * IFCFlux-style ribbon. Same sticky-preference pattern as the theme.
+ * Retired desktop-toolbar preference key. Keep only for one-time migration
+ * when a viewer opened before #5874 stored a classic choice.
  */
 export const TOOLBAR_STYLE_STORAGE_KEY = 'ifc-lite-toolbar-style';
 
-export type ToolbarStyle = 'classic' | 'ribbon';
-
-/**
- * Resolve the initial toolbar style from localStorage; default `ribbon`.
- *
- * The ribbon is the default toolbar. Only an explicitly stored `classic`
- * wins, so a user who switched back keeps the classic strip forever while
- * everyone else (and every new browser) lands on the ribbon. Exported for
- * the unit test - the module-level `UI_DEFAULTS` is computed once at import
- * and cannot be re-seeded from a test.
- */
-export function resolveInitialToolbarStyle(): ToolbarStyle {
-  if (typeof window === 'undefined') return 'ribbon';
+/** Clear the retired preference on startup; the ribbon is the only desktop toolbar. */
+export function clearRetiredToolbarStylePreference(): void {
+  if (typeof window === 'undefined') return;
   try {
-    return localStorage.getItem(TOOLBAR_STYLE_STORAGE_KEY) === 'classic' ? 'classic' : 'ribbon';
+    if (localStorage.getItem(TOOLBAR_STYLE_STORAGE_KEY) !== null) {
+      localStorage.removeItem(TOOLBAR_STYLE_STORAGE_KEY);
+    }
   } catch (err) {
-    // Blocked storage (Safari private mode): fall back to the default so the
-    // toolbar still renders, but say why the preference didn't stick.
-    console.warn('[toolbar-style] storage unavailable; using ribbon', err);
-    return 'ribbon';
+    console.warn('[toolbar-style] could not clear retired preference', err);
   }
 }
+
+clearRetiredToolbarStylePreference();
 
 /** Ribbon tab strip contexts, in strip order. */
 export type RibbonTabId = 'file' | 'home' | 'view' | 'elements' | 'analyze' | 'author';
@@ -310,12 +299,6 @@ export const UI_DEFAULTS = {
    * `undefined` = automatic tier selection, the normal case.
    */
   GEOM_TIER_OVERRIDE: getGeomTierOverride(),
-  /**
-   * Desktop toolbar style (issue #1686): the tabbed `ribbon` (default) or
-   * the original `classic` single strip. Read from localStorage on boot so
-   * the choice survives reloads.
-   */
-  TOOLBAR_STYLE: resolveInitialToolbarStyle(),
   /** Ribbon band collapsed to the tab strip only. */
   RIBBON_COLLAPSED: getInitialRibbonCollapsed(),
   /** Ribbon tab open on boot; session-local, never persisted. */

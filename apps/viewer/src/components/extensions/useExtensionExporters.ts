@@ -4,8 +4,8 @@
 
 /**
  * Extension-contributed exporters (#1907) as runtime entries of the export
- * registry (#5838). The `exportMenu` slot is read here once, and the classic
- * menu, the ribbon and the command palette all render what this returns
+ * registry (#5838). The `exportMenu` slot is read here once, and the ribbon
+ * and command palette render what this returns
  * through `useExportCommands`, so an installed exporter is reachable from
  * every surface a built-in format is — it used to be reachable only from a
  * block inside the IFC dialog.

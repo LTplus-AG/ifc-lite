@@ -3,10 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The shared camera command list is what both toolbar styles render, so a
- * command that dispatches to the wrong camera callback is wrong in both at
- * once. These assert the dispatch table itself; that each surface renders
- * the list is asserted by `components/viewer/toolbar-parity.test.ts`.
+ * The ribbon renders the shared camera command list. These tests pin its
+ * callback dispatch table; mounted ribbon tests cover the rendered controls.
  */
 
 import { describe, it } from 'node:test';

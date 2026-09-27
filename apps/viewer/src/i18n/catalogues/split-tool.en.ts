@@ -14,7 +14,6 @@ import type { TranslationValue } from '../types';
  */
 export const splitToolEn = {
   'splitTool.barLabel': 'Split',
-  'splitTool.closeAria': 'Exit the Split tool',
   'splitTool.hint': 'Point at the selected element to place the cut · type a distance or a % · Esc to exit',
   'splitTool.unitMetres': 'm',
   'splitTool.cutDistanceAria': 'Cut distance in metres, or a percentage of the element length',

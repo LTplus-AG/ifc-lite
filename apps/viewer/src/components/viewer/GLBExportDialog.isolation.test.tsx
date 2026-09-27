@@ -54,7 +54,7 @@ async function exportVisibleOnly(): Promise<void> {
     assert.ok(el, `no button labelled "${label}"`);
     return el;
   };
-  render(<GLBExportDialog />);
+  render(<GLBExportDialog surface="ribbon" />);
   click(button('Export GLB'));
   await advance(1);
   const visibleOnlySwitch = document.querySelector('button[role="switch"]');

@@ -136,13 +136,13 @@ export const NO_MARKER_REQUIRED = new Map([
     'file never installs a non-null set of its own.',
   ],
   [
-    // #5852 collapsed the five per-surface "Hide selection" call sites (the
-    // palette command, MainToolbar, the Elements ribbon tab, the Del /
-    // Backspace / Space keys and the mobile overflow menu) into this one
+    // #5852 collapsed the five historical per-surface "Hide selection" call
+    // sites (palette command, retired MainToolbar, Elements ribbon tab, Del /
+    // Backspace / Space keys and mobile overflow menu) into this one
     // module, and closed the mobile KNOWN GAP they recorded: mobile used to
     // hide only the singular selectedEntityId.
     'apps/viewer/src/store/hideSelection.ts',
-    'hideSelectionFromStore hides THE CURRENT SELECTION (state.selectedEntityIds, falling back to selectedEntityId), not a raw entity pick. Selecting a geometry-less assembly already puts its renderable parts in that set: useSelectAssembly.ts does setSelectedEntityIds([...renderableParts, globalId]) after routing through cameraCallbacks.resolveHighlightIds, and SearchModal.text/HierarchyPanel do the same, so the ids arriving here are post-expansion. Expanding again would be a no-op at best. Every surface\'s Hide (keyboard, ribbon, classic toolbar, palette, mobile, context menu) calls this one function.',
+    'hideSelectionFromStore hides THE CURRENT SELECTION (state.selectedEntityIds, falling back to selectedEntityId), not a raw entity pick. Selecting a geometry-less assembly already puts its renderable parts in that set: useSelectAssembly.ts does setSelectedEntityIds([...renderableParts, globalId]) after routing through cameraCallbacks.resolveHighlightIds, and SearchModal.text/HierarchyPanel do the same, so the ids arriving here are post-expansion. Expanding again would be a no-op at best. Every current surface\'s Hide (keyboard, ribbon, palette, mobile, context menu) calls this one function.',
   ],
   [
     'apps/viewer/src/components/viewer/schedule/useOverlayCompositor.ts',
@@ -236,8 +236,9 @@ export const EXEMPT_ACTIONS = new Map([
 // call-site files therefore no longer call a policed action; the audited tree
 // now has 22 real candidate channel files.
 // #5852 then folded five "Hide selection" call-site files (the palette
-// command table, MainToolbar, the Elements ribbon tab, useKeyboardShortcuts and
-// MobileToolbar) into one, store/hideSelection.ts: channels consolidated, not
-// lost -- each old file now calls hideSelectionFromStore and none calls a
-// policed action itself. 22 - 5 + 1 = 18 real candidate channel files.
+// command table, retired MainToolbar, Elements ribbon tab,
+// useKeyboardShortcuts and MobileToolbar) into one, store/hideSelection.ts:
+// channels consolidated, not lost. The surviving callers use
+// hideSelectionFromStore; none calls a policed action itself.
+// 22 - 5 + 1 = 18 real candidate channel files.
 export const CANDIDATE_FLOOR = 18;

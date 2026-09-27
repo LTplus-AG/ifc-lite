@@ -3,18 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The user-facing notices the Split tool emits: a committed wall split, a
- * committed linear-element split, and a refused split.
+ * The user-facing notices a committed split emits: a wall split and a
+ * linear-element split. (A refused split is a command refusal: transient and
+ * scoped to the running command, `lib/commands/modeling/runtime.ts`.)
  *
- * Refusals ({@link notifySplitFailed}) are transient and scoped to the tool
- * (#6233): they auto-dismiss, and {@link dismissSplitNotices} — run when the
- * Split tool's scene unmounts, i.e. on every way of leaving the tool — clears
- * any still on screen, so a stale "Couldn't split" cannot outlive the gesture
- * it was about.
- *
- * `MutationSlice.splitWallAtDistance` is reached from TWO places — the canvas
- * click handler (`selectionHandlers.ts`) and the Split tool's numeric-distance
- * panel (`tools/SplitNumericInput.tsx`) — and both must report the same split
+ * `MutationSlice.splitWallAtDistance` is reached from TWO places — the
+ * `element.split` command's click and its cursor distance entry
+ * (`tools/SplitCursorInput.tsx`) — and both must report the same split
  * the same way. They previously each inlined their own copy of the
  * "(N openings reassigned)" wording, and #3023 taught only the click handler to
  * also surface `openings.skipped`, so committing the identical split by typing
@@ -91,17 +86,3 @@ export function notifyElementSplit(): void {
   toast.success(`Element split — ${shortcutLabel('edit.undo')} to undo`);
 }
 
-/** How long a refusal stays up if the user stays in the tool. */
-const SPLIT_ERROR_MS = 6000;
-const openSplitErrors = new Set<() => void>();
-
-/** Report a refused split; `message` is a complete, already-translated sentence. */
-export function notifySplitFailed(message: string): void {
-  openSplitErrors.add(toast.transientError(message, SPLIT_ERROR_MS));
-}
-
-/** Clear every refusal still on screen — called when the Split tool exits. */
-export function dismissSplitNotices(): void {
-  for (const dismiss of openSplitErrors) dismiss();
-  openSplitErrors.clear();
-}

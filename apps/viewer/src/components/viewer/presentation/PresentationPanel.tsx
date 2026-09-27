@@ -13,8 +13,8 @@
  * this is just the action row (basket source, visibility, save, play-all) and
  * the saved-view strip.
  *
- * Entry points: the status bar (`StatusBar.tsx`) and the ribbon / classic
- * toolbar's Present button, both routed through the bottom-panel table
+ * Entry points: the status bar (`StatusBar.tsx`) and the ribbon's Present
+ * button, both routed through the bottom-panel table
  * (`lib/panels/bottom-panels`) like every other bottom panel — no bespoke
  * visibility toggle.
  */

@@ -28,7 +28,7 @@ import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import type { IfcAttributeValue } from '@ifc-lite/mutations';
 import { asCoordinateTriple, asExpressIdRef, readAttributes, resolvePlacementChain } from '@/lib/placement-core';
-import { MESH_WALL, SPLIT_MODEL_ID as MODEL_ID, SPLIT_STOREY as STOREY, seedSplitFixture } from '@/test/split-fixture';
+import { MESH_WALL, MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 
 function created(result: { expressId: number } | { error: string }): number {
   assert.ok('expressId' in result, `builder failed: ${'error' in result ? result.error : ''}`);
@@ -51,7 +51,7 @@ function polygonArea(points: ReadonlyArray<readonly [number, number]>): number {
 
 for (const unit of ['metre', 'millimetre'] as const) {
   describe(`splitting in-store-authored elements in a ${unit} file (#6233)`, () => {
-    beforeEach(() => seedSplitFixture(unit));
+    beforeEach(() => seedModelingSession({ unit }));
 
     it('an authored wall splits where the metre cursor points', () => {
       const s = useViewerStore.getState();

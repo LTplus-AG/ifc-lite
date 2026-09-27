@@ -20,6 +20,7 @@ import { act } from 'react';
 import { activate, cleanup } from '@/test/render.js';
 import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { useViewerStore } from '@/store';
+import { clearRetiredToolbarStylePreference, TOOLBAR_STYLE_STORAGE_KEY } from '@/store/constants';
 
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight };
 
@@ -54,6 +55,16 @@ afterEach(() => {
 });
 
 describe('ViewerLayout mobile panel collapse (#5837)', () => {
+  it('#5874 opens the ribbon for a stored classic preference and clears that preference', () => {
+    setViewport(1280, 900);
+    localStorage.setItem(TOOLBAR_STYLE_STORAGE_KEY, 'classic');
+    clearRetiredToolbarStylePreference();
+    assert.equal(localStorage.getItem(TOOLBAR_STYLE_STORAGE_KEY), null);
+
+    const ui = renderViewerLayout();
+    assert.ok(ui.querySelector('[data-tour="ribbon-tabs"]'), 'the desktop renders ribbon tabs');
+  });
+
   it('#5823 closes an open mobile sheet when its backdrop is keyboard-activated', () => {
     setViewport(390, 844);
     const ui = renderViewerLayout();

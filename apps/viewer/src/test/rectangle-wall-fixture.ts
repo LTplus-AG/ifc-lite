@@ -70,7 +70,9 @@ function geometryResult(): GeometryResult {
     coordinateInfo: { originShift: { x: 0, y: 0, z: 0 },
       originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
       shiftedBounds: { min: { x: 2, y: 0, z: 0 }, max: { x: 6, y: 3, z: 0 } },
-      hasLargeCoordinates: false },
+      hasLargeCoordinates: false,
+      // Meshed by the wasm path on load, so edits re-mesh in this frame (#6232).
+      wasmRtcFrame: { x: 0, y: 0, z: 0, needsShift: false } },
   } as unknown as GeometryResult;
 }
 
@@ -91,5 +93,6 @@ export async function seedRectangleWall(unit: string, scale: number): Promise<vo
     redoStacks: new Map(),
     mutationBatchTags: new Map(),
     pendingMeshRemovals: null,
+    pendingMeshEdits: null,
   });
 }

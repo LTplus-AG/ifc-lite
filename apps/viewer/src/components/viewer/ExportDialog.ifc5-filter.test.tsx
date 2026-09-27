@@ -77,7 +77,7 @@ describe('IFC5 export property filter uses effective candidates (#5249)', () => 
       ...fixtureModels(model), activeModelId: model.id, dirtyModels: new Set(),
       mutationViews: new Map([[model.id, view]]), mutationVersion: 0,
     });
-    const ui = render(<ExportDialog />);
+    const ui = render(<ExportDialog surface="ribbon" />);
     const trigger = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('Export IFC'));
     assert.ok(trigger);
     click(trigger);

@@ -18,7 +18,10 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
-import { MESH_WALL, SPLIT_MODEL_ID, SPLIT_STOREY, seedSplitFixture } from '@/test/split-fixture';
+import { toGlobalIdFromModels } from '@/store/globalId';
+import { MESH_WALL, MODEL_ID as SPLIT_MODEL_ID, STOREY as SPLIT_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
+import '@/lib/commands/modeling/builtin';
+import { getCommandRuntime } from '@/lib/commands/modeling/runtime';
 import { GeometryEditCard } from './GeometryEditCard.js';
 
 function splitButton(ui: HTMLElement): HTMLButtonElement {
@@ -28,24 +31,26 @@ function splitButton(ui: HTMLElement): HTMLButtonElement {
 }
 
 describe('GeometryEditCard Split availability (#6233)', () => {
-  beforeEach(() => seedSplitFixture('millimetre'));
+  beforeEach(() => seedModelingSession({ unit: 'millimetre' }));
   afterEach(() => {
     cleanup();
-    useViewerStore.setState({ activeTool: 'select', splitTargetModelId: null, splitTargetExpressId: null });
+    useViewerStore.getState().exitModelWorkspace();
   });
 
-  it('enables Split for a wall just authored in a millimetre file, and arms the tool on it', () => {
+  it('enables Split for a wall just authored in a millimetre file, and starts element.split on it', () => {
     const wall = useViewerStore.getState().addWall(SPLIT_MODEL_ID, SPLIT_STOREY, {
       Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 2.5,
     });
     assert.ok('expressId' in wall);
+    const s = useViewerStore.getState();
+    s.setSelectedEntityId(toGlobalIdFromModels(s.models, SPLIT_MODEL_ID, wall.expressId));
     const ui = render(<GeometryEditCard modelId={SPLIT_MODEL_ID} entityId={wall.expressId} />);
     const button = splitButton(ui);
     assert.equal(button.disabled, false);
     click(button);
-    const state = useViewerStore.getState();
-    assert.equal(state.activeTool, 'split');
-    assert.equal(state.splitTargetExpressId, wall.expressId);
+    const runtime = getCommandRuntime();
+    assert.equal(runtime.command?.id, 'element.split');
+    assert.deepEqual((runtime.gesture as { target: unknown }).target, { modelId: SPLIT_MODEL_ID, expressId: wall.expressId });
   });
 
   it('shows a disabled Split with the reason for an imported mesh-bodied wall', () => {

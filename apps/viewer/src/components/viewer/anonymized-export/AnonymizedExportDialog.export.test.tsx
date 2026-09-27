@@ -175,7 +175,7 @@ describe('AnonymizedExportDialog — export', () => {
   });
 
   it('"Keep names" leaves the original name in the exported STEP', async () => {
-    render(<AnonymizedExportDialog />);
+    render(<AnonymizedExportDialog surface="context_menu" />);
     act(() => { useViewerStore.getState().setAnonymizedExportRequested(true); });
 
     const namesSwitch = anonymizeSwitch('Names');
@@ -197,7 +197,7 @@ describe('AnonymizedExportDialog — export', () => {
   });
 
   it('the user-entered file name is used for the .ifc download', async () => {
-    render(<AnonymizedExportDialog />);
+    render(<AnonymizedExportDialog surface="context_menu" />);
     act(() => { useViewerStore.getState().setAnonymizedExportRequested(true); });
 
     const stemInput = document.body.querySelector<HTMLInputElement>('#anon-file-stem');

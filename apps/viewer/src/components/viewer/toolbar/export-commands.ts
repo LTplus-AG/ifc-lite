@@ -4,18 +4,15 @@
 
 /**
  * Export command registry — the single source of truth for which formats the
- * viewer's toolbars can export.
+ * viewer's ribbon, palette and mobile menu can export.
  *
- * The viewer ships two toolbar styles: the classic `MainToolbar` strip and the
- * tabbed `RibbonToolbar`. Both render their Export cluster by mapping over
- * `EXPORT_COMMANDS`, so a format can never be reachable in one style and
- * missing in the other — there is one list, one order, one gating rule.
+ * Their export controls derive from `EXPORT_COMMANDS`, so there is one list,
+ * one order and one gating rule.
  *
  * Adding a format = adding one entry here. `ExportCommandId` is derived from
- * the array, so every `Record<ExportCommandId, …>` — notably each toolbar
- * style's icon map — stops compiling until that style has been taught the new
- * format. `export-ui-parity.test.tsx` then checks at runtime that both styles
- * actually render every id, and that neither hand-rolls an entry beside it.
+ * the array, so every `Record<ExportCommandId, …>` — notably the ribbon icon
+ * map — stops compiling until the new format has an icon.
+ * `export-ui-ribbon.test.tsx` checks that the live File tab renders every id.
  *
  * Extension-contributed exporters are the registry's runtime half: they are
  * not known until an extension installs them, so `useExportCommands` resolves
@@ -24,8 +21,8 @@
  *
  * Out of scope: exports that belong to a panel rather than a toolbar (IDS
  * reports, BCF, clash BCF, list/schedule tables, compare reports, drawing
- * sheets). Those live in exactly one panel each and are opened the same way
- * from both toolbar styles, so they cannot drift.
+ * sheets). Those live in exactly one panel each, outside the toolbar export
+ * controls.
  */
 
 import type React from 'react';
@@ -58,7 +55,7 @@ interface ExportCommandBase {
    * Short label: ribbon buttons, where the icon carries most of the meaning.
    */
   readonly labelKey: TranslationKey;
-  /** Long label: classic dropdown rows, which have only text to go on. */
+  /** Long label for command-palette rows, which have no icon context. */
   readonly menuLabelKey: TranslationKey;
   /** Tooltip / accessible name. */
   readonly tooltipKey: TranslationKey;
@@ -70,9 +67,8 @@ interface ExportCommandBase {
   readonly requires: 'model' | 'dataStore' | 'changes';
   /**
    * Visual cluster. Consecutive commands sharing a group render as one small
-   * button stack in the ribbon and one separator-delimited block in the
-   * classic menu. Keep a group at three commands or fewer — that is the
-   * ribbon stack's height.
+   * button stack in the ribbon. Keep a group at three commands or fewer —
+   * that is the ribbon stack's height.
    */
   readonly group: number;
   /**
@@ -112,7 +108,7 @@ export type ExportCommand =
 
 /**
  * The registry. Order and grouping here are the order and grouping the user
- * sees in *both* toolbar styles.
+ * sees in the ribbon, palette, and mobile export menu.
  */
 export const EXPORT_COMMANDS = [
   {
@@ -270,8 +266,8 @@ export type RegisteredExportCommand = (typeof EXPORT_COMMANDS)[number];
 export const EXPORT_COMMAND_IDS: readonly ExportCommandId[] = EXPORT_COMMANDS.map((c) => c.id);
 
 /**
- * An icon per export command, supplied by each toolbar style in its own set,
- * plus the one icon every extension-contributed exporter row shares.
+ * An icon per export command, supplied by the ribbon's icon set, plus the
+ * one icon every extension-contributed exporter row shares.
  */
 export type ExportIconSet = Record<ExportCommandId | 'extension', React.ElementType>;
 

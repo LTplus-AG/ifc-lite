@@ -370,7 +370,7 @@ it('ExportChangesButton: renders the button label and single-change tooltip in E
       mutationViews: new Map([['model-1', makeChangedView()]]),
     });
   });
-  const container = render(<ExportChangesButton />);
+  const container = render(<ExportChangesButton surface="ribbon" />);
   assert.ok(container.textContent?.includes('Export modified IFC…'));
   assert.equal(resolve('exportChangesButton.tooltipSingle', { count: 1 }), 'Export modified IFC… with 1 change applied');
   assert.equal(resolve('exportChangesButton.tooltipSingle', { count: 2 }), 'Export modified IFC… with 2 changes applied');

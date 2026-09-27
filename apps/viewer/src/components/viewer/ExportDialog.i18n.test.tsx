@@ -74,7 +74,7 @@ function readable(): Set<string> {
 }
 
 function openDialog(): void {
-  render(<ExportDialog />);
+  render(<ExportDialog surface="ribbon" />);
   const trigger = [...document.body.querySelectorAll('button')].find(
     (b) => b.textContent?.includes(CATALOGUE['exportDialog.trigger'] as string),
   );

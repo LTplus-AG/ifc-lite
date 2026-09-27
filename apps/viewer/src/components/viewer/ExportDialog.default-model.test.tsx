@@ -16,7 +16,7 @@ afterEach(() => { cleanup(); clearDownloads(); mock.restoreAll(); });
 
 test('Export IFC opens on the active authored model, not the first loaded scan (#4477)', () => {
   useViewerStore.setState({ ...fixtureModels(fixtureModel('scan.glb'), fixtureModel('captured.ifc')), activeModelId: 'captured.ifc', dirtyModels: new Set() });
-  const ui = render(<ExportDialog />);
+  const ui = render(<ExportDialog surface="ribbon" />);
   click([...ui.querySelectorAll('button')].find(button => button.textContent?.includes('Export IFC'))!);
   const choices = [...document.querySelectorAll('[role="combobox"]')].map(node => node.textContent ?? '');
   assert.ok(choices.some(text => text.includes('captured.ifc')), `model selector shows the destination: ${JSON.stringify(choices)}`);

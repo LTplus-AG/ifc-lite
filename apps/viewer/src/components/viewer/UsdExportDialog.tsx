@@ -47,11 +47,11 @@ import { useTranslation } from '@/i18n';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 
 interface UsdExportDialogProps {
-  surface?: ExportSurface;
+  surface: ExportSurface;
   trigger?: React.ReactNode;
 }
 
-export function UsdExportDialog({ surface = 'classic', trigger }: UsdExportDialogProps) {
+export function UsdExportDialog({ surface, trigger }: UsdExportDialogProps) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const getMutationView = useViewerStore((s) => s.getMutationView);

@@ -5,8 +5,10 @@
 import type { StateCreator } from 'zustand';
 import { carryReleasedMesh, retainReleasedMeshProvenance } from '@/lib/released-mesh-provenance';
 import { pruneMeshesFromGeometry } from './data-mesh-prune.js';
+import { replaceEntityMeshesPatch, type PendingMeshEdits } from './data-mesh-replace.js';
+import type { PreAlignmentMeshBaseline } from './data-mesh-prealign.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { GeometryResult, CoordinateInfo } from '@ifc-lite/geometry';
+import type { GeometryResult, CoordinateInfo, MeshData } from '@ifc-lite/geometry';
 import type { FederatedModel } from '../types.js';
 import { appendGeometryBatchPatch } from './dataSlice.appendGeometryBatch.js';
 import { noteInstancedShardModel } from '../instancedShardModels.js';
@@ -100,6 +102,18 @@ export interface DataSlice {
   setPendingMeshRemovals: (ids: Set<number>) => void;
   clearPendingMeshRemovals: () => void;
   pruneGeometryMeshes: (ids: Set<number>) => void;
+  /**
+   * Swap the meshes of `modelId`'s entities (GLOBAL ids) for re-meshed ones in
+   * one update, queueing them on `pendingMeshEdits` for `useMeshEditDrain`.
+   * See `data-mesh-replace.ts`.
+   */
+  replaceEntityMeshes: (
+    modelId: string,
+    byGlobalId: ReadonlyMap<number, readonly MeshData[]>,
+    preAligned?: ReadonlyMap<number, readonly PreAlignmentMeshBaseline[]>,
+  ) => void;
+  pendingMeshEdits: PendingMeshEdits | null;
+  clearPendingMeshEdits: () => void;
   /**
    * Emit-both GPU-instancing: raw IFNS shard bytes (transferable ArrayBuffers)
    * collated per geometry batch by the worker, tagged with the owning model's
@@ -197,6 +211,7 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   pendingMeshColorUpdates: null,
   meshColorBackup: null,
   pendingMeshRemovals: null,
+  pendingMeshEdits: null,
   pendingInstancedShards: null,
   pendingMeshTranslations: null,
   pendingMeshRotations: null,
@@ -345,6 +360,9 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
 
   clearPendingMeshRemovals: () => set({ pendingMeshRemovals: null }),
   pruneGeometryMeshes: (ids) => set((state) => pruneMeshesFromGeometry(state, ids)),
+  replaceEntityMeshes: (modelId, byGlobalId, preAligned) =>
+    set((state) => replaceEntityMeshesPatch(state, modelId, byGlobalId, preAligned)),
+  clearPendingMeshEdits: () => set({ pendingMeshEdits: null }),
 
   appendInstancedShards: (modelId, shards) => set((state) => {
     if (shards.length > 0) noteInstancedShardModel(modelId);

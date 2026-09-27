@@ -23,6 +23,7 @@ import {
   applyRemeshConfig,
   filterStyleWire,
   remeshOnApi,
+  styleWireOnApi,
 } from '../../packages/geometry/dist/remesh/remesh-core.js';
 
 /** The load path's toggles: engine defaults, as the viewer loads a model. */
@@ -47,14 +48,10 @@ function placementAndColour(meshes) {
 
 /** Mesh the whole file once, grouped by express id, in `frame`. */
 function loadMeshes(api, bytes, frame) {
+  // The viewer captures the wire the same way, through a separate whole-file
+  // pre-pass (`styleWireOnApi`), so that is the wire the re-mesh is fed.
+  const wire = styleWireOnApi(api, bytes);
   const pre = api.buildPrePassOnce(bytes);
-  const wire = {
-    styleIds: pre.styleIds,
-    styleColors: pre.styleColors,
-    materialElementIds: pre.materialElementIds,
-    materialColorCounts: pre.materialColorCounts,
-    materialColors: pre.materialColors,
-  };
   const resolved = frame ?? {
     x: pre.rtcOffset?.[0] ?? 0, y: pre.rtcOffset?.[1] ?? 0, z: pre.rtcOffset?.[2] ?? 0, needsShift: Boolean(pre.needsShift),
   };

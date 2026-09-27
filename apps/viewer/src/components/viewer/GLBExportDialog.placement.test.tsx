@@ -31,7 +31,7 @@ it('exports the placed triangle instead of remeshing unplaced IFC bytes with def
   mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
   const fromBytes = mock.method(GeometryProcessor.prototype, 'exportGlb', () => new Uint8Array([1]));
   mock.method(GeometryProcessor.prototype, 'exportGlbFromMeshes', (meshes: MeshData[]) => { exported = meshes; return new Uint8Array([1]); });
-  render(<GLBExportDialog />);
+  render(<GLBExportDialog surface="ribbon" />);
   const button = (label: string) => { const el = [...document.querySelectorAll('button')].find((item) => item.textContent?.trim() === label); assert.ok(el); return el; };
   click(button('Export GLB')); await advance(1);
   click(button('Export')); await advance(20);

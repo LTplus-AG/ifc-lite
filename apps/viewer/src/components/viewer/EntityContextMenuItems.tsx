@@ -5,7 +5,7 @@
 import { useId, type ElementType } from 'react';
 import { ChevronRight, CopyPlus } from 'lucide-react';
 import type { DuplicateDirection } from '@/store/slices/mutationSlice';
-import { surfaceCommand } from './surface-commands';
+import { surfaceCommand, type SurfaceCommandId, type SurfaceCommandState } from './surface-commands';
 import { runSurfaceCommand } from './surface-command-run';
 import { DUPLICATE_CONTEXT_DIRECTIONS } from './surface-commands-context';
 import { useViewerStore } from '@/store';
@@ -36,7 +36,7 @@ interface MenuItemProps {
   commandId?: string;
 }
 
-export function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, primaryShortcut, title, tone = 'default', commandId }: MenuItemProps) {
+function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, primaryShortcut, title, tone = 'default', commandId }: MenuItemProps) {
   const descriptionId = useId();
   const iconClass = tone === 'destructive'
     ? 'h-4 w-4 text-red-500 dark:text-red-400'
@@ -65,6 +65,21 @@ export function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, prima
   );
 }
 
+/** Built-in context rows get all command presentation from the shared registry. */
+export type CommandMenuItemProps = Omit<MenuItemProps, 'icon' | 'label' | 'shortcut' | 'commandId'> & {
+  commandId: SurfaceCommandId;
+  commandState: SurfaceCommandState;
+};
+
+export function CommandMenuItem({ commandId, commandState, ...props }: CommandMenuItemProps) {
+  const { t } = useTranslation();
+  const command = surfaceCommand(commandId, 'context');
+  return <MenuItem {...props} commandId={command.id}
+    icon={command.contextIcon ?? command.icon}
+    label={t(command.contextLabelKey ?? command.labelKey, command.contextLabelParams?.(commandState))}
+    shortcut={command.contextShortcut ?? command.shortcut} />;
+}
+
 /** Default duplicate remains one action; directional copies are keyboard-reachable submenu items. */
 export function DuplicateItems({ onDuplicate, canEdit, reason }: {
   onDuplicate: (dir: DuplicateDirection) => void;
@@ -77,14 +92,12 @@ export function DuplicateItems({ onDuplicate, canEdit, reason }: {
   const disabled = !duplicate.enabled(commandState);
   return (
     <>
-      <MenuItem
-        icon={duplicate.icon}
-        label={t(duplicate.labelKey)}
+      <CommandMenuItem
         title={disabled ? reason : t('entityContextMenu.duplicateDefaultTitle')}
         disabled={disabled}
-        shortcut={duplicate.shortcut}
         primaryShortcut
         commandId={duplicate.id}
+        commandState={commandState}
         onClick={() => runSurfaceCommand(duplicate, { surface: 'context', contextAction: () => onDuplicate('+X') })}
       />
       <ContextMenuSub>
@@ -97,7 +110,7 @@ export function DuplicateItems({ onDuplicate, canEdit, reason }: {
           {DUPLICATE_CONTEXT_DIRECTIONS.map(({ id, direction }) => {
             const command = surfaceCommand(id, 'context');
             return (
-              <MenuItem key={id} commandId={id} icon={command.icon} label={t(command.labelKey)}
+              <CommandMenuItem key={id} commandId={id} commandState={commandState}
                 disabled={!command.enabled(commandState)} title={reason}
                 onClick={() => runSurfaceCommand(command, { surface: 'context', contextAction: () => onDuplicate(direction) })} />
             );

@@ -5,8 +5,8 @@
 /**
  * "Hide selection": the one implementation every surface calls (#5852).
  *
- * The keyboard, the ribbon, the classic toolbar, the palette, the mobile
- * toolbar and the context menu each used to hide in their own way: some kept
+ * Previously, the keyboard, ribbon, classic toolbar, palette, mobile toolbar
+ * and context menu each hid in their own way: some kept
  * the (now invisible) selection, one hid only the primary entity, one hid only
  * the right-clicked entity. The rule here is the single answer:
  *

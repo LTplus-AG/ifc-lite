@@ -185,11 +185,9 @@ export function ViewportOverlays({
       <MeasurementsVisibilityChip />
       <FlySpeedIndicator />
       <OrbitPivotMarker />
-      {/* Touch navigation stays available on mobile. On desktop BOTH toolbar
-          styles carry zoom and Home from the shared camera command list
-          (`toolbar/CameraCommands`) — when this guard first narrowed to
-          mobile only the ribbon did, which left classic users with no zoom
-          button anywhere. */}
+      {/* Touch navigation stays available on mobile. The desktop ribbon
+          carries zoom and Home from the camera command list
+          (`toolbar/CameraCommands`). */}
       {isMobile && !cesiumEnabled && (
         <div
           className="absolute left-4 bottom-[15%] flex flex-col gap-1 rounded-md border bg-background/90 p-1 backdrop-blur-sm"

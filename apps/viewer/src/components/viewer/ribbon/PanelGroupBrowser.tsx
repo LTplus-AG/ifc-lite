@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Ribbon panel browser generated from the same task groups as the rail (#5873). */
-import { PanelsTopLeft } from 'lucide-react';
+import { BrowsePanels } from '@/icons';
 import { useTranslation } from '@/i18n';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { PANEL_GROUPS, WORKSPACE_PANELS } from '@/lib/panels/registry';
@@ -35,7 +35,7 @@ export function PanelGroupBrowser() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <RibbonLargeButton
-            icon={PanelsTopLeft}
+            icon={BrowsePanels}
             label={t('shellChrome.panelGroups.browse')}
             aria-label={t('shellChrome.panelGroups.browse')}
             hasMenu

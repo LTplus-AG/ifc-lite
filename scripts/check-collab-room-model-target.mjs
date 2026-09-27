@@ -515,7 +515,7 @@ const CALL_SITE_FLOOR = {
   mirrorPlacementEdit: 3,
   mirrorEntityRemove: 1,
   mirrorEntityCreate: 1, // runInStoreElementBuilder: every add*, addColumn included
-  mirrorEntityGeometry: 2, // immediate append and replacement after the removal drain
+  mirrorEntityGeometry: 1, // refreshWallMeshIn: one mirror of the resized wall (#6232 re-mesh replaced the TS rebuild's two append paths)
   readCollabPlacement: 3,
   collabTranslateEntity: 2,
   collabRotateEntity: 1,

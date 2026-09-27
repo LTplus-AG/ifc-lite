@@ -108,6 +108,7 @@ export function ViewTab() {
                   key={command.id}
                   icon={command.icon}
                   label={t(command.labelKey)}
+                  tooltip={t(command.tooltipKey)}
                   shortcut={command.shortcut}
                   onClick={command.run}
                 />

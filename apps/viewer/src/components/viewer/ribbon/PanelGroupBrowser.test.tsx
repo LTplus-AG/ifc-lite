@@ -27,6 +27,10 @@ it('#5873 renders every available panel once under the same task group in the ra
   const ribbon = render(<PanelGroupBrowser />);
   const trigger = ribbon.querySelector<HTMLButtonElement>('button[aria-label="Browse panels"]');
   assert.ok(trigger);
+  assert.ok(
+    trigger.querySelector('svg[data-testid="icon-stub"]'),
+    'the Browse panels trigger must render through the house icon loader, not a Lucide glyph',
+  );
   act(() => {
     trigger.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }));
   });

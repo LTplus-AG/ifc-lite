@@ -64,10 +64,10 @@ import { ExportDialogToggleOptions } from './export-dialog-toggle-options';
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 interface ExportDialogProps {
-  surface?: ExportSurface; trigger?: React.ReactNode;
+  surface: ExportSurface; trigger?: React.ReactNode;
   initialChangesOnly?: boolean;
 }
-export function ExportDialog({ surface = 'classic', trigger, initialChangesOnly = false }: ExportDialogProps) {
+export function ExportDialog({ surface, trigger, initialChangesOnly = false }: ExportDialogProps) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);

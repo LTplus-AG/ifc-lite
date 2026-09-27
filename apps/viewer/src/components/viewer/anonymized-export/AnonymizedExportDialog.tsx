@@ -14,8 +14,8 @@
  * the export toolbar dropdown (`trigger` prop, registered in
  * `toolbar/export-commands.ts`), the entity context menu, and the Command
  * Palette. Only ONE of the two mounted instances may answer to the store
- * flag, or both open together (#3309 review): the context menu and Command
- * Palette set `anonymizedExportRequested`, and this component is ALSO
+ * flag, or both open together (#3309 review): the context menu sets
+ * `anonymizedExportRequested`, and this component is ALSO
  * mounted trigger-less in `ViewerLayout.tsx`'s "Global Overlays" block (the
  * same host `FlavorDialog` uses) specifically to own that flag, so the
  * triggered instance ignores it — see the `trigger` prop doc below.
@@ -78,18 +78,18 @@ import {
 const DEFAULT_FILE_STEM = 'anonymized';
 
 interface AnonymizedExportDialogProps {
-  surface?: ExportSurface;
+  surface: ExportSurface;
   /**
    * Omit when mounting this as the trigger-less, always-open-able host (see
-   * `ViewerLayout.tsx`'s "Global Overlays" — the context menu and Command
-   * Palette entry points only flip `anonymizedExportRequested`, never render
-   * a clickable element). Pass an element when registering this as an
+   * `ViewerLayout.tsx`'s "Global Overlays" — the context menu only flips
+   * `anonymizedExportRequested`). Pass an element for the ribbon or palette
+   * entry point when registering this as an
    * `ExportDialogCommand` (`toolbar/export-commands.ts`).
    */
   trigger?: React.ReactNode;
 }
 
-export function AnonymizedExportDialog({ surface = 'classic', trigger }: AnonymizedExportDialogProps) {
+export function AnonymizedExportDialog({ surface, trigger }: AnonymizedExportDialogProps) {
   const { t } = useTranslation();
   const [localOpen, setLocalOpen] = useState(false);
   // Only the trigger-less host instance (ViewerLayout's "Global Overlays")

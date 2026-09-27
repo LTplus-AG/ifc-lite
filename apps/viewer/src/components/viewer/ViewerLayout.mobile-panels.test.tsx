@@ -19,13 +19,15 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, click } from '@/test/render.js';
+import { cleanup, click, render } from '@/test/render.js';
 import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
+import { MobilePanelLauncher } from './MobilePanelLauncher.js';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
 import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
 import { en } from '@/i18n/en';
 import { activeBottomPanel } from '@/lib/panels/bottom-panels';
+import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { isCollabEnabled } from '@/lib/collab/config';
 
 const model: FederatedModel = {
@@ -45,8 +47,13 @@ function expectedRailIds(): WorkspacePanelId[] {
 
 function panelName(id: WorkspacePanelId): string {
   const value = en[getPanelDef(id)!.titleKey];
-  assert.equal(typeof value, 'string');
+  if (typeof value !== 'string') throw new Error(`Panel ${id} has no text title`);
   return value;
+}
+
+function listItem(container: HTMLElement, id: WorkspacePanelId): HTMLButtonElement | undefined {
+  return [...container.querySelectorAll<HTMLButtonElement>('li > button')]
+    .find((item) => item.textContent?.trim() === panelName(id));
 }
 
 function button(container: HTMLElement, name: string): HTMLButtonElement | undefined {
@@ -72,19 +79,44 @@ afterEach(() => {
 });
 
 describe('mobile Panels sheet (#5853)', () => {
-  it('lists every panel the rail offers', () => {
-    const container = renderViewerLayout();
-    openList(container);
+  it('lists every panel the rail offers and opens each in its mobile home', () => {
+    // Mount the real launcher without heavyweight panel bodies: a few panels
+    // start remote data requests when their body mounts, which this routing
+    // assertion does not need. The tests below mount the full layout.
+    const container = render(<MobilePanelLauncher bottomInset={0} />);
     const expected = expectedRailIds();
     assert.ok(expected.length > 10, `the rail should offer many panels, got ${expected.length}`);
-    const missing = expected.filter((id) => !button(container, panelName(id)));
-    assert.deepEqual(missing, [], 'these rail panels are unreachable on mobile');
+    openList(container);
+    assert.deepEqual(
+      [...container.querySelectorAll<HTMLButtonElement>('li > button')].map((item) => item.textContent?.trim()),
+      expected.map(panelName),
+      'the mobile list must match the rail exactly, once per panel and in its order',
+    );
+    for (const [index, id] of expected.entries()) {
+      if (index > 0) openList(container);
+      const item = listItem(container, id);
+      assert.ok(item, `rail panel ${id} is unreachable on mobile`);
+      click(item);
+      const state = useViewerStore.getState();
+      if (getPanelDef(id)!.region === 'left') {
+        assert.equal(state.leftPanelCollapsed, false, `left panel ${id} did not open`);
+      } else {
+        assert.equal(state.rightPanelCollapsed, false, `panel ${id} did not open its sheet`);
+        assert.deepEqual(resolveMobileSheet({
+          hasAnalysisExtension: false,
+          activeTool: state.activeTool,
+          bottomPanel: activeBottomPanel(state),
+          sidebarActivePanel: state.sidebarActivePanel,
+        }), { kind: 'panel', id }, `panel ${id} did not occupy the mobile sheet`);
+      }
+      act(() => useViewerStore.setState({ leftPanelCollapsed: true, rightPanelCollapsed: true }));
+    }
   });
 
   it('a tap opens a side panel in the mobile sheet', () => {
     const container = renderViewerLayout();
     openList(container);
-    click(button(container, panelName('clash'))!);
+    click(listItem(container, 'clash')!);
     const s = useViewerStore.getState();
     assert.equal(s.rightPanelCollapsed, false, 'the sheet did not open');
     assert.equal(s.sidebarActivePanel, 'clash');
@@ -94,13 +126,13 @@ describe('mobile Panels sheet (#5853)', () => {
   it('a tap opens a bottom-strip panel, and a later side panel closes it', () => {
     const container = renderViewerLayout();
     openList(container);
-    click(button(container, panelName('lists'))!);
+    click(listItem(container, 'lists')!);
     assert.equal(activeBottomPanel(useViewerStore.getState()), 'lists');
     assert.equal(useViewerStore.getState().rightPanelCollapsed, false);
     // Dismissed by the backdrop, which leaves the bottom flag set.
     act(() => useViewerStore.setState({ rightPanelCollapsed: true }));
     openList(container);
-    click(button(container, panelName('bcf'))!);
+    click(listItem(container, 'bcf')!);
     assert.equal(activeBottomPanel(useViewerStore.getState()), null, 'the stale bottom panel would cover BCF');
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'bcf');
   });
@@ -108,7 +140,7 @@ describe('mobile Panels sheet (#5853)', () => {
   it('the direct Properties button clears a dismissed bottom panel before reopening the sheet', () => {
     const container = renderViewerLayout();
     openList(container);
-    click(button(container, panelName('lists'))!);
+    click(listItem(container, 'lists')!);
     assert.equal(activeBottomPanel(useViewerStore.getState()), 'lists');
     const backdrop = button(container, 'Close panels');
     assert.ok(backdrop);
@@ -126,7 +158,7 @@ describe('mobile Panels sheet (#5853)', () => {
   it('a tap on Hierarchy opens the left sheet', () => {
     const container = renderViewerLayout();
     openList(container);
-    click(button(container, panelName('hierarchy'))!);
+    click(listItem(container, 'hierarchy')!);
     assert.equal(useViewerStore.getState().leftPanelCollapsed, false);
   });
 });

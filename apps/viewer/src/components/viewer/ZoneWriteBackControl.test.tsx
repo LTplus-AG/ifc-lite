@@ -18,6 +18,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { render, click, cleanup } from '@/test/render.js';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store';
 import { ZonesPanel } from './ZonesPanel.js';
@@ -120,14 +121,41 @@ describe('ZonesPanel: writing zone data into the model', () => {
       zoneAssignments: new Map([[WALL_ID, {
         'set-1': { zoneId: 'z-a', zoneName: 'Takt A', straddles: false, touchedZoneIds: ['z-a'] },
       }], [1_000_000 + WALL_ID, {
-        'set-1': { zoneId: 'z-a', zoneName: 'Takt A', straddles: false, touchedZoneIds: ['z-a'] },
+        'other-set': { zoneId: 'z-other', zoneName: 'Other zone', straddles: false, touchedZoneIds: ['z-other'] },
       }]]) as never,
     }));
+    assert.equal(writeButton(ui).disabled, true, 'an unrelated writable model cannot enable this set\'s Write');
+
+    const unrelatedView = new MutablePropertyView(data.properties, 'm2');
+    unrelatedView.createPropertySet(WALL_ID, 'Pset_Unrelated', [{ name: 'Flag', value: 'yes' }]);
+    act(() => useViewerStore.setState({ mutationViews: new Map([['m2', unrelatedView]]) }));
+    assert.equal(writeButton(ui).disabled, true, 'an unrelated overlay change cannot enable this set\'s Write');
+
+    act(() => useViewerStore.setState({ zoneAssignments: new Map([[WALL_ID, {
+      'set-1': { zoneId: 'z-a', zoneName: 'Takt A', straddles: false, touchedZoneIds: ['z-a'] },
+    }], [1_000_000 + WALL_ID, {
+      'set-1': { zoneId: 'z-a', zoneName: 'Takt A', straddles: false, touchedZoneIds: ['z-a'] },
+    }]]) as never }));
     assert.equal(writeButton(ui).disabled, false);
     assert.equal(ui.querySelector('output'), null, 'the denial clears once a writable target appears');
     click(writeButton(ui));
     assert.ok(useViewerStore.getState().dirtyModels.has('m2'));
     assert.equal(useViewerStore.getState().dirtyModels.has('m1'), false);
+  });
+
+  it('keeps Write available to sweep this set after its last member leaves (#5901)', () => {
+    const ui = render(<ZoneWriteBackControl zoneSet={ZONE_SET} />);
+    click(writeButton(ui));
+    const view = useViewerStore.getState().getMutationView('m1');
+    assert.ok(view);
+    assert.ok(view.getForEntity(WALL_ID).some((pset) => pset.name === zonePropertySetName('Takt areas')));
+
+    act(() => useViewerStore.setState({ zoneAssignments: new Map([[WALL_ID, {
+      'set-1': { zoneId: 'z-a', zoneName: 'Takt A', straddles: false, touchedZoneIds: [] },
+    }]]) as never }));
+    assert.equal(writeButton(ui).disabled, false, 'the changed overlay still needs a sweep');
+    click(writeButton(ui));
+    assert.equal(view.getForEntity(WALL_ID).some((pset) => pset.name === zonePropertySetName('Takt areas')), false);
   });
 
   it('writes the property set when the panel button is clicked', () => {

@@ -25,6 +25,7 @@ import type { RegisteredAppearanceReference } from '@/lib/appearance/references/
  * `contents`/`resources` replace the controlled page-1 stream so fidelity cases (text, clips, images) reuse the same
  * registration and calibration. */
 export async function pdfReferenceAnnotationFixture(page: { contents?: string; resources?: string } = {}) {
+  const previousEditEnabled = useViewerStore.getState().editEnabled;
   federationRegistry.clear();
   const data = await new IfcParser().parseColumnar(texturedProductSource.slice().buffer);
   const view = new MutablePropertyView(data.properties, 'pdf-target'), editor = new StoreEditor(data, view);
@@ -60,7 +61,8 @@ export async function pdfReferenceAnnotationFixture(page: { contents?: string; r
   return { document, key, view, data, reference: useViewerStore.getState().appearanceReferences.get(reference.id)!,
     dispose() {
       useViewerStore.setState({ appearanceReferences: new Map(), referenceUndo: [], referenceRedo: [], models: new Map(),
-        mutationViews: new Map(), storeEditors: new Map(), activeModelId: null, undoStacks: new Map(), redoStacks: new Map() });
+        mutationViews: new Map(), storeEditors: new Map(), activeModelId: null, undoStacks: new Map(), redoStacks: new Map(),
+        editEnabled: previousEditEnabled });
       removePdfDocument(key); federationRegistry.clear();
     } };
 }

@@ -49,7 +49,10 @@ function markValue(value: TranslationValue): TranslationValue {
   return marked as PluralTranslation;
 }
 
-const PSEUDO: Catalogue = Object.fromEntries(KEYS.map((key) => [key, markValue(CATALOGUE[key]!)]));
+const PSEUDO: Catalogue = {
+  ...Object.fromEntries(KEYS.map((key) => [key, markValue(CATALOGUE[key]!)])),
+  'mutationPermission.roleRequired': markValue(en['mutationPermission.roleRequired']),
+};
 const BASELINE_LOCALE = 'en';
 const PSEUDO_LOCALE = 'data-connector-pseudo';
 
@@ -440,12 +443,13 @@ describe('DataConnector localization (#4918)', () => {
       mutationViews: new Map(),
       mutationVersion: 0,
       collabRole: 'viewer',
+      editEnabled: true,
     });
 
     await openDialog();
     await settle();
 
-    checkAtCurrentState([{ key: 'dataConnector.editRequiresAccessTitle' }]);
+    checkAtCurrentState([{ key: 'mutationPermission.roleRequired' }]);
   });
 
   it('accounts for every catalogue key: rendered above, or a documented other-branch', () => {

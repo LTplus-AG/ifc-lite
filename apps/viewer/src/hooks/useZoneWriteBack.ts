@@ -108,21 +108,26 @@ const EMPTY: ZoneWriteBackResult = {
  * is matched, and the quantity sets are then found by the bracket text of the
  * property set that names them.
  */
+/** The owned property sets that the write path can sweep for one element. */
+export function zonePropertySetNamesOnElement(view: ModelContext['view'], expressId: number, zoneSetId: string): string[] {
+  const psets: string[] = [];
+  for (const pset of view.getForEntity(expressId)) {
+    if (!pset.name.startsWith(`${ZONE_SET_NAME_PREFIX} [`)) continue;
+    const owner = pset.properties.find((p) => p.name === ZONE_PROPERTY_NAMES.zoneSetId)?.value;
+    if (owner !== zoneSetId) continue;
+    psets.push(pset.name);
+  }
+  return psets;
+}
+
 function zoneSetsOnElement(
   context: ModelContext,
   expressId: number,
   zoneSetId: string,
   knownQsets?: ReturnType<typeof quantitySetsFor>,
 ): { psets: string[]; qsets: string[] } {
-  const psets: string[] = [];
-  const brackets: string[] = [];
-  for (const pset of context.view.getForEntity(expressId)) {
-    if (!pset.name.startsWith(`${ZONE_SET_NAME_PREFIX} [`)) continue;
-    const owner = pset.properties.find((p) => p.name === ZONE_PROPERTY_NAMES.zoneSetId)?.value;
-    if (owner !== zoneSetId) continue;
-    psets.push(pset.name);
-    brackets.push(pset.name.slice(`${ZONE_SET_NAME_PREFIX} [`.length, -1));
-  }
+  const psets = zonePropertySetNamesOnElement(context.view, expressId, zoneSetId);
+  const brackets = psets.map((name) => name.slice(`${ZONE_SET_NAME_PREFIX} [`.length, -1));
   // Reuses the caller's read when it has one. Each of these is an on-demand
   // extraction, and the write path already reads the element's quantity sets to
   // resolve its declared basis, so asking again would double the run's cost for

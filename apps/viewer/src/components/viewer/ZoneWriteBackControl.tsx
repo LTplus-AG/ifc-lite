@@ -37,7 +37,7 @@ import { useViewerStore } from '@/store';
 import { canMutate, type MutationDenialReason } from '@/store/mutation-permission';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import type { TranslationKey } from '@/i18n';
-import { useZoneWriteBack } from '@/hooks/useZoneWriteBack';
+import { useZoneWriteBack, zonePropertySetNamesOnElement } from '@/hooks/useZoneWriteBack';
 import { useZoneSpatialZones } from '@/hooks/useZoneSpatialZones';
 import { useZoneTableExport, type ZoneTableFormat } from '@/hooks/useZoneTableExport';
 import { emitRefusalText } from '@/lib/zones/emit-spatial-zones';
@@ -58,14 +58,23 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
   const views = useViewerStore(state => state.mutationViews);
   const models = useViewerStore(state => state.models);
   const targets = useMemo(() => {
-    const assigned = new Set<string>(), members = new Set<string>();
+    const assigned = new Set<string>(), write = new Set<string>(), members = new Set<string>();
     for (const [globalId, record] of assignments) {
-      const modelId = resolveEntityRef(globalId).modelId;
+      const { modelId, expressId } = resolveEntityRef(globalId);
       assigned.add(modelId);
-      if (record[zoneSet.id]?.touchedZoneIds.length) members.add(modelId);
+      if (record[zoneSet.id]?.touchedZoneIds.length) {
+        write.add(modelId);
+        members.add(modelId);
+      } else {
+        const view = views.get(modelId);
+        if (view?.hasChanges(expressId) && zonePropertySetNamesOnElement(view, expressId, zoneSet.id).length > 0) {
+          // A member that left this set may still need its prior write swept.
+          write.add(modelId);
+        }
+      }
     }
     const withViews = (ids: ReadonlySet<string>) => new Set([...ids, ...views.keys()]);
-    return { write: assigned, removeProperties: withViews(assigned), emit: withViews(members), removeZones: new Set(views.keys()) };
+    return { write, removeProperties: withViews(assigned), emit: withViews(members), removeZones: new Set(views.keys()) };
   }, [assignments, views, models, zoneSet.id]);
   const reasonFor = (modelIds: ReadonlySet<string>): MutationDenialReason | null => {
     if (globalDenial) return globalDenial;

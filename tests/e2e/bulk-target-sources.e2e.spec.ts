@@ -11,6 +11,9 @@ const OTHER_MODEL = 'apps/viewer/public/samples/building-architecture-rev-b.ifc'
 
 test('Bulk Selection edits three walls across two IFC models in one undo step (#5890)', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    window.localStorage.setItem('ifclite.extensions.privacy-disclosure.v2', 'e2e acknowledged');
+  });
   await page.goto('/?model=/samples/building-architecture.ifc');
   await page.waitForFunction((key) => {
     const api = (globalThis as Record<string, { getState(): {
@@ -38,6 +41,7 @@ test('Bulk Selection edits three walls across two IFC models in one undo step (#
   if (await alignmentNotice.isVisible()) await alignmentNotice.click();
 
   // Bulk authoring is available through the viewer's explicit Edit mode.
+  await page.getByRole('tab', { name: 'Author', exact: true }).click();
   await page.getByRole('button', { name: 'Enter edit mode' }).click();
 
   const refs = await page.evaluate((key) => {

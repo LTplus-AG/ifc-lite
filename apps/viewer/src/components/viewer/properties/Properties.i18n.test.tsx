@@ -35,6 +35,7 @@ import { cleanup, render, click, press, type } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { en } from '@/i18n/en';
 import { useViewerStore } from '@/store';
+import { fixtureDataStore } from '@/test/store-fixture';
 import type { FederatedModel } from '@/store/types.js';
 import { ProjectUnits, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
@@ -257,7 +258,7 @@ function makeModel(id: string): FederatedModel {
   return {
     id,
     name: `${id}.ifc`,
-    ifcDataStore: null,
+    ifcDataStore: fixtureDataStore(),
     geometryResult: null,
     visible: true,
     collapsed: false,

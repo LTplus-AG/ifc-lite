@@ -71,6 +71,10 @@ import { AssociationAttributeSearchCard, findAssociationAttributes } from './pro
 import { associationDisclosureId } from './properties/associationDisclosureId';
 import { PersistentCollapsible } from './properties/PersistentCollapsible';
 import { usePersistentDisclosure } from './properties/usePersistentDisclosure';
+import { AttributeEditorField } from './properties/AttributeEditorField';
+import { CopyValueButton } from './properties/CopyValueButton';
+import { useCopyValue } from './properties/useCopyValue';
+import { SelectionSummaryPanel } from './properties/SelectionSummaryPanel';
 export function PropertiesPanel() {
   const { t, locale } = useTranslation();
   // Display-unit converter overrides (issue #1573 proposal 2) — read once
@@ -126,9 +130,9 @@ export function PropertiesPanel() {
     getOrCreateMutationView(useViewerStore, selectedEntity.modelId);
   }, [model, selectedEntity]);
 
-  // Copy feedback state - must be before any early returns (Rules of Hooks)
-  const [copied, setCopied] = useState(false);
-  const [coordCopied, setCoordCopied] = useState<string | null>(null);
+  const multiSelectionCount = useViewerStore((s) => s.selectedEntitiesSet.size);
+  const { copiedKey, copy } = useCopyValue(); // the panel's one clipboard path (#5900)
+  const copied = copiedKey === 'globalId';
   const [coordOpen, setCoordOpen] = usePersistentDisclosure('coordinates', false);
   const [find, setFind] = useState('');
 
@@ -208,18 +212,6 @@ export function PropertiesPanel() {
       window.clearTimeout(fade);
     };
   }, [focusedPropKey]);
-
-  const copyToClipboard = useCallback((text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }, []);
-
-  const copyCoords = useCallback((label: string, text: string) => {
-    navigator.clipboard.writeText(text);
-    setCoordCopied(label);
-    setTimeout(() => setCoordCopied(null), 1500);
-  }, []);
 
   // Get spatial location info
   // IMPORTANT: Use selectedEntity.expressId (original ID) for IfcDataStore lookups
@@ -1198,6 +1190,8 @@ export function PropertiesPanel() {
       />
     );
   }
+  // A multi-selection is summarised, never shown as its primary element alone (#5900).
+  if (multiSelectionCount > 1) return <SelectionSummaryPanel models={models} ifcDataStore={ifcDataStore} />;
 
   // Newly-created/duplicated entities live only in the mutation overlay,
   // so the synthesized attributes + Raw STEP tab fall back to
@@ -1320,7 +1314,7 @@ export function PropertiesPanel() {
                   ? 'border-emerald-400 dark:border-emerald-600 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400'
                   : 'border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-950'
               }`}
-              onClick={() => copyToClipboard(entityGlobalId)}
+              onClick={() => copy(entityGlobalId, 'globalId')}
             >
               {copied ? (
                 <Check className="h-3 w-3" />
@@ -1370,9 +1364,7 @@ export function PropertiesPanel() {
                       { axis: 'Z', value: entityCoordinates.worldZup.center.z },
                     ]}
                     primary
-                    copyLabel="world"
-                    coordCopied={coordCopied}
-                    onCopy={copyCoords}
+                    copyName={t('properties.panel.worldCoordinates')}
                   />
                   <CoordRow
                     label="Local"
@@ -1381,9 +1373,6 @@ export function PropertiesPanel() {
                       { axis: 'Y', value: entityCoordinates.local.center.y },
                       { axis: 'Z', value: entityCoordinates.local.center.z },
                     ]}
-                    copyLabel="local"
-                    coordCopied={coordCopied}
-                    onCopy={copyCoords}
                   />
                   <div className="flex items-start gap-1.5">
                     <span className="text-[9px] font-medium text-muted-foreground uppercase tracking-wider w-[34px] shrink-0 pt-px">{t('properties.panel.sizeLabel')}</span>
@@ -1430,22 +1419,25 @@ export function PropertiesPanel() {
           <CollapsibleContent>
             <div className="divide-y border-t">
               {foundAttributes.map((attr) => (
-                <div key={attr.name} className="grid grid-cols-[minmax(80px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-sm">
+                <div key={attr.name} className="group/copyrow grid grid-cols-[minmax(80px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-sm">
                   <span className="text-muted-foreground truncate" title={attr.name}><PropertySearchHighlight text={attr.name} query={findQuery} /></span>
-                  {editMode && selectedEntity && !findQuery ? (
-                    <AttributeEditorField
-                      modelId={selectedEntity.modelId}
-                      entityId={selectedEntity.expressId}
-                      attrName={attr.name}
-                      currentValue={String(attr.value)}
-                    />
-                  ) : (
-                    <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 min-w-0">
-                      <span className="font-medium whitespace-nowrap" title={String(attr.value)}>
-                        <PropertySearchHighlight text={String(attr.value)} query={findQuery} />
-                      </span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1 min-w-0">
+                    {editMode && selectedEntity && !findQuery ? (
+                      <AttributeEditorField
+                        modelId={selectedEntity.modelId}
+                        entityId={selectedEntity.expressId}
+                        attrName={attr.name}
+                        currentValue={String(attr.value)}
+                      />
+                    ) : (
+                      <div className="flex-1 overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 min-w-0">
+                        <span className="font-medium whitespace-nowrap" title={String(attr.value)}>
+                          <PropertySearchHighlight text={String(attr.value)} query={findQuery} />
+                        </span>
+                      </div>
+                    )}
+                    <CopyValueButton name={attr.name} value={String(attr.value)} />
+                  </div>
                 </div>
               ))}
             </div>
@@ -1814,6 +1806,7 @@ export function PropertiesPanel() {
     </div>
   );
 }
+
 /** Multi-entity panel for unified storeys - shows data from multiple entities stacked */
 function MultiEntityPanel({
   entities,
@@ -2003,10 +1996,13 @@ function EntityDataSection({
           <CollapsibleContent>
             <div className="divide-y divide-zinc-100 dark:divide-zinc-900 border-t border-zinc-100 dark:border-zinc-900">
               {attributes.map((attr) => (
-                <div key={attr.name} className="grid grid-cols-[minmax(60px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-xs">
+                <div key={attr.name} className="group/copyrow grid grid-cols-[minmax(60px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-xs">
                   <span className="text-zinc-500 truncate" title={attr.name}>{attr.name}</span>
-                  <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 min-w-0">
-                    <span className="font-medium whitespace-nowrap">{attr.value}</span>
+                  <div className="flex items-center gap-1 min-w-0">
+                    <div className="flex-1 overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 min-w-0">
+                      <span className="font-medium whitespace-nowrap">{attr.value}</span>
+                    </div>
+                    <CopyValueButton name={attr.name} value={String(attr.value)} />
                   </div>
                 </div>
               ))}

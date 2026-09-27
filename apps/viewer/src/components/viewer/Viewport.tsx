@@ -1595,6 +1595,7 @@ export function Viewport({
     geometryRef,
     isInteractingRef,
     handlePickForSelection: (pickResult) => handlePickForSelectionRef.current(pickResult),
+    openContextMenu,
     getPickOptions,
   });
 

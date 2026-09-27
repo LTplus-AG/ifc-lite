@@ -16,6 +16,7 @@ import { useTranslation } from '@/i18n';
 import type { FileCommands } from '../../toolbar/useFileCommands';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
 import { panelTitleKey } from '@/lib/panels/registry';
+import { surfaceCommand } from '../../surface-commands';
 import { RibbonExportGroup } from './RibbonExportGroup';
 import { RIBBON_EXPORT_ICONS } from './ribbon-export-icons';
 import {
@@ -30,6 +31,11 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
   const { t } = useTranslation();
   const { handleOpenClick, handleAddModelClick, handleRefresh, canRefresh, hasModelsLoaded, openShareDialog } = fileCommands;
   const { loading, models } = useIfc();
+  const saveSetup = surfaceCommand('file:save-federation-setup', 'ribbon');
+  const openSetup = surfaceCommand('file:open-federation-setup', 'ribbon');
+  const modelTags = surfaceCommand('file:model-tags', 'ribbon');
+  const collabRole = useViewerStore((s) => s.collabRole);
+  const canEditInSession = collabRole === null || collabRole === 'editor' || collabRole === 'admin';
 
   // Collaboration: the Share cluster is gated behind the collab feature flag.
   // The ShareDialog itself (and its `ifc-lite:open-share-dialog` listener)
@@ -81,6 +87,28 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
             disabled={loading || !canRefresh}
             onClick={() => { void handleRefresh(); }}
           />
+        </RibbonSmallStack>
+        <RibbonLargeButton
+          data-command-id={saveSetup.id}
+          icon={saveSetup.icon}
+          label={t(saveSetup.labelKey)}
+          tooltip={t(saveSetup.labelKey)}
+          disabled={!saveSetup.enabled({ canEditInSession })}
+          onClick={() => saveSetup.run({ surface: 'ribbon' })}
+        />
+        <RibbonSmallStack className="gap-1">
+          {[openSetup, modelTags].map((command) => (
+            <RibbonSmallButton
+              key={command.id}
+              data-command-id={command.id}
+              icon={command.icon}
+              label={t(command.labelKey)}
+              tooltip={t(command.labelKey)}
+              className="min-h-6"
+              disabled={!command.enabled({ canEditInSession })}
+              onClick={() => command.run({ surface: 'ribbon' })}
+            />
+          ))}
         </RibbonSmallStack>
       </RibbonGroup>
 

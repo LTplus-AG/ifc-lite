@@ -103,7 +103,7 @@ export function AttributeEditorField({ modelId, entityId, attrName, currentValue
 
   if (editing) {
     return (
-      <div className="flex flex-col gap-0.5 min-w-0">
+      <div className="flex flex-1 flex-col gap-0.5 min-w-0">
         <div className="flex items-center gap-1 min-w-0">
           <input
             ref={inputRef}
@@ -130,10 +130,10 @@ export function AttributeEditorField({ modelId, entityId, attrName, currentValue
   }
 
   return (
-    <div className="flex items-center gap-1 min-w-0 group/attr">
+    <div className="flex flex-1 items-center gap-1 min-w-0 group/attr">
       <button
         type="button"
-        className="font-medium whitespace-nowrap truncate flex-1 min-w-0 cursor-text text-left"
+        className="font-medium whitespace-nowrap truncate flex-1 min-w-0 cursor-text border-0 bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
         title={currentValue}
         onClick={begin}
       >

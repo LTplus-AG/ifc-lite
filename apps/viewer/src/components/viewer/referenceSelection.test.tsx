@@ -64,7 +64,7 @@ async function fixture(modelCount = 1) {
     activeToolRef: tool, hiddenEntitiesRef: ref(options.hiddenIds), isolatedEntitiesRef: ref(options.isolatedIds),
     selectedEntityIdRef: ref(null), selectedModelIndexRef: ref(undefined), clearColorRef: ref([0, 0, 0, 1]),
     sectionPlaneRef: ref(state.sectionPlane), sectionRangeRef: ref(null), geometryRef: ref(null), isInteractingRef: ref(false),
-    getPickOptions: () => options, handlePickForSelection,
+    getPickOptions: () => options, handlePickForSelection, openContextMenu() {},
     touchStateRef: ref({ touches: [], lastDistance: 0, lastCenter: { x: 0, y: 0 }, tapStartTime: 0,
       tapStartPos: { x: 0, y: 0 }, didMove: false, multiTouch: false, twoFingerGesture: 'none', gestureDistanceAccum: 0, gesturePanAccum: 0 }),
   };

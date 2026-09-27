@@ -63,6 +63,7 @@ import { miscPanelsAEn } from './catalogues/misc-panels-a.en';
 import { propertiesEn } from './catalogues/properties.en';
 import { propertiesPanelEn } from './catalogues/properties-panel.en';
 import { attributeEditorEn } from './catalogues/attribute-editor.en';
+import { propertiesSelectionEn } from './catalogues/properties-selection.en';
 import { relationshipCardEn } from './catalogues/relationship-card.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { scheduleEn } from './catalogues/schedule.en';
@@ -134,6 +135,7 @@ export const en = {
   ...propertiesEn,
   ...propertiesPanelEn,
   ...attributeEditorEn,
+  ...propertiesSelectionEn,
   ...landXmlEn,
   ...terrainImageryEn,
   ...structuralPropertiesEn,

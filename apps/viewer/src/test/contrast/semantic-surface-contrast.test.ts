@@ -45,9 +45,6 @@ function renderSecondaryCoordinate(): string {
     label: 'Position',
     values: [{ axis: 'X', value: 1 }],
     primary: false,
-    copyLabel: 'position',
-    coordCopied: null,
-    onCopy: () => undefined,
   }));
 }
 

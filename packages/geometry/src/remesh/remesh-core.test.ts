@@ -76,7 +76,7 @@ describe('remesh core (#6232)', () => {
     expect(api.calls).toEqual(['prepass', 'batch', 'clear']);
   });
 
-  it('releases the pre-pass cache when there is nothing to mesh and when meshing throws', () => {
+  it('releases the pre-pass cache when there is nothing to mesh and when the pre-pass or meshing throws', () => {
     const none = scriptedApi([5, 0, 10], emptyCollection);
     expect(remeshOnApi(none, REQUEST).meshes).toEqual([]);
     expect(none.calls).toEqual(['prepass', 'clear']);
@@ -84,6 +84,11 @@ describe('remesh core (#6232)', () => {
     const throwing = scriptedApi([7, 0, 10], () => { throw new Error('trap'); });
     expect(() => remeshOnApi(throwing, REQUEST)).toThrow('trap');
     expect(throwing.calls).toEqual(['prepass', 'batch', 'clear']);
+
+    const failedPrePass = scriptedApi([7, 0, 10], emptyCollection);
+    failedPrePass.buildPrePassOnce = () => { failedPrePass.calls.push('prepass'); throw new Error('bad buffer'); };
+    expect(() => remeshOnApi(failedPrePass, REQUEST)).toThrow('bad buffer');
+    expect(failedPrePass.calls).toEqual(['prepass', 'clear']);
   });
 
   it('applies every config field', () => {

@@ -51,6 +51,8 @@ export interface SurfaceCommandDefinition {
   /** State-dependent mobile text/icon live here, alongside the action. */
   mobileLabelKey?: (state: SurfaceCommandState) => TranslationKey;
   mobileIcon?: (state: SurfaceCommandState) => Command['icon'];
+  ribbonLabelKey?: TranslationKey;
+  ribbonTooltipKey?: TranslationKey;
   contextLabelKey?: TranslationKey;
   contextLabelParams?: (state: SurfaceCommandState) => TranslationParameters;
   contextIcon?: Command['icon'];

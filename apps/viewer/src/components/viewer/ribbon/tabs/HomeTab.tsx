@@ -16,8 +16,8 @@ import { useTranslation } from '@/i18n';
 import {
   RibbonGroup,
   RibbonGroupDivider,
-  RibbonLargeButton,
 } from '../primitives';
+import { RibbonCommandLargeButton } from '../command-button';
 
 export function HomeTab() {
   const { t } = useTranslation();
@@ -27,19 +27,17 @@ export function HomeTab() {
   return (
     <>
       <RibbonGroup label={t('ribbon.home.toolsGroup')}>
-        <RibbonLargeButton icon={Reposition} label={t('ribbon.home.reposition')} tooltip={t('ribbon.home.repositionTooltip')} onClick={() => openRepositionModels()} />
-        <RibbonLargeButton
+        <RibbonCommandLargeButton commandId="model:reposition" icon={Reposition} onClick={() => openRepositionModels()} />
+        <RibbonCommandLargeButton
+          commandId="tool:select"
           icon={Select}
-          label={t('ribbon.home.select')}
-          shortcut="tool.select"
           active={activeTool === 'select'}
           onClick={() => setActiveTool('select')}
           {...tourAnchor(toolAnchor('select'))}
         />
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="tool:walk"
           icon={Walk}
-          label={t('ribbon.home.walk')}
-          shortcut="tool.walk"
           active={activeTool === 'walk'}
           onClick={() => setActiveTool('walk')}
           {...tourAnchor(toolAnchor('walk'))}
@@ -49,26 +47,23 @@ export function HomeTab() {
       <RibbonGroupDivider />
 
       <RibbonGroup label={t('ribbon.home.measureGroup')}>
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="tool:measure"
           icon={Measure}
-          label={t('ribbon.home.measure')}
-          shortcut="tool.measure"
           active={activeTool === 'measure'}
           onClick={() => setActiveTool('measure')}
           {...tourAnchor(toolAnchor('measure'))}
         />
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="tool:section"
           icon={Section}
-          label={t('ribbon.home.section')}
-          shortcut="tool.section"
           active={activeTool === 'section'}
           onClick={() => setActiveTool('section')}
           {...tourAnchor(toolAnchor('section'))}
         />
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="tool:annotate"
           icon={Annotate}
-          label={t('ribbon.home.annotate')}
-          shortcut="tool.annotate"
           active={activeTool === 'annotate'}
           activeClassName="bg-amber-500/20 text-foreground ring-1 ring-inset ring-amber-500/50"
           onClick={() => setActiveTool('annotate')}
@@ -79,11 +74,9 @@ export function HomeTab() {
       <RibbonGroupDivider />
 
       <RibbonGroup label={t('ribbon.home.sceneGroup')}>
-        <RibbonLargeButton
+        <RibbonCommandLargeButton
+          commandId="view:home"
           icon={Home}
-          label={t('ribbon.home.home')}
-          tooltip={t('ribbon.home.homeTooltip')}
-          shortcut="camera.home"
           onClick={goHomeFromStore}
         />
       </RibbonGroup>

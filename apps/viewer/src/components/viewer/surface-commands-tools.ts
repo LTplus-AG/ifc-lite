@@ -12,22 +12,22 @@ import { useViewerStore } from '@/store';
 import type { SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
 
 const paletteOnly = ['palette'] as const;
-const paletteAndMobile = ['palette', 'mobile'] as const;
+const paletteMobileRibbon = ['palette', 'mobile', 'ribbon'] as const;
 const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 const editable = (state: SurfaceCommandState): boolean => state.canEditInSession;
 
 export const TOOL_SURFACE_COMMANDS = [
   {
-    id: 'tool:select', labelKey: 'commandPalette.tool.select.label',
+    id: 'tool:select', labelKey: 'commandPalette.tool.select.label', ribbonLabelKey: 'ribbon.home.select',
     searchLabel: 'Select', keywords: 'pick click pointer', category: 'Tools', icon: MousePointer2,
-    surfaces: paletteAndMobile, enabled: alwaysEnabled, shortcut: 'tool.select',
+    surfaces: paletteMobileRibbon, enabled: alwaysEnabled, shortcut: 'tool.select',
     mobileLabelKey: () => 'shellChrome.mobileToolbar.selectTool',
     run: () => { useViewerStore.getState().setActiveTool('select'); },
   },
   {
-    id: 'tool:walk', labelKey: 'commandPalette.tool.walk.label',
+    id: 'tool:walk', labelKey: 'commandPalette.tool.walk.label', ribbonLabelKey: 'ribbon.home.walk',
     searchLabel: 'Walk', keywords: 'first person navigate wasd', category: 'Tools', icon: PersonStanding,
-    surfaces: paletteAndMobile, enabled: alwaysEnabled, shortcut: 'tool.walk',
+    surfaces: paletteMobileRibbon, enabled: alwaysEnabled, shortcut: 'tool.walk',
     mobileLabelKey: () => 'shellChrome.mobileToolbar.walkMode',
     run: ({ surface }) => {
       const state = useViewerStore.getState();
@@ -35,29 +35,29 @@ export const TOOL_SURFACE_COMMANDS = [
     },
   },
   {
-    id: 'model:reposition', labelKey: 'commandPalette.tool.reposition.label',
+    id: 'model:reposition', labelKey: 'commandPalette.tool.reposition.label', ribbonLabelKey: 'ribbon.home.reposition', ribbonTooltipKey: 'ribbon.home.repositionTooltip',
     searchLabel: 'Reposition models', keywords: 'move align pointcloud origin offset translate',
-    category: 'Tools', icon: Crosshair, surfaces: paletteOnly, enabled: alwaysEnabled,
+    category: 'Tools', icon: Crosshair, surfaces: ['palette', 'ribbon'], enabled: alwaysEnabled,
     run: () => { openRepositionModels(); },
   },
   {
-    id: 'tool:measure', labelKey: 'commandPalette.tool.measure.label',
+    id: 'tool:measure', labelKey: 'commandPalette.tool.measure.label', ribbonLabelKey: 'ribbon.home.measure',
     searchLabel: 'Measure', keywords: 'distance ruler dimension', category: 'Tools', icon: Ruler,
-    surfaces: paletteAndMobile, enabled: alwaysEnabled, shortcut: 'tool.measure',
+    surfaces: paletteMobileRibbon, enabled: alwaysEnabled, shortcut: 'tool.measure',
     mobileLabelKey: () => 'shellChrome.mobileToolbar.measureTool',
     run: () => { useViewerStore.getState().setActiveTool('measure'); },
   },
   {
-    id: 'tool:section', labelKey: 'commandPalette.tool.section.label',
+    id: 'tool:section', labelKey: 'commandPalette.tool.section.label', ribbonLabelKey: 'ribbon.home.section',
     searchLabel: 'Section', keywords: 'clip cut plane', category: 'Tools', icon: Scissors,
-    surfaces: paletteAndMobile, enabled: alwaysEnabled, shortcut: 'tool.section',
+    surfaces: paletteMobileRibbon, enabled: alwaysEnabled, shortcut: 'tool.section',
     mobileLabelKey: () => 'shellChrome.mobileToolbar.sectionTool',
     run: () => { useViewerStore.getState().setActiveTool('section'); },
   },
   {
-    id: 'tool:annotate', labelKey: 'commandPalette.tool.annotate.label',
+    id: 'tool:annotate', labelKey: 'commandPalette.tool.annotate.label', ribbonLabelKey: 'ribbon.home.annotate',
     searchLabel: 'Annotate', keywords: 'pin note comment marker', category: 'Tools', icon: StickyNote,
-    surfaces: paletteOnly, enabled: alwaysEnabled, shortcut: 'tool.annotate',
+    surfaces: ['palette', 'ribbon'], enabled: alwaysEnabled, shortcut: 'tool.annotate',
     run: () => { useViewerStore.getState().setActiveTool('annotate'); },
   },
   {

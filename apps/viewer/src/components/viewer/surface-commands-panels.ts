@@ -20,6 +20,7 @@ import type {
 } from './surface-commands';
 
 const paletteOnly = ['palette'] as const;
+const paletteAndRibbon = ['palette', 'ribbon'] as const;
 const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 
 function bottomCommand<const Id extends BottomPanelId>(
@@ -28,7 +29,7 @@ function bottomCommand<const Id extends BottomPanelId>(
   return {
     id: `panel:${panel}`, panelId: panel, panelGroup: panelGroupFor(panel),
     labelKey: panelTitleKey(panel), keywords,
-    category: 'Panels', icon, surfaces: paletteOnly, enabled: alwaysEnabled,
+    category: 'Panels', icon, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
     run: (context) => {
       if (!context.activateBottomPanel) throw new Error(`Cannot open ${panel} without a panel host`);
       context.activateBottomPanel(panel);
@@ -38,12 +39,13 @@ function bottomCommand<const Id extends BottomPanelId>(
 
 function rightCommand<const Id extends string>(
   id: Id, panel: RightPanel, keywords: string, icon: Command['icon'],
+  ribbon = false,
   enabled: (state: SurfaceCommandState) => boolean = alwaysEnabled,
 ): SurfaceCommandDefinition & { id: Id } {
   return {
     id, panelId: panel, panelGroup: panelGroupFor(panel),
     labelKey: panelTitleKey(panel), keywords,
-    category: 'Panels', icon, surfaces: paletteOnly, enabled,
+    category: 'Panels', icon, surfaces: ribbon ? paletteAndRibbon : paletteOnly, enabled,
     run: (context) => {
       if (!context.activateRightPanel) throw new Error(`Cannot open ${panel} without a panel host`);
       context.activateRightPanel(panel);
@@ -76,12 +78,12 @@ export const PANEL_SURFACE_COMMANDS = [
       state.setLeftPanelCollapsed(!state.leftPanelCollapsed);
     },
   },
-  rightCommand('panel:bcf', 'bcf', 'collaboration topics comments viewpoint', MessageSquare),
-  rightCommand('panel:ids', 'validation', 'ids validation information delivery specification check', ClipboardCheck),
-  rightCommand('panel:clash', 'clash', 'collision interference clearance coordination clash matrix mep', Crosshair),
-  rightCommand('panel:compare', 'compare', 'diff revision version change added deleted modified geometry data', GitCompareArrows),
+  rightCommand('panel:bcf', 'bcf', 'collaboration topics comments viewpoint', MessageSquare, true),
+  rightCommand('panel:ids', 'validation', 'ids validation information delivery specification check', ClipboardCheck, true),
+  rightCommand('panel:clash', 'clash', 'collision interference clearance coordination clash matrix mep', Crosshair, true),
+  rightCommand('panel:compare', 'compare', 'diff revision version change added deleted modified geometry data', GitCompareArrows, true),
   rightCommand('panel:changes', 'changes', 'authored edits modifications properties history review', History),
-  rightCommand('panel:cost', 'cost', '5d cost schedule item quantity budget estimate', Coins),
+  rightCommand('panel:cost', 'cost', '5d cost schedule item quantity budget estimate', Coins, true),
   {
     id: 'panel:chat', panelId: 'script', panelGroup: panelGroupFor('script'),
     labelKey: 'commandPalette.panel.chat.label', searchLabel: 'AI Chat',
@@ -93,15 +95,15 @@ export const PANEL_SURFACE_COMMANDS = [
       useViewerStore.getState().setChatPanelVisible(true);
     },
   },
-  rightCommand('panel:lens', 'lens', 'lens rules color filter highlight', Palette),
-  rightCommand('panel:layers', 'layers', 'ifcx layers federation draft publish merge review provenance registry version overlay', Layers),
+  rightCommand('panel:lens', 'lens', 'lens rules color filter highlight', Palette, true),
+  rightCommand('panel:layers', 'layers', 'ifcx layers federation draft publish merge review provenance registry version overlay', Layers, true),
   rightCommand('panel:sources', 'sources', 'cde common data environment connect provider bim360 acc trimble dalux integration remote', Cloud),
-  rightCommand('panel:zones', 'zones', 'zone section takt area construction location apportionment storey', Box),
-  rightCommand('panel:loadReport', 'loadReport', 'geometry diagnostics warnings dropped items csg openings unsupported load report', FileWarning),
+  rightCommand('panel:zones', 'zones', 'zone section takt area construction location apportionment storey', Box, true),
+  rightCommand('panel:loadReport', 'loadReport', 'geometry diagnostics warnings dropped items csg openings unsupported load report', FileWarning, true),
   rightCommand('panel:pointclouds', 'pointclouds', 'point clouds scan las laz e57 splat classification deviation registration alignment', Scan),
   rightCommand('panel:measurements', 'measurements', 'measure distance polyline angle radius coordinates point quantities area volume list', Ruler),
   rightCommand('panel:appearance', 'appearance', 'image texture upload UV planar box projection surfaces', Palette),
   rightCommand('panel:collab', 'collab', 'collaboration session share invite live multiplayer presence room realtime sync', Users,
-    (state) => state.collabEnabled === true),
+    false, (state) => state.collabEnabled === true),
   rightCommand('panel:extensions', 'extensions', 'extension plugin install manage iflx', Puzzle),
 ] as const satisfies readonly SurfaceCommandDefinition[];

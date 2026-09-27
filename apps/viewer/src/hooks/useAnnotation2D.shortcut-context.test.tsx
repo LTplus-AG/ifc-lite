@@ -128,7 +128,10 @@ describe('useAnnotation2D — Delete respects the focused widget (#5596)', () =>
     }
   });
 
-  it('#5841 Escape cancels measurement and exits its active drawing tool', () => {
+  it('#5841/#5847 Escape cancels only measurement and keeps the selected IFC entity', () => {
+    const priorSelection = useViewerStore.getState().selectedEntityId;
+    const priorSelections = useViewerStore.getState().selectedEntityIds;
+    useViewerStore.setState({ selectedEntityId: 42, selectedEntityIds: new Set([42]) });
     useViewerStore.getState().setAnnotation2DActiveTool('measure');
     let cancellations = 0;
     let globalEscapes = 0;
@@ -139,8 +142,11 @@ describe('useAnnotation2D — Delete respects the focused widget (#5596)', () =>
       assert.equal(cancellations, 1, 'the in-progress measurement is cancelled');
       assert.equal(useViewerStore.getState().annotation2DActiveTool, 'none', 'the drawing tool exits');
       assert.equal(globalEscapes, 0, 'Escape is owned by the drawing');
+      assert.equal(useViewerStore.getState().selectedEntityId, 42);
+      assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [42]);
     } finally {
       unregister();
+      useViewerStore.setState({ selectedEntityId: priorSelection, selectedEntityIds: priorSelections });
     }
   });
 

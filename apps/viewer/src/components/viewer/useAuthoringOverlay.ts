@@ -14,10 +14,8 @@
 import { useCallback, useRef, type RefObject } from 'react';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
-import { useViewerStore } from '@/store';
+import { useViewerStore, type AuthoringOverlayChannel } from '@/store';
 import { runGpuUpload } from './gpu-upload-guard.js';
-
-export type AuthoringOverlayChannel = 'spaceSketch' | 'command';
 
 /**
  * Overlay ids that are still safe to remove from the scene.

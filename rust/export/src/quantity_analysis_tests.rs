@@ -147,3 +147,106 @@ fn issue_5787_equal_numeric_count_with_incompatible_explicit_units_conflicts() {
     assert_eq!(conflict.occurrence_quantity_ids, vec![40]);
     assert_eq!(conflict.type_quantity_ids, vec![41]);
 }
+
+#[test]
+fn issue_5787_property_definition_set_keeps_both_quantities() {
+    let extra = concat!(
+        "#40=IFCQUANTITYAREA('GrossArea',$,$,12.,$);\n",
+        "#41=IFCELEMENTQUANTITY('Q2',$,'Qto_Second',$,$,(#40));\n",
+        "#42=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('A'),$);\n",
+        "#43=IFCPROPERTYSET('P1',$,'Pset_Example',$,(#42));\n",
+    );
+    for definition in ["(#14,#41,#43)", "IFCPROPERTYSETDEFINITIONSET((#14,#41,#43))"] {
+        let ifc = IFC.replace("#15=IFCRELDEFINESBYPROPERTIES('0REL',$,$,$,(#5),#14);",
+            &format!("{extra}#15=IFCRELDEFINESBYPROPERTIES('0REL',$,$,$,(#5),{definition});"));
+        let result = analyze_authored_quantities(ifc.as_bytes(), Some(&HashSet::from([5])));
+        let authored = &result.products[&5].authored;
+        assert_eq!(authored.iter().map(|q| q.quantity_id).collect::<Vec<_>>(),
+            vec![10, 11, 12, 13, 40, 20], "{definition}");
+        assert_eq!(authored[4].set_name, "Qto_Second");
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    }
+
+    let malformed = IFC.replace("(#5),#14", "(#5),IFCPROPERTYSETDEFINITIONSET((#14,$))");
+    let result = analyze_authored_quantities(malformed.as_bytes(), Some(&HashSet::from([5])));
+    assert!(result.products[&5].authored.iter().all(|q| q.origin == "type"));
+    assert!(result.diagnostics.iter().any(|message| message.contains("malformed RelatingPropertyDefinition")));
+
+    let too_many = std::iter::repeat_n("#14", MAX_REL_MEMBERS + 1)
+        .collect::<Vec<_>>().join(",");
+    let oversized = IFC.replace("(#5),#14", &format!("(#5),({too_many})"));
+    let result = analyze_authored_quantities(oversized.as_bytes(), Some(&HashSet::from([5])));
+    assert!(result.products[&5].authored.iter().all(|q| q.origin == "type"));
+    assert!(result.diagnostics.iter().any(|message| message.contains("RelatingPropertyDefinition exceeds work budget")));
+}
+
+#[test]
+fn issue_5787_shared_sets_stop_at_aggregate_row_budget() {
+    let ifc = IFC.replace("(#5),#14", "(#5,#6),(#14,#41)")
+        .replace("#30=IFCSIUNIT", concat!(
+            "#40=IFCQUANTITYAREA('SecondArea',$,$,2.,$);\n",
+            "#41=IFCELEMENTQUANTITY('Q2',$,'Qto_Second',$,$,(#40));\n",
+            "#30=IFCSIUNIT"
+        ));
+    let result = analyze_with_budgets(ifc.as_bytes(), None, 3, MAX_SET_VISITS, MAX_CONFLICT_COMPARISONS);
+    assert_eq!(result.product_count, 2);
+    assert_eq!(result.products.values().map(|p| p.authored.len()).sum::<usize>(), 3);
+    assert_eq!(result.products[&5].authored.iter().map(|q| q.quantity_id).collect::<Vec<_>>(),
+        vec![10, 11, 12]);
+    assert!(result.products[&6].authored.is_empty());
+    assert_eq!(result.diagnostics.iter().filter(|message|
+        message.contains("authored quantity rows exceed work budget")).count(), 1);
+
+    let exact = analyze_with_budgets(IFC.as_bytes(), Some(&HashSet::from([5])), 5, MAX_SET_VISITS,
+        MAX_CONFLICT_COMPARISONS);
+    assert_eq!(exact.products[&5].authored.len(), 5);
+    assert!(exact.diagnostics.iter().all(|message| !message.contains("work budget")));
+}
+
+#[test]
+fn issue_5787_conflict_budget_preserves_nontransitive_pairwise_tolerance() {
+    let ifc = IFC.replace("'NetLength',$,#30,3.", "'NetLength',$,#30,0.")
+        .replace("'NetLength',$,$,4000.", "'NetLength',$,#30,0.00000000000075")
+        .replace("(#10,#11,#12,#13)", "(#10,#52,#11,#12,#13)")
+        .replace("(#20));", "(#20,#53));")
+        .replace("#30=IFCSIUNIT", concat!(
+            "#52=IFCQUANTITYLENGTH('NetLength',$,#30,0.0000000000015,$);\n",
+            "#53=IFCQUANTITYLENGTH('NetLength',$,#30,0.,$);\n",
+            "#30=IFCSIUNIT"
+        ));
+    let selected = HashSet::from([5]);
+    let full = analyze_authored_quantities(ifc.as_bytes(), Some(&selected));
+    assert_eq!(full.products[&5].conflicts.len(), 1,
+        "the fourth cross-origin pair disagrees although the first three agree");
+    assert_eq!(full.products[&5].conflicts[0].occurrence_quantity_ids, vec![10, 52]);
+    assert_eq!(full.products[&5].conflicts[0].type_quantity_ids, vec![20, 53]);
+
+    let bounded = analyze_with_budgets(ifc.as_bytes(), Some(&selected), MAX_AUTHORED_ROWS, MAX_SET_VISITS, 3);
+    assert!(bounded.products[&5].conflicts.is_empty());
+    assert!(bounded.diagnostics.iter().any(|message| message.contains("conflict comparisons exceed work budget")));
+}
+
+#[test]
+fn issue_5787_reused_non_quantity_type_sets_have_aggregate_visit_budget() {
+    let ifc = IFC.replace("#15=IFCRELDEFINESBYPROPERTIES('0REL',$,$,$,(#5),#14);", "")
+        .replace("(#21),$,$,$,.NOTDEFINED.", "(#60,#61,#62),$,$,$,.NOTDEFINED.")
+        .replace("(#5),#22", "(#5,#6),#22")
+        .replace("#30=IFCSIUNIT", concat!(
+            "#42=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('A'),$);\n",
+            "#60=IFCPROPERTYSET('P0',$,'Pset_Zero',$,(#42));\n",
+            "#61=IFCPROPERTYSET('P1',$,'Pset_One',$,(#42));\n",
+            "#62=IFCPROPERTYSET('P2',$,'Pset_Two',$,(#42));\n",
+            "#30=IFCSIUNIT"
+        ));
+    let result = analyze_with_budgets(ifc.as_bytes(), None, MAX_AUTHORED_ROWS, 3,
+        MAX_CONFLICT_COMPARISONS);
+    assert_eq!(result.product_count, 2);
+    assert!(result.products.values().all(|product| product.authored.is_empty()));
+    assert_eq!(result.diagnostics.iter().filter(|message|
+        message.contains("set visits exceed work budget")).count(), 1);
+    assert!(result.diagnostics.iter().all(|message| !message.contains("rows exceed work budget")));
+
+    let exact = analyze_with_budgets(ifc.as_bytes(), Some(&HashSet::from([5])),
+        MAX_AUTHORED_ROWS, 3, MAX_CONFLICT_COMPARISONS);
+    assert!(exact.diagnostics.is_empty());
+}

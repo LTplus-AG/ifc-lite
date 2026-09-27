@@ -270,7 +270,11 @@ Return IFC-authored quantities keyed by actual product STEP ID without meshing.
 Each observation retains the exact `IfcElementQuantity.Name` and
 `IfcPhysicalSimpleQuantity.Name`, both source entity IDs, kind, numeric value,
 and occurrence or inherited type origin. A same-named occurrence/type disagreement
-appears in `conflicts`; neither value is overwritten. `unit` records the resolved
+appears in `conflicts`; neither value is overwritten.
+`IfcRelDefinesByProperties.RelatingPropertyDefinition` can carry multiple
+`IfcElementQuantity` definitions, all of which appear as authored observations.
+Malformed definitions and exhausted relationship, set-visit, or authored-row
+work budgets appear in `diagnostics`; expansion stops at the cap. `unit` records the resolved
 symbol, SI factor, source, and explicit unit ID where present. If a unit cannot
 be resolved or has the wrong dimension, `unit=None` and `unit_diagnostic`
 explains why. `IfcQuantityCount` and IFC4X3 `IfcQuantityNumber` are

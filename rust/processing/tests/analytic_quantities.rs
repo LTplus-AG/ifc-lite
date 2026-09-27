@@ -5,7 +5,7 @@
 //! #5787: nominal quantities come from world-space source geometry, not mesh tessellation.
 
 use ifc_lite_core::{build_entity_index, EntityDecoder};
-use ifc_lite_geometry::analytic::extract_analytic_extrusion;
+use ifc_lite_geometry::analytic::{extract_analytic_extrusion, AnalyticStatus};
 use ifc_lite_processing::extrusion_nominal_quantities;
 use ifc_lite_processing::{extract_swept_disk_descriptions, SweptDiskOccurrence};
 
@@ -71,6 +71,34 @@ fn real_revit_profile_hole_reduces_nominal_material_volume() {
     assert!(hole > 0.0 && hole < outer);
     near(quantities.profile_area, outer - hole);
     assert!(quantities.nominal_volume < outer * quantities.projected_height);
+}
+
+#[test]
+fn issue_6316_outside_revit_hole_has_no_nominal_extrusion_quantity() {
+    let bytes = include_bytes!("../../geometry/tests/fixtures/issue_098_wall_W.ifc");
+    let valid = extrusion(bytes, 338107);
+    assert_eq!(valid.status, AnalyticStatus::Complete);
+    assert!(extrusion_nominal_quantities(&valid).is_some());
+
+    let mut source = String::from_utf8(bytes.to_vec()).unwrap();
+    for (id, coords) in [
+        (338092, "10.1,-0.1"),
+        (338094, "9.9,-0.1"),
+        (338096, "9.9,0.1"),
+        (338098, "10.1,0.1"),
+    ] {
+        let prefix = format!("#{id}=");
+        let start = source.find(&prefix).unwrap();
+        let end = start + source[start..].find(';').unwrap() + 1;
+        source.replace_range(start..end, &format!("#{id}=IFCCARTESIANPOINT(({coords}));"));
+    }
+
+    let invalid = extrusion(source.as_bytes(), 338107);
+    assert!(matches!(invalid.status, AnalyticStatus::Unsupported(_)));
+    let profile = invalid.profile.as_ref().unwrap();
+    assert!(matches!(profile.status, AnalyticStatus::Unsupported(_)));
+    assert!(profile.loops.is_empty());
+    assert!(extrusion_nominal_quantities(&invalid).is_none());
 }
 
 #[test]

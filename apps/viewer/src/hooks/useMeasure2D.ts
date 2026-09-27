@@ -219,9 +219,11 @@ export function useMeasure2D({
     }, { ignoreModifiers: true, allowInTextEntry: true });
     const removeCancel = registerKeyboardCommand('drawing2d.cancel', () => {
       cancelMeasure2D();
-      // The drawing view mounts both hooks. When Measure is the active markup
-      // tool, let the annotation handler also clear that tool on Escape.
-      if (useViewerStore.getState().annotation2DActiveTool === 'measure') return false;
+      // Measurement and markup share Escape. Clear the active markup tool here
+      // so cancellation is independent of hook registration order.
+      if (useViewerStore.getState().annotation2DActiveTool === 'measure') {
+        useViewerStore.getState().setAnnotation2DActiveTool('none');
+      }
     }, { allowInTextEntry: true, ignoreModifiers: true });
     const removeKeyUp = registerKeyboardKeyUp((event) => {
       if (event.key === 'Shift') setMeasure2DShiftLocked(false);

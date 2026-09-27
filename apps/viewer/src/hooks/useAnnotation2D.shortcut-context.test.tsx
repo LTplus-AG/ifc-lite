@@ -119,7 +119,7 @@ describe('useAnnotation2D — Delete respects the focused widget (#5596)', () =>
     let globalEscapes = 0;
     const unregister = registerKeyboardCommand('selection.escape', () => { globalEscapes++; });
     try {
-      render(<><MeasureProbe onCancel={() => { cancellations++; }} /><Probe activeTool="measure" onDelete={() => {}} /></>);
+      render(<MeasureProbe onCancel={() => { cancellations++; }} />);
       press(window, 'Escape');
       assert.equal(cancellations, 1, 'the in-progress measurement is cancelled');
       assert.equal(useViewerStore.getState().annotation2DActiveTool, 'none', 'the drawing tool exits');

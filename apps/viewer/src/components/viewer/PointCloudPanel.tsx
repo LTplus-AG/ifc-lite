@@ -5,8 +5,8 @@
 /**
  * Point cloud rendering controls (color mode, size mode, point size, EDL)
  * plus the BIM↔scan deviation heatmap. Docked in the sidebar's `pointclouds`
- * side panel (#5507) — renders only when point cloud assets are loaded; the
- * activity bar hides the panel's rail icon otherwise. Used to be a floating
+ * side panel (#5507). It stays reachable before an asset loads and explains
+ * what is needed (#5873). Used to be a floating
  * card pinned at `bottom-4 left-4`, which collided with the axis/scale
  * cluster in that corner.
  */
@@ -40,7 +40,7 @@ const SIZE_MODES: Array<{ value: PointSizeModeUi; labelKey: TranslationKey; hint
 ];
 
 export interface PointCloudPanelProps {
-  /** Number of currently-loaded point cloud assets — panel hides when 0. */
+  /** Number of currently loaded point cloud assets. */
   assetCount: number;
   /** Total triangle count across the scene (gates the BIM↔scan deviation
    *  compute button — useless without a BIM model loaded). */
@@ -71,23 +71,38 @@ export function PointCloudPanel({ assetCount, triangleCount, onClose }: PointClo
   const alignmentEnabled = useViewerStore((s) => s.pointCloudAlignmentEnabled);
   const setAlignmentEnabled = useViewerStore((s) => s.setPointCloudAlignmentEnabled);
 
-  if (assetCount <= 0) return null;
-
-  return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b p-3">
-        <Scan className="h-4 w-4 text-teal-600" />
-        <span className="font-medium text-sm">{t('pointCloudPanel.title')}</span>
+  const header = (
+    <div className="flex items-center gap-2 border-b p-3">
+      <Scan className="h-4 w-4 text-teal-600" />
+      <span className="font-medium text-sm">{t('pointCloudPanel.title')}</span>
+      {assetCount > 0 && (
         <span className="text-2xs text-muted-foreground">
           {t('pointCloudPanel.assetCount', { count: assetCount })}
         </span>
-        <span className="flex-1" />
-        {onClose && (
-          <IconButton label={t('pointCloudPanel.close')} variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
-            <X className="h-3.5 w-3.5" />
-          </IconButton>
-        )}
+      )}
+      <span className="flex-1" />
+      {onClose && (
+        <IconButton label={t('pointCloudPanel.close')} variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
+          <X className="h-3.5 w-3.5" />
+        </IconButton>
+      )}
+    </div>
+  );
+
+  if (assetCount <= 0) {
+    return (
+      <div className="flex h-full flex-col">
+        {header}
+        <p role="status" className="p-3 text-sm text-muted-foreground">
+          {t('shellChrome.panelGroups.noPointCloud')}
+        </p>
       </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      {header}
       <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2">
 
       {/* Color mode */}

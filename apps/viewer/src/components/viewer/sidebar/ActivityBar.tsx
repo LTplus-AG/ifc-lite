@@ -38,7 +38,7 @@ import { useViewerStore } from '@/store';
 import { resetLayout } from '@/store/layoutReset';
 import { useTranslation } from '@/i18n';
 import { usePanelControls } from '@/hooks/usePanelControls';
-import { WORKSPACE_PANELS, getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
+import { WORKSPACE_PANELS, getPanelDef, panelGroupDefinition, type PanelGroup, type WorkspacePanelId } from '@/lib/panels/registry';
 import { useRailPanelIds } from '@/hooks/useRailPanelIds';
 import { pendingCompositionMutations } from '@/lib/layers/pending';
 import { activityAnchor, tourAnchor } from '@/lib/tours/anchors';
@@ -104,10 +104,10 @@ export function ActivityBar() {
     toggle(id);
   };
 
-  let prevGroup: string | null = null;
+  let prevGroup: PanelGroup | null = null;
 
   return (
-    <div data-activity-bar className="relative flex flex-col items-center w-12 shrink-0 h-full border-l border-border bg-background">
+    <div data-activity-bar className="relative flex flex-col items-center w-14 shrink-0 h-full border-l border-border bg-background">
       {/* Panels */}
       <div className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden py-1.5 flex flex-col items-center gap-0.5">
         {visibleIds.map((id) => {
@@ -118,7 +118,7 @@ export function ActivityBar() {
           const loc = panelLocation(id);
           const active = loc === 'docked';
           const open = isOpen(id);
-          const showDivider = prevGroup !== null && def.group !== prevGroup;
+          const showGroupLabel = def.group !== prevGroup;
           prevGroup = def.group;
 
           // Accessible name: the Radix tooltip is NOT the button's name, and
@@ -135,7 +135,17 @@ export function ActivityBar() {
 
           return (
             <div key={id} className="contents">
-              {showDivider && <div className="my-1 h-px w-6 bg-border/70" aria-hidden />}
+              {showGroupLabel && (
+                <div
+                  role="heading"
+                  aria-level={3}
+                  data-panel-group={def.group}
+                  title={t(panelGroupDefinition(def.group).descriptionKey)}
+                  className="w-full border-t border-border/70 px-0.5 pt-1.5 pb-0.5 text-center text-2xs font-medium leading-tight text-muted-foreground"
+                >
+                  {t(panelGroupDefinition(def.group).labelKey)}
+                </div>
+              )}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button

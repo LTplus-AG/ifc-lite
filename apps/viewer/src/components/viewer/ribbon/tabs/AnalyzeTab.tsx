@@ -14,6 +14,7 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
 import { panelTitleKey } from '@/lib/panels/registry';
+import { PanelGroupBrowser } from '../PanelGroupBrowser';
 import {
   RibbonGroup,
   RibbonGroupDivider,
@@ -44,6 +45,8 @@ export function AnalyzeTab() {
 
   return (
     <>
+      <PanelGroupBrowser />
+      <RibbonGroupDivider />
       <RibbonGroup label={t('ribbon.analyze.validateGroup')}>
         <RibbonLargeButton
           icon={Issue}

@@ -38,3 +38,31 @@ this browser and applies to every loaded model.
 
 Right-button fly remains available in every preset when camera controls are
 enabled. Shift + left drag pans in every preset and tool.
+
+## Finding a panel
+
+The right-hand activity rail and **Analyze → Browse panels** in the ribbon use
+the same task groups. A panel can be opened from either place. Customize mode
+can hide or reorder rail icons; Browse panels still lists every available panel.
+
+| Group | Use it for |
+| --- | --- |
+| Coordinate | Model hierarchy, properties, sources, zones, and placement |
+| Check | Topics, validation, clashes, changes, and model comparison |
+| Quantify | Measurements, lists, charts, costs, and schedules |
+| Automate | Scripts, flows, and extensions |
+| Site | Point clouds, appearance, environment, drawings, and presentations |
+
+The Point Clouds panel remains available before a scan loads; it explains what
+to load. The Session panel appears only when collaboration is enabled.
+
+### Viewer terms
+
+| Term | Meaning |
+| --- | --- |
+| Collection | A saved working set of selected model objects. Older guides call it a basket. |
+| Session | A shared live workspace with other people. Older guides call it a room. |
+| Edge shading | Point-cloud depth enhancement. Technical settings may call it EDL (Eye-Dome Lighting). |
+| Validation | Checking model information against rules, including IDS requirements. |
+| Clash | A spatial conflict between model objects, with clearance settings when applicable. |
+| Placement | The model's position and orientation, including georeferencing. |

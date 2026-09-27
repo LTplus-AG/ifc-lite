@@ -234,7 +234,7 @@ export function GenerateScheduleDialog({ open, onOpenChange }: GenerateScheduleD
                 />
               </div>
               {options.strategy !== 'IfcElement' && !hasSpatial && (
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   {t('schedule.generateDialog.spatialHierarchyMissing')}
                 </p>
               )}

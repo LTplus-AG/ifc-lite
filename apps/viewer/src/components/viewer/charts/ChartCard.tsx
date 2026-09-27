@@ -178,7 +178,7 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
       <div className="flex items-center gap-1 px-2 py-1 border-b border-border/60 text-xs">
         <div className={`min-w-0 flex-1 cursor-grab active:cursor-grabbing select-none ${GRID_DRAG_HANDLE_CLASS}`} title={t('chartCard.dragToMoveTitle')}>
           <div className="font-medium truncate" title={spec.title}>{spec.title}</div>
-          <div className="text-[10px] text-muted-foreground truncate" data-chart-subtitle>{subtitle}</div>
+          <div className="text-2xs text-muted-foreground truncate" data-chart-subtitle>{subtitle}</div>
         </div>
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" title={t('chartCard.frameTitle')} onClick={frame} aria-label={t('chartCard.frameAriaLabel', { title: spec.title })}>
           <Crosshair className="h-3.5 w-3.5" />

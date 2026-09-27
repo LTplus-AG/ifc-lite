@@ -44,7 +44,7 @@ import { Progress } from '@/components/ui/progress';
 import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { goHomeFromStore, showAllFromStore } from '@/store/homeView';
 import { hideSelectionFromStore } from '@/store/hideSelection';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
@@ -119,7 +119,7 @@ export function MobileToolbar() {
   }, []);
 
   const handleShowAll = useCallback(() => {
-    resetVisibilityForHomeFromStore('show_all');
+    showAllFromStore('show_all');
   }, []);
 
   const handleHome = useCallback(() => {

@@ -7,8 +7,8 @@ import { resetVisibilityReasons } from '@/lib/visibility/visibility-reasons';
 import { trackUiEvent } from '@/lib/analytics';
 import type { ViewResetTrigger } from '@/lib/analytics-ui-events';
 
-/** `trigger` names the entry point for the `view_reset` event (#5618). */
-export function resetVisibilityForHomeFromStore(trigger: ViewResetTrigger): void {
+/** Show all clears visibility filters and selection, recording its entry point (#5618). */
+export function showAllFromStore(trigger: ViewResetTrigger): void {
   trackUiEvent('view_reset', { trigger });
   // Every mechanism the reason table marks `cleared`; the ones it keeps (an
   // active lens, the class-type toggles, the view mode, host types) stay and
@@ -25,8 +25,8 @@ export function resetVisibilityForHomeFromStore(trigger: ViewResetTrigger): void
   // `clearClashFocus()` is the clash slice's one complete spelling of that
   // teardown — the tint, the marker, the solid, the selected id and the
   // `clashSolidRequestSeq` bump. Without the bump, a resolved (or still
-  // in-flight) `focusClash` solid could keep rendering opaque after Home /
-  // "Show all" brings the rest of the model back, with nothing selected
+  // in-flight) `focusClash` solid could keep rendering opaque after Show all
+  // brings the rest of the model back, with nothing selected
   // (#2574 review). Called rather than re-listing the fields so this path
   // cannot drift out of sync with the others (#2654 review).
   state.clearClashFocus();
@@ -35,7 +35,5 @@ export function resetVisibilityForHomeFromStore(trigger: ViewResetTrigger): void
 }
 
 export function goHomeFromStore(): void {
-  resetVisibilityForHomeFromStore('home');
-  const state = useViewerStore.getState();
-  state.cameraCallbacks.home?.();
+  useViewerStore.getState().cameraCallbacks.home?.();
 }

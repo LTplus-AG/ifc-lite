@@ -28,6 +28,7 @@ import { PropertyValueType } from '@ifc-lite/data';
 import type { PropertyValue } from '@ifc-lite/mutations';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { INLINE_VALUE_TYPES } from './property-editor-options';
+import { PropertyBooleanChoices } from './PropertyBooleanChoices';
 import type { InheritedSets } from '@/lib/properties/add-to-property-set';
 
 import { NewPropertyDialog } from './property-editor-new-property-dialog';
@@ -188,33 +189,10 @@ export function PropertyEditor({
       {/* Value input */}
       <div className="flex items-center gap-2">
         {valueType === PropertyValueType.Boolean || valueType === PropertyValueType.Logical ? (
-          // Tri-state: a boolean property value is optional in IFC, so "Unset"
-          // is a first-class choice — we never silently coerce to false. An
-          // empty `value` ('') means unset (issue #1107).
-          <div className="flex items-center gap-1 flex-1" role="radiogroup" aria-label={t('propertyEditor.inline.booleanAria')}>
-            {([['', t('propertyEditor.inline.unset')], ['true', t('propertyEditor.inline.true')], ['false', t('propertyEditor.inline.false')]] as const).map(([v, label]) => {
-              const active = value === v;
-              return (
-                <button
-                  key={label}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => {
-                    setValue(v);
-                    if (showScopeConfirm) setShowScopeConfirm(false);
-                  }}
-                  className={`px-2 py-0.5 text-xs rounded border transition-colors ${
-                    active
-                      ? 'bg-overlay-accent text-overlay-halo border-overlay-accent'
-                      : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                  } ${v === '' ? 'italic' : ''}`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+          <PropertyBooleanChoices value={value} onChange={(next) => {
+            setValue(next);
+            if (showScopeConfirm) setShowScopeConfirm(false);
+          }} />
         ) : (
           <Input
             ref={inputRef}
@@ -263,7 +241,7 @@ export function PropertyEditor({
             key={type}
             variant={valueType === type ? 'default' : 'outline'}
             size="sm"
-            className="h-5 px-2 text-[10px]"
+            className="h-5 px-2 text-2xs"
             onClick={() => {
               setValueType(type);
               if (showScopeConfirm) setShowScopeConfirm(false);
@@ -280,7 +258,7 @@ export function PropertyEditor({
       </div>
 
       {showScopeConfirm && editScope && (
-        <div className="border border-indigo-200 dark:border-indigo-800/60 bg-white/75 dark:bg-zinc-950/60 px-2.5 py-2 text-[11px]">
+        <div className="border border-indigo-200 dark:border-indigo-800/60 bg-white/75 dark:bg-zinc-950/60 px-2.5 py-2 text-2xs">
           <div className="font-medium text-zinc-900 dark:text-zinc-100">
             {editScope.mode === 'type'
               ? t('propertyEditor.inline.scopeType', { typeEntityName: editScope.typeEntityName })
@@ -293,7 +271,7 @@ export function PropertyEditor({
             <Button
               variant="outline"
               size="sm"
-              className="h-6 rounded-none border-indigo-300 text-[10px] uppercase tracking-wide hover:bg-indigo-50 dark:border-indigo-700 dark:hover:bg-indigo-950/30"
+              className="h-6 rounded-none border-indigo-300 text-2xs uppercase tracking-wide hover:bg-indigo-50 dark:border-indigo-700 dark:hover:bg-indigo-950/30"
               onClick={commitSave}
             >
               {t('propertyEditor.inline.applyToType')}
@@ -301,7 +279,7 @@ export function PropertyEditor({
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 rounded-none px-2 text-[10px] uppercase tracking-wide"
+              className="h-6 rounded-none px-2 text-2xs uppercase tracking-wide"
               onClick={() => setShowScopeConfirm(false)}
             >
               {t('propertyEditor.inline.keepEditing')}

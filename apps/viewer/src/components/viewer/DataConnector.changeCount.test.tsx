@@ -56,6 +56,7 @@ describe('DataConnector — CSV import refreshes the pending-changes count (#560
       scheduleIsEdited: false,
       scheduleSourceModelId: null,
       collabRole: null,
+      editEnabled: true,
     });
   });
 

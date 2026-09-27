@@ -54,6 +54,7 @@ import { listsEn } from './catalogues/lists.en';
 import { mcpEn } from './catalogues/mcp.en';
 import { mcpPlaygroundEn } from './catalogues/mcp-playground.en';
 import { measureEn } from './catalogues/measure.en';
+import { mutationPermissionEn } from './catalogues/mutation-permission.en';
 import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
 import { miscPanelsBEn } from './catalogues/misc-panels-b.en';
 import { miscPanelsAEn } from './catalogues/misc-panels-a.en';
@@ -116,6 +117,7 @@ export const en = {
   ...viewerShellEn,
   ...shellChromeEn,
   ...measureEn,
+  ...mutationPermissionEn,
   ...spaceSketchEn,
   ...splitToolEn,
   ...documentEn,

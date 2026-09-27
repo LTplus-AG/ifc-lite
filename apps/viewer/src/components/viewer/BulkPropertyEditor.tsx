@@ -37,7 +37,7 @@ import {
 } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { useViewerStore } from '@/store';
-import { roleCanEdit } from '@/store/slices/collabSlice';
+import { canMutate, mutationDenialKey, mutationPermissionForModels } from '@/store/mutation-permission';
 import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { PropertyValueType } from '@ifc-lite/data';
@@ -81,16 +81,10 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
   // Subscribe to mutationViews directly to trigger re-render when views are registered
   const mutationViews = useViewerStore((s) => s.mutationViews);
-  // Collab role gate, two layers deep. (1) canCollabEdit is injected into
-  // BulkQueryEngine's constructor (mutation-guard.ts): bulk edits bypass the
-  // store's own setProperty (and its check) via applyAction, so the engine
-  // itself refuses a viewer/commenter write as containment. (2) canEditInSession
-  // mirrors that check here, like MainToolbar/AuthorTab gate Edit mode, so
-  // Execute stays disabled. Both read the shared `roleCanEdit` rule
-  // canCollabEdit() is built from. null role = single-user, always editable.
-  const canCollabEdit = useViewerStore((s) => s.canCollabEdit);
+  // The engine writes directly to a mutation view, so its live callback and
+  // the Execute affordance both consult the same viewer permission policy.
+  const editEnabled = useViewerStore((s) => s.editEnabled);
   const collabEditRole = useViewerStore((s) => s.collabRole);
-  const canEditInSession = roleCanEdit(collabEditRole);
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
@@ -99,6 +93,12 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [targetSource, setTargetSource] = useState<BulkTargetSource>('query');
   const targetGroups = useBulkTargets(open, targetSource, models);
+  const editDenialReason = useMemo(() => {
+    const ids = targetSource === 'query' ? [selectedModelId] : targetGroups.keys();
+    const result = mutationPermissionForModels(useViewerStore.getState(), ids);
+    return result.allowed ? undefined : result.reason;
+  }, [editEnabled, collabEditRole, selectedModelId, targetSource, targetGroups]);
+  const canEditInSession = editDenialReason === undefined;
 
   const [queryFilterState, setQueryFilterState] = useState<FilterGroupEditorState>({
     groups: [emptyFilterGroup()], activeGroup: 0,
@@ -204,10 +204,10 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       mutationView,
       dataStore.spatialHierarchy || null,
       dataStore.strings || null,
-      canCollabEdit,
+      () => canMutate(useViewerStore.getState(), selectedModelId),
       dataStore.schemaVersion,
     );
-  }, [open, selectedModel, selectedModelId, mutationViews, canCollabEdit]);
+  }, [open, selectedModel, selectedModelId, mutationViews]);
 
   // Non-query sources can span models; each must write through its own overlay.
   useEffect(() => {
@@ -230,10 +230,10 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       if (!dataStore || !view) continue;
       engines.set(modelId, new BulkQueryEngine(dataStore.entities, view,
         dataStore.spatialHierarchy || null,
-        dataStore.strings || null, canCollabEdit, dataStore.schemaVersion));
+        dataStore.strings || null, () => canMutate(useViewerStore.getState(), modelId), dataStore.schemaVersion));
     }
     return engines;
-  }, [open, targetSource, targetGroups, models, mutationViews, canCollabEdit]);
+  }, [open, targetSource, targetGroups, models, mutationViews]);
 
   const { ids: queryIds, computing: isComputing, error: queryError } = useBulkQueryTargets(
     open && targetSource === 'query', isExecuting, selectedModelId, queryGroups,
@@ -604,7 +604,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
               <Button
                 onClick={handleExecute}
                 disabled={!canEditInSession || !targetsReady || liveMatchCount === 0 || !targetProp || (actionType !== 'SET_ATTRIBUTE' && !targetPset) || !executeDirty}
-                title={canEditInSession ? undefined : t('bulkPropertyEditor.editorAccessRequired')}
+                title={editDenialReason ? t(mutationDenialKey(editDenialReason)) : undefined}
               >
                 <Play className="h-4 w-4 mr-2" />
                 {t('bulkPropertyEditor.apply', {

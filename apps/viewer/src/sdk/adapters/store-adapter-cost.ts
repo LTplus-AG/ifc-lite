@@ -11,6 +11,7 @@ import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 import { getMutationViewForModel, normalizeMutationModelId } from './mutation-view.js';
 import { ensureSourceRoomEntities } from './store-adapter-collab.js';
 import type { StoreApi } from './types.js';
+import { mutationDenial } from '../../store/mutation-permission.js';
 
 type CostMethods = ReturnType<typeof createCostStoreBackend>;
 
@@ -105,10 +106,9 @@ export function createStoreMutationTracker(
 ) {
   // Collab role gate BEFORE the local commit, once here so no method can be
   // added later without it.
-  const assertCanEdit = (): void => {
-    if (!store.getState().canCollabEdit()) {
-      throw new Error('Editing is disabled for your role in this shared session');
-    }
+  const assertCanEdit = (modelId: string): void => {
+    const denial = mutationDenial(store.getState(), modelId);
+    if (denial) throw new Error(denial);
   };
   const isSharedRoomModel = (modelId: string): boolean => {
     const state = store.getState();
@@ -118,8 +118,8 @@ export function createStoreMutationTracker(
     fn: (...args: A) => R,
     after: (modelId: string, result: R) => void,
   ) => (...args: A): R => {
-    assertCanEdit();
     const modelId = args[0];
+    assertCanEdit(modelId);
     const before = isSharedRoomModel(modelId) ? snapshotOverlay(getMutationViewForModel(store, modelId)) : null;
     const result = fn(...args);
     after(modelId, result);

@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useViewerStore } from '@/store';
+import { canMutate, mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
 import { useIfc } from '@/hooks/useIfc';
 import { EntityNode } from '@ifc-lite/query';
 import type { AddElementType } from '@/store/slices/addElementSlice';
@@ -36,6 +37,7 @@ import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { ELEMENT_OPTIONS, SPACE_PREDEFINED_TYPES } from './add-element-options';
 import { formatWallSkipReasons } from './add-element-wall-skip-i18n';
 import { effectiveStoreyIds } from './add-element-storeys';
+import { DropGuidance } from './add-element-guidance';
 
 interface StoreyOption {
   expressId: number;
@@ -86,6 +88,8 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
   const clearPending = useViewerStore((s) => s.clearAddElementPending);
 
   const activeModelId = useViewerStore((s) => s.activeModelId);
+  const editEnabled = useViewerStore((s) => s.editEnabled);
+  const collabRole = useViewerStore((s) => s.collabRole);
   const mutationViews = useViewerStore((s) => s.mutationViews);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
@@ -139,7 +143,10 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
 
   const hasModel = !!effectiveModelId;
   const hasStorey = storeyOptions.length > 0;
-  const ready = hasModel && hasStorey;
+  const editPermission = useMemo(() => mutationPermission(useViewerStore.getState(), effectiveModelId ?? undefined),
+    [effectiveModelId, editEnabled, collabRole, models]);
+  const editReason = editPermission.allowed ? undefined : t(mutationDenialKey(editPermission.reason));
+  const ready = hasModel && hasStorey && editPermission.allowed;
 
   const activeOption = ELEMENT_OPTIONS.find((o) => o.type === addElementType) ?? ELEMENT_OPTIONS[0];
 
@@ -343,12 +350,15 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
           <AutoSpacesSection
             modelId={effectiveModelId}
             storeyId={addElementStoreyId ?? storeyOptions[0]?.expressId ?? null}
+            commitAllowed={editPermission.allowed}
+            editReason={editReason}
           />
         )}
 
         {/* Click-state guidance — drives the user through the multi-click flow */}
         <DropGuidance
           ready={ready}
+          disabledReason={hasModel && hasStorey ? editReason : undefined}
           type={addElementType}
           slabMode={slabMode}
           pendingCount={pendingPoints.length}
@@ -396,92 +406,6 @@ function ModeChip({ selected, onClick, children }: ModeChipProps) {
   );
 }
 
-interface DropGuidanceProps {
-  ready: boolean;
-  type: AddElementType;
-  slabMode: 'rectangle' | 'polygon';
-  pendingCount: number;
-  hoverDistance: number | null;
-  onClearPending: () => void;
-}
-
-/** Stateful guidance pane — mirrors the multi-click flow so the user always knows what comes next. */
-function DropGuidance({ ready, type, slabMode, pendingCount, hoverDistance, onClearPending }: DropGuidanceProps) {
-  const { t, locale } = useTranslation();
-  if (!ready) {
-    return (
-      <section className="mt-2 rounded-sm border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 p-3 text-2xs font-mono text-zinc-500 dark:text-zinc-400">
-        {t('addElement.guidance.disabled')}
-      </section>
-    );
-  }
-
-  let primary: string;
-  let secondary: string;
-  // Single-click placements share the same prompt shape.
-  if (type === 'column' || type === 'door' || type === 'window') {
-    primary = t(`addElement.guidance.single.${type}` as TranslationKey);
-    secondary = t('addElement.guidance.single.secondary');
-  } else if (type === 'wall' || type === 'beam' || type === 'member') {
-    // Two-click axial placements (start → end).
-    if (pendingCount === 0) {
-      primary = t(`addElement.guidance.axis.${type}Start` as TranslationKey);
-      secondary = t('addElement.guidance.axis.startSecondary');
-    } else {
-      primary = t(`addElement.guidance.axis.${type}End` as TranslationKey);
-      secondary = hoverDistance !== null
-        ? t('addElement.guidance.axis.length', { length: formatLocaleNumber(locale, hoverDistance, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })
-        : t('addElement.guidance.restart');
-    }
-  } else {
-    // slab / roof / plate / space — rectangle (2 clicks) or polygon (N + Enter).
-    if (slabMode === 'rectangle') {
-      if (pendingCount === 0) {
-        primary = t(`addElement.guidance.rectangle.${type}First` as TranslationKey);
-        secondary = t('addElement.guidance.rectangle.firstSecondary');
-      } else {
-        primary = t('addElement.guidance.rectangle.opposite');
-        secondary = t('addElement.guidance.rectangle.oppositeSecondary');
-      }
-    } else {
-      if (pendingCount === 0) {
-        primary = t(`addElement.guidance.polygon.${type}First` as TranslationKey);
-        secondary = t('addElement.guidance.polygon.firstSecondary');
-      } else if (pendingCount < 3) {
-        primary = t('addElement.guidance.polygon.needPoint', { point: formatLocaleNumber(locale, pendingCount + 1) });
-        secondary = t('addElement.guidance.restart');
-      } else {
-        primary = t('addElement.guidance.polygon.nextPoint', { point: formatLocaleNumber(locale, pendingCount + 1) });
-        secondary = t('addElement.guidance.polygon.restart');
-      }
-    }
-  }
-
-  return (
-    <section
-      className="mt-2 rounded-sm border border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-3 text-2xs font-mono leading-relaxed text-emerald-800 dark:text-emerald-300"
-      aria-live="polite"
-    >
-      <div className="flex items-start gap-2 justify-between">
-        <div className="min-w-0">
-          <span className="block font-semibold">{primary}</span>
-          <span className="block text-2xs opacity-80 mt-0.5">{secondary}</span>
-        </div>
-        {pendingCount > 0 && (
-          <button
-            type="button"
-            onClick={onClearPending}
-            className="shrink-0 text-2xs underline-offset-2 hover:underline opacity-80 hover:opacity-100"
-            aria-label={t('addElement.guidance.discardAria')}
-          >
-            {t('addElement.guidance.reset')}
-          </button>
-        )}
-      </div>
-    </section>
-  );
-}
-
 interface NumberFieldProps {
   label: string;
   value: number;
@@ -492,6 +416,8 @@ interface NumberFieldProps {
 interface AutoSpacesSectionProps {
   modelId: string | null;
   storeyId: number | null;
+  commitAllowed: boolean;
+  editReason?: string;
 }
 
 /**
@@ -499,7 +425,7 @@ interface AutoSpacesSectionProps {
  * finder to the viewer slice. Preview button runs detection without
  * emitting; Generate commits each candidate as an IfcSpace.
  */
-function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
+function AutoSpacesSection({ modelId, storeyId, commitAllowed, editReason }: AutoSpacesSectionProps) {
   const { t, locale } = useTranslation();
   const params = useViewerStore((s) => s.addElementAutoSpaceParams);
   const setParams = useViewerStore((s) => s.setAddElementAutoSpaceParams);
@@ -559,7 +485,7 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
   };
 
   const runCommit = () => {
-    if (!ready || busy) return;
+    if (!ready || busy || !commitAllowed || !canMutate(useViewerStore.getState(), modelId!)) return;
     setBusy(true);
     try {
       const result = generate(modelId!, storeyId!, {
@@ -660,7 +586,8 @@ function AutoSpacesSection({ modelId, storeyId }: AutoSpacesSectionProps) {
           variant="default"
           size="sm"
           onClick={runCommit}
-          disabled={!ready || busy}
+          disabled={!ready || busy || !commitAllowed}
+          title={editReason}
           className="h-8 text-2xs font-mono bg-emerald-600 hover:bg-emerald-700"
         >
           {t('addElement.auto.generate')}

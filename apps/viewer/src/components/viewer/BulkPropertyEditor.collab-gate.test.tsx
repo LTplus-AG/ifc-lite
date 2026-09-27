@@ -58,6 +58,7 @@ function seedStore(collabRole: 'viewer' | 'editor' | null) {
     mutationViews: new Map(),
     mutationVersion: 0,
     collabRole,
+    editEnabled: true,
   });
 }
 
@@ -125,6 +126,20 @@ describe('BulkPropertyEditor — collab role gate on bulk mutation execute', () 
       null,
       'Execute must not write Pset_Test.Foo when collabRole is viewer — this is the collab-role bypass',
     );
+  });
+
+  it('keeps Bulk Execute disabled and leaves the overlay unchanged when Edit mode is off (#5901)', async () => {
+    seedStore('editor');
+    useViewerStore.setState({ editEnabled: false });
+    const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
+    openDialog(container);
+    await fillAndExecute();
+    const executeBtn = [...document.body.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('Apply to')) as HTMLButtonElement | undefined;
+    assert.ok(executeBtn);
+    assert.equal(executeBtn.disabled, true);
+    assert.equal(executeBtn.title, 'Turn on Edit mode to change this model');
+    assert.equal(useViewerStore.getState().mutationViews.get(MODEL_ID)?.getPropertyValue(42, 'Pset_Test', 'Foo'), null);
   });
 
   it('a viewer-role participant sees the Execute button disabled with the collab tooltip', async () => {

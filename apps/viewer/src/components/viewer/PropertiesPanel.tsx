@@ -16,12 +16,12 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { EmptyState } from '@/components/ui/empty-state';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
+import { mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
 import { useSelectAssembly } from './properties/useSelectAssembly';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
-import { configureMutationView } from '@/utils/configureMutationView';
+import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { IfcQuery } from '@ifc-lite/query';
-import { MutablePropertyView } from '@ifc-lite/mutations';
 import { extractClassificationsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, extractStructuralOnDemand, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
 import { RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
@@ -118,25 +118,11 @@ export function PropertiesPanel() {
   // Subscribe to mutation views and version to trigger re-render when mutations change
   const mutationViews = useViewerStore((s) => s.mutationViews);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
-  const getMutationView = useViewerStore((s) => s.getMutationView);
-  const registerMutationView = useViewerStore((s) => s.registerMutationView);
-
-  // Ensure mutation view exists for editing - creates it on-demand if needed
+  // The SDK adapter shares this view with scripts and context-menu actions.
   useEffect(() => {
     if (!model || !model.ifcDataStore || !selectedEntity || selectedEntity.modelId === 'legacy') return;
-
-    const modelId = selectedEntity.modelId;
-    let mutationView = getMutationView(modelId);
-    if (mutationView) return; // Already exists
-
-    // Create new mutation view
-    const dataStore = model.ifcDataStore;
-    mutationView = new MutablePropertyView(dataStore.properties || null, modelId);
-
-    configureMutationView(mutationView, dataStore as IfcDataStore);
-
-    registerMutationView(modelId, mutationView);
-  }, [model, selectedEntity, getMutationView, registerMutationView]);
+    getOrCreateMutationView(useViewerStore, selectedEntity.modelId);
+  }, [model, selectedEntity]);
 
   // Copy feedback state - must be before any early returns (Rules of Hooks)
   const [copied, setCopied] = useState(false);
@@ -149,7 +135,13 @@ export function PropertiesPanel() {
   // store keeps every edit affordance — properties, attributes,
   // geometry manipulators, georeference placement, add-element draw
   // tools — behind a single switch.
-  const editMode = useViewerStore((s) => s.editEnabled);
+  const editEnabled = useViewerStore((s) => s.editEnabled);
+  const collabRole = useViewerStore((s) => s.collabRole);
+  const editPermission = useMemo(
+    () => mutationPermission(useViewerStore.getState(), selectedEntity?.modelId),
+    [editEnabled, collabRole, selectedEntity?.modelId, models],
+  );
+  const editMode = editEnabled && editPermission.allowed;
   const propertiesActiveTab = useViewerStore((s) => s.propertiesActiveTab);
   const setPropertiesActiveTab = useViewerStore((s) => s.setPropertiesActiveTab);
   const setEditEnabled = useViewerStore((s) => s.setEditEnabled);
@@ -1402,7 +1394,7 @@ export function PropertiesPanel() {
               <GeoreferencingPanel
                 georef={renderedGeoref}
                 modelId={selectedEntity?.modelId === 'legacy' ? '__legacy__' : (model?.id ?? selectedEntity?.modelId)}
-                enableEditing
+                enableEditing={editMode}
                 schemaVersion={activeDataStore?.schemaVersion}
                 coordinateInfo={(model?.geometryResult ?? geometryResult)?.coordinateInfo}
                 geometryResult={model?.geometryResult ?? geometryResult}
@@ -1520,6 +1512,11 @@ export function PropertiesPanel() {
       )}
 
       {/* Tabs */}
+      {editEnabled && !editPermission.allowed && selectedEntity && (
+        <p role="status" className="border-b px-3 py-2 text-xs text-muted-foreground">
+          {t(mutationDenialKey(editPermission.reason))}
+        </p>
+      )}
       <Tabs
         value={propertiesActiveTab}
         onValueChange={(v) => setPropertiesActiveTab(v as 'properties' | 'quantities' | 'bsdd' | 'raw-step')}

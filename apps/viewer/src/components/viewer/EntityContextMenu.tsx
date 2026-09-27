@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useViewerStore, resolveEntityRef, resolveGlobalId, toGlobalIdFromModels } from '@/store';
 import type { DuplicateDirection } from '@/store/slices/mutationSlice';
+import { useContextMutationAccess } from './useContextMutationAccess';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { hideFromContextMenuFromStore } from '@/store/hideSelection';
 import {
@@ -51,7 +52,6 @@ export function EntityContextMenu() {
   // Store-level mutations
   const removeEntity = useViewerStore((s) => s.removeEntity);
   const duplicateEntity = useViewerStore((s) => s.duplicateEntity);
-  const getMutationView = useViewerStore((s) => s.getMutationView);
   const triggerRef = useRef<HTMLSpanElement>(null);
   const focusReturnRef = useRef<HTMLElement | null>(null);
   const wasOpenRef = useRef(false);
@@ -251,11 +251,8 @@ export function EntityContextMenu() {
     return activeDataStore.entities.getTypeName(resolvedExpressId) || '';
   }, [resolvedExpressId, activeDataStore]);
 
-  // Mutation view is required to drive bim.store.* — native-metadata-only models don't have one, so Delete stays hidden there.
-  const canEdit = useMemo(() => {
-    if (!contextEntityRef) return false;
-    return getMutationView(contextEntityRef.modelId) !== null;
-  }, [contextEntityRef, getMutationView]);
+  const { canEdit, editReasonKey, showMutationActions } = useContextMutationAccess(contextEntityRef, contextMenu.isOpen);
+  const editReason = editReasonKey ? t(editReasonKey) : undefined;
 
   const handleDuplicate = useCallback(
     (direction: DuplicateDirection = '+X') => {
@@ -358,17 +355,18 @@ export function EntityContextMenu() {
           <MenuItem icon={Copy} label="Copy GlobalId" onClick={handleCopyId} />
           <MenuItem icon={ShieldQuestion} label="Export anonymized…" onClick={handleExportAnonymized} />
 
-          {/* Store-level mutations (bim.store.*). Only surfaced when there's
-              a live mutation view on the model — otherwise these would
-              silently no-op and confuse users. */}
-          {canEdit && (
+          {/* Keep denied actions visible with their reason; an editable view
+              is created on demand when the menu opens in Edit mode. */}
+          {showMutationActions && (
             <>
               <ContextMenuSeparator />
-              <DuplicateItems onDuplicate={handleDuplicate} />
+              <DuplicateItems onDuplicate={handleDuplicate} disabled={!canEdit} reason={editReason} />
               <MenuItem
                 icon={Trash2}
                 label="Delete entity"
                 tone="destructive"
+                disabled={!canEdit}
+                title={editReason}
                 onClick={handleDeleteEntity}
               />
             </>

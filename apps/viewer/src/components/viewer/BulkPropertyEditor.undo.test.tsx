@@ -45,6 +45,7 @@ function seed(wallCount = 3): Map<string, MutablePropertyView> {
     dirtyModels: new Set(),
     mutationVersion: 0,
     collabRole: null,
+    editEnabled: true,
     selectedEntityId: null,
     selectedEntityIds: new Set<number>(),
     searchFilterResult: null,

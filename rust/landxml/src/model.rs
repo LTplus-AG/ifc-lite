@@ -310,7 +310,12 @@ pub struct LandXmlUnits {
 
 /// Source-owned CRS declarations from LandXML 1.2's root CoordinateSystem.
 /// Kept as raw strings: only the viewer adapter may accept explicit EPSG IDs.
+///
+/// `#[non_exhaustive]` so a later CRS attribute is an additive change: the
+/// parser is the only constructor, and outside the crate this record is read,
+/// not built (Rust-only break #10, which added `epsg_code`).
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct LandXmlCoordinateSystem {
     pub horizontal_datum: Option<String>,
     pub vertical_datum: Option<String>,

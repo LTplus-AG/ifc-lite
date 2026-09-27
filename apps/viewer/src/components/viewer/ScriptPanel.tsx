@@ -27,8 +27,6 @@ import {
   Info,
   AlertTriangle,
   Bot,
-  PanelRightClose,
-  PanelRightOpen,
   Undo2, Redo2,
   Wrench,
 } from 'lucide-react';

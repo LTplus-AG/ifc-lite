@@ -36,7 +36,6 @@ export function ClashResultSummary({
   shown,
   issueCount,
   manualGroupCount,
-  resultView,
   effectiveView,
   setResultView,
   clusterEpsilon,

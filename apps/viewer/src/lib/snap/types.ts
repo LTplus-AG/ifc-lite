@@ -76,6 +76,21 @@ export interface SnapQuery {
   locks: { length?: number; angleDeg?: number; axis?: 'u' | 'v' };
 }
 
+/** The set the active locks confine the result to (see `buildLocus`). */
+export type Locus =
+  | { kind: 'free' }
+  | { kind: 'point'; p: Vec2 }
+  | { kind: 'line'; origin: Vec2; dir: Vec2 }
+  | { kind: 'ray'; origin: Vec2; dir: Vec2 }
+  | { kind: 'circle'; center: Vec2; radius: number };
+
+/** What the solver already knows when it collects: sources MAY use it to prune (see `mayLandNear`). */
+export interface CollectHint {
+  locus: Locus;
+  /** The cursor projected onto the locus: distances are measured from here. */
+  cursor: Vec2;
+}
+
 /**
  * A candidate producer. `collect` appends into `out` (no allocation of an
  * intermediate array per source). A source SHOULD return candidates within
@@ -83,11 +98,13 @@ export interface SnapQuery {
  * after projecting onto the active lock, and far edges still feed inference
  * (extension / intersection tracking). Under a lock the solver passes the
  * cursor already projected onto the lock, because that is where the result
- * lands and what the radius is measured from.
+ * lands and what the radius is measured from. A far point target can still
+ * land near it (alignment along the lock), so a source that wants those must
+ * prune with the `hint` (`mayLandNear`), not by distance to `q.cursor`.
  */
 export interface SnapSource {
   id: string;
-  collect(q: SnapQuery, radius: number, out: SnapCandidate[]): void;
+  collect(q: SnapQuery, radius: number, out: SnapCandidate[], hint?: CollectHint): void;
 }
 
 export interface SnapProfile {

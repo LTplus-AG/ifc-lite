@@ -243,7 +243,10 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
           <span className="text-muted-foreground">{t('chartEditor.sourceFilterLabel')}</span>
           {filterApplicable ? (
             <>
-              <div className="flex gap-1" role="group" aria-label={t('chartEditor.sourceFilterMode')}>
+              <div className="flex gap-1"
+                // These mode buttons are a named command group, not a form fieldset.
+                // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+                role="group" aria-label={t('chartEditor.sourceFilterMode')}>
                 <Button type="button" size="sm" variant={filterMode === 'selector' ? 'secondary' : 'ghost'} onClick={() => {
                   if (filterMode === 'rules') setFilterText(groupsToSelectorText(filterGroups));
                   setFilterMode('selector');
@@ -290,7 +293,7 @@ export function ChartEditor({ spec, datasets, onSave, onCancel, elementFieldCata
               {filterMode === 'selector' && filterFeedback && <SelectorFeedbackList feedback={filterFeedback} />}
             </>
           ) : (
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               {t('chartEditor.sourceFilterNotApplicable', { source: SOURCE_LABELS[draft.source] })}
             </span>
           )}

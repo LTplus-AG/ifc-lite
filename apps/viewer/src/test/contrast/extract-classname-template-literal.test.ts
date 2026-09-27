@@ -32,7 +32,7 @@ const FIXTURE = join(__dirname, '__fixtures__/template-literal-cases.tsx');
 describe('extractClassNameAfter handles a literal-only template literal', () => {
   it('extracts the class string from a backtick className with no interpolation', () => {
     const className = extractClassNameAfter(FIXTURE, '<span ');
-    assert.equal(className, 'text-[9px] text-muted-foreground');
+    assert.equal(className, 'text-2xs text-muted-foreground');
   });
 });
 

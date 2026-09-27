@@ -77,7 +77,7 @@ export function ModelRowTags({ modelId, modelName }: { modelId: string; modelNam
           title={ids.map((id) => modelTags.get(id)?.name ?? t('hierarchy.modelRowTags.unknownTag')).join(', ')}
         >
           {inline.map((id) => <ModelTagChip key={id} tag={modelTags.get(id)} className="min-w-0 shrink" />)}
-          {overflow > 0 && <span className="shrink-0 text-[10px] text-zinc-500">+{formatLocaleNumber(locale, overflow)}</span>}
+          {overflow > 0 && <span className="shrink-0 text-2xs text-zinc-500">+{formatLocaleNumber(locale, overflow)}</span>}
         </span>
       )}
       <Tooltip>

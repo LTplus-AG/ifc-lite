@@ -27,6 +27,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { fromNativeLength } from '@ifc-lite/create';
 import {
   asExpressIdRef,
   asCoordinateTriple,
@@ -82,6 +83,36 @@ export interface LinearElementEditChain {
   profileWidth: number;
   /** Profile cross-section height (Y dimension, metres). */
   profileHeight: number;
+  /**
+   * The native-unit → metre factor every length above was scaled by. Raw
+   * STEP reads are native (e.g. millimetres) for imported AND in-store
+   * authored elements alike; a writer divides by this to go back (#6233).
+   */
+  lengthUnitScale: number;
+}
+
+type AttributeReader = (id: number | null) => unknown[] | null;
+
+const EPS = 1e-9;
+
+function isPoint(value: unknown, expected: readonly number[]): boolean {
+  const p = asCoordinateTriple(value);
+  return p !== null && p.every((v, i) => Math.abs(v - expected[i]) < EPS);
+}
+
+function isDirection(value: unknown, expected: readonly number[]): boolean {
+  const d = asDirectionRatios(value);
+  const len = d ? Math.hypot(d[0], d[1], d[2]) : 0;
+  return d !== null && len > EPS && d.every((v, i) => Math.abs(v / len - expected[i]) < 1e-6);
+}
+
+/** An `IfcAxis2Placement3D` (or none) that neither moves nor rotates. */
+function isIdentitySolidPosition(read: AttributeReader, positionId: number | null): boolean {
+  if (positionId === null) return true;
+  const position = read(positionId);
+  if (!position || !isPoint(read(asExpressIdRef(position[0]))?.[0], [0, 0, 0])) return false;
+  if (position[1] != null && !isDirection(read(asExpressIdRef(position[1]))?.[0], [0, 0, 1])) return false;
+  return position[2] == null || isDirection(read(asExpressIdRef(position[2]))?.[0], [1, 0, 0]);
 }
 
 /**
@@ -96,6 +127,7 @@ export function resolveLinearElementChain(
   view: MutablePropertyView,
   editor: StoreEditor,
   expressId: number,
+  lengthUnitScale = 1,
 ): LinearElementEditChain | null {
   const rawType = editor.getEntityType(expressId);
   if (!rawType || !LINEAR_ELEMENT_STEP_TYPES.has(rawType.toUpperCase())) return null;
@@ -153,6 +185,14 @@ export function resolveLinearElementChain(
 
   const solidAttrs = readAttributes(dataStore, view, editor, solidId);
   if (!solidAttrs) return null;
+  // The length runs along the PLACEMENT's axis only when the solid adds no
+  // rotation or offset of its own and extrudes along local +Z — the layout
+  // the in-store builders write. An imported beam that extrudes along a
+  // rotated solid position (AC20's `Unterzug-1`: solid Axis = +Y) must be
+  // refused, not cut along the wrong axis (#6233).
+  const read = (id: number | null) => (id === null ? null : readAttributes(dataStore, view, editor, id));
+  if (!isIdentitySolidPosition(read, asExpressIdRef(solidAttrs[1]))) return null;
+  if (solidAttrs[2] != null && !isDirection(read(asExpressIdRef(solidAttrs[2]))?.[0], [0, 0, 1])) return null;
   const profileId = asExpressIdRef(solidAttrs[0]);
   const depthRaw = solidAttrs[3];
   if (
@@ -172,6 +212,13 @@ export function resolveLinearElementChain(
   // or NaN-area profiles downstream.
   const profileAttrs = readAttributes(dataStore, view, editor, profileId);
   if (!profileAttrs) return null;
+  // Centred, unrotated cross-section, as the builders write (the split
+  // re-authors a piece with a centred profile).
+  const profilePosition = read(asExpressIdRef(profileAttrs[2]));
+  if (profileAttrs[2] != null) {
+    if (!profilePosition || !isPoint(read(asExpressIdRef(profilePosition[0]))?.[0], [0, 0, 0])) return null;
+    if (profilePosition[1] != null && !isDirection(read(asExpressIdRef(profilePosition[1]))?.[0], [1, 0, 0])) return null;
+  }
   const profileWidth = profileAttrs[3];
   const profileHeight = profileAttrs[4];
   if (
@@ -185,15 +232,18 @@ export function resolveLinearElementChain(
     return null;
   }
 
+  const m = (native: number) => fromNativeLength({ lengthUnitScale }, native);
+  const [sx, sy, sz] = chain.coordinates;
   return {
     elementType,
     startPointId: chain.cartesianPointId,
-    startCoordinates: chain.coordinates,
+    startCoordinates: [m(sx), m(sy), m(sz)],
     axisDirection,
     extrudedSolidId: solidId,
-    depth: depthRaw,
-    profileWidth,
-    profileHeight,
+    depth: m(depthRaw),
+    profileWidth: m(profileWidth),
+    profileHeight: m(profileHeight),
+    lengthUnitScale,
   };
 }
 
@@ -301,7 +351,8 @@ export function shrinkLinearElementDepth(
   chain: LinearElementEditChain,
   newDepth: number,
 ): void {
-  editor.setPositionalAttribute(chain.extrudedSolidId, 3, newDepth);
+  // `newDepth` is metres like the chain; the slot is native units.
+  editor.setPositionalAttribute(chain.extrudedSolidId, 3, newDepth / chain.lengthUnitScale);
 }
 
 // Re-export the asCoordinateTriple helper so callers that import

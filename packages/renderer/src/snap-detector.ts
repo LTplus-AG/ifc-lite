@@ -30,6 +30,7 @@ export interface SnapTarget {
     vertices?: Vec3[]; // For edges/faces
     edgeIndex?: number;
     faceIndex?: number;
+    sourceCurve?: import('./source-curve-snap.js').SourceCurveIdentity & { kind: 'line' | 'arc'; length: number; t: number };
   };
 }
 
@@ -764,5 +765,4 @@ export class SnapDetector {
 
     return targets[0];
   }
-
 }

@@ -140,7 +140,6 @@
    410 apps/viewer/src/lib/llm/stream-client.ts
    747 apps/viewer/src/lib/llm/system-prompt.ts
    450 apps/viewer/src/lib/search/tier1-index.ts
-   440 apps/viewer/src/lib/slab-edit.ts
    412 apps/viewer/src/lib/sources/persistence.ts
    426 apps/viewer/src/lib/tours/controller.ts
    812 apps/viewer/src/sdk/adapters/export-adapter.ts
@@ -158,7 +157,7 @@
    489 apps/viewer/src/store/slices/idsSlice.ts
    820 apps/viewer/src/store/slices/measurementSlice.ts
    630 apps/viewer/src/store/slices/modelSlice.ts
-  2732 apps/viewer/src/store/slices/mutationSlice.ts
+  2721 apps/viewer/src/store/slices/mutationSlice.ts
   1317 apps/viewer/src/store/slices/scheduleSlice.ts
    536 apps/viewer/src/store/slices/scriptSlice.ts
    498 apps/viewer/src/store/slices/sectionSlice.ts
@@ -275,7 +274,7 @@
    583 packages/renderer/src/camera-controls.ts
    684 packages/renderer/src/camera.ts
   3699 packages/renderer/src/index.ts
-   756 packages/renderer/src/picker.ts
+   741 packages/renderer/src/picker.ts
    952 packages/renderer/src/pipeline.ts
    475 packages/renderer/src/pointcloud/point-cloud-renderer.ts
    758 packages/renderer/src/pointcloud/point-cloud-spatial-index.ts
@@ -285,7 +284,7 @@
   4118 packages/renderer/src/scene.ts
    639 packages/renderer/src/section-2d-overlay.ts
    564 packages/renderer/src/shaders/main.wgsl.ts
-   454 packages/renderer/src/shadow-pass.ts
+   417 packages/renderer/src/shadow-pass.ts
    768 packages/renderer/src/snap-detector.ts
    765 packages/renderer/src/symbolic-overlay-pipelines.ts
    572 packages/rules/src/filter/filter-evaluate.ts

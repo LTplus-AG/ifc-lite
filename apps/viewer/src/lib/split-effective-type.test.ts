@@ -18,7 +18,9 @@ function authoredElement(type: 'IfcBeam' | 'IfcSlab') {
   const point = add('IfcCartesianPoint', [[1, 2, 0]]);
   const axis = add('IfcAxis2Placement3D', [ref(point), null, null]);
   const placement = add('IfcLocalPlacement', [null, ref(axis)]);
-  const profilePoint = add('IfcCartesianPoint', [[2, 1.5]]);
+  // Beams are cut along a centred cross-section (the builders' layout, #6233);
+  // slab footprints may sit off the placement origin.
+  const profilePoint = add('IfcCartesianPoint', [type === 'IfcBeam' ? [0, 0] : [2, 1.5]]);
   const profileAxis = add('IfcAxis2Placement2D', [ref(profilePoint), null]);
   const profile = add('IfcRectangleProfileDef', ['.AREA.', null, ref(profileAxis), 4, 3]);
   const solid = add('IfcExtrudedAreaSolid', [ref(profile), null, null, 0.3]);

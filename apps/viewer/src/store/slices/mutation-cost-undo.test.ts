@@ -99,21 +99,26 @@ describe('cost entity collaboration redo identity', () => {
     assert.equal(creates[0]?.[3], 'ifc-lite-cost-stable-key');
   });
 
-  it('passes the stashed mesh when recreating a geometric overlay for peers', () => {
+  // #6232: a re-meshed element has one mesh per layer / style; peers got only the first.
+  it('passes every stashed mesh when recreating a geometric overlay for peers', () => {
     const entity = { expressId: 42, type: 'IFCWALL', attributes: ['wall-guid'] } as NewEntity;
-    const mesh = { expressId: 42 } as MeshData;
+    const meshes = [{ expressId: 42 }, { expressId: 42 }] as MeshData[];
     const creates: unknown[][] = [];
+    const geometry: unknown[][] = [];
     mirrorCreateEntityRedo({
       mirrorEntityCreate: (...args: unknown[]) => { creates.push(args); },
+      mirrorEntityGeometry: (...args: unknown[]) => { geometry.push(args); },
       mirrorAttributeEdit: () => {},
-    } as unknown as import('../index.js').ViewerState, 'm1', entity, mesh);
-    assert.equal(creates[0]?.[4], mesh);
+    } as unknown as import('../index.js').ViewerState, 'm1', entity, meshes);
+    assert.equal(creates.length, 1);
+    assert.deepEqual(geometry, [['m1', 42, meshes]]);
   });
 
   it('re-publishes a restored source entity with its attributes and mesh', () => {
     const creates: unknown[][] = [];
     const edits: unknown[][] = [];
-    const mesh = { expressId: 7 } as MeshData;
+    const geometry: unknown[][] = [];
+    const meshes = [{ expressId: 7 }, { expressId: 7 }] as MeshData[];
     const dataStore = {
       entities: { getGlobalId: () => 'wall-guid' },
       getEntity: () => ({ expressId: 7, type: 'IFCWALL', attributes: ['wall-guid', null, 'Wall'] }),
@@ -121,9 +126,11 @@ describe('cost entity collaboration redo identity', () => {
     mirrorSourceEntityRestore({
       models: new Map([['m1', { ifcDataStore: dataStore }]]),
       mirrorEntityCreate: (...args: unknown[]) => { creates.push(args); },
+      mirrorEntityGeometry: (...args: unknown[]) => { geometry.push(args); },
       mirrorAttributeEdit: (...args: unknown[]) => { edits.push(args); },
-    } as unknown as import('../index.js').ViewerState, 'm1', 7, mesh);
-    assert.deepEqual(creates[0], ['m1', 7, 'IFCWALL', 'wall-guid', mesh]);
+    } as unknown as import('../index.js').ViewerState, 'm1', 7, meshes);
+    assert.deepEqual(creates[0], ['m1', 7, 'IFCWALL', 'wall-guid', null]);
+    assert.deepEqual(geometry, [['m1', 7, meshes]]);
     assert.ok(edits.some(args => args[2] === 'Name' && args[3] === 'Wall'));
   });
 });

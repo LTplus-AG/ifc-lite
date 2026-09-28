@@ -6,7 +6,6 @@ import type { Mesh } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { BoundingBox } from './scene-raycaster.js';
 import { worldAabbFromPieces } from './scene-geometry.js';
-import { writeInstanceAnchor } from './instanced-render.js';
 
 type Offset = readonly [number, number, number];
 type Drawable = { origin?: [number, number, number]; bounds?: Bounds };
@@ -370,10 +369,6 @@ export class ModelTranslations {
         writtenAnchors[anchorOffset] = ax;
         writtenAnchors[anchorOffset + 1] = ay;
         writtenAnchors[anchorOffset + 2] = az;
-        if (stride >= 120) writeInstanceAnchor(view, i * stride, [ax, ay, az]);
-      } else if (stride >= 120) {
-        // Legacy V1 callers have no canonical source anchors to preserve.
-        writeInstanceAnchor(view, i * stride, [ttx, tty, ttz]);
       }
       entry.written[b0 + 9] = ttx; entry.written[b0 + 10] = tty; entry.written[b0 + 11] = ttz;
     }

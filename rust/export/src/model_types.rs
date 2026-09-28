@@ -32,7 +32,7 @@ pub struct PropertySet {
 pub struct QuantityValue {
     pub name: String,
     pub value: f64,
-    /// `Length` | `Area` | `Volume` | `Count` | `Weight` | `Time`.
+    /// `Length` | `Area` | `Volume` | `Count` | `Number` | `Weight` | `Time`.
     pub kind: &'static str,
 }
 

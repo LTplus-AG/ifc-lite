@@ -35,8 +35,6 @@ import { handleSelectionClick } from './selectionHandlers.js';
 import { commitAddElementSlabPolygon, handleAddElementHover } from './add-element-handlers.js';
 import { withAddElementWorkplane } from './add-element-workplane.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
-import { authoredElementMeshPayload } from '@/store/slices/authoredElement';
-import { storeyAuthoringFrame } from '@/lib/authoring/storey-authoring-frame';
 
 const MODEL = 'demo-like';
 const STOREY_A = 4;
@@ -281,35 +279,8 @@ describe('Add Element workplane: storey-local means storey-local (#6233)', () =>
     near(calls[0].params.Start as number[], [112, 221, 0], 'Start');
     near(calls[0].params.End as number[], [116, 221, 0], 'End');
 
-    const payload = authoredElementMeshPayload(
-      { kind: 'wall', params: { Start: [112, 221, 0], End: [116, 221, 0], Thickness: 0.2, Height: 3 } },
-      storeyAuthoringFrame(parsed, STOREY_A, coordinateInfo as Parameters<typeof storeyAuthoringFrame>[2]),
-    );
-    if (payload.type !== 'wall') throw new Error('expected a wall payload');
-    near(payload.start, [5, 4, 0], 'mirror start, back under the click');
-  });
-});
-
-describe('Add Element workplane: the instant 3D mirror folds the storey chain back in (#6233)', () => {
-  it('a wall written storey-local at (2,1)→(6,1) on storey A is drawn at model (5,4)→(9,4), under the clicks', () => {
-    const payload = authoredElementMeshPayload(
-      { kind: 'wall', params: { Start: [2, 1, 0], End: [6, 1, 0], Thickness: 0.2, Height: 3 } },
-      storeyAuthoringFrame(parsed, STOREY_A, undefined),
-    );
-    assert.equal(payload.type, 'wall');
-    if (payload.type !== 'wall') return;
-    near(payload.start, [5, 4, 0], 'start');
-    near(payload.end, [9, 4, 0], 'end');
-  });
-
-  it("a slab polygon on turned storey B is drawn back at the model-frame corners it was clicked at", () => {
-    const payload = authoredElementMeshPayload(
-      { kind: 'slab', params: { Profile: 'polygon', OuterCurve: [[2, -1], [2, -3], [5, -3], [5, -1]], Thickness: 0.3 } },
-      storeyAuthoringFrame(parsed, STOREY_B, undefined),
-    );
-    if (payload.type !== 'slab') throw new Error('expected a slab payload');
-    const expected = [[4, 5, 0], [6, 5, 0], [6, 8, 0], [4, 8, 0]];
-    payload.corners.forEach((c, i) => near(c, expected[i], `corner ${i}`));
+    // Where the committed wall is DRAWN is the wasm re-mesh's job (#6232): it
+    // meshes these storey-local params through the storey chain like a load.
   });
 });
 

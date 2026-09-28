@@ -60,7 +60,9 @@ export const createHoverSlice: StateCreator<HoverSlice, [], [], HoverSlice> = (s
 
   // Actions
   setHoverState: (hoverState) => set({ hoverState }),
-  clearHover: () => set({ hoverState: emptyHoverState() }),
+  // Called on every orbit/pan pointermove: an already-clear hover keeps its
+  // object, so subscribers are not notified 60 times a second for nothing.
+  clearHover: () => set((state) => (state.hoverState.entityId === null ? state : { hoverState: emptyHoverState() })),
   setHoverHighlightEnabled: (hoverHighlightEnabled) => set({ hoverHighlightEnabled }),
   toggleHoverHighlight: () => set((state) => ({ hoverHighlightEnabled: !state.hoverHighlightEnabled })),
 

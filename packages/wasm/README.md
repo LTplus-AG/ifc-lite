@@ -33,6 +33,23 @@ console.log(`Entities: ${refs.length}`);
 api.free();                           // free the API instance
 ```
 
+`api.extrusionDefinitions(bytes, ids)` returns exact authored
+`IfcExtrudedAreaSolid` sources and placed product occurrences without decoding
+meshes. Omit `ids` for all products, pass `new Uint32Array()` for none, or
+selected product STEP IDs for a filtered view. Repeated mapping targets share a source key while each
+occurrence retains its f64 `world_from_source` matrix and deterministic ordinal.
+Complete sources with valid positive net profile area have
+`nominal_quantities` in raw squared/cubed IFC file units; unsupported or
+invalid sources have `null`.
+For a complete source-profile point, apply `profile_position`, then
+`position_matrix`, then `world_from_source`; the last matrix includes file-unit
+conversion and maps to absolute IFC Z-up metres. An absent optional `Position`
+leaves its matrix field `null`, so use identity for that step when composing
+rather than expecting an identity array. Check `status` before interpreting a
+null matrix; unsupported sources and bounded output are reported by `status`
+and `diagnostics`. CSG operands carry
+`source_modified=true` because their final body can differ.
+
 ## Meshes (pre-pass + job batches)
 
 Geometry runs as a single pre-pass (one scan that produces a flat job list

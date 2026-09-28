@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { MeshData } from '@ifc-lite/geometry';
+import { INSTANCE_STRIDE_BYTES } from './instanced-render.js';
 interface Occurrence { templateIndex: number; byteOffset: number; originalColor: [number, number, number, number]; itemId?: number }
 interface Template { modelIndex: number; positions: Float32Array; normals: Float32Array; indices: Uint32Array; instanceData: ArrayBuffer; canonicalAnchors?: Float64Array; canonicalMatrixTranslations?: Float32Array }
-const INSTANCE_STRIDE_BYTES = 120;
 /** CPU expansion retains the canonical f64 occurrence anchor rather than
  * round-tripping a national-grid translation through the V1 f32 matrix. */
 export function materializeInstances(expressId: number, occ: readonly Occurrence[], templates: readonly (Template | undefined)[]): MeshData[] | undefined {
@@ -20,9 +20,9 @@ export function materializeInstances(expressId: number, occ: readonly Occurrence
       const anchorOffset = (b / INSTANCE_STRIDE_BYTES) * 3;
       const raw12 = dv.getFloat32(b + 48, true), raw13 = dv.getFloat32(b + 52, true), raw14 = dv.getFloat32(b + 56, true);
       const anchors = tpl.canonicalAnchors, baseline = tpl.canonicalMatrixTranslations;
-      // Model/entity placement mutates the V1 matrix after decode. Do not apply
-      // a stale anchor to an edited occurrence; the forthcoming V2 GPU record
-      // owns editable f64 anchors. Unedited occurrences retain source precision.
+      // Model/entity placement mutates the matrix after decode. Do not apply a
+      // stale anchor to an edited occurrence whose matrix no longer matches its
+      // baseline. Unedited occurrences retain source precision.
       const canonical = anchors && baseline
         && raw12 === baseline[anchorOffset] && raw13 === baseline[anchorOffset + 1] && raw14 === baseline[anchorOffset + 2];
       const m12 = canonical ? anchors[anchorOffset] : raw12;

@@ -2,6 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { ExtrusionDefinitionsJs } from '@ifc-lite/wasm';
+
+/** Exact IFC source parameters in file units, with separately placed world occurrences. */
+export type ExtrusionDefinitions = ExtrusionDefinitionsJs;
+
 /** Exact authored directrix in IFC Z-up, absolute-world metres. */
 export type DirectrixSegment =
   | { type: 'line'; start: [number, number, number]; end: [number, number, number] }

@@ -10,6 +10,7 @@
 //! surviving the call.
 
 use crate::config::Config;
+use crate::routes::parse::cache_keys::json_response_cache_key;
 use crate::services::cache::DiskCache;
 use crate::{build_router, AppState};
 use axum::body::{to_bytes, Body};
@@ -153,20 +154,22 @@ fn request_cache_key(content: &[u8]) -> String {
     format!("{}-default", DiskCache::generate_key(content))
 }
 
-/// `POST /api/v1/parse` caches its result via a detached `tokio::spawn`
-/// (the response returns before the write lands, so the very next request
-/// can race it) -- poll for the write to land before asserting a HIT,
-/// bounded so a genuine caching regression fails the test instead of
-/// hanging.
-async fn wait_for_cache_hit(state: &AppState, content: &[u8], filename: &str) -> Value {
+/// `POST /api/v1/parse` caches its result via a detached `tokio::spawn`.
+/// Wait for that one cold request's JSON entry to become readable before
+/// asking the route for a HIT. Polling the route itself can create more cold
+/// requests and detached writers that recreate the entry after DELETE (#6383).
+async fn wait_for_cache_hit(state: &AppState, content: &[u8], filename: &str) {
+    let request_key = request_cache_key(content);
+    let response_key = json_response_cache_key(&request_key);
     for _ in 0..200 {
-        let response = parse(state, content, filename).await;
-        if response["stats"]["from_cache"] == Value::Bool(true) {
-            return response;
+        if state.cache.get_bytes(&response_key).await.unwrap().is_some() {
+            let response = parse(state, content, filename).await;
+            assert_eq!(response["stats"]["from_cache"], Value::Bool(true));
+            return;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    panic!("cache write never landed after repeated polling");
+    panic!("cache write never landed before the bounded wait expired");
 }
 
 /// The behaviour a user actually cares about: parse once (cold), parse

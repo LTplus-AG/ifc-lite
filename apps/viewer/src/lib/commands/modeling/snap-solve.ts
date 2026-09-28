@@ -39,6 +39,8 @@ export function semanticSource(modelId: string): SemanticSource {
   if (semantic?.modelId === modelId) return semantic.source;
   const source = createSemanticSource({
     modelId,
+    // Wall lines passing near the cursor feed extension / intersection guides.
+    extensions: true,
     version: () => useViewerStore.getState().mutationVersion,
     storeyId: () => useViewerStore.getState().session?.storeyId ?? null,
     loadAxes: (storeyId) => {

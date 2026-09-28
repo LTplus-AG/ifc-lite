@@ -46,6 +46,16 @@ export interface RenderVisibilitySnapshot {
   isolatedIds: number[] | null;
 }
 
+type SourceSegmentScreenProbe = (modelId: string, expressId: number, segmentIndex: number, t: number) =>
+  { x: number; y: number; world: { x: number; y: number; z: number } } | null;
+
+/** The source overlay supplies its current read-only E2E projection probe. */
+export function setSourceSegmentScreenProbe(probe: SourceSegmentScreenProbe | null): void {
+  const host = globalThis as Record<string, unknown>;
+  if (probe) host.__ifc_lite_source_segment_screen__ = probe;
+  else delete host.__ifc_lite_source_segment_screen__;
+}
+
 async function encodeColorFrame(framePromise: ReturnType<Renderer['captureColorFrame']>): Promise<string | null> {
   const frame = await framePromise;
   if (!frame) return null;
@@ -171,6 +181,7 @@ export function installViewportDebugHooks(
 
 export function clearViewportDebugHooks(): void {
   const host = globalThis as Record<string, unknown>;
+  setSourceSegmentScreenProbe(null);
   delete host.__ifc_lite_render_stats__;
   delete host.__ifc_lite_capture_color_frame__;
   delete host.__ifc_lite_render_visibility__;

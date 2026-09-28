@@ -26,6 +26,10 @@ type BrowserStore = { getState(): BrowserState };
 test('selected swept-disk bar shows exact source geometry and measurement readout (#5783)', async ({ page }, testInfo) => {
   test.skip(!existsSync(sweptDiskFixture.path), `Swept-disk IFC missing at ${sweptDiskFixture.path}; run pnpm fixtures or provide REBAR_IFC`);
   test.setTimeout(600_000);
+  let deviceLostBeforeHighlight: string | null = null;
+  page.on('console', (message) => {
+    if (message.text().includes('[WebGPU] Device lost:')) deviceLostBeforeHighlight = message.text();
+  });
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/');
   await page.locator('#file-input-open').setInputFiles(sweptDiskFixture.path);
@@ -56,11 +60,47 @@ test('selected swept-disk bar shows exact source geometry and measurement readou
   await expect(source).toContainText('Bend magnitude');
   await expect(source.getByRole('button', { name: /Segment \d+/ })).toHaveCount(sweptDiskFixture.segmentCount);
   const segment = source.getByRole('button', { name: /Segment 1/ }).first();
+
+  await page.evaluate(() => {
+    const state = (globalThis as unknown as { __ifc_lite_viewer_store__: BrowserStore }).__ifc_lite_viewer_store__.getState();
+    state.toggleWorkspacePanel('measurements');
+  });
+  await page.getByRole('tab', { name: 'Source', exact: true }).click();
+  const measureSource = page.getByRole('region', { name: 'Derived source geometry' });
+  await expect(measureSource).toContainText(sweptDiskFixture.totalLengthPrefix);
+  const measureScreenshot = testInfo.outputPath('swept-disk-measurements.png');
+  await page.screenshot({ path: measureScreenshot, fullPage: true });
+  await testInfo.attach(`${sweptDiskFixture.label} source measurements`, { path: measureScreenshot, contentType: 'image/png' });
+  await page.evaluate(() => {
+    const state = (globalThis as unknown as { __ifc_lite_viewer_store__: BrowserStore }).__ifc_lite_viewer_store__.getState();
+    state.toggleWorkspacePanel('measurements');
+  });
+
   await page.waitForFunction(() => Boolean((globalThis as unknown as { __ifc_lite_capture_color_frame__?: unknown }).__ifc_lite_capture_color_frame__));
   const capture = () => page.evaluate(() => (globalThis as unknown as {
     __ifc_lite_capture_color_frame__: () => Promise<string | null>;
   }).__ifc_lite_capture_color_frame__());
-  const baseline = await capture();
+  let baseline: string | null = null;
+  let captureThrew = false;
+  try {
+    await expect.poll(async () => {
+      try {
+        baseline = await capture();
+      } catch (error) {
+        captureThrew = true;
+        throw error;
+      }
+      return baseline;
+    }, { timeout: 30_000, message: 'renderer produces a baseline color frame before segment highlighting' })
+      .toMatch(/^data:image\/png;base64,/);
+  } catch (error) {
+    if (!captureThrew && baseline === null && deviceLostBeforeHighlight && process.env.E2E_GPU_STRICT === '0') {
+      const reason = `Hosted software WebGPU device was lost before segment highlighting: ${deviceLostBeforeHighlight}`;
+      console.warn(`[e2e] ${reason}`);
+      test.skip(true, reason);
+    }
+    throw error;
+  }
   expect(baseline, 'renderer produced a baseline color frame').toMatch(/^data:image\/png;base64,/);
   await segment.click();
   await expect(segment).toHaveAttribute('aria-pressed', 'true');
@@ -80,17 +120,6 @@ test('selected swept-disk bar shows exact source geometry and measurement readou
   if (process.env.INSPECTION_WITNESS_PNG) {
     await page.screenshot({ path: process.env.INSPECTION_WITNESS_PNG, fullPage: true });
   }
-
-  await page.evaluate(() => {
-    const state = (globalThis as unknown as { __ifc_lite_viewer_store__: BrowserStore }).__ifc_lite_viewer_store__.getState();
-    state.toggleWorkspacePanel('measurements');
-  });
-  await page.getByRole('tab', { name: 'Source', exact: true }).click();
-  const measureSource = page.getByRole('region', { name: 'Derived source geometry' });
-  await expect(measureSource).toContainText(sweptDiskFixture.totalLengthPrefix);
-  const measureScreenshot = testInfo.outputPath('swept-disk-measurements.png');
-  await page.screenshot({ path: measureScreenshot, fullPage: true });
-  await testInfo.attach(`${sweptDiskFixture.label} source measurements`, { path: measureScreenshot, contentType: 'image/png' });
 
   // Keep the source/measurement checks above in the full model. Isolate only
   // for the visual witness so surrounding concrete cannot occlude this bar.

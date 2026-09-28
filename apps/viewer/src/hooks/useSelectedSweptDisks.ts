@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { SweptDiskDescriptions } from '@ifc-lite/geometry';
 import { useViewerStore, stringToEntityRef, entityRefToString, type EntityRef } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
-import { selectedSweptDiskCache, type AnalyticSourceModel } from '@/lib/analytic/swept-disk-cache';
+import { selectedSweptDiskCache, sourceIdentity, type AnalyticSourceModel } from '@/lib/analytic/swept-disk-cache';
 
 type Occurrences = SweptDiskDescriptions['elements'][string];
 
@@ -48,7 +48,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
     if (models.size === 0 && legacyStore) sourceModels.push({ id: 'legacy', ifcDataStore: legacyStore });
     selectedSweptDiskCache.prune(sourceModels);
     const next = new Map(sourceModels.flatMap((model) => {
-      const source = model.ifcDataStore?.source.byteLength ? model.ifcDataStore.source : model.sourceFile;
+      const source = sourceIdentity(model);
       return source ? [[model.id, source] as const] : [];
     }));
     const highlighted = useViewerStore.getState().selectedDirectrixSegment;

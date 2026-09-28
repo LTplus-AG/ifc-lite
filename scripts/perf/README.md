@@ -2541,3 +2541,20 @@ they establish no browser worker-pool speedup or analytic-call memory win.
 The lesson is to cache only immutable source facts and to measure opt-in
 analytic extraction separately: far fewer source validations need not shorten
 the full call.
+
+## Shared trimmed line and circle decoding (#6402)
+
+Five balanced, interleaved native base/branch pairs on AC20 and the real
+Snowdon Towers structural IFC kept ordered mesh fingerprints and mesh, vertex,
+and triangle counts identical. Both binaries were built from detached,
+source-verified revisions in separate target directories; their binary hashes
+differed. Native mesh-determinism and quick committed-reference IfcOpenShell
+parity checks passed on the branch. The [raw hosted run](https://github.com/LTplus-AG/ifc-lite/actions/runs/36485574030)
+contains fixture hashes and phase timings. The small timing shifts overlap the
+run-to-run ranges, so this change has no demonstrated end-to-end speedup or
+regression on these fixtures. This native result does not measure browser
+worker-pool cost.
+
+The lesson is that sharing trim-select decoding need not perturb common mesh
+output: keep strict IFC validation for analytic curves separate from the mesh
+recovery policy, and test malformed circular spans as well as valid trims.

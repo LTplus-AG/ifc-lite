@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type {
+  CommitCapabilities,
   ConnectionTestResult,
   DownloadOptions,
   FileFilter,
@@ -25,6 +26,8 @@ import type {
 } from '@ifc-lite/plugin-api';
 
 import { createFixtureAuth, DEFAULT_FIXTURE_IDENTITY, requireSignedIn } from './auth.js';
+import { FixtureCommitIndex } from './commit-data.js';
+import { createCommitMethods } from './commit-methods.js';
 import { FixtureWorld, type FixtureWorldSpec } from './data.js';
 import { FixtureApiError, toAbortError } from './errors.js';
 import { applyBlockingFailure, applyTruncate, type FixtureMethodName, type InjectedFailure } from './failures.js';
@@ -41,6 +44,15 @@ export interface FixtureCapabilityOptions {
   /** Default `true` — controls whether `searchFiles` is present. */
   readonly search?: boolean;
   readonly projectsAreDiscoverableOnly?: boolean;
+  /**
+   * Contract 2.1.0. `false` (the default) leaves the provider on the 2.0.0
+   * surface entirely: no `capabilities.commits`, no commit methods — which is
+   * what makes the fixture usable as the "existing providers keep working"
+   * control. A partial object turns the commit surface on with every flag
+   * defaulting to `true`; set a flag to `false` to prove a host degrades
+   * gracefully without it.
+   */
+  readonly commits?: Partial<CommitCapabilities> | false;
 }
 
 export interface FixtureManifestOverrides {
@@ -89,6 +101,33 @@ export function createFixtureSourceProvider(options: FixtureProviderOptions): Fi
   const maxPageSize = options.pageSize ?? 25;
   const authKind: PluginAuthKind = options.auth ?? 'preferences';
 
+  const commitIndex = new FixtureCommitIndex();
+  for (const project of options.world.projects) {
+    if (project.models?.length) commitIndex.add(project.id, project.models);
+  }
+  const commitOptions = options.capabilities?.commits;
+  // A world that declares models but no `commits` capability would be data no
+  // method can reach — almost certainly a mistake, and a silent one — so
+  // declaring models is itself the opt-in. `commits: false` is the explicit
+  // way back to a pure 2.0.0 provider, which is what makes the fixture usable
+  // as the "existing providers keep working unchanged" control.
+  const commitOverrides = commitOptions === false ? undefined : commitOptions;
+  const commitsEnabled = commitOptions !== false && (commitOptions !== undefined || !commitIndex.isEmpty);
+  const commitCapabilities: CommitCapabilities | undefined = commitsEnabled
+    ? {
+        payloadFormats: commitOverrides?.payloadFormats ?? ['ifc-step'],
+        fingerprints: commitOverrides?.fingerprints ?? true,
+        storedDiffs: commitOverrides?.storedDiffs ?? true,
+        elementHistory: commitOverrides?.elementHistory ?? true,
+        identityRecords: commitOverrides?.identityRecords ?? true,
+        write: commitOverrides?.write ?? true,
+        watch: commitOverrides?.watch ?? true,
+        // The fixture's models are declared in their own right, not derived
+        // from files — a fixture world can have models with no file at all.
+        modelIdsAreFileIds: commitOverrides?.modelIdsAreFileIds ?? false,
+      }
+    : undefined;
+
   const capabilities: ProviderCapabilities = {
     containerListing: options.containerListing ?? 'direct-children',
     listFilesIsRecursive: options.listFilesIsRecursive ?? false,
@@ -100,6 +139,7 @@ export function createFixtureSourceProvider(options: FixtureProviderOptions): Fi
       ? { projectsAreDiscoverableOnly: options.capabilities.projectsAreDiscoverableOnly }
       : {}),
     ...(options.eagerFileSweep !== undefined ? { eagerFileSweep: options.eagerFileSweep } : {}),
+    ...(commitCapabilities ? { commits: commitCapabilities } : {}),
   };
 
   const manifest = buildFixtureManifest({
@@ -265,6 +305,17 @@ export function createFixtureSourceProvider(options: FixtureProviderOptions): Fi
     }
   }
 
+  const commits = commitCapabilities
+    ? createCommitMethods({
+        index: commitIndex,
+        maxPageSize,
+        payloadFormats: commitCapabilities.payloadFormats,
+        guard,
+        failureFor: (method) => failureMap.get(method),
+        identity: options.identity ?? DEFAULT_FIXTURE_IDENTITY,
+      })
+    : undefined;
+
   const provider: FileSourceProvider = {
     manifest,
     ...(auth ? { auth } : {}),
@@ -276,6 +327,27 @@ export function createFixtureSourceProvider(options: FixtureProviderOptions): Fi
     ...(capabilities.changeDetection ? { watchRevisions } : {}),
     ...(capabilities.search ? { searchFiles } : {}),
     testConnection,
+    // Each commit method is present EXACTLY when its flag is true — the
+    // invariant `runCommitConformanceSuite` checks first, and the reason the
+    // fixture can be pointed at a host to prove the host feature-detects by
+    // capability rather than by `typeof provider.x === 'function'`.
+    ...(commits && commitCapabilities
+      ? {
+          listModels: commits.listModels,
+          getModel: commits.getModel,
+          listCommits: commits.listCommits,
+          getCommit: commits.getCommit,
+          loadCommit: commits.loadCommit,
+          ...(commitCapabilities.fingerprints ? { loadCommitFingerprints: commits.loadCommitFingerprints } : {}),
+          ...(commitCapabilities.storedDiffs ? { getCommitDiff: commits.getCommitDiff } : {}),
+          ...(commitCapabilities.elementHistory ? { listElementHistory: commits.listElementHistory } : {}),
+          ...(commitCapabilities.identityRecords ? { listIdentityRecords: commits.listIdentityRecords } : {}),
+          ...(commitCapabilities.write
+            ? { createModel: commits.createModel, createCommit: commits.createCommit, recordIdentity: commits.recordIdentity }
+            : {}),
+          ...(commitCapabilities.watch ? { watchCommits: commits.watchCommits } : {}),
+        }
+      : {}),
   };
 
   const fixture: FixtureController = {

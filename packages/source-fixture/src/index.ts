@@ -12,6 +12,13 @@ export type {
 } from './provider.js';
 
 export type {
+  FixtureCommitSpec,
+  FixtureModelSpec,
+} from './commit-data.js';
+
+
+
+export type {
   FixtureContainerSpec,
   FixtureFileSpec,
   FixtureProjectSpec,
@@ -19,7 +26,7 @@ export type {
   FixtureWorldSpec,
 } from './data.js';
 
-export { FixtureApiError } from './errors.js';
+export { FixtureApiError, FixtureCommitError } from './errors.js';
 export type { FixtureMethodName, InjectedFailure } from './failures.js';
 
 export { createFixtureAuth, DEFAULT_FIXTURE_IDENTITY } from './auth.js';

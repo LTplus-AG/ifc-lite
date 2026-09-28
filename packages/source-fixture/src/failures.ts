@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { Page } from '@ifc-lite/plugin-api';
+import type { CommitSourceErrorCode, Page } from '@ifc-lite/plugin-api';
 
-import { FixtureApiError, hangUntilAborted } from './errors.js';
+import { FixtureApiError, FixtureCommitError, hangUntilAborted } from './errors.js';
 
 /** Every provider method the fixture can be told to misbehave on. */
 export type FixtureMethodName =
@@ -15,11 +15,29 @@ export type FixtureMethodName =
   | 'listRevisions'
   | 'watchRevisions'
   | 'searchFiles'
-  | 'testConnection';
+  | 'testConnection'
+  // Contract 2.1.0. Listed here so `setFailure` covers the commit surface
+  // exactly as it covers the file surface — a host's commit error handling
+  // is no less worth exercising than its download error handling.
+  | 'listModels'
+  | 'getModel'
+  | 'listCommits'
+  | 'getCommit'
+  | 'loadCommit'
+  | 'loadCommitFingerprints'
+  | 'getCommitDiff'
+  | 'listElementHistory'
+  | 'listIdentityRecords'
+  | 'createModel'
+  | 'createCommit'
+  | 'recordIdentity'
+  | 'watchCommits';
 
 /**
  * `throw` — rejects immediately with a plain error (and optional HTTP-shaped
- * status).
+ * status). Pass `code` to reject with a `FixtureCommitError` instead, so a
+ * host's `isCommitSourceError` branching (`forbidden` reads differently from
+ * a transient failure — there is nothing to retry) can be exercised.
  *
  * `rate-limit` — rejects with a 429-shaped `FixtureApiError`, `retryAfter`
  * populated, standing in for a real CDE's throttling response.
@@ -33,7 +51,13 @@ export type FixtureMethodName =
  * meaningful on paging methods; applied after the real page is computed.
  */
 export type InjectedFailure =
-  | { readonly kind: 'throw'; readonly message?: string; readonly status?: number }
+  | {
+      readonly kind: 'throw';
+      readonly message?: string;
+      readonly status?: number;
+      readonly code?: CommitSourceErrorCode;
+      readonly details?: Readonly<Record<string, unknown>>;
+    }
   | { readonly kind: 'rate-limit'; readonly retryAfterSeconds?: number }
   | { readonly kind: 'hang' }
   | { readonly kind: 'truncate'; readonly keep: number };
@@ -50,6 +74,12 @@ export async function applyBlockingFailure(
   if (!failure) return;
   switch (failure.kind) {
     case 'throw':
+      if (failure.code !== undefined) {
+        throw new FixtureCommitError(failure.code, failure.message ?? 'Injected failure', {
+          ...(failure.status !== undefined ? { status: failure.status } : {}),
+          ...(failure.details !== undefined ? { details: failure.details } : {}),
+        });
+      }
       throw new FixtureApiError(failure.message ?? 'Injected failure', failure.status);
     case 'rate-limit':
       throw new FixtureApiError('Rate limited', 429, failure.retryAfterSeconds ?? 1);

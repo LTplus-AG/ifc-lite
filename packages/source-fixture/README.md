@@ -129,6 +129,66 @@ runConformanceSuite(myProvider, {
 Both non-default modes exist because the default once failed a correct
 provider; see below.
 
+## Commit-aware worlds and `runCommitConformanceSuite`
+
+A project in the world spec can declare `models`, each a chain of commits with
+optional per-element `fingerprints` and reviewed `identity` records. The
+fixture then serves the whole contract-2.1.0 surface.
+
+Everything derivable is DERIVED, never declared a second time: the artifact
+digest is a SHA-256 of the commit's own bytes, a commit's `stats` come from the
+same code path as `getCommitDiff`, and element history is a walk over those
+diffs that follows identity records through a re-GUID. A fixture therefore
+cannot state a diff its own fingerprints contradict — which matters, because
+the conformance suite's "counts match entries" check would otherwise be
+measuring the fixture author's arithmetic instead of a provider's.
+
+```ts
+const provider = createFixtureSourceProvider({
+  world: {
+    projects: [{
+      id: 'proj-1', name: 'Alpha', containers: [], files: [],
+      models: [{
+        id: 'model-structural', name: 'Structural model',
+        commits: [
+          { id: 'c1', parents: [], fileName: 'c1.ifc', content: 'C1',
+            fingerprints: [{ key: 'wall-a', ifcType: 'IfcWall', dataHash: 'd1' }] },
+          { id: 'c2', parents: ['c1'], fileName: 'c2.ifc', content: 'C2',
+            identity: [{ base: 'wall-a', here: 'wall-a2', reason: 'content-match:renamed' }],
+            fingerprints: [{ key: 'wall-a2', ifcType: 'IfcWall', dataHash: 'd2' }] },
+        ],
+      }],
+    }],
+  },
+  // Declaring models is itself the opt-in; `commits: false` is the way back to
+  // a pure 2.0.0 provider, which is the "existing providers keep working" control.
+  capabilities: { commits: { payloadFormats: ['ifc-step', 'ifcx'] } },
+});
+
+runCommitConformanceSuite(provider, {
+  createContext: () => createFixtureContext(),
+  fixtures: {
+    projectId: 'proj-1',
+    modelId: 'model-structural',
+    elementKey: 'wall-a2',          // omit to skip the element-history checks
+    writableProjectId: 'proj-1',    // omit to skip the write checks
+    writableModelId: 'model-uploads',
+  },
+});
+```
+
+The suite checks capability/method agreement first, then ordering and
+immutability, payload digests (against the PLATFORM's SHA-256, never the
+fixture's own), fingerprint sampling, diff/count consistency, element history
+across a re-GUID, and the `conflict` + idempotency contract on `createCommit`.
+Each block past the first is gated on the flag that owns it, so a provider
+declaring `storedDiffs: false` is not failed for a method it correctly lacks.
+
+An injected `throw` failure may carry a contract `code`
+(`setFailure('listCommits', { kind: 'throw', code: 'forbidden', … })`), which
+is how a host's `isCommitSourceError` branching gets exercised — `forbidden`
+has nothing to retry and must not render a Retry button.
+
 ### Two things the kit must never require
 
 `ListOptions.limit` is a **hint** — "providers clamp to whatever their API

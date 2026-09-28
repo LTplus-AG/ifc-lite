@@ -16,9 +16,20 @@ export default defineConfig({
     // the pattern other packages (e.g. `packages/bcf`) already use.
     alias: {
       '@ifc-lite/plugin-api': path.resolve(__dirname, '../plugin-api/src/index.ts'),
+      // Same reason, for the type-compatibility test that pins the commit
+      // shapes against the real engine's (`commit-diff-shape.test.ts`).
+      '@ifc-lite/diff': path.resolve(__dirname, '../diff/src/index.ts'),
     },
   },
   test: {
     include: ['test/**/*.test.ts'],
+    // `commit-diff-shape.test.ts` is mostly `expectTypeOf`, which is erased at
+    // runtime — see `packages/plugin-api/vitest.config.ts` for what happens
+    // when type assertions are allowed to "pass" without ever being checked.
+    typecheck: {
+      enabled: true,
+      include: ['test/commit-diff-shape.test.ts'],
+      tsconfig: './tsconfig.test.json',
+    },
   },
 });

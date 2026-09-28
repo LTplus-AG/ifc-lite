@@ -1,0 +1,14 @@
+{
+  "//": "Type-checks the TEST files for vitest's `typecheck` mode, which `commit-diff-shape.test.ts` needs: it is almost entirely `expectTypeOf`, erased at runtime, so without a real type-check it would 'pass' whatever it asserted. Hand-written and committed, unlike the generated `tsconfig.tests.json` that `scripts/typecheck-tests.mjs` produces for the repo-wide typecheck — a config vitest needs at run time cannot depend on a generated file that is gitignored.",
+  "extends": "../../tsconfig.packages.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "paths": {
+      "@ifc-lite/plugin-api": ["../plugin-api/src"],
+      "@ifc-lite/diff": ["../diff/src"]
+    }
+  },
+  "include": ["src/**/*", "test/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

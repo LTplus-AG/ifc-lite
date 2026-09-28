@@ -9,6 +9,7 @@
 // model shapes re-used for the constructed `Source*` values.
 // ============================================================================
 
+import type { FixtureModelSpec } from './commit-data.js';
 import { FixtureApiError } from './errors.js';
 
 export interface FixtureRevisionSpec {
@@ -49,6 +50,13 @@ export interface FixtureProjectSpec {
   readonly meta?: Record<string, unknown>;
   readonly containers: readonly FixtureContainerSpec[];
   readonly files: readonly FixtureFileSpec[];
+  /**
+   * Commit-aware models in this project (contract 2.1.0). Indexed separately
+   * by `FixtureCommitIndex` (`commit-data.ts`) rather than here: a model is
+   * not a file, may be backed by none, and nothing in the 2.0.0 surface has
+   * any business seeing one.
+   */
+  readonly models?: readonly FixtureModelSpec[];
 }
 
 export interface FixtureWorldSpec {

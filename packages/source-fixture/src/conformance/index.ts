@@ -28,6 +28,9 @@ import { describePagingConformance } from './paging.js';
 import type { ConformanceOptions } from './types.js';
 import { describeWatchRevisionsConformance } from './watch.js';
 
+export { runCommitConformanceSuite } from './commits.js';
+export type { CommitConformanceFixtures, CommitConformanceOptions } from './commit-types.js';
+
 export type {
   ConformanceFileRef,
   ConformanceFixtures,

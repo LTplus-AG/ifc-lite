@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { CommitSourceErrorCode } from '@ifc-lite/plugin-api';
+
 /**
  * Error thrown by the fixture provider for both genuine contract violations
  * (unknown id, mismatched container, malformed cursor) and injected failures
@@ -18,6 +20,25 @@ export class FixtureApiError extends Error {
     this.name = 'FixtureApiError';
     this.status = status;
     this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+/** A `FixtureApiError` carrying a `code` so `isCommitSourceError` narrows it. */
+export class FixtureCommitError extends FixtureApiError {
+  readonly code: CommitSourceErrorCode;
+  readonly retryAfterMs?: number;
+  readonly details?: Readonly<Record<string, unknown>>;
+
+  constructor(
+    code: CommitSourceErrorCode,
+    message: string,
+    extra?: { readonly status?: number; readonly retryAfterMs?: number; readonly details?: Readonly<Record<string, unknown>> },
+  ) {
+    super(message, extra?.status);
+    this.name = 'FixtureCommitError';
+    this.code = code;
+    if (extra?.retryAfterMs !== undefined) this.retryAfterMs = extra.retryAfterMs;
+    if (extra?.details !== undefined) this.details = extra.details;
   }
 }
 

@@ -2,12 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** Real Revit IFC and production WebGPU witness for the selected directrix (#5778). */
+/** Production WebGPU witness for a selected swept-disk directrix (#5778). */
 import { expect, test, type Page } from '@playwright/test';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-
-const FIXTURE = process.env.REBAR_IFC ?? join(process.cwd(), 'tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc');
+import { existsSync, writeFileSync } from 'node:fs';
+import { sweptDiskFixture } from './swept-disk-fixture.js';
 
 type BrowserState = {
   models: Map<string, { id: string; ifcDataStore?: { entityCount: number } | null }>;
@@ -53,12 +51,12 @@ async function frameChange(
   }, { baseline, withOverlay, threshold, afterOff });
 }
 
-test('selected Revit bar draws and clears its source centreline (#5778)', async ({ page }, testInfo) => {
-  test.skip(!existsSync(FIXTURE), `Revit Snowdon IFC missing at ${FIXTURE}; run pnpm fixtures or provide REBAR_IFC`);
+test('selected swept-disk bar draws and clears its source centreline (#5778)', async ({ page }, testInfo) => {
+  test.skip(!existsSync(sweptDiskFixture.path), `Swept-disk IFC missing at ${sweptDiskFixture.path}; run pnpm fixtures or provide REBAR_IFC`);
   test.setTimeout(600_000);
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/');
-  await page.locator('#file-input-open').setInputFiles(FIXTURE);
+  await page.locator('#file-input-open').setInputFiles(sweptDiskFixture.path);
   await page.waitForFunction(() => {
     const store = (globalThis as unknown as { __ifc_lite_viewer_store__?: BrowserStore }).__ifc_lite_viewer_store__;
     const state = store?.getState();
@@ -67,16 +65,16 @@ test('selected Revit bar draws and clears its source centreline (#5778)', async 
       && (model?.ifcDataStore?.entityCount ?? 0) > 0;
   }, undefined, { timeout: 300_000 });
 
-  await page.evaluate(() => {
+  await page.evaluate((expressId) => {
     const state = (globalThis as unknown as { __ifc_lite_viewer_store__: BrowserStore }).__ifc_lite_viewer_store__.getState();
     const model = [...state.models.values()][0];
     if (!model) throw new Error('loaded IFC model is missing');
-    const id = state.toGlobalId(model.id, 132347);
-    state.setSelectedEntity({ modelId: model.id, expressId: 132347 });
+    const id = state.toGlobalId(model.id, expressId);
+    state.setSelectedEntity({ modelId: model.id, expressId });
     state.setSelectedEntityId(id);
     state.setSelectedEntityIds([id]);
     state.cameraCallbacks.frameEntities?.([id]);
-  });
+  }, sweptDiskFixture.expressId);
   await page.waitForFunction(() => Boolean((globalThis as unknown as { __ifc_lite_capture_color_frame__?: unknown }).__ifc_lite_capture_color_frame__));
   const capture = () => page.evaluate(() => (globalThis as unknown as {
     __ifc_lite_capture_color_frame__: () => Promise<string | null>;
@@ -111,9 +109,11 @@ test('selected Revit bar draws and clears its source centreline (#5778)', async 
   }, { timeout: 30_000, message: 'renderer produces an overlay color frame' })
     .toMatch(/^data:image\/png;base64,/);
   if (!visible) throw new Error('renderer produced no overlay color frame');
-  await testInfo.attach('Snowdon selected centreline', {
-    body: Buffer.from(visible.split(',')[1], 'base64'), contentType: 'image/png',
+  const visiblePng = Buffer.from(visible.split(',')[1], 'base64');
+  await testInfo.attach(`${sweptDiskFixture.label} selected centreline`, {
+    body: visiblePng, contentType: 'image/png',
   });
+  if (process.env.CENTRELINE_WITNESS_PNG) writeFileSync(process.env.CENTRELINE_WITNESS_PNG, visiblePng);
 
   await page.evaluate(() => (globalThis as unknown as { __ifc_lite_viewer_store__: BrowserStore })
     .__ifc_lite_viewer_store__.getState().setCentrelineOverlayEnabled(false));

@@ -124,8 +124,9 @@ For complete, unmodified source sweeps, `nominal_quantities` contains
 `inner_lateral_area` in m²/m³. They are calculated from the world-space radii
 and directrix length; they are estimates, not authored `IfcElementQuantity`
 values or net quantities. Self-overlap and mitred joins can change the physical
-body. The field is `None` for unsupported paths, CSG operands, zero-length
-directrices, and arcs whose radius does not exceed the disk radius.
+body. The field is `None` for unsupported paths, CSG operands, broken joins,
+degenerate segments, and arcs whose radius does not exceed the disk radius.
+Sharp but joined mitres remain nominal estimates.
 
 ```python
 data = ifclite_geom.geometry_data_buffers(ifc_bytes, include_directrices=True)

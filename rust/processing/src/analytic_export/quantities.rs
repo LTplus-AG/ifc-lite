@@ -4,8 +4,8 @@
 
 //! Nominal circular-section quantities from exact world-space directrices.
 
-use super::{DirectrixMetrics, SweptDiskOccurrence};
-use ifc_lite_geometry::analytic::{AnalyticCurveSegment, AnalyticExtrusion, AnalyticStatus, ProfileLoopKind};
+use super::{check_swept_disk, DirectrixMetrics, SweptDiskCheckOptions, SweptDiskFindingCode, SweptDiskOccurrence};
+use ifc_lite_geometry::analytic::{AnalyticExtrusion, AnalyticStatus, ProfileLoopKind};
 use serde::Serialize;
 
 /// Derived measurements in square and cubic metres for one uncut source solid.
@@ -45,13 +45,13 @@ impl SweptDiskNominalQuantities {
         if !length.is_finite() || length <= 0.0 {
             return None;
         }
-        // IFC's swept-disk geometry requires every directrix arc to have a
-        // radius greater than the disk radius. At or beyond the centre of
-        // curvature the circular sweep folds over itself, so section area ×
-        // centreline length is not a defensible nominal material volume.
-        if disk.directrix.iter().any(|segment| matches!(segment,
-            AnalyticCurveSegment::Arc { radius, .. } if *radius <= disk.radius
-        )) {
+        // Reuse the source-geometry check: gaps, degenerate segments and arcs
+        // tighter than the disk cannot represent one nominal swept solid.
+        // Sharp tangent changes remain valid mitred joins.
+        let checks = check_swept_disk(disk, &SweptDiskCheckOptions::default()).ok()?;
+        if checks.skipped_reason.is_some() || checks.findings.iter().any(|finding|
+            finding.code != SweptDiskFindingCode::TangentDiscontinuity
+        ) {
             return None;
         }
         // Difference of squares in factored form avoids cancellation for a

@@ -604,8 +604,9 @@ inner lateral areas. Areas are in m² and volume in m³. These are estimates of
 the uncut source sweep: self-overlap and mitred joins can change the physical
 body, so they are not IFC-authored `IfcElementQuantity` values or certified net
 quantities. The method returns `None` for an unsupported description, CSG
-operand, zero-length directrix, or arc whose radius does not exceed the disk
-radius. JSON and Python directrix exports include the same values under
+operand, broken directrix join, degenerate segment, or arc whose radius does
+not exceed the disk radius. A sharp but joined mitre remains a nominal estimate.
+JSON and Python directrix exports include the same values under
 `nominal_quantities`.
 
 `extrusion_nominal_quantities(&source_extrusion)` derives exact net profile

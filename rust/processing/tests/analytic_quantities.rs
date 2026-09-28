@@ -239,3 +239,31 @@ fn issue_5787_zero_length_directrix_has_no_nominal_volume() {
     assert_eq!(disk.directrix_metrics().unwrap().total_length, 0.0);
     assert!(disk.nominal_quantities().is_none());
 }
+
+#[test]
+fn issue_5787_disconnected_or_degenerate_composite_has_no_nominal_tube_volume() {
+    let source = include_str!("../../geometry/tests/fixtures/swept_disk_composite_arc_ubar.ifc");
+    let disk = |content: &str| {
+        let descriptions = extract_swept_disk_descriptions(content.as_bytes(), None);
+        assert!(descriptions.diagnostics.is_empty());
+        descriptions.elements[&125][0].clone()
+    };
+    assert!(disk(source).nominal_quantities().is_some());
+    let gap = source.replace(
+        "#56=IFCCARTESIANPOINT((101.5,0.,-423.5));",
+        "#56=IFCCARTESIANPOINT((102.5,0.,-423.5));",
+    );
+    let gapped = disk(&gap);
+    assert_eq!(gapped.status, AnalyticStatus::Complete);
+    assert!(gapped.directrix_metrics().is_some());
+    assert!(gapped.nominal_quantities().is_none());
+
+    let degenerate = source.replace(
+        "(IFCPARAMETERVALUE(322.)),.T.,.PARAMETER.",
+        "(IFCPARAMETERVALUE(0.0000001)),.T.,.PARAMETER.",
+    );
+    let collapsed = disk(&degenerate);
+    assert_eq!(collapsed.status, AnalyticStatus::Complete);
+    assert!(collapsed.directrix_metrics().unwrap().total_length > 0.0);
+    assert!(collapsed.nominal_quantities().is_none());
+}

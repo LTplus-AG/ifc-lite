@@ -256,12 +256,14 @@ fn issue_5758_snowdon_authored_bars_distinguish_smooth_and_mitered_paths() {
     let smooth_report = check_swept_disk(&smooth[0], &SweptDiskCheckOptions::default()).unwrap();
     assert_eq!(smooth_report.skipped_reason, None);
     assert!(smooth_report.findings.is_empty(), "smooth bar: {smooth_report:?}");
+    assert!(smooth[0].nominal_quantities().is_some(), "#5787: valid Revit bar keeps nominal quantities");
 
     let mitered = &descriptions.elements[&132562];
     assert_eq!(mitered.len(), 1, "mitered bar should have one authored sweep");
     let miter_report = check_swept_disk(&mitered[0], &SweptDiskCheckOptions::default()).unwrap();
     assert_eq!(miter_report.skipped_reason, None);
     assert_eq!(miter_report.findings.len(), 1, "mitered bar: {miter_report:?}");
+    assert!(mitered[0].nominal_quantities().is_some(), "#5787: a joined mitre remains nominally measurable");
     let finding = &miter_report.findings[0];
     assert_eq!(finding.code, SweptDiskFindingCode::TangentDiscontinuity);
     assert_eq!((finding.segment_index, finding.next_segment_index, finding.units),

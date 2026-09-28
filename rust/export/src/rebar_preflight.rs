@@ -152,13 +152,6 @@ pub(super) fn assess_sweep(
             ) },
             AnalyticCurveSegment::Arc { radius, .. } => {
                 has_arc = true;
-                if *radius <= disk.radius {
-                    report.unassessed_reasons.push(format!(
-                        "inside bend radius: segment {} centreline radius does not exceed swept outer radius",
-                        metric.segment_index,
-                    ));
-                    continue;
-                }
                 let inside_radius = radius - disk.radius;
                 (
                     "inside_bend_radius",

@@ -24,6 +24,13 @@
  * (the mask fragments clip exactly like `fs_main`). It returns the packed
  * floats, not a GPU buffer: `SelectionMaskPass` writes them into the one
  * hover uniform buffer it owns, so hovering allocates nothing per frame.
+ *
+ * GPU-instanced occurrences (#5745) are not copied at all: the mask draws the
+ * templates themselves with `vs_instanced`, and the fragment keeps the
+ * selected occurrences (their instance flag) or the hovered id's. This packs
+ * the one uniform those draws read, the same frame fields as a hover copy
+ * with an identity transform (`vs_instanced` ignores the model matrix and the
+ * drawable origin; the anchor comes per occurrence).
  */
 
 import { packClipBox } from './clip-box.js';
@@ -31,6 +38,8 @@ import { MESH_FLAG_RTE_DRAWABLE, MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_OFFSET, pa
 import type { RelativeToEyeFrame } from './relative-to-eye.js';
 import type { IndividualMeshGpu } from './individual-mesh-upload.js';
 import type { HoveredMesh, SelectableMesh } from './selection-mask-pass.js';
+import type { InstancedMaskFrame, InstancedMaskTemplate } from './selection-mask-pipelines.js';
+import type { InstancedTemplateGPU } from './scene-instance-types.js';
 import type { ClipBox, Mesh } from './types.js';
 
 export interface SelectionOutlineSource {
@@ -47,6 +56,10 @@ export interface SelectionOutlineSource {
   section: Parameters<typeof packRteFragmentSpace>[1];
   sectionFlipped: boolean | undefined;
   clipBox: ClipBox | null | undefined;
+  /** This frame's live instanced templates; those with a selected occurrence are outlined (#5745). */
+  instancedTemplates?: readonly InstancedTemplateGPU[];
+  /** Instanced templates holding an occurrence of `hoveredId` (#5745). */
+  instancedHovered?: readonly InstancedMaskTemplate[];
 }
 
 /**
@@ -88,6 +101,22 @@ export interface SelectionOutlineFrameResult {
   selected: SelectableMesh[];
   /** Every piece of the hovered entity (empty when nothing is hovered). */
   hovered: HoveredMesh[];
+  /** Instanced occurrences to outline, or null when none are selected or hovered. */
+  instanced: InstancedMaskFrame | null;
+}
+
+const IDENTITY_TRANSFORM: Mesh['transform'] = { m: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) };
+
+function buildInstancedMaskFrame(source: SelectionOutlineSource): InstancedMaskFrame | null {
+  const selected = (source.instancedTemplates ?? []).filter((t) => t.selectedCount > 0);
+  const hovered = source.hoveredId != null ? source.instancedHovered ?? [] : [];
+  if (selected.length === 0 && hovered.length === 0) return null;
+  return {
+    uniforms: packHoverUniforms(source, { transform: IDENTITY_TRANSFORM, rteOrigin: [0, 0, 0] }),
+    selected,
+    hovered,
+    hoveredId: source.hoveredId ?? 0,
+  };
 }
 
 export function buildSelectionOutlineFrame(source: SelectionOutlineSource): SelectionOutlineFrameResult {
@@ -113,5 +142,5 @@ export function buildSelectionOutlineFrame(source: SelectionOutlineSource): Sele
     }
   }
 
-  return { selected, hovered };
+  return { selected, hovered, instanced: buildInstancedMaskFrame(source) };
 }

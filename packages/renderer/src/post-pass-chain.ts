@@ -26,6 +26,7 @@ import type { WebGPUDevice } from './device.js';
 import { EdgePass } from './edge-pass.js';
 import { EdlPass, type EdlPassOptions } from './edl-pass.js';
 import { SelectionMaskPass, type HoveredMesh, type SelectableMesh } from './selection-mask-pass.js';
+import type { InstancedMaskFrame } from './selection-mask-pipelines.js';
 import type { Mat4 } from './types.js';
 import { livePostEffects, type ResolvedVisualEnhancement } from './visual-enhancement.js';
 
@@ -33,6 +34,8 @@ import { livePostEffects, type ResolvedVisualEnhancement } from './visual-enhanc
 export interface SelectionOutlineFrame {
   selected: readonly SelectableMesh[];
   hovered: readonly HoveredMesh[];
+  /** GPU-instanced occurrences to outline (#5745), or null when none are selected or hovered. */
+  instanced: InstancedMaskFrame | null;
 }
 
 export interface PostPassFrame {
@@ -131,6 +134,7 @@ export class PostPassChain {
         depthView: frame.depthView,
         selected: frame.selectionOutline.selected,
         hovered: frame.selectionOutline.hovered,
+        instanced: frame.selectionOutline.instanced,
       });
       if (mask) {
         this.edges?.encodeOutline({

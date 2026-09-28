@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
+import { MESH_FLAG_RTE_DRAWABLE, MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
 import { RelativeToEyeFrame } from './relative-to-eye.js';
 import { buildSelectionOutlineFrame, matchesHoveredMesh, packHoverUniforms, type SelectionOutlineSource } from './selection-outline-frame.js';
 import type { Mesh } from './types.js';
@@ -105,3 +105,52 @@ describe('buildSelectionOutlineFrame hovers every piece (#5390)', () => {
   });
 });
 
+
+/**
+ * #5745: instanced occurrences are outlined by drawing their templates, not
+ * copies. Only templates holding a selected occurrence are drawn for the
+ * selection, and the uniform they read carries the frame's section / clip
+ * state in the camera-relative frame the main instanced draw uses.
+ */
+describe('buildSelectionOutlineFrame outlines instanced occurrences (#5745)', () => {
+  const base = (over: Partial<SelectionOutlineSource>): SelectionOutlineSource => ({
+    uniformBufferSize: 512, viewProj: new Float32Array(16), relativeToEyeFrame: new RelativeToEyeFrame(),
+    selectedMeshes: [], hoverPieces: [], hoveredId: null, selectedModelIndex: undefined,
+    section: undefined, sectionFlipped: undefined, clipBox: undefined, ...over,
+  });
+  const tpl = (selectedCount: number) => ({
+    modelIndex: 0, vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 6, instanceBuffer: {} as GPUBuffer, instanceCount: 3,
+    canonicalAnchors: new Float64Array(9), bounds: null, maxOccRadius: 1, selectedCount,
+  });
+  type Built = ReturnType<typeof buildSelectionOutlineFrame> & { instanced?: { uniforms: Float32Array; selected: unknown[]; hovered: unknown[]; hoveredId: number } | null };
+  const build = (over: Partial<SelectionOutlineSource>) => buildSelectionOutlineFrame(base(over)) as Built;
+
+  it('draws only the templates with a selected occurrence', () => {
+    const withSelection = tpl(1);
+    const { instanced } = build({ instancedTemplates: [tpl(0), withSelection, tpl(0)] });
+    assert.ok(instanced, 'a selected instanced occurrence must reach the mask');
+    assert.deepEqual(instanced.selected, [withSelection]);
+    assert.deepEqual(instanced.hovered, []);
+  });
+
+  it('hands the hovered id and its templates to the mask, and nothing when nothing is hovered', () => {
+    const hoveredTpl = tpl(0);
+    const { instanced } = build({ instancedTemplates: [hoveredTpl], instancedHovered: [hoveredTpl], hoveredId: 77 });
+    assert.ok(instanced);
+    assert.equal(instanced.hoveredId, 77);
+    assert.deepEqual(instanced.hovered, [hoveredTpl]);
+    assert.equal(build({ instancedTemplates: [hoveredTpl], instancedHovered: [hoveredTpl], hoveredId: null }).instanced ?? null, null);
+  });
+
+  it('packs the RTE flag and the section / clip bits the fragment cut reads', () => {
+    const { instanced } = build({
+      instancedTemplates: [tpl(2)],
+      section: { enabled: true, normal: [0, 1, 0], distance: 3 }, sectionFlipped: true,
+      clipBox: { enabled: true, min: [0, 0, 0], max: [1, 1, 1] },
+    });
+    assert.ok(instanced);
+    const flags = new Uint32Array(instanced.uniforms.buffer, MESH_FLAGS_BYTE_OFFSET, 2);
+    assert.equal(flags[0]! & MESH_FLAG_RTE_DRAWABLE, MESH_FLAG_RTE_DRAWABLE, 'vs_instanced positions are camera-relative, so the cut must be too');
+    assert.equal(flags[1], 0b111);
+  });
+});

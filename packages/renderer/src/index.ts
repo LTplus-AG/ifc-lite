@@ -3068,6 +3068,8 @@ export class Renderer {
                 uniformBufferSize: this.pipeline.getUniformBufferSize(), viewProj, relativeToEyeFrame,
                 section: sectionPlaneData, sectionFlipped: options.sectionPlane?.flipped, clipBox: options.clipBox,
                 selectedMeshes: selectedMeshesForMask, hoverPieces, hoveredId: hoverId, selectedModelIndex: hoverModel,
+                instancedTemplates: this.scene.getInstancedTemplates(),
+                instancedHovered: hoverId != null ? this.scene.getInstancedTemplatesOf(hoverId, hoverModel) : [],
             });
 
             // Created lazily like the sky/shadow passes; each pass inside is too.

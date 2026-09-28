@@ -3134,6 +3134,12 @@ export class Scene {
   private unionInstancedWorldAabb(eid: number, dv: DataView, matOffset: number, lmnx: number, lmny: number, lmnz: number, lmxx: number, lmxy: number, lmxz: number): { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number } {
     return unionInstanceBounds(this.boundingBoxes, eid, dv, matOffset, lmnx, lmny, lmnz, lmxx, lmxy, lmxz);
   }
+  /** Drawn templates holding an occurrence of `expressId` (in `modelIndex` if given), for the hover outline (#5745). */
+  getInstancedTemplatesOf(expressId: number, modelIndex?: number): InstancedTemplateGPU[] {
+    if (!this.instancedVisible) return [];
+    const slots = new Set((this.instancedEntityMap.get(expressId) ?? []).map((o) => o.templateIndex));
+    return [...slots].flatMap((s) => { const t = this.instancedTemplates[s]; return t && (modelIndex === undefined || t.modelIndex === modelIndex) ? [t] : []; });
+  }
   /** True when `expressId` has a GPU-instanced occurrence. */
   isInstancedEntity(expressId: number): boolean {
     return this.instancedEntityMap.has(expressId);

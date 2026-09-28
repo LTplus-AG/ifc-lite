@@ -38,6 +38,15 @@
  *    tolerance. A fixed 1e-7 epsilon failed on every pixel of a real
  *    WebGPU frame, leaving the visible mask empty.
  *  - `fs_mask_selected_all`: always passes (drawn "through occluders").
+ *
+ * Instanced variant (#5745, `instanced = true`): the vertex stage is
+ * `vs_instanced` instead, so one draw covers every occurrence of a template.
+ * The same entry points then also keep only the occurrences they are for:
+ * selected ones (instance flag bit 0) for the selected outputs, and the one
+ * whose entity id is the hovered id (a small uniform at
+ * `SELECTION_MASK_HOVER_GROUP`) for the hover output. Hidden occurrences
+ * (flag bit 1) are dropped, as `fs_main` drops them. The section/clip cut and
+ * the depth test are the same code as the non-instanced variant.
  */
 import { depthTextureWgsl } from './depth-reconstruct.wgsl.js';
 import { meshUniformsWgsl } from './mesh-uniforms.wgsl.js';
@@ -49,20 +58,54 @@ import { meshUniformsWgsl } from './mesh-uniforms.wgsl.js';
  */
 export const SELECTION_MASK_DEPTH_GROUP = 1;
 
+/**
+ * Bind-group index of the hovered-entity uniform (`vec4<u32>`, x = id) in the
+ * INSTANCED mask pipeline layout only (#5745). The non-instanced variant
+ * selects its meshes on the CPU and declares no such binding.
+ */
+export const SELECTION_MASK_HOVER_GROUP = 2;
+
 /** Relative depth slack for "the same surface" (reverse-Z: ~0.2 % of the distance). */
 export const MASK_DEPTH_REL_TOLERANCE = 2e-3;
 
-export function selectionMaskFragmentSource(multisampled: boolean): string {
+/**
+ * Which occurrences each output keeps. The non-instanced pass is handed only
+ * the meshes it should draw, so every fragment qualifies; the instanced pass
+ * draws whole templates and filters per occurrence off the flat varyings
+ * `vs_instanced` emits (`VertexOutput.entityId` / `.instSelected`).
+ */
+function occurrenceFilterWgsl(instanced: boolean): string {
+  if (!instanced) {
+    return `
+        fn isSelectedOccurrence(input: MaskInput) -> bool { return true; }
+        fn isHoveredOccurrence(input: MaskInput) -> bool { return true; }`;
+  }
+  return `
+        @group(${SELECTION_MASK_HOVER_GROUP}) @binding(0) var<uniform> maskHover: vec4<u32>;
+        // bit 0 = selected, bit 1 = hidden (instanced-vertex-layout.ts).
+        fn isSelectedOccurrence(input: MaskInput) -> bool { return (input.instSelected & 3u) == 1u; }
+        fn isHoveredOccurrence(input: MaskInput) -> bool {
+          return (input.instSelected & 2u) == 0u && input.entityId == maskHover.x;
+        }`;
+}
+
+export function selectionMaskFragmentSource(multisampled: boolean, instanced = false): string {
+  const instanceVaryings = instanced
+    ? `
+          @location(2) @interpolate(flat) entityId: u32,
+          @location(5) @interpolate(flat) instSelected: u32,`
+    : '';
   return `
         ${meshUniformsWgsl}
         ${depthTextureWgsl(0, multisampled, SELECTION_MASK_DEPTH_GROUP)}
 
-        // The subset of vs_main's VertexOutput the mask reads (locations match).
+        // The subset of the vertex stage's VertexOutput the mask reads (locations match).
         struct MaskInput {
           @builtin(position) fragPos: vec4<f32>,
           @location(0) worldPos: vec3<f32>,
-          @location(6) eyePos: vec3<f32>,
+          @location(6) eyePos: vec3<f32>,${instanceVaryings}
         }
+        ${occurrenceFilterWgsl(instanced)}
 
         fn isCut(input: MaskInput) -> bool {
           return sectionClipped(clipSpacePos(input.worldPos, input.eyePos));
@@ -80,20 +123,20 @@ export function selectionMaskFragmentSource(multisampled: boolean): string {
         @fragment
         fn fs_mask_selected_visible(input: MaskInput) -> @location(0) vec4<f32> {
           let depthSlope = fwidth(input.fragPos.z);
-          if (isCut(input) || !isVisible(input.fragPos, depthSlope)) { discard; }
+          if (!isSelectedOccurrence(input) || isCut(input) || !isVisible(input.fragPos, depthSlope)) { discard; }
           return vec4<f32>(1.0, 0.0, 0.0, 0.0);
         }
 
         @fragment
         fn fs_mask_hover_visible(input: MaskInput) -> @location(0) vec4<f32> {
           let depthSlope = fwidth(input.fragPos.z);
-          if (isCut(input) || !isVisible(input.fragPos, depthSlope)) { discard; }
+          if (!isHoveredOccurrence(input) || isCut(input) || !isVisible(input.fragPos, depthSlope)) { discard; }
           return vec4<f32>(0.0, 1.0, 0.0, 0.0);
         }
 
         @fragment
         fn fs_mask_selected_all(input: MaskInput) -> @location(0) vec4<f32> {
-          if (isCut(input)) { discard; }
+          if (!isSelectedOccurrence(input) || isCut(input)) { discard; }
           return vec4<f32>(1.0, 0.0, 0.0, 0.0);
         }
 `;

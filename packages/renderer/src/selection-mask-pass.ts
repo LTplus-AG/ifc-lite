@@ -4,7 +4,7 @@
 
 /**
  * Selection/hover mask pass (#5390): draws the selected and hovered
- * (non-instanced) meshes into two small single-sample targets the edge
+ * meshes into two small single-sample targets the edge
  * pass then outlines (`edge-pass.ts`'s `fs_outline`, DRY with the geometry
  * edge detection, #5385):
  *
@@ -19,22 +19,26 @@
  * lands exactly where the highlighted mesh does) with a trivial constant
  * fragment stage — see that module's header for why the two mix safely.
  *
- * Known limitation: only the non-instanced mesh path is covered. An
- * instanced occurrence's "selected" flag lives in its per-instance vertex
- * data, read by `main.wgsl.ts`'s `vs_instanced`/`fs_main`, which this pass
- * cannot reuse without either editing that file (out of scope, see the
- * PR) or re-deriving its RTE anchor math independently (accuracy risk for
- * a rarely-hit case). Filed as a follow-up.
+ * GPU-instanced occurrences (#5745) are drawn by `selection-mask-pipelines.ts`'s
+ * instanced variant into the same targets, inside the same render passes,
+ * so the outline composite cannot tell which path wrote a pixel.
  */
 
 import type { WebGPUDevice } from './device.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { SELECTION_MASK_DEPTH_GROUP, selectionMaskFragmentSource } from './shaders/selection-mask.wgsl.js';
+import {
+  createMaskPipelines,
+  InstancedSelectionMask,
+  isInstancedMaskEmpty,
+  MASK_ALL_FORMAT,
+  MASK_VISIBLE_FORMAT,
+  type InstancedMaskFrame,
+  type MaskKind,
+  type MaskPipelines,
+} from './selection-mask-pipelines.js';
 
-const MASK_VISIBLE_FORMAT: GPUTextureFormat = 'rg8unorm';
-const MASK_ALL_FORMAT: GPUTextureFormat = 'r8unorm';
-
-/** Shared by every mask pipeline: the regular (non-instanced) mesh vertex layout. */
+/** The regular (non-instanced) mesh vertex layout `vs_main` reads. */
 const MESH_VERTEX_BUFFERS: GPUVertexBufferLayout[] = [{
   arrayStride: 28,
   attributes: [
@@ -43,12 +47,6 @@ const MESH_VERTEX_BUFFERS: GPUVertexBufferLayout[] = [{
     { shaderLocation: 2, offset: 24, format: 'uint32' },
   ],
 }];
-
-/** Additive blend: two draws to the same target OR their channels together (binary flags, unorm-clamped). */
-const ADDITIVE_BLEND: GPUBlendState = {
-  color: { srcFactor: 'one', dstFactor: 'one' },
-  alpha: { srcFactor: 'one', dstFactor: 'one' },
-};
 
 export interface SelectableMesh {
   vertexBuffer: GPUBuffer;
@@ -77,6 +75,8 @@ export interface SelectionMaskFrame {
   selected: readonly SelectableMesh[];
   /** Drawn into `maskVisible.g` only (hover never shows through occluders). */
   hovered: readonly HoveredMesh[];
+  /** GPU-instanced occurrences to outline (#5745); absent or null when none are selected or hovered. */
+  instanced?: InstancedMaskFrame | null;
 }
 
 export interface SelectionMaskViews {
@@ -99,9 +99,10 @@ export class SelectionMaskPass {
   private readonly device: GPUDevice;
   private readonly meshBindGroupLayout: GPUBindGroupLayout;
   private readonly depthLayout: GPUBindGroupLayout;
-  private readonly selectedVisiblePipeline: GPURenderPipeline;
-  private readonly hoverVisiblePipeline: GPURenderPipeline;
-  private readonly selectedAllPipeline: GPURenderPipeline;
+  private readonly multisampled: boolean;
+  private readonly pipelines: MaskPipelines;
+  /** Built on the first frame with an instanced selection or hover. */
+  private instanced: InstancedSelectionMask | null = null;
   private targets: MaskTargets | null = null;
   private cachedDepthView: GPUTextureView | null = null;
   private cachedDepthBindGroup: GPUBindGroup | null = null;
@@ -125,44 +126,40 @@ export class SelectionMaskPass {
       bindGroupLayouts: [this.meshBindGroupLayout, this.depthLayout],
     });
 
+    this.multisampled = sampleCount > 1;
     const vertexModule = this.device.createShaderModule({ label: 'selection-mask-vs', code: mainShaderSource });
     const fragmentModule = this.device.createShaderModule({
       label: 'selection-mask-fs',
-      code: selectionMaskFragmentSource(sampleCount > 1),
+      code: selectionMaskFragmentSource(this.multisampled),
     });
     const vertex: GPUVertexState = { module: vertexModule, entryPoint: 'vs_main', buffers: MESH_VERTEX_BUFFERS };
-    const make = (label: string, entryPoint: string, format: GPUTextureFormat) => this.device.createRenderPipeline({
-      label,
-      layout,
-      vertex,
-      fragment: { module: fragmentModule, entryPoint, targets: [{ format, blend: ADDITIVE_BLEND }] },
-      primitive: { topology: 'triangle-list', cullMode: 'none' },
-    });
-    this.selectedVisiblePipeline = make('selection-mask-selected-visible', 'fs_mask_selected_visible', MASK_VISIBLE_FORMAT);
-    this.hoverVisiblePipeline = make('selection-mask-hover-visible', 'fs_mask_hover_visible', MASK_VISIBLE_FORMAT);
-    this.selectedAllPipeline = make('selection-mask-selected-all', 'fs_mask_selected_all', MASK_ALL_FORMAT);
+    this.pipelines = createMaskPipelines(this.device, 'selection-mask', layout, vertex, fragmentModule);
   }
 
   /** Nothing to draw this frame: caller skips the pass and the outline composite entirely. */
-  static isEmpty(frame: Pick<SelectionMaskFrame, 'selected' | 'hovered'>): boolean {
-    return frame.selected.length === 0 && frame.hovered.length === 0;
+  static isEmpty(frame: Pick<SelectionMaskFrame, 'selected' | 'hovered' | 'instanced'>): boolean {
+    return frame.selected.length === 0 && frame.hovered.length === 0 && isInstancedMaskEmpty(frame.instanced);
   }
 
   encode(frame: SelectionMaskFrame): SelectionMaskViews {
     const targets = this.ensureTargets(frame.width, frame.height);
     const depthGroup = this.ensureDepthBindGroup(frame.depthView);
 
+    const instancedFrame = frame.instanced && !isInstancedMaskEmpty(frame.instanced) ? frame.instanced : null;
+    const instanced = instancedFrame ? this.ensureInstanced() : null;
+    if (instanced && instancedFrame) instanced.prepare(instancedFrame);
+
     // The selected-visible and hover passes share `visibleView` (channels r
     // and g): only the FIRST pass into a target may clear it, or the hover
     // pass wipes the selection's visible mask (#5390, seen in a real frame).
     const cleared = new Set<GPUTextureView>();
-    const draw = (view: GPUTextureView, pipeline: GPURenderPipeline, meshes: readonly SelectableMesh[]) => {
+    const draw = (view: GPUTextureView, kind: MaskKind, meshes: readonly SelectableMesh[]) => {
       const loadOp: GPULoadOp = cleared.has(view) ? 'load' : 'clear';
       cleared.add(view);
       const pass = frame.encoder.beginRenderPass({
         colorAttachments: [{ view, loadOp, storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
       });
-      pass.setPipeline(pipeline);
+      pass.setPipeline(this.pipelines[kind]);
       pass.setBindGroup(SELECTION_MASK_DEPTH_GROUP, depthGroup);
       for (const mesh of meshes) {
         pass.setBindGroup(0, mesh.bindGroup);
@@ -170,18 +167,26 @@ export class SelectionMaskPass {
         pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
         pass.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
       }
+      if (instanced && instancedFrame) {
+        instanced.draw(pass, kind, depthGroup, kind === 'hoverVisible' ? instancedFrame.hovered : instancedFrame.selected);
+      }
       pass.end();
     };
 
-    draw(targets.visibleView, this.selectedVisiblePipeline, frame.selected);
-    if (frame.hovered.length > 0) {
-      draw(targets.visibleView, this.hoverVisiblePipeline, frame.hovered.map((h, i) => ({
+    draw(targets.visibleView, 'selectedVisible', frame.selected);
+    if (frame.hovered.length > 0 || (instancedFrame?.hovered.length ?? 0) > 0) {
+      draw(targets.visibleView, 'hoverVisible', frame.hovered.map((h, i) => ({
         vertexBuffer: h.vertexBuffer, indexBuffer: h.indexBuffer, indexCount: h.indexCount, bindGroup: this.hoverGroup(h, i),
       })));
     }
-    draw(targets.allView, this.selectedAllPipeline, frame.selected);
+    draw(targets.allView, 'selectedAll', frame.selected);
 
     return targets.views;
+  }
+
+  private ensureInstanced(): InstancedSelectionMask {
+    this.instanced ??= new InstancedSelectionMask(this.device, this.meshBindGroupLayout, this.depthLayout, this.multisampled);
+    return this.instanced;
   }
 
   private hoverGroup(hovered: HoveredMesh, slot: number): GPUBindGroup {
@@ -249,5 +254,7 @@ export class SelectionMaskPass {
     this.cachedDepthView = null;
     for (const entry of this.hoverUniforms) entry.buffer.destroy();
     this.hoverUniforms = [];
+    this.instanced?.destroy();
+    this.instanced = null;
   }
 }

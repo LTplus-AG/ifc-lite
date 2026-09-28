@@ -8,6 +8,7 @@
 
 import { WebGPUDevice } from './device.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
+import { INSTANCED_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
 import { texturedShaderSource } from './shaders/textured.wgsl.js';
 import { packClipBox } from './clip-box.js';
 import { MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_BYTES, MESH_UNIFORM_FLOATS } from './mesh-rte-uniforms.js';
@@ -265,40 +266,13 @@ export class RenderPipeline {
 
         // GPU-instancing pipeline: same fragment/targets/depth/MSAA as the opaque
         // pipeline, but vs_instanced + a SECOND vertex buffer (slot 1, stepMode
-        // 'instance') carrying the per-occurrence mat4 (4 column vec4s) + entityId
-        // + rgba. Slot 0 stays the template's 28-byte vertex (pos+norm+entityId);
-        // the per-vertex entityId there is unused (vs_instanced reads the
-        // per-instance id) but kept so slot 0 matches the flat layout exactly.
-        // Shared vertex stage for both instanced pipelines (opaque + transparent):
-        // template vertex (slot 0) + per-occurrence buffer (slot 1).
+        // 'instance') carrying the per-occurrence record. The layout is shared
+        // with the selection mask (instanced-vertex-layout.ts, #5745).
+        // Shared vertex stage for both instanced pipelines (opaque + transparent).
         const instancedVertex: GPUVertexState = {
             module: shaderModule,
             entryPoint: 'vs_instanced',
-            buffers: [
-                {
-                    arrayStride: 28,
-                    attributes: [
-                        { shaderLocation: 0, offset: 0, format: 'float32x3' }, // position
-                        { shaderLocation: 1, offset: 12, format: 'float32x3' }, // normal
-                        { shaderLocation: 2, offset: 24, format: 'uint32' }, // entityId (unused here)
-                    ],
-                },
-                {
-                    arrayStride: 120, // V2: V1 record (88) + anchor high/low vec4s
-                    stepMode: 'instance',
-                    attributes: [
-                        { shaderLocation: 3, offset: 0, format: 'float32x4' }, // instMat col0
-                        { shaderLocation: 4, offset: 16, format: 'float32x4' }, // col1
-                        { shaderLocation: 5, offset: 32, format: 'float32x4' }, // col2
-                        { shaderLocation: 6, offset: 48, format: 'float32x4' }, // col3
-                        { shaderLocation: 7, offset: 64, format: 'uint32' }, // entityId
-                        { shaderLocation: 8, offset: 68, format: 'float32x4' }, // rgba
-                        { shaderLocation: 9, offset: 84, format: 'uint32' }, // flags (bit 0 = selected, bit 1 = hidden)
-                        { shaderLocation: 10, offset: 88, format: 'float32x4' }, // anchor high
-                        { shaderLocation: 11, offset: 104, format: 'float32x4' }, // anchor low
-                    ],
-                },
-            ],
+            buffers: INSTANCED_VERTEX_BUFFERS,
         };
 
         this.instancedPipeline = this.device.createRenderPipeline({

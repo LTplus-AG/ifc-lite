@@ -417,6 +417,7 @@ export function SearchInline() {
             onFocus={() => setSearchOpen(true)}
             onKeyDown={handleInputKeyDown}
             className={cn(hasFilters ? 'pr-[4.5rem]' : 'pr-9')}
+            role="combobox"
             aria-label={t('searchModal.inline.searchAriaLabel')}
             aria-autocomplete="list"
             aria-expanded={showPopover}

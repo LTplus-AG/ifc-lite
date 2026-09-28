@@ -24,7 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useViewerStore } from '@/store';
 import { useWallPlaceBridge } from './add-element-wall-command';
 import { canMutate, mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
-import { useIfc } from '@/hooks/useIfc';
+import { useModelRoster } from '@/hooks/useModelRoster';
 import { EntityNode } from '@ifc-lite/query';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
@@ -45,8 +45,8 @@ interface AddElementPanelProps {
 
 export function AddElementPanel({ onClose }: AddElementPanelProps) {
   const { t, locale, revision } = useTranslation();
-  const { models, ifcDataStore } = useIfc();
-
+  const models = useModelRoster();
+  const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
   const addElementType = useViewerStore((s) => s.addElementType);
   const setAddElementType = useViewerStore((s) => s.setAddElementType);
   useWallPlaceBridge();

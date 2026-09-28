@@ -34,6 +34,8 @@ export interface SemanticSourceDeps {
   loadAxes(storeyId: number): readonly WallAxis[];
   /** Index cell size, metres (default 1). */
   cellSize?: number;
+  /** Also offer walls whose line (not body) passes near the cursor, for extension tracking. */
+  extensions?: boolean;
 }
 
 export interface SemanticSource extends SnapSource {
@@ -106,6 +108,21 @@ export function createSemanticSource(deps: SemanticSourceDeps, id = 'semantic'):
         if (seen.has(i)) return;
         seen.add(i);
         const w = axes[i];
+        out.push({
+          kind: 'edge', local: closestOnSegment(q.cursor, w.a, w.b), source: 'semantic', entity: entity(i),
+          guide: { kind: 'segment', a: w.a, b: w.b, role: 'edge' },
+        });
+      });
+      if (!deps.extensions) return;
+      // Walls whose LINE passes near the cursor, far as their body may be: they
+      // feed extension / intersection inference (an edge candidate out of range
+      // never wins by itself). One cheap pass over the storey's walls.
+      const [cx, cy] = q.cursor;
+      axes.forEach((w, i) => {
+        if (seen.has(i)) return;
+        const dx = w.b[0] - w.a[0], dy = w.b[1] - w.a[1];
+        const len = Math.hypot(dx, dy);
+        if (len === 0 || Math.abs((cx - w.a[0]) * dy - (cy - w.a[1]) * dx) / len > radius) return;
         out.push({
           kind: 'edge', local: closestOnSegment(q.cursor, w.a, w.b), source: 'semantic', entity: entity(i),
           guide: { kind: 'segment', a: w.a, b: w.b, role: 'edge' },

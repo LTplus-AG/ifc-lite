@@ -17,25 +17,67 @@ import { useWorldAnchor } from '../useWorldAnchor';
 import { OVERLAY_GLOW_FILTER } from '../OverlayDefs';
 import type { Vec3 } from '../types';
 
-export type SnapGlyphKind = 'endpoint' | 'midpoint' | 'center' | 'perpendicular' | 'intersection';
+export type SnapGlyphKind =
+  | 'endpoint'
+  | 'midpoint'
+  | 'center'
+  | 'perpendicular'
+  | 'intersection'
+  | 'edge'
+  | 'extension'
+  | 'parallel'
+  | 'grid';
 
 const SIZE = 9;
+const H = SIZE / 2;
+
+/**
+ * A line-drawn glyph (X, ⟂, …): a halo stroke under an accent stroke, so it
+ * reads on any background the way the filled glyphs' halo outline does.
+ */
+function stroked(d: string) {
+  return (
+    <>
+      <path d={d} className="fill-none stroke-overlay-halo" strokeWidth={4} strokeLinecap="round" />
+      <path d={d} className="fill-none stroke-overlay-accent" strokeWidth={2} strokeLinecap="round" />
+    </>
+  );
+}
 
 function shapeFor(kind: SnapGlyphKind) {
   switch (kind) {
     case 'endpoint':
       // Square.
-      return <rect x={-SIZE / 2} y={-SIZE / 2} width={SIZE} height={SIZE} />;
+      return <rect x={-H} y={-H} width={SIZE} height={SIZE} />;
     case 'midpoint':
       // Triangle.
       return <polygon points={`0,${-SIZE / 1.6} ${SIZE / 1.6},${SIZE / 2.2} ${-SIZE / 1.6},${SIZE / 2.2}`} />;
     case 'center':
-      return <circle r={SIZE / 2} />;
+      return <circle r={H} />;
     case 'perpendicular':
-      return <rect x={-SIZE / 2} y={-SIZE / 2} width={SIZE} height={SIZE} transform="rotate(45)" />;
+      // ⟂: an upright on a base line.
+      return stroked(`M${-H} ${H} H${H} M0 ${H} V${-H}`);
     case 'intersection':
+      // X.
+      return stroked(`M${-H} ${-H} L${H} ${H} M${H} ${-H} L${-H} ${H}`);
+    case 'edge':
+      // Hourglass: "on this edge", the classic nearest-point marker.
+      return <polygon points={`${-H},${-H} ${H},${-H} ${-H},${H} ${H},${H}`} />;
+    case 'extension':
+      // A small ring on the dashed extension guide.
+      return (
+        <>
+          <circle r={H * 0.75} className="fill-none stroke-overlay-halo" strokeWidth={4} />
+          <circle r={H * 0.75} className="fill-none stroke-overlay-accent" strokeWidth={2} />
+        </>
+      );
+    case 'parallel':
+      // //: two slanted strokes.
+      return stroked(`M${-H} ${H} L${-H * 0.1} ${-H} M${H * 0.1} ${H} L${H} ${-H}`);
+    case 'grid':
     default:
-      return <circle r={SIZE / 2.6} />;
+      // A dot, deliberately the smallest mark: the grid is the weakest snap.
+      return <circle r={2.5} />;
   }
 }
 
@@ -53,13 +95,20 @@ export function SnapGlyph({ worldPoint, kind, className }: SnapGlyphProps) {
 
   return createPortal(
     <g ref={ref} style={{ display: 'none' }} data-scene-primitive="snap-glyph" data-snap-kind={kind}>
-      <g
-        className={cn('fill-overlay-accent stroke-overlay-halo stroke-1', className)}
-        filter={OVERLAY_GLOW_FILTER}
-      >
-        {shapeFor(kind)}
-      </g>
+      <SnapGlyphShape kind={kind} className={className} />
     </g>,
     svgLayer,
+  );
+}
+
+/**
+ * The glyph's drawing alone, centred on the origin, for a caller that owns
+ * its own SVG and projection (and so its stacking over other overlays).
+ */
+export function SnapGlyphShape({ kind, className }: { kind: SnapGlyphKind; className?: string }) {
+  return (
+    <g className={cn('fill-overlay-accent stroke-overlay-halo stroke-1', className)} filter={OVERLAY_GLOW_FILTER}>
+      {shapeFor(kind)}
+    </g>
   );
 }

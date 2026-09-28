@@ -7,18 +7,22 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use ifc_lite_core::{build_entity_index, has_geometry_by_name, DecodedEntity, EntityDecoder,
     EntityScanner, IfcType, MAX_MAPPED_ITEM_DEPTH};
-use ifc_lite_geometry::{analytic::{extract_swept_disk, AnalyticStatus, AnalyticSweptDisk},
-    meshed_representations, GeometryRouter};
+use ifc_lite_geometry::{analytic::{extract_analytic_extrusion, extract_swept_disk,
+    AnalyticExtrusion, AnalyticStatus, AnalyticSweptDisk},
+    GeometryRouter};
 use nalgebra::Matrix4;
 
 use super::definitions::{source_matrix, SweptDiskDefinition, SweptDiskDefinitions, SweptDiskInstance,
     SweptDiskSourceContext, SweptDiskSourceKey};
+use super::extrusion_definitions::{profile_segment_count, ExtrusionDefinition, ExtrusionDefinitions};
 use super::{SweptDiskDescriptions, SweptDiskOccurrence,
     MAX_ITEM_DEPTH, MAX_VISITED_ITEMS};
 use super::mapped::resolve_mapped_item;
 use super::operands::{is_boolean_operand, is_csg_select};
-use super::placement::validate_placement_chain;
 use super::transform::materialize_disk;
+
+mod seed;
+use seed::seed_product;
 
 struct WalkItem {
     item: DecodedEntity,
@@ -33,6 +37,7 @@ struct WalkItem {
 pub(super) struct ExtractResult {
     pub descriptions: SweptDiskDescriptions,
     pub definitions: Option<SweptDiskDefinitions>,
+    pub extrusions: Option<ExtrusionDefinitions>,
 }
 
 const MAX_CACHED_SEGMENTS: usize = 100_000;
@@ -47,17 +52,20 @@ pub(super) fn extract(
     content: &[u8],
     ids: Option<&HashSet<u32>>,
     collect_definitions: bool,
+    collect_descriptions: bool,
+    collect_extrusions: bool,
 ) -> ExtractResult {
     let mut result = SweptDiskDescriptions::default();
-    if !collect_definitions && ids.is_some_and(HashSet::is_empty) {
-        return ExtractResult { descriptions: result, definitions: None };
+    if !collect_definitions && !collect_extrusions && ids.is_some_and(HashSet::is_empty) {
+        return ExtractResult { descriptions: result, definitions: None, extrusions: None };
     }
     let index = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, index);
     let unit_scale = decoder.length_unit_scale();
     let mut definitions = collect_definitions.then(|| SweptDiskDefinitions::new(content, unit_scale));
+    let mut extrusions = collect_extrusions.then(|| ExtrusionDefinitions::new(content, unit_scale));
     if ids.is_some_and(HashSet::is_empty) {
-        return ExtractResult { descriptions: result, definitions };
+        return ExtractResult { descriptions: result, definitions, extrusions };
     }
     let router = GeometryRouter::with_scale(unit_scale);
     let mut scanner = EntityScanner::new(content);
@@ -66,6 +74,11 @@ pub(super) fn extract(
     let mut known_sources = BTreeSet::<SweptDiskSourceKey>::new();
     let mut total_instances = 0usize;
     let mut total_source_segments = 0usize;
+    let mut extrusion_cache = HashMap::<u32, AnalyticExtrusion>::new();
+    let mut cached_profile_segments = 0usize;
+    let mut known_extrusions = BTreeSet::<SweptDiskSourceKey>::new();
+    let mut total_extrusion_instances = 0usize;
+    let mut total_profile_segments = 0usize;
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
         if !has_geometry_by_name(type_name) || ids.is_some_and(|wanted| !wanted.contains(&id)) {
@@ -81,115 +94,23 @@ pub(super) fn extract(
                 continue;
             }
         };
-        let Some(rep_attr) = element.get(6) else {
-            result
-                .diagnostics
-                .push(format!("product #{id}: missing Representation attribute"));
-            continue;
-        };
-        if rep_attr.is_null() {
-            continue;
-        }
-        let Some(rep_id) = rep_attr.as_entity_ref() else {
-            result.diagnostics.push(format!(
-                "product #{id}: Representation is not an entity reference"
-            ));
-            continue;
-        };
-        let representation = match decoder.decode_by_id(rep_id) {
-            Ok(representation) => representation,
-            Err(error) => {
-                result.diagnostics.push(format!(
-                    "product #{id}: Representation #{rep_id}: {error}"
-                ));
+        let mut stack = match seed_product(&element, &mut decoder, &router) {
+            Ok(Some(stack)) => stack,
+            Ok(None) => continue,
+            Err(message) => {
+                result.diagnostics.push(message);
                 continue;
             }
         };
-        if representation.ifc_type != IfcType::IfcProductDefinitionShape {
-            result.diagnostics.push(format!(
-                "product #{id}: Representation #{rep_id} is not IfcProductDefinitionShape"
-            ));
-            continue;
-        }
-        let Some(reps_attr) = representation.get(2) else {
-            result.diagnostics.push(format!(
-                "product #{id}: IfcProductDefinitionShape #{rep_id} has no Representations attribute"
-            ));
-            continue;
-        };
-        if reps_attr
-            .as_list()
-            .is_none_or(|items| items.is_empty() || items.iter().any(|item| item.as_entity_ref().is_none()))
-        {
-            result.diagnostics.push(format!(
-                "product #{id}: IfcProductDefinitionShape #{rep_id} has malformed Representations list"
-            ));
-            continue;
-        }
-        if reps_attr.as_list().is_some_and(|items| items.len() > MAX_VISITED_ITEMS) {
-            result.diagnostics.push(format!("product #{id}: Representations list exceeds work budget"));
-            continue;
-        }
-        let reps = match decoder.resolve_ref_list(reps_attr) {
-            Ok(reps) => reps,
-            Err(error) => {
-                result.diagnostics.push(format!(
-                    "product #{id}: IfcProductDefinitionShape #{rep_id} Representations: {error}"
-                ));
-                continue;
-            }
-        };
-        if let Err(error) = validate_placement_chain(&element, &mut decoder) {
-            result.diagnostics.push(format!("product #{id}: placement: {error}"));
-            continue;
-        }
-        let transform = match router.resolve_scaled_placement_strict(&element, &mut decoder) {
-            Ok(matrix) => Matrix4::from_column_slice(&matrix),
-            Err(error) => {
-                result.diagnostics.push(format!("product #{id}: placement: {error}"));
-                continue;
-            }
-        };
-        let mut stack = Vec::new();
         let mut failed = false;
-        for rep in meshed_representations(&element, &reps) {
-            let Some(items_attr) = rep.get(3) else {
-                result.diagnostics.push(format!("product #{id}: representation #{} is missing Items", rep.id));
-                failed = true;
-                break;
-            };
-            let Some(item_refs) = items_attr.as_list() else {
-                result.diagnostics.push(format!("product #{id}: representation #{} has malformed Items", rep.id));
-                failed = true;
-                break;
-            };
-            if item_refs.is_empty() || item_refs.iter().any(|item| item.as_entity_ref().is_none()) {
-                result.diagnostics.push(format!("product #{id}: representation #{} has malformed Items", rep.id));
-                failed = true;
-                break;
-            }
-            if stack.len().saturating_add(item_refs.len()) > MAX_VISITED_ITEMS {
-                result.diagnostics.push(format!("product #{id}: representation items exceed work budget"));
-                failed = true;
-                break;
-            }
-            match decoder.resolve_ref_list(items_attr) {
-                Ok(items) => stack.extend(items.into_iter().rev().map(|item| WalkItem {
-                    item, transform, path: Vec::new(), map_path: Vec::new(),
-                    representation_id: rep.id, ancestors: Vec::new(), source_modified: false,
-                })),
-                Err(error) => {
-                    result.diagnostics.push(format!("product #{id}: items: {error}"));
-                    failed = true;
-                    break;
-                }
-            }
-        }
         let mut descriptions = Vec::new();
         let mut pending_sources = BTreeMap::<SweptDiskSourceKey, SweptDiskDefinition>::new();
         let mut pending_instances = Vec::<SweptDiskInstance>::new();
+        let mut pending_extrusion_sources = BTreeMap::<SweptDiskSourceKey, ExtrusionDefinition>::new();
+        let mut pending_extrusion_instances = Vec::<SweptDiskInstance>::new();
         let mut visited = 0;
         let mut emitted_segments = 0usize;
+        let mut emitted_profile_segments = 0usize;
         if stack.len() > MAX_VISITED_ITEMS {
             failed = true;
             result.diagnostics.push(format!("product #{id}: too many representation items"));
@@ -208,7 +129,7 @@ pub(super) fn extract(
             let mut ancestors = node.ancestors;
             ancestors.push(item_id);
             match node.item.ifc_type {
-                IfcType::IfcSweptDiskSolid => {
+                IfcType::IfcSweptDiskSolid if collect_descriptions || collect_definitions => {
                     let raw = if let Some(disk) = cache.get(&item_id) {
                         Ok(disk.clone())
                     } else {
@@ -270,6 +191,54 @@ pub(super) fn extract(
                             break;
                         }
                     }
+                }
+                IfcType::IfcExtrudedAreaSolid | IfcType::IfcExtrudedAreaSolidTapered
+                    if collect_extrusions => {
+                    let raw = if let Some(source) = extrusion_cache.get(&item_id) {
+                        source.clone()
+                    } else {
+                        let source = extract_analytic_extrusion(&node.item, &mut decoder);
+                        let segments = profile_segment_count(&source);
+                        if extrusion_cache.len() < MAX_VISITED_ITEMS
+                            && segments <= MAX_CACHED_SEGMENTS.saturating_sub(cached_profile_segments) {
+                            cached_profile_segments += segments;
+                            extrusion_cache.insert(item_id, source.clone());
+                        }
+                        source
+                    };
+                    let segments = profile_segment_count(&raw);
+                    if segments > MAX_VISITED_ITEMS.saturating_sub(emitted_profile_segments) {
+                        result.diagnostics.push(format!("product #{id}: extrusion profile output exceeds work budget"));
+                        failed = true;
+                        break;
+                    }
+                    emitted_profile_segments += segments;
+                    let view = extrusions.as_ref().expect("extrusion collection requested");
+                    let context = if node.map_path.is_empty() {
+                        SweptDiskSourceContext::Direct { representation_id: node.representation_id }
+                    } else {
+                        SweptDiskSourceContext::Mapped { representation_map_path: node.map_path.clone() }
+                    };
+                    let key = view.key(context, item_id);
+                    pending_extrusion_sources.entry(key.clone()).or_insert_with(||
+                        ExtrusionDefinition::from_source(key.clone(), &raw));
+                    let world_from_source = source_matrix(&node.transform, unit_scale);
+                    let status = match world_from_source {
+                        None => AnalyticStatus::Unsupported(
+                            "occurrence transform has non-finite coordinates".into()),
+                        Some(matrix) if {
+                            let determinant = Matrix4::from_column_slice(&matrix)
+                                .fixed_view::<3, 3>(0, 0).determinant();
+                            !determinant.is_finite() || determinant == 0.0
+                        } => AnalyticStatus::Unsupported(
+                            "occurrence transform has singular or non-finite linear part".into()),
+                        Some(_) => raw.status.clone(),
+                    };
+                    pending_extrusion_instances.push(SweptDiskInstance {
+                        ordinal: pending_extrusion_instances.len(), source: key, product_id: id,
+                        solid_id: item_id, mapping_path: node.path,
+                        source_modified: node.source_modified, world_from_source, status,
+                    });
                 }
                 IfcType::IfcMappedItem => {
                     if node.path.len() >= MAX_MAPPED_ITEM_DEPTH as usize {
@@ -382,9 +351,30 @@ pub(super) fn extract(
                 result.elements.insert(id, descriptions);
             }
         }
+        if !failed && !pending_extrusion_instances.is_empty() {
+            let view = extrusions.as_mut().expect("extrusion collection requested");
+            let new_segments: usize = pending_extrusion_sources.iter()
+                .filter(|(key, _)| !known_extrusions.contains(*key))
+                .map(|(_, source)| profile_segment_count(&source.source)).sum();
+            if pending_extrusion_instances.len() > MAX_TOTAL_INSTANCES.saturating_sub(total_extrusion_instances) {
+                view.diagnostics.push(format!("product #{id}: extrusion instances exceed total output budget"));
+            } else if new_segments > MAX_CACHED_SEGMENTS.saturating_sub(total_profile_segments) {
+                view.diagnostics.push(format!("product #{id}: extrusion profile segments exceed total output budget"));
+            } else {
+                for (key, source) in pending_extrusion_sources {
+                    if known_extrusions.insert(key) { view.sources.push(source); }
+                }
+                total_profile_segments += new_segments;
+                total_extrusion_instances += pending_extrusion_instances.len();
+                view.instances.insert(id, pending_extrusion_instances);
+            }
+        }
     }
     if let Some(view) = &mut definitions {
         view.diagnostics.extend(result.diagnostics.iter().cloned());
     }
-    ExtractResult { descriptions: result, definitions }
+    if let Some(view) = &mut extrusions {
+        view.diagnostics.extend(result.diagnostics.iter().cloned());
+    }
+    ExtractResult { descriptions: result, definitions, extrusions }
 }

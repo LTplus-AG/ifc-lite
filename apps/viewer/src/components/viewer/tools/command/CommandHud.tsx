@@ -17,6 +17,7 @@ import { useTranslation } from '@/i18n';
 import { HudHint, HudItem, HudToolbar } from '../../../viewport-ui/hud';
 import { useCommandRuntime } from '@/lib/commands/modeling/runtime';
 import { CommandFieldsBar } from './CommandFieldsBar';
+import { SnapHud } from './SnapHud';
 
 export function CommandBar() {
   const { t } = useTranslation();
@@ -53,7 +54,7 @@ export function CommandBar() {
 }
 
 export function CommandScene() {
-  const { command, ctx, gesture } = useCommandRuntime();
+  const { command, ctx, gesture, snap } = useCommandRuntime();
   // The command's preview meshes ride the `command` overlay channel.
   useEffect(() => {
     const callbacks = useViewerStore.getState().cameraCallbacks;
@@ -62,6 +63,12 @@ export function CommandScene() {
   }, [command, ctx, gesture]);
   useEffect(() => () => useViewerStore.getState().cameraCallbacks.clearAuthoringOverlayMeshes?.('command'), []);
   const Scene = command?.hud.Scene;
-  if (!Scene || !ctx) return null;
-  return <Scene gesture={gesture} ctx={ctx} />;
+  if (!command || !ctx) return null;
+  // Every command shows what it snapped to, above its own scene layer: the snap is the live feedback.
+  return (
+    <>
+      {Scene && <Scene gesture={gesture} ctx={ctx} />}
+      <SnapHud snap={snap} plane={ctx.workplane} />
+    </>
+  );
 }

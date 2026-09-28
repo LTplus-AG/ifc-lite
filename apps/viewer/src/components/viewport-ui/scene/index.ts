@@ -27,7 +27,7 @@ export { Handle } from './primitives/Handle';
 export type { HandleProps } from './primitives/Handle';
 export { AxisArrow } from './primitives/AxisArrow';
 export type { AxisArrowProps, AxisArrowVariant } from './primitives/AxisArrow';
-export { SnapGlyph } from './primitives/SnapGlyph';
+export { SnapGlyph, SnapGlyphShape } from './primitives/SnapGlyph';
 export type { SnapGlyphProps, SnapGlyphKind } from './primitives/SnapGlyph';
 export { Leader } from './primitives/Leader';
 export type { LeaderProps } from './primitives/Leader';

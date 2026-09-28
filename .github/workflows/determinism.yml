@@ -1,6 +1,6 @@
 # Temporary, manual-only #6402 comparison on the provisional post-#6309 parent.
 # This branch is a scratch measurement branch and is not a product PR.
-name: Scratch #6402 native A/B
+name: 'Scratch #6402 native A/B v2'
 
 on:
   workflow_dispatch:
@@ -24,12 +24,12 @@ jobs:
       - name: Verify exact source pair
         shell: bash
         run: |
-          test "$(git rev-parse 2f14c997c^)" = 3329522ecce13cbf86429e344b4a24659a33ec14
-          test "$(git rev-parse HEAD^)" = "$(git rev-parse 2f14c997c)"
-          test "$(git show --format= 2f14c997c | git patch-id --stable | cut -d' ' -f1)" = e55afcbece06cdd7c592d489daf42342eda5c1d3
-          git diff --exit-code 2f14c997c -- rust/geometry rust/processing rust/core
+          test "$(git rev-parse 2744ed4f6^^)" = 3329522ecce13cbf86429e344b4a24659a33ec14
+          test "$(git rev-parse HEAD~2)" = "$(git rev-parse 2744ed4f6)"
+          test "$(git diff 3329522ec 2744ed4f6 -- rust/geometry rust/processing rust/core | git patch-id --stable | cut -d' ' -f1)" = 9397eaf03cb671d4e97bc4db53829da432085ad3
+          git diff --exit-code 2744ed4f6 -- rust/geometry rust/processing rust/core
           git worktree add --detach /tmp/ifclite-6402-base 3329522ecce13cbf86429e344b4a24659a33ec14
-          git rev-parse 2f14c997c > scratch-child-commit.txt
+          git rev-parse 2744ed4f6 > scratch-child-commit.txt
           git -C /tmp/ifclite-6402-base rev-parse HEAD > scratch-base-commit.txt
       - name: Setup Rust
         run: rustup show
@@ -90,6 +90,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: scratch-6402-provisional-ab
+          name: scratch-6402-provisional-ab-v2
           path: scratch-perf-results/
           if-no-files-found: warn

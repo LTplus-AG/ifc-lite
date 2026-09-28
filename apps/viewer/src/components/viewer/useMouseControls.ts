@@ -594,7 +594,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       }
 
       // A running modeling command owns the hover (#6232, commandPointer.ts).
-      if (tool === 'command' && !mouseState.isDragging && routeCommandPointer(ctx, 'move', x, y)) return;
+      if (tool === 'command' && !mouseState.isDragging && routeCommandPointer(ctx, 'move', x, y, e)) return;
 
       // Section tool face-pick: dwell-aware hover preview (issue #243
       // follow-up). Runs INSTEAD of the generic tooltip path while

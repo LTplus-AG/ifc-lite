@@ -143,7 +143,15 @@ export function sourceCurveSnapCandidate(
         for (let step = 0; step < 30; step++) {
           const a = left + (right - left) * 0.3819660112501051;
           const b = right - (right - left) * 0.3819660112501051;
-          if (at(a).distanceSquared <= at(b).distanceSquared) right = b;
+          const distanceA = at(a).distanceSquared;
+          const distanceB = at(b).distanceSquared;
+          if (distanceA === Infinity && distanceB === Infinity) {
+            // A line may cross the camera's near plane late in this interval.
+            // Keep the half with a projectable endpoint until a probe enters it.
+            if (at(right).distanceSquared < Infinity) left = b;
+            else if (at(left).distanceSquared < Infinity) right = a;
+            else break;
+          } else if (distanceA <= distanceB) right = b;
           else left = a;
         }
         const t = (left + right) / 2;

@@ -178,4 +178,15 @@ describe('authored source snapping (#5780)', () => {
     const behind = sourceCurveSnapCandidate([line], 0, 0, 0.01, perspective, accepts);
     assert.equal(behind, null);
   });
+
+  it('finds a visible line interior when the near plane hides both first search probes (#6280)', () => {
+    const line: SourceSnapCurve = { identity, globalId: 42, kind: 'line', length: 1,
+      pointAt: (t) => ({ x: t, y: 0, z: t - 0.8 }) };
+    const projectPastNearPlane = (point: { x: number; y: number; z: number }) =>
+      point.z > 0 ? { x: point.x, y: point.y } : null;
+    const hit = sourceCurveSnapCandidate([line], 0.9, 0, 0.01, projectPastNearPlane, accepts);
+    assert.ok(hit, 'a visible interior point must remain reachable beyond an unprojectable prefix');
+    assert.ok(Math.abs(hit.target.position.x - 0.9) < 1e-6);
+    assert.equal(hit.target.type, SnapType.EDGE);
+  });
 });

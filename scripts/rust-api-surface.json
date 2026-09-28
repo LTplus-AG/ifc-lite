@@ -35,6 +35,7 @@
     "UnknownIfcType": "struct {  }",
     "attribute_names_for_schema": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "build_entity_index": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "declared_schema_bounded": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "decode_ifc_string": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "entity_count": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "entity_info_for_schema": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",

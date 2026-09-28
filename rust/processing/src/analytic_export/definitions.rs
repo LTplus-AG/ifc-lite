@@ -78,7 +78,7 @@ pub struct SweptDiskDefinitions {
 impl SweptDiskDefinitions {
     pub(super) fn new(content: &[u8], unit_scale: f64) -> Self {
         let model_sha256 = format!("{:x}", Sha256::digest(content));
-        let schema = file_schema(content);
+        let schema = ifc_lite_core::declared_schema_bounded(content);
         Self { up_axis: "Z", source_units: "ifc_file_length_units",
             world_units: "m", coordinate_space: "absolute_ifc_world",
             model_sha256, schema, length_unit_scale: unit_scale,
@@ -99,16 +99,6 @@ impl SweptDiskDefinition {
             inner_radius: disk.inner_radius, directrix: disk.segments.clone(),
             status: disk.status.clone() }
     }
-}
-
-fn file_schema(content: &[u8]) -> Option<String> {
-    // FILE_SCHEMA is in the header. A bounded read avoids copying a whole model.
-    let header = String::from_utf8_lossy(&content[..content.len().min(65_536)]);
-    let at = header.to_ascii_uppercase().find("FILE_SCHEMA")?;
-    let suffix = &header[at + "FILE_SCHEMA".len()..];
-    let quote = suffix.find('\'')?;
-    let rest = &suffix[quote + 1..];
-    Some(rest[..rest.find('\'')?].to_string())
 }
 
 pub(super) fn source_matrix(transform: &Matrix4<f64>, unit_scale: f64) -> Option<[f64; 16]> {

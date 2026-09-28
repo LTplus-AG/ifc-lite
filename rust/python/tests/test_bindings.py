@@ -233,6 +233,21 @@ def test_issue_5785_reusable_source_definitions_keep_file_units_and_world_frame(
     assert instance["world_from_source"][0] == 0.001
     assert ifclite_geom.swept_disk_definitions(read(TRIMMED_BAR), ids=set())["instances"] == {}
 
+
+def test_issue_5810_source_schema_ignores_header_decoys():
+    model = read(TRIMMED_BAR).decode().replace(
+        "FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');",
+        "FILE_DESCRIPTION(('mentions FILE_SCHEMA((''IFC4X3''));'),'2;1');\n"
+        "/* FILE_SCHEMA(('IFC4')); */",
+    ).replace(
+        "FILE_SCHEMA(('IFC2X3'));",
+        "file_schema /* real declaration */ (('IFC2X3'));",
+    )
+    view = ifclite_geom.swept_disk_definitions(model.encode())
+    assert view["schema"] == "IFC2X3"
+    assert len(view["sources"]) == 1
+    assert view["sources"][0]["key"]["schema"] == "IFC2X3"
+
 def test_issue_4803_id_filter_none_empty_subset_and_unknown():
     ifc = read(WALLS)
     full = ifclite_geom.geometry_data_buffers(ifc)

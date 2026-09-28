@@ -12,6 +12,21 @@ fn fixture() -> String {
 }
 
 #[test]
+fn issue_5810_schema_identity_ignores_comment_and_quoted_decoys() {
+    let model = fixture()
+        .replace(
+            "FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');",
+            "FILE_DESCRIPTION(('mentions FILE_SCHEMA((''IFC4X3''));'),'2;1');\n\
+             /* FILE_SCHEMA(('IFC4')); */",
+        )
+        .replace("FILE_SCHEMA(('IFC2X3'));", "file_schema /* real declaration */ (('IFC2X3'));");
+    let view = extract_swept_disk_definitions(model.as_bytes(), None);
+    assert_eq!(view.schema.as_deref(), Some("IFC2X3"));
+    assert_eq!(view.sources.len(), 1);
+    assert_eq!(view.sources[0].key.schema.as_deref(), Some("IFC2X3"));
+}
+
+#[test]
 fn repeated_mapping_targets_share_one_raw_source_with_distinct_world_instances() {
     let model = fixture().replace(
         "#48=IFCSHAPEREPRESENTATION(#16,'Body','MappedRepresentation',(#47));",

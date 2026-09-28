@@ -27,6 +27,7 @@ export const meshUniformsWgsl = `
           drawableDeltaLow: vec4<f32>,
           rteCameraHigh: vec4<f32>,
           rteCameraLow: vec4<f32>,
+          overrideParams: vec4<u32>, // x = draw's id anchor, y = OVERRIDE_* bits (entity-color-table.ts, #6076)
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
         const RTE_DRAWABLE_FLAG: u32 = ${MESH_FLAG_RTE_DRAWABLE}u;

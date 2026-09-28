@@ -137,8 +137,8 @@ ordered mesh fingerprints, mesh counts, vertex counts, and triangle counts
 matched. The paired timings varied in both directions, so no supported
 default-load speedup or meaningful regression is demonstrated. This control
 does not measure opt-in extraction or browser worker-pool latency; measure
-those directly if their caller-visible cost becomes material. Raw results are
-at `/mnt/c/Users/louistrue/Documents/Dev/ifc-lite-6271-final-perf/campaign.json`;
+those directly if their caller-visible cost becomes material. Paired results
+and source provenance are recorded in [PR #6271](https://github.com/LTplus-AG/ifc-lite/pull/6271);
 base/head binary SHA-256 values are `a2f586ce7f5c38d1bcd24275e5f1fef4d00b45fcf3b0041cd6d6492b8d389640`
 and `2b20fdad11da01f6c4cc9a531509b921347aaa343736488d3658f184b9f3cf9e`,
 and the fixture SHA-256 is `ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d`.

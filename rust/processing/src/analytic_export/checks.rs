@@ -155,9 +155,14 @@ pub fn check_swept_disk(
             }
         }
     }
-    // A degenerate segment has no tangent, but must not hide a corner between
-    // defined tangents. Keep the last defined tangent's original segment index.
-    let mut carried_tangent = frames[0].end_tangent.map(|tangent| (0, tangent));
+    // Treat every measured degenerate segment as tangentless, even when a
+    // tiny nonzero frame has a unit tangent. Preserve the last real segment's
+    // index so a degenerate segment cannot hide a wider corner.
+    let mut carried_tangent = if metrics.segments[0].length > options.zero_length_tolerance_m {
+        frames[0].end_tangent.map(|tangent| (0, tangent))
+    } else {
+        None
+    };
     for index in 0..frames.len().saturating_sub(1) {
         let left = frames[index];
         let right = frames[index + 1];
@@ -166,10 +171,16 @@ pub fn check_swept_disk(
             report.skipped_reason = Some(format!("join {index} has a non-finite gap"));
             return Ok(report);
         };
+        let right_is_degenerate = metrics.segments[index + 1].length <= options.zero_length_tolerance_m;
         if gap > options.gap_tolerance_m {
             report.findings.push(finding(SweptDiskFindingCode::ConsecutiveGap,
                 index, Some(index + 1), gap, options.gap_tolerance_m, "m"));
-            carried_tangent = right.end_tangent.map(|tangent| (index + 1, tangent));
+            carried_tangent = if right_is_degenerate { None } else {
+                right.end_tangent.map(|tangent| (index + 1, tangent))
+            };
+            continue;
+        }
+        if right_is_degenerate {
             continue;
         }
         if let (Some((from_index, a)), Some(b)) = (carried_tangent, right.start_tangent) {
@@ -186,15 +197,8 @@ pub fn check_swept_disk(
                     from_index, Some(index + 1), angle, options.tangent_tolerance_rad, "rad"));
             }
         }
-        carried_tangent = match right.end_tangent {
-            Some(tangent) => Some((index + 1, tangent)),
-            // Only a measured degenerate segment can carry a prior tangent;
-            // an undefined tangent on a longer curve breaks the comparison.
-            None if metrics.segments[index + 1].length <= options.zero_length_tolerance_m => {
-                carried_tangent
-            }
-            None => None,
-        };
+        // A missing tangent on a nondegenerate curve breaks the chain.
+        carried_tangent = right.end_tangent.map(|tangent| (index + 1, tangent));
     }
     Ok(report)
 }

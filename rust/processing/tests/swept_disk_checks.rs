@@ -96,6 +96,28 @@ fn issue_5758_zero_length_segment_keeps_corner_check_but_gap_resets_it() {
 }
 
 #[test]
+fn issue_5758_tiny_nonzero_segment_cannot_hide_a_wider_corner() {
+    let mut occurrence = disk("swept_disk_trimmed_line", 50);
+    let offset = 1e-10 / std::f64::consts::SQRT_2;
+    occurrence.directrix = vec![
+        line([0.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
+        line([1.0, 0.0, 0.0], [1.0 + offset, offset, 0.0]),
+        line([1.0 + offset, offset, 0.0], [1.0 + offset, 1.0 + offset, 0.0]),
+    ];
+    let mut options = SweptDiskCheckOptions::default();
+    options.tangent_tolerance_rad = 1.0;
+    let report = check_swept_disk(&occurrence, &options).unwrap();
+    assert_eq!(report.skipped_reason, None);
+    assert_eq!(report.findings.len(), 2, "{:?}", report.findings);
+    assert_eq!(report.findings[0].code, SweptDiskFindingCode::ZeroLengthSegment);
+    assert_eq!(report.findings[0].segment_index, 1);
+    let corner = &report.findings[1];
+    assert_eq!(corner.code, SweptDiskFindingCode::TangentDiscontinuity);
+    assert_eq!((corner.segment_index, corner.next_segment_index), (0, Some(2)));
+    assert!((corner.measured - std::f64::consts::FRAC_PI_2).abs() < 1e-12);
+}
+
+#[test]
 fn issue_5758_small_tangent_turn_respects_tolerance_without_flagging_straight_joins() {
     let mut occurrence = disk("swept_disk_trimmed_line", 50);
     let mut options = SweptDiskCheckOptions::default();

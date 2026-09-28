@@ -55,8 +55,12 @@ describe('PlanPointer on the shared solver (#6232 M2.4)', () => {
     writeCommandField(0, 3);
     const snap = resolvePlanSnap(input([0, 7], { snapping: false }))!;
     assert.ok(Math.abs(snap.local[0]) < 1e-9 && Math.abs(snap.local[1] - 3) < 1e-9, `${snap.local}`);
+    // Against the EXPECTED point (0, 3), not the solved one: a wrong solve moves `render` too.
     const plane = getCommandRuntime().ctx!.workplane!;
-    assert.deepEqual(snap.render, plane.localToRender([snap.local[0], snap.local[1], 0]));
+    const expected = plane.localToRender([0, 3, 0]);
+    snap.render!.forEach((v, i) => assert.ok(Math.abs(v - expected[i]) < 1e-9, `render[${i}] ${v} vs ${expected[i]}`));
+    // …and it is ON the workplane: back in local it has no height above it.
+    assert.ok(Math.abs(plane.renderToLocal(snap.render!)[2]) < 1e-9);
   });
 
   it('does nothing without a running command', () => {

@@ -69,6 +69,27 @@ use super::outline::trim_polyline;
     }
 
     #[test]
+    fn malformed_circle_spans_keep_mesh_raw_single_wrap_recovery_6402() {
+        // IFC4.3 forbids out-of-domain/cyclic-equal bounds, but old mesh files
+        // may contain them. The 3D sampler used one seam correction, not modulo.
+        let data = "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#2=IFCAXIS2PLACEMENT3D(#1,$,$);\n#3=IFCCIRCLE(#2,2.);\n#4=IFCTRIMMEDCURVE(#3,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(9.42477796076938)),.T.,.PARAMETER.);\n#5=IFCTRIMMEDCURVE(#3,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(9.42477796076938)),.F.,.PARAMETER.);\n#6=IFCTRIMMEDCURVE(#3,(),(),.F.,.PARAMETER.);";
+        let mut decoder = EntityDecoder::new(data);
+        let processor = ProfileProcessor::new(IfcSchema::new());
+        let sample = |id, decoder: &mut EntityDecoder| {
+            let curve = decoder.decode_by_id(id).unwrap();
+            processor.get_curve_points(&curve, decoder, TessellationQuality::Medium).unwrap()
+        };
+        let one_and_half_turns = sample(4, &mut decoder);
+        let half_turn = sample(5, &mut decoder);
+        let absent_false = sample(6, &mut decoder);
+        assert!(one_and_half_turns.len() > half_turn.len());
+        assert!(one_and_half_turns[one_and_half_turns.len() / 2].y < -1.0);
+        assert!(approx_eq_p3(*one_and_half_turns.last().unwrap(), Point3::new(-2.0, 0.0, 0.0), 1e-9));
+        assert!(half_turn[half_turn.len() / 2].y > 1.0);
+        assert!(absent_false.iter().all(|point| approx_eq_p3(*point, Point3::new(2.0, 0.0, 0.0), 1e-9)));
+    }
+
+    #[test]
     fn test_rectangle_profile() {
         let content = r#"
 #1=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,100.0,200.0);

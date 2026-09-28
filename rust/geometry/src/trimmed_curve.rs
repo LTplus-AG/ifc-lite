@@ -15,7 +15,7 @@ pub(crate) enum TrimRecovery {
     /// Analytic descriptions require both authored bounds and reject a zero arc.
     RequireBoth,
     /// The mesh path historically recovers absent bounds from the basis domain
-    /// and samples a zero arc for cyclically equal authored bounds.
+    /// and retains the authored span for invalid cyclically equal bounds.
     BasisDefaults,
 }
 
@@ -104,7 +104,6 @@ pub(crate) fn decode_trimmed_primitive(
                 ignore_bad_cartesian,
                 decoder,
             )?;
-            let authored_pair = first.is_some() && second.is_some();
             let (start_angle, end_angle) = match recovery {
                 TrimRecovery::RequireBoth => {
                     let (Some(start), Some(end)) = (first, second) else {
@@ -114,30 +113,31 @@ pub(crate) fn decode_trimmed_primitive(
                 }
                 TrimRecovery::BasisDefaults => (first.unwrap_or(0.0), second.unwrap_or(TAU)),
             };
-            let mut sweep_angle = (end_angle - start_angle).rem_euclid(TAU);
-            // IFC4.3 informal proposition 4 forbids equal trim parameters,
-            // including cyclic equality on closed curves. Preserve the mesh
-            // path's historical zero-length recovery for malformed input.
-            if authored_pair && sweep_angle.abs() < 1e-12 {
-                return Ok(match recovery {
-                    TrimRecovery::RequireBoth => None,
-                    TrimRecovery::BasisDefaults => Some(TrimmedPrimitive::Circle {
-                        center,
-                        normal,
-                        x_axis,
-                        y_axis,
-                        radius,
-                        start_angle,
-                        sweep_angle: 0.0,
-                    }),
-                });
-            }
-            if !sense {
-                sweep_angle -= TAU;
-            }
-            if sweep_angle.abs() < 1e-12 {
-                sweep_angle = if sense { TAU } else { -TAU };
-            }
+            let sweep_angle = match recovery {
+                TrimRecovery::RequireBoth => {
+                    let mut sweep = (end_angle - start_angle).rem_euclid(TAU);
+                    // IFC4.3 informal proposition 4 forbids equal parameters,
+                    // including cyclic equality on closed curves.
+                    if sweep.abs() < 1e-12 {
+                        return Ok(None);
+                    }
+                    if !sense {
+                        sweep -= TAU;
+                    }
+                    sweep
+                }
+                TrimRecovery::BasisDefaults => {
+                    // Preserve the mesh sampler's raw span and single seam wrap
+                    // for malformed out-of-range/equal authored parameters.
+                    let mut end = end_angle;
+                    if sense && end < start_angle {
+                        end += TAU;
+                    } else if !sense && end > start_angle {
+                        end -= TAU;
+                    }
+                    end - start_angle
+                }
+            };
             Ok(Some(TrimmedPrimitive::Circle {
                 center,
                 normal,

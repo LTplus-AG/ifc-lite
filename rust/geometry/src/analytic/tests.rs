@@ -157,19 +157,24 @@ fn reversed_trimmed_line_keeps_authored_trim_order() {
 }
 
 #[test]
-fn equal_circle_trims_are_invalid_without_inventing_a_full_mesh_turn_6402() {
+fn cyclic_equal_circle_trims_are_unsupported_but_keep_mesh_legacy_spans_6402() {
     // IFC4.3 IfcTrimmedCurve informal proposition 4 forbids cyclically equal
-    // parameters for a closed basis. The mesh keeps its former zero arc fallback.
-    let data = "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#2=IFCAXIS2PLACEMENT3D(#1,$,$);\n#3=IFCCIRCLE(#2,2.);\n#4=IFCTRIMMEDCURVE(#3,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(6.283185307179586)),.T.,.PARAMETER.);\n#5=IFCSWEPTDISKSOLID(#4,0.2,$,$,$);";
+    // parameters for a closed basis. The mesh retains its former raw span:
+    // 0→2π is a full turn, while 0→0 is a zero arc.
+    let data = "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#2=IFCAXIS2PLACEMENT3D(#1,$,$);\n#3=IFCCIRCLE(#2,2.);\n#4=IFCTRIMMEDCURVE(#3,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(6.283185307179586)),.T.,.PARAMETER.);\n#5=IFCSWEPTDISKSOLID(#4,0.2,$,$,$);\n#6=IFCTRIMMEDCURVE(#3,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(0.)),.T.,.PARAMETER.);\n#7=IFCSWEPTDISKSOLID(#6,0.2,$,$,$);";
     let mut decoder = EntityDecoder::new(data);
-    let entity = decoder.decode_by_id(5).unwrap();
-    let disk = extract_swept_disk(&entity, &mut decoder).unwrap();
-    assert!(matches!(disk.status, AnalyticStatus::Unsupported(_)));
-    let curve = decoder.decode_by_id(4).unwrap();
-    let points = crate::ProfileProcessor::new(ifc_lite_core::IfcSchema::new())
-        .get_curve_points(&curve, &mut decoder, crate::TessellationQuality::Medium)
-        .unwrap();
-    assert!(points.iter().all(|point| (*point - points[0]).norm() < 1e-9));
+    let processor = crate::ProfileProcessor::new(ifc_lite_core::IfcSchema::new());
+    for (solid_id, curve_id, full_turn) in [(5, 4, true), (7, 6, false)] {
+        let entity = decoder.decode_by_id(solid_id).unwrap();
+        let disk = extract_swept_disk(&entity, &mut decoder).unwrap();
+        assert!(matches!(disk.status, AnalyticStatus::Unsupported(_)));
+        let curve = decoder.decode_by_id(curve_id).unwrap();
+        let points = processor
+            .get_curve_points(&curve, &mut decoder, crate::TessellationQuality::Medium)
+            .unwrap();
+        assert!((*points.last().unwrap() - points[0]).norm() < 1e-9);
+        assert_eq!(points.iter().any(|point| (*point - points[0]).norm() > 1.0), full_turn);
+    }
 }
 
 #[test]

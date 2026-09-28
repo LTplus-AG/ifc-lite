@@ -106,7 +106,7 @@ it('keeps the active source within 256 products and visibly reports omitted sour
       selectedEntityIds: new Set(Array.from({ length: 300 }, (_, index) => 1_000_001 + index)),
       selectedEntityId: 1_000_300, selectedEntitiesSet: new Set(),
       selectedEntity: { modelId: 'selection', expressId: 300 } });
-    const renderer = { setLineOverlay: () => {} } as unknown as Renderer;
+    const renderer = { setLineOverlay: () => {}, setSourceSnapCurves: () => {} } as unknown as Renderer;
     const Overlay = () => {
       useCentrelineRendererOverlay({ current: renderer } as RefObject<Renderer | null>, true);
       return null;
@@ -199,7 +199,7 @@ it('shows a visible warning for one CSG-modified source with no usable centrelin
     useViewerStore.setState({ ...fixtureModels(model), centrelineOverlayEnabled: true,
       selectedEntityIds: new Set([1_000_007]), selectedEntityId: 1_000_007,
       selectedEntitiesSet: new Set(), selectedEntity: { modelId: 'modified', expressId: 7 } });
-    const renderer = { setLineOverlay: () => {} } as unknown as Renderer;
+    const renderer = { setLineOverlay: () => {}, setSourceSnapCurves: () => {} } as unknown as Renderer;
     const Overlay = () => {
       useCentrelineRendererOverlay({ current: renderer } as RefObject<Renderer | null>, true);
       return null;

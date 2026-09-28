@@ -123,10 +123,11 @@ describe('symbolic parse cache key carries the render frame', () => {
       } as never]]),
     } as never);
 
-    assert.equal(
-      __symbolicAnnotationsSourceKeyForTests(target),
-      'identical-bytes|standalone|0|0',
-    );
+    // Only the frame fields are under test: content|rtc|primitive|storeyTable.
+    // The spatial-bucket and overlay-owner fields that follow (#6421) are
+    // covered by their own tests.
+    const key = __symbolicAnnotationsSourceKeyForTests(target);
+    assert.equal(key.split('|').slice(0, 4).join('|'), 'identical-bytes|standalone|0|0', key);
   });
 });
 

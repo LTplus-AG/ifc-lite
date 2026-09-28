@@ -23,8 +23,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle, type PanelImperativeHandle } from 'react-resizable-panels';
 import { useViewerStore } from '@/store';
-import type { ModelLayout } from '@/store/slices/authoringSessionSidebar';
-import { useTranslation } from '@/i18n';
 import { PlanView } from '../plan/PlanView';
 import { MODEL_3D_MIN_PX, PLAN_MIN_PX, effectiveModelLayout, planPaneWidth, publishSplitWidth } from './model-layout';
 
@@ -44,9 +42,7 @@ function useWidth(ref: React.RefObject<HTMLElement | null>): number {
 }
 
 export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
-  const { t } = useTranslation();
   const inWorkspace = useViewerStore((s) => s.workspaceMode === 'model');
-  const setModelLayout = useViewerStore((s) => s.setModelLayout);
   const hostRef = useRef<HTMLDivElement>(null);
   const width = useWidth(hostRef);
   const layout = effectiveModelLayout(useViewerStore((s) => s.modelLayout), width);

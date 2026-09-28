@@ -45,10 +45,10 @@ it('keeps the active source within 256 products and visibly reports omitted sour
       selectedEntityId: 1_000_300, selectedEntitiesSet: new Set(),
       selectedEntity: { modelId: 'selection', expressId: 300 } });
     const renderer = { setLineOverlay: () => {} } as unknown as Renderer;
-    function Overlay() {
+    const Overlay = () => {
       useCentrelineRendererOverlay({ current: renderer } as RefObject<Renderer | null>, true);
       return null;
-    }
+    };
     render(<Overlay />);
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     assert.equal(requested.length, 1);
@@ -94,10 +94,10 @@ it('shows a visible warning for one CSG-modified source with no usable centrelin
       selectedEntityIds: new Set([1_000_007]), selectedEntityId: 1_000_007,
       selectedEntitiesSet: new Set(), selectedEntity: { modelId: 'modified', expressId: 7 } });
     const renderer = { setLineOverlay: () => {} } as unknown as Renderer;
-    function Overlay() {
+    const Overlay = () => {
       useCentrelineRendererOverlay({ current: renderer } as RefObject<Renderer | null>, true);
       return null;
-    }
+    };
     render(<Overlay />);
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     assert.ok(notices.some((message) => /CSG-modified analytic source/.test(message)),

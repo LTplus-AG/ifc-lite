@@ -154,8 +154,8 @@ describe('ZonesPanel localization (#4918)', () => {
         { key: 'zonesPanel.addZoneTitle' },
         { key: 'zonesPanel.deleteZoneSetTitle' },
         { key: 'zonesPanel.setNamePlaceholder' },
-        { key: 'zonesPanel.setNameAriaLabel', params: { name: 'Section A' } },
-        { key: 'zonesPanel.zoneRow.nameAriaLabel', params: { name: 'Zone 1' } },
+        { key: 'zonesPanel.setNameAriaLabel' },
+        { key: 'zonesPanel.zoneRow.nameAriaLabel' },
         { key: 'zonesPanel.zoneRow.editIn3dTitle' },
         { key: 'zonesPanel.zoneRow.selectTitle' },
         { key: 'zonesPanel.zoneRow.exportGeometryTitle' },
@@ -180,9 +180,10 @@ describe('ZonesPanel localization (#4918)', () => {
     assert.ok(afterDom.has('Section A'), 'the set name must not be marked by the pseudo-locale');
     const zoneNameInput = container.querySelector('input[value="Zone 1"]') as HTMLInputElement | null;
     assert.ok(zoneNameInput, 'the zone name input must render the zone name as-is');
-    assert.equal(zoneNameInput.getAttribute('aria-label'), 'Name of zone Zone 1');
+    assert.equal(zoneNameInput.getAttribute('aria-label'), 'Zone name');
     const setNameInput = container.querySelector<HTMLInputElement>('input[value="Section A"]');
-    assert.equal(setNameInput?.getAttribute('aria-label'), 'Name of set Section A');
+    assert.ok(setNameInput);
+    assert.equal(setNameInput.getAttribute('aria-label'), 'Set name');
     act(() => setLocale(PSEUDO_LOCALE));
     try {
       assert.equal(zoneNameInput!.value, 'Zone 1', 'the zone name input must not be marked by the pseudo-locale');
@@ -191,7 +192,10 @@ describe('ZonesPanel localization (#4918)', () => {
     }
     typeInto(zoneNameInput, 'Zone East');
     assert.equal(useViewerStore.getState().zoneSets[0]?.zones[0]?.name, 'Zone East');
-    assert.equal(zoneNameInput.getAttribute('aria-label'), 'Name of zone Zone East');
+    assert.equal(zoneNameInput.getAttribute('aria-label'), 'Zone name', 'the zone field name stays fixed while editing');
+    typeInto(setNameInput, 'Section East');
+    assert.equal(useViewerStore.getState().zoneSets[0]?.name, 'Section East');
+    assert.equal(setNameInput.getAttribute('aria-label'), 'Set name', 'the set field name stays fixed while editing');
   });
 
   it('translates the last-assignment timing footer', () => {

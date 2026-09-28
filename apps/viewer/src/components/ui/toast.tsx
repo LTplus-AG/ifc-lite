@@ -165,7 +165,7 @@ export function Toaster({ variant = 'fixed' }: ToasterProps = {}) {
               item.action?.onClick();
               handleDismiss(item.id);
             }}
-            className="shrink-0 rounded-sm px-1 text-xs font-semibold underline underline-offset-2 hover:bg-black/10 dark:hover:bg-white/10"
+            className="shrink-0 min-h-6 rounded-sm px-1 text-xs font-semibold underline underline-offset-2 hover:bg-black/10 dark:hover:bg-white/10"
           >
             {item.action.label}
           </button>
@@ -173,7 +173,7 @@ export function Toaster({ variant = 'fixed' }: ToasterProps = {}) {
         <button
           onClick={() => handleDismiss(item.id)}
           aria-label={t('viewerShell.toast.dismiss')}
-          className="shrink-0 p-0.5 rounded-sm hover:bg-black/10 dark:hover:bg-white/10"
+          className="shrink-0 min-h-6 min-w-6 p-0.5 rounded-sm hover:bg-black/10 dark:hover:bg-white/10"
         >
           <X className="h-3 w-3" aria-hidden="true" />
         </button>

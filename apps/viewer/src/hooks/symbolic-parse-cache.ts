@@ -12,6 +12,7 @@
  */
 
 import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { hasEntityType } from './has-entity-type.js';
 import {
@@ -24,17 +25,28 @@ import {
 import { getWholeSourceForWorker, parseSymbolicFlat } from '../lib/overlay-parse/index.js';
 import { createEmptyFlatSymbolic, type FlatSymbolic } from '../lib/overlay-parse/symbolic-flat.js';
 import { OVERLAY_OWNER_TYPE_NAMES } from '../lib/overlay-parse/overlay-channels.js';
-import { ifcToViewerAxes, totalYupOffset } from '../lib/geo/coordinate-frame.js';
 import {
   placeRoomSymbolic,
   roomSymbolicSource,
   type RoomSymbolicSource,
 } from '@/lib/collab/room-symbolic-source';
 import { overlayRtcContextFor, type OverlayRtcContext } from '../lib/overlay-parse/rtc-context.js';
-import type { CoordinateInfo, RtcFrame } from '@ifc-lite/geometry';
+import type { RtcFrame } from '@ifc-lite/geometry';
+import { resetSpatialBucketSnapshotsForTests, sourceFlatKey, spatialBucketSnapshotFor, type SpatialBucketSnapshot } from './symbolic-parse-cache-keys.js';
+import { PARSE_CACHE, PARSE_INFLIGHT, cacheParseResult, cacheRoomParseResult } from './symbolic-parse-result-cache.js';
+import { clearSourceFlatCache, getSourceFlat } from './symbolic-source-flat-cache.js';
+import { elevationRebaseFor } from './symbolic-parse-cache-frame.js';
 
-/**
- * Stable cache key for one parsed source.
+export interface SymbolicParseStoreBinding {
+  store: IfcDataStore;
+  mutationView?: MutablePropertyView;
+}
+
+function bindingOf(value: IfcDataStore | SymbolicParseStoreBinding): SymbolicParseStoreBinding {
+  return 'store' in value ? value : { store: value };
+}
+
+/** Stable cache key for one parsed source.
  *
  * Was a sampled hash (head/middle/tail, 96 bytes) chosen to avoid walking the
  * whole file. `IfcSourceBytes.contentKey` is a full-content hash computed once
@@ -47,10 +59,21 @@ function sourceKey(
   store: IfcDataStore,
   rebase: ElevationRebase,
   rtc: Exclude<OverlayRtcContext, { mode: 'pending' }>,
+  spatial: SpatialBucketSnapshot,
 ): string | null {
   const roomSource = roomSymbolicSource(store);
   const contentKey = (roomSource?.source ?? store.source).contentKey ?? null;
   if (!contentKey) return null;
+  const ownerSource = roomSource?.source ?? store.source;
+  const ownerStore = roomSource?.dataStore ?? store;
+  const hasOverlayOwners = ownerSource.byteLength > 0
+    ? hasEntityType(ownerStore, ...OVERLAY_OWNER_TYPE_NAMES)
+    : true;
+  // The flat worker output depends on source bytes, but ParseResult also
+  // contains buckets assembled from this store's current spatial lookups.
+  // Identical IFC bytes can be paired with different live hierarchies (for
+  // example after a server refresh), so those lookup values must participate
+  // in the result key as well.
   // The cached `ParseResult` has the elevation rebase baked into it, and that
   // rebase is NOT a function of the source bytes: it carries `originShift`,
   // which federation and re-alignment set per model. Two models loaded from
@@ -62,7 +85,7 @@ function sourceKey(
   // and handing the same value to both the key and the parse. Read it twice
   // around the await and you file a result under a key describing a frame it
   // was not rebased for — see `useSymbolicAnnotations.frameRace.test.ts`.
-  return `${contentKey}|${rtc.key}|${rebase.primitive}|${rebase.storeyTable}`;
+  return `${contentKey}|${rtc.key}|${rebase.primitive}|${rebase.storeyTable}|${spatial.key}|owners:${hasOverlayOwners}`;
 }
 
 async function parseFlatAnnotations(
@@ -92,8 +115,9 @@ async function parseFlatAnnotations(
 async function parseAnnotations(
   store: IfcDataStore,
   elevationRebase: ElevationRebase,
-  frame?: RtcFrame,
-  sourceFlat?: FlatSymbolic,
+  frame: RtcFrame | undefined,
+  sourceFlat: FlatSymbolic | undefined,
+  spatial: SpatialBucketSnapshot,
 ): Promise<ParseResult> {
   const roomSource = roomSymbolicSource(store);
   const source = roomSource?.source ?? store.source;
@@ -121,44 +145,28 @@ async function parseAnnotations(
   let flat = sourceFlat ?? await parseFlatAnnotations(store, source, frame);
   if (roomSource) flat = placeRoomSymbolic(flat, roomSource);
   return buildParseResult(flat, {
-    elementToStorey: store.spatialHierarchy?.elementToStorey,
-    storeyElevations: store.spatialHierarchy?.storeyElevations,
+    elementToStorey: spatial.elementToStorey,
+    storeyElevations: spatial.storeyElevations,
     elevationRebase,
+    isOwnerDeleted: spatial.deletedOwners ? (id) => spatial.deletedOwners!.has(id) : undefined,
   });
 }
 
-/**
- * The render-frame elevation offsets for the model that owns `store`.
- *
- * `totalYupOffset(info).y` is `originShift.y + rtc.z` — the whole distance
- * between an IFC elevation and the renderer's Y (`lib/geo/ifc-origin.ts`).
- * The wasm extractor has already removed the `rtc.z` half from
- * `primitive.worldY` (`rust/processing/src/symbolic/rebase.rs`), so only the
- * remainder applies there, while a raw storey-table elevation needs all of
- * it. Derived from ONE offset read so the two cannot drift apart.
- *
- * Read once per parse and baked into the cached `ParseResult`. Unlike the RTC
- * subtraction the wasm walk bakes into the same primitives, this is NOT a
- * function of the source bytes — RTC is derived from the model's own
- * coordinates, while `totalYupOffset` also carries `originShift`, which
- * federation and re-alignment set per model. That is why `sourceKey` mixes
- * these two values into the parse-cache key rather than keying on
- * `contentKey` alone.
- */
-function elevationRebaseFor(store: IfcDataStore): ElevationRebase {
-  const state = useViewerStore.getState();
-  let info: CoordinateInfo | null = null;
-  let ownedByModel = false;
-  for (const [, model] of state.models) {
-    if (model.ifcDataStore !== store) continue;
-    ownedByModel = true;
-    info = model.geometryResult?.coordinateInfo ?? null;
-    break;
+// The worker output is a function of source bytes and its producer RTC frame.
+// Keep it separate from ParseResult, whose storey buckets are assembled from
+// the current store's live spatial hierarchy.
+function sourceFlatFor(
+  store: IfcDataStore,
+  rtc: Exclude<OverlayRtcContext, { mode: 'pending' }>,
+): Promise<FlatSymbolic> {
+  // Do not cache a negative type-index prefilter: the same source can be
+  // paired with a refreshed index that now contains the overlay owner class.
+  if (store.source.byteLength > 0 && !hasEntityType(store, ...OVERLAY_OWNER_TYPE_NAMES)) {
+    return Promise.resolve(createEmptyFlatSymbolic());
   }
-  if (!ownedByModel && state.ifcDataStore === store) info = state.geometryResult?.coordinateInfo ?? null;
-  const total = totalYupOffset(info ?? undefined).y;
-  const rtcYupY = ifcToViewerAxes(info?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 }).y;
-  return { primitive: total - rtcYupY, storeyTable: total };
+  const key = sourceFlatKey(store, rtc);
+  if (!key) return parseFlatAnnotations(store, store.source, rtc.frame);
+  return getSourceFlat(key, () => parseFlatAnnotations(store, store.source, rtc.frame));
 }
 
 // ─── Shared parse cache ─────────────────────────────────────────────────────
@@ -166,9 +174,6 @@ function elevationRebaseFor(store: IfcDataStore): ElevationRebase {
 // walk over every product's representations). Cache results module-globally
 // so the line / text / fill hooks share one parse per model source instead
 // of triggering it once per hook.
-const PARSE_CACHE = new Map<string, ParseResult>();
-const PARSE_INFLIGHT = new Map<string, Promise<void>>();
-
 // Portable STEP bytes are stable across CRDT reconstructions. Cache their
 // source-space worker output once, then remap owners for each current binding.
 // Binding-specific results live under weak keys, so repeated edits do not grow
@@ -201,6 +206,7 @@ function ensureRoomParse(
   roomSource: RoomSymbolicSource,
   key: string,
   elevationRebase: ElevationRebase,
+  spatial: SpatialBucketSnapshot,
 ): Promise<void> | null {
   const cached = ROOM_PARSE_CACHE.get(roomSource);
   if (cached?.has(key)) return null;
@@ -211,7 +217,7 @@ function ensureRoomParse(
   const promise = (async () => {
     let result: ParseResult;
     try {
-      result = await parseAnnotations(store, elevationRebase, undefined, await roomFlat(roomSource));
+      result = await parseAnnotations(store, elevationRebase, undefined, await roomFlat(roomSource), spatial);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.warn('[useSymbolicAnnotations] room parse failed:', error);
@@ -222,7 +228,7 @@ function ensureRoomParse(
       entries = new Map();
       ROOM_PARSE_CACHE.set(roomSource, entries);
     }
-    entries.set(key, result);
+    cacheRoomParseResult(entries, key, result);
     notifyCacheChange();
   })().finally(() => ROOM_PARSE_INFLIGHT.get(roomSource)?.delete(key));
 
@@ -247,9 +253,11 @@ function notifyCacheChange(): void {
  * `useSymbolicAnnotations.retryStorm.test.ts`). Returns the in-flight
  * promises so a test can await completion without polling module state.
  */
-export function ensureParseFor(stores: IfcDataStore[]): Promise<void>[] {
+export function ensureParseFor(stores: Array<IfcDataStore | SymbolicParseStoreBinding>): Promise<void>[] {
   const started: Promise<void>[] = [];
-  for (const store of stores) {
+  const mutationVersion = useViewerStore.getState().mutationVersion ?? 0;
+  for (const value of stores) {
+    const { store, mutationView } = bindingOf(value);
     // One read, used for both the key and the parse: see `sourceKey`.
     const elevationRebase = elevationRebaseFor(store);
     const roomSource = roomSymbolicSource(store);
@@ -257,10 +265,11 @@ export function ensureParseFor(stores: IfcDataStore[]): Promise<void>[] {
       ? { mode: 'standalone' as const, key: 'standalone' as const, frame: undefined }
       : overlayRtcContextFor(store);
     if (rtc.mode === 'pending') continue;
-    const key = sourceKey(store, elevationRebase, rtc);
+    const spatial = spatialBucketSnapshotFor(store, mutationVersion, mutationView);
+    const key = sourceKey(store, elevationRebase, rtc, spatial);
     if (!key) continue;
     if (roomSource) {
-      const promise = ensureRoomParse(store, roomSource, key, elevationRebase);
+      const promise = ensureRoomParse(store, roomSource, key, elevationRebase, spatial);
       if (promise) started.push(promise);
       continue;
     }
@@ -273,8 +282,8 @@ export function ensureParseFor(stores: IfcDataStore[]): Promise<void>[] {
 
     const promise = (async () => {
       try {
-        const result = await parseAnnotations(store, elevationRebase, rtc.frame);
-        PARSE_CACHE.set(key, result);
+        const result = await parseAnnotations(store, elevationRebase, rtc.frame, await sourceFlatFor(store, rtc), spatial);
+        cacheParseResult(key, result);
         notifyCacheChange();
       } catch (error) {
         // Cache empty on failure so we don't retry a doomed parse every tick
@@ -283,7 +292,7 @@ export function ensureParseFor(stores: IfcDataStore[]): Promise<void>[] {
         // every `stores` dependency change).
         // eslint-disable-next-line no-console
         console.warn('[useSymbolicAnnotations] parse failed:', error);
-        PARSE_CACHE.set(key, createEmptyParseResult());
+        cacheParseResult(key, createEmptyParseResult());
         notifyCacheChange();
       } finally {
         PARSE_INFLIGHT.delete(key);
@@ -299,6 +308,8 @@ export function ensureParseFor(stores: IfcDataStore[]): Promise<void>[] {
 export function __resetSymbolicAnnotationsCacheForTests(): void {
   PARSE_CACHE.clear();
   PARSE_INFLIGHT.clear();
+  resetSpatialBucketSnapshotsForTests();
+  clearSourceFlatCache();
   ROOM_FLAT_CACHE = new WeakMap();
   ROOM_FLAT_INFLIGHT = new WeakMap();
   ROOM_PARSE_CACHE = new WeakMap();
@@ -324,7 +335,8 @@ export function __symbolicAnnotationsSourceKeyForTests(
     ? { mode: 'standalone' as const, key: 'standalone' as const, frame: undefined }
     : overlayRtcContextFor(store);
   if (rtc.mode === 'pending') return null;
-  return sourceKey(store, rebase ?? elevationRebaseFor(store), rtc);
+  const mutationVersion = useViewerStore.getState().mutationVersion ?? 0;
+  return sourceKey(store, rebase ?? elevationRebaseFor(store), rtc, spatialBucketSnapshotFor(store, mutationVersion));
 }
 
 /** @internal test-only peek at how many entries are cached for a source key. */
@@ -340,13 +352,16 @@ export function __symbolicAnnotationsCacheHasForTests(key: string): boolean {
  * not a stable identity a caller could hold onto, since `elevationRebaseFor`
  * mixes in a frame that federation and re-alignment change under it.
  */
-export function getParseFor(store: IfcDataStore | null | undefined): ParseResult | undefined {
-  if (!store) return undefined;
+export function getParseFor(value: IfcDataStore | SymbolicParseStoreBinding | null | undefined): ParseResult | undefined {
+  if (!value) return undefined;
+  const { store, mutationView } = bindingOf(value);
   const rtc = roomSymbolicSource(store)
     ? { mode: 'standalone' as const, key: 'standalone' as const, frame: undefined }
     : overlayRtcContextFor(store);
   if (rtc.mode === 'pending') return undefined;
-  const key = sourceKey(store, elevationRebaseFor(store), rtc);
+  const mutationVersion = useViewerStore.getState().mutationVersion ?? 0;
+  const spatial = spatialBucketSnapshotFor(store, mutationVersion, mutationView);
+  const key = sourceKey(store, elevationRebaseFor(store), rtc, spatial);
   if (key === null) return undefined;
   const roomSource = roomSymbolicSource(store);
   return roomSource ? ROOM_PARSE_CACHE.get(roomSource)?.get(key) : PARSE_CACHE.get(key);

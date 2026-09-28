@@ -42,6 +42,8 @@ packages/export/src/step-georeferencing.ts
 packages/export/src/style-closure.ts
 packages/ids/src/bridge/classifications.ts
 packages/ids/src/bridge/data-accessor.ts
+packages/ids/src/bridge/properties.ts
+packages/ids/src/bridge/units.ts
 packages/ifcx/src/writer-entities.ts
 packages/ifcx/src/index.ts
 packages/mcp/src/backend-query.ts
@@ -58,12 +60,16 @@ packages/parser/src/structural-step-values.ts
 packages/parser/src/columnar-parser-root-attributes.ts
 packages/parser/src/exact-relationship-edges.ts
 packages/parser/src/identity-hints.ts
+packages/parser/src/material-resolver.ts
+packages/parser/src/on-demand-extractors.ts
+packages/parser/src/owning-project.ts
 packages/parser/src/property-unit.ts
 packages/parser/src/property-value-parser.ts
 packages/parser/src/project-units.ts
 packages/parser/src/quantity-collect.ts
 packages/parser/src/spatial-hierarchy-attributes.ts
 packages/parser/src/spatial-hierarchy-builder.ts
+packages/parser/src/structural-extractor.ts
 packages/parser/src/unit-extractor.ts
 packages/parser/src/worker-index-publication.ts
 packages/query/src/duckdb-integration.ts
@@ -99,6 +105,7 @@ apps/viewer/src/lib/lens/adapter-entities.ts
 apps/viewer/src/lib/linear-element-edit.ts
 apps/viewer/src/lib/placement-edit.boot.ts
 apps/viewer/src/lib/lists/adapter.ts
+apps/viewer/src/lib/lens/adapter.ts
 apps/viewer/src/lib/lists/scope-types.ts
 apps/viewer/src/lib/search/filter-schema-effective.ts
 apps/viewer/src/lib/slab-edit.ts
@@ -120,5 +127,6 @@ apps/viewer/src/sdk/adapters/schedule-adapter.ts
 apps/viewer/src/components/viewer/schedule/GanttPanel.tsx
 packages/mcp/src/tools/diff-authored-keys.ts
 packages/mcp/src/tools/diff-fingerprints.ts
+packages/mutations/src/bulk-query-engine.ts
 packages/mcp/src/tools/diff-entity-scope.ts
 packages/query/src/ifc-query.ts

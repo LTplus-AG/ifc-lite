@@ -30,7 +30,7 @@ import { deterministicGlobalId } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { collectSpatialScheduleContainers } from './spatial-schedule-containers.js';
-import { hasEffectiveScheduleContainers } from './effective-schedule-groups.js';
+import { hasEffectiveScheduleContainers } from '@/lib/effective-spatial-groups';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Public types

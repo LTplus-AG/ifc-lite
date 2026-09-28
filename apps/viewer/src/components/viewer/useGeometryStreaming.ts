@@ -26,6 +26,7 @@ import { toast } from '../ui/toast.js';
 import { reshapeSceneKeepingPresentInstanced } from './geometry-rebuild';
 import { runGpuUpload } from './gpu-upload-guard';
 import { createRobustFitBoundsAccumulator } from './robustFitBoundsAccumulator.js';
+import { liftNewInstancedOccurrences, placeNewMeshesAtCurrentLevel } from '@/lib/level-arrival';
 import { useColorOverlaySync } from './useColorOverlaySync.js';
 import { useMeshEditDrain } from './useMeshEditDrain.js';
 import { invalidateLandXmlGpuOwnershipAfterSceneClear, takeLandXmlGpuUploaded } from '../../hooks/ingest/landXmlGpuOwnership.js';
@@ -111,6 +112,9 @@ export interface UseGeometryStreamingParams {
    * processGeometryBatchInstanced.
    */
   pendingInstancedShards: Array<{ modelId: string; bytes: ArrayBuffer }> | null;
+  /** Current absolute renderer-Y lifts, keyed by global entity id. New arrivals
+   * inherit them before upload; later level changes still use pending deltas. */
+  currentLevelY?: ReadonlyMap<number, number>;
   /**
    * modelId → renderer modelIndex (same map ViewportContainer stamps onto
    * flat meshes / point clouds — reused here rather than re-derived, so a
@@ -209,6 +213,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     pendingMeshTranslations,
     pendingMeshRotations,
     pendingInstancedShards,
+    currentLevelY,
     modelIdToIndex,
     modelIdToOffset,
     presentInstancedModelIndices,
@@ -472,6 +477,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     // one-shot marker so normal scene rebuilds still own later re-uploads.
     newMeshes = newMeshes.filter((mesh) => !takeLandXmlGpuUploaded(mesh));
     if (newMeshes.length > 0) {
+      newMeshes = placeNewMeshesAtCurrentLevel(newMeshes, currentLevelY ?? new Map());
       const pipeline = renderer.getPipeline();
       if (pipeline) {
         if (isStreaming) {
@@ -798,6 +804,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
           const shard = decodeInstancedShard(new Uint8Array(bytes));
           if (!shard) continue;
           applyFederationOffsetToShard(shard, modelIdToOffset?.get(modelId) ?? 0);
+          liftNewInstancedOccurrences(shard, currentLevelY ?? new Map());
           const modelIndex = modelIdToIndex?.get(modelId) ?? 0;
           scene.addInstancedShard(device, shard, modelIndex);
         } catch (err) {

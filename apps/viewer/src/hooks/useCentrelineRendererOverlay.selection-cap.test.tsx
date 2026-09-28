@@ -149,11 +149,11 @@ it('re-uploads the selected centreline after successful device recovery (#5778)'
   const uploads: Array<Parameters<Renderer['setLineOverlay']>[1]> = [];
   const renderer = { setLineOverlay: (_channel: string, value: Parameters<Renderer['setLineOverlay']>[1]) => {
     if (value !== null) uploads.push(value);
-  } } as unknown as Renderer;
+  }, setSourceSnapCurves: () => undefined } as unknown as Renderer;
   const ref: RefObject<Renderer | null> = { current: renderer };
   let recover: () => void = () => { throw new Error('recovery state is not mounted'); };
   const lineBuilder: typeof selectedCentrelineWorldLines = async () => ({
-    vertices: [0, 0, 0, 1, 0, 0], diagnostics: [],
+    vertices: [0, 0, 0, 1, 0, 0], diagnostics: [], renderedOccurrences: new Set(),
   });
   const Overlay = () => {
     const [epoch, setEpoch] = useState(0);

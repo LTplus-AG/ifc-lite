@@ -48,7 +48,7 @@ export function remeshAfterCommit(
 ): void {
   if (batchId === null) return;
   rememberRemesh(get, batchId, modelId, expressIds, cause);
-  void requestRemesh(get, modelId, expressIds, cause, { mirror: true });
+  void requestRemesh(get, modelId, expressIds, cause);
 }
 
 /** Re-mesh what `batchId` re-shaped, after undo or redo restored its view. */

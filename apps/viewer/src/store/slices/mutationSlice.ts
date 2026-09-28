@@ -1022,7 +1022,7 @@ function recordAuthoredElementIn(
   });
 
   // Real geometry for the new element, from the IFC it was written as.
-  void requestRemesh(get, modelId, [entityId], 'created', { mirror: true });
+  void requestRemesh(get, modelId, [entityId], 'created');
   revealAddedGeometryInModelView(get);
 }
 
@@ -1807,7 +1807,7 @@ export const createMutationSlice: StateCreator<
     return result;
   },
 
-  refreshWallMesh: (modelId, expressId) => refreshWallMeshIn(get, modelId, expressId, true),
+  refreshWallMesh: (modelId, expressId) => refreshWallMeshIn(get, modelId, expressId),
 
   readWallEndpoints: (modelId, expressId) => {
     // Same lazy-create pattern as `readEntityRotation` /

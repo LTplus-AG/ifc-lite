@@ -62,8 +62,7 @@ const ROOT =
 const COLLAB_SLICE = 'apps/viewer/src/store/slices/collabSlice.ts';
 const MUTATION_SLICE = 'apps/viewer/src/store/slices/mutationSlice.ts';
 const MUTATION_WALL_RESIZE = 'apps/viewer/src/store/slices/mutation-wall-resize.ts';
-// Re-meshed geometry is mirrored where it lands (#6232): the re-mesh service.
-const REMESH_SERVICE = 'apps/viewer/src/lib/remesh/remesh-service.ts';
+const REMESH_SERVICE = 'apps/viewer/src/lib/remesh/remesh-service.ts'; // re-meshed geometry is mirrored here (#6232)
 const ROOM_RECONSTRUCT = 'apps/viewer/src/lib/collab/room-reconstruct.ts'; // the recipient's reconstruct, since #4444
 
 /**
@@ -518,7 +517,7 @@ const CALL_SITE_FLOOR = {
   mirrorPlacementEdit: 3,
   mirrorEntityRemove: 1,
   mirrorEntityCreate: 1, // runInStoreElementBuilder: every add*, addColumn included
-  mirrorEntityGeometry: 1, // requestRemesh: every committed re-mesh (add*, resize), one call per re-meshed element (#6232)
+  mirrorEntityGeometry: 1, // requestRemesh: every re-mesh (add*, resize, their undo / redo), one call per re-meshed element (#6232)
   readCollabPlacement: 3,
   collabTranslateEntity: 2,
   collabRotateEntity: 1,

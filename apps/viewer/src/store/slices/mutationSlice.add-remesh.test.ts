@@ -15,7 +15,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { installScriptedMesher, settleRemesh } from '@/test/scripted-mesher';
+import { installScriptedMesher, settleRemesh, triangleFor } from '@/test/scripted-mesher';
 
 const MODEL = 'ifc';
 const STOREY = 40;
@@ -63,7 +63,7 @@ async function seed(): Promise<void> {
     removedNewEntities: new Map(), removedMeshes: new Map(),
     pendingMeshRemovals: null, pendingMeshEdits: null, mutationVersion: 0,
     mirrorEntityGeometry: (modelId, entityId, meshes) => {
-      mirrored.push([modelId, entityId, Array.isArray(meshes) ? meshes : [meshes as MeshData]]);
+      mirrored.push([modelId, entityId, [...meshes]]);
     },
   });
 }
@@ -97,5 +97,51 @@ describe('authored elements get re-meshed geometry (#6232)', () => {
     await settleRemesh();
     assert.ok(silent.requests.slice(before).some((r) => [...r.targets].includes(wall.expressId)), 'redo re-meshed it');
     silent.restore();
+  });
+
+  it('that redo also hands the room the re-mesh, since the re-created entity arrived without geometry', async () => {
+    mesher.restore();
+    let answered = 0;
+    const late = installScriptedMesher((request) => (answered++ === 0 ? [] : [...request.targets].map(triangleFor)));
+    const wall = useViewerStore.getState().addWall(MODEL, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
+    assert.ok('expressId' in wall);
+    await settleRemesh();
+    assert.equal(mirrored.length, 0, 'the first re-mesh produced nothing to send');
+    useViewerStore.getState().undo(MODEL);
+    useViewerStore.getState().redo(MODEL);
+    await settleRemesh();
+    assert.deepEqual(mirrored.map(([, id, meshes]) => [id, meshes.length]), [[wall.expressId, 1]]);
+    late.restore();
+  });
+
+  it('redo of an add hands the room every mesh of the element, not just the first', async () => {
+    mesher.restore();
+    const layered = installScriptedMesher((request) => [...request.targets].flatMap((id) => [triangleFor(id), triangleFor(id)]));
+    const wall = useViewerStore.getState().addWall(MODEL, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
+    assert.ok('expressId' in wall);
+    await settleRemesh();
+    useViewerStore.getState().undo(MODEL);
+    mirrored = [];
+    useViewerStore.getState().redo(MODEL);
+    await settleRemesh();
+    assert.deepEqual(mirrored.map(([, id, meshes]) => [id, meshes.length]), [[wall.expressId, 2]]);
+    layered.restore();
+  });
+
+  it('undo and redo of a wall resize send the room the re-meshed wall too', async () => {
+    const wall = useViewerStore.getState().addWall(MODEL, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
+    assert.ok('expressId' in wall);
+    await settleRemesh();
+    const resized = useViewerStore.getState().resizeWall(MODEL, wall.expressId, [0, 0, 0], [6, 0, 0]);
+    assert.ok(resized.ok);
+    await settleRemesh();
+    const sent = () => mirrored.filter(([, id]) => id === wall.expressId).length;
+    const afterResize = sent();
+    useViewerStore.getState().undo(MODEL);
+    await settleRemesh();
+    assert.equal(sent(), afterResize + 1, 'the undone length reached the room');
+    useViewerStore.getState().redo(MODEL);
+    await settleRemesh();
+    assert.equal(sent(), afterResize + 2, 'the redone length reached the room');
   });
 });

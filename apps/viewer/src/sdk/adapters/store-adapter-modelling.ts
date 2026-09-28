@@ -45,7 +45,7 @@ export function withModellingMutationTracking(
   const hosted = <P>(fn: (modelId: string, hostExpressId: number, params: P) => EntityRef) =>
     compound((modelId: string, hostExpressId: number, params: P): EntityRef => {
       const ref = fn(modelId, hostExpressId, params);
-      void requestRemesh(store.getState, ref.modelId, [ref.expressId, hostExpressId], 'created', { mirror: true });
+      void requestRemesh(store.getState, ref.modelId, [ref.expressId, hostExpressId], 'created');
       return ref;
     });
   return {

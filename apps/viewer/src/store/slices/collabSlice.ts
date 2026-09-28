@@ -339,10 +339,10 @@ export interface CollabSlice {
    * freshly-tessellated meshes (a re-meshed element can have several, one per
    * material layer, #6232), baked at the entity's current world position so
    * they carry the new shape + placement. Resets the entity's placement
-   * baseline to identity for the new blob. No-op without a session or edit
-   * rights.
+   * baseline to identity for the new blob. No-op without a session, edit
+   * rights or meshes.
    */
-  mirrorEntityGeometry: (modelId: string, entityId: number, meshes: MeshData | readonly MeshData[]) => void;
+  mirrorEntityGeometry: (modelId: string, entityId: number, meshes: readonly MeshData[]) => void;
   // ── Annotation mirror (collab markup) — called by annotationsSlice after a
   //    local create/edit/delete. No-ops without a session or comment permission.
   mirrorAnnotationUpsert: (annotation: Annotation) => void;
@@ -1262,12 +1262,10 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   },
 
   mirrorEntityGeometry: (modelId, entityId, meshes) => {
-    const blob = Array.isArray(meshes) ? [...meshes] : [meshes as MeshData];
-    if (blob.length === 0) return;
     // Room model only — see `mirrorPlacementEdit`.
     const session = get().collabSession;
     const store = roomStoreFor(get(), modelId);
-    if (!session || !store || !geomApiRef || !makeBlobStore) return;
+    if (!session || !store || !geomApiRef || !makeBlobStore || meshes.length === 0) return;
     if (!get().canCollabEdit()) return;
     const path = pathForEntity(store, entityId);
     if (!path) return;
@@ -1282,7 +1280,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     void (async () => {
       try {
         cachedBlobStore = cachedBlobStore ?? (await makeBlobStore!());
-        const report = await seedGeometryToRoom(geom, session, cachedBlobStore, blob, () => path, {
+        const report = await seedGeometryToRoom(geom, session, cachedBlobStore, meshes, () => path, {
           replace: true,
         });
         if (report.seeded === 0) {

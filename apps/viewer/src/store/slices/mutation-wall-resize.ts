@@ -15,8 +15,8 @@
  * (`requestRemesh`, #6232), with its openings and the windows and doors in
  * them, which are placed relative to it. Each batch is remembered for undo /
  * redo (`remesh-registry.ts`). A drag re-meshes once, at release
- * (`refreshWallMesh`), not on every frame, and collaborators receive the
- * same re-meshed geometry.
+ * (`refreshWallMesh`), not on every frame. Collaborators receive the same
+ * re-meshed geometry after the resize and after its undo / redo.
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -93,11 +93,7 @@ export function resizeWallMetres(
   return { ok: true, newLength: length };
 }
 
-/**
- * Re-mesh the wall (and what it hosts) from its current IFC data. `mirror`
- * also sends collaborators the re-meshed geometry (a local resize does; its
- * undo / redo stays local, like every positional undo).
- */
-export function refreshWallMeshIn(get: Get, modelId: string, expressId: number, mirror: boolean): void {
-  void requestRemesh(get, modelId, [expressId], 'hostsChanged', { mirror });
+/** Re-mesh the wall (and what it hosts) from its current IFC data, for the view and the room. */
+export function refreshWallMeshIn(get: Get, modelId: string, expressId: number): void {
+  void requestRemesh(get, modelId, [expressId], 'hostsChanged');
 }

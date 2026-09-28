@@ -78,7 +78,8 @@ export type ElementMeshPayload =
   | { type: 'wall'; params: { Thickness: number; Height: number }; start: Vec3; end: Vec3 }
   | { type: 'beam'; params: AddElementBeamParams; start: Vec3; end: Vec3 }
   | { type: 'member'; params: AddElementMemberParams; start: Vec3; end: Vec3 }
-  | { type: 'column'; params: AddElementColumnParams; position: Vec3 }
+  /** `refDirection`: the section's Width axis in plan (the column placement's RefDirection); default +x. */
+  | { type: 'column'; params: AddElementColumnParams; position: Vec3; refDirection?: readonly [number, number] }
   | { type: 'door'; params: AddElementDoorParams; position: Vec3 }
   | { type: 'window'; params: Omit<AddElementWindowParams, 'SillHeight'>; position: Vec3 } // sill = position Z
   | { type: 'slab'; params: AddElementSlabParams; corners: Vec3[] }
@@ -106,7 +107,7 @@ export function buildElementMesh(ctx: ElementBuildContext): MeshData | null {
     }
     case 'column': {
       const { Width, Depth, Height } = payload.params;
-      return buildAxisBox(globalId, type, payload.position, Width, Depth, Height, storeyElevation);
+      return buildAxisBox(globalId, type, payload.position, Width, Depth, Height, storeyElevation, payload.refDirection);
     }
     case 'door': {
       const { Width, Height, FrameThickness } = payload.params;
@@ -176,7 +177,10 @@ function buildLinearBox(
   return buildBoxFromIfcCorners(globalId, type, ifcCorners, storeyElevation);
 }
 
-/** Axis-aligned box centred on a single point (column / door / window shape). */
+/**
+ * Box centred on a single point (column / door / window shape), its X size
+ * along `xAxis` in plan (default +x: axis-aligned).
+ */
 function buildAxisBox(
   globalId: number,
   type: AddElementType,
@@ -185,22 +189,22 @@ function buildAxisBox(
   sizeY: number,
   sizeZ: number,
   storeyElevation: number,
+  xAxis: readonly [number, number] = [1, 0],
 ): MeshData {
+  const len = Math.hypot(xAxis[0], xAxis[1]) || 1;
+  const ux = xAxis[0] / len, uy = xAxis[1] / len;
   const hx = sizeX / 2;
   const hy = sizeY / 2;
   const baseZ = centerIfc[2];
   const topZ = baseZ + sizeZ;
-  const cx = centerIfc[0];
-  const cy = centerIfc[1];
+  const at = (sx: number, sy: number, z: number): Vec3 => [
+    centerIfc[0] + ux * sx * hx - uy * sy * hy,
+    centerIfc[1] + uy * sx * hx + ux * sy * hy,
+    z,
+  ];
   const ifcCorners: Vec3[] = [
-    [cx - hx, cy - hy, baseZ],
-    [cx + hx, cy - hy, baseZ],
-    [cx + hx, cy + hy, baseZ],
-    [cx - hx, cy + hy, baseZ],
-    [cx - hx, cy - hy, topZ],
-    [cx + hx, cy - hy, topZ],
-    [cx + hx, cy + hy, topZ],
-    [cx - hx, cy + hy, topZ],
+    at(-1, -1, baseZ), at(1, -1, baseZ), at(1, 1, baseZ), at(-1, 1, baseZ),
+    at(-1, -1, topZ), at(1, -1, topZ), at(1, 1, topZ), at(-1, 1, topZ),
   ];
   return buildBoxFromIfcCorners(globalId, type, ifcCorners, storeyElevation);
 }

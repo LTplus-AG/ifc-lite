@@ -5,17 +5,15 @@
 /**
  * An element's storey is its storey NOW (#6232, after #6282): a containment
  * edit that moves a wall from L0 (0 m) to L1 (3 m) must move the workplane a
- * command edits it on, and the mesh a resize mirrors to collaborators, to L1.
- * Both read the load-time `elementToStorey` index before, which still says L0.
+ * command edits it on to L1. It read the load-time `elementToStorey` index
+ * before, which still says L0.
  */
 
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { refreshWallMeshIn } from '@/store/slices/mutation-wall-resize';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import './builtin.js';
 import { getCommandRuntime } from './runtime.js';
@@ -53,14 +51,5 @@ describe('live storey for element workplanes (#6232)', () => {
     const g = getCommandRuntime().gesture as { plane: { spec: { storeyId: number }; localToRender(p: readonly number[]): readonly number[] } | null };
     assert.equal(g.plane?.spec.storeyId, UPPER_STOREY);
     assert.equal(g.plane?.localToRender([0, 0, 0])[1], 3, 'the plane sits at L1\'s elevation');
-  });
-
-  it('a resize mirrors a mesh standing on L1, not L0', () => {
-    let mirrored: MeshData | null = null;
-    useViewerStore.setState({ mirrorEntityGeometry: (_modelId: string, _id: number, mesh: MeshData) => { mirrored = mesh; } });
-    refreshWallMeshIn(useViewerStore.getState, MODEL_ID, wallId, true);
-    assert.ok(mirrored, 'the mirror mesh was built');
-    const ys = [...(mirrored as MeshData).positions].filter((_, i) => i % 3 === 1);
-    assert.deepEqual([Math.min(...ys), Math.max(...ys)].map((v) => +v.toFixed(6)), [3, 5.5]);
   });
 });

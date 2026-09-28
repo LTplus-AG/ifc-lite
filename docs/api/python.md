@@ -318,6 +318,9 @@ Mapped products can share one source. `product_total` is always `None` with an
 self-intersection and cutting allowances. They cannot establish a physical
 part count or final material quantity. Unsupported and source-modified sources
 retain explicit status; extraction failures appear in `diagnostics`.
+When a complete swept-disk occurrence has no defensible nominal section or
+volume estimate, `status_reason` explains the omission even if its centreline
+length remains available. Joined diagnostics have one bounded output budget.
 
 ### Tessellation quality
 

@@ -34,10 +34,22 @@ const FIXTURE = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
 
 // #6365: authoring HUD states need the current Model workspace before a tool can mount.
 async function enterModelWorkspace(page: Page): Promise<void> {
+  // Streaming geometry can arrive before the IFC data store. Model workspace
+  // entry is refused until an editable model has that store (#6365).
+  await page.waitForFunction((key) => {
+    const store = (globalThis as unknown as Record<string, {
+      getState(): { models: Map<string, { ifcDataStore: unknown | null }> };
+    }>)[key];
+    return [...store.getState().models.values()].some((entry) => entry.ifcDataStore != null);
+  }, STORE, { timeout: 180000 });
   await page.getByRole('tab', { name: 'Author', exact: true }).click();
   const model = page.getByRole('tabpanel', { name: 'Author' }).getByRole('button', { name: 'Model', exact: true });
   await model.click();
   await expect(model).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => page.evaluate((key) => {
+    const store = (globalThis as unknown as Record<string, { getState(): { workspaceMode: string } }>)[key];
+    return store.getState().workspaceMode;
+  }, STORE)).toBe('model');
 }
 
 test('#5813 Measure Clear all uses the themed dialog', async ({ page }, testInfo) => {

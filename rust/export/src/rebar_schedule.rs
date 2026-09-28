@@ -7,8 +7,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use ifc_lite_core::{
-    attribute_names_for_schema, keyword_eq, AttributeValue, DecodedEntity, EntityDecoder,
-    EntityScanner, ProjectUnits,
+    attribute_names_for_schema, keyword_eq, EntityDecoder, EntityScanner, ProjectUnits,
 };
 use ifc_lite_processing::{
     check_swept_disk, extract_swept_disk_views, DirectrixMetrics, SweptDiskCheckError,
@@ -16,6 +15,7 @@ use ifc_lite_processing::{
 };
 use serde::Serialize;
 
+use crate::rebar_attributes::{attribute, FIELDS};
 use crate::schema_detect::detect_schema;
 
 /// Where a schema-declared value was authored. An occurrence wins a conflict.
@@ -103,71 +103,10 @@ pub struct RebarSchedule {
     pub diagnostics: Vec<String>,
 }
 
-const FIELDS: &[&str] = &[
-    "Tag",
-    "SteelGrade",
-    "NominalDiameter",
-    "CrossSectionArea",
-    "BarLength",
-    "BarRole",
-    "PredefinedType",
-    "BarSurface",
-    "BendingShapeCode",
-];
 const MAX_TYPE_RELATION_REFERENCES: usize = 100_000;
 
 #[path = "rebar_schedule_links.rs"]
 mod links;
-
-fn attribute(
-    entity: &DecodedEntity,
-    schema: &str,
-    name: &str,
-    scale: f64,
-    area_scale: Option<f64>,
-) -> Result<Option<AuthoredRebarValue>, &'static str> {
-    let names = attribute_names_for_schema(schema, entity.ifc_type.name())
-        .ok_or("unknown schema entity")?;
-    let Some(index) = names.iter().position(|candidate| *candidate == name) else {
-        return Ok(None);
-    };
-    let Some(value) = entity.get(index) else {
-        return Ok(None);
-    };
-    if matches!(value, AttributeValue::Null | AttributeValue::Derived) {
-        return Ok(None);
-    }
-    let unit = match name {
-        "NominalDiameter" | "BarLength" => Some((scale, "m")),
-        "CrossSectionArea" => Some((area_scale.ok_or("unresolved project area unit")?, "m2")),
-        _ => None,
-    };
-    if let Some((factor, si_unit)) = unit {
-        let raw = value.as_float().ok_or("expected numeric measure")?;
-        let si = raw * factor;
-        if !raw.is_finite() || !si.is_finite() {
-            return Err("non-finite measure or unit conversion");
-        }
-        if (name == "NominalDiameter" || name == "BarLength") && raw <= 0.0 {
-            return Err("expected a positive measure");
-        }
-        if name == "CrossSectionArea" && raw < 0.0 {
-            return Err("expected a nonnegative measure");
-        }
-        return Ok(Some(AuthoredRebarValue::Measure {
-            value_file_units: raw,
-            value_si: si,
-            si_unit,
-        }));
-    }
-    let text = value
-        .as_string()
-        .or_else(|| value.as_enum())
-        .ok_or("expected text or enum")?;
-    Ok(Some(AuthoredRebarValue::Text {
-        value: text.to_string(),
-    }))
-}
 
 /// Build an occurrence-aware schedule without tessellating. The optional ID set
 /// filters `IfcReinforcingBar` occurrence IDs; an empty set returns no rows.

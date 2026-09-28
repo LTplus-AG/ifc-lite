@@ -126,6 +126,18 @@ probe does not measure opt-in quantity extraction or browser worker-pool
 latency, which need separate caller-level evidence if they become hot paths.
 The PR carries paired results, binary/fixture hashes, and source provenance.
 
+## Opt-in extrusion source definitions (#5784)
+
+The extrusion source/instance walk is requested separately from ordinary mesh
+production. Five balanced, interleaved native AC20-FZK-Haus pairs compared the
+exact #6268 quantity parent with this branch using fresh profiling processes
+and ordered mesh fingerprints. Mesh counts and every fingerprint matched; the
+small upward timing median was within overlapping run variation, including a
+reversed pair that favoured this branch. Verdict: no attributable default-load
+performance change on this fixture. This control does not measure the opt-in
+extrusion extraction or browser worker-pool path; measure those directly if
+their caller-visible cost becomes material.
+
 ## Derived swept-disk metrics (#5754)
 
 The length/bend calculations run only when an analytic description is

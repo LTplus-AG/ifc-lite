@@ -155,6 +155,9 @@ pub fn check_swept_disk(
             }
         }
     }
+    // A degenerate segment has no tangent, but must not hide a corner between
+    // defined tangents. Keep the last defined tangent's original segment index.
+    let mut carried_tangent = frames[0].end_tangent.map(|tangent| (0, tangent));
     for index in 0..frames.len().saturating_sub(1) {
         let left = frames[index];
         let right = frames[index + 1];
@@ -166,9 +169,10 @@ pub fn check_swept_disk(
         if gap > options.gap_tolerance_m {
             report.findings.push(finding(SweptDiskFindingCode::ConsecutiveGap,
                 index, Some(index + 1), gap, options.gap_tolerance_m, "m"));
+            carried_tangent = right.end_tangent.map(|tangent| (index + 1, tangent));
             continue;
         }
-        if let (Some(a), Some(b)) = (left.end_tangent, right.start_tangent) {
+        if let (Some((from_index, a)), Some(b)) = (carried_tangent, right.start_tangent) {
             let dot = a.iter().zip(b).map(|(x, y)| x * y).sum::<f64>().clamp(-1.0, 1.0);
             // Unlike acos(dot), atan2 retains small turns when dot rounds to 1.
             let cross = [
@@ -179,9 +183,18 @@ pub fn check_swept_disk(
             let angle = cross[0].hypot(cross[1]).hypot(cross[2]).atan2(dot);
             if angle > options.tangent_tolerance_rad {
                 report.findings.push(finding(SweptDiskFindingCode::TangentDiscontinuity,
-                    index, Some(index + 1), angle, options.tangent_tolerance_rad, "rad"));
+                    from_index, Some(index + 1), angle, options.tangent_tolerance_rad, "rad"));
             }
         }
+        carried_tangent = match right.end_tangent {
+            Some(tangent) => Some((index + 1, tangent)),
+            // Only a measured degenerate segment can carry a prior tangent;
+            // an undefined tangent on a longer curve breaks the comparison.
+            None if metrics.segments[index + 1].length <= options.zero_length_tolerance_m => {
+                carried_tangent
+            }
+            None => None,
+        };
     }
     Ok(report)
 }

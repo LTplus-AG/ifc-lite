@@ -47,13 +47,15 @@ fn deliberate_gap_sharp_corner_and_zero_length_have_indexed_measures() {
     ];
     let report = check_swept_disk(&occurrence, &SweptDiskCheckOptions::default()).unwrap();
     assert_eq!(report.skipped_reason, None);
-    assert_eq!(report.findings.len(), 2, "{:?}", report.findings);
+    assert_eq!(report.findings.len(), 3, "{:?}", report.findings);
     let gap = report.findings.iter().find(|f| f.code == SweptDiskFindingCode::ConsecutiveGap).unwrap();
     assert_eq!((gap.segment_index, gap.next_segment_index, gap.units), (0, Some(1), "m"));
     assert!((gap.measured - 0.001).abs() < 1e-12);
     assert_eq!(gap.threshold, 1e-6);
     let zero = report.findings.iter().find(|f| f.code == SweptDiskFindingCode::ZeroLengthSegment).unwrap();
     assert_eq!((zero.segment_index, zero.next_segment_index, zero.measured), (2, None, 0.0));
+    let corner = report.findings.iter().find(|f| f.code == SweptDiskFindingCode::TangentDiscontinuity).unwrap();
+    assert_eq!((corner.segment_index, corner.next_segment_index), (1, Some(3)));
 
     occurrence.directrix = vec![line([0.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
         line([1.0, 0.0, 0.0], [1.0, 1.0, 0.0])];
@@ -63,6 +65,34 @@ fn deliberate_gap_sharp_corner_and_zero_length_have_indexed_measures() {
     assert_eq!(sharp.code, SweptDiskFindingCode::TangentDiscontinuity);
     assert_eq!((sharp.segment_index, sharp.next_segment_index, sharp.units), (0, Some(1), "rad"));
     assert!((sharp.measured - std::f64::consts::FRAC_PI_2).abs() < 1e-12);
+}
+
+#[test]
+fn issue_5758_zero_length_segment_keeps_corner_check_but_gap_resets_it() {
+    let mut occurrence = disk("swept_disk_trimmed_line", 50);
+    occurrence.directrix = vec![
+        line([0.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
+        line([1.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
+        line([1.0, 0.0, 0.0], [1.0, 1.0, 0.0]),
+    ];
+    let report = check_swept_disk(&occurrence, &SweptDiskCheckOptions::default()).unwrap();
+    assert_eq!(report.skipped_reason, None);
+    assert_eq!(report.findings.len(), 2, "{:?}", report.findings);
+    assert_eq!(report.findings[0].code, SweptDiskFindingCode::ZeroLengthSegment);
+    assert_eq!(report.findings[0].segment_index, 1);
+    let corner = &report.findings[1];
+    assert_eq!(corner.code, SweptDiskFindingCode::TangentDiscontinuity);
+    assert_eq!((corner.segment_index, corner.next_segment_index), (0, Some(2)));
+    assert!((corner.measured - std::f64::consts::FRAC_PI_2).abs() < 1e-12);
+
+    occurrence.directrix[2] = line([1.01, 0.0, 0.0], [1.01, 1.0, 0.0]);
+    let report = check_swept_disk(&occurrence, &SweptDiskCheckOptions::default()).unwrap();
+    assert_eq!(report.skipped_reason, None);
+    assert_eq!(report.findings.len(), 2, "{:?}", report.findings);
+    assert_eq!(report.findings[0].code, SweptDiskFindingCode::ZeroLengthSegment);
+    assert_eq!(report.findings[1].code, SweptDiskFindingCode::ConsecutiveGap);
+    assert_eq!((report.findings[1].segment_index, report.findings[1].next_segment_index),
+        (1, Some(2)));
 }
 
 #[test]

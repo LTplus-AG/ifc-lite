@@ -31,6 +31,7 @@ import { asExpressIdRef, readAttributes } from './placement-core.js';
 import { resolveWallEditChain, type WallEditChain } from './wall-edit.js';
 import { resolveLinearElementChain, type LinearElementEditChain } from './linear-element-edit.js';
 import { resolveSlabEditChain, type SlabEditChain } from './slab-edit.js';
+import { effectiveStoreyId } from './effective-storey.js';
 
 export type SplitUnavailableCode =
   /** Not a wall / beam / column / member / slab / roof / plate / space. */
@@ -98,8 +99,9 @@ export function resolveSplitTarget(
   if (!target) {
     return { ok: false, code: diagnoseBody(dataStore, view, editor, expressId, SLAB_TYPES.has(stepType)) };
   }
-  // @raw-entity-enumeration-ok point lookup; authored elements are registered into this map (registerAuthoredElement), as the split commit's own storey gate reads it
-  if (dataStore.spatialHierarchy?.elementToStorey.get(expressId) === undefined) {
+  // The split commit's own storey gate (`resolveSplitContext`) reads the live
+  // containment, so a queued re-containment or removal is honoured here too.
+  if (effectiveStoreyId(dataStore, view, expressId) === undefined) {
     return { ok: false, code: 'storey' };
   }
   return target;

@@ -199,6 +199,21 @@ for (const unit of ['metre', 'millimetre'] as const) {
       assert.deepEqual(bases, [0.3, 0.3], 'both pieces start where the source did');
     });
 
+    it('the Split button and the commit read the same live containment', () => {
+      // The commit resolves the storey through queued containment edits
+      // (#6351); the button's predicate read the load-time index, so a wall
+      // whose containment was removed offered Split and then failed on click.
+      const wall = created(useViewerStore.getState().addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 2.5 }));
+      const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+      const containment = view.getNewEntities().find((e) => e.type === 'IfcRelContainedInSpatialStructure'
+        && Array.isArray(e.attributes[4]) && e.attributes[4].includes(`#${wall}`));
+      assert.ok(containment);
+      view.deleteEntity(containment.expressId);
+
+      assert.deepEqual(useViewerStore.getState().readSplitTarget(MODEL_ID, wall), { ok: false, reasonKey: 'splitTool.unavailable.storey' });
+      assert.equal(useViewerStore.getState().splitWallAtDistance(MODEL_ID, wall, 2).ok, false);
+    });
+
     it('an imported mesh-bodied wall is refused with the reason the Split button shows', () => {
       const target = useViewerStore.getState().readSplitTarget(MODEL_ID, MESH_WALL);
       assert.deepEqual(target, { ok: false, reasonKey: 'splitTool.unavailable.mesh' });

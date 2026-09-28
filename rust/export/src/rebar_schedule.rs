@@ -112,6 +112,9 @@ const FIELDS: &[&str] = &[
 ];
 const MAX_TYPE_RELATION_REFERENCES: usize = 100_000;
 
+#[path = "rebar_schedule_links.rs"]
+mod links;
+
 fn attribute(
     entity: &DecodedEntity,
     schema: &str,
@@ -177,9 +180,11 @@ pub fn build_rebar_schedule(
     let scale = decoder.length_unit_scale();
     let mut bars = BTreeMap::new();
     let mut types = HashMap::new();
+    let mut unreadable_types = HashSet::new();
     let mut type_candidates: HashMap<u32, Vec<u32>> = HashMap::new();
     let mut type_ref_budget = MAX_TYPE_RELATION_REFERENCES;
     let mut type_ref_budget_reported = false;
+    let mut type_link_diagnostics = 0;
     let mut project_id = None;
     let mut diagnostics = Vec::new();
     let mut scanner = EntityScanner::new(content);
@@ -196,26 +201,44 @@ pub fn build_rebar_schedule(
                 }
             }
         } else if keyword_eq(kind, "IFCREINFORCINGBARTYPE") {
-            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                types.insert(id, entity);
+            match decoder.decode_at_with_id(id, start, end) {
+                Ok(entity) => { types.insert(id, entity); }
+                Err(_) => {
+                    unreadable_types.insert(id);
+                    links::report(&mut diagnostics, &mut type_link_diagnostics, "type", id, "cannot decode");
+                }
             }
         } else if keyword_eq(kind, "IFCRELDEFINESBYTYPE") {
             if let Ok(rel) = decoder.decode_at_with_id(id, start, end) {
                 if let (Some(related), Some(type_id)) = (rel.get_list(4), rel.get_ref(5)) {
+                    if related.is_empty() {
+                        links::report(&mut diagnostics, &mut type_link_diagnostics, "type relationship", id, "RelatedObjects is empty");
+                    }
                     if related.len() > type_ref_budget && !type_ref_budget_reported {
                         diagnostics.push(format!(
                             "type relationship #{id}: RelatedObjects exceeds work budget; remaining assignments omitted"
                         ));
                         type_ref_budget_reported = true;
                     }
+                    let mut invalid_member = false;
                     for item in related.iter().take(type_ref_budget) {
                         let Some(bar_id) = item.as_entity_ref() else {
+                            invalid_member = true;
                             continue;
                         };
                         type_candidates.entry(bar_id).or_default().push(type_id);
                     }
+                    if invalid_member {
+                        links::report(&mut diagnostics, &mut type_link_diagnostics, "type relationship", id, "RelatedObjects contains a non-reference");
+                    }
                     type_ref_budget = type_ref_budget.saturating_sub(related.len());
+                } else {
+                    let reason = if rel.get_list(4).is_none() { "RelatedObjects is not a reference list" }
+                        else { "RelatingType is not a reference" };
+                    links::report(&mut diagnostics, &mut type_link_diagnostics, "type relationship", id, reason);
                 }
+            } else {
+                links::report(&mut diagnostics, &mut type_link_diagnostics, "type relationship", id, "cannot decode");
             }
         }
     }
@@ -247,7 +270,9 @@ pub fn build_rebar_schedule(
             if !seen_types.insert(candidate) {
                 continue;
             }
-            if !types.contains_key(&candidate) {
+            if unreadable_types.contains(&candidate) {
+                type_diagnostics.push(format!("assigned type #{candidate} could not decode"));
+            } else if !types.contains_key(&candidate) {
                 type_diagnostics.push(format!(
                     "assigned type #{candidate} is not IfcReinforcingBarType"
                 ));

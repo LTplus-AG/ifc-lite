@@ -52,20 +52,21 @@ swept-disk models separately from ordinary mesh loading.
 ## Swept-disk source-geometry checks (#5758)
 
 The checker is opt-in and consumes the analytic description without entering
-normal mesh production. Three interleaved native base/branch pairs on
-AC20-FZK-Haus (`--iters 5 --json --fingerprint`) measured median
-parse/geometry/total of 26/39/65 ms versus 13/23/37 ms. The base totals
-spanned 42–99 ms as other builds competed for the host; the apparent branch
-speed-up is not credible evidence of one. All six runs emitted 285 meshes,
-35,940 vertices and 20,322 triangles with the same ordered mesh FNV-1a64
-`c4d504b83ff698ea`.
+normal mesh production. Five balanced fresh-process native base/branch pairs
+on AC20-FZK-Haus (`--iters 5 --json --fingerprint`) started at host load 3.5
+on 24 CPUs. Median parse/geometry/total was 6/21/28 ms versus 6/22/29 ms;
+base totals spanned 24–33 ms and branch totals 25–31 ms. Both sides emitted
+285 meshes, 35,940 vertices and 20,322 triangles with the same ordered mesh
+FNV-1a64 `c4d504b83ff698ea`. The tested binary uses the same Rust and Cargo
+source as the current rebased head.
 
-Verdict: no mesh-output change; ordinary-load timing is unresolved under host
-contention. The separate opt-in call on the Autodesk Revit 24.2 Snowdon model
-checked three selected bars in 2.67 seconds on this host, including extraction
-and reporting; this single absolute observation is not a base/branch speed
-claim. Future optimization should measure analytic extraction on repeated
-mapped bars directly.
+Verdict: no mesh-output change or measurable ordinary-load cost beyond run
+variation; the 1 ms median difference is too small against that spread to
+claim a speed change. The separate opt-in call on the Autodesk Revit 24.2
+Snowdon model checked three selected bars in 2.67 seconds on this host,
+including extraction and reporting; this single absolute observation is not
+a base/branch speed claim. Future optimization should measure analytic
+extraction on repeated mapped bars directly.
 
 ## Opt-in swept-disk source descriptions (#5559)
 

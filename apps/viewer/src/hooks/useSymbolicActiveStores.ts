@@ -6,6 +6,7 @@ import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { displayedTranslation } from '@/lib/model-placement/state';
 import type { Translation } from '@/lib/model-placement/translation';
 import { useViewerStore } from '@/store';
@@ -16,11 +17,12 @@ export interface SymbolicActiveStore {
   store: IfcDataStore;
   modelId: string;
   idOffset: number;
+  mutationView?: MutablePropertyView;
 }
 
 /** Read the federation-aware active store set and RTC publication dependencies. */
 export function useSymbolicActiveStores(): SymbolicActiveStore[] {
-  const { models, ifcDataStore, placement, geometryResult, loading, mutationVersion } = useViewerStore(
+  const { models, ifcDataStore, placement, geometryResult, loading, mutationVersion, mutationViews } = useViewerStore(
     useShallow((state) => ({
       models: state.models,
       ifcDataStore: state.ifcDataStore,
@@ -31,6 +33,7 @@ export function useSymbolicActiveStores(): SymbolicActiveStore[] {
       // are added. Their object identity stays stable; mutationVersion is the
       // store signal that must re-run consumers such as symbolic bucket lookup.
       mutationVersion: state.mutationVersion,
+      mutationViews: state.mutationViews,
     })),
   );
 
@@ -46,6 +49,7 @@ export function useSymbolicActiveStores(): SymbolicActiveStore[] {
           store: model.ifcDataStore,
           modelId,
           idOffset: model.idOffset ?? 0,
+          mutationView: mutationViews.get(modelId),
           translation: displayedTranslation(placement, modelId),
         });
       }
@@ -55,9 +59,10 @@ export function useSymbolicActiveStores(): SymbolicActiveStore[] {
         store: ifcDataStore,
         modelId: 'legacy',
         idOffset: 0,
+        mutationView: mutationViews.get('__legacy__'),
         translation: [0, 0, 0],
       });
     }
     return out;
-  }, [models, ifcDataStore, placement, geometryResult, loading, mutationVersion]);
+  }, [models, ifcDataStore, placement, geometryResult, loading, mutationVersion, mutationViews]);
 }

@@ -8,6 +8,16 @@ import assert from 'node:assert/strict';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import {
+  FIXTURE_REL_CONTAINED_1,
+  FIXTURE_OPENING,
+  FIXTURE_STOREY_1,
+  FIXTURE_STOREY_2,
+  FIXTURE_WALL_A,
+  guid,
+  parseFixtureModel,
+} from '@/components/viewer/anonymized-export/anonymized-export-fixture.test-support';
 import { useViewerStore } from '../store/index.js';
 import { __setOverlayWorkerFactoryForTest } from '../lib/overlay-parse/index.js';
 import { createEmptyFlatSymbolic } from '../lib/overlay-parse/symbolic-flat.js';
@@ -24,13 +34,13 @@ import {
 import { __parseResultCacheSizeForTests } from './symbolic-parse-result-cache.js';
 import { __sourceFlatCacheSizeForTests } from './symbolic-source-flat-cache.js';
 
-function oneAnnotation() {
+function oneAnnotation(ownerId = 2, worldY = Number.NaN) {
   const flat = createEmptyFlatSymbolic();
   flat.typeNames = ['IfcAnnotation'];
   flat.polyPoints = Float32Array.from([0, 0, 1, 0]);
   flat.polyStart = Uint32Array.from([0, 2]);
-  flat.polyOwner = Uint32Array.from([2]);
-  flat.polyWorldY = Float32Array.from([NaN]);
+  flat.polyOwner = Uint32Array.from([ownerId]);
+  flat.polyWorldY = Float32Array.from([worldY]);
   flat.polyFlags = Uint8Array.from([0]);
   flat.polyType = Uint16Array.from([0]);
   return flat;
@@ -108,18 +118,20 @@ describe('symbolic cache follows live spatial bucket mappings (#5236/#5249)', ()
   });
 
   it('files concurrent parses under the spatial snapshot named by each key', async () => {
-    let worker: {
+    interface HeldWorker {
       onmessage: ((event: { data: unknown }) => void) | null;
       postMessage(request: { id: number }): void;
       terminate(): void;
-    } | null = null;
+    }
+    const workerRef: { current: HeldWorker | null } = { current: null };
     let requestId: number | null = null;
     const previous = __setOverlayWorkerFactoryForTest(() => {
-      worker = {
+      const worker: HeldWorker = {
         onmessage: null,
         postMessage(request) { requestId = request.id; },
         terminate() {},
       };
+      workerRef.current = worker;
       return worker as unknown as Worker;
     });
 
@@ -132,7 +144,7 @@ describe('symbolic cache follows live spatial bucket mappings (#5236/#5249)', ()
       target.spatialHierarchy!.storeyElevations.set(90, 25);
       useViewerStore.setState({ mutationVersion: 1 } as never);
       const underTwentyFive = ensureParseFor([target])[0]!;
-      const live = worker as typeof worker;
+      const live = workerRef.current;
       assert.ok(live, 'the first request should have started a worker parse');
       const postedId = requestId as number | null;
       assert.ok(postedId !== null, 'the worker request should have an id');
@@ -147,6 +159,93 @@ describe('symbolic cache follows live spatial bucket mappings (#5236/#5249)', ()
       const ten = getParseFor(target);
       assert.equal([...ten!.byStorey.values()][0].storeyElevation, 10,
         'an in-flight parse must not file the later map under the earlier map key');
+    } finally {
+      __setOverlayWorkerFactoryForTest(previous);
+    }
+  });
+
+  it('uses each model view for effective containment, created storeys, and deleted owners', async () => {
+    let flatOwnerId = FIXTURE_WALL_A;
+    let flatWorldY = Number.NaN;
+    const previous = __setOverlayWorkerFactoryForTest(() => {
+      const worker = {
+        onmessage: null as ((event: { data: unknown }) => void) | null,
+        postMessage(request: { id: number }) {
+          queueMicrotask(() => worker.onmessage?.({
+            data: { id: request.id, ok: true, flat: oneAnnotation(flatOwnerId, flatWorldY) },
+          }));
+        },
+        terminate() {},
+      };
+      return worker as unknown as Worker;
+    });
+
+    try {
+      const target = await parseFixtureModel();
+      const byType = new Map(target.entityIndex?.byType ?? []);
+      byType.set('IFCANNOTATION', [FIXTURE_WALL_A]);
+      target.entityIndex = { ...target.entityIndex, byType } as never;
+      const sibling = { ...target, spatialHierarchy: {
+        ...target.spatialHierarchy!,
+        elementToStorey: new Map(target.spatialHierarchy!.elementToStorey),
+        storeyElevations: new Map(target.spatialHierarchy!.storeyElevations),
+      } } as IfcDataStore;
+
+      await Promise.all(ensureParseFor([target]));
+      assert.equal([...getParseFor(target)!.byStorey.values()][0].storeyElevation, 0);
+
+      const view = new MutablePropertyView(null, 'symbolic-retarget');
+      view.setExpressIdWatermark(100);
+      view.setAttribute(FIXTURE_REL_CONTAINED_1, 'RelatingStructure', `#${FIXTURE_STOREY_2}`);
+      await Promise.all(ensureParseFor([{ store: target, mutationView: view }]));
+      const moved = getParseFor({ store: target, mutationView: view })!;
+      assert.deepEqual([...moved.byStorey.values()].map(bucket => bucket.storeyElevation), [3],
+        'NaN primitive elevation resolves through the effective retargeted storey');
+      assert.equal([...getParseFor(sibling)!.byStorey.values()][0].storeyElevation, 0,
+        'the byte-identical sibling without this view retains its source bucket');
+
+      const createdView = new MutablePropertyView(null, 'symbolic-created-storey');
+      createdView.setExpressIdWatermark(100);
+      createdView.deleteEntity(FIXTURE_REL_CONTAINED_1);
+      const createdStorey = createdView.createEntity('IfcBuildingStorey', [
+        guid(101), null, 'Authored storey', null, null, null, null, null, null, 6,
+      ]);
+      createdView.createEntity('IfcRelContainedInSpatialStructure', [
+        guid(102), null, null, null, [`#${FIXTURE_WALL_A}`], `#${createdStorey.expressId}`,
+      ]);
+      useViewerStore.setState({ mutationVersion: 1 } as never);
+      await Promise.all(ensureParseFor([{ store: target, mutationView: createdView }]));
+      const createdBucket = getParseFor({ store: target, mutationView: createdView })!;
+      assert.deepEqual([...createdBucket.byStorey.values()].map(bucket => bucket.storeyElevation), [6],
+        'a queued containment to a newly-created storey supplies its effective elevation');
+
+      createdView.deleteEntity(FIXTURE_WALL_A);
+      useViewerStore.setState({ mutationVersion: 2 } as never);
+      await Promise.all(ensureParseFor([{ store: target, mutationView: createdView }]));
+      const deleted = getParseFor({ store: target, mutationView: createdView })!;
+      assert.equal(deleted.byStorey.size + deleted.loose.length + deleted.looseTexts.length + deleted.looseFills.length, 0,
+        'a tombstoned symbolic owner is removed instead of becoming a loose primitive');
+
+      // This source owner has no raw spatial membership, so deleting it does
+      // not change the hierarchy digest. A finite primitive worldY remains
+      // authoritative for live (nondeleted) owners, but the revision key and
+      // frozen tombstone set must still remove it after deletion.
+      flatOwnerId = FIXTURE_OPENING;
+      flatWorldY = 7;
+      const uncontained = {
+        ...target,
+        source: { ...target.source, contentKey: `${target.source.contentKey}:finite-uncontained` },
+      } as IfcDataStore;
+      await Promise.all(ensureParseFor([uncontained]));
+      assert.equal([...getParseFor(uncontained)!.byStorey.values()][0].storeyElevation, 7,
+        'finite geometry elevation stays authoritative when no effective storey applies');
+      const tombstone = new MutablePropertyView(null, 'symbolic-uncontained-delete');
+      tombstone.deleteEntity(FIXTURE_OPENING);
+      useViewerStore.setState({ mutationVersion: 3 } as never);
+      await Promise.all(ensureParseFor([{ store: uncontained, mutationView: tombstone }]));
+      const removed = getParseFor({ store: uncontained, mutationView: tombstone })!;
+      assert.equal(removed.byStorey.size + removed.loose.length + removed.looseTexts.length + removed.looseFills.length, 0,
+        'deleting a finite-worldY owner invalidates its result even when spatial maps are unchanged');
     } finally {
       __setOverlayWorkerFactoryForTest(previous);
     }

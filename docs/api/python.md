@@ -270,24 +270,12 @@ Return IFC-authored quantities keyed by actual product STEP ID without meshing.
 Each observation retains the exact `IfcElementQuantity.Name` and
 `IfcPhysicalSimpleQuantity.Name`, both source entity IDs, kind, numeric value,
 and occurrence or inherited type origin. A same-named occurrence/type disagreement
-appears in `conflicts`; neither value is overwritten.
-`kind` is the full IFC leaf type, such as `IfcQuantityLength`.
-`IfcRelDefinesByProperties.RelatingPropertyDefinition` can carry multiple
-`IfcElementQuantity` definitions, all of which appear as authored observations.
-Malformed definitions and exhausted relationship, set-visit, or authored-row
-work budgets appear in `diagnostics`; expansion stops at the cap. The aggregate
-limits also cover quantity-leaf visits, cumulative quantity-set and leaf decode bytes, and
-type relationship links. `unit` records the resolved
-symbol, SI factor, source, IFC unit type, and explicit unit ID where present. If a unit cannot
+appears in `conflicts`; neither value is overwritten. `unit` records the resolved
+symbol, SI factor, source, and explicit unit ID where present. If a unit cannot
 be resolved or has the wrong dimension, `unit=None` and `unit_diagnostic`
 explains why. `IfcQuantityCount` and IFC4X3 `IfcQuantityNumber` are
 dimensionless when no unit is supplied; a resolved explicit named unit is
 preserved instead of being discarded.
-Per-record diagnostics are capped at 1,024 plus a truncation notice; distinct
-work-budget refusal reasons remain visible after that cap.
-For Count and Number, two different explicit unit entities are conservatively
-reported as a conflict even if their display symbols match; unit names do not
-certify dimensional equivalence.
 
 ```python
 view = ifclite_geom.authored_quantity_analysis(ifc_bytes, ids={50})
@@ -299,7 +287,11 @@ for quantity in view["products"].get(50, {}).get("authored", []):
 count, source-solid count, cutting length or material takeoff. This authored
 view contains no calculated estimate; use the analytic source APIs separately
 and keep their provenance distinct. A malformed or over-budget relationship
-or quantity set appears in `diagnostics`.
+or quantity set appears in `diagnostics`. An absent optional
+`IfcTypeObject.HasPropertySets` is valid; a malformed list or member is
+reported and its type-authored quantities are refused. Conflicting
+`IfcRelDefinesByType` assignments likewise refuse type inheritance for that
+product while preserving its occurrence-authored observations.
 
 ### Tessellation quality
 

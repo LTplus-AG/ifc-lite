@@ -17,13 +17,14 @@ import type { ViewerState } from '../index.js';
 import { toGlobalIdFromModels } from '../globalId.js';
 import { buildElementMesh } from './addElementMeshes.js';
 import { authoredElementMeshPayloadOnStorey, type AuthoredElement } from './authoredElement.js';
+import { effectiveStoreyId } from '@/lib/effective-storey.js';
 
 /** Mirror `expressId`'s shape, described as `element`'s builder params (storey-local metres). */
 export function mirrorAuthoredGeometry(get: () => ViewerState, modelId: string, expressId: number, element: AuthoredElement): void {
   const model = get().models.get(modelId);
   const dataStore = model?.ifcDataStore;
-  // @raw-entity-enumeration-ok point lookup; authored elements are registered into this map (registerAuthoredElement)
-  const storeyId = dataStore?.spatialHierarchy?.elementToStorey.get(expressId);
+  // The live storey (queued containment edits count), as the split commit reads it.
+  const storeyId = dataStore ? effectiveStoreyId(dataStore, get().mutationViews.get(modelId), expressId) : undefined;
   if (!dataStore || storeyId === undefined) return;
   const mesh = buildElementMesh({
     type: element.kind,

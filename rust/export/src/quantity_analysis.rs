@@ -8,7 +8,7 @@ use std::sync::Arc;
 use ifc_lite_core::{AttributeValue, EntityDecoder, EntityIndex, EntityScanner, IfcType, ProjectUnits};
 use serde::Serialize;
 
-use crate::model::props::decode_quantity_records;
+use crate::model::props::{decode_quantity_records, QuantityDecodeMode};
 
 #[path = "quantity_analysis_units.rs"]
 mod units;
@@ -162,7 +162,9 @@ fn add_sets(
                 "quantity set #{set_id}: malformed Quantities member at index {member_index}"));
             continue;
         }
-        let Some(decoded) = decode_quantity_records(decoder, &set, Some(MAX_REL_MEMBERS)) else {
+        let Some(decoded) = decode_quantity_records(
+            decoder, &set, Some(MAX_REL_MEMBERS), QuantityDecodeMode::AuthoredAnalysis,
+        ) else {
             diagnostics.push(format!("quantity set #{set_id}: malformed or over work budget"));
             continue;
         };

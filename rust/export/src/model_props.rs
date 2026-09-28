@@ -121,13 +121,15 @@ pub(super) fn render_attributes(
 
 /// Quantity kind + value-attribute index for an `IfcPhysicalSimpleQuantity`.
 /// Layout is uniform: `[Name, Description, Unit, <Value>]` ⇒ value at index 3.
-pub(super) fn quantity_kind(ty: IfcType) -> Option<&'static str> {
+fn quantity_kind(ty: IfcType, mode: QuantityDecodeMode) -> Option<&'static str> {
     match ty {
         IfcType::IfcQuantityLength => Some("Length"),
         IfcType::IfcQuantityArea => Some("Area"),
         IfcType::IfcQuantityVolume => Some("Volume"),
         IfcType::IfcQuantityCount => Some("Count"),
-        IfcType::IfcQuantityNumber => Some("Number"),
+        IfcType::IfcQuantityNumber if matches!(mode, QuantityDecodeMode::AuthoredAnalysis) => {
+            Some("Number")
+        }
         IfcType::IfcQuantityWeight => Some("Weight"),
         IfcType::IfcQuantityTime => Some("Time"),
         _ => None,
@@ -169,14 +171,20 @@ pub(super) fn decode_property_set(decoder: &mut EntityDecoder, def: &DecodedEnti
 
 /// Decode one `IfcElementQuantity` definition into our model.
 pub(super) fn decode_quantity_set(decoder: &mut EntityDecoder, def: &DecodedEntity) -> Option<QuantitySet> {
-    let decoded = decode_quantity_records(decoder, def, None)?;
+    let decoded = decode_quantity_records(decoder, def, None, QuantityDecodeMode::FlatExport)?;
     let quantities = decoded.records.into_iter().map(|record| record.value).collect();
     Some(QuantitySet { name: decoded.name, quantities })
 }
 
-/// The one physical-quantity parser shared by flat exports and the opt-in
-/// provenance analysis. Keep the IFC entity and optional Unit reference until
-/// the latter has been resolved; flat exports deliberately discard both.
+/// The quantity kinds each consumer has historically read.
+#[derive(Clone, Copy)]
+pub(crate) enum QuantityDecodeMode {
+    /// Preserve the existing flat-export set of kinds.
+    FlatExport,
+    /// Include IFC4X3 Number in the opt-in view.
+    AuthoredAnalysis,
+}
+
 pub(crate) struct QuantityRecord {
     pub id: u32,
     pub unit_id: Option<u32>,
@@ -191,8 +199,11 @@ pub(crate) struct QuantityRecordDecode {
     pub first_rejected_id: Option<u32>,
 }
 
+/// Parse physical quantities once while preserving the provenance needed by the
+/// opt-in view. Flat exports discard that metadata and retain their old scope.
 pub(crate) fn decode_quantity_records(
     decoder: &mut EntityDecoder, def: &DecodedEntity, max_members: Option<usize>,
+    mode: QuantityDecodeMode,
 ) -> Option<QuantityRecordDecode> {
     let name = def.get(2).and_then(|a| a.as_string()).unwrap_or("").to_string();
     let quantities_attr = def.get(5)?;
@@ -205,9 +216,10 @@ pub(crate) fn decode_quantity_records(
     let mut first_rejected_id = None;
     for q in &quants {
         let (Some(kind), Some(qname), Some(value)) = (
-            quantity_kind(q.ifc_type.clone()),
+            quantity_kind(q.ifc_type.clone(), mode),
             q.get(0).and_then(|a| a.as_string()).filter(|name| !name.is_empty()),
-            q.get(3).and_then(|a| a.as_float().or_else(|| a.as_int().map(|n| n as f64))),
+            // as_float already accepts STEP integers, including authored Count.
+            q.get(3).and_then(|a| a.as_float()),
         ) else {
             rejected_members += 1;
             first_rejected_id.get_or_insert(q.id);

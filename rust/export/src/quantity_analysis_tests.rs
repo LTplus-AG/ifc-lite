@@ -204,7 +204,7 @@ fn issue_5787_archicad_authored_quantity_is_an_independent_ifc_value() {
 }
 
 #[test]
-fn issue_5787_ifc4x3_number_and_explicit_count_units_are_not_dropped() {
+fn issue_5787_ifc4x3_number_is_opt_in_and_integer_count_keeps_flat_policy() {
     let ifc = IFC.replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3_ADD2'))")
         .replace("#14=IFCELEMENTQUANTITY", concat!(
             "#16=IFCQUANTITYCOUNT('ExplicitCount',$,#30,7,$);\n",
@@ -226,6 +226,19 @@ fn issue_5787_ifc4x3_number_and_explicit_count_units_are_not_dropped() {
     assert_eq!(bare.kind, "IfcQuantityNumber");
     assert_eq!(bare.unit.as_ref().unwrap().source, "dimensionless");
     assert_eq!(bare.unit_diagnostic, None);
+
+    // All flat formats consume this shared export model. Their pre-existing
+    // quantity policy already includes integer Count via as_float(), while
+    // IFC4X3 Number must not appear merely because the opt-in view supports it.
+    let flat = crate::model::build_export_model(ifc.as_bytes());
+    let wall = flat.entities.iter().find(|row| row.express_id == 5)
+        .expect("wall export row");
+    let values = wall.quantity_sets.iter().flat_map(|set| &set.quantities).collect::<Vec<_>>();
+    assert!(values.iter().any(|q| q.name == "Count" && q.value == 2.0));
+    assert!(values.iter().any(|q| q.name == "ExplicitCount" && q.value == 7.0));
+    for name in ["FractionalNumber", "BareNumber"] {
+        assert!(values.iter().all(|q| q.name != name), "{name} changed flat export output");
+    }
 }
 
 #[test]

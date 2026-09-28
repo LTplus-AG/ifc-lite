@@ -64,18 +64,25 @@ export class SweptDiskCache {
     const epoch = this.epoch;
     // One model's overlapping selections share a serial batch. A second caller
     // rechecks the per-product cache when the first batch finishes.
-    if (entry.inFlight) await entry.inFlight;
+    while (entry.inFlight) await entry.inFlight;
     if (this.epoch !== epoch || this.users === 0 || this.entries.get(model.id) !== entry) return new Map();
     const missing = [...new Set(ids)].filter((id) => Number.isInteger(id) && id > 0 && !entry.products.has(id));
     if (missing.length > 0) {
       const active = entry;
       const batch = this.extract(model, missing).then((result) => {
         if (this.epoch !== epoch || this.entries.get(model.id) !== active) return;
+        const diagnosticsById = new Map<string, string[]>();
+        for (const message of result.diagnostics) {
+          const product = /^product #(\d+)[:,]/.exec(message)?.[1];
+          if (!product) continue;
+          const diagnostics = diagnosticsById.get(product) ?? [];
+          diagnostics.push(message);
+          diagnosticsById.set(product, diagnostics);
+        }
         for (const id of missing) {
-          const prefix = `product #${id}`;
           active.products.set(id, {
             occurrences: result.elements[String(id)] ?? [],
-            diagnostics: result.diagnostics.filter((message) => message.startsWith(`${prefix}:`) || message.startsWith(`${prefix},`)),
+            diagnostics: diagnosticsById.get(String(id)) ?? [],
           });
         }
       });
@@ -103,7 +110,7 @@ export class SweptDiskCache {
     return this.initialization;
   }
 
-  private async extract(model: AnalyticSourceModel, ids: readonly number[]): Promise<SweptDiskDescriptions> {
+  protected async extract(model: AnalyticSourceModel, ids: readonly number[]): Promise<SweptDiskDescriptions> {
     const processor = await this.ready();
     const extract = (bytes: Uint8Array) => processor.extractSweptDiskDescriptions(bytes, new Uint32Array(ids));
     const storeSource = model.ifcDataStore?.source;

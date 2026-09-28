@@ -186,8 +186,6 @@ export function useThemeState() {
   const theme = useViewerStore((state) => state.theme);
   const isMobile = useViewerStore((state) => state.isMobile);
   const visualEnhancementsEnabled = useViewerStore((state) => state.visualEnhancementsEnabled);
-  const edgeContrastEnabled = useViewerStore((state) => state.edgeContrastEnabled);
-  const edgeContrastIntensity = useViewerStore((state) => state.edgeContrastIntensity);
   const contactShadingQuality = useViewerStore((state) => state.contactShadingQuality);
   const contactShadingIntensity = useViewerStore((state) => state.contactShadingIntensity);
   const contactShadingRadius = useViewerStore((state) => state.contactShadingRadius);
@@ -200,8 +198,6 @@ export function useThemeState() {
     theme,
     isMobile,
     visualEnhancementsEnabled,
-    edgeContrastEnabled,
-    edgeContrastIntensity,
     contactShadingQuality,
     contactShadingIntensity,
     contactShadingRadius,

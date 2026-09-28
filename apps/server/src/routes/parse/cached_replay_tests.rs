@@ -81,7 +81,7 @@ async fn miss_when_only_parquet_key_is_cached() {
     let cache_key = "only-parquet";
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-v5"), &well_framed_blob(&[1, 2, 3]))
+        .set_bytes(&format!("{cache_key}-parquet-v8"), &well_framed_blob(&[1, 2, 3]))
         .await
         .unwrap();
     let result = try_cached_replay(&state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await;
@@ -118,7 +118,7 @@ async fn corrupt_parquet_blob_falls_back_to_miss_not_error() {
         .unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-v5"), &[1, 2, 3]) // < 4 bytes
+        .set_bytes(&format!("{cache_key}-parquet-v8"), &[1, 2, 3]) // < 4 bytes
         .await
         .unwrap();
     seed_current_data_model(&state, cache_key).await;
@@ -145,7 +145,7 @@ async fn corrupt_metadata_json_is_an_error_not_a_miss() {
         .unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-v5"), &well_framed_blob(&[9, 9]))
+        .set_bytes(&format!("{cache_key}-parquet-v8"), &well_framed_blob(&[9, 9]))
         .await
         .unwrap();
     seed_current_data_model(&state, cache_key).await;
@@ -185,7 +185,7 @@ async fn miss_when_the_cached_data_model_predates_the_current_version() {
         .unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-v5"), &well_framed_blob(&[7, 7, 7]))
+        .set_bytes(&format!("{cache_key}-parquet-v8"), &well_framed_blob(&[7, 7, 7]))
         .await
         .unwrap();
     state
@@ -217,7 +217,7 @@ async fn valid_cache_hit_round_trips_the_geometry_in_the_sse_body() {
         .unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-v5"), &well_framed_blob(&geometry))
+        .set_bytes(&format!("{cache_key}-parquet-v8"), &well_framed_blob(&geometry))
         .await
         .unwrap();
     // A replay also requires a current data model beside the geometry (#3869).
@@ -270,7 +270,7 @@ async fn issue_5542_replayed_complete_reports_from_cache() {
         .unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-v5"), &well_framed_blob(&[1, 2, 3]))
+        .set_bytes(&format!("{cache_key}-parquet-v8"), &well_framed_blob(&[1, 2, 3]))
         .await
         .unwrap();
     seed_current_data_model(&state, cache_key).await;
@@ -410,7 +410,7 @@ async fn issue_4064_cached_complete_preserves_georeferencing_bits() {
         vec![0, 1, 2], [0.8, 0.8, 0.8, 1.0],
     );
     let geometry = crate::services::serialize_to_parquet(&[triangle]).unwrap();
-    state.cache.set_bytes(&format!("{key}-parquet-v5"), &well_framed_blob(&geometry)).await.unwrap();
+    state.cache.set_bytes(&format!("{key}-parquet-v8"), &well_framed_blob(&geometry)).await.unwrap();
     // A header cached before #4653 has no factor fields and would decode with
     // every factor defaulted to 1. It sits under the previous metadata version
     // and must not replay.
@@ -452,7 +452,7 @@ async fn issue_4459_stale_symbolic_sidecar_refuses_stream_replay_until_refreshed
     use super::cache_keys::{data_model_cache_key, symbolic_cache_key, cache_symbolic_data};
     let state = test_state("4459-stale-symbolic").await;
     let key = "4459-stale";
-    state.cache.set_bytes(&format!("{key}-parquet-v5"), &well_framed_blob(&[1,2,3])).await.unwrap();
+    state.cache.set_bytes(&format!("{key}-parquet-v8"), &well_framed_blob(&[1,2,3])).await.unwrap();
     state.cache.set_bytes(&format!("{key}-parquet-metadata-v5"),
         &serde_json::to_vec(&sample_metadata_header(key, 1)).unwrap()).await.unwrap();
     state.cache.set_bytes(&data_model_cache_key(key, crate::services::DataModelEntities::All), b"current data model").await.unwrap();

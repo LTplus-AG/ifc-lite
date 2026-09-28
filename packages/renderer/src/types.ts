@@ -201,7 +201,8 @@ export type SeparationLinesQuality = 'off' | 'low' | 'high';
 
 export interface VisualEnhancementOptions {
   enabled?: boolean;
-  edgeContrast?: { enabled?: boolean; intensity?: number }; // no effect since #5746 (edges come from the edge pass, `separationLines`); kept so settings type-check
+  /** @deprecated No effect since #5746: edges come from the edge pass, see `separationLines`. Kept so existing settings type-check. */
+  edgeContrast?: { enabled?: boolean; intensity?: number };
   /**
    * Screen-space ambient occlusion (the option keeps its historical name).
    * Darkens corners, junctions and contact areas from the depth buffer; the

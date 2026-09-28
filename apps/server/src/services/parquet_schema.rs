@@ -28,7 +28,7 @@ use std::sync::Arc;
 
 /// The flat transport's mesh table.
 ///
-/// `-parquet-v6` (issue #3888; `-parquet-v7` since #5130): the `vertex_start`/`vertex_count` and
+/// `-parquet-v6` (issue #3888; `-parquet-v9` since #5130): the `vertex_start`/`vertex_count` and
 /// `index_start`/`index_count` columns no longer name a block this row OWNS.
 /// Several rows can point at ONE shared block — the rotation-aware shape
 /// sharing `/optimized` has carried since #3575, brought to the flat route —
@@ -151,7 +151,7 @@ impl<'a> MeshRow<'a> {
     ///
     /// Here rather than at the call site so the field order is stated once,
     /// next to the schema whose column order it feeds. On every unshared row,
-    /// which is every row of a `-parquet-v5` payload, the block is `mesh`'s own.
+    /// which is every row of a `-parquet-v8` payload, the block is `mesh`'s own.
     pub fn new(mesh: &'a crate::types::MeshData, placement: RowPlacement) -> Self {
         Self {
             express_id: mesh.express_id,

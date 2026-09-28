@@ -110,6 +110,10 @@ import type {
   IfcAPI as _IfcAPI,
   MeshCollection as _MeshCollection,
 } from '@ifc-lite/wasm';
+import type {
+  FileSourceProvider as _FileSourceProvider,
+  PluginContext as _PluginContext,
+} from '@ifc-lite/plugin-api';
 
 declare global {
   // --- Real @ifc-lite type names carried over from earlier snippets ---
@@ -255,6 +259,18 @@ declare global {
   const ductBounds: _SpatialAABB;
   const ductPositions: Float32Array;
   const ductIndices: Uint32Array;
+
+  // --- File sources and plugins (packages/plugin-api, source-*) -----
+  const ctx: _PluginContext;
+  const sourceProvider: _FileSourceProvider;
+  const projectId: string;
+  /**
+   * The viewer's `SourceHost`, typed structurally: it lives in `apps/viewer`,
+   * which a package README's snippet cannot import.
+   */
+  const sourceHost: {
+    registerFactory(factory: () => _FileSourceProvider, label: string): boolean;
+  };
 
   // --- IDS (docs/guide/ids.md) --------------------------------------
   const idsXmlString: string;

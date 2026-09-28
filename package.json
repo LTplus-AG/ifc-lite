@@ -1,5 +1,6 @@
 {
   "name": "ifc-lite",
+  "//dalux-build-api": "TEMPORARY: pnpm.overrides['dalux-build-api'] resolves the dependency from the sibling dalux-build checkout, because the /web entry @ifc-lite/source-dalux/sdk imports is not published yet. Delete that one override line once dalux-build-api 2.5.0 is on npm \u2014 the package.json spec (^2.5.0) is already the real one.",
   "version": "10.0.1",
   "description": "High-performance browser IFC parser & renderer",
   "private": true,
@@ -165,7 +166,8 @@
       "minimatch": "^10.2.5",
       "@zip.js/zip.js": "2.8.26",
       "browserslist": "^4.28.9",
-      "baseline-browser-mapping": "^2.11.22"
+      "baseline-browser-mapping": "^2.11.22",
+      "dalux-build-api": "link:../dalux-build/javascript"
     },
     "patchedDependencies": {
       "vite-plugin-top-level-await@1.6.0": "patches/vite-plugin-top-level-await@1.6.0.patch",

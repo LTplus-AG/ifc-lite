@@ -92,6 +92,29 @@ revision uploaded on one day ties — on a live project that is the normal case,
 not an edge case. Sweep position last assumes the version-set listing is
 chronological, which it was on the tenant checked (ids ascend with it).
 
+## Every other Dalux endpoint (`/sdk`)
+
+The provider only calls the handful of endpoints a file source needs. For the rest of Dalux Build
+— tasks, forms, users, companies, work packages, inspection plans, test plans, project templates —
+the `sdk` subpath exposes [`dalux-build-api`](https://www.npmjs.com/package/dalux-build-api)'s full
+endpoint catalogue with zod-parsed responses:
+
+```ts
+const { createDaluxClient, createDaluxSdk } = await import('@ifc-lite/source-dalux/sdk');
+const dalux = createDaluxSdk(await createDaluxClient(ctx));
+
+const tasks = await dalux.tasks.getProjectTasks(projectId);
+```
+
+It borrows the catalogue, not the transport: requests go through this package's own client, so the
+same-origin relay routing, the `daluxNode` selector, byte-exact handling of signed download links
+and `ctx.log` tracing described below all still apply. Writes throw `DaluxReadOnlyError` — this
+provider is read-only, so a `POST` would otherwise be silently dropped.
+
+Import it dynamically, as above. It is a separate subpath because `DaluxBuildProvider` is loaded at
+app start and the catalogue costs zod plus its schemas; nothing reachable from this package's main
+entry point pulls it in.
+
 ## CORS
 
 The Dalux API does not send CORS headers, so direct browser fetches to it

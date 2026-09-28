@@ -10,6 +10,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./sdk": {
+      "types": "./dist/sdk.d.ts",
+      "import": "./dist/sdk.js",
+      "default": "./dist/sdk.js"
     }
   },
   "scripts": {
@@ -19,7 +24,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ifc-lite/plugin-api": "workspace:^"
+    "@ifc-lite/plugin-api": "workspace:^",
+    "dalux-build-api": "^2.5.0"
   },
   "devDependencies": {
     "@ifc-lite/source-fixture": "workspace:^",

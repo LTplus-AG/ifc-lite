@@ -5,14 +5,19 @@
 /**
  * Response shapes for the Dalux Build API, and hand-written decoders for them.
  *
- * This package previously borrowed types and zod schemas from a third-party
+ * This package previously borrowed types and zod schemas from the
  * `dalux-build-api` client by deep-importing its `src/` internals. That is
  * gone: deep-importing another package's internals breaks on any upstream
- * reorganisation, it made a published `@ifc-lite/*` package depend on a
- * single-maintainer package, and it dragged zod into the viewer's eagerly
- * loaded bundle for what amounts to a few dozen field checks. The sibling
- * SharePoint/OneDrive provider talks to Microsoft Graph with nothing but
- * `fetch` and hand-written narrowing; there is no reason this one needs more.
+ * reorganisation, and it dragged zod into the viewer's eagerly loaded bundle
+ * for what amounts to a few dozen field checks. The sibling SharePoint/
+ * OneDrive provider talks to Microsoft Graph with nothing but `fetch` and
+ * hand-written narrowing; there is no reason this one needs more.
+ *
+ * The library is back, but only behind `@ifc-lite/source-dalux/sdk` — a
+ * public entry point, not a deep import, and one the viewer's eager bundle
+ * cannot reach (see `sdk.ts`). It is how a caller gets the endpoints this
+ * provider does not use. The provider's own paths still decode here, because
+ * the bundle argument above has not changed for code that loads at app start.
  *
  * The decoders below reproduce the previous schemas' semantics as closely as
  * possible, so this is mostly a dependency change and not a behaviour

@@ -429,9 +429,7 @@ export class IfcLiteBridge {
 
   /** Exact authored swept-disk definitions and measurements in IFC world metres. */
   extractSweptDiskDescriptions(content: Uint8Array, ids?: Uint32Array): SweptDiskDescriptions {
-    return this.runExport('extractSweptDiskDescriptions', content, (api) =>
-      api.extractSweptDiskDescriptions(content, ids) as SweptDiskDescriptions,
-    );
+    return this.runExport('extractSweptDiskDescriptions', content, (api) => api.extractSweptDiskDescriptions(content, ids) as SweptDiskDescriptions);
   }
 
   /** Exact authored extrusion sources and their world-space product occurrences. */

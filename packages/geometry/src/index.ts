@@ -1106,9 +1106,7 @@ export class GeometryProcessor {
   /** Extract IfcExtrudedAreaSolid profiles and transforms for 2D projection.
    * `modelIndex` is the federation index; null until initialized. */
   extractProfiles(buffer: Uint8Array, modelIndex: number = 0): import('@ifc-lite/wasm').ProfileCollection | null {
-    if (!this.bridge || !this.bridge.isInitialized()) {
-      return null;
-    }
+    if (!this.bridge?.isInitialized()) return null;
     // SAB-safe: caller may pass a SharedArrayBuffer-backed view, which
     // both Firefox and Chromium reject in raw `TextDecoder.decode`.
     const content = safeUtf8Decode(buffer);
@@ -1295,7 +1293,7 @@ export class GeometryProcessor {
     const records = meshes.filter(
       (m) => geometryClassOf(m) === GEOM_CLASS_OCCURRENCE && levels.has(m.expressId) && m.indices.length >= 3,
     );
-    const requested = new Set([...levels.keys()]);
+    const requested = new Set(levels.keys());
     const covered = new Set(records.map((m) => m.expressId));
     const result: SimplifyMeshesResult = { elements: [], skipped: [] };
     for (const id of requested) {

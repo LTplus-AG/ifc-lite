@@ -126,6 +126,8 @@ describe('BCFPanel localization (#4918)', () => {
       setAuthorButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     assert.match(document.body.textContent ?? '', /⟦Set Author Email⟧/);
+    const authorInput = container.querySelector<HTMLInputElement>('input[aria-label]');
+    assert.equal(authorInput?.getAttribute('aria-label'), marked(CATALOGUE['bcf.panel.setAuthorHeading'] as string));
   });
 
   it('translates the edit-topic form heading and submit label the panel passes as overrides (review #5055)', () => {

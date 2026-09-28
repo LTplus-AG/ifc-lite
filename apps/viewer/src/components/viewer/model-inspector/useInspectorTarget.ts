@@ -87,7 +87,9 @@ export function useInspectorTarget(): InspectorTarget {
     return session && live ? { modelId: session.modelId, live } : null;
   }, [session, models]);
 
-  const running = commandKind(session?.activeCommandId);
+  const slabClass = useViewerStore((s) => s.authoringDefaults.slabClass);
+  const beamClass = useViewerStore((s) => s.authoringDefaults.beamClass);
+  const running = commandKind(session?.activeCommandId, { slabClass, beamClass });
   const defaultsKind = session ? running ?? (selection ? null : lastKind) : null;
   const [picked, setPicked] = useState<InspectorMode | null>(null);
   useEffect(() => setPicked(null), [selectedEntityId, session?.activeCommandId]);

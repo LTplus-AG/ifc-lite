@@ -87,8 +87,8 @@ export function LayersSection({ modelId, live, kind, initial, inheritedFromType,
     if (layerSetId !== null && elementId === undefined && target === 'element') {
       const s = useViewerStore.getState();
       s.setAuthoringDefaults({ layerSetIds: { ...s.authoringDefaults.layerSetIds, [kind]: { modelId, expressId: layerSetId } } });
-      // The next wall is built as thick as its layers, as a layered selected wall is.
-      if (kind === 'wall') s.setAuthoringDims('wall', { Thickness: layers.reduce((sum, l) => sum + l.thickness, 0) });
+      // The next element is built as thick as its layers, as a layered selected wall is.
+      s.setAuthoringDims(kind, { Thickness: layers.reduce((sum, l) => sum + l.thickness, 0) });
     }
   };
 

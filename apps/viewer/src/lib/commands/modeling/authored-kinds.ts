@@ -18,7 +18,7 @@ import { iterateEffectiveEntityIds, type IfcAttributeValue, type MutableProperty
 import { getAttributeNamesForSchema, type IfcDataStore } from '@ifc-lite/parser';
 import { effectiveListStringAttribute } from '@/lib/lists/effective-provider-entities';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
-import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
+import type { AuthoredElementKind, AuthoringDefaults } from '@/store/slices/authoringDefaultsSlice';
 
 export interface AuthoredKindInfo {
   /** The occurrence class, subtypes included (`IfcWallStandardCase` is a wall). */
@@ -44,18 +44,25 @@ export const AUTHORED_KINDS: Readonly<Record<AuthoredElementKind, AuthoredKindIn
 
 const KINDS = Object.keys(AUTHORED_KINDS) as AuthoredElementKind[];
 
-/** The modeling command that builds each kind, for the inspector's defaults mode. */
-const COMMAND_KINDS: Readonly<Record<string, AuthoredElementKind>> = {
-  'wall.place': 'wall',
-  'slab.place': 'slab',
-  'column.place': 'column',
-  'beam.place': 'beam',
-  'door.place': 'door',
-  'window.place': 'window',
-};
-
-export function commandKind(commandId: string | null | undefined): AuthoredElementKind | null {
-  return commandId ? COMMAND_KINDS[commandId] ?? null : null;
+/**
+ * The kind the running command builds next, for the inspector's defaults
+ * mode. The Slab and Beam commands build the class picked in their bar
+ * (`slabClass`: slab, roof or plate; `beamClass`: beam or member), so their
+ * defaults are that class's.
+ */
+export function commandKind(
+  commandId: string | null | undefined,
+  defaults: Pick<AuthoringDefaults, 'slabClass' | 'beamClass'>,
+): AuthoredElementKind | null {
+  switch (commandId) {
+    case 'wall.place': return 'wall';
+    case 'slab.place': return defaults.slabClass;
+    case 'column.place': return 'column';
+    case 'beam.place': return defaults.beamClass;
+    case 'door.place': return 'door';
+    case 'window.place': return 'window';
+    default: return null;
+  }
 }
 
 export interface LiveModel {

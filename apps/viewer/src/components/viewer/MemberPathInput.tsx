@@ -44,7 +44,7 @@ export function MemberPathInput({
       aria-label={t('searchModal.filterEditors.memberPath.ariaLabel')}
       title={t('searchModal.filterEditors.memberPath.title')}
       spellCheck={false}
-      className="h-7 w-24 rounded border border-zinc-300 bg-transparent px-1 font-mono text-[10px] dark:border-zinc-700"
+      className="h-7 w-24 rounded border border-zinc-300 bg-transparent px-1 font-mono text-2xs dark:border-zinc-700"
     />
   );
 }

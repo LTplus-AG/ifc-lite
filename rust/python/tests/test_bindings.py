@@ -340,13 +340,32 @@ def test_issue_5759_rebar_schedule_separates_authored_and_derived_values():
         "value_si": pytest.approx(0.00066), "si_unit": "m2",
     }
     (sweep,) = row["sweeps"]
-    assert sweep["source"]["solid_id"] == sweep["solid_id"]
-    assert sweep["source"]["context"]["kind"] == "direct"
+    # The IFC fixture authors solid #72 in Body representation #73.
+    assert sweep["source"]["solid_id"] == 72
+    assert sweep["source"]["context"] == {"kind": "direct", "representation_id": 73}
     assert sweep["radius_m"] == pytest.approx(0.0145)
     assert sweep["directrix_metrics"]["total_length"] != pytest.approx(0.9)
     assert sweep["checks"]["findings"] == []
     assert row["geometry_unavailable_reason"] is None
     assert ifclite_geom.rebar_schedule(source.encode(), ids=set())["rows"] == {}
+
+
+def test_issue_5759_rebar_schedule_matches_repeated_solid_by_occurrence():
+    # Both Body representations reference the same solid, so solid_id alone
+    # cannot distinguish which source context belongs to each occurrence.
+    source = read(REBAR).decode()
+    repeated = source.replace(
+        "#124=IFCPRODUCTDEFINITIONSHAPE($,$,(#73));",
+        "#9000=IFCSHAPEREPRESENTATION(#43,'Body','AdvancedSweptSolid',(#72));\n"
+        "#124=IFCPRODUCTDEFINITIONSHAPE($,$,(#73,#9000));",
+    )
+    assert repeated != source
+    sweeps = ifclite_geom.rebar_schedule(repeated.encode())["rows"][125]["sweeps"]
+    assert [(sweep["occurrence_index"], sweep["solid_id"],
+             sweep["source"]["context"]) for sweep in sweeps] == [
+        (0, 72, {"kind": "direct", "representation_id": 9000}),
+        (1, 72, {"kind": "direct", "representation_id": 73}),
+    ]
 
 
 def test_issue_5759_rebar_schedule_type_fallback_conflict_and_missing_geometry():

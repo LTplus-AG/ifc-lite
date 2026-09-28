@@ -119,6 +119,7 @@ runAppearanceContracts(IfcAPI, test);
 runLandXmlContracts(api, test);
 runStepLogContracts(api, test);
 runSweptDiskContracts(api, test, ROOT_DIR);
+await (await import('./lib/wasm-extrusion-bridge-contracts.mjs')).runExtrusionBridgeContracts(test, ROOT_DIR); // #6306
 if (!COLUMN_AVAILABLE) {
   skip('IFC-backed WASM contracts', `column fixture missing — ${FIXTURES_HINT}`);
   finishContractRun(api, passed, failed, skipped);
@@ -2155,7 +2156,6 @@ await runShardRefusalBoundaryTests(api, test);
 // there and not to the Rust partition fails here.
 await runClassToggleShardContract(IfcAPI, test);
 await (await import('./lib/wasm-remesh-contracts.mjs')).runRemeshContracts({ IfcAPI, FIXTURES_DIR, FIXTURES_HINT, test, skip }); // #6232
-await (await import('./lib/wasm-extrusion-bridge-contracts.mjs')).runExtrusionBridgeContracts(test, ROOT_DIR); // #6306
 finishContractRun(api, passed, failed, skipped);
 
 if (failed > 0) {

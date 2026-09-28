@@ -177,6 +177,19 @@ describe('materials', () => {
     const { editor, anchor } = synthetic('IFC4');
     expect(() => addMaterialLayerSetToStore(editor, anchor, { MaterialLayers: [] })).toThrow(/at least one layer/);
     expect(() => addMaterialLayerSetToStore(editor, anchor, { MaterialLayers: [{ LayerThickness: -1 }] })).toThrow(/>= 0/);
+  });
+
+  it('refuses a layer whose Material is not an IfcMaterial, before writing any layer (#6232)', () => {
+    const { view, editor, anchor } = synthetic('IFC4');
+    const material = addMaterialToStore(editor, anchor, { Name: 'C' }).materialId;
+    const set = addMaterialLayerSetToStore(editor, anchor, { MaterialLayers: [{ Material: material, LayerThickness: 0.2 }] }).layerSetId;
+    const before = view.getNewEntities().length;
+    // A layer set, a source entity of another class, and an id that does not exist.
+    expect(() => addMaterialLayerSetToStore(editor, anchor, { MaterialLayers: [{ Material: material, LayerThickness: 0.1 }, { Material: set, LayerThickness: 0.1 }] }))
+      .toThrow(/MaterialLayers\[1\]\.Material #\d+ is an IfcMaterialLayerSet, not an IfcMaterial/);
+    expect(() => addMaterialLayerSetToStore(editor, anchor, { MaterialLayers: [{ Material: 5, LayerThickness: 0.1 }] })).toThrow(/not an IfcMaterial/);
+    expect(() => addMaterialLayerSetToStore(editor, anchor, { MaterialLayers: [{ Material: 999, LayerThickness: 0.1 }] })).toThrow(/#999 is not a live entity/);
+    expect(view.getNewEntities()).toHaveLength(before);
     expect(() => assignMaterialInStore(editor, anchor, 5, [5], [])).toThrow(/cannot relate to itself/);
     expect(() => assignMaterialInStore(editor, anchor, 5, [], [])).toThrow(/at least one object/);
   });

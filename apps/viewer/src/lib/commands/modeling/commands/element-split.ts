@@ -108,7 +108,7 @@ function commitSlab(g: SplitGesture & { target: NonNullable<SplitGesture['target
   const inRight = right ? pointInPolygon(right.footprint, [g.cursor![0], g.cursor![1]]) : false;
   toast.success(`Slab split — ${shortcutLabel('edit.undo')} to undo`);
   const created = [result.left.expressId, result.right.expressId];
-  return { modelId, created, deleted: [expressId], remesh: created, select: [inRight ? result.right.expressId : result.left.expressId] };
+  return { modelId, created, deleted: [expressId], remesh: created, authored: [], select: [inRight ? result.right.expressId : result.left.expressId] };
 }
 
 function commitLinear(g: SplitGesture & { target: NonNullable<SplitGesture['target']> }, store: CommandContext['get']): CommitResult {
@@ -118,12 +118,12 @@ function commitLinear(g: SplitGesture & { target: NonNullable<SplitGesture['targ
   if (wall.ok) {
     notifyWallSplit(wall.openings);
     const created = [wall.left.expressId, wall.right.expressId];
-    return { modelId, created, deleted: [expressId], remesh: created, select: [wall.right.expressId] };
+    return { modelId, created, deleted: [expressId], remesh: created, authored: [], select: [wall.right.expressId] };
   }
   const linear = store().splitLinearElementAtDistance(modelId, expressId, distance);
   if (!linear.ok) throw new Error(`Couldn't split: ${linear.reason}`);
   toast.success(`Element split — ${shortcutLabel('edit.undo')} to undo`);
-  return { modelId, created: [linear.right.expressId], deleted: [], remesh: [expressId, linear.right.expressId], select: [linear.right.expressId] };
+  return { modelId, created: [linear.right.expressId], deleted: [], authored: [], remesh: [expressId, linear.right.expressId], select: [linear.right.expressId] };
 }
 
 export const ELEMENT_SPLIT: ModelingCommand<SplitGesture> = {

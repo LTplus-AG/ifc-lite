@@ -87,6 +87,13 @@ export interface CommitResult {
   remesh: number[];
   /** Express ids to select after the commit. */
   select?: number[];
+  /**
+   * New elements that take the session's per-kind type and layer-set
+   * defaults (`authored-defaults.ts`), in the same undo step. Default:
+   * `created`. A command whose new elements continue an existing one (a
+   * split's halves) passes `[]`.
+   */
+  authored?: readonly number[];
 }
 
 export interface CommandHudProps<G> {

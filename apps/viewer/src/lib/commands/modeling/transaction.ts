@@ -8,7 +8,8 @@
  *
  *   1. the shared mutation gate (edit mode, collab role, editable model);
  *   2. snapshot every model's undo-stack length;
- *   3. `cmd.commit` inside try;
+ *   3. `cmd.commit` inside try, then the per-kind type and layer-set
+ *      defaults on what it built (`authored-defaults.ts`);
  *   4. tag everything pushed since the snapshot with one batch id, so one
  *      Ctrl+Z reverts the whole commit however many mutations it wrote;
  *   5. re-mesh the touched entities through the wasm re-mesh service and
@@ -28,6 +29,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { mutationsSince, newMutationBatchId, undoStackLengths } from '@/store/slices/mutation-batch-tags';
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
 import type { RemeshCause } from '@/lib/remesh/affected-set';
+import { applyAuthoredDefaults } from './authored-defaults.js';
 import type { AuthoringTransaction, CommandContext, CommitResult, ModelingCommand } from './types.js';
 
 export interface RemeshRequest {
@@ -52,7 +54,7 @@ export function setRequestRemesh(handler: RequestRemesh): () => void {
 }
 
 /** The store surface a transaction needs: read, and write back the redo branch on rollback. */
-export type TransactionStore = Pick<StoreApi<ViewerState>, 'getState' | 'setState'>;
+export type TransactionStore = Pick<StoreApi<ViewerState>, 'getState' | 'setState' | 'subscribe'>;
 
 export type TransactionOutcome =
   | { ok: true; batchId: string | null; result: CommitResult }
@@ -77,6 +79,7 @@ export function runTransaction(
   let result: CommitResult;
   try {
     result = cmd.commit(g, tx);
+    applyAuthoredDefaults(store, result.modelId ?? modelId, result.authored ?? result.created);
   } catch (error) {
     rollBack(store, before, redoBefore);
     dropOverlayEntitiesSince(get(), overlayBefore);

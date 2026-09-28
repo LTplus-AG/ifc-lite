@@ -184,7 +184,7 @@ export function extractWallSegmentsForStorey(
   for (const id of dividerIds) {
     // Created dividers have no source bytes; the overlay loop below reads them.
     if (lookup.createdType(id) !== undefined) continue;
-    const result = extractWallAxisFromSource(store, extractor, id, storeyChain, log);
+    const result = extractWallAxisFromSource(store, extractor, overlay, id, storeyChain, log);
     if (result.segment) {
       segments.push(scaleSegment(result.segment, lengthUnitScale));
       contributing.push(id);
@@ -408,26 +408,21 @@ interface ExtractAttempt {
 function extractWallAxisFromSource(
   store: IfcDataStore,
   extractor: EntityExtractor,
+  overlay: OverlayWallReader | undefined,
   wallId: number,
   storeyChain: ReadonlyMap<number, number> | null,
   log: Logger,
 ): ExtractAttempt {
-  // @raw-entity-enumeration-ok point read of one source divider; deleted ones were dropped by the effective spatial walk and created ones are read by the overlay loop
-  const ref = store.entityIndex.byId.get(wallId);
-  if (!ref) {
-    log(`wall #${wallId}: missing entity ref`);
-    return { segment: null, reason: 'no-source-bytes' };
-  }
-  const wall = extractor.extractEntity(ref);
+  const wall = readEntity(store, extractor, overlay, wallId);
   if (!wall) {
-    log(`wall #${wallId}: extractor returned null`);
+    log(`wall #${wallId}: effective entity missing`);
     return { segment: null, reason: 'wall-not-parsed' };
   }
   const placementId = numericAttr(wall.attributes[5]);
   const representationId = numericAttr(wall.attributes[6]);
   if (placementId === null) return { segment: null, reason: 'no-placement' };
   if (representationId === null) return { segment: null, reason: 'no-representation' };
-  return computeWallSegment(store, extractor, placementId, representationId, undefined, wallId, storeyChain, log);
+  return computeWallSegment(store, extractor, placementId, representationId, overlay, wallId, storeyChain, log);
 }
 
 function extractWallAxisFromOverlay(

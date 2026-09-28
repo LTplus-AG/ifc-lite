@@ -8,7 +8,10 @@ import { existsSync, writeFileSync } from 'node:fs';
 import { sweptDiskFixture } from './swept-disk-fixture.js';
 
 type BrowserState = {
-  models: Map<string, { id: string; ifcDataStore?: { entityCount: number } | null }>;
+  models: Map<string, { id: string; ifcDataStore?: {
+    entityCount: number;
+    entities: { getTypeName(id: number): string };
+  } | null }>;
   geometryResult?: { meshes: unknown[] };
   toGlobalId(modelId: string, expressId: number): number;
   setSelectedEntity(ref: { modelId: string; expressId: number }): void;
@@ -54,6 +57,10 @@ async function frameChange(
 test('selected swept-disk bar draws and clears its source centreline (#5778)', async ({ page }, testInfo) => {
   test.skip(!existsSync(sweptDiskFixture.path), `Swept-disk IFC missing at ${sweptDiskFixture.path}; run pnpm fixtures or provide REBAR_IFC`);
   test.setTimeout(600_000);
+  let deviceLostBeforeOverlay: string | null = null;
+  page.on('console', (message) => {
+    if (message.text().includes('[WebGPU] Device lost:')) deviceLostBeforeOverlay = message.text();
+  });
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/');
   await page.locator('#file-input-open').setInputFiles(sweptDiskFixture.path);
@@ -65,7 +72,7 @@ test('selected swept-disk bar draws and clears its source centreline (#5778)', a
       && (model?.ifcDataStore?.entityCount ?? 0) > 0;
   }, undefined, { timeout: 300_000 });
 
-  await page.evaluate((expressId) => {
+  const sourceType = await page.evaluate((expressId) => {
     const state = (globalThis as unknown as { __ifc_lite_viewer_store__: BrowserStore }).__ifc_lite_viewer_store__.getState();
     const model = [...state.models.values()][0];
     if (!model) throw new Error('loaded IFC model is missing');
@@ -74,17 +81,36 @@ test('selected swept-disk bar draws and clears its source centreline (#5778)', a
     state.setSelectedEntityId(id);
     state.setSelectedEntityIds([id]);
     state.cameraCallbacks.frameEntities?.([id]);
+    return model.ifcDataStore?.entities.getTypeName(expressId);
   }, sweptDiskFixture.expressId);
+  expect(sourceType, 'the loaded IFC contains the authored reinforcing bar').toBe('IfcReinforcingBar');
   await page.waitForFunction(() => Boolean((globalThis as unknown as { __ifc_lite_capture_color_frame__?: unknown }).__ifc_lite_capture_color_frame__));
   const capture = () => page.evaluate(() => (globalThis as unknown as {
     __ifc_lite_capture_color_frame__: () => Promise<string | null>;
   }).__ifc_lite_capture_color_frame__());
   let before: string | null = null;
-  await expect.poll(async () => {
-    before = await capture();
-    return before;
-  }, { timeout: 30_000, message: 'renderer produces a baseline color frame' })
-    .toMatch(/^data:image\/png;base64,/);
+  let captureThrew = false;
+  try {
+    await expect.poll(async () => {
+      try {
+        before = await capture();
+      } catch (error) {
+        captureThrew = true;
+        throw error;
+      }
+      return before;
+    }, { timeout: 30_000, message: 'renderer produces a baseline color frame' })
+      .toMatch(/^data:image\/png;base64,/);
+  } catch (error) {
+    // Hosted SwiftShader can destroy its device during model load, before this
+    // test enables the overlay. The local strict run still requires pixels.
+    if (!captureThrew && before === null && deviceLostBeforeOverlay && process.env.E2E_GPU_STRICT === '0') {
+      const reason = `Hosted software WebGPU device was lost before the centreline overlay: ${deviceLostBeforeOverlay}`;
+      console.warn(`[e2e] ${reason}`);
+      test.skip(true, reason);
+    }
+    throw error;
+  }
   if (!before) throw new Error('renderer produced no baseline color frame');
   await expect.poll(async () => {
     const next = await capture();

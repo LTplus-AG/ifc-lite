@@ -712,8 +712,9 @@ and instance output budgets are independent and report truncation in
 
 `ifc_lite_export::build_rebar_schedule(ifc_bytes, ids, &options)` returns one
 row per selected `IfcReinforcingBar` entity, including rows whose body has no
-supported swept-disk source. `rows` is keyed by occurrence STEP ID. Every
-represented source sweep has its own ordinal, solid/directrix IDs, mapping path,
+supported swept-disk source. `rows` is keyed by occurrence STEP ID. Each row
+serializes its IFC identity as `GlobalId` and `Name`, matching `IfcRoot`.
+Every represented source sweep has its own ordinal, solid/directrix IDs, mapping path,
 world outer/inner radii, directrix metrics, geometric check report and an optional
 reusable `SweptDiskSourceKey`. It keeps repeated mapped sources and CSG operands
 distinct; repeated uses of one map share the source key. A missing key is

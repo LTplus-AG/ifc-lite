@@ -76,7 +76,11 @@ pub struct RebarSweep {
 #[derive(Debug, Clone, Serialize)]
 #[non_exhaustive]
 pub struct RebarScheduleRow {
+    /// The occurrence's `IfcRoot.GlobalId` (serialized under its EXPRESS name).
+    #[serde(rename = "GlobalId")]
     pub global_id: Option<String>,
+    /// The occurrence's `IfcRoot.Name` (serialized under its EXPRESS name).
+    #[serde(rename = "Name")]
     pub name: Option<String>,
     pub type_id: Option<u32>,
     pub authored: BTreeMap<String, AuthoredRebarAttribute>,

@@ -44,6 +44,11 @@ fn issue_5759_keeps_authored_and_derived_lengths_separate() {
     assert_eq!(schedule.represented_sweep_count, 1);
     assert!((schedule.length_unit_scale - 0.001).abs() < 1e-12);
     let row = &schedule.rows[&125];
+    let serialized = serde_json::to_value(row).unwrap();
+    assert_eq!(serialized["GlobalId"], "0Test0000000000000Ubar");
+    assert_eq!(serialized["Name"], "U-bar");
+    assert!(serialized.get("global_id").is_none());
+    assert!(serialized.get("name").is_none());
     assert_eq!(row.authored["Tag"].source, RebarSource::Occurrence);
     assert_eq!(
         row.authored["BarLength"].value,

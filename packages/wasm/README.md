@@ -41,10 +41,13 @@ occurrence retains its f64 `world_from_source` matrix and deterministic ordinal.
 Complete sources with valid positive net profile area have
 `nominal_quantities` in raw squared/cubed IFC file units; unsupported or
 invalid sources have `null`.
-For a source-profile point, apply `profile_position`, then `position_matrix`,
-then `world_from_source`; the last matrix includes file-unit conversion and maps
-to absolute IFC Z-up metres. Unsupported sources and bounded output are
-reported by `status` and `diagnostics`. CSG operands carry
+For a complete source-profile point, apply `profile_position`, then
+`position_matrix`, then `world_from_source`; the last matrix includes file-unit
+conversion and maps to absolute IFC Z-up metres. An absent optional `Position`
+leaves its matrix field `null`, so use identity for that step when composing
+rather than expecting an identity array. Check `status` before interpreting a
+null matrix; unsupported sources and bounded output are reported by `status`
+and `diagnostics`. CSG operands carry
 `source_modified=true` because their final body can differ.
 
 ## Meshes (pre-pass + job batches)

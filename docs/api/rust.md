@@ -680,11 +680,14 @@ source with valid positive net profile area, `nominal_quantities` reuses
 `extrusion_nominal_quantities` to
 report net profile area, projected height, and nominal volume in squared,
 linear, and cubed IFC file-length units; unsupported or invalid sources yield `None`.
-For a boundary point, apply the profile `profile_position`, then the extrusion
-`position_matrix`, then the instance `world_from_source`; the last matrix maps
-to absolute IFC Z-up metres and includes product placement, mapping, and file
-unit scale. A missing `Position` matrix is identity. Unsupported or tapered
-source geometry and invalid or singular occurrence transforms have explicit statuses.
+For a boundary point from a complete source, apply the profile
+`profile_position`, then the extrusion `position_matrix`, then the instance
+`world_from_source`; the last matrix maps to absolute IFC Z-up metres and
+includes product placement, mapping, and file-unit scale. An absent optional
+`Position` leaves its matrix field as `None`, so use identity for that step
+when composing rather than expecting an identity array. Check source and
+instance statuses before using an absent matrix: unsupported or tapered source
+geometry and invalid or singular occurrence transforms have explicit statuses.
 `source_modified` marks CSG operands, not final post-boolean geometry. Source
 and instance output budgets are independent and report truncation in
 `diagnostics`.

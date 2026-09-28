@@ -241,12 +241,16 @@ identity as `swept_disk_definitions`, so repeated `MappingTarget`s share a
 definition while each use has its own deterministic `ordinal` and mapped-item
 path. `source_modified=True` marks a CSG operand whose final body can differ.
 
-For a source-profile point, apply `profile_position`, then the extrusion's
-`position_matrix`, then the occurrence's `world_from_source`. Matrices are
-column-major f64. The first two use raw IFC file units; the last includes file
-unit scale and maps to absolute IFC Z-up world metres. A missing position matrix
-is identity. A non-finite transform is `None`; a singular transform retains its
-matrix, and both have unsupported status.
+For a complete source-profile point, apply `profile_position`, then the
+extrusion's `position_matrix`, then the occurrence's `world_from_source`.
+Matrices are column-major f64. The first two use raw IFC file units; the last
+includes file-unit scale and maps to absolute IFC Z-up world metres. When an
+optional `Position` is absent, its matrix field is `None` (JSON `null`): use
+identity for that step when composing transforms, rather than expecting an
+identity array in the response. Check `status` before using an absent matrix;
+an invalid reference can also leave an unsupported source without one. A
+non-finite transform is `None`; a singular transform retains its matrix, and
+both have unsupported status.
 Source reference keys use exact IFC names: both profile and extrusion carry
 `Position`, and the extrusion carries `ExtrudedDirection`; the separate
 derived matrices keep their descriptive names.

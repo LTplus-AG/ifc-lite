@@ -11,9 +11,10 @@
  * digit; Enter in a field applies the value and commits the command.
  */
 
-import { useLayoutEffect, useRef } from 'react';
+import { Fragment, useLayoutEffect, useRef } from 'react';
+import { useViewerStore } from '@/store';
 import { useTranslation, type TranslationKey } from '@/i18n';
-import { HudValueField, type HudValueFieldHandle } from '../../../viewport-ui/hud';
+import { HudDivider, HudValueField, type HudValueFieldHandle } from '../../../viewport-ui/hud';
 import {
   commitCommand,
   noteActiveField,
@@ -29,9 +30,18 @@ const UNIT_FORMAT: Record<CommandField<unknown>['unit'], { key: TranslationKey; 
   count: { key: 'modelingCommand.unit.count', step: 1, precision: 0 },
 };
 
+/** The shown field before `index`, wrapping (Shift+Tab). */
+function previousShown(fields: readonly CommandField<unknown>[], gesture: unknown, index: number): number {
+  let i = index;
+  do i = (i - 1 + fields.length) % fields.length; while (i !== index && fields[i].hidden?.(gesture));
+  return i;
+}
+
 export function CommandFieldsBar() {
   const { t } = useTranslation();
-  const { command, gesture, fieldRequest } = useCommandRuntime();
+  const { command, ctx, gesture, fieldRequest } = useCommandRuntime();
+  // Dimension fields read the defaults slice; the inspector edits it too.
+  useViewerStore((s) => s.authoringDefaults);
   const handles = useRef<(HudValueFieldHandle | null)[]>([]);
   const fields = command?.fields ?? [];
 
@@ -42,27 +52,31 @@ export function CommandFieldsBar() {
     handles.current[fieldRequest.index]?.beginEdit(fieldRequest.draft);
   }, [fieldRequest]);
 
-  if (fields.length === 0) return null;
+  if (fields.length === 0 || !ctx) return null;
   return (
     <>
       {fields.map((field, index) => {
+        if (field.hidden?.(gesture)) return null;
         const format = UNIT_FORMAT[field.unit];
         const label = t(field.labelKey);
         return (
-          <div key={field.id} className="flex items-center gap-1" onFocus={() => noteActiveField(index)}>
-            <span className="text-2xs text-overlay-ink-muted">{label}</span>
-            <HudValueField
-              ref={(handle) => { handles.current[index] = handle; }}
-              value={field.read(gesture) ?? 0}
-              onChange={(next) => writeCommandField(index, next)}
-              onSubmit={() => { commitCommand(); }}
-              onTab={(shift) => { requestFieldEdit((index + (shift ? -1 : 1) + fields.length) % fields.length); }}
-              unit={t(format.key)}
-              step={format.step}
-              precision={format.precision}
-              aria-label={label}
-            />
-          </div>
+          <Fragment key={field.id}>
+            {index > 0 && fields[index - 1].group !== field.group && !fields[index - 1].hidden?.(gesture) && <HudDivider />}
+            <div className="flex items-center gap-1" onFocus={() => noteActiveField(index)}>
+              <span className="text-2xs text-overlay-ink-muted">{label}</span>
+              <HudValueField
+                ref={(handle) => { handles.current[index] = handle; }}
+                value={field.read(gesture, ctx) ?? 0}
+                onChange={(next) => writeCommandField(index, next)}
+                onSubmit={() => { commitCommand(); }}
+                onTab={(shift) => { requestFieldEdit(shift ? previousShown(fields, gesture, index) : (index + 1) % fields.length); }}
+                unit={t(format.key)}
+                step={format.step}
+                precision={format.precision}
+                aria-label={label}
+              />
+            </div>
+          </Fragment>
         );
       })}
     </>

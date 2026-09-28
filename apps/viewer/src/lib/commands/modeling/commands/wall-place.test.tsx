@@ -118,7 +118,7 @@ describe('wall.place (#6232 WP2)', () => {
     commandPointerMove(at(4, 0));
     const [ghost] = WALL_PLACE.ghost!(gesture(), ctx);
     assert.ok(ghost);
-    assert.equal(ghost.positions.length, 24 * 3, 'a six-face box');
+    assert.equal(ghost.positions.length, 12 * 9, 'a box: twelve triangles');
     const xs = [...ghost.positions].filter((_, i) => i % 3 === 0);
     assert.ok(Math.abs(Math.min(...xs)) < 1e-6 && Math.abs(Math.max(...xs) - 4) < 1e-6, 'spans the segment');
   });

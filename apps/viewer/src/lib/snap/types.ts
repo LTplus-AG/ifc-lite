@@ -136,4 +136,6 @@ export interface SnapResult {
   guides: Guide[];
   /** True when a lock constrained the result. */
   locked: boolean;
+  /** The modifiers held, filled by pointer callers (a Shift-squared rectangle); the solver never sets it. */
+  modifiers?: { shift: boolean; alt: boolean };
 }

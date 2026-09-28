@@ -32,8 +32,12 @@ export type AuthoredElementKind =
   | 'plate'
   | 'member';
 
-type WallAlign = 'left' | 'centre' | 'right';
-type SlabDrawMode = 'rectangle' | 'polygon';
+export type WallAlign = 'left' | 'centre' | 'right';
+export type SlabDrawMode = 'rectangle' | 'polygon';
+/** The IFC class the Slab bar writes: IfcSlab, IfcRoof or IfcPlate. */
+export type SlabClass = Extract<AuthoredElementKind, 'slab' | 'roof' | 'plate'>;
+/** The IFC class the Beam bar writes: IfcBeam or IfcMember. */
+export type BeamClass = Extract<AuthoredElementKind, 'beam' | 'member'>;
 
 /** An entity picked as a default, pinned to the model it lives in. */
 interface ModelScopedPick {
@@ -49,6 +53,8 @@ export interface AuthoringDefaults {
   /** Keep drawing from the last end after a commit. */
   readonly chain: boolean;
   readonly slabMode: SlabDrawMode;
+  readonly slabClass: SlabClass;
+  readonly beamClass: BeamClass;
   readonly typeIds: Readonly<Partial<Record<AuthoredElementKind, ModelScopedPick>>>;
   readonly layerSetIds: Readonly<Partial<Record<AuthoredElementKind, ModelScopedPick>>>;
   /** The kind the last command built, for the inspector's empty state. */
@@ -66,14 +72,15 @@ export interface AuthoringDefaultsSlice {
 const AUTHORING_DIM_DEFAULTS: AuthoringDefaults['dims'] = {
   wall: { Thickness: 0.2, Height: 3 },
   slab: { Width: 5, Depth: 5, Thickness: 0.3 },
-  beam: { Width: 0.3, Height: 0.5 },
+  // Bottom: the beam's underside above the workplane.
+  beam: { Width: 0.3, Height: 0.5, Bottom: 0 },
   column: { Width: 0.4, Depth: 0.4, Height: 3 },
   door: { Width: 0.9, Height: 2.1, FrameThickness: 0.05 },
   window: { Width: 1.2, Height: 1.5, FrameThickness: 0.05, SillHeight: 0.9 },
   space: { Width: 4, Depth: 4, Height: 3 },
   roof: { Width: 8, Depth: 8, Thickness: 0.3 },
   plate: { Width: 1, Depth: 1, Thickness: 0.02 },
-  member: { Width: 0.1, Height: 0.1 },
+  member: { Width: 0.1, Height: 0.1, Bottom: 0 },
 };
 
 const INITIAL: AuthoringDefaults = {
@@ -81,6 +88,8 @@ const INITIAL: AuthoringDefaults = {
   wallAlign: 'centre',
   chain: true,
   slabMode: 'rectangle',
+  slabClass: 'slab',
+  beamClass: 'beam',
   typeIds: {},
   layerSetIds: {},
   lastKind: 'wall',

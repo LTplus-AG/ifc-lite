@@ -14,6 +14,8 @@ const wasmPath = join(packageDir, 'pkg', 'ifc-lite_bg.wasm');
 const wasmJsPath = join(packageDir, 'pkg', 'ifc-lite.js');
 const fixture = join(rootDir, 'rust', 'geometry', 'tests', 'fixtures',
   'mapped_instances_synthetic.ifc');
+const revitFixture = join(rootDir, 'rust', 'geometry', 'tests', 'fixtures',
+  'issue_098_wall_W.ifc');
 
 it('issue #5784 exposes one exact mapped extrusion source with two placed instances', async (t) => {
   if (!existsSync(wasmPath) || !existsSync(wasmJsPath)) {
@@ -28,6 +30,12 @@ it('issue #5784 exposes one exact mapped extrusion source with two placed instan
     assert.deepEqual(view.diagnostics, []);
     assert.equal(view.sources.length, 1);
     assert.equal(view.sources[0].source.Depth, 1);
+    assert.equal(view.sources[0].source.Position, 11);
+    assert.equal(view.sources[0].source.ExtrudedDirection, 9);
+    assert.equal(view.sources[0].source.profile.Position, 7);
+    assert.equal('position_id' in view.sources[0].source, false);
+    assert.equal('extruded_direction_id' in view.sources[0].source, false);
+    assert.equal('position_id' in view.sources[0].source.profile, false);
     assert.equal(view.sources[0].source.profile.loops[0].signed_area, 1);
     assert.deepEqual(view.sources[0].nominal_quantities, {
       profile_area: 1, projected_height: 1, nominal_volume: 1,
@@ -50,6 +58,14 @@ it('issue #5784 exposes one exact mapped extrusion source with two placed instan
     );
     assert.equal(api.extrusionDefinitions(new TextEncoder().encode(tapered),
       new Uint32Array([31])).sources[0].nominal_quantities, null);
+    const revit = api.extrusionDefinitions(readFileSync(revitFixture),
+      new Uint32Array([928638, 928672]));
+    const realSource = revit.sources.find(({ source }) => source.solid_id === 338107)?.source;
+    assert.ok(realSource, 'real Revit extrusion #338107 must be extracted');
+    assert.equal(realSource.Position, 338106);
+    assert.equal(realSource.ExtrudedDirection, 19);
+    assert.equal('position_id' in realSource, false);
+    assert.equal('extruded_direction_id' in realSource, false);
   } finally {
     api.free();
   }

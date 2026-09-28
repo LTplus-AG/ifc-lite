@@ -94,6 +94,12 @@ def test_issue_5784_extrusion_definitions_share_source_across_mapped_occurrences
     assert len(view["sources"]) == 1
     source = view["sources"][0]
     assert source["source"]["Depth"] == 1.0
+    assert source["source"]["Position"] == 11
+    assert source["source"]["ExtrudedDirection"] == 9
+    assert source["source"]["profile"]["Position"] == 7
+    assert "position_id" not in source["source"]
+    assert "extruded_direction_id" not in source["source"]
+    assert "position_id" not in source["source"]["profile"]
     assert source["source"]["profile"]["loops"][0]["signed_area"] == 1.0
     assert source["nominal_quantities"] == {
         "profile_area": 1.0, "projected_height": 1.0, "nominal_volume": 1.0,
@@ -109,6 +115,16 @@ def test_issue_5784_extrusion_definitions_share_source_across_mapped_occurrences
         b"#12=IFCEXTRUDEDAREASOLIDTAPERED(#8,#11,#9,1.0,#8);",
     )
     assert ifclite_geom.extrusion_definitions(tapered, ids={31})["sources"][0]["nominal_quantities"] is None
+    revit = ifclite_geom.extrusion_definitions(
+        read(REPO / "rust/geometry/tests/fixtures/issue_098_wall_W.ifc"),
+        ids={928638, 928672},
+    )
+    real_source = next(row["source"] for row in revit["sources"]
+                       if row["source"]["solid_id"] == 338107)
+    assert real_source["Position"] == 338106
+    assert real_source["ExtrudedDirection"] == 19
+    assert "position_id" not in real_source
+    assert "extruded_direction_id" not in real_source
 
 
 def test_unknown_quality_raises_rather_than_falling_back():

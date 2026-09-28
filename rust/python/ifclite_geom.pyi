@@ -158,7 +158,7 @@ class AnalyticProfile(TypedDict):
     profile_id: int
     ifc_type_name: str
     ProfileType: Optional[str]
-    position_id: Optional[int]
+    Position: Optional[int]
     profile_position: Optional[List[float]]  # column-major, raw file units
     loops: List[AnalyticProfileLoop]
     status: DirectrixStatus
@@ -167,9 +167,9 @@ class AnalyticExtrusion(TypedDict):
     solid_id: int
     SweptArea: Optional[int]
     profile: Optional[AnalyticProfile]
-    position_id: Optional[int]
+    Position: Optional[int]
     position_matrix: Optional[List[float]]  # column-major, raw file units
-    extruded_direction_id: Optional[int]
+    ExtrudedDirection: Optional[int]
     DirectionRatios: Optional[List[float]]  # authored ratios, not normalized
     axis_unit_vector: Optional[List[float]]
     Depth: Optional[float]  # raw IFC file length units

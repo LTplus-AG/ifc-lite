@@ -104,5 +104,24 @@ describe('useConstructionUnderlay on the shared cut', () => {
     await settle();
     assert.ok(Math.abs(maxX() - 6) < 1e-6, `the underlay follows the edit (max x ${maxX()})`);
   });
+
+  it("never shows another storey's cut while the new one is pending (#6394 review)", async () => {
+    const geometry = { ...useViewerStore.getState().geometryResult, meshes: [box(90, [0, 0, -0.2], [4, 3, 0])] } as GeometryResult;
+    useViewerStore.setState({ geometryResult: geometry });
+    let seen: UnderlayLine[] = [];
+    let floor = 0;
+    function Probe() {
+      seen = useConstructionUnderlay(true, floor).lines;
+      return null;
+    }
+    const ui = render(<Probe />);
+    await settle();
+    assert.ok(seen.length > 0);
+    // Another floor: the old cut must go at once, not after the debounce.
+    floor = 10;
+    act(() => useViewerStore.setState((s) => ({ mutationVersion: s.mutationVersion + 1 })));
+    assert.equal(seen.length, 0, 'the previous floor is not drawn under the new one');
+    void ui;
+  });
 });
 

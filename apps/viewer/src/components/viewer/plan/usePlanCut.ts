@@ -79,6 +79,12 @@ export interface PlanCutResult {
 export interface PlanCutRequest {
   /** Changes whenever the cut must be regenerated. */
   readonly key: string;
+  /**
+   * What the cut is OF (model and storey). While a newer cut of the same
+   * scope is pending the previous one stays on screen (an edit must not
+   * blank the plan); a result of another scope is never shown or picked.
+   */
+  readonly scope?: string;
   readonly meshes: readonly MeshData[];
   /** The cut plane height in the vertices' render frame (Y-up). */
   readonly cutY: number;
@@ -90,7 +96,7 @@ export interface PlanCutRequest {
 const EMPTY: PlanCutResult = { polygons: [], lines: [], loading: false, simplified: false, ms: null, settled: true };
 
 /** A result plus the request key it answers. */
-type KeyedResult = Omit<PlanCutResult, 'settled'> & { key: string | null };
+type KeyedResult = Omit<PlanCutResult, 'settled'> & { key: string | null; scope?: string };
 const EMPTY_KEYED: KeyedResult = { polygons: [], lines: [], loading: false, simplified: false, ms: null, key: null };
 
 const identities = new WeakMap<object, number>();
@@ -137,11 +143,11 @@ export function usePlanCutDrawing(request: PlanCutRequest | null): PlanCutResult
   useEffect(() => {
     const req = requestRef.current;
     if (!req || req.meshes.length === 0) {
-      setResult({ ...EMPTY_KEYED, key: req?.key ?? null });
+      setResult({ ...EMPTY_KEYED, key: req?.key ?? null, scope: req?.scope });
       return;
     }
     if (req.meshLimit !== undefined && req.meshes.length > req.meshLimit) {
-      setResult({ ...EMPTY_KEYED, simplified: true, key: req.key });
+      setResult({ ...EMPTY_KEYED, simplified: true, key: req.key, scope: req.scope });
       return;
     }
     let cancelled = false;
@@ -160,12 +166,12 @@ export function usePlanCutDrawing(request: PlanCutRequest | null): PlanCutResult
             { includeProjection: true, includeEdges: false, includeHiddenLines: false, mergeLines: true, useGPU: false },
           );
           if (cancelled) return;
-          setResult({ ...mapPlanDrawing(drawing, req.map), loading: false, simplified: false, ms: performance.now() - started, key: req.key });
+          setResult({ ...mapPlanDrawing(drawing, req.map), loading: false, simplified: false, ms: performance.now() - started, key: req.key, scope: req.scope });
         } catch (err) {
           // An empty cut reads exactly like a storey with nothing at the cut,
           // so a failed generation must at least say so once per request.
           console.warn('[plan-cut] generation failed', err);
-          if (!cancelled) setResult({ ...EMPTY_KEYED, key: req.key });
+          if (!cancelled) setResult({ ...EMPTY_KEYED, key: req.key, scope: req.scope });
         }
       })();
     }, PLAN_CUT_DEBOUNCE_MS);
@@ -176,8 +182,11 @@ export function usePlanCutDrawing(request: PlanCutRequest | null): PlanCutResult
   }, [key]);
 
   if (!request) return EMPTY;
-  const { key: answered, ...rest } = result;
-  return { ...rest, settled: answered === request.key };
+  const { key: answered, scope, ...rest } = result;
+  const settled = answered === request.key;
+  // Another storey's (or model's) cut is never drawn or picked in this frame.
+  if (!settled && scope !== request.scope) return { ...rest, polygons: EMPTY.polygons, lines: EMPTY.lines, settled };
+  return { ...rest, settled };
 }
 
 /** The model placement a plan maps through (the renderer applies it on top of the vertices). */
@@ -218,6 +227,7 @@ export function usePlanCut(modelId: string | null, storeyId: number | null, plan
     // Building elements only — the type library never belongs in a plan (#2058).
     const meshes = selectModelMeshes(geometry.meshes);
     return {
+      scope: `${modelId}:${storeyId}`,
       key: `${modelId}:${storeyId}:${identityKey(geometry)}:${contentVersion}:${mutationVersion}:${meshes.length}:${cutY.toFixed(4)}`,
       meshes,
       cutY,

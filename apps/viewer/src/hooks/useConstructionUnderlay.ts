@@ -65,6 +65,7 @@ export function useConstructionUnderlay(
     // the one place the room frame is defined so the two cannot drift.
     const { cx, cy } = roomFramePlanOffsets(coord);
     return {
+      scope: `underlay:${floorElevation}`,
       key: `underlay:${identityKey(geometryResult)}:${contentVersion}:${mutationVersion}:${meshes.length}:${cutY}`,
       meshes,
       cutY,

@@ -119,13 +119,14 @@ pub(crate) fn decode_trimmed_primitive(
             let sweep_angle = match recovery {
                 TrimRecovery::RequireBoth => {
                     let mut sweep = (end_angle - start_angle).rem_euclid(TAU);
-                    // IFC4.3 informal proposition 4 forbids equal parameters,
-                    // including cyclic equality on closed curves.
-                    if sweep.abs() < 1e-12 {
-                        return Ok(None);
-                    }
                     if !sense {
                         sweep -= TAU;
+                    }
+                    // IFC4.3 forbids cyclically equal trims on closed curves,
+                    // but the existing analytic API recovered them as full
+                    // turns. Retain that interpretation for authored files.
+                    if sweep.abs() < 1e-12 {
+                        sweep = if sense { TAU } else { -TAU };
                     }
                     sweep
                 }

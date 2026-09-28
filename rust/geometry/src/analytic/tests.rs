@@ -165,17 +165,25 @@ fn reversed_trimmed_line_keeps_authored_trim_order() {
 }
 
 #[test]
-fn cyclic_equal_circle_trims_are_unsupported_but_keep_mesh_legacy_spans_6402() {
-    // IFC4.3 IfcTrimmedCurve informal proposition 4 forbids cyclically equal
-    // parameters for a closed basis. The mesh retains its former raw span:
-    // 0→2π is a full turn, while 0→0 is a zero arc.
-    let data = "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#2=IFCAXIS2PLACEMENT3D(#1,$,$);\n#3=IFCCIRCLE(#2,2.);\n#4=IFCTRIMMEDCURVE(#3,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(6.283185307179586)),.T.,.PARAMETER.);\n#5=IFCSWEPTDISKSOLID(#4,0.2,$,$,$);\n#6=IFCTRIMMEDCURVE(#3,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(0.)),.T.,.PARAMETER.);\n#7=IFCSWEPTDISKSOLID(#6,0.2,$,$,$);";
+fn cyclic_equal_circle_trims_keep_analytic_full_turn_and_mesh_spans_6402() {
+    // IFC4.3 forbids cyclically equal trims on a closed basis, but the old
+    // analytic API recovered them as full turns. Preserve that compatibility.
+    // The mesh keeps its historical raw span: 0→2π is a full turn, 0→0 is zero.
+    let data = "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#2=IFCAXIS2PLACEMENT3D(#1,$,$);\n#3=IFCCIRCLE(#2,2.);\n#4=IFCTRIMMEDCURVE(#3,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(6.283185307179586)),.T.,.PARAMETER.);\n#5=IFCSWEPTDISKSOLID(#4,0.2,$,$,$);\n#6=IFCTRIMMEDCURVE(#3,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(0.)),.T.,.PARAMETER.);\n#7=IFCSWEPTDISKSOLID(#6,0.2,$,$,$);\n#8=IFCTRIMMEDCURVE(#3,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(0.)),.F.,.PARAMETER.);\n#9=IFCSWEPTDISKSOLID(#8,0.2,$,$,$);";
     let mut decoder = EntityDecoder::new(data);
     let processor = crate::ProfileProcessor::new(ifc_lite_core::IfcSchema::new());
-    for (solid_id, curve_id, full_turn) in [(5, 4, true), (7, 6, false)] {
+    for (solid_id, curve_id, full_turn, expected_sweep) in [
+        (5, 4, true, std::f64::consts::TAU),
+        (7, 6, false, std::f64::consts::TAU),
+        (9, 8, false, -std::f64::consts::TAU),
+    ] {
         let entity = decoder.decode_by_id(solid_id).unwrap();
         let disk = extract_swept_disk(&entity, &mut decoder).unwrap();
-        assert!(matches!(disk.status, AnalyticStatus::Unsupported(_)));
+        assert_eq!(disk.status, AnalyticStatus::Complete);
+        let AnalyticCurveSegment::Arc { sweep_angle, .. } = disk.segments[0] else {
+            panic!("expected full-circle analytic arc");
+        };
+        assert!((sweep_angle - expected_sweep).abs() < 1e-9);
         let curve = decoder.decode_by_id(curve_id).unwrap();
         let points = processor
             .get_curve_points(&curve, &mut decoder, crate::TessellationQuality::Medium)

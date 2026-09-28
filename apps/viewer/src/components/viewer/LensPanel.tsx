@@ -306,7 +306,7 @@ export function AutoColorEditor({
         <div className="flex items-center gap-1.5">
           <label className="text-2xs uppercase tracking-wider text-zinc-500 w-[50px]">{t('lensPanel.autoColor.sourceLabel')}</label>
           <select
-            value={source}
+            value={source} aria-label={t('lensPanel.autoColor.sourceLabel')}
             onChange={(e) => {
               const s = e.target.value as AutoColorSpec['source'];
               setSource(s);
@@ -344,7 +344,7 @@ export function AutoColorEditor({
             <label className="text-2xs uppercase tracking-wider text-zinc-500 w-[50px]">{t('lensPanel.autoColor.nameLabel')}</label>
             {source === 'attribute' ? (
               <select
-                value={propertyName}
+                value={propertyName} aria-label={t('lensPanel.autoColor.nameLabel')}
                 onChange={(e) => setPropertyName(e.target.value)}
                 className={cn(selectClass, 'flex-1')}
               >

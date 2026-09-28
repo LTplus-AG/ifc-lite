@@ -473,6 +473,8 @@ describe('Lens panel localization (#4918)', () => {
       />,
     );
     const english = chromeStrings(container);
+    assert.equal(container.querySelector('select')?.getAttribute('aria-label'), 'Source',
+      '#6342: source select uses its visible label as the accessible name');
     assert.equal(container.querySelector('input[placeholder="Auto-color lens name..."]')?.getAttribute('aria-label'),
       'Auto-color lens name...', '#6342: auto-color name field has a persistent name');
     for (const key of [
@@ -506,6 +508,8 @@ describe('Lens panel localization (#4918)', () => {
       />,
     );
     const english = chromeStrings(container);
+    assert.equal(container.querySelectorAll('select')[1]?.getAttribute('aria-label'), 'Name',
+      '#6342: attribute-name select uses its visible label as the accessible name');
     assert.ok(english.has(lensPanelEn['lensPanel.autoColor.nameLabel'] as string));
     assert.ok(english.has(lensPanelEn['lensPanel.autoColor.selectPlaceholderOption'] as string));
 

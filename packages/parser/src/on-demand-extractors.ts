@@ -84,6 +84,7 @@ export type { GeoreferenceInfo as GeorefInfo };
 // re-exported here so every existing import of this module keeps resolving.
 
 export {
+    parsePropertyValue,
     extractNumericValue,
     resolveComplexPropertyValue,
     parsePropertyValueWithComplex,

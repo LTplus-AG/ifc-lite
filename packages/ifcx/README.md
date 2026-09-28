@@ -79,6 +79,14 @@ const ifcx = exporter.export({ includeGeometry: true });
 // ifcx.content → IFCX JSON string, save as .ifcx
 ```
 
+For the low-level `IfcxWriter`, `spatialHierarchy` is a parsed snapshot. If a
+`mutationView` changes an `IfcRelAggregates`, `IfcRelNests`, or
+`IfcRelContainedInSpatialStructure` record, supply `effectiveSpatialEdges`
+containing the **complete** current spatial edge set (`sourceId`, `targetId`,
+`relationshipType`). The writer uses those edges to build `children` and raises
+an error if it detects such an edit without them. `applyMutations: false` uses
+the parsed hierarchy.
+
 ## API
 
 See the [Parsing Guide](https://ifclite.dev/docs/guide/parsing/) and [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-liteifcx).

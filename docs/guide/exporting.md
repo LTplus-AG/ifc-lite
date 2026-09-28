@@ -658,6 +658,14 @@ await saveFile('model.ifcx', result.content);  // string; result.stats has count
 
 A Rust-side variant is also available as `GeometryProcessor.exportIfcx(bytes, onlyKnownProperties?, pretty?)`.
 
+The low-level `IfcxWriter` in `@ifc-lite/ifcx` accepts an optional
+`effectiveSpatialEdges` array when exporting a live `mutationView`. Supply the
+complete current `IfcRelAggregates`, `IfcRelNests`, and
+`IfcRelContainedInSpatialStructure` edge set as `{ sourceId, targetId,
+relationshipType }` records. This replaces the parsed `spatialHierarchy` for
+child links, so containment edits appear in the IFCX file. The writer reports
+an error if it detects an edited spatial relationship without these edges.
+
 ## OpenUSD (.usda) Export
 
 Export a model as a real **OpenUSD ASCII** (`.usda`) stage — distinct from IFCX, which is

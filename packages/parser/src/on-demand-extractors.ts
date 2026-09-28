@@ -744,7 +744,10 @@ function getMaterialPropertyIndex(store: IfcDataStore, view?: MaterialProperties
             const attributeIndex = names.indexOf(mutation.name);
             if (attributeIndex >= 0) attributes[attributeIndex] = mutation.value;
         }
-        return { ...base, type: normalizeIfcTypeName(type), attributes };
+        // Keep the source STEP spelling for unchanged rows: it is the public
+        // fallback pset name when Name is empty. Retyped rows use their new class.
+        return { ...base, type: base.type.toUpperCase() === type.toUpperCase()
+            ? base.type : normalizeIfcTypeName(type), attributes };
     };
 
     for (const row of iterateEffectiveEntities(store, view, wantedTypes, sourceIds)) {

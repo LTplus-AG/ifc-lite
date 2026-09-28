@@ -42,6 +42,14 @@ function view(
 }
 
 describe('material-property reverse index uses effective entities (#5236)', () => {
+  it('preserves the source STEP fallback name when the material-property Name is empty', async () => {
+    const store = await parse(prefix + `#2=IFCMATERIALPROPERTIES($,$,(#3),#1);
+#3=IFCPROPERTYSINGLEVALUE('Density',$,IFCREAL(2300.),$);
+` + suffix);
+    const result = extractMaterialPropertiesForMaterialId(store, 1);
+    expect(result[0]?.psets[0]?.name).toBe('IFCMATERIALPROPERTIES');
+  });
+
   it('includes a session-created material-property row and its created simple property', async () => {
     const store = await parse(prefix + suffix);
     const result = extractMaterialPropertiesForMaterialId(store, 1, view([

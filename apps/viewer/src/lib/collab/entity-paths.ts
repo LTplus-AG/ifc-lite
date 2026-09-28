@@ -63,6 +63,7 @@ function entityMaps(store: IfcDataStore): EntityMaps {
   if (cached) return cached;
   const toPath = new Map<number, string>();
   const toExpressId = new Map<string, number>();
+  // @raw-entity-enumeration-ok cache source ID paths including tombstones for delete/undo; authored IDs are registered by registerEntityPath
   for (const [expressId] of store.entityIndex.byId.entries()) {
     // Resolve the GUID from the entity TABLE, not on-demand attribute extraction:
     // the compact index can't decode attributes for many geometric products on

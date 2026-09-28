@@ -27,6 +27,23 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Streaming-time panel refresh (#6411)
+
+On a 127K-element, ~1 GB MEP model, the geometry workers were ~100% busy and
+then went idle up to ~10 s before stream completion, while the main thread was
+0-3% idle for the whole stream. Cause: the hierarchy tree, the status-bar count
+and the model statistics each re-derived whole-model data on every streaming
+geometry publish (every 500 ms for files over 300 MB). The hierarchy alone took
+45-58% of the main thread for over a minute. Holding their geometry-derived
+inputs to a 4 s cadence while streaming (exact at stream end) cut readiness to
+0.53-0.62x in interleaved cold-load pairs on a loaded machine. A small-to-
+large corpus showed no regression. Lessons:
+
+- Check whether the MAIN thread is the drain before touching workers. Here
+  `?geomWorkers=2` beat the default 4 and 8, because more workers only
+  queued more batches behind a saturated main thread.
+- Main-thread waste costs most when the machine is busy: the same build
+  varied 42-116 s with host load, and the gain grew with it.
 ## Post-stream upload drain slice (#6436)
 
 After a large stream completes, the renderer cannot finalize until the upload

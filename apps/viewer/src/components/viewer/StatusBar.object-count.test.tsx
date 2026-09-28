@@ -28,7 +28,7 @@ import 'fake-indexeddb/auto';
 // time; under plain Node it doesn't exist, so StatusBar's footer version
 // string needs a stand-in before it renders.
 (globalThis as unknown as { __APP_VERSION__: string }).__APP_VERSION__ = '0.0.0-test';
-import { describe, it, beforeEach, after } from 'node:test';
+import { describe, it, beforeEach, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -168,6 +168,7 @@ beforeEach(async () => {
     selectedStoreys: new Set<number>(),
     mutationViews: new Map(),
     mutationVersion: 0,
+    geometryStreamingActive: false,
   });
 });
 
@@ -326,3 +327,48 @@ function setMeshedIds(expressIds: readonly number[]): void {
     geometryResult: geometry(expressIds),
   });
 }
+
+// #6411: while geometry streams, each publish carries more meshes and the
+// count walks every one of them, twice a second on a large load. The count
+// follows the streaming refresh cadence instead and is exact once streaming
+// ends.
+describe('StatusBar — object count while geometry streams (#6411)', () => {
+  it('holds the count between refreshes and lands the exact count when streaming ends', () => {
+    let clock = 0;
+    mock.method(performance, 'now', () => clock);
+    try {
+      useViewerStore.setState({
+        geometryStreamingActive: true,
+        geometryResult: geometry(MESHED_IDS.filter((id) => id !== 56)),
+      });
+      const container = render();
+      assert.equal(elementsText(container), '2 elements');
+
+      clock = 1;
+      act(() => useViewerStore.setState({ geometryResult: geometry(MESHED_IDS) }));
+      assert.equal(elementsText(container), '2 elements', 'a publish within the refresh window is held');
+
+      act(() => useViewerStore.setState({ geometryStreamingActive: false }));
+      assert.equal(elementsText(container), '4 elements', 'streaming ended: the exact count');
+    } finally {
+      mock.restoreAll();
+    }
+  });
+
+  it('refreshes a long stream once the refresh is due', () => {
+    let clock = 0;
+    mock.method(performance, 'now', () => clock);
+    try {
+      useViewerStore.setState({
+        geometryStreamingActive: true,
+        geometryResult: geometry(MESHED_IDS.filter((id) => id !== 56)),
+      });
+      const container = render();
+      clock = 60_000;
+      act(() => useViewerStore.setState({ geometryResult: geometry(MESHED_IDS) }));
+      assert.equal(elementsText(container), '4 elements');
+    } finally {
+      mock.restoreAll();
+    }
+  });
+});

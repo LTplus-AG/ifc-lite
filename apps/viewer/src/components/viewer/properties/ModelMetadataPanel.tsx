@@ -37,6 +37,7 @@ import { LandXmlModelSourceNavigation } from './LandXmlModelSourceNavigation';
 import { TerrainImageryCard } from './TerrainImageryCard';
 import { effectiveClassificationSystems } from './effective-classification-systems';
 import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
+import { useStreamingThrottled } from '@/hooks/useStreamingThrottled';
 
 /** Model metadata panel - displays file info, schema version, entity counts, etc. */
 export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
@@ -96,14 +97,17 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
 
   // Count storeys and elements — see `modelMetadataStats.ts` for what
   // "Elements with Geometry" means and why raw `byStorey` membership isn't it.
+  // The count walks every mesh, so while geometry streams it follows the
+  // held geometry rather than every publish (#6411).
+  const statsGeometry = useStreamingThrottled(model.geometryResult);
   const stats = useMemo(
-    () => computeModelStats(dataStore, model.geometryResult, {
+    () => computeModelStats(dataStore, statsGeometry, {
       mutationView,
       physicalIds,
       // A completed cache hit may validly contain no geometry result. That is
       // a known-empty model, unlike the same null while streaming.
       geometryReady:
-        model.geometryResult != null ||
+        statsGeometry != null ||
         model.loadState === 'complete' ||
         model.geometryLoadState === 'complete',
       toLocalId: (globalId) => {
@@ -114,7 +118,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
         return ref?.modelId === model.id ? ref.expressId : undefined;
       },
     }),
-    [dataStore, fromGlobalId, model.geometryLoadState, model.geometryResult, model.id, model.loadState, mutationView, physicalIds],
+    [dataStore, fromGlobalId, model.geometryLoadState, statsGeometry, model.id, model.loadState, mutationView, physicalIds],
   );
 
   // Extract georeferencing info

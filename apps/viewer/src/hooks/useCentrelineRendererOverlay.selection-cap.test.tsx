@@ -34,16 +34,19 @@ it('clears the old centreline before a selection-switch paint and rejects its la
   let builds = 0;
   const lineBuilder: typeof selectedCentrelineWorldLines = async () => {
     builds++;
-    return builds === 1 ? oldLines : { vertices: [], diagnostics: [] };
+    return builds === 1 ? oldLines : { vertices: [], diagnostics: [], renderedOccurrences: new Set() };
   };
   let line: Parameters<Renderer['setLineOverlay']>[1] = null;
+  let snapCurveCount = 0;
   let lineAtLayout: Parameters<Renderer['setLineOverlay']>[1] | undefined;
+  let snapCurveCountAtLayout: number | undefined;
   let staleUploads = 0;
   const renderer = {
     setLineOverlay(_channel: Parameters<Renderer['setLineOverlay']>[0], value: Parameters<Renderer['setLineOverlay']>[1]) {
       line = value;
       if (useViewerStore.getState().selectedEntityId === 1_000_002 && value !== null) staleUploads++;
     },
+    setSourceSnapCurves(curves: readonly unknown[]) { snapCurveCount = curves.length; },
   } as unknown as Renderer;
   const ref: RefObject<Renderer | null> = { current: renderer };
   const Overlay = () => {
@@ -52,7 +55,8 @@ it('clears the old centreline before a selection-switch paint and rejects its la
     useLayoutEffect(() => {
       if (id !== 1_000_002) return;
       lineAtLayout = line;
-      resolveOld({ vertices: [0, 0, 0, 1, 0, 0], diagnostics: [] });
+      snapCurveCountAtLayout = snapCurveCount;
+      resolveOld({ vertices: [0, 0, 0, 1, 0, 0], diagnostics: [], renderedOccurrences: new Set() });
     }, [id]);
     return null;
   };
@@ -64,12 +68,14 @@ it('clears the old centreline before a selection-switch paint and rejects its la
     await waitFor(() => builds === 1, 'the first source line build is pending');
     // Stand in for the last rendered source line while the next source is pending.
     line = new Float32Array([0, 0, 0, 1, 0, 0]);
+    snapCurveCount = 1;
     await act(async () => {
       flushSync(() => useViewerStore.setState({ selectedEntityIds: new Set([1_000_002]),
         selectedEntityId: 1_000_002, selectedEntity: { modelId: 'switch', expressId: 2 } }));
       await Promise.resolve();
     });
     assert.equal(lineAtLayout, null, 'the previous frame is cleared in the selection commit');
+    assert.equal(snapCurveCountAtLayout, 0, 'the previous source snap is cleared before paint');
     assert.equal(staleUploads, 0, 'the old async source cannot repopulate the channel');
     assert.equal(line, null);
   } finally {

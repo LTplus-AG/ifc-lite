@@ -23,9 +23,11 @@
 
 import { useRef } from 'react';
 import { MapPin, X } from 'lucide-react';
+import { IconButton } from '@/components/ui/icon-button';
 import { Popover, PopoverAnchor, PopoverContent, PopoverPortal } from '@/components/ui/popover';
 import { usePortalContainer } from '@/components/ui/portal-container';
 import { Spinner } from '@/components/ui/spinner';
+import { useTranslation } from '@/i18n';
 import type { GeocodeResult } from './location-map-geocode';
 
 interface LocationMapSearchBarProps {
@@ -49,6 +51,7 @@ export function LocationMapSearchBar({
   onSelect,
   onClose,
 }: LocationMapSearchBarProps) {
+  const { t } = useTranslation();
   const portalContainer = usePortalContainer();
   const anchorRef = useRef<HTMLDivElement>(null);
   return (
@@ -110,12 +113,14 @@ export function LocationMapSearchBar({
             </PopoverContent>
           </PopoverPortal>
         </Popover>
-        <button
+        <IconButton
+          label={t('properties.locationMap.closeSearch')}
+          size="icon-xs"
           onClick={onClose}
           className="p-0.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
         >
           <X className="h-3 w-3" />
-        </button>
+        </IconButton>
       </div>
     </div>
   );

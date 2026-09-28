@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { IfcTypeEnum, RelationshipType, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { AggregationRelationships } from '../utils/aggregation.js';
 import type { FederatedModel } from './types.js';
@@ -19,6 +20,9 @@ import {
 } from './basketVisibleSet.js';
 import { useViewerStore } from './index.js';
 import { entityRefToString } from './types.js';
+import {
+  FIXTURE_STOREY_2, FIXTURE_WALL_B, FIXTURE_WALL_C, guid, parseFixtureModel,
+} from '../components/viewer/anonymized-export/anonymized-export-fixture.test-support.js';
 
 /**
  * The visible-set code reads exactly two things off geometry: `meshes.length`
@@ -183,6 +187,29 @@ describe('basketVisibleSet', () => {
   beforeEach(() => {
     invalidateVisibleBasketCache();
     useViewerStore.getState().resetViewerState();
+  });
+
+  it('selects live storey members with per-model tombstones and creations (#5249)', async () => {
+    const store = await parseFixtureModel();
+    const view = new MutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(88);
+    view.deleteEntity(FIXTURE_WALL_B);
+    const wall = view.createEntity('IfcWall', [guid(89), null, 'New Wall', null, null, null, null, null]);
+    view.createEntity('IfcRelContainedInSpatialStructure', [
+      guid(90), null, null, null, [`#${wall.expressId}`], `#${FIXTURE_STOREY_2}`,
+    ]);
+    useViewerStore.setState({
+      models: new Map([
+        ['m1', createFederatedModel({ id: 'm1', ifcDataStore: store, idOffset: 1000 })],
+        ['m2', createFederatedModel({ id: 'm2', ifcDataStore: store, idOffset: 2000 })],
+      ]),
+      mutationViews: new Map([['m1', view]]),
+      selectedStoreys: new Set([1000 + FIXTURE_STOREY_2, 2000 + FIXTURE_STOREY_2]),
+    });
+
+    assert.deepEqual(getBasketSelectionRefsFromStore().map(entityRefToString).sort(), [
+      `m1:${FIXTURE_WALL_C}`, `m1:${wall.expressId}`, `m2:${FIXTURE_WALL_B}`, `m2:${FIXTURE_WALL_C}`,
+    ].sort());
   });
 
   describe('source priority', () => {

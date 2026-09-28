@@ -279,6 +279,7 @@ export const propertiesEn = {
   'properties.locationMap.unknownError': 'Unknown error',
   'properties.locationMap.heading': 'Location',
   'properties.locationMap.searchTooltip': 'Search for a place',
+  'properties.locationMap.closeSearch': 'Close place search',
   'properties.locationMap.searchPlaceholder': 'Search for a place...',
   'properties.locationMap.resolvingCoordinates': 'Resolving coordinates...',
   'properties.locationMap.unavailableOnDevice': 'Map preview unavailable on this device',

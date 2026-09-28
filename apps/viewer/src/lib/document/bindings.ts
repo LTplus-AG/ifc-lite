@@ -29,6 +29,8 @@ import { createListDataProvider } from '../lists/adapter.js';
 import type { ListDataProvider } from '@ifc-lite/lists';
 import { iterateEffectiveChartRows } from '../charts/datasets/effective-elements.js';
 import { effectiveAttribute, effectiveProperty, effectivePropertyPaths, findEffectiveElementId } from './effective-binding-fields.js';
+import { effectiveSpatialMembers } from '../effective-spatial-members.js';
+import { effectiveStoreyId } from '../effective-storey.js';
 
 export interface BindingModel {
   id: string;
@@ -262,7 +264,7 @@ function spatialAttribute(path: string, model: BindingModel, node: SpatialNode, 
         const elevation = edited === undefined ? source : Number(edited);
         return elevation === undefined || !Number.isFinite(elevation) ? fail(path, 'no elevation') : succeed(path, `${elevation.toFixed(2)} m`);
       }
-      case 'Elements': return succeed(path, String(countElements(node, model.view)));
+      case 'Elements': return succeed(path, String(countElements(node, model)));
     }
   }
   switch (attr) {
@@ -275,14 +277,16 @@ function spatialAttribute(path: string, model: BindingModel, node: SpatialNode, 
       const elevation = model.store.spatialHierarchy?.storeyElevations.get(node.expressId) ?? node.elevation;
       return elevation === undefined ? fail(path, 'no elevation') : succeed(path, `${elevation.toFixed(2)} m`);
     }
-    case 'Elements': return succeed(path, String(countElements(node)));
+    case 'Elements': return succeed(path, String(countElements(node, model)));
     default: return fail(path, `unknown attribute "${attr ?? ''}"`);
   }
 }
 
-function countElements(node: SpatialNode, view?: MutablePropertyView): number {
-  let n = view ? node.elements.filter((id) => !view.isDeleted(id)).length : node.elements.length;
-  for (const child of node.children) n += countElements(child, view);
+function countElements(node: SpatialNode, model: BindingModel): number {
+  const view = model.view;
+  if (view?.isDeleted(node.expressId)) return 0;
+  let n = view ? effectiveSpatialMembers(model.store, view, node.expressId).length : node.elements.length;
+  for (const child of node.children) n += countElements(child, model);
   return n;
 }
 
@@ -303,8 +307,8 @@ function elementAttribute(path: string, model: BindingModel, expressId: number, 
       case 'Tag': return succeed(path, provider.getEntityTag(expressId));
       case 'GlobalId': return succeed(path, provider.getEntityGlobalId(expressId));
       case 'Storey': {
-        const storeyId = model.store.spatialHierarchy?.elementToStorey.get(expressId);
-        if (storeyId === undefined || model.view?.isDeleted(storeyId)) return fail(path, 'not contained in a storey');
+        const storeyId = effectiveStoreyId(model.store, model.view, expressId);
+        if (storeyId === undefined) return fail(path, 'not contained in a storey');
         return succeed(path, model.view ? effectiveAttribute(model, storeyId, 'Name') : model.store.entities.getName(storeyId));
       }
       default: break;

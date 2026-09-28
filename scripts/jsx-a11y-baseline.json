@@ -1,7 +1,7 @@
 {
   "apps/viewer/src/components/extensions/ExtensionDockHost.tsx": 1,
   "apps/viewer/src/components/mcp/McpPlayground.tsx": 1,
-  "apps/viewer/src/components/mcp/PlaygroundChat.tsx": 6,
+  "apps/viewer/src/components/mcp/PlaygroundChat.tsx": 5,
   "apps/viewer/src/components/mcp/PlaygroundViewer.tsx": 1,
   "apps/viewer/src/components/ui/alert.tsx": 1,
   "apps/viewer/src/components/ui/combo-input.tsx": 4,
@@ -25,7 +25,6 @@
   "apps/viewer/src/components/viewer/properties/location-map-search.tsx": 1,
   "apps/viewer/src/components/viewer/reposition/PlacementFiles.tsx": 1,
   "apps/viewer/src/components/viewer/schedule/GanttPanel.tsx": 1,
-  "apps/viewer/src/components/viewer/schedule/GenerateAdvancedPanel.tsx": 1,
   "apps/viewer/src/components/viewer/SearchInlinePopoverBody.tsx": 3,
   "apps/viewer/src/components/viewer/ShareDialog.tsx": 2,
   "apps/viewer/src/components/viewer/ShareScopeField.tsx": 2,

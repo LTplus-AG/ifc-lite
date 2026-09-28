@@ -45,12 +45,9 @@ import { useViewerStore } from '@/store';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import {
   PAPER_SIZE_REGISTRY,
-  FRAME_PRESETS,
-  TITLE_BLOCK_PRESETS,
   COMMON_SCALES,
   type FrameStyle,
   type TitleBlockLayout,
-  type DrawingScale,
 } from '@ifc-lite/drawing-2d';
 
 interface SheetSetupPanelProps {
@@ -413,14 +410,15 @@ export function SheetSetupPanel({ onOpenTitleBlockEditor }: SheetSetupPanelProps
                       onChange={(e) => setNewTemplateName(e.target.value)}
                       className="h-8 text-sm flex-1"
                     />
-                    <Button
+                    <IconButton
+                      label={t('sheetsPdf.sheetSetup.saveTemplate')}
                       variant="outline"
                       size="sm"
                       onClick={handleSaveTemplate}
                       disabled={!newTemplateName.trim() || !activeSheet}
                     >
                       <Save className="h-4 w-4" />
-                    </Button>
+                    </IconButton>
                   </div>
 
                   {/* Template list */}

@@ -87,7 +87,7 @@ function SplitMenu({ primaryId }: { primaryId: WorkspacePanelId }) {
               aria-label={t('shellChrome.sidebarPanelHost.splitPanelAriaLabel')}
               aria-pressed={!!secondary}
               className={
-                'h-5 w-5 inline-flex items-center justify-center rounded transition-colors '
+                'h-6 w-6 inline-flex items-center justify-center rounded transition-colors '
                 + (secondary
                   ? 'text-primary bg-primary/10'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground')
@@ -154,7 +154,7 @@ function PanelChromeBar({ detachId }: { detachId: WorkspacePanelId }) {
             data-no-drag
             aria-label={t('shellChrome.sidebarPanelHost.collapseSidebarAriaLabel')}
             onClick={() => setSidebarMode('collapsed')}
-            className="h-5 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            className="h-6 w-6 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           >
             <ChevronRight className="h-3.5 w-3.5" />
           </button>

@@ -115,9 +115,7 @@ export { extractMaterials, getMaterialForElement, getMaterialNameForElement, typ
 export { extractGeoreferencing, transformToWorld, transformToLocal, getCoordinateSystemDescription, computeAngleToGridNorth, type GeoreferenceInfo, type MapConversion, type ProjectedCRS } from './georef-extractor.js';
 export { extractClassifications, getClassificationsForElement, getClassificationCodeForElement, getClassificationPath, groupElementsByClassification, type ClassificationsData, type Classification, type ClassificationReference } from './classification-extractor.js';
 
-// 4D / scheduling extractor — IfcTask, IfcTaskTime, IfcRelSequence, IfcRelAssignsToProcess,
-// IfcRelAssignsToControl, IfcRelNests, IfcWorkSchedule, IfcWorkPlan, IfcLagTime, and
-// IfcWorkCalendar with its IfcWorkTime / IfcRecurrencePattern / IfcTimePeriod.
+// 4D scheduling extractor: tasks, sequences, schedules, calendars and recurrence data.
 export {
   extractScheduleOnDemand,
   parseIso8601Duration,

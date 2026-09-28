@@ -41,7 +41,7 @@
 import { EntityExtractor } from './entity-extractor.js';
 import { iterateEffectiveEntities, type EffectiveEntityOverlay } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
-import { getInheritanceChain, normalizeIfcTypeName } from './ifc-schema.js';
+import { normalizeIfcTypeName } from './ifc-schema.js';
 import {
   extractBoundaryCondition,
   extractStructuralLoad,
@@ -72,6 +72,13 @@ import type {
   StructuralMemberInfo,
   StructuralResultGroupInfo,
 } from './structural-types.js';
+import {
+  emptyStructuralExtraction as emptyExtraction,
+  structuralActivityKind as activityKind,
+  structuralRoleOf as roleOf,
+  structuralRootFields as rootFields,
+  type StructuralRole,
+} from './structural-extractor-values.js';
 
 export type {
   BoundaryConditionInfo,
@@ -97,71 +104,6 @@ export interface StructuralExtractionView extends EffectiveEntityOverlay {
    * making parser depend on the mutations package.
    */
   readEntity?: (expressId: number, effectiveType: string, source?: RawEntity) => RawEntity | undefined;
-}
-
-function emptyExtraction(): StructuralExtraction {
-  return {
-    analysisModels: [],
-    members: [],
-    connections: [],
-    activities: [],
-    loadGroups: [],
-    resultGroups: [],
-    hasStructural: false,
-    loadsTruncated: false,
-  };
-}
-
-type StructuralRole =
-  | 'member'
-  | 'connection'
-  | 'activity'
-  | 'loadGroup'
-  | 'resultGroup'
-  | 'analysisModel';
-
-/** Chain marker → role. Every marker is disjoint, so match order is not load-bearing. */
-const ROLE_BY_SUPERTYPE: ReadonlyArray<readonly [string, StructuralRole]> = [
-  ['IFCSTRUCTURALANALYSISMODEL', 'analysisModel'],
-  ['IFCSTRUCTURALRESULTGROUP', 'resultGroup'],
-  ['IFCSTRUCTURALLOADGROUP', 'loadGroup'],
-  ['IFCSTRUCTURALMEMBER', 'member'],
-  ['IFCSTRUCTURALCONNECTION', 'connection'],
-  ['IFCSTRUCTURALACTIVITY', 'activity'],
-];
-
-/**
- * Classify a concrete type by inheritance, not by name. Returns undefined for
- * an `IFCSTRUCTURAL*` type that is none of the six roles — `IfcStructuralLoad`
- * leaves and `IfcStructuralProfileProperties` reach here and are read through
- * their owners instead.
- */
-function roleOf(type: string): StructuralRole | undefined {
-  const chain = getInheritanceChain(type).map((c) => c.toUpperCase());
-  for (const [marker, role] of ROLE_BY_SUPERTYPE) {
-    if (chain.includes(marker)) return role;
-  }
-  return undefined;
-}
-
-function activityKind(type: string): 'Action' | 'Reaction' | 'Unknown' {
-  const chain = getInheritanceChain(type).map((c) => c.toUpperCase());
-  if (chain.includes('IFCSTRUCTURALACTION')) return 'Action';
-  if (chain.includes('IFCSTRUCTURALREACTION')) return 'Reaction';
-  return 'Unknown';
-}
-
-/** IfcRoot attribute 2 is Name, 3 Description; IfcObject adds ObjectType at 4. */
-function rootFields(e: RawEntity): {
-  name?: string;
-  description?: string;
-  objectType?: string;
-} {
-  return {
-    name: asString(e.attrs[2]),
-    description: asString(e.attrs[3]),
-    objectType: asString(e.attrs[4]),
-  };
 }
 
 /**

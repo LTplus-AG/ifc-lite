@@ -24,7 +24,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { IfcQuery } from '@ifc-lite/query';
-import { extractClassificationsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, extractStructuralOnDemand, getAttributeNames, normalizeIfcTypeName, type IfcDataStore, type MaterialPsetGroup, type StructuralExtractionView } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, extractStructuralOnDemand, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
 import { RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
@@ -64,6 +64,8 @@ import { attributesFromOverlayEntity } from './properties/overlayAttributes';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
 import { groupMembersForRef, relationshipsForSelection } from './properties/merge-relationship-data';
 import { effectiveSelectedClass } from './properties/effectiveSelectedClass';
+import { effectiveStructuralView } from './properties/effectiveStructuralView';
+import { selectedOverlayEntity } from './properties/selectedOverlayEntity';
 import { mergePropertySetLists, type DisplayPropertySet } from './properties/mergePropertySetLists';
 import { filterMaterialPropertyGroups, filterPropertySets, filterQuantitySets, matchesPropertySearch, searchTabForHits } from './properties/propertySearch';
 import { PropertySearchHighlight } from './properties/PropertySearchHighlight';
@@ -383,17 +385,9 @@ export function PropertiesPanel() {
     return { expressId: parent.expressId, name: parent.name || undefined };
   }, [entityNode]);
 
-  // Overlay-only entity record (duplicates, scripted adds). Carries
-  // the type + positional attributes the StoreEditor recorded — used
-  // as a fallback when the parsed entityNode comes up empty so the
-  // panel doesn't render `UNKNOWN / Unknown` for fresh entities.
+  // Keep overlay-created entities out of the panel's `UNKNOWN / Unknown` display path.
   const overlayEntity = useMemo(() => {
-    let modelId = selectedEntity?.modelId;
-    if (modelId === 'legacy') modelId = '__legacy__';
-    const expressId = selectedEntity?.expressId;
-    if (!modelId || !expressId) return null;
-    const view = mutationViews.get(modelId);
-    return view?.getNewEntity(expressId) ?? null;
+    return selectedOverlayEntity(selectedEntity, mutationViews);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEntity, mutationViews, mutationVersion]);
 
@@ -796,30 +790,7 @@ export function PropertiesPanel() {
     if (!dataStore) return null;
     const id = selectedEntity?.modelId === 'legacy' ? '__legacy__' : (model?.id ?? selectedEntity?.modelId);
     const mutationView = id ? mutationViews.get(id) : undefined;
-    const effectiveView: StructuralExtractionView | undefined = mutationView ? {
-      isDeleted: (expressId) => mutationView.isDeleted(expressId),
-      getNewEntities: () => mutationView.getNewEntities(),
-      getNewEntitiesOfType: (type) => mutationView.getNewEntitiesOfType(type),
-      getNewEntity: (expressId) => mutationView.getNewEntity(expressId),
-      getTypeMutations: () => mutationView.getTypeMutations(),
-      getTombstones: () => mutationView.getTombstones(),
-      readEntity: (expressId, effectiveType, source) => {
-        const fresh = mutationView.getNewEntity(expressId);
-        const attrs = source?.attrs.slice() ?? [...(fresh?.attributes ?? [])];
-        for (const [index, value] of mutationView.getPositionalMutationsForEntity(expressId) ?? []) attrs[index] = value;
-        const type = normalizeIfcTypeName(effectiveType);
-        for (const mutation of mutationView.getAttributeMutationsForEntity(expressId)) {
-          const index = getAttributeNames(type).indexOf(mutation.name);
-          if (index >= 0) attrs[index] = mutation.value;
-        }
-        return {
-          expressId,
-          type,
-          attrs,
-          globalId: typeof attrs[0] === 'string' ? attrs[0] : source?.globalId ?? '',
-        };
-      },
-    } : undefined;
+    const effectiveView = effectiveStructuralView(mutationView);
     const out = extractStructuralOnDemand(dataStore as IfcDataStore, effectiveView);
     return out.hasStructural ? out : null;
   }, [model, ifcDataStore, selectedEntity?.modelId, mutationViews, mutationVersion]);

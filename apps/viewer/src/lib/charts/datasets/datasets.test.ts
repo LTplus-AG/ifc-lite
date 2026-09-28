@@ -136,6 +136,34 @@ describe('chart source adapters over real producers (#3944)', () => {
     assert.deepEqual(withoutDoorGeometry.rows.map(({ ids }) => ids[0]), [GID(created.expressId)]);
   });
 
+  it('elements: Storey follows edited containment and an authored storey (#5249)', () => {
+    const model = [...useViewerStore.getState().models.values()][0];
+    const view = new MutablePropertyView(null, model.id);
+    view.setExpressIdWatermark(120);
+    view.deleteEntity(41);
+    view.setAttribute(90, 'RelatingStructure', '#6');
+    const authoredStorey = view.createEntity('IfcBuildingStorey', [
+      '0NewLevel00000000000001', null, 'Authored level', null, null, null, null, null, '.ELEMENT.', 6,
+    ]);
+    const authoredWall = view.createEntity('IfcWall', [
+      '0NewWall000000000000003', null, 'Authored wall', null, null, '#24', '#28', null, null,
+    ]);
+    view.createEntity('IfcRelContainedInSpatialStructure', [
+      '0NewRel000000000000003', null, null, null, [`#${authoredWall.expressId}`], `#${authoredStorey.expressId}`,
+    ]);
+    const state = { ...useViewerStore.getState(), mutationViews: new Map([[model.id, view]]), mutationVersion: 1 };
+
+    const dataset = buildElementsDataset({ kind: 'all' }, state);
+    const storeyColumn = dataset.columns.findIndex((column) => column.id === 'Storey');
+    assert.deepEqual(dataset.rows.map((row) => [row.ids[0], row.values[storeyColumn]]), [
+      [GID(42), 'Level 2'],
+      [GID(43), 'Level 2'],
+      [GID(authoredWall.expressId), 'Authored level'],
+    ]);
+    const source = buildElementsDataset({ kind: 'all' }, { ...state, mutationViews: new Map(), mutationVersion: 0 });
+    assert.deepEqual(source.rows.map((row) => row.values[storeyColumn]), ['Level 1', 'Level 1', 'Level 1']);
+  });
+
   it('clash: one row per engine clash with both renderer ids, type pair, review and the storey resolved through the federation', async () => {
     const engine = createClashEngine({ backend: 'ts' });
     const result = await engine.run(

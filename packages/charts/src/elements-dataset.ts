@@ -58,6 +58,8 @@ export interface ElementsDatasetModel {
   toGlobalId: (expressId: number) => number;
   /** Human model name for the `Model` column. */
   name: string;
+  /** Effective storey label for a live session; absent for parsed snapshots. */
+  storeyName?: (expressId: number) => string;
   /** Keep only these express ids (a list scope, the visible set); all when absent. */
   include?: ReadonlySet<number>;
   /** Host-owned IFC reader. Called only for requested fields and included rows. */
@@ -90,6 +92,8 @@ export function elementsDataset(models: readonly ElementsDatasetModel[], fields:
     const { entities, spatialHierarchy } = model.store;
     const storeyNames = new Map<number, string>();
     const storeyOf = (expressId: number): string => {
+      if (model.storeyName) return model.storeyName(expressId);
+      // @raw-entity-enumeration-ok snapshot default; live viewers supply storeyName to resolve edited containment and created/deleted storeys
       const storeyId = spatialHierarchy?.elementToStorey.get(expressId);
       if (!storeyId) return '';
       let cached = storeyNames.get(storeyId);

@@ -67,6 +67,13 @@ On AC20-FZK-Haus (fixture SHA-256 `ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516e
 mesh FNV-1a64 `c4d504b83ff698ea`, 285 meshes, 35,940 vertices, and 20,322
 triangles from each binary. Verdict: the normal **native** load executes the
 same binary, so a noisy timing comparison of those binaries would add no evidence.
+After the checker merged, a new five-pair, balanced fresh-process AC20 control
+compared a profiling binary from checker source `cdbefec6e` (Rust/Cargo identical
+to merged main `80d1ba901`) with bridge source `b72d706de` (identical native
+source to the final comment-only head). Each process ran five iterations with
+ordered mesh fingerprints. Every run kept the same mesh counts and ordered FNV;
+parse, geometry, and total ranges overlapped. Verdict: the bridge preserves
+ordinary native-load output, with no supported default-path speed change.
 The added WASM export's browser startup and opt-in extraction cost were not
 measured; this result does not establish a browser worker-pool speed change.
 For an opt-in bridge, prove the default path is unchanged separately from

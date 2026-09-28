@@ -300,6 +300,29 @@ describe('Section2DOverlayRenderer: per-family buffer ownership', () => {
 });
 
 describe('selected centreline depth (#5778)', () => {
+  it('creates the depth pipeline only after a centreline has drawable segments', () => {
+    const { renderer, pipelineDescs } = newRenderer();
+    renderer.setLineOverlay('grid', SEGMENTS);
+    const ordinaryPipelines = pipelineDescs.size;
+    const empty = makePass();
+    renderer.drawLineOverlay(empty.pass, OPTIONS.viewProj, 'centreline');
+    assert.deepStrictEqual(empty.calls, []);
+    assert.strictEqual(pipelineDescs.size, ordinaryPipelines,
+      'normal frames with no centreline must not allocate its depth pipeline');
+
+    renderer.setLineOverlay('centreline', SEGMENTS);
+    const populated = makePass();
+    renderer.drawLineOverlay(populated.pass, OPTIONS.viewProj, 'centreline');
+    assert.deepStrictEqual(populated.calls, ['setPipeline', 'setBindGroup', 'setVertexBuffer', 'draw:4']);
+    assert.strictEqual(pipelineDescs.size, ordinaryPipelines + 1);
+    assert.strictEqual(pipelineDescs.get(populated.pipelines[0])?.depthStencil?.depthCompare, 'always');
+
+    renderer.setLineOverlay('centreline', null);
+    renderer.drawLineOverlay(makePass().pass, OPTIONS.viewProj, 'centreline');
+    assert.strictEqual(pipelineDescs.size, ordinaryPipelines + 1,
+      'clearing the channel must not allocate another pipeline');
+  });
+
   it('draws through its swept solid without changing other line channels', () => {
     const { renderer, pipelineDescs } = newRenderer();
     renderer.setLineOverlay('grid', SEGMENTS);

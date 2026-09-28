@@ -387,7 +387,8 @@ export class Section2DOverlayRenderer {
     channel: LineOverlayChannel, rteViewProj?: Float32Array, camera?: readonly [number, number, number],
   ): void {
     this.init();
-    if (channel === 'centreline' && !this.centrelinePipeline && this.linePipelineDescriptor) {
+    if (channel === 'centreline' && this.lineOverlays.centreline.has()
+      && !this.centrelinePipeline && this.linePipelineDescriptor) {
       // A directrix lies inside its opaque swept disk. Draw it through the
       // solid, without changing the occlusion policy of any other channel.
       this.centrelinePipeline = this.device.createRenderPipeline({

@@ -329,6 +329,8 @@ length remains available. Joined diagnostics have one bounded output budget.
 
 `rebar_schedule(ifc_bytes, ids=None)` returns one row per selected
 `IfcReinforcingBar`, including bars with no supported swept-disk geometry.
+Each row exposes the occurrence's `GlobalId` and `Name` under their exact
+EXPRESS names.
 Authored attributes use exact EXPRESS names and record whether they came from
 the occurrence or its `IfcReinforcingBarType`. Numeric attributes retain their
 raw IFC value and an SI conversion. Each source sweep separately carries
@@ -344,7 +346,7 @@ bar count.
 ```python
 schedule = ifclite_geom.rebar_schedule(ifc_bytes)
 for step_id, row in schedule["rows"].items():
-    print(step_id, row["authored"].get("BarLength"), row["sweeps"])
+    print(step_id, row["GlobalId"], row["Name"], row["authored"].get("BarLength"), row["sweeps"])
 ```
 
 ### Tessellation quality

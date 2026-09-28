@@ -107,6 +107,7 @@ export function resolveEntityMeasureScales(
   });
 
   if (!store.source?.length || !store.entityIndex) return fallback();
+  // @raw-entity-enumeration-ok enumerate source IfcProject ids to choose the parsed model's unit-resolution path; project units and owning-project relationships are source-snapshot inputs, not live candidate membership
   const projectIds = store.entityIndex.byType.get('IFCPROJECT') ?? [];
   if (projectIds.length <= 1) return fallback();
 

@@ -417,6 +417,9 @@ export function SearchInline() {
             onFocus={() => setSearchOpen(true)}
             onKeyDown={handleInputKeyDown}
             className={cn(hasFilters ? 'pr-[4.5rem]' : 'pr-9')}
+            // Input renders a native input; the combobox role permits its expanded state.
+            // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+            role="combobox"
             aria-label={t('searchModal.inline.searchAriaLabel')}
             aria-autocomplete="list"
             aria-expanded={showPopover}

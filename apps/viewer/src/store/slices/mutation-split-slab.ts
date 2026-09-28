@@ -36,21 +36,26 @@ function holds(polygon: Point2D[], p: Point2D): boolean {
 
 /**
  * A closed polyline profile at `outline` minus `origin` (the source placement's
- * plan origin), in native units, and an identity solid position: the rewrite
- * places the clipped footprint exactly where the chain reader measured it.
+ * origin), in native units, on an unrotated solid position `rise` above the
+ * placement, extruded straight up: the rewrite places the clipped footprint
+ * exactly where the chain reader measured it, at the height the source's
+ * extrusion started (`baseElevation`: the split predicate only accepts
+ * vertical extrusions, which may start below their placement, #6233).
  */
-function emitClippedProfile(editor: StoreEditor, outline: readonly Point2D[], origin: readonly number[], k: number) {
+function emitClippedProfile(editor: StoreEditor, outline: readonly Point2D[], origin: readonly number[], rise: number, k: number) {
+  const n = (v: number) => toNativeLength({ lengthUnitScale: k }, v);
   const ids = [...outline, outline[0]].map(([x, y]) =>
-    editor.addEntity('IfcCartesianPoint', [[toNativeLength({ lengthUnitScale: k }, x - origin[0]), toNativeLength({ lengthUnitScale: k }, y - origin[1])]]).expressId);
+    editor.addEntity('IfcCartesianPoint', [[n(x - origin[0]), n(y - origin[1])]]).expressId);
   const polyline = editor.addEntity('IfcPolyline', [ids.map((id) => `#${id}`)]).expressId;
   const profile = editor.addEntity('IfcArbitraryClosedProfileDef', ['.AREA.', null, `#${polyline}`]).expressId;
-  const solidOrigin = editor.addEntity('IfcCartesianPoint', [[0, 0, 0]]).expressId;
+  const solidOrigin = editor.addEntity('IfcCartesianPoint', [[0, 0, n(rise)]]).expressId;
   const solidPosition = editor.addEntity('IfcAxis2Placement3D', [`#${solidOrigin}`, null, null]).expressId;
-  return { profile, solidPosition };
+  const up = editor.addEntity('IfcDirection', [[0, 0, 1]]).expressId;
+  return { profile, solidPosition, up };
 }
 
-function addPiece(get: Get, modelId: string, env: SplitEnv, type: string, outline: Point2D[], thickness: number) {
-  const base = { Profile: 'polygon' as const, Position: [0, 0, 0] as [number, number, number], OuterCurve: outline, Name: env.name, GlobalId: env.newGlobalId };
+function addPiece(get: Get, modelId: string, env: SplitEnv, type: string, outline: Point2D[], thickness: number, baseElevation: number) {
+  const base = { Profile: 'polygon' as const, Position: [0, 0, baseElevation] as [number, number, number], OuterCurve: outline, Name: env.name, GlobalId: env.newGlobalId };
   const s = get();
   switch (type) {
     case 'IfcSlab': return s.addSlab(modelId, env.storeyExpressId, { ...base, Thickness: thickness });
@@ -80,18 +85,19 @@ export function splitSlab(
   const kept = keepFirst ? first : second;
   const cut = keepFirst ? second : first;
 
-  const added = addPiece(get, modelId, env, chain.elementType, cut, geo.thickness);
+  const added = addPiece(get, modelId, env, chain.elementType, cut, geo.thickness, chain.baseElevation);
   if ('error' in added) return { ok: false as const, reason: added.error };
 
   const origin = chain.placementOrigin;
-  const emitted = emitClippedProfile(env.editor, kept, origin, env.lengthUnitScale);
-  const outline = { Profile: 'polygon' as const, Position: [0, 0, 0] as [number, number, number], OuterCurve: kept };
+  const emitted = emitClippedProfile(env.editor, kept, origin, chain.baseElevation - origin[2], env.lengthUnitScale);
+  const outline = { Profile: 'polygon' as const, Position: [0, 0, chain.baseElevation] as [number, number, number], OuterCurve: kept };
   const element: AuthoredElement = chain.elementType === 'IfcSpace'
     ? { kind: 'space', params: { ...outline, Height: geo.thickness } }
     : { kind: chain.elementType === 'IfcSlab' ? 'slab' : chain.elementType === 'IfcRoof' ? 'roof' : 'plate', params: { ...outline, Thickness: geo.thickness } };
   reshapeSource(get, modelId, expressId, [
     { entityId: chain.extrudedSolidId, index: 0, value: `#${emitted.profile}` },
     { entityId: chain.extrudedSolidId, index: 1, value: `#${emitted.solidPosition}` },
+    { entityId: chain.extrudedSolidId, index: 2, value: `#${emitted.up}` },
   ], element);
 
   closeSplit(get, modelId, env, expressId, added.expressId);

@@ -79,10 +79,11 @@ import { splitLinear, splitWall } from './mutation-split.js';
 import { splitSlab } from './mutation-split-slab.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
-import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags.js';
+import { withMutationBatchTags } from './mutation-batch-tags.js';
 import { canMutate, mutationDenial, mutationDenialKey, mutationPermission } from '../mutation-permission.js';
 import { syncTypeOverride } from './mutation-history-apply.js';
 import { recordMutationBatch, replayHistory } from './mutation-history-replay.js';
+import { positionalMutations } from './mutation-positional-batch.js';
 
 /**
  * IFC-space directions for {@link MutationSlice.duplicateEntity}.
@@ -1481,17 +1482,10 @@ export const createMutationSlice: StateCreator<
   },
 
   setPositionalAttributesBatch: (modelId, updates, continuing) => {
-    if (updates.length === 0) return null;
-    // One batch id for every mutation created below, so the undo / redo
-    // handlers group them.
-    const batchId = continuing ?? newMutationBatchId();
-    const ids: string[] = [];
-    for (const { entityId, index, value } of updates) {
-      const mutation = get().setPositionalAttribute(modelId, entityId, index, value);
-      if (mutation) ids.push(mutation.id);
-    }
-    get().tagMutationBatch(ids, batchId);
-    return batchId;
+    // Same gate as setPositionalAttribute; one store update for the whole batch.
+    if (updates.length === 0 || !canMutate(get(), modelId) || !get().mutationViews.get(modelId)) return null;
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    return editor ? recordMutationBatch(set, modelId, positionalMutations(editor, modelId, updates), continuing) : null;
   },
 
   recordMutationBatch: (modelId, mutations, batchId) => recordMutationBatch(set, modelId, mutations, batchId),

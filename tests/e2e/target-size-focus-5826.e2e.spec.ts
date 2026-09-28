@@ -110,6 +110,20 @@ test.describe('#5826 target size and focus visibility', () => {
     ).toEqual([]);
   });
 
+  test('privacy toast action and dismiss targets are at least 24x24 CSS px (#6333)', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForFunction((key) => !!(globalThis as Record<string, unknown>)[key], STORE);
+    await expect(page.getByRole('button', { name: 'Privacy settings' })).toBeVisible({ timeout: 15000 });
+    const privacyToast = page.locator('[data-toast-seq]').filter({
+      has: page.getByRole('button', { name: 'Privacy settings' }),
+    });
+    await expect(privacyToast.getByRole('button', { name: 'Dismiss notification' })).toBeVisible();
+
+    const undersized = (await findUndersizedButtons(page)).filter((button) =>
+      button.text === 'Privacy settings' || button.ariaLabel === 'Dismiss notification');
+    expect(undersized, `undersized privacy toast targets: ${JSON.stringify(undersized)}`).toEqual([]);
+  });
+
   test('empty start screen: Tab onto the welcome primary button shows a visible focus indicator', async ({ page }) => {
     await page.goto('/');
     await page.waitForFunction((key) => !!(globalThis as Record<string, unknown>)[key], STORE);

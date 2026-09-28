@@ -35,6 +35,14 @@ export const MESH_WALL = 50;
  * profile. Its length does not run along the placement axis.
  */
 export const ROTATED_BEAM = 80;
+/**
+ * Imported slabs laid out like AC20's: `HUNG_SLAB` extrudes 0.2 m DOWN from
+ * a solid position 0.2 m below its placement (at z = 0.5 m), like
+ * `Bodenplatte`; `TILTED_SLAB` extrudes along a tilted solid axis, like the
+ * roof slab `Dach-1`. Both are 4 × 3 m.
+ */
+export const HUNG_SLAB = 100;
+export const TILTED_SLAB = 120;
 
 export interface ModelingSessionOptions {
   unit?: 'metre' | 'millimetre';
@@ -71,7 +79,28 @@ DATA;
 #58=IFCSHAPEREPRESENTATION(#20,'Body','Tessellation',(#57));
 #60=IFCPRODUCTDEFINITIONSHAPE($,$,(#58));
 #70=IFCRELAGGREGATES('0kTvXnbbzCWw8lcMd1dR4o',$,$,$,#1,(#40));
-#71=IFCRELCONTAINEDINSPATIALSTRUCTURE('1kTvXnbbzCWw8lcMd1dR4o',$,$,$,(#50,#80),#40);
+#71=IFCRELCONTAINEDINSPATIALSTRUCTURE('1kTvXnbbzCWw8lcMd1dR4o',$,$,$,(#50,#80,#100,#120),#40);
+#100=IFCSLAB('1pPHnf7cXCpPsNEnQf8_6B',$,'hung slab',$,$,#101,#109,$,.FLOOR.);
+#101=IFCLOCALPLACEMENT(#41,#102);
+#102=IFCAXIS2PLACEMENT3D(#103,#89,#104);
+#103=IFCCARTESIANPOINT((0.,0.,${0.5 * k}));
+#104=IFCDIRECTION((1.,0.,0.));
+#105=IFCCARTESIANPOINT((${2 * k}.,${1.5 * k}));
+#106=IFCAXIS2PLACEMENT2D(#105,$);
+#107=IFCRECTANGLEPROFILEDEF(.AREA.,$,#106,${4 * k}.,${3 * k}.);
+#108=IFCCARTESIANPOINT((0.,0.,${-0.2 * k}));
+#110=IFCAXIS2PLACEMENT3D(#108,#89,#104);
+#111=IFCEXTRUDEDAREASOLID(#107,#110,#91,${0.2 * k});
+#112=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#111));
+#109=IFCPRODUCTDEFINITIONSHAPE($,$,(#112));
+#120=IFCSLAB('07Enbsqm9C7AQC9iyBwfSD',$,'tilted slab',$,$,#121,#129,$,.ROOF.);
+#121=IFCLOCALPLACEMENT(#41,#102);
+#122=IFCDIRECTION((0.,0.5,0.866025403784));
+#123=IFCDIRECTION((0.,-0.5,0.866025403784));
+#124=IFCAXIS2PLACEMENT3D(#22,#122,#104);
+#125=IFCEXTRUDEDAREASOLID(#107,#124,#123,${0.23 * k});
+#126=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#125));
+#129=IFCPRODUCTDEFINITIONSHAPE($,$,(#126));
 #80=IFCBEAM('3tCgZT92j6fw8fXgwCL3Jm',$,'rotated beam',$,$,#81,#90,$,$);
 #81=IFCLOCALPLACEMENT(#41,#82);
 #82=IFCAXIS2PLACEMENT3D(#83,$,$);

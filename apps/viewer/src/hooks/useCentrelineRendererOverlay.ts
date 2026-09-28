@@ -71,12 +71,14 @@ export function useCentrelineRendererOverlay(
     };
     if (enabled && !selected.loading && selected.items.length > 0) {
       const state = useViewerStore.getState();
-      void Promise.all([
-        lineBuilder(selected.items, state, highlightedSegment),
-        selectedCentrelineSnapCurves(selected.items, state, highlightedSegment),
-      ]).then(([{ vertices, diagnostics }, curves]) => {
+      void lineBuilder(selected.items, state, highlightedSegment).then(async ({ vertices, diagnostics, renderedOccurrences }) => {
         if (!active || epoch !== sourceEpoch.current) return;
-        report(selected.error ? [selected.error, ...diagnostics] : diagnostics);
+        const snapDiagnostics: string[] = [];
+        const curves = vertices.length > 0
+          ? await selectedCentrelineSnapCurves(selected.items, state, highlightedSegment, renderedOccurrences,
+            (message) => snapDiagnostics.push(message)) : [];
+        if (!active || epoch !== sourceEpoch.current) return;
+        report(selected.error ? [selected.error, ...diagnostics, ...snapDiagnostics] : [...diagnostics, ...snapDiagnostics]);
         if (vertices.length === 0) return;
         const uploaded = runGpuUpload('setLineOverlay:centreline', () => {
           renderer.setLineOverlay('centreline', anchorWorldLineVertices(vertices));

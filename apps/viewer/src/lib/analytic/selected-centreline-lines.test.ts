@@ -83,6 +83,73 @@ describe('selected centreline overlay (#5778)', () => {
     }
   });
 
+  it('only offers source snaps for occurrences actually drawn within the edge budget (#5780)', async () => {
+    const zero = { x: 0, y: 0, z: 0 };
+    const box = { min: zero, max: zero };
+    const prior = useViewerStore.getState();
+    try {
+      useViewerStore.setState({ models: new Map(), geometryResult: {
+        meshes: [], totalVertices: 0, totalTriangles: 0,
+        coordinateInfo: { originShift: zero, wasmRtcOffset: zero,
+          hasLargeCoordinates: false, originalBounds: box, shiftedBounds: box },
+      } });
+      const item = selected('legacy', 0);
+      const first = item.occurrences[0]!;
+      const edges = Array.from({ length: 100_000 }, (_, index) => ({
+        type: 'line' as const, start: [index, 0, 0] as [number, number, number],
+        end: [index + 1, 0, 0] as [number, number, number],
+      }));
+      const budgetExcluded = { ...first, solid_id: 93,
+        Directrix: [{ type: 'line' as const, start: [0, 1, 0] as [number, number, number],
+          end: [1, 1, 0] as [number, number, number] }] };
+      const invalid = { ...first, solid_id: 94,
+        Directrix: [{ type: 'line' as const, start: [NaN, 1, 0] as [number, number, number],
+          end: [1, 1, 0] as [number, number, number] }] };
+      const selectedItem = { ...item, occurrences: [{ ...first, Directrix: edges }, budgetExcluded, invalid] };
+      const state = useViewerStore.getState();
+      const drawn = await selectedCentrelineWorldLines([selectedItem], state);
+      assert.equal(drawn.vertices.length, 600_000);
+      assert.equal(drawn.renderedOccurrences.size, 1);
+      assert.match(drawn.diagnostics.join('; '), /display edge budget/);
+      const curves = await selectedCentrelineSnapCurves([selectedItem], state, null, drawn.renderedOccurrences);
+      assert.deepEqual(curves.map((curve) => curve.identity.solidId), [91]);
+    } finally {
+      useViewerStore.setState(prior);
+    }
+  });
+
+  it('caps the source snap list and reports omitted curves (#5780)', async () => {
+    const zero = { x: 0, y: 0, z: 0 };
+    const box = { min: zero, max: zero };
+    const prior = useViewerStore.getState();
+    try {
+      useViewerStore.setState({ models: new Map(), geometryResult: {
+        meshes: [], totalVertices: 0, totalTriangles: 0,
+        coordinateInfo: { originShift: zero, wasmRtcOffset: zero,
+          hasLargeCoordinates: false, originalBounds: box, shiftedBounds: box },
+      } });
+      const item = selected('legacy', 0);
+      const first = item.occurrences[0]!;
+      const count = 10_001;
+      const Directrix = Array.from({ length: count }, (_, index) => ({
+        type: 'line' as const, start: [index, 0, 0] as [number, number, number],
+        end: [index + 1, 0, 0] as [number, number, number],
+      }));
+      const segments = Array.from({ length: count }, (_, segment_index) => ({
+        segment_index, length: 1, bend_angle: null,
+      }));
+      const messages: string[] = [];
+      const curves = await selectedCentrelineSnapCurves([{ ...item, occurrences: [
+        { ...first, Directrix, directrix_metrics: { total_length: count, segments } },
+      ] }], useViewerStore.getState(), null, undefined, (message) => messages.push(message));
+      assert.equal(curves.length, 10_000);
+      assert.equal(curves.at(-1)?.identity.segmentIndex, 9_999);
+      assert.match(messages.join('; '), /10,000 curves.*omitted/);
+    } finally {
+      useViewerStore.setState(prior);
+    }
+  });
+
   it('uses the legacy single-model geometry frame when no federation map exists', async () => {
     const zero = { x: 0, y: 0, z: 0 };
     const box = { min: zero, max: zero };

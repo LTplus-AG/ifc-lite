@@ -8,13 +8,17 @@ import type { SelectedSweptDisk } from '@/hooks/useSelectedSweptDisks';
 import type { SelectedDirectrixSegment } from './segment-selection';
 import { directrixPointEvaluator } from './directrix-point';
 import { directrixDisplayPoint, type FederationPointMap } from './directrix-frame';
-import { modelFrameMap } from './selected-centreline-lines';
+import { modelFrameMap, sourceOccurrenceKey } from './selected-centreline-lines';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 
 /** The overlay and magnetic picker consume the same selected source records. */
+const MAX_SOURCE_SNAP_CURVES = 10_000;
+
 export async function selectedCentrelineSnapCurves(
   items: readonly SelectedSweptDisk[], state: ViewerState,
   highlight: SelectedDirectrixSegment | null = null,
+  renderedOccurrences?: ReadonlySet<string>,
+  report: (message: string) => void = (message) => console.warn(`[ifc-lite] ${message}`),
 ): Promise<SourceSnapCurve[]> {
   const curves: SourceSnapCurve[] = [];
   const maps = new Map<string, Promise<FederationPointMap | undefined>>();
@@ -36,14 +40,26 @@ export async function selectedCentrelineSnapCurves(
       console.warn(`[ifc-lite] Cannot snap ${modelId} #${expressId} source directrix:`, error);
       continue;
     }
-    const globalId = legacy ? expressId : state.toGlobalId(modelId, expressId);
+    let globalId: number;
+    try {
+      globalId = legacy ? expressId : state.toGlobalId(modelId, expressId);
+    } catch (error) {
+      report(`Cannot snap ${modelId} #${expressId}: ${String(error)}`);
+      continue;
+    }
     for (const [occurrenceIndex, occurrence] of item.occurrences.entries()) {
       if (occurrence.status.type !== 'complete' || occurrence.source_modified) continue;
       if (highlight && highlight.occurrenceIndex !== occurrenceIndex) continue;
+      if (renderedOccurrences && !renderedOccurrences.has(sourceOccurrenceKey(modelId, expressId, occurrenceIndex))) continue;
+      const metrics = new Map(occurrence.directrix_metrics?.segments.map((entry) => [entry.segment_index, entry]));
       for (const [segmentIndex, segment] of occurrence.Directrix.entries()) {
         if (highlight && highlight.segmentIndex !== segmentIndex) continue;
-        const metric = occurrence.directrix_metrics?.segments.find((entry) => entry.segment_index === segmentIndex);
+        const metric = metrics.get(segmentIndex);
         if (!metric) continue;
+        if (curves.length >= MAX_SOURCE_SNAP_CURVES) {
+          report(`Selected source snapping limited to ${MAX_SOURCE_SNAP_CURVES} curves; additional selected curves were omitted`);
+          return curves;
+        }
         const sourcePointAt = directrixPointEvaluator(segment);
         let warned = false;
         const pointAt: SourceSnapCurve['pointAt'] = (t) => {

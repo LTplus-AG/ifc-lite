@@ -31,6 +31,7 @@
 use ifc_lite_core::IfcType;
 
 pub(crate) mod fill;
+mod finish_join;
 mod indexed_colour;
 mod material;
 mod surface;
@@ -48,6 +49,8 @@ pub use material::{
     resolve_submesh_color,
 };
 pub use surface::{extract_surface_style_colors, extract_surface_style_specular, SpecularMaterial};
+// #5984: the finish of an already produced mesh, from the style its colour came from.
+pub use finish_join::{MeshFinishJoin, ModelFinishes};
 
 /// Alpha at or above which a color is treated as opaque.
 ///

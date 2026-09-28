@@ -58,6 +58,9 @@ packages/parser/src/structural-step-values.ts
 packages/parser/src/columnar-parser-root-attributes.ts
 packages/parser/src/exact-relationship-edges.ts
 packages/parser/src/identity-hints.ts
+packages/parser/src/material-resolver.ts
+packages/parser/src/on-demand-extractors.ts
+packages/parser/src/owning-project.ts
 packages/parser/src/property-unit.ts
 packages/parser/src/property-value-parser.ts
 packages/parser/src/project-units.ts

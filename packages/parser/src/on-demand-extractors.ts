@@ -11,7 +11,7 @@
  */
 
 import { EntityExtractor } from './entity-extractor.js';
-import { RelationshipType, resolvedTypeName } from '@ifc-lite/data';
+import { iterateEffectiveEntities, RelationshipType, resolvedTypeName, type EffectiveEntityOverlay } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { readQuantitySet, type CollectedQuantity } from './quantity-collect.js';
 import { appendSetsFromSecondSource, setIdentityKey } from './property-set-merge.js';
@@ -106,8 +106,10 @@ export {
     resolveComplexPropertyValue,
     parsePropertyValueWithComplex,
 } from './property-value-parser.js';
-import { copyParsedExtras, parsePropertyValueWithComplex, type ExtractedProperty } from './property-value-parser.js';
+import { copyParsedExtras, parsePropertyValue, parsePropertyValueWithComplex, type ExtractedProperty } from './property-value-parser.js';
 import { resolvePropertyUnit } from './property-unit.js';
+import { getAttributeNames, normalizeIfcTypeName } from './ifc-schema.js';
+import type { IfcEntity } from './types.js';
 // ============================================================================
 // Property Set Extraction Helpers
 // ============================================================================
@@ -121,6 +123,7 @@ export function extractPsetsFromIds(
     const result: Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> = [];
 
     for (const psetId of psetIds) {
+        // @raw-entity-enumeration-ok one requested set id is decoded from its source STEP span
         const psetRef = store.entityIndex.byId.get(psetId) ?? store.deferredEntityIndex?.get(psetId);
         if (!psetRef) continue;
 
@@ -141,6 +144,7 @@ export function extractPsetsFromIds(
             for (const propRef of hasProperties) {
                 if (typeof propRef !== 'number') continue;
 
+                // @raw-entity-enumeration-ok one referenced property id is decoded from its source STEP span
                 const propEntityRef = store.entityIndex.byId.get(propRef) ?? store.deferredEntityIndex?.get(propRef);
                 if (!propEntityRef) continue;
 
@@ -200,6 +204,7 @@ export function extractTypePropertiesOnDemand(
     if (typeIds.length === 0) return null;
 
     const typeId = typeIds[0]; // An element typically has one type
+    // @raw-entity-enumeration-ok typeIds came from this selected entity's relationship lookup
     const typeRef = store.entityIndex.byId.get(typeId);
     if (!typeRef) return null;
 
@@ -256,6 +261,7 @@ export function extractTypeEntityOwnProperties(
     store: IfcDataStore,
     typeEntityId: number
 ): Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> {
+    // @raw-entity-enumeration-ok the caller selected this one source type entity by id
     const ref = store.entityIndex.byId.get(typeEntityId);
     if (!ref || !store.source?.length) return [];
 
@@ -305,6 +311,7 @@ export function extractQsetsFromIds(
     const result: Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> = [];
 
     for (const qsetId of qsetIds) {
+        // @raw-entity-enumeration-ok one requested quantity-set id is decoded from its source STEP span
         const qsetRef = store.entityIndex.byId.get(qsetId);
         if (!qsetRef) continue;
 
@@ -344,6 +351,7 @@ export function extractTypeQuantitiesOnDemand(
     if (typeIds.length === 0) return null;
 
     const typeId = typeIds[0];
+    // @raw-entity-enumeration-ok typeIds came from this selected entity's relationship lookup
     const typeRef = store.entityIndex.byId.get(typeId);
     if (!typeRef) return null;
 
@@ -433,6 +441,7 @@ export function extractDocumentsOnDemand(
     const results: DocumentInfo[] = [];
 
     for (const docId of docRefIds) {
+        // @raw-entity-enumeration-ok one relationship-selected document id is decoded from its source STEP span
         const docRef = store.entityIndex.byId.get(docId);
         if (!docRef) continue;
 
@@ -454,6 +463,7 @@ export function extractDocumentsOnDemand(
 
             // Walk to IfcDocumentInformation if ReferencedDocument is set (IFC4 attr[4])
             if (typeof attrs[4] === 'number') {
+                // @raw-entity-enumeration-ok follow this document's one ReferencedDocument source id
                 const docInfoRef = store.entityIndex.byId.get(attrs[4]);
                 if (docInfoRef) {
                     const docInfoEntity = extractor.extractEntity(docInfoRef);
@@ -520,6 +530,7 @@ export function extractRelationshipsOnDemand(
     result.relations = extractExactRelationshipEdges(store, entityId);
 
     const getEntityInfo = (id: number): { name?: string; type: string } => {
+        // @raw-entity-enumeration-ok graph already selected this related id; source index supplies its STEP class only
         const ref = store.entityIndex.byId.get(id);
         // Canonical IfcPascalCase (e.g. "IfcZone") for display + case-sensitive
         // consumers; `ref.type` is the raw STEP token ("IFCZONE"). Groups now
@@ -592,6 +603,7 @@ export function extractGroupMembersOnDemand(
     const memberIds = store.relationships.getRelated(groupId, RelationshipType.AssignsToGroup, 'forward');
     const members: GroupMember[] = [];
     for (const id of memberIds) {
+        // @raw-entity-enumeration-ok graph already selected this group member id; source index supplies its STEP class only
         const ref = store.entityIndex.byId.get(id);
         // Canonical IfcPascalCase (e.g. "IfcSpace") — `ref.type` is the raw STEP
         // token ("IFCSPACE"), which would break case-sensitive class checks in
@@ -634,10 +646,19 @@ export { extractGeoreferencingOnDemand } from './on-demand-georeferencing.js';
 
 interface MaterialPsetEntry { name: string; properties: MaterialPsetGroup['psets'][number]['properties'] }
 
+/** Structural overlay shape accepted by live on-demand parser reads. */
+export interface MaterialPropertiesView extends EffectiveEntityOverlay {
+    getNewEntity?(expressId: number): { readonly type: string; readonly attributes?: readonly unknown[] } | null;
+    getPositionalMutationsForEntity?(expressId: number): ReadonlyMap<number, unknown> | null;
+    getAttributeMutationsForEntity?(expressId: number): ReadonlyArray<{ name: string; value: string }>;
+}
+
 const materialPropertyIndexCache = new WeakMap<IfcDataStore, Map<number, MaterialPsetEntry[]>>();
+const materialPropertyOverlayCache = new WeakMap<IfcDataStore, WeakMap<object, { revision: number; index: Map<number, MaterialPsetEntry[]> }>>();
 
 /** Resolve an entity ref from the primary index, falling back to deferred atoms. */
 function refFromStore(store: IfcDataStore, id: number) {
+    // @raw-entity-enumeration-ok resolve one caller-supplied express id to its source byte span
     return store.entityIndex.byId.get(id) ?? store.deferredEntityIndex?.get(id);
 }
 
@@ -679,41 +700,79 @@ function readMaterialPropsEntity(
  * material directly (not through IfcRelDefinesByProperties), so they are found by
  * scanning every *MaterialProperties entity once.
  */
-function getMaterialPropertyIndex(store: IfcDataStore): Map<number, MaterialPsetEntry[]> {
-    const cached = materialPropertyIndexCache.get(store);
+function getMaterialPropertyIndex(store: IfcDataStore, view?: MaterialPropertiesView | null, revision?: number): Map<number, MaterialPsetEntry[]> {
+    const overlayCache = view ? materialPropertyOverlayCache.get(store) : undefined;
+    const cached = view
+        ? revision === undefined ? undefined : overlayCache?.get(view)?.revision === revision
+            ? overlayCache.get(view)?.index : undefined
+        : materialPropertyIndexCache.get(store);
     if (cached) return cached;
 
     const index = new Map<number, MaterialPsetEntry[]>();
-    if (!store.source?.length || !store.entityIndex?.byType) {
-        materialPropertyIndexCache.set(store, index);
+    // @raw-entity-enumeration-ok source-index presence selects the source-byte path; overlay-created rows are handled by the branch below
+    if ((!store.source?.length && !view?.getNewEntities().length) || !store.entityIndex?.byType) {
+        if (!view) materialPropertyIndexCache.set(store, index);
         return index;
     }
 
     const extractor = new EntityExtractor(store.source);
+    const wantedTypes = ['IFCMATERIALPROPERTIES', 'IFCEXTENDEDMATERIALPROPERTIES'];
+    const sourceIds = new Set<number>();
+    for (const type of wantedTypes) {
+        // @raw-entity-enumeration-ok collect source candidate ids only; iterateEffectiveEntities below applies the live overlay
+        for (const id of store.entityIndex.byType.get(type) ?? []) sourceIds.add(id);
+    }
+    for (const [id, mutation] of view?.getTypeMutations?.() ?? []) {
+        if (wantedTypes.includes(mutation.newType.toUpperCase())) sourceIds.add(id);
+    }
+    const readEffective = (id: number, type: string): IfcEntity | undefined => {
+        const ref = refFromStore(store, id);
+        const source = ref ? extractor.extractEntity(ref) : undefined;
+        const fresh = !source ? view?.getNewEntity?.(id) : null;
+        const base: IfcEntity | undefined = source ?? (fresh ? {
+            expressId: id,
+            type,
+            attributes: [...(fresh.attributes ?? [])] as IfcEntity['attributes'],
+        } : undefined);
+        if (!base) return undefined;
+        const attributes = [...base.attributes];
+        for (const [attributeIndex, value] of view?.getPositionalMutationsForEntity?.(id) ?? []) {
+            attributes[attributeIndex] = value as IfcEntity['attributes'][number];
+        }
+        const names = getAttributeNames(type);
+        for (const mutation of view?.getAttributeMutationsForEntity?.(id) ?? []) {
+            const attributeIndex = names.indexOf(mutation.name);
+            if (attributeIndex >= 0) attributes[attributeIndex] = mutation.value;
+        }
+        return { ...base, type: normalizeIfcTypeName(type), attributes };
+    };
 
-    for (const [typeKey, ids] of store.entityIndex.byType) {
-        if (!typeKey.endsWith('MATERIALPROPERTIES')) continue;
-        for (const matPropsId of ids) {
-            const ref = refFromStore(store, matPropsId);
-            if (!ref) continue;
-            const entity = extractor.extractEntity(ref);
+    for (const row of iterateEffectiveEntities(store, view, wantedTypes, sourceIds)) {
+            const matPropsId = row.expressId;
+            const entity = readEffective(matPropsId, row.type);
             const attrs = entity?.attributes;
             if (!attrs) continue;
 
-            const parsed = readMaterialPropsEntity(typeKey, attrs, entity!.type);
+            const parsed = readMaterialPropsEntity(row.type, attrs, entity!.type);
             if (!parsed) continue;
 
             const properties: MaterialPsetEntry['properties'] = [];
             for (const propRef of parsed.propsList) {
                 if (typeof propRef !== 'number') continue;
-                const propEntityRef = refFromStore(store, propRef);
-                if (!propEntityRef) continue;
-                const propEntity = extractor.extractEntity(propEntityRef);
+                if (view?.isDeleted(propRef)) continue;
+                const propRefEntity = refFromStore(store, propRef);
+                const propType = view?.getTypeMutations?.().get(propRef)?.newType
+                    ?? propRefEntity?.type
+                    ?? view?.getNewEntity?.(propRef)?.type;
+                if (!propType) continue;
+                const propEntity = readEffective(propRef, propType);
                 if (!propEntity) continue;
                 const propAttrs = propEntity.attributes || [];
                 const propName = typeof propAttrs[0] === 'string' ? propAttrs[0] : '';
                 if (!propName) continue;
-                const pv = parsePropertyValueWithComplex(store, extractor, propEntity);
+                const pv = propRefEntity
+                    ? parsePropertyValueWithComplex(store, extractor, propEntity)
+                    : parsePropertyValue(propEntity);
                 const entry: MaterialPsetEntry['properties'][number] = {
                     name: propName,
                     type: pv.type,
@@ -727,16 +786,19 @@ function getMaterialPropertyIndex(store: IfcDataStore): Map<number, MaterialPset
             let list = index.get(parsed.materialId);
             if (!list) { list = []; index.set(parsed.materialId, list); }
             list.push({ name: parsed.psetName, properties });
-        }
     }
 
-    materialPropertyIndexCache.set(store, index);
+    if (view && revision !== undefined) {
+        let cache = materialPropertyOverlayCache.get(store);
+        if (!cache) { cache = new WeakMap(); materialPropertyOverlayCache.set(store, cache); }
+        cache.set(view, { revision, index });
+    } else if (!view) materialPropertyIndexCache.set(store, index);
     return index;
 }
 
 /** Build pset groups for a set of candidate material ids using the reverse index. */
-function buildMaterialPsetGroups(store: IfcDataStore, materialIds: number[]): MaterialPsetGroup[] {
-    const index = getMaterialPropertyIndex(store);
+function buildMaterialPsetGroups(store: IfcDataStore, materialIds: number[], view?: MaterialPropertiesView | null, revision?: number): MaterialPsetGroup[] {
+    const index = getMaterialPropertyIndex(store, view, revision);
     if (index.size === 0) return [];
 
     const groups: MaterialPsetGroup[] = [];
@@ -762,7 +824,7 @@ function buildMaterialPsetGroups(store: IfcDataStore, materialIds: number[]): Ma
  * member IfcMaterials (where Pset_Material* typically lives) and also checks
  * the set definition itself. Returns one group per material that has psets.
  */
-export function extractMaterialPropertiesOnDemand(store: IfcDataStore, entityId: number): MaterialPsetGroup[] {
+export function extractMaterialPropertiesOnDemand(store: IfcDataStore, entityId: number, view?: MaterialPropertiesView | null, revision?: number): MaterialPsetGroup[] {
     // Every association, not just the primary — psets on a second
     // IfcRelAssociatesMaterial's definition were previously invisible.
     const defIds = resolveAllMaterialDefIdsImpl(store, entityId);
@@ -771,7 +833,7 @@ export function extractMaterialPropertiesOnDemand(store: IfcDataStore, entityId:
     for (const defId of defIds) {
         ids.push(defId, ...collectMaterialLeavesImpl(store, defId).map((l) => l.id));
     }
-    return buildMaterialPsetGroups(store, ids);
+    return buildMaterialPsetGroups(store, ids, view, revision);
 }
 
 /**
@@ -779,7 +841,7 @@ export function extractMaterialPropertiesOnDemand(store: IfcDataStore, entityId:
  * hierarchy tab). Includes the material's own psets plus, when it is a set
  * definition, those of its member materials.
  */
-export function extractMaterialPropertiesForMaterialId(store: IfcDataStore, materialId: number): MaterialPsetGroup[] {
+export function extractMaterialPropertiesForMaterialId(store: IfcDataStore, materialId: number, view?: MaterialPropertiesView | null, revision?: number): MaterialPsetGroup[] {
     const leafIds = collectMaterialLeavesImpl(store, materialId).map((l) => l.id);
-    return buildMaterialPsetGroups(store, [materialId, ...leafIds]);
+    return buildMaterialPsetGroups(store, [materialId, ...leafIds], view, revision);
 }

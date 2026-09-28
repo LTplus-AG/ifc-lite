@@ -143,6 +143,7 @@ export const clashPanelEn = {
   // Per-row review controls (#1468)
   'clashPanel.review.label': 'Review',
   'clashPanel.review.commentPlaceholder': 'Add a comment (optional)',
+  'clashPanel.review.commentLabel': 'Clash review comment',
 
   // Empty / no-match / no-comparison states
   'clashPanel.empty.title': 'No clash results yet',

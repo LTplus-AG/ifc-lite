@@ -182,7 +182,7 @@ function ClashReviewControls({
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
-        placeholder={t('clashPanel.review.commentPlaceholder')}
+        placeholder={t('clashPanel.review.commentPlaceholder')} aria-label={t('clashPanel.review.commentLabel')}
         maxLength={2000}
         rows={2}
         className="w-full resize-y rounded border border-border bg-transparent px-2 py-1 text-2xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"

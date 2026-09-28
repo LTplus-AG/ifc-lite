@@ -176,6 +176,7 @@ describe('SearchableSelect popup portal (#1924, #5817)', () => {
     // > 8 options triggers the filter input (see SearchableSelect).
     const filterInput = popup?.querySelector('input');
     assert.ok(filterInput, 'filter input renders for large option lists');
+    assert.equal(filterInput.getAttribute('aria-label'), 'Filter options', 'filter keeps a stable name when typed (#6342)');
 
     act(() => {
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;

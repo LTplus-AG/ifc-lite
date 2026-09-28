@@ -161,6 +161,7 @@ export const bcfEn = {
   'bcf.topicDetail.cancelViewpointCommentAria': 'Cancel viewpoint comment',
   'bcf.topicDetail.addCommentOnViewpointPlaceholder': 'Add comment on viewpoint...',
   'bcf.topicDetail.addCommentPlaceholder': 'Add a comment...',
+  'bcf.topicDetail.commentInputLabel': 'Comment',
   'bcf.topicDetail.sendCommentAria': 'Send comment',
   'bcf.topicDetail.deleteConfirmTitle': 'Delete Topic?',
   'bcf.topicDetail.deleteConfirmBody':

@@ -99,6 +99,7 @@ export const listsEn = {
   // ListResultsTable
   'lists.resultsTable.defaultTitle': 'List',
   'lists.resultsTable.filterPlaceholder': 'Filter results...',
+  'lists.resultsTable.filterInputLabel': 'Filter list results',
   'lists.resultsTable.noRows': 'No matching rows',
   'lists.resultsTable.rowCount': { one: '{countDisplay} row', other: '{countDisplay} rows' },
   'lists.resultsTable.rowCountOfTotal': { one: '{countDisplay} / {total} row', other: '{countDisplay} / {total} rows' },

@@ -373,7 +373,7 @@ export function BCFTopicDetail({
           </div>
         )}
         <div className="flex gap-2">
-          <Input
+          <Input aria-label={t('bcf.topicDetail.commentInputLabel')}
             placeholder={selectedViewpoint ? t('bcf.topicDetail.addCommentOnViewpointPlaceholder') : t('bcf.topicDetail.addCommentPlaceholder')}
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}

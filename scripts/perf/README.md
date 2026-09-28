@@ -52,21 +52,23 @@ swept-disk models separately from ordinary mesh loading.
 ## Swept-disk source-geometry checks (#5758)
 
 The checker is opt-in and consumes the analytic description without entering
-normal mesh production. Five balanced fresh-process native base/branch pairs
-on AC20-FZK-Haus (`--iters 5 --json --fingerprint`) started at host load 3.5
-on 24 CPUs. Median parse/geometry/total was 6/21/28 ms versus 6/22/29 ms;
-base totals spanned 24–33 ms and branch totals 25–31 ms. Both sides emitted
-285 meshes, 35,940 vertices and 20,322 triangles with the same ordered mesh
-FNV-1a64 `c4d504b83ff698ea`. The tested binary uses the same Rust and Cargo
-source as the current rebased head.
+normal mesh production. After #6265 changed the Rust base, five balanced,
+interleaved fresh-process native pairs compared main `0c7481ff6` with checker
+source `cdbefec6e`, built with the same `profiling` profile and probed on
+AC20-FZK-Haus (`--iters 5 --json --fingerprint`). The later main `41825cb48`
+changes only workflow/test-script files, so this is also source-matched to that
+base. An earlier pair set measured during concurrent compilation was discarded;
+the cited set ran after other builds and browser tests stopped. The host still
+had background load; parse medians matched, geometry and total ranges
+overlapped, and the small median difference is run variation, not a speed
+claim. Every run on both sides emitted 285 meshes, 35,940 vertices and
+20,322 triangles with the same ordered mesh FNV-1a64 `c4d504b83ff698ea`.
 
-Verdict: no mesh-output change or measurable ordinary-load cost beyond run
-variation; the 1 ms median difference is too small against that spread to
-claim a speed change. The separate opt-in call on the Autodesk Revit 24.2
-Snowdon model checked three selected bars in 2.67 seconds on this host,
-including extraction and reporting; this single absolute observation is not
-a base/branch speed claim. Future optimization should measure analytic
-extraction on repeated mapped bars directly.
+Verdict: no ordinary-load mesh-output difference or measurable cost from this
+opt-in checker. The lesson is to measure the checker through an explicit
+extraction call on repeated mapped bars if its own latency becomes important;
+the default mesh load cannot measure code it never calls. The earlier single
+absolute Snowdon observation is not a base/branch comparison.
 
 ## Opt-in swept-disk source descriptions (#5559)
 

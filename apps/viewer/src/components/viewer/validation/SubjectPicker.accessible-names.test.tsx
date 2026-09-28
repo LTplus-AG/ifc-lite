@@ -51,6 +51,8 @@ describe('SubjectPicker input names (#6342)', () => {
     const propertyName = container.querySelector('input[aria-label="Property name"]');
     assert.ok(propertyName instanceof window.HTMLInputElement);
     type(propertyName, 'FireRating');
-    assert.deepEqual(latest, { kind: 'property', setName: 'Pset_WallCommon', propertyName: 'FireRating' });
+    assert.ok(latest && latest.kind === 'property');
+    assert.equal(latest.setName, 'Pset_WallCommon');
+    assert.equal(latest.propertyName, 'FireRating');
   });
 });

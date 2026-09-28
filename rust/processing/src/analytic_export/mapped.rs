@@ -32,6 +32,7 @@ pub(super) struct MappedSourceCache {
     pub loads: usize,
     #[cfg(test)]
     pub hits: usize,
+    #[cfg(test)]
     pub(super) enabled: bool,
 }
 
@@ -46,9 +47,18 @@ struct MappedSource {
 impl MappedSourceCache {
     pub(super) fn new() -> Self {
         Self {
+            #[cfg(test)]
             enabled: true,
             ..Self::default()
         }
+    }
+
+    #[inline]
+    fn cache_enabled(&self) -> bool {
+        #[cfg(test)]
+        { self.enabled }
+        #[cfg(not(test))]
+        { true }
     }
 
     fn source(
@@ -66,7 +76,7 @@ impl MappedSourceCache {
         let source = load_source(item, decoder);
         if let Ok(value) = &source {
             let item_count = value.items.len();
-            if self.enabled && self.entries.len() < MAX_VISITED_ITEMS
+            if self.cache_enabled() && self.entries.len() < MAX_VISITED_ITEMS
                 && item_count <= MAX_VISITED_ITEMS.saturating_sub(self.cached_items) {
                 self.cached_items += item_count;
                 self.entries.insert(id, value.clone());

@@ -1,36 +1,8 @@
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at https://mozilla.org/MPL/2.0/.
-
-# Cross-platform determinism check: x86_64 vs arm64 vs wasm32.
-#
-# The committed insta snapshots in rust/geometry/tests/snapshots/ were
-# generated on x86_64 and pin rounded per-fixture mesh stats (mesh count,
-# vertex/triangle totals, bbox, surface area, per-type counts). Running the
-# SAME harness on GitHub's free arm64 runner and asserting the SAME
-# byte-identical snapshots IS the determinism check — no arm-specific test
-# code exists or is needed. A snapshot mismatch here means the geometry
-# kernel produced platform-dependent output (a real bug — likely an exact-
-# predicate or float-ordering regression), not flake.
-#
-# The mesh-output determinism manifest extends the same idea to the full
-# pipeline's emitted bytes (docs/architecture/mesh-determinism.md): the
-# arm64 job asserts the pinned x86_64 manifest, and the wasm32 job asserts
-# the paired wasm32 manifest (identical except the documented libm-trig
-# gap) via wasm-bindgen-test in Node.
-#
-# Cost: deliberately NOT a per-PR job. `ubuntu-24.04-arm` GitHub-hosted
-# runners are free for public repos, so a weekly schedule costs wall-clock
-# only. `workflow_dispatch` lets us run it on demand before merging
-# kernel-sensitive changes (CSG, exact predicates, triangulation order).
-
-name: Determinism (arm64 + wasm32)
+# Temporary, manual-only #6402 comparison on the provisional post-#6309 parent.
+# This branch is a scratch measurement branch and is not a product PR.
+name: Scratch #6402 native A/B
 
 on:
-  schedule:
-    # Weekly, Monday 03:17 UTC — off-peak, minute offset avoids the
-    # top-of-the-hour scheduler pileup that delays/drops cron runs.
-    - cron: '17 3 * * 1'
   workflow_dispatch:
 
 permissions:
@@ -38,121 +10,86 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CARGO_BUILD_JOBS: '2'
 
 jobs:
-  arm64-determinism:
-    name: arm64 mesh-stat parity vs committed x86_64 snapshots
-    # Free GitHub-hosted arm64 runner (public repo). NOT Depot — this job is
-    # weekly + non-blocking, so slow cold builds are fine and cost nothing.
-    runs-on: ubuntu-24.04-arm
-    # Generous: a cold cargo build (incl. the Manifold/Clipper2 C++ kernel
-    # via cmake) on arm takes ~15-25 min before the cache warms up.
-    timeout-minutes: 45
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
-          lfs: false
+          fetch-depth: 0
           persist-credentials: false
-
-      - name: Setup Rust (pinned by rust-toolchain.toml)
+      - name: Verify exact source pair
+        shell: bash
+        run: |
+          test "$(git rev-parse 2f14c997c^)" = 3329522ecce13cbf86429e344b4a24659a33ec14
+          test "$(git rev-parse HEAD^)" = "$(git rev-parse 2f14c997c)"
+          test "$(git show --format= 2f14c997c | git patch-id --stable | cut -d' ' -f1)" = e55afcbece06cdd7c592d489daf42342eda5c1d3
+          git diff --exit-code 2f14c997c -- rust/geometry rust/processing rust/core
+          git worktree add --detach /tmp/ifclite-6402-base 3329522ecce13cbf86429e344b4a24659a33ec14
+          git rev-parse 2f14c997c > scratch-child-commit.txt
+          git -C /tmp/ifclite-6402-base rev-parse HEAD > scratch-base-commit.txt
+      - name: Setup Rust
         run: rustup show
-
-      - name: Cargo cache
-        # Swatinem on the free GitHub cache (10 GB LRU) — acceptable for a
-        # weekly job; only per-PR Rust jobs justify Depot's uncapped cache.
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-        with:
-          prefix-key: ci-arm64-determinism
-
-      # node + pnpm only for the fixture fetch script (`pnpm fixtures`);
-      # no `pnpm install` needed — the script has no npm deps.
-      - name: Setup pnpm
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
-
-      - name: Cache test fixtures
-        id: fixtures-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
         with:
-          path: tests/models
-          # Arch-specific suffix keeps this key out of the x86_64 jobs'
-          # cache namespace (`ci-fixtures-Linux-…` in test.yml).
-          key: ci-fixtures-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/models/manifest.json') }}
-
-      - name: Fetch fixtures
-        if: steps.fixtures-cache.outputs.cache-hit != 'true'
-        run: pnpm fixtures
-
-      # Unconditional — the fetch above is gated on a cache miss, so on a cache
-      # hit nothing had ever confirmed the restored tree still matches the
-      # manifest. A partial cache made fixture-gated tests skip and report ok.
-      - name: Verify fixtures
-        run: pnpm fixtures:check
-
-      - name: Assert native determinism targets contain runnable tests
-        run: node scripts/ci-assert-native-determinism-tests.mjs
-
-      # exact_predicate_determinism pins exact-predicate signs across
-      # platforms; geometry_correctness_harness asserts the committed
-      # x86_64-generated .snap files byte-for-byte against the pure-Rust
-      # exact kernel (the only CSG kernel since M9).
-      - name: Determinism tests (exact predicates + snapshot parity)
-        run: cargo test -p ifc-lite-geometry --test exact_predicate_determinism --test geometry_correctness_harness
-
-      # Mesh-output determinism manifest: the SAME x86_64-pinned manifest
-      # (rust/processing/tests/manifests/mesh_determinism.json) asserted on
-      # arm64 - full-pipeline emitted bytes (positions/normals/indices/origin
-      # in emit order + the sorted void/material wire arrays), not just
-      # predicate signs. See docs/architecture/mesh-determinism.md.
-      - name: Mesh-output determinism manifest (arm64 vs pinned x86_64)
-        run: cargo test -p ifc-lite-processing --test mesh_determinism
-
-  wasm32-mesh-determinism:
-    name: wasm32 mesh-output manifest vs pinned native manifest pair
-    # Free GitHub-hosted runner - same weekly + on-demand cost profile as the
-    # arm64 job. Compiles the wasm-bindings test crate for wasm32 and runs the
-    # mesh-output determinism battery in Node via wasm-bindgen-test.
-    runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+          python-version: '3.12'
+      - name: Fetch exact fixtures
+        run: |
+          node scripts/fixtures/fetch-fixtures.mjs \
+            ara3d/AC20-FZK-Haus.ifc \
+            'various/01_Snowdon_Towers_Sample_Structural(1).ifc'
+          sha256sum tests/models/ara3d/AC20-FZK-Haus.ifc \
+            'tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc'
+      - name: Build detached base binary
+        run: |
+          cd /tmp/ifclite-6402-base
+          CARGO_TARGET_DIR=/tmp/ifclite-6402-base-target cargo build --profile profiling -p ifc-lite-processing --example perf_probe
+      - name: Build exact child binary
+        run: CARGO_TARGET_DIR=/tmp/ifclite-6402-child-target cargo build --profile profiling -p ifc-lite-processing --example perf_probe
+      - name: Five balanced interleaved pairs per fixture
+        run: |
+          python3 scripts/perf/scratch_6402_ab.py \
+            /tmp/ifclite-6402-base-target/profiling/examples/perf_probe \
+            /tmp/ifclite-6402-child-target/profiling/examples/perf_probe \
+            scratch-perf-results \
+            tests/models/ara3d/AC20-FZK-Haus.ifc \
+            'tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc'
+          cp scratch-base-commit.txt scratch-child-commit.txt scratch-perf-results/
+      - name: Native mesh determinism manifest
+        run: CARGO_TARGET_DIR=/tmp/ifclite-6402-child-target cargo test -p ifc-lite-processing --test mesh_determinism --quiet
+      - name: Quick IfcOpenShell committed-reference parity
+        run: |
+          python3 -m pip install maturin
+          maturin build --release -m rust/python/Cargo.toml -o /tmp/ifclite-6402-wheels
+          python3 -m pip install /tmp/ifclite-6402-wheels/*.whl
+          cd tools/ifcopenshell_reference
+          python3 -m unittest test_harness
+          python3 dump_ifclite.py \
+            ../../rust/geometry/tests/fixtures/bath_csg_solid.ifc \
+            ../../rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc \
+            ../../rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc \
+            ../../rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc \
+            --out-dir ../../scratch-perf-results/parity
+          fail=0
+          for f in bath_csg_solid issue_1155_halfspace_flyaway \
+                   swept_disk_composite_arc_crankbar swept_disk_trimmed_line; do
+            python3 compare.py --reference "reference/$f.reference.json" \
+              --ifclite "../../scratch-perf-results/parity/$f.ifclite.json" \
+              --allowlist allowlist.json || fail=1
+          done
+          exit $fail
+      - name: Upload raw evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          lfs: false
-          persist-credentials: false
-
-      # Pinned Rust nightly + wasm32 target + wasm-pack - the same composite
-      # action the four wasm-building workflows share.
-      - name: Setup WASM build toolchain
-        uses: ./.github/actions/setup-wasm-build
-        with:
-          cache-prefix: ci-wasm32-determinism
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-
-      # Asserts rust/processing/tests/manifests/mesh_determinism.wasm32.json -
-      # byte-identical to the native manifest except the documented libm-trig
-      # gap (the native test suite pins that pairing). A failure here means
-      # wasm32 mesh output diverged from the pin: a cross-target determinism
-      # regression, or an intended geometry change whose re-pin forgot the
-      # wasm32 file. See docs/architecture/mesh-determinism.md.
-      - name: Mesh-output determinism manifest (wasm32 in Node)
-        run: wasm-pack test --node rust/wasm-bindings --test mesh_determinism
-
-  report-scheduled-failure:
-    needs: [arm64-determinism, wasm32-mesh-determinism]
-    if: always() && github.event_name == 'schedule' && (needs.arm64-determinism.result != 'success' || needs.wasm32-mesh-determinism.result != 'success')
-    uses: ./.github/workflows/report-scheduled-failure.yml
-    with:
-      workflow_name: Determinism (arm64 + wasm32)
-      jobs: arm64-determinism, wasm32-mesh-determinism
-      result: arm64=${{ needs.arm64-determinism.result }}, wasm32=${{ needs.wasm32-mesh-determinism.result }}
-    permissions:
-      contents: read
-      issues: write
+          name: scratch-6402-provisional-ab
+          path: scratch-perf-results/
+          if-no-files-found: warn

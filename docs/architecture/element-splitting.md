@@ -240,8 +240,12 @@ EVERY split path — wall, beam / column / member, slab / roof / plate
     GlobalId, on any machine.
   - Re-splitting the kept piece yields `k = 1, 2, …`.
   - Splitting a child derives from the child's own GlobalId.
-- The whole split is one undo step. Undo restores exactly the
-  original element (same express id and GlobalId) and its mesh.
+- The whole split is one undo step: `element.split` commits it as one
+  modeling transaction. Undo restores exactly the original element (same
+  express id and GlobalId). The kept piece and the new piece are
+  re-meshed by the wasm re-mesh service (`requestRemesh`), and again on
+  undo / redo of that batch; collaborators receive the kept piece's
+  builder mesh (`store/slices/mutation-geometry-mirror.ts`).
 
 Property carry-over:
 - `IfcRelDefinesByProperties` and `IfcRelDefinesByType` referring

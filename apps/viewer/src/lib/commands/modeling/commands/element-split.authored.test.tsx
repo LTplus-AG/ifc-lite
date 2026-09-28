@@ -30,7 +30,7 @@ import type { SnapResult } from '@/lib/snap/types';
 import type { Vec3 } from '../types.js';
 import '../builtin.js';
 import { commandPointerDown, commandPointerMove, getCommandRuntime } from '../runtime.js';
-import { setRequestRemesh } from '../transaction.js';
+import { setRequestRemesh, type RemeshRequest } from '../transaction.js';
 import type { SplitGesture } from './element-split.js';
 
 const snapAt = (render: Vec3): SnapResult => ({ local: [0, 0], render, winner: null, guides: [], locked: false });
@@ -48,9 +48,11 @@ function toastTexts(): string[] {
 }
 
 let restoreRemesh: () => void;
+let remeshed: RemeshRequest[];
 beforeEach(async () => {
   await seedModelingSession({ unit: 'millimetre', storeyOffset: [3, 3] });
-  restoreRemesh = setRequestRemesh(() => {});
+  remeshed = [];
+  restoreRemesh = setRequestRemesh((_get, request) => { remeshed.push(request); });
 });
 afterEach(() => {
   for (const button of document.querySelectorAll<HTMLButtonElement>('button[aria-label="Dismiss notification"]')) {
@@ -79,14 +81,20 @@ describe('element.split on authored elements in a mm file on an offset storey (#
     assert.ok(Math.abs(hover.render[0] - 4) < 1e-6, 'the preview is drawn under the cursor');
 
     commandPointerDown(snapAt(cursor));
-    // The source is replaced by two walls meeting at the cut.
-    const pieces = [...(useViewerStore.getState().mutationViews.get(MODEL_ID)?.getNewEntities() ?? [])]
-      .filter((e) => e.type.toUpperCase() === 'IFCWALL' && e.expressId !== wall.expressId)
-      .map((e) => useViewerStore.getState().readWallEndpoints(MODEL_ID, e.expressId))
-      .filter((p): p is NonNullable<typeof p> => p !== null)
-      .map((p) => [p.start[0], p.end[0]])
-      .sort((a, b) => a[0] - b[0]);
-    assert.deepEqual(pieces.map((p) => p.map((v) => Math.round(v * 1e6) / 1e6)), [[0, 1], [1, 4]]);
+    // The longer piece [1, 4] IS the source, reshaped in place (#6233); one
+    // new wall takes [0, 1]. The transaction re-meshes both, as one batch.
+    const walls = [...(useViewerStore.getState().mutationViews.get(MODEL_ID)?.getNewEntities() ?? [])]
+      .filter((e) => e.type.toUpperCase() === 'IFCWALL')
+      .map((e) => ({ id: e.expressId, ends: useViewerStore.getState().readWallEndpoints(MODEL_ID, e.expressId) }))
+      .filter((w) => w.ends !== null)
+      .map((w) => ({ id: w.id, span: [w.ends!.start[0], w.ends!.end[0]].map((v) => Math.round(v * 1e6) / 1e6) }));
+    const kept = walls.find((w) => w.id === wall.expressId);
+    const added = walls.find((w) => w.id !== wall.expressId);
+    assert.deepEqual(kept?.span, [1, 4], 'the source keeps the longer piece');
+    assert.deepEqual(added?.span, [0, 1]);
+    assert.equal(remeshed.length, 1, 'one re-mesh request, for the one transaction');
+    assert.deepEqual([...remeshed[0].expressIds].sort((a, b) => a - b), [wall.expressId, added!.id].sort((a, b) => a - b));
+    assert.equal(remeshed[0].cause, 'created');
   });
 
   it('cuts a column at the cursor height', () => {

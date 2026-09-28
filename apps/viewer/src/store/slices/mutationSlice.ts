@@ -1780,7 +1780,7 @@ export const createMutationSlice: StateCreator<
   },
 
   splitWallAtDistance: (modelId, expressId, distanceFromStart) =>
-    splitWall(get, api, (id) => getOrCreateStoreEditor(get, set, id), modelId, expressId, distanceFromStart),
+    splitWall(get, (id) => getOrCreateStoreEditor(get, set, id), modelId, expressId, distanceFromStart),
 
   readLinearElementSplitProjection: (modelId, expressId, cursorStoreyLocal) => {
     const ctx = resolveEditReadContext(get, set, modelId);
@@ -1792,7 +1792,7 @@ export const createMutationSlice: StateCreator<
   },
 
   splitLinearElementAtDistance: (modelId, expressId, distanceFromStart) =>
-    splitLinear(get, api, (id) => getOrCreateStoreEditor(get, set, id), modelId, expressId, distanceFromStart),
+    splitLinear(get, (id) => getOrCreateStoreEditor(get, set, id), modelId, expressId, distanceFromStart),
 
   readSlabFootprint: (modelId, expressId) => {
     const ctx = resolveEditReadContext(get, set, modelId);
@@ -1806,7 +1806,7 @@ export const createMutationSlice: StateCreator<
   },
 
   splitSlabByLine: (modelId, expressId, cutA, cutB) =>
-    splitSlab(get, api, (id) => getOrCreateStoreEditor(get, set, id), modelId, expressId, cutA, cutB),
+    splitSlab(get, (id) => getOrCreateStoreEditor(get, set, id), modelId, expressId, cutA, cutB),
 
   removeEntity: (modelId, expressId, opts) => {
     if (!canMutate(get(), modelId)) return false;

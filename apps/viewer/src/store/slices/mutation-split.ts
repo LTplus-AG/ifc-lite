@@ -13,18 +13,15 @@
  * refusal returns before the source is touched.
  */
 
-import type { StoreApi } from 'zustand';
-import type { IfcAttributeValue, MutablePropertyView, StoreEditor, Mutation } from '@ifc-lite/mutations';
+import type { IfcAttributeValue, MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { MeshData } from '@ifc-lite/geometry';
 import type { ViewerState } from '../index.js';
 import { toGlobalIdFromModels } from '../globalId.js';
 import { mutationDenial } from '../mutation-permission.js';
-import { buildElementMesh } from './addElementMeshes.js';
-import { authoredElementMeshPayloadOnStorey, type AuthoredElement } from './authoredElement.js';
+import type { AuthoredElement } from './authoredElement.js';
 import { toNativeLength } from '@ifc-lite/create';
 import { mutationsSince, newMutationBatchId, undoStackLengths } from './mutation-batch-tags.js';
-import { recordMeshSwap, replaceEntityMesh } from './mutation-mesh-swap.js';
+import { mirrorAuthoredGeometry } from './mutation-geometry-mirror.js';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import { resolveSplitTarget, splitChainOfKind } from '@/lib/split-target.js';
 import { deriveSplitGlobalId, globalIdTakenIn, keepsFirstPiece } from '@/lib/split-guid.js';
@@ -46,7 +43,6 @@ export interface SplitEnv {
   editor: StoreEditor;
   dataStore: IfcDataStore;
   storeyExpressId: number;
-  storeyElevation: number;
   /** Native-unit → metre factor; the chains are metres, STEP slots native. */
   lengthUnitScale: number;
   /** The new piece's GlobalId, derived from the source's. */
@@ -85,7 +81,6 @@ export function openSplit<K extends SplitKind>(
     [...state.models].map(([id, m]) => ({ dataStore: m.ifcDataStore, view: state.mutationViews.get(id) }))));
   const env: SplitEnv = {
     view, editor, dataStore, storeyExpressId, newGlobalId, lengthUnitScale,
-    storeyElevation: dataStore.spatialHierarchy?.storeyElevations?.get(storeyExpressId) ?? 0,
     name: typeof attrs?.[2] === 'string' ? attrs[2] : undefined,
     stackLengths: undoStackLengths(state.undoStacks),
   };
@@ -93,46 +88,26 @@ export function openSplit<K extends SplitKind>(
 }
 
 /**
- * Reshape the source in place: positional writes (native units), then swap
- * its mesh for `mesh`, riding on the last write so undo / redo swap it back.
+ * Reshape the source in place: positional writes (native units). Its local
+ * mesh is rebuilt by the wasm re-mesh service when the split's transaction
+ * commits (`element.split` returns it in `remesh`, and undo / redo re-mesh
+ * the batch again); collaborators get `element`'s builder mesh.
  */
 export function reshapeSource(
   get: Get,
-  api: StoreApi<ViewerState>,
   modelId: string,
   expressId: number,
   writes: Array<{ entityId: number; index: number; value: IfcAttributeValue }>,
-  mesh: MeshData | null,
+  element: AuthoredElement,
 ): void {
-  let last: Mutation | null = null;
-  for (const w of writes) {
-    last = get().setPositionalAttribute(modelId, w.entityId, w.index, w.value) ?? last;
-  }
-  const after = mesh ? [mesh] : [];
-  const before = replaceEntityMesh(get, api, modelId, expressId, after);
-  if (last) recordMeshSwap(get, last.id, { api, modelId, expressId, before, after });
-  if (mesh) get().mirrorEntityGeometry(modelId, expressId, mesh);
+  for (const w of writes) get().setPositionalAttribute(modelId, w.entityId, w.index, w.value);
+  mirrorAuthoredGeometry(get, modelId, expressId, element);
 }
 
 /** Close the split: clone the source's metadata onto the new piece, make it all one undo step. */
 export function closeSplit(get: Get, modelId: string, env: SplitEnv, sourceId: number, newId: number): void {
   cloneElementMetadata(env.dataStore, env.view, env.editor, sourceId, [newId]);
   get().tagMutationBatch(mutationsSince(get().undoStacks, env.stackLengths), newMutationBatchId());
-}
-
-/**
- * The kept piece's mesh, described as the builder params that would author it
- * (storey-local metres) and drawn through the storey's authoring frame — the
- * same path `addWall` & co. mirror with, so it lands where it reloads.
- */
-export function sourceMesh(get: Get, modelId: string, expressId: number, env: SplitEnv, element: AuthoredElement): MeshData | null {
-  const coordinateInfo = get().models.get(modelId)?.geometryResult?.coordinateInfo;
-  return buildElementMesh({
-    type: element.kind,
-    globalId: toGlobalIdFromModels(get().models, modelId, expressId),
-    storeyElevation: env.storeyElevation,
-    payload: authoredElementMeshPayloadOnStorey(element, env.dataStore, env.storeyExpressId, coordinateInfo),
-  });
 }
 
 export function piece(get: Get, modelId: string, expressId: number): Piece {
@@ -145,7 +120,6 @@ const along = (s: Vec3, dir: Vec3, t: number): Vec3 => [s[0] + dir[0] * t, s[1] 
 
 export function splitWall(
   get: Get,
-  api: StoreApi<ViewerState>,
   editorFor: (modelId: string) => StoreEditor | null,
   modelId: string,
   expressId: number,
@@ -165,13 +139,11 @@ export function splitWall(
 
   const k = chain.lengthUnitScale;
   const keptLength = Math.hypot(kept.End[0] - kept.Start[0], kept.End[1] - kept.Start[1]);
-  reshapeSource(get, api, modelId, expressId, [
+  reshapeSource(get, modelId, expressId, [
     { entityId: chain.startPointId, index: 0, value: scaled(kept.Start, k) },
     { entityId: chain.profileId, index: 3, value: native(keptLength, k) },
     { entityId: chain.profileOriginPointId, index: 0, value: [native(keptLength, k) / 2, 0] },
-  ], sourceMesh(get, modelId, expressId, env, {
-    kind: 'wall', params: { Start: kept.Start, End: kept.End, Thickness: chain.thickness, Height: chain.height },
-  }));
+  ], { kind: 'wall', params: { Start: kept.Start, End: kept.End, Thickness: chain.thickness, Height: chain.height } });
 
   // Only openings in the new piece change host. An opening's local X is
   // native units; a kept RIGHT piece starts at the cut, so the openings it
@@ -191,7 +163,6 @@ export function splitWall(
 
 export function splitLinear(
   get: Get,
-  api: StoreApi<ViewerState>,
   editorFor: (modelId: string) => StoreEditor | null,
   modelId: string,
   expressId: number,
@@ -228,7 +199,7 @@ export function splitLinear(
   const element: AuthoredElement = chain.elementType === 'IfcColumn'
     ? { kind: 'column', params: { Position: keptStart, Width: width, Depth: height, Height: keptLength } }
     : chain.elementType === 'IfcBeam' ? { kind: 'beam', params: linear } : { kind: 'member', params: linear };
-  reshapeSource(get, api, modelId, expressId, writes, sourceMesh(get, modelId, expressId, env, element));
+  reshapeSource(get, modelId, expressId, writes, element);
 
   closeSplit(get, modelId, env, expressId, added.expressId);
   const [leftId, rightId] = keepFirst ? [expressId, added.expressId] : [added.expressId, expressId];

@@ -9,7 +9,6 @@
  * to the clipped polygon — and one new element is authored for the other.
  */
 
-import type { StoreApi } from 'zustand';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
 import type { AuthoredElement } from './authoredElement.js';
@@ -17,7 +16,7 @@ import { toNativeLength } from '@ifc-lite/create';
 import { computeSlabSplitGeometry } from '@/lib/slab-edit.js';
 import { keepsFirstPiece } from '@/lib/split-guid.js';
 import { pointInPolygon, type Point2D } from '@/lib/polygon-clip.js';
-import { closeSplit, openSplit, piece, reshapeSource, sourceMesh, type SplitEnv } from './mutation-split.js';
+import { closeSplit, openSplit, piece, reshapeSource, type SplitEnv } from './mutation-split.js';
 
 type Get = () => ViewerState;
 
@@ -63,7 +62,6 @@ function addPiece(get: Get, modelId: string, env: SplitEnv, type: string, outlin
 
 export function splitSlab(
   get: Get,
-  api: StoreApi<ViewerState>,
   editorFor: (modelId: string) => StoreEditor | null,
   modelId: string,
   expressId: number,
@@ -91,10 +89,10 @@ export function splitSlab(
   const element: AuthoredElement = chain.elementType === 'IfcSpace'
     ? { kind: 'space', params: { ...outline, Height: geo.thickness } }
     : { kind: chain.elementType === 'IfcSlab' ? 'slab' : chain.elementType === 'IfcRoof' ? 'roof' : 'plate', params: { ...outline, Thickness: geo.thickness } };
-  reshapeSource(get, api, modelId, expressId, [
+  reshapeSource(get, modelId, expressId, [
     { entityId: chain.extrudedSolidId, index: 0, value: `#${emitted.profile}` },
     { entityId: chain.extrudedSolidId, index: 1, value: `#${emitted.solidPosition}` },
-  ], sourceMesh(get, modelId, expressId, env, element));
+  ], element);
 
   closeSplit(get, modelId, env, expressId, added.expressId);
   const [leftId, rightId] = keepFirst === leftIsFirst ? [expressId, added.expressId] : [added.expressId, expressId];

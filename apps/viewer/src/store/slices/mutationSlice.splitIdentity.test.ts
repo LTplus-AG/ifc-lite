@@ -7,21 +7,23 @@
  * the larger piece keeps the source entity (express id + GlobalId), a tie
  * keeps the piece holding the start, the one new piece gets the v5 GlobalId
  * of `<source>/split/<k>` with k probed past existing ids, and one Ctrl+Z
- * restores exactly the original element — data and mesh.
+ * restores exactly the original element.
  *
  * Elements are authored through the same slice builders the Add Element tool
- * uses, in a millimetre file (the demo project's unit). The renderer's drain
- * of `pendingMeshRemovals` is simulated with `clearPendingMeshRemovals`, which
- * is what lets a swapped-in mesh land (see `mutation-mesh-swap.ts`).
+ * uses, in a millimetre file (the demo project's unit). The kept piece's
+ * LOCAL mesh is rebuilt by the wasm re-mesh service when `element.split`'s
+ * transaction commits (`element-split.identity.test.ts`); what the split
+ * action itself sends is the collaborators' mirror, checked here.
  */
 
-import { beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { uuidToIfcGuid, uuidV5 } from '@ifc-lite/encoding';
-import { useViewerStore, type FederatedModel } from '@/store';
+import type { MeshData } from '@ifc-lite/geometry';
+import { useViewerStore } from '@/store';
 import { readAttributes } from '@/lib/placement-core';
 import { SPLIT_GLOBALID_NAMESPACE } from '@/lib/split-guid';
-import { SPLIT_MODEL_ID as MODEL_ID, SPLIT_STOREY as STOREY, seedSplitFixture } from '@/test/split-fixture';
+import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 
 const WALL_GUID = '2XQ$n5SLP5MBLyL442paFx';
 const derived = (source: string, k: number) => uuidToIfcGuid(uuidV5(SPLIT_GLOBALID_NAMESPACE, `${source}/split/${k}`));
@@ -49,23 +51,27 @@ function wall(guid = WALL_GUID, length = 5): number {
 function split(id: number, distance: number) {
   const result = useViewerStore.getState().splitWallAtDistance(MODEL_ID, id, distance);
   assert.ok(result.ok, result.ok ? '' : result.reason);
-  useViewerStore.getState().clearPendingMeshRemovals(); // the renderer's drain
   return result;
 }
 
-/** The X extent (renderer frame) of the mesh(es) carrying `expressId`. */
-function meshSpan(expressId: number): [number, number] | null {
-  const meshes = (useViewerStore.getState().models.get(MODEL_ID) as FederatedModel).geometryResult?.meshes ?? [];
+/** Storey-local [startX, endX] of a wall's axis. */
+function span(expressId: number): [number, number] | null {
+  const ends = useViewerStore.getState().readWallEndpoints(MODEL_ID, expressId);
+  return ends ? [Math.round(ends.start[0] * 1e6) / 1e6, Math.round(ends.end[0] * 1e6) / 1e6] : null;
+}
+
+/** Renderer X extent of a mesh. */
+function meshXSpan(mesh: MeshData): [number, number] {
   let lo = Infinity;
   let hi = -Infinity;
-  for (const m of meshes.filter((mesh) => mesh.expressId === expressId)) {
-    for (let i = 0; i < m.positions.length; i += 3) { lo = Math.min(lo, m.positions[i]); hi = Math.max(hi, m.positions[i]); }
-  }
-  return Number.isFinite(lo) ? [Math.round(lo * 1e6) / 1e6, Math.round(hi * 1e6) / 1e6] : null;
+  for (let i = 0; i < mesh.positions.length; i += 3) { lo = Math.min(lo, mesh.positions[i]); hi = Math.max(hi, mesh.positions[i]); }
+  return [Math.round(lo * 1e6) / 1e6, Math.round(hi * 1e6) / 1e6];
 }
 
 describe('split identity policy (#6233)', () => {
-  beforeEach(() => seedSplitFixture('millimetre'));
+  const originalMirror = useViewerStore.getState().mirrorEntityGeometry;
+  beforeEach(() => seedModelingSession({ unit: 'millimetre' }));
+  afterEach(() => useViewerStore.setState({ mirrorEntityGeometry: originalMirror }));
 
   it('the longer piece keeps the source; the new piece gets <source>/split/0', () => {
     const id = wall();
@@ -74,17 +80,19 @@ describe('split identity policy (#6233)', () => {
     assert.equal(result.right.expressId, id, 'the longer (far) piece is the source entity');
     assert.equal(guidOf(id), WALL_GUID, 'and keeps its GlobalId');
     assert.equal(guidOf(result.left.expressId), derived(WALL_GUID, 0));
-    assert.deepEqual(meshSpan(id), [1.5, 5], 'the source mesh is reshaped to its piece');
-    assert.deepEqual(meshSpan(result.left.expressId), [0, 1.5]);
+    assert.deepEqual(span(id), [1.5, 5], 'the source is reshaped to its piece');
+    assert.deepEqual(span(result.left.expressId), [0, 1.5]);
   });
 
-  it('the reshaped source mesh lands in its storey frame on an offset storey', async () => {
-    await seedSplitFixture('millimetre', [3, 3]); // the demo storey's (3, 3) m offset
+  it('collaborators get the reshaped source in its storey frame on an offset storey', async () => {
+    await seedModelingSession({ unit: 'millimetre', storeyOffset: [3, 3] }); // the demo storey's (3, 3) m offset
+    const mirrored: Array<[number, MeshData]> = [];
+    useViewerStore.setState({ mirrorEntityGeometry: (_m: string, entityId: number, mesh: MeshData) => { mirrored.push([entityId, mesh]); } });
     const id = wall();
     const result = split(id, 1.5);
     if (!result.ok) return;
-    assert.deepEqual(meshSpan(id), [4.5, 8], 'source piece drawn 3 m east, where it reloads');
-    assert.deepEqual(meshSpan(result.left.expressId), [3, 4.5]);
+    assert.deepEqual(mirrored.map(([entity]) => entity), [id], 'one mirror, for the reshaped source');
+    assert.deepEqual(meshXSpan(mirrored[0][1]), [4.5, 8], 'source piece mirrored 3 m east, where it reloads');
   });
 
   it('a tie keeps the piece holding the axis start', () => {
@@ -98,7 +106,7 @@ describe('split identity policy (#6233)', () => {
   it('is deterministic across two independent stores', async () => {
     const first = split(wall(), 1); // 1 | 4: the new piece is the left one
     const firstGuid = first.ok ? guidOf(first.left.expressId) : null;
-    await seedSplitFixture('millimetre');
+    await seedModelingSession({ unit: 'millimetre' });
     const second = split(wall(), 3.2); // 3.2 | 1.8, a different cut: the new piece is the right one
     assert.ok(second.ok);
     assert.equal(firstGuid, derived(WALL_GUID, 0));
@@ -134,17 +142,14 @@ describe('split identity policy (#6233)', () => {
     const newId = result.left.expressId;
 
     useViewerStore.getState().undo(MODEL_ID);
-    useViewerStore.getState().clearPendingMeshRemovals();
     assert.deepEqual(useViewerStore.getState().readWallEndpoints(MODEL_ID, id), before, 'source geometry restored');
     assert.equal(guidOf(id), WALL_GUID, 'same GlobalId on the same express id');
-    assert.deepEqual(meshSpan(id), [0, 5], 'source mesh restored');
-    assert.equal(meshSpan(newId), null, 'the new piece is gone');
+    assert.equal(span(newId), null, 'the new piece is gone');
     assert.equal(useViewerStore.getState().canUndo(MODEL_ID), true, "only the wall's own create is left");
 
     useViewerStore.getState().redo(MODEL_ID);
-    useViewerStore.getState().clearPendingMeshRemovals();
-    assert.deepEqual(meshSpan(id), [1.5, 5]);
-    assert.deepEqual(meshSpan(newId), [0, 1.5]);
+    assert.deepEqual(span(id), [1.5, 5]);
+    assert.deepEqual(span(newId), [0, 1.5]);
     assert.equal(guidOf(newId), derived(WALL_GUID, 0));
   });
 

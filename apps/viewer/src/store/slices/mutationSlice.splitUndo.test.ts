@@ -125,11 +125,12 @@ describe('undoing a wall split (#4925)', () => {
 
     // Split identity policy (#6233): the longer piece stays the source,
     // reshaped in place; one new wall takes the other piece. The source's
-    // mesh swap lands once the renderer drains its queued removal.
+    // mesh is rebuilt by the wasm re-mesh service when `element.split`'s
+    // transaction commits (and on undo / redo of its batch), not here.
     const split = useViewerStore.getState().splitWallAtDistance(MODEL_ID, sourceId, 2);
     assert.ok(split.ok, `split failed: ${split.ok ? '' : split.reason}`);
     if (!split.ok) return;
-    useViewerStore.getState().clearPendingMeshRemovals();
+    useViewerStore.getState().clearPendingMeshRemovals(); // the renderer's drain
     assert.equal(split.right.expressId, sourceId, 'the 3 m far piece is the source');
     const newId = split.left.expressId;
     assertTriangleInvariant('after split');

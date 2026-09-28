@@ -129,16 +129,19 @@ The PR carries paired results, binary/fixture hashes, and source provenance.
 ## Opt-in extrusion source definitions (#5784)
 
 The extrusion source/instance walk is requested separately from ordinary mesh
-production. After #6268's final replay, two balanced, interleaved native
-AC20-FZK-Haus campaigns compared that exact quantity parent with this branch,
-using fresh profiling processes and five iterations each. Mesh counts and all
-100 ordered fingerprints matched. The first campaign's total median was
-higher on the child, while the reversed repeat favoured the child and paired
-differences swung both ways. Verdict: no attributable default-load speed change
-or mesh-output difference on this fixture. This control does not measure the
-opt-in extrusion extraction or browser worker-pool path; measure those directly
-if their caller-visible cost becomes material. The PR carries paired results,
-binary/fixture hashes, and source provenance.
+production. The final-parent control compared main `888a9a72` (Rust tree
+`0997415df1603d5c802bbf658b1dc12001c39990`) with the #6271 source
+(Rust tree `88e3c3a26f1e7e4dde087c65cab81ec7d0e9c046`) in five interleaved,
+fresh-process AC20-FZK-Haus pairs with five inner iterations each. All 50
+ordered mesh fingerprints, mesh counts, vertex counts, and triangle counts
+matched. The paired timings varied in both directions, so no supported
+default-load speedup or meaningful regression is demonstrated. This control
+does not measure opt-in extraction or browser worker-pool latency; measure
+those directly if their caller-visible cost becomes material. Raw results are
+at `/mnt/c/Users/louistrue/Documents/Dev/ifc-lite-6271-final-perf/campaign.json`;
+base/head binary SHA-256 values are `a2f586ce7f5c38d1bcd24275e5f1fef4d00b45fcf3b0041cd6d6492b8d389640`
+and `2b20fdad11da01f6c4cc9a531509b921347aaa343736488d3658f184b9f3cf9e`,
+and the fixture SHA-256 is `ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d`.
 
 ## Derived swept-disk metrics (#5754)
 

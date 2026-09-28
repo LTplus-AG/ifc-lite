@@ -80,7 +80,7 @@ export function packRteFragmentSpace(
   packRteClipBox(clipBox, eye, out, clipOffset);
 }
 
-/** Pack the shared camera high/low lanes used by V2 instance anchors. */
+/** Pack the shared camera high/low lanes used by instanced RTE shaders. */
 export function packRteCameraOrigin(frame: RelativeToEyeFrame, out: Float32Array): void {
   if (out.length < MESH_UNIFORM_FLOATS) {
     throw new RangeError(`Mesh RTE uniform needs ${MESH_UNIFORM_FLOATS} floats.`);

@@ -75,6 +75,7 @@ export { DEFAULT_OVERLAY_THEME } from './overlay-theme.js';
 import { DEFAULT_OVERLAY_THEME, type OverlayTheme } from './overlay-theme.js';
 export type { Ray, Vec3, Intersection } from './raycaster.js';
 export type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from './snap-detector.js';
+export type { SourceCurveIdentity, SourceSnapCurve } from './source-curve-snap.js';
 
 // Extracted manager classes. `PickingManager` is NOT exported: its constructor
 // takes the now-internal `Scene`, so nobody outside could build one anyway.
@@ -192,6 +193,7 @@ import { ShadowPass, resolveShadowMapResolution } from './shadow-pass.js';
 import { fitSunLightMatrix, cameraFrustumFocusCorners, resolveShadowNormalBiasMetres } from './shadow-light-matrix.js';
 import { collectShadowOccluders } from './shadow-occluders.js';
 import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './instanced-rte.js';
+import { INSTANCED_RTE_DELTA_SLOT } from './instanced-vertex-layout.js';
 import { shadowOccluderBatches } from './shadow-occluder-batches.js';
 import { captureRendererScreenshot } from './renderer-screenshot.js';
 import { beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrame, type RendererColorFrameCapture } from './renderer-color-readback.js';
@@ -2639,7 +2641,7 @@ export class Renderer {
                 }
                 // Per-template instance runs inside this frame's RTE envelope,
                 // shared by the opaque and transparent instanced sub-passes.
-                let visibleInstancedRuns: InstanceRun[][] = [];
+                let visibleInstancedRuns: (readonly InstanceRun[])[] = [];
                 if (visibleInstanced.length > 0) {
                     visibleInstancedRuns = uploadInstancedRteDeltas(device, visibleInstanced, relativeToEyeFrame.getCameraWorld());
                     // Opaque instanced pass. flags.x bit 2 marks "instanced pass" so the
@@ -2653,6 +2655,7 @@ export class Renderer {
                     for (const [i, it] of visibleInstanced.entries()) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
+                        pass.setVertexBuffer(INSTANCED_RTE_DELTA_SLOT, it.rteDeltas.buffer);
                         pass.setIndexBuffer(it.indexBuffer, 'uint32');
                         const runs = visibleInstancedRuns[i]!;
                         frameDrawCalls += drawInstanceRuns(pass, it.indexCount, runs);
@@ -2864,6 +2867,7 @@ export class Renderer {
                     for (const [i, it] of visibleInstanced.entries()) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
+                        pass.setVertexBuffer(INSTANCED_RTE_DELTA_SLOT, it.rteDeltas.buffer);
                         pass.setIndexBuffer(it.indexBuffer, 'uint32');
                         frameDrawCalls += drawInstanceRuns(pass, it.indexCount, visibleInstancedRuns[i]!);
                     }
@@ -3254,7 +3258,12 @@ export class Renderer {
         currentEdgeLock: EdgeLockInput,
         options?: PickOptions & { snapOptions?: Partial<SnapOptions> }
     ): MagneticSnapResult & { intersection: Intersection | null } {
-        return this.raycastEngine.raycastSceneMagnetic(x, y, currentEdgeLock, options);
+        return this.raycastEngine.raycastSceneMagnetic(x, y, currentEdgeLock, options, this.activePickClip());
+    }
+
+    /** Opt in the currently selected authored curves for exact magnetic picking. */
+    setSourceSnapCurves(curves: readonly import('./source-curve-snap.js').SourceSnapCurve[]): void {
+        this.raycastEngine.setSourceSnapCurves(curves);
     }
 
     /**

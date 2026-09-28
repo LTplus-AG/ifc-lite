@@ -564,14 +564,16 @@ pub use processor::{
 // Analysis-ready export document (welded, Z-up, world metres)
 pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryDataExport};
 
-// Optional authored swept-disk descriptions, checks and reusable sources
+// Optional authored swept-disk checks and reusable swept-disk/extrusion sources
 pub use analytic_export::{
-    check_swept_disk, extract_swept_disk_definitions,
-    extract_swept_disk_descriptions, extrusion_nominal_quantities,
-    DirectrixMetrics, DirectrixSegmentMetrics, ExtrusionNominalQuantities,
+    check_swept_disk, extract_swept_disk_descriptions, extract_swept_disk_definitions,
+    extract_extrusion_definitions, AnalyticSourceContext, AnalyticSourceKey,
+    extrusion_nominal_quantities, DirectrixMetrics, DirectrixSegmentMetrics,
+    ExtrusionDefinition, ExtrusionDefinitions, ExtrusionInstance,
+    ExtrusionNominalQuantities, SweptDiskDescriptions,
     SweptDiskCheckError, SweptDiskCheckFinding, SweptDiskCheckOptions,
-    SweptDiskCheckReport, SweptDiskDescriptions, SweptDiskFindingCode,
-    SweptDiskOccurrence, SweptDiskDefinition, SweptDiskDefinitions,
+    SweptDiskCheckReport, SweptDiskFindingCode, SweptDiskOccurrence,
+    SweptDiskDefinition, SweptDiskDefinitions,
     SweptDiskInstance, SweptDiskSourceKey, SweptDiskSourceContext,
     SweptDiskNominalQuantities,
 };
@@ -664,6 +666,32 @@ disks carry an unsupported instance status; invalid matrices have `None` and
 an unsupported status. The source remains available for inspection. Work and
 output budgets are reported in `diagnostics` when reached.
 
+`extract_extrusion_definitions(ifc_bytes, ids)` uses the same bounded
+representation walk to return exact `IfcExtrudedAreaSolid` source profiles and
+placed product occurrences without tessellation. `AnalyticSourceKey` contains
+the model SHA-256, schema, exact unit-scale bits, solid ID, and either a direct
+representation ID or ordered representation-map IDs. Repeated mapping targets
+share one `ExtrusionDefinition` while preserving separate `ExtrusionInstance`
+ordinals, mapped-item paths, and f64 transforms.
+
+Source `ProfileType`, `DirectionRatios`, `Depth`, profile loops, area, perimeter,
+and profile/solid `Position` matrices remain in IFC file units. For a complete
+source with valid positive net profile area, `nominal_quantities` reuses
+`extrusion_nominal_quantities` to
+report net profile area, projected height, and nominal volume in squared,
+linear, and cubed IFC file-length units; unsupported or invalid sources yield `None`.
+For a boundary point from a complete source, apply the profile
+`profile_position`, then the extrusion `position_matrix`, then the instance
+`world_from_source`; the last matrix maps to absolute IFC Z-up metres and
+includes product placement, mapping, and file-unit scale. An absent optional
+`Position` leaves its matrix field as `None`, so use identity for that step
+when composing rather than expecting an identity array. Check source and
+instance statuses before using an absent matrix: unsupported or tapered source
+geometry and invalid or singular occurrence transforms have explicit statuses.
+`source_modified` marks CSG operands, not final post-boolean geometry. Source
+and instance output budgets are independent and report truncation in
+`diagnostics`.
+
 ### Appearance authoring
 
 `ifc_lite_processing::appearance::calibrate_appearance_plane` establishes one
@@ -746,6 +774,7 @@ pub use step_log::{export_step_with_log, export_step_with_log_to_writer,
                    LogMutation, LogNewEntity, MutationKind, GeorefMutations,
                    LogExportStats, StepCounters};
 pub use model::{build_export_model, stream_export_model, ExportModel /* ... */};
+pub use quantity_analysis::{analyze_authored_quantities, AuthoredQuantityAnalysis /* ... */};
 // `ExportModel` and both streaming entry points carry the model's UnitScales.
 // Attribute values are in the FILE's units, unlike the geometry exporters'
 // output, which is normalised to metres — so a consumer writing a quantity
@@ -759,6 +788,31 @@ pub use model::{stream_export_model_with_options, build_export_model_with_option
                 ModelOptions, Placement};
 pub use ifc_lite_core::{AttributeValue, DecodedEntity, IfcType};
 ```
+
+`analyze_authored_quantities(ifc_bytes, ids)` is an opt-in, untessellated view
+keyed by actual product STEP ID. It reuses the export model's physical-quantity
+decoder and retains each `IfcElementQuantity`/leaf entity ID, exact EXPRESS
+names, numeric authored value, kind, and occurrence or inherited type origin.
+`kind` is the full IFC leaf type, such as `IfcQuantityLength`.
+`IfcRelDefinesByProperties.RelatingPropertyDefinition` may name one definition
+or an IFC4 `IfcPropertySetDefinitionSet`; every linked `IfcElementQuantity` is
+retained. Malformed definitions and exhausted relationship, set-visit, or
+authored-row, quantity-leaf-visit, aggregate quantity-set or leaf decode-byte, or
+type-relationship work budgets appear in
+`diagnostics`, with expansion stopped at the cap.
+Per-record diagnostics are capped at 1,024 plus one truncation notice; distinct
+work-budget refusal reasons remain visible after that cap.
+It reports both sides of a conflict instead of applying the flattened row's
+occurrence precedence. Explicit quantity units use the canonical bounded IFC
+unit resolver; an unresolved or dimensionally mismatched unit has a diagnostic
+instead of a guessed length-scale conversion. The IFC4X3 `IfcQuantityNumber`
+is preserved too; Number and Count use an explicit named unit when supplied
+and are otherwise dimensionless. `product_count` counts selected
+IFC product entities, not represented solids or physical bars. Derived source
+estimates remain separate from this authored view.
+For Count and Number, distinct explicit unit entities are conservatively
+reported as a conflict even when their display symbols match, since unit names
+do not certify dimensional equivalence.
 
 `export_step_with_log` applies the mutation log a `MutablePropertyView`
 records (`exportMutations()`), replayed as `importMutations` replays it into a

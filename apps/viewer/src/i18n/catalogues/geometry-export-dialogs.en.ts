@@ -172,7 +172,7 @@ export const geometryExportDialogsEn = {
   'geometryExport.editCard.rotatePlus90Tooltip': 'Rotate +90°',
   'geometryExport.editCard.rotateFailedError': "Couldn't rotate: {reason}",
   'geometryExport.editCard.splitButton': 'Split',
-  'geometryExport.editCard.splitTooltip': 'Click on this wall to split it (K)',
+  'geometryExport.editCard.splitTooltip': 'Point at this element to place the cut, then click (K)',
   'geometryExport.editCard.duplicateButton': 'Duplicate',
   'geometryExport.editCard.duplicateTooltip': 'Clone the entity along its first axis',
   'geometryExport.editCard.duplicateFailedError': "Couldn't duplicate: {reason}",

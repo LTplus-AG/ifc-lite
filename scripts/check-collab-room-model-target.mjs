@@ -62,6 +62,7 @@ const ROOT =
 const COLLAB_SLICE = 'apps/viewer/src/store/slices/collabSlice.ts';
 const MUTATION_SLICE = 'apps/viewer/src/store/slices/mutationSlice.ts';
 const MUTATION_WALL_RESIZE = 'apps/viewer/src/store/slices/mutation-wall-resize.ts';
+const REMESH_SERVICE = 'apps/viewer/src/lib/remesh/remesh-service.ts'; // re-meshed geometry is mirrored here (#6232)
 const ROOM_RECONSTRUCT = 'apps/viewer/src/lib/collab/room-reconstruct.ts'; // the recipient's reconstruct, since #4444
 
 /**
@@ -308,6 +309,7 @@ function assertRegion(reg, { banned, required, consequence }) {
 const collab = load(COLLAB_SLICE);
 const mutation = load(MUTATION_SLICE);
 const mutationWallResize = load(MUTATION_WALL_RESIZE);
+const remeshService = load(REMESH_SERVICE);
 const reconstruct = load(ROOM_RECONSTRUCT);
 
 // ── 1. The recipient's re-derivation (#2705) ────────────────────────────────
@@ -515,7 +517,7 @@ const CALL_SITE_FLOOR = {
   mirrorPlacementEdit: 3,
   mirrorEntityRemove: 1,
   mirrorEntityCreate: 1, // runInStoreElementBuilder: every add*, addColumn included
-  mirrorEntityGeometry: 1, // refreshWallMeshIn: one mirror of the resized wall (#6232 re-mesh replaced the TS rebuild's two append paths)
+  mirrorEntityGeometry: 1, // requestRemesh: every re-mesh (add*, resize, their undo / redo), one call per re-meshed element (#6232)
   readCollabPlacement: 3,
   collabTranslateEntity: 2,
   collabRotateEntity: 1,
@@ -524,7 +526,7 @@ const CALL_SITE_FLOOR = {
   const entityActionNames = new Set(entityActions.map((a) => a.name));
   const seen = new Map();
   const CALL_RE = /get\(\)\.((?:mirror|collab|readCollab)[A-Za-z]*)\(\s*([A-Za-z0-9_.()!]*)/g;
-  for (const file of [mutation, mutationWallResize]) {
+  for (const file of [mutation, mutationWallResize, remeshService]) {
     for (const m of file.clean.matchAll(CALL_RE)) {
       const [, name, firstArg] = m;
       if (!entityActionNames.has(name)) continue;
@@ -545,7 +547,7 @@ defect this guard exists to prevent.`,
     const count = seen.get(name) ?? 0;
     if (count < floor) {
       fail([
-        `collab call sites: \`${name}\` is called ${count}× across ${MUTATION_SLICE} and ${MUTATION_WALL_RESIZE}, expected at least ${floor}.`,
+        `collab call sites: \`${name}\` is called ${count}× across ${MUTATION_SLICE}, ${MUTATION_WALL_RESIZE} and ${REMESH_SERVICE}, expected at least ${floor}.`,
         '',
         'A call site was removed or renamed. If the removal is deliberate, lower the',
         'floor in this guard in the same commit; otherwise an edit path silently',
@@ -565,6 +567,6 @@ if (failures.length > 0) {
 
 const callSiteTotal = Object.values(CALL_SITE_FLOOR).reduce((a, b) => a + b, 0);
 console.log(
-  `check-collab-room-model-target: OK (3 regions across 2 files, ${entityActions.length} entity actions self-gated, ` +
+  `check-collab-room-model-target: OK (3 regions across 2 files, call sites across 3, ${entityActions.length} entity actions self-gated, ` +
     `${callSiteTotal} call sites bound to modelId)`,
 );

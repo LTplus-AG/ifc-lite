@@ -21,9 +21,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
-import { commitCommand, updateCommandGesture } from '@/lib/commands/modeling/runtime';
+import { commitCommand, notifyCommandRefusal, updateCommandGesture } from '@/lib/commands/modeling/runtime';
 import type { SplitGesture } from '@/lib/commands/modeling/commands/element-split';
 import { CursorInput } from '../../viewport-ui/scene';
 
@@ -55,11 +54,11 @@ export function SplitCursorInput({ gesture }: { gesture: SplitGesture }) {
   const commit = (raw: string) => {
     const distance = parseCutDistance(raw, hover.distance, hover.length);
     if (distance === null) {
-      toast.error(`Couldn't read "${raw}" as a distance`);
+      notifyCommandRefusal(`Couldn't read "${raw}" as a distance`);
       return;
     }
     if (!Number.isFinite(distance) || distance <= 0 || distance >= hover.length) {
-      toast.error(`Distance must be between 0 and ${hover.length.toFixed(2)} m`);
+      notifyCommandRefusal(`Distance must be between 0 and ${hover.length.toFixed(2)} m`);
       return;
     }
     // The same commit as a click, at the typed distance: one transaction,

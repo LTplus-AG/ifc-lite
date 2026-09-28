@@ -13,12 +13,15 @@
  * instanced one differs only in its vertex stage (`vs_instanced` over
  * `INSTANCED_VERTEX_BUFFERS`, exactly as the main instanced draw, so the
  * mask lands where the occurrence was drawn) and in a per-occurrence filter
- * in the fragment stage (`selection-mask.wgsl.ts`). One draw per template
- * covers every occurrence; the fragment keeps the selected ones, or the
- * hovered id's.
+ * in the fragment stage (`selection-mask.wgsl.ts`). Each template draws the
+ * same in-envelope instance runs the colour pass draws, over the same
+ * camera-relative delta stream (#6393); the fragment keeps the selected
+ * occurrences, or the hovered id's.
  */
 
-import { INSTANCED_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
+import { INSTANCED_RTE_DELTA_SLOT, INSTANCED_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
+import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './instanced-rte.js';
+import type { WorldPoint } from './relative-to-eye.js';
 import type { InstancedTemplateGPU } from './scene-instance-types.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import {
@@ -71,7 +74,7 @@ export function createMaskPipelines(
 /** What the instanced mask draws of a template: its geometry and its instance records. */
 export type InstancedMaskTemplate = Pick<
   InstancedTemplateGPU,
-  'vertexBuffer' | 'indexBuffer' | 'indexCount' | 'instanceBuffer' | 'instanceCount'
+  'vertexBuffer' | 'indexBuffer' | 'indexCount' | 'instanceBuffer' | 'instanceCount' | 'canonicalAnchors' | 'rteDeltas'
 >;
 
 export interface InstancedMaskFrame {
@@ -81,6 +84,13 @@ export interface InstancedMaskFrame {
    * main instanced draw sees them (`selection-outline-frame.ts`).
    */
   uniforms: Float32Array;
+  /**
+   * The frame's RTE camera, the one the colour pass uploaded the delta streams
+   * for. The mask shares that submission, so it must not use another (see
+   * `instanced-rte.ts`); in practice every upload here is a cache hit, except
+   * for templates the colour pass culled.
+   */
+  rteCamera: WorldPoint;
   /** Templates holding at least one selected occurrence. */
   selected: readonly InstancedMaskTemplate[];
   /** Templates holding an occurrence of `hoveredId`; empty when nothing is hovered. */
@@ -107,6 +117,8 @@ export class InstancedSelectionMask {
   private readonly hoverBuffer: GPUBuffer;
   private readonly hoverBindGroup: GPUBindGroup;
   private readonly hoverScratch = new Uint32Array(4);
+  /** This frame's drawable runs per template, from `prepare`. */
+  private runs = new Map<InstancedMaskTemplate, readonly InstanceRun[]>();
 
   constructor(device: GPUDevice, meshBindGroupLayout: GPUBindGroupLayout, depthLayout: GPUBindGroupLayout, multisampled: boolean) {
     this.device = device;
@@ -161,9 +173,14 @@ export class InstancedSelectionMask {
     this.device.queue.writeBuffer(this.meshUniform.buffer, 0, uniforms);
     this.hoverScratch[0] = frame.hoveredId >>> 0;
     this.device.queue.writeBuffer(this.hoverBuffer, 0, this.hoverScratch);
+    // Without this a template the colour pass culled this frame would read a
+    // delta stream packed for an older camera (or never packed at all).
+    const templates = [...new Set([...frame.selected, ...frame.hovered])];
+    const runs = uploadInstancedRteDeltas(this.device, templates, frame.rteCamera);
+    this.runs = new Map(templates.map((t, i) => [t, runs[i]!]));
   }
 
-  /** Draw `templates` into the open mask pass, one instanced draw each. */
+  /** Draw `templates` into the open mask pass, one instanced draw per in-envelope run. */
   draw(pass: GPURenderPassEncoder, kind: MaskKind, depthGroup: GPUBindGroup, templates: readonly InstancedMaskTemplate[]): void {
     if (templates.length === 0 || !this.meshUniform) return;
     pass.setPipeline(this.pipelines[kind]);
@@ -173,14 +190,16 @@ export class InstancedSelectionMask {
     for (const t of templates) {
       pass.setVertexBuffer(0, t.vertexBuffer);
       pass.setVertexBuffer(1, t.instanceBuffer);
+      pass.setVertexBuffer(INSTANCED_RTE_DELTA_SLOT, t.rteDeltas.buffer);
       pass.setIndexBuffer(t.indexBuffer, 'uint32');
-      pass.drawIndexed(t.indexCount, t.instanceCount);
+      drawInstanceRuns(pass, t.indexCount, this.runs.get(t) ?? []);
     }
   }
 
   destroy(): void {
     this.meshUniform?.buffer.destroy();
     this.meshUniform = null;
+    this.runs.clear();
     this.hoverBuffer.destroy();
   }
 }

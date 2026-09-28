@@ -23,8 +23,8 @@
     "@ifc-lite/spatial": "workspace:^"
   },
   "devDependencies": {
-    "@webgpu/types": "^0.1.72",
-    "tsx": "^4.23.13",
+    "@webgpu/types": "^0.1.74",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3"
   },
   "license": "MPL-2.0",

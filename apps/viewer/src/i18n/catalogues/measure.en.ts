@@ -58,6 +58,8 @@ export const measureEn = {
   'measure.section.point.title': 'Coordinates of the picked point',
   'measure.section.quantities.label': 'Qty',
   'measure.section.quantities.title': 'Quantities of the selected elements',
+  'measure.section.centreline.label': 'Source',
+  'measure.section.centreline.title': 'Exact source centreline measurements',
 
   'measure.mode.distance': 'Distance',
   'measure.mode.polyline': 'Polyline',

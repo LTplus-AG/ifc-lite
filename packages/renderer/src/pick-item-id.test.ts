@@ -107,6 +107,7 @@ function makeManager(piece: MeshData, pieceCount: number) {
     isGeometryDataReleased: () => false,
     getAllMeshDataExpressIds: () => [...meshDataMap.keys()],
     getMeshDataPieces: (expressId: number) => meshDataMap.get(expressId),
+    visibleMeshDataEntitiesExceed: (limit: number) => meshDataMap.size > limit,
     getInstancedTemplates: () => undefined,
     raycast: () => {
       calls.raycast += 1;

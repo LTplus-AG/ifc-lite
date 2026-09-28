@@ -21,13 +21,14 @@ silicon and Intel), and Windows (x64). No Rust toolchain needed.
 
 ## Quick start
 
-The module is `ifclite_geom` and exposes five functions, all taking the raw IFC
+The module is `ifclite_geom` and exposes six functions, all taking the raw IFC
 file as `bytes`. `geometry_data_buffers` and `geometry_data_json` return the
 same geometry and differ only in output format; pass
 `include_directrices=True` to include analytic swept-disk paths. `entity_data`
 reads attributes and property sets instead, without tessellating.
 `check_swept_disks` checks authored swept-disk paths without tessellating, and
 `swept_disk_definitions` returns reusable raw source paths and occurrence transforms.
+`extrusion_definitions` returns exact source profiles and placed extrusion occurrences.
 
 ```python
 import ifclite_geom
@@ -222,6 +223,75 @@ view = ifclite_geom.swept_disk_definitions(ifc_bytes, ids={50})
 for instance in view["instances"].get(50, []):
     print(instance["source"], instance["world_from_source"])
 ```
+
+### `extrusion_definitions(ifc_bytes: bytes, ids: set[int] | None = None) -> dict`
+
+Return exact authored `IfcExtrudedAreaSolid` profiles once per source and a
+separate record for each product occurrence. Sources retain raw IFC file-length
+units, `ProfileType`, ordered line and arc loops, signed area and perimeter,
+authored `DirectionRatios`, normalized `axis_unit_vector`, and `Depth`.
+Complete sources with valid positive net profile area carry
+`nominal_quantities` from the shared Rust calculator: net profile area in
+squared file units, projected height in file units, and their nominal volume
+in cubed file units. Unsupported or invalid sources have
+`nominal_quantities=None`.
+Unsupported or tapered sources carry an explicit `status`; no approximate
+boundary is substituted. A source key uses the same model/schema/unit/context
+identity as `swept_disk_definitions`, so repeated `MappingTarget`s share a
+definition while each use has its own deterministic `ordinal` and mapped-item
+path. `source_modified=True` marks a CSG operand whose final body can differ.
+
+For a complete source-profile point, apply `profile_position`, then the
+extrusion's `position_matrix`, then the occurrence's `world_from_source`.
+Matrices are column-major f64. The first two use raw IFC file units; the last
+includes file-unit scale and maps to absolute IFC Z-up world metres. When an
+optional `Position` is absent, its matrix field is `None` (JSON `null`): use
+identity for that step when composing transforms, rather than expecting an
+identity array in the response. Check `status` before using an absent matrix;
+an invalid reference can also leave an unsupported source without one. A
+non-finite transform is `None`; a singular transform retains its matrix, and
+both have unsupported status.
+Source reference keys use exact IFC names: both profile and extrusion carry
+`Position`, and the extrusion carries `ExtrudedDirection`; the separate
+derived matrices keep their descriptive names.
+The API does not infer a post-boolean solid or a world volume from a raw source.
+Source and occurrence budgets are independent; truncation is reported in
+`diagnostics`.
+
+```python
+view = ifclite_geom.extrusion_definitions(ifc_bytes, ids={50})
+for instance in view["instances"].get(50, []):
+    print(instance["source"], instance["world_from_source"])
+```
+
+### `authored_quantity_analysis(ifc_bytes: bytes, ids: set[int] | None = None) -> dict`
+
+Return IFC-authored quantities keyed by actual product STEP ID without meshing.
+Each observation retains the exact `IfcElementQuantity.Name` and
+`IfcPhysicalSimpleQuantity.Name`, both source entity IDs, kind, numeric value,
+and occurrence or inherited type origin. A same-named occurrence/type disagreement
+appears in `conflicts`; neither value is overwritten. `unit` records the resolved
+symbol, SI factor, source, and explicit unit ID where present. If a unit cannot
+be resolved or has the wrong dimension, `unit=None` and `unit_diagnostic`
+explains why. `IfcQuantityCount` and IFC4X3 `IfcQuantityNumber` are
+dimensionless when no unit is supplied; a resolved explicit named unit is
+preserved instead of being discarded.
+
+```python
+view = ifclite_geom.authored_quantity_analysis(ifc_bytes, ids={50})
+for quantity in view["products"].get(50, {}).get("authored", []):
+    print(quantity["set_name"], quantity["quantity_name"], quantity["value"], quantity["unit"])
+```
+
+`product_count` counts selected IFC product entities. It is not a physical bar
+count, source-solid count, cutting length or material takeoff. This authored
+view contains no calculated estimate; use the analytic source APIs separately
+and keep their provenance distinct. A malformed or over-budget relationship
+or quantity set appears in `diagnostics`. An absent optional
+`IfcTypeObject.HasPropertySets` is valid; a malformed list or member is
+reported and its type-authored quantities are refused. Conflicting
+`IfcRelDefinesByType` assignments likewise refuse type inheritance for that
+product while preserving its occurrence-authored observations.
 
 ### Tessellation quality
 

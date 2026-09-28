@@ -132,6 +132,56 @@ export interface LandXmlPipeJs { source_id: string; source_path: string; name: s
 
 
 
+export type AnalyticStatusJs = { type: "complete" } | { type: "unsupported"; reason: string };
+export type AnalyticSourceContextJs =
+| { kind: "direct"; representation_id: number }
+| { kind: "mapped"; representation_map_path: number[] };
+export interface AnalyticSourceKeyJs {
+    model_sha256: string; schema: string | null; length_unit_scale_bits: string;
+    context: AnalyticSourceContextJs; solid_id: number;
+}
+export type AnalyticCurveSegmentJs =
+| { type: "line"; start: number[]; end: number[] }
+| { type: "arc"; center: number[]; normal: number[]; x_axis: number[];
+radius: number; start_angle: number; sweep_angle: number };
+export interface AnalyticProfileLoopJs {
+    kind: "outer" | "inner"; segments: AnalyticCurveSegmentJs[];
+    signed_area: number; perimeter: number;
+}
+export interface AnalyticProfileJs {
+    profile_id: number; ifc_type_name: string; ProfileType: string | null;
+    Position: number | null; profile_position: number[] | null;
+    loops: AnalyticProfileLoopJs[]; status: AnalyticStatusJs;
+}
+export interface AnalyticExtrusionJs {
+    solid_id: number; SweptArea: number | null; profile: AnalyticProfileJs | null;
+    Position: number | null; position_matrix: number[] | null;
+    ExtrudedDirection: number | null; DirectionRatios: number[] | null;
+    axis_unit_vector: number[] | null; Depth: number | null; status: AnalyticStatusJs;
+}
+export interface ExtrusionNominalQuantitiesJs {
+    profile_area: number; projected_height: number; nominal_volume: number;
+}
+export interface ExtrusionDefinitionJs {
+    key: AnalyticSourceKeyJs; source: AnalyticExtrusionJs;
+    /** Squared/cubed IFC file-length units; null for unsupported or invalid sources. */
+    nominal_quantities: ExtrusionNominalQuantitiesJs | null;
+}
+export interface ExtrusionInstanceJs {
+    ordinal: number; source: AnalyticSourceKeyJs; product_id: number;
+    solid_id: number; mapping_path: number[]; source_modified: boolean;
+    world_from_source: number[] | null; status: AnalyticStatusJs;
+}
+export interface ExtrusionDefinitionsJs {
+    up_axis: "Z"; source_units: "ifc_file_length_units"; world_units: "m";
+    coordinate_space: "absolute_ifc_world"; model_sha256: string;
+    schema: string | null; length_unit_scale: number;
+    sources: ExtrusionDefinitionJs[];
+    instances: Record<number, ExtrusionInstanceJs[]>; diagnostics: string[];
+}
+
+
+
 /**
  * The overlap solid of one clashing pair, or the reason there is none.
  */
@@ -734,6 +784,13 @@ export class IfcAPI {
      * diagnostic and omit that product atomically.
      */
     extractSweptDiskDescriptions(content: Uint8Array, ids?: Uint32Array | null): any;
+    /**
+     * `ids` is an optional product STEP-ID filter; `None` selects all and
+     * `Some([])` selects no products, matching the Rust and Python APIs.
+     * Matrices are column-major f64; profile_position and position_matrix are
+     * applied before world_from_source. No mesh is decoded on this path.
+     */
+    extrusionDefinitions(content: Uint8Array, ids?: Uint32Array | null): ExtrusionDefinitionsJs;
     /**
      * Sharded pre-pass: merge the shard-resolved styled-item columns with the
      * SUPPORT spans (extracted host-side from the shard classes) and run the
@@ -2433,6 +2490,7 @@ export interface InitOutput {
     readonly ifcapi_exportUsd: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_extractProfiles: (a: number, b: number, c: number, d: number) => number;
     readonly ifcapi_extractSweptDiskDescriptions: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly ifcapi_extrusionDefinitions: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_finalizePrepassStyles: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number) => void;
     readonly ifcapi_finalizePrepassStylesFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number) => void;
     readonly ifcapi_getMemory: (a: number) => number;

@@ -55,6 +55,90 @@ it('stored analytics opt-out suppresses explicit and automatic captures (#5866)'
   }
 });
 
+it('records consenting session starts across opt-in and idle session rotation (#5614)', () => {
+  // Keep the import valid under a production-hunk revert so the oracle reaches
+  // the missing-recorder assertion instead of failing at module load.
+  const added = analytics as typeof analytics & {
+    createViewerSessionStartRecorder?: (
+      capture: () => void,
+      getSessionId: () => string,
+      isOptedOut: () => boolean,
+    ) => { onSessionId: (sessionId: string) => void; startNow: () => void };
+  };
+  assert.ok(added.createViewerSessionStartRecorder);
+  let optedOut = true;
+  let sessionId = '';
+  let nextSessionId: string | null = null;
+  const captures: string[] = [];
+  const record = added.createViewerSessionStartRecorder(
+    () => {
+      if (nextSessionId) {
+        sessionId = nextSessionId;
+        nextSessionId = null;
+        record.onSessionId(sessionId); // SDK callback during capture().
+      }
+      captures.push(`viewer_session_started:${sessionId}`);
+    },
+    () => sessionId,
+    () => optedOut,
+  );
+
+  record.startNow();
+  assert.deepEqual(captures, [], 'an opted-out visit has no denominator event');
+  optedOut = false;
+  nextSessionId = 'session-a';
+  record.startNow(); // A fresh no-interaction visit must create its SDK session.
+  record.onSessionId('session-a'); // Window-ID callback must not duplicate it.
+  sessionId = 'session-b';
+  record.onSessionId('session-b'); // An idle tab entered a new SDK session.
+  optedOut = true;
+  record.onSessionId('session-c');
+  optedOut = false;
+  nextSessionId = 'session-c';
+  record.startNow(); // Opt-in capture rotates the SDK session before sending.
+  record.onSessionId('session-c');
+  assert.deepEqual(captures, [
+    'viewer_session_started:session-a',
+    'viewer_session_started:session-b',
+    'viewer_session_started:session-c',
+  ]);
+
+  const scrubbed = beforeSend({
+    event: 'viewer_session_started',
+    properties: { $session_id: 'session-c', $current_url: 'https://ifclite.com/?model=secret' },
+  });
+  assert.equal(scrubbed?.properties?.$session_id, 'session-c');
+  assert.equal(scrubbed?.properties?.$current_url, 'https://ifclite.com/');
+});
+
+it('does not let session telemetry failure interrupt a viewer event (#5614)', () => {
+  const added = analytics as typeof analytics & {
+    createViewerSessionStartRecorder?: (
+      capture: () => void,
+      getSessionId: () => string,
+      isOptedOut: () => boolean,
+    ) => { onSessionId: (sessionId: string) => void; startNow: () => void };
+  };
+  assert.ok(added.createViewerSessionStartRecorder);
+  const warnings: unknown[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...messages: unknown[]) => { warnings.push(messages[0]); };
+  try {
+    let attempts = 0;
+    const record = added.createViewerSessionStartRecorder(
+      () => { attempts++; if (attempts === 1) throw new Error('network unavailable'); },
+      () => 'session-a',
+      () => false,
+    );
+    assert.doesNotThrow(() => record.onSessionId('session-a'));
+    record.onSessionId('session-a'); // Failed starts remain retryable.
+    assert.equal(attempts, 2);
+    assert.equal(warnings.length, 1);
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
 describe('scrubEvent — error_kind tagging', () => {
   it('tags a wrapped worker trap but NOT a bare one (issue #1196)', () => {
     // The worker pool wraps failures, so the attributable form is tagged…

@@ -25,6 +25,40 @@ REPO = Path(__file__).resolve().parents[3]
 # A single reinforcing-style bar: IfcSweptDiskSolid over a composite arc, i.e.
 # the curve-heavy shape the quality knob exists for.
 REBAR = REPO / "rust/geometry/tests/fixtures/swept_disk_composite_arc_ubar.ifc"
+
+
+def test_issue_5787_authored_quantity_binding_preserves_provenance_and_units():
+    ifc = b"""ISO-10303-21;
+HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;
+DATA;
+#1=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#2=IFCUNITASSIGNMENT((#1));
+#3=IFCPROJECT('0PROJECT',$,'P',$,$,$,$,$,#2);
+#5=IFCWALL('0WALL',$,'W',$,$,$,$,$,$);
+#6=IFCQUANTITYLENGTH('Length',$,$,3000.,$);
+#7=IFCELEMENTQUANTITY('0QTO',$,'Qto_WallBaseQuantities',$,$,(#6));
+#8=IFCRELDEFINESBYPROPERTIES('0REL',$,$,$,(#5),#7);
+ENDSEC;END-ISO-10303-21;"""
+    view = ifclite_geom.authored_quantity_analysis(ifc)
+    assert view["product_count"] == 1
+    assert list(view["products"]) == [5]
+    (quantity,) = view["products"][5]["authored"]
+    assert quantity["set_name"] == "Qto_WallBaseQuantities"
+    assert quantity["quantity_name"] == "Length"
+    assert (quantity["set_id"], quantity["quantity_id"]) == (7, 6)
+    assert quantity["value"] == 3000.0
+    assert quantity["kind"] == "IfcQuantityLength"
+    assert quantity["unit"]["symbol"] == "mm"
+    assert quantity["unit"]["si_scale"] == 0.001
+    assert quantity["unit"]["UnitType"] == "LENGTHUNIT"
+    assert ifclite_geom.authored_quantity_analysis(ifc, ids=set())["products"] == {}
+    ifc4x3 = (ifc.replace(b"FILE_SCHEMA(('IFC4'))", b"FILE_SCHEMA(('IFC4X3_ADD2'))")
+        .replace(b"#7=IFCELEMENTQUANTITY", b"#9=IFCQUANTITYNUMBER('Fractional',$,$,1.25,$);\n#7=IFCELEMENTQUANTITY")
+        .replace(b"(#6));", b"(#6,#9));"))
+    quantities = ifclite_geom.authored_quantity_analysis(ifc4x3)["products"][5]["authored"]
+    assert quantities[1]["kind"] == "IfcQuantityNumber"
+    assert quantities[1]["value"] == 1.25
+    assert quantities[1]["unit"]["source"] == "dimensionless"
 TRIMMED_BAR = REPO / "rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc"
 # 4 walls with geometry, placements, and psets attached to their IfcWallType.
 WALLS = REPO / (
@@ -85,6 +119,46 @@ def test_quality_is_monotonic_and_defaults_to_medium():
 
     # The point of the knob: a real reduction on curve-heavy elements.
     assert counts["lowest"] < counts["medium"] / 2
+
+
+def test_issue_5784_extrusion_definitions_share_source_across_mapped_occurrences():
+    fixture = REPO / "rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc"
+    view = ifclite_geom.extrusion_definitions(read(fixture), ids={31, 38})
+    assert view["diagnostics"] == []
+    assert len(view["sources"]) == 1
+    source = view["sources"][0]
+    assert source["source"]["Depth"] == 1.0
+    assert source["source"]["Position"] == 11
+    assert source["source"]["ExtrudedDirection"] == 9
+    assert source["source"]["profile"]["Position"] == 7
+    assert "position_id" not in source["source"]
+    assert "extruded_direction_id" not in source["source"]
+    assert "position_id" not in source["source"]["profile"]
+    assert source["source"]["profile"]["loops"][0]["signed_area"] == 1.0
+    assert source["nominal_quantities"] == {
+        "profile_area": 1.0, "projected_height": 1.0, "nominal_volume": 1.0,
+    }
+    first, second = view["instances"][31][0], view["instances"][38][0]
+    assert first["source"] == second["source"] == source["key"]
+    assert first["mapping_path"] == [25]
+    assert second["mapping_path"] == [32]
+    assert second["world_from_source"][12] == 3.0
+    assert ifclite_geom.extrusion_definitions(read(fixture), ids=set())["instances"] == {}
+    tapered = read(fixture).replace(
+        b"#12=IFCEXTRUDEDAREASOLID(#8,#11,#9,1.0);",
+        b"#12=IFCEXTRUDEDAREASOLIDTAPERED(#8,#11,#9,1.0,#8);",
+    )
+    assert ifclite_geom.extrusion_definitions(tapered, ids={31})["sources"][0]["nominal_quantities"] is None
+    revit = ifclite_geom.extrusion_definitions(
+        read(REPO / "rust/geometry/tests/fixtures/issue_098_wall_W.ifc"),
+        ids={928638, 928672},
+    )
+    real_source = next(row["source"] for row in revit["sources"]
+                       if row["source"]["solid_id"] == 338107)
+    assert real_source["Position"] == 338106
+    assert real_source["ExtrudedDirection"] == 19
+    assert "position_id" not in real_source
+    assert "extruded_direction_id" not in real_source
 
 
 def test_unknown_quality_raises_rather_than_falling_back():

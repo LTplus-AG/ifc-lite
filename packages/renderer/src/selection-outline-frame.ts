@@ -113,6 +113,7 @@ function buildInstancedMaskFrame(source: SelectionOutlineSource): InstancedMaskF
   if (selected.length === 0 && hovered.length === 0) return null;
   return {
     uniforms: packHoverUniforms(source, { transform: IDENTITY_TRANSFORM, rteOrigin: [0, 0, 0] }),
+    rteCamera: source.relativeToEyeFrame.getCameraWorld(),
     selected,
     hovered,
     hoveredId: source.hoveredId ?? 0,

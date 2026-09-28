@@ -16,6 +16,7 @@ import { BVH } from './bvh.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { PickClipState, PickOptions } from './types.js';
 import { pointClipped } from './scene-raycaster.js';
+import { createProjectableLineInterval } from './camera-projection.js';
 import { preferredSourceCurveSnap, sourceCurveMayReachRay, type SourceSnapCurve } from './source-curve-snap.js';
 import {
     queryPointClouds,
@@ -351,6 +352,8 @@ export class RaycastEngine {
             }
 
             // Source curves are opt-in; their f64 evaluator never uses display chords.
+            const cameraLineInterval = this.sourceSnapCurves.length > 0
+                ? createProjectableLineInterval(this.camera.getRelativeToEyeFrame()) : undefined;
             const source = preferredSourceCurveSnap(
                 this.sourceSnapCurves, magneticResult.snapTarget, x, y, options?.snapOptions?.screenSnapRadius ?? 20,
                 point => this.camera.projectToScreen(point, viewport.width, viewport.height),
@@ -358,6 +361,7 @@ export class RaycastEngine {
                 clip, options?.snapOptions,
                 curve => sourceCurveMayReachRay(curve, ray, options?.snapOptions?.screenSnapRadius ?? 20,
                     cameraFov, viewport.height, this.camera.getProjectionMode() === 'orthographic' ? this.camera.getOrthoSize() : null),
+                cameraLineInterval,
             );
             if (source) magneticResult = { snapTarget: source, edgeLock: releasedEdgeLock() };
 

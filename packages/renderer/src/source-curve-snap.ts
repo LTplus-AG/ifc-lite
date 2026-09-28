@@ -41,6 +41,7 @@ export interface SourceCurveSnapCandidate {
 }
 
 type Project = (point: Vec3) => { x: number; y: number } | null;
+type CameraLineInterval = (start: Vec3, end: Vec3) => readonly [number, number] | null;
 
 /** Cull distant curves before expensive f64 evaluation/projection on hover. */
 export function sourceCurveMayReachRay(
@@ -81,8 +82,10 @@ export function preferredSourceCurveSnap(
   clip?: PickClipState | null,
   snapKinds?: Partial<Pick<SnapOptions, 'snapToVertices' | 'snapToEdges'>>,
   mayVisit?: (curve: SourceSnapCurve) => boolean,
+  cameraLineInterval?: CameraLineInterval,
 ): SnapTarget | null {
-  const source = sourceCurveSnapCandidate(curves, x, y, radiusPx, project, accepts, clip, snapKinds, mayVisit);
+  const source = sourceCurveSnapCandidate(curves, x, y, radiusPx, project, accepts, clip, snapKinds, mayVisit,
+    cameraLineInterval);
   return source && sourceWinsOverMeshSnap(source, mesh, x, y, project) ? source.target : null;
 }
 
@@ -93,6 +96,7 @@ export function sourceCurveSnapCandidate(
   clip?: PickClipState | null,
   snapKinds?: Partial<Pick<SnapOptions, 'snapToVertices' | 'snapToEdges'>>,
   mayVisit?: (curve: SourceSnapCurve) => boolean,
+  cameraLineInterval?: CameraLineInterval,
 ): SourceCurveSnapCandidate | null {
   if (!(Number.isFinite(radiusPx) && radiusPx > 0)) return null;
   const vertices = snapKinds?.snapToVertices ?? true;
@@ -119,9 +123,19 @@ export function sourceCurveSnapCandidate(
       }
       return inside;
     };
+    let cameraInterval: readonly [number, number] | null = null;
+    if (cameraLineInterval && curve.kind === 'line' && curve.affineDisplayFrame !== false) {
+      const start = curve.pointAt(0), end = curve.pointAt(1);
+      if (!start || !end) continue;
+      cameraInterval = cameraLineInterval(start, end);
+      if (!cameraInterval) continue;
+    }
     let bestT = 0;
     let curveBest: ReturnType<typeof at> = { distanceSquared: Infinity, point: null };
-    for (const [low, high] of sourceCurveClipIntervals(curve, clip)) {
+    for (const [clipLow, clipHigh] of sourceCurveClipIntervals(curve, clip)) {
+      const low = cameraInterval ? Math.max(clipLow, cameraInterval[0]) : clipLow;
+      const high = cameraInterval ? Math.min(clipHigh, cameraInterval[1]) : clipHigh;
+      if (low > high) continue;
       if (!edges) {
         for (const t of [0, 1]) if (t >= low && t <= high) {
           const value = at(t);

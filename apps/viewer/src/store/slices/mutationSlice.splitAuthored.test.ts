@@ -97,11 +97,12 @@ for (const unit of ['metre', 'millimetre'] as const) {
         const split = useViewerStore.getState().splitLinearElementAtDistance(MODEL_ID, id, hover.distance);
         assert.ok(split.ok, split.ok ? '' : split.reason);
         if (!split.ok) return;
-        const source = useViewerStore.getState().readLinearElementSplitProjection(MODEL_ID, id, [0, 0, 3]);
-        const rest = useViewerStore.getState().readLinearElementSplitProjection(MODEL_ID, split.right.expressId, [1.5, 0, 3]);
-        assert.ok(source && rest);
-        near([source.length, rest.length], [1.5, 2.5], 'source shrinks to the cut, the new piece takes the rest');
-        near(rest.cutPoint, [1.5, 0, 3], 'new piece starts at the cut');
+        const left = useViewerStore.getState().readLinearElementSplitProjection(MODEL_ID, split.left.expressId, [0, 0, 3]);
+        const right = useViewerStore.getState().readLinearElementSplitProjection(MODEL_ID, split.right.expressId, [1.5, 0, 3]);
+        assert.ok(left && right);
+        near([left.length, right.length], [1.5, 2.5], 'the two pieces meet at the cut');
+        near(right.cutPoint, [1.5, 0, 3], 'the far piece starts at the cut');
+        assert.equal(split.right.expressId, id, 'the longer piece keeps the source identity');
       });
     }
 
@@ -114,10 +115,11 @@ for (const unit of ['metre', 'millimetre'] as const) {
       const split = useViewerStore.getState().splitLinearElementAtDistance(MODEL_ID, id, hover.distance);
       assert.ok(split.ok, split.ok ? '' : split.reason);
       if (!split.ok) return;
-      const source = useViewerStore.getState().readLinearElementSplitProjection(MODEL_ID, id, [2, 2, 0]);
-      const rest = useViewerStore.getState().readLinearElementSplitProjection(MODEL_ID, split.right.expressId, [2, 2, 1.2]);
-      assert.ok(source && rest);
-      near([source.length, rest.length], [1.2, 1.8], 'column lengths after the cut');
+      const bottom = useViewerStore.getState().readLinearElementSplitProjection(MODEL_ID, split.left.expressId, [2, 2, 0]);
+      const top = useViewerStore.getState().readLinearElementSplitProjection(MODEL_ID, split.right.expressId, [2, 2, 1.2]);
+      assert.ok(bottom && top);
+      near([bottom.length, top.length], [1.2, 1.8], 'column lengths after the cut');
+      assert.equal(split.right.expressId, id, 'the taller piece keeps the source identity');
     });
 
     for (const kind of ['slab', 'roof', 'plate'] as const) {
@@ -143,7 +145,7 @@ for (const unit of ['metre', 'millimetre'] as const) {
       });
     }
 
-    it('a hosted opening past the cut moves to the far piece at its native-unit offset', () => {
+    it('a hosted opening past the cut keeps its world position at its native-unit offset', () => {
       const s = useViewerStore.getState();
       const wall = created(s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.25, Height: 2.8 }));
       const view = useViewerStore.getState().mutationViews.get(MODEL_ID);
@@ -164,8 +166,11 @@ for (const unit of ['metre', 'millimetre'] as const) {
       const split = useViewerStore.getState().splitWallAtDistance(MODEL_ID, wall, 2);
       assert.ok(split.ok, split.ok ? '' : split.reason);
       if (!split.ok) return;
-      assert.deepEqual(split.openings, { toLeft: 0, toRight: 1, skipped: 0 });
-      assert.equal(asExpressIdRef(readAttributes(dataStore, view, editor, rel)?.[4]), split.right.expressId);
+      // The 3 m far piece is the longer one, so it IS the source wall, moved
+      // to start at the cut: the opening keeps its host, shifted 2 m back.
+      assert.equal(split.right.expressId, wall);
+      assert.deepEqual(split.openings, { toLeft: 0, toRight: 0, skipped: 0 });
+      assert.equal(asExpressIdRef(readAttributes(dataStore, view, editor, rel)?.[4]), wall);
       near(asCoordinateTriple(readAttributes(dataStore, view, editor, point)?.[0]) ?? [], [1 * native, 0, 0],
         'the opening keeps its place: 1 m into the far piece');
     });

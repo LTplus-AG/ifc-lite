@@ -192,12 +192,12 @@ Input: wall #W with placement origin `S`, RefDirection `d`, profile
 XDim `L`, YDim `T`, height `H`. Split distance `t ∈ (0, L)` from
 start.
 
-Output:
-- Wall #W deleted (tombstone).
-- Wall #W₁: same `S`, same `d`, XDim `t`. Profile origin
-  `[t/2, 0]`.
-- Wall #W₂: placement origin `S + d·t`, same `d`, XDim `L - t`.
+Output, with the two pieces W₁ = `[0, t]` and W₂ = `[t, L]`:
+- W₁: same `S`, same `d`, XDim `t`. Profile origin `[t/2, 0]`.
+- W₂: placement origin `S + d·t`, same `d`, XDim `L - t`.
   Profile origin `[(L - t)/2, 0]`.
+- The longer piece IS #W, reshaped in place. The other piece is one
+  new wall (see "GlobalId policy" below).
 
 Sub-graph reuse:
 - Owner history, body context, storey placement — both halves
@@ -217,12 +217,31 @@ Hosted-element reassignment:
   follow the chain — door/window stays on whichever wall the
   void went to.
 
-GlobalId policy:
-- #W's GlobalId is **retired** (the entity is tombstoned).
-- #W₁ and #W₂ get fresh GlobalIds via `generateIfcGuid()`.
-- Audit trail: both new walls get an `ObjectType` suffix `(split
-  from #W's-globalid)` so downstream IDS / BCF round-trips know
-  the origin. Configurable.
+GlobalId policy (decided in #6232, implemented in #6233; applies to
+EVERY split path — wall, beam / column / member, slab / roof / plate
+/ space):
+- The **larger** piece keeps the source entity: same express id,
+  GlobalId, containment, type, material, property sets, and the
+  openings that are still inside it. It is reshaped in place.
+  "Larger" means length for walls, beams, members and columns, and
+  footprint area for slabs, roofs, plates and spaces. On a tie, the
+  piece containing the axis start (or the profile's first vertex)
+  keeps the identity.
+- Exactly **one** new element is authored for the other piece. Only
+  the openings inside it move host.
+- The new piece's GlobalId is
+  `uuidToIfcGuid(uuidV5(SPLIT_GLOBALID_NAMESPACE, "<sourceGlobalId>/split/<k>"))`
+  (`apps/viewer/src/lib/split-guid.ts`; `uuidV5` in
+  `@ifc-lite/encoding`). `k` starts at 0 and increments while the
+  candidate already exists in any loaded model, whether parsed or
+  authored this session.
+  - The GlobalId does not depend on the cut position. The same
+    source and the same set of existing ids always give the same
+    GlobalId, on any machine.
+  - Re-splitting the kept piece yields `k = 1, 2, …`.
+  - Splitting a child derives from the child's own GlobalId.
+- The whole split is one undo step. Undo restores exactly the
+  original element (same express id and GlobalId) and its mesh.
 
 Property carry-over:
 - `IfcRelDefinesByProperties` and `IfcRelDefinesByType` referring
@@ -474,7 +493,7 @@ a sheet: "Split this wall at: [slider 0…length] [enter distance]
 | Element has overlapping decomposition (IfcRelAggregates) | Both halves inherit the same parent; warn if assembly semantics may be broken |
 | Pset linkage uses `IfcRelDefinesByProperties` with shared RelatedObjects | Both halves appear in the same rel's RelatedObjects list |
 | Wall is part of a layered wall (IfcMaterialLayerSet) | Layers preserved; layer-specific quantities recomputed per length |
-| Undo a split | Restore source wall, tombstone the two halves, rewind opening reassignments |
+| Undo a split | One step: restore the source's shape and mesh, remove the new piece, rewind opening reassignments |
 | Redo a split | Replay the entire composite mutation |
 | User splits a wall they're about to drag with the gizmo | Gizmo target becomes one of the new halves (selection moves automatically); drag accumulator resets |
 
@@ -533,11 +552,10 @@ Phase 6 is the killer feature.
    acceptable, or should we use a custom Pset (`Pset_SplitProvenance`)?
    Pset is cleaner for IDS but invisible in property panels by
    default. Default to Pset, expose a setting.
-2. **GlobalId reuse:** strict IFC says split → tombstone + two new
-   GIDs (we do this). Some downstream BCF tooling may have already
-   referenced the original; consider an optional "keep one GID"
-   mode that retains the original GID on the half containing the
-   cursor at split time.
+2. **GlobalId reuse:** resolved (#6232 "Decisions", #6233). The larger
+   piece keeps the source GlobalId, so BCF topics and other references
+   to the original stay valid. The other piece gets a deterministic v5
+   GlobalId. See "GlobalId policy" above.
 3. **Curved-wall future:** when curved walls are supported (Bezier),
    splitting at parameter `t` is mathematically easy. The harder
    problem is deciding which Pascal-style "curve handle" each half

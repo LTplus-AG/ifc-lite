@@ -15,6 +15,7 @@ import type { ViewerState } from '../index.js';
 import { syncAuthoredTreeEntry } from './authoredTreeEntry.js';
 import { mirrorCreateEntityRedo, mirrorSourceEntityRestore } from './mutation-cost-undo.js';
 import { stashAndPruneEntityMesh, restoreStashedEntityMesh } from './mutation-mesh-stash.js';
+import { replayMeshSwap } from './mutation-mesh-swap.js';
 import { isTargetTombstoned } from './mutation-redo-remote-guard.js';
 import { toast } from '@/components/ui/toast';
 
@@ -121,6 +122,8 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
       }
     }
   } else if (mutation.type === 'UPDATE_POSITIONAL_ATTRIBUTE') {
+    // A split's in-place reshape carries its mesh swap on one of these (#6233).
+    replayMeshSwap(get, mutation.id, 'undo');
     // Positional attrs encode their index in `@N` since the existing
     // Mutation shape has no dedicated field for it.
     const index = positionalIndex(mutation.attributeName);
@@ -241,6 +244,7 @@ export function applyRedoToView(get: Get, set: Set, modelId: string, view: Mutab
       view.setAttribute(mutation.entityId, mutation.attributeName, String(mutation.newValue), undefined, true);
     }
   } else if (mutation.type === 'UPDATE_POSITIONAL_ATTRIBUTE') {
+    replayMeshSwap(get, mutation.id, 'redo');
     const index = positionalIndex(mutation.attributeName);
     if (index !== null && mutation.newValue !== undefined) {
       view.setPositionalAttribute(mutation.entityId, index, mutation.newValue as IfcAttributeValue, true);

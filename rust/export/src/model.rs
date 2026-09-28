@@ -27,7 +27,7 @@ mod options;
 pub use options::{ModelOptions, Placement};
 
 #[path = "model_props.rs"]
-mod props;
+pub(crate) mod props;
 pub use props::fmt_num;
 use props::{opt_string, ref_list, render_attributes, resolve_pset_defs};
 

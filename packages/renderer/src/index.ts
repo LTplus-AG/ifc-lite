@@ -75,6 +75,7 @@ export { DEFAULT_OVERLAY_THEME } from './overlay-theme.js';
 import { DEFAULT_OVERLAY_THEME, type OverlayTheme } from './overlay-theme.js';
 export type { Ray, Vec3, Intersection } from './raycaster.js';
 export type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from './snap-detector.js';
+export type { SourceCurveIdentity, SourceSnapCurve } from './source-curve-snap.js';
 
 // Extracted manager classes. `PickingManager` is NOT exported: its constructor
 // takes the now-internal `Scene`, so nobody outside could build one anyway.
@@ -3254,7 +3255,12 @@ export class Renderer {
         currentEdgeLock: EdgeLockInput,
         options?: PickOptions & { snapOptions?: Partial<SnapOptions> }
     ): MagneticSnapResult & { intersection: Intersection | null } {
-        return this.raycastEngine.raycastSceneMagnetic(x, y, currentEdgeLock, options);
+        return this.raycastEngine.raycastSceneMagnetic(x, y, currentEdgeLock, options, this.activePickClip());
+    }
+
+    /** Opt in the currently selected authored curves for exact magnetic picking. */
+    setSourceSnapCurves(curves: readonly import('./source-curve-snap.js').SourceSnapCurve[]): void {
+        this.raycastEngine.setSourceSnapCurves(curves);
     }
 
     /**

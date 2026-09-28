@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
 import { PickingManager, type PointPickProvider } from './picking-manager.js';
+import { isEntityVisible } from './entity-visibility.js';
 import type { PointPickNode } from './point-picker.js';
 
 describe('PickingManager', () => {
@@ -87,6 +88,7 @@ describe('PickingManager', () => {
       // Authoritative pickable-id set DOES include the fused door (Scene.addMeshData
       // registers a merged mesh under every per-vertex entityId).
       getAllMeshDataExpressIds: () => [WALL, DOOR],
+      visibleMeshDataEntitiesExceed: (limit: number) => 2 > limit,
       getMeshDataPieces: (expressId: number) =>
         expressId === DOOR ? [{ expressId: DOOR }]
         : expressId === WALL ? [{ expressId: WALL }]
@@ -164,6 +166,7 @@ describe('PickingManager', () => {
       getBatchedMeshes: () => [{ expressIds: [WALL] }],
       isGeometryDataReleased: () => false,
       getAllMeshDataExpressIds: () => [WALL, DOOR],
+      visibleMeshDataEntitiesExceed: (limit: number) => 2 > limit,
       getMeshDataPieces: (expressId: number) =>
         expressId === DOOR ? [{ expressId: DOOR }]
         : expressId === WALL ? [{ expressId: WALL }]
@@ -250,6 +253,7 @@ describe('PickingManager', () => {
         getTexturedMeshes: () => overrides.texturedOnly ? [{ expressId: WALL }, { expressId: SLAB }] : [],
         isGeometryDataReleased: () => overrides.released ?? false,
         getAllMeshDataExpressIds: () => [WALL, SLAB],
+        visibleMeshDataEntitiesExceed: (limit: number) => 2 > limit,
         getMeshDataPieces:
           overrides.pieces ?? ((id: number) => [{ expressId: id }]),
         getInstancedTemplates: () => INSTANCED_TEMPLATES,
@@ -583,6 +587,72 @@ describe('PickingManager', () => {
       const h = hidpiHarness();
       await h.manager.pickRect(100, 50, 700, 550);
       assert.deepStrictEqual(h.rectCalls, [{ x0: 100, y0: 50, x1: 700, y1: 550, width: 800, height: 600 }]);
+    });
+  });
+
+  // #5390 made hover pick up to 20x a second by default. On a large model every
+  // pick walked each entity's pieces (and extracted colour-merged ones) only to
+  // conclude 'cpu'; the verdict must now come from counting alone.
+  describe('over-budget verdict without the per-entity walk', () => {
+    function budgetHarness(flatIds: number[]) {
+      const calls = { pieces: 0, raycast: 0, picker: 0 };
+      const meshData = new Set(flatIds);
+      const scene = {
+        getMeshes: () => [],
+        getBatchedMeshes: () => [{ expressIds: flatIds.slice(0, 1) }],
+        isGeometryDataReleased: () => false,
+        getAllMeshDataExpressIds: () => flatIds,
+        visibleMeshDataEntitiesExceed: (
+          limit: number,
+          hiddenIds?: ReadonlySet<number> | null,
+          isolatedIds?: ReadonlySet<number> | null,
+        ) => flatIds.filter((id) => isEntityVisible(id, hiddenIds, isolatedIds)).length > limit,
+        getMeshDataPieces: (id: number) => {
+          calls.pieces += 1;
+          return meshData.has(id) ? [{ expressId: id }] : undefined;
+        },
+        getInstancedTemplates: () => undefined,
+        raycast: () => {
+          calls.raycast += 1;
+          return { expressId: flatIds[0], modelIndex: 0 };
+        },
+      };
+      const picker = { pick: async () => { calls.picker += 1; return null; } };
+      const camera = {
+        unprojectToRay: () => ({ origin: { x: 0, y: 0, z: 0 }, direction: { x: 0, y: 0, z: -1 } }),
+        getViewProjMatrix: () => ({ m: new Float32Array(16) }),
+      };
+      const canvas = { width: 100, height: 100, getBoundingClientRect: () => ({ width: 100, height: 100 }) };
+      const manager = new PickingManager(
+        camera as never,
+        scene as never,
+        picker as never,
+        canvas as HTMLCanvasElement,
+        () => ({ ok: true as const, value: undefined }),
+      );
+      return { manager, calls };
+    }
+    const ids = (n: number) => Array.from({ length: n }, (_, i) => 1 + i);
+
+    it('takes the CPU route over budget without reading a single piece', async () => {
+      const h = budgetHarness(ids(501));
+      await h.manager.pick(50, 50);
+      assert.equal(h.calls.raycast, 1);
+      assert.equal(h.calls.pieces, 0, 'the verdict must not walk entity pieces');
+    });
+
+    it('stays on the exact path at the budget (500 entities)', async () => {
+      const h = budgetHarness(ids(500));
+      await h.manager.pick(50, 50);
+      assert.equal(h.calls.raycast, 0, '500 pieces are affordable and hydrate for the GPU pick');
+      assert.equal(h.calls.picker, 1);
+    });
+
+    it('counts only what isolation leaves visible', async () => {
+      const h = budgetHarness(ids(900));
+      await h.manager.pick(50, 50, { isolatedIds: new Set(ids(10)) });
+      assert.equal(h.calls.raycast, 0, 'ten isolated entities fit the budget');
+      assert.equal(h.calls.picker, 1);
     });
   });
 });

@@ -15,21 +15,16 @@
  * (`requestRemesh`, #6232), with its openings and the windows and doors in
  * them, which are placed relative to it. Each batch is remembered for undo /
  * redo (`remesh-registry.ts`). A drag re-meshes once, at release
- * (`refreshWallMesh`), not on every frame. Collaborators still receive a
- * box built from the wall's parameters until the room mirror carries
- * re-meshed geometry (#6232 PR1.4).
+ * (`refreshWallMesh`), not on every frame. Collaborators receive the same
+ * re-meshed geometry after the resize and after its undo / redo.
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import type { MeshData } from '@ifc-lite/geometry';
 import { toNativeLength } from '@ifc-lite/create';
 import type { ViewerState } from '../index.js';
-import { toGlobalIdFromModels } from '../globalId.js';
 import { resolveWallEditChain } from '@/lib/placement-edit.js';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
-import { buildElementMesh } from './addElementMeshes.js';
-import { effectiveStoreyId } from '@/lib/effective-storey';
 import { rememberRemesh } from '@/lib/remesh/remesh-registry.js';
 import { requestRemesh } from '@/lib/remesh/remesh-service.js';
 
@@ -97,33 +92,7 @@ export function resizeWallMetres(
   return { ok: true, newLength: length };
 }
 
-function buildWallMesh(get: Get, modelId: string, expressId: number, globalId: number): MeshData | null {
-  const state = get();
-  const dataStore = state.models.get(modelId)?.ifcDataStore;
-  const view = state.mutationViews.get(modelId);
-  const editor = state.storeEditors.get(modelId);
-  if (!dataStore || !view || !editor) return null;
-  const wall = readWallMetres({ dataStore, view, editor }, expressId);
-  if (!wall || !(wall.height > 0)) return null;
-  // The wall's storey now, containment edits included (#6282's lookup), not the load-time index.
-  const storeyId = effectiveStoreyId(dataStore, view, expressId);
-  const storeyElevation = (storeyId !== undefined ? dataStore.spatialHierarchy?.storeyElevations?.get(storeyId) : undefined) ?? 0;
-  return buildElementMesh({
-    type: 'wall',
-    globalId,
-    storeyElevation,
-    payload: { type: 'wall', params: { Thickness: wall.thickness, Height: wall.height }, start: wall.start, end: wall.end },
-  });
-}
-
-/**
- * Re-mesh the wall (and what it hosts) from its current IFC data. `mirror`
- * also sends collaborators a box built from the wall's parameters (a local
- * resize does; its undo / redo stays local, like every positional undo).
- */
-export function refreshWallMeshIn(get: Get, modelId: string, expressId: number, mirror: boolean): void {
+/** Re-mesh the wall (and what it hosts) from its current IFC data, for the view and the room. */
+export function refreshWallMeshIn(get: Get, modelId: string, expressId: number): void {
   void requestRemesh(get, modelId, [expressId], 'hostsChanged');
-  if (!mirror) return;
-  const mesh = buildWallMesh(get, modelId, expressId, toGlobalIdFromModels(get().models, modelId, expressId));
-  if (mesh) get().mirrorEntityGeometry(modelId, expressId, mesh);
 }

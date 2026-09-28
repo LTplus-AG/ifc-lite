@@ -1123,6 +1123,23 @@ export class Scene {
   }
 
   /**
+   * Whether more than `limit` entities with mesh data pass the hide/isolate
+   * filter. Stops at `limit + 1` and allocates nothing, so a per-pick budget
+   * check stays cheap on a large model (#6392).
+   */
+  visibleMeshDataEntitiesExceed(
+    limit: number,
+    hiddenIds?: ReadonlySet<number> | null,
+    isolatedIds?: ReadonlySet<number> | null,
+  ): boolean {
+    let count = 0;
+    for (const expressId of this.meshDataMap.keys()) {
+      if (isEntityVisible(expressId, hiddenIds, isolatedIds) && ++count > limit) return true;
+    }
+    return false;
+  }
+
+  /**
    * Get all MeshData pieces for an expressId (without merging).
    * Optionally filter by modelIndex for multi-model safety.
    */

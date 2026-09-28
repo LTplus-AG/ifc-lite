@@ -17,6 +17,7 @@ import type { PointPickNode } from './point-picker.js';
 import type { GpuUploadOutcome } from './gpu-upload-guard.js';
 import { capturePointRteSnapshot, isPointRteSnapshotCurrent } from './pick-rte-snapshot.js';
 import { computeDrawingBufferSize } from './renderer-viewport.js';
+import { pickPieceKey, planPickMeshHydration } from './pick-mesh-budget.js';
 
 /**
  * Supplied by the renderer when point clouds are loaded — returns the
@@ -97,56 +98,8 @@ export class PickingManager {
 
         if (this.scene.isGeometryDataReleased()) return 'cpu';
 
-        // Collect every pickable expressId. We use the scene's authoritative
-        // mesh-data id set rather than each batch's `expressIds`, because a batch
-        // only records the PRIMARY expressId of each merged piece. When a door or
-        // window is colour-fused into a batch keyed by its host wall / opening,
-        // the filler's id lives only in the per-vertex entityIds (registered in
-        // meshDataMap by Scene.addMeshData). Reading batch.expressIds alone would
-        // skip the filler, so under isolation its mesh is never hydrated and
-        // pick() returns null (#1358).
-        const expressIds = new Set<number>(this.scene.getAllMeshDataExpressIds());
-
-        // Track how many individual mesh pieces already exist for each (expressId:modelIndex).
-        // Multi-piece elements (windows/doors with submeshes) need all pieces for reliable picking.
-        const existingPieceCounts = new Map<string, number>();
-        for (const mesh of this.scene.getMeshes()) {
-            const key = `${mesh.expressId}:${mesh.modelIndex ?? 'any'}`;
-            existingPieceCounts.set(key, (existingPieceCounts.get(key) ?? 0) + 1);
-        }
-
-        // Build required piece counts from MeshData for all visible entities.
-        const requiredPieceCounts = new Map<string, number>();
-        const visibleExpressIds: number[] = [];
-        for (const expressId of expressIds) {
-            if (!isEntityVisible(expressId, options?.hiddenIds, options?.isolatedIds)) continue;
-            visibleExpressIds.push(expressId);
-
-            const pieces = this.scene.getMeshDataPieces(expressId);
-            if (!pieces) continue;
-            for (const piece of pieces) {
-                const key = `${piece.expressId}:${piece.modelIndex ?? 'any'}`;
-                requiredPieceCounts.set(key, (requiredPieceCounts.get(key) ?? 0) + 1);
-            }
-        }
-
-        // Count how many meshes we'd need to create for full GPU picking
-        // For multi-model and multi-piece elements, count missing piece instances per key.
-        let toCreate = 0;
-        for (const [key, requiredCount] of requiredPieceCounts) {
-            const existingCount = existingPieceCounts.get(key) ?? 0;
-            if (requiredCount > existingCount) {
-                toCreate += requiredCount - existingCount;
-            }
-        }
-
-        // PERFORMANCE: fall back to CPU for large models instead of creating GPU meshes.
-        // GPU picking requires individual mesh buffers; for 60K+ elements this is too slow.
-        // The CPU paths use bounding boxes - no GPU buffers needed.
-        const MAX_PICK_MESH_CREATION = 500;
-        if (toCreate > MAX_PICK_MESH_CREATION || (visibleExpressIds.length > 0 && requiredPieceCounts.size === 0)) {
-            return 'cpu';
-        }
+        const { overBudget, visibleExpressIds, existingPieceCounts } = planPickMeshHydration(this.scene, options);
+        if (overBudget) return 'cpu';
 
         // For smaller models, create GPU meshes for picking
         // Only create meshes for VISIBLE elements (not hidden, and either no isolation or in isolated set)
@@ -165,7 +118,7 @@ export class PickingManager {
             const pieces = this.scene.getMeshDataPieces(expressId);
             if (pieces) {
                 for (const piece of pieces) {
-                    const meshKey = `${piece.expressId}:${piece.modelIndex ?? 'any'}`;
+                    const meshKey = pickPieceKey(piece);
                     const ordinal = seenOrdinalsByKey.get(meshKey) ?? 0;
                     seenOrdinalsByKey.set(meshKey, ordinal + 1);
                     const baselineExisting = baselineExistingCounts.get(meshKey) ?? 0;

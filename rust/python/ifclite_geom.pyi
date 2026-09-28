@@ -196,6 +196,41 @@ class ExtrusionDefinitions(TypedDict):
     sources: List[ExtrusionDefinition]
     instances: Dict[int, List[ExtrusionInstance]]
     diagnostics: List[str]
+
+class QuantityUnit(TypedDict):
+    symbol: str
+    si_scale: float
+    source: Literal["explicit", "project", "si_default", "dimensionless"]
+    unit_id: Optional[int]
+    UnitType: Optional[str]  # IFC IfcNamedUnit.UnitType token, if resolved
+
+class AuthoredQuantity(TypedDict):
+    set_name: str  # exact IfcElementQuantity.Name
+    quantity_name: str  # exact IfcPhysicalSimpleQuantity.Name
+    set_id: int
+    quantity_id: int
+    kind: Literal["IfcQuantityLength", "IfcQuantityArea", "IfcQuantityVolume", "IfcQuantityCount", "IfcQuantityNumber", "IfcQuantityWeight", "IfcQuantityTime"]
+    value: float  # authored value, never replaced by a derived estimate
+    origin: Literal["occurrence", "type"]
+    type_id: Optional[int]
+    unit: Optional[QuantityUnit]
+    unit_diagnostic: Optional[str]
+
+class QuantityConflict(TypedDict):
+    set_name: str
+    quantity_name: str
+    occurrence_quantity_ids: List[int]
+    type_quantity_ids: List[int]
+
+class ProductQuantities(TypedDict):
+    ifc_type: str
+    authored: List[AuthoredQuantity]
+    conflicts: List[QuantityConflict]
+
+class AuthoredQuantityAnalysis(TypedDict):
+    product_count: int  # IFC product entities, not physical bars or source solids
+    products: Dict[int, ProductQuantities]
+    diagnostics: List[str]
 class PropValue(TypedDict):
     name: str
     value: str  # always a string, in the file's OWN units
@@ -362,6 +397,18 @@ def extrusion_definitions(
     world_from_source. The last matrix maps raw IFC file units to absolute IFC
     Z-up world metres. CSG operand sources carry source_modified=True because
     their final body may differ. Unsupported sources retain an explicit status.
+    """
+    ...
+
+def authored_quantity_analysis(
+    ifc_bytes: bytes,
+    ids: Optional[Set[int]] = None,
+) -> AuthoredQuantityAnalysis:
+    """Read exact authored IFC quantities per product STEP id without meshing.
+
+    Occurrence and type-inherited values remain separate; conflicts are explicit.
+    Unit failures are diagnostics, not guessed project-length conversions.
+    This view has no derived estimate, physical bar count or material takeoff.
     """
     ...
 

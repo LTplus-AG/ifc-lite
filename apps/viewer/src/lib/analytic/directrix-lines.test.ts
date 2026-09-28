@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { directrixLineVertices } from './directrix-lines.js';
-import { directrixDisplayLines } from './directrix-frame.js';
+import { directrixDisplayLines, directrixDisplayPoint } from './directrix-frame.js';
 
 describe('selected analytic directrix display (#5778)', () => {
   it('draws a line then a quarter-circle with an authored 0.5 mm sagitta bound', () => {
@@ -59,5 +59,9 @@ describe('selected analytic directrix display (#5778)', () => {
     const aligned = directrixDisplayLines([5_000_000.001, 20, 30], frame, placement,
       (x, y, z) => [x + 10, y, z]);
     assert.ok(Math.abs(aligned[0] - 14.001) < 1e-9);
+    const mirror = (x: number, y: number, z: number) => [-x, y, z] as const;
+    const mirrored = directrixDisplayPoint([5_000_000.001, 20, 30], frame, placement, mirror);
+    assert.ok(Math.abs(mirrored[0] - 3.999) < 1e-9);
+    assert.deepEqual(mirrored, directrixDisplayLines([5_000_000.001, 20, 30], frame, placement, mirror));
   });
 });

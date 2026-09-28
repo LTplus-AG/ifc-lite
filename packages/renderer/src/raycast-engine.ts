@@ -16,11 +16,14 @@ import { BVH } from './bvh.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { PickClipState, PickOptions } from './types.js';
 import { pointClipped } from './scene-raycaster.js';
+import type { SourceSnapCurve } from './source-curve-snap.js';
+import { querySourceCurves } from './raycast-source-curve-query.js';
 import {
     queryPointClouds,
     releasedEdgeLock,
     pointCloudSnapEnabled,
     pointCloudWinsOverMeshSnap,
+    pointCloudWinsOverSourceSnap,
     type PointCloudRayProvider,
     type PointCloudSnapCamera,
 } from './raycast-point-cloud-query.js';
@@ -38,6 +41,7 @@ export class RaycastEngine {
     private snapDetector: SnapDetector;
     private bvh: BVH;
     private pointCloudProvider: PointCloudRayProvider | null = null;
+    private sourceSnapCurves: readonly SourceSnapCurve[] = [];
 
     // BVH cache
     private bvhCache: {
@@ -286,7 +290,8 @@ export class RaycastEngine {
         x: number,
         y: number,
         currentEdgeLock: EdgeLockInput,
-        options?: PickOptions & { snapOptions?: Partial<SnapOptions> }
+        options?: PickOptions & { snapOptions?: Partial<SnapOptions> },
+        clip?: PickClipState | null,
     ): MagneticSnapResult & { intersection: Intersection | null } {
         try {
             const viewport = this.cssViewport();
@@ -327,6 +332,8 @@ export class RaycastEngine {
                 const meshesToTest = this.filterWithBVH(allMeshData, ray);
 
                 // Perform raycasting
+                // Magnetic mesh snapping predates source curves and keeps its
+                // existing clip policy; only the opt-in source query below is clipped.
                 intersection = this.raycaster.raycast(ray, meshesToTest);
 
                 // Use magnetic snap detection
@@ -340,6 +347,10 @@ export class RaycastEngine {
                     options?.snapOptions || {}
                 );
             }
+
+            const source = querySourceCurves(this.sourceSnapCurves, magneticResult.snapTarget,
+                this.camera, ray, x, y, viewport, options, clip);
+            if (source) magneticResult = { snapTarget: source, edgeLock: releasedEdgeLock() };
 
             // Point-cloud snapping (#1860): search up to whatever the mesh
             // path already found (or the whole scene, if there was no mesh
@@ -366,12 +377,15 @@ export class RaycastEngine {
                 // scanned-over geometry (#1860 review finding 2). When the
                 // mesh path found no snap target at all (bare face hit, or
                 // no mesh hit), the point snap wins as before.
-                const wins = pointCloudWinsOverMeshSnap({
-                    pointHit,
-                    meshSnapTarget: magneticResult.snapTarget,
-                    meshIntersectionDistance: intersection ? intersection.distance : null,
-                    camera: snapCamera,
-                });
+                const sourceTarget = magneticResult.snapTarget?.metadata?.sourceCurve ? magneticResult.snapTarget : null;
+                const wins = sourceTarget
+                    ? pointCloudWinsOverSourceSnap(pointHit, sourceTarget, ray, snapCamera)
+                    : pointCloudWinsOverMeshSnap({
+                        pointHit,
+                        meshSnapTarget: magneticResult.snapTarget,
+                        meshIntersectionDistance: intersection ? intersection.distance : null,
+                        camera: snapCamera,
+                    });
                 if (wins) {
                     magneticResult = {
                         snapTarget: {
@@ -432,6 +446,8 @@ export class RaycastEngine {
         this.pointCloudProvider = provider;
     }
 
+    /** Replace the selected, visible authored curves available to magnetic picking. */
+    setSourceSnapCurves(curves: readonly SourceSnapCurve[]): void { this.sourceSnapCurves = [...curves]; }
     /**
      * Clear all caches (call when geometry changes)
      */

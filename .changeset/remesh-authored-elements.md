@@ -1,0 +1,5 @@
+---
+"@ifc-lite/viewer": patch
+---
+
+Elements added in the viewer are now drawn from their IFC by the same mesher that loaded the model (#6232). That covers the Add Element tool, the wall command, Space Sketch rooms and `bim.store.add*` scripts. They land where the file will place them, on storeys that sit away from the model origin and on georeferenced models too. A door or window hosted through `bim.store.addOpening` / `addHostedDoor` / `addHostedWindow` cuts its wall on screen. Collaborators receive the same meshes, and keep receiving them when an add, a wall resize or a split is undone or redone (a redone element used to reach them with only its first mesh). Where the mesher can't rebuild an element (a model with no STEP source or loaded without the engine's coordinate frame, a record it can't read, a failed or timed-out worker), the element is drawn from the parameters it was built with, as before, and keeps that mesh through undo and redo; collaborators get the same one. On a model whose meshes are colour-merged, a new door or window gets its own mesh and only its host is left uncut.

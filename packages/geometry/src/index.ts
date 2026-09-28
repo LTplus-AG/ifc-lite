@@ -9,7 +9,7 @@
 
 // IFC-Lite components (recommended - faster)
 export { IfcLiteBridge, type SymbolicRepresentationCollection, type SymbolicPolyline, type SymbolicCircle, type ProfileCollection, type ProfileEntryJs } from './ifc-lite-bridge.js';
-export type { SweptDiskDescriptions } from './analytic-descriptions.js';
+export type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
 import { safeUtf8Decode } from '@ifc-lite/data';
 
 // Platform bridge abstraction (auto-selects WASM or native based on environment)
@@ -89,7 +89,7 @@ export {
 export * from './types.js';
 export * from './spatial-reference.js';
 import { IfcLiteBridge } from './ifc-lite-bridge.js';
-import type { SweptDiskDescriptions } from './analytic-descriptions.js';
+import type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
 import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
 import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
@@ -1093,20 +1093,20 @@ export class GeometryProcessor {
     }
   }
 
-  /** Authored swept-disk curves in IFC Z-up world metres; optional product IDs.
-   * `undefined` selects all and an empty array selects none. Null until init(). */
+  /** IFC Z-up swept-disk curves in metres; omitted IDs select all, empty IDs none; null until init. */
   extractSweptDiskDescriptions(buffer: Uint8Array, ids?: Uint32Array): SweptDiskDescriptions | null {
-    return this.bridge?.isInitialized()
-      ? this.bridge.extractSweptDiskDescriptions(buffer, ids)
-      : null;
+    return this.bridge?.isInitialized() ? this.bridge.extractSweptDiskDescriptions(buffer, ids) : null;
+  }
+
+  /** Exact extrusion sources in file units and world-metre uses; omitted IDs select all, empty IDs none; null until init. */
+  extractExtrusionDefinitions(buffer: Uint8Array, ids?: Uint32Array): ExtrusionDefinitions | null {
+    return this.bridge?.isInitialized() ? this.bridge.extractExtrusionDefinitions(buffer, ids) : null;
   }
 
   /** Extract IfcExtrudedAreaSolid profiles and transforms for 2D projection.
    * `modelIndex` is the federation index; null until initialized. */
   extractProfiles(buffer: Uint8Array, modelIndex: number = 0): import('@ifc-lite/wasm').ProfileCollection | null {
-    if (!this.bridge || !this.bridge.isInitialized()) {
-      return null;
-    }
+    if (!this.bridge?.isInitialized()) return null;
     // SAB-safe: caller may pass a SharedArrayBuffer-backed view, which
     // both Firefox and Chromium reject in raw `TextDecoder.decode`.
     const content = safeUtf8Decode(buffer);
@@ -1293,7 +1293,7 @@ export class GeometryProcessor {
     const records = meshes.filter(
       (m) => geometryClassOf(m) === GEOM_CLASS_OCCURRENCE && levels.has(m.expressId) && m.indices.length >= 3,
     );
-    const requested = new Set([...levels.keys()]);
+    const requested = new Set(levels.keys());
     const covered = new Set(records.map((m) => m.expressId));
     const result: SimplifyMeshesResult = { elements: [], skipped: [] };
     for (const id of requested) {

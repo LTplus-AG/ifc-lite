@@ -167,11 +167,11 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
     const stashKey = `${modelId}:${mutation.entityId}`;
     const stashed = get().removedNewEntities.get(stashKey);
     if (stashed) {
-      view.restoreNewEntity(stashed); mirrorCreateEntityRedo(get(), modelId, stashed, get().removedMeshes.get(stashKey)?.meshes[0] ?? null);
+      view.restoreNewEntity(stashed); mirrorCreateEntityRedo(get(), modelId, stashed, get().removedMeshes.get(stashKey)?.meshes);
       syncAuthoredTreeEntry(get(), modelId, mutation.entityId, stashed, true);
     } else {
       view.restoreFromTombstone(mutation.entityId);
-      mirrorSourceEntityRestore(get(), modelId, mutation.entityId, get().removedMeshes.get(stashKey)?.meshes[0] ?? null);
+      mirrorSourceEntityRestore(get(), modelId, mutation.entityId, get().removedMeshes.get(stashKey)?.meshes ?? []);
     }
     // Re-insert the mesh removeEntity stashed when it pruned geometryResult (#4925).
     restoreStashedEntityMesh(get, set, modelId, mutation.entityId);
@@ -258,7 +258,7 @@ export function applyRedoToView(get: Get, set: Set, modelId: string, view: Mutab
     const stashed = get().removedNewEntities.get(stashKey);
     if (stashed) {
       view.restoreNewEntity(stashed);
-      mirrorCreateEntityRedo(get(), modelId, stashed, get().removedMeshes.get(stashKey)?.meshes[0] ?? null);
+      mirrorCreateEntityRedo(get(), modelId, stashed, get().removedMeshes.get(stashKey)?.meshes);
       syncAuthoredTreeEntry(get(), modelId, mutation.entityId, stashed, true);
     } else {
       // Source-buffer entities have no stash; the editor's deleteEntity

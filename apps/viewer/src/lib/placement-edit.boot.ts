@@ -13,6 +13,7 @@ import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import { setSourceAttrsReader } from './placement-edit.js';
 
 setSourceAttrsReader((dataStore: IfcDataStore, expressId: number) => {
+  // @raw-entity-enumeration-ok single source attribute baseline; placement-core.readAttributes layers the live positional edits before use
   const ref = dataStore.entityIndex.byId.get(expressId);
   if (!ref) return null;
   const extractor = new EntityExtractor(dataStore.source);

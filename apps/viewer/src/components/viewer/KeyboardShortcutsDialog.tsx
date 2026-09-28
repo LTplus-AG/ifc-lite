@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useState, useEffect, useLayoutEffect, useCallback } from 'react';
+import { useState, useLayoutEffect, useCallback } from 'react';
 import { X, Sparkles, Info, Keyboard, ExternalLink, GraduationCap } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { LearnTab } from '@/components/tours/LearnTab';
@@ -70,9 +70,9 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
               <span className="whitespace-nowrap">{t('keyboardShortcuts.header.mcpCta')}</span>
               <ExternalLink className="h-3 w-3 opacity-60" />
             </button>
-            <Button variant="ghost" size="icon-sm" onClick={onClose}>
+            <IconButton label={t('viewerShell.dialog.close')} variant="ghost" size="icon-sm" onClick={onClose}>
               <X className="h-4 w-4" />
-            </Button>
+            </IconButton>
           </div>
         </div>
 

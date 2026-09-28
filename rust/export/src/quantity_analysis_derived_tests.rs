@@ -61,6 +61,38 @@ fn authored_length_is_preserved_even_when_it_disagrees_with_exact_directrix() {
 }
 
 #[test]
+fn issue_5787_complete_degenerate_directrix_explains_missing_nominal_quantities() {
+    let source = String::from_utf8(include_bytes!(
+        "../../geometry/tests/fixtures/swept_disk_trimmed_line.ifc").to_vec()).unwrap();
+    let degenerate = source.replace("IFCPARAMETERVALUE(2750.)", "IFCPARAMETERVALUE(0.)")
+        .replace("#43=IFCSWEPTDISKSOLID(#42,14.5,$,0.,2750.);",
+            "#43=IFCSWEPTDISKSOLID(#42,14.5,$,$,$);");
+    let view = analyze_quantities(degenerate.as_bytes(), Some(&HashSet::from([50])));
+    let source = &view.products[&50].sources[0];
+    assert_eq!(source.status, "complete");
+    assert!(source.status_reason.as_deref().is_some_and(|reason|
+        reason.contains("Nominal swept-disk quantities unavailable")));
+    assert!(source.quantities.iter().any(|quantity|
+        quantity.name == "centreline_length" && quantity.value == 0.0));
+    assert!(source.quantities.iter().all(|quantity| quantity.name != "nominal_volume"));
+}
+
+#[test]
+fn issue_5787_joined_diagnostics_have_one_shared_output_cap() {
+    let source = String::from_utf8(include_bytes!(
+        "../../geometry/tests/fixtures/swept_disk_trimmed_line.ifc").to_vec()).unwrap();
+    let malformed = (1000..2100).map(|id| format!(
+        "#{id}=IFCRELDEFINESBYTYPE('BAD',$,$,$,$,#50);\n"))
+        .collect::<String>();
+    let ifc = source.replace("ENDSEC;\nEND-ISO-10303-21;",
+        &format!("{malformed}ENDSEC;\nEND-ISO-10303-21;"));
+    let view = analyze_quantities(ifc.as_bytes(), Some(&HashSet::from([50])));
+    assert_eq!(view.products[&50].source_occurrence_count, 1);
+    assert_eq!(view.diagnostics.len(), MAX_JOINED_DIAGNOSTICS + 1);
+    assert_eq!(view.diagnostics.last().unwrap(), JOINED_DIAGNOSTICS_TRUNCATED);
+}
+
+#[test]
 fn real_revit_wall_keeps_holed_source_as_nominal_not_product_volume() {
     let bytes = include_bytes!("../../geometry/tests/fixtures/issue_098_wall_W.ifc");
     let view = analyze_quantities(bytes, Some(&HashSet::from([928638, 928672])));

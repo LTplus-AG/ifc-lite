@@ -3,48 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Viewport pick → model-frame plumbing shared by the Split tool, the wall
- * endpoint drag and the Add Element tool. A leaf module (store + placement
- * math only) so `selectionHandlers.ts` and `add-element-handlers.ts` can both
- * import it without importing each other.
+ * Viewport pick plumbing for the Add Element tool: storey resolution, floor
+ * heights and the empty-space floor raycast. Picks convert to storey-local
+ * through the storey workplane (`lib/commands/modeling/workplane.ts`).
  */
 
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { useViewerStore } from '@/store';
-import { displayedTranslation, placementFor } from '@/lib/model-placement/state.js';
-import { fromRenderTranslation } from '@/lib/model-placement/translation.js';
-import { workspacePointToModelFrame } from '@/lib/model-placement/rotation.js';
+import { displayedTranslation } from '@/lib/model-placement/state.js';
 import { effectiveStoreyElevation, selectEffectiveStoreyId } from './add-element-storeys.js';
-
-/**
- * `modelId`'s current reposition placement — translation (including an
- * in-flight move-preview drag, so a pick made mid-drag matches what is on
- * screen) and heading (#4932).
- */
-export function pickPlacement(modelId: string): { translation: ReturnType<typeof displayedTranslation>; rotation: ReturnType<typeof placementFor>['rotation'] } {
-  const state = useViewerStore.getState();
-  return { translation: displayedTranslation(state.modelPlacement, modelId),
-    rotation: placementFor(state.modelPlacement, modelId).rotation };
-}
-
-/**
- * Convert a renderer Y-up world point — picked against `modelId`'s
- * repositioned geometry — into the model's own IFC Z-up frame, with Z forced
- * to 0. Inverts the model's placement (heading about its pivot, then
- * translation) before the axis swap (#4932).
- *
- * This is the MODEL frame, not a storey-local one: it knows nothing about the
- * storey's placement chain. Builders that anchor to a storey need
- * `rendererPointToIfcStoreyLocal` (`add-element-workplane.ts`), which folds
- * the chain in on top of this.
- */
-export function rendererPointToModelFrame(
-  point: { x: number; y: number; z: number },
-  modelId: string,
-): [number, number, number] {
-  const modelPoint = workspacePointToModelFrame(fromRenderTranslation(point), pickPlacement(modelId));
-  return [modelPoint[0], modelPoint[1], 0];
-}
 
 /** Keep `preferred` only while it is a live storey in this model; else the first. */
 export function resolveStoreyExpressId(modelId: string, preferred: number | null): number | null {

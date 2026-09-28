@@ -19,14 +19,17 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { useIfc } from './useIfc';
+import { useIfcLoader } from './useIfcLoader.js';
+import { useIfcFederation } from './useIfcFederation.js';
 import { useWebGpuOpenGuard } from './useWebGpuOpenGuard';
 import { showLoadError } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { useTranslation, type TranslationKey } from '@/i18n';
 
 export function useModelUrlAutoload(): void {
-  const { addModel } = useIfc();
+  // The loader and federation hooks subscribe to actions only; `useIfc()` also
+  // subscribes to `models`, which re-rendered the whole viewer shell (#6232).
+  const { addModel } = useIfcFederation(useIfcLoader().loadFile);
   const { webgpu, guard: guardWebGpu } = useWebGpuOpenGuard();
   const { t } = useTranslation();
   const autoloadDoneRef = useRef(false);

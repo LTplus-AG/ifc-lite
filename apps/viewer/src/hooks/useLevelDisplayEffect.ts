@@ -38,6 +38,16 @@ import {
   type StoreyOffsets,
 } from '@/lib/level-offsets';
 
+function sameStoreyOffsets(a: ReadonlyMap<string, StoreyOffsets>, b: ReadonlyMap<string, StoreyOffsets>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [modelId, offsets] of a) {
+    const other = b.get(modelId);
+    if (!other || other.size !== offsets.size) return false;
+    for (const [storey, offset] of offsets) if (other.get(storey) !== offset) return false;
+  }
+  return true;
+}
+
 export function useLevelDisplayEffect(): void {
   const levelDisplayMode = useViewerStore((s) => s.levelDisplayMode);
   const explodedGap = useViewerStore((s) => s.explodedGap);
@@ -91,7 +101,9 @@ export function useLevelDisplayEffect(): void {
     if (aggregated.size > 0) {
       setPendingMeshTranslations(aggregated);
     }
-    setAppliedStoreyOffsets(target);
+    // Write only a changed snapshot: `models` also changes on every geometry
+    // update, and a fresh empty Map each time is a store notification (#6232).
+    if (!sameStoreyOffsets(target, appliedStoreyOffsets)) setAppliedStoreyOffsets(target);
     // appliedStoreyOffsets is intentionally NOT a dep — we write to it as a
     // side effect; depending on it would loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps

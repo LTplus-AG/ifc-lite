@@ -47,6 +47,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { AddElementPanel } from '../AddElementPanel';
+import { selectAddElementPanelOpen } from '../add-element-wall-command';
 import {
   closeActiveAnalysisExtension,
   getAnalysisExtensionById,
@@ -244,7 +245,7 @@ function SplitContainer({
 
 export function SidebarPanelHost() {
   const activePanel = useViewerStore((s) => s.sidebarActivePanel);
-  const activeTool = useViewerStore((s) => s.activeTool);
+  const addElementOpen = useViewerStore(selectAddElementPanelOpen);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const secondaryPanel = useViewerStore((s) => s.sidebarSecondaryPanel);
   const splitRatio = useViewerStore((s) => s.sidebarSplitRatio);
@@ -315,7 +316,7 @@ export function SidebarPanelHost() {
       </div>
     );
   }
-  if (activeTool === 'addElement') {
+  if (addElementOpen) {
     return (
       <div data-detach-root className="h-full flex flex-col panel-container">
         <AddElementPanel onClose={() => setActiveTool('select')} />

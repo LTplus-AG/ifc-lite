@@ -8,14 +8,13 @@ import type { TranslationValue } from '../types';
  * Shared command labels rendered by the ribbon, palette and mobile surfaces
  * from one registry (#4918 slice 2, #5874):
  * - `export-commands.ts` — `RibbonExportGroup` / command palette / mobile menu
- * - `camera-commands.ts` — `ViewTab`
+ * - `camera-commands.ts` tooltips and registered View commands — `ViewTab`
  * - panel registry titles — ribbon Analyze / Author / View tabs
  * - `ClassVisibilityMenu` (`ClassVisibilityMenuContent`)
  *
- * The two data-only registries (`export-commands.ts`, `camera-commands.ts`)
- * are plain arrays with no React import, so they carry a translation KEY per
- * row rather than calling `t()` themselves — the same pattern
- * `sectionConstants.ts`'s `AXIS_INFO` uses. Renderers call `t(row.xKey)`.
+ * The data-only registries carry translation keys rather than calling `t()`
+ * themselves. The camera table supplies tooltips; registered View commands
+ * supply button names. This follows `sectionConstants.ts`'s `AXIS_INFO`.
  * IFC EXPRESS names and single-letter/number keyboard shortcuts stay literal.
  */
 export const sharedCommandsEn = {

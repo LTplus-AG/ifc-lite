@@ -11,7 +11,7 @@
  * digit; Enter in a field applies the value and commits the command.
  */
 
-import { useEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { HudValueField, type HudValueFieldHandle } from '../../../viewport-ui/hud';
 import {
@@ -35,7 +35,9 @@ export function CommandFieldsBar() {
   const handles = useRef<(HudValueFieldHandle | null)[]>([]);
   const fields = command?.fields ?? [];
 
-  useEffect(() => {
+  // Layout effect: the input must mount and take focus before the next key
+  // event, or a quickly typed "4.5" loses everything after the "4".
+  useLayoutEffect(() => {
     if (!fieldRequest) return;
     handles.current[fieldRequest.index]?.beginEdit(fieldRequest.draft);
   }, [fieldRequest]);

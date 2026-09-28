@@ -36,6 +36,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { effectiveStoreyId } from '@/lib/effective-storey';
 
 const MODEL_ID = 'ifc';
 const STOREY = 40;
@@ -156,7 +157,7 @@ describe('undoing a wall split (#4925)', () => {
   });
 });
 
-it('wall split follows the live storey and authors both halves there (#5249)', async () => {
+it('wall split follows the live storey and both pieces sit there (#5249, #6233)', async () => {
   await seed();
   const state = useViewerStore.getState();
   const wall = state.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.25, Height: 2.8 });
@@ -170,10 +171,12 @@ it('wall split follows the live storey and authors both halves there (#5249)', a
   const split = useViewerStore.getState().splitWallAtDistance(MODEL_ID, wall.expressId, 2);
   assert.ok(split.ok, `split failed: ${split.ok ? '' : split.reason}`);
   if (!split.ok) return;
+  // The longer piece stays the source (#6233), keeping its edited
+  // containment; the new piece is authored on that same live storey.
+  const dataStore = useViewerStore.getState().models.get(MODEL_ID)!.ifcDataStore!;
+  assert.equal(split.right.expressId, wall.expressId, 'the 3 m piece keeps the source');
   for (const id of [split.left.expressId, split.right.expressId]) {
-    const relation = view.getNewEntities().find((entity) => entity.type === 'IfcRelContainedInSpatialStructure'
-      && Array.isArray(entity.attributes[4]) && entity.attributes[4].includes(`#${id}`));
-    assert.equal(relation?.attributes[5], '#50', `split half #${id} must be authored on the edited storey`);
+    assert.equal(effectiveStoreyId(dataStore, view, id), 50, `piece #${id} must sit on the edited storey`);
   }
 });
 

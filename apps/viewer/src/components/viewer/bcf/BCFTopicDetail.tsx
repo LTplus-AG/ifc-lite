@@ -125,9 +125,9 @@ export function BCFTopicDetail({
     <div className="flex flex-col h-full relative">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
-        <Button variant="ghost" size="sm" onClick={onBack}>
+        <IconButton label={t('bcf.topicDetail.backToTopics')} variant="ghost" size="sm" onClick={onBack}>
           <ChevronLeft className="h-4 w-4" />
-        </Button>
+        </IconButton>
         <h3 className="font-medium text-sm flex-1 truncate">{topic.title}</h3>
         <IconButton
           label={t('bcf.topicDetail.zoomToTopicAria')}

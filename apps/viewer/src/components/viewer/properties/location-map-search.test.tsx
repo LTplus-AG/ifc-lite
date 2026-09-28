@@ -26,7 +26,7 @@ import { act } from 'react';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRoot, type Root } from 'react-dom/client';
-import { advance, cleanup, press, render } from '@/test/render.js';
+import { advance, cleanup, click, press, render } from '@/test/render.js';
 import type { GeocodeResult } from './location-map-geocode.js';
 import { LocationMapSearchBar } from './location-map-search.js';
 
@@ -63,6 +63,26 @@ async function pointerDownOutside(): Promise<void> {
 }
 
 describe('LocationMapSearchBar results dropdown (#5817)', () => {
+  it('#6343 names the close action and invokes the search dismissal', () => {
+    let closed = 0;
+    const container = render(
+      <LocationMapSearchBar
+        query="Berlin"
+        onQueryChange={() => {}}
+        results={[]}
+        onResultsChange={() => {}}
+        loading={false}
+        placeholder="Search a place"
+        onSelect={() => {}}
+        onClose={() => { closed += 1; }}
+      />,
+    );
+    const close = container.querySelector<HTMLButtonElement>('button[aria-label="Close place search"]');
+    assert.ok(close, 'the icon-only close control has a specific accessible name');
+    click(close);
+    assert.equal(closed, 1);
+  });
+
   it('renders the results as a popover anchored to the input', () => {
     render(<Harness initialResults={RESULTS} />);
     const rows = document.querySelectorAll('button');

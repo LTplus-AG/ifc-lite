@@ -245,6 +245,29 @@ describe('selected centreline overlay (#5778)', () => {
     }
   });
 
+  it('reports a source-frame failure to the overlay notice callback (#5780)', async () => {
+    const model = fixtureModel('missing-frame', { idOffset: 1_000_000 });
+    const zero = { x: 0, y: 0, z: 0 };
+    const box = { min: zero, max: zero };
+    model.geometryResult = { meshes: [], totalVertices: 0, totalTriangles: 0,
+      coordinateInfo: { originShift: zero, wasmRtcOffset: zero, hasLargeCoordinates: false,
+        originalBounds: box, shiftedBounds: box } };
+    model.federationAlignmentStatus = 'same-crs';
+    const prior = useViewerStore.getState();
+    try {
+      useViewerStore.setState(fixtureModels(model));
+      const messages: string[] = [];
+      const curves = await selectedCentrelineSnapCurves(
+        [selected('missing-frame', 0)], useViewerStore.getState(), null, undefined,
+        (message) => messages.push(message),
+      );
+      assert.deepEqual(curves, []);
+      assert.match(messages.join('; '), /Cannot snap missing-frame #42 source directrix:.*source or reference frame/);
+    } finally {
+      useViewerStore.setState(prior);
+    }
+  });
+
   it('isolates a selected segment by model, occurrence and index (#5783)', async () => {
     const first = fixtureModel('first', { idOffset: 1_000_000 });
     const second = fixtureModel('second', { idOffset: 2_000_000 });

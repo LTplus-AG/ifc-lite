@@ -711,7 +711,7 @@ describe('magnetic authored source curves (#5780)', () => {
     assert.equal(pick(400).snapTarget, null);
   });
 
-  it('filters clipped source points and continues to a visible mesh behind a clipped mesh', () => {
+  it('clips new source curves without changing existing magnetic mesh or scan picks (#5780)', () => {
     const scene = new Scene();
     addRegularQuad(scene, makeQuad({ expressId: 1, translate: [0, 0, 10] }));
     addRegularQuad(scene, makeQuad({ expressId: 2, translate: [0, 0, -10] }));
@@ -722,9 +722,12 @@ describe('magnetic authored source curves (#5780)', () => {
     engine.setPointCloudProvider(() => [{ expressId: 77, index }]);
     const clip = { sectionPlane: { normal: [0, 0, 1] as [number, number, number], distance: 0, flipped: false } };
     const hit = engine.raycastSceneMagnetic(400, 300, lock, { snapOptions }, clip);
-    assert.equal(hit.intersection?.expressId, 2);
+    assert.equal(hit.intersection?.expressId, 1, 'preexisting magnetic mesh pick remains reachable');
     assert.equal(hit.snapTarget?.metadata?.sourceCurve, undefined);
-    assert.notEqual(hit.snapTarget?.expressId, 77, 'the clipped scan point cannot steal the visible mesh');
+    const scanOnly = engineFor(new Scene(), orthoCameraLookingDownZ([0, 0, 0], 50));
+    scanOnly.setPointCloudProvider(() => [{ expressId: 77, index }]);
+    const scanHit = scanOnly.raycastSceneMagnetic(400, 300, lock, { snapOptions }, clip);
+    assert.equal(scanHit.snapTarget?.expressId, 77, 'preexisting magnetic scan pick remains reachable');
   });
 });
 

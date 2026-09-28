@@ -332,8 +332,9 @@ export class RaycastEngine {
                 const meshesToTest = this.filterWithBVH(allMeshData, ray);
 
                 // Perform raycasting
-                intersection = this.raycaster.raycast(ray, meshesToTest,
-                    hit => !pointClipped(clip, hit.point.x, hit.point.y, hit.point.z));
+                // Magnetic mesh snapping predates source curves and keeps its
+                // existing clip policy; only the opt-in source query below is clipped.
+                intersection = this.raycaster.raycast(ray, meshesToTest);
 
                 // Use magnetic snap detection
                 magneticResult = this.snapDetector.detectMagneticSnap(
@@ -345,10 +346,6 @@ export class RaycastEngine {
                     currentEdgeLock,
                     options?.snapOptions || {}
                 );
-                if (magneticResult.snapTarget && pointClipped(clip, magneticResult.snapTarget.position.x,
-                    magneticResult.snapTarget.position.y, magneticResult.snapTarget.position.z)) {
-                    magneticResult = { snapTarget: null, edgeLock: releasedEdgeLock() };
-                }
             }
 
             const source = querySourceCurves(this.sourceSnapCurves, magneticResult.snapTarget,
@@ -370,7 +367,7 @@ export class RaycastEngine {
             const pointHit = pointCloudSnapEnabled(options?.snapOptions)
                 ? queryPointClouds(this.pointCloudProvider, ray, snapCamera, maxPointDistance, options)
                 : null;
-            if (pointHit && !pointClipped(clip, pointHit.position.x, pointHit.position.y, pointHit.position.z)) {
+            if (pointHit) {
                 // A point-cloud hit only OVERRIDES an existing mesh snap
                 // target (vertex/edge/face/...) when it's meaningfully in
                 // front of the mesh surface, not just scan noise a few mm

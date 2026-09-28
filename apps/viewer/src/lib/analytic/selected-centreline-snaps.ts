@@ -37,7 +37,7 @@ export async function selectedCentrelineSnapCurves(
       if (!maps.has(modelId)) maps.set(modelId, model ? modelFrameMap(model, state) : Promise.resolve(undefined));
       map = await maps.get(modelId);
     } catch (error) {
-      console.warn(`[ifc-lite] Cannot snap ${modelId} #${expressId} source directrix:`, error);
+      report(`Cannot snap ${modelId} #${expressId} source directrix: ${String(error)}`);
       continue;
     }
     let globalId: number;

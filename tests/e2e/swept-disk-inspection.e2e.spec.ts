@@ -4,7 +4,7 @@
 
 /** Browser witness for #5783 against an IFC2X3 Revit Snowdon reinforcement model. */
 import { test, expect } from '@playwright/test';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const FIXTURE = process.env.REBAR_IFC ?? join(process.cwd(), 'tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc');
@@ -16,6 +16,7 @@ type BrowserState = {
   setSelectedEntity(ref: { modelId: string; expressId: number }): void;
   setSelectedEntityId(id: number): void;
   setSelectedEntityIds(ids: number[]): void;
+  setIsolatedEntities(ids: Set<number> | null): void;
   setPropertiesActiveTab(tab: 'quantities'): void;
   setRightPanelCollapsed(collapsed: boolean): void;
   toggleWorkspacePanel(panel: 'measurements'): void;
@@ -88,4 +89,22 @@ test('selected Revit bar shows exact source geometry and measurement readout (#5
   const measureScreenshot = testInfo.outputPath('snowdon-swept-disk-measurements.png');
   await page.screenshot({ path: measureScreenshot, fullPage: true });
   await testInfo.attach('Snowdon source measurements', { path: measureScreenshot, contentType: 'image/png' });
+
+  // Keep the source/measurement checks above in the full model. Isolate only
+  // for the visual witness so surrounding concrete cannot occlude this bar.
+  await page.evaluate(() => {
+    const state = (globalThis as unknown as { __ifc_lite_viewer_store__: BrowserStore }).__ifc_lite_viewer_store__.getState();
+    const model = [...state.models.values()][0];
+    if (!model) throw new Error('loaded IFC model is missing');
+    const id = state.toGlobalId(model.id, 132347);
+    state.setIsolatedEntities(new Set([id]));
+    state.cameraCallbacks.frameEntities?.([id]);
+  });
+  await expect.poll(capture, { timeout: 120_000, message: 'isolation redraws the selected Revit bar' })
+    .not.toBe(selectedFrame);
+  const isolatedFrame = await capture();
+  expect(isolatedFrame).toMatch(/^data:image\/png;base64,/);
+  const isolatedScreenshot = testInfo.outputPath('snowdon-swept-disk-isolated-bar.png');
+  writeFileSync(isolatedScreenshot, Buffer.from(isolatedFrame!.split(',')[1], 'base64'));
+  await testInfo.attach('Snowdon isolated swept-disk bar', { path: isolatedScreenshot, contentType: 'image/png' });
 });

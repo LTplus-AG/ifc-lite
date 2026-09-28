@@ -2450,8 +2450,9 @@ distinct map, with cached and uncached ordered swept-disk and extrusion output,
 including nominal quantities and diagnostics, identical. Each MappingTarget
 and final world transform still resolves for its own occurrence.
 
-Five balanced native profiling pairs compared parent `5b58ab62b` with cache
-head `d00b5f8df` below 6/24 host load, with five iterations per invocation.
+Before the stack was rebased, five balanced native profiling pairs compared
+parent `5b58ab62b` with cache head `d00b5f8df` below 6/24 host load, with
+five iterations per invocation. These timings do not measure the later parent.
 On the Revit Snowdon structural model, canonical descriptions, definitions,
 and extrusions were byte-identical between revisions. Across 25 extraction
 calls per revision, their median times were 31.8→33.0, 35.5→34.9, and

@@ -26,6 +26,22 @@ fn rectangle_extrusion_keeps_exact_profile_and_depth() {
 }
 
 #[test]
+fn issue_5784_serialized_source_references_keep_express_names() {
+    let bytes = include_bytes!("../../tests/fixtures/mapped_instances_synthetic.ifc");
+    let json = serde_json::to_value(read(bytes, 12)).unwrap();
+    assert_eq!(json["SweptArea"], 8);
+    assert_eq!(json["Position"], 11);
+    assert_eq!(json["ExtrudedDirection"], 9);
+    assert_eq!(json["Depth"], 1.0);
+    assert_eq!(json["profile"]["ProfileType"], "AREA");
+    assert_eq!(json["profile"]["Position"], 7);
+    for alias in ["swept_area_id", "position_id", "extruded_direction_id", "depth"] {
+        assert!(json.get(alias).is_none(), "unexpected extrusion alias {alias}");
+    }
+    assert!(json["profile"].get("position_id").is_none());
+}
+
+#[test]
 fn authored_direction_ratios_and_unit_vector_are_distinct() {
     let source = String::from_utf8(include_bytes!("../../tests/fixtures/mapped_instances_synthetic.ifc").to_vec()).unwrap();
     let source = source.replace("#9=IFCDIRECTION((0.,0.,1.));", "#9=IFCDIRECTION((0.,0.,2.));");

@@ -36,6 +36,7 @@ pub struct AnalyticProfile {
     pub ifc_type_name: String,
     #[serde(rename = "ProfileType")]
     pub profile_type: Option<String>,
+    #[serde(rename = "Position")]
     pub position_id: Option<u32>,
     pub profile_position: Option<[f64; 16]>,
     pub loops: Vec<AnalyticProfileLoop>,

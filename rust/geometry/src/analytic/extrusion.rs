@@ -18,9 +18,11 @@ pub struct AnalyticExtrusion {
     #[serde(rename = "SweptArea")]
     pub swept_area_id: Option<u32>,
     pub profile: Option<AnalyticProfile>,
+    #[serde(rename = "Position")]
     pub position_id: Option<u32>,
     /// Matrix derived from `Position`, in raw IFC file-length units.
     pub position_matrix: Option<[f64; 16]>,
+    #[serde(rename = "ExtrudedDirection")]
     pub extruded_direction_id: Option<u32>,
     /// Authored `IfcDirection.DirectionRatios`, before unit-vector normalization.
     #[serde(rename = "DirectionRatios")]

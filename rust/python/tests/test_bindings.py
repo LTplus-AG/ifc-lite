@@ -481,7 +481,10 @@ def test_issue_6305_rebar_preflight_reports_values_and_skips():
 
     absent = source.decode().replace("#33,#124,$,$,29.", "#33,$,$,$,29.").encode()
     missing = ifclite_geom.rebar_schedule_with_preflight(absent, 0.0, 0.0)["rows"][125]
-    assert missing["preflight_skipped_reason"] == missing["geometry_unavailable_reason"]
+    assert missing["sweeps"] == []
+    assert missing["preflight_skipped_reason"] == (
+        "no swept-disk source in selected body representation"
+    )
     disconnected = source.decode().replace(
         "#56=IFCCARTESIANPOINT((101.5,0.,-423.5));",
         "#56=IFCCARTESIANPOINT((102.5,0.,-423.5));",

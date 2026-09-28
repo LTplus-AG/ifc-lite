@@ -71,7 +71,11 @@ fn issue_6305_preflight_explains_missing_modified_and_invalid_inputs() {
     let absent = REBAR.replace("#33,#124,$,$,29.", "#33,$,$,$,29.");
     let row = &build_rebar_schedule_with_preflight(absent.as_bytes(), None, &options, &limits)
         .unwrap().rows[&125];
-    assert_eq!(row.preflight_skipped_reason, row.geometry_unavailable_reason);
+    assert!(row.sweeps.is_empty());
+    assert_eq!(
+        row.preflight_skipped_reason.as_deref(),
+        Some("no swept-disk source in selected body representation"),
+    );
     let modified = MAPPED.replace(
         "#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#43));",
         "#1001=IFCBOOLEANRESULT(.UNION.,#43,#43);\n#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#1001));",

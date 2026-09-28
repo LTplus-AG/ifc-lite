@@ -74,6 +74,13 @@ source to the final comment-only head). Each process ran five iterations with
 ordered mesh fingerprints. Every run kept the same mesh counts and ordered FNV;
 parse, geometry, and total ranges overlapped. Verdict: the bridge preserves
 ordinary native-load output, with no supported default-path speed change.
+After #5810 advanced main to `ba85514d3`, those timings remain prior-base
+evidence. The bridge's current-base diff has no changes under `rust/core`,
+`rust/geometry`, `rust/processing`, Cargo manifests/lockfile, the native probe,
+or the fixture manifest. Both sides therefore compile the same native default
+path; #5810's own control above preserved the ordered mesh fingerprint. This
+source-equivalence check supports no new native-load work from the bridge, but
+does not turn the earlier timings into a measurement against `ba85514d3`.
 The added WASM export's browser startup and opt-in extraction cost were not
 measured; this result does not establish a browser worker-pool speed change.
 For an opt-in bridge, prove the default path is unchanged separately from

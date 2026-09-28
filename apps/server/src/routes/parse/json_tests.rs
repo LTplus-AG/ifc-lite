@@ -57,7 +57,7 @@ ENDSEC;
 END-ISO-10303-21;
 "#;
 
-fn multipart_body(content: &[u8]) -> (String, Vec<u8>) {
+pub(super) fn multipart_body(content: &[u8]) -> (String, Vec<u8>) {
     let mut body = Vec::new();
     body.extend_from_slice(
         format!(
@@ -70,7 +70,7 @@ fn multipart_body(content: &[u8]) -> (String, Vec<u8>) {
     (format!("multipart/form-data; boundary={BOUNDARY}"), body)
 }
 
-async fn test_state(label: &str) -> AppState {
+pub(super) async fn test_state(label: &str) -> AppState {
     let dir = std::env::temp_dir().join(format!(
         "ifc-lite-server-r31-metadata-{}-{}",
         std::process::id(),

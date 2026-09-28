@@ -23,9 +23,11 @@
 
 import { useRef } from 'react';
 import { MapPin, X } from 'lucide-react';
+import { IconButton } from '@/components/ui/icon-button';
 import { Popover, PopoverAnchor, PopoverContent, PopoverPortal } from '@/components/ui/popover';
 import { usePortalContainer } from '@/components/ui/portal-container';
 import { Spinner } from '@/components/ui/spinner';
+import { useTranslation } from '@/i18n';
 import type { GeocodeResult } from './location-map-geocode';
 
 interface LocationMapSearchBarProps {
@@ -49,6 +51,7 @@ export function LocationMapSearchBar({
   onSelect,
   onClose,
 }: LocationMapSearchBarProps) {
+  const { t } = useTranslation();
   const portalContainer = usePortalContainer();
   const anchorRef = useRef<HTMLDivElement>(null);
   return (
@@ -63,6 +66,7 @@ export function LocationMapSearchBar({
               <input
                 value={query}
                 onChange={e => onQueryChange(e.target.value)}
+                aria-label={placeholder}
                 placeholder={placeholder}
                 className="w-full text-2xs px-2 py-1 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400 focus:border-teal-400 placeholder:text-zinc-400/60"
                 autoFocus
@@ -110,12 +114,14 @@ export function LocationMapSearchBar({
             </PopoverContent>
           </PopoverPortal>
         </Popover>
-        <button
+        <IconButton
+          label={t('properties.locationMap.closeSearch')}
+          size="icon-xs"
           onClick={onClose}
           className="p-0.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
         >
           <X className="h-3 w-3" />
-        </button>
+        </IconButton>
       </div>
     </div>
   );

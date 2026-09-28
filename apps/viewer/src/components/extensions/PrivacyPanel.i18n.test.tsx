@@ -276,6 +276,15 @@ describe('PrivacyPanel localization (#4918)', () => {
     assert.match(container.textContent ?? '', /BASELINE LOCALISÉE — MODIFICATION DU CALQUE/);
   });
 
+  it('keeps the prompt overlay named when its example placeholder is replaced (#6342)', async () => {
+    const host = new StubExtensionHost();
+    const container = await mountActiveFlavorFixture(host);
+    const overlay = container.querySelector<HTMLTextAreaElement>('textarea');
+    assert.ok(overlay, 'active flavor exposes the overlay editor');
+    assert.equal(overlay.getAttribute('aria-label'), 'Prompt overlay notes');
+    assert.equal(overlay.value, 'Existing overlay notes.');
+  });
+
   it('translates every static key rendered across the no-flavor and active-flavor states', async () => {
     // Pass 1: no active flavor (the empty state + top-level chrome).
     const emptyHost = new StubExtensionHost();

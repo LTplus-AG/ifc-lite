@@ -42,7 +42,9 @@ test('authored IFC entity menu exposes actions, arrow navigation, submenu and fo
   }, undefined, { timeout: 180_000 });
 
   await page.getByRole('tab', { name: 'Author', exact: true }).click();
-  await page.getByRole('button', { name: 'Enter edit mode' }).click();
+  const modelWorkspace = page.getByRole('tabpanel', { name: 'Author' }).getByRole('button', { name: 'Model', exact: true });
+  await modelWorkspace.click();
+  await expect(modelWorkspace).toHaveAttribute('aria-pressed', 'true');
 
   // The real viewport menu is opened by the picking handler, which has already
   // resolved a renderer ID. Supply that same ID to exercise the shell without

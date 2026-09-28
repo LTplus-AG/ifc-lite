@@ -15,7 +15,7 @@
  * 2D→3D lift and cap triangulation to `section-2d-lift.ts`, the per-family
  * vertex buffer to `section-2d-line-buffer.ts`, the cap pipeline descriptors
  * to `section-cap-pipelines.ts`. What is left is one nullable,
- * `init()`-created / `dispose()`-destroyed GPU object (three pipelines, one
+ * `init()`-created / `dispose()`-destroyed GPU object (pipelines, one
  * bind-group layout, one bind group, one uniform buffer holding a 160-byte
  * record per draw site) plus the published API over it: one
  * `setLineOverlay`/`hasLineOverlay`/`drawLineOverlay` trio covering every
@@ -65,6 +65,8 @@ export class Section2DOverlayRenderer {
   private fillPipeline: GPURenderPipeline | null = null;
   private fillDepthPipeline: GPURenderPipeline | null = null;
   private linePipeline: GPURenderPipeline | null = null;
+  private centrelinePipeline: GPURenderPipeline | null = null;
+  private linePipelineDescriptor: GPURenderPipelineDescriptor | null = null;
   private bindGroupLayout: GPUBindGroupLayout | null = null;
   private uniformBuffer: GPUBuffer | null = null;
   private bindGroup: GPUBindGroup | null = null;
@@ -95,12 +97,12 @@ export class Section2DOverlayRenderer {
    * One world-space vertex buffer per {@link LineOverlayChannel}, each on its
    * own uniform slot.
    *
-   * Five `WorldLineBuffer`s, not one: the draws are encoded into a single
+   * Independent `WorldLineBuffer`s, not one: the draws are encoded into a single
    * pass and `queue.writeBuffer` lands before the pass runs, so a shared buffer
    * or a shared uniform slot would give every channel whatever the last write said.
    * Keying them by channel unifies the LOOKUP, which is all that was ever
    * duplicated; the buffers stay separate because their independence is what
-   * makes annotation (#653), alignment, grid (#967), DXF (#2043), and terrain visibility
+   * makes annotation (#653), alignment, grid (#967), DXF (#2043), terrain, and centreline visibility
    * toggle independently.
    */
   private readonly lineOverlays: Record<LineOverlayChannel, WorldLineBuffer> = {
@@ -109,6 +111,7 @@ export class Section2DOverlayRenderer {
     grid: new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.grid),
     dxf: new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.dxf),
     terrain: new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.terrain),
+    centreline: new WorldLineBuffer(SECTION_2D_UNIFORM_SLOT_INDEX.centreline),
   };
 
   // Standalone 3D clash-overlap-box overlay (#1277): the wireframe AABB of a
@@ -157,8 +160,9 @@ export class Section2DOverlayRenderer {
     this.fillPipeline = cap.fill;
     this.fillDepthPipeline = cap.depth;
 
-    // Pipeline for lines
-    this.linePipeline = this.device.createRenderPipeline({
+    // The descriptor is retained so the selected-centreline depth variant can
+    // be created only when used; normal model loads pay for one line pipeline.
+    this.linePipelineDescriptor = {
       layout: pipelineLayout,
       vertex: {
         module: lineShader,
@@ -187,18 +191,15 @@ export class Section2DOverlayRenderer {
       depthStencil: {
         format: PIPELINE_CONSTANTS.DEPTH_FORMAT,
         depthWriteEnabled: false,
-        // Same z-respect logic as the fill pipeline above — outline lines
-        // are drawn on the cut plane, so closer model geometry should hide
-        // them when the camera looks through it. The decal nudge for the
-        // #812 coplanar case is applied in the line vertex shader (clip-z
-        // offset) — WebGPU forbids depthStencil.depthBias on non-triangle
-        // topologies.
-        depthCompare: 'greater-equal' as const,
+        // Section and authored surface lines respect depth. The shader carries
+        // the #812 decal nudge; WebGPU forbids depthBias on line topologies.
+        depthCompare: 'greater-equal',
       },
       multisample: {
         count: this.sampleCount,
       },
-    });
+    };
+    this.linePipeline = this.device.createRenderPipeline(this.linePipelineDescriptor);
 
     // One 160-byte uniform buffer shared by BOTH pipelines: the fill fragment
     // shader reads up to params2 (144 B), the line shader reads
@@ -207,7 +208,7 @@ export class Section2DOverlayRenderer {
     // the WGSL that defines them.
     // …once per draw site (SECTION_2D_UNIFORM_SLOT_COUNT of them), spaced by
     // the device's dynamic-offset alignment. Still one buffer under one owner;
-    // what changed is that the seven draw sites no longer overwrite each other.
+    // what changed is that the draw sites no longer overwrite each other.
     this.uniformStride = sectionUniformSlotStride(this.device);
     this.uniformBuffer = this.device.createBuffer({
       size: this.uniformStride * SECTION_2D_UNIFORM_SLOT_COUNT,
@@ -235,11 +236,11 @@ export class Section2DOverlayRenderer {
    * Returns null before `init()` has produced them (or after `dispose()`), so
    * every line draw bails on the same condition it always did.
    */
-  private lineResources(): SectionLinePipelineResources | null {
-    if (!this.linePipeline || !this.uniformBuffer || !this.bindGroup) return null;
+  private lineResources(pipeline: GPURenderPipeline | null = this.linePipeline): SectionLinePipelineResources | null {
+    if (!pipeline || !this.uniformBuffer || !this.bindGroup) return null;
     return {
       device: this.device,
-      pipeline: this.linePipeline,
+      pipeline,
       bindGroup: this.bindGroup,
       uniformBuffer: this.uniformBuffer,
       uniformStride: this.uniformStride,
@@ -376,7 +377,7 @@ export class Section2DOverlayRenderer {
   }
 
   /**
-   * Draw one channel with the shared line pipeline and the shared overlay
+   * Draw one channel with its line depth mode and the shared overlay
    * colour, binding that channel's own uniform slot. No-ops when the channel is
    * empty or the pipeline could not be built.
    */
@@ -386,7 +387,16 @@ export class Section2DOverlayRenderer {
     channel: LineOverlayChannel, rteViewProj?: Float32Array, camera?: readonly [number, number, number],
   ): void {
     this.init();
-    const resources = this.lineResources();
+    if (channel === 'centreline' && this.lineOverlays.centreline.has()
+      && !this.centrelinePipeline && this.linePipelineDescriptor) {
+      // A directrix lies inside its opaque swept disk. Draw it through the
+      // solid, without changing the occlusion policy of any other channel.
+      this.centrelinePipeline = this.device.createRenderPipeline({
+        ...this.linePipelineDescriptor,
+        depthStencil: { ...this.linePipelineDescriptor.depthStencil!, depthCompare: 'always' },
+      });
+    }
+    const resources = this.lineResources(channel === 'centreline' ? this.centrelinePipeline : this.linePipeline);
     if (!resources) return;
     this.lineOverlays[channel].draw(pass, resources, viewProj, this.overlayLineColor, rteViewProj, camera);
   }
@@ -564,7 +574,7 @@ export class Section2DOverlayRenderer {
    * Every family's buffer must be released here. The clash box (#1277) was the
    * sixth line family added and was missing from this list, leaking its vertex
    * buffer on every teardown — `section-2d-overlay-lifecycle.test.ts` now counts
-   * destroys against uploads so another family cannot repeat it. The five
+   * destroys against uploads so another family cannot repeat it. The named
    * `LINE_OVERLAY_CHANNELS` are released by iterating the channel list, so a
    * sixth channel is covered here the moment it joins that list; the clash box
    * is named separately because it is not a channel.
@@ -577,5 +587,16 @@ export class Section2DOverlayRenderer {
       this.uniformBuffer.destroy();
       this.uniformBuffer = null;
     }
+    // Pipeline and bind-group objects belong to this initialization epoch.
+    // A later upload on the same instance must rebuild all of them together.
+    this.fillPipeline = null;
+    this.fillDepthPipeline = null;
+    this.linePipeline = null;
+    this.centrelinePipeline = null;
+    this.linePipelineDescriptor = null;
+    this.bindGroupLayout = null;
+    this.bindGroup = null;
+    this.uniformStride = 0;
+    this.initialized = false;
   }
 }

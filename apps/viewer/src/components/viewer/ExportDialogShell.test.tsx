@@ -43,7 +43,7 @@ function alerts(): Element[] {
 }
 
 function mountShell(
-  onExport: () => Promise<ExportDialogShellResult>,
+  onExport: () => Promise<ExportDialogShellResult | null>,
   filenamePreview?: string,
   options: { closeOnSuccess?: boolean } = {},
 ) {
@@ -191,6 +191,22 @@ describe('ExportDialogShell (#5848)', () => {
     click(trigger());
     assert.ok(dialogIsOpen(), 'precondition: the dialog reopened');
     assert.equal(alerts().length, 0, 'a reopened dialog must not show the previous run\'s stale error');
+  });
+
+  it('a null outcome leaves the dialog as the host set it and shows no result (#5848)', async () => {
+    let runs = 0;
+    mountShell(async () => {
+      runs += 1;
+      return null;
+    });
+    click(trigger());
+    click(button('Export'));
+    await waitFor(
+      () => runs === 1 && !(document.body.textContent ?? '').includes('Exporting...'),
+      'the export must run and settle',
+    );
+    assert.ok(dialogIsOpen(), 'the shell must not close a dialog whose host reports the outcome itself');
+    assert.equal(alerts().length, 0, 'a null outcome renders no result Alert');
   });
 
   it('the filename preview matches what the download call would actually produce', () => {

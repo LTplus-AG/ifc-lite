@@ -113,7 +113,7 @@ async fn seed_cache_from_batches(
         .unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-v5"), &combined)
+        .set_bytes(&format!("{cache_key}-parquet-v8"), &combined)
         .await
         .unwrap();
     seed_current_data_model(state, cache_key).await;

@@ -534,3 +534,37 @@ describe('buildMeshesFromOptimizedTables (instanced format)', () => {
     expect(() => buildMeshesFromOptimizedTables(fixture)).toThrow(/references mesh 7/);
   });
 });
+
+describe('IFC-authored finish on both Parquet decoders (#5984)', () => {
+  // The server writes NaN, not null, for "unauthored" (parquet-wasm 0.7.x
+  // leaks a neighbour's value into null slots), and 0 is a real roughness.
+  const finish = {
+    metallic: new Float32Array([NaN, 1]),
+    roughness: new Float32Array([0, NaN]),
+  };
+
+  it('standard format: keeps an authored 0 and omits NaN', () => {
+    const meshes = buildMeshesFromTables(meshTable(2, finish), vertexTable, indexTable);
+    expect(meshes[0].roughness).toBe(0);
+    expect('metallic' in meshes[0]).toBe(false);
+    expect(meshes[1].metallic).toBe(1);
+    expect('roughness' in meshes[1]).toBe(false);
+  });
+
+  it('optimized format: reads the finish per instance, not per template', () => {
+    const meshes = buildMeshesFromOptimizedTables(optimizedFixture(finish));
+    expect(Array.from(meshes[0].positions)).toEqual(Array.from(meshes[1].positions));
+    expect(meshes[0].roughness).toBe(0);
+    expect(meshes[1].metallic).toBe(1);
+    expect('roughness' in meshes[1]).toBe(false);
+  });
+
+  it('an older payload without the columns decodes with no finish keys', () => {
+    for (const mesh of [
+      ...buildMeshesFromTables(meshTable(1), vertexTable, indexTable),
+      ...buildMeshesFromOptimizedTables(optimizedFixture()),
+    ]) {
+      expect('metallic' in mesh || 'roughness' in mesh).toBe(false);
+    }
+  });
+});

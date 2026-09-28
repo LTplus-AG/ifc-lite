@@ -167,6 +167,43 @@ test.describe('#5826 target size and focus visibility', () => {
     ).toEqual([]);
   });
 
+  test('loaded sidebar Split and Collapse chrome have 24px targets and keep their actions (#6340)', async ({ page }) => {
+    await page.goto('/?model=/samples/building-architecture.ifc');
+    await page.waitForFunction((key) => {
+      const store = (globalThis as Record<string, unknown>)[key] as
+        | { getState: () => { models: Map<unknown, { ifcDataStore?: unknown }>; loading: boolean; geometryStreamingActive: boolean } }
+        | undefined;
+      const state = store?.getState();
+      return !!state && state.models.size === 1 && !state.loading && !state.geometryStreamingActive
+        && [...state.models.values()][0].ifcDataStore != null;
+    }, STORE, { timeout: 120000 });
+
+    const split = page.getByRole('button', { name: 'Split panel', exact: true }).first();
+    const collapse = page.getByRole('button', { name: 'Collapse sidebar to icons', exact: true }).first();
+    for (const button of [split, collapse]) {
+      await expect(button).toBeVisible();
+      const rect = await button.boundingBox();
+      expect(rect, 'the sidebar button has a rendered hit target').not.toBeNull();
+      expect(Math.min(rect!.width, rect!.height), 'sidebar chrome hit target is at least 24px').toBeGreaterThanOrEqual(MIN_TARGET_PX);
+    }
+
+    await split.click();
+    await expect(page.getByRole('menuitem').first()).toBeVisible();
+    await page.getByRole('menuitem').first().click();
+    await expect.poll(() => page.evaluate((key) => {
+      const store = (globalThis as Record<string, unknown>)[key] as
+        { getState: () => { sidebarSecondaryPanel: string | null } };
+      return store.getState().sidebarSecondaryPanel;
+    }, STORE)).not.toBeNull();
+
+    await collapse.click();
+    await expect.poll(() => page.evaluate((key) => {
+      const store = (globalThis as Record<string, unknown>)[key] as
+        { getState: () => { sidebarMode: string } };
+      return store.getState().sidebarMode;
+    }, STORE)).toBe('collapsed');
+  });
+
   test('authored model without georeferencing: Add Georeferencing target is at least 24x24 CSS px', async ({ page }) => {
     // #5826 follow-up: the committed Bonsai IFC has no georeference. AC20
     // does, so its settled metadata card cannot expose the Add control.

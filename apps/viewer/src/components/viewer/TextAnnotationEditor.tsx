@@ -99,6 +99,7 @@ export function TextAnnotationEditor({
         onKeyDown={handleKeyDown}
         onBlur={handleBlur}
         placeholder={t('textAnnotationEditor.placeholder')}
+        aria-label={t('textAnnotationEditor.inputLabel')}
         className="min-w-[120px] max-w-[300px] min-h-[32px] px-2 py-1 text-sm border-2 border-blue-500 rounded resize shadow-lg outline-none"
         rows={2}
         style={{

@@ -71,6 +71,8 @@ export const clashPanelEn = {
   'clashPanel.userDefinedGroups': 'User-defined groups',
   'clashPanel.duplicateScanGroupTooltip': 'Duplicate scans always group by coincident set',
   'clashPanel.groupBySeverityOption': 'By severity',
+  'clashPanel.groupByLabel': 'Group clashes by',
+  'clashPanel.sortByLabel': 'Sort clashes by',
   'clashPanel.groupByRuleOption': 'By rule',
   'clashPanel.groupByTypePairOption': 'By type pair',
   'clashPanel.sort.severity': 'Sort: severity',
@@ -143,6 +145,7 @@ export const clashPanelEn = {
   // Per-row review controls (#1468)
   'clashPanel.review.label': 'Review',
   'clashPanel.review.commentPlaceholder': 'Add a comment (optional)',
+  'clashPanel.review.commentLabel': 'Clash review comment',
 
   // Empty / no-match / no-comparison states
   'clashPanel.empty.title': 'No clash results yet',

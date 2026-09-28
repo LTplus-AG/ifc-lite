@@ -15,7 +15,7 @@
 
 import { type ModelTagOp } from './model-tag.js';
 import { groupRule, type GroupRule } from './filter-group-rule.js';
-import type { SubjectReadOptions } from './subject-read-options.js';
+import type { PropertyReadOptions, SubjectReadOptions } from './subject-read-options.js';
 import { modelFactRule, type ModelFactRule } from './filter-model-fact.js';
 import { listConditionRule, type ListConditionRule } from './filter-list-condition.js';
 
@@ -121,7 +121,7 @@ export interface AttributeRule {
   comparison?: ValueComparison;
 }
 
-export interface PropertyRule extends SubjectReadOptions {
+export interface PropertyRule extends PropertyReadOptions {
   kind: 'property';
   setName: string;
   /** Preserve exact IFC name matching when decoding older saved List conditions. */

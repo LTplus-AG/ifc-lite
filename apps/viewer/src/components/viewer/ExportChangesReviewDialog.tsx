@@ -27,24 +27,19 @@
  * entries (they live in separate store slices), so they cannot be itemized
  * per-entity here; a summary line reports their contribution to the total
  * count instead of silently dropping it from the review.
+ *
+ * Its chrome (header, guarded Cancel/Export footer) is `ExportDialogShell`'s
+ * controlled variant (#5848), like every other registered export dialog.
  */
 
+import { useCallback } from 'react';
 import { Download } from 'lucide-react';
-import { Spinner } from '@/components/ui/spinner';
-import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { useTranslation } from '@/i18n';
 import { resolve } from '@/i18n/registry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { EffectiveChange, MutablePropertyView } from '@ifc-lite/mutations';
 import type { ChangedModelsResult } from '@/lib/export/model-changes';
+import { ExportDialogShell } from './ExportDialogShell';
 
 export interface EntityRowGroup {
   entityId: number;
@@ -160,94 +155,86 @@ export function ExportChangesReviewDialog({
 }: ExportChangesReviewDialogProps) {
   const { t } = useTranslation();
   const isEmpty = totalCount === 0 || groups.every((g) => g.entities.length === 0 && g.unitemizedCount === 0);
+  // The host owns the outcome: a confirm either closes the review and exports
+  // in the background, or refuses and keeps it open. Neither is a result for
+  // the shell's Alert, so it gets `null`.
+  const handleExport = useCallback(async () => {
+    onConfirm();
+    return null;
+  }, [onConfirm]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl overflow-hidden">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Download className="h-5 w-5" />
-            {t('exportChangesReviewDialog.title')}
-          </DialogTitle>
-          <DialogDescription>
-            {isEmpty
-              ? t('exportChangesReviewDialog.noPendingChanges')
-              : t('exportChangesReviewDialog.changesSummary', {
-                  count: totalCount,
-                  models: t('exportChangesReviewDialog.modelsCount', { count: groups.length }),
-                  fileSuffix: groups.length === 1 ? '' : 's',
-                })}
-          </DialogDescription>
-        </DialogHeader>
-
-        {isEmpty ? (
-          <p className="py-4 text-sm text-muted-foreground">
-            {t('exportChangesReviewDialog.emptyStateMessage')}
-          </p>
-        ) : (
-          <div className="max-h-[60vh] overflow-y-auto pr-1 space-y-4 py-2">
-            {groups.map((group) => (
-              <div key={group.modelId}>
-                <div className="text-xs font-semibold text-foreground mb-1.5 truncate" title={group.modelName}>
-                  {group.modelName}
-                </div>
-                <div className="space-y-1">
-                  {group.entities.map((entity) => (
-                    <div key={entity.entityId} className="rounded-md border border-border px-2 py-1.5">
-                      <div className="truncate text-xs font-medium" title={entity.label}>
-                        {entity.label}
-                      </div>
-                      <div className="mt-1 space-y-0.5">
-                        {entity.changes.map((c, i) => (
-                          <div key={i} className="text-2xs text-muted-foreground flex items-baseline gap-1.5">
-                            <span className="shrink-0">{describeChangeKind(c, t)}</span>
-                            {hasValuePair(c.kind) && (
-                              <span className="truncate">
-                                {c.previousValue ?? t('exportChangesReviewDialog.noneValue')} <span className="opacity-60">→</span>{' '}
-                                {/* `newValue === undefined` alone does not mean "deleted" — a SET whose
-                                    stored value is `null` (e.g. an unset Boolean added from bSDD, issue
-                                    #1107) stringifies to `undefined` too, but the property/quantity is
-                                    still present in the exported file, just empty. `c.deleted` is the
-                                    only reliable signal a DELETE-operation mutation actually produced
-                                    this row (see `EffectiveChange.deleted`). */}
-                                {c.deleted ? t('exportChangesReviewDialog.deletedValue') : (c.newValue ?? t('exportChangesReviewDialog.noneValue'))}
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                  {group.unitemizedCount > 0 && (
-                    <div className="text-2xs text-muted-foreground px-2 py-1">
-                      {t('exportChangesReviewDialog.unitemizedNote', { count: group.unitemizedCount })}
-                    </div>
-                  )}
-                </div>
+    <ExportDialogShell
+      open={open}
+      onOpenStateChange={onOpenChange}
+      icon={<Download className="h-5 w-5" />}
+      title={t('exportChangesReviewDialog.title')}
+      description={
+        isEmpty
+          ? t('exportChangesReviewDialog.noPendingChanges')
+          : t('exportChangesReviewDialog.changesSummary', {
+              count: totalCount,
+              models: t('exportChangesReviewDialog.modelsCount', { count: groups.length }),
+              fileSuffix: groups.length === 1 ? '' : 's',
+            })
+      }
+      contentClassName="sm:max-w-2xl overflow-hidden"
+      optionsClassName="py-2"
+      cancelLabel={t('exportChangesReviewDialog.cancelButton')}
+      exportLabel={t('exportChangesReviewDialog.exportButton')}
+      exportingLabel={t('exportChangesReviewDialog.exportingLabel')}
+      exportIcon={<Download className="h-4 w-4 mr-2" />}
+      exportDisabled={isExporting || isEmpty}
+      onExport={handleExport}
+    >
+      {isEmpty ? (
+        <p className="py-4 text-sm text-muted-foreground">
+          {t('exportChangesReviewDialog.emptyStateMessage')}
+        </p>
+      ) : (
+        <div className="max-h-[60vh] overflow-y-auto pr-1 space-y-4 py-2">
+          {groups.map((group) => (
+            <div key={group.modelId}>
+              <div className="text-xs font-semibold text-foreground mb-1.5 truncate" title={group.modelName}>
+                {group.modelName}
               </div>
-            ))}
-          </div>
-        )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {t('exportChangesReviewDialog.cancelButton')}
-          </Button>
-          <Button onClick={onConfirm} disabled={isExporting || isEmpty}>
-            {isExporting ? (
-              <>
-                <Spinner size="md" className="mr-2" />
-                {t('exportChangesReviewDialog.exportingLabel')}
-              </>
-            ) : (
-              <>
-                <Download className="h-4 w-4 mr-2" />
-                {t('exportChangesReviewDialog.exportButton')}
-              </>
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+              <div className="space-y-1">
+                {group.entities.map((entity) => (
+                  <div key={entity.entityId} className="rounded-md border border-border px-2 py-1.5">
+                    <div className="truncate text-xs font-medium" title={entity.label}>
+                      {entity.label}
+                    </div>
+                    <div className="mt-1 space-y-0.5">
+                      {entity.changes.map((c, i) => (
+                        <div key={i} className="text-2xs text-muted-foreground flex items-baseline gap-1.5">
+                          <span className="shrink-0">{describeChangeKind(c, t)}</span>
+                          {hasValuePair(c.kind) && (
+                            <span className="truncate">
+                              {c.previousValue ?? t('exportChangesReviewDialog.noneValue')} <span className="opacity-60">→</span>{' '}
+                              {/* `newValue === undefined` alone does not mean "deleted" — a SET whose
+                                  stored value is `null` (e.g. an unset Boolean added from bSDD, issue
+                                  #1107) stringifies to `undefined` too, but the property/quantity is
+                                  still present in the exported file, just empty. `c.deleted` is the
+                                  only reliable signal a DELETE-operation mutation actually produced
+                                  this row (see `EffectiveChange.deleted`). */}
+                              {c.deleted ? t('exportChangesReviewDialog.deletedValue') : (c.newValue ?? t('exportChangesReviewDialog.noneValue'))}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                {group.unitemizedCount > 0 && (
+                  <div className="text-2xs text-muted-foreground px-2 py-1">
+                    {t('exportChangesReviewDialog.unitemizedNote', { count: group.unitemizedCount })}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </ExportDialogShell>
   );
 }

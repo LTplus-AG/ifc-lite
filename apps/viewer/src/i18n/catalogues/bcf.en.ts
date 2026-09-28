@@ -128,6 +128,7 @@ export const bcfEn = {
 
   // BCFTopicDetail.tsx
   'bcf.topicDetail.zoomToTopicAria': 'Zoom to topic',
+  'bcf.topicDetail.backToTopics': 'Back to topics',
   'bcf.topicDetail.zoomTo': 'Zoom to',
   'bcf.topicDetail.editTopic': 'Edit topic',
   'bcf.topicDetail.deleteTopicAria': 'Delete topic',
@@ -160,6 +161,7 @@ export const bcfEn = {
   'bcf.topicDetail.cancelViewpointCommentAria': 'Cancel viewpoint comment',
   'bcf.topicDetail.addCommentOnViewpointPlaceholder': 'Add comment on viewpoint...',
   'bcf.topicDetail.addCommentPlaceholder': 'Add a comment...',
+  'bcf.topicDetail.commentInputLabel': 'Comment',
   'bcf.topicDetail.sendCommentAria': 'Send comment',
   'bcf.topicDetail.deleteConfirmTitle': 'Delete Topic?',
   'bcf.topicDetail.deleteConfirmBody':
@@ -186,6 +188,7 @@ export const bcfEn = {
   'bcf.panel.showMarkers': 'Show 3D markers',
   'bcf.panel.setAuthorTitle': 'Set author',
   'bcf.panel.setAuthorHeading': 'Set Author Email',
+  'bcf.panel.authorEmailLabel': 'Author email',
   'bcf.panel.importDialogTitle': 'Import BCF File',
   'bcf.panel.bcfFilterName': 'BCF Files',
   'bcf.panel.allFilesFilterName': 'All Files',

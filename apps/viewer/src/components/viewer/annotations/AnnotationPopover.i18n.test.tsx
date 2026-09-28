@@ -141,6 +141,8 @@ describe('AnnotationPopover localization (#4918)', () => {
       />,
     );
     const english = readableStrings(container);
+    assert.equal(container.querySelector('textarea')?.getAttribute('aria-label'), 'Note about this point…',
+      '#6342: edit-mode note has a persistent name');
     registerLocale(PSEUDO_LOCALE, pseudoLocale());
     act(() => setLocale(PSEUDO_LOCALE));
     const after = readableStrings(container);

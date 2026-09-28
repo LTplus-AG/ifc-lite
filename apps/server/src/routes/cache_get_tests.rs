@@ -7,7 +7,7 @@
 //!
 //! Before this, `get_cached` deserialized whatever `DiskCache::get` read as
 //! `ParseResponse` unconditionally, via `?`. A binary Parquet body cached
-//! under its real key (`-parquet-v5`, `-parquet-v7`, `-parquet-optimized-v2`)
+//! under its real key (`-parquet-v8`, `-parquet-v9`, `-parquet-optimized-v3`)
 //! is not JSON, so `serde_json::from_slice` fails, `From<serde_json::Error>`
 //! turns that into `ApiError::Internal`, and the client sees a `500` on a key
 //! that genuinely exists -- the reporter's `GET /cache/{sha}-default-parquet-optimized-v1`
@@ -104,7 +104,7 @@ END-ISO-10303-21;
 /// #5542: `getCached(result.cache_key)` is the client's documented call, and
 /// it could never hit. `POST /api/v1/parse` returns the request `cache_key`
 /// and stores its response under `json_response_cache_key(cache_key)`
-/// (`{cache_key}-json-v5`); this route looked the key up unchanged, so it
+/// (`{cache_key}-json-v6`); this route looked the key up unchanged, so it
 /// answered 404 for every file the JSON route had cached.
 ///
 /// Driven through both real routes rather than a seeded entry, so it pins the
@@ -234,7 +234,7 @@ async fn issue_5750_get_and_delete_take_the_same_cache_key() {
 async fn issue_5750_get_and_delete_refuse_the_same_keys() {
     let state = test_state("5750-same-refusals").await;
     let digest = "0".repeat(64);
-    for key in [digest.clone(), format!("{digest}-default-json-v5"), "not-a-key".to_owned()] {
+    for key in [digest.clone(), format!("{digest}-default-json-v6"), "not-a-key".to_owned()] {
         let get = get_cache(&state, &key).await;
         let delete = delete_cache(&state, &key).await;
         assert_eq!(get.status(), StatusCode::BAD_REQUEST, "GET {key}");

@@ -26,6 +26,7 @@ const TEXT_OP: Record<string, NumericOp> = { '=': 'eq', '!=': 'ne', '>=': 'gte',
 const quoted = (name: string): string => (/^[^\s."()>=<!]+$/.test(name) ? name : `"${name}"`);
 function subjectToText(s: Subject): string {
   if (s.kind === 'attribute') return quoted(s.name);
+  // A complex-property `memberPath` (#5475) has no text spelling either; it is dropped like `system` below.
   if (s.kind === 'property') return `${quoted(s.setName)}.${quoted(s.propertyName)}`;
   if (s.kind === 'quantity') return `${quoted(s.setName)}.${quoted(s.quantityName)}`;
   // System-scoped classification has no text spelling (kept out of this

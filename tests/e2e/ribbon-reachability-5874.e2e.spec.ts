@@ -10,13 +10,13 @@ test.use({ viewport: { width: 1280, height: 900 } });
 const TAB_BUTTON_COUNTS = [
   ['File', 18],
   ['Home', 7],
-  ['View', 19],
-  ['Elements', 16],
+  ['View', 20],
+  ['Elements', 17], // includes the selected mesh hover outline (#5748)
   ['Analyze', 17], // 16 commands plus the panel-browser content trigger (#5873)
   ['Author', 9],
 ] as const;
 
-test('authored IFC keeps all 85 ribbon commands and panel browser reachable at 1280px (#5874)', async ({ page }, testInfo) => {
+test('authored IFC keeps all 87 ribbon commands and panel browser reachable at 1280px (#5874, #5778)', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     localStorage.setItem('ifclite.extensions.privacy-disclosure.v2', 'e2e acknowledged');
   });
@@ -77,8 +77,9 @@ test('authored IFC keeps all 85 ribbon commands and panel browser reachable at 1
   }
 
   const browserCount = visited.Analyze.filter((name) => name === 'Browse panels').length;
+  expect(visited.View, 'View includes the selected-source centreline command (#5778)').toContain('Centreline');
   expect(browserCount, 'Analyze has one panel-browser content trigger').toBe(1);
-  expect(Object.values(visited).reduce((total, names) => total + names.length, 0) - browserCount).toBe(85);
+  expect(Object.values(visited).reduce((total, names) => total + names.length, 0) - browserCount).toBe(87);
   await testInfo.attach('reachable-ribbon-commands.json', {
     body: JSON.stringify(visited, null, 2),
     contentType: 'application/json',

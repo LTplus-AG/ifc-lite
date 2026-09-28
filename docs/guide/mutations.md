@@ -103,6 +103,14 @@ The iterator yields source entities in parsed order, followed by source entities
 retyped into a requested class, then overlay-created entities. Tombstones are
 excluded in every case.
 
+For direct members of a spatial container, `@ifc-lite/parser` also exports
+`effectiveSpatialMemberIds(store, containerId, context)`. Supply a context
+containing the model's `resolveEffectiveRelationshipOverlay` result, an
+`isDeleted` callback, and an effective `typeName` callback for a live session.
+It follows edited and created `IfcRelContainedInSpatialStructure` records,
+filters deleted products and spatial child nodes, and returns only direct
+members. Without a context it reads the parsed spatial hierarchy snapshot.
+
 For per-class totals, `countEffectiveEntityTypes` applies the same membership
 and class changes. It returns a map keyed by uppercase IFC class and keeps a
 zero entry when all source entities of a class were deleted or retyped.

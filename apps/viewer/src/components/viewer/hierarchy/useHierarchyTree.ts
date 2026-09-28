@@ -24,6 +24,7 @@ import {
   collectGeometryReadyModelIds,
 } from './hierarchyGeometry';
 import { flattenVisibleHierarchy, indexHierarchyTree } from './treeProjection';
+import { effectiveSpatialMembers } from '@/lib/effective-spatial-members';
 
 export type { HierarchyMode } from '@/store';
 
@@ -299,7 +300,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
       const modelId = node.modelIds[0];
       const model = models.get(modelId);
       if (model?.ifcDataStore?.spatialHierarchy) {
-        const localIds = (model.ifcDataStore.spatialHierarchy.byStorey.get(storeyId) as number[]) || [];
+        const localIds = effectiveSpatialMembers(model.ifcDataStore, mutationViews.get(modelId), storeyId);
         return toGlobalIdsForModel(modelId, localIds);
       }
     } else if (node.type === 'IfcBuildingStorey') {
@@ -308,13 +309,13 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
       const modelId = node.modelIds[0];
 
       if (modelId === 'legacy' && ifcDataStore?.spatialHierarchy) {
-        const elements = ifcDataStore.spatialHierarchy.byStorey.get(storeyId);
-        if (elements) return elements as number[];
+        const elements = effectiveSpatialMembers(ifcDataStore, mutationViews.get('legacy'), storeyId);
+        if (elements.length) return elements;
       }
 
       const model = models.get(modelId);
       if (model?.ifcDataStore?.spatialHierarchy) {
-        const localIds = (model.ifcDataStore.spatialHierarchy.byStorey.get(storeyId) as number[]) || [];
+        const localIds = effectiveSpatialMembers(model.ifcDataStore, mutationViews.get(modelId), storeyId);
         return toGlobalIdsForModel(modelId, localIds);
       }
     } else if (node.type === 'IfcSpace' || node.type === 'IfcSpatialZone') {
@@ -322,13 +323,13 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
       const modelId = node.modelIds[0];
 
       if (modelId === 'legacy' && ifcDataStore?.spatialHierarchy) {
-        const elements = ifcDataStore.spatialHierarchy.bySpace.get(spaceId) ?? [];
-        return [spaceId, ...(elements as number[])];
+        const elements = effectiveSpatialMembers(ifcDataStore, mutationViews.get('legacy'), spaceId);
+        return [spaceId, ...elements];
       }
 
       const model = models.get(modelId);
       if (model?.ifcDataStore?.spatialHierarchy) {
-        const localIds = (model.ifcDataStore.spatialHierarchy.bySpace.get(spaceId) as number[]) || [];
+        const localIds = effectiveSpatialMembers(model.ifcDataStore, mutationViews.get(modelId), spaceId);
         return [...node.globalIds, ...toGlobalIdsForModel(modelId, localIds)];
       }
     } else if (node.type === 'element') {
@@ -340,7 +341,9 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     }
     // Spatial containers (Project, Site, Building) and top-level models don't have direct element visibility toggle
     return [];
-  }, [models, ifcDataStore, unifiedStoreys, getUnifiedStoreyElements, toGlobalIdsForModel]);
+  // Views mutate in place; mutationVersion refreshes this callback after edits.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [models, ifcDataStore, unifiedStoreys, getUnifiedStoreyElements, toGlobalIdsForModel, mutationViews, mutationVersion]);
 
   // Persist storey sort-order preference (issue #1296)
   const handleSetSortMode = useCallback((mode: HierarchySortMode) => {

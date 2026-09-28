@@ -76,6 +76,12 @@ describe('RuleSetEditor — requirement kind switching (#5138)', () => {
     assert.equal(afterAggregate, 'aggregate');
     assert.deepEqual(current.rules[0].applicability, originalApplicability);
 
+    const aggregateValue = container.querySelector<HTMLInputElement>('input[aria-label="Aggregate target value"]');
+    assert.ok(aggregateValue, 'the aggregate target field has an accessible name');
+    type(aggregateValue, '7');
+    const editedRequirement = current.rules[0].requirement;
+    assert.equal(editedRequirement.kind === 'aggregate' ? editedRequirement.value : undefined, 7);
+
     click(kindButton(container, 'Compare'));
     const afterCompare: string = current.rules[0].requirement.kind;
     assert.equal(afterCompare, 'compare');
@@ -125,5 +131,22 @@ describe('RuleSetEditor — requirement kind switching (#5138)', () => {
       selectorToggles.some((b) => (b as HTMLButtonElement).disabled),
       'the forced block’s Selector text toggle must be disabled',
     );
+  });
+
+  it('names the distinct advanced cardinality bounds and edits the intended bound (#6342)', () => {
+    const initial: RuleSetFile = { version: 1, name: 'fixture', rules: [fixtureRule()] };
+    let current = initial;
+    const container = render(<Harness initial={initial} onFileChange={(next) => { current = next; }} />);
+    const advanced = [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Advanced');
+    assert.ok(advanced);
+    click(advanced);
+    const min = container.querySelector('input[aria-label="Min applicable"]') as HTMLInputElement | null;
+    const max = container.querySelector('input[aria-label="Max applicable"]') as HTMLInputElement | null;
+    assert.ok(min);
+    assert.ok(max);
+    type(min, '2');
+    assert.deepEqual(current.rules[0].cardinality, { minApplicable: 2 });
+    type(max, '5');
+    assert.deepEqual(current.rules[0].cardinality, { minApplicable: 2, maxApplicable: 5 });
   });
 });

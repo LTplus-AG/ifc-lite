@@ -13,14 +13,14 @@ use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder};
 
 /// Guards `resolve_complex_property_value` against a pathological/cyclic
 /// `HasProperties` chain, mirroring the TS `MAX_COMPLEX_PROPERTY_DEPTH` in
-/// `packages/parser/src/property-value-parser.ts` exactly: real IFC nests
+/// `packages/parser/src/property-complex-value.ts` exactly: real IFC nests
 /// `IfcComplexProperty` at most a couple of levels deep.
 pub(super) const MAX_COMPLEX_PROPERTY_DEPTH: u8 = 8;
 
 /// The suffix minted into a complex property's display value when the depth
 /// cap stops the walk with `HasProperties` members still unread (issue
 /// #3972). Byte-identical to `complexPropertyTruncationMarker()` in
-/// `packages/parser/src/property-value-parser.ts` — the two paths feed the
+/// `packages/parser/src/property-complex-value.ts` — the two paths feed the
 /// same property panel, CSV/parquet export and compare fingerprints, so a
 /// divergence here reads as a data difference between server and browser.
 ///
@@ -34,11 +34,29 @@ fn complex_property_truncation_marker() -> String {
     format!("(truncated: nesting deeper than {MAX_COMPLEX_PROPERTY_DEPTH} levels)")
 }
 
+/// What an `IfcPropertyReferenceValue` reads as (#5475): the referenced
+/// object's `Name`, else its `Identification` (an external reference, a
+/// person), else `#<id>` so the property still reads as present. Mirrors
+/// `resolvePropertyReferenceValue` in
+/// `packages/parser/src/property-reference-value.ts`.
+pub(super) fn property_reference_label(decoder: &mut EntityDecoder, id: u32) -> String {
+    let label = decoder.decode_by_id(id).ok().and_then(|target| {
+        ["Name", "Identification"].iter().find_map(|attribute| {
+            let index = target.ifc_type.attribute_index(attribute)?;
+            target
+                .get_string(index)
+                .filter(|s| !s.trim().is_empty())
+                .map(str::to_string)
+        })
+    });
+    label.unwrap_or_else(|| format!("#{id}"))
+}
+
 /// Resolve an `IfcComplexProperty`'s nested `HasProperties` (EXPRESS:
 /// `[Name, Description, UsageName, HasProperties]`, index 3) into a display
 /// value plus a flat `values` candidate list, recursing into any further
 /// nested `IfcComplexProperty` — mirrors `resolveComplexPropertyValue`
-/// (`packages/parser/src/property-value-parser.ts`) member-for-member:
+/// (`packages/parser/src/property-complex-value.ts`) member-for-member:
 ///
 /// - Not a list, or an empty list: return the bare `UsageName` (or the "null"
 ///   kind when it's absent/empty) — there was nothing nested to lose.

@@ -9,19 +9,10 @@
  * at a different component is covered too), opening it, and looking for the
  * shell's `data-export-dialog-shell` marker.
  *
- * `MIGRATED_DIALOG_IDS` is deliberately an explicit allowlist, not "every
- * `kind: 'dialog'` entry": adding an unmigrated id here would fail (the
- * marker is only ever rendered by `ExportDialogShell`), which is the point —
- * this test is the checklist for the rest of #5848. `ifc` (`ExportDialog`)
- * joined this PR. `modified-ifc` (`ExportChangesButton`) remains follow-up
- * work — its review-then-export flow is a different shape, not this dialog's
- * options-then-export one. `anonymized` (`AnonymizedExportDialog`) does NOT
- * join this list: its non-modal, split 3D-preview layout does not fit the
- * shell's single-column chrome (see that component's own module docblock),
- * so it never renders `[data-export-dialog-shell]` — it instead reuses the
- * shell's underlying guard behaviour (`useExportDialogOpenGuard`, #5605)
- * directly. A future PR extends this list only as each remaining dialog's
- * layout actually fits the shared chrome.
+ * The list is every `kind: 'dialog'` registry entry, so a dialog added to the
+ * registry without the shell fails here. Each one is opened through a trigger
+ * the test supplies, the registry's own contract (`ExportDialogComponent`),
+ * because `modified-ifc` renders no standing button while nothing has changed.
  */
 
 import '@/test/setup-dom.js';
@@ -29,29 +20,26 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanup, click, render } from '@/test/render.js';
 import { useViewerStore } from '@/store/index.js';
-import { EXPORT_COMMANDS, type ExportDialogCommand } from './export-commands.js';
+import { EXPORT_COMMANDS, type ExportCommand, type ExportDialogCommand } from './export-commands.js';
 
 afterEach(() => {
   cleanup();
   useViewerStore.getState().resetViewerState();
 });
 
-const MIGRATED_DIALOG_IDS = ['glb', 'kmz', 'usd', 'energy', 'pdf', 'ifc'] as const;
-
-function dialogCommand(id: string): ExportDialogCommand {
-  const command = EXPORT_COMMANDS.find((c) => c.id === id);
-  assert.ok(command, `no registry entry for "${id}"`);
-  assert.equal(command.kind, 'dialog', `"${id}" is not a dialog command`);
-  return command as ExportDialogCommand;
-}
+const REGISTRY: readonly ExportCommand[] = EXPORT_COMMANDS;
+const DIALOG_COMMANDS = REGISTRY.filter((c): c is ExportDialogCommand => c.kind === 'dialog');
 
 describe('registered export dialogs use ExportDialogShell (#5848)', () => {
-  for (const id of MIGRATED_DIALOG_IDS) {
+  it('the registry has dialog commands to check', () => {
+    assert.ok(DIALOG_COMMANDS.length >= 8, `expected every export dialog, found ${DIALOG_COMMANDS.length}`);
+  });
+
+  for (const { id, Dialog } of DIALOG_COMMANDS) {
     it(`"${id}" renders through ExportDialogShell`, () => {
-      const { Dialog } = dialogCommand(id);
-      const container = render(<Dialog surface="classic" />);
+      const container = render(<Dialog surface="classic" trigger={<button type="button">open</button>} />);
       const trigger = container.querySelector('button');
-      assert.ok(trigger, `"${id}" must render a trigger`);
+      assert.ok(trigger, `"${id}" must render the supplied trigger`);
       click(trigger);
       assert.ok(
         document.body.querySelector('[data-export-dialog-shell]'),

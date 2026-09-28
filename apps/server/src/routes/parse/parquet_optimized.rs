@@ -20,7 +20,9 @@ use crate::services::{
     baked_basis_zup, extract_data_model, serialize_data_model_to_parquet,
     serialize_to_parquet_optimized_with_stats, VERTEX_MULTIPLIER,
 };
+use crate::types::finish_meshes;
 use crate::AppState;
+use ifc_lite_processing::style::ModelFinishes;
 use axum::{
     extract::{Multipart, Query, State},
     response::Response,
@@ -118,10 +120,13 @@ pub async fn parse_parquet_optimized(
             // First: geometry and the data model in parallel, mirroring
             // `parse_parquet` -- independent extractions over the same bytes,
             // each on its own rayon thread.
-            let (mut result, mut data_model) = rayon::join(
+            // #5984: the finish index is a third independent read of the bytes.
+            let (mut result, (mut data_model, mut finishes)) = rayon::join(
                 || process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality),
-                || extract_data_model(&content),
+                || rayon::join(|| extract_data_model(&content), || ModelFinishes::from_content(&content)),
             );
+            let meshes = finish_meshes(&mut finishes, std::mem::take(&mut result.meshes));
+            drop(finishes);
             let dm_stats = DataModelStats {
                 entity_count: data_model.entities.len(),
                 property_set_count: data_model.property_sets.len(),
@@ -154,7 +159,7 @@ pub async fn parse_parquet_optimized(
                 || extract_symbolic_data_with_provenance_in_frame(&content, result.frame),
                 || {
                     rayon::join(
-                        || serialize_to_parquet_optimized_with_stats(&result.meshes, false, Some(&basis)),
+                        || serialize_to_parquet_optimized_with_stats(&meshes, false, Some(&basis)),
                         || serialize_data_model_to_parquet(&data_model),
                     )
                 },
@@ -164,7 +169,7 @@ pub async fn parse_parquet_optimized(
             let dm_parquet = dm_parquet?;
             // Nothing after this reads the meshes; free them here rather than
             // hold the model across the cache writes below.
-            drop(std::mem::take(&mut result.meshes));
+            drop(meshes);
             tracing::info!(
                 cache_key = %cache_key_for_log,
                 input_meshes = opt_stats.input_meshes,

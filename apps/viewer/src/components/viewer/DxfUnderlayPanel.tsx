@@ -65,7 +65,6 @@ interface DxfUnderlayPanelProps {
   georeferenceAvailable: boolean;
 }
 
-/** One numeric placement field with a label. */
 function PlacementField({
   label,
   value,
@@ -77,10 +76,12 @@ function PlacementField({
   step: number;
   onCommit: (value: number) => void;
 }): React.ReactElement {
+  const inputId = React.useId();
   return (
     <div className="flex flex-col gap-0.5">
-      <Label className="text-2xs text-muted-foreground">{label}</Label>
+      <Label htmlFor={inputId} className="text-2xs text-muted-foreground">{label}</Label>
       <Input
+        id={inputId}
         type="number"
         step={step}
         value={Number.isFinite(value) ? Number(value.toFixed(4)) : 0}
@@ -294,7 +295,6 @@ function UnderlayCard({
           </div>
         </CollapsibleContent>
       </Collapsible>
-
       {/* Placement */}
       <Collapsible open={placementOpen} onOpenChange={setPlacementOpen}>
         <CollapsibleTrigger asChild>

@@ -4,3 +4,5 @@
 
 export { DaluxBuildProvider } from './provider.js';
 export { DALUX_MANIFEST } from './manifest.js';
+export { DaluxCommitError } from './errors.js';
+export { invalidateCommitIndex } from './commit-index.js';

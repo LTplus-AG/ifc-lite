@@ -128,7 +128,7 @@ export function nonEmptyString(value: string | null | undefined): string | undef
 
 /** Unwraps a Dalux `{ data: {...} }` item envelope. Bare objects with no
  * `data` wrapper pass straight through — the API uses both shapes. */
-function unwrapDaluxEnvelope(item: unknown): unknown {
+export function unwrapDaluxEnvelope(item: unknown): unknown {
   if (item && typeof item === 'object' && !Array.isArray(item) && 'data' in item) {
     return (item as { data: unknown }).data;
   }

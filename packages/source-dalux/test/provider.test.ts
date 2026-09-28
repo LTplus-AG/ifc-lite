@@ -84,6 +84,20 @@ describe('DaluxBuildProvider', () => {
       // per-folder "load more files" concept, so the host must keep draining
       // a folder's file listing in full rather than paging it incrementally.
       eagerFileSweep: true,
+      // Version sets as model history (contract 2.1.0). Spelled out rather
+      // than matched loosely: every `false` here is a capability Dalux
+      // genuinely lacks, and a flag flipping on without its method is the
+      // exact drift the conformance suite's first check exists to catch.
+      commits: {
+        payloadFormats: ['ifc-step', 'ifc-zip', 'ifcx'],
+        fingerprints: false,
+        storedDiffs: false,
+        elementHistory: false,
+        identityRecords: false,
+        write: false,
+        watch: false,
+        modelIdsAreFileIds: true,
+      },
     });
   });
 

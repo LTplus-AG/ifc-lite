@@ -46,6 +46,40 @@ export interface DaluxMockFile {
   readonly deleted?: boolean;
   /** Body served by both the download-link and the by-revision content route. */
   readonly content: string;
+  /**
+   * Earlier revisions of this file, oldest first. Only version sets can
+   * surface these — Dalux has no endpoint that lists a file's revisions —
+   * so they exist to be pinned by {@link DaluxMockVersionSet.files}.
+   */
+  readonly revisions?: readonly DaluxMockRevision[];
+}
+
+/** One historical revision of a file, as a version set pins it. */
+export interface DaluxMockRevision {
+  readonly fileRevisionId: string;
+  readonly content: string;
+  readonly contentHash?: string;
+  /** Dalux's revision NUMBER (`File.version`), the strongest ordering signal. */
+  readonly version?: string;
+  readonly lastModified?: string;
+  readonly lastModifiedByUserId?: string;
+  /** Name at this revision, when the file was renamed later. */
+  readonly fileName?: string;
+  readonly fileSize?: number;
+}
+
+/**
+ * A named snapshot pinning one revision of each listed file — the shape
+ * `GET /3.0/projects/{p}/version_sets/{vs}/files` returns.
+ */
+export interface DaluxMockVersionSet {
+  readonly versionSetId: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly status?: string;
+  readonly fileAreaId: string;
+  /** `fileId` -> the `fileRevisionId` this set pins. */
+  readonly files: Readonly<Record<string, string>>;
 }
 
 export interface DaluxMockFileArea {
@@ -60,6 +94,8 @@ export interface DaluxMockProject {
   readonly projectId: string;
   readonly projectName: string;
   readonly fileAreas: readonly DaluxMockFileArea[];
+  /** Project-wide version sets, in the order the list endpoint returns them. */
+  readonly versionSets?: readonly DaluxMockVersionSet[];
 }
 
 export interface DaluxMockWorld {
@@ -176,6 +212,57 @@ function fileRow(area: DaluxMockFileArea, file: DaluxMockFile): Record<string, u
   };
 }
 
+/**
+ * The wire row for one file AS A VERSION SET PINS IT: the pinned revision's
+ * own id, hash, timestamps and name, not the file's current ones. Serving
+ * current metadata here instead would be the subtle mock bug that hides an
+ * ordering defect in the provider — which is why the provider's own ordering
+ * has three signals and does not rely on this one alone.
+ */
+function pinnedFileRow(
+  area: DaluxMockFileArea,
+  file: DaluxMockFile,
+  revisionId: string,
+  projectId: string,
+  versionSetId: string,
+): Record<string, unknown> | undefined {
+  const revision = (file.revisions ?? []).find((candidate) => candidate.fileRevisionId === revisionId);
+  const isCurrent = file.fileRevisionId === revisionId;
+  if (!revision && !isCurrent) return undefined;
+  return {
+    ...fileRow(area, file),
+    fileRevisionId: revisionId,
+    fileName: revision?.fileName ?? file.fileName,
+    contentHash: (revision?.contentHash ?? (isCurrent ? file.contentHash : undefined)) ?? null,
+    version: revision?.version ?? null,
+    lastModified: revision?.lastModified ?? '2026-08-06T10:00:00Z',
+    lastModifiedByUserId: revision?.lastModifiedByUserId ?? 'user-1',
+    fileSize: revision?.fileSize ?? null,
+    // The route Dalux actually advertises for a pinned revision, observed
+    // live: VERSION-SET scoped and at api version 1.0, not the file-area
+    // scoped 2.0 route a client might build by hand.
+    downloadLink: versionSetRevisionUrl(projectId, versionSetId, file.fileId, revisionId),
+  };
+}
+
+/** `/1.0/projects/{p}/version_sets/{vs}/files/{f}/revisions/{r}/content`. */
+function versionSetRevisionUrl(
+  projectId: string,
+  versionSetId: string,
+  fileId: string,
+  revisionId: string,
+): string {
+  return `${DALUX_MOCK_BASE_URL}/1.0/projects/${encodeURIComponent(projectId)}`
+    + `/version_sets/${encodeURIComponent(versionSetId)}/files/${encodeURIComponent(fileId)}`
+    + `/revisions/${encodeURIComponent(revisionId)}/content`;
+}
+
+/** The bytes of one revision, current or historical. */
+function revisionBytes(file: DaluxMockFile, revisionId: string): string | undefined {
+  if (file.fileRevisionId === revisionId) return file.content;
+  return (file.revisions ?? []).find((candidate) => candidate.fileRevisionId === revisionId)?.content;
+}
+
 /** URL of the download-link route this mock hands out for a file's current bytes. */
 function downloadLinkFor(projectId: string, fileAreaId: string, fileId: string): string {
   return `${DALUX_MOCK_BASE_URL}/download/${encodeURIComponent(projectId)}/${encodeURIComponent(fileAreaId)}/${encodeURIComponent(fileId)}`;
@@ -290,6 +377,81 @@ export function createDaluxApiMock(world: DaluxMockWorld, options: DaluxMockOpti
           },
         }),
       );
+    }
+
+    // /2.1/projects/{p}/version_sets — every version set on the project.
+    if (segments[0] === '2.1' && segments[3] === 'version_sets' && segments.length === 4) {
+      if (!project) return Promise.resolve(mockResponse({ status: 404, body: 'no such project' }));
+      const rows = (project.versionSets ?? []).map((set) => ({
+        data: {
+          versionSetId: set.versionSetId,
+          name: set.name,
+          description: set.description ?? null,
+          status: set.status ?? 'locked',
+          fileAreaId: set.fileAreaId,
+        },
+      }));
+      return Promise.resolve(mockResponse({ json: paginate(rows, url, paging) }));
+    }
+
+    // /3.0/projects/{p}/version_sets/{vs}/files — the files this set pins.
+    if (segments[0] === '3.0' && segments[3] === 'version_sets' && segments[5] === 'files' && segments.length === 6) {
+      const set = project?.versionSets?.find((candidate) => candidate.versionSetId === segments[4]);
+      if (!project || !set) return Promise.resolve(mockResponse({ status: 404, body: 'no such version set' }));
+      const setArea = findArea(project, set.fileAreaId);
+      const rows: { data: Record<string, unknown> }[] = [];
+      for (const [fileId, revisionId] of Object.entries(set.files)) {
+        const pinnedFile = setArea?.files.find((candidate) => candidate.fileId === fileId);
+        if (!setArea || !pinnedFile) continue;
+        const row = pinnedFileRow(setArea, pinnedFile, revisionId, project.projectId, set.versionSetId);
+        // The live envelope carries a `links` array beside `data`; the
+        // provider must read through it, not trip over it.
+        if (row) {
+          rows.push({
+            data: row,
+            links: [{
+              rel: 'deepLink',
+              href: `${DALUX_MOCK_BASE_URL}/projects/${project.projectId}/versionSet/${set.versionSetId}/revisions/${revisionId}/deepLink`,
+              method: 'GET',
+            }],
+          } as { data: Record<string, unknown> });
+        }
+      }
+      return Promise.resolve(mockResponse({ json: paginate(rows, url, paging) }));
+    }
+
+    // /1.0/projects/{p}/version_sets/{vs}/files/{f}/revisions/{r}/content —
+    // the route a version-set file row's own `downloadLink` points at.
+    if (
+      segments[0] === '1.0'
+      && segments[3] === 'version_sets'
+      && segments[5] === 'files'
+      && segments[7] === 'revisions'
+      && segments[9] === 'content'
+      && segments.length === 10
+    ) {
+      const set = project?.versionSets?.find((candidate) => candidate.versionSetId === segments[4]);
+      const setArea = set ? findArea(project, set.fileAreaId) : undefined;
+      const pinned = setArea?.files.find((candidate) => candidate.fileId === segments[6]);
+      const bytes = pinned ? revisionBytes(pinned, segments[8]) : undefined;
+      if (bytes === undefined) return Promise.resolve(mockResponse({ status: 404, body: 'no such pinned revision' }));
+      return Promise.resolve(mockResponse({ body: bytes }));
+    }
+
+    // /2.0/projects/{p}/file_areas/{fa}/files/{f}/revisions/{r}/content —
+    // the bytes of one exact revision. The only way to read a historical
+    // revision out of Dalux, and what `loadCommit` calls.
+    if (
+      segments[0] === '2.0'
+      && segments[5] === 'files'
+      && segments[7] === 'revisions'
+      && segments[9] === 'content'
+      && segments.length === 10
+    ) {
+      const revisionFile = area?.files.find((candidate) => candidate.fileId === segments[6]);
+      const bytes = revisionFile ? revisionBytes(revisionFile, segments[8]) : undefined;
+      if (bytes === undefined) return Promise.resolve(mockResponse({ status: 404, body: 'no such revision' }));
+      return Promise.resolve(mockResponse({ body: bytes }));
     }
 
     // /download/{p}/{fa}/{f} — the bytes the link above points at.

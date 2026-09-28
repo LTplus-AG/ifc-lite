@@ -7,7 +7,11 @@ import type { PluginManifest } from '@ifc-lite/plugin-api';
 export const DALUX_MANIFEST: PluginManifest = {
   name: 'dalux-build',
   title: 'Dalux Box',
-  api: '^2.0.0',
+  // `^2.1.0` now: the manifest declares `capabilities.commits`, which a 2.0.0
+  // host does not understand — it would register this provider and then
+  // never call a single commit method, leaving the History panel empty with
+  // no explanation. Refusing to register is the honest failure.
+  api: '^2.1.0',
   auth: 'preferences',
   permissions: {
     network: ['*.dalux.com', 'dalux.com'],
@@ -59,6 +63,36 @@ export const DALUX_MANIFEST: PluginManifest = {
     changeDetection: true,
     // No server-side file search endpoint.
     search: false,
+    /**
+     * Version sets ARE a commit history (contract 2.1.0). Dalux has no
+     * per-file revision listing, but `GET /2.1/projects/{p}/version_sets`
+     * plus `GET /3.0/.../version_sets/{vs}/files` enumerate every revision a
+     * project's snapshots pinned, and `/2.0/.../revisions/{r}/content`
+     * downloads them — which is exactly a model's history.
+     *
+     * Everything past the five required reads is off, and each for a
+     * concrete reason rather than "not yet": Dalux stores files, not parsed
+     * models, so it can compute no fingerprints, no diffs and no element
+     * history; it records no reviewed element identity; and this provider is
+     * read-only (`write`). `watch` is off because detecting a new version
+     * set means re-sweeping every set — `watchRevisions` already covers
+     * "did the file change" at a fraction of the cost.
+     */
+    commits: {
+      // What the bytes are is decided per commit by the file's extension;
+      // all three are reachable because a file area holds all three.
+      payloadFormats: ['ifc-step', 'ifc-zip', 'ifcx'],
+      fingerprints: false,
+      storedDiffs: false,
+      elementHistory: false,
+      identityRecords: false,
+      write: false,
+      watch: false,
+      // A model IS a file here, so a host holding only a `SourceTag` can
+      // open the History panel for a model it loaded through the ordinary
+      // file browser.
+      modelIdsAreFileIds: true,
+    },
   },
   contributes: {
     fileSources: ['./src/provider.ts'],

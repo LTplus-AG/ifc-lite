@@ -35,9 +35,12 @@ import type {
   SourceProject,
 } from '@ifc-lite/plugin-api';
 
+import { createDaluxCommitMethods } from './commit-methods.js';
+import { createDaluxClient } from './client-factory.js';
 import { DALUX_MANIFEST } from './manifest.js';
-import { parseDaluxNode } from './node-url.js';
-import { BrowserDaluxApiClient, DaluxHttpError, fetchPage, fetchAllPages } from './http-client.js';
+
+const COMMIT_METHODS = createDaluxCommitMethods({ createClient: createDaluxClient });
+import { DaluxHttpError, fetchPage, fetchAllPages } from './http-client.js';
 import {
   LATEST_REVISION,
   convertListLenient,
@@ -50,14 +53,22 @@ import {
   toSourceFile,
 } from './mapping.js';
 
-const DEFAULT_BASE_URL = 'https://node1.field.dalux.com/service/api';
-
-
 export class DaluxBuildProvider implements FileSourceProvider {
   readonly manifest = DALUX_MANIFEST;
 
+  /**
+   * Version sets as model history (`commit-methods.ts`). One shared set of
+   * methods, because they hold no per-provider state — the version-set index
+   * they read is cached per project by base URL, not per instance.
+   */
+  readonly listModels = COMMIT_METHODS.listModels;
+  readonly getModel = COMMIT_METHODS.getModel;
+  readonly listCommits = COMMIT_METHODS.listCommits;
+  readonly getCommit = COMMIT_METHODS.getCommit;
+  readonly loadCommit = COMMIT_METHODS.loadCommit;
+
   async listProjects(ctx: PluginContext, options?: ListProjectsOptions): Promise<Page<SourceProject>> {
-    const client = await this.createClient(ctx);
+    const client = await createDaluxClient(ctx);
     const page = await fetchPage(client, '/5.1/projects', {}, options?.cursor, options?.signal);
     const projects = convertListLenient<DaluxProject>(ctx, page.items, decodeProject, 'Project');
 
@@ -73,7 +84,7 @@ export class DaluxBuildProvider implements FileSourceProvider {
     parentId?: string,
     options?: ListOptions,
   ): Promise<Page<SourceContainer>> {
-    const client = await this.createClient(ctx);
+    const client = await createDaluxClient(ctx);
 
     if (!parentId) {
       // Top level: just the file areas. Cheap — no folder walk, so the host
@@ -161,7 +172,7 @@ export class DaluxBuildProvider implements FileSourceProvider {
     filter?: FileFilter,
     options?: ListOptions,
   ): Promise<Page<SourceFile>> {
-    const client = await this.createClient(ctx);
+    const client = await createDaluxClient(ctx);
     const { fileAreaId, folderId } = decodeContainerId(containerId);
 
     const page = await fetchPage(
@@ -198,7 +209,7 @@ export class DaluxBuildProvider implements FileSourceProvider {
   }
 
   async download(ctx: PluginContext, ref: SourceFileRef, options?: DownloadOptions): Promise<ArrayBuffer> {
-    const client = await this.createClient(ctx);
+    const client = await createDaluxClient(ctx);
     const { fileAreaId } = decodeContainerId(ref.containerId);
     // `LATEST_REVISION` is the sentinel `toSourceFile`/`currentRevisionId`
     // report when Dalux gave no real `fileRevisionId` or `contentHash`;
@@ -268,7 +279,7 @@ export class DaluxBuildProvider implements FileSourceProvider {
     _cursor?: string,
     options?: ListOptions,
   ): Promise<RevisionWatchResult> {
-    const client = await this.createClient(ctx);
+    const client = await createDaluxClient(ctx);
     const events: RevisionEvent[] = [];
     const pendingSets = new Map<string, string>();
     const pendingDeletes = new Set<string>();
@@ -390,17 +401,5 @@ export class DaluxBuildProvider implements FileSourceProvider {
       const message = err instanceof Error ? err.message : String(err);
       return { ok: false, message };
     }
-  }
-
-  private async createClient(ctx: PluginContext): Promise<BrowserDaluxApiClient> {
-    const apiKey = await ctx.getPreference('apiKey');
-    if (!apiKey) throw new Error('Dalux API key not configured');
-    const node = parseDaluxNode(await ctx.getPreference('baseUrl'));
-    // `baseUrl` stays the canonical default even for a non-default node: the
-    // host only rewrites to the same-origin relay while the URL matches the
-    // manifest's declared upstream, and Dalux serves no CORS headers, so a
-    // rewritten base would bypass the relay and fail in the browser. The node
-    // travels as a parameter the relay resolves server-side (#2792).
-    return new BrowserDaluxApiClient({ baseUrl: DEFAULT_BASE_URL, apiKey, node }, ctx);
   }
 }

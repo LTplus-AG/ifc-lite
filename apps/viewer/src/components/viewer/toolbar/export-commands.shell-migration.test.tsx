@@ -9,9 +9,10 @@
  * at a different component is covered too), opening it, and looking for the
  * shell's `data-export-dialog-shell` marker.
  *
- * `MIGRATED_DIALOG_IDS` records the reviewable stacks for this issue. The
- * remaining `modified-ifc` review flow moves in the final stack, where this
- * list becomes every `kind: 'dialog'` registry entry.
+ * The list is every `kind: 'dialog'` registry entry, so a dialog added to the
+ * registry without the shell fails here. Each one is opened through a trigger
+ * the test supplies, the registry's own contract (`ExportDialogComponent`),
+ * because `modified-ifc` renders no standing button while nothing has changed.
  */
 
 import '@/test/setup-dom.js';
@@ -26,22 +27,18 @@ afterEach(() => {
   useViewerStore.getState().resetViewerState();
 });
 
-const MIGRATED_DIALOG_IDS = ['glb', 'kmz', 'usd', 'energy', 'pdf', 'ifc', 'anonymized'] as const;
-
-function dialogCommand(id: string): ExportDialogCommand {
-  const command = EXPORT_COMMANDS.find((c) => c.id === id);
-  assert.ok(command, `no registry entry for "${id}"`);
-  assert.equal(command.kind, 'dialog', `"${id}" is not a dialog command`);
-  return command as ExportDialogCommand;
-}
+const DIALOG_COMMANDS = EXPORT_COMMANDS.filter((c): c is ExportDialogCommand => c.kind === 'dialog');
 
 describe('registered export dialogs use ExportDialogShell (#5848)', () => {
-  for (const id of MIGRATED_DIALOG_IDS) {
+  it('the registry has dialog commands to check', () => {
+    assert.ok(DIALOG_COMMANDS.length >= 8, `expected every export dialog, found ${DIALOG_COMMANDS.length}`);
+  });
+
+  for (const { id, Dialog } of DIALOG_COMMANDS) {
     it(`"${id}" renders through ExportDialogShell`, () => {
-      const { Dialog } = dialogCommand(id);
-      const container = render(<Dialog surface="classic" />);
+      const container = render(<Dialog surface="classic" trigger={<button type="button">open</button>} />);
       const trigger = container.querySelector('button');
-      assert.ok(trigger, `"${id}" must render a trigger`);
+      assert.ok(trigger, `"${id}" must render the supplied trigger`);
       click(trigger);
       assert.ok(
         document.body.querySelector('[data-export-dialog-shell]'),

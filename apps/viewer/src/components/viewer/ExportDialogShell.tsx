@@ -72,8 +72,8 @@ export interface ExportDialogShellRenderState {
 }
 
 export interface ExportDialogShellProps {
-  /** Trigger element. The dialog always renders a trigger — callers supply
-   *  their own fallback (icon + label) the same way they did before migrating. */
+  /** Trigger element. Omit only for a controlled dialog (`open`) whose host
+   *  renders its own opener, such as the modified-IFC review. */
   trigger?: ReactNode;
   /** Header icon, shown beside the title. */
   icon: ReactNode;
@@ -86,8 +86,9 @@ export interface ExportDialogShellProps {
   exportingLabel: string;
   /** Icon shown beside `exportLabel` when idle (omitted while exporting, which shows the spinner instead). */
   exportIcon?: ReactNode;
-  successTitle: string;
-  errorTitle: string;
+  /** Result Alert titles. Only needed when `onExport` can return a result. */
+  successTitle?: string;
+  errorTitle?: string;
   /**
    * The filename the pending export would produce for the current
    * selection, e.g. `modelExportFilename(selectedModel.name, 'glb')`.
@@ -100,8 +101,10 @@ export interface ExportDialogShellProps {
    * Runs the export and returns the outcome to render. Do NOT call
    * `setState` on a result here — return it, so the shell is the only writer
    * of the result it displays (and therefore the only place it gets cleared).
+   * Return `null` when the host reports the outcome itself, e.g. the
+   * modified-IFC review, which closes and hands off to a background export.
    */
-  onExport: () => Promise<ExportDialogShellResult>;
+  onExport: () => Promise<ExportDialogShellResult | null>;
   children: ReactNode | ((state: ExportDialogShellRenderState) => ReactNode);
   /** Controlled visibility for host dialogs opened by another surface. */
   open?: boolean;
@@ -178,6 +181,7 @@ export function ExportDialogShell({
     setIsExporting(true);
     try {
       const outcome = await onExport();
+      if (outcome === null) return;
       if (closeOnSuccess && outcome.success) {
         setResult(null);
         setOpen(false);
@@ -217,7 +221,9 @@ export function ExportDialogShell({
         {result && (
           <Alert variant={result.success ? 'default' : 'destructive'}>
             {result.success ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-            <AlertTitle>{result.success ? successTitle : errorTitle}</AlertTitle>
+            {(result.success ? successTitle : errorTitle) && (
+              <AlertTitle>{result.success ? successTitle : errorTitle}</AlertTitle>
+            )}
             <AlertDescription>{result.message}</AlertDescription>
           </Alert>
         )}

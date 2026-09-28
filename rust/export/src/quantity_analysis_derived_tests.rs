@@ -78,6 +78,23 @@ fn issue_5787_complete_degenerate_directrix_explains_missing_nominal_quantities(
 }
 
 #[test]
+fn issue_5787_complete_gapped_directrix_keeps_length_and_explains_nominal_refusal() {
+    let source = include_str!("../../geometry/tests/fixtures/swept_disk_composite_arc_ubar.ifc");
+    let gap = source.replace(
+        "#56=IFCCARTESIANPOINT((101.5,0.,-423.5));",
+        "#56=IFCCARTESIANPOINT((102.5,0.,-423.5));",
+    );
+    let view = analyze_quantities(gap.as_bytes(), Some(&HashSet::from([125])));
+    let source = &view.products[&125].sources[0];
+    assert_eq!(source.status, "complete");
+    assert!(source.status_reason.as_deref().is_some_and(|reason|
+        reason.contains("Nominal swept-disk quantities unavailable")));
+    assert!(source.quantities.iter().any(|quantity|
+        quantity.name == "centreline_length" && quantity.value > 0.0));
+    assert!(source.quantities.iter().all(|quantity| quantity.name != "nominal_volume"));
+}
+
+#[test]
 fn issue_5787_joined_diagnostics_have_one_shared_output_cap() {
     let source = String::from_utf8(include_bytes!(
         "../../geometry/tests/fixtures/swept_disk_trimmed_line.ifc").to_vec()).unwrap();

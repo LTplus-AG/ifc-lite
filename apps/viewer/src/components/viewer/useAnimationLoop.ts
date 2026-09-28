@@ -18,8 +18,8 @@ import { flushPlacementGeometry } from '@/lib/model-placement/bounds-revision';
 import { useEffect, type MutableRefObject, type RefObject } from 'react';
 import type { Renderer, VisualEnhancementOptions, LightingEnvironment } from '@ifc-lite/renderer';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
-import type { SectionPlane } from '@/store';
-import { useViewerStore } from '@/store';
+import { useViewerStore, type SectionPlane } from '@/store';
+import { hoverOutlineTarget } from './useHoverOutline';
 import { chartAwareRendererSelectionFromStore } from '@/lib/charts/renderer-selection';
 import { preserveClashPaintInSelection } from '@/lib/clash/renderer-selection';
 import { sectionRenderClip } from '@/lib/section/section-render-clip';
@@ -281,7 +281,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             buildingRotation: coordinateInfoRef.current?.buildingRotation,
             // The cut: a plane or, in box mode, the clip box (#5513), gated on the visibility toggle (#5893).
             // Add Element moves the uncut plane preview to its workplane (#6233).
-            ...withAddElementWorkplane(useViewerStore.getState(), sectionRenderClip(useViewerStore.getState().sceneState.section.visible, sectionPlaneRef.current, sectionRangeRef.current)),
+            ...withAddElementWorkplane(useViewerStore.getState(), sectionRenderClip(useViewerStore.getState().sceneState.section.visible, sectionPlaneRef.current, sectionRangeRef.current)), ...hoverOutlineTarget(),
             terrainClipY: terrainClipYRef.current ?? undefined,
           });
         } catch (err) {

@@ -270,6 +270,12 @@ describe('FlavorListView localization (#4918)', () => {
     assert.ok(saveCurrent, 'the header create-flavor trigger must render');
     click(saveCurrent!);
 
+    const createInput = container.querySelector<HTMLInputElement>('input');
+    assert.ok(createInput, 'opening the create action reveals its name field');
+    assert.equal(createInput.labels?.length, 1);
+    assert.equal(createInput.labels?.[0]?.textContent?.trim(),
+      r('extensionsFlavors.flavorListView.nameSnapshotLabel', { count: 2, countDisplay: '2' }));
+
     let englishDom = readableStrings(container);
     const snapshotOccurrences: Occurrence[] = [
       { key: 'extensionsFlavors.flavorListView.nameSnapshotLabel', params: { count: 2, countDisplay: '2' } },
@@ -317,6 +323,9 @@ describe('FlavorListView localization (#4918)', () => {
     );
     assert.ok(renameButtons.length > 0, 'a Rename icon button for Beta must render');
     click(renameButtons[renameButtons.length - 1]);
+
+    assert.equal(container.querySelector('input')?.getAttribute('aria-label'),
+      r('extensionsFlavors.flavorListView.renameAriaLabel', { name: 'Beta' }));
 
     const englishDom = readableStrings(container);
     const occurrences: Occurrence[] = [

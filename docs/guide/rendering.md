@@ -985,7 +985,9 @@ non-framing grid bubble otherwise.
 
 The equivalent for 3D line overlays is keyed by channel rather than per item:
 `setLineOverlay('annotation', …)` grows the bounds and `setLineOverlay('grid', …)`
-does not.
+does not. The `centreline` channel is also non-framing: it is intended for a
+selected element's analytic directrix, and clearing it with
+`setLineOverlay('centreline', null)` leaves the other line channels alone.
 
 ## Complete Example
 

@@ -156,6 +156,7 @@ describe('mcp/playground chrome localization (#4918)', () => {
   it('PlaygroundChat translates its idle-state chrome', () => {
     runOracle('playground-chat', mcpPlaygroundEn, ['mcp.playgroundChat.'], () => render(<PlaygroundChat model={null} />), [
       'mcp.playgroundChat.attachFileTitle', 'mcp.playgroundChat.placeholderNoModel',
+      'mcp.playgroundChat.messageLabel', // #6342: the textarea keeps its name as its placeholder changes.
     ]);
   });
 

@@ -34,6 +34,7 @@ import {
 } from '../../hooks/useViewerSelectors.js';
 import { useModelSelection } from '../../hooks/useModelSelection.js';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
+import { useHoverOutline } from './useHoverOutline.js';
 import { frameSelectionBounds } from '@/lib/clash/capture-framing';
 import { fitAllBounds, instancedPassDrawn } from '@/lib/visibility/visible-bounds';
 import { typeNameOfGlobalId } from '@/store/globalId';
@@ -69,6 +70,7 @@ import { symbolicLineVertexData } from '../../hooks/symbolic-line-channels.js';
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
 import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
 import { useLandXmlRendererOverlay } from '../../hooks/useLandXmlOverlayLines.js';
+import { useCentrelineRendererOverlay } from '../../hooks/useCentrelineRendererOverlay.js';
 import { selectLandXmlViewportPick } from './landXmlViewportSelection.js';
 import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
 import { subscribeViewportHealth } from './device-loss-report.js';
@@ -115,6 +117,7 @@ export function Viewport({
   const rendererRef = useRef<Renderer | null>(null);
   const annotationLineVertexCountRef = useRef(0);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [gpuRecoveryEpoch, setGpuRecoveryEpoch] = useState(0);
   const [initError, setInitError] = useState<string | null>(null);
   const { t } = useTranslation();
 
@@ -285,8 +288,6 @@ export function Viewport({
     theme,
     isMobile,
     visualEnhancementsEnabled,
-    edgeContrastEnabled,
-    edgeContrastIntensity,
     contactShadingQuality,
     contactShadingIntensity,
     contactShadingRadius,
@@ -297,7 +298,7 @@ export function Viewport({
   } = useThemeState();
 
   // Hover state
-  const { hoverTooltipsEnabled, setHoverState, clearHover } = useHoverState();
+  const { setHoverState, clearHover } = useHoverState();
 
   // Context menu state
   const { openContextMenu } = useContextMenuState();
@@ -361,10 +362,6 @@ export function Viewport({
   const clearColorRef = useRef<[number, number, number, number]>([0.102, 0.106, 0.149, 1]);
   const visualEnhancement = useMemo<VisualEnhancementOptions>(() => ({
     enabled: isMobile ? false : visualEnhancementsEnabled,
-    edgeContrast: {
-      enabled: isMobile ? false : edgeContrastEnabled,
-      intensity: edgeContrastIntensity,
-    },
     contactShading: {
       quality: isMobile ? 'off' : contactShadingQuality,
       intensity: contactShadingIntensity,
@@ -378,8 +375,6 @@ export function Viewport({
     },
   }), [
     visualEnhancementsEnabled,
-    edgeContrastEnabled,
-    edgeContrastIntensity,
     isMobile,
     contactShadingQuality,
     contactShadingIntensity,
@@ -450,9 +445,7 @@ export function Viewport({
     sunTime,
   ]);
   const environmentRef = useLatestRef(environment);
-  useEffect(() => {
-    rendererRef.current?.requestRender();
-  }, [environment]);
+  useEffect(() => { rendererRef.current?.requestRender(); }, [environment]);
 
   // Sun cast shadows (#2670) — driven by the Environment panel. Standalone
   // WebGPU only: in world-context Cesium casts its own shadows, so pass null
@@ -465,9 +458,7 @@ export function Viewport({
     return { enabled: true, resolution: shadowResolution, sunAngleDeg: shadowSunAngle };
   }, [cesiumActive, shadowsEnabled, shadowResolution, shadowSunAngle]);
   const sunShadowsRef = useLatestRef(sunShadows);
-  useEffect(() => {
-    rendererRef.current?.requestRender();
-  }, [sunShadows]);
+  useEffect(() => { rendererRef.current?.requestRender(); }, [sunShadows]);
 
   // GPU-instancing is class-0 occurrence geometry (the Model view). Hide the
   // instanced pass in the Types view mode, where the flat path renders the
@@ -634,7 +625,7 @@ export function Viewport({
   // Hover throttling
   const lastHoverCheckRef = useRef<number>(0);
   const hoverThrottleMs = 50; // Check hover every 50ms
-  const hoverTooltipsEnabledRef = useLatestRef(hoverTooltipsEnabled);
+  const { hoverPickEnabledRef: hoverTooltipsEnabledRef } = useHoverOutline(rendererRef); // #5390
 
   // Measure tool throttling (adaptive based on raycast performance)
   const measureRaycastPendingRef = useRef(false);
@@ -680,11 +671,6 @@ export function Viewport({
       renderer.getCamera().enableFirstPersonMode(isWalk);
     }
   }, [activeTool, isInitialized]);
-  useEffect(() => {
-    if (!hoverTooltipsEnabled) {
-      clearHover();
-    }
-  }, [hoverTooltipsEnabled, clearHover]);
 
   // Cleanup measurement state when tool changes + set cursor
   useEffect(() => {
@@ -1251,7 +1237,9 @@ export function Viewport({
       // a quiet no-op — so without a subscriber they reach the user as a viewer
       // that silently stopped, and reach us not at all. This is the subscriber:
       // one toast, one tagged capture, per failure.
-      unsubscribeViewportHealth = subscribeViewportHealth(renderer);
+      unsubscribeViewportHealth = subscribeViewportHealth(renderer, undefined, () => {
+        if (!aborted) setGpuRecoveryEpoch((epoch) => epoch + 1);
+      });
 
       // ResizeObserver — re-render; the frame re-sizes the drawing buffer itself.
       resizeObserver = new ResizeObserver(() => {
@@ -1415,6 +1403,7 @@ export function Viewport({
   }, [dxfLines3D, isInitialized]);
 
   useLandXmlRendererOverlay(rendererRef, isInitialized);
+  useCentrelineRendererOverlay(rendererRef, isInitialized, gpuRecoveryEpoch);
 
   // Upload IfcAnnotation text + fill data for the WebGPU symbolic overlay
   // pipelines. Map the hook's per-annotation records into the SymbolicFillInput

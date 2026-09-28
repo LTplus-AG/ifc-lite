@@ -307,13 +307,14 @@ function buildContextSafely(
  * adding a third one, or forgetting the second, is a change to a tested unit
  * instead of an invisible omission inside a 400-line effect.
  *
- * `buildContext` is a TEST SEAM, nothing else: production callers pass only
- * the renderer, and the parameter exists so a test can hand in a builder that
- * throws and prove the base report survives it (`buildContextSafely` above).
+ * `buildContext` is a TEST SEAM: a test can hand in a builder that throws and
+ * prove the base report survives it (`buildContextSafely` above). The optional
+ * recovery callback lets GPU-only overlays rebuild after a replacement device.
  */
 export function subscribeViewportHealth(
   renderer: ViewportHealthSource,
   buildContext: (source: DeviceLossContextSource) => DeviceLossContext = buildDeviceLossContext,
+  onRecovered?: () => void,
 ): () => void {
   let recovery: ReturnType<typeof startDeviceLossRecovery> | null = null;
   const unsubscribes = [
@@ -339,7 +340,10 @@ export function subscribeViewportHealth(
         const run = startDeviceLossRecovery(
           { recoverDevice: () => renderer.recoverDevice!() },
           {
-            recovered: (result) => reportDeviceRecovery(result, () => { reported = false; }),
+            recovered: (result) => {
+              reportDeviceRecovery(result, () => { reported = false; });
+              onRecovered?.();
+            },
             failed: (result) => reportDeviceRecovery(result, () => { reported = false; }),
           },
         );

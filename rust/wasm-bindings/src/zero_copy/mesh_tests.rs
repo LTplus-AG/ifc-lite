@@ -265,6 +265,8 @@ fn default_agrees_with_new_on_the_fields_new_does_not_take() {
     assert_eq!(d.texture_height(), from_new.texture_height());
     assert_eq!(d.texture_url(), from_new.texture_url());
     assert_eq!(d.shading_color().is_none(), from_new.shading_color().is_none());
+    assert_eq!(d.metallic(), from_new.metallic());
+    assert_eq!(d.roughness(), from_new.roughness());
     assert_eq!(d.local_bounds().is_none(), from_new.local_bounds().is_none());
     assert_eq!(d.local_to_world().is_none(), from_new.local_to_world().is_none());
 }

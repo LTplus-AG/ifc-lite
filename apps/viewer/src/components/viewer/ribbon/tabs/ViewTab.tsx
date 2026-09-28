@@ -7,7 +7,7 @@
  * (Cesium / sun / SpaceMouse), and interface options.
  */
 
-import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork, Settings } from '@/icons';
+import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork, Settings, Spatial } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
@@ -29,6 +29,7 @@ export function ViewTab() {
   const cameraCommands = useCameraCommands();
   const projectionMode = useViewerStore((state) => state.projectionMode);
   const ribbonContextualTabs = useViewerStore((state) => state.ribbonContextualTabs);
+  const centrelineOverlayEnabled = useViewerStore((state) => state.centrelineOverlayEnabled);
 
   // Cesium 3D overlay state
   const cesiumAvailable = useViewerStore((state) => state.cesiumAvailable);
@@ -117,6 +118,11 @@ export function ViewTab() {
       <RibbonGroupDivider />
 
       <RibbonGroup label={t('ribbon.view.contextGroup')}>
+        <RibbonCommandLargeButton
+          commandId="view:centreline"
+          icon={Spatial}
+          active={centrelineOverlayEnabled}
+        />
         {/* Cesium 3D World Context — the world-context affordance is one
             click away when a model has georeferencing. When active, the
             "Move georeference" sub-toggle appears beside it (its amber

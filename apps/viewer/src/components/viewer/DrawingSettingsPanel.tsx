@@ -398,6 +398,7 @@ function CustomRuleItem({
       <div>
         <Label className="text-xs">{t('drawingUnderlay.settings.ruleNameLabel')}</Label>
         <Input
+          aria-label={t('drawingUnderlay.settings.ruleNameLabel')}
           value={rule.name}
           onChange={(e) => onUpdate({ name: e.target.value })}
           className="h-8 text-sm mt-1"
@@ -411,7 +412,7 @@ function CustomRuleItem({
           value={ifcTypes[0] || ''}
           onValueChange={handleIfcTypeChange}
         >
-          <SelectTrigger className="h-8 text-sm mt-1">
+          <SelectTrigger className="h-8 text-sm mt-1" aria-label={t('drawingUnderlay.settings.ifcClassLabel')}>
             <SelectValue placeholder={t('drawingUnderlay.settings.selectClassPlaceholder')} />
           </SelectTrigger>
           <SelectContent>
@@ -431,11 +432,13 @@ function CustomRuleItem({
           <div className="flex gap-1 mt-1">
             <input
               type="color"
+              aria-label={t('drawingUnderlay.settings.fillColorPickerLabel')}
               value={rule.style.fillColor || '#808080'}
               onChange={(e) => handleStyleChange('fillColor', e.target.value)}
               className="w-8 h-8 rounded border cursor-pointer"
             />
             <Input
+              aria-label={t('drawingUnderlay.settings.fillColorHexLabel')}
               value={rule.style.fillColor || '#808080'}
               onChange={(e) => handleStyleChange('fillColor', e.target.value)}
               className="h-8 text-xs font-mono flex-1"
@@ -447,11 +450,13 @@ function CustomRuleItem({
           <div className="flex gap-1 mt-1">
             <input
               type="color"
+              aria-label={t('drawingUnderlay.settings.strokeColorPickerLabel')}
               value={rule.style.strokeColor || '#000000'}
               onChange={(e) => handleStyleChange('strokeColor', e.target.value)}
               className="w-8 h-8 rounded border cursor-pointer"
             />
             <Input
+              aria-label={t('drawingUnderlay.settings.strokeColorHexLabel')}
               value={rule.style.strokeColor || '#000000'}
               onChange={(e) => handleStyleChange('strokeColor', e.target.value)}
               className="h-8 text-xs font-mono flex-1"
@@ -474,7 +479,7 @@ function CustomRuleItem({
               }
             }}
           >
-            <SelectTrigger className="h-8 text-sm flex-1">
+            <SelectTrigger className="h-8 text-sm flex-1" aria-label={t('drawingUnderlay.settings.lineWeightLabel')}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -490,6 +495,7 @@ function CustomRuleItem({
             <div className="flex items-center gap-1">
               <Input
                 type="number"
+                aria-label={t('drawingUnderlay.settings.customLineWeightInputLabel')}
                 min={0.05}
                 max={2}
                 step={0.05}

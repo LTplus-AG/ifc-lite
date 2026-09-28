@@ -25,7 +25,7 @@
  * left to silently skip at apply time.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useId, useMemo, useState } from 'react';
 import { AlertCircle, Check, Wrench } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { useTranslation } from '@/i18n';
@@ -161,9 +161,9 @@ export function IDSCorrectionDialog({
 
   const [requirementId, setRequirementId] = useState<string | null>(correctable[0]?.requirementId ?? null);
   const activeRequirement = correctable.find((r) => r.requirementId === requirementId) ?? correctable[0] ?? null;
-
   const [selectedIds, setSelectedIds] = useState<Set<number> | null>(null);
   const [rawValue, setRawValue] = useState('');
+  const newValueInputId = useId();
   const [applying, setApplying] = useState(false);
   const [results, setResults] = useState<CorrectionApplyResult[] | null>(null);
   const [applyError, setApplyError] = useState<string | null>(null);
@@ -326,7 +326,7 @@ export function IDSCorrectionDialog({
             {correctable.length > 1 && (
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">{t('idsPanel.correction.requirement')}</Label>
-                <select
+                <select aria-label={t('idsPanel.correction.requirement')}
                   className="w-full rounded border border-border bg-transparent px-2 py-1 text-sm"
                   value={activeRequirement.requirementId}
                   onChange={(e) => {
@@ -349,8 +349,8 @@ export function IDSCorrectionDialog({
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">{t('idsPanel.correction.newValue')}</Label>
-              <Input
+              <Label htmlFor={newValueInputId} className="text-xs text-muted-foreground">{t('idsPanel.correction.newValue')}</Label>
+              <Input id={newValueInputId}
                 value={rawValue}
                 onChange={(e) => setRawValue(e.target.value)}
                 placeholder={t('idsPanel.correction.newValuePlaceholder')}

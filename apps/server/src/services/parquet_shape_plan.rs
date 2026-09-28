@@ -92,10 +92,10 @@ pub(super) struct PlannedRow {
 /// every streamed batch of a writer that shares nothing — to store `i` and
 /// nine repeated constants.
 pub(super) enum ShapePlan {
-    /// The `-parquet-v5` layout: every mesh writes its own geometry. What the
+    /// The `-parquet-v8` layout: every mesh writes its own geometry. What the
     /// streaming route uses unless the client opted in to cross-batch sharing.
     Identity,
-    /// The `-parquet-v7` layout.
+    /// The `-parquet-v9` layout.
     Shared {
         /// Mesh indices whose vertex/index data is emitted, in emission order.
         shapes: Vec<usize>,

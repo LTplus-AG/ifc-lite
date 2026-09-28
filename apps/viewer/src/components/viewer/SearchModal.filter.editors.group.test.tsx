@@ -55,6 +55,7 @@ describe('RuleRow — group rule (#5226)', () => {
     const container = renderRow({ kind: 'group', groupClass: 'IfcSystem', op: 'matches', value: 'Supply', valueKind: 'regex' }, commits);
     const nameInput = container.querySelector('input[placeholder="Group name"]');
     assert.ok(nameInput instanceof window.HTMLInputElement, 'no group name input rendered');
+    assert.equal(nameInput.getAttribute('aria-label'), 'Group name', '#6342: name persists after entry');
     type(nameInput, 'Supply .*');
     assert.deepEqual(commits.at(-1), { kind: 'group', groupClass: 'IfcSystem', op: 'matches', value: 'Supply .*', valueKind: 'regex' });
   });

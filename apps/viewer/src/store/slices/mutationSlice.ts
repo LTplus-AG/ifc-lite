@@ -51,6 +51,7 @@ import { buildElementMesh } from './addElementMeshes.js';
 import { authoredElementMeshPayloadOnStorey, type AuthoredElement } from './authoredElement.js';
 import { appendAuthoredMesh, authoredDataStore, syncAuthoredTreeEntry } from './authoredTreeEntry.js';
 import { ensureStoreyPlacement } from './storeyPlacement.js';
+import { effectiveStoreyId } from '@/lib/effective-storey';
 
 export type { AuthoredElement };
 import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
@@ -865,7 +866,7 @@ function resolveSplitContext(
   if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
   const dataStore = state.models.get(modelId)?.ifcDataStore;
   if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
-  const storeyExpressId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
+  const storeyExpressId = effectiveStoreyId(dataStore, view, expressId);
   if (storeyExpressId === undefined) return { ok: false, reason: notInStoreyMessage };
   return { view, editor, dataStore, storeyExpressId };
 }
@@ -2105,9 +2106,8 @@ export const createMutationSlice: StateCreator<
     const ctx = resolveEditReadContext(get, set, modelId);
     const chain = ctx && resolveSlabEditChain(ctx.dataStore, ctx.view, ctx.editor, expressId, ctx.scale);
     if (!ctx || !chain) return null;
-    const { dataStore } = ctx;
-    // @raw-entity-enumeration-ok point lookup; authored elements are registered into this map (registerAuthoredElement), as the split commit's own storey gate reads it
-    const storeyId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
+    const { dataStore, view } = ctx;
+    const storeyId = effectiveStoreyId(dataStore, view, expressId);
     const storeyElevation = (storeyId !== undefined ? dataStore.spatialHierarchy?.storeyElevations?.get(storeyId) : undefined) ?? 0;
     return { footprint: chain.footprint, elementType: chain.elementType, storeyElevation, thickness: chain.thickness };
   },

@@ -576,3 +576,32 @@ describe('Scene.setModelRotation (#4890)', () => {
     assert.strictEqual(scene.setModelRotation(7, 0, [1, 0, 1]), false);
   });
 });
+
+/**
+ * #5745: the hover outline draws only the templates that hold the hovered
+ * id, scoped to the hovered entity's model, and none while the instanced
+ * pass itself is hidden (the Types view).
+ */
+describe('Scene.getInstancedTemplatesOf (#5745)', () => {
+  function sharedIdScene() {
+    const scene = new Scene();
+    const { device } = fakeDevice();
+    scene.addInstancedShard(device, shard(2, [10, 11]), 3);
+    scene.addInstancedShard(device, shard(3, [10, 21, 22]), 7);
+    return scene;
+  }
+
+  it('returns every template holding the id, or only the given model\'s', () => {
+    const scene = sharedIdScene();
+    assert.deepStrictEqual(scene.getInstancedTemplatesOf(10).map((t) => t.modelIndex).sort(), [3, 7]);
+    assert.deepStrictEqual(scene.getInstancedTemplatesOf(10, 7).map((t) => t.modelIndex), [7]);
+    assert.deepStrictEqual(scene.getInstancedTemplatesOf(21).length, 1);
+    assert.deepStrictEqual(scene.getInstancedTemplatesOf(99), []);
+  });
+
+  it('returns nothing while the instanced pass is hidden', () => {
+    const scene = sharedIdScene();
+    scene.setInstancedVisible(false);
+    assert.deepStrictEqual(scene.getInstancedTemplatesOf(10), []);
+  });
+});

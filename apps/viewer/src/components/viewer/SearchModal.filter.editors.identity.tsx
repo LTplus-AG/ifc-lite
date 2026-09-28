@@ -37,6 +37,7 @@ export function GlobalIdEditor({
       <OpDropdown ops={SET_OPS} value={op} onChange={(next) => onChange(values, next)} />
       <Input
         placeholder={t('searchModal.filterEditors.globalIdPlaceholder')}
+        aria-label={t('searchModal.filterEditors.globalIdAriaLabel')}
         value={text}
         onChange={(e) => setFromText(e.target.value)}
         className="h-7 w-64 text-xs font-mono"
@@ -58,6 +59,7 @@ export function AttributeEditor({
     <>
       <Input
         placeholder={t('searchModal.filterEditors.attributeNamePlaceholder')}
+        aria-label={t('searchModal.filterEditors.attributeNameAriaLabel')}
         value={rule.name}
         onChange={(e) => onChange({ ...rule, name: e.target.value })}
         className="h-7 w-40 text-xs font-mono"
@@ -66,6 +68,7 @@ export function AttributeEditor({
       {!valueless && (
         <Input
           placeholder={t('searchModal.filterEditors.valuePlaceholder')}
+          aria-label={t('searchModal.filterEditors.attributeValueAriaLabel')}
           value={rule.value}
           onChange={(e) => onChange({ ...rule, value: e.target.value, valueKind: undefined })}
           className="h-7 w-44 text-xs font-mono"

@@ -254,6 +254,7 @@ export function PrivacyPanel() {
                     setDirty(true);
                   }}
                   placeholder={t('extensionsPanels.privacyPanel.overlayPlaceholder')}
+                  aria-label={t('extensionsPanels.privacyPanel.overlayInputLabel')}
                 />
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className="text-2xs text-muted-foreground">

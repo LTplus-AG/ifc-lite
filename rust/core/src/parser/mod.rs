@@ -18,7 +18,9 @@
 //! [`keyword`] is the other shared rule: the scanner returns the keyword as
 //! written and STEP keyword case is not significant, so every comparison
 //! against a literal goes through [`keyword_eq`] and its siblings.
+//! [`header`] reads ISO 10303-21 header records for exporters and source views.
 
+pub mod header;
 mod keyword;
 mod lexical;
 mod malformed_records;
@@ -29,6 +31,7 @@ mod scanner;
 mod tokenizer;
 
 pub use keyword::{find_keyword, keyword_ends_with, keyword_eq, keyword_starts_with};
+pub use header::declared_schema_bounded;
 pub use lexical::skip_step_comment;
 // The one STEP whitespace set, for the raw-byte readers in `decoder` (#3733).
 pub(crate) use lexical::{is_step_space, skip_step_trivia};

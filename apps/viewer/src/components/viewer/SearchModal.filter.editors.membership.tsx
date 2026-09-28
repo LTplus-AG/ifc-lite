@@ -51,6 +51,7 @@ export function ClassificationEditor({
       {!valueless && (
         <ComboInput
           placeholder={t('searchModal.filterEditors.classificationValuePlaceholder')}
+          aria-label={t('searchModal.filterEditors.classificationValueAriaLabel')}
           value={rule.value}
           options={valueSchema?.classifications ?? NO_OPTIONS}
           className="h-7 w-44 text-xs font-mono"
@@ -89,6 +90,7 @@ export function GroupEditor({
       {!valueless && (
         <ComboInput
           placeholder={t('searchModal.filterEditors.groupNamePlaceholder')}
+          aria-label={t('searchModal.filterEditors.groupNamePlaceholder')}
           value={rule.value}
           options={NO_OPTIONS}
           className="h-7 w-44 text-xs font-mono"
@@ -123,6 +125,7 @@ export function ModelFactEditor({
       {!valueless && (
         <ComboInput
           placeholder={t('searchModal.filterEditors.valuePlaceholder')}
+          aria-label={t('searchModal.filterEditors.modelFactValueAriaLabel')}
           value={rule.value}
           options={NO_OPTIONS}
           className="h-7 w-44 text-xs font-mono"

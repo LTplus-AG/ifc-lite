@@ -5,19 +5,16 @@
 /**
  * One world-space line-list vertex buffer.
  *
- * `Section2DOverlayRenderer` backs five standalone line overlays (annotation
- * #653, alignment, grid #967, DXF #2043, clash box #1277) that are byte-for-byte
- * identical apart from which buffer they read and which colour they draw in.
- * This is the ONLY thing those families genuinely own on their own: a vertex
- * buffer and its vertex count.
+ * `Section2DOverlayRenderer` uses this buffer for its standalone world-space
+ * line channels. Each channel owns its vertex buffers and vertex counts, while
+ * the renderer decides which pipeline and colour to use for a draw.
  *
  * Deliberately NOT an owner of anything shared. The line pipeline, the
  * bind-group layout, the bind group and the 160-byte uniform buffer stay owned
  * solely by `Section2DOverlayRenderer` and are handed in per draw as
  * {@link SectionLinePipelineResources}. That keeps the renderer's single
  * `init()`/`dispose()` lifecycle the one place those resources are created and
- * destroyed — giving each family its own pipeline handle is the split that
- * would put one GPU object under six owners (issue #2456).
+ * destroyed (issue #2456).
  */
 
 import {
@@ -65,7 +62,7 @@ export class WorldLineBuffer {
 
   /**
    * @param uniformSlot Index of this family's record in the shared uniform
-   *   buffer. Every family needs its own: the six overlay draws are encoded
+   *   buffer. Every family needs its own: the overlay draws are encoded
    *   into one pass and `queue.writeBuffer` lands before the pass runs, so a
    *   shared record means the last family's colour is the one all six get.
    *   See `SECTION_2D_UNIFORM_SLOT_INDEX`.
@@ -140,7 +137,7 @@ export class WorldLineBuffer {
    * ride the section plane.
    *
    * Writes into — and binds — **this family's own** uniform slot. Sharing one
-   * record across the pass's six draws meant the last write before submit was
+   * record across the pass's line draws meant the last write before submit was
    * what every draw read.
    *
    * No-ops when the buffer is empty, so callers do not need their own guard.

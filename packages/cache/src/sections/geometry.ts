@@ -108,6 +108,27 @@ export function writeMeshRecord(writer: BufferWriter, mesh: MeshData, pool?: App
   writer.writeTypedArray(mesh.normals);
   writer.writeTypedArray(mesh.indices);
   writeProvenance(writer, mesh, pool);
+  writeFinish(writer, mesh);
+}
+
+/** Bytes of the v22 finish trailer every mesh record ends with. */
+export const MESH_FINISH_BYTES = 8;
+
+/** IFC-authored finish (v22+, #5582): metallic, roughness as f32; NaN = absent. */
+function writeFinish(writer: BufferWriter, mesh: MeshData): void {
+  writer.writeFloat32(mesh.material?.metallic ?? Number.NaN);
+  writer.writeFloat32(mesh.material?.roughness ?? Number.NaN);
+}
+
+function readFinish(reader: BufferReader, mesh: MeshData): void {
+  const metallic = reader.readFloat32();
+  const roughness = reader.readFloat32();
+  // Tested for finiteness, not truthiness: 0 is a real authored value.
+  if (!Number.isFinite(metallic) && !Number.isFinite(roughness)) return;
+  mesh.material = {
+    ...(Number.isFinite(metallic) ? { metallic } : {}),
+    ...(Number.isFinite(roughness) ? { roughness } : {}),
+  };
 }
 
 /** Exact serialized size of one per-mesh record, for chunk byte budgeting. */
@@ -120,6 +141,7 @@ export function meshRecordByteLength(mesh: MeshData, pool?: AppearanceSourcePool
     1 +                    // geometryClass
     8 +                    // geometryItemId + materialId u32x2 (v14+)
     24 +                   // origin f64x3
+    MESH_FINISH_BYTES +    // finish metallic + roughness f32x2 (v22+)
     mesh.positions.byteLength + mesh.normals.byteLength + mesh.indices.byteLength + provenanceByteLength(mesh, pool)
   );
 }
@@ -268,5 +290,6 @@ export function readMeshRecord(reader: BufferReader, version: number, meshIndex:
     ...(origin ? { origin } : {}),
   };
   if (version >= 19) readProvenance(reader, mesh, pool);
+  if (version >= 22) readFinish(reader, mesh);
   return mesh;
 }

@@ -372,6 +372,12 @@ describe('ClashPanel localization (#4918)', { skip: !HAS_CATALOGUE && 'clash-pan
     assert.ok(expandButton, 'row expand toggle not found');
     act(() => expandButton!.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true })));
 
+    const comment = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Clash review comment"]');
+    assert.ok(comment, 'expanded clash exposes a named review comment editor (#6342)');
+    assert.equal(comment.value, 'Confirmed by MEP lead');
+    assert.ok(container.querySelector('select[aria-label="Group clashes by"]'), 'grouping control has a distinct name (#6342)');
+    assert.ok(container.querySelector('select[aria-label="Sort clashes by"]'), 'sorting control has a distinct name (#6342)');
+
     const english = chromeStrings(container);
     registerLocale(PSEUDO_LOCALE, PSEUDO);
     act(() => setLocale(PSEUDO_LOCALE));

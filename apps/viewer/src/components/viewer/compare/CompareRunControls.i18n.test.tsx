@@ -138,6 +138,22 @@ afterEach(() => {
 });
 
 describe('CompareRunControls localization (#4918)', () => {
+  it('#6342 names both model selectors and retains the selected-model callback', () => {
+    let selected = '';
+    const container = render(<CompareRunControls {...BASE_PROPS} onBaseModelId={(id) => { selected = id; }} />);
+    const selectors = [...container.querySelectorAll<HTMLSelectElement>('select')];
+    assert.equal(selectors[0]?.getAttribute('aria-label'), 'A');
+    assert.equal(selectors[1]?.getAttribute('aria-label'), 'B');
+    act(() => {
+      selectors[0]!.value = 'B';
+      selectors[0]!.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    assert.equal(selected, 'B');
+    act(() => setLocale(PSEUDO_LOCALE));
+    assert.equal(selectors[0]?.getAttribute('aria-label'), '⟦A⟧');
+    assert.equal(selectors[1]?.getAttribute('aria-label'), '⟦B⟧');
+  });
+
   it('translates the A/B labels, scope switch, toggles, blacklist chrome and run button', () => {
     const container = render(<CompareRunControls {...BASE_PROPS} />);
     const englishDom = readableStrings(container);

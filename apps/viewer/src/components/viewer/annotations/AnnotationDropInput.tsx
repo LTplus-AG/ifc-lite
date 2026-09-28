@@ -160,6 +160,7 @@ export function AnnotationDropInput({
             <textarea
               ref={textareaRef}
               value={draft}
+              aria-label={t('annotations.dropInput.promptLabel')}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={t('annotations.dropInput.placeholder')}

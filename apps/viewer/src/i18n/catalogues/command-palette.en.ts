@@ -101,6 +101,7 @@ export const commandPaletteEn = {
   // ── Preferences ──
   'commandPalette.pref.theme.label': 'Theme',
   'commandPalette.pref.tooltips.label': 'Hover Tooltips',
+  'commandPalette.pref.hoverOutline.label': 'Hover Outline',
   'commandPalette.pref.settings.label': 'Settings…',
 
   // ── Learn ──
@@ -110,6 +111,7 @@ export const commandPaletteEn = {
 
   // ── Chrome ──
   'commandPalette.ariaLabel': 'Command palette',
+  'commandPalette.searchAriaLabel': 'Search commands',
   'commandPalette.searchPlaceholder': 'What do you need?',
   'commandPalette.escKey': 'Esc',
   'commandPalette.noResults': 'No results',

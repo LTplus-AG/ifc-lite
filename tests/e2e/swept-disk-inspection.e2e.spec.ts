@@ -24,7 +24,7 @@ type BrowserState = {
 type BrowserStore = { getState(): BrowserState };
 
 test('selected Revit bar shows exact source geometry and measurement readout (#5783)', async ({ page }, testInfo) => {
-  test.skip(!existsSync(FIXTURE), `Revit Snowdon IFC missing at ${FIXTURE}; run pnpm fixtures or provide REBAR_IFC for this uncatalogued local fixture`);
+  test.skip(!existsSync(FIXTURE), `Revit Snowdon IFC missing at ${FIXTURE}; run pnpm fixtures or provide REBAR_IFC`);
   test.setTimeout(600_000);
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/');

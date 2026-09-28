@@ -201,7 +201,7 @@ export function extractStructuralOnDemand(
   const effectiveRows = [...iterateEffectiveEntities(store, view, undefined, sourceIds)];
   // Preserve the common no-structural-data path without setting up a source
   // extractor. Created/retyped structural entities are already in this set.
-  if (effectiveRows.length === 0) return emptyExtraction();
+  if (!effectiveRows.some((row) => roleOf(row.type))) return emptyExtraction();
   const extractor = new EntityExtractor(store.source);
   const effectiveTypeById = new Map(effectiveRows.map((row) => [row.expressId, row.type]));
   const readRaw = (id: number, effectiveType: string): RawEntity | undefined => {

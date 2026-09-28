@@ -10,7 +10,7 @@ import { click, cleanup, mouseDown, press, render } from '@/test/render.js';
 import { resolve } from '@/i18n/registry';
 import { posthog } from '@/lib/analytics';
 import { setCollabEnabledOverride } from '@/lib/collab/config';
-import { fixtureDataStore } from '@/test/store-fixture';
+import { fixtureDataStore, fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore, type RibbonTabId } from '@/store';
 import { SURFACE_COMMANDS, type SurfaceCommandDefinition } from '../surface-commands.js';
 import { EXPORT_COMMANDS } from '../toolbar/export-commands.js';
@@ -197,10 +197,16 @@ it('#5878 keyboard opening of the class filter emits one registered command even
   ]);
 });
 
-it('#5878 Author edit and Space Sketch execute through registered ribbon controls', () => {
+it('#5878 Author edit and Space Sketch execute through registered ribbon controls', (t) => {
+  // Edit mode is the Model workspace (#6232), which opens on a loaded model.
   act(() => useViewerStore.setState({
+    ...fixtureModels(fixtureModel('m')),
     ribbonTab: 'author', ribbonCollapsed: false,
     editEnabled: false, activeTool: 'select', collabRole: null,
+  }));
+  t.after(() => act(() => {
+    useViewerStore.getState().exitModelWorkspace();
+    useViewerStore.setState({ models: new Map(), activeModelId: null });
   }));
   const container = render(<RibbonToolbar />);
   const control = (id: string): HTMLButtonElement => {

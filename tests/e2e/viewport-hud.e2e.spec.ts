@@ -32,6 +32,14 @@ import { join } from 'path';
 const STORE = '__ifc_lite_viewer_store__';
 const FIXTURE = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
 
+// #6365: authoring HUD states need the current Model workspace before a tool can mount.
+async function enterModelWorkspace(page: Page): Promise<void> {
+  await page.getByRole('tab', { name: 'Author', exact: true }).click();
+  const model = page.getByRole('tabpanel', { name: 'Author' }).getByRole('button', { name: 'Model', exact: true });
+  await model.click();
+  await expect(model).toHaveAttribute('aria-pressed', 'true');
+}
+
 test('#5813 Measure Clear all uses the themed dialog', async ({ page }, testInfo) => {
   test.skip(!existsSync(join(process.cwd(), FIXTURE)), `${FIXTURE} missing — run \`pnpm fixtures\``);
   await page.goto('/');
@@ -139,6 +147,7 @@ for (const width of [1280, 1600, 1920]) {
         (globalThis as Record<string, { getState(): Record<string, (v: unknown) => void> }>)[k].getState().setTheme(theme);
       }, [STORE, scheme] as const);
       await expect(page.locator('[data-viewport]').first()).toBeAttached({ timeout: 60000 });
+      await enterModelWorkspace(page);
 
       const failures: string[] = [];
       for (const state of STATES) {
@@ -151,8 +160,8 @@ for (const width of [1280, 1600, 1920]) {
               const wall = model?.ifcDataStore?.entityIndex.byType.get('IFCWALL')?.[0] ?? model?.ifcDataStore?.entityIndex.byType.get('IFCWALLSTANDARDCASE')?.[0];
               if (wall !== undefined) s.setSelectedEntityId(wall);
             },
-            split: (s) => { s.setSelectedEntityId(null); s.setActiveTool('split'); },
-            spaceSketch: (s) => s.setActiveTool('spaceSketch'),
+            split: (s) => { s.setSelectedEntityId(null); s.startCommand('element.split'); },
+            spaceSketch: (s) => { s.endCommand(); s.setActiveTool('spaceSketch'); },
             addElement: (s) => s.setActiveTool('addElement'),
             measure: (s) => s.setActiveTool('measure'),
             section: (s) => { s.setActiveTool('section'); s.setSectionPlaneAxis('down'); s.setSectionPlanePosition(50); },
@@ -167,6 +176,12 @@ for (const width of [1280, 1600, 1920]) {
           };
           enter[name](api.getState());
         }, [STORE, state.name] as const);
+        if (state.name === 'split') {
+          await expect(page.locator('[data-command-id="element.split"]')).toBeVisible();
+        }
+        if (state.name === 'spaceSketch') {
+          await expect(page.locator('[data-tool-bar="spaceSketch"]')).toBeVisible();
+        }
         if (state.name === 'section+cap') {
           await page.locator('[data-tool-bar="section"] button', { hasText: 'Cap' }).click();
           await expect(page.locator('[data-testid="section-cap-popover"]')).toBeVisible({ timeout: 10000 });
@@ -237,6 +252,7 @@ for (const width of [1280, 1600]) {
         s.setLeftPanelCollapsed(false);
         s.setRightPanelCollapsed(false);
       }, STORE);
+      await enterModelWorkspace(page);
       await page.evaluate((k) => {
         (globalThis as Record<string, { getState(): Record<string, (v: unknown) => void> }>)[k].getState().setActiveTool('spaceSketch');
       }, STORE);

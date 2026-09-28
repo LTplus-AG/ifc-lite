@@ -37,7 +37,12 @@ function previousShown(fields: readonly CommandField<unknown>[], gesture: unknow
   return i;
 }
 
-export function CommandFieldsBar() {
+/**
+ * `measuring`: an offscreen copy the command bar only measures
+ * (`useHudBarTier`). It registers no field handles and ignores field
+ * requests, so a typed digit always opens the visible bar's field.
+ */
+export function CommandFieldsBar({ measuring = false }: { measuring?: boolean } = {}) {
   const { t } = useTranslation();
   const { command, ctx, gesture, fieldRequest } = useCommandRuntime();
   // Dimension fields read the defaults slice; the inspector edits it too.
@@ -48,9 +53,9 @@ export function CommandFieldsBar() {
   // Layout effect: the input must mount and take focus before the next key
   // event, or a quickly typed "4.5" loses everything after the "4".
   useLayoutEffect(() => {
-    if (!fieldRequest) return;
+    if (!fieldRequest || measuring) return;
     handles.current[fieldRequest.index]?.beginEdit(fieldRequest.draft);
-  }, [fieldRequest]);
+  }, [fieldRequest, measuring]);
 
   if (fields.length === 0 || !ctx) return null;
   return (
@@ -65,7 +70,7 @@ export function CommandFieldsBar() {
             <div className="flex items-center gap-1" onFocus={() => noteActiveField(index)}>
               <span className="text-2xs text-overlay-ink-muted">{label}</span>
               <HudValueField
-                ref={(handle) => { handles.current[index] = handle; }}
+                ref={measuring ? undefined : (handle) => { handles.current[index] = handle; }}
                 value={field.read(gesture, ctx) ?? 0}
                 onChange={(next) => writeCommandField(index, next)}
                 onSubmit={() => { commitCommand(); }}

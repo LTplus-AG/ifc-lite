@@ -50,6 +50,7 @@ import { COLORFUL_CANVAS_GRADIENT } from '@/lib/viewport-ui/overlay-theme';
 import { expandToGeometryBearingIds } from '../../utils/aggregation.js';
 import { hasNoRenderableTarget } from '@/lib/presentation/resolvePresentationIds';
 import { toGlobalIdFromModels } from '@/store/globalId';
+import { currentLevelYForModels } from '@/lib/level-arrival';
 
 import { useMouseControls, type MouseState } from './useMouseControls.js';
 import { RectSelectionOverlay, type RectSelectionRect } from './RectSelectionOverlay.js';
@@ -166,14 +167,10 @@ export function Viewport({
   // per-entity lift before its first renderer upload. Keep only offsets whose
   // source store still belongs to the current model instance (a replacement
   // model starts with native geometry).
-  const currentLevelY = useMemo(() => {
-    const offsets = new Map<number, number>();
-    for (const [modelId, applied] of appliedEntityLevelOffsets) {
-      if (models.get(modelId)?.ifcDataStore !== applied.store) continue;
-      for (const [globalId, y] of applied.offsets) offsets.set(globalId, y);
-    }
-    return offsets;
-  }, [appliedEntityLevelOffsets, models]);
+  const currentLevelY = useMemo(
+    () => currentLevelYForModels(models, appliedEntityLevelOffsets),
+    [appliedEntityLevelOffsets, models],
+  );
 
   // Hidden models retain their one-time instance uploads; useVisibilityState
   // masks them without changing user hides or isolation (#4428).

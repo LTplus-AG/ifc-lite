@@ -39,22 +39,8 @@ import {
 } from '@/lib/level-offsets';
 import { effectiveLevelElevations } from '@/lib/effective-level-elevations';
 import { effectiveScheduleGroups } from '@/lib/effective-spatial-groups';
+import { modelGeometryRefs } from '@/lib/level-arrival';
 import type { AppliedEntityLevelOffsets } from '@/store/slices/levelDisplaySlice';
-import type { FederatedModel } from '@/store/types';
-
-function modelGeometryRefs(model: FederatedModel): Map<number, object> {
-  const refs = new Map<number, object>();
-  for (const mesh of model.geometryResult?.meshes ?? []) {
-    // Use the first piece: appending another piece must not make us translate
-    // the already-lifted pieces a second time as though all were replaced.
-    if (!refs.has(mesh.expressId)) refs.set(mesh.expressId, mesh);
-  }
-  const instancedIndex = model.geometryResult?.instancedGeometryHashes;
-  if (instancedIndex) for (const id of instancedIndex.keys()) {
-    if (!refs.has(id)) refs.set(id, instancedIndex);
-  }
-  return refs;
-}
 
 function sameStoreyOffsets(a: ReadonlyMap<string, StoreyOffsets>, b: ReadonlyMap<string, StoreyOffsets>): boolean {
   if (a.size !== b.size) return false;
@@ -134,11 +120,9 @@ export function useLevelDisplayEffect(): void {
       const nextEntry = targetEntities.get(modelId);
       const previousOffsets = new Map<number, number>();
       if (previous?.store === model.ifcDataStore) for (const [id, offset] of previous.offsets) {
-        // A replacement mesh starts at native coordinates even if its old
-        // counterpart carried an Exploded lift. Reapply the full target.
-        if (previous.geometryRefs.get(id) === geometryRefsByModel.get(modelId)?.get(id)) {
-          previousOffsets.set(id, offset);
-        }
+        // Every renderer upload pre-lifts replacement geometry from this
+        // snapshot, so identity changes do not reset the entity's applied Y.
+        previousOffsets.set(id, offset);
       }
       const nextOffsets = nextEntry?.offsets ?? new Map<number, number>();
       for (const [id, delta] of diffEntityLevelOffsets(nextOffsets, previousOffsets)) {

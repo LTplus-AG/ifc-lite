@@ -5,9 +5,10 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useEffect, useMemo, useRef } from 'react';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
+import { currentLevelYForModels, placeNewMeshesAtCurrentLevel } from '@/lib/level-arrival';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { cleanup, render } from '@/test/render';
@@ -46,8 +47,24 @@ function geometryOf(ids: number[]): GeometryResult {
   };
 }
 
-function LevelEffect() {
+function LevelEffect({
+  onGeometryUpdate,
+}: {
+  onGeometryUpdate?: (modelId: string, meshes: MeshData[], currentLevelY: ReadonlyMap<number, number>) => void;
+} = {}) {
   useLevelDisplayEffect();
+  const models = useViewerStore((state) => state.models);
+  const applied = useViewerStore((state) => state.appliedEntityLevelOffsets);
+  const currentLevelY = useMemo(() => currentLevelYForModels(models, applied), [models, applied]);
+  const lastGeometry = useRef(new Map<string, GeometryResult>());
+  useEffect(() => {
+    for (const [modelId, model] of models) {
+      const geometry = model.geometryResult;
+      if (!geometry || lastGeometry.current.get(modelId) === geometry) continue;
+      lastGeometry.current.set(modelId, geometry);
+      onGeometryUpdate?.(modelId, geometry.meshes, currentLevelY);
+    }
+  }, [models, currentLevelY, onGeometryUpdate]);
   return null;
 }
 
@@ -167,25 +184,35 @@ describe('Exploded level display with spatial edits (#5249)', () => {
     assert.deepEqual(useViewerStore.getState().pendingMeshTranslations?.get(OFFSET + FIXTURE_WALL_B), [0, 2, 0]);
   });
 
-  it('reapplies the full lift after a mesh is replaced at native coordinates', async () => {
+  it('pre-lifts replacement geometry once without queuing a duplicate entity delta', async () => {
     const store = await parseFixtureModel();
     const model = { ...fixtureModel('m', { idOffset: OFFSET }), ifcDataStore: store,
       geometryResult: geometryOf([OFFSET + FIXTURE_WALL_B]), maxExpressId: 88 };
+    const arrivals: MeshData[][] = [];
+    const onGeometryUpdate = (_modelId: string, meshes: MeshData[], currentLevelY: ReadonlyMap<number, number>) => {
+      arrivals.push(placeNewMeshesAtCurrentLevel(meshes, currentLevelY));
+    };
     useViewerStore.setState({
       ...fixtureModels(model), mutationViews: new Map(), mutationVersion: 0,
       levelDisplayMode: 'exploded', explodedGap: 5,
       appliedStoreyOffsets: new Map(), appliedEntityLevelOffsets: new Map(),
       pendingMeshTranslations: null,
     });
-    render(<LevelEffect />);
+    render(<LevelEffect onGeometryUpdate={onGeometryUpdate} />);
     assert.deepEqual(useViewerStore.getState().pendingMeshTranslations?.get(OFFSET + FIXTURE_WALL_B), [0, 2, 0]);
+    const originalArrivalCount = arrivals.length;
 
     act(() => {
       useViewerStore.getState().clearPendingMeshTranslations();
       const models = new Map(useViewerStore.getState().models);
-      models.set('m', { ...model, geometryResult: geometryOf([OFFSET + FIXTURE_WALL_B]) });
+      const replacementGeometry = geometryOf([OFFSET + FIXTURE_WALL_B]);
+      models.set('m', { ...model, geometryResult: replacementGeometry });
       useViewerStore.setState({ models });
     });
-    assert.deepEqual(useViewerStore.getState().pendingMeshTranslations?.get(OFFSET + FIXTURE_WALL_B), [0, 2, 0]);
+    const replacementArrival = arrivals.at(-1)?.[0];
+    assert.ok(arrivals.length > originalArrivalCount, 'the mounted streaming observer sees the replacement geometry');
+    assert.deepEqual(replacementArrival?.origin, [0, 2, 0], 'the replacement is born at the existing lift');
+    assert.equal(useViewerStore.getState().pendingMeshTranslations, null,
+      'the applied snapshot credits the pre-lift so the entity does not get lifted twice');
   });
 });

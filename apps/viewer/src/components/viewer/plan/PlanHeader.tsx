@@ -26,14 +26,15 @@ export interface PlanHeaderProps {
   loading: boolean;
   /** The model is over the cut's mesh limit: only wall axes are drawn. */
   simplified: boolean;
+  /** The layout on screen (the user's pick, as `model-layout.ts` resolves it). */
+  layout: ModelLayout;
 }
 
 const iconButton = 'inline-flex h-5 w-5 items-center justify-center rounded-sm transition-colors';
 
-export function PlanHeader({ grid, onToggleGrid, onFit, loading, simplified }: PlanHeaderProps) {
+export function PlanHeader({ grid, onToggleGrid, onFit, loading, simplified, layout }: PlanHeaderProps) {
   const { t } = useTranslation();
   const session = useViewerStore((s) => s.session);
-  const layout = useViewerStore((s) => s.modelLayout);
   const setModelLayout = useViewerStore((s) => s.setModelLayout);
   const groups = useWorkspaceStoreyGroups();
   const current = groups.find((g) => g.modelId === session?.modelId)?.storeys.find((s) => s.expressId === session?.storeyId) ?? null;

@@ -21,6 +21,7 @@
 
 import { useCallback, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { useViewerStore } from '@/store';
+import type { ModelLayout } from '@/store/slices/authoringSessionSidebar';
 import { useTranslation } from '@/i18n';
 import { resolveWorkplane } from '@/lib/commands/modeling/registry';
 import { getCommandRuntime, useCommandRuntime } from '@/lib/commands/modeling/runtime';
@@ -77,7 +78,7 @@ function usePlanFrame(): { plane: Workplane | null; axes: WallAxis[] } {
   return { plane, axes };
 }
 
-export function PlanView() {
+export function PlanView({ layout }: { layout: ModelLayout }) {
   const { t } = useTranslation();
   const session = useViewerStore((s) => s.session);
   const selectedIds = useViewerStore((s) => s.selectedEntityIds);
@@ -190,7 +191,7 @@ export function PlanView() {
 
   return (
     <section data-plan-view data-plan-cut-ms={cut.ms === null ? undefined : Math.round(cut.ms)} aria-label={t('modelWorkspace.plan.title')} className="flex h-full w-full flex-col bg-background">
-      <PlanHeader grid={grid} onToggleGrid={() => setGrid((g) => !g)} onFit={refit} loading={cut.loading} simplified={cut.simplified} />
+      <PlanHeader layout={layout} grid={grid} onToggleGrid={() => setGrid((g) => !g)} onFit={refit} loading={cut.loading} simplified={cut.simplified} />
       <div ref={hostRef} className="relative min-h-0 flex-1 overflow-hidden">
         <svg
           ref={svgRef}

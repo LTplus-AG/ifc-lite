@@ -11,7 +11,7 @@
  * is in.
  */
 
-import { computeFitFromPoints, pointInPoly, polyArea, wX, wY, type Fit, type Pt } from '@/lib/space-sketch-geometry';
+import { pointInPoly, polyArea, wX, wY, type Fit, type Pt } from '@/lib/space-sketch-geometry';
 import type { Vec2 } from '@/lib/snap/types';
 import type { WallAxis } from '@/lib/snap/sources/semantic';
 import type { PlanCutPolygon, PlanCutLine } from './usePlanCut';
@@ -24,20 +24,34 @@ const GRID_FULL_PX_PER_M = 24;
 const GRID_MAX_LINES = 400;
 /** A storey with nothing to frame shows a 10 m square round its origin. */
 const EMPTY_HALF_M = 5;
+/** Fit margin: a small share of the pane, never less than this many px (room for the outline strokes). */
+const FIT_MARGIN_MIN_PX = 12;
+const FIT_MARGIN_SHARE = 0.03;
 
 /** The workplane-local point under a canvas-relative screen point. */
 export function screenToLocal(fit: Fit, sx: number, sy: number): Vec2 {
   return [wX(fit, sx), wY(fit, sy)];
 }
 
-/** Frame everything the plan draws in a `w`×`h` canvas. */
+/**
+ * Frame everything the plan draws in a `w`×`h` canvas: centred, as large as
+ * fits with a small margin (Space Sketch's fixed 36 px pad left a narrow
+ * plan pane a quarter empty).
+ */
 export function fitPlan(polygons: readonly PlanCutPolygon[], lines: readonly PlanCutLine[], axes: readonly WallAxis[], w: number, h: number): Fit {
-  const pts: Pt[] = [];
-  for (const p of polygons) for (const v of p.outer) pts.push([v[0], v[1]]);
-  for (const l of lines) pts.push([l.a[0], l.a[1]], [l.b[0], l.b[1]]);
-  for (const a of axes) pts.push([a.a[0], a.a[1]], [a.b[0], a.b[1]]);
-  if (pts.length === 0) pts.push([-EMPTY_HALF_M, -EMPTY_HALF_M], [EMPTY_HALF_M, EMPTY_HALF_M]);
-  return computeFitFromPoints(pts, w, h);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const add = (p: Vec2) => {
+    minX = Math.min(minX, p[0]); minY = Math.min(minY, p[1]);
+    maxX = Math.max(maxX, p[0]); maxY = Math.max(maxY, p[1]);
+  };
+  for (const p of polygons) for (const v of p.outer) add(v);
+  for (const l of lines) { add(l.a); add(l.b); }
+  for (const a of axes) { add(a.a); add(a.b); }
+  if (!Number.isFinite(minX)) { add([-EMPTY_HALF_M, -EMPTY_HALF_M]); add([EMPTY_HALF_M, EMPTY_HALF_M]); }
+  const margin = Math.max(FIT_MARGIN_MIN_PX, FIT_MARGIN_SHARE * Math.min(w, h));
+  const scale = Math.min((w - 2 * margin) / Math.max(maxX - minX, 1e-6), (h - 2 * margin) / Math.max(maxY - minY, 1e-6));
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  return { scale, offX: w / 2 - cx * scale, offY: h / 2 + cy * scale };
 }
 
 export interface PlanGrid {

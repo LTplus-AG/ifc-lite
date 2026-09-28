@@ -79,14 +79,14 @@ describe('Model workspace sidebar hand-over (#6232 M2.1)', () => {
 });
 
 describe('Model workspace layout (#6232 M2.1)', () => {
-  it('Plan ‖ 3D by default (#6232 M2.4); a chosen layout persists per browser', () => {
+  it("'auto' until the user picks (#6232 M2.4, model-layout.ts decides); a chosen layout persists per browser", () => {
     localStorage.removeItem('ifc-lite:model-layout');
-    assert.equal(loadModelLayout(), 'split');
+    assert.equal(loadModelLayout(), 'auto');
     useViewerStore.getState().setModelLayout('3d');
     assert.equal(useViewerStore.getState().modelLayout, '3d');
     assert.equal(loadModelLayout(), '3d', 'a new session starts from it');
     localStorage.setItem('ifc-lite:model-layout', 'sideways');
-    assert.equal(loadModelLayout(), 'split', 'an unknown value falls back');
+    assert.equal(loadModelLayout(), 'auto', 'an unknown value falls back');
     useViewerStore.getState().setModelLayout('split');
   });
 });

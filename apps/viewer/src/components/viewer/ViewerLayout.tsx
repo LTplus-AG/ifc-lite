@@ -337,11 +337,11 @@ export function ViewerLayout() {
                         // (tabs, maximize, close), just placed here instead of
                         // spanning the strip below.
                         <PanelGroup orientation="horizontal" className="h-full w-full">
-                          <Panel id="viewport-3d-panel" defaultSize={60} minSize={20}>
+                          <Panel id="viewport-3d-panel" defaultSize="60%" minSize="20%">
                             <ViewportContainer />
                           </Panel>
                           <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize" />
-                          <Panel id="drawing-side-panel" defaultSize={40} minSize={20}>
+                          <Panel id="drawing-side-panel" defaultSize="40%" minSize="20%">
                             <BottomStrip
                               dockedPanel={dockedBottomPanel}
                               analysisExtension={null}

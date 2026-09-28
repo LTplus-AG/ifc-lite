@@ -31,7 +31,7 @@ import {
 import type { CommandId, SnapProfileId, WorkplaneSpec } from '@/lib/commands/modeling/types';
 import {
   loadModelLayout, persistModelLayout, restoreSidebar, showModelInspector,
-  type ModelLayout, type SidebarRestore,
+  type ModelLayout, type ModelLayoutPick, type SidebarRestore,
 } from './authoringSessionSidebar.js';
 
 export type WorkspaceMode = 'view' | 'model';
@@ -58,8 +58,8 @@ export interface EnterModelWorkspaceOptions {
 export interface AuthoringSessionSlice {
   workspaceMode: WorkspaceMode;
   session: AuthoringSession | null;
-  /** Plan ‖ 3D split of the Model workspace's viewport (persisted per browser). */
-  modelLayout: ModelLayout;
+  /** Plan ‖ 3D split of the Model workspace's viewport as the user picked it (persisted per browser). */
+  modelLayout: ModelLayoutPick;
   setModelLayout: (layout: ModelLayout) => void;
   /** False when refused (collab role, no editable model). */
   enterModelWorkspace: (opts?: EnterModelWorkspaceOptions) => boolean;

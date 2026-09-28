@@ -73,7 +73,7 @@ afterEach(() => {
 
 describe('PlanView (#6232 M2.4)', () => {
   it('a wall drawn in the plan lands at the plan coordinates, one undo step, and is cut into the plan', async () => {
-    const ui = render(<PlanView />);
+    const ui = render(<PlanView layout="split" />);
     await settle();
     const svg = ui.querySelector('[data-plan-canvas]')!;
     act(() => useViewerStore.getState().startCommand('wall.place'));
@@ -97,7 +97,7 @@ describe('PlanView (#6232 M2.4)', () => {
   });
 
   it('selection syncs both ways: plan click → both channels, 3D selection → plan highlight', async () => {
-    const ui = render(<PlanView />);
+    const ui = render(<PlanView layout="split" />);
     await settle();
     const svg = ui.querySelector('[data-plan-canvas]')!;
     act(() => useViewerStore.getState().startCommand('wall.place'));

@@ -20,6 +20,12 @@ import type { SidebarMode } from './sidebarSlice.js';
 import type { WorkspacePanelId } from '@/lib/panels/registry';
 
 export type ModelLayout = 'plan' | 'split' | '3d';
+/**
+ * What the user chose: a layout, or 'auto' while they never picked one. 'auto'
+ * opens Plan ‖ 3D only where the 3D pane stays wide enough for its HUD
+ * (`components/viewer/model/model-layout.ts`).
+ */
+export type ModelLayoutPick = ModelLayout | 'auto';
 
 /** What the sidebar showed before the workspace took it over. */
 export interface SidebarRestore {
@@ -30,14 +36,14 @@ export interface SidebarRestore {
 const LAYOUT_KEY = 'ifc-lite:model-layout';
 const LAYOUTS: readonly ModelLayout[] = ['plan', 'split', '3d'];
 
-/** The persisted layout; Plan ‖ 3D until the user picks another. */
-export function loadModelLayout(): ModelLayout {
+/** The layout the user picked (persisted), or 'auto' until they pick one. */
+export function loadModelLayout(): ModelLayoutPick {
   try {
     const stored = globalThis.localStorage?.getItem(LAYOUT_KEY);
-    return LAYOUTS.find((layout) => layout === stored) ?? 'split';
+    return LAYOUTS.find((layout) => layout === stored) ?? 'auto';
   } catch (err) {
     console.warn('[modeling] Could not read the saved model layout:', err);
-    return 'split';
+    return 'auto';
   }
 }
 

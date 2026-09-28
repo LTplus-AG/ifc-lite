@@ -9,9 +9,9 @@
  * same out-of-range zoom the sketch does instead of drifting.
  *
  * The plan frames itself once per storey, as soon as its cut has settled
- * (it arrives after a debounce); after that the view stays put through
- * edits (a first wall on an empty storey must not make the plan jump) until
- * Fit or a storey change.
+ * (it arrives after a debounce), and keeps the frame fitted while the pane
+ * resizes, until the user pans or zooms. Edits never refit (a first wall on
+ * an empty storey must not make the plan jump); Fit and a storey change do.
  */
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
@@ -41,6 +41,9 @@ export function usePlanViewport(
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [fit, setFit] = useState<Fit | null>(null);
   const framed = useRef<string | null>(null);
+  /** The user panned or zoomed since the last fit: resizes stop refitting. */
+  const moved = useRef(false);
+  const framedSize = useRef<string | null>(null);
   const frameRef = useRef(frame);
   frameRef.current = frame;
 
@@ -57,18 +60,28 @@ export function usePlanViewport(
     return () => observer.disconnect();
   }, [hostRef]);
 
-  // Frame once per storey, when its content is ready.
+  // Frame once per storey when its content is ready; refit on resize until the user navigates.
   useEffect(() => {
-    if (size.width <= 0 || size.height <= 0 || !ready || framed.current === frameKey) return;
+    if (size.width <= 0 || size.height <= 0 || !ready) return;
+    const sized = `${size.width}x${size.height}`;
+    if (framed.current === frameKey) {
+      // Same storey: only a resize refits, and only while the user has not navigated.
+      if (framedSize.current === sized || moved.current) return;
+    } else {
+      moved.current = false;
+    }
     framed.current = frameKey;
+    framedSize.current = sized;
     setFit(frameRef.current(size.width, size.height));
   }, [frameKey, ready, size.width, size.height]);
 
   const refit = useCallback(() => {
+    moved.current = false;
     if (size.width > 0 && size.height > 0) setFit(frameRef.current(size.width, size.height));
   }, [size.width, size.height]);
 
   const panBy = useCallback((dx: number, dy: number) => {
+    moved.current = true;
     setFit((f) => (f ? { ...f, offX: f.offX + dx, offY: f.offY + dy } : f));
   }, []);
 
@@ -78,6 +91,7 @@ export function usePlanViewport(
     if (!svg) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      moved.current = true;
       const rect = svg.getBoundingClientRect();
       const ax = e.clientX - rect.left, ay = e.clientY - rect.top;
       setFit((f) => (f ? zoomStep(f, e.deltaY, ax, ay) ?? f : f));

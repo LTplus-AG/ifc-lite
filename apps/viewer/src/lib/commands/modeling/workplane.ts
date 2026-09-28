@@ -33,6 +33,7 @@ import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import { modelPointToWorkspacePoint, workspacePointToModelFrame, type PointPlacement } from '@/lib/model-placement/rotation';
 import { fromRenderTranslation, toRenderTranslation } from '@/lib/model-placement/translation';
+import { effectiveStoreyId } from '@/lib/effective-storey';
 import { invertAffine, applyAffine, sameCrsAlignment, type Affine } from './workplane-alignment.js';
 import type { Ray, Vec3, Workplane, WorkplaneSpec } from './types.js';
 
@@ -141,13 +142,14 @@ export function buildStoreyWorkplane(
 }
 
 /**
- * The storey an element sits on, for building its workplane. Authored
- * elements are registered into the live hierarchy when created
- * (`authoredTreeEntry.ts`), and a deleted one cannot be selected or targeted.
+ * The storey an element sits on NOW, for building its workplane: the live
+ * lookup split uses (`effectiveStoreyId`, #6282), so an element moved to
+ * another storey by a containment edit gets that storey's frame, not the
+ * one it was loaded in. Null when it is on no storey (or deleted).
  */
 export function elementStoreyId(s: ViewerState, modelId: string, expressId: number): number | null {
-  // @raw-entity-enumeration-ok point lookup; the hierarchy carries authored elements (authoredTreeEntry.ts)
-  return s.models.get(modelId)?.ifcDataStore?.spatialHierarchy?.elementToStorey.get(expressId) ?? null;
+  const store = s.models.get(modelId)?.ifcDataStore;
+  return store ? effectiveStoreyId(store, s.mutationViews.get(modelId), expressId) ?? null : null;
 }
 
 export function isWorkplane(value: Workplane | { refused: string }): value is Workplane {

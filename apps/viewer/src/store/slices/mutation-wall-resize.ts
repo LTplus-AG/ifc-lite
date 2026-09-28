@@ -29,6 +29,7 @@ import { toGlobalIdFromModels } from '../globalId.js';
 import { resolveWallEditChain } from '@/lib/placement-edit.js';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import { buildElementMesh } from './addElementMeshes.js';
+import { effectiveStoreyId } from '@/lib/effective-storey';
 import { rememberRemesh } from '@/lib/remesh/remesh-registry.js';
 import { requestRemesh } from '@/lib/remesh/remesh-service.js';
 
@@ -104,9 +105,9 @@ function buildWallMesh(get: Get, modelId: string, expressId: number, globalId: n
   if (!dataStore || !view || !editor) return null;
   const wall = readWallMetres({ dataStore, view, editor }, expressId);
   if (!wall || !(wall.height > 0)) return null;
-  const hierarchy = dataStore.spatialHierarchy;
-  const storeyId = hierarchy?.elementToStorey.get(expressId);
-  const storeyElevation = (storeyId !== undefined ? hierarchy?.storeyElevations?.get(storeyId) : undefined) ?? 0;
+  // The wall's storey now, containment edits included (#6282's lookup), not the load-time index.
+  const storeyId = effectiveStoreyId(dataStore, view, expressId);
+  const storeyElevation = (storeyId !== undefined ? dataStore.spatialHierarchy?.storeyElevations?.get(storeyId) : undefined) ?? 0;
   return buildElementMesh({
     type: 'wall',
     globalId,

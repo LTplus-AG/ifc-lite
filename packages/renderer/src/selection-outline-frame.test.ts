@@ -162,4 +162,25 @@ describe('buildSelectionOutlineFrame outlines instanced occurrences (#5745)', ()
     assert.equal(flags[0]! & MESH_FLAG_RTE_DRAWABLE, MESH_FLAG_RTE_DRAWABLE, 'vs_instanced positions are camera-relative, so the cut must be too');
     assert.equal(flags[1], 0b111);
   });
+
+  it('packs the mask uniform with the RTE camera ~6,378 km from the world origin (#6400)', () => {
+    // The #6393 setup: a georeferenced camera far outside the ±1,000 km
+    // camera-relative envelope around the world origin. The instanced mask
+    // reads no drawable origin (each occurrence brings its own RTE delta, as in
+    // the colour pass), so packing must not validate one against the camera.
+    const relativeToEyeFrame = new RelativeToEyeFrame();
+    relativeToEyeFrame.update({ x: 6_378_137, y: 12, z: -3 }, MathUtils.identity(), MathUtils.identity());
+    const hoveredTpl = tpl(0);
+    const { instanced } = build({
+      instancedTemplates: [tpl(1), hoveredTpl], instancedHovered: [hoveredTpl], hoveredId: 77, relativeToEyeFrame,
+      section: { enabled: true, normal: [1, 0, 0], distance: 6_378_140 },
+    });
+    assert.ok(instanced);
+    assert.deepEqual(instanced.rteCamera, [6_378_137, 12, -3]);
+    const flags = new Uint32Array(instanced.uniforms.buffer, MESH_FLAGS_BYTE_OFFSET, 2);
+    assert.equal(flags[0]! & MESH_FLAG_RTE_DRAWABLE, MESH_FLAG_RTE_DRAWABLE);
+    assert.equal(flags[1], 0b001);
+    // The section plane is still rebased into the camera-relative frame.
+    assert.equal(instanced.uniforms[MESH_UNIFORM_OFFSET.sectionPlane + 3], 3);
+  });
 });

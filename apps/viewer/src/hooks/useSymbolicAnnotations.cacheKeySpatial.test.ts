@@ -12,7 +12,7 @@ import { useViewerStore } from '../store/index.js';
 import { __setOverlayWorkerFactoryForTest } from '../lib/overlay-parse/index.js';
 import { createEmptyFlatSymbolic } from '../lib/overlay-parse/symbolic-flat.js';
 import { useSymbolicAnnotations } from './useSymbolicAnnotations.js';
-import { symbolicLineVertexData, type SymbolicLineVertices } from './symbolic-line-channels.js';
+import { symbolicLineVertexData, type SymbolicLineChannels, type SymbolicLineVertices } from './symbolic-line-channels.js';
 import type { AnchoredRendererLineVertices } from '../lib/renderer/line-overlay-rte.js';
 import {
   __resetSymbolicAnnotationsCacheForTests,
@@ -132,7 +132,7 @@ describe('symbolic cache follows live spatial bucket mappings (#5236/#5249)', ()
       target.spatialHierarchy!.storeyElevations.set(90, 25);
       useViewerStore.setState({ mutationVersion: 1 } as never);
       const underTwentyFive = ensureParseFor([target])[0]!;
-      const live = worker;
+      const live = worker as typeof worker;
       assert.ok(live, 'the first request should have started a worker parse');
       const postedId = requestId as number | null;
       assert.ok(postedId !== null, 'the worker request should have an id');
@@ -217,7 +217,7 @@ describe('symbolic cache follows live spatial bucket mappings (#5236/#5249)', ()
 
   it('reparses live buckets when mutationVersion advances after an in-place hierarchy edit', async () => {
     let workerParses = 0;
-    let rendered = { annotation: new Float32Array(), grid: new Float32Array() };
+    let rendered: SymbolicLineChannels = { annotation: new Float32Array(), grid: new Float32Array() };
     const previous = __setOverlayWorkerFactoryForTest(() => {
       const worker = {
         onmessage: null as ((event: { data: unknown }) => void) | null,

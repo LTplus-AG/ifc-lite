@@ -1044,7 +1044,7 @@ function rid(): string {
  *   • Re-clicking re-runs the download — useful if the user closed the
  *     prompt by accident.
  */
-function InlineDownload({
+export function InlineDownload({
   download,
 }: {
   download: NonNullable<ToolDispatchResult['download']>;
@@ -1060,7 +1060,7 @@ function InlineDownload({
 
   return (
     <div className="border-t border-white/5 px-3 py-2">
-      <button
+      <button aria-label={justSaved ? t('mcp.playgroundChat.savedLabel') : download.label}
         onClick={() => {
           playgroundFiles.download(download.fileId);
           setSavedAt(Date.now());

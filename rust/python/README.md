@@ -333,8 +333,10 @@ EXPRESS names.
 Authored attributes use exact EXPRESS names and record whether they came from
 the occurrence or its `IfcReinforcingBarType`. Numeric attributes retain their
 raw IFC value and an SI conversion. Each source sweep separately carries
-world-space radius, centreline length and bend angles, geometric checks, and
-reusable `source` identity. Mapped repetitions remain separate, while repeated
+radius, centreline length and bend angles, geometric checks, and reusable
+`source` identity. For complete paths, radii are effective world values in
+metres; an unsupported transform retains source radii in metres and does not
+establish a world circular radius. Mapped repetitions remain separate, while repeated
 uses of one representation map share a source key. If the independent definition
 output budget is exhausted, `source` is `None` with a row diagnostic; the
 world-space schedule sweep remains available. An authored `BarLength`

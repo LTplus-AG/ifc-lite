@@ -30,14 +30,14 @@ export interface SidebarRestore {
 const LAYOUT_KEY = 'ifc-lite:model-layout';
 const LAYOUTS: readonly ModelLayout[] = ['plan', 'split', '3d'];
 
-/** The persisted layout; 3D alone until the plan pane lands (M2.4). */
+/** The persisted layout; Plan ‖ 3D until the user picks another. */
 export function loadModelLayout(): ModelLayout {
   try {
     const stored = globalThis.localStorage?.getItem(LAYOUT_KEY);
-    return LAYOUTS.find((layout) => layout === stored) ?? '3d';
+    return LAYOUTS.find((layout) => layout === stored) ?? 'split';
   } catch (err) {
     console.warn('[modeling] Could not read the saved model layout:', err);
-    return '3d';
+    return 'split';
   }
 }
 

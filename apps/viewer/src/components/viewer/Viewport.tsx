@@ -69,7 +69,7 @@ import { symbolicLineVertexData } from '../../hooks/symbolic-line-channels.js';
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
 import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
 import { useLandXmlRendererOverlay } from '../../hooks/useLandXmlOverlayLines.js';
-import { selectLandXmlViewportPick } from './landXmlViewportSelection.js';
+import { selectPickedGlobalId, toggleGlobalIdInSelection } from './viewport-selection.js';
 import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
 import { subscribeViewportHealth } from './device-loss-report.js';
 import { useAuthoringOverlay } from './useAuthoringOverlay.js';
@@ -133,10 +133,8 @@ export function Viewport({
   }, []);
 
   // Selection state
-  const { selectedEntityId, selectedEntityIds, setSelectedEntityId, setSelectedEntity, toggleSelection, models } = useSelectionState();
+  const { selectedEntityId, selectedEntityIds, setSelectedEntityId, models } = useSelectionState();
   const selectedEntity = useViewerStore((s) => s.selectedEntity);
-  const addEntityToSelection = useViewerStore((s) => s.addEntityToSelection);
-  const toggleEntitySelection = useViewerStore((s) => s.toggleEntitySelection);
 
   // Sync selectedEntityId with model-aware selectedEntity for PropertiesPanel
   useModelSelection();
@@ -177,36 +175,11 @@ export function Viewport({
     return sources;
   }, [models, modelIdToIndex, geometryContentVersion]);
 
-  // Helper to handle pick result and set selection properly
-  // IMPORTANT: pickResult.expressId is now a globalId (transformed at load time)
-  // resolveEntityRef is the single source of truth for globalId → EntityRef
+  // pickResult.expressId is a globalId (transformed at load time); the shared
+  // click selection writes both selection channels (viewport-selection.ts).
   const handlePickForSelection = useCallback((pickResult: import('@ifc-lite/renderer').PickResult | null) => {
-    // Normal click clears any lingering multi-highlight (fresh single-selection).
-    // Gate on EITHER set: `selectedEntityIds` is the legacy global-id set that
-    // drives the renderer highlight, and some features populate it WITHOUT the
-    // multi-model `selectedEntitiesSet` — e.g. "isolate group members" (#1075)
-    // and clash-pair highlight. Checking only `selectedEntitiesSet` left those
-    // highlights stuck on with no way to clear them by clicking away.
-    const currentState = useViewerStore.getState();
-    if (currentState.selectedEntitiesSet.size > 0 || currentState.selectedEntityIds.size > 0) {
-      useViewerStore.setState((state) => ({ selectedEntitiesSet: new Set(), selectedEntityIds: new Set(), selectionRevision: state.selectionRevision + 1 }));
-    }
-
-    if (!pickResult) {
-      setSelectedEntityId(null);
-      return;
-    }
-
-    const globalId = pickResult.expressId;
-    if (selectLandXmlViewportPick(currentState, globalId)) return;
-    const resolvedRef = resolveEntityRef(globalId);
-
-    // Set globalId for renderer (highlighting uses globalIds directly)
-    setSelectedEntityId(globalId);
-
-    // Resolve globalId → EntityRef for property panel (single source of truth, never null)
-    setSelectedEntity(resolvedRef);
-  }, [setSelectedEntityId, setSelectedEntity]);
+    selectPickedGlobalId(pickResult?.expressId ?? null);
+  }, []);
 
   // Ref to always access latest handlePickForSelection from event handlers
   // (useMouseControls/useTouchControls capture this at effect setup time)
@@ -217,45 +190,8 @@ export function Viewport({
   // raycasting under the cursor (see useMouseControls/useTouchControls).
   // No need for selection-based orbit center — cursor-based is always better.
 
-  // Multi-select handler: Ctrl+Click adds/removes from multi-selection
-  // Properly populates both selectedEntitiesSet (multi-model) and selectedEntityIds (legacy)
-  const handleMultiSelect = useCallback((globalId: number) => {
-    // Resolve globalId → EntityRef (single source of truth, never null)
-    const entityRef = resolveEntityRef(globalId);
-
-    // If this is the first Ctrl+click and there's already a single-selected entity,
-    // add it to the multi-select set first (so it's not lost)
-    const state = useViewerStore.getState();
-    if (state.selectedEntitiesSet.size === 0 && state.selectedEntity) {
-      addEntityToSelection(state.selectedEntity);
-      // Also seed legacy selectedEntityIds with previous entity's globalId
-      // so the renderer highlights both the old and new entity
-      if (state.selectedEntityId !== null) {
-        toggleSelection(state.selectedEntityId);
-      }
-    }
-
-    // Toggle the clicked entity in multi-select
-    toggleEntitySelection(entityRef);
-
-    // Also sync legacy selectedEntityIds and selectedEntityId
-    toggleSelection(globalId);
-
-    // Read post-toggle state to keep renderer highlighting in sync:
-    // If the entity was toggled OFF, don't force-highlight it.
-    const updated = useViewerStore.getState();
-    if (updated.selectedEntityIds.has(globalId)) {
-      // Entity was toggled ON — highlight it
-      setSelectedEntityId(globalId);
-    } else if (updated.selectedEntityIds.size > 0) {
-      // Entity was toggled OFF but others remain — highlight the last remaining
-      const remaining = Array.from(updated.selectedEntityIds);
-      setSelectedEntityId(remaining[remaining.length - 1]);
-    } else {
-      // Nothing left selected
-      setSelectedEntityId(null);
-    }
-  }, [addEntityToSelection, toggleEntitySelection, toggleSelection, setSelectedEntityId]);
+  // Multi-select handler: Ctrl+Click adds/removes from multi-selection (both channels).
+  const handleMultiSelect = useCallback((globalId: number) => toggleGlobalIdInSelection(globalId), []);
 
   const handleMultiSelectRef = useRef(handleMultiSelect);
   useEffect(() => { handleMultiSelectRef.current = handleMultiSelect; }, [handleMultiSelect]);

@@ -23,12 +23,12 @@
  * in step with or the underlay slides off the rooms it is drawn under.
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { Drawing2DGenerator, createSectionConfig } from '@ifc-lite/drawing-2d';
+import { useMemo } from 'react';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { selectModelMeshes } from '@/lib/type-view-visibility';
 import { roomFramePlanOffsets } from '@/lib/wall-rects-from-meshes';
+import { PLAN_CUT_HEIGHT, identityKey, usePlanCutDrawing, type PlanCutRequest } from '@/components/viewer/plan/usePlanCut';
 
 export interface UnderlayLine {
   a: [number, number];
@@ -37,74 +37,42 @@ export interface UnderlayLine {
   hidden: boolean;
 }
 
+/**
+ * The cut itself is the Model workspace plan's (`usePlanCutDrawing`: one
+ * plan-cut path, debounced and superseded the same way); this hook only
+ * supplies the room frame and keeps the lines.
+ */
 export function useConstructionUnderlay(
   enabled: boolean,
   floorElevation: number | null,
 ): { lines: UnderlayLine[]; loading: boolean } {
   const geometryResult = useViewerStore((s) => s.geometryResult);
-  const [lines, setLines] = useState<UnderlayLine[]>([]);
-  const [loading, setLoading] = useState(false);
-  const genRef = useRef<Drawing2DGenerator | null>(null);
 
-  useEffect(() => {
+  const request = useMemo<PlanCutRequest | null>(() => {
     // Building elements only — the type library never belongs in a 2D
     // underlay any more than it belongs in a section (#2058).
     const meshes = geometryResult?.meshes ? selectModelMeshes(geometryResult.meshes) : undefined;
-    if (!enabled || floorElevation === null || !meshes || meshes.length === 0) {
-      setLines([]);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-
-    const coord = geometryResult?.coordinateInfo as CoordinateInfo | undefined;
+    if (!enabled || floorElevation === null || !geometryResult || !meshes || meshes.length === 0) return null;
+    const coord = geometryResult.coordinateInfo as CoordinateInfo | undefined;
     const shift = coord?.originShift ?? { x: 0, y: 0, z: 0 };
     // Plan cut at floor + 1.2 m, in render-frame Y: renderY = ifcZ − shift.y
     // (the same band arithmetic as `wallRectsFromMeshes`).
-    const cutY = floorElevation + 1.2 - shift.y;
+    const cutY = floorElevation + PLAN_CUT_HEIGHT - shift.y;
     // Inverse of the plan projection → room (ifcX, ifcY) frame, taken from
     // the one place the room frame is defined so the two cannot drift.
     const { cx, cy } = roomFramePlanOffsets(coord);
-
-    const config = createSectionConfig('y', cutY, {
-      projectionDepth: 1.5,
-      projectionBelowDepth: 1.4,
-      projectionAboveDepth: 0.8,
-    });
-
-    void (async () => {
-      try {
-        const gen = genRef.current ?? new Drawing2DGenerator();
-        genRef.current = gen;
-        await gen.initialize();
-        const drawing = await gen.generate(meshes, config, {
-          includeProjection: true,
-          includeEdges: false,
-          includeHiddenLines: false,
-          mergeLines: true,
-        });
-        if (cancelled) return;
-        const out: UnderlayLine[] = drawing.lines.map((l) => ({
-          a: [l.line.start.x + cx, cy - l.line.start.y] as [number, number],
-          b: [l.line.end.x + cx, cy - l.line.end.y] as [number, number],
-          hidden: l.visibility === 'hidden',
-        }));
-        setLines(out);
-      } catch (err) {
-        // An empty underlay renders identically to "this storey genuinely has
-        // no elements at the cut", so a failed generation is invisible in the
-        // sketch. One line per (storey, geometry) change — not a render loop.
-        console.warn('[underlay] construction underlay generation failed', err);
-        if (!cancelled) setLines([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
+    return {
+      key: `underlay:${identityKey(geometryResult)}:${meshes.length}:${cutY}`,
+      meshes,
+      cutY,
+      map: (x, z) => [x + cx, cy - z],
     };
   }, [enabled, floorElevation, geometryResult]);
 
-  return { lines, loading };
+  const cut = usePlanCutDrawing(request);
+  const lines = useMemo<UnderlayLine[]>(
+    () => cut.lines.map((l) => ({ a: [l.a[0], l.a[1]], b: [l.b[0], l.b[1]], hidden: l.hidden })),
+    [cut.lines],
+  );
+  return { lines, loading: cut.loading };
 }

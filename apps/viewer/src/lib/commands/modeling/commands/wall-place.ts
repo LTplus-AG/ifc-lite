@@ -17,6 +17,7 @@
  */
 
 import { WallPlaceScene } from '@/components/viewer/tools/command/WallPlaceScene';
+import { WallPlacePlan } from '@/components/viewer/tools/command/WallPlacePlan';
 import { dist } from '@/lib/snap/constraints';
 import { commandGhostId, wallGhostMesh } from '../ghost.js';
 import { MIN_WALL_LENGTH, anchorOf, endPoint, type WallPlaceGesture } from './wall-place-geometry.js';
@@ -49,6 +50,7 @@ export const WALL_PLACE: ModelingCommand<WallPlaceGesture> = {
   labelKey: 'modelingCommand.wall.label',
   hud: {
     Scene: WallPlaceScene,
+    Plan: WallPlacePlan,
     hint: (g) => (g.chain.length === 0 ? 'modelingCommand.wall.hintStart' : 'modelingCommand.wall.hintNext'),
   },
   fields: FIELDS,

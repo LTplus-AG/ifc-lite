@@ -94,12 +94,19 @@ export interface CommandHudProps<G> {
   ctx: CommandContext;
 }
 
+/** A command's layer in the 2D plan: `toScreen` maps workplane-local metres to plan pixels. */
+export interface CommandPlanProps<G> extends CommandHudProps<G> {
+  toScreen: (p: Vec2) => readonly [number, number];
+}
+
 export interface ModelingCommand<G = unknown> {
   readonly id: CommandId;
   readonly labelKey: TranslationKey;
   readonly hud: {
     Bar?: ComponentType<CommandHudProps<G>>;
     Scene?: ComponentType<CommandHudProps<G>>;
+    /** Drawn inside the plan's SVG, above the footprint of the `ghost` meshes the plan draws for every command. */
+    Plan?: ComponentType<CommandPlanProps<G>>;
     hint?: (g: G) => TranslationKey;
   };
   readonly fields?: readonly CommandField<G>[];

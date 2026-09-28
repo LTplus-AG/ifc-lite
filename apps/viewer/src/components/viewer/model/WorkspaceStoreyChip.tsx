@@ -30,8 +30,8 @@ function isIsolated(s: ViewerState, modelId: string, storeyId: number): boolean 
   return s.levelDisplayMode === 'solo' && s.selectedStoreys.has(toGlobalIdFromModels(s.models, modelId, storeyId));
 }
 
-/** Move the session to `storey`, keeping the command and the isolation. */
-function pickWorkspaceStorey(storey: WorkspaceStorey): void {
+/** Move the session to `storey`, keeping the command and the isolation (the chip and the plan header). */
+export function pickWorkspaceStorey(storey: WorkspaceStorey): void {
   const s = useViewerStore.getState();
   const session = s.session;
   if (!session) return;
@@ -46,20 +46,24 @@ function pickWorkspaceStorey(storey: WorkspaceStorey): void {
   if (isolated) applyLevelDisplayMode('solo', [{ modelId: storey.modelId, expressId: storey.expressId }]);
 }
 
-export function WorkspaceStoreyChip() {
-  const { t } = useTranslation();
-  const session = useViewerStore((s) => s.session);
+/** The storey list per editable model, while a session is open (the chip and the plan header). */
+export function useWorkspaceStoreyGroups(): StoreyPickerGroup[] {
+  const open = useViewerStore((s) => s.session !== null);
   const models = useViewerStore((s) => s.models);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
-  const isolated = useViewerStore((s) => (s.session?.storeyId != null ? isIsolated(s, s.session.modelId, s.session.storeyId) : false));
-
-  const open = session !== null;
-  const groups = useMemo<StoreyPickerGroup[]>(() => {
+  return useMemo<StoreyPickerGroup[]>(() => {
     void mutationVersion; // an authored storey or elevation edit
     if (!open) return [];
     const s = useViewerStore.getState();
     return editableModels(s).map((model) => ({ modelId: model.id, modelName: model.name, storeys: modelStoreys(s, model.id) }));
   }, [open, models, mutationVersion]);
+}
+
+export function WorkspaceStoreyChip() {
+  const { t } = useTranslation();
+  const session = useViewerStore((s) => s.session);
+  const isolated = useViewerStore((s) => (s.session?.storeyId != null ? isIsolated(s, s.session.modelId, s.session.storeyId) : false));
+  const groups = useWorkspaceStoreyGroups();
 
   if (!session) return null;
   const group = groups.find((g) => g.modelId === session.modelId);

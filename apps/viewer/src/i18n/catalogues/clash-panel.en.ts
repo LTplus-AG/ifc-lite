@@ -71,6 +71,8 @@ export const clashPanelEn = {
   'clashPanel.userDefinedGroups': 'User-defined groups',
   'clashPanel.duplicateScanGroupTooltip': 'Duplicate scans always group by coincident set',
   'clashPanel.groupBySeverityOption': 'By severity',
+  'clashPanel.groupByLabel': 'Group clashes by',
+  'clashPanel.sortByLabel': 'Sort clashes by',
   'clashPanel.groupByRuleOption': 'By rule',
   'clashPanel.groupByTypePairOption': 'By type pair',
   'clashPanel.sort.severity': 'Sort: severity',

@@ -89,6 +89,9 @@ export function effectiveScheduleGroups(
     products.push(id);
   };
   for (const id of containment.keys()) addProduct(id);
+  // An IfcRelAggregates child can inherit its storey through a product parent
+  // (or be aggregated directly by the storey) without any containment edge.
+  for (const id of aggregation.keys()) addProduct(id);
   for (let i = 0; i < products.length; i++) {
     for (const child of aggregateChildren.get(products[i]) ?? []) addProduct(child);
   }

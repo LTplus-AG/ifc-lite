@@ -89,6 +89,20 @@ describe('#6232 store-adapter modelling surface', () => {
     }
   });
 
+  it('a colour-merged host keeps its mesh, and the new door still gets its own (#6232)', async () => {
+    const { store, swapped, mirroredGeometry } = await makeStore();
+    const merged = { expressId: WALL, ifcType: 'IfcWall', positions: new Float32Array(9), normals: new Float32Array(9),
+      indices: new Uint32Array([0, 1, 2]), color: [1, 1, 1, 1], entityIds: new Uint32Array([WALL, 7, 7]) };
+    (store.getState().models.get('m')!.geometryResult!.meshes as unknown[]).push(merged);
+    const door = createStoreAdapter(store).addHostedDoor('m', WALL, { Offset: 8, Width: 0.9, Height: 2.1 });
+    await settleRemesh();
+    const targets = [...mesher.requests[0].targets];
+    assert.ok(targets.includes(door.expressId), 'the door is re-meshed');
+    assert.ok(!targets.includes(WALL), 'the merged host is left alone');
+    assert.ok(swapped.includes(door.expressId) && mirroredGeometry.includes(door.expressId));
+    assert.ok(!swapped.includes(WALL) && !mirroredGeometry.includes(WALL));
+  });
+
   it('refuses every hosted-opening call for a read-only participant, overlay untouched', async () => {
     const { store, mutationViews } = await makeStore(false);
     const adapter = createStoreAdapter(store);

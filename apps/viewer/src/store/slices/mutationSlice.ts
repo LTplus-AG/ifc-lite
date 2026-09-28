@@ -48,7 +48,7 @@ import { toGlobalIdFromModels } from '../globalId.js';
 import { meshesForOwningModel } from '../owningModelMeshes.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import type { AuthoredElement } from './authoredElement.js';
-import { requestRemesh } from '@/lib/remesh/remesh-service.js';
+import { remeshAuthoredElement, rememberAuthoredElement } from './authoredFallbackMesh.js';
 import { authoredDataStore, syncAuthoredTreeEntry } from './authoredTreeEntry.js';
 import { ensureStoreyPlacement } from './storeyPlacement.js';
 import { effectiveStoreyId } from '@/lib/effective-storey';
@@ -964,7 +964,8 @@ const authoredIfcType = (element: AuthoredElement): string => `IFC${element.kind
  * so a script's or flow's elements existed only in the export overlay: no
  * mesh, no tree entry, no undo, and no `mutationVersion` bump to tell anything
  * they were there. The mesh comes from the wasm re-mesh of the written IFC
- * (#6232), in the model's own frame and mirrored to the room when it lands.
+ * (#6232), in the model's own frame and mirrored to the room when it lands,
+ * or from the element's parameters where the re-mesh declines.
  */
 function recordAuthoredElementIn(
   get: () => ViewerState,
@@ -1021,8 +1022,10 @@ function recordAuthoredElementIn(
     };
   });
 
-  // Real geometry for the new element, from the IFC it was written as.
-  void requestRemesh(get, modelId, [entityId], 'created');
+  // Real geometry for the new element, from the IFC it was written as; drawn
+  // from its parameters where the re-mesh can't mesh it (authoredFallbackMesh.ts).
+  rememberAuthoredElement(dataStore, entityId, storeyExpressId, element);
+  void remeshAuthoredElement(get, modelId, entityId);
   revealAddedGeometryInModelView(get);
 }
 

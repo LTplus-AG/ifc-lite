@@ -85,33 +85,28 @@ describe('authored elements get re-meshed geometry (#6232)', () => {
     assert.deepEqual(mirrored.map(([m, id, meshes]) => [m, id, meshes.length]), [[MODEL, wall.expressId, 1]]);
   });
 
-  it('redo of an add whose mesh never landed meshes it from the restored record', async () => {
-    mesher.restore();
-    const silent = installScriptedMesher(() => []);
+  it('redo of an add undone before its mesh landed meshes it from the restored record', async () => {
     const wall = useViewerStore.getState().addWall(MODEL, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
     assert.ok('expressId' in wall);
-    await settleRemesh();
     useViewerStore.getState().undo(MODEL);
-    const before = silent.requests.length;
+    await settleRemesh();
+    assert.deepEqual(meshedIds(), [], 'the answer for the undone wall is dropped');
+    const before = mesher.requests.length;
     useViewerStore.getState().redo(MODEL);
     await settleRemesh();
-    assert.ok(silent.requests.slice(before).some((r) => [...r.targets].includes(wall.expressId)), 'redo re-meshed it');
-    silent.restore();
+    assert.ok(mesher.requests.slice(before).some((r) => [...r.targets].includes(wall.expressId)), 'redo re-meshed it');
+    assert.deepEqual(meshedIds(), [wall.expressId]);
   });
 
   it('that redo also hands the room the re-mesh, since the re-created entity arrived without geometry', async () => {
-    mesher.restore();
-    let answered = 0;
-    const late = installScriptedMesher((request) => (answered++ === 0 ? [] : [...request.targets].map(triangleFor)));
     const wall = useViewerStore.getState().addWall(MODEL, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
     assert.ok('expressId' in wall);
-    await settleRemesh();
-    assert.equal(mirrored.length, 0, 'the first re-mesh produced nothing to send');
     useViewerStore.getState().undo(MODEL);
+    await settleRemesh();
+    assert.equal(mirrored.length, 0, 'nothing was sent for the undone wall');
     useViewerStore.getState().redo(MODEL);
     await settleRemesh();
     assert.deepEqual(mirrored.map(([, id, meshes]) => [id, meshes.length]), [[wall.expressId, 1]]);
-    late.restore();
   });
 
   it('redo of an add hands the room every mesh of the element, not just the first', async () => {

@@ -193,9 +193,13 @@ function refuse(modelId: string, reason: RemeshRefusal): RemeshOutcome {
   return { status: 'refused', reason };
 }
 
-/** True when a live mesh of these entities also hosts other entities' geometry. */
-function hostsColourMerged(model: FederatedModel, globalIds: ReadonlySet<number>): boolean {
-  return model.geometryResult?.meshes.some((mesh) => globalIds.has(mesh.expressId) && hostsOtherEntities(mesh)) ?? false;
+/** Those of `globalIds` with a live mesh that also hosts other entities' geometry. */
+function colourMergedAmong(model: FederatedModel, globalIds: ReadonlySet<number>): Set<number> {
+  const merged = new Set<number>();
+  for (const mesh of model.geometryResult?.meshes ?? []) {
+    if (globalIds.has(mesh.expressId) && hostsOtherEntities(mesh)) merged.add(mesh.expressId);
+  }
+  return merged;
 }
 
 function stamp(modelId: string, ids: Iterable<number>): Map<string, number> {
@@ -281,8 +285,17 @@ async function remesh(
   const view = state.mutationViews.get(modelId) ?? null;
   const targets = expandAffectedSet(store, view, expressIds, cause);
   if (targets.size === 0) return { status: 'stale' };
+  const mergedGlobalIds = colourMergedAmong(model, new Set([...targets].map((id) => toGlobalIdFromModels(state.models, modelId, id))));
+  const merged = [...targets].filter((id) => mergedGlobalIds.has(toGlobalIdFromModels(state.models, modelId, id)));
+  if (merged.length > 0) {
+    // A colour-merged mesh can't be swapped on its own. An edit of it is
+    // refused whole; a new element still gets its mesh, and only the merged
+    // context it would have re-cut (a host) keeps its old one (#6232).
+    if (cause !== 'created' || merged.length === targets.size) return refuse(modelId, 'colourMerged');
+    notice(modelId, REFUSAL_NOTICES.colourMerged);
+    for (const id of merged) targets.delete(id);
+  }
   const globalIds = new Set([...targets].map((id) => toGlobalIdFromModels(state.models, modelId, id)));
-  if (hostsColourMerged(model, globalIds)) return refuse(modelId, 'colourMerged');
   const stamps = stamp(modelId, targets);
   const epoch = disposals;
 

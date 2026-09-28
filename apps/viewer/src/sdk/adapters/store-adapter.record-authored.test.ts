@@ -55,8 +55,9 @@ async function fixture() {
     editEnabled: true,
     // The re-mesh lands through `replaceEntityMeshes`; record what it swaps in.
     replaceEntityMeshes: (_modelId: string, byGlobalId: ReadonlyMap<number, readonly MeshData[]>) => {
-      for (const meshes of byGlobalId.values()) appended.push(...meshes);
+      for (const meshes of byGlobalId.values()) { appended.push(...meshes); (geometryResult.meshes as MeshData[]).push(...meshes); }
     },
+    appendGeometryBatch: (_modelId: string, meshes: MeshData[]) => { (geometryResult.meshes as MeshData[]).push(...meshes); },
     hideEntities: (ids: number[]) => { hidden.push(...ids); },
     mirrorEntityCreate: () => {},
     mirrorEntityRemove: () => {},
@@ -134,6 +135,7 @@ describe('bim.store.add* books what it builds', () => {
 
     state().redo(MODEL);
     assert.ok(listed(ref.expressId), 'redo of the add: back');
+    await settleRemesh();
   });
 
   it('single-model (legacy) mode books the element too, on the top-level store and geometry', async () => {
@@ -152,6 +154,7 @@ describe('bim.store.add* books what it builds', () => {
       appendGeometryBatch: () => { throw new Error('legacy mode has no model entry to append onto'); },
       setGeometryResult: (g: { meshes: MeshData[] }) => { geometry.splice(0, geometry.length, ...g.meshes); },
       mirrorEntityCreate: () => {},
+      mirrorEntityGeometry: () => {},
     } as unknown as ViewerState;
     const setState = (partial: unknown) => {
       const updates = typeof partial === 'function' ? (partial as (s: ViewerState) => Partial<ViewerState>)(state) : partial;
@@ -163,10 +166,11 @@ describe('bim.store.add* books what it builds', () => {
     const ref = createStoreAdapter(store).addColumn('default', 30, { Position: [0, 0, 0], Width: 0.3, Depth: 0.3, Height: 3 });
 
     assert.equal(ref.modelId, '__legacy__');
-    // No model entry holds the geometry in legacy mode, so there is nothing for a
-    // re-mesh to land in (#6232); the element is still booked below.
+    // No model entry holds the geometry in legacy mode, so the re-mesh has
+    // nothing to land in; the column is drawn from its parameters on the
+    // top-level geometry instead (#6232), and is booked below.
     await settleRemesh();
-    assert.equal(geometry.length, 0);
+    assert.deepEqual(geometry.map((m) => m.expressId), [ref.expressId]);
     assert.deepEqual((state.undoStacks.get('__legacy__') ?? []).map((m) => m.type), ['CREATE_ENTITY']);
     assert.ok((dataStore.spatialHierarchy?.byStorey.get(30) ?? []).includes(ref.expressId));
   });

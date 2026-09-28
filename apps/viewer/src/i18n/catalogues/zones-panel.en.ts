@@ -41,6 +41,7 @@ export const zonesPanelEn = {
   'zonesPanel.zoneRow.prismHeightLabel': 'Height (Y)',
 
   // ZonesPanel — ZoneRow controls
+  'zonesPanel.zoneRow.nameAriaLabel': 'Name of zone {name}',
   'zonesPanel.zoneRow.stopEditingTitle': 'Stop editing in 3D',
   'zonesPanel.zoneRow.editIn3dTitle': 'Edit in 3D (move / resize / rotate handles)',
   'zonesPanel.zoneRow.selectTitle': 'Select elements in this zone',
@@ -66,6 +67,7 @@ export const zonesPanelEn = {
   'zonesPanel.addZoneTitle': 'Add zone',
   'zonesPanel.deleteZoneSetTitle': 'Delete zone set',
   'zonesPanel.setNamePlaceholder': 'Set name',
+  'zonesPanel.setNameAriaLabel': 'Name of set {name}',
   'zonesPanel.assignmentTimingLine': 'Last assignment: {elementCount} element(s) x {zoneSetCount} set(s) in {elapsedMs}ms',
 
   // ZonesPanel — toasts / status messages

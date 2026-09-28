@@ -15,7 +15,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, type as typeInto } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { resolve } from '@/i18n/registry';
 import { en } from '@/i18n/en';
@@ -108,6 +108,7 @@ afterEach(() => {
 describe('ZonesPanel localization (#4918)', () => {
   it('translates the header, empty state, and the new-set / generate / export-import controls', () => {
     const container = render(<ZonesPanel onClose={() => {}} />);
+    assert.equal(container.querySelector<HTMLInputElement>('input')?.getAttribute('aria-label'), 'New zone set name…');
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
     assertAllTranslate(
@@ -153,6 +154,8 @@ describe('ZonesPanel localization (#4918)', () => {
         { key: 'zonesPanel.addZoneTitle' },
         { key: 'zonesPanel.deleteZoneSetTitle' },
         { key: 'zonesPanel.setNamePlaceholder' },
+        { key: 'zonesPanel.setNameAriaLabel', params: { name: 'Section A' } },
+        { key: 'zonesPanel.zoneRow.nameAriaLabel', params: { name: 'Zone 1' } },
         { key: 'zonesPanel.zoneRow.editIn3dTitle' },
         { key: 'zonesPanel.zoneRow.selectTitle' },
         { key: 'zonesPanel.zoneRow.exportGeometryTitle' },
@@ -177,12 +180,18 @@ describe('ZonesPanel localization (#4918)', () => {
     assert.ok(afterDom.has('Section A'), 'the set name must not be marked by the pseudo-locale');
     const zoneNameInput = container.querySelector('input[value="Zone 1"]') as HTMLInputElement | null;
     assert.ok(zoneNameInput, 'the zone name input must render the zone name as-is');
+    assert.equal(zoneNameInput.getAttribute('aria-label'), 'Name of zone Zone 1');
+    const setNameInput = container.querySelector<HTMLInputElement>('input[value="Section A"]');
+    assert.equal(setNameInput?.getAttribute('aria-label'), 'Name of set Section A');
     act(() => setLocale(PSEUDO_LOCALE));
     try {
       assert.equal(zoneNameInput!.value, 'Zone 1', 'the zone name input must not be marked by the pseudo-locale');
     } finally {
       act(() => setLocale(BASELINE_LOCALE));
     }
+    typeInto(zoneNameInput, 'Zone East');
+    assert.equal(useViewerStore.getState().zoneSets[0]?.zones[0]?.name, 'Zone East');
+    assert.equal(zoneNameInput.getAttribute('aria-label'), 'Name of zone Zone East');
   });
 
   it('translates the last-assignment timing footer', () => {

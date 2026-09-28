@@ -121,7 +121,7 @@ function ZoneRow({
   return (
     <div className={`rounded-md border p-2 text-xs space-y-1.5 ${editing ? 'border-amber-500 bg-amber-500/5' : 'border-border/60'}`}>
       <div className="flex items-center gap-1.5">
-        <Input
+        <Input aria-label={t('zonesPanel.zoneRow.nameAriaLabel', { name: zone.name })}
           value={zone.name}
           onChange={(e) => onUpdate({ name: e.target.value })}
           className="h-6 flex-1 px-1.5 text-xs font-medium"
@@ -325,7 +325,7 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
       </div>
 
       <div className="flex items-center gap-1.5 border-b p-2">
-        <Input
+        <Input aria-label={t('zonesPanel.header.newSetPlaceholder')}
           value={newSetName}
           onChange={(e) => setNewSetName(e.target.value)}
           placeholder={t('zonesPanel.header.newSetPlaceholder')}
@@ -390,7 +390,7 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
               </IconButton>
             </div>
             <CollapsibleContent className="space-y-1.5 border-t p-1.5">
-              <Input
+              <Input aria-label={t('zonesPanel.setNameAriaLabel', { name: zs.name })}
                 value={zs.name}
                 onChange={(e) => renameZoneSet(zs.id, e.target.value)}
                 className="h-6 text-2xs text-muted-foreground"

@@ -295,7 +295,13 @@ fn analyze_with_limits(
             diagnostics.push(format!("relationship #{id}: record exceeds work budget"));
             continue;
         }
-        let Ok(rel) = decoder.decode_at_uncached(start, end) else { continue };
+        let rel = match decoder.decode_at_uncached(start, end) {
+            Ok(rel) => rel,
+            Err(_) => {
+                diagnostics.push(format!("relationship #{id}: cannot decode"));
+                continue;
+            }
+        };
         let targets = if rel.ifc_type == IfcType::IfcRelDefinesByProperties {
             match rel.get(5).ok_or("missing RelatingPropertyDefinition")
                 .and_then(property_definition_refs) {
@@ -306,16 +312,29 @@ fn analyze_with_limits(
                 }
             }
         } else {
-            let Some(target_id) = rel.get_ref(5) else { continue };
+            let Some(target_id) = rel.get_ref(5) else {
+                diagnostics.push(format!("relationship #{id}: missing or invalid RelatingType"));
+                continue;
+            };
             vec![target_id]
         };
-        let Some(members) = rel.get(4).and_then(|a| a.as_list()) else { continue };
-        if members.len() > MAX_REL_MEMBERS {
-            diagnostics.push(format!("relationship #{id}: RelatedObjects exceeds work budget"));
+        let Some(members) = rel.get(4).and_then(|a| a.as_list()) else {
+            diagnostics.push(format!("relationship #{id}: malformed RelatedObjects"));
+            continue;
+        };
+        if members.is_empty() || members.len() > MAX_REL_MEMBERS {
+            diagnostics.push(format!("relationship #{id}: RelatedObjects is empty or exceeds work budget"));
             continue;
         }
+        let mut reported_invalid_member = false;
         for member in members {
-            let Some(product_id) = member.as_entity_ref() else { continue };
+            let Some(product_id) = member.as_entity_ref() else {
+                if !reported_invalid_member {
+                    diagnostics.push(format!("relationship #{id}: malformed RelatedObjects member"));
+                    reported_invalid_member = true;
+                }
+                continue;
+            };
             if !products.contains_key(&product_id) { continue; }
             let cost = if rel.ifc_type == IfcType::IfcRelDefinesByProperties { targets.len() } else { 1 };
             if cost > remaining_links {

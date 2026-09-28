@@ -74,6 +74,25 @@ fn issue_5787_empty_filter_and_bounded_relationship() {
 }
 
 #[test]
+fn issue_5787_malformed_quantity_links_report_lost_observations() {
+    let selected = HashSet::from([5]);
+    let cases = [
+        ("(#5),#14", "(#5),@", "cannot decode", 1),
+        ("(#5),#14", "$, #14", "malformed RelatedObjects", 1),
+        ("(#5),#14", "(),#14", "RelatedObjects is empty", 1),
+        ("(#5),#14", "(#5,$),#14", "malformed RelatedObjects member", 5),
+        ("(#5),#22", "(#5),$", "invalid RelatingType", 4),
+    ];
+    for (old, replacement, reason, authored_count) in cases {
+        let ifc = IFC.replace(old, replacement);
+        let result = analyze_authored_quantities(ifc.as_bytes(), Some(&selected));
+        assert_eq!(result.products[&5].authored.len(), authored_count, "{reason}");
+        assert!(result.diagnostics.iter().any(|message| message.contains(reason)),
+            "{reason}: {:?}", result.diagnostics);
+    }
+}
+
+#[test]
 fn issue_5787_oversized_quantity_leaf_is_reported_before_decode() {
     let oversized = IFC.replace(
         "#10=IFCQUANTITYLENGTH('NetLength',$,#30,3.,$);",

@@ -75,13 +75,12 @@ pub struct RebarSweep {
 /// One IFC `IfcReinforcingBar` entity, including bars without analytic geometry.
 #[derive(Debug, Clone, Serialize)]
 #[non_exhaustive]
+#[allow(non_snake_case)] // Public IFC attributes retain their EXPRESS names.
 pub struct RebarScheduleRow {
-    /// The occurrence's `IfcRoot.GlobalId` (serialized under its EXPRESS name).
-    #[serde(rename = "GlobalId")]
-    pub global_id: Option<String>,
-    /// The occurrence's `IfcRoot.Name` (serialized under its EXPRESS name).
-    #[serde(rename = "Name")]
-    pub name: Option<String>,
+    /// The occurrence's `IfcRoot.GlobalId`.
+    pub GlobalId: Option<String>,
+    /// The occurrence's `IfcRoot.Name`.
+    pub Name: Option<String>,
     pub type_id: Option<u32>,
     pub authored: BTreeMap<String, AuthoredRebarAttribute>,
     pub sweeps: Vec<RebarSweep>,
@@ -229,8 +228,8 @@ pub fn build_rebar_schedule(
         }
         let bar_type = type_id.and_then(|type_id| types.get(&type_id));
         let mut row = RebarScheduleRow {
-            global_id: bar.get_string(0).map(str::to_owned),
-            name: bar.get_string(2).map(str::to_owned),
+            GlobalId: bar.get_string(0).map(str::to_owned),
+            Name: bar.get_string(2).map(str::to_owned),
             type_id,
             authored: BTreeMap::new(),
             sweeps: Vec::new(),

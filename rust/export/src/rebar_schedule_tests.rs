@@ -44,6 +44,8 @@ fn issue_5759_keeps_authored_and_derived_lengths_separate() {
     assert_eq!(schedule.represented_sweep_count, 1);
     assert!((schedule.length_unit_scale - 0.001).abs() < 1e-12);
     let row = &schedule.rows[&125];
+    assert_eq!(row.GlobalId.as_deref(), Some("0Test0000000000000Ubar"));
+    assert_eq!(row.Name.as_deref(), Some("U-bar"));
     let serialized = serde_json::to_value(row).unwrap();
     assert_eq!(serialized["GlobalId"], "0Test0000000000000Ubar");
     assert_eq!(serialized["Name"], "U-bar");

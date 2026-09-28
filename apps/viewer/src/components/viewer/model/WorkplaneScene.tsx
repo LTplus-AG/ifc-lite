@@ -13,7 +13,6 @@
  */
 
 import { useMemo } from 'react';
-import { StoreEditor } from '@ifc-lite/mutations';
 import { useViewerStore, type ViewerState } from '@/store';
 import { resolveWorkplane } from '@/lib/commands/modeling/registry';
 import type { Vec2 } from '@/lib/snap/types';
@@ -44,8 +43,7 @@ function storeyPlanBounds(s: ViewerState, plane: Workplane, storeyId: number): B
   const view = s.mutationViews.get(modelId);
   let box: Box | null = null;
   if (store && view) {
-    const editor = s.storeEditors.get(modelId) ?? new StoreEditor(store, view);
-    for (const axis of storeyWallAxes(store, view, editor, storeyId)) box = grow(grow(box, axis.a), axis.b);
+    for (const axis of storeyWallAxes(store, view, storeyId)) box = grow(grow(box, axis.a), axis.b);
   }
   const bounds = box ? null : s.models.get(modelId)?.geometryResult?.coordinateInfo?.shiftedBounds;
   if (bounds && bounds.max.x > bounds.min.x) {

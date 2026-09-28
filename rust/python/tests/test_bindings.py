@@ -325,6 +325,9 @@ def test_issue_5759_rebar_schedule_separates_authored_and_derived_values():
     assert schedule["represented_sweep_count"] == 1
     assert schedule["length_unit_scale"] == pytest.approx(0.001)
     row = schedule["rows"][125]
+    assert row["GlobalId"] == "0Test0000000000000Ubar"
+    assert row["Name"] == "U-bar"
+    assert "global_id" not in row and "name" not in row
     assert row["authored"]["Tag"]["value"] == {"kind": "text", "value": "TAG-1"}
     assert row["authored"]["BarLength"]["value"] == {
         "kind": "measure", "value_file_units": 900.0,

@@ -299,8 +299,8 @@ class RebarSweep(TypedDict):
     checks: SweptDiskCheckReport
 
 class RebarScheduleRow(TypedDict):
-    global_id: Optional[str]
-    name: Optional[str]
+    GlobalId: Optional[str]
+    Name: Optional[str]
     type_id: Optional[int]
     authored: Dict[str, AuthoredRebarAttribute]  # exact EXPRESS names
     sweeps: List[RebarSweep]

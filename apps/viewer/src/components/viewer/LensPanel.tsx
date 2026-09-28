@@ -131,7 +131,7 @@ function LensEditor({
       {/* Name input */}
       <div className="px-3 pt-3 pb-2">
         <input
-          type="text" value={name}
+          type="text" value={name} aria-label={t('lensPanel.editor.namePlaceholder')}
           onChange={(e) => setName(e.target.value)} placeholder={t('lensPanel.editor.namePlaceholder')}
           className="w-full px-2 py-1.5 text-xs font-bold uppercase tracking-wider bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 text-zinc-900 dark:text-zinc-100 rounded-sm placeholder:normal-case placeholder:font-normal placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
           // This input appears only when the user opens the editor; focus starts at its name field.
@@ -288,7 +288,7 @@ export function AutoColorEditor({
     <div className="border-2 border-primary bg-white dark:bg-zinc-900 rounded-sm">
       <div className="px-3 pt-3 pb-2">
         <input
-          type="text" value={name}
+          type="text" value={name} aria-label={t('lensPanel.autoColor.namePlaceholder')}
           onChange={(e) => setName(e.target.value)} placeholder={t('lensPanel.autoColor.namePlaceholder')}
           className="w-full px-2 py-1.5 text-xs font-bold uppercase tracking-wider bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 text-zinc-900 dark:text-zinc-100 rounded-sm placeholder:normal-case placeholder:font-normal placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
           // The newly opened color-rule editor places keyboard focus on its name.

@@ -1589,6 +1589,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           <textarea
             ref={inputRef}
             value={inputText}
+            aria-label={t('chat.panel.messageLabel')}
             onChange={(e) => {
               setInputText(e.target.value);
               resizeInput();

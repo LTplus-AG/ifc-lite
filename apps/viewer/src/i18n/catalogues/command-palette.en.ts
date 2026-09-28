@@ -110,6 +110,7 @@ export const commandPaletteEn = {
 
   // ── Chrome ──
   'commandPalette.ariaLabel': 'Command palette',
+  'commandPalette.searchAriaLabel': 'Search commands',
   'commandPalette.searchPlaceholder': 'What do you need?',
   'commandPalette.escKey': 'Esc',
   'commandPalette.noResults': 'No results',

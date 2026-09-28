@@ -110,6 +110,7 @@ describe('chat panel localization (#4918)', () => {
     assert.match(text, /Try something:/);
     const input = ui.querySelector('textarea');
     assert.equal(input?.getAttribute('placeholder'), 'Ask anything...');
+    assert.equal(input?.getAttribute('aria-label'), 'Chat message', '#6342: composer has a stable name');
   });
 
   it('translates the idle empty state when the locale switches, without remounting', () => {
@@ -121,6 +122,7 @@ describe('chat panel localization (#4918)', () => {
     assert.match(text, /⟦Try something:⟧/);
     const input = ui.querySelector('textarea');
     assert.equal(input?.getAttribute('placeholder'), marked('Ask anything...'));
+    assert.equal(input?.getAttribute('aria-label'), marked('Chat message'), '#6342: composer name follows locale changes');
 
     const clearTrigger = ui.querySelector('button[disabled]');
     assert.ok(clearTrigger, 'expected the disabled Clear button (no messages yet)');

@@ -35,6 +35,7 @@ pub struct QuantitySourceOccurrence {
     pub mapping_path: Vec<u32>,
     pub source_modified: bool,
     pub status: &'static str,
+    /// Explains unsupported sources and missing nominal swept-disk quantities.
     pub status_reason: Option<String>,
     pub quantities: Vec<DerivedQuantity>,
 }
@@ -63,6 +64,33 @@ pub struct QuantityAnalysis {
     pub unique_source_count: usize,
     pub products: BTreeMap<u32, ProductQuantityAnalysis>,
     pub diagnostics: Vec<String>,
+}
+
+const MAX_JOINED_DIAGNOSTICS: usize = 1_024;
+const JOINED_DIAGNOSTICS_TRUNCATED: &str = "quantity analysis diagnostics exceed work budget";
+
+#[derive(Default)]
+struct JoinedDiagnostics {
+    messages: Vec<String>,
+    seen: HashSet<String>,
+    truncated: bool,
+}
+
+impl JoinedDiagnostics {
+    fn push(&mut self, message: String) {
+        if self.seen.contains(&message) { return; }
+        if self.messages.len() >= MAX_JOINED_DIAGNOSTICS {
+            self.truncated = true;
+        } else {
+            self.seen.insert(message.clone());
+            self.messages.push(message);
+        }
+    }
+
+    fn finish(mut self) -> Vec<String> {
+        if self.truncated { self.messages.push(JOINED_DIAGNOSTICS_TRUNCATED.into()); }
+        self.messages
+    }
 }
 
 fn quantity(name: &'static str, value: f64, unit: &'static str,
@@ -96,9 +124,11 @@ fn source_status(instance: &SweptDiskInstance) -> (&'static str, Option<String>)
 pub fn analyze_quantities(content: &[u8], ids: Option<&HashSet<u32>>) -> QuantityAnalysis {
     let authored = analyze_authored_quantities(content, ids);
     if authored.products.is_empty() {
+        let mut diagnostics = JoinedDiagnostics::default();
+        for message in authored.diagnostics { diagnostics.push(message); }
         return QuantityAnalysis { product_count: 0, source_occurrence_count: 0,
             unique_source_count: 0, products: BTreeMap::new(),
-            diagnostics: authored.diagnostics };
+            diagnostics: diagnostics.finish() };
     }
     let selected: HashSet<u32> = authored.products.keys().copied().collect();
     let analytic = extract_analytic_quantity_sources(content, Some(&selected));
@@ -107,12 +137,11 @@ pub fn analyze_quantities(content: &[u8], ids: Option<&HashSet<u32>>) -> Quantit
     let extrusions = analytic.extrusion_definitions;
     let extrusion_sources: BTreeMap<_, _> = extrusions.sources.iter()
         .map(|source| (&source.key, source)).collect();
-    let mut diagnostics = authored.diagnostics;
-    diagnostics.extend(disks.diagnostics);
-    diagnostics.extend(disk_defs.diagnostics);
-    diagnostics.extend(extrusions.diagnostics);
-    let mut seen_diagnostics = HashSet::new();
-    diagnostics.retain(|message| seen_diagnostics.insert(message.clone()));
+    let mut diagnostics = JoinedDiagnostics::default();
+    for message in authored.diagnostics.into_iter().chain(disks.diagnostics)
+        .chain(disk_defs.diagnostics).chain(extrusions.diagnostics) {
+        diagnostics.push(message);
+    }
     let mut products = BTreeMap::new();
     let mut unique_sources = BTreeSet::new();
     let mut source_occurrence_count = 0;
@@ -129,7 +158,7 @@ pub fn analyze_quantities(content: &[u8], ids: Option<&HashSet<u32>>) -> Quantit
                 diagnostics.push(format!("product #{product_id}: swept disk source/description mismatch at ordinal {}", instance.ordinal));
                 continue;
             }
-            let (status, status_reason) = source_status(instance);
+            let (status, mut status_reason) = source_status(instance);
             let mut quantities = Vec::new();
             if let Some(metrics) = description.directrix_metrics() {
                 quantities.push(quantity("centreline_length", metrics.total_length, "m",
@@ -146,6 +175,8 @@ pub fn analyze_quantities(content: &[u8], ids: Option<&HashSet<u32>>) -> Quantit
                     quantities.push(quantity("inner_lateral_area", inner, "m2",
                         "2 * pi * inner_radius * centreline_length", "derived", instance.solid_id, status));
                 }
+            } else if status == "complete" {
+                status_reason = Some("Nominal swept-disk quantities unavailable: source geometry or directrix does not support a valid sweep".into());
             }
             unique_sources.insert(instance.source.clone());
             sources.push(QuantitySourceOccurrence { source_kind: "IfcSweptDiskSolid",
@@ -198,7 +229,7 @@ pub fn analyze_quantities(content: &[u8], ids: Option<&HashSet<u32>>) -> Quantit
             aggregate_diagnostic: aggregate_diagnostic.into() });
     }
     QuantityAnalysis { product_count: products.len(), source_occurrence_count,
-        unique_source_count: unique_sources.len(), products, diagnostics }
+        unique_source_count: unique_sources.len(), products, diagnostics: diagnostics.finish() }
 }
 
 #[cfg(test)]

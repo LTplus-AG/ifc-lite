@@ -6,7 +6,8 @@ import '@/test/setup-dom.js';
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { fixtureDataStore, fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { cleanup, render } from '@/test/render.js';
 import { useViewerStore } from '@/store/index.js';
 import { selectedSweptDiskCache } from '@/lib/analytic/swept-disk-cache.js';
@@ -50,6 +51,48 @@ it('moves a newly highlighted source inside the bounded extraction after select-
     assert.equal(requested[1]?.length, 256);
     assert.equal(requested[1]?.[0], 299);
     assert.ok(requested[1]?.includes(1), 'the primary source also stays eligible');
+  } finally {
+    cleanup();
+    selectedSweptDiskCache.get = originalGet;
+    useViewerStore.setState(prior);
+  }
+});
+
+it('routes legacy overlay-created products and counts them inside the selected-product cap (#5783)', async () => {
+  const prior = useViewerStore.getState();
+  const originalGet = selectedSweptDiskCache.get;
+  const store = fixtureDataStore([{ expressId: 1, type: 'IfcReinforcingBar' }]);
+  Object.assign(store, { source: { byteLength: 1 } });
+  const view = new MutablePropertyView(null, '__legacy__');
+  view.setExpressIdWatermark(1);
+  const createdIds = Array.from({ length: 300 }, () => view.createEntity('IfcReinforcingBar', []).expressId);
+  const requested: number[][] = [];
+  selectedSweptDiskCache.get = async (_model, ids) => {
+    requested.push([...ids]);
+    return new Map(ids.map((id) => [id, { occurrences: [], diagnostics: [] }]));
+  };
+  try {
+    useViewerStore.setState({
+      models: new Map(), ifcDataStore: store, mutationViews: new Map([['__legacy__', view]]),
+      selectedEntityIds: new Set([1, ...createdIds]), selectedEntityId: 1,
+      selectedEntitiesSet: new Set(), selectedEntity: { modelId: 'legacy', expressId: 1 },
+      selectedDirectrixSegment: null, hiddenEntities: new Set(), lensHiddenIds: new Set(),
+      isolatedEntities: null, classFilter: null,
+    });
+    const snapshots: ReturnType<typeof useSelectedSweptDisks>[] = [];
+    const Selection = () => {
+      snapshots.push(useSelectedSweptDisks(true));
+      return null;
+    };
+    render(<Selection />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    const snapshot = snapshots.at(-1);
+    assert.ok(snapshot);
+    assert.deepEqual(requested, [[1]], 'only the authored primary product reaches source extraction');
+    assert.equal(snapshot.items.length, 256, 'authored and overlay-created products share one cap');
+    assert.equal(snapshot.items.filter((item) => item.diagnostics.some((message) =>
+      message.includes('created in the overlay'))).length, 255);
+    assert.match(snapshot.error ?? '', /45 selected products were omitted/);
   } finally {
     cleanup();
     selectedSweptDiskCache.get = originalGet;

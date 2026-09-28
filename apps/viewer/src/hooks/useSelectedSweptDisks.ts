@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { SweptDiskDescriptions } from '@ifc-lite/geometry';
 import { useViewerStore, stringToEntityRef, entityRefToString, type EntityRef } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
+import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
 import { selectedSweptDiskCache, sourceIdentity, type AnalyticSourceModel } from '@/lib/analytic/swept-disk-cache';
 
 type Occurrences = SweptDiskDescriptions['elements'][string];
@@ -110,17 +111,17 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
       if (hidden.has(globalId) || lensHidden.has(globalId)
         || (isolated !== null && !isolated.has(globalId))
         || (classFilter !== null && !classFilter.ids.has(globalId))) continue;
-      if (state.mutationViews.get(ref.modelId)?.getNewEntity(ref.expressId)) {
-        createdInOverlay.push({ ref, occurrences: [], diagnostics: [
-          `product #${ref.expressId}: created in the overlay; no authored swept-disk source is available`,
-        ] });
-        continue;
-      }
       if (selectedProducts >= MAX_SELECTED_PRODUCTS) {
         omittedProducts++;
         continue;
       }
       selectedProducts++;
+      if (state.mutationViews.get(normalizeMutationModelId(state, ref.modelId))?.getNewEntity(ref.expressId)) {
+        createdInOverlay.push({ ref, occurrences: [], diagnostics: [
+          `product #${ref.expressId}: created in the overlay; no authored swept-disk source is available`,
+        ] });
+        continue;
+      }
       const ids = grouped.get(ref.modelId) ?? [];
       ids.push(ref.expressId);
       grouped.set(ref.modelId, ids);

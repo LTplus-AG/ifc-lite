@@ -138,6 +138,14 @@ fn issue_5792_mapped_opening_item_keeps_fractional_world_translation() {
         (high - 5_000_001.123456).abs() < 1e-5,
         "mapped opening high X {high:.9}"
     );
+    // The per-item bounds also drive rectangular cutter classification. They
+    // must include the mapped mesh's f64 origin, not just its local f32 AABB.
+    let bounds = GeometryRouter::new()
+        .get_opening_item_bounds_with_direction(&opening, &mut decoder)
+        .unwrap();
+    assert_eq!(bounds.len(), 1);
+    assert!((bounds[0].0.x - low).abs() < 1e-5, "mapped opening bound low X: {}", bounds[0].0.x);
+    assert!((bounds[0].1.x - high).abs() < 1e-5, "mapped opening bound high X: {}", bounds[0].1.x);
     let host = decoder.decode_by_id(20).unwrap();
     let index = FxHashMap::from_iter([(20, vec![40])]);
     let cut = GeometryRouter::new()

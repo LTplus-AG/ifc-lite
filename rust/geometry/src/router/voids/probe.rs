@@ -626,7 +626,9 @@ impl GeometryRouter {
                     _ => continue,
                 };
 
-                // Get bounds and transform to world coordinates
+                // Mesh::bounds is local to mesh.positions. Mapped items can
+                // carry a large f64 origin that must be folded in before the
+                // element placement, or the cutter box lands near zero.
                 let (mesh_min, mesh_max) = mesh.bounds();
 
                 // Transform corner points to world coordinates
@@ -644,7 +646,14 @@ impl GeometryRouter {
                 // Transform all corners and compute new AABB
                 let transformed: Vec<Point3<f64>> = corners
                     .iter()
-                    .map(|p| placement_transform.transform_point(p))
+                    .map(|p| {
+                        let source = Point3::new(
+                            p.x + mesh.origin[0],
+                            p.y + mesh.origin[1],
+                            p.z + mesh.origin[2],
+                        );
+                        placement_transform.transform_point(&source)
+                    })
                     .collect();
 
                 let world_min = Point3::new(

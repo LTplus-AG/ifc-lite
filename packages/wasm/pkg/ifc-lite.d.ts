@@ -150,13 +150,13 @@ export interface AnalyticProfileLoopJs {
 }
 export interface AnalyticProfileJs {
     profile_id: number; ifc_type_name: string; ProfileType: string | null;
-    position_id: number | null; profile_position: number[] | null;
+    Position: number | null; profile_position: number[] | null;
     loops: AnalyticProfileLoopJs[]; status: AnalyticStatusJs;
 }
 export interface AnalyticExtrusionJs {
     solid_id: number; SweptArea: number | null; profile: AnalyticProfileJs | null;
-    position_id: number | null; position_matrix: number[] | null;
-    extruded_direction_id: number | null; DirectionRatios: number[] | null;
+    Position: number | null; position_matrix: number[] | null;
+    ExtrudedDirection: number | null; DirectionRatios: number[] | null;
     axis_unit_vector: number[] | null; Depth: number | null; status: AnalyticStatusJs;
 }
 export interface ExtrusionNominalQuantitiesJs {

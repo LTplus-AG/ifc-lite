@@ -431,7 +431,7 @@ export function PlaygroundChat({
             }}
           />
           <textarea
-            value={input}
+            value={input} aria-label={t('mcp.playgroundChat.messageLabel')}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {

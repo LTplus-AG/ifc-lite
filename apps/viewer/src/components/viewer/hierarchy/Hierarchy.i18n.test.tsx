@@ -362,6 +362,27 @@ describe('Hierarchy localization (#4918 slice 4)', () => {
     assert.match(container.textContent ?? '', /SWITCH AFTER Ground floor BEFORE/);
   });
 
+  catalogueIt('#6342 names the exploded gap field through its visible label', () => {
+    const store = {
+      spatialHierarchy: {
+        byStorey: new Map([[7, []], [8, []]]),
+        storeyElevations: new Map([[7, 0], [8, 3]]),
+      },
+      entities: { getName: (id: number) => id === 7 ? 'Ground floor' : 'First floor' },
+    } as unknown as NonNullable<FederatedModel['ifcDataStore']>;
+    useViewerStore.setState({
+      models: new Map([['A', { ...model('A'), ifcDataStore: store }]]),
+      levelDisplayMode: 'exploded',
+      explodedGap: 3,
+    });
+    const container = render(<StoreyDisplayControls />);
+    const input = container.querySelector<HTMLInputElement>('input[type="number"]');
+    assert.ok(input);
+    assert.match(input.labels?.[0]?.textContent ?? '', /Gap/);
+    type(input, '4.5');
+    assert.equal(useViewerStore.getState().explodedGap, 4.5);
+  });
+
   catalogueIt('uses complete messages for tag assignment and removal actions', () => {
     const tagId = useViewerStore.getState().createModelTag('Structure');
     assert.ok(tagId);

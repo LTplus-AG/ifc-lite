@@ -4,7 +4,8 @@
 
 //! World-coordinate transform for authored swept-disk curves.
 
-use ifc_lite_geometry::AnalyticCurveSegment;
+use ifc_lite_geometry::analytic::{AnalyticCurveSegment, AnalyticStatus, AnalyticSweptDisk};
+use super::DirectrixMetrics;
 use nalgebra::{Matrix4, Vector3, Vector4};
 
 pub(super) fn transform_disk(
@@ -64,4 +65,20 @@ pub(super) fn transform_disk(
         return Err("transformed disk radius is non-finite".into());
     }
     Ok((world_radius, world_inner))
+}
+
+/// Materialise a raw IFC source into the existing world-coordinate contract.
+pub(super) fn materialize_disk(disk: &mut AnalyticSweptDisk, transform: &Matrix4<f64>, unit_scale: f64) {
+    if matches!(disk.status, AnalyticStatus::Complete) {
+        match transform_disk(&mut disk.segments, disk.radius, disk.inner_radius, transform, unit_scale) {
+            Ok((radius, inner_radius)) => match DirectrixMetrics::from_segments(&disk.segments) {
+                Ok(_) => { disk.radius = radius; disk.inner_radius = inner_radius; return; }
+                Err(reason) => disk.status = AnalyticStatus::Unsupported(reason.to_string()),
+            },
+            Err(reason) => disk.status = AnalyticStatus::Unsupported(reason),
+        }
+        disk.segments.clear();
+    }
+    disk.radius *= unit_scale;
+    disk.inner_radius = disk.inner_radius.map(|r| r * unit_scale);
 }

@@ -254,6 +254,7 @@ describe('StatusBar — federation-space storey element count', () => {
     const view = new MutablePropertyView(secondStore.properties, 'm2');
     view.setExpressIdWatermark(m2.maxExpressId);
     const storey = view.createEntity('IfcBuildingStorey', [guid(100_001), null, 'Created storey']);
+    view.setAttribute(storey.expressId, 'Name', 'Renamed created storey');
     const wall = view.createEntity('IfcWall', [guid(100_002), null, 'Created wall', null, null, null, null, null]);
     view.createEntity('IfcRelContainedInSpatialStructure', [
       guid(100_003), null, null, null, [`#${wall.expressId}`], `#${storey.expressId}`,
@@ -272,6 +273,15 @@ describe('StatusBar — federation-space storey element count', () => {
     const container = render();
     assert.ok(container.textContent?.includes('1 / 2 element'),
       'the store-backed resolver must assign the global storey id to m2 before counting members');
+    assert.ok(container.textContent?.includes('Renamed created storey'),
+      'the storey pill must name an overlay-created storey through the owning model');
+
+    act(() => {
+      view.deleteEntity(storey.expressId);
+      useViewerStore.setState({ mutationVersion: 2 });
+    });
+    assert.ok(container.textContent?.includes(`Storey #${ID_OFFSET + storey.expressId}`),
+      'a tombstoned storey must not retain its authored name in the pill');
   });
 
   it('counts every constituent when a unified storey collapses colliding local ids', async () => {

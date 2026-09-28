@@ -37,16 +37,13 @@ impl DirectrixMetrics {
         };
         for (segment_index, segment) in segments.iter().enumerate() {
             let (length, bend_angle) = match segment {
-                AnalyticCurveSegment::Line { start, end } => {
-                    let delta = [end[0] - start[0], end[1] - start[1], end[2] - start[2]];
-                    (delta[0].hypot(delta[1]).hypot(delta[2]), None)
-                }
+                AnalyticCurveSegment::Line { .. } =>
+                    (segment.length().ok_or("directrix measurements are not finite")?, None),
                 AnalyticCurveSegment::Arc { radius, sweep_angle, .. } => {
                     if *radius <= 0.0 {
                         return Err("directrix arc radius is not positive");
                     }
-                    let bend_angle = sweep_angle.abs();
-                    (radius * bend_angle, Some(bend_angle))
+                    (segment.length().ok_or("directrix measurements are not finite")?, Some(sweep_angle.abs()))
                 }
             };
             if !length.is_finite() || bend_angle.is_some_and(|angle| !angle.is_finite()) {

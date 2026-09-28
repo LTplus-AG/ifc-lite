@@ -156,7 +156,7 @@ export function StoreyDisplayControls() {
       </div>
 
       {showModes && isExploded && (
-        <div className="mt-1.5 flex items-center gap-2 text-2xs text-muted-foreground">
+        <label className="mt-1.5 flex items-center gap-2 text-2xs text-muted-foreground">
           <span>{t('hierarchy.storeyControls.gapLabel')}</span>
           <input
             type="number"
@@ -171,7 +171,7 @@ export function StoreyDisplayControls() {
             className="w-16 rounded border border-zinc-300 bg-white px-1.5 py-0.5 font-mono text-2xs focus:outline-none focus:ring-1 focus:ring-primary dark:border-zinc-700 dark:bg-zinc-950"
           />
           <span>{t('hierarchy.storeyControls.gapUnitLabel')}</span>
-        </div>
+        </label>
       )}
 
       {/* Discoverability hint (#1265): the storey rows ARE the Solo picker. */}

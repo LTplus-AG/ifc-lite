@@ -94,11 +94,12 @@ export const SECTION_2D_UNIFORM_SLOT_INDEX = {
   grid: 1 + SECTION_2D_MAX_LINE_PARTITIONS * 2,
   dxf: 1 + SECTION_2D_MAX_LINE_PARTITIONS * 3,
   terrain: 1 + SECTION_2D_MAX_LINE_PARTITIONS * 4,
-  clashBox: 1 + SECTION_2D_MAX_LINE_PARTITIONS * 5,
+  centreline: 1 + SECTION_2D_MAX_LINE_PARTITIONS * 5,
+  clashBox: 1 + SECTION_2D_MAX_LINE_PARTITIONS * 6,
 } as const;
 
 /** One cap record plus a partition range for every line family. */
-export const SECTION_2D_UNIFORM_SLOT_COUNT = 1 + SECTION_2D_MAX_LINE_PARTITIONS * 6;
+export const SECTION_2D_UNIFORM_SLOT_COUNT = 1 + SECTION_2D_MAX_LINE_PARTITIONS * 7;
 
 /**
  * Byte stride between uniform slots for `device`.

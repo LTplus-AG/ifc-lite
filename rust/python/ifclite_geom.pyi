@@ -57,6 +57,12 @@ class DirectrixMetrics(TypedDict):
     total_length: float  # sum of segment centreline lengths in world metres
     segments: List[DirectrixSegmentMetrics]
 
+class SweptDiskNominalQuantities(TypedDict):
+    cross_section_area: float  # m², outer disk minus an optional inner disk
+    nominal_volume: float  # m³, area × complete centreline length
+    outer_lateral_area: float  # m², outer circumference × length
+    inner_lateral_area: Optional[float]  # m² for a hollow section
+
 class SweptDiskOccurrence(TypedDict):
     solid_id: int
     directrix_id: int
@@ -64,6 +70,7 @@ class SweptDiskOccurrence(TypedDict):
     InnerRadius: Optional[float]  # same coordinate rule as Radius
     Directrix: List[DirectrixSegment]  # IFC Z-up, absolute world metres
     directrix_metrics: Optional[DirectrixMetrics]  # None when status is unsupported
+    nominal_quantities: Optional[SweptDiskNominalQuantities]  # uncut source estimate only
     status: DirectrixStatus
     mapping_path: List[int]
     source_modified: bool  # source operand may differ from final boolean result
@@ -72,6 +79,71 @@ class GeometryBuffersWithDirectrices(GeometryBuffers):
     swept_disks: Dict[int, List[SweptDiskOccurrence]]
     directrix_diagnostics: List[str]
 
+SweptDiskFindingCode = Literal[
+    "zero_length_segment", "consecutive_gap", "tangent_discontinuity",
+    "arc_radius_not_greater_than_disk_radius",
+]
+
+class SweptDiskCheckFinding(TypedDict):
+    code: SweptDiskFindingCode
+    segment_index: int  # index into the source Directrix
+    next_segment_index: Optional[int]  # populated for a join between segments
+    measured: float
+    threshold: float
+    units: str  # "m" or "rad"
+
+class SweptDiskCheckReport(TypedDict):
+    source_modified: bool  # source sweep may differ from the final CSG result
+    skipped_reason: Optional[str]  # unsupported analytic description
+    findings: List[SweptDiskCheckFinding]
+
+class SweptDiskCheckEntry(TypedDict):
+    occurrence_index: int  # index into this product's swept_disks list
+    solid_id: int
+    directrix_id: int
+    mapping_path: List[int]
+    report: SweptDiskCheckReport
+
+class SweptDiskChecks(TypedDict):
+    elements: Dict[int, List[SweptDiskCheckEntry]]  # occurrence STEP ID
+    diagnostics: List[str]  # representation traversal problems
+
+class SweptDiskSourceKey(TypedDict):
+    model_sha256: str
+    schema: Optional[str]
+    length_unit_scale_bits: str  # 16 hex digits; exact f64 bit pattern
+    context: Dict[str, Any]  # direct representation_id or mapped representation_map_path
+    solid_id: int
+
+class SweptDiskDefinition(TypedDict):
+    key: SweptDiskSourceKey
+    directrix_id: int
+    Radius: float  # raw IFC file length units
+    InnerRadius: Optional[float]  # raw IFC file length units
+    Directrix: List[DirectrixSegment]  # raw IFC file length units
+    status: DirectrixStatus
+
+class SweptDiskInstance(TypedDict):
+    ordinal: int
+    source: SweptDiskSourceKey
+    product_id: int
+    solid_id: int
+    mapping_path: List[int]
+    source_modified: bool
+    world_from_source: Optional[List[float]]  # column-major f64, file units to world metres
+    status: DirectrixStatus
+
+class SweptDiskDefinitions(TypedDict):
+    up_axis: str
+    source_units: str
+    world_units: str
+    coordinate_space: str
+    model_sha256: str
+    schema: Optional[str]
+    length_unit_scale: float
+    sources: List[SweptDiskDefinition]
+    instances: Dict[int, List[SweptDiskInstance]]
+    diagnostics: List[str]
 class PropValue(TypedDict):
     name: str
     value: str  # always a string, in the file's OWN units
@@ -156,7 +228,9 @@ def geometry_data_buffers(
     InnerRadius, ordered analytic line/arc Directrix, and centreline lengths and
     arc bend angles in ``directrix_metrics``. Lengths are world metres and bend
     angles are positive radians; the signed arc ``sweep_angle`` retains travel
-    direction. Unsupported sweeps have ``directrix_metrics=None``.
+    direction. Complete, unmodified source sweeps also have
+    ``nominal_quantities`` in m²/m³. Unsupported or boolean-modified sweeps
+    have ``directrix_metrics=None`` or ``nominal_quantities=None`` as applicable.
 
     Raises:
         RuntimeError: the geometry pipeline failed.
@@ -184,6 +258,45 @@ def geometry_data_json(
         RuntimeError: the geometry pipeline failed.
         ValueError: ``quality`` is not a recognised label, or JSON
             serialization failed.
+    """
+    ...
+
+def check_swept_disks(
+    ifc_bytes: bytes,
+    ids: Optional[Set[int]] = None,
+    *,
+    zero_length_tolerance_m: float = 1e-9,
+    gap_tolerance_m: float = 1e-6,
+    tangent_tolerance_rad: float = 1e-6,
+) -> SweptDiskChecks:
+    """Check exact authored swept-disk paths without tessellating.
+
+    Returns reports keyed by occurrence STEP id. Multiple sweeps in an
+    occurrence remain separate entries with their source solid, directrix and
+    mapped-item path. ``findings`` describe numerical path continuity in
+    absolute IFC world metres or radians, not fabrication compliance. A sweep
+    whose analytic description is unsupported has ``skipped_reason`` and no
+    partial findings. A CSG operand is checked as authored and carries
+    ``source_modified=True``; its final post-CSG body may differ.
+
+    ``ids`` filters product occurrences, as in ``geometry_data_buffers``. All
+    three tolerances must be finite and nonnegative, including for empty input.
+
+    Raises:
+        ValueError: invalid tolerance.
+        RuntimeError: extraction worker failed.
+    """
+    ...
+
+def swept_disk_definitions(
+    ifc_bytes: bytes,
+    ids: Optional[Set[int]] = None,
+) -> SweptDiskDefinitions:
+    """Extract reusable raw `IfcSweptDiskSolid` sources and f64 world instances.
+
+    `world_from_source` maps raw file-unit IFC Z-up coordinates to absolute
+    world metres; `None` means the transform was invalid. Nonuniform world
+    disks have unsupported instance status, while their source is preserved.
     """
     ...
 

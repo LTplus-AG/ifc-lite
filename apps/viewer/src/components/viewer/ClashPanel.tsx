@@ -182,7 +182,7 @@ function ClashReviewControls({
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
-        placeholder={t('clashPanel.review.commentPlaceholder')}
+        placeholder={t('clashPanel.review.commentPlaceholder')} aria-label={t('clashPanel.review.commentLabel')}
         maxLength={2000}
         rows={2}
         className="w-full resize-y rounded border border-border bg-transparent px-2 py-1 text-2xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
@@ -886,7 +886,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               <span className="text-muted-foreground">{t('clashPanel.userDefinedGroups')}</span>
             ) : (
               <select
-                value={groupBy}
+                value={groupBy} aria-label={t('clashPanel.groupByLabel')}
                 onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}
                 disabled={isDuplicateSetView}
                 title={
@@ -903,7 +903,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
             )}
             <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             <select
-              value={sortBy}
+              value={sortBy} aria-label={t('clashPanel.sortByLabel')}
               onChange={(e) => setSortBy(e.target.value as ClashSortBy)}
               className="min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5"
             >

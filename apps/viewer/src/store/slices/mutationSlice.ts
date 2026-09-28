@@ -51,6 +51,7 @@ import { buildElementMesh } from './addElementMeshes.js';
 import { authoredElementMeshPayloadOnStorey, type AuthoredElement } from './authoredElement.js';
 import { appendAuthoredMesh, authoredDataStore, syncAuthoredTreeEntry } from './authoredTreeEntry.js';
 import { ensureStoreyPlacement } from './storeyPlacement.js';
+import { effectiveStoreyId } from '@/lib/effective-storey';
 
 export type { AuthoredElement };
 import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
@@ -830,7 +831,7 @@ function resolveSplitContext(
   if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
   const dataStore = state.models.get(modelId)?.ifcDataStore;
   if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
-  const storeyExpressId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
+  const storeyExpressId = effectiveStoreyId(dataStore, view, expressId);
   if (storeyExpressId === undefined) return { ok: false, reason: notInStoreyMessage };
   return { view, editor, dataStore, storeyExpressId };
 }
@@ -2106,7 +2107,7 @@ export const createMutationSlice: StateCreator<
     if (!dataStore) return null;
     const chain = resolveSlabEditChain(dataStore, view, editor, expressId, getModelLengthUnitScale(dataStore));
     if (!chain) return null;
-    const storeyId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
+    const storeyId = effectiveStoreyId(dataStore, view, expressId);
     const storeyElevation =
       (storeyId !== undefined
         ? dataStore.spatialHierarchy?.storeyElevations?.get(storeyId)

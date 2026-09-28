@@ -3,9 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The SI toggle (#5225) and the inherit selector (#5433) on property and
- * quantity rows: each writes or clears its own field without touching the
- * rest of the rule, and a property row offers no no-op 'type' choice.
+ * The SI toggle (#5225), the inherit selector (#5433) and the
+ * complex-property member field (#5475) on property and quantity rows: each
+ * writes or clears its own field without touching the rest of the rule, and
+ * a property row offers no no-op 'type' choice.
  */
 
 import '@/test/setup-dom.js';
@@ -92,5 +93,40 @@ describe('RuleRow — inherit selector (#5433)', () => {
     assert.equal(select.value, 'aggregation');
     choose(select, '');
     assert.equal((commits.at(-1) as { inherit?: string }).inherit, undefined);
+  });
+});
+
+function memberInput(container: HTMLElement): HTMLInputElement | null {
+  return container.querySelector('input[aria-label="Complex property member"]');
+}
+
+function typeAndBlur(input: HTMLInputElement, text: string): void {
+  act(() => {
+    const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+    setValue?.call(input, text);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+  });
+}
+
+describe('RuleRow — complex property member (#5475)', () => {
+  it('a property row writes a /-separated member path, and clearing removes it', () => {
+    const commits: FilterRule[] = [];
+    const rule: FilterRule = { kind: 'property', setName: 'Pset_Test', propertyName: 'Dims', op: 'eq', value: '300' };
+    const input = memberInput(renderRow(rule, commits));
+    assert.ok(input, 'no member field rendered');
+    typeAndBlur(input, ' Frame / Width ');
+    assert.deepEqual(commits.at(-1), { ...rule, memberPath: ['Frame', 'Width'] });
+
+    const withPath: FilterRule = { ...rule, memberPath: ['Width'] };
+    const shown = memberInput(renderRow(withPath, commits));
+    assert.equal(shown?.value, 'Width');
+    typeAndBlur(shown as HTMLInputElement, '');
+    assert.equal((commits.at(-1) as { memberPath?: string[] }).memberPath, undefined);
+  });
+
+  it('a quantity row has no member field', () => {
+    const rule: FilterRule = { kind: 'quantity', setName: 'Qto_WallBaseQuantities', quantityName: 'Width', op: 'gte', value: 0.2 };
+    assert.equal(memberInput(renderRow(rule, [])), null);
   });
 });

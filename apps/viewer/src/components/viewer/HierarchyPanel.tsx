@@ -584,6 +584,7 @@ export function HierarchyPanel() {
         <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
           <Input
             placeholder={t('hierarchy.panel.searchPlaceholder')}
+            aria-label={t('hierarchy.panel.searchInputLabel')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             leftIcon={<Search className="h-4 w-4" />}
@@ -677,6 +678,7 @@ export function HierarchyPanel() {
       <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
         <Input
           placeholder={t('hierarchy.panel.searchPlaceholder')}
+          aria-label={t('hierarchy.panel.searchInputLabel')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           leftIcon={<Search className="h-4 w-4" />}

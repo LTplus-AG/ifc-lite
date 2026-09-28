@@ -4,6 +4,7 @@
 
 /** Ribbon-only view actions. Shared camera and panel commands live in the main table. */
 import { LocateFixed, Move, RotateCcw, RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
+import { Spatial } from '@/icons';
 import { useViewerStore } from '@/store';
 import type { CameraCommandId } from './toolbar/camera-commands';
 import type { SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
@@ -13,9 +14,19 @@ const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 
 type RibbonViewCommandId =
   | 'view:zoom-in' | 'view:zoom-out' | 'view:rotate-left' | 'view:rotate-right'
-  | 'view:move-georef' | 'view:follow-work';
+  | 'view:move-georef' | 'view:follow-work' | 'view:centreline';
 
 export const RIBBON_VIEW_SURFACE_COMMANDS: readonly (SurfaceCommandDefinition & { id: RibbonViewCommandId })[] = [
+  {
+    id: 'view:centreline', labelKey: 'ribbon.view.centreline',
+    ribbonTooltipKey: 'ribbon.view.centrelineTooltip',
+    keywords: 'swept disk centreline overlay', category: 'View', icon: Spatial,
+    surfaces: ribbonOnly, enabled: alwaysEnabled,
+    run: () => {
+      const state = useViewerStore.getState();
+      state.setCentrelineOverlayEnabled(!state.centrelineOverlayEnabled);
+    },
+  },
   {
     id: 'view:zoom-in', labelKey: 'cameraCommands.zoomIn.label',
     ribbonTooltipKey: 'cameraCommands.zoomIn.tooltip',

@@ -200,6 +200,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
+              aria-label={t('commandPalette.searchAriaLabel')}
               placeholder={t('commandPalette.searchPlaceholder')}
               className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               autoComplete="off"

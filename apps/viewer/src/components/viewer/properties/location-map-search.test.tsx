@@ -127,6 +127,8 @@ describe('LocationMapSearchBar results dropdown (#5817)', () => {
   it('Esc closes the dropdown without moving focus off the input', () => {
     const container = render(<Harness initialResults={RESULTS} />);
     const input = container.querySelector('input')!;
+    assert.equal(input.value, 'Berlin');
+    assert.equal(input.getAttribute('aria-label'), 'Search a place', '#6342: a filled location search retains its name');
     act(() => input.focus());
     assert.match(document.body.textContent ?? '', /Berlin, Germany/);
 

@@ -16,7 +16,9 @@
  */
 
 import { EDGE_UNIFORM_BYTES, type EdgeFrameParams, packEdgeUniforms } from './edge-params.js';
-import { edgeShaderSource } from './shaders/edges.wgsl.js';
+import { OUTLINE_UNIFORM_BYTES, type OutlineFrameParams, packOutlineUniforms } from './outline-params.js';
+import type { SelectionMaskViews } from './selection-mask-pass.js';
+import { edgeShaderSource, outlineFragmentSource } from './shaders/edges.wgsl.js';
 
 export interface EdgePassFrame {
   encoder: GPUCommandEncoder;
@@ -28,6 +30,13 @@ export interface EdgePassFrame {
   params: EdgeFrameParams;
 }
 
+export interface OutlinePassFrame {
+  encoder: GPUCommandEncoder;
+  targetView: GPUTextureView;
+  mask: SelectionMaskViews;
+  params: OutlineFrameParams;
+}
+
 export class EdgePass {
   private readonly device: GPUDevice;
   private readonly uniformBuffer: GPUBuffer;
@@ -37,6 +46,12 @@ export class EdgePass {
   private cachedDepthView: GPUTextureView | null = null;
   private cachedObjectIdView: GPUTextureView | null = null;
   private cachedBindGroup: GPUBindGroup | null = null;
+  private readonly outlineUniformBuffer: GPUBuffer;
+  private readonly outlineUniformScratch = new Float32Array(OUTLINE_UNIFORM_BYTES / 4);
+  private readonly outlineLayout: GPUBindGroupLayout;
+  private readonly outlinePipeline: GPURenderPipeline;
+  private cachedMask: SelectionMaskViews | null = null;
+  private cachedOutlineBindGroup: GPUBindGroup | null = null;
   private destroyed = false;
 
   constructor(device: GPUDevice, colorFormat: GPUTextureFormat, sampleCount: number) {
@@ -83,6 +98,44 @@ export class EdgePass {
       },
       primitive: { topology: 'triangle-list', cullMode: 'none' },
     });
+
+    // Selection/hover outline composite (#5390): a separate pipeline, since
+    // it needs a normal alpha-over blend (it draws an actual colour) rather
+    // than the darken-only blend above, and reads the mask textures rather
+    // than depth/id — but shares this module's fullscreen-triangle vertex
+    // stage (DRY).
+    this.outlineUniformBuffer = device.createBuffer({
+      label: 'outline-uniforms',
+      size: OUTLINE_UNIFORM_BYTES,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    this.outlineLayout = device.createBindGroupLayout({
+      label: 'outline-bgl',
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'unfilterable-float' } },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'unfilterable-float' } },
+        { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+      ],
+    });
+    const outlineModule = device.createShaderModule({ label: 'outline-shader', code: outlineFragmentSource() });
+    this.outlinePipeline = device.createRenderPipeline({
+      label: 'outline-pipeline',
+      layout: device.createPipelineLayout({ bindGroupLayouts: [this.outlineLayout] }),
+      vertex: { module: outlineModule, entryPoint: 'vs_fullscreen' },
+      fragment: {
+        module: outlineModule,
+        entryPoint: 'fs_outline',
+        targets: [{
+          format: colorFormat,
+          // Premultiplied-over: the shader already returns rgb*alpha.
+          blend: {
+            color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+            alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+          },
+        }],
+      },
+      primitive: { topology: 'triangle-list', cullMode: 'none' },
+    });
   }
 
   encode(frame: EdgePassFrame): void {
@@ -118,6 +171,35 @@ export class EdgePass {
     pass.end();
   }
 
+  /** Outline the selection/hover mask (#5390) onto `frame.targetView`. */
+  encodeOutline(frame: OutlinePassFrame): void {
+    if (this.destroyed) return;
+    packOutlineUniforms(this.outlineUniformScratch, frame.params);
+    this.device.queue.writeBuffer(this.outlineUniformBuffer, 0, this.outlineUniformScratch);
+
+    if (this.cachedMask !== frame.mask || this.cachedOutlineBindGroup === null) {
+      this.cachedOutlineBindGroup = this.device.createBindGroup({
+        label: 'outline-bg',
+        layout: this.outlineLayout,
+        entries: [
+          { binding: 0, resource: frame.mask.visibleView },
+          { binding: 1, resource: frame.mask.allView },
+          { binding: 2, resource: { buffer: this.outlineUniformBuffer } },
+        ],
+      });
+      this.cachedMask = frame.mask;
+    }
+
+    const pass = frame.encoder.beginRenderPass({
+      label: 'selection-hover-outline',
+      colorAttachments: [{ view: frame.targetView, loadOp: 'load', storeOp: 'store' }],
+    });
+    pass.setPipeline(this.outlinePipeline);
+    pass.setBindGroup(0, this.cachedOutlineBindGroup);
+    pass.draw(3, 1, 0, 0);
+    pass.end();
+  }
+
   /** Release all GPU resources. Idempotent; the pass is unusable afterwards. */
   destroy(): void {
     if (this.destroyed) return;
@@ -126,5 +208,8 @@ export class EdgePass {
     this.cachedBindGroup = null;
     this.cachedDepthView = null;
     this.cachedObjectIdView = null;
+    this.outlineUniformBuffer.destroy();
+    this.cachedOutlineBindGroup = null;
+    this.cachedMask = null;
   }
 }

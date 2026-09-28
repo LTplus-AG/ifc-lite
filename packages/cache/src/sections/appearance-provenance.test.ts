@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 import { BufferReader, BufferWriter } from '../utils/buffer-utils.js';
-import { writeMeshRecord, readMeshRecord, meshRecordByteLength } from './geometry.js';
+import { writeMeshRecord, readMeshRecord, meshRecordByteLength, MESH_FINISH_BYTES } from './geometry.js';
 import { writeCoordinateInfo } from './coordinate-info.js';
 import { buildGeometrySectionV13, openGeometryChunksV13 } from './geometry-chunks.js';
 import { FORMAT_VERSION } from '../types.js';
@@ -25,8 +25,9 @@ describe('canonical cache provenance #4243', () => {
     expect(output.appearanceSource?.sourceIndices).toBe(output.indices);
     const plain = { ...input, appearanceSource: undefined };
     expect(readMeshRecord(new BufferReader(record(plain)), FORMAT_VERSION).appearanceSource).toBeUndefined();
-    // v18 is the exact preceding record prefix; no provenance trailer exists.
-    const previous = record(plain).slice(0, -1);
+    // v18 is the exact preceding record prefix: no v19 provenance byte and no
+    // v22 finish trailer.
+    const previous = record(plain).slice(0, -1 - MESH_FINISH_BYTES);
     const old = readMeshRecord(new BufferReader(previous), 18);
     expect(old.geometryItemId).toBe(14);
     expect(old.appearanceSource).toBeUndefined();
@@ -34,7 +35,7 @@ describe('canonical cache provenance #4243', () => {
   });
   it('decodes the preceding v18 geometry head without consuming a nonexistent source pool', async () => {
     const input = { ...mesh(), appearanceSource: undefined };
-    const oldRecord = record(input).slice(0, -1);
+    const oldRecord = record(input).slice(0, -1 - MESH_FINISH_BYTES);
     const head = new BufferWriter();
     head.writeUint32(1); head.writeUint32(3); head.writeUint32(1);
     // `writeCoordinateInfo` emits the current v20 trailer. This fixture is a
@@ -100,11 +101,12 @@ describe('canonical cache provenance #4243', () => {
     const invalid = mesh(); invalid.appearanceSource!.cornerIndices = new Uint32Array([0,1,3]);
     expect(() => record(invalid)).toThrow(/provenance/);
     const input = mesh(); input.appearanceSource!.cornerIndices = new Uint32Array([0,1,2]);
-    const bytes = record(input), tail = bytes.byteLength - 12;
+    // Offsets from the end skip the v22 finish trailer that follows provenance.
+    const bytes = record(input), tail = bytes.byteLength - MESH_FINISH_BYTES - 12;
     new DataView(bytes).setUint32(tail, 999, true);
     expect(() => readMeshRecord(new BufferReader(bytes), FORMAT_VERSION)).toThrow(/provenance/);
-    expect(() => readMeshRecord(new BufferReader(record(input).slice(0,-1)), FORMAT_VERSION)).toThrow(/past end/);
-    const length = record(input); new DataView(length).setUint32(length.byteLength - 24 - 4, 0xffffffff, true);
+    expect(() => readMeshRecord(new BufferReader(record(input).slice(0, -1 - MESH_FINISH_BYTES)), FORMAT_VERSION)).toThrow(/past end/);
+    const length = record(input); new DataView(length).setUint32(length.byteLength - MESH_FINISH_BYTES - 24 - 4, 0xffffffff, true);
     expect(() => readMeshRecord(new BufferReader(length), FORMAT_VERSION)).toThrow(/provenance/);
   });
 });

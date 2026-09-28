@@ -17,9 +17,10 @@
  * which keeps this module free of heavy imports.
  */
 
-import type { ComponentType } from 'react';
-import { EditElement } from '@/icons';
-import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, FileText, FileWarning, GitCompareArrows, History, Info, Layers as LayersIcon, ListTree, MessageSquare, Move3d, Palette, PencilRuler, Presentation, Puzzle, Ruler, Scan, Sun, Table2, Terminal, Users, Workflow } from 'lucide-react';
+// lucide only, never `@/icons`: the store imports this module, so it sits in
+// the viewer-embed bundle too, which has no unplugin-icons resolver for the
+// `~icons/viewer/*` virtual modules (#6315 broke that build).
+import { BarChart3, Box, CalendarRange, ClipboardCheck, Cloud, Coins, Crosshair, DraftingCompass, FileText, FileWarning, GitCompareArrows, History, Info, Layers as LayersIcon, ListTree, MessageSquare, Move3d, Palette, PencilRuler, Presentation, Puzzle, Ruler, Scan, Sun, Table2, Terminal, type LucideIcon, Users, Workflow } from 'lucide-react';
 import type { TranslationKey } from '@/i18n';
 
 /** Every panel reachable from the unified sidebar rail. `properties` is the
@@ -84,8 +85,7 @@ export interface WorkspacePanelDef {
   id: WorkspacePanelId;
   /** One name for every panel surface, translated at the rendering boundary. */
   titleKey: TranslationKey;
-  /** A lucide icon or a custom `@/icons` one; both take a `className`. */
-  Icon: ComponentType<{ className?: string }>;
+  Icon: LucideIcon;
   /** Task group shared by the rail, ribbon, and panel commands. */
   group: PanelGroup;
   /** Home dock: the right pane (`side`) or the bottom strip (`bottom`). */
@@ -195,7 +195,7 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // The Model workspace's inspector (#6232 M2): shown on entry, the previous
   // panel restored on exit (`authoringSessionSidebar.ts`). Flag-free like
   // 'changes' / 'zones' (#1869 precedent). APPENDED (no Alt shortcut).
-  { id: 'model', titleKey: 'modelInspector.panel.title', Icon: EditElement, group: 'author', region: 'side' },
+  { id: 'model', titleKey: 'modelInspector.panel.title', Icon: DraftingCompass, group: 'author', region: 'side' },
 ];
 
 // The bottom strip (Script / Schedule / Lists) is table-driven; the id union and

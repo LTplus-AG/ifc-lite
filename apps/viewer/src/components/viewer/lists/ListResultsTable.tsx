@@ -304,7 +304,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
       {/* Search / actions */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b">
         <Search className="h-3.5 w-3.5 text-muted-foreground" />
-        <Input
+        <Input aria-label={t('lists.resultsTable.filterInputLabel')}
           placeholder={t('lists.resultsTable.filterPlaceholder')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}

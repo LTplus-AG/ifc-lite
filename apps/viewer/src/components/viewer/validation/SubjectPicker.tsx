@@ -28,6 +28,7 @@ import type { FilterRule } from '@ifc-lite/rules';
 import { MODEL_FACTS, type ModelFact, type Subject } from '@ifc-lite/rules';
 import { useTranslation } from '@/i18n';
 import { InheritSelect } from '../InheritSelect';
+import { MemberPathInput } from '../MemberPathInput';
 
 /** Every `Subject` kind `rule-set-io-subject.ts` accepts — `model`/
  *  `modelTag`/`elevation` are applicability-only concerns, never a
@@ -124,6 +125,7 @@ export function SubjectPicker({ subject, onChange, singleValuedOnly, onlyKinds, 
       {subject.kind === 'attribute' && (
         <Input
           placeholder={t('validationEditor.subjectPicker.attributeNamePlaceholder')}
+          aria-label={t('validationEditor.subjectPicker.attributeNameInputLabel')}
           value={subject.name}
           onChange={(e) => onChange({ ...subject, name: e.target.value })}
           className="h-7 w-44 text-xs font-mono"
@@ -134,6 +136,7 @@ export function SubjectPicker({ subject, onChange, singleValuedOnly, onlyKinds, 
         <>
           <ComboInput
             placeholder={t('validationEditor.subjectPicker.psetNamePlaceholder')}
+            aria-label={t('validationEditor.subjectPicker.psetNameInputLabel')}
             value={subject.setName}
             options={psetNames}
             className="h-7 w-48 text-xs font-mono"
@@ -142,11 +145,13 @@ export function SubjectPicker({ subject, onChange, singleValuedOnly, onlyKinds, 
           <span className="text-muted-foreground">.</span>
           <ComboInput
             placeholder={t('validationEditor.subjectPicker.propertyNamePlaceholder')}
+            aria-label={t('validationEditor.subjectPicker.propertyNameInputLabel')}
             value={subject.propertyName}
             options={propNames}
             className="h-7 w-40 text-xs font-mono"
             onChange={(next) => onChange({ ...subject, propertyName: next, propertyNameKind: undefined })}
           />
+          <MemberPathInput value={subject.memberPath} onChange={(memberPath) => onChange({ ...subject, memberPath })} />
           <InheritSelect value={subject.inherit} offered={['aggregation']} onChange={(inherit) => onChange({ ...subject, inherit })} />
         </>
       )}
@@ -155,6 +160,7 @@ export function SubjectPicker({ subject, onChange, singleValuedOnly, onlyKinds, 
         <>
           <ComboInput
             placeholder={t('validationEditor.subjectPicker.qsetNamePlaceholder')}
+            aria-label={t('validationEditor.subjectPicker.qsetNameInputLabel')}
             value={subject.setName}
             options={qsetNames}
             className="h-7 w-48 text-xs font-mono"
@@ -163,6 +169,7 @@ export function SubjectPicker({ subject, onChange, singleValuedOnly, onlyKinds, 
           <span className="text-muted-foreground">.</span>
           <ComboInput
             placeholder={t('validationEditor.subjectPicker.quantityNamePlaceholder')}
+            aria-label={t('validationEditor.subjectPicker.quantityNameInputLabel')}
             value={subject.quantityName}
             options={qtyNames}
             className="h-7 w-40 text-xs font-mono"
@@ -186,6 +193,7 @@ export function SubjectPicker({ subject, onChange, singleValuedOnly, onlyKinds, 
       {subject.kind === 'group' && (
         <Input
           placeholder={t('validationEditor.subjectPicker.groupClassPlaceholder')}
+          aria-label={t('validationEditor.subjectPicker.groupClassInputLabel')}
           value={subject.groupClass ?? ''}
           onChange={(e) => onChange({ ...subject, groupClass: e.target.value || undefined })}
           className="h-7 w-44 text-xs font-mono"
@@ -195,6 +203,7 @@ export function SubjectPicker({ subject, onChange, singleValuedOnly, onlyKinds, 
       {subject.kind === 'classification' && (
         <Input
           placeholder={t('validationEditor.subjectPicker.classificationSystemPlaceholder')}
+          aria-label={t('validationEditor.subjectPicker.classificationSystemInputLabel')}
           value={subject.system ?? ''}
           onChange={(e) => onChange({ ...subject, system: e.target.value || undefined })}
           className="h-7 w-44 text-xs font-mono"

@@ -187,7 +187,6 @@ export function extractStructuralOnDemand(
     for (const id of ids) sourceIds.add(id);
   }
 
-  const extractor = new EntityExtractor(store.source);
   const relationIds = new Set<number>([
     ...(byType.get('IFCRELCONNECTSSTRUCTURALMEMBER') ?? []),
     ...(byType.get('IFCRELCONNECTSSTRUCTURALACTIVITY') ?? []),
@@ -200,6 +199,10 @@ export function extractStructuralOnDemand(
     }
   }
   const effectiveRows = [...iterateEffectiveEntities(store, view, undefined, sourceIds)];
+  // Preserve the common no-structural-data path without setting up a source
+  // extractor. Created/retyped structural entities are already in this set.
+  if (effectiveRows.length === 0) return emptyExtraction();
+  const extractor = new EntityExtractor(store.source);
   const effectiveTypeById = new Map(effectiveRows.map((row) => [row.expressId, row.type]));
   const readRaw = (id: number, effectiveType: string): RawEntity | undefined => {
     // @raw-entity-enumeration-ok the effective iterator chose this one record; source bytes supply its baseline attributes

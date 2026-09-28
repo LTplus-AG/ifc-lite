@@ -59,4 +59,23 @@ describe('extractStructuralOnDemand effective membership (#5236)', () => {
     }));
     expect(result.members.map((member) => member.expressId)).toEqual([1]);
   });
+
+  it('reads an edited source relationship endpoint (#5236)', async () => {
+    const step = STEP.replace(
+      "#1=IFCSTRUCTURALMEMBER('MemberGuid00000000001',$,'Source member',$,$);",
+      "#1=IFCSTRUCTURALMEMBER('MemberGuid00000000001',$,'Source member',$,$);\n" +
+        "#2=IFCSTRUCTURALCONNECTION('ConnectionGuid000000001',$,'Old connection',$,$);\n" +
+        "#3=IFCSTRUCTURALCONNECTION('ConnectionGuid000000002',$,'Edited connection',$,$);\n" +
+        "#4=IFCRELCONNECTSSTRUCTURALMEMBER('RelationGuid00000000001',$,$,$,#1,#2);",
+    );
+    const store = await parse(step);
+    const result = extractStructuralOnDemand(store, view({
+      readEntity: (id, type, source) => id === 4 && source
+        ? { ...source, type, attrs: [...source.attrs.slice(0, 5), 3] }
+        : source,
+    }));
+    expect(result.members[0]?.connectionGlobalIds).toEqual(['ConnectionGuid000000002']);
+    expect(result.connections.find((connection) => connection.expressId === 3)?.memberGlobalIds)
+      .toEqual(['MemberGuid00000000001']);
+  });
 });

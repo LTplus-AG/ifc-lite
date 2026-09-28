@@ -33,6 +33,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
   const primaryId = useViewerStore((state) => state.selectedEntityId);
   const selectedRefs = useViewerStore((state) => state.selectedEntitiesSet);
   const primaryRef = useViewerStore((state) => state.selectedEntity);
+  const highlightedSegment = useViewerStore((state) => state.selectedDirectrixSegment);
   const hidden = useViewerStore((state) => state.hiddenEntities);
   const isolated = useViewerStore((state) => state.isolatedEntities);
   const classFilter = useViewerStore((state) => state.classFilter);
@@ -77,9 +78,8 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
       const ref = stringToEntityRef(key);
       if (ref.expressId > 0) refs.set(entityRefToString(ref), ref);
     }
-    const highlighted = state.selectedDirectrixSegment;
-    const highlightedKey = highlighted
-      ? entityRefToString({ modelId: highlighted.modelId, expressId: highlighted.expressId }) : null;
+    const highlightedKey = highlightedSegment
+      ? entityRefToString({ modelId: highlightedSegment.modelId, expressId: highlightedSegment.expressId }) : null;
     if (highlightedKey && !refs.has(highlightedKey)) {
       state.setSelectedDirectrixSegment(null);
     }
@@ -148,7 +148,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
       if (active) setResult({ items: [], loading: false, error: String(error) });
     });
     return () => { active = false; };
-  }, [enabled, models, legacyStore, selectedIds, primaryId, selectedRefs, primaryRef,
+  }, [enabled, models, legacyStore, selectedIds, primaryId, selectedRefs, primaryRef, highlightedSegment,
     hidden, isolated, classFilter, lensHidden]);
 
   return result;

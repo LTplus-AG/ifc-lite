@@ -53,3 +53,29 @@ it('stops the full-file pass at the next chunk after cancellation (#4226)', asyn
   assert.equal(reads, 1, 'cancelling a scan does not drain the rest of its bytes');
   assert.ok(await placementSourceIdentity(source), 'a cancelled request is not cached as the file identity');
 });
+
+// #6431: the IFC loader already holds the file in memory; re-reading it through
+// a thousand Blob slices cost seconds on a 1 GB file before parsing started.
+it('hashes bytes already in memory to the same identity, without reading the Blob (#6431)', async () => {
+  const bytes = new Uint8Array(2 * 1024 * 1024 + 123);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 31) & 0xff;
+  const expected = await placementSourceIdentity(new File([bytes], 'model.ifc'));
+  assert.ok(expected);
+  let blobReads = 0;
+  class Unread extends Blob {
+    override slice(): Blob { blobReads++; throw new Error('the Blob must not be re-read'); }
+  }
+  assert.equal(await placementSourceIdentity(new Unread([bytes]), () => false, bytes), expected);
+  const shared = new Uint8Array(new SharedArrayBuffer(bytes.byteLength));
+  shared.set(bytes);
+  assert.equal(await placementSourceIdentity(new Unread([bytes]), () => false, shared), expected,
+    'a SharedArrayBuffer-backed view hashes the same bytes');
+  assert.equal(blobReads, 0);
+});
+
+it('falls back to the Blob when the in-memory bytes are not the whole source (#6431)', async () => {
+  const bytes = new Uint8Array(1_500_000).fill(7);
+  const source = new File([bytes], 'model.ifc');
+  const expected = await placementSourceIdentity(new File([bytes], 'copy.ifc'));
+  assert.equal(await placementSourceIdentity(source, () => false, bytes.subarray(0, 1000)), expected);
+});

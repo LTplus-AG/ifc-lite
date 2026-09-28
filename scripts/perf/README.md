@@ -27,6 +27,17 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Placement identity from memory (#6431)
+
+Before parsing, the loader awaited a full-content SHA-256 identity (1 MiB chunks)
+that it computed by re-reading the file through `Blob.slice().arrayBuffer()`,
+although the file was already in memory. Hashing the in-memory bytes with the
+same chunking gives an identical identity. On a 1 GB file, file-read to
+parse-start went from 3.9-5.1 s to 0.9-1.1 s, and the gap shrank on every
+corpus model. Lesson: look at the gap BEFORE `loadFile` too. Whole-file work
+that runs before parsing delays everything behind it, and a profile window that
+starts at "first geometry" never shows it.
+
 ## Instanced RTE deltas: one upload per template (#6393, PR #6399)
 
 On a large MEP model with ~45K GPU-instanced occurrences, a browser run

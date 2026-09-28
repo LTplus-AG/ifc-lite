@@ -2492,10 +2492,11 @@ compared a synthetic parent made from then-current `main` (`c17ee39`) plus
 the patch-identical final #6283 source with a clean #6276 merge. Five balanced,
 interleaved fresh-process profiling pairs kept the fixture checksum, ordered mesh
 fingerprints and entity/mesh/vertex/triangle counts identical; paired phase
-timings remained within noise. The synthetic parent's native probe inputs
-match #6283's final source tree, and #6276's native patch matches its PR head.
-The eventual #6283 squash still needs a native-tree comparison before this
-control is cited as an exact post-merge parent. The combined Snowdon analytic
+timings remained within noise. After #6283 squashed as `d9b05c2f5`, exact
+native probe-input comparisons found no differences between that squash and
+the synthetic parent or between the restacked #6276 source and the synthetic
+child. Only a Python README clarification differed under the broader Rust
+tree. The combined Snowdon analytic
 JSON was byte-identical across the earlier parent and child.
 These ordinary mesh-load probes do not execute the opt-in analytic cache, so
 they establish no browser worker-pool speedup or analytic-call memory win.

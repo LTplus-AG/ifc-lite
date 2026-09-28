@@ -18,7 +18,8 @@ import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { cleanup, click, render } from '@/test/render.js';
-import { MODEL_ID, seedModelingSession } from '@/test/modeling-session-fixture';
+import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
+import { storeyWallAxes } from '@/lib/snap/sources/semantic-walls';
 import '@/lib/commands/modeling/builtin';
 import { sX, sY, type Fit } from '@/lib/space-sketch-geometry';
 import type { Vec2 } from '@/lib/snap/types';
@@ -27,8 +28,17 @@ import { PLAN_CUT_DEBOUNCE_MS } from './usePlanCut';
 import { PlanView } from './PlanView';
 import { ModelWorkspaceSplit } from '../model/ModelWorkspaceSplit';
 
-/** `installLayout` reports every element as 1280×800 at the origin. */
-const EMPTY_FIT: Fit = fitPlan([], [], [], 1280, 800);
+/**
+ * The frame the plan fits itself to on entry: `installLayout` reports every
+ * element as 1280×800 at the origin, the fixture has no meshes (no cut), and
+ * its storey carries one imported wall (#130), whose axis is framed.
+ */
+function entryFit(): Fit {
+  const s = useViewerStore.getState();
+  const axes = storeyWallAxes(s.models.get(MODEL_ID)!.ifcDataStore!, s.mutationViews.get(MODEL_ID)!, STOREY);
+  return fitPlan([], [], axes, 1280, 800);
+}
+let FIT: Fit;
 
 const wait = (ms: number) => act(() => new Promise<void>((r) => setTimeout(r, ms)));
 /** Long enough for the debounced cut and its async generation. */
@@ -42,7 +52,7 @@ function pointer(target: Element, type: string, x: number, y: number, init: Poin
 
 /** A click as the plan receives it: down then up without moving. */
 function planClick(svg: Element, p: Vec2, init: PointerEventInit = {}): void {
-  const [x, y] = [sX(EMPTY_FIT, p[0]), sY(EMPTY_FIT, p[1])];
+  const [x, y] = [sX(FIT, p[0]), sY(FIT, p[1])];
   pointer(svg, 'pointerdown', x, y, init);
   pointer(svg, 'pointerup', x, y, init);
 }
@@ -65,6 +75,7 @@ beforeEach(async () => {
   await seedModelingSession();
   useViewerStore.setState({ snapEnabled: false, selectedEntityId: null, selectedEntityIds: new Set(), selectedEntity: null });
   assert.ok(useViewerStore.getState().enterModelWorkspace());
+  FIT = entryFit();
 });
 afterEach(() => {
   useViewerStore.getState().exitModelWorkspace();
@@ -86,7 +97,7 @@ describe('PlanView (#6232 M2.4)', () => {
 
     const [wall] = walls();
     assert.ok(wall, 'the second click placed a wall');
-    assert.ok(near(wall.start, screenToLocal(EMPTY_FIT, sX(EMPTY_FIT, a[0]), sY(EMPTY_FIT, a[1]))), `start ${wall.start}`);
+    assert.ok(near(wall.start, screenToLocal(FIT, sX(FIT, a[0]), sY(FIT, a[1]))), `start ${wall.start}`);
     assert.ok(near(wall.start, a) && near(wall.end, b), `wall ${wall.start} → ${wall.end}`);
     assert.equal(undoDepth(), before + 1, 'one undo step');
 

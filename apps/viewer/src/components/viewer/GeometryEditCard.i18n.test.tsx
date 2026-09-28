@@ -13,9 +13,9 @@
  * new in this slice, so reverting production deletes it, and a guarded
  * import here would let the revert-oracle see a skipped suite instead of a
  * real failure). The card is rendered against a model id with no
- * registered model, so Move stays disabled and rotation/split stay
- * hidden — the same "no model" shape every mutation reader in this store
- * falls back to safely.
+ * registered model, so Move stays disabled, rotation stays hidden and
+ * Split is disabled — the same "no model" shape every mutation reader in
+ * this store falls back to safely.
  */
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';

@@ -14,7 +14,7 @@
  *      locks, Shift (angle step) / Alt (suspend snapping), and — while
  *      snapping is on — the WP3 sources: the mesh source over the renderer's
  *      magnetic pick, and the semantic source over the session storey's
- *      wall axes (endpoints, midpoints, bodies);
+ *      wall axes (endpoints, midpoints, bodies, and lines for extensions);
  *   3. `render` = the solved point on the plane.
  * Moves are coalesced to one resolve per animation frame, using the LATEST
  * cursor position and modifiers of that frame.
@@ -98,6 +98,8 @@ function semanticSource(modelId: string): SemanticSource {
   if (semantic?.modelId === modelId) return semantic.source;
   const source = createSemanticSource({
     modelId,
+    // Wall lines passing near the cursor feed extension / intersection guides.
+    extensions: true,
     version: () => useViewerStore.getState().mutationVersion,
     storeyId: () => useViewerStore.getState().session?.storeyId ?? null,
     loadAxes: (storeyId) => {

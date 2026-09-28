@@ -3,11 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The user-facing notices a committed wall split emits.
+ * The user-facing notices a committed split emits: a wall split and a
+ * linear-element split. (A refused split is a command refusal: transient and
+ * scoped to the running command, `lib/commands/modeling/runtime.ts`.)
  *
- * `MutationSlice.splitWallAtDistance` is reached from TWO places — the canvas
- * click handler (`selectionHandlers.ts`) and the Split tool's numeric-distance
- * panel (`tools/SplitNumericInput.tsx`) — and both must report the same split
+ * `MutationSlice.splitWallAtDistance` is reached from TWO places — the
+ * `element.split` command's click and its cursor distance entry
+ * (`tools/SplitCursorInput.tsx`) — and both must report the same split
  * the same way. They previously each inlined their own copy of the
  * "(N openings reassigned)" wording, and #3023 taught only the click handler to
  * also surface `openings.skipped`, so committing the identical split by typing
@@ -78,3 +80,9 @@ export function notifyWallSplit(op: OpeningReassignCounts): void {
     );
   }
 }
+
+/** A linear element (beam / column / member) split has been committed. */
+export function notifyElementSplit(): void {
+  toast.success(`Element split — ${shortcutLabel('edit.undo')} to undo`);
+}
+

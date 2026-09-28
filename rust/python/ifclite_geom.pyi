@@ -144,6 +144,58 @@ class SweptDiskDefinitions(TypedDict):
     sources: List[SweptDiskDefinition]
     instances: Dict[int, List[SweptDiskInstance]]
     diagnostics: List[str]
+
+AnalyticSourceKey = SweptDiskSourceKey
+ExtrusionInstance = SweptDiskInstance
+
+class AnalyticProfileLoop(TypedDict):
+    kind: Literal["outer", "inner"]
+    segments: List[DirectrixSegment]
+    signed_area: float  # raw IFC file units squared
+    perimeter: float  # raw IFC file length units
+
+class AnalyticProfile(TypedDict):
+    profile_id: int
+    ifc_type_name: str
+    ProfileType: Optional[str]
+    Position: Optional[int]
+    profile_position: Optional[List[float]]  # column-major, raw file units
+    loops: List[AnalyticProfileLoop]
+    status: DirectrixStatus
+
+class AnalyticExtrusion(TypedDict):
+    solid_id: int
+    SweptArea: Optional[int]
+    profile: Optional[AnalyticProfile]
+    Position: Optional[int]
+    position_matrix: Optional[List[float]]  # column-major, raw file units
+    ExtrudedDirection: Optional[int]
+    DirectionRatios: Optional[List[float]]  # authored ratios, not normalized
+    axis_unit_vector: Optional[List[float]]
+    Depth: Optional[float]  # raw IFC file length units
+    status: DirectrixStatus
+
+class ExtrusionDefinition(TypedDict):
+    key: AnalyticSourceKey
+    source: AnalyticExtrusion
+    nominal_quantities: Optional[ExtrusionNominalQuantities]  # raw IFC file units
+
+class ExtrusionNominalQuantities(TypedDict):
+    profile_area: float  # squared IFC file-length units
+    projected_height: float  # IFC file-length units
+    nominal_volume: float  # cubed IFC file-length units
+
+class ExtrusionDefinitions(TypedDict):
+    up_axis: str
+    source_units: str
+    world_units: str
+    coordinate_space: str
+    model_sha256: str
+    schema: Optional[str]
+    length_unit_scale: float
+    sources: List[ExtrusionDefinition]
+    instances: Dict[int, List[ExtrusionInstance]]
+    diagnostics: List[str]
 class PropValue(TypedDict):
     name: str
     value: str  # always a string, in the file's OWN units
@@ -297,6 +349,19 @@ def swept_disk_definitions(
     `world_from_source` maps raw file-unit IFC Z-up coordinates to absolute
     world metres; `None` means the transform was invalid. Nonuniform world
     disks have unsupported instance status, while their source is preserved.
+    """
+    ...
+
+def extrusion_definitions(
+    ifc_bytes: bytes,
+    ids: Optional[Set[int]] = None,
+) -> ExtrusionDefinitions:
+    """Extract exact authored extrusion sources and f64 placed occurrences.
+
+    For a profile point, apply profile_position, then position_matrix, then
+    world_from_source. The last matrix maps raw IFC file units to absolute IFC
+    Z-up world metres. CSG operand sources carry source_modified=True because
+    their final body may differ. Unsupported sources retain an explicit status.
     """
     ...
 

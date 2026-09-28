@@ -62,12 +62,15 @@ mod types;
 
 pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryDataExport};
 pub use analytic_export::{check_swept_disk, extract_swept_disk_definitions,
-    extract_swept_disk_descriptions, extrusion_nominal_quantities, DirectrixMetrics,
+    extract_swept_disk_descriptions, extract_extrusion_definitions,
+    extrusion_nominal_quantities, DirectrixMetrics,
     DirectrixSegmentMetrics, ExtrusionNominalQuantities, SweptDiskCheckError,
     SweptDiskCheckFinding, SweptDiskCheckOptions, SweptDiskCheckReport,
     SweptDiskDefinition, SweptDiskDefinitions, SweptDiskDescriptions,
     SweptDiskFindingCode, SweptDiskInstance, SweptDiskNominalQuantities,
-    SweptDiskOccurrence, SweptDiskSourceContext, SweptDiskSourceKey};
+    SweptDiskOccurrence, SweptDiskSourceContext, SweptDiskSourceKey,
+    AnalyticSourceContext, AnalyticSourceKey, ExtrusionDefinition,
+    ExtrusionDefinitions, ExtrusionInstance};
 pub use georeferencing::{
     extract_georeferencing, extract_georeferencing_with_index, Georeferencing,
 };

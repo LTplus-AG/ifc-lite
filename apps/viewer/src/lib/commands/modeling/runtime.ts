@@ -61,6 +61,25 @@ let hooks: CommandRuntimeHooks | null = null;
 let unbindKeys: (() => void) | null = null;
 let requestSeq = 0;
 const listeners = new Set<() => void>();
+/** Dismissers of the refusals still on screen; they end with the command. */
+const openRefusals = new Set<() => void>();
+/** How long a refusal stays up while the command keeps running. */
+const REFUSAL_MS = 6000;
+
+/**
+ * Report why the running command refused a gesture. The notice is about that
+ * gesture, so it is transient and scoped to the command (#6233): it
+ * auto-dismisses, and ending the command (Esc, K, a tool switch, another
+ * command) clears it — a stale "Couldn't split" must not outlive the tool.
+ */
+export function notifyCommandRefusal(message: string): void {
+  openRefusals.add(toast.transientError(message, REFUSAL_MS));
+}
+
+function dismissCommandRefusals(): void {
+  for (const dismiss of openRefusals) dismiss();
+  openRefusals.clear();
+}
 
 function publish(next: Partial<CommandRuntimeState>): void {
   const wasDirty = state.dirty;
@@ -107,6 +126,7 @@ export function beginCommandRuntime(
 
 /** Drop the active command's gesture and key bindings. Never calls `onExit`. */
 export function endCommandRuntime(): void {
+  dismissCommandRefusals();
   unbindKeys?.();
   unbindKeys = null;
   store = null;
@@ -179,14 +199,14 @@ export function commitCommand(): boolean {
   if (!command || !ctx || !store || !hooks) return false;
   const verdict = command.validate?.(gesture, ctx);
   if (verdict && !verdict.ok) {
-    toast.error(translate(verdict.reasonKey));
+    notifyCommandRefusal(translate(verdict.reasonKey));
     return true;
   }
   hooks.onPhase('committing');
   const outcome = runTransaction(store, command, gesture, ctx);
   if (!outcome.ok) {
     hooks.onPhase(state.dirty ? 'gesture' : 'idle');
-    toast.error(outcome.reason);
+    notifyCommandRefusal(outcome.reason);
     return true;
   }
   const next = command.afterCommit ? command.afterCommit(gesture, outcome.result, ctx) : command.init(ctx);

@@ -120,6 +120,54 @@ const enabled = Boolean(key && host) && typeof posthogClient?.init === 'function
 // narrow type is what keeps keyless/Node environments crash-free.
 type AnalyticsClient = Pick<typeof posthogClient, 'capture' | 'captureException'>;
 
+/** Mark consenting SDK sessions, including visits with no model load. */
+export function createViewerSessionStartRecorder(
+  capture: () => void,
+  getSessionId: () => string,
+  isOptedOut: () => boolean,
+): { onSessionId: (sessionId: string) => void; startNow: () => void } {
+  let lastRecordedSessionId: string | null = null;
+  let starting = false;
+  const onSessionId = (sessionId: string): void => {
+    if (!sessionId || isOptedOut() || sessionId === lastRecordedSessionId) return;
+    // capture() itself can create/rotate the SDK session and call us again.
+    if (starting) {
+      lastRecordedSessionId = sessionId;
+      return;
+    }
+    const previous = lastRecordedSessionId;
+    lastRecordedSessionId = sessionId;
+    try {
+      capture();
+    } catch (error) {
+      lastRecordedSessionId = previous;
+      console.warn('[analytics] session-start capture failed', error);
+    }
+  };
+  const startNow = (): void => {
+    if (isOptedOut()) return;
+    const previous = lastRecordedSessionId;
+    starting = true;
+    try {
+      // Also creates the initial SDK session when pageviews/autocapture are off.
+      capture();
+      lastRecordedSessionId = getSessionId() || lastRecordedSessionId;
+    } catch (error) {
+      lastRecordedSessionId = previous;
+      console.warn('[analytics] session-start capture failed', error);
+    } finally {
+      starting = false;
+    }
+  };
+  return { onSessionId, startNow };
+}
+
+const recordViewerSessionStart = createViewerSessionStartRecorder(
+  () => posthogClient.capture('viewer_session_started'),
+  () => posthogClient.get_session_id(),
+  isAnalyticsOptedOut,
+);
+
 let client: AnalyticsClient | null = null;
 if (enabled) {
   try {
@@ -153,6 +201,10 @@ if (enabled) {
       captureException: (err, additionalProperties) =>
         posthogClient.captureException(ensureCapturableStack(err), additionalProperties),
     };
+    // An explicit capture creates the initial session even on a visit with no
+    // interaction; the callback catches later idle-tab session rotations.
+    recordViewerSessionStart.startNow();
+    posthogClient.onSessionId(recordViewerSessionStart.onSessionId);
   } catch (err) {
     console.warn('[analytics] PostHog init failed; analytics disabled', err);
   }
@@ -181,7 +233,12 @@ export function setAnalyticsOptOut(value: boolean): void {
   if (!enabled || !client) return;
   try {
     if (value) posthogClient.opt_out_capturing();
-    else posthogClient.opt_in_capturing({ captureEventName: false });
+    else {
+      posthogClient.opt_in_capturing({ captureEventName: false });
+      // The callback may have fired while opted out. Capture now, allowing the
+      // SDK to rotate an expired session ID before attaching it to the event.
+      recordViewerSessionStart.startNow();
+    }
   } catch (error) {
     console.warn('[analytics] could not update PostHog consent', error);
   }

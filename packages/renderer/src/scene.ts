@@ -2496,7 +2496,7 @@ export class Scene {
     const result = createSceneBatch(meshes, color, device, pipeline, {
       // A derived batch (no bucketKey) is a subset of ONE material-uniform
       // bucket, so its first piece's finish labels it like bucketBaseKey does (#5582).
-      id: this.nextBatchId, colorKey: bucketKey ?? colorKey(color, meshes[0]?.material),
+      id: this.nextBatchId, colorKey: bucketKey ?? this.colorKey(color, meshes[0]?.material),
       origin,
       quantized: quantization, lod: this.lodBuildsEnabled,
     }, bucketKey);

@@ -15,21 +15,26 @@ use nalgebra::Matrix4;
 /// so occurrences of one map share their source definition.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum SweptDiskSourceContext {
+pub enum AnalyticSourceContext {
     Direct { representation_id: u32 },
     Mapped { representation_map_path: Vec<u32> },
 }
 
 /// Stable within and across reads of the same IFC bytes.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-pub struct SweptDiskSourceKey {
+pub struct AnalyticSourceKey {
     pub model_sha256: String,
     pub schema: Option<String>,
     /// Sixteen hex digits preserve f64 identity through JSON/JavaScript.
     pub length_unit_scale_bits: String,
-    pub context: SweptDiskSourceContext,
+    pub context: AnalyticSourceContext,
     pub solid_id: u32,
 }
+
+/// Compatible name for source keys returned by swept-disk APIs.
+pub type SweptDiskSourceKey = AnalyticSourceKey;
+/// Compatible name for source contexts returned by swept-disk APIs.
+pub type SweptDiskSourceContext = AnalyticSourceContext;
 
 /// Original `IfcSweptDiskSolid` geometry in IFC file length units.
 #[derive(Debug, Clone, Serialize)]
@@ -77,7 +82,7 @@ pub struct SweptDiskDefinitions {
 
 impl SweptDiskDefinitions {
     pub(super) fn new(content: &[u8], unit_scale: f64) -> Self {
-        let model_sha256 = format!("{:x}", Sha256::digest(content));
+        let model_sha256 = model_sha256(content);
         let schema = ifc_lite_core::declared_schema_bounded(content);
         Self { up_axis: "Z", source_units: "ifc_file_length_units",
             world_units: "m", coordinate_space: "absolute_ifc_world",
@@ -85,11 +90,9 @@ impl SweptDiskDefinitions {
             sources: Vec::new(), instances: BTreeMap::new(), diagnostics: Vec::new() }
     }
 
-    pub(super) fn key(&self, context: SweptDiskSourceContext, solid_id: u32) -> SweptDiskSourceKey {
-        SweptDiskSourceKey { model_sha256: self.model_sha256.clone(),
-            schema: self.schema.clone(),
-            length_unit_scale_bits: format!("{:016x}", self.length_unit_scale.to_bits()),
-            context, solid_id }
+    pub(super) fn key(&self, context: AnalyticSourceContext, solid_id: u32) -> AnalyticSourceKey {
+        source_key(&self.model_sha256, self.schema.as_deref(), self.length_unit_scale,
+            context, solid_id)
     }
 }
 
@@ -99,6 +102,20 @@ impl SweptDiskDefinition {
             inner_radius: disk.inner_radius, directrix: disk.segments.clone(),
             status: disk.status.clone() }
     }
+}
+
+pub(super) fn model_sha256(content: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(content))
+}
+
+pub(super) fn source_key(
+    model_sha256: &str, schema: Option<&str>, length_unit_scale: f64,
+    context: AnalyticSourceContext, solid_id: u32,
+) -> AnalyticSourceKey {
+    AnalyticSourceKey { model_sha256: model_sha256.to_owned(),
+        schema: schema.map(str::to_owned),
+        length_unit_scale_bits: format!("{:016x}", length_unit_scale.to_bits()),
+        context, solid_id }
 }
 
 pub(super) fn source_matrix(transform: &Matrix4<f64>, unit_scale: f64) -> Option<[f64; 16]> {

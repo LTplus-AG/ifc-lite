@@ -81,4 +81,19 @@ describe('createSemanticSource (#6232 WP3)', () => {
     assert.equal(src.rebuilds(), 4);
     assert.equal(loads, 3, 'no storey loads nothing');
   });
+
+  it('with extensions on, also offers walls whose line passes near a cursor far from their body', () => {
+    const walls: WallAxis[] = [{ expressId: 1, a: [0, 0], b: [4, 0] }];
+    const base = { modelId: 'm', version: () => 1, storeyId: () => 3, loadAxes: () => walls };
+    const beyond = query([7, 0.03]);
+    const off: SnapCandidate[] = [];
+    createSemanticSource(base).collect(beyond, 0.12, off);
+    assert.equal(off.length, 0);
+    const on: SnapCandidate[] = [];
+    createSemanticSource({ ...base, extensions: true }).collect(beyond, 0.12, on);
+    assert.deepEqual(on.map((c) => [c.kind, c.guide?.kind]), [['edge', 'segment']]);
+    const far: SnapCandidate[] = [];
+    createSemanticSource({ ...base, extensions: true }).collect(query([7, 1]), 0.12, far);
+    assert.equal(far.length, 0, 'a line that passes far from the cursor is not offered');
+  });
 });

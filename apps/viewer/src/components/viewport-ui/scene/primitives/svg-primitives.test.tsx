@@ -110,6 +110,20 @@ describe('SnapGlyph', () => {
     assert.match(shapeGroup.getAttribute('class') ?? '', /fill-overlay-accent/);
     assert.match(shapeGroup.getAttribute('filter') ?? '', /url\(#scene-overlay-glow\)/);
   });
+
+  it('draws a distinct shape for every snap kind (#6232 WP3)', () => {
+    const kinds = ['endpoint', 'midpoint', 'center', 'perpendicular', 'intersection', 'edge', 'extension', 'parallel', 'grid'] as const;
+    const drawn = kinds.map((kind) => {
+      const { container, flush } = renderScene(<SnapGlyph worldPoint={{ x: 0, y: 0, z: 0 }} kind={kind} />);
+      flush();
+      const shape = container.querySelector(`[data-snap-kind="${kind}"] > g`)!;
+      assert.ok(shape.children.length > 0, `${kind} draws something`);
+      const markup = shape.innerHTML;
+      cleanup();
+      return markup;
+    });
+    assert.equal(new Set(drawn).size, kinds.length, 'no two kinds share a glyph');
+  });
 });
 
 describe('Pin', () => {

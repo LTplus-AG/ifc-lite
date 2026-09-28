@@ -21,7 +21,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { fromNativeLength, toNativeLength } from '@ifc-lite/create';
+import { toNativeLength } from '@ifc-lite/create';
 import type { ViewerState } from '../index.js';
 import { resolveWallEditChain } from '@/lib/placement-edit.js';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
@@ -44,15 +44,14 @@ const NOT_A_RECTANGLE_WALL =
 
 /** A wall's endpoints, thickness and height in metres, or null when its chain doesn't resolve. */
 export function readWallMetres(ctx: WallEditContext, expressId: number) {
-  const chain = resolveWallEditChain(ctx.dataStore, ctx.view, ctx.editor, expressId);
+  // The chain reads in metres when given the model's scale (#6233).
+  const chain = resolveWallEditChain(ctx.dataStore, ctx.view, ctx.editor, expressId, getModelLengthUnitScale(ctx.dataStore));
   if (!chain) return null;
-  const unit = { lengthUnitScale: getModelLengthUnitScale(ctx.dataStore) };
-  const m = (value: number) => fromNativeLength(unit, value);
-  const start: Vec3 = [m(chain.startCoordinates[0]), m(chain.startCoordinates[1]), m(chain.startCoordinates[2])];
-  const length = m(chain.wallLength);
+  const start: Vec3 = [...chain.startCoordinates];
+  const length = chain.wallLength;
   const [dx, dy, dz] = chain.refDirection;
   const end: Vec3 = [start[0] + dx * length, start[1] + dy * length, start[2] + dz * length];
-  return { chain, start, end, thickness: m(chain.thickness), height: m(chain.height) };
+  return { chain, start, end, thickness: chain.thickness, height: chain.height };
 }
 
 /**

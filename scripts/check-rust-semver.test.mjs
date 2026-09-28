@@ -42,6 +42,7 @@ const {
   interpretRun,
   executedCheckCount,
   semverChecksArgv,
+  loadPublishedBaselines,
 } = rustSemver;
 import { CRATES } from './lib/crates-io.mjs';
 
@@ -246,6 +247,28 @@ test('VACUITY: a registry lookup that fails for EVERY crate is not a pass', () =
   assert.equal(result.ok, false);
   assert.equal(result.failures.length, SEVEN.length);
   assert.equal(result.checked.length, 0);
+});
+
+test('#6407: registry lookup failure stops baseline collection instead of becoming NO_BASELINE', async () => {
+  const visited = [];
+  await assert.rejects(
+    () => loadPublishedBaselines(SEVEN, async (crate) => {
+      visited.push(crate);
+      if (crate === 'ifc-lite-ffi') throw new Error('crates.io returned 503');
+      return '19.1.2';
+    }),
+    /REGISTRY_LOOKUP_FAILED: ifc-lite-ffi: crates\.io returned 503/
+  );
+  assert.deepEqual(visited, SEVEN.slice(0, SEVEN.indexOf('ifc-lite-ffi') + 1));
+
+  const baselines = await loadPublishedBaselines(SEVEN, async () => '19.1.2');
+  assert.equal(baselines.get('ifc-lite-ffi'), '19.1.2');
+  assert.equal(baselines.size, SEVEN.length);
+
+  await assert.rejects(
+    () => loadPublishedBaselines(['ifc-lite-ffi'], async () => undefined),
+    /REGISTRY_LOOKUP_FAILED: ifc-lite-ffi: registry returned no usable baseline answer/
+  );
 });
 
 test('VACUITY: output with no Summary line fails with NO_VERDICT', () => {

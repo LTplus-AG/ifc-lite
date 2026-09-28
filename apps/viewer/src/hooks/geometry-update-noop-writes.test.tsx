@@ -32,11 +32,14 @@ describe('model-keyed sync hooks on a geometry update (#6232)', () => {
     await advance(10);
     const selection = useViewerStore.getState().selectedEntity;
     const offsets = useViewerStore.getState().appliedStoreyOffsets;
+    const entityOffsets = useViewerStore.getState().appliedEntityLevelOffsets;
     assert.ok(selection, 'the selection resolved on mount');
 
     let writes = 0;
     const unsubscribe = useViewerStore.subscribe((next, prev) => {
-      if (next.selectedEntity !== prev.selectedEntity || next.appliedStoreyOffsets !== prev.appliedStoreyOffsets) writes++;
+      if (next.selectedEntity !== prev.selectedEntity
+        || next.appliedStoreyOffsets !== prev.appliedStoreyOffsets
+        || next.appliedEntityLevelOffsets !== prev.appliedEntityLevelOffsets) writes++;
     });
     // What replaceEntityMeshes publishes: a new map holding a new model object.
     const models = new Map(useViewerStore.getState().models);
@@ -47,5 +50,6 @@ describe('model-keyed sync hooks on a geometry update (#6232)', () => {
     assert.equal(writes, 0);
     assert.equal(useViewerStore.getState().selectedEntity, selection);
     assert.equal(useViewerStore.getState().appliedStoreyOffsets, offsets);
+    assert.equal(useViewerStore.getState().appliedEntityLevelOffsets, entityOffsets);
   });
 });

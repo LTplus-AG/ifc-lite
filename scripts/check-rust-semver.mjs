@@ -67,7 +67,7 @@
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CRATES, readWorkspaceVersion } from './lib/crates-io.mjs';
+import { CRATES, fetchLatestPublishedVersion, readWorkspaceVersion } from './lib/crates-io.mjs';
 import {
   SEMVER_RELEASE_TYPE,
   SEMVER_TOOLCHAIN,
@@ -304,27 +304,25 @@ export function checkRustSemver({ crates, workspaceVersion, latestPublished, run
 
 /* ---------- real-world wiring (the unit tests inject fakes instead) ---------- */
 
-function realLatestPublished(crate) {
-  const res = spawnSync(
-    'curl',
-    [
-      '-sS',
-      '-H',
-      'User-Agent: ifc-lite-release (github.com/LTplus-AG/ifc-lite)',
-      `https://crates.io/api/v1/crates/${crate}`,
-    ],
-    { encoding: 'utf8' }
-  );
-  if (res.status !== 0) return null;
-  try {
-    const body = JSON.parse(res.stdout);
-    return body?.crate?.max_stable_version || body?.crate?.max_version || null;
-  } catch {
-    return null;
+/** Fetch all baselines before running expensive semver checks. A failed registry
+ * read aborts this gate with its own reason, never as a missing release. */
+export async function loadPublishedBaselines(crates, lookup = fetchLatestPublishedVersion) {
+  const baselines = new Map();
+  for (const crate of crates) {
+    try {
+      const baseline = await lookup(crate);
+      if (baseline !== null && (typeof baseline !== 'string' || !baseline)) {
+        throw new Error('registry returned no usable baseline answer');
+      }
+      baselines.set(crate, baseline);
+    } catch (err) {
+      throw new Error(`REGISTRY_LOOKUP_FAILED: ${crate}: ${err.message}`, { cause: err });
+    }
   }
+  return baselines;
 }
 
-function main() {
+async function main() {
   const probe = spawnSync('cargo', [`+${SEMVER_TOOLCHAIN}`, 'semver-checks', '--version'], {
     encoding: 'utf8',
   });
@@ -338,10 +336,19 @@ function main() {
     process.exit(2);
   }
 
+  let baselines;
+  try {
+    baselines = await loadPublishedBaselines(CRATES);
+  } catch (err) {
+    console.error(`❌ ${err.message}`);
+    process.exitCode = 2;
+    return;
+  }
+
   const result = checkRustSemver({
     crates: CRATES,
     workspaceVersion: readVersionOrNull(REPO_ROOT),
-    latestPublished: realLatestPublished,
+    latestPublished: (crate) => baselines.get(crate),
     runSemverChecks: realRunSemverChecks,
   });
 
@@ -365,4 +372,9 @@ function main() {
   );
 }
 
-if (process.argv[1] && process.argv[1].endsWith('check-rust-semver.mjs')) main();
+if (process.argv[1] && process.argv[1].endsWith('check-rust-semver.mjs')) {
+  main().catch((err) => {
+    console.error(`❌ Rust crate semver gate failed: ${err.message}`);
+    process.exitCode = 2;
+  });
+}

@@ -520,12 +520,17 @@ impl GeometryRouter {
                     _ => continue,
                 };
 
-                // Keep the host in absolute world/RTC coordinates here: the void cut
-                // (`apply_void_context`) matches it against world-coordinate opening
-                // cutters, so relativizing the host now would silently break every
-                // cut. The per-element local-origin relativization is applied to the
-                // CSG OUTPUT instead (shared host+cutter frame).
-                self.transform_mesh_world_framed(&mut mesh, &placement_transform, false);
+                // Keep ordinary opening cutters in the world/RTC frame. A large
+                // mapped origin would lose its fractional translation when the
+                // world point is cast to f32; the void context folds each cutter's
+                // origin into the host frame before cutting.
+                let frame_mapped_origin =
+                    self.mapped_origin_needs_local_frame(&mesh, &placement_transform);
+                self.transform_mesh_world_framed(
+                    &mut mesh,
+                    &placement_transform,
+                    frame_mapped_origin,
+                );
 
                 item_meshes.push(mesh);
             }

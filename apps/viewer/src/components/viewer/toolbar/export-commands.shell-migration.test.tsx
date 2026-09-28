@@ -20,14 +20,15 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanup, click, render } from '@/test/render.js';
 import { useViewerStore } from '@/store/index.js';
-import { EXPORT_COMMANDS, type ExportDialogCommand } from './export-commands.js';
+import { EXPORT_COMMANDS, type ExportCommand, type ExportDialogCommand } from './export-commands.js';
 
 afterEach(() => {
   cleanup();
   useViewerStore.getState().resetViewerState();
 });
 
-const DIALOG_COMMANDS = EXPORT_COMMANDS.filter((c): c is ExportDialogCommand => c.kind === 'dialog');
+const REGISTRY: readonly ExportCommand[] = EXPORT_COMMANDS;
+const DIALOG_COMMANDS = REGISTRY.filter((c): c is ExportDialogCommand => c.kind === 'dialog');
 
 describe('registered export dialogs use ExportDialogShell (#5848)', () => {
   it('the registry has dialog commands to check', () => {

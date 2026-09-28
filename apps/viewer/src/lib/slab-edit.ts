@@ -30,17 +30,16 @@
  * Split tool stays armed.
  */
 
-import { firstProjAxis } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
   asExpressIdRef,
   asCoordinateTriple,
-  asDirectionRatios,
   readAttributes,
   resolvePlacementChain,
 } from './placement-core.js';
 import { clipPolygonByLine, type Point2D, type PolygonClipResult } from './polygon-clip.js';
+import { resolveSolidPositionXform, slabExtrusionBase, type Xform2D } from './slab-edit-frame.js';
 
 /**
  * Slab-like element types this module handles. Matches the STEP
@@ -63,100 +62,14 @@ function stepTypeToSlabLike(stepType: string): SlabLikeType | null {
   return SLAB_LIKE_STEP_TYPES[stepType.toUpperCase()] ?? null;
 }
 
-/**
- * A 2D rigid transform mapping a profile-coordinate point into the
- * solid's local plan (XY). Built from the `IfcExtrudedAreaSolid`'s
- * `Position` (an `IfcAxis2Placement3D`), it folds in the in-place
- * translation + rotation that real-world authoring tools bake there.
- * In-store-built slabs carry an identity Position, so the resolver
- * defaults to the identity transform for them.
- */
-type Xform2D = (p: [number, number]) => [number, number];
-
-const IDENTITY_XFORM2D: Xform2D = (p) => [p[0], p[1]];
-
-function readDirection(
-  dataStore: IfcDataStore,
-  view: MutablePropertyView,
-  editor: StoreEditor,
-  id: number | null,
-): [number, number, number] | null {
-  if (id === null) return null;
-  const attrs = readAttributes(dataStore, view, editor, id);
-  return attrs ? asDirectionRatios(attrs[0]) : null;
-}
-
-/**
- * Build the plan-space transform for an `IfcExtrudedAreaSolid.Position`.
- * The profile lives in the placement's local XY plane; we map a profile
- * point `(px, py)` to `origin + px·X + py·Y` and keep the XY components
- * (the footprint is the plan). X comes from RefDirection (orthonormalised
- * against the Axis/Z), Y = Z × X — matching the IFC placement convention,
- * including axis flips (e.g. Axis `(0,0,-1)`, RefDirection `(-1,0,0)`).
- * Returns identity when the placement is absent or degenerate.
- */
-function resolveSolidPositionXform(
-  dataStore: IfcDataStore,
-  view: MutablePropertyView,
-  editor: StoreEditor,
-  placementId: number | null,
-): Xform2D {
-  if (placementId === null) return IDENTITY_XFORM2D;
-  const attrs = readAttributes(dataStore, view, editor, placementId);
-  if (!attrs) return IDENTITY_XFORM2D;
-
-  // IfcAxis2Placement3D: [0] Location · [1] Axis (Z) · [2] RefDirection (X).
-  const locId = asExpressIdRef(attrs[0]);
-  let ox = 0;
-  let oy = 0;
-  if (locId !== null) {
-    const locAttrs = readAttributes(dataStore, view, editor, locId);
-    const c = locAttrs ? asCoordinateTriple(locAttrs[0]) : null;
-    if (c) {
-      ox = c[0];
-      oy = c[1];
-    }
-  }
-
-  // IfcDirection ratios are NOT guaranteed unit length, so normalise Z
-  // before using it as a basis vector — otherwise the Gram-Schmidt
-  // projection (which assumes |Z|=1) and Y = Z × X both pick up |Z| as a
-  // stray scale factor, skewing the footprint away from the rendered mesh
-  // for files with e.g. Axis=(0,0,2). The Rust profile extractor
-  // normalises the same placement.
-  const rawZ = readDirection(dataStore, view, editor, asExpressIdRef(attrs[1])) ?? [0, 0, 1];
-  const zlen = Math.hypot(rawZ[0], rawZ[1], rawZ[2]);
-  if (zlen < 1e-9) return IDENTITY_XFORM2D;
-  const z: [number, number, number] = [rawZ[0] / zlen, rawZ[1] / zlen, rawZ[2] / zlen];
-  // A `$` RefDirection takes the renderer's fill, not world X as-is (#5922).
-  const refX = readDirection(dataStore, view, editor, asExpressIdRef(attrs[2])) ?? firstProjAxis(z);
-
-  // Orthonormalise X against the unit Z (Gram-Schmidt), then Y = Z × X.
-  const dot = refX[0] * z[0] + refX[1] * z[1] + refX[2] * z[2];
-  let xv: [number, number, number] = [
-    refX[0] - dot * z[0],
-    refX[1] - dot * z[1],
-    refX[2] - dot * z[2],
-  ];
-  const xlen = Math.hypot(xv[0], xv[1], xv[2]);
-  if (xlen < 1e-9) return IDENTITY_XFORM2D;
-  xv = [xv[0] / xlen, xv[1] / xlen, xv[2] / xlen];
-  // Z and X are now orthonormal, so Y = Z × X is already unit length.
-  const yv: [number, number, number] = [
-    z[1] * xv[2] - z[2] * xv[1],
-    z[2] * xv[0] - z[0] * xv[2],
-    z[0] * xv[1] - z[1] * xv[0],
-  ];
-
-  return (p) => [ox + p[0] * xv[0] + p[1] * yv[0], oy + p[0] * xv[1] + p[1] * yv[1]];
-}
-
 export interface SlabEditChain {
   /** STEP type name, for the slice's dispatch. */
   elementType: SlabLikeType;
   /** Placement origin (storey-local). The footprint polygon is in
    * world-XY space, with the origin already added. */
   placementOrigin: [number, number, number];
+  /** Storey-local height where the extrusion starts (`slab-edit-frame.ts`). */
+  baseElevation: number;
   /** Footprint polygon as an ordered list of 2D vertices (storey-
    * local world XY). First vertex does NOT repeat at the end. */
   footprint: Point2D[];
@@ -267,6 +180,7 @@ function scaleSlabChain(chain: SlabEditChain, scale: number): SlabEditChain {
       chain.placementOrigin[1] * scale,
       chain.placementOrigin[2] * scale,
     ],
+    baseElevation: chain.baseElevation * scale,
     footprint: chain.footprint.map(([x, y]) => [x * scale, y * scale] as Point2D),
     thickness: chain.thickness * scale,
   };
@@ -325,6 +239,10 @@ export function resolveSlabEditChain(
   const profileId = asExpressIdRef(solidAttrs[0]);
   const thicknessRaw = solidAttrs[3];
   if (profileId === null || typeof thicknessRaw !== 'number') return null;
+  // Only a vertical extrusion of the plan outline can be cut in plan (#6233).
+  const base = slabExtrusionBase(dataStore, view, editor, chain.axisPlacementId, solidAttrs, thicknessRaw);
+  if (base === null) return null;
+  const baseElevation = placementOrigin[2] + base;
 
   // IfcExtrudedAreaSolid.Position (attr 1) is an IfcAxis2Placement3D that
   // places the profile in the solid's frame — real authoring tools bake
@@ -372,6 +290,7 @@ export function resolveSlabEditChain(
     return scaleSlabChain({
       elementType,
       placementOrigin,
+      baseElevation,
       footprint: rectangleFootprint(placementOrigin, profileOrigin2D, xdim, ydim, solidXform),
       extrudedSolidId: solidId,
       thickness: thicknessRaw,
@@ -387,6 +306,7 @@ export function resolveSlabEditChain(
     return scaleSlabChain({
       elementType,
       placementOrigin,
+      baseElevation,
       footprint: fp,
       extrudedSolidId: solidId,
       thickness: thicknessRaw,

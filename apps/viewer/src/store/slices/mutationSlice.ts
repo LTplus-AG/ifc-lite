@@ -2131,9 +2131,11 @@ export const createMutationSlice: StateCreator<
     // The clipped footprints are in storey-local XY (placement
     // origin already added). The builders expect an `OuterCurve`
     // in *profile-local* 2D + a `Position` in storey-local 3D.
-    // Easiest mapping: keep `Position` at `[0, 0, 0]` and pass the
+    // Easiest mapping: keep `Position` at `[0, 0, base]` and pass the
     // clipped polygon verbatim — the builders fold profile-origin
-    // and placement-origin into one identity.
+    // and placement-origin into one identity. `base` is where the source's
+    // extrusion starts, so a slab hung below its placement (AC20's
+    // `Bodenplatte`) keeps its height (#6233).
     //
     // IfcSlab / IfcRoof / IfcPlate carry their extrusion depth on
     // a `Thickness` param; IfcSpace uses `Height`. Same chain
@@ -2146,7 +2148,7 @@ export const createMutationSlice: StateCreator<
         case 'IfcSlab':
           return state.addSlab(modelId, storeyExpressId, {
             Profile: 'polygon',
-            Position: [0, 0, 0],
+            Position: [0, 0, chain.baseElevation],
             OuterCurve: outline,
             Thickness: geo.thickness,
             Name: name,
@@ -2154,7 +2156,7 @@ export const createMutationSlice: StateCreator<
         case 'IfcRoof':
           return state.addRoof(modelId, storeyExpressId, {
             Profile: 'polygon',
-            Position: [0, 0, 0],
+            Position: [0, 0, chain.baseElevation],
             OuterCurve: outline,
             Thickness: geo.thickness,
             Name: name,
@@ -2162,7 +2164,7 @@ export const createMutationSlice: StateCreator<
         case 'IfcPlate':
           return state.addPlate(modelId, storeyExpressId, {
             Profile: 'polygon',
-            Position: [0, 0, 0],
+            Position: [0, 0, chain.baseElevation],
             OuterCurve: outline,
             Thickness: geo.thickness,
             Name: name,
@@ -2170,7 +2172,7 @@ export const createMutationSlice: StateCreator<
         case 'IfcSpace':
           return state.addSpace(modelId, storeyExpressId, {
             Profile: 'polygon',
-            Position: [0, 0, 0],
+            Position: [0, 0, chain.baseElevation],
             OuterCurve: outline,
             Height: geo.thickness,
             Name: name,

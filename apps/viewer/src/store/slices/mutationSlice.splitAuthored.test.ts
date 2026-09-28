@@ -28,7 +28,9 @@ import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import type { IfcAttributeValue } from '@ifc-lite/mutations';
 import { asCoordinateTriple, asExpressIdRef, readAttributes, resolvePlacementChain } from '@/lib/placement-core';
-import { MESH_WALL, MODEL_ID, ROTATED_BEAM, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
+import { HUNG_SLAB, MESH_WALL, MODEL_ID, ROTATED_BEAM, STOREY, TILTED_SLAB, seedModelingSession } from '@/test/modeling-session-fixture';
+import { resolveSlabEditChain } from '@/lib/slab-edit';
+import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 
 function created(result: { expressId: number } | { error: string }): number {
   assert.ok('expressId' in result, `builder failed: ${'error' in result ? result.error : ''}`);
@@ -176,6 +178,25 @@ for (const unit of ['metre', 'millimetre'] as const) {
       const target = useViewerStore.getState().readSplitTarget(MODEL_ID, ROTATED_BEAM);
       assert.deepEqual(target, { ok: false, reasonKey: 'splitTool.unavailable.shape' });
       assert.equal(useViewerStore.getState().readLinearElementSplitProjection(MODEL_ID, ROTATED_BEAM, [0, 0, 0]), null);
+    });
+
+    it('an imported slab keeps its height when split; a tilted one is refused', () => {
+      // AC20's roof slabs extrude along a tilted axis: cutting their plan
+      // outline would re-author them as flat slabs.
+      assert.deepEqual(useViewerStore.getState().readSplitTarget(MODEL_ID, TILTED_SLAB), { ok: false, reasonKey: 'splitTool.unavailable.shape' });
+
+      // Placement at z = 0.5 m, solid 0.2 m below it: the slab spans 0.3 … 0.5 m.
+      assert.deepEqual(useViewerStore.getState().readSplitTarget(MODEL_ID, HUNG_SLAB), { ok: true, kind: 'slab' });
+      const split = useViewerStore.getState().splitSlabByLine(MODEL_ID, HUNG_SLAB, [1, -1], [1, 4]);
+      assert.ok(split.ok, split.ok ? '' : split.reason);
+      if (!split.ok) return;
+      const s = useViewerStore.getState();
+      const dataStore = s.models.get(MODEL_ID)!.ifcDataStore!;
+      const bases = [split.left, split.right].map((half) => {
+        const chain = resolveSlabEditChain(dataStore, s.mutationViews.get(MODEL_ID)!, s.storeEditors.get(MODEL_ID)!, half.expressId, getModelLengthUnitScale(dataStore));
+        return chain ? Math.round(chain.baseElevation * 1e6) / 1e6 : null;
+      });
+      assert.deepEqual(bases, [0.3, 0.3], 'both pieces start where the source did');
     });
 
     it('an imported mesh-bodied wall is refused with the reason the Split button shows', () => {

@@ -43,9 +43,10 @@ DATA;
 #2=IFCSITE('0Site000000000000000002',$,'Site',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);
 #3=IFCBUILDING('0Building00000000000003',$,'Building',$,$,$,$,$,.ELEMENT.,$,$,$);
 #5=IFCBUILDINGSTOREY('0Storey00000000000005',$,'Level 1',$,$,$,$,$,.ELEMENT.,0.);
+#6=IFCBUILDINGSTOREY('0Storey00000000000006',$,'Level 2',$,$,$,$,$,.ELEMENT.,3.);
 #11=IFCRELAGGREGATES('0Agg000000000000000011',$,$,$,#1,(#2));
 #12=IFCRELAGGREGATES('0Agg000000000000000012',$,$,$,#2,(#3));
-#13=IFCRELAGGREGATES('0Agg000000000000000013',$,$,$,#3,(#5));
+#13=IFCRELAGGREGATES('0Agg000000000000000013',$,$,$,#3,(#5,#6));
 #20=IFCCARTESIANPOINT((0.,0.,0.));
 #21=IFCDIRECTION((0.,0.,1.));
 #22=IFCDIRECTION((1.,0.,0.));
@@ -135,6 +136,34 @@ describe('chart source adapters over real producers (#3944)', () => {
     assert.deepEqual(withoutDoorGeometry.rows.map(({ ids }) => ids[0]), [GID(created.expressId)]);
   });
 
+  it('elements: Storey follows edited containment and an authored storey (#5249)', () => {
+    const model = [...useViewerStore.getState().models.values()][0];
+    const view = new MutablePropertyView(null, model.id);
+    view.setExpressIdWatermark(120);
+    view.deleteEntity(41);
+    view.setAttribute(90, 'RelatingStructure', '#6');
+    const authoredStorey = view.createEntity('IfcBuildingStorey', [
+      '0NewLevel00000000000001', null, 'Authored level', null, null, null, null, null, '.ELEMENT.', 6,
+    ]);
+    const authoredWall = view.createEntity('IfcWall', [
+      '0NewWall000000000000003', null, 'Authored wall', null, null, '#24', '#28', null, null,
+    ]);
+    view.createEntity('IfcRelContainedInSpatialStructure', [
+      '0NewRel000000000000003', null, null, null, [`#${authoredWall.expressId}`], `#${authoredStorey.expressId}`,
+    ]);
+    const state = { ...useViewerStore.getState(), mutationViews: new Map([[model.id, view]]), mutationVersion: 1 };
+
+    const dataset = buildElementsDataset({ kind: 'all' }, state);
+    const storeyColumn = dataset.columns.findIndex((column) => column.id === 'Storey');
+    assert.deepEqual(dataset.rows.map((row) => [row.ids[0], row.values[storeyColumn]]), [
+      [GID(42), 'Level 2'],
+      [GID(43), 'Level 2'],
+      [GID(authoredWall.expressId), 'Authored level'],
+    ]);
+    const source = buildElementsDataset({ kind: 'all' }, { ...state, mutationViews: new Map(), mutationVersion: 0 });
+    assert.deepEqual(source.rows.map((row) => row.values[storeyColumn]), ['Level 1', 'Level 1', 'Level 1']);
+  });
+
   it('clash: one row per engine clash with both renderer ids, type pair, review and the storey resolved through the federation', async () => {
     const engine = createClashEngine({ backend: 'ts' });
     const result = await engine.run(
@@ -157,6 +186,38 @@ describe('chart source adapters over real producers (#3944)', () => {
     // A bucket by type pair carries BOTH elements, so a chart click selects the pair.
     const agg = aggregate({ id: 'c', title: 'c', source: 'clash', type: 'bar', dimension: CLASH_COLUMNS.typePair, measure: { agg: 'count' } }, ds);
     assert.deepEqual([...agg.categories[0].ids].sort(), [GID(41), GID(42)]);
+  });
+
+  it('clash: edited spatial membership changes the storey bucket and fingerprint (#5249)', async () => {
+    const model = [...useViewerStore.getState().models.values()][0];
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run(
+      [box('0Wall00000000000000041', GID(41), 'IfcWall', [0, 0, 0], [1, 1, 1]), box('0Beam00000000000000042', GID(42), 'IfcBeam', [0.5, 0, 0], [1.5, 1, 1])],
+      [{ id: 'str', name: 'STR', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }],
+    );
+    assert.equal(result.clashes.length, 1);
+    const view = new MutablePropertyView(null, model.id);
+    view.setExpressIdWatermark(120);
+    useViewerStore.setState({ clashResult: result, clashRunSeq: 8, mutationViews: new Map([[model.id, view]]) });
+    const storey = () => {
+      const dataset = buildClashDataset(useViewerStore.getState());
+      return { value: dataset.rows[0].values[dataset.columns.findIndex((column) => column.id === CLASH_COLUMNS.storey)], fingerprint: dataset.fingerprint };
+    };
+    const source = storey();
+    assert.equal(source.value, 'Level 1');
+
+    view.deleteEntity(90);
+    view.createEntity('IfcRelContainedInSpatialStructure', [
+      '0NewRel000000000000001', null, null, null, ['#41'], '#6',
+    ]);
+    const moved = storey();
+    assert.equal(moved.value, 'Level 2');
+    assert.notEqual(moved.fingerprint, source.fingerprint);
+
+    view.deleteEntity(41);
+    const deleted = storey();
+    assert.equal(deleted.value, '');
+    assert.notEqual(deleted.fingerprint, moved.fingerprint);
   });
 
   it('bcf: one row per topic round-tripped through the BCF writer/reader, elements resolved from viewpoint GUIDs, closed date from a closed status', async () => {

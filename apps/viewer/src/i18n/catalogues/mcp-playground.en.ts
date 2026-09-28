@@ -54,6 +54,7 @@ export const mcpPlaygroundEn = {
   // ── PlaygroundChat: composer + header ──
   'mcp.playgroundChat.removeFile': 'Remove {name}',
   'mcp.playgroundChat.attachFileTitle': 'Attach a file (.ids, .xml, …)',
+  'mcp.playgroundChat.messageLabel': 'Message to agent',
   'mcp.playgroundChat.placeholderNoModel': 'Load a sample model first.',
   'mcp.playgroundChat.placeholderNoKey': 'Set an Anthropic key first.',
   'mcp.playgroundChat.placeholderAddNote': 'Add a note (or just send to validate the attached file)…',

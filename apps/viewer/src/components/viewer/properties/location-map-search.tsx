@@ -66,6 +66,7 @@ export function LocationMapSearchBar({
               <input
                 value={query}
                 onChange={e => onQueryChange(e.target.value)}
+                aria-label={placeholder}
                 placeholder={placeholder}
                 className="w-full text-2xs px-2 py-1 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 outline-none focus:ring-1 focus:ring-teal-400 focus:border-teal-400 placeholder:text-zinc-400/60"
                 autoFocus

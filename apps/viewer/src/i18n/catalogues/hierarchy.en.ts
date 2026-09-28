@@ -148,6 +148,7 @@ export const hierarchyEn = {
   'hierarchy.panel.noModelTitle': 'No Model',
   'hierarchy.panel.noModelHint': 'Structure will appear here when loaded',
   'hierarchy.panel.searchPlaceholder': 'Search...',
+  'hierarchy.panel.searchInputLabel': 'Search hierarchy',
   'hierarchy.panel.noMatches': 'No matches for “{query}”',
   'hierarchy.panel.clearSearch': 'Clear search',
 

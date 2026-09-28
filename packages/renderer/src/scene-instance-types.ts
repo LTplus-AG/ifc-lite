@@ -40,6 +40,9 @@ export interface InstancedOccurrence {
   /** Originating `IfcRepresentationItem` id (#2985), absent when the shard
    *  carried none. CPU-side by design — see `InstancedRenderTemplate.itemIds`. */
   itemId?: number;
+  /** The occurrence's finish bits in the flags lane (#5984,
+   *  `INSTANCE_FINISH_FLAGS_MASK`), re-ORed by every selection/visibility write. */
+  finishBits?: number;
 }
 
 /** Compact CPU-side copy of one instanced template, retained so CPU consumers

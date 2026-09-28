@@ -25,6 +25,7 @@ REPO = Path(__file__).resolve().parents[3]
 # A single reinforcing-style bar: IfcSweptDiskSolid over a composite arc, i.e.
 # the curve-heavy shape the quality knob exists for.
 REBAR = REPO / "rust/geometry/tests/fixtures/swept_disk_composite_arc_ubar.ifc"
+TRIMMED_BAR = REPO / "rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc"
 # 4 walls with geometry, placements, and psets attached to their IfcWallType.
 WALLS = REPO / (
     "packages/ids/src/__corpus__/buildingsmart-ids/property/"
@@ -154,6 +155,24 @@ def test_issue_5754_rebar_directrix_metrics_use_world_metres_and_radians():
     )
 
 
+def test_issue_5787_nominal_quantities_use_world_metres_and_match_json():
+    ifc = read(REBAR)
+    (sweep,) = ifclite_geom.geometry_data_buffers(
+        ifc, include_directrices=True
+    )["swept_disks"][125]
+    quantities = sweep["nominal_quantities"]
+    assert quantities is not None
+    radius = sweep["Radius"]
+    length = sweep["directrix_metrics"]["total_length"]
+    assert quantities["cross_section_area"] == pytest.approx(math.pi * radius**2)
+    assert quantities["nominal_volume"] == pytest.approx(math.pi * radius**2 * length)
+    assert quantities["outer_lateral_area"] == pytest.approx(2 * math.pi * radius * length)
+    assert quantities["inner_lateral_area"] is None
+
+    document = json.loads(ifclite_geom.geometry_data_json(ifc, include_directrices=True))
+    assert document["swept_disks"]["125"][0]["nominal_quantities"] == quantities
+
+
 def test_swept_disk_directrix_respects_id_filter():
     ifc = read(REBAR)
     empty = ifclite_geom.geometry_data_buffers(ifc, ids=set(), include_directrices=True)
@@ -162,6 +181,90 @@ def test_swept_disk_directrix_respects_id_filter():
     unknown = ifclite_geom.geometry_data_buffers(ifc, ids={999_999}, include_directrices=True)
     assert unknown["swept_disks"] == {}
 
+
+def test_issue_5758_swept_disk_checks_use_rust_source_geometry():
+    checks = ifclite_geom.check_swept_disks(read(REBAR))
+    assert checks["diagnostics"] == []
+    assert set(checks["elements"]) == {125}
+    (entry,) = checks["elements"][125]
+    assert entry["occurrence_index"] == 0
+    assert (entry["solid_id"], entry["directrix_id"], entry["mapping_path"]) == (
+        72, 71, []
+    )
+    assert entry["report"] == {
+        "source_modified": False,
+        "skipped_reason": None,
+        "findings": [],
+    }
+    assert ifclite_geom.check_swept_disks(read(REBAR), ids=set())["elements"] == {}
+
+
+def test_issue_5758_swept_disk_checks_report_unsupported_and_modified_sources():
+    source = read(TRIMMED_BAR).decode()
+    unsupported = source.replace(
+        "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#10,$,$);",
+        "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM($,$,#10,$,$,2.,1.);",
+    )
+    assert unsupported != source
+    (entry,) = ifclite_geom.check_swept_disks(unsupported.encode())["elements"][50]
+    assert entry["report"]["source_modified"] is False
+    assert entry["report"]["skipped_reason"]
+    assert entry["report"]["findings"] == []
+
+    modified = source.replace(
+        "#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#43));",
+        "#1001=IFCBOOLEANRESULT(.UNION.,#43,#43);\n"
+        "#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#1001));",
+    )
+    assert modified != source
+    entries = ifclite_geom.check_swept_disks(modified.encode())["elements"][50]
+    assert len(entries) == 2
+    assert [entry["occurrence_index"] for entry in entries] == [0, 1]
+    assert all(entry["solid_id"] == 43 for entry in entries)
+    assert all(entry["report"]["source_modified"] is True for entry in entries)
+    assert all(entry["report"]["skipped_reason"] is None for entry in entries)
+
+
+def test_issue_5758_invalid_check_options_raise_even_when_no_ids_selected():
+    for options in (
+        {"zero_length_tolerance_m": float("nan")},
+        {"gap_tolerance_m": -1.0},
+        {"tangent_tolerance_rad": float("inf")},
+    ):
+        with pytest.raises(ValueError, match="must be finite and nonnegative"):
+            ifclite_geom.check_swept_disks(b"", ids=set(), **options)
+
+def test_issue_5785_reusable_source_definitions_keep_file_units_and_world_frame():
+    view = ifclite_geom.swept_disk_definitions(read(TRIMMED_BAR), ids={50})
+    assert view["schema"] == "IFC2X3"
+    assert view["length_unit_scale"] == 0.001
+    assert len(view["sources"]) == 1
+    source = view["sources"][0]
+    assert source["Radius"] == 14.5
+    assert len(source["key"]["length_unit_scale_bits"]) == 16
+    assert source["key"]["context"] == {
+        "kind": "mapped", "representation_map_path": [45]
+    }
+    (instance,) = view["instances"][50]
+    assert instance["source"] == source["key"]
+    assert instance["mapping_path"] == [47]
+    assert instance["world_from_source"][0] == 0.001
+    assert ifclite_geom.swept_disk_definitions(read(TRIMMED_BAR), ids=set())["instances"] == {}
+
+
+def test_issue_5810_source_schema_ignores_header_decoys():
+    model = read(TRIMMED_BAR).decode().replace(
+        "FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');",
+        "FILE_DESCRIPTION(('mentions FILE_SCHEMA((''IFC4X3''));'),'2;1');\n"
+        "/* FILE_SCHEMA(('IFC4')); */",
+    ).replace(
+        "FILE_SCHEMA(('IFC2X3'));",
+        "file_schema /* real declaration */ (('IFC2X3'));",
+    )
+    view = ifclite_geom.swept_disk_definitions(model.encode())
+    assert view["schema"] == "IFC2X3"
+    assert len(view["sources"]) == 1
+    assert view["sources"][0]["key"]["schema"] == "IFC2X3"
 
 def test_issue_4803_id_filter_none_empty_subset_and_unknown():
     ifc = read(WALLS)

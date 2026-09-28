@@ -106,7 +106,9 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     'Provenance tests',
     'Rust tests',
     'Rust crate semver',
-    'Viewer E2E smoke',
+    // #6361: the smoke lane is two file shards, each a distinct check run.
+    'Viewer E2E smoke (1/2)',
+    'Viewer E2E smoke (2/2)',
     'Viewer tests (shard 0)',
     'Viewer tests (shard 3)',
     'Viewer tests (shard 7)',
@@ -121,7 +123,7 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 27);
+  assert.equal(names.length, 28);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {

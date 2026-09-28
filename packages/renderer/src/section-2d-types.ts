@@ -4,7 +4,7 @@
 
 /** Public contracts for section caps and independent world-line overlays. */
 
-export const LINE_OVERLAY_CHANNELS = ['annotation', 'alignment', 'grid', 'dxf', 'terrain'] as const;
+export const LINE_OVERLAY_CHANNELS = ['annotation', 'alignment', 'grid', 'dxf', 'terrain', 'centreline'] as const;
 export type LineOverlayChannel = (typeof LINE_OVERLAY_CHANNELS)[number];
 
 export interface Section2DOverlayCapStyle {

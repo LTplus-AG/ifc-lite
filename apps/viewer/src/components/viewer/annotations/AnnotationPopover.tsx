@@ -247,6 +247,7 @@ export function AnnotationPopover({
             <textarea
               ref={textareaRef}
               value={draft}
+              aria-label={t('annotations.popover.placeholder')}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={t('annotations.popover.placeholder')}

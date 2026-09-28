@@ -66,10 +66,12 @@ describe('HierarchyPanel search (#5880)', () => {
 
   it('finds a wall under a collapsed storey and restores that collapse after clearing', () => {
     const { container, input } = mountHierarchy();
+    assert.equal(input.getAttribute('aria-label'), 'Search hierarchy', '#6342: search has a persistent name');
     assert.ok([...container.querySelectorAll('button')].some(button => button.getAttribute('aria-label') === 'Expand Storey 2'));
     assert.doesNotMatch(container.textContent ?? '', /Target Wall/);
 
     type(input, 'Target Wall');
+    assert.equal(input.getAttribute('aria-label'), 'Search hierarchy', '#6342: name survives replacing the placeholder');
     assert.match(container.textContent ?? '', /Storey 2/);
     assert.match(container.textContent ?? '', /Target Wall/);
     const searchChevron = [...container.querySelectorAll('button')].find(button => button.getAttribute('aria-label') === 'Collapse Storey 2');

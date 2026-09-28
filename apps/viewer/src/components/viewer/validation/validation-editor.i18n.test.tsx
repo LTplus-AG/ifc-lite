@@ -144,6 +144,13 @@ function fixtureFile(): RuleSetFile {
         requirement: { kind: 'unique', subject: { kind: 'group' } },
       },
       {
+        // A complex-property member has no text form, so its requirement text
+        // renders read-only with `requirementText.memberPathReadOnly` (#5475).
+        id: 'r8', name: 'Unique layer thickness',
+        applicability: anyBlock,
+        requirement: { kind: 'unique', subject: { kind: 'property', setName: 'Pset_Layers', propertyName: 'Layer', memberPath: ['Thickness'] } },
+      },
+      {
         id: 'r7', name: 'One author per model',
         applicability: anyBlock,
         requirement: { kind: 'unique', subject: { kind: 'modelFact', fact: 'header.author' } },

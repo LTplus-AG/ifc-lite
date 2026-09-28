@@ -15,7 +15,9 @@
 //! ineligible has nothing to instance against), and two copies is how they stop
 //! agreeing.
 
-use crate::zero_copy::{MeshCollection, MeshDataJs};
+use super::style_finishes::mesh_js_with_finish;
+use ifc_lite_processing::style::SpecularMaterial;
+use crate::zero_copy::MeshCollection;
 use ifc_lite_processing::MeshData;
 use rustc_hash::FxHashMap;
 
@@ -107,6 +109,7 @@ pub(super) fn rejected_to_flat(flat_indices: &[usize], materialized: usize) -> V
 /// flies out to twice the georeference offset.
 pub(super) fn encode_shard_routing_refusals_back(
     refs: &[ifc_lite_geometry::InstanceMeshRef],
+    finishes: &[[f32; 2]],
     materialized: usize,
     rtc: [f64; 3],
 ) -> (Vec<u8>, Vec<usize>, usize) {
@@ -115,7 +118,7 @@ pub(super) fn encode_shard_routing_refusals_back(
     let rejected = rejected_to_flat(&collated.flat_indices, materialized);
     let dropped = collated.dropped_placeholders;
     collated.flat_indices.clear();
-    (ifc_lite_geometry::encode_refs(refs, &collated), rejected, dropped)
+    (ifc_lite_geometry::encode_refs_with_finishes(refs, &collated, finishes), rejected, dropped)
 }
 
 /// IFC classes the viewer shows and hides as a WHOLE class, by the mesh's
@@ -240,14 +243,15 @@ mod tests;
 /// `rejected` is sorted (see [`rejected_to_flat`]), so membership is a binary
 /// search rather than a set allocation on a path that runs per batch.
 pub(super) fn take_back_rejected(
-    instanced: Vec<MeshData>,
+    instanced: Vec<(MeshData, Option<SpecularMaterial>)>,
     rejected: &[usize],
     collection: &mut MeshCollection,
 ) -> usize {
     let mut pushed = 0;
-    for (i, mesh_data) in instanced.into_iter().enumerate() {
+    for (i, (mesh_data, finish)) in instanced.into_iter().enumerate() {
         if rejected.binary_search(&i).is_ok() {
-            collection.add(MeshDataJs::from_mesh_data(mesh_data));
+            // Drawn flat after all, so it keeps its #5582 finish like any flat mesh.
+            collection.add(mesh_js_with_finish(mesh_data, finish));
             pushed += 1;
         }
     }

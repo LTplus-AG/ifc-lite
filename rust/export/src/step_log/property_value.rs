@@ -85,7 +85,10 @@ pub(crate) fn parse_property_value(ty: &str, attrs: &[JsVal]) -> (u8, Value, Opt
                 (pvt::STRING, Value::Null, None)
             }
         }
-        "IFCPROPERTYREFERENCEVALUE" => match attrs.get(2) {
+        // [Name, Description, UsageName, PropertyReference]: the reference
+        // is slot 3. Without the source only its id is known;
+        // `BaseSets::property_value` reads the referenced Name (#5475).
+        "IFCPROPERTYREFERENCEVALUE" => match attrs.get(3) {
             Some(JsVal::Num(n)) => (pvt::STRING, Value::String(format!("#{}", js_number_to_string(*n))), None),
             _ => (pvt::STRING, Value::Null, None),
         },

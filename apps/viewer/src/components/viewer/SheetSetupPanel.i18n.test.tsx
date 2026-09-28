@@ -155,6 +155,9 @@ describe('SheetSetupPanel localization (#4918)', () => {
     );
     assert.ok(templatesTrigger, 'Saved Templates trigger not found');
     click(templatesTrigger!);
+    const templateNameInput = container.querySelector('input[placeholder="Template name..."]');
+    assert.ok(templateNameInput, 'template-name field renders');
+    assert.equal(templateNameInput.getAttribute('aria-label'), 'Template name...', '#6342: placeholder-only field has a persistent name');
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);
     const sheet = useViewerStore.getState().activeSheet!;

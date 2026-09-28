@@ -455,6 +455,31 @@ describe('decodeInstancedShard (synthetic edge cases)', () => {
     expect(shard.templates[0].positions).toHaveLength(3);
   });
 
+  it('#5984: reads trailing field 2, the finish, keeping an authored 0 and dropping NaN', () => {
+    const f32 = (v: number) => Array.from(new Uint8Array(new Float32Array([v]).buffer));
+    const shard = decodeInstancedShard(
+      synthShard({
+        version: 3,
+        stride: 100, // 88 base + itemId(4) + metallic(4) + roughness(4), as wire.rs writes
+        instances: [
+          // FZK-Haus 'Glas': roughness authored as exactly 0, no metal.
+          { templateIndex: 0, entityId: 7, color: [1, 1, 1, 1], transform: IDENTITY, unknownTail: [...f32(NaN), ...f32(0)] },
+          { templateIndex: 0, entityId: 9, color: [1, 1, 1, 1], transform: IDENTITY, itemId: 15, unknownTail: [...f32(1), ...f32(NaN)] },
+        ],
+      })
+    );
+    expect(shard.carriesFinishes).toBe(true);
+    expect(shard.instances.map((i) => [i.metallic, i.roughness])).toEqual([[undefined, 0], [1, undefined]]);
+    expect(shard.instances.map((i) => i.itemId)).toEqual([undefined, 15]);
+  });
+
+  it('#5984: a shard whose stride stops before field 2 has no finish', () => {
+    const shard = decodeInstancedShard(synthShard());
+    expect(shard.carriesFinishes).toBe(false);
+    expect(shard.instances[0].metallic).toBeUndefined();
+    expect(shard.instances[0].roughness).toBeUndefined();
+  });
+
   it('refuses a stride below the 88-byte base record', () => {
     // The base fields are not optional: reading at a shorter stride slices each
     // record out of its predecessor's transform and yields plausible garbage.

@@ -23,7 +23,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
-import { render, cleanup } from '@/test/render';
+import { render, cleanup, type as typeInto } from '@/test/render';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
 import { registerLocale, setLocale } from '@/i18n';
@@ -235,6 +235,26 @@ it('GeometryAxisRow: renders decrease/increase aria-labels in English and transl
   registerLocale('geometryaxisrow-de', { 'geometryAxisRow.decreaseAriaLabel': '{label} verringern' });
   act(() => setLocale('geometryaxisrow-de'));
   assert.ok(container.querySelector('[aria-label="X verringern"]'));
+});
+
+it('GeometryAxisRow: each numeric axis has a visible programmatic label and edits its axis (#6342)', () => {
+  const changes: string[] = [];
+  const container = render(<>
+    {(['X', 'Y', 'Z'] as const).map((axis) => (
+      <GeometryAxisRow
+        key={axis}
+        label={axis}
+        value="1"
+        onChange={(value) => changes.push(`${axis}:${value}`)}
+        onNudgeMinus={() => {}}
+        onNudgePlus={() => {}}
+      />
+    ))}
+  </>);
+  const inputs = [...container.querySelectorAll('input[type="number"]')];
+  assert.deepEqual(inputs.map((input) => (input as HTMLInputElement).labels?.[0]?.textContent), ['X', 'Y', 'Z']);
+  typeInto(inputs[1] as HTMLInputElement, '2');
+  assert.deepEqual(changes, ['Y:2']);
 });
 
 // ---- VisibilityChips -----------------------------------------------------------

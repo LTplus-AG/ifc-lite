@@ -6,6 +6,38 @@ use super::GeometryRouter;
 use crate::diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 use ifc_lite_core::EntityDecoder;
 
+/// #6263: a mapping origin's Location must be an IfcCartesianPoint. The raw
+/// point fast path can read `IFCDIRECTION((1.,2.))` as coordinates, but the
+/// mapped-item contract rejects that structurally invalid reference.
+#[test]
+fn mapped_2d_origin_rejects_non_point_location() {
+    let content = r#"
+#1=IFCDIRECTION((1.,2.));
+#2=IFCAXIS2PLACEMENT2D(#1,$);
+#3=IFCREPRESENTATIONMAP(#2,$);
+#4=IFCMAPPEDITEM(#3,$);
+#5=IFCCARTESIANPOINT((1.,2.));
+#6=IFCAXIS2PLACEMENT2D(#5,$);
+#7=IFCREPRESENTATIONMAP(#6,$);
+#8=IFCMAPPEDITEM(#7,$);
+"#;
+    let mut decoder = EntityDecoder::new(content);
+    let router = GeometryRouter::new();
+
+    let bad_map = decoder.decode_by_id(3).unwrap();
+    let bad_item = decoder.decode_by_id(4).unwrap();
+    let error = router.mapped_item_transform(&bad_item, &bad_map, &mut decoder).unwrap_err();
+    assert!(error.to_string().contains("Expected IfcCartesianPoint"), "{error}");
+
+    let good_map = decoder.decode_by_id(7).unwrap();
+    let good_item = decoder.decode_by_id(8).unwrap();
+    let matrix = router.mapped_item_transform(&good_item, &good_map, &mut decoder)
+        .unwrap()
+        .expect("non-identity 2D origin is retained");
+    assert_eq!(matrix[(0, 3)], 1.0);
+    assert_eq!(matrix[(1, 3)], 2.0);
+}
+
 #[test]
 fn test_router_creation() {
     let router = GeometryRouter::new();

@@ -24,6 +24,10 @@ import {
   type PhysicalObjectCounts,
 } from '@/lib/physical-objects';
 import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
+import { effectiveContextType } from '@/components/viewer/EntityContextMenu.effective-selection';
+import { effectiveAttribute } from '@/lib/document/effective-binding-fields';
+import { toGlobalIdFromModels } from '@/store/globalId';
+import { resolveEntityRef } from '@/store/resolveEntityRef';
 
 export interface ViewportStatusSummary {
   /** Names of every selected storey, or `null` when none is selected. */
@@ -34,6 +38,7 @@ export interface ViewportStatusSummary {
 
 export function useViewportStatusSummary(): ViewportStatusSummary {
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
+  const activeStorey = useViewerStore((s) => s.activeStorey);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const classFilter = useViewerStore((s) => s.classFilter);
@@ -42,24 +47,38 @@ export function useViewportStatusSummary(): ViewportStatusSummary {
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const { ifcDataStore, models, activeModelId } = useIfc();
 
-  // `selectedStoreys` holds raw model-space expressIds (see HierarchyPanel's
-  // `setStoreysSelection`), which may belong to ANY federated model, not just
-  // the active one — `ifcDataStore` only tracks the active model
-  // (`modelSlice.ts`). Resolve each id through the model whose own spatial
-  // hierarchy actually contains it as a storey, falling back to the active
-  // store for legacy single-model mode.
+  // Selections may be local ids or renderer ids. Prefer the explicit model
+  // selection, then the store-backed resolver (which sees authored ids), and
+  // finally probe each model for legacy local selections.
   const storeyNames = useMemo(
     () => (selectedStoreys.size > 0 && (ifcDataStore || models.size > 0)
       ? Array.from(selectedStoreys).map((id) => {
-          const ownStore = models.size > 0
-            ? Array.from(models.values()).find(
-                (m) => m.ifcDataStore?.spatialHierarchy?.byStorey.has(id),
-              )?.ifcDataStore
-            : ifcDataStore;
-          return ownStore?.entities.getName(id) || `Storey #${id}`;
+          const nameFor = (modelId: string, expressId: number): string | null => {
+            const model = models.get(modelId);
+            const store = model?.ifcDataStore ?? (models.size === 0 ? ifcDataStore : null);
+            if (!store) return null;
+            const view = models.size > 0 ? mutationViews.get(modelId) ?? null
+              : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID) ?? null;
+            if (view?.isDeleted(expressId) || effectiveContextType(store, view, expressId) !== 'IfcBuildingStorey') return null;
+            return effectiveAttribute({ id: modelId, name: model?.name ?? '', store, view: view ?? undefined }, expressId, 'Name') || null;
+          };
+          const activeMatches = activeStorey && (id === activeStorey.expressId
+            || id === toGlobalIdFromModels(models, activeStorey.modelId, activeStorey.expressId));
+          if (activeMatches) {
+            const name = nameFor(activeStorey.modelId, activeStorey.expressId);
+            if (name) return name;
+          }
+          const ref = resolveEntityRef(id);
+          const resolved = nameFor(ref.modelId, ref.expressId);
+          if (resolved) return resolved;
+          for (const modelId of models.keys()) {
+            const name = nameFor(modelId, id);
+            if (name) return name;
+          }
+          return `Storey #${id}`;
         })
       : null),
-    [selectedStoreys, ifcDataStore, models],
+    [selectedStoreys, activeStorey, ifcDataStore, models, mutationViews, mutationVersion],
   );
 
   // Physical objects in the active model — include live creates, deletes and

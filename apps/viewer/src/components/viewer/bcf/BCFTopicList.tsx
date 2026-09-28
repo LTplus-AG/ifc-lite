@@ -6,7 +6,7 @@
  * BCFTopicList - Topic list with filtering and sorting for the BCF panel.
  */
 
-import React, { useCallback, useState, useMemo } from 'react';
+import React, { useCallback, useState, useMemo, useId } from 'react';
 import {
   Plus,
   MessageSquare,
@@ -61,6 +61,7 @@ export function BCFTopicList({
   onSetAuthor,
 }: BCFTopicListProps) {
   const { t } = useTranslation();
+  const emailInputId = useId();
   const [editingEmail, setEditingEmail] = useState(false);
   const [emailInput, setEmailInput] = useState(author);
   const isDefaultEmail = author === 'user@example.com';
@@ -176,8 +177,9 @@ export function BCFTopicList({
               <div className="border border-border rounded-lg p-3 bg-muted/30">
                 {editingEmail ? (
                   <div className="space-y-2">
-                    <Label className="text-xs text-muted-foreground">{t('bcf.topicList.emailAuthorshipLabel')}</Label>
+                    <Label htmlFor={emailInputId} className="text-xs text-muted-foreground">{t('bcf.topicList.emailAuthorshipLabel')}</Label>
                     <Input
+                      id={emailInputId}
                       value={emailInput}
                       onChange={(e) => setEmailInput(e.target.value)}
                       placeholder={t('bcf.shared.emailPlaceholder')}

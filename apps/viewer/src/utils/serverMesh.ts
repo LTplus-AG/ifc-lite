@@ -47,5 +47,17 @@ export function convertServerMesh(m: ServerMeshData): MeshData {
     // host loses the ability to drill from a picked piece to its source.
     ...(m.geometry_item_id !== undefined ? { geometryItemId: m.geometry_item_id } : {}),
     ...(m.material_id !== undefined ? { materialId: m.material_id } : {}),
+    // The IFC-authored finish (#5984), into the same `material` slot the WASM
+    // path fills. `undefined`-tested for the same reason as the ids: roughness
+    // 0 is AC20-FZK-Haus.ifc's authored glass, and a truthiness test turns it
+    // into the renderer's default.
+    ...(m.metallic !== undefined || m.roughness !== undefined
+      ? {
+          material: {
+            ...(m.metallic !== undefined ? { metallic: m.metallic } : {}),
+            ...(m.roughness !== undefined ? { roughness: m.roughness } : {}),
+          },
+        }
+      : {}),
   };
 }

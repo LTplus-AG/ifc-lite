@@ -55,6 +55,7 @@ describe('AnnotationDropInput dismissal (#5817)', () => {
     const { host, savedNote, isCancelled } = mount();
     const textarea = host.querySelector('textarea')!;
     type(textarea, 'leak here');
+    assert.equal(textarea.getAttribute('aria-label'), "What's worth noting?", '#6342: typed note stays named');
 
     press(textarea, 'Escape');
 

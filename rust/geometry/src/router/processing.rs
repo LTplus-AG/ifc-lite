@@ -35,7 +35,7 @@ use ifc_lite_core::MAX_MAPPED_ITEM_DEPTH;
 
 /// The nearest f32 that does not shrink the interval: rounds a minimum down
 /// and a maximum up, so an f32 box always encloses the f64 geometry.
-fn enclosing_f32(value: f64, is_min: bool) -> f32 {
+pub(super) fn enclosing_f32(value: f64, is_min: bool) -> f32 {
     let rounded = value as f32;
     match (is_min, (rounded as f64).partial_cmp(&value)) {
         (true, Some(std::cmp::Ordering::Greater)) => rounded.next_down(),

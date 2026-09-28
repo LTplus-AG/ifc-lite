@@ -49,6 +49,8 @@ export const layersPanelEn = {
   'layersPanel.draft.emptyPrompt': 'Edit properties in the model, then freeze the changes here as a new layer.',
   'layersPanel.draft.intentPlaceholder': 'Intent, e.g. Set fire ratings for EG walls',
   'layersPanel.draft.authorPlaceholder': 'Author',
+  'layersPanel.draft.intentInputLabel': 'Layer intent',
+  'layersPanel.draft.authorInputLabel': 'Layer author',
   'layersPanel.draft.publishing': 'Publishing…',
   'layersPanel.draft.publish': 'Publish',
   'layersPanel.draft.publishSessionEdits': 'Publish session edits',

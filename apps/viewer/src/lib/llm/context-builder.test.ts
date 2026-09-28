@@ -10,6 +10,9 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { getModelContext, parseCSV } from './context-builder.js';
+import {
+  FIXTURE_REL_CONTAINED_1, FIXTURE_STOREY_2, FIXTURE_WALL_A, parseFixtureModel,
+} from '@/components/viewer/anonymized-export/anonymized-export-fixture.test-support.js';
 
 // Bonsai/IfcOpenShell IFC4 sample: #1222 is an IfcWall and #42 a storey.
 const SAMPLE = new URL('../../../public/samples/hello-wall.ifc', import.meta.url);
@@ -95,6 +98,37 @@ test('LLM context refreshes legacy single-model counts without a Zustand version
       models: original.models,
       activeModelId: original.activeModelId,
       ifcDataStore: original.ifcDataStore,
+      mutationViews: original.mutationViews,
+    });
+  }
+});
+
+test('LLM selected-entity storey follows containment edits in only its model (#5249)', async () => {
+  const store = await parseFixtureModel();
+  const viewA = new MutablePropertyView(store.properties, 'a');
+  const original = useViewerStore.getState();
+  useViewerStore.setState({
+    models: new Map([
+      ['a', { ...fixtureModel('a', { idOffset: 1_000_000 }), ifcDataStore: store }],
+      ['b', { ...fixtureModel('b', { idOffset: 2_000_000 }), ifcDataStore: store }],
+    ]),
+    activeModelId: 'a',
+    selectedEntities: [{ modelId: 'a', expressId: FIXTURE_WALL_A }],
+    selectedEntity: null,
+    mutationViews: new Map([['a', viewA]]),
+  });
+  try {
+    assert.equal(getModelContext().selectedEntities?.[0]?.storeyName, 'Storey One');
+    viewA.setAttribute(FIXTURE_REL_CONTAINED_1, 'RelatingStructure', `#${FIXTURE_STOREY_2}`);
+    assert.equal(getModelContext().selectedEntities?.[0]?.storeyName, 'Storey Two');
+    useViewerStore.setState({ selectedEntities: [{ modelId: 'b', expressId: FIXTURE_WALL_A }] });
+    assert.equal(getModelContext().selectedEntities?.[0]?.storeyName, 'Storey One');
+  } finally {
+    useViewerStore.setState({
+      models: original.models,
+      activeModelId: original.activeModelId,
+      selectedEntities: original.selectedEntities,
+      selectedEntity: original.selectedEntity,
       mutationViews: original.mutationViews,
     });
   }

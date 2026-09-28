@@ -126,6 +126,7 @@ describe('BCF topic detail localization (#4918)', () => {
     const ariaLabels = [...ui.querySelectorAll('[aria-label]')].map((el) => el.getAttribute('aria-label'));
     assert.ok(ariaLabels.includes(marked(CATALOGUE['bcf.topicDetail.zoomToTopicAria'] as string)));
     assert.ok(ariaLabels.includes(marked(CATALOGUE['bcf.topicDetail.deleteTopicAria'] as string)));
+    assert.ok(ariaLabels.includes(marked(CATALOGUE['bcf.topicDetail.commentInputLabel'] as string)));
   });
 
   it('pluralizes the comment-count button and toggles the comment placeholder per selected viewpoint', () => {

@@ -20,13 +20,17 @@ export interface SymbolicActiveStore {
 
 /** Read the federation-aware active store set and RTC publication dependencies. */
 export function useSymbolicActiveStores(): SymbolicActiveStore[] {
-  const { models, ifcDataStore, placement, geometryResult, loading } = useViewerStore(
+  const { models, ifcDataStore, placement, geometryResult, loading, mutationVersion } = useViewerStore(
     useShallow((state) => ({
       models: state.models,
       ifcDataStore: state.ifcDataStore,
       placement: state.modelPlacement,
       geometryResult: state.geometryResult,
       loading: state.loading,
+      // Some live hierarchy maps are patched in place when authored entities
+      // are added. Their object identity stays stable; mutationVersion is the
+      // store signal that must re-run consumers such as symbolic bucket lookup.
+      mutationVersion: state.mutationVersion,
     })),
   );
 
@@ -55,5 +59,5 @@ export function useSymbolicActiveStores(): SymbolicActiveStore[] {
       });
     }
     return out;
-  }, [models, ifcDataStore, placement, geometryResult, loading]);
+  }, [models, ifcDataStore, placement, geometryResult, loading, mutationVersion]);
 }

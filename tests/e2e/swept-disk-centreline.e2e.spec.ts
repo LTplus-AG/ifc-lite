@@ -54,7 +54,7 @@ async function frameChange(
 }
 
 test('selected Revit bar draws and clears its source centreline (#5778)', async ({ page }, testInfo) => {
-  test.skip(!existsSync(FIXTURE), `Revit Snowdon IFC missing at ${FIXTURE}; provide REBAR_IFC for this uncatalogued fixture`);
+  test.skip(!existsSync(FIXTURE), `Revit Snowdon IFC missing at ${FIXTURE}; run pnpm fixtures or provide REBAR_IFC`);
   test.setTimeout(600_000);
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/');

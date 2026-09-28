@@ -115,15 +115,16 @@ the PR records paired timings and binary/fixture provenance.
 ## Opt-in nominal source quantities (#5787)
 
 Nominal swept-disk and extrusion quantities are computed only when the analytic
-source API is requested; ordinary mesh production does not call them. Two
-balanced native AC20-FZK-Haus campaigns, each with five fresh processes per
-side and five probe iterations per process, kept mesh/triangle counts and the
-ordered mesh fingerprint identical. The head's total medians were 1–2 ms
-higher, but paired differences swung from 4 ms faster to 9 ms slower. Verdict:
-the small upward native median is observed, but its cause and practical
-significance remain unresolved; there is no speedup claim. This default-load
-control does not measure opt-in quantity extraction or browser worker-pool
+source API is requested; ordinary mesh production does not call them. After
+the #6319 topology parent, five balanced fresh-process AC20-FZK-Haus pairs
+compared source-matched profiling binaries with five iterations per process.
+All 50 ordered mesh fingerprints and mesh/triangle counts matched. The child
+median total was 2 ms higher (30 to 32 ms), but paired total differences ran
+from 2 ms faster to 3 ms slower, with overlapping phase ranges. Verdict: no
+meaningful default-load regression or speedup is demonstrated. The default
+probe does not measure opt-in quantity extraction or browser worker-pool
 latency, which need separate caller-level evidence if they become hot paths.
+The PR carries paired results, binary/fixture hashes, and source provenance.
 
 ## Derived swept-disk metrics (#5754)
 

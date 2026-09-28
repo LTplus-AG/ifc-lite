@@ -94,7 +94,7 @@ export const TEARDOWN_EXEMPTIONS: Readonly<Record<string, string>> = {
     'that decision first.',
 
   levelDisplaySlice:
-    '`appliedStoreyOffsets` (Map<modelId, Map<storeyExpressId, offset>>) is fully ' +
+    '`appliedStoreyOffsets` and `appliedEntityLevelOffsets` are fully ' +
     "recomputed and overwritten every time `useLevelDisplayEffect` runs, and that effect's " +
     'dependency array includes the store\'s `models` map, so it re-runs on every model add ' +
     'or remove and rebuilds the map from the CURRENT model set — a removed model\'s entry is ' +

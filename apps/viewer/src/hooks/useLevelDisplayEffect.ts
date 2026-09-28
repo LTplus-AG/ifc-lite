@@ -10,10 +10,10 @@
  *     positions revert to their loaded values.
  *
  * Exploded:
- *   - Compute per-storey offsets via `computeStoreyOffsets` for each loaded
- *     model, diff against the per-model `appliedStoreyOffsets`, and push the
- *     deltas into `pendingMeshTranslations`. Stash the new applied offsets so
- *     the next toggle / gap change knows what to subtract.
+ *   - Compute current per-storey and per-entity target offsets for each loaded
+ *     model, diff against the last applied per-entity offsets, and push the
+ *     deltas into `pendingMeshTranslations`. This also catches membership edits
+ *     while the Exploded gap stays unchanged.
  *
  * Solo:
  *   - NOT handled here. Solo == "this storey isolated", which is the existing
@@ -33,10 +33,24 @@ import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import {
   computeStoreyOffsets,
-  diffStoreyOffsets,
-  buildEntityTranslations,
+  buildEntityLevelOffsets,
+  diffEntityLevelOffsets,
   type StoreyOffsets,
 } from '@/lib/level-offsets';
+import { effectiveLevelElevations } from '@/lib/effective-level-elevations';
+import { effectiveScheduleGroups } from '@/lib/effective-spatial-groups';
+import type { AppliedEntityLevelOffsets } from '@/store/slices/levelDisplaySlice';
+import type { FederatedModel } from '@/store/types';
+
+function modelGeometryRefs(model: FederatedModel): Map<number, object> {
+  const refs = new Map<number, object>();
+  for (const mesh of model.geometryResult?.meshes ?? []) refs.set(mesh.expressId, mesh);
+  const instancedIndex = model.geometryResult?.instancedGeometryHashes;
+  if (instancedIndex) for (const id of instancedIndex.keys()) {
+    if (!refs.has(id)) refs.set(id, instancedIndex);
+  }
+  return refs;
+}
 
 function sameStoreyOffsets(a: ReadonlyMap<string, StoreyOffsets>, b: ReadonlyMap<string, StoreyOffsets>): boolean {
   if (a.size !== b.size) return false;
@@ -48,12 +62,28 @@ function sameStoreyOffsets(a: ReadonlyMap<string, StoreyOffsets>, b: ReadonlyMap
   return true;
 }
 
+function sameEntityOffsets(a: AppliedEntityLevelOffsets, b: AppliedEntityLevelOffsets): boolean {
+  if (a.size !== b.size) return false;
+  for (const [modelId, entry] of a) {
+    const other = b.get(modelId);
+    if (!other || other.store !== entry.store || other.offsets.size !== entry.offsets.size) return false;
+    for (const [id, offset] of entry.offsets) {
+      if (other.offsets.get(id) !== offset || other.geometryRefs.get(id) !== entry.geometryRefs.get(id)) return false;
+    }
+  }
+  return true;
+}
+
 export function useLevelDisplayEffect(): void {
   const levelDisplayMode = useViewerStore((s) => s.levelDisplayMode);
   const explodedGap = useViewerStore((s) => s.explodedGap);
   const models = useViewerStore((s) => s.models);
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const appliedStoreyOffsets = useViewerStore((s) => s.appliedStoreyOffsets);
+  const appliedEntityLevelOffsets = useViewerStore((s) => s.appliedEntityLevelOffsets);
   const setAppliedStoreyOffsets = useViewerStore((s) => s.setAppliedStoreyOffsets);
+  const setAppliedEntityLevelOffsets = useViewerStore((s) => s.setAppliedEntityLevelOffsets);
   const setPendingMeshTranslations = useViewerStore((s) => s.setPendingMeshTranslations);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const setLevelDisplayMode = useViewerStore((s) => s.setLevelDisplayMode);
@@ -63,33 +93,51 @@ export function useLevelDisplayEffect(): void {
     // Exploded is active — diffing against the previously-applied offsets then
     // reverts any lift (covers Stacked and Solo).
     const target: typeof appliedStoreyOffsets = new Map();
+    const targetEntities: AppliedEntityLevelOffsets = new Map();
+    const geometryRefsByModel = new Map<string, Map<number, object>>();
+    if (levelDisplayMode === 'exploded' || appliedEntityLevelOffsets.size > 0) {
+      for (const [modelId, model] of models) geometryRefsByModel.set(modelId, modelGeometryRefs(model));
+    }
     if (levelDisplayMode === 'exploded') {
       for (const [modelId, model] of models) {
-        if (!model.ifcDataStore) continue;
-        const offsets = computeStoreyOffsets(model.ifcDataStore, explodedGap);
+        const dataStore = model.ifcDataStore;
+        if (!dataStore) continue;
+        const view = mutationViews.get(modelId);
+        const members = view?.hasPendingChanges()
+          ? effectiveScheduleGroups(dataStore, view, 'IfcBuildingStorey', { includeSpatialNodes: true }) : undefined;
+        const elevations = members && view ? effectiveLevelElevations(dataStore, view, members.keys()) : undefined;
+        const offsets = computeStoreyOffsets(dataStore, explodedGap, elevations);
         if (offsets.size > 0) target.set(modelId, offsets);
+        const toGlobalId = (localExpressId: number): number =>
+          toGlobalIdFromModels(models, modelId, localExpressId);
+        const entityOffsets = buildEntityLevelOffsets(dataStore, offsets, toGlobalId, members);
+        // A relationship may be authored before its mesh has arrived. The
+        // renderer drops translations for absent IDs when it drains the map,
+        // so only record a lift once the model publishes that entity's mesh.
+        const geometryRefs = geometryRefsByModel.get(modelId)!;
+        for (const id of entityOffsets.keys()) if (!geometryRefs.has(id)) entityOffsets.delete(id);
+        if (entityOffsets.size > 0) targetEntities.set(modelId, { store: dataStore, offsets: entityOffsets, geometryRefs });
       }
     }
 
-    // Build the renderer-frame translation map by diffing the target against
-    // the slice's applied snapshot, per model. Sum into a single
-    // Map<globalId, [dx,dy,dz]> so one push covers the whole scene.
+    // Diff per entity: moving a product between storeys changes its target Y
+    // even when neither storey's offset changed. A new store instance starts
+    // from native geometry, so an old instance's applied offsets are ignored.
     const aggregated = new Map<number, [number, number, number]>();
-    const modelIds = new Set<string>([
-      ...models.keys(),
-      ...appliedStoreyOffsets.keys(),
-    ]);
-    for (const modelId of modelIds) {
-      const targetMap: StoreyOffsets = target.get(modelId) ?? new Map();
-      const previousMap: StoreyOffsets = appliedStoreyOffsets.get(modelId) ?? new Map();
-      const diff = diffStoreyOffsets(targetMap, previousMap);
-      if (diff.size === 0) continue;
-      const dataStore = models.get(modelId)?.ifcDataStore;
-      if (!dataStore) continue;
-      const toGlobalId = (localExpressId: number): number =>
-        toGlobalIdFromModels(models, modelId, localExpressId);
-      const perEntity = buildEntityTranslations(dataStore, diff, toGlobalId);
-      for (const [id, delta] of perEntity) {
+    for (const [modelId, model] of models) {
+      if (!model.ifcDataStore) continue;
+      const previous = appliedEntityLevelOffsets.get(modelId);
+      const nextEntry = targetEntities.get(modelId);
+      const previousOffsets = new Map<number, number>();
+      if (previous?.store === model.ifcDataStore) for (const [id, offset] of previous.offsets) {
+        // A replacement mesh starts at native coordinates even if its old
+        // counterpart carried an Exploded lift. Reapply the full target.
+        if (previous.geometryRefs.get(id) === geometryRefsByModel.get(modelId)?.get(id)) {
+          previousOffsets.set(id, offset);
+        }
+      }
+      const nextOffsets = nextEntry?.offsets ?? new Map<number, number>();
+      for (const [id, delta] of diffEntityLevelOffsets(nextOffsets, previousOffsets)) {
         const existing = aggregated.get(id);
         if (existing) {
           aggregated.set(id, [existing[0] + delta[0], existing[1] + delta[1], existing[2] + delta[2]]);
@@ -104,10 +152,13 @@ export function useLevelDisplayEffect(): void {
     // Write only a changed snapshot: `models` also changes on every geometry
     // update, and a fresh empty Map each time is a store notification (#6232).
     if (!sameStoreyOffsets(target, appliedStoreyOffsets)) setAppliedStoreyOffsets(target);
-    // appliedStoreyOffsets is intentionally NOT a dep — we write to it as a
-    // side effect; depending on it would loop.
+    if (!sameEntityOffsets(targetEntities, appliedEntityLevelOffsets)) setAppliedEntityLevelOffsets(targetEntities);
+    // Applied offsets are intentionally not deps: the effect writes those
+    // snapshots itself. The mutation revision does belong here, since views
+    // are mutable and can retain their identity across edits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [levelDisplayMode, explodedGap, models, setPendingMeshTranslations, setAppliedStoreyOffsets]);
+  }, [levelDisplayMode, explodedGap, models, mutationViews, mutationVersion,
+    setPendingMeshTranslations, setAppliedStoreyOffsets, setAppliedEntityLevelOffsets]);
 
   // Guard: Solo is "a storey isolated via selectedStoreys". If that isolation
   // is dropped from anywhere else, Solo is no longer active — fall back to

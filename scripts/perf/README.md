@@ -86,6 +86,19 @@ measured; this result does not establish a browser worker-pool speed change.
 For an opt-in bridge, prove the default path is unchanged separately from
 measuring the new call when a frequent caller exists.
 
+## Exact extrusion source profiles (#5784)
+
+Five interleaved fresh-process native pairs compared merged #5810 main
+`ba85514d3` with the exact-profile branch on AC20-FZK-Haus, using five inner
+iterations and ordered mesh fingerprints per process. The default load emitted
+identical mesh payloads on both sides; parse timings matched, while geometry
+and total ranges overlapped. Verdict: no measurable ordinary-load cost or mesh
+change on this fixture. The profile decoder is opt-in; the default-load probe
+does not measure its extraction cost. The lesson is to keep the source read
+separate from renderer geometry and measure opt-in extraction on authored
+profile models when that workflow becomes a performance target. The PR records
+the numeric measurements and binary/fixture provenance.
+
 ## Derived swept-disk metrics (#5754)
 
 The length/bend calculations run only when an analytic description is

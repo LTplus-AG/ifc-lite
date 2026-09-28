@@ -10,7 +10,7 @@
  * mirroring hooks.
  */
 
-import { describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { IfcParser } from '@ifc-lite/parser';
@@ -18,6 +18,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { StoreApi } from './types.js';
 import { createStoreAdapter } from './store-adapter.js';
 import { pathForGuid, registerEntityPath, registerStoreSlot } from '@/lib/collab/entity-paths.js';
+import { installScriptedMesher, settleRemesh } from '@/test/scripted-mesher';
 
 const SAMPLE = new URL('../../../public/samples/hello-wall.ifc', import.meta.url);
 const WALL = 1222;
@@ -32,7 +33,12 @@ async function makeStore(canCollabEdit = true) {
   const undoCalls: Array<[number, string]> = [];
   const relationshipMutationCalls: string[] = [];
   const created: Array<{ entityId: number; ifcType: string }> = [];
-  const model = { id: 'm', name: 'hello-wall.ifc', ifcDataStore: dataStore, schemaVersion: 'IFC4', fileSize: bytes.byteLength, loadedAt: 0, idOffset: 0, maxExpressId: 5000 };
+  // Loaded through the wasm path, so a hosted filling re-meshes in this frame (#6232).
+  const geometryResult = { meshes: [], totalTriangles: 0, totalVertices: 0,
+    coordinateInfo: { wasmRtcFrame: { x: 0, y: 0, z: 0, needsShift: false } } };
+  const model = { id: 'm', name: 'hello-wall.ifc', ifcDataStore: dataStore, schemaVersion: 'IFC4', fileSize: bytes.byteLength, loadedAt: 0, idOffset: 0, maxExpressId: 5000, geometryResult };
+  const swapped: number[] = [];
+  const mirroredGeometry: number[] = [];
   registerStoreSlot(dataStore, { slotId: 'm0', pathPrefix: '/m0' });
   const state = {
     activeModelId: 'm',
@@ -52,12 +58,37 @@ async function makeStore(canCollabEdit = true) {
     },
     mirrorAttributeEdit: () => {},
     mirrorEntityRemove: () => {},
+    mutationViews,
+    mutationVersion: 0,
+    mergeLayers: false,
+    georefMutations: new Map(),
+    replaceEntityMeshes: (_modelId: string, byGlobalId: ReadonlyMap<number, unknown>) => { swapped.push(...byGlobalId.keys()); },
+    mirrorEntityGeometry: (_modelId: string, entityId: number) => { mirroredGeometry.push(entityId); },
   };
   const store = { getState: () => state, subscribe: () => () => {} } as unknown as StoreApi;
-  return { store, mutationViews, undoCalls, relationshipMutationCalls, created };
+  return { store, mutationViews, undoCalls, relationshipMutationCalls, created, swapped, mirroredGeometry };
 }
 
 describe('#6232 store-adapter modelling surface', () => {
+  let mesher: ReturnType<typeof installScriptedMesher>;
+  beforeEach(() => { mesher = installScriptedMesher(); });
+  afterEach(() => mesher.restore());
+
+  it('re-meshes the host with a hosted door, so the wall comes back cut and both reach the room', async () => {
+    const { store, swapped, mirroredGeometry } = await makeStore();
+    const door = createStoreAdapter(store).addHostedDoor('m', WALL, { Offset: 8, Width: 0.9, Height: 2.1 });
+    await settleRemesh();
+    assert.equal(mesher.requests.length, 1);
+    const targets = [...mesher.requests[0].targets];
+    for (const id of [door.expressId, WALL]) assert.ok(targets.includes(id), `#${id} is re-meshed`);
+    const buffer = new TextDecoder().decode(mesher.requests[0].buffer);
+    assert.match(buffer, /IFCRELVOIDSELEMENT\(/, 'the host is meshed with the void that cuts it');
+    for (const id of [door.expressId, WALL]) {
+      assert.ok(swapped.includes(id), `#${id}'s mesh is swapped in`);
+      assert.ok(mirroredGeometry.includes(id), `#${id}'s mesh is mirrored to the room`);
+    }
+  });
+
   it('refuses every hosted-opening call for a read-only participant, overlay untouched', async () => {
     const { store, mutationViews } = await makeStore(false);
     const adapter = createStoreAdapter(store);

@@ -240,8 +240,43 @@ function groupByGlobalId<T>(globalIds: ReadonlySet<number>, meshes: readonly Mes
  * Re-mesh `expressIds` (model-local) of `modelId` after an edit. Never
  * throws; the outcome says what happened.
  */
-export async function requestRemesh(
-  get: Get, modelId: string, expressIds: Iterable<number>, cause: RemeshCause,
+export interface RemeshOptions {
+  /**
+   * Also send each re-meshed element's meshes to the collaboration room, so
+   * peers see the real geometry. A commit asks for this; an undo / redo
+   * replay does not (positional undo stays local, and so does its mesh).
+   */
+  mirror?: boolean;
+}
+
+/** Requests still in flight per loaded model, by what they ask for and the edit state they asked it of. */
+const inFlight = new WeakMap<object, Map<string, Promise<RemeshOutcome>>>();
+
+/**
+ * One commit can ask twice for the same thing (an add re-meshes the element it
+ * creates, and a modeling transaction re-meshes what its commit reports), so
+ * an identical request made before any further edit shares the pending one.
+ */
+export function requestRemesh(
+  get: Get, modelId: string, expressIds: Iterable<number>, cause: RemeshCause, options: RemeshOptions = {},
+): Promise<RemeshOutcome> {
+  const ids = [...expressIds].sort((a, b) => a - b);
+  const store = get().models.get(modelId)?.ifcDataStore;
+  if (!store) return remesh(get, modelId, ids, cause, options);
+  let pending = inFlight.get(store);
+  if (!pending) inFlight.set(store, pending = new Map());
+  const key = `${cause}|${options.mirror ? 1 : 0}|${get().mutationVersion}|${ids.join(',')}`;
+  const shared = pending.get(key);
+  if (shared) return shared;
+  const request = remesh(get, modelId, ids, cause, options);
+  pending.set(key, request);
+  const forget = () => { if (pending!.get(key) === request) pending!.delete(key); };
+  void request.then(forget, forget);
+  return request;
+}
+
+async function remesh(
+  get: Get, modelId: string, expressIds: Iterable<number>, cause: RemeshCause, options: RemeshOptions,
 ): Promise<RemeshOutcome> {
   const start = performance.now();
   const state = get();
@@ -290,6 +325,12 @@ export async function requestRemesh(
       ? groupByGlobalId<PreAlignmentMeshBaseline>(globalIds, framed.meshes, framed.preAligned)
       : undefined;
     get().replaceEntityMeshes(modelId, byGlobalId, preAligned);
+    if (options.mirror) {
+      for (const id of targets) {
+        const meshes = byGlobalId.get(toGlobalIdFromModels(get().models, modelId, id));
+        if (meshes?.length) get().mirrorEntityGeometry(modelId, id, meshes);
+      }
+    }
     for (const key of noticed) if (key.startsWith(`${modelId}:`)) noticed.delete(key);
     const end = performance.now();
     return {
@@ -305,7 +346,7 @@ export async function requestRemesh(
     // The worker was terminated on purpose (another model unloaded) while
     // this ran: ask again on a fresh one unless the request went stale anyway.
     if (disposals !== epoch) {
-      return isCurrent(get, modelId, store, stamps, targets) ? requestRemesh(get, modelId, targets, cause) : { status: 'stale' };
+      return isCurrent(get, modelId, store, stamps, targets) ? remesh(get, modelId, targets, cause, options) : { status: 'stale' };
     }
     const message = error instanceof Error ? error.message : String(error);
     console.error('[remesh] failed:', error);

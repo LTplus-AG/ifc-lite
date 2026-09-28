@@ -11,7 +11,7 @@
  * slice over a parsed one-storey model.
  */
 
-import { describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcParser } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -19,6 +19,7 @@ import type { ViewerState } from '@/store';
 import { createMutationSlice } from '../../store/slices/mutationSlice.js';
 import { getOrCreateMutationView } from './mutation-view.js';
 import { createStoreAdapter } from './store-adapter.js';
+import { installScriptedMesher, settleRemesh } from '@/test/scripted-mesher';
 import type { StoreApi } from './types.js';
 
 const MODEL = 'm';
@@ -42,14 +43,20 @@ async function fixture() {
   const dataStore = await new IfcParser().parseColumnar(bytes.slice().buffer, { disableWorkerScan: true });
   const appended: MeshData[] = [];
   const hidden: number[] = [];
+  // Loaded through the wasm path, so an add re-meshes in this frame (#6232).
+  const geometryResult = { meshes: [], totalTriangles: 0, totalVertices: 0,
+    coordinateInfo: { wasmRtcFrame: { x: 0, y: 0, z: 0, needsShift: false } } };
   let state = {
-    models: new Map([[MODEL, { id: MODEL, name: 'storey.ifc', ifcDataStore: dataStore, idOffset: 0 }]]),
+    models: new Map([[MODEL, { id: MODEL, name: 'storey.ifc', ifcDataStore: dataStore, idOffset: 0, geometryResult }]]),
     activeModelId: MODEL,
     collabRoomId: null,
     collabRoomModels: new Map(),
     canCollabEdit: () => true,
     editEnabled: true,
-    appendGeometryBatch: (_modelId: string, batch: MeshData[]) => { appended.push(...batch); },
+    // The re-mesh lands through `replaceEntityMeshes`; record what it swaps in.
+    replaceEntityMeshes: (_modelId: string, byGlobalId: ReadonlyMap<number, readonly MeshData[]>) => {
+      for (const meshes of byGlobalId.values()) appended.push(...meshes);
+    },
     hideEntities: (ids: number[]) => { hidden.push(...ids); },
     mirrorEntityCreate: () => {},
     mirrorEntityRemove: () => {},
@@ -67,12 +74,18 @@ async function fixture() {
 }
 
 describe('bim.store.add* books what it builds', () => {
+  let mesher: ReturnType<typeof installScriptedMesher>;
+  beforeEach(() => { mesher = installScriptedMesher(); });
+  afterEach(() => mesher.restore());
+
   it('addColumn injects a mesh, pushes a CREATE_ENTITY undo entry and bumps mutationVersion', async () => {
     const { adapter, state, appended } = await fixture();
     const before = state().mutationVersion;
 
     const ref = adapter.addColumn(MODEL, 30, { Position: [4, 5, 0], Width: 0.3, Depth: 0.3, Height: 3, GlobalId: '1y$f31PQbViB5eB4WWhgAv' });
+    await settleRemesh();
 
+    assert.deepEqual(mesher.requests.map((r) => [...r.targets]), [[ref.expressId]], 'the column is re-meshed from its IFC');
     assert.equal(appended.length, 1, 'the column needs a mesh or it is invisible');
     assert.equal(appended[0].expressId, ref.expressId);
     const stack = state().undoStacks.get(MODEL) ?? [];
@@ -86,6 +99,7 @@ describe('bim.store.add* books what it builds', () => {
     adapter.addWall(MODEL, 30, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
     adapter.addBeam(MODEL, 30, { Start: [0, 0, 3], End: [4, 0, 3], Width: 0.2, Height: 0.4 });
     adapter.addSlab(MODEL, 30, { Position: [0, 0, 0], Width: 5, Depth: 5, Thickness: 0.25 });
+    await settleRemesh();
     assert.equal(appended.length, 3);
     assert.deepEqual((state().undoStacks.get(MODEL) ?? []).map((m) => m.attributeName), ['IFCWALL', 'IFCBEAM', 'IFCSLAB']);
   });
@@ -149,7 +163,10 @@ describe('bim.store.add* books what it builds', () => {
     const ref = createStoreAdapter(store).addColumn('default', 30, { Position: [0, 0, 0], Width: 0.3, Depth: 0.3, Height: 3 });
 
     assert.equal(ref.modelId, '__legacy__');
-    assert.equal(geometry.length, 1, 'the mesh reaches the top-level geometry');
+    // No model entry holds the geometry in legacy mode, so there is nothing for a
+    // re-mesh to land in (#6232); the element is still booked below.
+    await settleRemesh();
+    assert.equal(geometry.length, 0);
     assert.deepEqual((state.undoStacks.get('__legacy__') ?? []).map((m) => m.type), ['CREATE_ENTITY']);
     assert.ok((dataStore.spatialHierarchy?.byStorey.get(30) ?? []).includes(ref.expressId));
   });

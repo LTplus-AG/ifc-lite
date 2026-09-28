@@ -15,15 +15,16 @@
  * blunt-but-safe path as the cost relationship writes: mark the model dirty
  * and clear its undo history so `Ctrl+Z` can never cross the untracked write.
  *
- * The renderer is not updated here: the host's re-cut mesh and the filling's
- * mesh arrive with overlay re-tessellation (#6232 M1); the export is correct
- * already.
+ * An opening or hosted filling then re-meshes the host with the new element
+ * (#6232): the host comes back cut, the door or window gets its real mesh, and
+ * both reach the room.
  */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { createModellingStoreBackend, EntityRef } from '@ifc-lite/sdk';
 import { createStoreMutationTracker } from './store-adapter-cost.js';
+import { requestRemesh } from '@/lib/remesh/remesh-service';
 import type { StoreApi } from './types.js';
 
 type ModellingMethods = ReturnType<typeof createModellingStoreBackend>;
@@ -40,10 +41,17 @@ export function withModellingMutationTracking(
       store.getState().markCostRelationshipMutation(ref.modelId);
       return ref;
     });
+  // The host is re-meshed with the new element: it is what the opening cuts.
+  const hosted = <P>(fn: (modelId: string, hostExpressId: number, params: P) => EntityRef) =>
+    compound((modelId: string, hostExpressId: number, params: P): EntityRef => {
+      const ref = fn(modelId, hostExpressId, params);
+      void requestRemesh(store.getState, ref.modelId, [ref.expressId, hostExpressId], 'created', { mirror: true });
+      return ref;
+    });
   return {
-    addOpening: compound(methods.addOpening),
-    addHostedDoor: compound(methods.addHostedDoor),
-    addHostedWindow: compound(methods.addHostedWindow),
+    addOpening: hosted(methods.addOpening),
+    addHostedDoor: hosted(methods.addHostedDoor),
+    addHostedWindow: hosted(methods.addHostedWindow),
     // Single records with no relationship: one CREATE_ENTITY entry inverts them.
     addElementType: relationship((modelId: string, params: Parameters<ModellingMethods['addElementType']>[1]) => {
       const ref = methods.addElementType(modelId, params);

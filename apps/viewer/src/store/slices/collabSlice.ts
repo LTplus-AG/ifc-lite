@@ -335,13 +335,14 @@ export interface CollabSlice {
     mesh: MeshData | null, initialAttributes?: Record<string, unknown>, sourceExpressId?: number,
   ) => void;
   /**
-   * Mirror a geometry-shape change (resize) by replacing the entity's room
-   * geometry with a freshly-tessellated `mesh` blob (built at the new world
-   * position, so it carries the new size + placement). Resets the entity's
-   * placement baseline to identity for the new blob. No-op without a session
-   * or edit rights.
+   * Mirror a geometry change by replacing the entity's room geometry with its
+   * freshly-tessellated meshes (a re-meshed element can have several, one per
+   * material layer, #6232), baked at the entity's current world position so
+   * they carry the new shape + placement. Resets the entity's placement
+   * baseline to identity for the new blob. No-op without a session or edit
+   * rights.
    */
-  mirrorEntityGeometry: (modelId: string, entityId: number, mesh: MeshData) => void;
+  mirrorEntityGeometry: (modelId: string, entityId: number, meshes: MeshData | readonly MeshData[]) => void;
   // ── Annotation mirror (collab markup) — called by annotationsSlice after a
   //    local create/edit/delete. No-ops without a session or comment permission.
   mirrorAnnotationUpsert: (annotation: Annotation) => void;
@@ -1260,7 +1261,9 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     }
   },
 
-  mirrorEntityGeometry: (modelId, entityId, mesh) => {
+  mirrorEntityGeometry: (modelId, entityId, meshes) => {
+    const blob = Array.isArray(meshes) ? [...meshes] : [meshes as MeshData];
+    if (blob.length === 0) return;
     // Room model only — see `mirrorPlacementEdit`.
     const session = get().collabSession;
     const store = roomStoreFor(get(), modelId);
@@ -1279,7 +1282,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     void (async () => {
       try {
         cachedBlobStore = cachedBlobStore ?? (await makeBlobStore!());
-        const report = await seedGeometryToRoom(geom, session, cachedBlobStore, [mesh], () => path, {
+        const report = await seedGeometryToRoom(geom, session, cachedBlobStore, blob, () => path, {
           replace: true,
         });
         if (report.seeded === 0) {

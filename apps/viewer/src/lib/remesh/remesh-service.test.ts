@@ -100,9 +100,19 @@ async function seed(frame: typeof FRAME | null = FRAME): Promise<void> {
   });
 }
 
-function addWall(): number {
+/**
+ * Author a wall and let its creation re-mesh land (an add re-meshes what it
+ * creates, #6232), so each test starts from a wall with a mesh and a worker
+ * with no calls.
+ */
+async function addWall(): Promise<number> {
   const wall = useViewerStore.getState().addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.25, Height: 2.8 });
   assert.ok('expressId' in wall);
+  await flush();
+  for (const client of clients) {
+    for (const call of client.calls.splice(0)) call.resolve(answer([mesh(wall.expressId, 0)]));
+  }
+  await flush();
   return wall.expressId;
 }
 
@@ -123,7 +133,7 @@ describe('requestRemesh (#6232)', () => {
   afterEach(() => setRemeshClientFactory(null));
 
   it('a resize sends the wall to the worker in the load frame and swaps its mesh in', async () => {
-    const wall = addWall();
+    const wall = await addWall();
     const authored = wallMeshes(wall);
     useViewerStore.getState().resizeWall(MODEL_ID, wall, [-1, 0, 0], [5, 0, 0]);
     await flush();
@@ -147,9 +157,11 @@ describe('requestRemesh (#6232)', () => {
   });
 
   it('drops a result a later request for the same element superseded', async () => {
-    const wall = addWall();
+    const wall = await addWall();
     const first = requestRemesh(useViewerStore.getState, MODEL_ID, [wall], 'shape');
     await flush();
+    // An edit in between: an identical request with no edit in between shares the first.
+    useViewerStore.setState((s) => ({ mutationVersion: s.mutationVersion + 1 }));
     const second = requestRemesh(useViewerStore.getState, MODEL_ID, [wall], 'shape');
     await flush();
     const [older, newer] = clients[0].calls;
@@ -161,7 +173,7 @@ describe('requestRemesh (#6232)', () => {
   });
 
   it('drops a result for an element deleted while it was meshed', async () => {
-    const wall = addWall();
+    const wall = await addWall();
     const pending = requestRemesh(useViewerStore.getState, MODEL_ID, [wall], 'shape');
     await flush();
     useViewerStore.getState().removeEntity(MODEL_ID, wall);
@@ -171,7 +183,7 @@ describe('requestRemesh (#6232)', () => {
   });
 
   it('undo and redo of a resize re-mesh the wall from the restored data', async () => {
-    const wall = addWall();
+    const wall = await addWall();
     useViewerStore.getState().resizeWall(MODEL_ID, wall, [-1, 0, 0], [5, 0, 0]);
     await flush();
     clients[0].calls[0].resolve(answer([mesh(wall, 1)]));
@@ -190,7 +202,7 @@ describe('requestRemesh (#6232)', () => {
   });
 
   it('a dead worker is reported and replaced by the next request', async () => {
-    const wall = addWall();
+    const wall = await addWall();
     const pending = requestRemesh(useViewerStore.getState, MODEL_ID, [wall], 'shape');
     await flush();
     clients[0].alive = false;
@@ -205,7 +217,7 @@ describe('requestRemesh (#6232)', () => {
   });
 
   it('unloading a model terminates the worker', async () => {
-    const wall = addWall();
+    const wall = await addWall();
     const pending = requestRemesh(useViewerStore.getState, MODEL_ID, [wall], 'shape');
     await flush();
     clients[0].calls[0].resolve(answer([mesh(wall, 1)]));
@@ -221,7 +233,7 @@ describe('requestRemesh (#6232)', () => {
   });
 
   it('a request cut off by that termination is sent again, not reported as a failure', async () => {
-    const wall = addWall();
+    const wall = await addWall();
     const pending = requestRemesh(useViewerStore.getState, MODEL_ID, [wall], 'shape');
     await flush();
     // Another model unloaded: the worker goes, and its in-flight request rejects.
@@ -236,15 +248,15 @@ describe('requestRemesh (#6232)', () => {
 
   it('refuses a model loaded without a wasm frame, and a colour-merged mesh', async () => {
     await seed(null);
-    const wall = addWall();
+    const wall = await addWall();
     assert.deepEqual(await requestRemesh(useViewerStore.getState, MODEL_ID, [wall], 'shape'), { status: 'refused', reason: 'noFrame' });
 
     await seed();
-    const merged = addWall();
+    const merged = await addWall();
     const host = wallMeshes(merged)[0];
     host.entityIds = new Uint32Array(host.positions.length / 3).fill(merged);
     host.entityIds[0] = 999_999;
     assert.deepEqual(await requestRemesh(useViewerStore.getState, MODEL_ID, [merged], 'shape'), { status: 'refused', reason: 'colourMerged' });
-    assert.equal(clients.length, 0, 'nothing was sent to a worker');
+    assert.equal(clients.flatMap((c) => c.calls).length, 0, 'nothing was sent to a worker');
   });
 });

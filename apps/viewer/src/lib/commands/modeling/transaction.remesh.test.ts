@@ -78,7 +78,9 @@ describe('runTransaction re-mesh (#6232 WP1 × WP2)', () => {
     const afterUndo = client.requests.length;
     useViewerStore.getState().redo(MODEL_ID);
     await flush();
-    assert.equal(client.requests.length, afterUndo + 1, 'redo re-meshed the restored wall');
-    assert.ok([...client.requests[afterUndo].targets].includes(wall));
+    // The batch registry asks, and so does the restore of a created element
+    // whose mesh never landed (this worker never answers).
+    const redone = client.requests.slice(afterUndo);
+    assert.ok(redone.length > 0 && redone.every((r) => [...r.targets].includes(wall)), 'redo re-meshed the restored wall');
   });
 });

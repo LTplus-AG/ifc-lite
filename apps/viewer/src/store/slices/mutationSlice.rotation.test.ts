@@ -16,7 +16,7 @@
  * must land every vertex where rotating and then duplicating does.
  */
 
-import { beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { IfcParser } from '@ifc-lite/parser';
@@ -27,6 +27,7 @@ import { emptyPlacementState } from '@/lib/model-placement/state';
 import { degreesToRadians } from '@/lib/model-placement/rotation';
 import { modelRotationBaker } from '@/lib/model-placement/rotation-bake';
 import { reconcileModelRotations } from '@/components/viewer/useModelRotationSync';
+import { installScriptedMesher, settleRemesh, triangleFor } from '@/test/scripted-mesher';
 
 const WALL = 50;
 const FIXTURE = `ISO-10303-21;
@@ -65,7 +66,9 @@ function geometryResult(): GeometryResult {
     coordinateInfo: { originShift: { x: 0, y: 0, z: 0 },
       originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
       shiftedBounds: { min: { x: 2, y: 0, z: -1 }, max: { x: 6, y: 3, z: -0.8 } },
-      hasLargeCoordinates: false },
+      hasLargeCoordinates: false,
+      // Loaded through the wasm path: added elements re-mesh in this frame (#6232).
+      wasmRtcFrame: { x: 0, y: 0, z: 0, needsShift: false } },
   } as unknown as GeometryResult;
 }
 
@@ -164,15 +167,23 @@ function allWorld(): number[][] {
 /** Run `edit` once before and once after the heading, and require the same
  * geometry either way. */
 async function assertOrderIndependent(edit: () => void, what: string): Promise<void> {
+  // New elements are re-meshed asynchronously (#6232) and land in the model's
+  // unrotated frame, like a streamed batch: let them land, then reconcile, as
+  // the store subscription does.
+  const editAndLand = async () => {
+    edit();
+    await settleRemesh();
+    reconcileModelRotations(useViewerStore.getState());
+  };
   await seed();
-  edit();
+  await editAndLand();
   rotate();
   const expected = allWorld();
   // The fixture wall, the element under edit, and at least one new mesh.
   assert.ok(expected.length >= 3, `${what}: the edit produced no new mesh`);
   await seed();
   rotate();
-  edit();
+  await editAndLand();
   const actual = allWorld();
   assert.equal(actual.length, expected.length, `${what}: mesh count`);
   actual.forEach((mesh, i) => assertClose(mesh, expected[i], `${what}, mesh ${i}`));
@@ -183,6 +194,17 @@ async function assertOrderIndependent(edit: () => void, what: string): Promise<v
 // once. Pinned so a split that starts deriving its halves from live vertices
 // (as duplicate did) cannot compound the heading unnoticed.
 describe('splitting an element on a rotated model (#4869)', () => {
+  // A mesher whose answer depends on the element, so the halves are told apart.
+  let mesher: ReturnType<typeof installScriptedMesher>;
+  beforeEach(() => {
+    mesher = installScriptedMesher((request) => [...request.targets].map((id) => {
+      const mesh = triangleFor(id);
+      mesh.positions = mesh.positions.map((v, i) => v + (i % 3 === 0 ? id % 11 : 0));
+      return mesh;
+    }));
+  });
+  afterEach(() => mesher.restore());
+
   it('builds the wall halves in the model frame, turned once', async () => {
     await assertOrderIndependent(() => {
       const s = useViewerStore.getState();

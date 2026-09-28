@@ -6,6 +6,14 @@ use super::*;
 use ifc_lite_core::EntityDecoder;
 
 #[test]
+fn malformed_line_has_no_analytic_directrix_6402() {
+    let data = "#1=IFCCARTESIANPOINT((5.,6.,7.));\n#2=IFCDIRECTION((1.,0.,0.));\n#3=IFCVECTOR(#2,$);\n#4=IFCLINE(#1,#3);\n#5=IFCTRIMMEDCURVE(#4,(IFCPARAMETERVALUE(2.)),(IFCPARAMETERVALUE(4.)),.T.,.PARAMETER.);\n#6=IFCSWEPTDISKSOLID(#5,0.1,$,$,$);";
+    let mut decoder = EntityDecoder::new(data);
+    let disk = decoder.decode_by_id(6).unwrap();
+    assert!(extract_swept_disk(&disk, &mut decoder).is_err());
+}
+
+#[test]
 fn indexed_arc_stays_in_its_authored_plane() {
     let data = "#1=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(10.,0.,10.),(20.,0.,0.)));\n#2=IFCINDEXEDPOLYCURVE(#1,(IFCARCINDEX((1,2,3))),.F.);\n#3=IFCSWEPTDISKSOLID(#2,1.,$,$,$);";
     let mut decoder = EntityDecoder::new(data);

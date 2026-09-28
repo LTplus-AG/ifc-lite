@@ -21,44 +21,8 @@ impl ProfileProcessor {
         line: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<(Point3<f64>, Vector3<f64>)> {
-        let pnt_attr = line
-            .get(0)
-            .ok_or_else(|| Error::geometry("Line missing Pnt".to_string()))?;
-        let pnt = decoder
-            .resolve_ref(pnt_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve Line Pnt".to_string()))?;
-        let coords = pnt
-            .get(0)
-            .and_then(|v| v.as_list())
-            .ok_or_else(|| Error::geometry("Line Pnt missing coordinates".to_string()))?;
-        let origin = Point3::new(
-            coords.first().and_then(|v| v.as_float()).unwrap_or(0.0),
-            coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0),
-            coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0),
-        );
-
-        // Dir is an IfcVector: 0=Orientation (IfcDirection), 1=Magnitude.
-        let dir_attr = line
-            .get(1)
-            .ok_or_else(|| Error::geometry("Line missing Dir".to_string()))?;
-        let vector = decoder
-            .resolve_ref(dir_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve Line Dir".to_string()))?;
-        let magnitude = vector.get(1).and_then(|v| v.as_float()).unwrap_or(1.0);
-        let orientation = vector
-            .get(0)
-            .and_then(|a| decoder.resolve_ref(a).ok().flatten())
-            .and_then(|d| {
-                let coords = d.get(0).and_then(|v| v.as_list())?;
-                Some(Vector3::new(
-                    coords.first().and_then(|v| v.as_float()).unwrap_or(0.0),
-                    coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0),
-                    coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0),
-                ))
-            })
-            .and_then(|v| v.try_normalize(1e-12))
-            .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
-        Ok((origin, orientation * magnitude))
+        let (origin, direction) = crate::curve_source::mesh_line_basis(line, decoder)?;
+        Ok((Point3::from(origin), Vector3::from(direction)))
     }
 
     /// Sample a bare (untrimmed) `IfcLine` as the two-point segment spanning the

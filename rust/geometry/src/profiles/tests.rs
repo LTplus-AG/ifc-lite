@@ -6,6 +6,43 @@ use super::*;
 use super::outline::trim_polyline;
 
     #[test]
+    fn malformed_line_mesh_defaults_remain_available_6402() {
+        // A mesh historically recovers these malformed IfcVector fields. Both
+        // a bare line and a trimmed line must use the same recovered basis.
+        for (vector, direction, expected_step) in [
+            ("IFCVECTOR(#2,$)", "IFCDIRECTION((1.,0.,0.))", 1.0),
+            ("IFCVECTOR($,2.)", "IFCDIRECTION((1.,0.,0.))", 2.0),
+            ("IFCVECTOR(#2,2.)", "IFCDIRECTION((0.,0.,0.))", 2.0),
+        ] {
+            let data = format!(
+                "#1=IFCCARTESIANPOINT((5.,6.,7.));\n#2={direction};\n#3={vector};\n#4=IFCLINE(#1,#3);\n#5=IFCTRIMMEDCURVE(#4,(IFCPARAMETERVALUE(2.)),(IFCPARAMETERVALUE(4.)),.T.,.PARAMETER.);"
+            );
+            let mut decoder = EntityDecoder::new(&data);
+            let processor = ProfileProcessor::new(IfcSchema::new());
+            let bare = decoder.decode_by_id(4).unwrap();
+            let trimmed = decoder.decode_by_id(5).unwrap();
+            assert_eq!(
+                processor
+                    .get_curve_points(&bare, &mut decoder, TessellationQuality::Medium)
+                    .unwrap(),
+                vec![
+                    Point3::new(5.0, 6.0, 7.0),
+                    Point3::new(5.0 + expected_step, 6.0, 7.0)
+                ]
+            );
+            assert_eq!(
+                processor
+                    .get_curve_points(&trimmed, &mut decoder, TessellationQuality::Medium)
+                    .unwrap(),
+                vec![
+                    Point3::new(5.0 + 2.0 * expected_step, 6.0, 7.0),
+                    Point3::new(5.0 + 4.0 * expected_step, 6.0, 7.0)
+                ]
+            );
+        }
+    }
+
+    #[test]
     fn trimmed_line_descending_false_sense_follows_ifc_first_trim_6402() {
         // IFC4.3 IfcTrimmedCurve: Trim1 is the first point; false sense on an
         // open line corresponds to descending basis parameters (10 to 2).

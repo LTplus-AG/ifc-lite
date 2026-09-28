@@ -114,6 +114,45 @@ pub(crate) fn line_basis(
     Ok((origin, (direction * magnitude).into()))
 }
 
+/// Preserve the mesh reader's recovery for malformed line coordinates and
+/// vectors. Analytic descriptions use [`line_basis`] and reject these values.
+pub(crate) fn mesh_line_basis(
+    line: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> Result<([f64; 3], [f64; 3])> {
+    let pnt = resolve(line.get(0), decoder)?;
+    let coords = pnt
+        .get(0)
+        .and_then(AttributeValue::as_list)
+        .ok_or_else(|| invalid("Line Pnt missing coordinates"))?;
+    let origin = std::array::from_fn(|i| {
+        coords
+            .get(i)
+            .and_then(AttributeValue::as_float)
+            .unwrap_or(0.0)
+    });
+
+    let vector = resolve(line.get(1), decoder)?;
+    let magnitude = vector
+        .get(1)
+        .and_then(AttributeValue::as_float)
+        .unwrap_or(1.0);
+    let orientation = vector
+        .get(0)
+        .and_then(|a| decoder.resolve_ref(a).ok().flatten())
+        .and_then(|d| {
+            let coords = d.get(0).and_then(AttributeValue::as_list)?;
+            Some(Vector3::new(
+                coords.first().and_then(AttributeValue::as_float).unwrap_or(0.0),
+                coords.get(1).and_then(AttributeValue::as_float).unwrap_or(0.0),
+                coords.get(2).and_then(AttributeValue::as_float).unwrap_or(0.0),
+            ))
+        })
+        .and_then(|v| v.try_normalize(1e-12))
+        .unwrap_or_else(Vector3::x);
+    Ok((origin, (orientation * magnitude).into()))
+}
+
 pub(crate) fn trim_point(
     attr: Option<&AttributeValue>,
     origin: [f64; 3],

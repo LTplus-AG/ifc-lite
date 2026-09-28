@@ -190,9 +190,18 @@ fn issue_5759_revit_snowdon_schedule_preserves_authored_and_measured_lengths() {
             min_straight_segment_length_m: 0.0,
             max_developed_centreline_length_m: None,
         }).unwrap();
-    let comparisons = &preflight.rows[&132347].sweeps[0].preflight.as_ref().unwrap().comparisons;
-    assert!(comparisons.iter().any(|item| item.kind == "inside_bend_radius" && item.segment_index.is_some()));
-    assert!(comparisons.iter().any(|item| item.kind == "straight_segment_length" && item.segment_index.is_some()));
+    let report = preflight.rows[&132347].sweeps[0].preflight.as_ref().unwrap();
+    assert!(report.skipped_reason.is_none());
+    let bend = report.comparisons.iter().find(|item|
+        item.kind == "inside_bend_radius" && item.segment_index == Some(1)).unwrap();
+    assert!((bend.measured_m - 0.05715).abs() < 1e-6);
+    let straight = report.comparisons.iter().find(|item|
+        item.kind == "straight_segment_length" && item.segment_index == Some(0)).unwrap();
+    assert!((straight.measured_m - 0.122300732366).abs() < 1e-6);
+    let miter = &preflight.rows[&132562].sweeps[0];
+    assert!(miter.checks.findings.iter().any(|finding|
+        finding.code == ifc_lite_processing::SweptDiskFindingCode::TangentDiscontinuity));
+    assert!(miter.preflight.as_ref().unwrap().skipped_reason.is_none());
     assert_eq!(preflight.rows[&132347].authored["BarLength"].value, bar.authored["BarLength"].value);
 }
 

@@ -177,10 +177,7 @@ function buildLinearBox(
   return buildBoxFromIfcCorners(globalId, type, ifcCorners, storeyElevation);
 }
 
-/**
- * Box centred on a single point (column / door / window shape), its X size
- * along `xAxis` in plan (default +x: axis-aligned).
- */
+/** Box centred on a point (column / door / window), its X size along `xAxis` in plan (default +x). */
 function buildAxisBox(
   globalId: number,
   type: AddElementType,
@@ -192,9 +189,7 @@ function buildAxisBox(
   xAxis: readonly [number, number] = [1, 0],
 ): MeshData {
   const len = Math.hypot(xAxis[0], xAxis[1]) || 1;
-  const ux = xAxis[0] / len, uy = xAxis[1] / len;
-  const hx = sizeX / 2;
-  const hy = sizeY / 2;
+  const ux = xAxis[0] / len, uy = xAxis[1] / len, hx = sizeX / 2, hy = sizeY / 2;
   const baseZ = centerIfc[2];
   const topZ = baseZ + sizeZ;
   const at = (sx: number, sy: number, z: number): Vec3 => [

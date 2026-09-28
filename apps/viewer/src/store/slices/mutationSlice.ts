@@ -51,7 +51,7 @@ import type { AuthoredElement } from './authoredElement.js';
 import { remeshAuthoredElement, rememberAuthoredElement } from './authoredFallbackMesh.js';
 import { authoredDataStore, syncAuthoredTreeEntry } from './authoredTreeEntry.js';
 import { ensureStoreyPlacement } from './storeyPlacement.js';
-import { effectiveStoreyId } from '@/lib/effective-storey';
+import { effectiveContainerTypeName, effectiveStoreyId } from '@/lib/effective-storey';
 
 export type { AuthoredElement };
 import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
@@ -865,7 +865,11 @@ function resolveSplitContext(
   const dataStore = state.models.get(modelId)?.ifcDataStore;
   if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
   const storeyExpressId = effectiveStoreyId(dataStore, view, expressId);
-  if (storeyExpressId === undefined) return { ok: false, reason: notInStoreyMessage };
+  if (storeyExpressId === undefined) {
+    // Say where it is when it has a container that is not a storey (a wall on IfcBuilding).
+    const container = effectiveContainerTypeName(dataStore, view, expressId);
+    return { ok: false, reason: container ? `${notInStoreyMessage}: it sits in ${container}, not on a storey` : notInStoreyMessage };
+  }
   return { view, editor, dataStore, storeyExpressId };
 }
 

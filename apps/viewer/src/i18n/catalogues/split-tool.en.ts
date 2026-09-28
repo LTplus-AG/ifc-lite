@@ -21,6 +21,7 @@ export const splitToolEn = {
   // disabled Split button's tooltip and the Split tool's error notice.
   'splitTool.unavailable.type': 'Split works on walls, beams, columns, members, slabs, roofs, plates and spaces',
   'splitTool.unavailable.storey': "Can't split: the element is not contained in a building storey",
+  'splitTool.unavailable.container': "Can't split: the element sits directly in the building or site, not on a storey. Move it onto a storey first",
   'splitTool.unavailable.noBody': "Can't split: the element has no body geometry",
   'splitTool.unavailable.mesh': "Can't split: the geometry is a mesh or B-rep, not a profile extrusion",
   'splitTool.unavailable.mapped': "Can't split: the geometry is shared with its type (mapped representation)",

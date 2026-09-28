@@ -17,12 +17,35 @@ export function effectiveStoreyId(
   const spatial = store.spatialHierarchy;
   if (!spatial) return undefined;
   if (!view?.hasPendingChanges()) return spatial.elementToStorey.get(selectedId);
-  if (view.isDeleted(selectedId)) return undefined;
+  return walkContainers(store, view, selectedId, (id) => !view.isDeleted(id)
+    && isStoreyLikeSpatialTypeName(effectiveContextType(store, view, id)));
+}
 
+/**
+ * The IFC type of the spatial element the product is effectively contained
+ * in (directly, or through an aggregate parent), storey or not: e.g.
+ * `IfcBuilding` for a wall placed on the building rather than a storey.
+ * Lets a refusal that needs a storey say where the element actually is.
+ */
+export function effectiveContainerTypeName(
+  store: IfcDataStore,
+  view: MutablePropertyView,
+  selectedId: number,
+): string | undefined {
+  const id = walkContainers(store, view, selectedId, (containerId) => !view.isDeleted(containerId));
+  return id === undefined ? undefined : effectiveContextType(store, view, id);
+}
+
+/** The first containment ancestor `accept` takes, through containment and aggregate edits. */
+function walkContainers(
+  store: IfcDataStore,
+  view: MutablePropertyView,
+  selectedId: number,
+  accept: (containerId: number) => boolean,
+): number | undefined {
+  if (view.isDeleted(selectedId)) return undefined;
   const overlay = effectiveMutationRelationships(store, view);
   const superseded = (id: number) => view.isDeleted(id) || overlay.supersededSourceIds.has(id);
-  const isStorey = (id: number) => !view.isDeleted(id)
-    && isStoreyLikeSpatialTypeName(effectiveContextType(store, view, id));
   const containmentParents = new Map<number, number[]>();
   const aggregateParents = new Map<number, number[]>();
   const append = (map: Map<number, number[]>, key: number, values: readonly number[]) => {
@@ -57,7 +80,7 @@ export function effectiveStoreyId(
       .filter((edge) => edgeSurvives(edge, superseded)).map((edge) => edge.target);
     const editedContainers = containmentParents.get(id) ?? [];
     for (const containerId of [...sourceContainers, ...editedContainers]) {
-      if (isStorey(containerId)) return containerId;
+      if (accept(containerId)) return containerId;
       if (!view.isDeleted(containerId)) enqueue(containerId);
     }
     const sourceParents = store.relationships.inverse.getEdges(id, RelationshipType.Aggregates)

@@ -118,7 +118,6 @@ const MAX_CHAIN_DEPTH = 64;
  *  of chain nodes — allocating one per read multiplied garbage for nothing.
  *  Keyed weakly by the store so an unloaded model releases its extractor. */
 const extractorByStore = new WeakMap<IfcDataStore, EntityExtractor>();
-
 /** One decoded entity — its STEP type name and attribute list — or `null`
  *  when it is not in this store. The type comes off the SOURCE (the extractor
  *  re-reads the STEP record), not `store.entities.getTypeName`: the entity

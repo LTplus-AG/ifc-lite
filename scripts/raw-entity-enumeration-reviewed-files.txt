@@ -96,6 +96,7 @@ apps/viewer/src/lib/compare/worldPlacement.ts
 apps/viewer/src/lib/drawing2d-markup/drawing-markup-restore.ts
 apps/viewer/src/lib/lens/adapter-entities.ts
 apps/viewer/src/lib/linear-element-edit.ts
+apps/viewer/src/lib/placement-edit.boot.ts
 apps/viewer/src/lib/lists/adapter.ts
 apps/viewer/src/lib/lists/scope-types.ts
 apps/viewer/src/lib/search/filter-schema-effective.ts

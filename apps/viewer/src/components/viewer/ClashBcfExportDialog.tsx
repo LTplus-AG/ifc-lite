@@ -13,7 +13,7 @@
  * exactly how many topics the current settings will produce *before* exporting.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useId, useMemo, useState } from 'react';
 import { Download, Crosshair, ArrowRight, Camera, Layers } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
@@ -71,6 +71,7 @@ const DEFAULT_CONFIG: ClashBcfConfig = {
 
 export function ClashBcfExportDialog({ open, onOpenChange: setOpen }: ClashBcfExportDialogProps) {
   const { t } = useTranslation();
+  const maxTopicsId = useId();
   const { result, exportBcf, bcfPreview } = useClash();
 
   const [config, setConfig] = useState<ClashBcfConfig>(DEFAULT_CONFIG);
@@ -192,8 +193,9 @@ export function ClashBcfExportDialog({ open, onOpenChange: setOpen }: ClashBcfEx
 
           {/* Cap + status note */}
           <div className="space-y-1.5">
-            <Label className="text-2xs uppercase tracking-wide text-muted-foreground">{t('clashTools.bcfExport.maxTopicsLabel')}</Label>
+            <Label htmlFor={maxTopicsId} className="text-2xs uppercase tracking-wide text-muted-foreground">{t('clashTools.bcfExport.maxTopicsLabel')}</Label>
             <input
+              id={maxTopicsId}
               type="number"
               min={1}
               step={50}

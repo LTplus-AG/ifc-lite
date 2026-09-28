@@ -69,6 +69,9 @@ function openEditor(index = 2, name = 'Name', token = TOKEN): HTMLInputElement {
   click(value!);
   const input = container.querySelector('input');
   assert.ok(input, 'clicking the value opens the editor');
+  const labelId = input.getAttribute('aria-labelledby');
+  assert.ok(labelId, 'the schema attribute names the editor');
+  assert.equal(container.querySelector(`[id="${labelId}"]`)?.textContent?.trim(), name);
   return input!;
 }
 

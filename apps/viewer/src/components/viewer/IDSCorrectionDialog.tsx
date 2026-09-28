@@ -326,7 +326,7 @@ export function IDSCorrectionDialog({
             {correctable.length > 1 && (
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">{t('idsPanel.correction.requirement')}</Label>
-                <select
+                <select aria-label={t('idsPanel.correction.requirement')}
                   className="w-full rounded border border-border bg-transparent px-2 py-1 text-sm"
                   value={activeRequirement.requirementId}
                   onChange={(e) => {

@@ -144,6 +144,40 @@ describe('IDSCorrectionDialog — stale audit snapshot vs. deleted entities (#52
     cleanup();
   });
 
+  it('#6342 names the requirement picker and switches the correction target', async () => {
+    seedStore();
+    const secondRequirement: IDSRequirement = {
+      ...requirement,
+      id: 'req-second-property',
+      facet: {
+        type: 'property',
+        propertySet: { type: 'simpleValue', value: 'Pset_Test' },
+        baseName: { type: 'simpleValue', value: 'Bar' },
+      },
+    };
+    const entity = entityResult(1, 'Wall A');
+    entity.requirementResults.push({
+      requirement: { ...secondRequirement, label: 'Pset_Test.Bar is present' },
+      status: 'fail',
+      facetType: 'property',
+      checkedDescription: 'Pset_Test.Bar is present',
+    });
+    const result = specResultWith([entity]);
+    result.specification.requirements.push(secondRequirement);
+    render(<IDSCorrectionDialog open onOpenChange={() => {}} specResult={result}
+      modelId={MODEL_ID} onRevalidate={async () => {}} />);
+    await advance(0);
+
+    const picker = document.body.querySelector<HTMLSelectElement>('select');
+    assert.ok(picker, 'two correctable requirements show the picker');
+    assert.equal(picker.getAttribute('aria-label'), 'Requirement');
+    act(() => {
+      picker.value = secondRequirement.id;
+      picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    assert.match(document.body.textContent ?? '', /Pset_Test\.Bar/);
+  });
+
   it('a normal correction on live entities applies to ALL of them and reports the right count (no-regression pin)', async () => {
     seedStore();
     const specResult = specResultWith([entityResult(1, 'Wall A'), entityResult(2, 'Wall B')]);

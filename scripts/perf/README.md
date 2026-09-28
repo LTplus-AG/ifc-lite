@@ -2485,15 +2485,18 @@ real Revit Snowdon model from 1,073 to 128, while cached/uncached descriptions,
 definitions, extrusions, quantities, instance order and diagnostics agree.
 Nested, reflected and scaled mappings retain their distinct f64 world frames.
 
-Five idle-host interleaved native profiling pairs compared parent `3ffbbbe33`
-with cache source `807f32356` on AC20 and ISSUE_129. After #6271 landed,
-`Cargo.toml`, `Cargo.lock`, `rust/core`, `rust/geometry`, `rust/processing`, and
-the probe script were verified byte-identical between those measured revisions
-and this PR's rebased parent and child. Ordered mesh fingerprints and
-mesh/triangle counts matched in every run. The combined Snowdon analytic JSON
-was also byte-identical across the parent and child. Whole-process peak RSS was
-measured around the prebuilt probes; its ranges overlapped, as did
-parse/geometry/total timing variation.
+Earlier idle-host native AC20 and ISSUE_129 controls kept ordered mesh output
+identical and showed overlapping parse, geometry, total-time and peak-RSS
+ranges. A [current-lock hosted AC20 control](https://github.com/LTplus-AG/ifc-lite/actions/runs/36474112703)
+compared a synthetic parent made from then-current `main` (`c17ee39`) plus
+the patch-identical final #6283 source with a clean #6276 merge. Five balanced,
+interleaved fresh-process profiling pairs kept the fixture checksum, ordered mesh
+fingerprints and entity/mesh/vertex/triangle counts identical; paired phase
+timings remained within noise. The synthetic parent's native probe inputs
+match #6283's final source tree, and #6276's native patch matches its PR head.
+The eventual #6283 squash still needs a native-tree comparison before this
+control is cited as an exact post-merge parent. The combined Snowdon analytic
+JSON was byte-identical across the earlier parent and child.
 These ordinary mesh-load probes do not execute the opt-in analytic cache, so
 they establish no browser worker-pool speedup or analytic-call memory win.
 The lesson is to cache only immutable source facts and to measure opt-in

@@ -42,6 +42,8 @@ packages/export/src/step-georeferencing.ts
 packages/export/src/style-closure.ts
 packages/ids/src/bridge/classifications.ts
 packages/ids/src/bridge/data-accessor.ts
+packages/ids/src/bridge/properties.ts
+packages/ids/src/bridge/units.ts
 packages/ifcx/src/writer-entities.ts
 packages/ifcx/src/index.ts
 packages/mcp/src/backend-query.ts

@@ -376,6 +376,9 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     assert.ok(openButton, 'expected the "+ Custom column" opener');
     click(openButton as Element);
 
+    assert.ok(container.querySelector('input[aria-label="Property set"]'));
+    assert.ok(container.querySelector('input[aria-label="Property name"]'));
+
     // The default hint interleaves plain text with two <code> chunks
     // (`{prefix} <code>/…/</code> {suffix} <code>{example}</code>.`), same
     // collapsing-into-the-parent shape as the "no type selected" paragraph
@@ -443,6 +446,9 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     const quantityChip = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Quantity');
     assert.ok(quantityChip, 'expected the "Quantity" source chip');
     click(quantityChip as Element);
+
+    assert.ok(container.querySelector('input[aria-label="Quantity set"]'));
+    assert.ok(container.querySelector('input[aria-label="Quantity name"]'));
 
     const english = readableStrings(container);
     assert.ok(english.has('Qto_… or /Qto_.*/'), 'expected the quantity-set placeholder');

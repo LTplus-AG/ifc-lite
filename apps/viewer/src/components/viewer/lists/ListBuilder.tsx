@@ -838,14 +838,14 @@ function ColumnEditorPanel({
         </button>
       </div>
       <div className="flex items-center gap-1.5">
-        <ComboInput
+        <ComboInput aria-label={t(source === 'quantity' ? 'lists.builder.quantitySetInputLabel' : 'lists.builder.propertySetInputLabel')}
           value={setName}
           options={setOptions}
           placeholder={source === 'quantity' ? t('lists.builder.quantitySetPlaceholder') : t('lists.builder.propertySetPlaceholder')}
           className="h-7 min-w-0 flex-1 text-xs"
           onChange={setSetName}
         />
-        <ComboInput
+        <ComboInput aria-label={t(source === 'quantity' ? 'lists.builder.quantityNameInputLabel' : 'lists.builder.propertyNameInputLabel')}
           value={propName}
           options={propOptions}
           placeholder={source === 'quantity' ? t('lists.builder.quantityNamePlaceholder') : t('lists.builder.propertyNamePlaceholder')}

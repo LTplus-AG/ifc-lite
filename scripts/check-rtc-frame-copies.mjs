@@ -84,7 +84,7 @@ export const CANONICAL_CALL_EXPRESSIONS = [
     text: 'const rtcYup = ifcToViewerAxes(coordinateInfo?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 });',
   },
   {
-    file: 'apps/viewer/src/hooks/symbolic-parse-cache.ts',
+    file: 'apps/viewer/src/hooks/symbolic-parse-cache-frame.ts',
     text: 'const rtcYupY = ifcToViewerAxes(info?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 }).y;',
   },
   {

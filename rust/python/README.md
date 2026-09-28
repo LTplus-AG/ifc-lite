@@ -20,14 +20,16 @@ silicon and Intel), and Windows (x64). No Rust toolchain needed.
 
 ## Quick start
 
-The module is `ifclite_geom` and exposes six functions, all taking the raw IFC
-file as `bytes`. `geometry_data_buffers` and `geometry_data_json` return the
+The module is `ifclite_geom`; its analysis functions take the raw IFC file as
+`bytes`. `geometry_data_buffers` and `geometry_data_json` return the
 same geometry and differ only in output format; pass
 `include_directrices=True` to include analytic swept-disk paths. `entity_data`
 reads attributes and property sets instead, without tessellating.
 `check_swept_disks` checks authored swept-disk paths without tessellating, and
 `swept_disk_definitions` returns reusable raw source paths and occurrence transforms.
 `extrusion_definitions` returns exact source profiles and placed extrusion occurrences.
+`authored_quantity_analysis` reads IFC-authored quantity observations, while
+`quantity_analysis` joins them with nominal analytic source estimates.
 
 ```python
 import ifclite_geom
@@ -291,6 +293,35 @@ or quantity set appears in `diagnostics`. An absent optional
 reported and its type-authored quantities are refused. Conflicting
 `IfcRelDefinesByType` assignments likewise refuse type inheritance for that
 product while preserving its occurrence-authored observations.
+
+### `quantity_analysis(ifc_bytes: bytes, ids: set[int] | None = None) -> dict`
+
+Join authored `IfcElementQuantity` observations with exact analytic swept-disk
+and extrusion source occurrences. `products` is keyed by product STEP ID;
+`authored` retains exact names, IDs, units, origin and conflicts. Each entry in
+`sources` keeps its canonical source key, solid ID, mapping path, ordinal,
+status and nominal values with formula, origin, unit and limitation. Swept-disk centreline
+and section estimates use world metres; extrusion depth and profile estimates
+remain in raw IFC file units because an occurrence transform may scale them.
+`Depth` is an authored solid parameter, not an `IfcElementQuantity` value.
+
+```python
+view = ifclite_geom.quantity_analysis(ifc_bytes, ids={50})
+for source in view["products"][50]["sources"]:
+    for estimate in source["quantities"]:
+        print(source["solid_id"], estimate["name"], estimate["value"], estimate["unit"])
+```
+
+`product_count` counts IFC products, `source_occurrence_count` counts uses of
+analytic solids, and `unique_source_count` counts distinct source definitions.
+Mapped products can share one source. `product_total` is always `None` with an
+`aggregate_diagnostic`: source estimates exclude voids, CSG results, overlap,
+self-intersection and cutting allowances. They cannot establish a physical
+part count or final material quantity. Unsupported and source-modified sources
+retain explicit status; extraction failures appear in `diagnostics`.
+When a complete swept-disk occurrence has no defensible nominal section or
+volume estimate, `status_reason` explains the omission even if its centreline
+length remains available. Joined diagnostics have one bounded output budget.
 
 ### Tessellation quality
 

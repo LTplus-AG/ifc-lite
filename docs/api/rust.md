@@ -566,7 +566,8 @@ pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryD
 
 // Optional authored swept-disk checks and reusable swept-disk/extrusion sources
 pub use analytic_export::{
-    check_swept_disk, extract_swept_disk_descriptions, extract_swept_disk_definitions,
+    check_swept_disk, extract_analytic_quantity_sources, AnalyticQuantitySources,
+    extract_swept_disk_descriptions, extract_swept_disk_definitions,
     extract_extrusion_definitions, AnalyticSourceContext, AnalyticSourceKey,
     extrusion_nominal_quantities, DirectrixMetrics, DirectrixSegmentMetrics,
     ExtrusionDefinition, ExtrusionDefinitions, ExtrusionInstance,
@@ -646,6 +647,12 @@ fabrication-code checks or bend-allowance calculations. IFC allows non-tangent
 consecutive segments to form a miter, so a tangent discontinuity is an
 inspection cue rather than an automatic schema violation
 ([IfcSweptDiskSolid](https://ifc43-docs.standards.buildingsmart.org/IFC/RELEASE/IFC4x3/HTML/lexical/IfcSweptDiskSolid.htm)).
+
+`extract_analytic_quantity_sources(ifc_bytes, ids)` collects flattened
+swept-disk descriptions, reusable swept-disk definitions, and reusable
+extrusion definitions in one bounded canonical representation walk. Description
+indices match source-instance `ordinal` values; the individual entry points
+keep their existing output contracts.
 
 `extract_swept_disk_definitions(ifc_bytes, ids)` provides an opt-in
 source/instance form without changing the flattened result above. A source
@@ -775,6 +782,9 @@ pub use step_log::{export_step_with_log, export_step_with_log_to_writer,
                    LogExportStats, StepCounters};
 pub use model::{build_export_model, stream_export_model, ExportModel /* ... */};
 pub use quantity_analysis::{analyze_authored_quantities, AuthoredQuantityAnalysis /* ... */};
+// Additional opt-in join: analyze_quantities(content, ids) -> QuantityAnalysis.
+// It combines authored observations with nominal source occurrences; product_total
+// is None with an aggregate diagnostic because overlap/voids/CSG are unknown.
 // `ExportModel` and both streaming entry points carry the model's UnitScales.
 // Attribute values are in the FILE's units, unlike the geometry exporters'
 // output, which is normalised to metres — so a consumer writing a quantity
@@ -813,6 +823,16 @@ estimates remain separate from this authored view.
 For Count and Number, distinct explicit unit entities are conservatively
 reported as a conflict even when their display symbols match, since unit names
 do not certify dimensional equivalence.
+
+`analyze_quantities(content, ids)` joins those authored observations with the
+canonical swept-disk and extrusion source/instance APIs. It keeps one source
+record per geometric use, its source key and mapping path, plus formula, origin,
+unit, limitation and status for each nominal measurement. Swept-disk directrix estimates are
+in world metres; extrusion source estimates remain in raw IFC file units.
+`Depth` is labelled as an authored solid parameter, separate from an authored
+`IfcElementQuantity`. Product, source-use and unique-source counts are distinct.
+`product_total` remains absent with `aggregate_diagnostic`, since overlap,
+openings and CSG prevent a defensible final material total.
 
 `export_step_with_log` applies the mutation log a `MutablePropertyView`
 records (`exportMutations()`), replayed as `importMutations` replays it into a

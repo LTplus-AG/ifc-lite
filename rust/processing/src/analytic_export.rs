@@ -70,6 +70,29 @@ impl Default for SweptDiskDescriptions {
     }
 }
 
+/// Three analytic source views from one bounded representation walk. This is
+/// useful for quantity joins that need exact swept-disk world directrices and
+/// reusable disk/extrusion definitions with matching occurrence ordinals.
+#[derive(Debug, Clone)]
+pub struct AnalyticQuantitySources {
+    pub swept_disk_descriptions: SweptDiskDescriptions,
+    pub swept_disk_definitions: SweptDiskDefinitions,
+    pub extrusion_definitions: ExtrusionDefinitions,
+}
+
+/// Extract all quantity source views in one canonical walk. Existing individual
+/// APIs keep their output and budget contracts unchanged.
+pub fn extract_analytic_quantity_sources(
+    content: &[u8], ids: Option<&HashSet<u32>>,
+) -> AnalyticQuantitySources {
+    let result = walk::extract(content, ids, true, true, true);
+    AnalyticQuantitySources {
+        swept_disk_descriptions: result.descriptions,
+        swept_disk_definitions: result.definitions.expect("definition collection requested"),
+        extrusion_definitions: result.extrusions.expect("extrusion collection requested"),
+    }
+}
+
 /// Extract exact swept-disk definitions for product occurrences, optionally
 /// restricted to a set of product STEP IDs. An empty set returns no products.
 /// Unsupported directrices are reported in each record's `status`; malformed

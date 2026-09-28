@@ -347,7 +347,7 @@ pub(super) fn extract(
                     view.instances.insert(id, pending_instances);
                 }
             }
-            if !collect_definitions {
+            if collect_descriptions {
                 result.elements.insert(id, descriptions);
             }
         }

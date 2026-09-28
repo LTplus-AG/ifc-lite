@@ -128,6 +128,23 @@ that read frequent, measure it on authored profiles with many line/arc edges and
 holes. Keeping validation outside mesh production preserves the normal load;
 the PR records paired timings and binary/fixture provenance.
 
+## Opt-in authored and analytic quantity join (#5787)
+
+The authored/analytic quantity join in #6283 runs only when callers request
+quantity analysis; normal mesh production does not enter it. An idle-host
+native control compared #6272 parent `3e554e841` with join source
+`af84e4d2d` in five balanced, interleaved AC20-FZK-Haus pairs, using fresh
+probe processes and five iterations per process. After the shared Cargo lock
+updated `smallvec` and `thiserror`, a [GitHub-hosted control](https://github.com/LTplus-AG/ifc-lite/actions/runs/36469927760)
+repeated the same paired method on exact current-lock parent `185ccf276` and
+join head `f278a70a3`. The later viewer/TypeScript merges left the native
+probe inputs unchanged. Both controls retained identical mesh counts and all
+ordered mesh fingerprints; parse, geometry and total variation overlapped.
+Verdict: no supported default-load speed change or mesh-output difference.
+The lesson is that a native load probe cannot establish the opt-in join's
+latency; measure that through its caller on representative authored-quantity
+models if it becomes material.
+
 ## Opt-in nominal source quantities (#5787)
 
 Nominal swept-disk and extrusion quantities are computed only when the analytic

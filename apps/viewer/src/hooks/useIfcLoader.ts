@@ -16,7 +16,6 @@ import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnab
 import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideMeshOnlyCacheHit, decideSourceTierCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
 import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
-import { nativeGeometryEnabled } from '@/lib/desktop/native-geometry';
 import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-source-identity';
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 import { computeFullSourceHash } from '../utils/sourceContentHash.js';
@@ -1298,12 +1297,7 @@ export function useIfcLoader() {
         // (#1286); `exact` mode keeps every cut. Must match the flag folded into
         // `cacheKey` above so cached bytes and live tessellation agree (#540, #1107).
         skipSmallCuts: skipSmallCutsAtLoad,
-        // Web builds pass `false`, as every other GeometryProcessor here does.
-        // The desktop shell can arm the native-Rust path at build time; it then
-        // still only engages under `isTauri()`. Note the two caveats documented
-        // on the flag — the WASM metadata parse still runs (double parse), and
-        // `tessellationQuality` above stops applying to geometry.
-        preferNative: nativeGeometryEnabled,
+        preferNative: false,
         // Issue #540: snapshot at load time so the WASM bridge applies
         // the flag before the first parseMeshes* call.
         mergeLayers: mergeLayersAtLoad,

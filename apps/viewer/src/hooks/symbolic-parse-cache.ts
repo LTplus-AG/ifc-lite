@@ -32,9 +32,9 @@ import {
 } from '@/lib/collab/room-symbolic-source';
 import { overlayRtcContextFor, type OverlayRtcContext } from '../lib/overlay-parse/rtc-context.js';
 import type { CoordinateInfo, RtcFrame } from '@ifc-lite/geometry';
+import { sourceFlatKey, spatialBucketKey } from './symbolic-parse-cache-keys.js';
 
-/**
- * Stable cache key for one parsed source.
+/** Stable cache key for one parsed source.
  *
  * Was a sampled hash (head/middle/tail, 96 bytes) chosen to avoid walking the
  * whole file. `IfcSourceBytes.contentKey` is a full-content hash computed once
@@ -51,6 +51,13 @@ function sourceKey(
   const roomSource = roomSymbolicSource(store);
   const contentKey = (roomSource?.source ?? store.source).contentKey ?? null;
   if (!contentKey) return null;
+  // The flat worker output depends on source bytes, but ParseResult also
+  // contains buckets assembled from this store's current spatial lookups.
+  // Identical IFC bytes can be paired with different live hierarchies (for
+  // example after a server refresh), so those lookup values must participate
+  // in the result key as well.
+  const hierarchy = store.spatialHierarchy;
+  const spatialKey = spatialBucketKey(hierarchy?.elementToStorey, hierarchy?.storeyElevations);
   // The cached `ParseResult` has the elevation rebase baked into it, and that
   // rebase is NOT a function of the source bytes: it carries `originShift`,
   // which federation and re-alignment set per model. Two models loaded from
@@ -62,7 +69,7 @@ function sourceKey(
   // and handing the same value to both the key and the parse. Read it twice
   // around the await and you file a result under a key describing a frame it
   // was not rebased for — see `useSymbolicAnnotations.frameRace.test.ts`.
-  return `${contentKey}|${rtc.key}|${rebase.primitive}|${rebase.storeyTable}`;
+  return `${contentKey}|${rtc.key}|${rebase.primitive}|${rebase.storeyTable}|${spatialKey}`;
 }
 
 async function parseFlatAnnotations(
@@ -125,6 +132,32 @@ async function parseAnnotations(
     storeyElevations: store.spatialHierarchy?.storeyElevations,
     elevationRebase,
   });
+}
+
+// The worker output is a function of source bytes and its producer RTC frame.
+// Keep it separate from ParseResult, whose storey buckets are assembled from
+// the current store's live spatial hierarchy.
+const SOURCE_FLAT_CACHE = new Map<string, FlatSymbolic>();
+const SOURCE_FLAT_INFLIGHT = new Map<string, Promise<FlatSymbolic>>();
+
+function sourceFlatFor(
+  store: IfcDataStore,
+  rtc: Exclude<OverlayRtcContext, { mode: 'pending' }>,
+): Promise<FlatSymbolic> {
+  const key = sourceFlatKey(store, rtc);
+  if (!key) return parseFlatAnnotations(store, store.source, rtc.frame);
+  const cached = SOURCE_FLAT_CACHE.get(key);
+  if (cached) return Promise.resolve(cached);
+  const pending = SOURCE_FLAT_INFLIGHT.get(key);
+  if (pending) return pending;
+  const promise = parseFlatAnnotations(store, store.source, rtc.frame)
+    .then((flat) => {
+      SOURCE_FLAT_CACHE.set(key, flat);
+      return flat;
+    })
+    .finally(() => SOURCE_FLAT_INFLIGHT.delete(key));
+  SOURCE_FLAT_INFLIGHT.set(key, promise);
+  return promise;
 }
 
 /**
@@ -273,7 +306,7 @@ export function ensureParseFor(stores: IfcDataStore[]): Promise<void>[] {
 
     const promise = (async () => {
       try {
-        const result = await parseAnnotations(store, elevationRebase, rtc.frame);
+        const result = await parseAnnotations(store, elevationRebase, rtc.frame, await sourceFlatFor(store, rtc));
         PARSE_CACHE.set(key, result);
         notifyCacheChange();
       } catch (error) {
@@ -299,6 +332,8 @@ export function ensureParseFor(stores: IfcDataStore[]): Promise<void>[] {
 export function __resetSymbolicAnnotationsCacheForTests(): void {
   PARSE_CACHE.clear();
   PARSE_INFLIGHT.clear();
+  SOURCE_FLAT_CACHE.clear();
+  SOURCE_FLAT_INFLIGHT.clear();
   ROOM_FLAT_CACHE = new WeakMap();
   ROOM_FLAT_INFLIGHT = new WeakMap();
   ROOM_PARSE_CACHE = new WeakMap();

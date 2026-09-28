@@ -68,6 +68,13 @@ describe('fitPlan / screenToLocal', () => {
     assert.deepEqual(back.map((v) => +v.toFixed(9)), [2.5, -1.5]);
   });
 
+  it('fills a narrow pane with a small margin (#6232 M2.4 review: Fit left the storey at half the pane)', () => {
+    const fit = fitPlan([poly(1, rect(0, 0, 12, 10))], [], [], 308, 895);
+    const width = sX(fit, 12) - sX(fit, 0);
+    assert.ok(width / 308 >= 0.9, `the storey spans ${(width / 308).toFixed(2)} of the pane width`);
+    assert.ok(sX(fit, 0) >= 12 - 1e-9 && sX(fit, 12) <= 308 - 12 + 1e-9, 'and keeps a margin');
+  });
+
   it('frames the cut and the wall axes together', () => {
     const fit = fitPlan([poly(1, rect(0, 0, 4, 1))], [], [{ expressId: 9, a: [0, 5], b: [4, 5] }], 800, 600);
     for (const p of [[0, 0], [4, 5]] as Vec2[]) {

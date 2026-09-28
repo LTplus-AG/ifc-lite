@@ -16,6 +16,8 @@ mod units;
 mod budget;
 #[path = "quantity_analysis_diagnostics.rs"]
 mod diagnostics;
+#[path = "quantity_analysis_relations.rs"]
+mod relations;
 use budget::{AnalysisLimits, ExpansionBudget, LeafBudgetError};
 use diagnostics::Diagnostics;
 
@@ -31,26 +33,6 @@ const MAX_CONFLICT_COMPARISONS: usize = 100_000;
 
 fn report_once(diagnostics: &mut Diagnostics, message: &'static str) {
     diagnostics.report_once(message);
-}
-
-fn property_definition_refs(value: &AttributeValue) -> Result<Vec<u32>, &'static str> {
-    if let Some(id) = value.as_entity_ref() { return Ok(vec![id]); }
-    let Some(items) = value.as_list() else { return Err("malformed RelatingPropertyDefinition"); };
-    // The core decoder represents a STEP typed value as [type name, args...].
-    // IFC4's IfcPropertySetDefinitionSet has exactly one SET argument.
-    let refs = if matches!(items.first().and_then(AttributeValue::as_string),
-        Some("IFCPROPERTYSETDEFINITIONSET")) {
-        if items.len() != 2 { return Err("malformed RelatingPropertyDefinition"); }
-        items[1].as_list().ok_or("malformed RelatingPropertyDefinition")?
-    } else { items };
-    if refs.is_empty() || refs.len() > MAX_REL_MEMBERS {
-        return Err("RelatingPropertyDefinition exceeds work budget or is empty");
-    }
-    let mut ids = Vec::with_capacity(refs.len());
-    for item in refs {
-        ids.push(item.as_entity_ref().ok_or("malformed RelatingPropertyDefinition")?);
-    }
-    Ok(ids)
 }
 
 enum QuantityOrigin { Occurrence, Type(u32) }
@@ -279,87 +261,11 @@ fn analyze_with_limits(
     let product_count = products.len();
     let index = Arc::new(ifc_lite_processing::build_entity_index_parallel(content));
     let mut decoder = EntityDecoder::with_arc_index(content, index.clone());
-    let mut direct: HashMap<u32, Vec<u32>> = HashMap::new();
-    let mut typed: HashMap<u32, u32> = HashMap::new();
-    let mut conflicting_types = HashSet::new();
-    let mut remaining_links = limits.links;
     let mut diagnostics = Diagnostics::default();
-    let mut scan = EntityScanner::new(content);
-    while let Some((id, name, start, end)) = scan.next_entity() {
-        if !ifc_lite_core::keyword_eq(name, "IFCRELDEFINESBYPROPERTIES") &&
-           !ifc_lite_core::keyword_eq(name, "IFCRELDEFINESBYTYPE") { continue; }
-        if remaining_links == 0 {
-            report_once(&mut diagnostics, "quantity relationship links exceed work budget");
-            continue;
-        }
-        if end.saturating_sub(start) > MAX_REF_RECORD_BYTES {
-            diagnostics.push(format!("relationship #{id}: record exceeds work budget"));
-            continue;
-        }
-        let rel = match decoder.decode_at_uncached(start, end) {
-            Ok(rel) => rel,
-            Err(_) => {
-                diagnostics.push(format!("relationship #{id}: cannot decode"));
-                continue;
-            }
-        };
-        let targets = if rel.ifc_type == IfcType::IfcRelDefinesByProperties {
-            match rel.get(5).ok_or("missing RelatingPropertyDefinition")
-                .and_then(property_definition_refs) {
-                Ok(refs) => refs,
-                Err(reason) => {
-                    diagnostics.push(format!("relationship #{id}: {reason}"));
-                    continue;
-                }
-            }
-        } else {
-            let Some(target_id) = rel.get_ref(5) else {
-                diagnostics.push(format!("relationship #{id}: missing or invalid RelatingType"));
-                continue;
-            };
-            vec![target_id]
-        };
-        let Some(members) = rel.get(4).and_then(|a| a.as_list()) else {
-            diagnostics.push(format!("relationship #{id}: malformed RelatedObjects"));
-            continue;
-        };
-        if members.is_empty() || members.len() > MAX_REL_MEMBERS {
-            diagnostics.push(format!("relationship #{id}: RelatedObjects is empty or exceeds work budget"));
-            continue;
-        }
-        let mut reported_invalid_member = false;
-        for member in members {
-            let Some(product_id) = member.as_entity_ref() else {
-                if !reported_invalid_member {
-                    diagnostics.push(format!("relationship #{id}: malformed RelatedObjects member"));
-                    reported_invalid_member = true;
-                }
-                continue;
-            };
-            if !products.contains_key(&product_id) { continue; }
-            let cost = if rel.ifc_type == IfcType::IfcRelDefinesByProperties { targets.len() } else { 1 };
-            if cost > remaining_links {
-                report_once(&mut diagnostics, "expanded quantity links exceed work budget");
-                break;
-            }
-            remaining_links -= cost;
-            if rel.ifc_type == IfcType::IfcRelDefinesByProperties {
-                direct.entry(product_id).or_default().extend_from_slice(&targets);
-            } else {
-                if conflicting_types.contains(&product_id) { continue; }
-                match typed.get(&product_id) {
-                    Some(&first) if first != targets[0] => {
-                        typed.remove(&product_id);
-                        conflicting_types.insert(product_id);
-                        diagnostics.push(format!(
-                            "product #{product_id}: conflicting IfcRelDefinesByType assignments"));
-                    }
-                    Some(_) => {}
-                    None => { typed.insert(product_id, targets[0]); }
-                }
-            }
-        }
-    }
+    let relations = relations::collect_relationships(
+        content, &mut decoder, &products, limits.links, &mut diagnostics);
+    let direct = relations.direct;
+    let typed = relations.typed;
     let project_units = project_id.map(|id| ProjectUnits::resolve(&mut decoder, id)).unwrap_or_default();
     let mut type_defs = HashMap::<u32, Vec<u32>>::new();
     let mut budget = ExpansionBudget { rows: limits.rows, sets: limits.sets,

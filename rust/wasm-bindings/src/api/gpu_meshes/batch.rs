@@ -7,7 +7,8 @@ use super::batch_partition::{
     take_back_rejected, tallyable_rep, INSTANCE_MIN_OCCURRENCES,
 };
 use super::partitioned_batch::PartitionedBatch;
-use super::style_finishes::mesh_js_with_finish;
+use super::style_finishes::{finish_at, mesh_js_with_finish, BatchFinishes};
+use ifc_lite_processing::prepass::finish_to_wire;
 use super::void_index::reconstruct_void_index;
 use crate::api::IfcAPI;
 use crate::zero_copy::{GeometryFingerprint, MeshCollection};
@@ -21,6 +22,8 @@ use wasm_bindgen::prelude::*;
 struct ElementMeshOutput {
     id: u32,
     meshes: Vec<ifc_lite_processing::MeshData>,
+    /// #5984: `meshes[i]`'s finish at `[i]`; empty when none are installed.
+    finishes: Vec<Option<ifc_lite_processing::style::SpecularMaterial>>,
     geometry_hash: Option<u64>,
     /// World AABB from the same hashing pass, `Some` exactly when
     /// `geometry_hash` is (see `ProducedElementMeshes::geometry_aabb`).
@@ -296,6 +299,10 @@ impl IfcAPI {
             }
         };
         let geometry_styles = &style_maps.0;
+        // #5984: finishes `setStyleFinishes` installed for this style wire, joined
+        // per mesh from the style its colour came from.
+        let installed_finishes = self.style_finishes_for(style_ids);
+        let mut batch_finishes = BatchFinishes::new(installed_finishes.as_deref(), geometry_styles);
         // #1097: element colours were resolved in a separate pre-pass that
         // re-decoded every job entity (a second full decode + deep-clone pass).
         // That resolution is now folded into the main loop below — each entity
@@ -501,6 +508,7 @@ impl IfcAPI {
             }
             outputs.push(ElementMeshOutput {
                 id,
+                finishes: batch_finishes.for_meshes(&produced.meshes, &mut decoder),
                 meshes: produced.meshes,
                 geometry_hash: produced.geometry_hash,
                 geometry_aabb: produced.geometry_aabb,
@@ -583,7 +591,7 @@ impl IfcAPI {
                 [0.0, 0.0, 0.0]
             };
             let mut recovered_flats: Vec<ifc_lite_processing::MeshData> = Vec::new();
-            let shard = super::instancing::resolve_batch_occurrences(
+            let mut shard = super::instancing::resolve_batch_occurrences(
                 std::mem::take(&mut all_occurrences),
                 &template_by_rep,
                 &mapped_item_cache,
@@ -598,12 +606,16 @@ impl IfcAPI {
                 let id = m.express_id;
                 outputs.push(ElementMeshOutput {
                     id,
+                    finishes: batch_finishes.for_meshes(std::slice::from_ref(&m), &mut decoder),
                     meshes: vec![m],
                     geometry_hash: None,
                     geometry_aabb: None,
                     geometry_volume: None,
                     geometry_closure_bits: 0,
                 });
+            }
+            for occ in &mut shard {
+                occ.finish = batch_finishes.for_occurrence(occ.entity_id, occ.geometry_item_id, occ.color, &mut decoder);
             }
             shard
         };
@@ -673,8 +685,6 @@ impl IfcAPI {
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
             material_element_ids, material_color_counts, material_colors_rgba, false,
         );
-        // #5582: the finishes `setStyleFinishes` installed for this style wire.
-        let finishes = self.style_finishes_for(style_ids);
         let mut mesh_collection = MeshCollection::with_capacity(num_jobs);
         if needs_shift {
             mesh_collection.set_rtc_offset(rtc_x, rtc_y, rtc_z);
@@ -682,8 +692,8 @@ impl IfcAPI {
         for out in outputs {
             // Taken BEFORE the meshes are moved out of `out` below.
             let fingerprint = out.fingerprint();
-            for mesh_data in out.meshes {
-                mesh_collection.add(mesh_js_with_finish(mesh_data, finishes.as_deref()));
+            for (i, mesh_data) in out.meshes.into_iter().enumerate() {
+                mesh_collection.add(mesh_js_with_finish(mesh_data, finish_at(&out.finishes, i)));
             }
             if let Some(fp) = fingerprint {
                 mesh_collection.push_geometry_hash(fp);
@@ -736,8 +746,14 @@ impl IfcAPI {
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
             material_element_ids, material_color_counts, material_colors_rgba, false,
         );
-        let meshes: Vec<ifc_lite_processing::MeshData> =
-            outputs.into_iter().flat_map(|o| o.meshes).collect();
+        let (meshes, wires): (Vec<ifc_lite_processing::MeshData>, Vec<[f32; 2]>) = outputs
+            .into_iter()
+            .flat_map(|o| {
+                let finishes = o.finishes;
+                o.meshes.into_iter().enumerate().map(move |(i, m)| (m, finish_to_wire(finish_at(&finishes, i))))
+            })
+            .filter(|(m, _)| m.geometry_class == 0)
+            .unzip();
         // `refs` borrows the geometry in `meshes`; both live to the end of this
         // method and collate_and_encode consumes them synchronously below.
         //
@@ -751,7 +767,6 @@ impl IfcAPI {
         // the "blue windows/roof" + type geometry showing in Model mode).
         let refs: Vec<ifc_lite_geometry::InstanceMeshRef> = meshes
             .iter()
-            .filter(|m| m.geometry_class == 0)
             .map(|m| ifc_lite_geometry::InstanceMeshRef {
                 positions: &m.positions,
                 normals: &m.normals,
@@ -770,7 +785,8 @@ impl IfcAPI {
         // post-RTC frame (matches the small baked origins; without it a rotated
         // occurrence lands at 2× the georef offset and collapses GLB exports).
         let rtc = if needs_shift { [rtc_x, rtc_y, rtc_z] } else { [0.0, 0.0, 0.0] };
-        ifc_lite_geometry::collate_and_encode(&refs, 2, rtc)
+        let collated = ifc_lite_geometry::collate_refs(&refs, 2, rtc);
+        ifc_lite_geometry::encode_refs_with_finishes(&refs, &collated, &wires)
     }
 
     /// Produce a batch ONCE and PARTITION it (the instanced-ONLY path): opaque
@@ -820,9 +836,6 @@ impl IfcAPI {
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
             material_element_ids, material_color_counts, material_colors_rgba, true,
         );
-        // #5582: stamped on the flat side only; the IFNS shard has no material
-        // slot, so an instanced occurrence keeps the renderer's default finish.
-        let finishes = self.style_finishes_for(style_ids);
         let mut mesh_collection = MeshCollection::with_capacity(num_jobs);
         if needs_shift {
             mesh_collection.set_rtc_offset(rtc_x, rtc_y, rtc_z);
@@ -843,12 +856,14 @@ impl IfcAPI {
         // type-product (class 1/2) and class-toggled (IfcSpace, IfcOpeningElement, …,
         // #5409) geometry are never instancing candidates — they must stay on the flat
         // pipelines for correct blending / texturing / view-mode / class-toggle gating.
-        let mut candidates: Vec<ifc_lite_processing::MeshData> = Vec::new();
+        type Finish = Option<ifc_lite_processing::style::SpecularMaterial>;
+        let mut candidates: Vec<(ifc_lite_processing::MeshData, Finish)> = Vec::new();
         let mut counts: rustc_hash::FxHashMap<u128, u32> = rustc_hash::FxHashMap::default();
         for out in outputs {
             // Taken BEFORE the meshes are moved out of `out` below.
             let fingerprint = out.fingerprint();
-            for mesh_data in out.meshes {
+            for (i, mesh_data) in out.meshes.into_iter().enumerate() {
+                let finish = finish_at(&out.finishes, i);
                 if is_instancing_candidate(&mesh_data) {
                     // Count only instanceable metas — mirror collate_refs's match arm:
                     // a None meta or instanceable==false (void-cut walls, multi-item
@@ -856,9 +871,9 @@ impl IfcAPI {
                     if let Some(rep) = tallyable_rep(&mesh_data) {
                         *counts.entry(rep).or_insert(0) += 1;
                     }
-                    candidates.push(mesh_data);
+                    candidates.push((mesh_data, finish));
                 } else {
-                    mesh_collection.add(mesh_js_with_finish(mesh_data, finishes.as_deref()));
+                    mesh_collection.add(mesh_js_with_finish(mesh_data, finish));
                 }
             }
             // The element-level geometry-diff record is path-independent metadata;
@@ -876,12 +891,12 @@ impl IfcAPI {
         for occ in &shard_occurrences {
             *counts.entry(occ.rep_identity).or_insert(0) += 1;
         }
-        let mut instanced: Vec<ifc_lite_processing::MeshData> = Vec::new();
-        for mesh_data in candidates {
+        let mut instanced: Vec<(ifc_lite_processing::MeshData, Finish)> = Vec::new();
+        for (mesh_data, finish) in candidates {
             if meets_instance_threshold(&mesh_data, &counts) {
-                instanced.push(mesh_data);
+                instanced.push((mesh_data, finish));
             } else {
-                mesh_collection.add(mesh_js_with_finish(mesh_data, finishes.as_deref()));
+                mesh_collection.add(mesh_js_with_finish(mesh_data, finish));
             }
         }
         // Each materialized instanced mesh is one shard instance; each kept don't-bake
@@ -906,7 +921,7 @@ impl IfcAPI {
             .collect();
         let mut refs: Vec<ifc_lite_geometry::InstanceMeshRef> = instanced
             .iter()
-            .map(|m| ifc_lite_geometry::InstanceMeshRef {
+            .map(|(m, _)| ifc_lite_geometry::InstanceMeshRef {
                 positions: &m.positions,
                 normals: &m.normals,
                 indices: &m.indices,
@@ -933,11 +948,13 @@ impl IfcAPI {
             });
         }
         let rtc = if needs_shift { [rtc_x, rtc_y, rtc_z] } else { [0.0, 0.0, 0.0] };
+        // #5984: the finish rides the shard's per-instance field 2, index-parallel to `refs`.
+        let wires: Vec<[f32; 2]> = instanced.iter().map(|(_, f)| *f).chain(shard_occurrences.iter().map(|o| o.finish)).map(finish_to_wire).collect();
         let (shard, rejected, dropped) =
-            encode_shard_routing_refusals_back(&refs, instanced.len(), rtc);
+            encode_shard_routing_refusals_back(&refs, &wires, instanced.len(), rtc);
         drop(refs);
         // Handed back = drawn flat; DROPPED = drawn nowhere. Both leave the count.
-        let taken = take_back_rejected(instanced, &rejected, &mut mesh_collection, finishes.as_deref());
+        let taken = take_back_rejected(instanced, &rejected, &mut mesh_collection);
         let instanced_occurrences = instanced_occurrences - dropped - taken;
         mesh_collection.set_diagnostics(csg_diag);
         PartitionedBatch {

@@ -462,13 +462,23 @@ export const mainShaderSource = `
             let instancedPass = (uniforms.flags.x & 4u) != 0u;
             let translucent = finalAlpha < 0.99;
             let glass = translucent && uniforms.transmission.x > 0.5 && !instancedPass;
-            let metallic = clamp(uniforms.metallicRoughness.x, 0.0, 1.0);
+            // #5984: an instanced occurrence's own authored finish rides its
+            // flags lane (instanced-render.ts packInstanceFinish); the pass's
+            // uniform row is the shared default.
+            var metallicRoughness = vec2<f32>(uniforms.metallicRoughness.x, uniforms.metallicRoughness.y);
+            if (instancedPass && (input.instSelected & 4u) != 0u) {
+              metallicRoughness.x = f32((input.instSelected >> 16u) & 255u) / 255.0;
+            }
+            if (instancedPass && (input.instSelected & 8u) != 0u) {
+              metallicRoughness.y = f32((input.instSelected >> 24u) & 255u) / 255.0;
+            }
+            let metallic = clamp(metallicRoughness.x, 0.0, 1.0);
             let spec = surfaceSpecular(
               N,
               normalize(-input.eyePos),
               baseColor,
               metallic,
-              uniforms.metallicRoughness.y,
+              metallicRoughness.y,
               env.sunColor * (env.sunIntensity * sunShadow),
             );
             // What the lobe reflects is not there to diffuse; a metal has no

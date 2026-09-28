@@ -2,8 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! #5582: the `styleFinishes` wire decode, the per-mesh finish stamp keyed by
-//! `geometry_item_id`, and the `setStyleFinishes` / `setPrepassGeometryFinishes`
+//! #5582: the `styleFinishes` wire decode, the batch's per-mesh finish join
+//! (#5984), and the `setStyleFinishes` / `setPrepassGeometryFinishes`
 //! state on a real `IfcAPI`.
 
 use super::*;
@@ -64,53 +64,50 @@ fn a_malformed_finish_wire_keeps_only_complete_pairs() {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// finish_for_geometry_item / mesh_js_with_finish — the per-mesh join
+// BatchFinishes / mesh_js_with_finish — the per-mesh join
 // ───────────────────────────────────────────────────────────────────────────
 
-/// The join is `finishes[mesh.geometry_item_id]`: two meshes of one element
-/// from different items take different finishes, a mesh with no item id takes
-/// none, and an empty claim (a style that authored no specular) is no finish.
+/// Item level: a mesh takes the finish of its own styled representation item;
+/// two meshes of one element from different items take different finishes; an
+/// empty claim (a style that authored no specular) is no finish; nothing
+/// installed means no join at all. (The element-level and type-level reach is
+/// `ifc_lite_processing`'s `finish_join` tests; this pins the batch wiring.)
 #[test]
 fn a_mesh_takes_the_finish_of_its_own_representation_item() {
     let mut finishes = StyleFinishes::default();
     finishes.insert(10, steel());
     finishes.insert(11, SpecularMaterial { metallic: None, roughness: Some(0.9) });
     finishes.insert(12, SpecularMaterial::default());
+    let colors: FxHashMap<u32, [f32; 4]> = [10, 11, 12].into_iter().map(|id| (id, [0.5, 0.5, 0.5, 1.0])).collect();
+    let mut decoder = ifc_lite_core::EntityDecoder::new(b"");
 
-    assert_eq!(finish_for_geometry_item(Some(10), Some(&finishes)), Some(steel()));
-    assert_eq!(finish_for_geometry_item(Some(11), Some(&finishes)).and_then(|f| f.roughness), Some(0.9));
-    assert_eq!(finish_for_geometry_item(Some(12), Some(&finishes)), None, "empty claim");
-    assert_eq!(finish_for_geometry_item(Some(13), Some(&finishes)), None, "unstyled item");
-    assert_eq!(finish_for_geometry_item(None, Some(&finishes)), None, "no item id");
-    assert_eq!(finish_for_geometry_item(Some(10), None), None, "no finishes installed");
+    let meshes: Vec<MeshData> = [Some(10), Some(11), Some(12), Some(13), None].into_iter().map(mesh_from_item).collect();
+    let joined = BatchFinishes::new(Some(&finishes), &colors).for_meshes(&meshes, &mut decoder);
+    assert_eq!(joined[0], Some(steel()));
+    assert_eq!(joined[1].and_then(|f| f.roughness), Some(0.9));
+    assert_eq!(joined[2], None, "empty claim");
+    assert_eq!(joined[3], None, "unstyled item");
+    assert_eq!(joined[4], None, "no item id, no element to fall back to");
+    assert!(BatchFinishes::new(None, &colors).for_meshes(&meshes, &mut decoder).is_empty(), "none installed");
 }
 
 /// What JS reads: the `MeshDataJs.metallic/roughness` getters of the mesh the
-/// batch hands over, stamped from the item's finish and otherwise `undefined`.
+/// batch hands over, stamped from the joined finish and otherwise `undefined`.
 #[test]
-fn the_js_mesh_reports_its_items_finish_through_the_getters() {
-    let mut finishes = StyleFinishes::default();
-    finishes.insert(10, steel());
-    finishes.insert(11, SpecularMaterial { metallic: None, roughness: Some(0.9) });
-
-    let js = mesh_js_with_finish(mesh_from_item(Some(10)), Some(&finishes));
+fn the_js_mesh_reports_its_finish_through_the_getters() {
+    let js = mesh_js_with_finish(mesh_from_item(Some(10)), Some(steel()));
     assert_eq!((js.metallic(), js.roughness()), (Some(1.0), Some(0.1)));
-
-    let js = mesh_js_with_finish(mesh_from_item(Some(11)), Some(&finishes));
+    let half = SpecularMaterial { metallic: None, roughness: Some(0.9) };
+    let js = mesh_js_with_finish(mesh_from_item(Some(11)), Some(half));
     assert_eq!((js.metallic(), js.roughness()), (None, Some(0.9)), "a half-authored finish stays half");
-
-    for js in [
-        mesh_js_with_finish(mesh_from_item(Some(99)), Some(&finishes)),
-        mesh_js_with_finish(mesh_from_item(None), Some(&finishes)),
-        mesh_js_with_finish(mesh_from_item(Some(10)), None),
-    ] {
-        assert_eq!((js.metallic(), js.roughness()), (None, None));
-    }
+    let js = mesh_js_with_finish(mesh_from_item(Some(10)), None);
+    assert_eq!((js.metallic(), js.roughness()), (None, None));
+    assert_eq!(finish_at(&[], 3), None, "an empty join result is no finish");
 }
 
 /// #5582 through the Rust side of the boundary: the finish the prepass
 /// resolved for a styled item, flattened by the function the wasm prepass
-/// calls, decoded by the helper `setStyleFinishes` uses, and stamped by the one
+/// calls, decoded by the helper `setStyleFinishes` uses, and joined by the one
 /// the batch uses, lands on the mesh produced from that item. The
 /// indexed-colour fallback id beside it is colour-only and stamps nothing.
 #[test]
@@ -135,18 +132,20 @@ fn a_prepass_finish_reaches_the_mesh_built_from_its_item() {
     let mut resolved = resolve_prepass(&spans, &mut decoder, ResolveOptions::default());
     resolved.indexed_colour_index.insert(11, [1.0, 0.0, 0.0, 1.0]);
     let geometry_finishes = resolve_geometry_finishes(&spans.styled_items, &mut decoder);
-    let (ids, _colors, wire) = flat_styles_with_finishes(&resolved, &geometry_finishes, &mut decoder);
+    let (ids, colors, wire) = flat_styles_with_finishes(&resolved, &geometry_finishes, &mut decoder);
     assert_eq!(ids, vec![10, 11]);
 
     let api = IfcAPI::new();
     api.set_style_finishes(&ids, &wire);
     let installed = api.style_finishes_for(&ids).expect("installed for this style wire");
+    let colors = super::super::batch_partition::style_colors_from_wire(&ids, &colors);
+    let joined = BatchFinishes::new(Some(&installed), &colors)
+        .for_meshes(&[mesh_from_item(Some(10)), mesh_from_item(Some(11))], &mut decoder);
 
-    let steel = mesh_js_with_finish(mesh_from_item(Some(10)), Some(&installed));
-    assert_eq!(steel.metallic(), Some(1.0));
-    assert!(steel.roughness().is_some_and(|r| (r - 0.1).abs() < 1e-6), "1 - 0.9 -> 0.1");
-    let fallback = mesh_js_with_finish(mesh_from_item(Some(11)), Some(&installed));
-    assert_eq!((fallback.metallic(), fallback.roughness()), (None, None));
+    let steel = joined[0].expect("#10 authors a finish");
+    assert_eq!(steel.metallic, Some(1.0));
+    assert!(steel.roughness.is_some_and(|r| (r - 0.1).abs() < 1e-6), "1 - 0.9 -> 0.1");
+    assert_eq!(joined[1], None, "the indexed-colour fallback is colour-only");
 }
 
 // ───────────────────────────────────────────────────────────────────────────

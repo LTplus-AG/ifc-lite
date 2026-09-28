@@ -9,14 +9,15 @@
 //! beside them instead: the host hands the prepass's `(styleIds,
 //! styleFinishes)` pair to [`IfcAPI::set_style_finishes`] once per API
 //! instance, and the batch stamps each mesh it hands to JS with the finish of
-//! its source representation item (`MeshData.geometry_item_id`), the same key
-//! the prepass keys `styleIds` by. The colour-only style index the producer
+//! the style its colour came from (the canonical join, #5984), keyed like
+//! `styleIds` by styled representation item. The colour-only style index the producer
 //! consumes is untouched, so a host that never calls it gets exactly the
 //! meshes it always had.
 
 use crate::api::IfcAPI;
 use crate::zero_copy::MeshDataJs;
-use ifc_lite_processing::style::SpecularMaterial;
+use ifc_lite_core::EntityDecoder;
+use ifc_lite_processing::style::{MeshFinishJoin, SpecularMaterial};
 use ifc_lite_processing::MeshData;
 use rustc_hash::FxHashMap;
 use std::sync::{Arc, PoisonError};
@@ -55,23 +56,54 @@ pub(super) fn style_finishes_from_wire(ids: &[u32], finishes: &[f32]) -> StyleFi
     out
 }
 
-/// The finish a produced mesh carries: the one authored for its source
-/// representation item. A mesh with no item id (a material-layer slice, a
-/// synthetic mesh) or an item with no authored finish gets none, and so keeps
-/// the renderer's default.
-pub(super) fn finish_for_geometry_item(
-    geometry_item_id: Option<u32>,
-    finishes: Option<&StyleFinishes>,
-) -> Option<SpecularMaterial> {
-    let finish = *finishes?.get(&geometry_item_id?)?;
-    (finish.metallic.is_some() || finish.roughness.is_some()).then_some(finish)
+/// The batch's finish join (#5984): `ifc_lite_processing::style::MeshFinishJoin`
+/// over this batch's colour index and decoder, so a mesh's finish comes from
+/// the style its colour came from. That reaches past the mesh's own item: an
+/// occurrence styled on its `IfcMappedItem`, and #957 type geometry, whose
+/// meshes carry no item id at all. `None` inside when no finishes are
+/// installed for this style wire, and then every join is free.
+pub(super) struct BatchFinishes<'a> {
+    join: Option<MeshFinishJoin<'a>>,
+}
+
+impl<'a> BatchFinishes<'a> {
+    pub(super) fn new(installed: Option<&'a StyleFinishes>, colors: &'a FxHashMap<u32, [f32; 4]>) -> Self {
+        let join = installed
+            .filter(|f| !f.is_empty())
+            .map(|f| MeshFinishJoin::new(f, move |id| colors.get(&id).copied()));
+        Self { join }
+    }
+
+    /// One finish per mesh, index-parallel; empty when nothing is installed.
+    pub(super) fn for_meshes(&mut self, meshes: &[MeshData], decoder: &mut EntityDecoder) -> Vec<Option<SpecularMaterial>> {
+        match self.join.as_mut() {
+            Some(join) => meshes.iter().map(|m| join.finish_for_mesh(m, decoder)).collect(),
+            None => Vec::new(),
+        }
+    }
+
+    /// The finish of a pose-only (don't-bake) shard occurrence, which has no
+    /// `MeshData` of its own.
+    pub(super) fn for_occurrence(
+        &mut self,
+        express_id: u32,
+        geometry_item_id: Option<u32>,
+        color: [f32; 4],
+        decoder: &mut EntityDecoder,
+    ) -> Option<SpecularMaterial> {
+        self.join.as_mut()?.finish(express_id, geometry_item_id, color, decoder)
+    }
+}
+
+/// Entry `i` of a [`BatchFinishes::for_meshes`] result (empty means none).
+pub(super) fn finish_at(finishes: &[Option<SpecularMaterial>], i: usize) -> Option<SpecularMaterial> {
+    finishes.get(i).copied().flatten()
 }
 
 /// [`MeshDataJs::from_mesh_data`] plus the #5582 finish stamp. Every site that
 /// turns a batch's `MeshData` into a `MeshDataJs` goes through this, so the
 /// flat collection and the partitioned batch's flat side cannot disagree.
-pub(super) fn mesh_js_with_finish(mesh: MeshData, finishes: Option<&StyleFinishes>) -> MeshDataJs {
-    let finish = finish_for_geometry_item(mesh.geometry_item_id, finishes);
+pub(super) fn mesh_js_with_finish(mesh: MeshData, finish: Option<SpecularMaterial>) -> MeshDataJs {
     let mut js = MeshDataJs::from_mesh_data(mesh);
     if let Some(finish) = finish {
         js.set_material(finish.metallic, finish.roughness);
@@ -91,9 +123,9 @@ impl IfcAPI {
     /// simply gets no finish.
     ///
     /// The batch stamps each returned `MeshDataJs` (`metallic` / `roughness`)
-    /// from these, keyed by the mesh's representation item. Meshes that ride
-    /// the instanced (IFNS) shard of `processGeometryBatchPartitioned*` carry
-    /// no finish: the shard format has no material slot.
+    /// from these, taking each mesh's finish from the style its colour came
+    /// from (#5984). Occurrences that ride the instanced (IFNS) shard carry
+    /// theirs in the shard's per-instance finish field (v3).
     #[wasm_bindgen(js_name = setStyleFinishes)]
     pub fn set_style_finishes(&self, style_ids: &[u32], style_finishes: &[f32]) {
         let finishes = style_finishes_from_wire(style_ids, style_finishes);

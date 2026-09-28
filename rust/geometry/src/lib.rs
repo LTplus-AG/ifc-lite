@@ -201,8 +201,8 @@ pub use geom_hash::{
 pub use extrusion::{extrude_profile, extrude_profile_lofted, extrude_profile_with_voids};
 pub use instancing::{
     bake_source_at_world, collate_and_encode, collate_instances, collate_refs,
-    collate_refs_in_basis, collate_refs_verified_in, compose_instance_world_row_major, decode_instanced,
-    encode_instanced, encode_refs, instance_rel_row_major_f32, verify_recomposition, Collated,
+    collate_refs_in_basis, collate_refs_verified_in, compose_instance_world_row_major, decode_instance_finishes, decode_instanced,
+    encode_instanced, encode_refs, encode_refs_with_finishes, instance_rel_row_major_f32, verify_recomposition, Collated,
     DecodedInstance, DecodedInstanced, DecodedTemplate, InstanceMeshRef, InstanceOccurrence,
     InstanceTemplate, INSTANCED_MAGIC, INSTANCED_VERSION,
 };

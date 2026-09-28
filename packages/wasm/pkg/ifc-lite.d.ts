@@ -1232,9 +1232,9 @@ export class IfcAPI {
      * simply gets no finish.
      *
      * The batch stamps each returned `MeshDataJs` (`metallic` / `roughness`)
-     * from these, keyed by the mesh's representation item. Meshes that ride
-     * the instanced (IFNS) shard of `processGeometryBatchPartitioned*` carry
-     * no finish: the shard format has no material slot.
+     * from these, taking each mesh's finish from the style its colour came
+     * from (#5984). Occurrences that ride the instanced (IFNS) shard carry
+     * theirs in the shard's per-instance finish field (v3).
      */
     setStyleFinishes(style_ids: Uint32Array, style_finishes: Float32Array): void;
     /**

@@ -17,7 +17,7 @@ import { AuthoredPreparationRegistry, prepareSceneAuthoredOwner } from './scene-
 import { interleaveTexturedVertices } from './textured-vertices.js';
 import { RgbaTexturePool } from './rgba-texture-pool.js';
 import { splitMeshForStreaming } from './scene-stream-split.js';
-import type { Mesh, BatchedMesh, Vec3, PickClipState, Material } from './types.js';
+import type { Mesh, BatchedMesh, Vec3, PickClipState, Material, MeshFinish } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import { hostsOtherEntities } from './mesh-entity-hosting.js';
 import type { RenderPipeline } from './pipeline.js';
@@ -64,6 +64,7 @@ import {
   INSTANCE_FLAGS_OFFSET,
   INSTANCE_FLAG_SELECTED,
   INSTANCE_FLAG_HIDDEN,
+  INSTANCE_FINISH_FLAGS_MASK,
 } from './instanced-render.js';
 import { translateInstanceRecord } from './scene-instance-translation.js';
 import { discardSceneGpuResourcesForRecovery, prepareSceneDeviceRecovery, repartitionHydratedRecoveryBucket, restoreSceneGpuResourcesAfterRecovery, type SceneDeviceRecoveryPreparation, type SceneRecoveryHost } from './scene-device-recovery.js';
@@ -106,14 +107,11 @@ export interface TexturedMesh {
   bindGroup: GPUBindGroup;
   /** Authored tint (multiplies the sampled texel); white = texture passthrough. */
   color: [number, number, number, number];
-  /**
-   * A caller-supplied finish, mirroring {@link Mesh.material}. Nothing writes
-   * this today: IFC-authored specular (#5582) reaches flat and batched
-   * meshes as `finish`, but the textured path does not carry one yet, so
-   * `packMeshMaterial` falls back to its defaults for every textured draw.
-   * The field is the SAME optional hook `Mesh.material` is.
-   */
+  /** A caller-supplied finish, mirroring {@link Mesh.material}. */
   material?: Material;
+  /** IFC-authored finish (#5582), copied from `MeshData.material` at upload
+   *  (#5984); like {@link Mesh.finish}, `packMeshMaterial` prefers it. */
+  finish?: MeshFinish;
   /**
    * The mesh's per-element local frame (`MeshData.origin`, already Y-up) — the
    * renderer must reconstruct `world = origin + position`.
@@ -3088,7 +3086,7 @@ export class Scene {
           this.instancedEntityMap.set(eid, arr);
         }
         // #2985; no id column or the 0 sentinel ⇒ none. ASSIGNED, never conditionally spread: ONE object shape for records that outlive the shard.
-        arr.push({ templateIndex, byteOffset, originalColor, itemId: t.itemIds?.[i] || undefined });
+        arr.push({ templateIndex, byteOffset, originalColor, itemId: t.itemIds?.[i] || undefined, finishBits: (cdv.getUint32(byteOffset + INSTANCE_FLAGS_OFFSET, true) & INSTANCE_FINISH_FLAGS_MASK) >>> 0 });
 
         // A shard can stream in AFTER a selection was recorded (its ids may
         // exist in earlier shards or the flat path). setInstancedSelection
@@ -3432,7 +3430,7 @@ export class Scene {
         ? (loc.itemId === this.instancedSelectedItemId ? INSTANCE_FLAG_SELECTED : 0)
         : (eidSelected ? INSTANCE_FLAG_SELECTED : 0);
       const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
-      if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_FLAGS_OFFSET, new Uint32Array([(selectedBit | hiddenBit) >>> 0]));
+      if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_FLAGS_OFFSET, new Uint32Array([(selectedBit | hiddenBit | (loc.finishBits ?? 0)) >>> 0]));
     }
   }
 
@@ -3568,6 +3566,7 @@ export class Scene {
         sampler,
         bindGroup,
         color: meshData.color,
+        ...(meshData.material ? { finish: meshData.material } : {}), // IFC-authored (#5984)
         // `world = origin + position` (#1973). Absent on the orphan
         // type-geometry path, whose positions are already absolute.
         origin: meshData.origin

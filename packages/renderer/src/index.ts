@@ -2720,7 +2720,7 @@ export class Renderer {
                         // never actually blends here — only the glass/roughness
                         // CHOICE in the shader follows the same rule as everywhere
                         // else, for the same reason `tm.material` does.
-                        packMeshMaterial(tpl, tm.color[3], tm.material);
+                        packMeshMaterial(tpl, tm.color[3], tm.finish ?? tm.material);
                         device.queue.writeBuffer(tm.uniformBuffer, 0, tpl);
                         pass.setBindGroup(0, tm.bindGroup);
                         pass.setVertexBuffer(0, tm.vertexBuffer);

@@ -104,9 +104,9 @@ export {
   type RateLimitOptions,
   type RateLimiter,
 } from './rate-limit.js';
+export { FsBlobStorage } from './blob-storage-fs.js';
 export {
   InMemoryBlobStorage,
-  FsBlobStorage,
   handleBlobRequest,
   type ServerBlobStorage,
   type ServerBlobMeta,

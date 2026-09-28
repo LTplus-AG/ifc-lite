@@ -16,18 +16,29 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { RoomManager } from '../src/room-manager.js';
 import { MemoryPersistence } from '../src/persistence.js';
-import { FsBlobStorage } from '../src/blob-route.js';
+import { FsBlobStorage } from '../src/blob-storage-fs.js';
 import { resolveBlobGcConfig, startBlobGc } from '../src/blob-gc-worker.js';
 import { defaultMetrics } from '../src/metrics.js';
 
 const dirs: string[] = [];
+const storages: FsBlobStorage[] = [];
 const tmp = () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-wire-'));
   dirs.push(d);
   return d;
 };
-afterEach(() => {
-  for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+/** An `FsBlobStorage` awaited in `afterEach` before its dir is removed (#6286). */
+const fsStorage = (dataDir: string) => {
+  const storage = new FsBlobStorage(dataDir);
+  storages.push(storage);
+  return storage;
+};
+afterEach(async () => {
+  try {
+    await Promise.all(storages.splice(0).map((s) => s.whenReady()));
+  } finally {
+    for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  }
 });
 
 describe('blob gc wiring', () => {
@@ -54,7 +65,7 @@ describe('blob gc wiring', () => {
   it('startBlobGc arms a worker when enabled and none when disabled', () => {
     const dataDir = tmp();
     const roomManager = new RoomManager({ persistence: new MemoryPersistence() });
-    const storage = new FsBlobStorage(dataDir);
+    const storage = fsStorage(dataDir);
 
     const off = startBlobGc({
       dataDir,
@@ -122,7 +133,7 @@ describe('blob gc wiring', () => {
 
     const worker = startBlobGc({
       dataDir,
-      storage: new FsBlobStorage(dataDir),
+      storage: fsStorage(dataDir),
       config: { enabled: true, intervalMs: 60_000, graceMs: 1000 },
     });
     expect(worker).not.toBeNull();
@@ -152,7 +163,7 @@ describe('blob gc wiring', () => {
     // nothing could have run by the time this test finishes.
     const worker = startBlobGc({
       dataDir,
-      storage: new FsBlobStorage(dataDir),
+      storage: fsStorage(dataDir),
       config: { enabled: true, intervalMs: 60 * 60 * 1000, graceMs: 60_000 },
     });
     expect(worker).not.toBeNull();

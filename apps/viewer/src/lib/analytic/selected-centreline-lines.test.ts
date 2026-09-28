@@ -144,7 +144,7 @@ describe('selected centreline overlay (#5778)', () => {
       ] }], useViewerStore.getState(), null, undefined, (message) => messages.push(message));
       assert.equal(curves.length, 10_000);
       assert.equal(curves.at(-1)?.identity.segmentIndex, 9_999);
-      assert.match(messages.join('; '), /10,000 curves.*omitted/);
+      assert.match(messages.join('; '), /10000 curves.*omitted/);
     } finally {
       useViewerStore.setState(prior);
     }

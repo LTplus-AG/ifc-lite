@@ -193,9 +193,13 @@ function refuse(modelId: string, reason: RemeshRefusal): RemeshOutcome {
   return { status: 'refused', reason };
 }
 
-/** True when a live mesh of these entities also hosts other entities' geometry. */
-function hostsColourMerged(model: FederatedModel, globalIds: ReadonlySet<number>): boolean {
-  return model.geometryResult?.meshes.some((mesh) => globalIds.has(mesh.expressId) && hostsOtherEntities(mesh)) ?? false;
+/** Those of `globalIds` with a live mesh that also hosts other entities' geometry. */
+function colourMergedAmong(model: FederatedModel, globalIds: ReadonlySet<number>): Set<number> {
+  const merged = new Set<number>();
+  for (const mesh of model.geometryResult?.meshes ?? []) {
+    if (globalIds.has(mesh.expressId) && hostsOtherEntities(mesh)) merged.add(mesh.expressId);
+  }
+  return merged;
 }
 
 function stamp(modelId: string, ids: Iterable<number>): Map<string, number> {
@@ -236,11 +240,38 @@ function groupByGlobalId<T>(globalIds: ReadonlySet<number>, meshes: readonly Mes
   return out;
 }
 
+/** Requests still in flight per loaded model, by what they ask for and the edit state they asked it of. */
+const inFlight = new WeakMap<object, Map<string, Promise<RemeshOutcome>>>();
+
 /**
- * Re-mesh `expressIds` (model-local) of `modelId` after an edit. Never
- * throws; the outcome says what happened.
+ * Re-mesh `expressIds` (model-local) of `modelId` after an edit, and send each
+ * re-meshed element's meshes to the collaboration room (a no-op outside one),
+ * so peers see the same geometry after a commit, an undo and a redo alike.
+ * Never throws; the outcome says what happened.
+ *
+ * One commit can ask twice for the same thing (an add re-meshes the element it
+ * creates, and a modeling transaction re-meshes what its commit reports), so
+ * an identical request made before any further edit shares the pending one.
  */
-export async function requestRemesh(
+export function requestRemesh(
+  get: Get, modelId: string, expressIds: Iterable<number>, cause: RemeshCause,
+): Promise<RemeshOutcome> {
+  const ids = [...expressIds].sort((a, b) => a - b);
+  const store = get().models.get(modelId)?.ifcDataStore;
+  if (!store) return remesh(get, modelId, ids, cause);
+  let pending = inFlight.get(store);
+  if (!pending) inFlight.set(store, pending = new Map());
+  const key = `${cause}|${get().mutationVersion}|${ids.join(',')}`;
+  const shared = pending.get(key);
+  if (shared) return shared;
+  const request = remesh(get, modelId, ids, cause);
+  pending.set(key, request);
+  const forget = () => { if (pending!.get(key) === request) pending!.delete(key); };
+  void request.then(forget, forget);
+  return request;
+}
+
+async function remesh(
   get: Get, modelId: string, expressIds: Iterable<number>, cause: RemeshCause,
 ): Promise<RemeshOutcome> {
   const start = performance.now();
@@ -254,8 +285,17 @@ export async function requestRemesh(
   const view = state.mutationViews.get(modelId) ?? null;
   const targets = expandAffectedSet(store, view, expressIds, cause);
   if (targets.size === 0) return { status: 'stale' };
+  const mergedGlobalIds = colourMergedAmong(model, new Set([...targets].map((id) => toGlobalIdFromModels(state.models, modelId, id))));
+  const merged = [...targets].filter((id) => mergedGlobalIds.has(toGlobalIdFromModels(state.models, modelId, id)));
+  if (merged.length > 0) {
+    // A colour-merged mesh can't be swapped on its own. An edit of it is
+    // refused whole; a new element still gets its mesh, and only the merged
+    // context it would have re-cut (a host) keeps its old one (#6232).
+    if (cause !== 'created' || merged.length === targets.size) return refuse(modelId, 'colourMerged');
+    notice(modelId, REFUSAL_NOTICES.colourMerged);
+    for (const id of merged) targets.delete(id);
+  }
   const globalIds = new Set([...targets].map((id) => toGlobalIdFromModels(state.models, modelId, id)));
-  if (hostsColourMerged(model, globalIds)) return refuse(modelId, 'colourMerged');
   const stamps = stamp(modelId, targets);
   const epoch = disposals;
 
@@ -290,6 +330,10 @@ export async function requestRemesh(
       ? groupByGlobalId<PreAlignmentMeshBaseline>(globalIds, framed.meshes, framed.preAligned)
       : undefined;
     get().replaceEntityMeshes(modelId, byGlobalId, preAligned);
+    for (const id of targets) {
+      const meshes = byGlobalId.get(toGlobalIdFromModels(get().models, modelId, id));
+      if (meshes?.length) get().mirrorEntityGeometry(modelId, id, meshes);
+    }
     for (const key of noticed) if (key.startsWith(`${modelId}:`)) noticed.delete(key);
     const end = performance.now();
     return {
@@ -305,7 +349,7 @@ export async function requestRemesh(
     // The worker was terminated on purpose (another model unloaded) while
     // this ran: ask again on a fresh one unless the request went stale anyway.
     if (disposals !== epoch) {
-      return isCurrent(get, modelId, store, stamps, targets) ? requestRemesh(get, modelId, targets, cause) : { status: 'stale' };
+      return isCurrent(get, modelId, store, stamps, targets) ? remesh(get, modelId, targets, cause) : { status: 'stale' };
     }
     const message = error instanceof Error ? error.message : String(error);
     console.error('[remesh] failed:', error);

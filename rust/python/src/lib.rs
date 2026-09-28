@@ -34,6 +34,7 @@ use std::collections::HashSet;
 
 mod swept_disks;
 mod analytic_definitions;
+mod quantity_analysis;
 mod entity_data;
 mod swept_disk_checks;
 
@@ -205,6 +206,8 @@ fn ifclite_geom(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(geometry_data_buffers, m)?)?;
     m.add_function(wrap_pyfunction!(geometry_data_json, m)?)?;
     m.add_function(wrap_pyfunction!(analytic_definitions::swept_disk_definitions, m)?)?;
+    m.add_function(wrap_pyfunction!(analytic_definitions::extrusion_definitions, m)?)?;
+    m.add_function(wrap_pyfunction!(quantity_analysis::authored_quantity_analysis, m)?)?;
     m.add_function(wrap_pyfunction!(entity_data::entity_data, m)?)?;
     m.add_function(wrap_pyfunction!(swept_disk_checks::check_swept_disks, m)?)?;
     m.add("__doc__", "Native ifc-lite geometry and attribute export for Python.")?;

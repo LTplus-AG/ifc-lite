@@ -7,6 +7,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { Scene } from './scene.js';
 import { Renderer } from './index.js';
 import { ModelTranslations } from './model-translation.js';
+import { INSTANCE_STRIDE_BYTES } from './instanced-render.js';
 import { MathUtils } from './math.js';
 import type { Mesh } from './types.js';
 import { modelPlacementBounds } from './model-placement-bounds.js';
@@ -391,7 +392,7 @@ for (const reshape of [false, true]) it(`does not resurrect removed released geo
 });
 
 describe('ModelTranslations yaw (#4890)', () => {
-  const STRIDE = 88;
+  const STRIDE = INSTANCE_STRIDE_BYTES;
 
   /** Write one instance record's 3 linear columns + translation, little-endian,
    *  matching `INSTANCE_STRIDE_BYTES`'s column-major mat4 layout. */
@@ -409,19 +410,19 @@ describe('ModelTranslations yaw (#4890)', () => {
   }
 
   it('keeps canonical f64 instance anchors through a centimetre model move at 5,000 km (#5049)', () => {
-    const translations = new ModelTranslations(), data = new ArrayBuffer(120), view = new DataView(data);
+    const translations = new ModelTranslations(), data = new ArrayBuffer(STRIDE), view = new DataView(data);
     writeRecord(view, [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [5_000_000, 0, 0]);
     const anchors = new Float64Array([5_000_000.015625, 0, 0]);
     const matrixTranslations = new Float32Array([5_000_000, 0, 0]);
-    translations.placeInstances(data, 7, 120, anchors, matrixTranslations);
+    translations.placeInstances(data, 7, STRIDE, anchors, matrixTranslations);
 
     translations.set(7, [0.01, 0, 0]);
-    translations.placeInstances(data, 7, 120, anchors, matrixTranslations);
+    translations.placeInstances(data, 7, STRIDE, anchors, matrixTranslations);
     assert.equal(anchors[0], 5_000_000.025625, 'f64 residual survives the model translation');
     assert.equal(matrixTranslations[0], view.getFloat32(48, true), 'materialization baseline follows the V1 matrix write');
 
     translations.set(7, [0, 0, 0]);
-    translations.placeInstances(data, 7, 120, anchors, matrixTranslations);
+    translations.placeInstances(data, 7, STRIDE, anchors, matrixTranslations);
     assert.equal(anchors[0], 5_000_000.015625, 'undo returns to the exact source anchor');
   });
 

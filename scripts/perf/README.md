@@ -27,6 +27,22 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Instanced RTE deltas: one upload per template (#6393, PR #6399)
+
+On a large MEP model with ~45K GPU-instanced occurrences, a browser run
+(interleaved base vs branch, same wasm) showed the frame was bound by
+`queue.writeBuffer` COUNT, not by shading or fill. The old path wrote each
+occurrence's 32-byte camera-relative delta separately, once per pass. Moving
+the deltas into a per-template stream that is packed on the CPU (the f64
+contract is unchanged) and uploaded once per template, cached per camera,
+brought orbit, pan and wheel zoom to vsync. The screenshot stayed
+pixel-identical. The lessons:
+
+- Count queue operations per frame before optimising shaders. On this model,
+  switching off AO, edges or dropping DPR moved nothing measurable.
+- A per-object `writeBuffer` in a per-frame path is a GPU-process IPC cost
+  that the main-thread profile shows only as `(program)` time.
+
 ## Renderer colour override table (#6076, PR #6148)
 
 A base-versus-branch browser run on a real Archicad architectural IFC, followed
@@ -125,6 +141,23 @@ meaningful default-load regression or speedup is demonstrated. The default
 probe does not measure opt-in quantity extraction or browser worker-pool
 latency, which need separate caller-level evidence if they become hot paths.
 The PR carries paired results, binary/fixture hashes, and source provenance.
+
+## Opt-in extrusion source definitions (#5784)
+
+The extrusion source/instance walk is requested separately from ordinary mesh
+production. The final-parent control compared main `888a9a72` (Rust tree
+`0997415df1603d5c802bbf658b1dc12001c39990`) with the #6271 source
+(Rust tree `88e3c3a26f1e7e4dde087c65cab81ec7d0e9c046`) in five interleaved,
+fresh-process AC20-FZK-Haus pairs with five inner iterations each. All 50
+ordered mesh fingerprints, mesh counts, vertex counts, and triangle counts
+matched. The paired timings varied in both directions, so no supported
+default-load speedup or meaningful regression is demonstrated. This control
+does not measure opt-in extraction or browser worker-pool latency; measure
+those directly if their caller-visible cost becomes material. Paired results
+and source provenance are recorded in [PR #6271](https://github.com/LTplus-AG/ifc-lite/pull/6271);
+base/head binary SHA-256 values are `a2f586ce7f5c38d1bcd24275e5f1fef4d00b45fcf3b0041cd6d6492b8d389640`
+and `2b20fdad11da01f6c4cc9a531509b921347aaa343736488d3658f184b9f3cf9e`,
+and the fixture SHA-256 is `ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d`.
 
 ## Derived swept-disk metrics (#5754)
 

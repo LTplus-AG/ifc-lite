@@ -5,6 +5,7 @@
 //! JavaScript API for IFC-Lite; feature methods live in focused child modules.
 
 mod alignment_lines;
+mod analytic_serialization;
 mod appearance;
 mod appearance_page;
 mod appearance_atlas;
@@ -20,6 +21,7 @@ mod clash_solid;
 mod csg_diagnostics;
 mod diagnose;
 mod entity_index;
+mod extrusion_definitions;
 mod export_data;
 mod export_dfjson;
 mod export_glb;

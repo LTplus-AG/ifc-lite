@@ -77,10 +77,10 @@ export const shadowShaderSource = `
           @location(5) m2: vec4<f32>,
           @location(6) m3: vec4<f32>,
           // Per-occurrence flags lane (bit 1 = hidden), same instance buffer the
-          // colour pass reads. Locations 7 (entityId) and 8 (rgba) are unused by
-          // the depth pass and left unbound.
+          // colour pass reads. Locations 7 (entityId) and 8 (rgba) are in the
+          // shared layout but unused by the depth pass.
           @location(9) flags: u32,
-          // V2 split drawable-minus-camera delta, byte offsets 88 and 104.
+          // Split drawable-minus-camera delta from the slot-2 delta stream.
           @location(10) anchorHigh: vec4<f32>,
           @location(11) anchorLow: vec4<f32>,
         }

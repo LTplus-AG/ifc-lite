@@ -13,7 +13,7 @@ import type { RtcFrame } from './rtc-frame.js';
 import type { HbjsonStats } from './hbjson-stats.js';
 import * as energyExport from './energy-export-bridge.js';
 import type { GeometryDiagnostics } from './diagnostics.js';
-import type { SweptDiskDescriptions } from './analytic-descriptions.js';
+import type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
 import { getStartedSharedWasmModule } from './wasm-shared-module.js';
 import {
   isWasmRuntimeTrap,
@@ -429,9 +429,12 @@ export class IfcLiteBridge {
 
   /** Exact authored swept-disk definitions and measurements in IFC world metres. */
   extractSweptDiskDescriptions(content: Uint8Array, ids?: Uint32Array): SweptDiskDescriptions {
-    return this.runExport('extractSweptDiskDescriptions', content, (api) =>
-      api.extractSweptDiskDescriptions(content, ids) as SweptDiskDescriptions,
-    );
+    return this.runExport('extractSweptDiskDescriptions', content, (api) => api.extractSweptDiskDescriptions(content, ids) as SweptDiskDescriptions);
+  }
+
+  /** Exact authored extrusion sources and their world-space product occurrences. */
+  extractExtrusionDefinitions(content: Uint8Array, ids?: Uint32Array): ExtrusionDefinitions {
+    return this.runExport('extractExtrusionDefinitions', content, (api) => api.extrusionDefinitions(content, ids));
   }
 
   /**

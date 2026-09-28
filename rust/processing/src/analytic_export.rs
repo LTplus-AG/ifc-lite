@@ -23,8 +23,10 @@ mod placement;
 mod mapped;
 mod walk;
 mod definitions;
-pub use definitions::{SweptDiskDefinition, SweptDiskDefinitions, SweptDiskInstance,
-    SweptDiskSourceKey, SweptDiskSourceContext};
+pub use definitions::{AnalyticSourceContext, AnalyticSourceKey, SweptDiskDefinition,
+    SweptDiskDefinitions, SweptDiskInstance, SweptDiskSourceKey, SweptDiskSourceContext};
+mod extrusion_definitions;
+pub use extrusion_definitions::{ExtrusionDefinition, ExtrusionDefinitions, ExtrusionInstance};
 use serde::Serialize;
 
 const MAX_VISITED_ITEMS: usize = 100_000;
@@ -76,7 +78,7 @@ impl Default for SweptDiskDescriptions {
 pub fn extract_swept_disk_descriptions(
     content: &[u8], ids: Option<&HashSet<u32>>,
 ) -> SweptDiskDescriptions {
-    walk::extract(content, ids, false).descriptions
+    walk::extract(content, ids, false, true, false).descriptions
 }
 
 /// Opt-in source/instance view. Definitions stay in raw IFC file units;
@@ -84,5 +86,15 @@ pub fn extract_swept_disk_descriptions(
 pub fn extract_swept_disk_definitions(
     content: &[u8], ids: Option<&HashSet<u32>>,
 ) -> SweptDiskDefinitions {
-    walk::extract(content, ids, true).definitions.expect("definition collection requested")
+    walk::extract(content, ids, true, false, false).definitions.expect("definition collection requested")
+}
+
+/// Opt-in exact source/instance view of `IfcExtrudedAreaSolid` occurrences.
+/// Source profiles and depths retain IFC file units; each f64 occurrence
+/// matrix maps solid-local source coordinates to absolute IFC Z-up metres.
+pub fn extract_extrusion_definitions(
+    content: &[u8], ids: Option<&HashSet<u32>>,
+) -> ExtrusionDefinitions {
+    walk::extract(content, ids, false, false, true)
+        .extrusions.expect("extrusion collection requested")
 }

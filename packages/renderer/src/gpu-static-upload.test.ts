@@ -36,11 +36,14 @@ interface FakeBuffer {
   destroy(): void;
 }
 
-function strictDevice(options: { failWrite?: boolean } = {}) {
+function strictDevice(options: { failWrite?: boolean; failLabel?: string } = {}) {
   const created: FakeBuffer[] = [];
   const device = {
     limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
     createBuffer(desc: GPUBufferDescriptor): FakeBuffer {
+      if (options.failLabel !== undefined && desc.label === options.failLabel) {
+        throw new RangeError(`simulated allocation failure for ${desc.label}`);
+      }
       if (desc.mappedAtCreation) {
         throw new RangeError(
           "Failed to execute 'createBuffer' on 'GPUDevice': createBuffer failed, " +
@@ -181,6 +184,17 @@ describe('Scene static-geometry uploads never map at creation (#5429)', () => {
     assert.ok(scene.getBatchedMeshes().length > 0, 'batches were restored');
     assert.strictEqual(scene.getInstancedTemplates().length, 1, 'instanced templates were restored');
     assert.ok(second.created.length > 0);
+  });
+  // Review on #6399: the RTE delta stream is the template's last allocation;
+  // if it fails, the buffers already created for the template must be freed,
+  // and no half-built template may be published.
+  it('frees the template buffers when the RTE delta stream allocation fails (#6393)', () => {
+    const scene = new Scene();
+    const { device, created } = strictDevice({ failLabel: 'instanced-rte-deltas' });
+    assert.throws(() => scene.addInstancedShard(device, shard(), 0), /simulated allocation failure/);
+    assert.strictEqual(created.length, 3, 'vertex, index and instance buffers were created first');
+    assert.deepStrictEqual(created.map((b) => b.destroyed), [1, 1, 1], 'each is destroyed exactly once');
+    assert.strictEqual(scene.getInstancedTemplates().filter(Boolean).length, 0, 'no template was published');
   });
   it('the LOD1 index buffer is uploaded the same way', () => {
     // A 100x100 quad grid: 20k triangles, far past LOD_MIN_TRIANGLES, and a

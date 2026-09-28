@@ -64,6 +64,7 @@ packages/parser/src/project-units.ts
 packages/parser/src/quantity-collect.ts
 packages/parser/src/spatial-hierarchy-attributes.ts
 packages/parser/src/spatial-hierarchy-builder.ts
+packages/parser/src/structural-extractor.ts
 packages/parser/src/unit-extractor.ts
 packages/parser/src/worker-index-publication.ts
 packages/query/src/duckdb-integration.ts

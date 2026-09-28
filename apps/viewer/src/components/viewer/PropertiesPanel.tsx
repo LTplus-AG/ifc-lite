@@ -24,7 +24,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { IfcQuery } from '@ifc-lite/query';
-import { extractClassificationsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, extractStructuralOnDemand, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeQuantitiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, extractStructuralOnDemand, getAttributeNames, normalizeIfcTypeName, type IfcDataStore, type MaterialPsetGroup, type StructuralExtractionView } from '@ifc-lite/parser';
 import { RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
@@ -793,9 +793,35 @@ export function PropertiesPanel() {
   const structuralData = useMemo(() => {
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return null;
-    const out = extractStructuralOnDemand(dataStore as IfcDataStore);
+    const id = selectedEntity?.modelId === 'legacy' ? '__legacy__' : (model?.id ?? selectedEntity?.modelId);
+    const mutationView = id ? mutationViews.get(id) : undefined;
+    const effectiveView: StructuralExtractionView | undefined = mutationView ? {
+      isDeleted: (expressId) => mutationView.isDeleted(expressId),
+      getNewEntities: () => mutationView.getNewEntities(),
+      getNewEntitiesOfType: (type) => mutationView.getNewEntitiesOfType(type),
+      getNewEntity: (expressId) => mutationView.getNewEntity(expressId),
+      getTypeMutations: () => mutationView.getTypeMutations(),
+      getTombstones: () => mutationView.getTombstones(),
+      readEntity: (expressId, effectiveType, source) => {
+        const fresh = mutationView.getNewEntity(expressId);
+        const attrs = source?.attrs.slice() ?? [...(fresh?.attributes ?? [])];
+        for (const [index, value] of mutationView.getPositionalMutationsForEntity(expressId) ?? []) attrs[index] = value;
+        const type = normalizeIfcTypeName(effectiveType);
+        for (const mutation of mutationView.getAttributeMutationsForEntity(expressId)) {
+          const index = getAttributeNames(type).indexOf(mutation.name);
+          if (index >= 0) attrs[index] = mutation.value;
+        }
+        return {
+          expressId,
+          type,
+          attrs,
+          globalId: typeof attrs[0] === 'string' ? attrs[0] : source?.globalId ?? '',
+        };
+      },
+    } : undefined;
+    const out = extractStructuralOnDemand(dataStore as IfcDataStore, effectiveView);
     return out.hasStructural ? out : null;
-  }, [model, ifcDataStore]);
+  }, [model, ifcDataStore, selectedEntity?.modelId, mutationViews, mutationVersion]);
   /** True when the selection is itself a structural member the extraction
    *  knows about — used, like `hasScheduleForSelection`, to keep the
    *  separator above StructuralCard from rendering on its own. */

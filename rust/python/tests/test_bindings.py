@@ -378,6 +378,22 @@ def test_issue_5759_rebar_schedule_type_fallback_conflict_and_missing_geometry()
     assert empty_row["geometry_unavailable_reason"]
 
 
+def test_issue_5759_rebar_schedule_rejects_nonfinite_radius_before_json():
+    source = read(REBAR).decode()
+    huge_unit = (
+        "#3=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);\n"
+        "#4=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n"
+        "#5=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(1.E308),#4);\n"
+        "#6=IFCCONVERSIONBASEDUNIT(#3,.LENGTHUNIT.,'huge',#5);"
+    )
+    source_with_huge_unit = source.replace(
+        "#6=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);", huge_unit,
+    )
+    assert source_with_huge_unit != source
+    with pytest.raises(ValueError, match=r"rebar #125 sweep 0 has a non-finite radius"):
+        ifclite_geom.rebar_schedule(source_with_huge_unit.encode())
+
+
 def test_issue_5759_rebar_schedule_retains_unsupported_source_reason():
     source = read(TRIMMED_BAR).decode().replace(
         "#46=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#10,$,$);",

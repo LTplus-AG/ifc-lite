@@ -339,7 +339,9 @@ a physical section area. Each source sweep separately carries
 radius, centreline length and bend angles, geometric checks, and reusable
 `source` identity. For complete paths, radii are effective world values in
 metres; an unsupported transform retains source radii in metres and does not
-establish a world circular radius. Mapped repetitions remain separate, while repeated
+establish a world circular radius. If a file's unit conversion makes a radius
+non-finite, the binding raises `ValueError` instead of returning JSON `null`.
+Mapped repetitions remain separate, while repeated
 uses of one representation map share a source key. If the independent definition
 output budget is exhausted, `source` is `None` with a row diagnostic; the
 world-space schedule sweep remains available. An authored `BarLength`

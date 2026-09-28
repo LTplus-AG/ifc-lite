@@ -45,6 +45,18 @@ pub(super) fn rebar_schedule(
                 .map_err(|error| error.to_string())
         })
         .map_err(PyRuntimeError::new_err)?;
+    for (id, row) in &schedule.rows {
+        for sweep in &row.sweeps {
+            if !sweep.radius_m.is_finite()
+                || sweep.inner_radius_m.is_some_and(|radius| !radius.is_finite())
+            {
+                return Err(PyValueError::new_err(format!(
+                    "rebar #{id} sweep {} has a non-finite radius",
+                    sweep.occurrence_index
+                )));
+            }
+        }
+    }
     let payload = serde_json::to_string(&schedule)
         .map_err(|error| PyValueError::new_err(error.to_string()))?;
     let decoded = py.import("json")?.getattr("loads")?.call1((payload,))?;

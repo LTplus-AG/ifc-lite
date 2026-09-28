@@ -170,7 +170,13 @@ pub fn check_swept_disk(
         }
         if let (Some(a), Some(b)) = (left.end_tangent, right.start_tangent) {
             let dot = a.iter().zip(b).map(|(x, y)| x * y).sum::<f64>().clamp(-1.0, 1.0);
-            let angle = dot.acos();
+            // Unlike acos(dot), atan2 retains small turns when dot rounds to 1.
+            let cross = [
+                a[1] * b[2] - a[2] * b[1],
+                a[2] * b[0] - a[0] * b[2],
+                a[0] * b[1] - a[1] * b[0],
+            ];
+            let angle = cross[0].hypot(cross[1]).hypot(cross[2]).atan2(dot);
             if angle > options.tangent_tolerance_rad {
                 report.findings.push(finding(SweptDiskFindingCode::TangentDiscontinuity,
                     index, Some(index + 1), angle, options.tangent_tolerance_rad, "rad"));

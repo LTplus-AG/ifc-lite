@@ -65,6 +65,31 @@ fn deliberate_gap_sharp_corner_and_zero_length_have_indexed_measures() {
 }
 
 #[test]
+fn issue_5758_small_tangent_turn_respects_tolerance_without_flagging_straight_joins() {
+    let mut occurrence = disk("swept_disk_trimmed_line", 50);
+    let mut options = SweptDiskCheckOptions::default();
+    options.tangent_tolerance_rad = 1e-9;
+    for (turn, expected_finding) in [(1e-8, true), (1e-10, false), (0.0, false)] {
+        occurrence.directrix = vec![
+            line([0.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
+            line([1.0, 0.0, 0.0], [2.0, turn, 0.0]),
+        ];
+        let report = check_swept_disk(&occurrence, &options).unwrap();
+        assert_eq!(report.skipped_reason, None);
+        if expected_finding {
+            assert_eq!(report.findings.len(), 1);
+            let finding = &report.findings[0];
+            assert_eq!(finding.code, SweptDiskFindingCode::TangentDiscontinuity);
+            assert_eq!((finding.segment_index, finding.next_segment_index), (0, Some(1)));
+            assert_eq!((finding.threshold, finding.units), (1e-9, "rad"));
+            assert!((finding.measured - turn.atan()).abs() < 1e-20);
+        } else {
+            assert!(report.findings.is_empty(), "turn {turn}: {:?}", report.findings);
+        }
+    }
+}
+
+#[test]
 fn arc_radius_constraint_is_independent_of_configurable_tolerances() {
     let mut occurrence = disk("swept_disk_composite_arc_lbar", 78);
     occurrence.radius = 0.0895;

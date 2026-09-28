@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { WorldPoint } from './relative-to-eye.js';
+import type { InstancedRteDeltaStream } from './instanced-rte.js';
 
 /** Which geometry path an occluder draw takes through the shadow pass. */
 export type ShadowDrawKind = 'flat' | 'quantized' | 'instanced' | 'textured';
@@ -23,6 +24,8 @@ export interface ShadowOccluderDraw {
   instanceCount?: number;
   /** Canonical f64 occurrence origins for an instanced draw, xyz per record. */
   canonicalAnchors?: Float64Array;
+  /** The template's camera-relative delta stream, bound at vertex slot 2 (#6393). */
+  rteDeltas?: InstancedRteDeltaStream;
 }
 
 /** Camera-owned RTE inputs for one shadow submission. */

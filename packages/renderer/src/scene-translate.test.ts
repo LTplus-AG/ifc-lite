@@ -5,6 +5,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { Scene } from './scene.js';
+import { INSTANCE_STRIDE_BYTES } from './instanced-render.js';
+import { createInstancedRteDeltaStream, uploadInstancedRteDeltas } from './instanced-rte.js';
+
+// WebGPU enum global used by delta-stream allocation (not defined in node).
+(globalThis as Record<string, unknown>).GPUBufferUsage ??= { COPY_DST: 8, VERTEX: 32 };
 import type { MeshData } from '@ifc-lite/geometry';
 
 /**
@@ -102,14 +107,14 @@ describe('Scene.translateMeshesForEntity', () => {
  * guarded by a cached device we don't supply, so the matrix math is exercised
  * CPU-side via the instance record + the lazily-materialized occurrence MeshData.
  */
-const INSTANCE_STRIDE = 120; // mirrors INSTANCE_STRIDE_BYTES
+const INSTANCE_STRIDE = INSTANCE_STRIDE_BYTES;
 
 interface InstancedTestState {
   instancedEntityMap: Map<number, { templateIndex: number; byteOffset: number; originalColor: number[] }[]>;
   instancedTemplateCpu: {
     positions: Float32Array; normals: Float32Array; indices: Uint32Array;
     instanceData: ArrayBuffer; localMin: number[]; localMax: number[];
-    canonicalAnchors?: Float64Array; canonicalMatrixTranslations?: Float32Array;
+    canonicalAnchors: Float64Array; canonicalMatrixTranslations?: Float32Array;
   }[];
   instancedTemplates: unknown[];
   boundingBoxes: Map<number, { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }>;
@@ -131,6 +136,7 @@ function injectInstanced(scene: Scene, expressId: number, t: [number, number, nu
     normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
     indices: new Uint32Array([0, 1, 2]),
     instanceData,
+    canonicalAnchors: new Float64Array(t),
     localMin: [0, 0, 0], localMax: [1, 1, 0],
   }];
   s.instancedTemplates = []; // no GPU buffer => writeBuffer path skipped
@@ -189,12 +195,39 @@ describe('Scene.translateInstancedEntity', () => {
     assert.strictEqual(piece.origin?.[0], 5_000_000.025, 'f64 anchor retains centimetre residual');
     assert.strictEqual(piece.positions[3], 1, 'template residual remains local f32');
 
-    // The CPU record must keep its source anchor for bounds and device recovery;
-    // only the GPU copy is converted to an RTE delta for a draw submission.
+    // The f64 sidecar keeps its source anchor for bounds, device recovery and
+    // the next delta-stream upload.
     assert.strictEqual(scene.translateInstancedEntity(77, [0, 2, 0]), true);
-    const sourceX = dv.getFloat32(88, true) + dv.getFloat32(104, true);
-    assert.ok(Math.abs(sourceX - 5_000_000.025) < 1e-6, 'CPU source anchor keeps the residual');
+    assert.deepStrictEqual([...state.instancedTemplateCpu[0].canonicalAnchors], [5_000_000.025, 2, 0],
+      'CPU source anchor keeps the residual');
     assert.strictEqual(scene.getInstancedMeshDataPieces(77)![0].origin?.[1], 2);
+  });
+
+  it('invalidates the template\'s RTE delta stream so the next upload repacks the moved anchor (#6393)', () => {
+    const scene = new Scene();
+    injectInstanced(scene, 12, [10, 0, 0]);
+    const state = scene as unknown as InstancedTestState;
+    const writes: Array<{ offset: number; data: Float32Array }> = [];
+    const device = {
+      createBuffer: ({ size }: { size: number }) => ({ size, destroy() {} }),
+      queue: {
+        writeBuffer: (_b: GPUBuffer, offset: number, data: Float32Array) => { writes.push({ offset, data: data.slice() }); },
+      },
+    } as unknown as GPUDevice;
+    const template = {
+      instanceCount: 1,
+      canonicalAnchors: state.instancedTemplateCpu[0].canonicalAnchors,
+      rteDeltas: createInstancedRteDeltaStream(device, 1),
+    };
+    state.instancedTemplates = [template];
+    uploadInstancedRteDeltas(device, [template], [0, 0, 0]);
+    uploadInstancedRteDeltas(device, [template], [0, 0, 0]);
+    assert.strictEqual(writes.length, 1, 'an unchanged camera and anchor is a cache hit');
+
+    assert.strictEqual(scene.translateInstancedEntity(12, [0, 3, 0]), true);
+    uploadInstancedRteDeltas(device, [template], [0, 0, 0]);
+    assert.strictEqual(writes.length, 2, 'the move forces a re-upload at the same camera');
+    assert.deepStrictEqual([...writes[1]!.data.subarray(0, 3)], [10, 3, 0], 'packed from the moved anchor');
   });
 
   it('is reversible (Exploded -> Stacked subtracts the same delta)', () => {

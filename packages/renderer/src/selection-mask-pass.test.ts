@@ -6,6 +6,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SelectionMaskPass, type HoveredMesh, type SelectionMaskFrame } from './selection-mask-pass.js';
 import type { WebGPUDevice } from './device.js';
+import type { InstancedRteDeltaStream } from './instanced-rte.js';
+import { INSTANCED_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
+import type { WorldPoint } from './relative-to-eye.js';
 
 /**
  * GPU resource lifetime of the selection/hover mask pass (#5390 review):
@@ -132,7 +135,8 @@ function recordingDevice() {
     setBindGroup: (i: number, g: unknown) => current.push(['setBindGroup', i, g]),
     setVertexBuffer: (slot: number, b: unknown) => current.push(['setVertexBuffer', slot, b]),
     setIndexBuffer: (b: unknown) => current.push(['setIndexBuffer', b]),
-    drawIndexed: (indexCount: number, instanceCount = 1) => current.push(['drawIndexed', indexCount, instanceCount]),
+    drawIndexed: (indexCount: number, instanceCount = 1, _firstIndex = 0, _baseVertex = 0, firstInstance = 0) =>
+      current.push(firstInstance === 0 ? ['drawIndexed', indexCount, instanceCount] : ['drawIndexed', indexCount, instanceCount, firstInstance]),
     end() {},
   };
   const gpu = {
@@ -163,21 +167,32 @@ function recordingDevice() {
   return { device, encoder, pipelines, writes, buffers, passes };
 }
 
-function template(indexCount: number, instanceCount: number) {
+function template(indexCount: number, instanceCount: number, anchors = new Float64Array(instanceCount * 3)) {
+  // The delta stream belongs to the scene's template, not the mask, so it is
+  // built here rather than through the recording device.
+  const rteDeltas: InstancedRteDeltaStream = {
+    buffer: { tag: 'rte-deltas' } as unknown as GPUBuffer, scratch: new Float32Array(instanceCount * 8), camera: null, runs: [],
+  };
   return {
     vertexBuffer: { tag: 'vertex' } as unknown as GPUBuffer,
     indexBuffer: { tag: 'index' } as unknown as GPUBuffer,
     instanceBuffer: { tag: 'instances' } as unknown as GPUBuffer,
     indexCount,
     instanceCount,
+    canonicalAnchors: anchors,
+    rteDeltas,
   };
 }
 
 type Tpl = ReturnType<typeof template>;
 
 /** A frame carrying #5745's `instanced` field, built via a cast so this file also loads against the pre-#5745 pass. */
-function instancedFrame(encoder: GPUCommandEncoder, instanced: { selected: Tpl[]; hovered: Tpl[]; hoveredId: number }): SelectionMaskFrame {
-  return { ...frame(encoder, null), instanced: { uniforms: new Float32Array(92), ...instanced } } as SelectionMaskFrame;
+function instancedFrame(
+  encoder: GPUCommandEncoder,
+  instanced: { selected: Tpl[]; hovered: Tpl[]; hoveredId: number },
+  rteCamera: WorldPoint = [0, 0, 0],
+): SelectionMaskFrame {
+  return { ...frame(encoder, null), instanced: { uniforms: new Float32Array(92), rteCamera, ...instanced } } as SelectionMaskFrame;
 }
 
 const labelOf = (v: unknown) => (v as { label?: string }).label;
@@ -206,6 +221,7 @@ describe('SelectionMaskPass outlines GPU-instanced occurrences (#5745)', () => {
       const calls = passes.filter((p) => labelOf(p.view) === target).flatMap((p) => p.calls);
       assert.deepEqual(instancedDraws(calls), [['drawIndexed', 36, 12]], `${target}: one draw covering all 12 occurrences`);
       assert.ok(calls.some((c) => c[0] === 'setVertexBuffer' && c[1] === 1 && c[2] === tpl.instanceBuffer), `${target}: instance records at slot 1`);
+      assert.ok(calls.some((c) => c[0] === 'setVertexBuffer' && c[1] === 2 && c[2] === tpl.rteDeltas.buffer), `${target}: RTE deltas at slot 2`);
       assert.ok(calls.some((c) => c[0] === 'setVertexBuffer' && c[1] === 0 && c[2] === tpl.vertexBuffer), `${target}: template vertices at slot 0`);
       const pipelinesSet = calls.filter((c) => c[0] === 'setPipeline').map((c) => labelOf(c[1]));
       assert.ok(pipelinesSet.some((l) => l?.includes('instanced')), `${target}: drawn with an instanced mask pipeline, got ${pipelinesSet}`);
@@ -214,11 +230,30 @@ describe('SelectionMaskPass outlines GPU-instanced occurrences (#5745)', () => {
 
     assert.equal(instancedPipelineCount(pipelines), 3, 'selected-visible, hover-visible and selected-all');
     for (const p of pipelines.filter((q) => q.vertex.entryPoint === 'vs_instanced')) {
-      const [vertexSlot, instanceSlot] = [...p.vertex.buffers!] as GPUVertexBufferLayout[];
-      assert.equal(vertexSlot!.arrayStride, 28);
-      assert.equal(instanceSlot!.stepMode, 'instance');
-      assert.equal(instanceSlot!.arrayStride, 120, 'the V2 instance record the main instanced draw uses');
+      assert.equal(p.vertex.buffers, INSTANCED_VERTEX_BUFFERS, 'the layout the main instanced draw uses');
     }
+  });
+
+  it('packs the frame camera\'s deltas itself and draws only in-envelope runs, for a template the colour pass culled (#6393)', () => {
+    const { device, encoder, passes, writes } = recordingDevice();
+    const pass = new SelectionMaskPass(device, {} as GPUBindGroupLayout, 1);
+    const far = 3_000_000;
+    // Its stream holds no camera: the colour pass never uploaded it this frame.
+    const tpl = template(6, 5, new Float64Array([0, 0, 0, 1, 0, 0, far, 0, 0, 2, 0, 0, 3, 0, 0]));
+    const camera: WorldPoint = [0.25, 0, 0];
+
+    pass.encode(instancedFrame(encoder, { selected: [tpl], hovered: [], hoveredId: 0 }, camera));
+
+    const deltaWrites = () => writes.filter((w) => w.buffer === tpl.rteDeltas.buffer);
+    assert.equal(deltaWrites().length, 1, 'one upload for the template, before it is drawn');
+    assert.deepEqual(tpl.rteDeltas.camera, camera);
+    for (const target of ['selection-mask-visible', 'selection-mask-all']) {
+      assert.deepEqual(drawsOn(passes, target), [['drawIndexed', 6, 2], ['drawIndexed', 6, 2, 3]],
+        `${target}: the far occurrence is not drawn with a stale delta`);
+    }
+
+    pass.encode(instancedFrame(encoder, { selected: [tpl], hovered: [tpl], hoveredId: 1 }, camera));
+    assert.equal(deltaWrites().length, 1, 'the same camera again (or selected and hovered at once) is a cache hit');
   });
 
   it('draws the hovered id\'s templates into the visible target only, and hands the id to the fragment stage', () => {

@@ -192,6 +192,7 @@ import { ShadowPass, resolveShadowMapResolution } from './shadow-pass.js';
 import { fitSunLightMatrix, cameraFrustumFocusCorners, resolveShadowNormalBiasMetres } from './shadow-light-matrix.js';
 import { collectShadowOccluders } from './shadow-occluders.js';
 import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './instanced-rte.js';
+import { INSTANCED_RTE_DELTA_SLOT } from './instanced-vertex-layout.js';
 import { shadowOccluderBatches } from './shadow-occluder-batches.js';
 import { captureRendererScreenshot } from './renderer-screenshot.js';
 import { beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrame, type RendererColorFrameCapture } from './renderer-color-readback.js';
@@ -2639,7 +2640,7 @@ export class Renderer {
                 }
                 // Per-template instance runs inside this frame's RTE envelope,
                 // shared by the opaque and transparent instanced sub-passes.
-                let visibleInstancedRuns: InstanceRun[][] = [];
+                let visibleInstancedRuns: (readonly InstanceRun[])[] = [];
                 if (visibleInstanced.length > 0) {
                     visibleInstancedRuns = uploadInstancedRteDeltas(device, visibleInstanced, relativeToEyeFrame.getCameraWorld());
                     // Opaque instanced pass. flags.x bit 2 marks "instanced pass" so the
@@ -2653,6 +2654,7 @@ export class Renderer {
                     for (const [i, it] of visibleInstanced.entries()) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
+                        pass.setVertexBuffer(INSTANCED_RTE_DELTA_SLOT, it.rteDeltas.buffer);
                         pass.setIndexBuffer(it.indexBuffer, 'uint32');
                         const runs = visibleInstancedRuns[i]!;
                         frameDrawCalls += drawInstanceRuns(pass, it.indexCount, runs);
@@ -2864,6 +2866,7 @@ export class Renderer {
                     for (const [i, it] of visibleInstanced.entries()) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
+                        pass.setVertexBuffer(INSTANCED_RTE_DELTA_SLOT, it.rteDeltas.buffer);
                         pass.setIndexBuffer(it.indexBuffer, 'uint32');
                         frameDrawCalls += drawInstanceRuns(pass, it.indexCount, visibleInstancedRuns[i]!);
                     }

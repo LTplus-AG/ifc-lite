@@ -27,6 +27,22 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Instanced RTE deltas: one upload per template (#6393, PR #6399)
+
+On a large MEP model with ~45K GPU-instanced occurrences, a browser run
+(interleaved base vs branch, same wasm) showed the frame was bound by
+`queue.writeBuffer` COUNT, not by shading or fill. The old path wrote each
+occurrence's 32-byte camera-relative delta separately, once per pass. Moving
+the deltas into a per-template stream that is packed on the CPU (the f64
+contract is unchanged) and uploaded once per template, cached per camera,
+brought orbit, pan and wheel zoom to vsync. The screenshot stayed
+pixel-identical. The lessons:
+
+- Count queue operations per frame before optimising shaders. On this model,
+  switching off AO, edges or dropping DPR moved nothing measurable.
+- A per-object `writeBuffer` in a per-frame path is a GPU-process IPC cost
+  that the main-thread profile shows only as `(program)` time.
+
 ## Renderer colour override table (#6076, PR #6148)
 
 A base-versus-branch browser run on a real Archicad architectural IFC, followed

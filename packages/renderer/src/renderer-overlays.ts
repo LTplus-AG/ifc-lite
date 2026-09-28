@@ -130,8 +130,7 @@ const CHANNEL_EXPANDS_MODEL_BOUNDS: Record<LineOverlayChannel, boolean> = {
     dxf: false,
     // A LandXML source may consist entirely of authored terrain lines.
     terrain: true,
-    // Selected source geometry must never reframe the model or camera.
-    centreline: false,
+    centreline: false, // Selected source never reframes the model or camera.
 };
 
 export class RendererOverlays {
@@ -207,9 +206,8 @@ export class RendererOverlays {
         // texts (labels above everything).
         this.symbolic.drawFills(pass, viewProj, ctx.rteViewProj, ctx.rteCamera);
         // `LINE_OVERLAY_CHANNELS` is in draw order: annotation, alignment,
-        // grid, DXF, LandXML, selected centreline. All share the overlay colour;
-        // the centreline uses an always-visible depth variant of the line pipeline.
-        // Within each depth mode, order decides who wins a depth tie.
+        // grid, DXF, LandXML, centreline. Centreline uses always-visible depth;
+        // within each depth mode, draw order breaks depth ties.
         const overlay = this.section2DOverlayRenderer;
         if (overlay) {
             for (const channel of LINE_OVERLAY_CHANNELS) {

@@ -294,15 +294,13 @@ export interface HoverState {
   screenX: number;
   screenY: number;
   /**
-   * World-space hit position from the GPU pick (depth readback +
-   * inverse view-projection). Unset when the picker couldn't recover
-   * one (e.g. `pointCount === 0` clear, or the pick fell on the
-   * background). Useful for point-cloud hover tooltips where the
-   * synthetic entity has no surface property to display.
+   * World-space hit position from the GPU pick (depth readback + inverse view-projection).
+   * Unset when the picker couldn't recover one (e.g. `pointCount === 0` clear, or the pick
+   * fell on the background). Useful for point-cloud hover tooltips where the synthetic
+   * entity has no surface property to display.
    */
   worldXYZ?: { x: number; y: number; z: number };
-  /** Model of the picked entity (federation), for the hover outline (#5390). */
-  modelIndex?: number;
+  modelIndex?: number; // model of the picked entity (federation), for the hover outline (#5390)
 }
 
 export interface ContextMenuState {

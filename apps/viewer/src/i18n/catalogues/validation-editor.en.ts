@@ -92,6 +92,7 @@ export const validationEditorEn = {
   'validationEditor.unique.scope.perModel': 'Per model',
 
   'validationEditor.aggregate.subjectAriaLabel': 'Aggregate subject',
+  'validationEditor.aggregate.valueAriaLabel': 'Aggregate target value',
   'validationEditor.aggregate.groupByToggle': 'Group by',
   'validationEditor.aggregate.groupBySubjectAriaLabel': 'Group by subject',
   'validationEditor.aggregate.universeToggle': 'Define groups from…',

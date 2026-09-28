@@ -199,6 +199,8 @@ describe('IDSCorrectionDialog — stale audit snapshot vs. deleted entities (#52
       'both live entities must be listed',
     );
 
+    assert.equal(rawValueInput().labels?.[0]?.textContent, 'New value');
+
     typeInto(rawValueInput(), 'F90');
     click(applyButton());
     await advance(50);

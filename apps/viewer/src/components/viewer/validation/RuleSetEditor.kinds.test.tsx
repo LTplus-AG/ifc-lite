@@ -76,6 +76,12 @@ describe('RuleSetEditor — requirement kind switching (#5138)', () => {
     assert.equal(afterAggregate, 'aggregate');
     assert.deepEqual(current.rules[0].applicability, originalApplicability);
 
+    const aggregateValue = container.querySelector<HTMLInputElement>('input[aria-label="Aggregate target value"]');
+    assert.ok(aggregateValue, 'the aggregate target field has an accessible name');
+    type(aggregateValue, '7');
+    const editedRequirement = current.rules[0].requirement;
+    assert.equal(editedRequirement.kind === 'aggregate' ? editedRequirement.value : undefined, 7);
+
     click(kindButton(container, 'Compare'));
     const afterCompare: string = current.rules[0].requirement.kind;
     assert.equal(afterCompare, 'compare');

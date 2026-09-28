@@ -191,6 +191,7 @@ function AggregateFields({
         <OpDropdown ops={NUMERIC_OPS} value={requirement.op} onChange={(op) => onChange({ ...requirement, op })} />
         <Input
           type="number"
+          aria-label={t('validationEditor.aggregate.valueAriaLabel')}
           value={requirement.value}
           onChange={(e) => onChange({ ...requirement, value: Number.parseFloat(e.target.value) || 0 })}
           className="h-7 w-24 text-xs font-mono"

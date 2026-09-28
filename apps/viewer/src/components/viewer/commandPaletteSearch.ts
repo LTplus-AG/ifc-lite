@@ -24,7 +24,7 @@ export type Category =
   | 'Extensions'
   | 'Learn';
 
-export interface Command {
+interface CommandBase {
   id: string;
   /**
    * English text used ONLY for search ranking (`rankCommand` below) — never
@@ -36,8 +36,6 @@ export interface Command {
   /** When set, the row's display text — `t(labelKey, labelKeyParams)`. Data
    *  rows built from runtime content (recent files, tour titles, extension
    *  contributions, script templates) have none and render `label` as-is. */
-  labelKey?: TranslationKey;
-  labelKeyParams?: TranslationParameters;
   keywords: string;           // extra search tokens (no UI display)
   category: Exclude<Category, 'Recent'>;
   icon: React.ElementType;
@@ -48,8 +46,6 @@ export interface Command {
   detailKey?: TranslationKey;
   detailKeyParams?: TranslationParameters;
   action: () => void;
-  /** Shared-registry action already emits its command event at the execution boundary. */
-  registryOwned?: true;
   /**
    * Run the action synchronously in the click handler instead of deferring to the
    * next animation frame — needed for a file dialog: Chrome only honours
@@ -58,6 +54,13 @@ export interface Command {
    */
   immediate?: boolean;
 }
+
+/** A static command has a registry id/name; runtime content declares its owner. */
+export type Command = CommandBase & (
+  | { registryOwned: true; labelKey: TranslationKey; labelKeyParams?: TranslationParameters; runtimeSource?: never }
+  | { registryOwned?: never; runtimeSource: 'recent-file' | 'script-template' | 'tour' | 'extension-command' | 'extension-export';
+      labelKey?: TranslationKey; labelKeyParams?: TranslationParameters }
+);
 
 export interface FlatItem {
   cmd: Command;

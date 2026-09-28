@@ -48,6 +48,7 @@ export function useAuthoringOverlay(rendererRef: RefObject<Renderer | null>): {
   const setAuthoringOverlayMeshes = useCallback((channel: AuthoringOverlayChannel, meshes: MeshData[]) => {
     const renderer = rendererRef.current;
     if (!renderer || renderer.isDeviceLost()) return;
+    if (meshes.length === 0 && !idsRef.current.get(channel)?.size) return;
     const scene = renderer.getScene(), device = renderer.getGPUDevice(), pipeline = renderer.getPipeline();
     if (!scene || !device || !pipeline) return;
     runGpuUpload(`setAuthoringOverlayMeshes:${channel}`, () => {
@@ -64,7 +65,11 @@ export function useAuthoringOverlay(rendererRef: RefObject<Renderer | null>): {
       }
       if (scene.hasPendingBatches()) scene.rebuildPendingBatches(device, pipeline);
     }, { isDeviceLost: () => renderer.isDeviceLost() });
-    renderer.clearCaches();
+    // A command preview is replaced on every pointer move: dropping the pick
+    // caches each time would rebuild the BVH per frame. The command pointer
+    // excludes its ghost ids from picks instead (`commandPointer.ts`), and
+    // clearing the channel below drops the caches once.
+    if (channel !== 'command') renderer.clearCaches();
     renderer.requestRender();
   }, [rendererRef]);
 

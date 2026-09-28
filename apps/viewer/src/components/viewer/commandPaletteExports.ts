@@ -113,6 +113,7 @@ export function buildExportCommands(
 ): Command[] {
   const extensionRows = extensionExporters.map((exporter): Command => ({
     id: `export:ext:${exporter.key}`,
+    runtimeSource: 'extension-export',
     label: exporter.name,
     keywords: `extension ${exporter.extension.slice(1)} download`,
     category: 'Export',

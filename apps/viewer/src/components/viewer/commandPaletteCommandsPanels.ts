@@ -53,6 +53,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
   for (const t of SCRIPT_TEMPLATES) {
     c.push({
       id: `auto:${t.name}`, label: t.name, keywords: `script run ${t.description}`,
+      runtimeSource: 'script-template',
       category: 'Automation', icon: Play,
       action: () => { const s = useViewerStore.getState(); s.setListPanelVisible(false); s.setScriptPanelVisible(true); s.setScriptEditorContent(t.code); p.execute(t.code); },
     });
@@ -65,6 +66,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
   for (const tour of TOUR_REGISTRY) {
     c.push({
       id: `tour:${tour.id}`,
+      runtimeSource: 'tour',
       label: `Tour: ${tour.title}`,
       ...withKey('commandPalette.tour.label', { title: tour.title }),
       keywords: `tour walkthrough learn guide tutorial onboarding ${tour.description}`,
@@ -84,6 +86,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
     if (!payload?.id || !payload.title) continue;
     c.push({
       id: `ext:${payload.id}`,
+      runtimeSource: 'extension-command',
       label: payload.title,
       keywords: `${payload.id} ${payload.paletteCategory ?? ''} extension`,
       category: 'Extensions',

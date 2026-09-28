@@ -11,6 +11,7 @@ import { BimReactContext } from '@/sdk/BimProvider.js';
 import { resolve } from '@/i18n/registry';
 import { posthog } from '@/lib/analytics';
 import { isCollabEnabled } from '@/lib/collab/config';
+import { recordRecentFiles } from '@/lib/recent-files';
 import { useViewerStore } from '@/store';
 import { cleanup, click, render, type as typeInto } from '@/test/render.js';
 import type { FileCommands } from './toolbar/useFileCommands.js';
@@ -204,6 +205,30 @@ describe('shared palette and ribbon commands (#5870)', () => {
     ]);
   });
 
+  it('uses the registry accessible name for shortcut rows while retaining runtime file detail (#5878)', () => {
+    recordRecentFiles([{ name: 'authored-sample.ifc', size: 2048 }]);
+    try {
+      render(<BimReactContext.Provider value={{} as BimContext}>
+        <CommandPalette open onOpenChange={() => {}} />
+      </BimReactContext.Provider>);
+      const home = document.querySelector<HTMLButtonElement>('[role="option"][data-command-id="view:home"]');
+      assert.ok(home, 'Home is a mounted registered row');
+      assert.ok(home.querySelector('kbd')?.textContent?.trim(), 'the shortcut is visibly retained');
+      assert.equal(home.getAttribute('aria-label'), resolve('commandPalette.view.home.label'),
+        'shortcut text does not become part of the registered accessible name');
+
+      const recent = document.querySelector<HTMLButtonElement>(
+        '[role="option"][data-runtime-source="recent-file"][data-runtime-command-id="file:recent:authored-sample.ifc"]',
+      );
+      assert.ok(recent, 'the recent authored file has a runtime-owned row');
+      assert.equal(recent.getAttribute('aria-label'), null,
+        'runtime content keeps its native name including the file-size detail');
+      assert.ok(recent.textContent?.includes('2 KB'), 'the runtime detail remains visible');
+    } finally {
+      localStorage.removeItem('ifc-lite:recent-files');
+    }
+  });
+
   it('renders every palette-declared command with its registry label (#5870 matrix)', async () => {
     const registry = await loadRegistry();
     const exports = await import('./commandPaletteExports.js');
@@ -217,13 +242,38 @@ describe('shared palette and ribbon commands (#5870)', () => {
       const state = { canEditInSession: true, cesiumAvailable: false, collabEnabled: isCollabEnabled() };
       const expected = [...registry.SURFACE_COMMANDS, ...exports.EXPORT_SURFACE_COMMANDS]
         .filter((command) => command.surfaces.some((surface) => surface === 'palette') && command.enabled(state));
-      const rows = [...document.querySelectorAll<HTMLButtonElement>('[role="option"][data-command-id]')];
+      const rows = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')];
+      const runtimePrefixes = {
+        'recent-file': 'file:recent:',
+        'script-template': 'auto:',
+        tour: 'tour:',
+        'extension-command': 'ext:',
+        'extension-export': 'export:ext:',
+      } as const;
       assert.equal(new Set(expected.map((command) => command.id)).size, expected.length, 'registry ids are unique');
-      assert.deepEqual(new Set(rows.map((row) => row.dataset.commandId)),
+      const browseRows = rows.filter((row) => !row.closest('[data-command-category="Recent"]'));
+      const renderedStaticIds = browseRows.filter((row) => row.dataset.commandId).map((row) => row.dataset.commandId);
+      assert.equal(new Set(renderedStaticIds).size, renderedStaticIds.length,
+        'a registered palette command is rendered exactly once');
+      assert.deepEqual(new Set(renderedStaticIds),
         new Set(expected.map((command) => command.id)), 'declared palette ids equal rendered rows');
       for (const row of rows) {
+        const source = row.dataset.runtimeSource;
+        assert.notEqual(Boolean(row.dataset.commandId), Boolean(source),
+          'each option has exactly one registered command id or runtime owner');
+        if (source) {
+          const prefix = runtimePrefixes[source as keyof typeof runtimePrefixes];
+          assert.ok(prefix && row.dataset.runtimeCommandId?.startsWith(prefix),
+            `${source} owns its runtime command id`);
+          assert.equal(row.getAttribute('aria-label'), null,
+            `${source} retains its native accessible name and detail`);
+          assert.ok(row.querySelector('span.flex-1')?.textContent?.trim(), 'runtime content has a visible name');
+          continue;
+        }
         const command = expected.find((item) => item.id === row.dataset.commandId);
         assert.ok(command);
+        assert.equal(row.getAttribute('aria-label'), resolve(command.labelKey),
+          `${command.id} exposes its registry name to assistive technology`);
         assert.equal(row.querySelector('span.flex-1')?.textContent, resolve(command.labelKey),
           `${command.id} renders only its registry label`);
       }

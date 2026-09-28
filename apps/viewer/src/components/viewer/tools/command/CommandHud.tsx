@@ -10,6 +10,7 @@
  * touch users, who have no Escape.
  */
 
+import { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -53,6 +54,13 @@ export function CommandBar() {
 
 export function CommandScene() {
   const { command, ctx, gesture } = useCommandRuntime();
+  // The command's preview meshes ride the `command` overlay channel.
+  useEffect(() => {
+    const callbacks = useViewerStore.getState().cameraCallbacks;
+    const meshes = command?.ghost && ctx ? command.ghost(gesture, ctx) : [];
+    callbacks.setAuthoringOverlayMeshes?.('command', meshes);
+  }, [command, ctx, gesture]);
+  useEffect(() => () => useViewerStore.getState().cameraCallbacks.clearAuthoringOverlayMeshes?.('command'), []);
   const Scene = command?.hud.Scene;
   if (!Scene || !ctx) return null;
   return <Scene gesture={gesture} ctx={ctx} />;

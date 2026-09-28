@@ -99,12 +99,12 @@ export function SweptDiskInspection({ enabled }: { enabled: boolean }) {
   const withRecords = items.filter((item) => item.occurrences.length || item.diagnostics.length);
   return <section className="space-y-2" aria-label={t('properties.sweptDisk.heading')}>
     <h3 className="text-xs font-semibold uppercase tracking-wide">{t('properties.sweptDisk.heading')}</h3>
-    <p className="text-[11px] text-zinc-500">{t('properties.sweptDisk.sourceNote')}</p>
+    <p className="text-2xs text-zinc-500">{t('properties.sweptDisk.sourceNote')}</p>
     {loading && <output className="block">{t('properties.sweptDisk.loading')}</output>}
     {error && <p role="alert">{error}</p>}
     {!loading && !error && withRecords.length === 0 && <p className="text-xs text-zinc-500">{t('properties.sweptDisk.empty')}</p>}
     {withRecords.map((item) => <div key={`${item.ref.modelId}:${item.ref.expressId}`} className="space-y-2">
-      <div className="font-mono text-[11px]">{item.ref.modelId} · #{item.ref.expressId}</div>
+      <div className="font-mono text-2xs">{item.ref.modelId} · #{item.ref.expressId}</div>
       {item.occurrences.map((occurrence, index) => <SweptDiskRecord
         key={`${occurrence.solid_id}:${index}`}
         occurrence={occurrence}

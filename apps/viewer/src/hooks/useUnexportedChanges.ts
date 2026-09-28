@@ -10,6 +10,7 @@
 
 import { useEffect, useMemo } from 'react';
 import { useViewerStore } from '@/store';
+import { useModelRoster } from './useModelRoster';
 import { collectChangedModels, totalChangeCount, type ChangedModelsResult } from '@/lib/export/model-changes';
 
 /**
@@ -20,7 +21,8 @@ import { collectChangedModels, totalChangeCount, type ChangedModelsResult } from
  * watched explicitly.
  */
 export function useChangedModels(): ChangedModelsResult {
-  const models = useViewerStore((s) => s.models);
+  // The roster, not `models`: a geometry update changes no pending edit (#6232 perf).
+  const models = useModelRoster();
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const georefMutations = useViewerStore((s) => s.georefMutations);
   const scheduleData = useViewerStore((s) => s.scheduleData);

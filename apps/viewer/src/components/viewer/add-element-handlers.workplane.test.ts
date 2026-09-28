@@ -159,7 +159,7 @@ beforeEach(() => {
     ...fixtureModels(model),
     mutationViews: new Map(),
     activeTool: 'addElement',
-    addElementType: 'wall',
+    addElementType: 'beam', // two-click axial; walls are the wall.place command (#6232)
     addElementModelId: MODEL,
     addElementStoreyId: STOREY_A,
     addElementSlabMode: 'rectangle',
@@ -167,7 +167,7 @@ beforeEach(() => {
     addElementHoverPoint: null,
     addElementHoverSnapPoint: null,
     addElementGestureStorey: null,
-    addWall: recorder('addWall'),
+    addBeam: recorder('addBeam'),
     addWindow: recorder('addWindow'),
     addSlab: recorder('addSlab'),
     setSelectedEntityId: () => {},
@@ -180,7 +180,7 @@ afterEach(() => {
 });
 
 describe('Add Element workplane: one storey per gesture (#6233)', () => {
-  it('locks the storey at the FIRST click: a wall started on B commits on B even when the second click is in empty space', async () => {
+  it('locks the storey at the FIRST click: a beam started on B commits on B even when the second click is in empty space', async () => {
     const ctx = makeCtx();
     hits = [{ point: { x: 5, y: 4.2, z: -4 }, expressId: PROXY_ON_B }, null];
     await click(ctx, 5, -4);
@@ -244,7 +244,7 @@ describe('Add Element workplane: the ghost is the commit (#6233)', () => {
 });
 
 describe('Add Element workplane: storey-local means storey-local (#6233)', () => {
-  it("divides the storey's XY offset out: a wall clicked at model (5,4)→(9,4) is written at (2,1)→(6,1) on storey A at (3,3)", async () => {
+  it("divides the storey's XY offset out: a beam clicked at model (5,4)→(9,4) is written at (2,1)→(6,1) on storey A at (3,3)", async () => {
     const ctx = makeCtx();
     hits = [null, null];
     await click(ctx, 5, -4); // renderer (5, ·, -4) = model (5, 4)

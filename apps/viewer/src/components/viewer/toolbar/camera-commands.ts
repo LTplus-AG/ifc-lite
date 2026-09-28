@@ -38,15 +38,7 @@ export type CameraCommandGroup = 'camera' | 'preset' | 'rotate';
 
 export interface CameraCommand {
   id: CameraCommandId;
-  /**
-   * Translation keys, not text — this list has no React import, so it
-   * cannot call `t()` itself (`shared-commands.en.ts` holds the English);
-   * the ribbon's `ViewTab` calls `t(command.xKey)`.
-   *
-   * Short button caption.
-   */
-  labelKey: TranslationKey;
-  /** Longer tooltip when the label isn't the whole story. */
+  /** Longer tooltip; the registered surface command owns the button label. */
   tooltipKey: TranslationKey;
   /** Keyboard command naming this action's key, where one exists (`lib/commands`). */
   shortcut?: KeyCommandId;
@@ -66,7 +58,6 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
   return [
     {
       id: 'home',
-      labelKey: 'ribbon.home.home',
       tooltipKey: 'cameraCommands.home.tooltip',
       shortcut: 'camera.home',
       group: 'camera',
@@ -74,7 +65,6 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
     },
     {
       id: 'zoomIn',
-      labelKey: 'cameraCommands.zoomIn.label',
       tooltipKey: 'cameraCommands.zoomIn.tooltip',
       group: 'camera',
       repeatable: true,
@@ -82,7 +72,6 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
     },
     {
       id: 'zoomOut',
-      labelKey: 'cameraCommands.zoomOut.label',
       tooltipKey: 'cameraCommands.zoomOut.tooltip',
       group: 'camera',
       repeatable: true,
@@ -90,7 +79,6 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
     },
     {
       id: 'fitAll',
-      labelKey: 'cameraCommands.fitAll.label',
       tooltipKey: 'cameraCommands.fitAll.tooltip',
       shortcut: 'camera.fitAll',
       group: 'camera',
@@ -98,7 +86,6 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
     },
     {
       id: 'viewTop',
-      labelKey: 'cameraCommands.viewTop.label',
       tooltipKey: 'cameraCommands.viewTop.tooltip',
       shortcut: 'camera.viewTop',
       group: 'preset',
@@ -106,7 +93,6 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
     },
     {
       id: 'viewBottom',
-      labelKey: 'cameraCommands.viewBottom.label',
       tooltipKey: 'cameraCommands.viewBottom.tooltip',
       shortcut: 'camera.viewBottom',
       group: 'preset',
@@ -114,7 +100,6 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
     },
     {
       id: 'viewFront',
-      labelKey: 'cameraCommands.viewFront.label',
       tooltipKey: 'cameraCommands.viewFront.tooltip',
       shortcut: 'camera.viewFront',
       group: 'preset',
@@ -122,7 +107,6 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
     },
     {
       id: 'viewBack',
-      labelKey: 'cameraCommands.viewBack.label',
       tooltipKey: 'cameraCommands.viewBack.tooltip',
       shortcut: 'camera.viewBack',
       group: 'preset',
@@ -130,7 +114,6 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
     },
     {
       id: 'viewLeft',
-      labelKey: 'cameraCommands.viewLeft.label',
       tooltipKey: 'cameraCommands.viewLeft.tooltip',
       shortcut: 'camera.viewLeft',
       group: 'preset',
@@ -138,7 +121,6 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
     },
     {
       id: 'viewRight',
-      labelKey: 'cameraCommands.viewRight.label',
       tooltipKey: 'cameraCommands.viewRight.tooltip',
       shortcut: 'camera.viewRight',
       group: 'preset',
@@ -146,7 +128,6 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
     },
     {
       id: 'rotateLeft',
-      labelKey: 'cameraCommands.rotateLeft.label',
       tooltipKey: 'cameraCommands.rotateLeft.tooltip',
       group: 'rotate',
       repeatable: true,
@@ -154,7 +135,6 @@ export function buildCameraCommands({ callbacks, goHome }: CameraCommandContext)
     },
     {
       id: 'rotateRight',
-      labelKey: 'cameraCommands.rotateRight.label',
       tooltipKey: 'cameraCommands.rotateRight.tooltip',
       group: 'rotate',
       repeatable: true,

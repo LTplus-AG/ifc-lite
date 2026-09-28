@@ -1130,6 +1130,29 @@ Reuse checked ID-prefix accumulation and the scanner's existing ASCII proof; obt
   (React dev mode dominates a CPU profile). The first request per model also
   pays a one-time whole-file pre-pass for the style wire (AC20: ~170 ms).
 
+- **Re-mesh commit → frame, render-cost follow-up (#6232, measured
+  2026-09-28, same harness, production builds, 5 interleaved rounds of 20
+  resizes, fresh tab per run).** Median p50 / p95: demo 71.5 / 82.6 ms →
+  45.1 / 59.0 ms; AC20-FZK-Haus 72.9 / 84.1 ms → 47.1 / 63.0 ms (every
+  branch round's p50 42-48.5 ms, every base round's 64.8-77.1 ms). The mesher
+  was never the cost; the viewer shell was. Counted with a fiber-commit hook in
+  a dev build: one resize was 19 store notifications and 6 commits, and three
+  of those commits re-rendered `ViewerLayout`, the whole app, because hooks
+  mounted there (`useSearchIndex`, `useUnexportedChangesGuard`, and
+  `useModelUrlAutoload` via `useIfc()`) select `models`, which every geometry
+  update republishes. The levers, in order of effect: those hooks moved to a
+  leaf (`ShellStoreEffects`) or off `useIfc()`; the hierarchy reads `models`
+  through a selector that keeps its identity while the same ids have geometry
+  (a re-mesh), so the panel and its rows stop re-rendering; the file/export
+  commands, ribbon, Author tab and Add Element panel select primitives or the
+  model roster (`useModelRoster`) instead of `useIfc()`; a positional batch is
+  one store update (was N + 1); `useModelSelection` and `useLevelDisplayEffect`
+  stop writing unchanged state back on every `models` change. Left: the edit
+  commit still re-renders what legitimately reacts to `mutationVersion`
+  (hierarchy authored rows, undo buttons, change counts), and the placed
+  spatial index is rebuilt 200 ms after each edit, off the latency path but
+  O(model).
+
 - **Local-frame void-cut origin preservation** (#3446, measured 2026-08-31,
   base = `2edd144329`, arm64 native). This correctness fix keeps a rotated
   local-frame cut's centre and nested origin out of absolute-world `f32`.

@@ -134,7 +134,8 @@ function appendGesturePoint(point: AddElementVec3, ref: AddElementStoreyRef): vo
 /**
  * Per-type click state machine. `point` is already on `ref`'s workplane.
  *   - column / door / window: 1 click → place
- *   - wall / beam / member: 1st click → start, 2nd click → end + place
+ *   - beam / member: 1st click → start, 2nd click → end + place (walls: the
+ *     `wall.place` command)
  *   - slab-like rectangle: 1st click → corner, 2nd click → opposite + place
  *   - slab-like polygon: N clicks accumulate; Enter / double-click closes
  *     (keyboard layer / add-element-double-click.ts; this only appends)
@@ -169,15 +170,13 @@ export function handleAddElementDrop(point: AddElementVec3, ref: AddElementStore
 
   const pending = state.addElementPendingPoints;
   const locked = state.addElementGestureStorey ?? ref;
-  if (type === 'wall' || type === 'beam' || type === 'member') {
+  // Walls are drawn by the `wall.place` modeling command (#6232), not here.
+  if (type === 'beam' || type === 'member') {
     if (pending.length === 0) { appendGesturePoint(point, ref); return; }
     const frame = workplaneFor(locked);
     const Start = rendererPointToIfcStoreyLocal(pending[0], locked, 0, frame);
     const End = rendererPointToIfcStoreyLocal(point, locked, 0, frame);
-    if (type === 'wall') {
-      const p = state.addElementWallParams;
-      finishAddElement(state.addWall(locked.modelId, locked.storeyId, { Start, End, Thickness: p.Thickness, Height: p.Height }), locked.modelId, 'Wall');
-    } else if (type === 'beam') {
+    if (type === 'beam') {
       const p = state.addElementBeamParams;
       finishAddElement(state.addBeam(locked.modelId, locked.storeyId, { Start, End, Width: p.Width, Height: p.Height }), locked.modelId, 'Beam');
     } else {

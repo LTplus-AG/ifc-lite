@@ -56,6 +56,7 @@ import { emptyFilterGroup } from '@ifc-lite/rules';
 import { resolveBulkQueryIds, useBulkQueryTargets } from './useBulkQueryTargets';
 
 import { defaultAuthoringModelId } from '@/lib/model-placement/history';
+import { effectiveSpatialMembers } from '@/lib/effective-spatial-members';
 import { parseBulkSetPropertyValue, type BulkParseResult } from './bulk-property-value';
 import { BulkExecutionResult, type BulkRuntimeFailure } from './BulkExecutionResult';
 import { BulkExecutionProgress } from './BulkExecutionProgress';
@@ -201,12 +202,10 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
 
     const dataStore = selectedModel.ifcDataStore;
     return new BulkQueryEngine(
-      dataStore.entities,
-      mutationView,
-      dataStore.spatialHierarchy || null,
-      dataStore.strings || null,
+      dataStore.entities, mutationView, dataStore.spatialHierarchy || null, dataStore.strings || null,
       () => canMutate(useViewerStore.getState(), selectedModelId),
       dataStore.schemaVersion,
+      (containerId) => effectiveSpatialMembers(dataStore, mutationView, containerId),
     );
   }, [open, selectedModel, selectedModelId, mutationViews]);
 
@@ -231,7 +230,8 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       if (!dataStore || !view) continue;
       engines.set(modelId, new BulkQueryEngine(dataStore.entities, view,
         dataStore.spatialHierarchy || null,
-        dataStore.strings || null, () => canMutate(useViewerStore.getState(), modelId), dataStore.schemaVersion));
+        dataStore.strings || null, () => canMutate(useViewerStore.getState(), modelId), dataStore.schemaVersion,
+        (containerId) => effectiveSpatialMembers(dataStore, view, containerId)));
     }
     return engines;
   }, [open, targetSource, targetGroups, models, mutationViews]);

@@ -47,6 +47,9 @@ export function useConstructionUnderlay(
   floorElevation: number | null,
 ): { lines: UnderlayLine[]; loading: boolean } {
   const geometryResult = useViewerStore((s) => s.geometryResult);
+  // An edit can change meshes in place, without a new geometryResult: key on the versions too, like the plan's cut.
+  const contentVersion = useViewerStore((s) => s.geometryContentVersion);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
   const request = useMemo<PlanCutRequest | null>(() => {
     // Building elements only — the type library never belongs in a 2D
@@ -62,12 +65,12 @@ export function useConstructionUnderlay(
     // the one place the room frame is defined so the two cannot drift.
     const { cx, cy } = roomFramePlanOffsets(coord);
     return {
-      key: `underlay:${identityKey(geometryResult)}:${meshes.length}:${cutY}`,
+      key: `underlay:${identityKey(geometryResult)}:${contentVersion}:${mutationVersion}:${meshes.length}:${cutY}`,
       meshes,
       cutY,
       map: (x, z) => [x + cx, cy - z],
     };
-  }, [enabled, floorElevation, geometryResult]);
+  }, [enabled, floorElevation, geometryResult, contentVersion, mutationVersion]);
 
   const cut = usePlanCutDrawing(request);
   const lines = useMemo<UnderlayLine[]>(

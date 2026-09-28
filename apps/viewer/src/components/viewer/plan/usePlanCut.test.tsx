@@ -84,4 +84,25 @@ describe('useConstructionUnderlay on the shared cut', () => {
       for (const [x, y] of [l.a, l.b]) assert.ok(x > -1e-6 && x < 4 + 1e-6 && y > -1e-6 && y < 0.2 + 1e-6, `(${x}, ${y}) inside the wall's plan`);
     }
   });
+
+  it('re-cuts when an edit changes the meshes in place (#6394 review: the key carries the versions)', async () => {
+    const meshes = [box(90, [0, 0, -0.2], [4, 3, 0])];
+    const geometry = { ...useViewerStore.getState().geometryResult, meshes } as GeometryResult;
+    useViewerStore.setState({ geometryResult: geometry });
+    let seen: UnderlayLine[] = [];
+    function Probe() {
+      seen = useConstructionUnderlay(true, 0).lines;
+      return null;
+    }
+    render(<Probe />);
+    await settle();
+    const maxX = () => Math.max(...seen.flatMap((l) => [l.a[0], l.b[0]]));
+    assert.ok(Math.abs(maxX() - 4) < 1e-6);
+    // The same geometryResult object, its mesh swapped in place, then the version bump an edit makes.
+    meshes[0] = box(90, [0, 0, -0.2], [6, 3, 0]);
+    act(() => useViewerStore.setState((s) => ({ mutationVersion: s.mutationVersion + 1 })));
+    await settle();
+    assert.ok(Math.abs(maxX() - 6) < 1e-6, `the underlay follows the edit (max x ${maxX()})`);
+  });
 });
+

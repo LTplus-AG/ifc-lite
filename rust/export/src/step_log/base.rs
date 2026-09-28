@@ -211,7 +211,7 @@ impl<'s, 'a> BaseSets<'s, 'a> {
                     let (ty, value, data_type) = if pty == "IFCCOMPLEXPROPERTY" {
                         self.complex_value(&pattrs, 0, &mut COMPLEX_MEMBER_BUDGET.clone())
                     } else {
-                        parse_property_value(&pty, &pattrs)
+                        self.property_value(&pty, &pattrs)
                     };
                     let unit = explicit_unit(self.src, &pty, &pattrs);
                     properties.push(Prop { name: pname.to_string(), ty, value, unit, data_type });
@@ -222,6 +222,30 @@ impl<'s, 'a> BaseSets<'s, 'a> {
             }
         }
         out
+    }
+
+    /// `parsePropertyValueWithComplex` for a non-complex property: an
+    /// `IfcPropertyReferenceValue` reads as the referenced object's `Name`,
+    /// else its `Identification`, else `#<id>`
+    /// (`property-reference-value.ts`, #5475).
+    fn property_value(&self, ty: &str, attrs: &[JsVal]) -> (u8, Value, Option<String>) {
+        if ty == "IFCPROPERTYREFERENCEVALUE" {
+            if let Some(JsVal::Num(n)) = attrs.get(3) {
+                if let Some(label) = self.referenced_label(*n as u32) {
+                    return (pvt::STRING, Value::String(label), None);
+                }
+            }
+        }
+        parse_property_value(ty, attrs)
+    }
+
+    fn referenced_label(&self, id: u32) -> Option<String> {
+        let (ty, attrs) = self.src.entity(id)?;
+        let names = ifc_lite_core::IfcType::from_str(&ty).attribute_names();
+        ["Name", "Identification"].iter().find_map(|wanted| {
+            let index = names.iter().position(|n| n == wanted)?;
+            attrs.get(index).and_then(JsVal::as_str).filter(|s| !s.trim().is_empty()).map(str::to_string)
+        })
     }
 
     /// `resolveComplexPropertyValue`: a display string only.
@@ -256,7 +280,7 @@ impl<'s, 'a> BaseSets<'s, 'a> {
             let (_, v, _) = if mty == "IFCCOMPLEXPROPERTY" {
                 self.complex_value(&mattrs, depth + 1, budget)
             } else {
-                parse_property_value(&mty, &mattrs)
+                self.property_value(&mty, &mattrs)
             };
             let display = if v.is_null() { String::new() } else { super::jsval::json_to_js_string(&v) };
             if display.is_empty() {

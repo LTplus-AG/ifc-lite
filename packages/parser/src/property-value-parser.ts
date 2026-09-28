@@ -75,7 +75,7 @@ function sharedMemberType(members: unknown[]): string | undefined {
  * - IfcPropertyBoundedValue: upper/lower bounds → "value [min – max]"
  * - IfcPropertyListValue: list of values → joined string
  * - IfcPropertyTableValue: defining/defined value pairs → "Table(N rows)"
- * - IfcPropertyReferenceValue: entity reference → "Reference #ID"
+ * - IfcPropertyReferenceValue: `#<id>` of the reference (slot 3); `parsePropertyValueWithComplex` reads the referenced Name instead
  */
 export function parsePropertyValue(propEntity: IfcEntity): ParsedIfcPropertyValue {
     const attrs = propEntity.attributes || [];

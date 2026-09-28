@@ -10,6 +10,7 @@
  * `/` can only be set in the rule-set JSON.
  */
 
+import { useEffect, useState } from 'react';
 import { useTranslation } from '@/i18n';
 
 function memberPathFromText(text: string): string[] | undefined {
@@ -25,17 +26,20 @@ export function MemberPathInput({
   onChange: (next: string[] | undefined) => void;
 }) {
   const { t } = useTranslation();
-  const commit = (text: string) => {
+  const shown = (value ?? []).join(' / ');
+  const [text, setText] = useState(shown);
+  // An outside change (undo, a loaded file) re-seeds the text without remounting, so focus stays.
+  useEffect(() => setText(shown), [shown]);
+  const commit = () => {
     const next = memberPathFromText(text);
     if ((next ?? []).join('\u0000') !== (value ?? []).join('\u0000')) onChange(next);
   };
   return (
     <input
-      // Keyed on the path so an outside change (undo, a loaded file) re-seeds the text.
-      key={(value ?? []).join('\u0000')}
-      defaultValue={(value ?? []).join(' / ')}
-      onBlur={(e) => commit(e.target.value)}
-      onKeyDown={(e) => { if (e.key === 'Enter') commit(e.currentTarget.value); }}
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
       placeholder={t('searchModal.filterEditors.memberPath.placeholder')}
       aria-label={t('searchModal.filterEditors.memberPath.ariaLabel')}
       title={t('searchModal.filterEditors.memberPath.title')}

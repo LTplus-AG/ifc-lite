@@ -24,6 +24,7 @@ const LABEL_ATTRIBUTES = ['Name', 'Identification'] as const;
 const PROPERTY_REFERENCE_SLOT = 3;
 
 function referencedLabel(store: IfcDataStore, extractor: EntityExtractor, refId: number): string | undefined {
+  // @raw-entity-enumeration-ok follows the file's own PropertyReference to a source record; a live-session edit of the referenced object's Name is not seen here, the same as every other on-demand property read
   const ref = store.entityIndex.byId.get(refId) ?? store.deferredEntityIndex?.get(refId);
   if (!ref) return undefined;
   const entity = extractor.extractEntity(ref);

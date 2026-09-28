@@ -719,9 +719,7 @@ function getMaterialPropertyIndex(store: IfcDataStore): Map<number, MaterialPset
                     type: pv.type,
                     value: pv.value,
                 };
-                if (pv.values) entry.values = pv.values;
-                if (pv.dataType) entry.dataType = pv.dataType;
-                if (pv.dataTypeMixed) entry.dataTypeMixed = true;
+                copyParsedExtras(entry, pv);
                 properties.push(entry);
             }
             if (properties.length === 0) continue;

@@ -631,7 +631,7 @@ export function Viewport({
   // Hover throttling
   const lastHoverCheckRef = useRef<number>(0);
   const hoverThrottleMs = 50; // Check hover every 50ms
-  const { hoverPickEnabledRef: hoverTooltipsEnabledRef, hoveredIdRef, hoveredModelIndexRef } = useHoverOutline(rendererRef); // #5390
+  const { hoverPickEnabledRef: hoverTooltipsEnabledRef } = useHoverOutline(rendererRef); // #5390
 
   // Measure tool throttling (adaptive based on raycast performance)
   const measureRaycastPendingRef = useRef(false);
@@ -1568,7 +1568,6 @@ export function Viewport({
     isolatedEntitiesRef,
     ghostExceptEntitiesRef,
     selectedEntityIdRef,
-    hoveredIdRef, hoveredModelIndexRef,
     selectedModelIndexRef,
     clearColorRef,
     sectionPlaneRef,

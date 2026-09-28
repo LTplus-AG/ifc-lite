@@ -18,8 +18,8 @@ import { flushPlacementGeometry } from '@/lib/model-placement/bounds-revision';
 import { useEffect, type MutableRefObject, type RefObject } from 'react';
 import type { Renderer, VisualEnhancementOptions, LightingEnvironment } from '@ifc-lite/renderer';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
-import type { SectionPlane } from '@/store';
-import { useViewerStore } from '@/store';
+import { useViewerStore, type SectionPlane } from '@/store';
+import { hoverOutlineTarget } from './useHoverOutline';
 import { chartAwareRendererSelectionFromStore } from '@/lib/charts/renderer-selection';
 import { preserveClashPaintInSelection } from '@/lib/clash/renderer-selection';
 import { sectionRenderClip } from '@/lib/section/section-render-clip';
@@ -50,10 +50,6 @@ export interface UseAnimationLoopParams {
   /** X-Ray context: ghost every entity NOT in this set (null = no ghosting). */
   ghostExceptEntitiesRef: MutableRefObject<Set<number> | null>;
   selectedEntityIdRef: MutableRefObject<number | null>;
-  /** Hovered entity id for the pre-highlight outline (#5390), or null. */
-  hoveredIdRef: MutableRefObject<number | null>;
-  /** Model of the hovered entity (federation); absent = any model. */
-  hoveredModelIndexRef?: MutableRefObject<number | undefined>;
   selectedModelIndexRef: MutableRefObject<number | undefined>;
   clearColorRef: MutableRefObject<[number, number, number, number]>;
   visualEnhancementRef: MutableRefObject<VisualEnhancementOptions>;
@@ -101,8 +97,6 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     isolatedEntitiesRef,
     ghostExceptEntitiesRef,
     selectedEntityIdRef,
-    hoveredIdRef,
-    hoveredModelIndexRef,
     selectedModelIndexRef,
     clearColorRef,
     visualEnhancementRef,
@@ -272,7 +266,6 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             ghostExceptIds: ghostExceptEntitiesRef.current,
             selectedId: selection.selectedId,
             selectedIds: selection.selectedIds,
-            hoveredId: hoveredIdRef.current ?? undefined, hoveredModelIndex: hoveredModelIndexRef?.current,
             emphasizeOverrides: (clashHighlightColorsRef.current?.size ?? 0) > 0,
             selectedModelIndex: selectedModelIndexRef.current,
             clearColor: clearColorRef.current,
@@ -288,7 +281,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             buildingRotation: coordinateInfoRef.current?.buildingRotation,
             // The cut: a plane or, in box mode, the clip box (#5513), gated on the visibility toggle (#5893).
             // Add Element moves the uncut plane preview to its workplane (#6233).
-            ...withAddElementWorkplane(useViewerStore.getState(), sectionRenderClip(useViewerStore.getState().sceneState.section.visible, sectionPlaneRef.current, sectionRangeRef.current)),
+            ...withAddElementWorkplane(useViewerStore.getState(), sectionRenderClip(useViewerStore.getState().sceneState.section.visible, sectionPlaneRef.current, sectionRangeRef.current)), ...hoverOutlineTarget(),
             terrainClipY: terrainClipYRef.current ?? undefined,
           });
         } catch (err) {

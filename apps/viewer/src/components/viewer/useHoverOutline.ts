@@ -12,6 +12,7 @@ import { useEffect, type MutableRefObject } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
 import { useHoverState } from '../../hooks/useViewerSelectors.js';
+import { useViewerStore } from '@/store';
 
 export function useHoverOutline(rendererRef: MutableRefObject<Renderer | null>) {
   const { hoverTooltipsEnabled, hoverHighlightEnabled, hoverState, clearHover } = useHoverState();
@@ -19,8 +20,6 @@ export function useHoverOutline(rendererRef: MutableRefObject<Renderer | null>) 
   // enabled flag to decide what to do with the result.
   const hoverPickEnabledRef = useLatestRef(hoverTooltipsEnabled || hoverHighlightEnabled);
   const hoveredOutlineId = hoverHighlightEnabled ? hoverState.entityId : null;
-  const hoveredIdRef = useLatestRef(hoveredOutlineId);
-  const hoveredModelIndexRef = useLatestRef(hoverState.modelIndex);
   // An idle view only redraws on request, so a hover change must ask.
   useEffect(() => { rendererRef.current?.requestRender(); }, [rendererRef, hoveredOutlineId, hoverState.modelIndex]);
   // Clear only when NEITHER consumer wants hover state: the outline keeps it
@@ -28,5 +27,15 @@ export function useHoverOutline(rendererRef: MutableRefObject<Renderer | null>) 
   useEffect(() => {
     if (!hoverTooltipsEnabled && !hoverHighlightEnabled) clearHover();
   }, [hoverTooltipsEnabled, hoverHighlightEnabled, clearHover]);
-  return { hoverPickEnabledRef, hoveredIdRef, hoveredModelIndexRef };
+  return { hoverPickEnabledRef };
+}
+
+/**
+ * This frame's hover-outline render options (`RenderOptions.hoveredId` /
+ * `hoveredModelIndex`), read from the store by the animation loop each frame,
+ * so no ref needs threading through it.
+ */
+export function hoverOutlineTarget(state = useViewerStore.getState()): { hoveredId?: number; hoveredModelIndex?: number } {
+  if (!state.hoverHighlightEnabled || state.hoverState.entityId == null) return {};
+  return { hoveredId: state.hoverState.entityId, hoveredModelIndex: state.hoverState.modelIndex };
 }

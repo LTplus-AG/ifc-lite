@@ -2473,3 +2473,33 @@ and its phase timings within noise. Viadotto again emitted the intended extra
 geometry, so its timing remains non-comparable. The lesson is to check
 complete model output before interpreting alignment timings and to trace
 the lookup cost inside each repeated station evaluation.
+
+## Analytic mapped-source reuse (#5786)
+
+The analytic source walker now reuses a validated representation-map source,
+its immutable item list and parsed MappingOrigin across occurrences in one
+extraction. Each MappingTarget and final world transform still resolves for
+its own occurrence; the uncached comparison switch exists only in test builds.
+The generated many-instance test reduces source loads from 64 to one, and the
+real Revit Snowdon model from 1,073 to 128, while cached/uncached descriptions,
+definitions, extrusions, quantities, instance order and diagnostics agree.
+Nested, reflected and scaled mappings retain their distinct f64 world frames.
+
+Earlier idle-host native AC20 and ISSUE_129 controls kept ordered mesh output
+identical and showed overlapping parse, geometry, total-time and peak-RSS
+ranges. A [current-lock hosted AC20 control](https://github.com/LTplus-AG/ifc-lite/actions/runs/36474112703)
+compared a synthetic parent made from then-current `main` (`c17ee39`) plus
+the patch-identical final #6283 source with a clean #6276 merge. Five balanced,
+interleaved fresh-process profiling pairs kept the fixture checksum, ordered mesh
+fingerprints and entity/mesh/vertex/triangle counts identical; paired phase
+timings remained within noise. After #6283 squashed as `d9b05c2f5`, exact
+native probe-input comparisons found no differences between that squash and
+the synthetic parent or between the restacked #6276 source and the synthetic
+child. Only a Python README clarification differed under the broader Rust
+tree. The combined Snowdon analytic
+JSON was byte-identical across the earlier parent and child.
+These ordinary mesh-load probes do not execute the opt-in analytic cache, so
+they establish no browser worker-pool speedup or analytic-call memory win.
+The lesson is to cache only immutable source facts and to measure opt-in
+analytic extraction separately: far fewer source validations need not shorten
+the full call.

@@ -121,3 +121,4 @@ apps/viewer/src/components/viewer/schedule/GanttPanel.tsx
 packages/mcp/src/tools/diff-authored-keys.ts
 packages/mcp/src/tools/diff-fingerprints.ts
 packages/mcp/src/tools/diff-entity-scope.ts
+packages/query/src/ifc-query.ts

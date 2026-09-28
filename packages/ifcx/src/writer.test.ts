@@ -674,3 +674,42 @@ describe('IfcxWriter effective entity set (#5249)', () => {
     assert.deepStrictEqual(sourceOnly.data.map((node) => node.path), [BUILT_WALL_GUID, BUILT_DOOR_GUID]);
   });
 });
+
+describe('IfcxWriter effective spatial edges (#5249)', () => {
+  it('moves a child to its live container and removes the stale parsed link', () => {
+    const { entities, strings } = makeEntities([
+      { expressId: 1, typeEnum: TYPE_STOREY },
+      { expressId: 2, typeEnum: TYPE_STOREY },
+      { expressId: 3, typeEnum: TYPE_WALL },
+    ]);
+    const spatialHierarchy = makeSpatialHierarchy({ byStorey: new Map([[1, [3]]]) });
+    const file = parse(new IfcxWriter({
+      entities, strings, spatialHierarchy,
+      effectiveSpatialEdges: [{ sourceId: 2, targetId: 3, relationshipType: 'IfcRelContainedInSpatialStructure' }],
+    }).export().content);
+    assert.equal(file.data[0].children, undefined);
+    assert.deepStrictEqual(file.data[1].children, { element_3: 'ifc:IfcWall.3' });
+  });
+
+  it('requires complete effective edges when a spatial relationship was edited', () => {
+    const { entities, strings } = makeEntities([
+      { expressId: 1, typeEnum: TYPE_STOREY },
+      { expressId: 2, typeEnum: TYPE_WALL },
+    ]);
+    const view = new MutablePropertyView(null, 'model');
+    view.setExpressIdWatermark(2);
+    view.createEntity('IfcRelContainedInSpatialStructure', [
+      '2newRelationGuid', null, null, null, ['#2'], '#1',
+    ]);
+    const spatialHierarchy = makeSpatialHierarchy({ byStorey: new Map() });
+    const writer = new IfcxWriter({ entities, strings, spatialHierarchy, mutationView: view });
+    assert.throws(() => writer.export(), /needs effectiveSpatialEdges/);
+    assert.doesNotThrow(() => writer.export({ applyMutations: false }));
+
+    const live = parse(new IfcxWriter({
+      entities, strings, spatialHierarchy, mutationView: view,
+      effectiveSpatialEdges: [{ sourceId: 1, targetId: 2, relationshipType: 'IfcRelContainedInSpatialStructure' }],
+    }).export().content);
+    assert.deepStrictEqual(live.data[0].children, { element_2: 'ifc:IfcWall.2' });
+  });
+});

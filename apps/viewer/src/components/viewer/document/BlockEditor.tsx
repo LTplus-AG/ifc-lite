@@ -20,6 +20,8 @@ import { resolveGlobalId, useViewerStore } from '@/store';
 import { readImageFile } from '@/lib/document/persistence';
 import { FIELD_SUGGESTIONS } from '@/lib/document/presets';
 import { elementPropertyPaths, type BindingContext } from '@/lib/document/bindings';
+import { effectiveAttribute } from '@/lib/document/effective-binding-fields';
+import { spatialBindingNodes } from '@/lib/document/spatial-binding-nodes';
 import { idsReportBlockFromReport } from '@/lib/document/ids-report';
 import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, TEXT_SIZE_MAX, TEXT_SIZE_MIN, type DocumentBlock, type TextBlock, type TextFont } from '@/lib/document/types';
 import { ClampedNumberInput, WidthEditor, field } from './BlockEditor.parts';
@@ -55,9 +57,9 @@ function useFieldOptions(bindings: BindingContext): Array<{ path: string; label:
   return useMemo(() => {
     const options = [...FIELD_SUGGESTIONS];
     const active = bindings.models.find((m) => m.id === bindings.activeModelId) ?? bindings.models[0];
-    const storeys = active?.store.spatialHierarchy ? [...active.store.spatialHierarchy.byStorey.keys()] : [];
-    for (const id of storeys.slice(0, 12)) {
-      const name = active.store.entities.getName(id);
+    const storeys = active ? spatialBindingNodes(active, 'IfcBuildingStorey') : [];
+    for (const { expressId: id } of storeys.slice(0, 12)) {
+      const name = active.view ? effectiveAttribute(active, id, 'Name') : active.store.entities.getName(id);
       if (name) options.push({ path: `IfcBuildingStorey["${name}"].Elevation`, label: `Storey "${name}" elevation` });
     }
     const first = selected.size > 0 ? [...selected][0] : null;

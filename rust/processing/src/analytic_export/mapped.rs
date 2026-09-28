@@ -4,8 +4,11 @@
 
 //! Strict preflight for mapped geometry before the mesh router resolves it.
 
+use std::collections::HashMap;
+use std::sync::Arc;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use ifc_lite_geometry::GeometryRouter;
+use nalgebra::Matrix4;
 
 use super::placement::{
     resolve_required, validate_axis2_placement_2d, validate_axis2_placement_3d,
@@ -14,19 +17,90 @@ use super::placement::{
 use super::MAX_VISITED_ITEMS;
 
 pub(super) struct MappedResolution {
-    pub items: Vec<DecodedEntity>,
+    pub items: Arc<[DecodedEntity]>,
     pub transform: Option<[f64; 16]>,
     pub representation_map_id: u32,
 }
 
-pub(super) fn resolve_mapped_item(
-    item: &DecodedEntity,
-    router: &GeometryRouter,
-    decoder: &mut EntityDecoder,
-) -> Result<MappedResolution, String> {
-    let target = resolve_required(item, 1, "MappingTarget", decoder)?;
-    validate_target(&target, decoder)?;
+// Scoped to one IFC extraction: a STEP id is therefore unambiguous across
+// schema and unit contexts. Targets and their transforms remain per occurrence.
+#[derive(Default)]
+pub(super) struct MappedSourceCache {
+    entries: HashMap<u32, MappedSource>,
+    cached_items: usize,
+    #[cfg(test)]
+    pub loads: usize,
+    #[cfg(test)]
+    pub hits: usize,
+    #[cfg(test)]
+    pub(super) enabled: bool,
+}
 
+#[derive(Clone)]
+struct MappedSource {
+    entity: DecodedEntity,
+    items: Arc<[DecodedEntity]>,
+    // Outer None means not parsed yet; inner None is an identity origin.
+    origin: Option<Option<Matrix4<f64>>>,
+}
+
+impl MappedSourceCache {
+    pub(super) fn new() -> Self {
+        Self {
+            #[cfg(test)]
+            enabled: true,
+            ..Self::default()
+        }
+    }
+
+    #[inline]
+    fn cache_enabled(&self) -> bool {
+        #[cfg(test)]
+        { self.enabled }
+        #[cfg(not(test))]
+        { true }
+    }
+
+    fn source(
+        &mut self, item: &DecodedEntity, decoder: &mut EntityDecoder,
+    ) -> Result<MappedSource, String> {
+        let id = item.get_ref(0)
+            .ok_or_else(|| format!("entity #{} has missing or invalid MappingSource", item.id))?;
+        if let Some(cached) = self.entries.get(&id) {
+            #[cfg(test)]
+            { self.hits += 1; }
+            return Ok(cached.clone());
+        }
+        #[cfg(test)]
+        { self.loads += 1; }
+        let source = load_source(item, decoder);
+        if let Ok(value) = &source {
+            let item_count = value.items.len();
+            if self.cache_enabled() && self.entries.len() < MAX_VISITED_ITEMS
+                && item_count <= MAX_VISITED_ITEMS.saturating_sub(self.cached_items) {
+                self.cached_items += item_count;
+                self.entries.insert(id, value.clone());
+            }
+        }
+        source
+    }
+
+    fn origin(
+        &mut self, source: &MappedSource, router: &GeometryRouter,
+        decoder: &mut EntityDecoder,
+    ) -> ifc_lite_geometry::Result<Option<Matrix4<f64>>> {
+        if let Some(origin) = self.entries.get(&source.entity.id).and_then(|entry| entry.origin) {
+            return Ok(origin);
+        }
+        let origin = router.mapping_origin_transform(&source.entity, decoder)?;
+        if let Some(entry) = self.entries.get_mut(&source.entity.id) {
+            entry.origin = Some(origin);
+        }
+        Ok(origin)
+    }
+}
+
+fn load_source(item: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<MappedSource, String> {
     let source = resolve_required(item, 0, "MappingSource", decoder)?;
     if source.ifc_type != IfcType::IfcRepresentationMap {
         return Err(format!("MappingSource #{} is not IfcRepresentationMap", source.id));
@@ -48,9 +122,22 @@ pub(super) fn resolve_mapped_item(
     }
     let items = decoder.resolve_ref_list(items_attr)
         .map_err(|error| format!("MappedRepresentation #{} Items: {error}", rep.id))?;
-    let local = router.resolve_scaled_mapped_item_transform(item, &source, decoder)
+    Ok(MappedSource { entity: source, items: items.into(), origin: None })
+}
+
+pub(super) fn resolve_mapped_item(
+    item: &DecodedEntity,
+    router: &GeometryRouter,
+    decoder: &mut EntityDecoder,
+    cache: &mut MappedSourceCache,
+) -> Result<MappedResolution, String> {
+    let target = resolve_required(item, 1, "MappingTarget", decoder)?;
+    validate_target(&target, decoder)?;
+    let source = cache.source(item, decoder)?;
+    let local = router.resolve_scaled_mapped_item_transform_with_origin_loader(item, decoder,
+        |decoder| cache.origin(&source, router, decoder))
         .map_err(|error| format!("mapped transform: {error}"))?;
-    Ok(MappedResolution { items, transform: local, representation_map_id: source.id })
+    Ok(MappedResolution { items: source.items, transform: local, representation_map_id: source.entity.id })
 }
 
 fn validate_target(target: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<(), String> {

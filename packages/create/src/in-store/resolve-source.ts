@@ -13,7 +13,7 @@
  * backend layer can call it without needing parser internals.
  */
 
-import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
+import { EntityExtractor, effectiveStoreyId, resolveEffectiveRelationshipOverlay, type IfcDataStore } from '@ifc-lite/parser';
 import { iterateEffectiveEntityIds, type IfcAttributeValue, type StoreEditor } from '@ifc-lite/mutations';
 import { resolvedTypeName } from '@ifc-lite/data';
 import { asRef, createStyleEntityReader, refList } from './style-entity-reader.js';
@@ -149,9 +149,25 @@ export function resolveDuplicateSource(
     }
   }
 
-  // Containing storey lookup via the pre-built spatial hierarchy.
-  // Falls back to null when the entity sits outside the spatial tree.
-  const storeyId = store.spatialHierarchy?.elementToStorey?.get(sourceExpressId) ?? null;
+  // The duplicate must inherit the storey that saving this session would
+  // produce, including edited/deleted containment and aggregate ancestors.
+  const view = editor?.getMutationView();
+  const createdTypes = new Map(view?.getNewEntities().map((e) => [e.expressId, e.type]) ?? []);
+  const spatialContext = view?.hasPendingChanges() ? {
+    relationships: resolveEffectiveRelationshipOverlay(store, {
+      createdEntities: () => view.getNewEntities(),
+      mutatedEntityIds: () => view.getEffectiveChanges().map((change) => change.entityId),
+      namedAttributes: (id: number) => view.getAttributeMutationsForEntity(id)
+        .map(({ name, value }) => [name, value] as const),
+      positionalAttributes: (id: number) => view.getPositionalMutationsForEntity(id) ?? [],
+      entityType: (id: number) => view.getEntityTypeMutation(id)?.newType,
+      isDeleted: (id: number) => view.isDeleted(id),
+    }),
+    isDeleted: (id: number) => view.isDeleted(id),
+    typeName: (id: number) => view.getEntityTypeMutation(id)?.newType
+      ?? createdTypes.get(id) ?? store.entities.getTypeName(id),
+  } : null;
+  const storeyId = effectiveStoreyId(store, sourceExpressId, spatialContext) ?? null;
 
   // Association rels that reference the source — replayed against
   // the duplicate by `duplicateInStore` so the exported STEP carries

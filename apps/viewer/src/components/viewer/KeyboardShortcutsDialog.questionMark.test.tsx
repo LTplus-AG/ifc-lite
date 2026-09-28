@@ -20,7 +20,7 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, press, render, waitFor } from '@/test/render.js';
+import { click, cleanup, press, render, waitFor } from '@/test/render.js';
 import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { useViewerStore } from '@/store';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardShortcutsDialog.js';
@@ -61,6 +61,17 @@ describe('`?` opens the Info dialog on Shortcuts (#5606)', () => {
     pressQuestionMark();
     pressQuestionMark();
     assert.equal(activeTab(), undefined);
+  });
+
+  it('names the icon-only close control and closes the open dialog (#6325)', () => {
+    render(<Harness />);
+    pressQuestionMark();
+    assert.equal(activeTab(), 'Shortcuts');
+
+    const close = document.querySelector<HTMLButtonElement>('[role="dialog"] button[aria-label="Close"]');
+    assert.ok(close, 'the open Info dialog has a named close button');
+    click(close);
+    assert.equal(activeTab(), undefined, 'clicking the named button closes the dialog');
   });
 
   it('Escape closes the modal without clearing the selected entity (#5847)', async () => {

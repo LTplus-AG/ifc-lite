@@ -9,6 +9,7 @@
  */
 
 import { useViewerStore } from '@/store';
+import { effectiveStoreyId } from '@/lib/effective-storey';
 import type { ModelContext } from './system-prompt.js';
 import { IFC_ENTITY_NAMES, IfcTypeEnum, type SpatialNode, type SpatialHierarchy } from '@ifc-lite/data';
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
@@ -99,7 +100,10 @@ function collectSelectedEntities(state: ReturnType<typeof useViewerStore.getStat
 
     const type = store.entities.getTypeName(ref.expressId) || 'Unknown';
     const name = store.entities.getName(ref.expressId) || `${type} #${ref.expressId}`;
-    const storeyId = store.spatialHierarchy?.elementToStorey.get(ref.expressId);
+    const view = ref.modelId === 'legacy'
+      ? state.mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? state.mutationViews.get(LEGACY_MODEL_ID)
+      : state.mutationViews.get(ref.modelId);
+    const storeyId = effectiveStoreyId(store, view, ref.expressId);
     const storeyName = storeyId !== undefined ? (store.entities.getName(storeyId) || `Storey #${storeyId}`) : undefined;
     const storeyElevation = storeyId !== undefined ? store.spatialHierarchy?.storeyElevations.get(storeyId) : undefined;
 

@@ -281,6 +281,7 @@ fn analyze_with_limits(
     let mut decoder = EntityDecoder::with_arc_index(content, index.clone());
     let mut direct: HashMap<u32, Vec<u32>> = HashMap::new();
     let mut typed: HashMap<u32, u32> = HashMap::new();
+    let mut conflicting_types = HashSet::new();
     let mut remaining_links = limits.links;
     let mut diagnostics = Diagnostics::default();
     let mut scan = EntityScanner::new(content);
@@ -345,7 +346,17 @@ fn analyze_with_limits(
             if rel.ifc_type == IfcType::IfcRelDefinesByProperties {
                 direct.entry(product_id).or_default().extend_from_slice(&targets);
             } else {
-                typed.entry(product_id).or_insert(targets[0]);
+                if conflicting_types.contains(&product_id) { continue; }
+                match typed.get(&product_id) {
+                    Some(&first) if first != targets[0] => {
+                        typed.remove(&product_id);
+                        conflicting_types.insert(product_id);
+                        diagnostics.push(format!(
+                            "product #{product_id}: conflicting IfcRelDefinesByType assignments"));
+                    }
+                    Some(_) => {}
+                    None => { typed.insert(product_id, targets[0]); }
+                }
             }
         }
     }
@@ -383,14 +394,28 @@ fn analyze_with_limits(
                     diagnostics.push(format!("type #{type_id}: not IfcTypeObject"));
                     return Vec::new();
                 }
-                let Some(list) = type_entity.get(5).and_then(|a| a.as_list()) else {
+                let Some(value) = type_entity.get(5) else {
+                    diagnostics.push(format!("type #{type_id}: missing HasPropertySets"));
+                    return Vec::new();
+                };
+                if value.is_null() { return Vec::new(); }
+                let Some(list) = value.as_list() else {
+                    diagnostics.push(format!("type #{type_id}: malformed HasPropertySets"));
                     return Vec::new();
                 };
                 if list.len() > MAX_REL_MEMBERS {
                     diagnostics.push(format!("type #{type_id}: HasPropertySets exceeds work budget"));
                     return Vec::new();
                 }
-                list.iter().filter_map(|a| a.as_entity_ref()).collect()
+                let mut refs = Vec::with_capacity(list.len());
+                for member in list {
+                    let Some(id) = member.as_entity_ref() else {
+                        diagnostics.push(format!("type #{type_id}: malformed HasPropertySets member"));
+                        return Vec::new();
+                    };
+                    refs.push(id);
+                }
+                refs
             });
             add_sets(&mut decoder, &project_units, &index, product,
                 SourceSets { ids: defs, origin: QuantityOrigin::Type(type_id) }, &mut budget,

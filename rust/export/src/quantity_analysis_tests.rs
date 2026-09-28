@@ -93,6 +93,44 @@ fn issue_5787_malformed_quantity_links_report_lost_observations() {
 }
 
 #[test]
+fn issue_5787_type_property_sets_refuse_malformed_values_without_hiding_absence() {
+    let selected = HashSet::from([5]);
+    for (replacement, reason) in [
+        ("#14", "malformed HasPropertySets"),
+        ("(#21,$)", "malformed HasPropertySets member"),
+        ("(#21,'bad')", "malformed HasPropertySets member"),
+    ] {
+        let ifc = IFC.replace("(#21),$,$,$,.NOTDEFINED.",
+            &format!("{replacement},$,$,$,.NOTDEFINED."));
+        let result = analyze_authored_quantities(ifc.as_bytes(), Some(&selected));
+        assert_eq!(result.products[&5].authored.iter().map(|q| q.quantity_id)
+            .collect::<Vec<_>>(), vec![10, 11, 12, 13]);
+        assert!(result.diagnostics.iter().any(|message| message.contains(reason)),
+            "{reason}: {:?}", result.diagnostics);
+    }
+
+    let absent = IFC.replace("(#21),$,$,$,.NOTDEFINED.", "$,$,$,$,.NOTDEFINED.");
+    let result = analyze_authored_quantities(absent.as_bytes(), Some(&selected));
+    assert_eq!(result.products[&5].authored.len(), 4);
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+}
+
+#[test]
+fn issue_5787_conflicting_type_assignments_refuse_type_quantities_only() {
+    let second = concat!(
+        "#24=IFCWALLTYPE('0OTHER',$,'Other',$,$,(#21),$,$,$,.NOTDEFINED.);\n",
+        "#25=IFCRELDEFINESBYTYPE('0OTHERREL',$,$,$,(#5),#24);\n",
+    );
+    let ifc = IFC.replace("#30=IFCSIUNIT", &format!("{second}#30=IFCSIUNIT"));
+    let result = analyze_authored_quantities(ifc.as_bytes(), Some(&HashSet::from([5])));
+    assert_eq!(result.products[&5].authored.iter().map(|q| q.quantity_id)
+        .collect::<Vec<_>>(), vec![10, 11, 12, 13]);
+    assert!(result.products[&5].conflicts.is_empty());
+    assert!(result.diagnostics.iter().any(|message|
+        message.contains("product #5: conflicting IfcRelDefinesByType assignments")));
+}
+
+#[test]
 fn issue_5787_oversized_quantity_leaf_is_reported_before_decode() {
     let oversized = IFC.replace(
         "#10=IFCQUANTITYLENGTH('NetLength',$,#30,3.,$);",

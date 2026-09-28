@@ -286,7 +286,11 @@ for quantity in view["products"].get(50, {}).get("authored", []):
 count, source-solid count, cutting length or material takeoff. This authored
 view contains no calculated estimate; use the analytic source APIs separately
 and keep their provenance distinct. A malformed or over-budget relationship
-or quantity set appears in `diagnostics`.
+or quantity set appears in `diagnostics`. An absent optional
+`IfcTypeObject.HasPropertySets` is valid; a malformed list or member is
+reported and its type-authored quantities are refused. Conflicting
+`IfcRelDefinesByType` assignments likewise refuse type inheritance for that
+product while preserving its occurrence-authored observations.
 
 ### Tessellation quality
 

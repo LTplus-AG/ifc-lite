@@ -99,6 +99,19 @@ separate from renderer geometry and measure opt-in extraction on authored
 profile models when that workflow becomes a performance target. The PR records
 the numeric measurements and binary/fixture provenance.
 
+## Arbitrary-profile topology validation (#6316)
+
+Five interleaved fresh-process native pairs compared merged #6263 main with
+the topology validator on AC20-FZK-Haus, with five inner iterations and ordered
+mesh fingerprints per process. Parse, geometry, and total ranges overlapped;
+every run emitted identical mesh counts and ordered mesh fingerprints. Verdict:
+no measurable default-load cost or mesh change on this fixture. Validation
+runs only for an opt-in analytic read of an arbitrary profile, so the ordinary
+mesh probe cannot measure its extraction cost. If nominal-quantity callers make
+that read frequent, measure it on authored profiles with many line/arc edges and
+holes. Keeping validation outside mesh production preserves the normal load;
+the PR records paired timings and binary/fixture provenance.
+
 ## Derived swept-disk metrics (#5754)
 
 The length/bend calculations run only when an analytic description is

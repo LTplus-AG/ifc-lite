@@ -3,12 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import { act } from 'react';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanup, render, click } from '@/test/render.js';
+import { registerLocale, setLocale, type Catalogue } from '@/i18n';
+import { en } from '@/i18n/en';
 import { useViewerStore } from '@/store';
 import type { SweptDiskDescriptions } from '@ifc-lite/geometry';
-import { formatAnalyticLength, SweptDiskRecord } from './SweptDiskInspection.js';
+import { formatAnalyticLength, SweptDiskInspection, SweptDiskRecord } from './SweptDiskInspection.js';
 
 type Occurrence = SweptDiskDescriptions['elements'][string][number];
 const COMPLETE: Occurrence = {
@@ -36,6 +39,7 @@ const COMPLETE: Occurrence = {
 const prior = useViewerStore.getState();
 afterEach(() => {
   cleanup();
+  setLocale('en');
   useViewerStore.setState(prior, true);
 });
 
@@ -96,5 +100,39 @@ describe('swept-disk source inspection (#5783)', () => {
   it('formats analytic metres with display overrides without rounding to mesh readout precision', () => {
     assert.match(formatAnalyticLength(Math.PI, {}), /^3\.1415926536 m$/);
     assert.match(formatAnalyticLength(1, { LENGTHUNIT: 'mm' }), /^1,?000 mm$/);
+  });
+
+  it('renders swept-disk panel and record labels from the active pseudo-locale (#5783)', () => {
+    const unsupported: Occurrence = { ...COMPLETE, InnerRadius: null, mapping_path: [],
+      source_modified: true, status: { type: 'unsupported', reason: 'source curve unsupported' },
+      directrix_metrics: null };
+    const ui = render(<>
+      <SweptDiskInspection enabled />
+      <SweptDiskRecord occurrence={COMPLETE} occurrenceIndex={0} modelId="m" expressId={42} />
+      <SweptDiskRecord occurrence={unsupported} occurrenceIndex={1} modelId="m" expressId={42} />
+      <SweptDiskRecord occurrence={{ ...COMPLETE, source_modified: true }}
+        occurrenceIndex={2} modelId="m" expressId={42} />
+    </>);
+    assert.match(ui.textContent ?? '', /Derived source geometry/);
+    assert.match(ui.textContent ?? '', /Total centreline length/);
+
+    const pseudo: Catalogue = Object.fromEntries(Object.entries(en)
+      .filter(([key]) => key.startsWith('properties.sweptDisk.'))
+      .map(([key, value]) => [key, typeof value === 'string' ? `⟦${key}|${value}⟧` : value]));
+    registerLocale('swept-disk-pseudo', pseudo);
+    act(() => setLocale('swept-disk-pseudo'));
+
+    for (const suffix of [
+      'heading', 'sourceNote', 'solid', 'status', 'complete', 'unsupported',
+      'sourceModified', 'yes', 'no', 'directrix', 'mappingPath', 'none',
+      'radius', 'innerRadius', 'unsupportedRadiusHint', 'derivedCentreline',
+      'totalLength', 'segment', 'bend', 'signedSweep', 'modifiedHint',
+    ]) {
+      const key = `properties.sweptDisk.${suffix}`;
+      assert.ok(ui.textContent?.includes(`⟦${key}|`), `${key} must render from the active locale`);
+    }
+    assert.ok([...ui.querySelectorAll('button[disabled]')].some((button) =>
+      button.getAttribute('title')?.includes('⟦properties.sweptDisk.modifiedHighlightHint|')),
+    'the modified-source tooltip must render from the active locale');
   });
 });

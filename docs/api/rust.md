@@ -793,10 +793,15 @@ pub use ifc_lite_core::{AttributeValue, DecodedEntity, IfcType};
 keyed by actual product STEP ID. It reuses the export model's physical-quantity
 decoder and retains each `IfcElementQuantity`/leaf entity ID, exact EXPRESS
 names, numeric authored value, kind, and occurrence or inherited type origin.
+`kind` is the full IFC leaf type, such as `IfcQuantityLength`.
 `IfcRelDefinesByProperties.RelatingPropertyDefinition` may name one definition
 or an IFC4 `IfcPropertySetDefinitionSet`; every linked `IfcElementQuantity` is
 retained. Malformed definitions and exhausted relationship, set-visit, or
-authored-row work budgets appear in `diagnostics`, with expansion stopped at the cap.
+authored-row, quantity-leaf-visit, aggregate quantity-set or leaf decode-byte, or
+type-relationship work budgets appear in
+`diagnostics`, with expansion stopped at the cap.
+Per-record diagnostics are capped at 1,024 plus one truncation notice; distinct
+work-budget refusal reasons remain visible after that cap.
 It reports both sides of a conflict instead of applying the flattened row's
 occurrence precedence. Explicit quantity units use the canonical bounded IFC
 unit resolver; an unresolved or dimensionally mismatched unit has a diagnostic
@@ -805,6 +810,9 @@ is preserved too; Number and Count use an explicit named unit when supplied
 and are otherwise dimensionless. `product_count` counts selected
 IFC product entities, not represented solids or physical bars. Derived source
 estimates remain separate from this authored view.
+For Count and Number, distinct explicit unit entities are conservatively
+reported as a conflict even when their display symbols match, since unit names
+do not certify dimensional equivalence.
 
 `export_step_with_log` applies the mutation log a `MutablePropertyView`
 records (`exportMutations()`), replayed as `importMutations` replays it into a

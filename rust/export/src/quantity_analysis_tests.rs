@@ -35,6 +35,7 @@ fn issue_5787_authored_quantities_keep_source_units_and_conflicts() {
     assert_eq!(wall.authored.len(), 5);
     let explicit = &wall.authored[0];
     assert_eq!((explicit.set_id, explicit.quantity_id, explicit.origin), (14, 10, "occurrence"));
+    assert_eq!(explicit.kind, "IfcQuantityLength");
     assert_eq!((explicit.set_name.as_str(), explicit.quantity_name.as_str()),
         ("Qto_WallBaseQuantities", "NetLength"));
     assert_eq!(explicit.unit.as_ref().unwrap().symbol, "m");
@@ -83,6 +84,13 @@ fn issue_5787_oversized_quantity_leaf_is_reported_before_decode() {
     assert!(result.products[&5].authored.iter().all(|quantity| quantity.origin == "type"));
     assert!(result.diagnostics.iter().any(|message|
         message.contains("quantity set #14") && message.contains("record exceeds work budget")));
+    let refused = analyze_with_limits(oversized.as_bytes(), Some(&HashSet::from([5])),
+        AnalysisLimits { leaves: 0, ..Default::default() });
+    assert!(refused.diagnostics.iter().any(|message|
+        message.contains("quantity leaf visits exceed work budget")));
+    assert!(refused.diagnostics.iter().all(|message|
+        !message.contains("record exceeds work budget")),
+        "leaf inspection must stop when its aggregate budget is exhausted");
 }
 
 #[test]
@@ -119,14 +127,14 @@ fn issue_5787_ifc4x3_number_and_explicit_count_units_are_not_dropped() {
     let result = analyze_authored_quantities(ifc.as_bytes(), Some(&HashSet::from([5])));
     let authored = &result.products[&5].authored;
     let count = authored.iter().find(|q| q.quantity_id == 16).unwrap();
-    assert_eq!((count.kind, count.value), ("Count", 7.0));
+    assert_eq!((count.kind, count.value), ("IfcQuantityCount", 7.0));
     assert_eq!(count.unit.as_ref().unwrap().symbol, "m");
     assert_eq!(count.unit.as_ref().unwrap().source, "explicit");
     let number = authored.iter().find(|q| q.quantity_id == 17).unwrap();
-    assert_eq!((number.kind, number.value), ("Number", 2.5));
+    assert_eq!((number.kind, number.value), ("IfcQuantityNumber", 2.5));
     assert_eq!(number.unit.as_ref().unwrap().symbol, "m²");
     let bare = authored.iter().find(|q| q.quantity_id == 18).unwrap();
-    assert_eq!(bare.kind, "Number");
+    assert_eq!(bare.kind, "IfcQuantityNumber");
     assert_eq!(bare.unit.as_ref().unwrap().source, "dimensionless");
     assert_eq!(bare.unit_diagnostic, None);
 }
@@ -159,6 +167,114 @@ fn issue_5787_equal_numeric_count_with_incompatible_explicit_units_conflicts() {
         .find(|conflict| conflict.quantity_name == "Count").expect("m versus m² cannot be equal");
     assert_eq!(conflict.occurrence_quantity_ids, vec![40]);
     assert_eq!(conflict.type_quantity_ids, vec![41]);
+}
+
+#[test]
+fn issue_5787_count_same_display_name_cannot_hide_different_unit_dimensions() {
+    let ifc = IFC.replace("#21=IFCELEMENTQUANTITY", concat!(
+        "#40=IFCQUANTITYCOUNT('Count',$,#74,2,$);\n",
+        "#41=IFCQUANTITYCOUNT('Count',$,#75,2,$);\n",
+        "#70=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);\n",
+        "#71=IFCDIMENSIONALEXPONENTS(2,0,0,0,0,0,0);\n",
+        "#72=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(1.),#30);\n",
+        "#73=IFCMEASUREWITHUNIT(IFCAREAMEASURE(1.),#31);\n",
+        "#74=IFCCONVERSIONBASEDUNIT(#70,.LENGTHUNIT.,'same',#72);\n",
+        "#75=IFCCONVERSIONBASEDUNIT(#71,.AREAUNIT.,'same',#73);\n",
+        "#76=IFCCONVERSIONBASEDUNIT(#70,.LENGTHUNIT.,'same',#72);\n",
+        "#21=IFCELEMENTQUANTITY"
+    )).replace("(#20));", "(#20,#41));")
+      .replace("(#10,#11,#12,#13));", "(#10,#11,#40,#13));");
+    let result = analyze_authored_quantities(ifc.as_bytes(), Some(&HashSet::from([5])));
+    let product = &result.products[&5];
+    let count: Vec<_> = product.authored.iter().filter(|q| q.quantity_name == "Count").collect();
+    assert_eq!(count.len(), 2);
+    assert_eq!(count[0].unit.as_ref().unwrap().symbol, "same");
+    assert_eq!(count[1].unit.as_ref().unwrap().symbol, "same");
+    assert_eq!(count[0].unit.as_ref().unwrap().UnitType.as_deref(), Some("LENGTHUNIT"));
+    assert_eq!(count[1].unit.as_ref().unwrap().UnitType.as_deref(), Some("AREAUNIT"));
+    assert!(product.conflicts.iter().any(|conflict| conflict.quantity_name == "Count"));
+    let shared_unit = ifc.replace("'Count',$,#75,2", "'Count',$,#74,2");
+    let shared = analyze_authored_quantities(shared_unit.as_bytes(), Some(&HashSet::from([5])));
+    assert!(shared.products[&5].conflicts.iter().all(|conflict| conflict.quantity_name != "Count"));
+    let distinct_same_type = ifc.replace("'Count',$,#75,2", "'Count',$,#76,2");
+    let distinct = analyze_authored_quantities(distinct_same_type.as_bytes(), Some(&HashSet::from([5])));
+    assert!(distinct.products[&5].conflicts.iter().any(|conflict| conflict.quantity_name == "Count"),
+        "matching names and UnitType do not certify distinct unit entities' dimensions");
+}
+
+#[test]
+fn issue_5787_repeated_unsupported_leaves_consume_aggregate_visit_budget() {
+    let ifc = IFC.replace("(#5),#14", "(#5,#6),#14")
+        .replace("#14=IFCELEMENTQUANTITY", concat!(
+            "#40=IFCPROPERTYSINGLEVALUE('Other',$,IFCLABEL('A'),$);\n",
+            "#14=IFCELEMENTQUANTITY"
+        ))
+        .replace("(#10,#11,#12,#13));", "(#40,#40,#40));");
+    let result = analyze_with_limits(ifc.as_bytes(), None, AnalysisLimits { leaves: 3, ..Default::default() });
+    assert!(result.products.values().all(|product| product.authored.is_empty()));
+    assert_eq!(result.diagnostics.iter().filter(|message|
+        message.contains("quantity leaf visits exceed work budget")).count(), 1);
+}
+
+#[test]
+fn issue_5787_shared_set_decode_bytes_have_an_aggregate_budget() {
+    let index = ifc_lite_processing::build_entity_index_parallel(IFC.as_bytes());
+    let (start, end) = index[&14];
+    let result = analyze_with_limits(IFC.as_bytes(), Some(&HashSet::from([5])),
+        AnalysisLimits { set_bytes: end - start, ..Default::default() });
+    assert!(result.products[&5].authored.iter().any(|q| q.origin == "occurrence"));
+    assert!(result.products[&5].authored.iter().all(|q| q.origin != "type"));
+    assert!(result.diagnostics.iter().any(|message|
+        message.contains("quantity set decode bytes exceed work budget")));
+}
+
+#[test]
+fn issue_5787_repeated_leaf_clones_charge_record_bytes_each_time() {
+    let ifc = IFC.replace("(#10,#11,#12,#13));", "(#10,#10,#10));");
+    let index = ifc_lite_processing::build_entity_index_parallel(ifc.as_bytes());
+    let (start, end) = index[&10];
+    let result = analyze_with_limits(ifc.as_bytes(), Some(&HashSet::from([5])),
+        AnalysisLimits { leaf_bytes: (end - start) * 2, ..Default::default() });
+    assert!(result.products[&5].authored.iter().all(|q| q.origin != "occurrence"));
+    assert!(result.diagnostics.iter().any(|message|
+        message.contains("quantity leaf decode bytes exceed work budget")));
+}
+
+#[test]
+fn issue_5787_type_links_share_aggregate_relationship_budget() {
+    let ifc = IFC.replace("(#5),#22", "(#5,#6),#22");
+    let result = analyze_with_limits(ifc.as_bytes(), None, AnalysisLimits { links: 2, ..Default::default() });
+    assert!(result.products[&5].authored.iter().any(|q| q.origin == "type"));
+    assert!(result.products[&6].authored.is_empty());
+    assert!(result.diagnostics.iter().any(|message|
+        message.contains("expanded quantity links exceed work budget")));
+}
+
+#[test]
+fn issue_5787_malformed_relationship_diagnostics_have_a_fixed_output_bound() {
+    let malformed = (1000..2100).map(|id| format!(
+        "#{id}=IFCRELDEFINESBYPROPERTIES('BAD',$,$,$,(#5),$);\n"))
+        .collect::<String>();
+    let ifc = IFC.replace("ENDSEC;\nEND-ISO-10303-21;",
+        &format!("{malformed}ENDSEC;\nEND-ISO-10303-21;"));
+    let result = analyze_authored_quantities(ifc.as_bytes(), Some(&HashSet::from([5])));
+    assert_eq!(result.diagnostics.len(), 1_025);
+    assert_eq!(result.diagnostics.last().unwrap(),
+        "authored quantity diagnostics exceed work budget");
+    assert!(result.products[&5].authored.iter().any(|q| q.quantity_id == 10),
+        "valid observations preceding malformed records must remain available");
+
+    let no_early_links = IFC.replace(
+        "#15=IFCRELDEFINESBYPROPERTIES('0REL',$,$,$,(#5),#14);\n", "")
+        .replace("#23=IFCRELDEFINESBYTYPE('0TREL',$,$,$,(#5),#22);\n", "");
+    let late = no_early_links.replace("ENDSEC;\nEND-ISO-10303-21;", &format!(
+        "{malformed}#9999=IFCRELDEFINESBYPROPERTIES('LATE',$,$,$,(#5,#6),#14);\nENDSEC;\nEND-ISO-10303-21;"));
+    let limited = analyze_with_limits(late.as_bytes(), None, AnalysisLimits { links: 1, ..Default::default() });
+    assert!(limited.diagnostics.iter().any(|message|
+        message == "authored quantity diagnostics exceed work budget"));
+    assert!(limited.diagnostics.iter().any(|message|
+        message == "expanded quantity links exceed work budget"),
+        "a work-budget refusal must remain visible after record diagnostics saturate");
 }
 
 #[test]

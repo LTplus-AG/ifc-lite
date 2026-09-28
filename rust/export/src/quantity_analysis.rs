@@ -5,23 +5,32 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
-use ifc_lite_core::{AttributeValue, EntityDecoder, EntityIndex, EntityScanner, IfcType, ProjectUnits, ResolvedUnit,
-    resolve_unit_by_ref};
+use ifc_lite_core::{AttributeValue, EntityDecoder, EntityIndex, EntityScanner, IfcType, ProjectUnits};
 use serde::Serialize;
 
 use crate::model::props::decode_quantity_records;
 
+#[path = "quantity_analysis_units.rs"]
+mod units;
+#[path = "quantity_analysis_budget.rs"]
+mod budget;
+#[path = "quantity_analysis_diagnostics.rs"]
+mod diagnostics;
+use budget::{AnalysisLimits, ExpansionBudget, LeafBudgetError};
+use diagnostics::Diagnostics;
+
 const MAX_REL_MEMBERS: usize = 100_000;
 const MAX_REF_RECORD_BYTES: usize = 2_000_000;
 const MAX_AUTHORED_ROWS: usize = 100_000;
+const MAX_QUANTITY_LEAF_VISITS: usize = 100_000;
+const MAX_SET_DECODE_BYTES: usize = 128_000_000;
+const MAX_LEAF_DECODE_BYTES: usize = 128_000_000;
 const MAX_SET_VISITS: usize = 100_000;
 const MAX_REL_LINKS: usize = 100_000;
 const MAX_CONFLICT_COMPARISONS: usize = 100_000;
 
-fn report_once(diagnostics: &mut Vec<String>, message: &'static str) {
-    if !diagnostics.iter().any(|item| item == message) {
-        diagnostics.push(message.into());
-    }
+fn report_once(diagnostics: &mut Diagnostics, message: &'static str) {
+    diagnostics.report_once(message);
 }
 
 fn property_definition_refs(value: &AttributeValue) -> Result<Vec<u32>, &'static str> {
@@ -47,8 +56,6 @@ fn property_definition_refs(value: &AttributeValue) -> Result<Vec<u32>, &'static
 enum QuantityOrigin { Occurrence, Type(u32) }
 
 struct SourceSets<'a> { ids: &'a [u32], origin: QuantityOrigin }
-struct ExpansionBudget { rows: usize, sets: usize }
-
 impl QuantityOrigin {
     fn fields(&self) -> (&'static str, Option<u32>) {
         match self { Self::Occurrence => ("occurrence", None), Self::Type(id) => ("type", Some(*id)) }
@@ -75,11 +82,14 @@ pub struct AuthoredQuantity {
 /// Resolved IFC unit, including an explicit quantity override when supplied.
 #[derive(Debug, Clone, Serialize)]
 #[non_exhaustive]
+#[allow(non_snake_case)] // Public IFC attribute spelling is the contract.
 pub struct QuantityUnit {
     pub symbol: String,
     pub si_scale: f64,
     pub source: &'static str,
     pub unit_id: Option<u32>,
+    /// IFC `IfcNamedUnit.UnitType` token, when it can be resolved.
+    pub UnitType: Option<String>,
 }
 
 /// Same named authored occurrence and type quantity disagree in value or unit.
@@ -111,26 +121,11 @@ pub struct AuthoredQuantityAnalysis {
     pub diagnostics: Vec<String>,
 }
 
-fn quantity_measure(kind: &str) -> Option<(&'static str, &'static str)> {
-    match kind {
-        "Length" => Some(("IfcLengthMeasure", "LENGTHUNIT")),
-        "Area" => Some(("IfcAreaMeasure", "AREAUNIT")),
-        "Volume" => Some(("IfcVolumeMeasure", "VOLUMEUNIT")),
-        "Weight" => Some(("IfcMassMeasure", "MASSUNIT")),
-        "Time" => Some(("IfcTimeMeasure", "TIMEUNIT")),
-        _ => None,
-    }
-}
-
-fn display_unit(unit: ResolvedUnit, source: &'static str, unit_id: Option<u32>) -> QuantityUnit {
-    QuantityUnit { symbol: unit.symbol, si_scale: unit.si_scale, source, unit_id }
-}
-
 fn add_sets(
     decoder: &mut EntityDecoder, project_units: &ProjectUnits,
     index: &EntityIndex,
     product: &mut ProductQuantities, source_sets: SourceSets<'_>,
-    budget: &mut ExpansionBudget, diagnostics: &mut Vec<String>,
+    budget: &mut ExpansionBudget, diagnostics: &mut Diagnostics,
 ) {
     if budget.rows == 0 {
         if !source_sets.ids.is_empty() {
@@ -146,23 +141,38 @@ fn add_sets(
         }
         budget.sets -= 1;
         if !seen.insert(set_id) { continue; }
-        if index.get(&set_id).is_some_and(|(start, end)| end.saturating_sub(*start) > MAX_REF_RECORD_BYTES) {
+        let record_bytes = index.get(&set_id).map_or(0, |(start, end)| end.saturating_sub(*start));
+        if record_bytes > MAX_REF_RECORD_BYTES {
             diagnostics.push(format!("quantity set #{set_id}: record exceeds work budget"));
             continue;
         }
+        if budget.leaf_counts.get(&set_id).is_some_and(|count| *count > budget.leaves) {
+            report_once(diagnostics, "quantity leaf visits exceed work budget");
+            continue;
+        }
+        if record_bytes > budget.set_bytes {
+            report_once(diagnostics, "quantity set decode bytes exceed work budget");
+            continue;
+        }
+        budget.set_bytes -= record_bytes;
         let Ok(set) = decoder.decode_by_id(set_id) else {
             diagnostics.push(format!("quantity set #{set_id}: cannot decode"));
             continue;
         };
         if set.ifc_type != IfcType::IfcElementQuantity { continue; }
-        // decode_quantity_records resolves every referenced leaf. Bound those
-        // records before asking the shared parser to decode them.
-        if let Some(oversized_id) = set.get(5).and_then(AttributeValue::as_list)
-            .into_iter().flatten().filter_map(AttributeValue::as_entity_ref)
-            .find(|id| index.get(id).is_some_and(|(start, end)|
-                end.saturating_sub(*start) > MAX_REF_RECORD_BYTES))
-        {
-            diagnostics.push(format!("quantity set #{set_id}: quantity #{oversized_id} record exceeds work budget"));
+        let Some(leaf_count) = set.get(5).and_then(AttributeValue::as_list).map(|items| items.len()) else {
+            diagnostics.push(format!("quantity set #{set_id}: malformed quantity list"));
+            continue;
+        };
+        budget.leaf_counts.insert(set_id, leaf_count);
+        let refs = set.get(5).and_then(AttributeValue::as_list).expect("checked quantity list");
+        if let Err(error) = budget.charge_leaf_refs(refs, index) {
+            match error {
+                LeafBudgetError::Visits => report_once(diagnostics, "quantity leaf visits exceed work budget"),
+                LeafBudgetError::Bytes => report_once(diagnostics, "quantity leaf decode bytes exceed work budget"),
+                LeafBudgetError::Oversized(id) => diagnostics.push(format!(
+                    "quantity set #{set_id}: quantity #{id} record exceeds work budget")),
+            }
             continue;
         }
         let Some((set_name, records)) = decode_quantity_records(decoder, &set, Some(MAX_REL_MEMBERS)) else {
@@ -175,33 +185,12 @@ fn add_sets(
                 return;
             }
             budget.rows -= 1;
-            let kind = record.value.kind;
-            let (unit, unit_diagnostic) = if record.invalid_unit_ref {
-                (None, Some("Unit is not an entity reference".into()))
-            } else if let Some(unit_id) = record.unit_id {
-                match (quantity_measure(kind), resolve_unit_by_ref(decoder, unit_id)) {
-                    (None, Some((_, resolved, false))) if matches!(kind, "Count" | "Number") =>
-                        (Some(display_unit(resolved, "explicit", Some(unit_id))), None),
-                    (Some((_, expected)), Some((Some(actual), resolved, false))) if actual == expected =>
-                        (Some(display_unit(resolved, "explicit", Some(unit_id))), None),
-                    _ => (None, Some(format!("unsupported or dimensionally mismatched Unit #{unit_id}"))),
-                }
-            } else if matches!(kind, "Count" | "Number") {
-                (Some(QuantityUnit { symbol: "1".into(), si_scale: 1.0,
-                    source: "dimensionless", unit_id: None }), None)
-            } else if let Some((measure, unit_type)) = quantity_measure(kind) {
-                match project_units.unit_for_measure(measure) {
-                    Some(resolved) => {
-                        let source = if project_units.resolved_for_unit_type(unit_type).is_some() {
-                            "project"
-                        } else { "si_default" };
-                        (Some(display_unit(resolved, source, None)), None)
-                    }
-                    None => (None, Some(format!("unresolved project unit for {kind}"))),
-                }
-            } else {
-                (None, Some(format!("unsupported quantity kind {kind}")))
+            let Some(kind) = units::express_kind(record.value.kind) else {
+                diagnostics.push(format!("quantity #{}: unsupported quantity kind {}", record.id, record.value.kind));
+                continue;
             };
+            let (unit, unit_diagnostic) = units::resolve_quantity_unit(
+                decoder, project_units, kind, record.unit_id, record.invalid_unit_ref);
             let (origin, type_id) = source_sets.origin.fields();
             product.authored.push(AuthoredQuantity {
                 set_name: set_name.clone(), quantity_name: record.value.name,
@@ -212,23 +201,8 @@ fn add_sets(
     }
 }
 
-fn same_physical_value(a: &AuthoredQuantity, b: &AuthoredQuantity) -> bool {
-    if a.kind != b.kind { return false; }
-    let (Some(a_unit), Some(b_unit)) = (&a.unit, &b.unit) else { return false; };
-    // Count/Number may carry an explicit unit of any IFC dimension. Without
-    // that dimension in the public unit view, differing symbols are not safe
-    // to equate merely because their SI scale happens to match.
-    if matches!(a.kind, "Count" | "Number") && a_unit.symbol != b_unit.symbol {
-        return false;
-    }
-    let a_si = a.value * a_unit.si_scale;
-    let b_si = b.value * b_unit.si_scale;
-    a_si.is_finite() && b_si.is_finite() &&
-        (a_si - b_si).abs() <= 1e-12 + 1e-9 * a_si.abs().max(b_si.abs())
-}
-
 fn conflicts(
-    authored: &[AuthoredQuantity], remaining: &mut usize, diagnostics: &mut Vec<String>,
+    authored: &[AuthoredQuantity], remaining: &mut usize, diagnostics: &mut Diagnostics,
 ) -> Vec<QuantityConflict> {
     type OriginPair<'a> = (Vec<&'a AuthoredQuantity>, Vec<&'a AuthoredQuantity>);
     let mut grouped: BTreeMap<(&str, &str), OriginPair<'_>> = BTreeMap::new();
@@ -247,7 +221,7 @@ fn conflicts(
                     return found;
                 }
                 *remaining -= 1;
-                if !same_physical_value(a, b) {
+                if !units::same_physical_value(a, b) {
                     different = true;
                     break 'pairs;
                 }
@@ -277,6 +251,13 @@ fn analyze_with_budgets(
     content: &[u8], ids: Option<&HashSet<u32>>, row_budget: usize, set_budget: usize,
     comparison_budget: usize,
 ) -> AuthoredQuantityAnalysis {
+    analyze_with_limits(content, ids, AnalysisLimits { rows: row_budget,
+        sets: set_budget, comparisons: comparison_budget, ..Default::default() })
+}
+
+fn analyze_with_limits(
+    content: &[u8], ids: Option<&HashSet<u32>>, limits: AnalysisLimits,
+) -> AuthoredQuantityAnalysis {
     if ids.is_some_and(HashSet::is_empty) {
         return AuthoredQuantityAnalysis {
             product_count: 0, products: BTreeMap::new(), diagnostics: Vec::new(),
@@ -300,12 +281,16 @@ fn analyze_with_budgets(
     let mut decoder = EntityDecoder::with_arc_index(content, index.clone());
     let mut direct: HashMap<u32, Vec<u32>> = HashMap::new();
     let mut typed: HashMap<u32, u32> = HashMap::new();
-    let mut remaining_links = MAX_REL_LINKS;
-    let mut diagnostics = Vec::new();
+    let mut remaining_links = limits.links;
+    let mut diagnostics = Diagnostics::default();
     let mut scan = EntityScanner::new(content);
     while let Some((id, name, start, end)) = scan.next_entity() {
         if !ifc_lite_core::keyword_eq(name, "IFCRELDEFINESBYPROPERTIES") &&
            !ifc_lite_core::keyword_eq(name, "IFCRELDEFINESBYTYPE") { continue; }
+        if remaining_links == 0 {
+            report_once(&mut diagnostics, "quantity relationship links exceed work budget");
+            continue;
+        }
         if end.saturating_sub(start) > MAX_REF_RECORD_BYTES {
             diagnostics.push(format!("relationship #{id}: record exceeds work budget"));
             continue;
@@ -332,12 +317,13 @@ fn analyze_with_budgets(
         for member in members {
             let Some(product_id) = member.as_entity_ref() else { continue };
             if !products.contains_key(&product_id) { continue; }
+            let cost = if rel.ifc_type == IfcType::IfcRelDefinesByProperties { targets.len() } else { 1 };
+            if cost > remaining_links {
+                report_once(&mut diagnostics, "expanded quantity links exceed work budget");
+                break;
+            }
+            remaining_links -= cost;
             if rel.ifc_type == IfcType::IfcRelDefinesByProperties {
-                if targets.len() > remaining_links {
-                    diagnostics.push(format!("relationship #{id}: expanded property links exceed work budget"));
-                    break;
-                }
-                remaining_links -= targets.len();
                 direct.entry(product_id).or_default().extend_from_slice(&targets);
             } else {
                 typed.entry(product_id).or_insert(targets[0]);
@@ -346,8 +332,10 @@ fn analyze_with_budgets(
     }
     let project_units = project_id.map(|id| ProjectUnits::resolve(&mut decoder, id)).unwrap_or_default();
     let mut type_defs = HashMap::<u32, Vec<u32>>::new();
-    let mut budget = ExpansionBudget { rows: row_budget, sets: set_budget };
-    let mut remaining_comparisons = comparison_budget;
+    let mut budget = ExpansionBudget { rows: limits.rows, sets: limits.sets,
+        leaves: limits.leaves, set_bytes: limits.set_bytes, leaf_bytes: limits.leaf_bytes,
+        leaf_counts: HashMap::new() };
+    let mut remaining_comparisons = limits.comparisons;
     for (id, product) in &mut products {
         if budget.rows == 0 || budget.sets == 0 {
             if direct.contains_key(id) || typed.contains_key(id) {
@@ -359,7 +347,8 @@ fn analyze_with_budgets(
         }
         if let Some(defs) = direct.get(id) {
             add_sets(&mut decoder, &project_units, &index, product,
-                SourceSets { ids: defs, origin: QuantityOrigin::Occurrence }, &mut budget, &mut diagnostics);
+                SourceSets { ids: defs, origin: QuantityOrigin::Occurrence }, &mut budget,
+                &mut diagnostics);
         }
         if let Some(&type_id) = typed.get(id) {
             let defs = type_defs.entry(type_id).or_insert_with(|| {
@@ -385,11 +374,12 @@ fn analyze_with_budgets(
                 list.iter().filter_map(|a| a.as_entity_ref()).collect()
             });
             add_sets(&mut decoder, &project_units, &index, product,
-                SourceSets { ids: defs, origin: QuantityOrigin::Type(type_id) }, &mut budget, &mut diagnostics);
+                SourceSets { ids: defs, origin: QuantityOrigin::Type(type_id) }, &mut budget,
+                &mut diagnostics);
         }
         product.conflicts = conflicts(&product.authored, &mut remaining_comparisons, &mut diagnostics);
     }
-    AuthoredQuantityAnalysis { product_count, products, diagnostics }
+    AuthoredQuantityAnalysis { product_count, products, diagnostics: diagnostics.finish() }
 }
 
 #[cfg(test)]

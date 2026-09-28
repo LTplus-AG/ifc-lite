@@ -202,13 +202,14 @@ class QuantityUnit(TypedDict):
     si_scale: float
     source: Literal["explicit", "project", "si_default", "dimensionless"]
     unit_id: Optional[int]
+    UnitType: Optional[str]  # IFC IfcNamedUnit.UnitType token, if resolved
 
 class AuthoredQuantity(TypedDict):
     set_name: str  # exact IfcElementQuantity.Name
     quantity_name: str  # exact IfcPhysicalSimpleQuantity.Name
     set_id: int
     quantity_id: int
-    kind: Literal["Length", "Area", "Volume", "Count", "Number", "Weight", "Time"]
+    kind: Literal["IfcQuantityLength", "IfcQuantityArea", "IfcQuantityVolume", "IfcQuantityCount", "IfcQuantityNumber", "IfcQuantityWeight", "IfcQuantityTime"]
     value: float  # authored value, never replaced by a derived estimate
     origin: Literal["occurrence", "type"]
     type_id: Optional[int]

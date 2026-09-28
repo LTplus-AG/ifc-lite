@@ -47,14 +47,16 @@ ENDSEC;END-ISO-10303-21;"""
     assert quantity["quantity_name"] == "Length"
     assert (quantity["set_id"], quantity["quantity_id"]) == (7, 6)
     assert quantity["value"] == 3000.0
+    assert quantity["kind"] == "IfcQuantityLength"
     assert quantity["unit"]["symbol"] == "mm"
     assert quantity["unit"]["si_scale"] == 0.001
+    assert quantity["unit"]["UnitType"] == "LENGTHUNIT"
     assert ifclite_geom.authored_quantity_analysis(ifc, ids=set())["products"] == {}
     ifc4x3 = (ifc.replace(b"FILE_SCHEMA(('IFC4'))", b"FILE_SCHEMA(('IFC4X3_ADD2'))")
         .replace(b"#7=IFCELEMENTQUANTITY", b"#9=IFCQUANTITYNUMBER('Fractional',$,$,1.25,$);\n#7=IFCELEMENTQUANTITY")
         .replace(b"(#6));", b"(#6,#9));"))
     quantities = ifclite_geom.authored_quantity_analysis(ifc4x3)["products"][5]["authored"]
-    assert quantities[1]["kind"] == "Number"
+    assert quantities[1]["kind"] == "IfcQuantityNumber"
     assert quantities[1]["value"] == 1.25
     assert quantities[1]["unit"]["source"] == "dimensionless"
 TRIMMED_BAR = REPO / "rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc"

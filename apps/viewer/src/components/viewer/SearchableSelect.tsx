@@ -144,6 +144,7 @@ export function SearchableSelect({
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder={t('searchableSelect.searchPlaceholder')}
+                aria-label={t('searchableSelect.filterOptionsLabel')}
                 className="flex-1 text-xs bg-transparent border-0 outline-none text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
               />
             </div>

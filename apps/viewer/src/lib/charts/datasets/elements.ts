@@ -24,6 +24,8 @@ import { extractProjectUnits, type ProjectUnits } from '@ifc-lite/parser';
 import type { ColumnDefinition } from '@ifc-lite/lists';
 import { resolveListColumnUnits } from '@/lib/units/list-column-units';
 import { effectiveChartEntities } from './effective-elements';
+import { effectiveStoreyId } from '@/lib/effective-storey';
+import { effectiveAttribute } from '@/lib/document/effective-binding-fields';
 
 type ModelsState = Pick<ViewerState, 'models' | 'activeModelId' | 'pinboardEntities' | 'mutationViews' | 'mutationVersion' | 'unitDisplayOverrides'>;
 
@@ -97,12 +99,19 @@ export function buildElementsDataset(
     const modelId = model.id;
     const reader = resolvedFields.length > 0 ? createElementFieldReader(store, state.mutationViews.get(modelId)) : undefined;
     const mutationView = state.mutationViews.get(modelId);
+    const bindingModel = { id: modelId, name: model.name ?? modelId, store, view: mutationView };
     models.push({
       store: mutationView?.hasChanges()
         ? { entities: effectiveChartEntities(store, mutationView), spatialHierarchy: store.spatialHierarchy }
         : store,
       toGlobalId: (expressId) => toGlobalIdFromModels(state.models, modelId, expressId),
       name: model.name ?? modelId,
+      ...(mutationView?.hasPendingChanges() ? {
+        storeyName: (expressId: number) => {
+          const storeyId = effectiveStoreyId(store, mutationView, expressId);
+          return storeyId ? effectiveAttribute(bindingModel, storeyId, 'Name') : '';
+        },
+      } : {}),
       include,
       valueRevision: `${model.sourceFingerprint ?? model.sourceContentHash ?? model.loadedAt}:${state.mutationVersion}:${JSON.stringify(state.unitDisplayOverrides)}`,
       ...(reader ? {

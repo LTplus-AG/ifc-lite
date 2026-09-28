@@ -4,8 +4,10 @@
 
 import { attachCanonicalMeshMetadata } from './canonical-mesh-metadata.js';
 import { ownedWasmBuffer } from './wasm-owned-buffer.js';
+import { readSpecularMaterial } from './mesh-specular.js';
 import { publishPrepassFingerprint, runPrepassWithFingerprint } from './prepass-source-fingerprint.js';
-import { canReuseWorkerSource, type SourcePrepassApi, type FinalizeStyleArgs } from './worker-prepass-source.js';
+import { canReuseWorkerSource, type BytePrepassApi, type SourcePrepassApi, type FinalizeStyleArgs } from './worker-prepass-source.js';
+import { applyStyleFinishes } from './style-finishes.js';
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import { initWasmWithRetry } from './wasm-init-retry.js';
 import { largeFilePrepassError } from './huge-file-error.js';
@@ -111,6 +113,7 @@ export interface GeometryWorkerSetStylesMessage {
   voidValues: Uint32Array;
   styleIds: Uint32Array;
   styleColors: Uint8Array;
+  styleFinishes?: Float32Array; // #5582, absent from an older wasm's styles event
   /** #407/#913 §2.3 material colour lists (streamed `styles` event). */
   materialElementIds?: Uint32Array;
   materialColorCounts?: Uint32Array;
@@ -316,6 +319,7 @@ export interface GeometryWorkerStylesShardResultMessage {
   orphanColors: Float32Array;
   geomIds: Uint32Array;
   geomColors: Float32Array;
+  geomFinishes?: Float32Array; // #5582, absent from an older wasm
   /** Set when resolution threw; the host falls back / logs. */
   error?: string;
 }
@@ -353,6 +357,7 @@ export interface GeometryWorkerFinalizeStylesMessage {
   orphanColors: Float32Array;
   geomIds: Uint32Array;
   geomColors: Float32Array;
+  geomFinishes?: Float32Array; // #5582, stashed on the API before finalize
   /** Support spans ([id,start,len] triples) extracted from the shard classes. */
   colourMapSpans: Uint32Array;
   materialDefSpans: Uint32Array;
@@ -766,6 +771,7 @@ interface ProcessingSession {
   voidValues: Uint32Array;
   styleIds: Uint32Array;
   styleColors: Uint8Array;
+  styleFinishes: Float32Array | undefined;
   planeAngleToRadians: number | undefined;
   materialElementIds: Uint32Array | undefined;
   materialColorCounts: Uint32Array | undefined;
@@ -839,6 +845,7 @@ function startSession(input: {
     voidValues: input.voidValues,
     styleIds: input.styleIds,
     styleColors: input.styleColors,
+    styleFinishes: undefined,
     planeAngleToRadians: input.planeAngleToRadians,
     materialElementIds: input.materialElementIds,
     materialColorCounts: input.materialColorCounts,
@@ -972,9 +979,7 @@ function collectMeshes(
         // would copy a fresh Float32Array out of WASM per access.
         const color = mesh.color;
         // Optional SurfaceColour for the GLB exporter's "Shading" mode —
-        // parity with the single-thread converter in geometry-coordinate.ts
-        // (the worker path silently dropped it, degrading "Shading" export
-        // on the DEFAULT load path — alignment audit).
+        // parity with the single-thread converter in geometry-coordinate.ts.
         const shadingArray = mesh.shadingColor;
         const shadingColor: [number, number, number, number] | undefined =
           shadingArray && shadingArray.length === 4
@@ -989,8 +994,7 @@ function collectMeshes(
           originArr && originArr.length === 3 && (originArr[0] || originArr[1] || originArr[2])
             ? [originArr[0], originArr[1], originArr[2]]
             : undefined;
-        // Local (pre-placement) AABB + placement transform (issue #1474);
-        // absent on older wasm bundles (no getter) or when not captured.
+        // Local (pre-placement) AABB + placement transform (#1474); absent w/o a getter or when not captured.
         const localBoundsArr = mesh.localBounds;
         const localBounds =
           localBoundsArr && localBoundsArr.length === 6
@@ -1002,6 +1006,7 @@ function collectMeshes(
         const localToWorldArr = mesh.localToWorld;
         const localToWorld =
           localToWorldArr && localToWorldArr.length === 16 ? Array.from(localToWorldArr) : undefined;
+        const specularMaterial = readSpecularMaterial(mesh); // #5582
         const meshData: MeshData = {
           expressId: mesh.expressId,
           ifcType: mesh.ifcType,
@@ -1014,6 +1019,7 @@ function collectMeshes(
           geometryClass: mesh.geometryClass ?? 0, // 0=occurrence 1=orphan type 2=instanced type; older wasm lacks all three getters here
           ...(mesh.geometryItemId !== undefined ? { geometryItemId: mesh.geometryItemId } : {}), // #3199: two DISJOINT ids, TWO
           ...(mesh.materialId !== undefined ? { materialId: mesh.materialId } : {}), // spreads as in convertMeshCollectionToBatch
+          ...(specularMaterial ? { material: specularMaterial } : {}), // #5582
         };
         session.pendingTransfers.push(ownedWasmBuffer(positions), ownedWasmBuffer(normals), ownedWasmBuffer(indices));
         session.cumulativeMeshBytes += positions.byteLength + normals.byteLength + indices.byteLength;
@@ -1155,6 +1161,7 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
     // re-installs the copy from the materialised buffer.
     cachedSourceBytes = session.localBytes;
     applySourceBytesToApi();
+    applyStyleFinishes(ifcApi, session.styleIds, session.styleFinishes);
 
     // Instanced-only path: produce geometry ONCE via a partitioned batch, which
     // splits each batch into flat meshes (transparent + type-template + textured)
@@ -1358,12 +1365,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       const ifcApi = await ensureInit();
       const { sharedBuffer, sliceIndex, spans } = e.data;
       try {
-        const styleApi = (ifcApi as unknown as {
-          resolveStyledItemsShard: (data: Uint8Array, spans: Uint32Array) => {
-            orphanIds: Uint32Array; orphanColors: Float32Array;
-            geomIds: Uint32Array; geomColors: Float32Array;
-          };
-        });
+        const styleApi = ifcApi as unknown as BytePrepassApi;
         let res;
         try {
           const sourceApi = ifcApi as unknown as SourcePrepassApi;
@@ -1383,8 +1385,9 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
             orphanColors: res.orphanColors,
             geomIds: res.geomIds,
             geomColors: res.geomColors,
+            geomFinishes: res.geomFinishes,
           } as GeometryWorkerStylesShardResultMessage,
-          [res.orphanIds.buffer, res.orphanColors.buffer, res.geomIds.buffer, res.geomColors.buffer],
+          [res.orphanIds.buffer, res.orphanColors.buffer, res.geomIds.buffer, res.geomColors.buffer, ...(res.geomFinishes ? [res.geomFinishes.buffer] : [])],
         );
       } catch (err) {
         (self as unknown as Worker).postMessage({
@@ -1447,17 +1450,10 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // the payload into the normal styles-event path.
       const ifcApi = await ensureInit();
       const m = e.data;
-      const finalizeApi = (ifcApi as unknown as {
-        finalizePrepassStyles: (
-          data: Uint8Array,
-          orphanIds: Uint32Array, orphanColors: Float32Array,
-          geomIds: Uint32Array, geomColors: Float32Array,
-          colourMapSpans: Uint32Array, materialDefSpans: Uint32Array,
-          relMaterialSpans: Uint32Array, voidSpans: Uint32Array,
-          fillsSpans: Uint32Array, aggregateSpans: Uint32Array,
-          planeAngleToRadians: number,
-        ) => Record<string, unknown>;
-      });
+      const finalizeApi = ifcApi as unknown as BytePrepassApi;
+      // #5582: finalize has no finishes argument and consumes this stash, so
+      // it is installed before each attempt (the SAB retry below too).
+      const stashFinishes = () => m.geomFinishes && finalizeApi.setPrepassGeometryFinishes?.(m.geomIds, m.geomFinishes);
       const args: FinalizeStyleArgs = [
         m.orphanIds, m.orphanColors, m.geomIds, m.geomColors,
         m.colourMapSpans, m.materialDefSpans, m.relMaterialSpans,
@@ -1467,6 +1463,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       const callFinalize = (bytes: Uint8Array) => sourceBytesApplied && canReuseWorkerSource(installedSourceSessionId, m.sourceSessionId) && sourceApi.finalizePrepassStylesFromSource
         ? sourceApi.finalizePrepassStylesFromSource(...args)
         : finalizeApi.finalizePrepassStyles(bytes, ...args);
+      stashFinishes();
       let payload;
       try {
         payload = callFinalize(viewSharedBytes(m.sharedBuffer));
@@ -1474,6 +1471,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         if (isColumnLengthRefusal(err)) throw err;
         // SAB-view rejection fallback (see scan-shard above).
         warnSabViewFallbackOnce('finalize-prepass-styles', err);
+        stashFinishes();
         payload = finalizeApi.finalizePrepassStyles(materialiseSharedBytes(m.sharedBuffer), ...args);
       }
       (self as unknown as Worker).postMessage({ type: 'styles-final', payload });
@@ -1655,6 +1653,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       if (!activeSession) return;
       activeSession.styleIds = e.data.styleIds;
       activeSession.styleColors = e.data.styleColors;
+      activeSession.styleFinishes = e.data.styleFinishes;
       activeSession.voidKeys = e.data.voidKeys;
       activeSession.voidCounts = e.data.voidCounts;
       activeSession.voidValues = e.data.voidValues;

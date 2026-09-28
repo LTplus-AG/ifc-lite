@@ -19,6 +19,8 @@ mod parquet_schema;
 mod parquet_vertex_columns;
 #[cfg(test)]
 mod parquet_test_fixtures;
+#[cfg(test)]
+mod finish_wire_tests;
 pub mod parquet_optimized;
 pub mod parquet_replay_batches;
 pub mod processor;

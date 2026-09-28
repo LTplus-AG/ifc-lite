@@ -86,7 +86,7 @@ fn tessellation_qualities() -> [TessellationQuality; 5] {
 /// rebuilding each candidate with it rather than parsing the suffixes a second
 /// way: the writer and this reader cannot disagree about what a key looks
 /// like. Anything else -- a bare digest, an internal storage key with its
-/// `-json-v5` / `-parquet-v5` suffix, arbitrary text -- is a `400`, which
+/// `-json-v6` / `-parquet-v8` suffix, arbitrary text -- is a `400`, which
 /// also keeps `DELETE`'s index walk out of reach of a caller-shaped string
 /// (#4582).
 pub(crate) fn resolve_request_cache_key(key: &str) -> Result<RequestCacheKey<'_>, ApiError> {
@@ -118,7 +118,7 @@ fn not_a_request_cache_key(value: &str) -> ApiError {
 /// `key` is the `cache_key` that route returned, which is the value the
 /// client's `getCached(result.cache_key)` passes, resolved by
 /// [`resolve_request_cache_key`]. The response itself is stored under
-/// [`json_response_cache_key`] (`{cache_key}-json-v5`), versioned separately
+/// [`json_response_cache_key`] (`{cache_key}-json-v6`), versioned separately
 /// so the JSON wire format can move without retiring the Parquet entries that
 /// share the same seed (#5542).
 ///

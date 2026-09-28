@@ -42,7 +42,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, render, click } from '@/test/render.js';
+import { cleanup, render, click, type as typeInto } from '@/test/render.js';
 import { registerLocale, setLocale, useTranslation, type Catalogue } from '@/i18n';
 import { en } from '@/i18n/en';
 import type { spaceSketchEn as SpaceSketchEnType } from '@/i18n/catalogues/space-sketch.en';
@@ -209,6 +209,7 @@ describe('Space Sketch localization (#4918)', { skip: !HAS_CATALOGUE && 'space-s
   });
 
   it('translates the Options popover, including the wasm-only branches via direct props', () => {
+    const snapEdits: Array<number | null> = [];
     const ui = render(
       <OptionsPopover
         boundaryMode="inner"
@@ -217,7 +218,7 @@ describe('Space Sketch localization (#4918)', { skip: !HAS_CATALOGUE && 'space-s
         snapDelta={{ from: 12, to: 9 }}
         usedTol={0.1}
         snapDisabled={false}
-        onSnap={() => {}}
+        onSnap={(value) => snapEdits.push(value)}
         snapTol={0.2}
         showBuilding
         onToggleBuilding={() => {}}
@@ -225,6 +226,11 @@ describe('Space Sketch localization (#4918)', { skip: !HAS_CATALOGUE && 'space-s
         onToggleDiagnostics={() => {}}
       />,
     );
+    const range = ui.querySelector<HTMLInputElement>('input[type="range"]');
+    assert.ok(range, 'the weld tolerance range control renders');
+    assert.equal(range.getAttribute('aria-label'), CATALOGUE['spaceSketch.options.weldToleranceLabel']);
+    typeInto(range, '0.25');
+    assert.deepEqual(snapEdits, [0.25]);
     assertTranslates(ui, [
       'spaceSketch.options.boundaryHeading',
       'spaceSketch.options.boundary.centerTitle',

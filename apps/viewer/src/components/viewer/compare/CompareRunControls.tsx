@@ -96,7 +96,7 @@ export function CompareRunControls({
         {...tourAnchor(TOUR_ANCHORS.compareAb)}
       >
         <span className="text-muted-foreground">{t('comparePanel.runControls.baseLabel')}</span>
-        <select
+        <select aria-label={t('comparePanel.runControls.baseLabel')}
           value={baseModelId ?? ''}
           onChange={(e) => onBaseModelId(e.target.value)}
           className="w-full rounded border border-border bg-transparent px-2 py-1 text-foreground min-w-0"
@@ -106,7 +106,7 @@ export function CompareRunControls({
           ))}
         </select>
         <span className="text-muted-foreground">{t('comparePanel.runControls.headLabel')}</span>
-        <select
+        <select aria-label={t('comparePanel.runControls.headLabel')}
           value={headModelId ?? ''}
           onChange={(e) => onHeadModelId(e.target.value)}
           className="w-full rounded border border-border bg-transparent px-2 py-1 text-foreground min-w-0"

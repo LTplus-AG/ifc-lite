@@ -776,6 +776,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                         <Label className="text-xs text-muted-foreground">{t('dataConnector.propertySetFieldLabel')}</Label>
                         <Input
                           value={matchPset}
+                          aria-label={t('dataConnector.propertySetFieldLabel')}
                           onChange={(e) => setMatchPset(e.target.value)}
                           placeholder={t('dataConnector.propertySetPlaceholder')}
                         />
@@ -784,6 +785,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
                         <Label className="text-xs text-muted-foreground">{t('dataConnector.propertyNameFieldLabel')}</Label>
                         <Input
                           value={matchProp}
+                          aria-label={t('dataConnector.propertyNameFieldLabel')}
                           onChange={(e) => setMatchProp(e.target.value)}
                           placeholder={t('dataConnector.propertyNamePlaceholder')}
                         />
@@ -857,6 +859,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
 
                           <Input
                             placeholder={t('dataConnector.psetNamePlaceholder')}
+                            aria-label={t('dataConnector.targetPsetHeader')}
                             value={mapping.targetPset}
                             onChange={(e) =>
                               updateMapping(mapping.id, 'targetPset', e.target.value)
@@ -866,6 +869,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
 
                           <Input
                             placeholder={t('dataConnector.propertyPlaceholder')}
+                            aria-label={t('dataConnector.targetPropertyHeader')}
                             value={mapping.targetProperty}
                             onChange={(e) =>
                               updateMapping(mapping.id, 'targetProperty', e.target.value)

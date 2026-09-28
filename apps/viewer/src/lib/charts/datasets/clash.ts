@@ -13,6 +13,7 @@
 import type { ChartDataset, ChartDatasetColumn, ChartDatasetRow } from '@ifc-lite/charts';
 import { clashReviewKey, DEFAULT_CLASH_REVIEW_STATUS, type ClashElementRef } from '@ifc-lite/clash';
 import type { ViewerState } from '@/store';
+import { effectiveStoreyId } from '@/lib/effective-storey';
 
 export const CLASH_COLUMNS = {
   rule: 'Rule',
@@ -44,14 +45,14 @@ export const CLASH_DATASET_COLUMNS: ChartDatasetColumn[] = [
   { id: CLASH_COLUMNS.group, label: 'Group', kind: 'category' },
 ];
 
-export type ClashDatasetState = Pick<ViewerState, 'clashResult' | 'clashReviews' | 'clashGroups' | 'clashRunSeq' | 'models' | 'resolveGlobalIdInModel'>;
+export type ClashDatasetState = Pick<ViewerState, 'clashResult' | 'clashReviews' | 'clashGroups' | 'clashRunSeq' | 'models' | 'mutationViews' | 'resolveGlobalIdInModel'>;
 
 /** Storey of an element, resolved like the CSV export: renderer id → local id → spatial hierarchy. */
 function storeyOf(state: ClashDatasetState, ref: ClashElementRef): string {
   const hit = state.resolveGlobalIdInModel(ref.model, ref.ref);
   if (!hit) return '';
   const store = state.models.get(hit.modelId)?.ifcDataStore;
-  const storeyId = store?.spatialHierarchy?.elementToStorey.get(hit.expressId);
+  const storeyId = store ? effectiveStoreyId(store, state.mutationViews.get(hit.modelId), hit.expressId) : undefined;
   return storeyId ? store?.entities.getName(storeyId) || '' : '';
 }
 
@@ -106,5 +107,7 @@ export function buildClashDataset(state: ClashDatasetState): ChartDataset {
   // live after its members had been regrouped away (#4833).
   const reviews = fingerprintStrings([...state.clashReviews].map(([key, review]) => `${key}=${review.status}`).sort());
   const groups = fingerprintStrings([...groupOf].map(([id, title]) => `${id}=${title}`).sort());
-  return { source: 'clash', columns: CLASH_DATASET_COLUMNS, rows, fingerprint: `clash:${state.clashRunSeq}:${rows.length}:${reviews}:${groups}` };
+  const storeyColumn = CLASH_DATASET_COLUMNS.findIndex((column) => column.id === CLASH_COLUMNS.storey);
+  const storeys = fingerprintStrings(rows.map((row) => String(row.values[storeyColumn])));
+  return { source: 'clash', columns: CLASH_DATASET_COLUMNS, rows, fingerprint: `clash:${state.clashRunSeq}:${rows.length}:${reviews}:${groups}:${storeys}` };
 }

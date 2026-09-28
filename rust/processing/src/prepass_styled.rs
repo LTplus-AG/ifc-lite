@@ -9,8 +9,8 @@
 use ifc_lite_core::EntityDecoder;
 use rustc_hash::FxHashMap;
 
-use crate::prepass::{collect_geometry_style_info, extract_style_info_from_styled_item, Span};
-use crate::style::GeometryStyleInfo;
+use crate::prepass::{collect_geometry_style_info, extract_style_info_from_styled_item, surface_style_from_styled_item, Span};
+use crate::style::{GeometryStyleInfo, SpecularMaterial};
 
 /// Pre-resolved styled maps: `(orphan id -> rgba, geometry id -> style info)`.
 pub type StyleSeeds = (FxHashMap<u32, [f32; 4]>, FxHashMap<u32, GeometryStyleInfo>);
@@ -54,6 +54,46 @@ pub fn resolve_styled_items_into(
     }
 }
 
+
+/// IFC-authored metallic/roughness per styled geometry item (#5582), keyed
+/// exactly like the colour index [`resolve_styled_items_into`] builds: the
+/// FIRST styled item (file order) that yields a style claims its geometry id,
+/// and the finish comes from that same chosen rendering style, so a mesh never
+/// pairs one style's colour with another's finish. A claim whose style authors
+/// no specular evidence is kept as an empty [`SpecularMaterial`] (it encodes
+/// to `[NAN, NAN]`), so a first-wins merge of sharded results cannot take a
+/// later item's finish for it. Orphan (null-item) styled items are skipped,
+/// as they colour materials, not geometry. Fed to
+/// [`crate::prepass::flat_styles_with_finishes`].
+///
+/// A separate pass instead of a field on `GeometryStyleInfo` / `ResolvedPrepass`
+/// so this crate's public structs stay unchanged (semver-additive, #5582).
+pub fn resolve_geometry_finishes(
+    styled_items: &[Span],
+    decoder: &mut EntityDecoder,
+) -> FxHashMap<u32, SpecularMaterial> {
+    let mut finishes: FxHashMap<u32, SpecularMaterial> = FxHashMap::default();
+    let mut claimed_without_finish: rustc_hash::FxHashSet<u32> = Default::default();
+    for &(id, start, end) in styled_items {
+        let Ok(styled_item) = decoder.decode_at_with_id(id, start, end) else { continue };
+        let Some(geometry_id) = styled_item.get_ref(0) else { continue };
+        if finishes.contains_key(&geometry_id) || claimed_without_finish.contains(&geometry_id) {
+            continue;
+        }
+        match surface_style_from_styled_item(&styled_item, decoder) {
+            Some((style_id, _)) => {
+                let finish = crate::style::extract_surface_style_specular(style_id, decoder).unwrap_or_default();
+                finishes.insert(geometry_id, finish);
+            }
+            // A fill-only style claims the colour but has no rendering finish.
+            None if extract_style_info_from_styled_item(&styled_item, decoder).is_some() => {
+                claimed_without_finish.insert(geometry_id);
+            }
+            None => {}
+        }
+    }
+    finishes
+}
 
 /// [`crate::prepass::flat_styles_rgba8`] with the (dominant) geometry-style
 /// source supplied as PRE-MERGED columns instead of a map — the sharded

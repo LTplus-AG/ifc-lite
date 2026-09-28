@@ -41,7 +41,7 @@ fn parquet_cache_key_matches_writer_format() {
                 mode.cache_key_suffix(),
                 quality_cache_suffix(quality)
             );
-            let writer_parquet_key = format!("{}-parquet-v5", writer_cache_key);
+            let writer_parquet_key = format!("{}-parquet-v8", writer_cache_key);
             let writer_metadata_key = format!("{}-parquet-metadata-v5", writer_cache_key);
 
             assert_eq!(
@@ -82,11 +82,11 @@ fn the_two_layouts_never_share_a_cache_entry() {
             let flat = parquet_cache_key("deadbeef", mode, quality, ParquetLayout::Flat);
             let shared = parquet_cache_key("deadbeef", mode, quality, ParquetLayout::SharedShapes);
             assert!(
-                flat.ends_with("-parquet-v5"),
+                flat.ends_with("-parquet-v8"),
                 "the default layout must keep the pre-#3888 key: {flat}"
             );
             assert!(
-                shared.ends_with("-parquet-v7"),
+                shared.ends_with("-parquet-v9"),
                 "the opt-in layout needs its own namespace: {shared}"
             );
             assert_ne!(flat, shared);
@@ -102,7 +102,7 @@ fn the_two_layouts_never_share_a_cache_entry() {
 /// (content-hash) sharing stage, so the schema this namespace holds changed
 /// even though `rot0..rot8` did not -- a warm cache would otherwise keep
 /// serving the pre-fix, uncollated bytes under the old `-parquet-v6` key
-/// forever. `Flat` is untouched by this issue and must keep `-parquet-v5`.
+/// forever. `Flat` is untouched by this issue and must keep `-parquet-v8`.
 #[test]
 fn shared_shapes_geometry_key_ends_with_parquet_v7() {
     let shared = parquet_cache_key(
@@ -112,7 +112,7 @@ fn shared_shapes_geometry_key_ends_with_parquet_v7() {
         ParquetLayout::SharedShapes,
     );
     assert!(
-        shared.ends_with("-parquet-v7"),
+        shared.ends_with("-parquet-v9"),
         "the #5130 content-hash stage must bump the shared-shapes namespace: {shared}"
     );
     let flat = parquet_cache_key(
@@ -122,7 +122,7 @@ fn shared_shapes_geometry_key_ends_with_parquet_v7() {
         ParquetLayout::Flat,
     );
     assert!(
-        flat.ends_with("-parquet-v5"),
+        flat.ends_with("-parquet-v8"),
         "the flat layout is untouched by #5130: {flat}"
     );
 }
@@ -152,14 +152,14 @@ fn parquet_cache_key_default_filter_uses_default_suffix() {
         TessellationQuality::Medium,
         ParquetLayout::Flat,
     );
-    assert_eq!(key, "abc-default-parquet-v5");
+    assert_eq!(key, "abc-default-parquet-v8");
     let key = parquet_cache_key(
         "abc",
         OpeningFilterMode::Default,
         TessellationQuality::High,
         ParquetLayout::Flat,
     );
-    assert_eq!(key, "abc-default-qhigh-parquet-v5");
+    assert_eq!(key, "abc-default-qhigh-parquet-v8");
 }
 
 /// The JSON `ParseResponse` cache must NOT be keyed by the bare request key
@@ -171,7 +171,7 @@ fn parquet_cache_key_default_filter_uses_default_suffix() {
 fn json_response_cache_key_is_versioned_and_distinct() {
     let request_key = "0ab20f4e4014-default";
     let json_key = json_response_cache_key(request_key);
-    assert_eq!(json_key, format!("{request_key}-json-v5"));
+    assert_eq!(json_key, format!("{request_key}-json-v6"));
     assert_ne!(json_key, request_key, "must retire the unversioned entries");
     assert_ne!(json_key, symbolic_cache_key(request_key));
 }
@@ -424,7 +424,7 @@ ENDSEC;";
 /// The optimized-Parquet route got a key of its own with #3889. Its whole
 /// point is that it is a DIFFERENT namespace from the flat route's: the two
 /// emit different payloads, so a hit on one must never satisfy the other.
-/// Deriving the optimized key from the flat one (or reusing `-parquet-v7`)
+/// Deriving the optimized key from the flat one (or reusing `-parquet-v9`)
 /// would put a quantized, deduplicated payload where a client expecting flat
 /// meshes reads it.
 #[test]
@@ -434,7 +434,7 @@ fn optimized_parquet_keys_are_a_distinct_namespace_from_the_flat_route() {
 
     assert_eq!(
         parquet_optimized_cache_key(&seed),
-        format!("{seed}-parquet-optimized-v2")
+        format!("{seed}-parquet-optimized-v3")
     );
     assert_eq!(
         parquet_optimized_metadata_cache_key(&seed),

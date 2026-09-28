@@ -13,17 +13,11 @@
 import {
   type IfcDataStore,
 } from '@ifc-lite/parser';
-import {
-  localViewerToProjected,
-  projectedToLocalViewer,
-  type CoordinateInfo,
-  type ModelSpatialReference,
-} from '@ifc-lite/geometry';
+import { type CoordinateInfo, type ModelSpatialReference } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import { getEffectiveGeoreference, hasStandardGeoreferencing, type GeorefMutationDataLike } from '../../lib/geo/effective-georef.js';
-import { resolveProjectionId } from '../../lib/geo/reproject.js';
 import { totalYupOffset } from '../../lib/geo/coordinate-frame.js';
-import { buildSpatialAlignmentTransform, isIdentitySpatialTransform } from './federationSpatialTransform.js';
+import { buildCrossCrsPointMap, buildSpatialAlignmentTransform, isIdentitySpatialTransform } from './federationSpatialTransform.js';
 import { spatialReferenceFromIfc } from '../../lib/geo/ifc-spatial-reference.js';
 import {
   alignEntityWorldAabbs,
@@ -36,10 +30,8 @@ import {
   type EntityBoundsAccumulator,
 } from './federationAlignAabb.js';
 import { alignNormals } from './alignment-normals.js';
-import { projectedUnitToMetres } from './projected-units.js';
 import { canonicalRendererPlacement } from './federationCanonicalReference.js';
 import { emptyAlignedCoordinateInfo } from './federationEmptyFrame.js';
-import proj4 from 'proj4';
 
 type FederatedGeometryResult = NonNullable<FederatedModel['geometryResult']>;
 
@@ -314,21 +306,10 @@ async function alignGeometryAcrossCrs(geometry: FederatedGeometryResult, source:
       ? new Map(originalInstancedAabbs)
       : undefined;
   };
+  const pointMap = await buildCrossCrsPointMap(source, reference);
+  if (!pointMap) return false;
   const sourceCrs = source.spatialReference.horizontal?.id;
   const referenceCrs = reference.spatialReference.horizontal?.id;
-  if (!sourceCrs || !referenceCrs) return false;
-  // Browser proj4 only supplies a horizontal operation. An absent or different
-  // vertical datum is not safe to carry through unchanged; leave the model in
-  // its own frame for the explicit manual-placement workflow instead.
-  if (!source.spatialReference.vertical || !reference.spatialReference.vertical
-    || source.spatialReference.vertical.id !== reference.spatialReference.vertical.id) return false;
-  const sourceProjDef = await resolveProjectionId(sourceCrs);
-  const refProjDef = await resolveProjectionId(referenceCrs);
-  if (!sourceProjDef || !refProjDef) return false;
-  const sourceProjectedUnit = projectedUnitToMetres(sourceProjDef);
-  const referenceProjectedUnit = projectedUnitToMetres(refProjDef);
-  if (!sourceProjectedUnit || !referenceProjectedUnit) return false;
-
   const sourceOffset = totalYupOffset(source.coordinateInfo);
   const refOffset = totalYupOffset(reference.coordinateInfo);
 
@@ -336,53 +317,10 @@ async function alignGeometryAcrossCrs(geometry: FederatedGeometryResult, source:
   let found = false;
   let projFailures = 0;
   let attempts = 0;
-  let firstProjError: unknown = null;
   // Per-entity running bounds of the reprojected vertices — see the same-CRS
   // path above and federationAlignAabb.ts.
   const entityBounds = new Map<number, EntityBoundsAccumulator>();
-  /**
-   * One point from the source model's viewer frame into the reference model's,
-   * via both MapConversions and a proj4 hop. Returns null when the hop failed
-   * or produced non-finite output; `firstProjError` records the first cause.
-   *
-   * The vertex loop and the world-box corners share this so the box and the
-   * geometry it describes cannot be reprojected by two different chains — a
-   * second copy of the pipeline is a second place for them to drift apart.
-   */
-  const toReferenceFrame = (
-    vx: number,
-    vy: number,
-    vz: number,
-  ): [number, number, number] | null => {
-    // Source viewer frame → source projected frame.  The adapter owns all
-    // format-specific units, axes and map-operation semantics.
-    const projectedSource = localViewerToProjected(source.spatialReference, [vx, vy, vz], sourceOffset);
-    if (!projectedSource) return null;
-    const [eS, nS, hS] = projectedSource;
-
-    // source projected → reference projected via proj4
-    let eR: number;
-    let nR: number;
-    try {
-      const projected = proj4(sourceProjDef, refProjDef, [
-        eS / sourceProjectedUnit,
-        nS / sourceProjectedUnit,
-      ]);
-      eR = projected[0] * referenceProjectedUnit;
-      nR = projected[1] * referenceProjectedUnit;
-    } catch (error) {
-      if (firstProjError == null) firstProjError = error;
-      return null;
-    }
-    if (!Number.isFinite(eR) || !Number.isFinite(nR)) return null;
-    // Height transformed under identity (no vertical datum hop in browser).
-    const hR = hS;
-
-    // Reference projected frame → reference viewer frame through the same
-    // neutral inverse used by same-CRS and point-cloud placement.
-    const target = projectedToLocalViewer(reference.spatialReference, [eR, nR, hR], refOffset);
-    return target ? [target[0], target[1], target[2]] : null;
-  };
+  const toReferenceFrame = pointMap.map;
 
   const stagedMeshes: Array<{ positions: Float32Array; origin: [number, number, number] } | undefined> = new Array(geometry.meshes.length);
   for (const [meshIndex, mesh] of geometry.meshes.entries()) {
@@ -413,7 +351,7 @@ async function alignGeometryAcrossCrs(geometry: FederatedGeometryResult, source:
         console.warn(
           `[ifc-lite] Cross-CRS alignment refused: ${projFailures}/${attempts} vertex transforms failed; `
           + 'the model remains wholly in its source frame.',
-          firstProjError,
+          pointMap.firstError(),
         );
         return false;
       }
@@ -463,7 +401,7 @@ async function alignGeometryAcrossCrs(geometry: FederatedGeometryResult, source:
       `[ifc-lite] Cross-CRS alignment failed: ${projFailures}/${attempts} `
       + `vertex transforms failed for ${sourceCrs} → ${referenceCrs}; `
       + 'no vertices were successfully reprojected. Leaving geometry untouched.',
-      firstProjError,
+      pointMap.firstError(),
     );
     return false;
   }
@@ -473,7 +411,7 @@ async function alignGeometryAcrossCrs(geometry: FederatedGeometryResult, source:
     console.warn(
       `[ifc-lite] Cross-CRS alignment refused: ${projFailures}/${attempts} vertex transforms failed; `
       + 'the model remains wholly in its source frame.',
-      firstProjError,
+      pointMap.firstError(),
     );
     return false;
   }

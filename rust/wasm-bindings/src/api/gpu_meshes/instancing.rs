@@ -48,6 +48,9 @@ pub(super) struct ShardOccurrence {
     /// The `IfcRepresentationItem` this occurrence's geometry comes from (#2985);
     /// rides the IFNS shard as the v2 per-instance item id.
     pub geometry_item_id: Option<u32>,
+    /// Its IFC-authored finish (#5984), joined by the batch after resolution;
+    /// rides the IFNS shard as the v3 per-instance finish.
+    pub finish: Option<ifc_lite_processing::style::SpecularMaterial>,
 }
 
 /// Resolve the batch's collected don't-bake occurrences (#1623 Phase 3). For each
@@ -109,6 +112,7 @@ pub(super) fn resolve_batch_occurrences(
                     rep_identity: rep,
                     world_transform: occ.world_transform,
                     geometry_item_id: occ.geometry_item_id,
+                    finish: None,
                 });
             }
         } else {

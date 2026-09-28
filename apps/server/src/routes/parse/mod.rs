@@ -346,6 +346,9 @@ mod parquet_optimized_tests;
 mod json_tests;
 
 #[cfg(test)]
+mod finish_tests;
+
+#[cfg(test)]
 mod worker_thread_tests;
 
 #[cfg(test)]

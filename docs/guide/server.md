@@ -174,7 +174,7 @@ JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
     tessellation quality, e.g. `71c9…34c9-default` or `71c9…34c9-ignore_all-qhigh`.
     Both resolve it through the same function, so a key one accepts the other
     accepts, and anything else (a bare SHA-256, an internal storage key with a
-    `-json-v5` or `-parquet-v5` suffix) is a `400 BAD_REQUEST` from both.
+    `-json-v6` or `-parquet-v8` suffix) is a `400 BAD_REQUEST` from both.
     `GET` returns the entry for that exact variant. `DELETE` removes every
     variant of that source file (all opening filters, quality levels and
     transports), since they are all derived from one file. Before #5750
@@ -668,7 +668,7 @@ Two further consequences:
   Under `shared-shapes` it carries the placement.
 - **Send the same parameter to `/cache/check/{hash}` and
   `/cache/geometry/{hash}`.** The two layouts are cached separately
-  (`-parquet-v5` / `-parquet-v7`) and never cross-serve, so a check that omits
+  (`-parquet-v8` / `-parquet-v9`) and never cross-serve, so a check that omits
   it answers about the other entry. `@ifc-lite/server-client` does this for you.
 
 #### Sharing across stream batches (opt-in)
@@ -707,7 +707,7 @@ reordered batch.
 - **Requires `parquet_layout=shared-shapes`.** Without the rotation columns
   nothing can be placed, so `stream_shapes=cross-batch` on the default layout
   answers `400`. Every other route ignores the parameter.
-- **Cache.** Both stream modes fill the same `-parquet-v7` entry, a whole-model
+- **Cache.** Both stream modes fill the same `-parquet-v9` entry, a whole-model
   blob with one row group per batch, which `/cache/geometry/{hash}` serves and
   `decodeParquetGeometry` decodes either way. A cache hit replays to a
   cross-batch client batch by batch, bases included. A batch-local client
@@ -766,8 +766,8 @@ Cache keys are derived from file content:
 ```
 # {filter} is the opening filter (e.g. "default"); a non-default tessellation
 # quality appends a "-q{level}" suffix after it
-{SHA256}-{filter}-parquet-v5          # Geometry (default layout)
-{SHA256}-{filter}-parquet-v7          # Geometry (parquet_layout=shared-shapes)
+{SHA256}-{filter}-parquet-v8          # Geometry (default layout)
+{SHA256}-{filter}-parquet-v9          # Geometry (parquet_layout=shared-shapes)
 {SHA256}-{filter}-parquet-metadata-v5 # Metadata header
 {SHA256}-{filter}-datamodel-v8        # Properties & hierarchy
 {SHA256}-{filter}-datamodel-rooted-v8 # Same, rooted-only entities table (data_model_entities=rooted)
@@ -776,7 +776,7 @@ Cache keys are derived from file content:
 # POST /parse/parquet/optimized has its own pair (issue #3889): the optimized
 # payload is quantized and deduplicated, so a hit on one route must never
 # satisfy the other. Both pairs are built from the same geometry pipeline, so
-# a bump of -parquet-v5 almost always needs a bump of -parquet-optimized-v2.
+# a bump of -parquet-v8 almost always needs a bump of -parquet-optimized-v3.
 # It shares the flat route's -datamodel-v8 above rather than having a data
 # model of its own: since #5129 this route writes one too, gated on
 # has_current_data_model before a replay (the same #3869 rule the flat route
@@ -785,7 +785,7 @@ Cache keys are derived from file content:
 # entry with no data model behind it.
 # The optimized key ignores parquet_layout: this route has only ever emitted
 # one payload shape, so there is no second namespace to select between.
-{SHA256}-{filter}-parquet-optimized-v2          # Optimized geometry
+{SHA256}-{filter}-parquet-optimized-v3          # Optimized geometry
 {SHA256}-{filter}-parquet-optimized-metadata-v3 # Optimized metadata header (v3: gained data_model_stats, #5129)
 ```
 

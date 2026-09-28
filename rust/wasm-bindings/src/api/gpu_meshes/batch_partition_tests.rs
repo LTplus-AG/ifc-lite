@@ -476,7 +476,7 @@ fn the_reported_occurrence_count_equals_what_reaches_the_shard() {
     });
 
     let (shard, rejected, dropped) =
-        encode_shard_routing_refusals_back(&refs, materialized, [0.0; 3]);
+        encode_shard_routing_refusals_back(&refs, &[], materialized, [0.0; 3]);
     assert_eq!(rejected, vec![materialized - 1], "the unplaceable member draws flat");
     assert_eq!(dropped, 1, "its placeholder reaches neither side");
 
@@ -503,7 +503,7 @@ fn take_back_rejected_counts_pushes_not_the_length_of_its_input() {
     // returning `rejected.len()` would say three meshes left the shard when
     // only two did — undercounting the shard's instances while the mesh stayed
     // in it.
-    let instanced = vec![plain_mesh(), plain_mesh()];
+    let instanced = vec![(plain_mesh(), None), (plain_mesh(), None)];
     let rejected = [0usize, 1, 5];
     let mut collection = MeshCollection::new();
     let taken = take_back_rejected(instanced, &rejected, &mut collection);
@@ -514,4 +514,49 @@ fn take_back_rejected_counts_pushes_not_the_length_of_its_input() {
         rejected.len(),
         "the return must not be a restatement of the input's length"
     );
+}
+
+/// #5984: the partition hands each shard occurrence's finish to the encoder,
+/// so an instanced occurrence keeps its authored finish instead of the
+/// renderer's default (FZK-Haus's 42 instanced 'Kiefer' members, roughness
+/// 0.9). Every member here shares one finish, so instance order is moot.
+#[test]
+fn instanced_occurrences_carry_their_finish_in_the_shard() {
+    use ifc_lite_geometry::InstanceMeshRef;
+    let identity = InstanceMeta {
+        transform: {
+            let mut m = [0.0f64; 16];
+            for k in 0..4 {
+                m[k * 4 + k] = 1.0;
+            }
+            m
+        },
+        ..meta(1, true)
+    };
+    let group: Vec<MeshData> = (0..INSTANCE_MIN_OCCURRENCES)
+        .map(|_| plain_mesh().with_instance(Some(identity.clone())))
+        .collect();
+    let refs: Vec<InstanceMeshRef> = group
+        .iter()
+        .map(|m| InstanceMeshRef {
+            positions: &m.positions,
+            normals: &m.normals,
+            indices: &m.indices,
+            origin: m.origin,
+            instance_meta: m.instance.as_ref(),
+            entity_id: m.express_id,
+            color: m.color,
+            item_id: m.geometry_item_id,
+        })
+        .collect();
+    let kiefer = vec![[f32::NAN, 0.9]; refs.len()];
+    let (shard, rejected, _) = encode_shard_routing_refusals_back(&refs, &kiefer, refs.len(), [0.0; 3]);
+    assert!(rejected.is_empty(), "the group instances");
+    let finishes = ifc_lite_geometry::decode_instance_finishes(&shard).expect("decodes");
+    assert_eq!(finishes.len(), refs.len());
+    assert!(finishes.iter().all(|f| f[0].is_nan() && (f[1] - 0.9).abs() < 1e-6), "{finishes:?}");
+
+    let (plain, _, _) = encode_shard_routing_refusals_back(&refs, &[], refs.len(), [0.0; 3]);
+    let unfinished = ifc_lite_geometry::decode_instance_finishes(&plain).expect("decodes");
+    assert!(unfinished.iter().flatten().all(|v| v.is_nan()), "no finish, no field");
 }

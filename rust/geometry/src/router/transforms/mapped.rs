@@ -6,7 +6,7 @@
 //! item's `MappingTarget`.
 
 use super::super::GeometryRouter;
-use crate::{Error, Result, Vector3};
+use crate::{Error, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
 
@@ -109,40 +109,6 @@ impl GeometryRouter {
         placement: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Matrix4<f64>> {
-        axis2_placement_2d_matrix(placement, decoder)
+        crate::transform::parse_axis2_placement_2d(placement, decoder)
     }
-}
-
-/// The router-free form of [`GeometryRouter::parse_axis2_placement_2d`], so the
-/// 2D drawing extractor shares this definition instead of copying it. #1985
-pub(crate) fn axis2_placement_2d_matrix(
-    placement: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-) -> Result<Matrix4<f64>> {
-    let location = super::cartesian_point_at(placement, decoder, 0)?;
-    // A present RefDirection that is not an IfcDirection is a structural error and
-    // propagates, matching the 3D sibling and this module's contract that a broken
-    // MappingOrigin fails the item rather than being silently substituted. A
-    // dangling reference or a zero-length direction still falls back to +X: those
-    // are the degenerate-but-recoverable cases every placement parser here absorbs
-    // (see `build_axis2_matrix`), and erroring on them would drop geometry that
-    // renders fine today.
-    let ref_dir = match placement.get(1) {
-        Some(attr) if !attr.is_null() => match decoder.resolve_ref(attr)? {
-            Some(e) => super::operator::parse_direction_ratios(&e)?
-                .try_normalize(1e-9)
-                .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0)),
-            None => Vector3::new(1.0, 0.0, 0.0),
-        },
-        _ => Vector3::new(1.0, 0.0, 0.0),
-    };
-    let mut m = Matrix4::identity();
-    m[(0, 0)] = ref_dir.x;
-    m[(1, 0)] = ref_dir.y;
-    m[(0, 1)] = -ref_dir.y;
-    m[(1, 1)] = ref_dir.x;
-    m[(0, 3)] = location.x;
-    m[(1, 3)] = location.y;
-    m[(2, 3)] = location.z;
-    Ok(m)
 }

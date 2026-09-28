@@ -23,7 +23,7 @@ import {
 };
 
 /**
- * `Section2DOverlayRenderer` is ONE nullable GPU object backing seven buffer
+ * `Section2DOverlayRenderer` is ONE nullable GPU object backing eight buffer
  * families. Nothing pinned its ownership rules until this file: the clash-box
  * family (#1277) was once silently missing from `dispose()`, so its vertex
  * buffer leaked on every renderer teardown while the whole suite stayed green.
@@ -296,6 +296,79 @@ describe('Section2DOverlayRenderer: per-family buffer ownership', () => {
     for (const f of FAMILIES) {
       assert.strictEqual(f.has(renderer), f !== FAMILIES[2], `${f.name} after clearing grid`);
     }
+  });
+});
+
+describe('selected centreline depth (#5778)', () => {
+  it('rebuilds lazy centreline and shared pipelines after dispose and reinit', () => {
+    const { renderer, pipelineDescs } = newRenderer();
+    renderer.setLineOverlay('centreline', SEGMENTS);
+    const first = makePass();
+    renderer.drawLineOverlay(first.pass, OPTIONS.viewProj, 'centreline');
+    const oldPipeline = first.pipelines[0];
+    renderer.setLineOverlay('grid', SEGMENTS);
+    const oldOrdinary = makePass();
+    renderer.drawLineOverlay(oldOrdinary.pass, OPTIONS.viewProj, 'grid');
+    const oldPipelineCount = pipelineDescs.size;
+    assert.strictEqual(pipelineDescs.get(oldPipeline)?.depthStencil?.depthCompare, 'always');
+
+    renderer.dispose();
+    const empty = makePass();
+    renderer.drawLineOverlay(empty.pass, OPTIONS.viewProj, 'centreline');
+    assert.deepStrictEqual(empty.calls, []);
+    assert.ok(pipelineDescs.size > oldPipelineCount, 'reinit rebuilds the shared device pipelines');
+    assert.strictEqual([...pipelineDescs.values()].filter(
+      (desc) => desc.depthStencil?.depthCompare === 'always').length, 1,
+    'reinit with an empty centreline keeps the x-ray pipeline lazy');
+
+    renderer.setLineOverlay('grid', SEGMENTS);
+    const ordinary = makePass();
+    renderer.drawLineOverlay(ordinary.pass, OPTIONS.viewProj, 'grid');
+    assert.deepStrictEqual(ordinary.calls, ['setPipeline', 'setBindGroup', 'setVertexBuffer', 'draw:4']);
+    assert.notStrictEqual(ordinary.pipelines[0], oldOrdinary.pipelines[0]);
+
+    renderer.setLineOverlay('centreline', SEGMENTS);
+    const second = makePass();
+    renderer.drawLineOverlay(second.pass, OPTIONS.viewProj, 'centreline');
+    assert.deepStrictEqual(second.calls, ['setPipeline', 'setBindGroup', 'setVertexBuffer', 'draw:4']);
+    assert.notStrictEqual(second.pipelines[0], oldPipeline, 'the old GPU pipeline is never rebound');
+    assert.strictEqual(pipelineDescs.get(second.pipelines[0])?.depthStencil?.depthCompare, 'always');
+  });
+
+  it('creates the depth pipeline only after a centreline has drawable segments', () => {
+    const { renderer, pipelineDescs } = newRenderer();
+    renderer.setLineOverlay('grid', SEGMENTS);
+    const ordinaryPipelines = pipelineDescs.size;
+    const empty = makePass();
+    renderer.drawLineOverlay(empty.pass, OPTIONS.viewProj, 'centreline');
+    assert.deepStrictEqual(empty.calls, []);
+    assert.strictEqual(pipelineDescs.size, ordinaryPipelines,
+      'normal frames with no centreline must not allocate its depth pipeline');
+
+    renderer.setLineOverlay('centreline', SEGMENTS);
+    const populated = makePass();
+    renderer.drawLineOverlay(populated.pass, OPTIONS.viewProj, 'centreline');
+    assert.deepStrictEqual(populated.calls, ['setPipeline', 'setBindGroup', 'setVertexBuffer', 'draw:4']);
+    assert.strictEqual(pipelineDescs.size, ordinaryPipelines + 1);
+    assert.strictEqual(pipelineDescs.get(populated.pipelines[0])?.depthStencil?.depthCompare, 'always');
+
+    renderer.setLineOverlay('centreline', null);
+    renderer.drawLineOverlay(makePass().pass, OPTIONS.viewProj, 'centreline');
+    assert.strictEqual(pipelineDescs.size, ordinaryPipelines + 1,
+      'clearing the channel must not allocate another pipeline');
+  });
+
+  it('draws through its swept solid without changing other line channels', () => {
+    const { renderer, pipelineDescs } = newRenderer();
+    renderer.setLineOverlay('grid', SEGMENTS);
+    renderer.setLineOverlay('centreline', SEGMENTS);
+    assert.ok(![...pipelineDescs.values()].some((desc) => desc.depthStencil?.depthCompare === 'always'),
+      'the x-ray pipeline is created only for a selected centreline draw');
+    const { pass, pipelines } = makePass();
+    renderer.drawLineOverlay(pass, OPTIONS.viewProj, 'grid');
+    renderer.drawLineOverlay(pass, OPTIONS.viewProj, 'centreline');
+    assert.strictEqual(pipelineDescs.get(pipelines[0])?.depthStencil?.depthCompare, 'greater-equal');
+    assert.strictEqual(pipelineDescs.get(pipelines[1])?.depthStencil?.depthCompare, 'always');
   });
 });
 
@@ -588,7 +661,7 @@ describe('Section2DOverlayRenderer: section-cut draw gating', () => {
     renderer.uploadDrawing(TRIANGLE, [], 'front', 0);
     const { pass, calls } = makePass();
     renderer.draw(pass, { ...OPTIONS, showOutlines: false, showFills: true, capStyle: CAP_STYLE });
-    assert.ok(!calls.some((c) => /^draw:/.test(c)), 'no outline draw');
+    assert.ok(!calls.some((c) => c.startsWith('draw:')), 'no outline draw');
     assert.ok(calls.some((c) => c.startsWith('drawIndexed:')), 'fill still drawn');
   });
 

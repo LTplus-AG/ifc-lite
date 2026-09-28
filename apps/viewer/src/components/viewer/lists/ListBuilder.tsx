@@ -335,13 +335,13 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
         <div className="px-3 py-3 space-y-5">
           {/* Identity */}
           <div className="space-y-2">
-            <Input
+            <Input aria-label={t('lists.builder.nameInputLabel')}
               placeholder={t('lists.builder.namePlaceholder')}
               value={name}
               onChange={e => setName(e.target.value)}
               className="h-9 text-sm font-medium"
             />
-            <Input
+            <Input aria-label={t('lists.builder.descriptionInputLabel')}
               placeholder={t('lists.builder.descriptionPlaceholder')}
               value={description}
               onChange={e => setDescription(e.target.value)}
@@ -838,14 +838,14 @@ function ColumnEditorPanel({
         </button>
       </div>
       <div className="flex items-center gap-1.5">
-        <ComboInput
+        <ComboInput aria-label={t(source === 'quantity' ? 'lists.builder.quantitySetInputLabel' : 'lists.builder.propertySetInputLabel')}
           value={setName}
           options={setOptions}
           placeholder={source === 'quantity' ? t('lists.builder.quantitySetPlaceholder') : t('lists.builder.propertySetPlaceholder')}
           className="h-7 min-w-0 flex-1 text-xs"
           onChange={setSetName}
         />
-        <ComboInput
+        <ComboInput aria-label={t(source === 'quantity' ? 'lists.builder.quantityNameInputLabel' : 'lists.builder.propertyNameInputLabel')}
           value={propName}
           options={propOptions}
           placeholder={source === 'quantity' ? t('lists.builder.quantityNamePlaceholder') : t('lists.builder.propertyNamePlaceholder')}

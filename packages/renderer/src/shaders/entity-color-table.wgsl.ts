@@ -72,7 +72,7 @@ export const entityColorTableWgsl = `
         // the base draw): the override albedo lit by the same irradiance, no
         // specular, the same roll-off and edge darkening, mixed by its alpha.
         // Emphasized overrides are unlit, faintly faceted and opaque (#1277).
-        fn paintEntityOverride(base: vec4<f32>, ov: vec4<f32>, irradiance: vec3<f32>, N: vec3<f32>, edgeDarken: f32) -> vec4<f32> {
+        fn paintEntityOverride(base: vec4<f32>, ov: vec4<f32>, irradiance: vec3<f32>, N: vec3<f32>) -> vec4<f32> {
           let albedo = srgbToLinear(ov.rgb);
           var lit = albedo * irradiance;
           var a = ov.a;
@@ -80,7 +80,7 @@ export const entityColorTableWgsl = `
             lit = albedo * (0.85 + 0.15 * abs(dot(N, normalize(vec3<f32>(0.3, 1.0, 0.2)))));
             a = 1.0;
           }
-          let encoded = linearToSrgb(clamp(neutralCompress(lit) * edgeDarken, vec3<f32>(0.0), vec3<f32>(1.0)));
+          let encoded = linearToSrgb(clamp(neutralCompress(lit), vec3<f32>(0.0), vec3<f32>(1.0)));
           return vec4<f32>(mix(base.rgb, encoded, a), a + (1.0 - a) * base.a);
         }
 `;

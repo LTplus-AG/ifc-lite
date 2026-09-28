@@ -256,6 +256,7 @@ export const miscPanelsBEn = {
 
   // ---- TextAnnotationEditor.tsx ---------------------------------------------
   'textAnnotationEditor.placeholder': 'Type annotation text...',
+  'textAnnotationEditor.inputLabel': 'Annotation text',
   'textAnnotationEditor.hint': 'Enter to confirm · Shift+Enter for newline · Esc to cancel',
 
   // ---- presence/PeerPresenceLayer.tsx -----------------------------------------
@@ -288,5 +289,6 @@ export const miscPanelsBEn = {
   // ---- SearchableSelect.tsx ---------------------------------------------------
   'searchableSelect.defaultPlaceholder': 'Select...',
   'searchableSelect.searchPlaceholder': 'Search...',
+  'searchableSelect.filterOptionsLabel': 'Filter options',
   'searchableSelect.noMatches': 'No matches',
 } satisfies Record<string, TranslationValue>;

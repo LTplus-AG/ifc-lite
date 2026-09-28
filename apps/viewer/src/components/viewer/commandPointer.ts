@@ -102,8 +102,7 @@ function semanticSource(modelId: string): SemanticSource {
       const s = useViewerStore.getState();
       const store = s.models.get(modelId)?.ifcDataStore;
       const view = s.mutationViews.get(modelId);
-      const editor = s.storeEditors.get(modelId);
-      return store && view && editor ? storeyWallAxes(store, view, editor, storeyId) : [];
+      return store && view ? storeyWallAxes(store, view, storeyId) : [];
     },
   });
   semantic = { modelId, source };

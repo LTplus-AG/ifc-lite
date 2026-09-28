@@ -61,8 +61,14 @@ export async function runExtrusionBridgeContracts(test, rootDir) {
         assert.deepEqual(definition.key.context, {
           kind: 'mapped', representation_map_path: [338168],
         });
+        assert.equal(definition.source.Position, 338106);
+        assert.equal(definition.source.ExtrudedDirection, 19);
+        assert.equal('position_id' in definition.source, false);
+        assert.equal('extruded_direction_id' in definition.source, false);
         assert.equal(definition.source.Depth, 0.06);
         assert.equal(definition.source.profile.loops.length, 2);
+        assert.equal(definition.source.profile.Position, null);
+        assert.equal('position_id' in definition.source.profile, false);
         assert.equal(definition.source.status.type, 'complete');
         // Independently from the IFC profile: outer 2.50 x 0.80 m minus
         // opening 2.41 x 0.71 m, extruded through 0.06 m.
@@ -110,6 +116,9 @@ export async function runExtrusionBridgeContracts(test, rootDir) {
         near(view.length_unit_scale, 0.001);
         const source = view.sources.find((item) => item.source.solid_id === 12);
         assert.ok(source);
+        assert.equal(source.source.Position, 11);
+        assert.equal(source.source.ExtrudedDirection, 9);
+        assert.equal(source.source.profile.Position, 7);
         assert.equal(source.source.Depth, 1000);
         const occurrence = view.instances[35].find((item) => item.solid_id === 12);
         assert.ok(occurrence);

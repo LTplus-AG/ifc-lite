@@ -203,7 +203,9 @@ async function inspectExtrusions(bytes: Uint8Array, productId: number): Promise<
 }
 ```
 
-`source.Depth`, profile loop coordinates and the optional `position_matrix` and
+Source references use exact EXPRESS keys: `SweptArea`, `Position`, and
+`ExtrudedDirection` on the solid, and `Position` on the profile. `source.Depth`,
+profile loop coordinates and the optional `position_matrix` and
 `profile_position` retain IFC file length units. `length_unit_scale` converts
 file lengths to metres; nominal area and volume remain in squared and cubed
 file units. Each occurrence's column-major `world_from_source` maps solid-local

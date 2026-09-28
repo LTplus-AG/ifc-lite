@@ -27,7 +27,7 @@ import { toast } from '@/components/ui/toast';
 import type { TranslationKey } from '@/i18n';
 import { resolve as translate } from '@/i18n/registry';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
-import { notifyElementSplit, notifyWallSplit } from '@/components/viewer/wallSplitNotice';
+import { notifySplitCommitted } from '@/components/viewer/wallSplitNotice';
 import { SplitScene } from '@/components/viewer/tools/SplitHud';
 import { pointInPolygon, type Point2D } from '@/lib/polygon-clip';
 import { shortcutLabel } from '@/lib/commands/shortcut-label';
@@ -125,8 +125,23 @@ function commitSlab(g: SplitGesture & { target: NonNullable<SplitGesture['target
   const right = store().readSlabFootprint(modelId, result.right.expressId);
   const inRight = right ? pointInPolygon(right.footprint, [g.cursor![0], g.cursor![1]]) : false;
   toast.success(`Slab split — ${shortcutLabel('edit.undo')} to undo`);
-  const created = [result.left.expressId, result.right.expressId];
-  return { modelId, created, deleted: [expressId], remesh: created, select: [inRight ? result.right.expressId : result.left.expressId] };
+  return splitCommit(modelId, expressId, result, inRight ? result.right.expressId : result.left.expressId);
+}
+
+/**
+ * The split identity policy (#6233, `lib/split-guid.ts`): the larger piece
+ * IS the source, reshaped in place, and exactly one element is created. Both
+ * are re-meshed through the wasm service, and again on undo / redo of this
+ * transaction's batch; nothing is deleted.
+ */
+function splitCommit(
+  modelId: string,
+  source: number,
+  pieces: { left: { expressId: number }; right: { expressId: number } },
+  select: number,
+): CommitResult {
+  const created = pieces.left.expressId === source ? pieces.right.expressId : pieces.left.expressId;
+  return { modelId, created: [created], deleted: [], remesh: [source, created], select: [select] };
 }
 
 function commitLinear(g: SplitGesture & { target: NonNullable<SplitGesture['target']> }, store: CommandContext['get']): CommitResult {
@@ -135,14 +150,13 @@ function commitLinear(g: SplitGesture & { target: NonNullable<SplitGesture['targ
   if (g.kind === 'wall') {
     const wall = store().splitWallAtDistance(modelId, expressId, distance);
     if (!wall.ok) throw new Error(translate('splitTool.failed', { reason: wall.reason }));
-    notifyWallSplit(wall.openings);
-    const created = [wall.left.expressId, wall.right.expressId];
-    return { modelId, created, deleted: [expressId], remesh: created, select: [wall.right.expressId] };
+    notifySplitCommitted(wall);
+    return splitCommit(modelId, expressId, wall, wall.right.expressId);
   }
   const linear = store().splitLinearElementAtDistance(modelId, expressId, distance);
   if (!linear.ok) throw new Error(translate('splitTool.failed', { reason: linear.reason }));
-  notifyElementSplit();
-  return { modelId, created: [linear.right.expressId], deleted: [], remesh: [expressId, linear.right.expressId], select: [linear.right.expressId] };
+  notifySplitCommitted(linear);
+  return splitCommit(modelId, expressId, linear, linear.right.expressId);
 }
 
 export const ELEMENT_SPLIT: ModelingCommand<SplitGesture> = {

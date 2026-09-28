@@ -116,11 +116,12 @@ the PR records paired timings and binary/fixture provenance.
 
 The authored/analytic quantity join in #6283 runs only when callers request
 quantity analysis; normal mesh production does not enter it. A source-matched
-native control compared the exact #6272 parent with the join branch in five
-balanced, interleaved AC20-FZK-Haus pairs, using fresh probe processes and five
-iterations per process on an otherwise idle host. Mesh counts and all ordered
-mesh fingerprints matched. Parse, geometry, and total time ranges overlapped,
-and the small upward total median was inconsistent across pairs. Verdict: no
+native control compared #6272 parent `3e554e841` with join source
+`af84e4d2d` in five balanced, interleaved AC20-FZK-Haus pairs, using fresh
+probe processes and five iterations per process on an otherwise idle host.
+Mesh counts and all 50 ordered mesh fingerprints matched. Parse, geometry,
+and total time ranges overlapped; the downward total median was inconsistent
+across pairs because one pair reversed. Verdict: no
 supported default-load speed change or mesh-output difference. This control
 cannot establish the opt-in join's latency; measure that through its caller on
 representative authored-quantity models if it becomes material.

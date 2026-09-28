@@ -39,6 +39,13 @@ export function useModelSelection() {
 
     // Single source of truth: resolveEntityRef handles globalId → EntityRef
     // including fallback for single-model mode (offset 0). Always returns an EntityRef.
-    setSelectedEntity(resolveEntityRef(selectedEntityId));
+    // Re-resolve (a model was added or removed), but only write a changed ref:
+    // `models` also changes on every geometry update, and an identical
+    // selection written again re-renders every selection subscriber (#6232).
+    const ref = resolveEntityRef(selectedEntityId);
+    const { selectedEntity, selectedEntities } = useViewerStore.getState();
+    if (selectedEntity && selectedEntities.length === 0
+      && selectedEntity.modelId === ref.modelId && selectedEntity.expressId === ref.expressId) return;
+    setSelectedEntity(ref);
   }, [selectedEntityId, setSelectedEntity, models]);
 }

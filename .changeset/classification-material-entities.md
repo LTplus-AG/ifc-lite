@@ -11,4 +11,4 @@ The Properties panel shows the new classification or material straight away, and
 Some adds are refused, each with a message:
 - a second material on an element that already has one;
 - an IFC2X3 model with no `IfcOwnerHistory`, which that schema requires on the new relationship;
-- text that would be written as a STEP token (`$`, `#12`, `.ENUM.`).
+- text that would be written as a STEP token (`$`, <code>&#x23;12</code>, `.ENUM.`).

@@ -18,9 +18,10 @@ it('#5823 activates snapshot, placeholder, and comment thumbnails from the keybo
     comments: [{ guid: 'comment', date: '2026-01-02T00:00:00Z', comment: 'See snapshot', viewpointGuid: 'snapshot' }],
   };
   const activated: string[] = [];
+  let backCount = 0;
   const ui = render(
     <BCFTopicDetail
-      topic={topic} onBack={() => {}} onEditTopic={() => {}} onAddComment={() => {}}
+      topic={topic} onBack={() => { backCount += 1; }} onEditTopic={() => {}} onAddComment={() => {}}
       onAddViewpoint={() => {}} onAddSectionViewpoint={() => {}}
       sectionViewpointBlockReason={null}
       onActivateViewpoint={(viewpoint) => activated.push(viewpoint.guid)}
@@ -29,6 +30,10 @@ it('#5823 activates snapshot, placeholder, and comment thumbnails from the keybo
       hasIsolation={false} hasHiddenEntities={false}
     />,
   );
+  const back = ui.querySelector<HTMLButtonElement>('button[aria-label="Back to topics"]');
+  assert.ok(back, '#6343 names the icon-only Back action');
+  activate(back, 'Enter');
+  assert.equal(backCount, 1);
   const snapshot = ui.querySelector('img[alt="Viewpoint"]')?.closest<HTMLButtonElement>('button');
   const placeholder = ui.querySelector<HTMLButtonElement>('button[aria-label="Viewpoint 2"]');
   const thumbnail = ui.querySelector('img[alt="Associated viewpoint"]')?.closest<HTMLButtonElement>('button');

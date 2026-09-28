@@ -114,3 +114,26 @@ describe('extractWallSegmentsForStorey: created walls stay on their storey (#564
     for (const id of wallIds) expect(onGround.contributingWallIds).toContain(id);
   });
 });
+
+describe('extractWallSegmentsForStorey: source wall placement edits (#5249)', () => {
+  it('moves a parsed wall with its edited Cartesian point and drops a deleted placement target', async () => {
+    const { store, view } = await session();
+    // hello-wall.ifc: source wall #1222 uses local placement #1235, whose
+    // IfcAxis2Placement3D location is Cartesian point #1231 at (0, 0, 0).
+    const before = extractWallSegmentsForStorey(store, 42, view);
+    const wallIndex = before.contributingWallIds.indexOf(1222);
+    expect(wallIndex).toBeGreaterThanOrEqual(0);
+    const original = before.segments[wallIndex]!;
+
+    view.setPositionalAttribute(1231, 0, [10, 0, 0]);
+    const moved = extractWallSegmentsForStorey(store, 42, view);
+    const movedIndex = moved.contributingWallIds.indexOf(1222);
+    expect(movedIndex).toBeGreaterThanOrEqual(0);
+    expect(moved.segments[movedIndex]!.a[0] - original.a[0]).toBeCloseTo(10);
+    expect(moved.segments[movedIndex]!.b[0] - original.b[0]).toBeCloseTo(10);
+
+    view.deleteEntity(1231);
+    const missing = extractWallSegmentsForStorey(store, 42, view);
+    expect(missing.contributingWallIds).not.toContain(1222);
+  });
+});

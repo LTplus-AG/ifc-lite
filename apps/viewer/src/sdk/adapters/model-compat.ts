@@ -47,7 +47,6 @@ export interface ModelLike {
   fileSize: number;
   loadedAt: number;
   idOffset: number;
-  maxExpressId: number;
 }
 
 /**
@@ -124,6 +123,5 @@ function buildLegacyModel(dataStore: IfcDataStore): ModelLike {
     fileSize: dataStore.source?.byteLength ?? 0,
     loadedAt: 0,
     idOffset: 0,
-    maxExpressId: dataStore.entities?.count ?? 0,
   };
 }

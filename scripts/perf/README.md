@@ -2275,13 +2275,17 @@ committing to permanent renderer pages.
 
 Mapped translations beyond the local f32 precision range now stay in the f64
 mesh origin through the final world/RTC transform. Normal-size mapped items
-retain their prior vertex path. Historical pre-rebase interleaved fresh-process native
-base-versus-branch pairs on AC20 and ISSUE_129 showed identical mesh counts,
-triangle counts and ordered mesh fingerprints. ISSUE_129 had a small,
-consistent geometry and total-time cost; AC20 timings were close to run
-variation. This is a correctness fix with an earlier minor full-load cost, not
-a speedup. The current main-versus-rebased-head worker-pool verdict remains
-pending on an otherwise idle host.
+retain their prior vertex path. One fresh-process native run per fixture used
+`perf_probe --iters 1 --json --fingerprint` to compare exact main base
+`382d1190d51750dce28b9f9568392d29c43e579f` with head
+`d79ca0fe95c3f75282f0c0b0b3464deaf644ce9d`. AC20 matched at 285 meshes,
+20,322 triangles and ordered FNV `c4d504b83ff698ea`; ISSUE_129 matched at
+1,402 meshes, 136,807 triangles and ordered FNV `ff42e1a3f7fcf540`. The
+hashes cover ordered mesh
+identifiers, geometry, colours, transforms and bounds. These single runs show
+output identity only. The host was contested, so source-matched interleaved
+worker-pool timing on an otherwise idle host remains pending; no current
+performance verdict follows from these samples.
 
 The lesson is that protecting high-coordinate geometry at the mapped-item
 boundary can affect the normal path even when its mesh bytes are unchanged;

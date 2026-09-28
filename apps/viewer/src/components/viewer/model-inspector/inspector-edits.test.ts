@@ -66,6 +66,7 @@ describe('Model inspector edits (#6232 M2.5)', () => {
     assertOneUndoStep(() => entityName(live(), wall), () => {
       assert.equal(renameElement(MODEL_ID, wall, 'Party wall', 'W1'), true);
     }, (name) => assert.equal(name, 'Party wall'));
+    assert.deepEqual(remeshes, [], 'a name does not change the mesh');
   });
 
   it('"New type…" creates the IfcWallType and types the wall in one undo step', () => {
@@ -77,6 +78,7 @@ describe('Model inspector edits (#6232 M2.5)', () => {
       assert.equal(after.type, typesOfKind(live(), 'wall')[0].expressId);
     });
     assert.equal(typeOf(live(), wall), null);
+    assert.deepEqual(remeshes.map((r) => [r.expressIds, r.cause]), [[[wall], 'shape']], 'a type can bring geometry and styles: re-mesh the wall');
   });
 
   it('switching type, and "No type", are one undo step each and restore the previous type', () => {
@@ -87,6 +89,7 @@ describe('Model inspector edits (#6232 M2.5)', () => {
     assert.equal(typeOf(live(), wall), a);
     assertOneUndoStep(() => typeOf(live(), wall), () => assert.equal(setElementType(MODEL_ID, wall, null), true), (t) => assert.equal(t, null));
     assert.equal(typeOf(live(), wall), a);
+    assert.deepEqual(remeshes.slice(-2).map((r) => r.expressIds), [[wall], [wall]], 'each type edit re-meshes the wall');
   });
 
   it('a wall dimension is one undo step and re-meshes the wall', () => {
@@ -120,6 +123,7 @@ describe('Model inspector edits (#6232 M2.5)', () => {
     assertOneUndoStep(() => layerSetOf(live(), wall), () => {
       assert.notEqual(applyMaterialLayers(MODEL_ID, { kind: 'wall', target: 'type', elementId: wall, typeId: type, layers: [{ thickness: 0.2, material: null }] }), null);
     }, (after) => assert.equal(after?.via, 'type'));
+    assert.deepEqual(remeshes.at(-1)?.expressIds, [wall], 'the type\'s occurrences re-mesh (their colour comes from its material)');
   });
 
   it('a refused edit writes nothing', () => {

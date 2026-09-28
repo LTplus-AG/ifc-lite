@@ -1,22 +1,22 @@
-model 7da1fc85-2856-47a7-9e02-16bed087d5b4
+model 752d70f4-0a11-4158-8457-b225dd3f3428
 authored wall #79122
-initial {"name":"Garden wall","type":null,"layers":null,"thickness":0.2,"undo":1}
-NAME: before {"name":"Garden wall","type":null,"layers":null,"thickness":0.2,"undo":1}
-   after {"name":"Garden wall — north","type":null,"layers":null,"thickness":0.2,"undo":2}
-   after ONE undo (Ctrl+Z) {"name":"Garden wall","type":null,"layers":null,"thickness":0.2,"undo":1}
-TYPE (New type…): before {"name":"Garden wall","type":null,"layers":null,"thickness":0.2,"undo":1}
-   after {"name":"Garden wall","type":"WT Brick 250","layers":null,"thickness":0.2,"undo":3}
-   after ONE undo (Ctrl+Z) {"name":"Garden wall","type":null,"layers":null,"thickness":0.2,"undo":1}
-DIMENSION (thickness): before {"name":"Garden wall","type":null,"layers":null,"thickness":0.2,"undo":1}
-   after {"name":"Garden wall","type":null,"layers":null,"thickness":0.35,"undo":2}
-   after ONE undo (Ctrl+Z) {"name":"Garden wall","type":null,"layers":null,"thickness":0.2,"undo":1}
-MATERIAL LAYERS: before {"name":"Garden wall","type":null,"layers":null,"thickness":0.2,"undo":1}
-   after {"name":"Garden wall","type":null,"layers":[["Brick",0.115],["Mineral wool",0.12]],"thickness":0.235,"undo":9}
-   after ONE undo (Ctrl+Z) {"name":"Garden wall","type":null,"layers":null,"thickness":0.2,"undo":1}
-file wall #15042 {"name":"Wand-Int-ERDG-4","type":"Leichtbeton 102890359 240","layers":[["Leichtbeton 102890359",0.24]],"thickness":null,"undo":1}
-FILE WALL NAME: before {"name":"Wand-Int-ERDG-4","type":"Leichtbeton 102890359 240","layers":[["Leichtbeton 102890359",0.24]],"thickness":null,"undo":1}
-   after {"name":"Wand-Int-ERDG-4 (renamed)","type":"Leichtbeton 102890359 240","layers":[["Leichtbeton 102890359",0.24]],"thickness":null,"undo":2}
-   after ONE Ctrl+Z {"name":"Wand-Int-ERDG-4","type":"Leichtbeton 102890359 240","layers":[["Leichtbeton 102890359",0.24]],"thickness":null,"undo":1}
-FILE WALL TYPE -> No type: before {"name":"Wand-Int-ERDG-4","type":"Leichtbeton 102890359 240","layers":[["Leichtbeton 102890359",0.24]],"thickness":null,"undo":1}
-   after {"name":"Wand-Int-ERDG-4","type":null,"layers":[["Leichtbeton 102890359",0.24]],"thickness":null,"undo":2}
-   after ONE Ctrl+Z {"name":"Wand-Int-ERDG-4","type":"Leichtbeton 102890359 240","layers":[["Leichtbeton 102890359",0.24]],"thickness":null,"undo":1}
+initial {"name":"Garden wall","type":null,"layers":null,"thickness":0.2,"meshes":0,"undo":1}
+NAME: before {"name":"Garden wall","type":null,"layers":null,"thickness":0.2,"meshes":12,"undo":1}
+   after {"name":"Garden wall — north","type":null,"layers":null,"thickness":0.2,"meshes":12,"undo":2}
+   after ONE undo (Ctrl+Z) {"name":"Garden wall","type":null,"layers":null,"thickness":0.2,"meshes":12,"undo":1}
+TYPE (New type…): before {"name":"Garden wall","type":null,"layers":null,"thickness":0.2,"meshes":12,"undo":1}
+   after {"name":"Garden wall","type":"WT Brick 250","layers":null,"thickness":0.2,"meshes":12,"undo":3}
+   after ONE undo (Ctrl+Z) {"name":"Garden wall","type":null,"layers":null,"thickness":0.2,"meshes":12,"undo":1}
+DIMENSION (thickness): before {"name":"Garden wall","type":null,"layers":null,"thickness":0.2,"meshes":12,"undo":1}
+   after {"name":"Garden wall","type":null,"layers":null,"thickness":0.35,"meshes":12,"undo":2}
+   after ONE undo (Ctrl+Z) {"name":"Garden wall","type":null,"layers":null,"thickness":0.2,"meshes":12,"undo":1}
+MATERIAL LAYERS: before {"name":"Garden wall","type":null,"layers":null,"thickness":0.2,"meshes":12,"undo":1}
+   after {"name":"Garden wall","type":null,"layers":[["Brick",0.115],["Mineral wool",0.12]],"thickness":0.235,"meshes":28,"undo":9}
+   after ONE undo (Ctrl+Z) {"name":"Garden wall","type":null,"layers":null,"thickness":0.2,"meshes":12,"undo":1}
+file wall #15042 {"name":"Wand-Int-ERDG-4","type":"Leichtbeton 102890359 240","layers":[["Leichtbeton 102890359",0.24]],"thickness":null,"meshes":12,"undo":1}
+FILE WALL NAME: before {"name":"Wand-Int-ERDG-4","type":"Leichtbeton 102890359 240","layers":[["Leichtbeton 102890359",0.24]],"thickness":null,"meshes":12,"undo":1}
+   after {"name":"Wand-Int-ERDG-4 (renamed)","type":"Leichtbeton 102890359 240","layers":[["Leichtbeton 102890359",0.24]],"thickness":null,"meshes":12,"undo":2}
+   after ONE Ctrl+Z {"name":"Wand-Int-ERDG-4","type":"Leichtbeton 102890359 240","layers":[["Leichtbeton 102890359",0.24]],"thickness":null,"meshes":12,"undo":1}
+FILE WALL TYPE -> No type: before {"name":"Wand-Int-ERDG-4","type":"Leichtbeton 102890359 240","layers":[["Leichtbeton 102890359",0.24]],"thickness":null,"meshes":12,"undo":1}
+   after {"name":"Wand-Int-ERDG-4","type":null,"layers":[["Leichtbeton 102890359",0.24]],"thickness":null,"meshes":12,"undo":2}
+   after ONE Ctrl+Z {"name":"Wand-Int-ERDG-4","type":"Leichtbeton 102890359 240","layers":[["Leichtbeton 102890359",0.24]],"thickness":null,"meshes":12,"undo":1}

@@ -32,7 +32,7 @@ try {
       const s = window.__s.getState(); const m = [...s.models.values()][0];
       const live = { dataStore: m.ifcDataStore, view: s.mutationViews.get(m.id) };
       const t = k.typeOf(live, id); const ls = k.layerSetOf(live, id); const w = s.readWallEndpoints(m.id, id);
-      return { name: k.entityName(live, id), type: t === null ? null : k.entityName(live, t), layers: ls ? ls.layers.map((l) => [l.materialId === null ? null : k.entityName(live, l.materialId), +l.thickness.toFixed(3)]) : null, thickness: w ? +w.thickness.toFixed(3) : null, undo: s.undoStacks.get(m.id)?.length ?? 0 };
+      return { name: k.entityName(live, id), type: t === null ? null : k.entityName(live, t), layers: ls ? ls.layers.map((l) => [l.materialId === null ? null : k.entityName(live, l.materialId), +l.thickness.toFixed(3)]) : null, thickness: w ? +w.thickness.toFixed(3) : null, meshes: (m.geometryResult?.meshes ?? []).filter((x) => x.expressId === s.toGlobalId(m.id, id) || x.expressId === id).reduce((n, x) => n + x.indices.length / 3, 0), undo: s.undoStacks.get(m.id)?.length ?? 0 };
     };
   });
   const modelId = await st(() => [...window.__s.getState().models.keys()][0]);

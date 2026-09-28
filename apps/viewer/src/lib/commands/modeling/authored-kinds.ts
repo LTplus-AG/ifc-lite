@@ -117,6 +117,13 @@ export function typeOf(model: LiveModel, expressId: number): number | null {
   return relatingOf(model, 'IfcRelDefinesByType', expressId);
 }
 
+/** The occurrences a type object types (IfcRelDefinesByType.RelatedObjects). */
+export function occurrencesOf(model: LiveModel, typeId: number): number[] {
+  return readRelatedLists(model.dataStore, 'IfcRelDefinesByType', model.view)
+    .filter((rel) => rel.relatingId === typeId)
+    .flatMap((rel) => rel.relatedIds);
+}
+
 function liveAttributes({ dataStore, view }: LiveModel, id: number): IfcAttributeValue[] | null {
   if (view?.isDeleted(id)) return null;
   const entity = view?.getNewEntity(id) ?? dataStore.getEntity(id);

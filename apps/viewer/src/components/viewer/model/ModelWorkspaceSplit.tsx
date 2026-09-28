@@ -16,18 +16,17 @@
  *
  * The plan pane is `PlanView` (M2.4). Which layout shows, and the pane
  * sizes, follow `model-layout.ts`: the 3D pane never gets narrower than its
- * HUD needs. In 3D alone a narrow strip at the left edge brings the plan back
+ * HUD needs. In 3D alone the rail's Plan toggle brings the plan back
  * (disabled while there is no room for it).
  */
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { PanelLeftOpen } from 'lucide-react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle, type PanelImperativeHandle } from 'react-resizable-panels';
 import { useViewerStore } from '@/store';
 import type { ModelLayout } from '@/store/slices/authoringSessionSidebar';
 import { useTranslation } from '@/i18n';
 import { PlanView } from '../plan/PlanView';
-import { MODEL_3D_MIN_PX, PLAN_MIN_PX, effectiveModelLayout, planPaneWidth, splitFits } from './model-layout';
+import { MODEL_3D_MIN_PX, PLAN_MIN_PX, effectiveModelLayout, planPaneWidth, publishSplitWidth } from './model-layout';
 
 /** The split's own width (the viewport panel beside the rail), kept current. */
 function useWidth(ref: React.RefObject<HTMLElement | null>): number {
@@ -53,7 +52,7 @@ export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
   const layout = effectiveModelLayout(useViewerStore((s) => s.modelLayout), width);
   const planRef = useRef<PanelImperativeHandle>(null);
   const showPlan = inWorkspace && layout !== '3d';
-  const fits = splitFits(width);
+  useEffect(() => { publishSplitWidth(width); }, [width]);
 
   // Resizing in the commit that MOUNTS the plan pane throws ("Layout not found
   // for Panel"): the group has not registered it yet, and the throw blanked
@@ -76,22 +75,8 @@ export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
   }, [showPlan, layout, width]);
 
   return (
-    // The strip sits OUTSIDE the panel group (a group lays out panels only);
-    // it and the group keep fixed sibling slots, so toggling it never remounts the group.
+    // A plain wrapper measured for `model-layout.ts`; the plan toggle is the rail's.
     <div ref={hostRef} data-model-split-width={width} className="flex h-full min-w-0 flex-1">
-      {inWorkspace && !showPlan && (
-        <button
-          type="button"
-          data-model-show-plan
-          disabled={!fits}
-          aria-label={t('modelWorkspace.plan.show')}
-          title={fits ? t('modelWorkspace.plan.show') : t('modelWorkspace.plan.noRoom')}
-          onClick={() => setModelLayout('split')}
-          className="flex w-6 shrink-0 items-start justify-center border-r border-border bg-background pt-2 text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-        >
-          <PanelLeftOpen aria-hidden className="h-3.5 w-3.5" />
-        </button>
-      )}
       <PanelGroup orientation="horizontal" className="h-full min-w-0 flex-1" data-model-layout={showPlan ? layout : '3d'}>
         {showPlan && (
           <Panel id="model-plan-panel" panelRef={planRef} defaultSize={`${planPaneWidth(layout, width)}px`} minSize={`${PLAN_MIN_PX}px`}>

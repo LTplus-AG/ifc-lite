@@ -22,6 +22,7 @@ import { seedModelingSession } from '@/test/modeling-session-fixture';
 import '@/lib/commands/modeling/builtin';
 import { MODEL_3D_MIN_PX, PLAN_MIN_PX, effectiveModelLayout, planPaneWidth, splitFits } from './model-layout';
 import { ModelWorkspaceSplit } from './ModelWorkspaceSplit';
+import { ModelToolRail } from './ModelToolRail';
 
 const NEED = MODEL_3D_MIN_PX + PLAN_MIN_PX + 6;
 
@@ -81,25 +82,25 @@ describe('ModelWorkspaceSplit applies the rule (#6232 M2.4)', () => {
 
   it('never picked, wide enough: the plan shows beside 3D', () => {
     restore = splitWidth(1280);
-    const ui = render(<ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit>);
+    const ui = render(<><ModelToolRail /><ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit></>);
     assert.ok(ui.querySelector('[data-plan-view]'));
     assert.equal(ui.querySelector('[data-model-layout]')?.getAttribute('data-model-layout'), 'split');
   });
 
   it('never picked, too narrow: 3D alone, the plan one click away once there is room', () => {
     restore = splitWidth(NEED - 1);
-    const ui = render(<ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit>);
+    const ui = render(<><ModelToolRail /><ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit></>);
     assert.equal(ui.querySelector('[data-plan-view]'), null);
-    const strip = ui.querySelector<HTMLButtonElement>('[data-model-show-plan]')!;
-    assert.ok(strip.disabled, 'no room: the strip says why instead of doing nothing');
+    const strip = ui.querySelector<HTMLButtonElement>('[data-rail-tool="plan"]')!;
+    assert.ok(strip.disabled, 'no room: the rail toggle is off and its tooltip says why');
     assert.equal(useViewerStore.getState().modelLayout, 'auto', 'nothing was persisted');
   });
 
   it('an explicit 3D pick is kept where Split would fit', () => {
     act(() => useViewerStore.getState().setModelLayout('3d'));
     restore = splitWidth(1600);
-    const ui = render(<ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit>);
+    const ui = render(<><ModelToolRail /><ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit></>);
     assert.equal(ui.querySelector('[data-plan-view]'), null);
-    assert.equal(ui.querySelector<HTMLButtonElement>('[data-model-show-plan]')?.disabled, false);
+    assert.equal(ui.querySelector<HTMLButtonElement>('[data-rail-tool="plan"]')?.disabled, false);
   });
 });

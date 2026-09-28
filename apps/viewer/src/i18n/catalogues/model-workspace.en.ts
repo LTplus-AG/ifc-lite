@@ -29,6 +29,7 @@ export const modelWorkspaceEn = {
   'modelWorkspace.noStorey.description': 'This model has no IfcBuildingStorey, so walls have no floor to stand on.',
   'modelWorkspace.plan.title': 'Plan',
   'modelWorkspace.plan.show': 'Show the plan',
+  'modelWorkspace.plan.hide': 'Hide the plan',
   'modelWorkspace.plan.noRoom': 'No room for the plan beside 3D: widen the window or close a side panel',
   'modelWorkspace.plan.noPlane': 'This storey has no plane to draw a plan on.',
   'modelWorkspace.plan.cutting': 'Cutting…',

@@ -22,7 +22,9 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import { shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label';
 import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
 import { sessionWorkplaneBlock } from '@/lib/commands/modeling/workspace-storeys';
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { LEAVE_TOOL, RAIL_TOOLS, type RailTool } from './rail-tools';
+import { effectiveModelLayout, splitFits, useSplitWidth } from './model-layout';
 
 /** Why the drawing tools are off: no storey, or the builder's refusal. */
 function useWorkplaneBlockText(): string | null {
@@ -78,7 +80,8 @@ export function ModelToolRail() {
           );
         })}
       </div>
-      <div className="flex w-full shrink-0 flex-col items-center border-t border-border py-1.5">
+      <div className="flex w-full shrink-0 flex-col items-center gap-0.5 border-t border-border py-1.5">
+        <PlanToggle />
         <RailButton
           id={LEAVE_TOOL.id}
           labelKey={LEAVE_TOOL.labelKey}
@@ -93,11 +96,30 @@ export function ModelToolRail() {
   );
 }
 
+/** Show / hide the plan beside 3D (M2.4); off, with the reason, while the split has no room for it. */
+function PlanToggle() {
+  const { t } = useTranslation();
+  const pick = useViewerStore((s) => s.modelLayout);
+  const setModelLayout = useViewerStore((s) => s.setModelLayout);
+  const width = useSplitWidth();
+  const shown = effectiveModelLayout(pick, width) !== '3d';
+  return (
+    <RailButton
+      id="plan"
+      labelKey={shown ? 'modelWorkspace.plan.hide' : 'modelWorkspace.plan.show'}
+      Icon={shown ? PanelLeftClose : PanelLeftOpen}
+      active={shown}
+      disabledReason={shown || splitFits(width) ? null : t('modelWorkspace.plan.noRoom')}
+      onClick={() => setModelLayout(shown ? '3d' : 'split')}
+    />
+  );
+}
+
 interface RailButtonProps {
   id: string;
   labelKey: TranslationKey;
   Icon: ComponentType<{ className?: string }>;
-  shortcut: KeyCommandId;
+  shortcut?: KeyCommandId;
   active: boolean;
   disabledReason: string | null;
   onClick: () => void;
@@ -131,7 +153,7 @@ function RailButton({ id, labelKey, Icon, shortcut, active, disabledReason, onCl
   const tip: ReactNode = (
     <>
       {label}
-      <span className="ml-1 text-muted-foreground">{t('modelWorkspace.tool.shortcutHint', { key: shortcutLabel(shortcut) })}</span>
+      {shortcut && <span className="ml-1 text-muted-foreground">{t('modelWorkspace.tool.shortcutHint', { key: shortcutLabel(shortcut) })}</span>}
       {disabledReason && <span className="block text-muted-foreground">{disabledReason}</span>}
     </>
   );

@@ -12,12 +12,14 @@
  * `MODEL_3D_MIN_PX` is MEASURED, not chosen: the viewport-hud.e2e states
  * (idle, selection, split, Space Sketch, add element, measure, section and
  * its cap/box, floor plan + drawing, solo, banners) on AC20-FZK-Haus, swept
- * over 3D pane widths (`modelling-refactor/sc-m2-plan-hud-sweep.mjs`), with
- * the section bar against the storey chip the last collision to clear. The
- * clean width depends on the platform's UI font: Linux Chrome (the CI e2e)
- * collides at 730 px and is clean from 735 px; Windows Chrome collides at
- * 715 px and is clean from 718 px. The minimum is the larger, plus 5 px for
- * fonts not measured. Re-measure whenever the HUD's widest bars change.
+ * over 3D pane widths (`modelling-refactor/sc-m2-plan-hud-sweep.mjs`) on
+ * main after #6315's HUD lane reserve. The last collision to clear is the
+ * add-element bar against the storey chip: Linux Chrome (the CI e2e) is
+ * clean from 546 px, Windows Chrome from 534 px; the minimum is the larger
+ * plus a margin for fonts not measured. (The Space Sketch bar's one-row
+ * check is not a width floor: it wraps in bands at 3D-only widths too, e.g.
+ * 703-836 and 933+ px panes, see the M2.4 PR.) Re-measure whenever the HUD's
+ * widest bars change.
  *
  * - 'auto' (never picked): Plan ‖ 3D when both fit, else 3D alone, the plan
  *   one click away.
@@ -26,10 +28,11 @@
  * - 'plan' is the plan as large as it can be: the 3D pane at its minimum.
  */
 
+import { useSyncExternalStore } from 'react';
 import type { ModelLayout, ModelLayoutPick } from '@/store/slices/authoringSessionSidebar';
 
 /** The narrowest 3D pane whose HUD shows every state without a collision (measured, see above). */
-export const MODEL_3D_MIN_PX = 740;
+export const MODEL_3D_MIN_PX = 560;
 /**
  * The narrowest plan pane: its header in one row (measured: the grid, Fit and
  * Plan | Split | 3D controls take 152 px, the storey chip 136 px with the
@@ -55,4 +58,28 @@ export function effectiveModelLayout(pick: ModelLayoutPick, groupWidth: number):
 export function planPaneWidth(layout: 'plan' | 'split', groupWidth: number): number {
   const most = groupWidth - MODEL_3D_MIN_PX - HANDLE_PX;
   return Math.max(PLAN_MIN_PX, layout === 'plan' ? most : Math.min(most, Math.round(groupWidth * SPLIT_PLAN_SHARE)));
+}
+
+/**
+ * The split's measured width, published by `ModelWorkspaceSplit` so the
+ * rail's plan toggle (outside the split) knows whether the plan fits. The
+ * toggle lives in the rail on purpose: a strip beside the 3D pane took 24 px
+ * from it, and the HUD's bar tiers, which measure the lane, then chose a bar
+ * too wide for it (the Space Sketch bar wrapped at 1600 px).
+ */
+let splitWidth = 0;
+const listeners = new Set<() => void>();
+
+export function publishSplitWidth(width: number): void {
+  if (width === splitWidth) return;
+  splitWidth = width;
+  for (const listener of listeners) listener();
+}
+
+export function useSplitWidth(): number {
+  return useSyncExternalStore(
+    (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    () => splitWidth,
+    () => splitWidth,
+  );
 }

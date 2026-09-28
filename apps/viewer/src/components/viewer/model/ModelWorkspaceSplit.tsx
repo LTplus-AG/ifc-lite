@@ -22,8 +22,10 @@ import { Panel, Group as PanelGroup, Separator as PanelResizeHandle, type PanelI
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 
-/** Plan pane share per layout ('plan' keeps a sliver of 3D until M2.4 decides). */
-const PLAN_SIZE = { plan: 80, split: 40 } as const;
+/** Plan pane share per layout ('plan' keeps a sliver of 3D until M2.4 decides).
+ *  Strings with `%`: react-resizable-panels v4 reads a bare number as PIXELS. */
+const PLAN_SIZE = { plan: '80%', split: '40%' } as const;
+const MIN_PANE = '20%';
 
 export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
@@ -32,14 +34,29 @@ export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
   const planRef = useRef<PanelImperativeHandle>(null);
   const showPlan = inWorkspace && layout !== '3d';
 
+  // Resizing in the commit that MOUNTS the plan pane throws ("Layout not found
+  // for Panel"): the group has not registered it yet, and the throw blanked
+  // the whole viewer. So a fresh mount resizes a frame later (the group would
+  // otherwise restore the pane's last size, not this layout's share), and a
+  // plan <-> split switch on a mounted pane resizes at once.
+  const shownLayout = useRef<'plan' | 'split' | null>(null);
   useEffect(() => {
-    if (layout !== '3d') planRef.current?.resize(`${PLAN_SIZE[layout]}%`);
+    const next = showPlan ? layout : null;
+    const prev = shownLayout.current;
+    shownLayout.current = next;
+    if (!next || prev === next) return;
+    if (prev) {
+      planRef.current?.resize(PLAN_SIZE[next]);
+      return;
+    }
+    const frame = requestAnimationFrame(() => planRef.current?.resize(PLAN_SIZE[next]));
+    return () => cancelAnimationFrame(frame);
   }, [showPlan, layout]);
 
   return (
     <PanelGroup orientation="horizontal" className="h-full min-w-0 flex-1" data-model-layout={showPlan ? layout : '3d'}>
       {showPlan && (
-        <Panel id="model-plan-panel" panelRef={planRef} defaultSize={PLAN_SIZE[layout === 'plan' ? 'plan' : 'split']} minSize={20}>
+        <Panel id="model-plan-panel" panelRef={planRef} defaultSize={PLAN_SIZE[layout === 'plan' ? 'plan' : 'split']} minSize={MIN_PANE}>
           <section
             data-model-plan-pane
             aria-label={t('modelWorkspace.plan.title')}
@@ -52,7 +69,7 @@ export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
       {showPlan && (
         <PanelResizeHandle className="w-1.5 bg-border transition-colors hover:bg-primary/50 active:bg-primary/70 cursor-col-resize" />
       )}
-      <Panel id="model-3d-panel" minSize={20}>
+      <Panel id="model-3d-panel" minSize={MIN_PANE}>
         {children}
       </Panel>
     </PanelGroup>

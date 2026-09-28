@@ -2,12 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** Browser witness for #5783 against an IFC2X3 Revit Snowdon reinforcement model. */
+/** Browser witness for #5783 against authored swept-disk geometry. */
 import { test, expect } from '@playwright/test';
 import { existsSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { sweptDiskFixture } from './swept-disk-fixture.js';
 
-const FIXTURE = process.env.REBAR_IFC ?? join(process.cwd(), 'tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc');
 type BrowserState = {
   models: Map<string, { id: string; ifcDataStore?: { entityCount: number } | null }>;
   geometryResult?: { meshes: unknown[] };
@@ -24,12 +23,12 @@ type BrowserState = {
 };
 type BrowserStore = { getState(): BrowserState };
 
-test('selected Revit bar shows exact source geometry and measurement readout (#5783)', async ({ page }, testInfo) => {
-  test.skip(!existsSync(FIXTURE), `Revit Snowdon IFC missing at ${FIXTURE}; run pnpm fixtures or provide REBAR_IFC`);
+test('selected swept-disk bar shows exact source geometry and measurement readout (#5783)', async ({ page }, testInfo) => {
+  test.skip(!existsSync(sweptDiskFixture.path), `Swept-disk IFC missing at ${sweptDiskFixture.path}; run pnpm fixtures or provide REBAR_IFC`);
   test.setTimeout(600_000);
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/');
-  await page.locator('#file-input-open').setInputFiles(FIXTURE);
+  await page.locator('#file-input-open').setInputFiles(sweptDiskFixture.path);
   await page.waitForFunction(() => {
     const store = (globalThis as unknown as { __ifc_lite_viewer_store__?: BrowserStore }).__ifc_lite_viewer_store__;
     const state = store?.getState();
@@ -37,11 +36,10 @@ test('selected Revit bar shows exact source geometry and measurement readout (#5
     return state?.models.size === 1 && state.geometryResult?.meshes?.length > 0
       && (model?.ifcDataStore?.entityCount ?? 0) > 0;
   }, undefined, { timeout: 300_000 });
-  await page.evaluate(() => {
+  await page.evaluate((expressId) => {
     const state = (globalThis as unknown as { __ifc_lite_viewer_store__: BrowserStore }).__ifc_lite_viewer_store__.getState();
     const model = [...state.models.values()][0];
     if (!model) throw new Error('loaded IFC model is missing');
-    const expressId = 132347;
     state.setSelectedEntity({ modelId: model.id, expressId });
     const globalId = state.toGlobalId(model.id, expressId);
     state.setSelectedEntityId(globalId);
@@ -49,13 +47,14 @@ test('selected Revit bar shows exact source geometry and measurement readout (#5
     state.cameraCallbacks.frameEntities?.([globalId]);
     state.setPropertiesActiveTab('quantities');
     state.setRightPanelCollapsed(false);
-  });
+  }, sweptDiskFixture.expressId);
   const source = page.getByRole('region', { name: 'Derived source geometry' });
   await expect(source.getByRole('region', { name: /IfcSweptDiskSolid/ }).first()).toBeVisible({ timeout: 120_000 });
   await expect(source).toContainText('Total centreline length');
-  await expect(source).toContainText('3.61642');
-  await expect(source).toContainText('9.525 mm');
+  await expect(source).toContainText(sweptDiskFixture.totalLengthPrefix);
+  await expect(source).toContainText(sweptDiskFixture.radiusText);
   await expect(source).toContainText('Bend magnitude');
+  await expect(source.getByRole('button', { name: /Segment \d+/ })).toHaveCount(sweptDiskFixture.segmentCount);
   const segment = source.getByRole('button', { name: /Segment 1/ }).first();
   await page.waitForFunction(() => Boolean((globalThis as unknown as { __ifc_lite_capture_color_frame__?: unknown }).__ifc_lite_capture_color_frame__));
   const capture = () => page.evaluate(() => (globalThis as unknown as {
@@ -67,17 +66,20 @@ test('selected Revit bar shows exact source geometry and measurement readout (#5
   await expect(segment).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => page.evaluate(() =>
     (globalThis as unknown as { __ifc_lite_viewer_store__: BrowserStore }).__ifc_lite_viewer_store__.getState().selectedDirectrixSegment?.expressId,
-  )).toBe(132347);
+  )).toBe(sweptDiskFixture.expressId);
   await expect.poll(capture, { timeout: 120_000, message: 'selecting a source segment changes the production color frame' })
     .not.toBe(baseline);
   const selectedFrame = await capture();
   expect(selectedFrame).toMatch(/^data:image\/png;base64,/);
-  await testInfo.attach('Snowdon selected source segment', {
+  await testInfo.attach(`${sweptDiskFixture.label} selected source segment`, {
     body: Buffer.from(selectedFrame!.split(',')[1], 'base64'), contentType: 'image/png',
   });
-  const screenshot = testInfo.outputPath('snowdon-swept-disk-inspection.png');
+  const screenshot = testInfo.outputPath('swept-disk-inspection.png');
   await page.screenshot({ path: screenshot, fullPage: true });
-  await testInfo.attach('Snowdon swept-disk inspection', { path: screenshot, contentType: 'image/png' });
+  await testInfo.attach(`${sweptDiskFixture.label} swept-disk inspection`, { path: screenshot, contentType: 'image/png' });
+  if (process.env.INSPECTION_WITNESS_PNG) {
+    await page.screenshot({ path: process.env.INSPECTION_WITNESS_PNG, fullPage: true });
+  }
 
   await page.evaluate(() => {
     const state = (globalThis as unknown as { __ifc_lite_viewer_store__: BrowserStore }).__ifc_lite_viewer_store__.getState();
@@ -85,26 +87,26 @@ test('selected Revit bar shows exact source geometry and measurement readout (#5
   });
   await page.getByRole('tab', { name: 'Source', exact: true }).click();
   const measureSource = page.getByRole('region', { name: 'Derived source geometry' });
-  await expect(measureSource).toContainText('3.61642');
-  const measureScreenshot = testInfo.outputPath('snowdon-swept-disk-measurements.png');
+  await expect(measureSource).toContainText(sweptDiskFixture.totalLengthPrefix);
+  const measureScreenshot = testInfo.outputPath('swept-disk-measurements.png');
   await page.screenshot({ path: measureScreenshot, fullPage: true });
-  await testInfo.attach('Snowdon source measurements', { path: measureScreenshot, contentType: 'image/png' });
+  await testInfo.attach(`${sweptDiskFixture.label} source measurements`, { path: measureScreenshot, contentType: 'image/png' });
 
   // Keep the source/measurement checks above in the full model. Isolate only
   // for the visual witness so surrounding concrete cannot occlude this bar.
-  await page.evaluate(() => {
+  await page.evaluate((expressId) => {
     const state = (globalThis as unknown as { __ifc_lite_viewer_store__: BrowserStore }).__ifc_lite_viewer_store__.getState();
     const model = [...state.models.values()][0];
     if (!model) throw new Error('loaded IFC model is missing');
-    const id = state.toGlobalId(model.id, 132347);
+    const id = state.toGlobalId(model.id, expressId);
     state.setIsolatedEntities(new Set([id]));
     state.cameraCallbacks.frameEntities?.([id]);
-  });
-  await expect.poll(capture, { timeout: 120_000, message: 'isolation redraws the selected Revit bar' })
+  }, sweptDiskFixture.expressId);
+  await expect.poll(capture, { timeout: 120_000, message: 'isolation redraws the selected swept-disk bar' })
     .not.toBe(selectedFrame);
   const isolatedFrame = await capture();
   expect(isolatedFrame).toMatch(/^data:image\/png;base64,/);
-  const isolatedScreenshot = testInfo.outputPath('snowdon-swept-disk-isolated-bar.png');
+  const isolatedScreenshot = testInfo.outputPath('swept-disk-isolated-bar.png');
   writeFileSync(isolatedScreenshot, Buffer.from(isolatedFrame!.split(',')[1], 'base64'));
-  await testInfo.attach('Snowdon isolated swept-disk bar', { path: isolatedScreenshot, contentType: 'image/png' });
+  await testInfo.attach(`${sweptDiskFixture.label} isolated swept-disk bar`, { path: isolatedScreenshot, contentType: 'image/png' });
 });

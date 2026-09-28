@@ -715,13 +715,15 @@ row per selected `IfcReinforcingBar` entity, including rows whose body has no
 supported swept-disk source. `rows` is keyed by occurrence STEP ID. Each row
 exposes and serializes its IFC identity as `GlobalId` and `Name`, matching `IfcRoot`.
 Every represented source sweep has its own ordinal, solid/directrix IDs, mapping path,
-world outer/inner radii, directrix metrics, geometric check report and an optional
+outer/inner radii, directrix metrics, geometric check report and an optional
 reusable `SweptDiskSourceKey`. It keeps repeated mapped sources and CSG operands
 distinct; repeated uses of one map share the source key. A missing key is
 reported per row without dropping the world sweep. The `authored` map uses exact EXPRESS
 attribute names; each entry identifies the occurrence or type entity that
 supplied it. Numeric measures retain `value_file_units` and their `value_si`
 conversion, while centreline lengths are separately derived world metres.
+Radii are effective world metres for complete paths; an unsupported transform
+retains source radii in metres without implying a world circular radius.
 Conflicting occurrence/type values are reported, with the occurrence taking
 precedence. `bar_entity_count` and `represented_sweep_count` count IFC records,
 not manufactured bars. The API provides no physical bar count, cutting length,

@@ -194,7 +194,7 @@ for (const unit of ['metre', 'millimetre'] as const) {
       const dataStore = s.models.get(MODEL_ID)!.ifcDataStore!;
       const bases = [split.left, split.right].map((half) => {
         const chain = resolveSlabEditChain(dataStore, s.mutationViews.get(MODEL_ID)!, s.storeEditors.get(MODEL_ID)!, half.expressId, getModelLengthUnitScale(dataStore));
-        return chain ? Math.round(chain.baseElevation * 1e6) / 1e6 : null;
+        return chain?.baseElevation != null ? Math.round(chain.baseElevation * 1e6) / 1e6 : null;
       });
       assert.deepEqual(bases, [0.3, 0.3], 'both pieces start where the source did');
     });

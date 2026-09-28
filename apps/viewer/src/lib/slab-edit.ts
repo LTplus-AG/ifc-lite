@@ -68,8 +68,12 @@ export interface SlabEditChain {
   /** Placement origin (storey-local). The footprint polygon is in
    * world-XY space, with the origin already added. */
   placementOrigin: [number, number, number];
-  /** Storey-local height where the extrusion starts (`slab-edit-frame.ts`). */
-  baseElevation: number;
+  /**
+   * Storey-local height where the extrusion starts, or null when the element
+   * is not a vertical extrusion of its plan outline (`slab-edit-frame.ts`):
+   * the footprint still reads, but a split must refuse it (#6233).
+   */
+  baseElevation: number | null;
   /** Footprint polygon as an ordered list of 2D vertices (storey-
    * local world XY). First vertex does NOT repeat at the end. */
   footprint: Point2D[];
@@ -180,7 +184,7 @@ function scaleSlabChain(chain: SlabEditChain, scale: number): SlabEditChain {
       chain.placementOrigin[1] * scale,
       chain.placementOrigin[2] * scale,
     ],
-    baseElevation: chain.baseElevation * scale,
+    baseElevation: chain.baseElevation === null ? null : chain.baseElevation * scale,
     footprint: chain.footprint.map(([x, y]) => [x * scale, y * scale] as Point2D),
     thickness: chain.thickness * scale,
   };
@@ -241,8 +245,7 @@ export function resolveSlabEditChain(
   if (profileId === null || typeof thicknessRaw !== 'number') return null;
   // Only a vertical extrusion of the plan outline can be cut in plan (#6233).
   const base = slabExtrusionBase(dataStore, view, editor, chain.axisPlacementId, solidAttrs, thicknessRaw);
-  if (base === null) return null;
-  const baseElevation = placementOrigin[2] + base;
+  const baseElevation = base === null ? null : placementOrigin[2] + base;
 
   // IfcExtrudedAreaSolid.Position (attr 1) is an IfcAxis2Placement3D that
   // places the profile in the solid's frame — real authoring tools bake

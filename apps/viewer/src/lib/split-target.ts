@@ -50,10 +50,13 @@ export type SplitUnavailableCode =
   /** Supported shape family, but its placement / representation layout is not the one the reader walks. */
   | 'shape';
 
+/** A slab-like chain the split can cut: a vertical extrusion of its outline. */
+export type SlabSplitChain = SlabEditChain & { baseElevation: number };
+
 export type SplitTarget =
   | { ok: true; kind: 'wall'; chain: WallEditChain }
   | { ok: true; kind: 'linear'; chain: LinearElementEditChain }
-  | { ok: true; kind: 'slab'; chain: SlabEditChain }
+  | { ok: true; kind: 'slab'; chain: SlabSplitChain }
   | { ok: false; code: SplitUnavailableCode };
 
 const WALL_TYPES = new Set(['IFCWALL', 'IFCWALLSTANDARDCASE']);
@@ -87,7 +90,8 @@ export function resolveSplitTarget(
     if (chain) target = { ok: true, kind: 'linear', chain };
   } else if (SLAB_TYPES.has(stepType)) {
     const chain = resolveSlabEditChain(dataStore, view, editor, expressId, lengthUnitScale);
-    if (chain) target = { ok: true, kind: 'slab', chain };
+    // A tilted or rotated extrusion reads a footprint but cannot be cut in plan.
+    if (chain && chain.baseElevation !== null) target = { ok: true, kind: 'slab', chain: { ...chain, baseElevation: chain.baseElevation } };
   } else {
     return { ok: false, code: 'type' };
   }
@@ -136,7 +140,7 @@ function diagnoseBody(
   return 'shape';
 }
 
-interface SplitChains { wall: WallEditChain; linear: LinearElementEditChain; slab: SlabEditChain }
+interface SplitChains { wall: WallEditChain; linear: LinearElementEditChain; slab: SlabSplitChain }
 
 /**
  * A commit action's gate: the chain when `target` is the `kind` that action

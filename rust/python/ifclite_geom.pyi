@@ -310,7 +310,7 @@ class RebarPreflightComparison(TypedDict):
 
 class RebarPreflightReport(TypedDict):
     skipped_reason: Optional[str]
-    comparisons: List[RebarPreflightComparison]
+    comparisons: Optional[List[RebarPreflightComparison]]
     unassessed_reasons: List[str]
 
 class RebarRowPreflightFields(TypedDict, total=False):

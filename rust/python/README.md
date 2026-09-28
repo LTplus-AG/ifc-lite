@@ -360,6 +360,8 @@ min_straight_segment_length_m, max_developed_centreline_length_m=None)`.
 The measured comparisons identify their source segments; equality passes.
 Inside bend radius is arc centreline radius minus swept outer radius. Modified
 or unsupported sources and rows without sweeps carry explicit skip reasons.
+For a skipped sweep, `comparisons` is `None`; an assessed sweep has a list of
+measured comparisons. Check `skipped_reason` before interpreting pass results.
 No result certifies a cutting length or fabrication-code compliance.
 
 ### Tessellation quality

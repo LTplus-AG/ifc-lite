@@ -471,6 +471,7 @@ def test_issue_6305_rebar_preflight_reports_values_and_skips():
     row = schedule["rows"][125]
     report = row["sweeps"][0]["preflight"]
     assert report["skipped_reason"] is None
+    assert report["comparisons"] is not None
     bend = next(item for item in report["comparisons"] if item["kind"] == "inside_bend_radius")
     assert bend["measured_m"] == pytest.approx(0.087)
     assert bend["segment_index"] == 1
@@ -481,6 +482,13 @@ def test_issue_6305_rebar_preflight_reports_values_and_skips():
     absent = source.decode().replace("#33,#124,$,$,29.", "#33,$,$,$,29.").encode()
     missing = ifclite_geom.rebar_schedule_with_preflight(absent, 0.0, 0.0)["rows"][125]
     assert missing["preflight_skipped_reason"] == missing["geometry_unavailable_reason"]
+    disconnected = source.decode().replace(
+        "#56=IFCCARTESIANPOINT((101.5,0.,-423.5));",
+        "#56=IFCCARTESIANPOINT((102.5,0.,-423.5));",
+    ).encode()
+    unchecked = ifclite_geom.rebar_schedule_with_preflight(disconnected, 0.0, 0.0)["rows"][125]["sweeps"][0]["preflight"]
+    assert unchecked["skipped_reason"] is not None
+    assert unchecked["comparisons"] is None
     with pytest.raises(ValueError, match="min_inside_bend_radius_m"):
         ifclite_geom.rebar_schedule_with_preflight(source, float("nan"), 0.0, ids=set())
 

@@ -85,12 +85,13 @@ pub struct RebarPreflightComparison {
     pub passed: bool,
 }
 
-/// Source geometry assessment. A skipped sweep has no comparisons.
+/// Source geometry assessment. A skipped sweep has unavailable comparisons.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct RebarPreflightReport {
     pub skipped_reason: Option<String>,
-    pub comparisons: Vec<RebarPreflightComparison>,
+    /// `None` means the source could not be assessed; `Some` contains the measured checks.
+    pub comparisons: Option<Vec<RebarPreflightComparison>>,
     /// Requested segment checks for which no matching geometry exists.
     pub unassessed_reasons: Vec<String>,
 }
@@ -100,7 +101,7 @@ pub(super) fn assess_sweep(
     checks: &SweptDiskCheckReport,
     limits: &RebarPreflightLimits,
 ) -> RebarPreflightReport {
-    let mut report = RebarPreflightReport { skipped_reason: None, comparisons: Vec::new(), unassessed_reasons: Vec::new() };
+    let mut report = RebarPreflightReport { skipped_reason: None, comparisons: None, unassessed_reasons: Vec::new() };
     if disk.source_modified {
         report.skipped_reason = Some("source is modified by enclosing CSG; finished bar geometry is unavailable".into());
         return report;
@@ -142,6 +143,9 @@ pub(super) fn assess_sweep(
     }
     let mut has_arc = false;
     let mut has_line = false;
+    let mut comparisons = Vec::with_capacity(
+        disk.directrix.len() + usize::from(limits.max_developed_centreline_length_m.is_some()),
+    );
     for (segment, metric) in disk.directrix.iter().zip(metrics.segments.iter()) {
         let (kind, measured_m, limit_m, passed) = match segment {
             AnalyticCurveSegment::Line { .. } => { has_line = true; (
@@ -161,7 +165,7 @@ pub(super) fn assess_sweep(
                 )
             }
         };
-        report.comparisons.push(RebarPreflightComparison {
+        comparisons.push(RebarPreflightComparison {
             kind, segment_index: Some(metric.segment_index), measured_m, limit_m, passed,
         });
     }
@@ -172,11 +176,12 @@ pub(super) fn assess_sweep(
         report.unassessed_reasons.push("straight segment length: no line segments".into());
     }
     if let Some(limit_m) = limits.max_developed_centreline_length_m {
-        report.comparisons.push(RebarPreflightComparison {
+        comparisons.push(RebarPreflightComparison {
             kind: "developed_centreline_length", segment_index: None,
             measured_m: metrics.total_length, limit_m,
             passed: metrics.total_length <= limit_m,
         });
     }
+    report.comparisons = Some(comparisons);
     report
 }

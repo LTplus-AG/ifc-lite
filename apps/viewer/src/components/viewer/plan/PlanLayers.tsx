@@ -12,13 +12,11 @@
 
 import { memo } from 'react';
 import { sX, sY, type Fit } from '@/lib/space-sketch-geometry';
-import type { Guide, SnapResult, Vec2 } from '@/lib/snap/types';
+import type { SnapResult, Vec2 } from '@/lib/snap/types';
+import { SnapHudShapes } from '../tools/command/SnapHud';
 import type { WallAxis } from '@/lib/snap/sources/semantic';
 import type { PlanGrid } from './plan-fit';
 import type { PlanCutLine, PlanCutPolygon } from './usePlanCut';
-
-/** Guides are drawn this far (px) past the point they explain. */
-const GUIDE_REACH_PX = 4000;
 
 export const toScreen = (fit: Fit, p: Vec2): readonly [number, number] => [sX(fit, p[0]), sY(fit, p[1])];
 
@@ -106,42 +104,12 @@ export function GhostLayer({ fit, footprints }: { fit: Fit; footprints: readonly
   );
 }
 
-function guideLine(fit: Fit, guide: Guide, key: number) {
-  const dashed = guide.role === 'extension' || guide.role === 'axis' || guide.role === 'lock' ? '4 4' : undefined;
-  if (guide.kind === 'circle') {
-    return <circle key={key} cx={sX(fit, guide.center[0])} cy={sY(fit, guide.center[1])} r={guide.radius * fit.scale} fill="none" strokeDasharray={dashed} />;
-  }
-  let a: Vec2, b: Vec2;
-  if (guide.kind === 'segment') {
-    a = guide.a; b = guide.b;
-  } else {
-    const len = Math.hypot(guide.dir[0], guide.dir[1]) || 1;
-    const reach = GUIDE_REACH_PX / fit.scale / len;
-    a = guide.kind === 'ray' ? guide.origin : [guide.origin[0] - guide.dir[0] * reach, guide.origin[1] - guide.dir[1] * reach];
-    b = [guide.origin[0] + guide.dir[0] * reach, guide.origin[1] + guide.dir[1] * reach];
-  }
-  return <line key={key} x1={sX(fit, a[0])} y1={sY(fit, a[1])} x2={sX(fit, b[0])} y2={sY(fit, b[1])} strokeDasharray={dashed} />;
-}
-
-/** The solved point, its snap target's glyph (square = point, diamond = on a line, cross = grid) and the guides. */
+/** The snap glyph and guides: the 3D snap HUD's own shapes (#6390), painted through the plan's `Fit`. */
 export function SnapLayer({ fit, snap }: { fit: Fit; snap: SnapResult | null }) {
   if (!snap) return null;
-  const [x, y] = [sX(fit, snap.local[0]), sY(fit, snap.local[1])];
-  const kind = snap.winner?.kind ?? null;
-  const point = kind === 'endpoint' || kind === 'vertex' || kind === 'intersection' || kind === 'midpoint';
   return (
-    <g data-plan-layer="snap" data-snap-kind={kind ?? 'none'} pointerEvents="none">
-      <g className="stroke-overlay-accent" strokeWidth={1} strokeOpacity={0.55}>
-        {snap.guides.map((g, i) => guideLine(fit, g, i))}
-      </g>
-      {kind === 'grid' && (
-        <path d={`M${x - 5} ${y}H${x + 5}M${x} ${y - 5}V${y + 5}`} className="stroke-overlay-accent" strokeWidth={1.5} />
-      )}
-      {point && <rect x={x - 5} y={y - 5} width={10} height={10} fill="none" className="stroke-overlay-accent" strokeWidth={1.5} />}
-      {kind !== null && kind !== 'grid' && !point && (
-        <rect x={x - 4.5} y={y - 4.5} width={9} height={9} fill="none" className="stroke-overlay-accent" strokeWidth={1.5} transform={`rotate(45 ${x} ${y})`} />
-      )}
-      <circle cx={x} cy={y} r={2.5} className="fill-overlay-accent" />
+    <g data-plan-layer="snap" pointerEvents="none">
+      <SnapHudShapes snap={snap} screen={(p) => ({ x: sX(fit, p[0]), y: sY(fit, p[1]) })} />
     </g>
   );
 }

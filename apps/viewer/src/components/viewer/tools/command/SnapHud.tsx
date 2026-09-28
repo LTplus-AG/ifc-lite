@@ -10,8 +10,8 @@
  * (ortho line, typed-length circle) — plus a dotted drop line when the
  * target sits above or below the workplane (a roof corner snapped in plan).
  *
- * Standalone: it reads nothing but its props, so any command HUD, or the
- * 2D plan later, can mount it. Overlay tokens only.
+ * Standalone: it reads nothing but its props, so any command HUD can mount
+ * it; the 2D plan paints the same shapes (`SnapHudShapes`). Overlay tokens only.
  */
 
 import { useViewerStore } from '@/store';
@@ -45,39 +45,51 @@ export function SnapHud({ snap, plane }: SnapHudProps) {
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
   void useProjectorTick(snap !== null && plane !== null);
   if (!snap || !plane || !projectToScreen) return null;
-
   const screen = (p: Vec2, z = 0): Screen | null => {
     const r = plane.localToRender([p[0], p[1], z]);
     return projectToScreen({ x: r[0], y: r[1], z: r[2] });
   };
-  const glyph = glyphFor(snap);
-  const at = glyph ? screen(snap.local) : null;
-  const winner = snap.winner;
-  const drop = winner?.elevation !== undefined && Math.abs(winner.elevation) > DROP_MIN_M
-    ? [screen(winner.local, winner.elevation), screen(winner.local)]
-    : null;
-
   return (
     <svg
       className="absolute inset-0 pointer-events-none z-(--z-scene)"
       style={{ overflow: 'visible' }}
       data-snap-hud=""
     >
+      <SnapHudShapes snap={snap} screen={screen} />
+    </svg>
+  );
+}
+
+/**
+ * The guides, drop line and glyph for `snap`, painted through `screen`
+ * (workplane-local metres, height above the plane → CSS px). The 3D HUD
+ * projects through the camera; the 2D plan (`PlanView`) through its `Fit`,
+ * so both views show the same snap the same way.
+ */
+export function SnapHudShapes({ snap, screen }: { snap: SnapResult; screen: (p: Vec2, z?: number) => Screen | null }) {
+  const glyph = glyphFor(snap);
+  const at = glyph ? screen(snap.local) : null;
+  const winner = snap.winner;
+  const drop = winner?.elevation !== undefined && Math.abs(winner.elevation) > DROP_MIN_M
+    ? [screen(winner.local, winner.elevation), screen(winner.local)]
+    : null;
+  return (
+    <>
       {guideStrokes(snap).map((s, i) => <GuidePath key={i} stroke={s} screen={screen} gapAt={at} />)}
-      {drop?.[0] && drop[1] && (
+      {drop?.[0] && drop[1] && (drop[0].x !== drop[1].x || drop[0].y !== drop[1].y) && (
         <line
           x1={drop[0].x} y1={drop[0].y} x2={drop[1].x} y2={drop[1].y}
           className={CLASS.lock} strokeWidth={1} strokeDasharray="1 3" strokeLinecap="round"
           data-snap-guide="drop"
         />
       )}
-      {/* In this SVG, after the guides and above the command's own scene layer: the snap is the live feedback. */}
+      {/* After the guides and above the command's own layer: the snap is the live feedback. */}
       {glyph && at && (
         <g transform={`translate(${at.x} ${at.y})`} data-scene-primitive="snap-glyph" data-snap-kind={glyph}>
           <SnapGlyphShape kind={glyph} />
         </g>
       )}
-    </svg>
+    </>
   );
 }
 

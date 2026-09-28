@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act, useLayoutEffect } from 'react';
+import { act, useLayoutEffect, useState } from 'react';
 import type { RefObject } from 'react';
 import { flushSync } from 'react-dom';
 import type { Renderer } from '@ifc-lite/renderer';
@@ -48,7 +48,7 @@ it('clears the old centreline before a selection-switch paint and rejects its la
   const ref: RefObject<Renderer | null> = { current: renderer };
   const Overlay = () => {
     const id = useViewerStore((state) => state.selectedEntityId);
-    useCentrelineRendererOverlay(ref, true, lineBuilder);
+    useCentrelineRendererOverlay(ref, true, 0, lineBuilder);
     useLayoutEffect(() => {
       if (id !== 1_000_002) return;
       lineAtLayout = line;
@@ -118,10 +118,54 @@ it('keeps the active source within 256 products and visibly reports omitted sour
     assert.equal(requested[0]?.[0], 300, 'the active product leads the bounded extraction');
     assert.ok(notices.some((message) => /44 selected products were omitted/.test(message)),
       'the viewer reports selection truncation');
+    const countBeforeDisable = notices.length;
+    await act(async () => {
+      useViewerStore.setState({ centrelineOverlayEnabled: false });
+      await Promise.resolve();
+    });
+    assert.equal(notices.length, countBeforeDisable,
+      'disabling the overlay must not repeat its previous omission warning');
   } finally {
     cleanup();
     selectedSweptDiskCache.get = originalGet;
     toast.error = originalToast;
+    useViewerStore.setState(prior);
+  }
+});
+
+it('re-uploads the selected centreline after successful device recovery (#5778)', async () => {
+  const prior = useViewerStore.getState();
+  const originalGet = selectedSweptDiskCache.get;
+  const model = fixtureModel('recovery', { idOffset: 1_000_000 });
+  model.maxExpressId = 1;
+  Object.assign(model.ifcDataStore!, { source: { byteLength: 1 } });
+  selectedSweptDiskCache.get = async () => new Map([[1, { occurrences: [], diagnostics: [] }]]);
+  const uploads: Array<Parameters<Renderer['setLineOverlay']>[1]> = [];
+  const renderer = { setLineOverlay: (_channel: string, value: Parameters<Renderer['setLineOverlay']>[1]) => {
+    if (value !== null) uploads.push(value);
+  } } as unknown as Renderer;
+  const ref: RefObject<Renderer | null> = { current: renderer };
+  let recover: () => void = () => { throw new Error('recovery state is not mounted'); };
+  const lineBuilder: typeof selectedCentrelineWorldLines = async () => ({
+    vertices: [0, 0, 0, 1, 0, 0], diagnostics: [],
+  });
+  const Overlay = () => {
+    const [epoch, setEpoch] = useState(0);
+    recover = () => setEpoch((value) => value + 1);
+    useCentrelineRendererOverlay(ref, true, epoch, lineBuilder);
+    return null;
+  };
+  try {
+    useViewerStore.setState({ ...fixtureModels(model), centrelineOverlayEnabled: true,
+      selectedEntityIds: new Set([1_000_001]), selectedEntityId: 1_000_001,
+      selectedEntitiesSet: new Set(), selectedEntity: { modelId: 'recovery', expressId: 1 } });
+    render(<Overlay />);
+    await waitFor(() => uploads.length === 1, 'the first GPU upload completes');
+    await act(async () => { recover(); await Promise.resolve(); });
+    await waitFor(() => uploads.length === 2, 'the replacement GPU receives the selected line');
+  } finally {
+    cleanup();
+    selectedSweptDiskCache.get = originalGet;
     useViewerStore.setState(prior);
   }
 });

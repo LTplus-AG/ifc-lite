@@ -15,6 +15,7 @@ import { useSelectedSweptDisks } from './useSelectedSweptDisks';
 /** Keep the optional selected-source overlay in its own renderer channel. */
 export function useCentrelineRendererOverlay(
   rendererRef: RefObject<Renderer | null>, isInitialized: boolean,
+  recoveryEpoch = 0,
   lineBuilder: typeof selectedCentrelineWorldLines = selectedCentrelineWorldLines,
 ): void {
   const enabled = useViewerStore((state) => state.centrelineOverlayEnabled);
@@ -39,7 +40,7 @@ export function useCentrelineRendererOverlay(
   useLayoutEffect(() => {
     sourceEpoch.current++;
     if (isInitialized) rendererRef.current?.setLineOverlay('centreline', null);
-  }, [enabled, isInitialized, rendererRef, models, placement, georefMutations,
+  }, [enabled, isInitialized, recoveryEpoch, rendererRef, models, placement, georefMutations,
     selectedIds, primaryId, selectedRefs, primaryRef, hidden, isolated, classFilter, lensHidden]);
 
   useEffect(() => {
@@ -71,12 +72,12 @@ export function useCentrelineRendererOverlay(
       }).catch((error: unknown) => {
         if (active && epoch === sourceEpoch.current) report([`Could not draw selected centreline: ${String(error)}`]);
       });
-    } else if (selected.error) {
+    } else if (enabled && selected.error) {
       report([selected.error]);
     }
     return () => {
       active = false;
       renderer.setLineOverlay('centreline', null);
     };
-  }, [enabled, selected, isInitialized, rendererRef, models, placement, georefMutations, t, lineBuilder]);
+  }, [enabled, selected, isInitialized, recoveryEpoch, rendererRef, models, placement, georefMutations, t, lineBuilder]);
 }

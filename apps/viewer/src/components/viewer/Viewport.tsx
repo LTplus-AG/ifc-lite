@@ -117,6 +117,7 @@ export function Viewport({
   const rendererRef = useRef<Renderer | null>(null);
   const annotationLineVertexCountRef = useRef(0);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [gpuRecoveryEpoch, setGpuRecoveryEpoch] = useState(0);
   const [initError, setInitError] = useState<string | null>(null);
   const { t } = useTranslation();
 
@@ -1236,7 +1237,9 @@ export function Viewport({
       // a quiet no-op — so without a subscriber they reach the user as a viewer
       // that silently stopped, and reach us not at all. This is the subscriber:
       // one toast, one tagged capture, per failure.
-      unsubscribeViewportHealth = subscribeViewportHealth(renderer);
+      unsubscribeViewportHealth = subscribeViewportHealth(renderer, undefined, () => {
+        if (!aborted) setGpuRecoveryEpoch((epoch) => epoch + 1);
+      });
 
       // ResizeObserver — re-render; the frame re-sizes the drawing buffer itself.
       resizeObserver = new ResizeObserver(() => {
@@ -1400,7 +1403,7 @@ export function Viewport({
   }, [dxfLines3D, isInitialized]);
 
   useLandXmlRendererOverlay(rendererRef, isInitialized);
-  useCentrelineRendererOverlay(rendererRef, isInitialized);
+  useCentrelineRendererOverlay(rendererRef, isInitialized, gpuRecoveryEpoch);
 
   // Upload IfcAnnotation text + fill data for the WebGPU symbolic overlay
   // pipelines. Map the hook's per-annotation records into the SymbolicFillInput

@@ -20,7 +20,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { cleanup, press, render } from '@/test/render.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { WallEndpointOverlay } from '@/components/viewer/tools/WallEndpointOverlay';
-import type { PlacementState } from '@/lib/model-placement/state';
+import { emptyPlacementState, type PlacementState } from '@/lib/model-placement/state';
 import { setRemeshClientFactory, type RemeshClientLike } from '@/lib/remesh/remesh-service';
 import type { RemeshRequest, RemeshResult, StyleWire } from '@ifc-lite/geometry/remesh';
 import type { GeometryResult } from '@ifc-lite/geometry';
@@ -158,5 +158,46 @@ describe('wall.moveEndpoint (#6232 WP2)', () => {
     act(() => { handle.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 })); });
     assert.equal(getCommandRuntime().command?.id, 'wall.moveEndpoint');
     assert.equal(gesture().which, 'end');
+  });
+});
+
+describe('wall.moveEndpoint on an offset storey in a mm file (ledger follow-up to #6282)', () => {
+  // The demo project's shape: a millimetre file whose storey sits 3 m east
+  // and 3 m north of the model origin. Render is [x, z, -y] of the model frame.
+  beforeEach(async () => {
+    useViewerStore.getState().exitModelWorkspace();
+    await seedModelingSession({ unit: 'millimetre', storeyOffset: [3, 3] });
+    // The reposition test above leaves a placement behind; this one measures the storey offset alone.
+    useViewerStore.setState({ modelPlacement: emptyPlacementState() });
+    const s = useViewerStore.getState();
+    const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
+    assert.ok('expressId' in wall);
+    wallId = wall.expressId;
+    s.setSelectedEntityId(toGlobalIdFromModels(s.models, MODEL_ID, wallId));
+  });
+
+  it('draws the handles on the wall, a storey offset from the model origin', () => {
+    const projected: Vec3[] = [];
+    useViewerStore.setState({
+      activeTool: 'select',
+      selectedEntity: { modelId: MODEL_ID, expressId: wallId },
+      cameraCallbacks: {
+        projectToScreen: (p: { x: number; y: number; z: number }) => { projected.push([p.x, p.y, p.z]); return { x: 10, y: 10 }; },
+        getViewpoint: () => null,
+      },
+    } as unknown as Partial<ReturnType<typeof useViewerStore.getState>>);
+    render(<WallEndpointOverlay />);
+    const [start, end] = projected;
+    assert.ok(Math.abs(start[0] - 3) < 1e-6 && Math.abs(start[2] + 3) < 1e-6, `start handle at model (3, 3), got render ${start}`);
+    assert.ok(Math.abs(end[0] - 7) < 1e-6 && Math.abs(end[2] + 3) < 1e-6, `end handle at model (7, 3), got render ${end}`);
+  });
+
+  it('a drag to a model-frame cursor writes the storey-local end under it', () => {
+    beginWallEndpointDrag('end');
+    // The cursor at model (7, 4): storey-local (4, 1).
+    commandPointerMove({ local: [0, 0], render: [7, 0, -4], winner: null, guides: [], locked: false });
+    release();
+    assert.deepEqual(ends()?.end.map((v) => +v.toFixed(6)), [4, 1, 0]);
+    assert.deepEqual(ends()?.start.map((v) => +v.toFixed(6)), [0, 0, 0]);
   });
 });

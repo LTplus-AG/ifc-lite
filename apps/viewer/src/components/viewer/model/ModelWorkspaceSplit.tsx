@@ -55,13 +55,24 @@ export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
   const showPlan = inWorkspace && layout !== '3d';
   const fits = splitFits(width);
 
-  // Plan ↔ Split resizes the mounted pane; a pane that just mounted (from
-  // '3d', or on entry) already opens at its layout's `defaultSize`.
-  const shown = useRef<ModelLayout | null>(null);
+  // Resizing in the commit that MOUNTS the plan pane throws ("Layout not found
+  // for Panel"): the group has not registered it yet, and the throw blanked
+  // the whole viewer (#6315). So a fresh mount resizes a frame later (the
+  // group would otherwise restore the pane's last size, not this layout's),
+  // and a plan <-> split switch on a mounted pane resizes at once.
+  const shown = useRef<'plan' | 'split' | null>(null);
   useEffect(() => {
-    const previous = shown.current;
-    shown.current = showPlan ? layout : null;
-    if (showPlan && previous !== null && previous !== layout) planRef.current?.resize(`${planPaneWidth(layout, width)}px`);
+    const next = showPlan ? layout : null;
+    const prev = shown.current;
+    shown.current = next;
+    if (!next || prev === next) return;
+    const size = `${planPaneWidth(next, width)}px`;
+    if (prev) {
+      planRef.current?.resize(size);
+      return;
+    }
+    const frame = requestAnimationFrame(() => planRef.current?.resize(size));
+    return () => cancelAnimationFrame(frame);
   }, [showPlan, layout, width]);
 
   return (

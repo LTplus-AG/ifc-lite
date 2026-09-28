@@ -86,7 +86,11 @@ export function WorkspaceStoreyChip() {
     <>
       <HudItem region="top-left" order={0}>
         <HudPopover>
+          {/* Half a rem inside the 13rem chip cap, so even a long storey name
+              (truncated, full name in its tooltip) keeps an 8px gap to the
+              top-center lane that starts at 14rem (#6315). */}
           <HudChip
+            className="max-w-[12.5rem]"
             icon={<Layers aria-hidden className="h-3.5 w-3.5 shrink-0 text-overlay-accent" />}
             toggle={current ? {
               onClick: toggleIsolation,
@@ -104,7 +108,7 @@ export function WorkspaceStoreyChip() {
                 title={t('modelWorkspace.storey.pick')}
                 className="inline-flex max-w-full items-center gap-1.5 rounded-sm hover:text-foreground"
               >
-                <span className="min-w-0 truncate">{name}</span>
+                <span className="min-w-0 truncate" title={name}>{name}</span>
                 {elevation && <span className="shrink-0 tabular-nums text-muted-foreground">{elevation}</span>}
                 <ChevronDown aria-hidden className="h-3 w-3 shrink-0 opacity-70" />
               </button>

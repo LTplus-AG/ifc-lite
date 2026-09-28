@@ -14,6 +14,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { DEFAULT_THEME, elementFieldColumnId, renderChartSvg, type ChartSpec } from '@ifc-lite/charts';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
@@ -88,6 +89,8 @@ describe('DocumentPanel over a parsed model (#4594)', () => {
       dashboards: [],
       bcfProject: null,
       selectedEntityIds: new Set(),
+      mutationViews: new Map(),
+      mutationVersion: 0,
     });
   });
   afterEach(() => cleanup());
@@ -121,6 +124,39 @@ describe('DocumentPanel over a parsed model (#4594)', () => {
     assert.equal(marked.getAttribute('title'), 'no IfcBuildingStorey "Roof"');
     // The template is what is saved — not the resolved text.
     assert.equal((useViewerStore.getState().documents[0].blocks[1] as { text: string }).text, 'Walls: {Count[IfcWall]} on {IfcBuildingStorey["Roof"].Name}');
+  });
+
+  it('offers and resolves edited and authored storeys in document fields (#5249)', async () => {
+    const model = [...useViewerStore.getState().models.values()][0];
+    const view = new MutablePropertyView(model.ifcDataStore!.properties, model.id);
+    view.setExpressIdWatermark(model.maxExpressId);
+    view.setAttribute(5, 'Name', 'Renamed level');
+    const created = view.createEntity('IfcBuildingStorey', [
+      '0NewLevel00000000000001', null, 'Authored level', null, null, null, null, null, '.ELEMENT.', 6,
+    ]);
+    view.createEntity('IfcRelAggregates', [
+      '0NewRel000000000000001', null, null, null, '#3', [`#${created.expressId}`],
+    ]);
+    const wall = view.createEntity('IfcWall', ['0NewWall000000000000001', null, 'Authored wall', null, null, '#24', '#28', null, null]);
+    view.createEntity('IfcRelContainedInSpatialStructure', [
+      '0NewRel000000000000002', null, null, null, [`#${wall.expressId}`], `#${created.expressId}`,
+    ]);
+    useViewerStore.setState({ mutationViews: new Map([[model.id, view]]), mutationVersion: 1 });
+
+    const ui = render(<DocumentPanel />);
+    await settle();
+    const picker = ui.querySelectorAll<HTMLElement>('[data-block-editor]')[1]!
+      .querySelector<HTMLSelectElement>('select[aria-label="Insert field"]')!;
+    const paths = [...picker.options].map((o) => o.value);
+    assert.ok(paths.includes('IfcBuildingStorey["Renamed level"].Elevation'));
+    assert.ok(paths.includes('IfcBuildingStorey["Authored level"].Elevation'));
+    assert.ok(!paths.includes('IfcBuildingStorey["Level 1"].Elevation'));
+
+    const textarea = ui.querySelectorAll<HTMLElement>('[data-block-editor]')[1]!.querySelector<HTMLTextAreaElement>('textarea')!;
+    await change(textarea, '{IfcBuildingStorey["Authored level"].Name}: {IfcBuildingStorey["Authored level"].Elevation}; {IfcBuildingStorey["Authored level"].Elements} wall');
+    await settle();
+    const preview = ui.querySelectorAll('[data-preview-block] [data-block-text]')[1]!;
+    assert.equal(preview.textContent, 'Authored level: 6.00 m; 1 wall');
   });
 
   it('blocks move and delete, a preset adds a document, and the page setup is saved on the document', async () => {

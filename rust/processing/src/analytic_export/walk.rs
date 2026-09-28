@@ -17,7 +17,7 @@ use super::definitions::{source_matrix, SweptDiskDefinition, SweptDiskDefinition
 use super::extrusion_definitions::{profile_segment_count, ExtrusionDefinition, ExtrusionDefinitions};
 use super::{SweptDiskDescriptions, SweptDiskOccurrence,
     MAX_ITEM_DEPTH, MAX_VISITED_ITEMS};
-use super::mapped::resolve_mapped_item;
+use super::mapped::{resolve_mapped_item, MappedSourceCache};
 use super::operands::{is_boolean_operand, is_csg_select};
 use super::transform::materialize_disk;
 
@@ -54,6 +54,21 @@ pub(super) fn extract(
     collect_definitions: bool,
     collect_descriptions: bool,
     collect_extrusions: bool,
+) -> ExtractResult {
+    let mut mapped_sources = MappedSourceCache::new();
+    extract_with_source_cache(
+        content, ids, collect_definitions, collect_descriptions,
+        collect_extrusions, &mut mapped_sources,
+    )
+}
+
+fn extract_with_source_cache(
+    content: &[u8],
+    ids: Option<&HashSet<u32>>,
+    collect_definitions: bool,
+    collect_descriptions: bool,
+    collect_extrusions: bool,
+    mapped_sources: &mut MappedSourceCache,
 ) -> ExtractResult {
     let mut result = SweptDiskDescriptions::default();
     if !collect_definitions && !collect_extrusions && ids.is_some_and(HashSet::is_empty) {
@@ -246,7 +261,7 @@ pub(super) fn extract(
                         failed = true;
                         break;
                     }
-                    match resolve_mapped_item(&node.item, &router, &mut decoder) {
+                    match resolve_mapped_item(&node.item, &router, &mut decoder, mapped_sources) {
                         Ok(mapped) => {
                             let transform = mapped.transform.map_or(node.transform, |m| node.transform * Matrix4::from_column_slice(&m));
                             let mut path = node.path;
@@ -258,7 +273,7 @@ pub(super) fn extract(
                                 failed = true;
                                 break;
                             }
-                            stack.extend(mapped.items.into_iter().rev().map(|item| WalkItem {
+                            stack.extend(mapped.items.iter().rev().cloned().map(|item| WalkItem {
                                 item, transform, path: path.clone(), map_path: map_path.clone(),
                                 representation_id: node.representation_id,
                                 ancestors: ancestors.clone(), source_modified: node.source_modified,
@@ -347,7 +362,7 @@ pub(super) fn extract(
                     view.instances.insert(id, pending_instances);
                 }
             }
-            if !collect_definitions {
+            if collect_descriptions {
                 result.elements.insert(id, descriptions);
             }
         }
@@ -378,3 +393,7 @@ pub(super) fn extract(
     }
     ExtractResult { descriptions: result, definitions, extrusions }
 }
+
+#[cfg(test)]
+#[path = "walk_tests.rs"]
+mod tests;

@@ -148,8 +148,14 @@ export function collectRelatedEntities(
     }
   };
 
+  // This collector is used by the source-byte anonymized export. That export
+  // constructs its own fresh edit view and emits a subset of the original
+  // records; it deliberately does not carry a live session's relationships.
+  // Keep project discovery in that same source domain so its preview and
+  // exported STEP file agree, including when a viewer overlay exists.
   // IfcProject is always in the result regardless of every other toggle — a
   // STEP file with no project is not a valid reproduction of anything.
+  // @raw-entity-enumeration-ok source-only anonymized export discovers the project from parsed records
   for (const id of store.entityIndex.byType.get('IFCPROJECT') ?? []) all.add(id);
 
   const pending: number[] = [];

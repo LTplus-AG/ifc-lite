@@ -14,6 +14,7 @@ export {
 } from './guid.js';
 export type { RandomSource } from './guid.js';
 export { uuidFromSeed } from './deterministic-uuid.js';
+export { uuidV5 } from './uuid-v5.js';
 export { isWhollyNumeric } from './numeric-literal.js';
 export { parsePropertyValue } from './property-value.js';
 export type { ParsedPropertyValue } from './property-value.js';

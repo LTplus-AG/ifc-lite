@@ -276,7 +276,7 @@ describe('panel secondary text meets WCAG AA on its real surface (#4792)', () =>
     {
       name: 'SectionToolbar heading caption',
       file: SECTION_TOOLBAR,
-      anchor: '2D + close — never inside one. */}\n      <span className={GROUP}>\n        <span ',
+      anchor: 'const caption = (\n    <span ',
       // The caption replaced the Section panel's axis prompt (#5991) and sits
       // on the HUD toolbar (`HudSurface`); measured on the opaque `bg-popover`
       // proxy like the other HUD sites here.

@@ -22,6 +22,7 @@ import {
   isInSparseIndex,
   sparseIndexPath,
   isTransientStatus,
+  fetchLatestPublishedVersion,
   USER_AGENT,
 } from './crates-io.mjs';
 
@@ -143,6 +144,77 @@ test('isPublished treats a 404 as "not published" and a persistent non-404 error
     /crates\.io returned 503/,
     'a registry outage that outlasts the retry budget should surface as a thrown error, not read as "not published" — collapsing the two is exactly the bug verify-npm-publish.js already documents fixing for npm'
   );
+});
+
+test('#6407: latest semver baseline reads a published stable version and distinguishes genuine absence', async () => {
+  const found = async () => ({
+    status: 200,
+    ok: true,
+    json: async () => ({ crate: { max_stable_version: '19.1.2', max_version: '20.0.0-alpha.1' } }),
+  });
+  assert.equal(await fetchLatestPublishedVersion('ifc-lite-ffi', found, NO_SLEEP), '19.1.2');
+  assert.equal(
+    await fetchLatestPublishedVersion('ifc-lite-ffi', async () => ({ status: 404, ok: false }), NO_SLEEP),
+    null
+  );
+  assert.equal(
+    await fetchLatestPublishedVersion('new-crate', async () => ({
+      status: 200,
+      ok: true,
+      json: async () => ({ crate: { max_stable_version: null, max_version: null } }),
+    }), NO_SLEEP),
+    null
+  );
+});
+
+test('#6407: latest semver baseline retries transient HTTP errors, then fails closed if they persist', async () => {
+  let calls = 0;
+  const recovered = async () => {
+    calls++;
+    return calls === 1
+      ? { status: 503, ok: false }
+      : { status: 200, ok: true, json: async () => ({ crate: { max_version: '19.1.2' } }) };
+  };
+  assert.equal(await fetchLatestPublishedVersion('ifc-lite-ffi', recovered, NO_SLEEP), '19.1.2');
+  assert.equal(calls, 2);
+
+  calls = 0;
+  await assert.rejects(
+    () => fetchLatestPublishedVersion('ifc-lite-ffi', async () => {
+      calls++;
+      return { status: 429, ok: false };
+    }, NO_SLEEP),
+    /crates\.io returned 429/
+  );
+  assert.equal(calls, 3);
+  await assert.rejects(
+    () => fetchLatestPublishedVersion('ifc-lite-ffi', async () => ({ status: 403, ok: false }), NO_SLEEP),
+    /crates\.io returned 403/
+  );
+});
+
+test('#6407: latest semver baseline refuses malformed success bodies and transport failure', async () => {
+  await assert.rejects(
+    () => fetchLatestPublishedVersion('ifc-lite-ffi', async () => ({ status: 200, ok: true, json: async () => ({}) }), NO_SLEEP),
+    /no crate record/
+  );
+  await assert.rejects(
+    () => fetchLatestPublishedVersion('ifc-lite-ffi', async () => ({ status: 200, ok: true, json: async () => ({ crate: {} }) }), NO_SLEEP),
+    /no version fields/
+  );
+  await assert.rejects(
+    () => fetchLatestPublishedVersion('ifc-lite-ffi', async () => ({ status: 200, ok: true, json: async () => ({ crate: { max_stable_version: '', max_version: null } }) }), NO_SLEEP),
+    /invalid latest version/
+  );
+  let calls = 0;
+  await assert.rejects(
+    () => fetchLatestPublishedVersion('ifc-lite-ffi', async () => {
+      calls++;
+      throw new TypeError('connection reset');
+    }, NO_SLEEP),
+    /connection reset/
+  );
+  assert.equal(calls, 3);
 });
 
 test('every crates.io request carries a User-Agent — crates.io answers 403 without one', async () => {

@@ -18,6 +18,7 @@ import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { cn } from '@/lib/utils';
 import { useViewportStatusSummary } from '@/hooks/useViewportStatusSummary';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
+import { VIEW_CUBE_INSET_PX } from './viewcube-box';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
 import { FlySpeedIndicator } from './FlySpeedIndicator';
 import { OrbitPivotMarker } from './OrbitPivotMarker';
@@ -26,7 +27,7 @@ import { useTranslation } from '@/i18n';
 // Mounted here, not in `ViewportContainer.tsx` (at its module budget): a
 // zero-net addition since this already lives inside the same viewport panel.
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
-import { EditModeHudChip } from './EditModeHudChip';
+import { WorkspaceStoreyChip } from './model/WorkspaceStoreyChip';
 import { ViewportLoadingCard } from './ViewportLoadingCard';
 import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
 import { SectionParkedChip } from './tools/SectionParkedChip';
@@ -179,7 +180,7 @@ export function ViewportOverlays({
       {/* HUD kernel (#5485); mounted first so its regions exist before
           anything below portals in. */}
       <ViewportHud />
-      <EditModeHudChip />
+      <WorkspaceStoreyChip />
       {hasLoadError ? <ViewportLoadErrorCard /> : <ViewportLoadingCard />}
       <SectionParkedChip />
       <MeasurementsVisibilityChip />
@@ -264,7 +265,7 @@ export function ViewportOverlays({
 
       {/* ViewCube (top-right) */}
       {!hideViewCube && (
-        <div className="absolute top-6 right-6" {...tourAnchor(TOUR_ANCHORS.viewcube)}>
+        <div className="absolute" style={{ top: VIEW_CUBE_INSET_PX, right: VIEW_CUBE_INSET_PX }} {...tourAnchor(TOUR_ANCHORS.viewcube)}>
           <ViewCube
             ref={viewCubeRef}
             onViewChange={handleViewChange}

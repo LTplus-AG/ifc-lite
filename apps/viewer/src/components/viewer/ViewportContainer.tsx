@@ -62,6 +62,7 @@ import { toast, Toaster } from '@/components/ui/toast';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { Upload, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
+import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
 import type { MeshData, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
@@ -76,7 +77,6 @@ export function ViewportContainer() {
   // Resolves a source provider's display title for toasts; null outside the
   // SourceHostProvider tree (tests), in which case the machine name is shown.
   const sourceHost = useOptionalSourceHost();
-  const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const releaseGeometryMemory = useViewerStore((s) => s.releaseGeometryMemory);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
@@ -519,12 +519,11 @@ export function ViewportContainer() {
   const handleStartBlank = useCallback(async () => {
     if (!guardWebGpu(() => { void handleStartBlank(); })) return;
     const file = createBlankIfcFile();
-    // Must await: loadFile() calls resetViewerState() internally which
-    // resets activeTool back to 'select'. Setting addElement before that
-    // races and leaves the user in select mode despite the click.
+    // Must await: loadFile() calls resetViewerState() internally, which
+    // closes any Model workspace session; entering before that races.
     await loadFile(file);
-    setActiveTool('addElement');
-  }, [guardWebGpu, loadFile, setActiveTool]);
+    launchModelCommand('wall.place'); // straight into drawing walls (#6232)
+  }, [guardWebGpu, loadFile]);
 
   // Issue #540 "Merge Multilayer Walls" reload. The setting changes the produced
   // geometry, so it only takes on a re-load. Re-load the active model IN PLACE

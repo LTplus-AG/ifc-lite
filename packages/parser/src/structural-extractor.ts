@@ -39,8 +39,9 @@
  */
 
 import { EntityExtractor } from './entity-extractor.js';
+import { iterateEffectiveEntities, type EffectiveEntityOverlay } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
-import { getInheritanceChain } from './ifc-schema.js';
+import { normalizeIfcTypeName } from './ifc-schema.js';
 import {
   extractBoundaryCondition,
   extractStructuralLoad,
@@ -60,7 +61,6 @@ import {
   asRefList,
   asString,
   readAttr,
-  readEntities,
   type RawEntity,
 } from './structural-step-values.js';
 import type {
@@ -72,6 +72,13 @@ import type {
   StructuralMemberInfo,
   StructuralResultGroupInfo,
 } from './structural-types.js';
+import {
+  emptyStructuralExtraction as emptyExtraction,
+  structuralActivityKind as activityKind,
+  structuralRoleOf as roleOf,
+  structuralRootFields as rootFields,
+  type StructuralRole,
+} from './structural-extractor-values.js';
 
 export type {
   BoundaryConditionInfo,
@@ -88,103 +95,92 @@ export type {
   StructuralResultGroupInfo,
 };
 
-function emptyExtraction(): StructuralExtraction {
-  return {
-    analysisModels: [],
-    members: [],
-    connections: [],
-    activities: [],
-    loadGroups: [],
-    resultGroups: [],
-    hasStructural: false,
-    loadsTruncated: false,
-  };
-}
-
-type StructuralRole =
-  | 'member'
-  | 'connection'
-  | 'activity'
-  | 'loadGroup'
-  | 'resultGroup'
-  | 'analysisModel';
-
-/** Chain marker → role. Every marker is disjoint, so match order is not load-bearing. */
-const ROLE_BY_SUPERTYPE: ReadonlyArray<readonly [string, StructuralRole]> = [
-  ['IFCSTRUCTURALANALYSISMODEL', 'analysisModel'],
-  ['IFCSTRUCTURALRESULTGROUP', 'resultGroup'],
-  ['IFCSTRUCTURALLOADGROUP', 'loadGroup'],
-  ['IFCSTRUCTURALMEMBER', 'member'],
-  ['IFCSTRUCTURALCONNECTION', 'connection'],
-  ['IFCSTRUCTURALACTIVITY', 'activity'],
-];
-
-/**
- * Classify a concrete type by inheritance, not by name. Returns undefined for
- * an `IFCSTRUCTURAL*` type that is none of the six roles — `IfcStructuralLoad`
- * leaves and `IfcStructuralProfileProperties` reach here and are read through
- * their owners instead.
- */
-function roleOf(type: string): StructuralRole | undefined {
-  const chain = getInheritanceChain(type).map((c) => c.toUpperCase());
-  for (const [marker, role] of ROLE_BY_SUPERTYPE) {
-    if (chain.includes(marker)) return role;
-  }
-  return undefined;
-}
-
-function activityKind(type: string): 'Action' | 'Reaction' | 'Unknown' {
-  const chain = getInheritanceChain(type).map((c) => c.toUpperCase());
-  if (chain.includes('IFCSTRUCTURALACTION')) return 'Action';
-  if (chain.includes('IFCSTRUCTURALREACTION')) return 'Reaction';
-  return 'Unknown';
-}
-
-/** IfcRoot attribute 2 is Name, 3 Description; IfcObject adds ObjectType at 4. */
-function rootFields(e: RawEntity): {
-  name?: string;
-  description?: string;
-  objectType?: string;
-} {
-  return {
-    name: asString(e.attrs[2]),
-    description: asString(e.attrs[3]),
-    objectType: asString(e.attrs[4]),
-  };
+/** Optional live-session view used when structural data is queried in the viewer. */
+export interface StructuralExtractionView extends EffectiveEntityOverlay {
+  getNewEntity?(expressId: number): { readonly type: string; readonly attributes?: readonly unknown[] } | null;
+  /**
+   * Resolve the attributes for an effective entity. `source` is absent for a
+   * session-created entity. Callers can merge positional/named edits without
+   * making parser depend on the mutations package.
+   */
+  readEntity?: (expressId: number, effectiveType: string, source?: RawEntity) => RawEntity | undefined;
 }
 
 /**
  * Extract all structural analysis data from a parsed IFC store.
  */
-export function extractStructuralOnDemand(store: IfcDataStore): StructuralExtraction {
-  if (!store.source?.length) return emptyExtraction();
+export function extractStructuralOnDemand(
+  store: IfcDataStore,
+  view?: StructuralExtractionView | null,
+): StructuralExtraction {
+  if (!store.source?.length && !view) return emptyExtraction();
 
+  // @raw-entity-enumeration-ok source buckets define the candidate domain; iterateEffectiveEntities below applies tombstones, creations and retypes
   const byType = store.entityIndex.byType;
 
-  // Partition every IFCSTRUCTURAL* type present into the six roles.
-  const idsByRole = new Map<StructuralRole, number[]>();
+  // Candidate source ids are the structural classes plus the three relation
+  // classes below. The effective iterator removes tombstones and folds in
+  // created and retyped records before the extractor reads their attributes.
+  const sourceIds = new Set<number>();
   for (const [typeKey, ids] of byType) {
     if (!typeKey.startsWith('IFCSTRUCTURAL')) continue;
     const role = roleOf(typeKey);
     if (!role) continue;
-    const bucket = idsByRole.get(role);
-    if (bucket) bucket.push(...ids);
-    else idsByRole.set(role, [...ids]);
+    for (const id of ids) sourceIds.add(id);
   }
 
-  const relMemberIds = byType.get('IFCRELCONNECTSSTRUCTURALMEMBER') ?? [];
-  const relActivityIds = byType.get('IFCRELCONNECTSSTRUCTURALACTIVITY') ?? [];
-  const relGroupIds = byType.get('IFCRELASSIGNSTOGROUP') ?? [];
-
-  // Behaviour-neutral early-out, not a guard: with no structural entity the
-  // passes below already produce an empty extraction. It exists so the common
-  // case — a model with no structural analysis at all — never constructs an
-  // EntityExtractor over the whole source buffer.
-  if (idsByRole.size === 0) return emptyExtraction();
-
+  const relationIds = new Set<number>([
+    ...(byType.get('IFCRELCONNECTSSTRUCTURALMEMBER') ?? []),
+    ...(byType.get('IFCRELCONNECTSSTRUCTURALACTIVITY') ?? []),
+    ...(byType.get('IFCRELASSIGNSTOGROUP') ?? []),
+  ]);
+  for (const id of relationIds) sourceIds.add(id);
+  for (const [id, mutation] of view?.getTypeMutations?.() ?? []) {
+    if (roleOf(mutation.newType) || mutation.newType.toUpperCase().startsWith('IFCRELCONNECTSSTRUCTURAL') || mutation.newType.toUpperCase() === 'IFCRELASSIGNSTOGROUP') {
+      sourceIds.add(id);
+    }
+  }
+  const effectiveRows = [...iterateEffectiveEntities(store, view, undefined, sourceIds)];
+  // Preserve the common no-structural-data path without setting up a source
+  // extractor. Created/retyped structural entities are already in this set.
+  if (!effectiveRows.some((row) => roleOf(row.type))) return emptyExtraction();
   const extractor = new EntityExtractor(store.source);
+  const effectiveTypeById = new Map(effectiveRows.map((row) => [row.expressId, row.type]));
+  const readRaw = (id: number, effectiveType: string): RawEntity | undefined => {
+    // @raw-entity-enumeration-ok the effective iterator chose this one record; source bytes supply its baseline attributes
+    const ref = store.entityIndex.byId.get(id) ?? store.deferredEntityIndex?.get(id);
+    const entity = ref ? extractor.extractEntity(ref) : undefined;
+    const created = !entity ? view?.getNewEntity?.(id) : null;
+    const source = entity ? {
+      expressId: id,
+      type: normalizeIfcTypeName(effectiveType),
+      attrs: entity.attributes ?? [],
+      globalId: asString(entity.attributes?.[0]) ?? '',
+    } : created ? {
+      expressId: id,
+      type: normalizeIfcTypeName(effectiveType),
+      attrs: [...(created.attributes ?? [])],
+      globalId: asString(created.attributes?.[0]) ?? '',
+    } : undefined;
+    return view?.readEntity?.(id, effectiveType, source) ?? source;
+  };
+  const activeByRole = new Map<StructuralRole, number[]>();
+  const relMemberIds: number[] = [];
+  const relActivityIds: number[] = [];
+  const relGroupIds: number[] = [];
+  for (const row of effectiveRows) {
+    const role = roleOf(row.type);
+    if (role) {
+      const ids = activeByRole.get(role) ?? [];
+      ids.push(row.expressId);
+      activeByRole.set(role, ids);
+    }
+    if (row.type === 'IFCRELCONNECTSSTRUCTURALMEMBER') relMemberIds.push(row.expressId);
+    if (row.type === 'IFCRELCONNECTSSTRUCTURALACTIVITY') relActivityIds.push(row.expressId);
+    if (row.type === 'IFCRELASSIGNSTOGROUP') relGroupIds.push(row.expressId);
+  }
   const read = (role: StructuralRole): RawEntity[] =>
-    readEntities(extractor, store, idsByRole.get(role) ?? []);
+    (activeByRole.get(role) ?? []).map((id) => readRaw(id, effectiveTypeById.get(id)!)).filter((row): row is RawEntity => !!row);
 
   const memberRaw = read('member');
   const connectionRaw = read('connection');
@@ -209,7 +205,7 @@ export function extractStructuralOnDemand(store: IfcDataStore): StructuralExtrac
   // ── Relationship passes ────────────────────────────────────────────────
   const connectionsOfMember = new Map<number, string[]>();
   const membersOfConnection = new Map<number, string[]>();
-  for (const rel of readEntities(extractor, store, relMemberIds)) {
+  for (const rel of relMemberIds.map((id) => readRaw(id, 'IFCRELCONNECTSSTRUCTURALMEMBER')).filter((row): row is RawEntity => !!row)) {
     const memberId = asRef(readAttr(rel.type, rel.attrs, 'RelatingStructuralMember'));
     const connectionId = asRef(readAttr(rel.type, rel.attrs, 'RelatedStructuralConnection'));
     if (memberId === undefined || connectionId === undefined) continue;
@@ -222,7 +218,7 @@ export function extractStructuralOnDemand(store: IfcDataStore): StructuralExtrac
   const activitiesOfItem = new Map<number, string[]>();
   /** activity expressId → the item globalId it applies to. */
   const itemOfActivity = new Map<number, string>();
-  for (const rel of readEntities(extractor, store, relActivityIds)) {
+  for (const rel of relActivityIds.map((id) => readRaw(id, 'IFCRELCONNECTSSTRUCTURALACTIVITY')).filter((row): row is RawEntity => !!row)) {
     const itemId = asRef(readAttr(rel.type, rel.attrs, 'RelatingElement'));
     const activityId = asRef(readAttr(rel.type, rel.attrs, 'RelatedStructuralActivity'));
     if (itemId === undefined || activityId === undefined) continue;
@@ -236,7 +232,7 @@ export function extractStructuralOnDemand(store: IfcDataStore): StructuralExtrac
   // only the rows whose RelatingGroup is a structural group are read.
   const groupsOfObject = new Map<number, string[]>();
   const objectsOfGroup = new Map<number, string[]>();
-  for (const rel of readEntities(extractor, store, relGroupIds)) {
+  for (const rel of relGroupIds.map((id) => readRaw(id, 'IFCRELASSIGNSTOGROUP')).filter((row): row is RawEntity => !!row)) {
     const groupId = asRef(readAttr(rel.type, rel.attrs, 'RelatingGroup'));
     if (groupId === undefined) continue;
     const groupGid = globalIdById.get(groupId);

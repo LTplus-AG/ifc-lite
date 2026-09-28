@@ -166,6 +166,7 @@ function appendPredefinedPropertySets(
     ) || [];
 
   for (const psetId of psetIds) {
+    // @raw-entity-enumeration-ok point lookup for one source pset reached through the parser's source-snapshot relationship index; this is not a base-entity enumeration
     const ref = store.entityIndex?.byId?.get?.(psetId);
     if (!ref) continue;
     const tu = String((ref as { type?: unknown }).type).toUpperCase();
@@ -243,6 +244,7 @@ function appendMaterialOwnPropertySets(
 function resolveEntityTypeName(store: IfcDataStore, expressId: number): string | undefined {
   const fromTable = store.entities?.getTypeName?.(expressId);
   if (fromTable && fromTable !== 'Unknown') return fromTable;
+  // @raw-entity-enumeration-ok point lookup for one source record to guard the parsed material-owned-property projection; this helper projects source property sets and is not a live candidate/type enumeration
   const entry = store.entityIndex?.byId?.get(expressId);
   if (!entry) return undefined;
   return typeof entry === 'object' && 'type' in entry ? String((entry as { type: unknown }).type) : undefined;

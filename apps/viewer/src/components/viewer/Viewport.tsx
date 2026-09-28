@@ -50,6 +50,7 @@ import { COLORFUL_CANVAS_GRADIENT } from '@/lib/viewport-ui/overlay-theme';
 import { expandToGeometryBearingIds } from '../../utils/aggregation.js';
 import { hasNoRenderableTarget } from '@/lib/presentation/resolvePresentationIds';
 import { toGlobalIdFromModels } from '@/store/globalId';
+import { currentLevelYForModels } from '@/lib/level-arrival';
 
 import { useMouseControls, type MouseState } from './useMouseControls.js';
 import { RectSelectionOverlay, type RectSelectionRect } from './RectSelectionOverlay.js';
@@ -138,6 +139,7 @@ export function Viewport({
   // Selection state
   const { selectedEntityId, selectedEntityIds, setSelectedEntityId, setSelectedEntity, toggleSelection, models } = useSelectionState();
   const selectedEntity = useViewerStore((s) => s.selectedEntity);
+  const appliedEntityLevelOffsets = useViewerStore((s) => s.appliedEntityLevelOffsets);
   const addEntityToSelection = useViewerStore((s) => s.addEntityToSelection);
   const toggleEntitySelection = useViewerStore((s) => s.toggleEntitySelection);
 
@@ -160,6 +162,15 @@ export function Viewport({
     }
     return map;
   }, [models]);
+
+  // Geometry arriving after Exploded mode was applied must inherit the current
+  // per-entity lift before its first renderer upload. Keep only offsets whose
+  // source store still belongs to the current model instance (a replacement
+  // model starts with native geometry).
+  const currentLevelY = useMemo(
+    () => currentLevelYForModels(models, appliedEntityLevelOffsets),
+    [appliedEntityLevelOffsets, models],
+  );
 
   // Hidden models retain their one-time instance uploads; useVisibilityState
   // masks them without changing user hides or isolation (#4428).
@@ -1601,6 +1612,7 @@ export function Viewport({
     pendingMeshTranslations,
     pendingMeshRotations,
     pendingInstancedShards,
+    currentLevelY,
     modelIdToIndex,
     modelIdToOffset,
     presentInstancedModelIndices,

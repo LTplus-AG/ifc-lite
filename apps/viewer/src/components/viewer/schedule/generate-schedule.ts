@@ -9,11 +9,10 @@
  * logic so we can unit-test the schedule shape without mounting the UI.
  *
  * Strategies supported today:
- *   • `storey` — one task per IfcBuildingStorey, controlling every product
- *     contained in that storey (transitively through spaces, via
- *     `spatialHierarchy.byStorey` which the parser already flattens).
- *   • `building` — one task per IfcBuilding, rolling up every storey's
- *     products into a single task.
+ *   • `IfcBuildingStorey` — one task per storey, controlling its products.
+ *   • `IfcBuilding` — one task per building, rolling up products below it.
+ *     With session edits, both use the current containment and aggregation
+ *     relationships instead of the parsed source group tables.
  *
  * All identifiers used downstream (globalIds, durations) are kept synthetic
  * but stable — re-running the generator with the same inputs produces the
@@ -29,6 +28,9 @@ import type {
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { deterministicGlobalId } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { collectSpatialScheduleContainers } from './spatial-schedule-containers.js';
+import { hasEffectiveScheduleContainers } from '@/lib/effective-spatial-groups';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Public types
@@ -209,17 +211,6 @@ export function resolveActiveDataStore(
   return null;
 }
 
-/** Resolve a spatial-container expressId → friendly name for the task label. */
-function resolveName(store: IfcDataStore, expressId: number, fallback: string): string {
-  const name = store.entities?.getName?.(expressId);
-  return typeof name === 'string' && name.length > 0 ? name : fallback;
-}
-
-/** Read the entry's elevation from the hierarchy. Falls back to 0 when absent. */
-function storeyElevation(store: IfcDataStore, storeyId: number): number {
-  return store.spatialHierarchy?.storeyElevations?.get(storeyId) ?? 0;
-}
-
 // ─────────────────────────────────────────────────────────────────────────
 // Core
 // ─────────────────────────────────────────────────────────────────────────
@@ -228,9 +219,16 @@ export function canGenerateScheduleFrom(
   store: IfcDataStore | null | undefined,
   /** Geometry is required only for the `IfcElement` strategy. */
   modelContext?: GenerateModelContext | null,
+  mutationView?: MutablePropertyView | null,
 ): boolean {
   if (!store) return false;
+  if (mutationView?.hasPendingChanges()) {
+    return hasEffectiveScheduleContainers(store, mutationView)
+      || (modelContext?.meshes?.length ?? 0) > 0;
+  }
+  // @raw-entity-enumeration-ok this branch has no pending mutation view; parser groups are the current session's groups
   const byStorey = store.spatialHierarchy?.byStorey;
+  // @raw-entity-enumeration-ok this branch has no pending mutation view; parser groups are the current session's groups
   const byBuilding = store.spatialHierarchy?.byBuilding;
   const hasSpatial = (byStorey?.size ?? 0) > 0 || (byBuilding?.size ?? 0) > 0;
   const hasMeshes = (modelContext?.meshes?.length ?? 0) > 0;
@@ -247,11 +245,12 @@ export function generateScheduleFromSpatialHierarchy(
   options: GenerateScheduleOptions,
   /** Required when `options.strategy === 'IfcElement'`. */
   modelContext?: GenerateModelContext | null,
+  mutationView?: MutablePropertyView | null,
 ): GeneratePreview {
   if (!store) {
     return emptyPreview(options);
   }
-  if (options.strategy !== 'IfcElement' && !canGenerateScheduleFrom(store)) {
+  if (options.strategy !== 'IfcElement' && !canGenerateScheduleFrom(store, modelContext, mutationView)) {
     return emptyPreview(options);
   }
   if (options.strategy === 'IfcElement' && !modelContext?.meshes?.length) {
@@ -260,7 +259,7 @@ export function generateScheduleFromSpatialHierarchy(
 
   const containers = options.strategy === 'IfcElement'
     ? collectZSliceContainers(store, modelContext!, options)
-    : collectContainers(store, options);
+    : collectSpatialScheduleContainers(store, options, mutationView);
 
   if (containers.length === 0) {
     return emptyPreview(options);
@@ -386,7 +385,7 @@ export function generateScheduleFromSpatialHierarchy(
 // Container collection
 // ─────────────────────────────────────────────────────────────────────────
 
-interface GroupEntry {
+export interface GroupEntry {
   /** Display name from the spatial entity's Name attribute. */
   name: string;
   /** Falls back to '—' when absent. */
@@ -403,75 +402,6 @@ interface GroupEntry {
    * emit colliding task IDs.
    */
   sourceGlobalId: string;
-}
-
-function collectContainers(
-  store: IfcDataStore,
-  options: GenerateScheduleOptions,
-): GroupEntry[] {
-  const hierarchy = store.spatialHierarchy;
-  if (!hierarchy) return [];
-
-  let groups: Array<{ expressId: number; entry: GroupEntry; elevation: number }> = [];
-
-  if (options.strategy === 'IfcBuildingStorey') {
-    for (const [storeyId, elementIds] of hierarchy.byStorey) {
-      if (options.skipEmptyGroups && elementIds.length === 0) continue;
-      groups.push({
-        expressId: storeyId,
-        entry: makeGroupEntry(store, storeyId, elementIds, 'Storey'),
-        elevation: storeyElevation(store, storeyId),
-      });
-    }
-  } else {
-    for (const [buildingId, elementIds] of hierarchy.byBuilding) {
-      if (options.skipEmptyGroups && elementIds.length === 0) continue;
-      groups.push({
-        expressId: buildingId,
-        entry: makeGroupEntry(store, buildingId, elementIds, 'Building'),
-        elevation: 0,
-      });
-    }
-  }
-
-  // Deterministic ordering: bottom-up by elevation (storeys) / insertion
-  // order (buildings); top-down reverses.
-  groups.sort((a, b) => {
-    if (options.strategy === 'IfcBuildingStorey') return a.elevation - b.elevation;
-    return 0;
-  });
-  if (options.order === 'top-down') groups.reverse();
-
-  return groups.map(g => g.entry);
-}
-
-function makeGroupEntry(
-  store: IfcDataStore,
-  containerId: number,
-  elementIds: number[],
-  fallbackPrefix: string,
-): GroupEntry {
-  const name = resolveName(store, containerId, `${fallbackPrefix} #${containerId}`);
-  const containerGlobalId = store.entities?.getGlobalId?.(containerId) ?? '';
-  const productGlobalIds: string[] = new Array(elementIds.length);
-  for (let i = 0; i < elementIds.length; i++) {
-    const gid = store.entities?.getGlobalId?.(elementIds[i]) ?? '';
-    productGlobalIds[i] = gid;
-  }
-  return {
-    name,
-    identification: undefined,
-    description: undefined,
-    productExpressIds: [...elementIds],
-    productGlobalIds,
-    // Always include the container's expressId so the seed is unique even
-    // if two storeys happen to report the same IFC GlobalId (seen in the
-    // wild with a malformed parser state — duplicates collapsed every
-    // storey to the same task globalId and cross-mapped products into the
-    // wrong task). expressId is authoritative per model; concatenating it
-    // with the GlobalId keeps the seed human-readable for debugging.
-    sourceGlobalId: `${containerGlobalId || fallbackPrefix}#${containerId}`,
-  };
 }
 
 /**

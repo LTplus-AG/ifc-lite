@@ -38,6 +38,7 @@ import {
   HudToolbar,
   HudValueField,
   type HudSegmentedOption,
+  useHudBarTier,
 } from '../../viewport-ui/hud';
 import { HudDivider, HudToggle } from '../../viewport-ui/hud/HudToggle';
 import { AXIS_INFO } from './sectionConstants';
@@ -51,6 +52,10 @@ type AxisSegment = SectionPlaneAxis | 'face' | 'box';
 
 /** One unbreakable run of controls on the bar. */
 const GROUP = 'flex items-center gap-1';
+/** The bar's forms (#6315): with the caption, then without it. */
+const TIER_CAPTION = 0;
+const TIER_NO_CAPTION = 1;
+const OFFSCREEN = { position: 'fixed', top: -9999, left: -9999, visibility: 'hidden' } as const;
 /** A one-shot action on the bar (Cap, Fit): muted at rest, the chrome accent on hover/open. */
 const ACTION = 'inline-flex items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground';
 
@@ -69,6 +74,11 @@ function selectDrawingPanelOpen(s: {
 
 export function SectionToolbar() {
   const { t } = useTranslation();
+  // The caption + axis group is the one group a wrap cannot break, so it is
+  // what must fit the top-center lane: when it does not, the caption steps
+  // down (the Space Sketch pattern, #5975) instead of pushing the bar out of
+  // its lane and onto the chips beside it (#6315). Only that group is measured.
+  const { measureRef, tier } = useHudBarTier(TIER_NO_CAPTION);
   const sectionPlane = useViewerStore((s) => s.sectionPlane);
   const sectionPickMode = useViewerStore((s) => s.sectionPickMode);
   const setSectionPickMode = useViewerStore((s) => s.setSectionPickMode);
@@ -156,19 +166,36 @@ export function SectionToolbar() {
   // the bar wraps in a narrow top-center lane the trigger can sit on a
   // middle row, and a trigger-anchored popover then opens over the rows
   // below it (#5481). Anchored to the bar it always opens under the bar.
+  const caption = (
+    <span className="flex items-center gap-1 whitespace-nowrap px-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
+      <Scissors aria-hidden className="h-3.5 w-3.5 text-overlay-accent" />
+      {t('sectionTool.heading')}
+    </span>
+  );
+
   return (
+    <>
+    {/* The captioned group, offscreen and hidden, only to be measured. */}
+    <div ref={measureRef(TIER_CAPTION)} aria-hidden="true" style={OFFSCREEN}>
+      <span className={cn(GROUP, 'px-1.5')}>
+        {caption}
+        <HudDivider />
+        <HudSegmented options={axes} value={axisValue} onChange={handleAxis} aria-label={t('sectionTool.bar.axisAria')} />
+      </span>
+    </div>
     <HudPopover>
     <HudPopoverAnchor asChild>
-    <HudToolbar data-tool-bar="section" data-testid="section-toolbar" className="justify-center" {...tourAnchor(TOUR_ANCHORS.sectionPanel)}>
+    <HudToolbar data-tool-bar="section" data-testid="section-toolbar" data-bar-tier={tier} className="justify-center" {...tourAnchor(TOUR_ANCHORS.sectionPanel)}>
       {/* Grouped so a wrap (the HUD caps the top-center lane, #5503) breaks
           between groups — caption + axis, flip + distance, Cap + Cut,
           2D + close — never inside one. */}
       <span className={GROUP}>
-        <span className="flex items-center gap-1 px-1 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
-          <Scissors aria-hidden className="h-3.5 w-3.5 text-overlay-accent" />
-          {t('sectionTool.heading')}
-        </span>
-        <HudDivider />
+        {tier === TIER_CAPTION && (
+          <>
+            {caption}
+            <HudDivider />
+          </>
+        )}
         <HudSegmented options={axes} value={axisValue} onChange={handleAxis} aria-label={t('sectionTool.bar.axisAria')} />
       </span>
       {boxSize ? (
@@ -298,5 +325,6 @@ export function SectionToolbar() {
     </HudToolbar>
     </HudPopoverAnchor>
     </HudPopover>
+    </>
   );
 }

@@ -27,15 +27,13 @@
  * `store/levelDisplay.applyLevelDisplayMode`; the effect only adds
  * a guard that drops Solo → Stacked when that filter is cleared.
  *
- * Reversibility: the slice keeps the LAST APPLIED offset per
- * storey so the effect can compute the delta between target and
- * applied when the user toggles modes — no "remember the original
- * positions" gymnastics. Switching Exploded → Stacked subtracts
- * the applied offset; switching gap mid-Exploded shifts by the
- * difference.
+ * Reversibility: the slice keeps the last applied offset per entity as well
+ * as per storey. The effect diffs entity targets on mode, gap and containment
+ * edits, so a moved wall is translated even if the storey gap did not change.
  */
 
 import type { StateCreator } from 'zustand';
+import type { IfcDataStore } from '@ifc-lite/parser';
 
 export type LevelDisplayMode = 'stacked' | 'exploded' | 'solo';
 
@@ -44,6 +42,13 @@ export type AppliedStoreyOffsets = Map<
   string /* modelId */,
   Map<number /* storey express id */, number /* applied Y offset (m, renderer frame) */>
 >;
+
+/** Renderer-frame Y already applied to each entity of a particular loaded store. */
+export type AppliedEntityLevelOffsets = Map<string, {
+  store: IfcDataStore;
+  offsets: ReadonlyMap<number /* global entity id */, number /* applied Y offset in metres */>;
+  geometryRefs: ReadonlyMap<number /* global entity id */, object /* mesh or instanced index */>;
+}>;
 
 export interface LevelDisplaySlice {
   levelDisplayMode: LevelDisplayMode;
@@ -56,12 +61,15 @@ export interface LevelDisplaySlice {
    * after each successful flush. Tests can probe this directly.
    */
   appliedStoreyOffsets: AppliedStoreyOffsets;
+  /** Per-entity offsets also record membership changes while Exploded stays active. */
+  appliedEntityLevelOffsets: AppliedEntityLevelOffsets;
 
   setLevelDisplayMode: (mode: LevelDisplayMode) => void;
   setExplodedGap: (metres: number) => void;
   /** Effect-only: record the offsets that were just flushed to
    * the renderer so the next toggle knows what to subtract. */
   setAppliedStoreyOffsets: (next: AppliedStoreyOffsets) => void;
+  setAppliedEntityLevelOffsets: (next: AppliedEntityLevelOffsets) => void;
 }
 
 const LEVEL_DISPLAY_DEFAULTS = {
@@ -73,6 +81,7 @@ export const createLevelDisplaySlice: StateCreator<LevelDisplaySlice, [], [], Le
   levelDisplayMode: LEVEL_DISPLAY_DEFAULTS.mode,
   explodedGap: LEVEL_DISPLAY_DEFAULTS.gap,
   appliedStoreyOffsets: new Map(),
+  appliedEntityLevelOffsets: new Map(),
 
   setLevelDisplayMode: (levelDisplayMode) => set({ levelDisplayMode }),
   setExplodedGap: (metres) => {
@@ -84,4 +93,5 @@ export const createLevelDisplaySlice: StateCreator<LevelDisplaySlice, [], [], Le
     set({ explodedGap: clamped });
   },
   setAppliedStoreyOffsets: (appliedStoreyOffsets) => set({ appliedStoreyOffsets }),
+  setAppliedEntityLevelOffsets: (appliedEntityLevelOffsets) => set({ appliedEntityLevelOffsets }),
 });

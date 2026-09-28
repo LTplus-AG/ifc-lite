@@ -19,18 +19,10 @@
  */
 
 import { type StateCreator } from 'zustand';
+import type { AuthoredElementKind } from './authoringDefaultsSlice.js';
 
-export type AddElementType =
-  | 'wall'
-  | 'slab'
-  | 'beam'
-  | 'column'
-  | 'door'
-  | 'window'
-  | 'space'
-  | 'roof'
-  | 'plate'
-  | 'member';
+/** The kinds the panel places; the Model workspace's defaults share them. */
+export type AddElementType = AuthoredElementKind;
 export type AddElementSlabMode = 'rectangle' | 'polygon';
 
 /**
@@ -44,11 +36,6 @@ export interface AddElementVec3 {
   x: number;
   y: number;
   z: number;
-}
-
-export interface AddElementWallParams {
-  Thickness: number;
-  Height: number;
 }
 
 export interface AddElementSlabParams {
@@ -166,7 +153,13 @@ export interface AddElementSlice {
   addElementStoreyId: number | null;
   /** Target model id; `null` ⇒ auto-pick the active model on click. */
   addElementModelId: string | null;
-  addElementWallParams: AddElementWallParams;
+  /**
+   * The running `wall.place` was started by this panel's wall type (#6232):
+   * the panel stays up while it draws. A wall started from the Model
+   * workspace's rail, W or the palette clears it, so the rail's wall does
+   * not reopen the panel it supersedes.
+   */
+  addElementDrawsWall: boolean;
   addElementSlabParams: AddElementSlabParams;
   addElementBeamParams: AddElementBeamParams;
   addElementColumnParams: AddElementColumnParams;
@@ -206,7 +199,7 @@ export interface AddElementSlice {
   setAddElementType: (t: AddElementType) => void;
   setAddElementStoreyId: (id: number | null) => void;
   setAddElementModelId: (id: string | null) => void;
-  setAddElementWallParams: (p: Partial<AddElementWallParams>) => void;
+  setAddElementDrawsWall: (on: boolean) => void;
   setAddElementSlabParams: (p: Partial<AddElementSlabParams>) => void;
   setAddElementBeamParams: (p: Partial<AddElementBeamParams>) => void;
   setAddElementColumnParams: (p: Partial<AddElementColumnParams>) => void;
@@ -227,7 +220,6 @@ export interface AddElementSlice {
 
 const ADD_ELEMENT_DEFAULTS = {
   type: 'wall' as AddElementType,
-  wall: { Thickness: 0.2, Height: 3 } as AddElementWallParams,
   slab: { Width: 5, Depth: 5, Thickness: 0.3 } as AddElementSlabParams,
   beam: { Width: 0.3, Height: 0.5 } as AddElementBeamParams,
   column: { Width: 0.4, Depth: 0.4, Height: 3 } as AddElementColumnParams,
@@ -258,7 +250,7 @@ export const createAddElementSlice: StateCreator<AddElementSlice, [], [], AddEle
   addElementType: ADD_ELEMENT_DEFAULTS.type,
   addElementStoreyId: null,
   addElementModelId: null,
-  addElementWallParams: { ...ADD_ELEMENT_DEFAULTS.wall },
+  addElementDrawsWall: false,
   addElementSlabParams: { ...ADD_ELEMENT_DEFAULTS.slab },
   addElementBeamParams: { ...ADD_ELEMENT_DEFAULTS.beam },
   addElementColumnParams: { ...ADD_ELEMENT_DEFAULTS.column },
@@ -295,8 +287,7 @@ export const createAddElementSlice: StateCreator<AddElementSlice, [], [], AddEle
     set({ addElementStoreyId, addElementAutoSpacePreview: null, ...CLEARED_GESTURE }),
   setAddElementModelId: (addElementModelId) =>
     set({ addElementModelId, addElementAutoSpacePreview: null, ...CLEARED_GESTURE }),
-  setAddElementWallParams: (p) =>
-    set((s) => ({ addElementWallParams: { ...s.addElementWallParams, ...p } })),
+  setAddElementDrawsWall: (addElementDrawsWall) => set({ addElementDrawsWall }),
   setAddElementSlabParams: (p) =>
     set((s) => ({ addElementSlabParams: { ...s.addElementSlabParams, ...p } })),
   setAddElementBeamParams: (p) =>

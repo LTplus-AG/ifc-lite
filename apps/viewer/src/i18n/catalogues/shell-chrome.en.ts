@@ -36,6 +36,8 @@ export const shellChromeEn = {
   'shellChrome.panelGroups.quantifyDescription': 'Measure, count, schedule, and estimate model work.',
   'shellChrome.panelGroups.automate': 'Automate',
   'shellChrome.panelGroups.automateDescription': 'Run scripts, flows, and extensions.',
+  'shellChrome.panelGroups.author': 'Author',
+  'shellChrome.panelGroups.authorDescription': 'Draw and edit building elements in the Model workspace.',
   'shellChrome.panelGroups.site': 'Site',
   'shellChrome.panelGroups.siteDescription': 'Explore site context and prepare drawings or presentations.',
   'shellChrome.panelGroups.browse': 'Browse panels',

@@ -38,6 +38,7 @@ const DISPATCHER_CONTEXTS = {
   'tool.spaceSketch': true,
   command: true,
   'command.wall.place': true, // Representative command-specific context.
+  'workspace.model': true,
   drawing2d: true,
   flight: true,
   'search.cycle': true,

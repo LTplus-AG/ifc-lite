@@ -12,15 +12,9 @@
  * `(index - 0) × gap - elevationDelta` so they end up at
  * `index × gap` relative to the lowest storey's Y.
  *
- * The output is `Map<storeyId, deltaY>` — pure data, no
- * side-effects — so callers can:
- *
- *   1. Compute the target offsets
- *   2. Subtract the previously-applied offsets
- *   3. Push the delta into `pendingMeshTranslations`
- *
- * That subtraction is what makes mode toggles + gap changes
- * reversible without re-loading geometry.
+ * Storey offsets become per-entity targets, which are diffed against the
+ * renderer's previously applied per-entity Y before translation. That makes
+ * both mode toggles and live containment edits reversible without reloading.
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -40,9 +34,10 @@ export type StoreyOffsets = Map<number /* storey express id */, number /* render
 export function computeStoreyOffsets(
   dataStore: IfcDataStore | undefined,
   gap: number,
+  currentElevations?: ReadonlyMap<number, number>,
 ): StoreyOffsets {
   if (!dataStore || !Number.isFinite(gap) || gap <= 0) return new Map();
-  const elevations = dataStore.spatialHierarchy?.storeyElevations;
+  const elevations = currentElevations ?? dataStore.spatialHierarchy?.storeyElevations;
   if (!elevations || elevations.size === 0) return new Map();
 
   // Sort storeys by elevation ascending so the lowest storey
@@ -60,81 +55,49 @@ export function computeStoreyOffsets(
 }
 
 /**
- * Diff a target offset map against the previously-applied map.
- * Result: `Map<storeyId, deltaY>` such that
- *
- *   newAppliedY = oldAppliedY + delta = targetY
- *
- * Storeys present in `previous` but not `target` get a delta of
- * `-previous[storeyId]` (they're reverting to Stacked). Storeys
- * in `target` but not `previous` get `+target[storeyId]` (they're
- * lifting fresh). Storeys in both get the difference.
- *
- * Zero deltas are omitted so the caller doesn't push no-ops.
+ * The desired Y lift for each entity. The optional membership map is the
+ * current session's spatial graph; without it, the parsed reverse index is
+ * the fast path for a source-only session.
  */
-export function diffStoreyOffsets(
-  target: StoreyOffsets,
-  previous: StoreyOffsets,
-): StoreyOffsets {
-  const out: StoreyOffsets = new Map();
-  for (const [storeyId, prev] of previous) {
-    const next = target.get(storeyId) ?? 0;
-    const delta = next - prev;
-    if (delta !== 0) out.set(storeyId, delta);
-  }
-  for (const [storeyId, next] of target) {
-    if (previous.has(storeyId)) continue;
-    if (next !== 0) out.set(storeyId, next);
-  }
-  return out;
-}
-
-/**
- * Resolve every entity in a storey to its globalId for the given
- * model index. Walks `spatialHierarchy.elementToStorey` and
- * filters to entries matching `storeyExpressId`. Returns an empty
- * array when the hierarchy is missing.
- *
- * `toGlobalId` is injected so the helper stays free of
- * FederationRegistry imports (keeps it test-friendly).
- */
-export function entitiesInStorey(
-  dataStore: IfcDataStore | undefined,
-  storeyExpressId: number,
-  toGlobalId: (localExpressId: number) => number,
-): number[] {
-  if (!dataStore) return [];
-  const map = dataStore.spatialHierarchy?.elementToStorey;
-  if (!map) return [];
-  const out: number[] = [];
-  for (const [elementId, sid] of map) {
-    if (sid !== storeyExpressId) continue;
-    out.push(toGlobalId(elementId));
-  }
-  return out;
-}
-
-/**
- * Build a per-entity-globalId translation map for a model from a
- * storey-offset map. Used by the level-display effect to push
- * into `pendingMeshTranslations`. The translation is along world
- * +Y only (storey lift) so the X/Z components are zero.
- *
- * `toGlobalId` is injected for the same reason as above.
- */
-export function buildEntityTranslations(
+export function buildEntityLevelOffsets(
   dataStore: IfcDataStore | undefined,
   offsetsByStorey: StoreyOffsets,
   toGlobalId: (localExpressId: number) => number,
-): Map<number, [number, number, number]> {
-  const out = new Map<number, [number, number, number]>();
+  currentMembers?: ReadonlyMap<number, readonly number[]>,
+): Map<number, number> {
+  const out = new Map<number, number>();
   if (!dataStore || offsetsByStorey.size === 0) return out;
+  if (currentMembers) {
+    for (const [storeyId, ids] of currentMembers) {
+      const dy = offsetsByStorey.get(storeyId);
+      if (dy === undefined || dy === 0) continue;
+      for (const id of ids) out.set(toGlobalId(id), dy);
+    }
+    return out;
+  }
+  // @raw-entity-enumeration-ok no current membership map means this model has no pending mutation view
   const elementToStorey = dataStore.spatialHierarchy?.elementToStorey;
   if (!elementToStorey) return out;
   for (const [elementId, storeyId] of elementToStorey) {
     const dy = offsetsByStorey.get(storeyId);
     if (dy === undefined || dy === 0) continue;
-    out.set(toGlobalId(elementId), [0, dy, 0]);
+    out.set(toGlobalId(elementId), dy);
+  }
+  return out;
+}
+
+/** Renderer translations needed to reach `target` from what is already applied. */
+export function diffEntityLevelOffsets(
+  target: ReadonlyMap<number, number>,
+  previous: ReadonlyMap<number, number>,
+): Map<number, [number, number, number]> {
+  const out = new Map<number, [number, number, number]>();
+  for (const [id, oldY] of previous) {
+    const delta = (target.get(id) ?? 0) - oldY;
+    if (delta !== 0) out.set(id, [0, delta, 0]);
+  }
+  for (const [id, nextY] of target) {
+    if (!previous.has(id) && nextY !== 0) out.set(id, [0, nextY, 0]);
   }
   return out;
 }

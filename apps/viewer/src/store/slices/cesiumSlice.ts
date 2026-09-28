@@ -224,13 +224,13 @@ function resolveIonToken(): string {
 }
 
 /**
- * Cross-slice surface CesiumSlice writes into. `editEnabled` lives on
- * UISlice — turning on the placement editor implies global edit mode,
- * so the slice writes it directly here to keep the toolbar pill in
- * sync atomically.
+ * Cross-slice surface CesiumSlice reaches into. Turning on the placement
+ * editor implies global edit mode, which is the Model workspace (#6232):
+ * it goes through UISlice's `setEditEnabled`, never a bare flag write.
  */
 export interface CesiumCrossSliceState {
   editEnabled: boolean;
+  setEditEnabled?: (enabled: boolean) => void;
 }
 
 export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState, [], [], CesiumSlice> = (set, get) => ({
@@ -351,31 +351,23 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
   toggleShowModelBasepoints: () => set((s) => ({ showModelBasepoints: !s.showModelBasepoints })),
   setCesiumTerrainClipY: (y) => set({ cesiumTerrainClipY: y }),
   setCesiumGlbLoaded: (loaded) => set({ cesiumGlbLoaded: loaded }),
-  setCesiumPlacementEditMode: (enabled) => set(
-    // Turning the placement editor on implies global edit mode — keeps
-    // the toolbar pill in sync so the user can't end up "moving the
-    // georef" while the rest of the UI claims it's read-only. Turning
-    // it off does *not* exit global edit; other sub-tools (properties,
-    // geometry) may still be in use — but we DO clear the placement
-    // draft so callers exiting via the setter don't leave stale draft
-    // state behind (matches the toggle's disable branch).
-    enabled
-      ? { cesiumPlacementEditMode: true, editEnabled: true }
-      : {
-          cesiumPlacementEditMode: false,
-          cesiumPlacementDraftModelId: null,
-          cesiumPlacementDraft: null,
-        },
-  ),
-  toggleCesiumPlacementEditMode: () => set((s) => (
-    s.cesiumPlacementEditMode
-      ? {
-          cesiumPlacementEditMode: false,
-          cesiumPlacementDraftModelId: null,
-          cesiumPlacementDraft: null,
-        }
-      : { cesiumPlacementEditMode: true, editEnabled: true }
-  )),
+  setCesiumPlacementEditMode: (enabled) => {
+    // Turning the placement editor on implies global edit mode — the user
+    // can't end up "moving the georef" while the rest of the UI claims it's
+    // read-only; if edit mode is refused (collab role, no editable model),
+    // the editor stays off. Turning it off does *not* exit global edit;
+    // other sub-tools may still be in use — but the placement draft is
+    // cleared so callers exiting via the setter leave no stale draft.
+    if (!enabled) {
+      set({ cesiumPlacementEditMode: false, cesiumPlacementDraftModelId: null, cesiumPlacementDraft: null });
+      return;
+    }
+    const s = get();
+    if (!s.editEnabled && s.setEditEnabled) s.setEditEnabled(true);
+    else if (!s.editEnabled) set({ editEnabled: true });
+    if (get().editEnabled) set({ cesiumPlacementEditMode: true });
+  },
+  toggleCesiumPlacementEditMode: () => get().setCesiumPlacementEditMode(!get().cesiumPlacementEditMode),
   beginCesiumPlacementDraft: (modelId, conversion) => set({
     cesiumPlacementDraftModelId: modelId,
     cesiumPlacementDraft: {

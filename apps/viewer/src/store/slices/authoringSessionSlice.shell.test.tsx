@@ -56,6 +56,14 @@ describe('Model workspace sidebar hand-over (#6232 M2.1)', () => {
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'bcf');
   });
 
+  it('the panel comes back when the workspace closes under the user (its model removed)', () => {
+    useViewerStore.getState().enterModelWorkspace();
+    assert.equal(useViewerStore.getState().sidebarActivePanel, 'model');
+    useViewerStore.getState().removeModel(MODEL_ID);
+    assert.equal(useViewerStore.getState().workspaceMode, 'view');
+    assert.equal(useViewerStore.getState().sidebarActivePanel, 'changes');
+  });
+
   it('phones keep their sheet shut: nothing is taken over', () => {
     useViewerStore.setState({ isMobile: true });
     useViewerStore.getState().enterModelWorkspace();

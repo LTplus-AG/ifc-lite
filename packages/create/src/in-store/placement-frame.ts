@@ -296,19 +296,30 @@ export function readEntity(
   overlay: OverlayWallReader | undefined,
   expressId: number,
 ): { type?: string; attributes: IfcAttributeValue[] } | null {
+  if (overlay?.isDeleted?.(expressId)) return null;
+  // Source bytes provide the unchanged record; positional edits are applied
+  // below so placement walks follow the current references (#5249).
+  // @raw-entity-enumeration-ok Single source byte lookup with overlay tombstones, creations and edits applied here.
   const ref = store.entityIndex.byId.get(expressId);
+  let entity: { type?: string; attributes: IfcAttributeValue[] } | null = null;
   if (ref && ref.byteLength > 0 && ref.byteOffset >= 0) {
-    return extractor.extractEntity(ref);
+    entity = extractor.extractEntity(ref);
   }
   // Overlay-only entity: fall back to the overlay reader.
-  if (overlay) {
+  if (!entity && overlay) {
     for (const ent of overlay.getNewEntities()) {
       if (ent.expressId === expressId) {
-        return { type: ent.type, attributes: ent.attributes };
+        entity = { type: ent.type, attributes: ent.attributes };
+        break;
       }
     }
   }
-  return null;
+  if (!entity) return null;
+  const edits = overlay?.getPositionalMutationsForEntity?.(expressId);
+  if (!edits?.size) return entity;
+  const attributes = [...entity.attributes];
+  for (const [index, value] of edits) attributes[index] = value;
+  return { ...entity, attributes };
 }
 
 export function numericAttr(v: IfcAttributeValue | undefined): number | null {

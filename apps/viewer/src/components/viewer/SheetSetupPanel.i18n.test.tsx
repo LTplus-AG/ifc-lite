@@ -18,7 +18,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render, type } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { resolve } from '@/i18n/registry';
 import { en } from '@/i18n/en';
@@ -111,6 +111,25 @@ afterEach(() => {
 });
 
 describe('SheetSetupPanel localization (#4918)', () => {
+  it('#6343 names the icon-only Save action and saves the entered template', () => {
+    useViewerStore.setState({ activeSheet: createDefaultSheet(), sheetEnabled: true, savedSheetTemplates: [] });
+    const container = render(<SheetSetupPanel />);
+    const templatesTrigger = [...container.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes(resolve('sheetsPdf.sheetSetup.savedTemplatesHeading' as never)),
+    );
+    assert.ok(templatesTrigger);
+    click(templatesTrigger);
+    const save = container.querySelector<HTMLButtonElement>('button[aria-label="Save sheet template"]');
+    assert.ok(save, 'the icon-only Save control has a specific accessible name');
+    assert.equal(save.disabled, true, 'Save remains disabled until a name is entered');
+    const name = container.querySelector<HTMLInputElement>('input[placeholder="Template name..."]');
+    assert.ok(name);
+    type(name, 'My template');
+    assert.equal(save.disabled, false);
+    click(save);
+    assert.equal(useViewerStore.getState().savedSheetTemplates[0]?.name, 'My template');
+  });
+
   it('translates the header and the disabled-sheet empty state', () => {
     useViewerStore.setState({ activeSheet: null, sheetEnabled: false });
     const container = render(<SheetSetupPanel />);

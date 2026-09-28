@@ -20,7 +20,7 @@ import { ArrowLeft, ChevronRight, FileBox, Info, Sparkles } from 'lucide-react';
 import { getAttributeNames } from '@ifc-lite/parser';
 import type { EntityRef } from '@ifc-lite/parser';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { IfcAttributeValue } from '@ifc-lite/mutations';
+import type { IfcAttributeValue, MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { RawStepRow } from './RawStepRow';
 import { extractRawStepTokens, serializeStepToken } from './raw-step-format';
@@ -57,9 +57,30 @@ function applyOverlayTokens(
  */
 function readSourceTokens(dataStore: IfcDataStore | null, expressId: number): string[] | null {
   if (!dataStore?.source) return null;
+  // @raw-entity-enumeration-ok source byte span for one entity; readEffectiveTokens applies overlay edits and creations
   const ref: EntityRef | undefined = dataStore.entityIndex.byId.get(expressId);
   if (!ref || ref.byteLength <= 0) return null;
   return extractRawStepTokens(dataStore.source, ref.byteOffset, ref.byteLength);
+}
+
+/** The same token view is used for display and wrapper navigation. */
+function readEffectiveTokens(
+  dataStore: IfcDataStore | null,
+  expressId: number,
+  view: MutablePropertyView | null | undefined,
+): { tokens: string[] | null; isOverlayOnly: boolean; overlayMap: Map<number, IfcAttributeValue> | null } {
+  if (view?.isDeleted(expressId)) return { tokens: null, isOverlayOnly: false, overlayMap: null };
+  const overlayMap = view?.getPositionalMutationsForEntity(expressId) ?? null;
+  const sourceTokens = readSourceTokens(dataStore, expressId);
+  if (sourceTokens) {
+    return { tokens: applyOverlayTokens(sourceTokens, overlayMap), isOverlayOnly: false, overlayMap };
+  }
+  const created = view?.getNewEntity(expressId);
+  if (created) {
+    const base = (created.attributes as IfcAttributeValue[]).map(serializeStepToken);
+    return { tokens: applyOverlayTokens(base, overlayMap), isOverlayOnly: true, overlayMap };
+  }
+  return { tokens: null, isOverlayOnly: false, overlayMap };
 }
 
 /**
@@ -71,13 +92,11 @@ function readSourceTokens(dataStore: IfcDataStore | null, expressId: number): st
  */
 function autoFollowWrappers(
   startId: number,
-  dataStore: IfcDataStore | null,
-  isDeleted: (id: number) => boolean,
+  readTokens: (id: number) => string[] | null,
 ): number {
   let current = startId;
   for (let i = 0; i < AUTO_FOLLOW_DEPTH; i++) {
-    if (isDeleted(current)) return current;
-    const tokens = readSourceTokens(dataStore, current);
+    const tokens = readTokens(current);
     if (!tokens || tokens.length !== 1) return current;
     const m = tokens[0].match(/^#(\d+)$/);
     if (!m) return current;
@@ -146,30 +165,7 @@ export function RawStepCard({
   // NewEntity records otherwise. Per-index overrides land on top.
   const { tokens, isOverlayOnly, overlayMap } = useMemo(() => {
     const view = getMutationView(modelId);
-    const overlay = view?.getPositionalMutationsForEntity(currentId) ?? null;
-
-    const sourceTokens = readSourceTokens(dataStore, currentId);
-    if (sourceTokens) {
-      return {
-        tokens: applyOverlayTokens(sourceTokens, overlay),
-        isOverlayOnly: false,
-        overlayMap: overlay,
-      };
-    }
-
-    if (view) {
-      const overlayEntity = view.getNewEntity(currentId);
-      if (overlayEntity) {
-        const baseTokens = (overlayEntity.attributes as IfcAttributeValue[]).map(serializeStepToken);
-        return {
-          tokens: applyOverlayTokens(baseTokens, overlay),
-          isOverlayOnly: true,
-          overlayMap: overlay,
-        };
-      }
-    }
-
-    return { tokens: null as string[] | null, isOverlayOnly: false, overlayMap: overlay };
+    return readEffectiveTokens(dataStore, currentId, view);
     // mutationVersion forces this hook to re-run when any overlay
     // (positional or overlay-entity) changes — overlay maps are
     // mutated in place, so identity-based memoization isn't enough.
@@ -193,8 +189,7 @@ export function RawStepCard({
   const handleNavigate = useCallback(
     (refId: number) => {
       const view = getMutationView(modelId);
-      const isDeleted = (id: number) => view?.isDeleted?.(id) ?? false;
-      const target = autoFollowWrappers(refId, dataStore, isDeleted);
+      const target = autoFollowWrappers(refId, (id) => readEffectiveTokens(dataStore, id, view).tokens);
       setNavStack((prev) => {
         // No-op if the user is already viewing the target — refs that
         // self-loop or land on the current node would otherwise grow

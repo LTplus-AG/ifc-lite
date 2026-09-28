@@ -34,7 +34,6 @@ import {
   type ModelLayout, type SidebarRestore,
 } from './authoringSessionSidebar.js';
 
-
 export type WorkspaceMode = 'view' | 'model';
 export type EndCommandReason = 'commit' | 'cancel' | 'switch';
 
@@ -121,11 +120,15 @@ function launch(set: Set, get: Get, api: StoreApi<ViewerState>, id: CommandId): 
 /** Keep the runtime in step with the tool and the session, whoever changed them. */
 function syncRuntime(api: StoreApi<ViewerState>): void {
   api.subscribe((s, prev) => {
-    // The workspace closed under edit mode (its model removed, a file swap):
-    // edit mode goes with it, so the two never disagree.
-    if (prev.workspaceMode === 'model' && s.workspaceMode === 'view' && s.editEnabled) {
-      s.setEditEnabled(false);
-      return;
+    // The workspace closed, however (Leave, its model removed, a file swap):
+    // the sidebar gets its panel back, and edit mode goes with it, so the two
+    // never disagree.
+    if (prev.workspaceMode === 'model' && s.workspaceMode === 'view') {
+      restoreSidebar(api.getState, prev.session?.sidebarRestore ?? null);
+      if (api.getState().editEnabled) {
+        api.getState().setEditEnabled(false);
+        return;
+      }
     }
     const running = getCommandRuntime().command;
     const commandTool = s.activeTool === 'command';
@@ -185,9 +188,7 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
     exitModelWorkspace: () => {
       // Leaving cancels the gesture in progress; nothing half-drawn is written.
       if (get().session?.activeCommandId) get().endCommand('cancel');
-      const restore = get().session?.sidebarRestore ?? null;
       set({ workspaceMode: 'view', session: null });
-      restoreSidebar(get, restore);
       // …and edit mode with it (authoring tools, georef drafts: uiSlice).
       if (get().editEnabled) get().setEditEnabled(false);
     },

@@ -203,6 +203,8 @@ it('#5878 Author edit and Space Sketch execute through registered ribbon control
     ...fixtureModels(fixtureModel('m')),
     ribbonTab: 'author', ribbonCollapsed: false,
     editEnabled: false, activeTool: 'select', collabRole: null,
+    // Edit mode is the Model workspace (#6232): it needs an editable model.
+    ...fixtureModels(fixtureModel('m')),
   }));
   t.after(() => act(() => {
     useViewerStore.getState().exitModelWorkspace();

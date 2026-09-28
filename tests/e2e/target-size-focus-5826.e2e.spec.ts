@@ -110,6 +110,20 @@ test.describe('#5826 target size and focus visibility', () => {
     ).toEqual([]);
   });
 
+  test('privacy toast action and dismiss targets are at least 24x24 CSS px (#6333)', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForFunction((key) => !!(globalThis as Record<string, unknown>)[key], STORE);
+    await expect(page.getByRole('button', { name: 'Privacy settings' })).toBeVisible({ timeout: 15000 });
+    const privacyToast = page.locator('[data-toast-seq]').filter({
+      has: page.getByRole('button', { name: 'Privacy settings' }),
+    });
+    await expect(privacyToast.getByRole('button', { name: 'Dismiss notification' })).toBeVisible();
+
+    const undersized = (await findUndersizedButtons(page)).filter((button) =>
+      button.text === 'Privacy settings' || button.ariaLabel === 'Dismiss notification');
+    expect(undersized, `undersized privacy toast targets: ${JSON.stringify(undersized)}`).toEqual([]);
+  });
+
   test('empty start screen: Tab onto the welcome primary button shows a visible focus indicator', async ({ page }) => {
     await page.goto('/');
     await page.waitForFunction((key) => !!(globalThis as Record<string, unknown>)[key], STORE);
@@ -151,6 +165,43 @@ test.describe('#5826 target size and focus visibility', () => {
       undersized,
       `${undersized.length} button(s) under 24x24 CSS px:\n${undersized.map((b) => `  ${b.width.toFixed(1)}x${b.height.toFixed(1)} "${b.ariaLabel ?? b.text}"`).join('\n')}`,
     ).toEqual([]);
+  });
+
+  test('loaded sidebar Split and Collapse chrome have 24px targets and keep their actions (#6340)', async ({ page }) => {
+    await page.goto('/?model=/samples/building-architecture.ifc');
+    await page.waitForFunction((key) => {
+      const store = (globalThis as Record<string, unknown>)[key] as
+        | { getState: () => { models: Map<unknown, { ifcDataStore?: unknown }>; loading: boolean; geometryStreamingActive: boolean } }
+        | undefined;
+      const state = store?.getState();
+      return !!state && state.models.size === 1 && !state.loading && !state.geometryStreamingActive
+        && [...state.models.values()][0].ifcDataStore != null;
+    }, STORE, { timeout: 120000 });
+
+    const split = page.getByRole('button', { name: 'Split panel', exact: true }).first();
+    const collapse = page.getByRole('button', { name: 'Collapse sidebar to icons', exact: true }).first();
+    for (const button of [split, collapse]) {
+      await expect(button).toBeVisible();
+      const rect = await button.boundingBox();
+      expect(rect, 'the sidebar button has a rendered hit target').not.toBeNull();
+      expect(Math.min(rect!.width, rect!.height), 'sidebar chrome hit target is at least 24px').toBeGreaterThanOrEqual(MIN_TARGET_PX);
+    }
+
+    await split.click();
+    await expect(page.getByRole('menuitem').first()).toBeVisible();
+    await page.getByRole('menuitem').first().click();
+    await expect.poll(() => page.evaluate((key) => {
+      const store = (globalThis as Record<string, unknown>)[key] as
+        { getState: () => { sidebarSecondaryPanel: string | null } };
+      return store.getState().sidebarSecondaryPanel;
+    }, STORE)).not.toBeNull();
+
+    await collapse.click();
+    await expect.poll(() => page.evaluate((key) => {
+      const store = (globalThis as Record<string, unknown>)[key] as
+        { getState: () => { sidebarMode: string } };
+      return store.getState().sidebarMode;
+    }, STORE)).toBe('collapsed');
   });
 
   test('authored model without georeferencing: Add Georeferencing target is at least 24x24 CSS px', async ({ page }) => {

@@ -128,6 +128,7 @@ export const bcfEn = {
 
   // BCFTopicDetail.tsx
   'bcf.topicDetail.zoomToTopicAria': 'Zoom to topic',
+  'bcf.topicDetail.backToTopics': 'Back to topics',
   'bcf.topicDetail.zoomTo': 'Zoom to',
   'bcf.topicDetail.editTopic': 'Edit topic',
   'bcf.topicDetail.deleteTopicAria': 'Delete topic',

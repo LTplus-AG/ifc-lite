@@ -2450,10 +2450,17 @@ distinct map, with cached and uncached ordered swept-disk and extrusion output,
 including nominal quantities and diagnostics, identical. Each MappingTarget
 and final world transform still resolves for its own occurrence.
 
-Three interleaved native worker-pool base/branch pairs on AC20 and ISSUE_129
-kept mesh counts and ordered fingerprints byte-identical. Concurrent lint and
-typecheck work overlapped the probes, so the small timing differences do not
-establish a speedup or regression. The direct analytic extraction reduces
-source validation work; no full-load timing claim is made from that counter.
-The lesson is to cache only immutable source facts and measure source reuse
-separately from mesh-worker throughput.
+Five balanced native profiling pairs compared parent `5b58ab62b` with cache
+head `d00b5f8df` below 6/24 host load, with five iterations per invocation.
+On the Revit Snowdon structural model, canonical descriptions, definitions,
+and extrusions were byte-identical between revisions. Across 25 extraction
+calls per revision, their median times were 31.8→33.0, 35.5→34.9, and
+58.3→56.1 ms respectively. Source loads fell from 1,073 to 128, but these
+small timing differences establish no measurable end-to-end speedup.
+
+The ordinary worker-pool probes on AC20 and ISSUE_129 kept mesh counts and
+ordered FNV-1a64 fingerprints identical (`c4d504b83ff698ea` and
+`ff42e1a3f7fcf540`); phase timings showed no material regression. No browser
+worker-pool speedup is claimed. The lesson is to cache only immutable source
+facts, and to measure opt-in analytic extraction separately from mesh loading:
+a large reduction in source validation does not guarantee a faster full call.

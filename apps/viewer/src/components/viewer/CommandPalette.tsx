@@ -221,7 +221,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             )}
 
             {grouped.map((group) => (
-              <div key={group.category || '__flat'}>
+              <div key={group.category || '__flat'} data-command-category={group.category}>
                 {group.category && (
                   <div className="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground select-none">
                     {t(CATEGORY_LABEL_KEY[group.category as Category])}
@@ -235,7 +235,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                     <button role="option"
                       key={`${group.category}:${cmd.id}`}
                       data-command-id={cmd.registryOwned ? cmd.id : undefined}
+                      data-runtime-source={cmd.runtimeSource}
+                      data-runtime-command-id={cmd.runtimeSource ? cmd.id : undefined}
                       data-index={flatIdx}
+                      aria-label={cmd.registryOwned ? t(cmd.labelKey, cmd.labelKeyParams) : undefined}
                       aria-selected={flatIdx === selectedIndex}
                       className={cn(
                         'flex items-center gap-3 w-full px-3 py-2 text-left text-sm',

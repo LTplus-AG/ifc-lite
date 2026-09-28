@@ -178,6 +178,10 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     const container = render(
       <ListBuilder providers={[provider]} stores={[store]} initial={null} onSave={() => {}} onCancel={() => {}} onExecute={() => {}} />,
     );
+    const nameInput = container.querySelector<HTMLInputElement>(`input[placeholder="${englishOf('lists.builder.namePlaceholder')}"]`);
+    const descriptionInput = container.querySelector<HTMLInputElement>(`input[placeholder="${englishOf('lists.builder.descriptionPlaceholder')}"]`);
+    assert.equal(nameInput?.getAttribute('aria-label'), englishOf('lists.builder.nameInputLabel'));
+    assert.equal(descriptionInput?.getAttribute('aria-label'), englishOf('lists.builder.descriptionInputLabel'));
     const english = readableStrings(container);
 
     // The "no type selected" paragraph interleaves plain text with a
@@ -202,6 +206,8 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     for (const key of [
       'lists.builder.namePlaceholder',
       'lists.builder.descriptionPlaceholder',
+      'lists.builder.nameInputLabel',
+      'lists.builder.descriptionInputLabel',
       'lists.builder.sectionScope',
       'lists.builder.scopeAllElementsHint',
       'lists.builder.sectionFilters',

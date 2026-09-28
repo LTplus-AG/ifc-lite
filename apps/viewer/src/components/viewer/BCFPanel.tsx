@@ -510,8 +510,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
           <div className="absolute inset-0 bg-background/90 flex items-center justify-center p-4">
             <div className="bg-card border rounded-lg p-4 w-full max-w-xs">
               <h4 className="font-medium mb-3">{t('bcf.panel.setAuthorHeading')}</h4>
-              <Input
-                aria-label={t('bcf.panel.setAuthorHeading')}
+              <Input aria-label={t('bcf.panel.authorEmailLabel')}
                 value={tempAuthor}
                 onChange={(e) => setTempAuthor(e.target.value)}
                 placeholder={t('bcf.shared.emailPlaceholder')}

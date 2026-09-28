@@ -187,6 +187,7 @@ export const bcfEn = {
   'bcf.panel.showMarkers': 'Show 3D markers',
   'bcf.panel.setAuthorTitle': 'Set author',
   'bcf.panel.setAuthorHeading': 'Set Author Email',
+  'bcf.panel.authorEmailLabel': 'Author email',
   'bcf.panel.importDialogTitle': 'Import BCF File',
   'bcf.panel.bcfFilterName': 'BCF Files',
   'bcf.panel.allFilesFilterName': 'All Files',

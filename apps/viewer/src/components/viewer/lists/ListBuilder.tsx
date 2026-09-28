@@ -335,13 +335,13 @@ export function ListBuilder({ providers, stores, modelIds, initial, onSave, onCa
         <div className="px-3 py-3 space-y-5">
           {/* Identity */}
           <div className="space-y-2">
-            <Input
+            <Input aria-label={t('lists.builder.nameInputLabel')}
               placeholder={t('lists.builder.namePlaceholder')}
               value={name}
               onChange={e => setName(e.target.value)}
               className="h-9 text-sm font-medium"
             />
-            <Input
+            <Input aria-label={t('lists.builder.descriptionInputLabel')}
               placeholder={t('lists.builder.descriptionPlaceholder')}
               value={description}
               onChange={e => setDescription(e.target.value)}

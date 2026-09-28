@@ -116,6 +116,8 @@ export const listsEn = {
   // ListBuilder
   'lists.builder.namePlaceholder': 'List name…',
   'lists.builder.descriptionPlaceholder': 'Description (optional)',
+  'lists.builder.nameInputLabel': 'List name',
+  'lists.builder.descriptionInputLabel': 'List description',
   // Section headings — a custom `label` prop, not one of the AST literals
   // gate's policed attributes (#4918 review, PR #5004): the gate only
   // walks aria-label/title/placeholder/alt, so these stayed hardcoded

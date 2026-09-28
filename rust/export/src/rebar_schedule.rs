@@ -334,6 +334,8 @@ fn build_rebar_schedule_impl(
                         "sweep {occurrence_index}: reusable source key unavailable; definition output budget may be exhausted"
                     ));
                 }
+                let checks = check_swept_disk(disk, options)?;
+                let preflight = limits.map(|limits| assess_sweep(disk, &checks, limits));
                 row.sweeps.push(RebarSweep {
                     occurrence_index,
                     source,
@@ -345,8 +347,8 @@ fn build_rebar_schedule_impl(
                     radius_m: disk.radius,
                     inner_radius_m: disk.inner_radius,
                     directrix_metrics: disk.directrix_metrics(),
-                    checks: check_swept_disk(disk, options)?,
-                    preflight: limits.map(|limits| assess_sweep(disk, limits)),
+                    checks,
+                    preflight,
                 });
             }
         }

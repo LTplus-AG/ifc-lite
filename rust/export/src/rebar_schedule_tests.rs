@@ -53,7 +53,7 @@ fn issue_6305_preflight_equality_failures_and_mm_geometry() {
     assert!(report.unassessed_reasons.iter().any(|reason| reason.contains("no arc segments")));
     let arc_only = REBAR.replace(
         "#71=IFCCOMPOSITECURVE((#48,#55,#60,#65,#70),.F.);",
-        "#71=IFCCOMPOSITECURVE((#55,#65),.F.);",
+        "#71=IFCCOMPOSITECURVE((#55),.F.);",
     );
     let schedule = build_rebar_schedule_with_preflight(arc_only.as_bytes(), None, &options, &loose).unwrap();
     let report = schedule.rows[&125].sweeps[0].preflight.as_ref().unwrap();
@@ -121,6 +121,40 @@ fn issue_5759_zero_authored_area_is_retained_and_diagnosed() {
     );
     assert!(row.diagnostics.iter().any(|message| message ==
         "CrossSectionArea on occurrence: authored zero retained; physical section area is not established"));
+}
+
+#[test]
+fn issue_6305_preflight_skips_disconnected_and_degenerate_source_paths() {
+    use ifc_lite_processing::SweptDiskFindingCode;
+
+    let options = SweptDiskCheckOptions::default();
+    let limits = RebarPreflightLimits::new(0.0, 0.0, Some(10.0)).unwrap();
+    let cases = [
+        (
+            REBAR.replace(
+                "#56=IFCCARTESIANPOINT((101.5,0.,-423.5));",
+                "#56=IFCCARTESIANPOINT((102.5,0.,-423.5));",
+            ),
+            SweptDiskFindingCode::ConsecutiveGap,
+        ),
+        (
+            REBAR.replace(
+                "(IFCPARAMETERVALUE(322.)),.T.,.PARAMETER.",
+                "(IFCPARAMETERVALUE(0.0000001)),.T.,.PARAMETER.",
+            ),
+            SweptDiskFindingCode::ZeroLengthSegment,
+        ),
+    ];
+    for (source, expected) in cases {
+        let schedule = build_rebar_schedule_with_preflight(
+            source.as_bytes(), None, &options, &limits,
+        ).unwrap();
+        let sweep = &schedule.rows[&125].sweeps[0];
+        assert!(sweep.checks.findings.iter().any(|finding| finding.code == expected));
+        let preflight = sweep.preflight.as_ref().unwrap();
+        assert!(preflight.skipped_reason.is_some());
+        assert!(preflight.comparisons.is_empty());
+    }
 }
 
 #[test]

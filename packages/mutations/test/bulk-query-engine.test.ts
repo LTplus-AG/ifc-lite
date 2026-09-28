@@ -31,9 +31,11 @@ function makeEntities(count: number) {
  *   site 200 -> building 20 -> storey 2 -> entities 3, 4
  *   entities 5, 6 are not registered under any spatial container.
  */
-function makeEngineWithSpatialHierarchy() {
+function makeEngineWithSpatialHierarchy(
+  view = new MutablePropertyView(null, 'model-1'),
+  spatialMembers?: (containerId: number) => readonly number[],
+) {
   const entities = makeEntities(6);
-  const view = new MutablePropertyView(null, 'model-1');
   view.setOnDemandExtractor(() => []);
 
   const spatialHierarchy = {
@@ -56,10 +58,29 @@ function makeEngineWithSpatialHierarchy() {
     elementToStorey: new Map(),
   } as any;
 
-  return new BulkQueryEngine(entities, view, spatialHierarchy, null);
+  return new BulkQueryEngine(entities, view, spatialHierarchy, null, undefined, undefined, spatialMembers);
 }
 
 describe('BulkQueryEngine spatial filters', () => {
+  it('uses live membership for an edited spatial selection (#5249)', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setAttribute(1, 'Name', 'edited');
+    const engine = makeEngineWithSpatialHierarchy(view, (containerId) => containerId === 1 ? [3] : []);
+    expect(engine.select({ storeys: [1] })).toEqual([3]);
+  });
+
+  it('refuses a stale spatial selection when the session changed and no live resolver is supplied (#5249)', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setAttribute(1, 'Name', 'edited');
+    const engine = makeEngineWithSpatialHierarchy(view);
+    expect(() => engine.select({ storeys: [1] })).toThrow(/requires live membership/);
+  });
+
+  it('refuses an unscoped spatial selection when the hierarchy is absent (#5249)', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    const engine = new BulkQueryEngine(makeEntities(6), view);
+    expect(() => engine.select({ storeys: [1] })).toThrow(/requires live membership/);
+  });
   it('sites filters to entities contained in the given site IDs (disjoint sites)', () => {
     const engine = makeEngineWithSpatialHierarchy();
     const ids = engine.select({ sites: [100] });

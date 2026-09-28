@@ -44,6 +44,7 @@ export function effectiveScheduleGroups(
   store: IfcDataStore,
   view: MutablePropertyView,
   typeName: 'IfcBuildingStorey' | 'IfcBuilding',
+  options?: { includeSpatialNodes?: boolean },
 ): Map<number, number[]> {
   const hierarchy = store.spatialHierarchy;
   if (!hierarchy) return new Map();
@@ -84,7 +85,7 @@ export function effectiveScheduleGroups(
   const products: number[] = [];
   const seenProducts = new Set<number>();
   const addProduct = (id: number) => {
-    if (seenProducts.has(id) || view.isDeleted(id) || isSpatial(id)) return;
+    if (seenProducts.has(id) || view.isDeleted(id) || (!options?.includeSpatialNodes && isSpatial(id))) return;
     seenProducts.add(id);
     products.push(id);
   };

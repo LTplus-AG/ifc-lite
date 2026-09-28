@@ -136,6 +136,7 @@ function resolveMaterial(
     if (visited.has(materialId)) return null;
     visited.add(materialId);
 
+    // @raw-entity-enumeration-ok decode the selected material definition's one source STEP record
     const ref = store.entityIndex.byId.get(materialId);
     if (!ref) return null;
 
@@ -162,6 +163,7 @@ function resolveMaterial(
             const layers: MaterialLayerInfo[] = [];
 
             for (const layerId of layerIds) {
+                // @raw-entity-enumeration-ok decode this material set's referenced layer record
                 const layerRef = store.entityIndex.byId.get(layerId);
                 if (!layerRef) continue;
                 const layerEntity = extractor.extractEntity(layerRef);
@@ -173,6 +175,7 @@ function resolveMaterial(
                 let materialName: string | undefined;
                 let materialCategory: string | undefined;
                 if (matId) {
+                    // @raw-entity-enumeration-ok decode the layer's referenced material record
                     const matRef = store.entityIndex.byId.get(matId);
                     if (matRef) {
                         const matEntity = extractor.extractEntity(matRef);
@@ -214,6 +217,7 @@ function resolveMaterial(
             const profiles: MaterialProfileInfo[] = [];
 
             for (const profId of profileIds) {
+                // @raw-entity-enumeration-ok decode this profile set's referenced profile record
                 const profRef = store.entityIndex.byId.get(profId);
                 if (!profRef) continue;
                 const profEntity = extractor.extractEntity(profRef);
@@ -225,6 +229,7 @@ function resolveMaterial(
                 let materialName: string | undefined;
                 let materialCategory: string | undefined;
                 if (matId) {
+                    // @raw-entity-enumeration-ok decode the profile's referenced material record
                     const matRef = store.entityIndex.byId.get(matId);
                     if (matRef) {
                         const matEntity = extractor.extractEntity(matRef);
@@ -257,6 +262,7 @@ function resolveMaterial(
             const constituents: MaterialConstituentInfo[] = [];
 
             for (const constId of constituentIds) {
+                // @raw-entity-enumeration-ok decode this constituent set's referenced constituent record
                 const constRef = store.entityIndex.byId.get(constId);
                 if (!constRef) continue;
                 const constEntity = extractor.extractEntity(constRef);
@@ -268,6 +274,7 @@ function resolveMaterial(
                 let materialName: string | undefined;
                 let materialCategory: string | undefined;
                 if (matId) {
+                    // @raw-entity-enumeration-ok decode the constituent's referenced material record
                     const matRef = store.entityIndex.byId.get(matId);
                     if (matRef) {
                         const matEntity = extractor.extractEntity(matRef);
@@ -305,6 +312,7 @@ function resolveMaterial(
             const materials: Array<{ name: string; category?: string }> = [];
 
             for (const matId of matIds) {
+                // @raw-entity-enumeration-ok decode this material list's referenced material record
                 const matRef = store.entityIndex.byId.get(matId);
                 if (!matRef) continue;
                 const matEntity = extractor.extractEntity(matRef);
@@ -382,6 +390,7 @@ export interface MaterialUsage {
 
 /** Resolve an entity ref from the primary index, falling back to deferred atoms. */
 function getRef(store: IfcDataStore, id: number) {
+    // @raw-entity-enumeration-ok point lookup for one definition or member id from a parsed material attribute
     return store.entityIndex.byId.get(id) ?? store.deferredEntityIndex?.get(id);
 }
 
@@ -646,6 +655,7 @@ export function buildMaterialUsageIndex(store: IfcDataStore): Map<number, Materi
     let forward = store.onDemandMaterialMap;
     if (!forward && store.relationships) {
         const rebuilt = new Map<number, number[]>();
+        // @raw-entity-enumeration-ok the source-less server fallback has no forward material map; this index enumerates its complete immutable server entity domain
         for (const entityId of store.entityIndex.byId.keys()) {
             const defs = store.relationships.getRelated(entityId, RelationshipType.AssociatesMaterial, 'inverse');
             if (defs.length > 0) rebuilt.set(entityId, defs);

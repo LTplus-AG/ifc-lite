@@ -123,6 +123,9 @@ fn serialize_to_parquet_optimized(
     // two instances sharing a template can come from different source items.
     let mut instance_geometry_item_ids: Vec<u32> = Vec::with_capacity(meshes.len());
     let mut instance_material_ids: Vec<u32> = Vec::with_capacity(meshes.len());
+    // Per instance too (#5984): the material table dedups COLOUR only, and two
+    // instances of one colour can carry different authored finishes.
+    let mut instance_finishes: [Vec<f32>; 2] = Default::default();
     // Per-instance rotation (#3575), row-major 3x3, Y-up: world = origin +
     // R * template_position. Identity where no verified placement applies.
     let mut instance_rotation: [Vec<f32>; 9] = Default::default();
@@ -174,6 +177,9 @@ fn serialize_to_parquet_optimized(
         instance_geometry_class.push(mesh.geometry_class);
         instance_geometry_item_ids.push(mesh.geometry_item_id.unwrap_or(ABSENT_SOURCE_ID));
         instance_material_ids.push(mesh.material_id.unwrap_or(ABSENT_SOURCE_ID));
+        for (col, value) in instance_finishes.iter_mut().zip(mesh.finish_wire()) {
+            col.push(value);
+        }
         emitted_non_identity_rotation |= rotation_yup != IDENTITY_ROTATION;
         for (col, value) in instance_rotation.iter_mut().zip(rotation_yup.iter()) {
             col.push(*value);
@@ -284,6 +290,7 @@ fn serialize_to_parquet_optimized(
         Arc::new(UInt32Array::from(instance_material_ids)),
     ]
     .into_iter()
+    .chain(instance_finishes.into_iter().map(|col| Arc::new(Float32Array::from(col)) as Arc<dyn arrow::array::Array>))
     .chain(instance_rotation.into_iter().take(rotation_column_count).map(|col| Arc::new(Float32Array::from(col)) as Arc<dyn arrow::array::Array>))
     .collect();
 

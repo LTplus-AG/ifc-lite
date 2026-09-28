@@ -13,7 +13,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import type { FilterRule } from '@ifc-lite/rules';
-import { render, cleanup } from '@/test/render.js';
+import { render, cleanup, type } from '@/test/render.js';
 import { RULE_KIND_LABEL } from './filter-rule-labels.js';
 import { blankRuleOfKind } from './FilterRuleControls.js';
 import { RuleRow } from './SearchModal.filter.editors.js';
@@ -44,6 +44,10 @@ describe('RuleRow — model fact rule (#5442)', () => {
     );
     const select = container.querySelector('select[aria-label="Fact about the element\'s model"]');
     assert.ok(select instanceof window.HTMLSelectElement, 'no fact selector rendered');
+    const valueInput = container.querySelector<HTMLInputElement>('input[aria-label="Model fact value"]');
+    assert.ok(valueInput, '#6342: model fact value has a distinct name');
+    type(valueInput, 'cm');
+    assert.deepEqual(commits.at(-1), { ...rule, value: 'cm', valueKind: undefined });
     // Pinned, not derived from MODEL_FACTS, so a fact dropped from the
     // vocabulary fails here instead of vanishing from both sides.
     assert.deepEqual([...select.options].map((o) => o.value), [

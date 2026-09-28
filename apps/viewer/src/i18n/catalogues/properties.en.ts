@@ -114,12 +114,12 @@ export const propertiesEn = {
   'properties.unitDisplay.kind.temperature': 'Temperature',
   'properties.unitDisplay.kind.density': 'Density',
   'properties.unitDisplay.kind.force': 'Force',
-
   // EpsgLookupDialog
   'properties.epsgLookup.triggerButton': 'EPSG',
   'properties.epsgLookup.title': 'EPSG Lookup',
   'properties.epsgLookup.description': 'Search by code, name, country, or datum',
   'properties.epsgLookup.searchPlaceholder': 'e.g. 2056, UTM, Switzerland, Tokyo...',
+  'properties.epsgLookup.searchInputLabel': 'Search coordinate reference systems',
   'properties.epsgLookup.noResults': 'No coordinate reference systems found',
   'properties.epsgLookup.searchUnavailable': 'Search unavailable',
 
@@ -279,6 +279,7 @@ export const propertiesEn = {
   'properties.locationMap.unknownError': 'Unknown error',
   'properties.locationMap.heading': 'Location',
   'properties.locationMap.searchTooltip': 'Search for a place',
+  'properties.locationMap.closeSearch': 'Close place search',
   'properties.locationMap.searchPlaceholder': 'Search for a place...',
   'properties.locationMap.resolvingCoordinates': 'Resolving coordinates...',
   'properties.locationMap.unavailableOnDevice': 'Map preview unavailable on this device',

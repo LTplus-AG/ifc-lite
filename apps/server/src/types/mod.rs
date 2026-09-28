@@ -9,7 +9,7 @@ mod response;
 mod symbolic_response;
 pub use symbolic_response::SymbolicParseResponse;
 
-pub use mesh::MeshData;
+pub use mesh::{finish_meshes, MeshData};
 pub use response::{
     MetadataResponse, ModelMetadata, ParseResponse, ProcessingStats, StreamEvent,
 };

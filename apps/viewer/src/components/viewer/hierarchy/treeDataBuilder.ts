@@ -173,7 +173,7 @@ export function buildUnifiedStoreys(
             storeyNode,
             dataStore,
             'IfcBuildingStorey',
-            descendantSpaceCache,
+            descendantSpaceCache, view,
           )
         : elements as number[];
       const spacesNotCounted = storeyNode
@@ -278,7 +278,7 @@ function buildSpatialNodes(
     return;
   }
 
-  const elements = getSpatialNodeElements(spatialNode, dataStore, nodeType, descendantSpaceCache);
+  const elements = getSpatialNodeElements(spatialNode, dataStore, nodeType, descendantSpaceCache, view);
   const hasDirectElements = elements.length > 0;
   // The badge answers "how many objects are on this storey"; the rows below
   // still list everything it contains, so an annotation or a shapeless element

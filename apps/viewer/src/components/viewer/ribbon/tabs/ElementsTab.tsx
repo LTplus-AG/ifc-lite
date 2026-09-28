@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useContext } from 'react';
-import { ClassVisibility, CopyGuid, ElementTooltips, EntityActions, FocusSelected, HideSelected, IsolateSelected, Search, DisplayAll, Spatial, Class, Type, Material, Group } from '@/icons';
+import { ClassVisibility, CopyGuid, ElementTooltips, EntityActions, FocusSelected, HideSelected, IsolateSelected, Search, Select, DisplayAll, Spatial, Class, Type, Material, Group } from '@/icons';
 import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { resolveGlobalId, useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -32,6 +32,7 @@ export function ElementsTab() {
   const selectedEntityIds = useViewerStore((state) => state.selectedEntityIds);
   const openContextMenu = useViewerStore((state) => state.openContextMenu);
   const hoverTooltipsEnabled = useViewerStore((state) => state.hoverTooltipsEnabled);
+  const hoverHighlightEnabled = useViewerStore((state) => state.hoverHighlightEnabled);
   const mergeLayers = useViewerStore((state) => state.mergeLayers);
   const hierarchyMode = useViewerStore((state) => state.hierarchyMode);
   const { visible: visibleClassCount } = useVisibleClassCount();
@@ -70,6 +71,11 @@ export function ElementsTab() {
           commandId="pref:tooltips"
           icon={ElementTooltips}
           active={hoverTooltipsEnabled}
+        />
+        <RibbonCommandLargeButton
+          commandId="pref:hover-outline"
+          icon={Select}
+          active={hoverHighlightEnabled}
         />
       </RibbonGroup>
 

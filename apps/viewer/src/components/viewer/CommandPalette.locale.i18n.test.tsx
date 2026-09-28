@@ -46,6 +46,7 @@ const mark = (text: string) => `⟦${text}⟧`;
  *  the catalogue module) so this file survives a revert of that module. */
 const PSEUDO: Catalogue = {
   'commandPalette.view.home.label': mark('Home'),
+  'commandPalette.searchAriaLabel': mark('Search commands'),
   'commandPalette.searchPlaceholder': mark('What do you need?'),
   'commandPalette.footer.navigate': mark('navigate'),
   'commandPalette.category.view': mark('View'),
@@ -91,6 +92,8 @@ describe('command palette locale switch (#4918 slice 3)', () => {
     const after = readableStrings();
     assert.ok(after.has(mark('Home')), 'command label "Home" must be translated');
     assert.ok(after.has(mark('What do you need?')), 'search placeholder must be translated');
+    assert.equal(document.body.querySelector('input')?.getAttribute('aria-label'), mark('Search commands'),
+      '#6342: search keeps its translated name independent of the placeholder');
     assert.ok(after.has(mark('navigate')), 'footer hint must be translated');
     assert.ok(after.has(mark('View')), 'category header must be translated');
   });
@@ -103,6 +106,7 @@ describe('command palette locale switch (#4918 slice 3)', () => {
     );
     const input = document.body.querySelector('input') as HTMLInputElement;
     typeInto(input, 'Frame Selection');
+    assert.equal(input.getAttribute('aria-label'), 'Search commands', '#6342: a filled search stays named');
     const options = [...document.body.querySelectorAll('[role="option"]')];
     assert.ok(options.some((el) => el.textContent?.includes('Frame Selection')));
   });

@@ -647,6 +647,16 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     assert.match(container.textContent ?? '', /\[no results B\]/);
   });
 
+  catalogueIt('names the EPSG search field independently of its example placeholder (#6342)', () => {
+    const container = render(<EpsgLookupDialog onSelect={() => {}} />);
+    const trigger = [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'EPSG');
+    assert.ok(trigger);
+    click(trigger);
+    const search = document.body.querySelector('input[aria-label="Search coordinate reference systems"]');
+    assert.ok(search, 'the opened EPSG dialog exposes a stable search name');
+    assert.match(search.getAttribute('placeholder') ?? '', /2056/);
+  });
+
   catalogueIt('resolves a retained projection error after active catalogue replacement', async () => {
     registerLocale('projection-test', { 'properties.locationMap.projectionUnresolved': '[projection A]' });
     act(() => setLocale('projection-test'));

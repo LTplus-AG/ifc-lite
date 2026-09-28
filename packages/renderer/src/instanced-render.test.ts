@@ -13,6 +13,10 @@ import {
   INSTANCE_STRIDE_BYTES,
   INSTANCE_FLAGS_OFFSET,
   INSTANCE_FLAG_SELECTED,
+  INSTANCE_FLAG_METALLIC,
+  INSTANCE_FLAG_ROUGHNESS,
+  INSTANCE_FINISH_FLAGS_MASK,
+  packInstanceFinish,
 } from './instanced-render.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 
@@ -452,5 +456,42 @@ describe('foldOccurrenceWorldBox — template cull metadata', () => {
     foldOccurrenceWorldBox(meta, box(0, 0, 0, NaN, 1, 1));
     assert.strictEqual(meta.bounds, null);
     assert.strictEqual(meta.maxOccRadius, Infinity);
+  });
+});
+
+describe('prepareInstancedRender — per-occurrence finish (#5984)', () => {
+  it('packs each occurrence finish into its flags lane, keeping an authored 0', () => {
+    const color: [number, number, number, number] = [1, 1, 1, 1];
+    const shard = {
+      templates: [{ positions: new Float32Array([0, 0, 0]), normals: new Float32Array([0, 1, 0]), indices: new Uint32Array([0]), origin: [0, 0, 0] as [number, number, number] }],
+      instances: [
+        // FZK-Haus 'Kiefer' (roughness 0.9), a mirror (metallic 1, roughness 0), and nothing.
+        { templateIndex: 0, entityId: 1, color, transform: rowMajorTranslation(0, 0, 0), roughness: 0.9 },
+        { templateIndex: 0, entityId: 2, color, transform: rowMajorTranslation(1, 0, 0), metallic: 1, roughness: 0 },
+        { templateIndex: 0, entityId: 3, color, transform: rowMajorTranslation(2, 0, 0) },
+      ],
+      carriesItemIds: false,
+      carriesFinishes: true,
+    };
+    const [t] = prepareInstancedRender(shard);
+    const dv = new DataView(t.instanceBuffer);
+    const flags = (i: number) => dv.getUint32(i * INSTANCE_STRIDE_BYTES + INSTANCE_FLAGS_OFFSET, true);
+    // What the shader decodes: bit 2/3 = authored, bits 16-23 / 24-31 = unorm8.
+    const decode = (f: number) => ({
+      metallic: f & INSTANCE_FLAG_METALLIC ? ((f >>> 16) & 255) / 255 : undefined,
+      roughness: f & INSTANCE_FLAG_ROUGHNESS ? ((f >>> 24) & 255) / 255 : undefined,
+    });
+    assert.ok(Math.abs(decode(flags(0)).roughness! - 0.9) < 1 / 255);
+    assert.strictEqual(decode(flags(0)).metallic, undefined);
+    assert.deepStrictEqual(decode(flags(1)), { metallic: 1, roughness: 0 }, 'an authored 0 still sets its bit');
+    assert.strictEqual(flags(2), 0, 'no finish, no bits: the shared default applies');
+    for (let i = 0; i < 3; i++) {
+      assert.strictEqual(flags(i) & ~INSTANCE_FINISH_FLAGS_MASK, 0, 'selection and hidden bits start clear');
+    }
+  });
+
+  it('packInstanceFinish ignores non-finite input', () => {
+    assert.strictEqual(packInstanceFinish(Number.NaN, undefined), 0);
+    assert.strictEqual(packInstanceFinish(undefined, Number.POSITIVE_INFINITY), 0);
   });
 });

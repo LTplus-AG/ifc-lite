@@ -18,7 +18,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { activate, cleanup, render } from '@/test/render.js';
+import { activate, blur, cleanup, render, type as typeInto } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { resolve } from '@/i18n/registry';
 import { en } from '@/i18n/en';
@@ -196,6 +196,23 @@ describe('PresentationPanel localization (#5508)', () => {
 });
 
 describe('PresentationPanel icon controls (#5811)', () => {
+  it('names the inline rename field for its view and commits the edit (#6342)', () => {
+    useViewerStore.setState({
+      basketViews: [{
+        id: 'view-1', name: 'My View', entityRefs: [], thumbnailDataUrl: null,
+        transitionMs: null, viewpoint: null, section: null, source: 'manual',
+        createdAt: 0, updatedAt: 0,
+      }],
+    });
+    const container = render(<PresentationPanel />);
+    activate(getByRole(container, 'button', { name: resolve('presentationPanel.renameViewTitle') }));
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="Rename view: My View"]');
+    assert.ok(input, 'the inline editor names the view being renamed');
+    typeInto(input, 'Renamed View');
+    blur(input);
+    assert.equal(useViewerStore.getState().basketViews[0].name, 'Renamed View');
+  });
+
   it('names every action-row control and clears a populated basket by keyboard', () => {
     useViewerStore.setState({ pinboardEntities: new Set(['1:101']) });
     const container = render(<PresentationPanel />);

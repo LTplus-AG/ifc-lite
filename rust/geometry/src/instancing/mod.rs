@@ -56,7 +56,10 @@
 //!                   transform(16× f32, row-major rel_k) — followed by whatever
 //!                   trailing fields the stride makes room for. Trailing field 1
 //!                   is itemId(u32) at offset 88, so a shard carrying it declares
-//!                   a stride of 92.
+//!                   a stride of 92. Trailing field 2 (#5984, v3) is the
+//!                   occurrence's IFC-authored finish, metallic(f32) +
+//!                   roughness(f32) at offset 92, NaN where unauthored: stride
+//!                   100, written only when some occurrence authors one.
 //!   Data: positions (f32 × positionsLen), normals (f32 × normalsLen),
 //!         indices (u32 × indicesLen). Offsets/lengths are ELEMENT counts; indices
 //!         stay local to each template's vertex range (0-based).
@@ -109,6 +112,7 @@ mod dont_bake;
 mod group;
 mod verify;
 mod wire;
+mod wire_decode;
 
 #[cfg(test)]
 mod tests;
@@ -120,6 +124,7 @@ pub use collate::{
 };
 pub use group::{collate_refs, collate_refs_in_basis, collate_refs_verified_in};
 pub use wire::{
-    collate_and_encode, decode_instanced, encode_instanced, encode_refs, DecodedInstance,
+    collate_and_encode, encode_instanced, encode_refs, encode_refs_with_finishes, DecodedInstance,
     DecodedInstanced, DecodedTemplate, INSTANCED_MAGIC, INSTANCED_VERSION,
 };
+pub use wire_decode::{decode_instance_finishes, decode_instanced};

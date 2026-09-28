@@ -10,7 +10,8 @@ use crate::error::ApiError;
 use crate::services::axis::mesh_to_yup_in_place;
 use crate::services::streaming::detect_schema_version;
 use crate::services::process_streaming;
-use crate::types::{MetadataResponse, ParseResponse, SymbolicParseResponse, StreamEvent};
+use crate::types::{finish_meshes, MetadataResponse, ParseResponse, SymbolicParseResponse, StreamEvent};
+use ifc_lite_processing::style::ModelFinishes;
 use crate::AppState;
 use axum::{
     body::Body,
@@ -96,6 +97,8 @@ pub async fn parse_full(
             &content,
             result.frame,
         );
+        // #5984: each mesh's IFC-authored finish, joined before the bytes go.
+        let mut meshes = finish_meshes(&mut ModelFinishes::from_content(&content), result.meshes);
         drop(content);
 
         // Emit the SAME Y-up wire frame as the parquet transports (issue #1841).
@@ -103,21 +106,21 @@ pub async fn parse_full(
         // while `/parse/parquet*` swapped to Y-up server-side, so a client that
         // (correctly) treats every transport alike rendered JSON-loaded models
         // rotated. The frame now comes from one place: services::axis.
-        let mut meshes = result.meshes;
         for mesh in &mut meshes {
             mesh_to_yup_in_place(mesh);
         }
 
         let response = SymbolicParseResponse::new(ParseResponse {
             cache_key: response_key,
-            meshes,
+            meshes: Vec::new(),
             mesh_coordinate_space: Some(result.mesh_coordinate_space),
             site_transform: result.site_transform,
             building_transform: result.building_transform,
             metadata: result.metadata,
             stats: result.stats,
             symbolic_data: Default::default(),
-        }, symbolic);
+        }, symbolic)
+        .with_meshes(meshes);
         let body = encode_response(&response)?;
         Ok::<_, ApiError>((body, response.symbolic_data, admission_guard))
     })

@@ -16,7 +16,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render, type as typeInto } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { resolve } from '@/i18n/registry';
 import { en } from '@/i18n/en';
@@ -110,6 +110,27 @@ afterEach(() => {
 // portal appended to `document.body`, not into the container `render()`
 // returns, so every lookup below reads `document.body` directly.
 describe('TitleBlockEditor localization (#4918)', () => {
+  it('#6342 names standard, custom, and revision fields while edits still commit', () => {
+    render(<TitleBlockEditor open onOpenChange={() => {}} />);
+    const project = document.body.querySelector<HTMLInputElement>('input[aria-label="Project"]');
+    assert.ok(project);
+    typeInto(project, 'Civic Center');
+    assert.equal(useViewerStore.getState().activeSheet?.titleBlock.fields.find((field) => field.id === 'project-name')?.value,
+      'Civic Center');
+
+    const addField = [...document.body.querySelectorAll('button')].find((button) => button.textContent?.includes('Add Field'));
+    assert.ok(addField);
+    click(addField);
+    assert.ok(document.body.querySelector('input[aria-label="Field label..."]'));
+
+    const addRevision = [...document.body.querySelectorAll('button')].find((button) => button.textContent?.includes('Add Revision'));
+    assert.ok(addRevision);
+    click(addRevision);
+    for (const label of ['Rev #', 'Date', 'Description', 'Author']) {
+      assert.ok(document.body.querySelector(`input[aria-label="${label}"]`), `${label} revision field has a name`);
+    }
+  });
+
   it('translates the dialog chrome, section headings, and empty states', async () => {
     render(<TitleBlockEditor open onOpenChange={() => {}} />);
     const englishDom = readableStrings(document.body);

@@ -75,6 +75,26 @@ export const INSTANCE_FLAG_SELECTED = 1;
 /** flags bit 1 — this occurrence is hidden (hide/isolate); the shader discards it
  *  in both the render and pick passes so it neither draws nor is pickable. */
 export const INSTANCE_FLAG_HIDDEN = 2;
+/** #5984: flags bit 2 / 3 — this occurrence authors a metallic / roughness,
+ *  quantized to unorm8 in bits 16-23 / 24-31 of the same lane. The IFNS shard
+ *  carries the finish per occurrence (trailing field 2), but every instanced
+ *  draw shares ONE uniform material row, so the finish has to ride the
+ *  instance record; the flags lane already reaches the fragment stage flat,
+ *  so no stride, vertex layout or picker/shadow pipeline changes. */
+export const INSTANCE_FLAG_METALLIC = 4;
+export const INSTANCE_FLAG_ROUGHNESS = 8;
+/** Every flags bit the finish owns; a selection/visibility rewrite keeps them. */
+export const INSTANCE_FINISH_FLAGS_MASK = 0xffff000c;
+
+/** Pack an occurrence's authored finish into its flags lane (see above). An
+ *  unauthored field sets no bit, so the shader keeps the renderer default. */
+export function packInstanceFinish(metallic?: number, roughness?: number): number {
+  const unorm8 = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
+  let bits = 0;
+  if (metallic !== undefined && Number.isFinite(metallic)) bits |= INSTANCE_FLAG_METALLIC | (unorm8(metallic) << 16);
+  if (roughness !== undefined && Number.isFinite(roughness)) bits |= INSTANCE_FLAG_ROUGHNESS | (unorm8(roughness) << 24);
+  return bits >>> 0;
+}
 
 /** Transpose a row-major mat4 (the IFNS / `DecodedInstance.transform` convention)
  *  into a column-major `Mat4` (MathUtils / WGSL convention). */
@@ -249,8 +269,9 @@ export function prepareInstancedRender(shard: DecodedInstancedShard): InstancedR
       const inst = insts[i];
       const mat = composeInstanceMatrix(inst.transform, tmpl.origin);
       const anchor = composeInstanceAnchor(inst.transform, tmpl.origin);
-      // flags = 0: every occurrence starts unselected.
-      writeInstanceRecord(dv, i * INSTANCE_STRIDE_BYTES, mat, inst.entityId, inst.color, 0, anchor);
+      // Every occurrence starts unselected; the flags carry only its finish (#5984).
+      const flags = packInstanceFinish(inst.metallic, inst.roughness);
+      writeInstanceRecord(dv, i * INSTANCE_STRIDE_BYTES, mat, inst.entityId, inst.color, flags, anchor);
       entityIds[i] = inst.entityId >>> 0;
       canonicalAnchors.set(anchor, i * 3);
       canonicalMatrixTranslations.set([mat[12], mat[13], mat[14]], i * 3);

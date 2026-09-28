@@ -4,7 +4,7 @@
 
 //! Derived occurrence measurements and their serialized representation.
 
-use super::{DirectrixMetrics, SweptDiskOccurrence};
+use super::{DirectrixMetrics, SweptDiskNominalQuantities, SweptDiskOccurrence};
 use ifc_lite_geometry::analytic::AnalyticStatus;
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 
@@ -17,6 +17,15 @@ impl SweptDiskOccurrence {
         }
         DirectrixMetrics::from_segments(&self.directrix).ok()
     }
+
+    /// Nominal uncut tube measurements derived from the circular section and
+    /// complete centreline. These are not IFC-authored quantities or the final
+    /// volume of a boolean-modified or self-overlapping solid.
+    pub fn nominal_quantities(&self) -> Option<SweptDiskNominalQuantities> {
+        self.directrix_metrics()
+            .as_ref()
+            .and_then(|metrics| SweptDiskNominalQuantities::from_occurrence(self, metrics))
+    }
 }
 
 impl Serialize for SweptDiskOccurrence {
@@ -24,7 +33,11 @@ impl Serialize for SweptDiskOccurrence {
     where
         S: Serializer,
     {
-        let mut record = serializer.serialize_struct("SweptDiskOccurrence", 9)?;
+        let metrics = self.directrix_metrics();
+        let nominal_quantities = metrics
+            .as_ref()
+            .and_then(|metrics| SweptDiskNominalQuantities::from_occurrence(self, metrics));
+        let mut record = serializer.serialize_struct("SweptDiskOccurrence", 10)?;
         record.serialize_field("solid_id", &self.solid_id)?;
         record.serialize_field("directrix_id", &self.directrix_id)?;
         record.serialize_field("mapping_path", &self.mapping_path)?;
@@ -32,7 +45,8 @@ impl Serialize for SweptDiskOccurrence {
         record.serialize_field("Radius", &self.radius)?;
         record.serialize_field("InnerRadius", &self.inner_radius)?;
         record.serialize_field("Directrix", &self.directrix)?;
-        record.serialize_field("directrix_metrics", &self.directrix_metrics())?;
+        record.serialize_field("directrix_metrics", &metrics)?;
+        record.serialize_field("nominal_quantities", &nominal_quantities)?;
         record.serialize_field("status", &self.status)?;
         record.end()
     }

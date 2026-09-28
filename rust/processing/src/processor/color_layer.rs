@@ -227,66 +227,26 @@ fn resolve_presentation_layer_name(
 }
 
 
-/// Find a color in a representation (`IfcProductDefinitionShape`) by
-/// traversing each of its `IfcShapeRepresentation`s.
+/// Find a color in a representation (`IfcProductDefinitionShape`): the colour
+/// of [`crate::element::product_shape_style_source`], which walks each
+/// `IfcShapeRepresentation`'s items through the canonical bounded
+/// `IfcMappedItem` chase (#913 §2.7) instead of a local copy of it. A second,
+/// separately bounded copy here is how a one-hop-deep fallback once diverged
+/// from the canonical path, and how widening it reintroduced the unbounded
+/// recursion #2863/#2864 had bounded. The finish join (#5984) reads the same
+/// source, so the element colour and the element finish cannot come from
+/// different styles.
 fn find_color_in_representation(
     repr_id: u32,
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
     decoder: &mut EntityDecoder,
 ) -> Option<[f32; 4]> {
-    // Decode the IfcProductDefinitionShape
-    let repr = decoder.decode_by_id(repr_id).ok()?;
-
-    // Attribute 2: Representations (list of IfcRepresentation)
-    let repr_list = repr.get_refs(2)?;
-
-    for shape_repr_id in repr_list {
-        if let Some(color) =
-            find_color_in_shape_representation(shape_repr_id, geometry_styles, decoder)
-        {
-            return Some(color);
-        }
-    }
-
-    None
-}
-
-/// Find color in a shape representation: delegates each item to
-/// `element::find_geometry_item_color`, the canonical per-element resolver
-/// (#913 §2.7), instead of re-walking the `IfcMappedItem ->
-/// IfcRepresentationMap -> MappedRepresentation` chain here.
-///
-/// This used to duplicate that walk inline, one hop deep, so a styled leaf
-/// sitting two or more mapped-item hops down resolved through the canonical
-/// path but not through this prepass fallback (the asymmetry this function
-/// exists to fix). Widening the local walk to match — instead of delegating
-/// — reintroduced the walk's own unbounded recursion here a second time:
-/// `element::find_geometry_item_color` had already been bounded by
-/// `MAX_MAPPED_ITEM_DEPTH` plus a depth-recording visited map after a cyclic
-/// `IfcMappedItem` chain was found to abort the process through it (#2863,
-/// #2864 — a Rust stack overflow is an abort, not a catchable panic, so
-/// nothing short of a bound stops it). A second, separately bounded copy of
-/// the same traversal here would only defer the next divergence: the two caps
-/// would need to be kept in step by hand instead of not existing. Calling the
-/// guarded resolver directly means there is one traversal and one bound, and
-/// the asymmetry cannot reopen.
-fn find_color_in_shape_representation(
-    repr_id: u32,
-    geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
-    decoder: &mut EntityDecoder,
-) -> Option<[f32; 4]> {
-    let repr = decoder.decode_by_id(repr_id).ok()?;
-    let items = repr.get_refs(3)?;
-
-    for item_id in items {
-        if let Some(color) =
-            crate::element::find_geometry_item_color(item_id, geometry_styles, decoder)
-        {
-            return Some(color);
-        }
-    }
-
-    None
+    let source = crate::element::product_shape_style_source(
+        repr_id,
+        &|id| geometry_styles.contains_key(&id),
+        decoder,
+    )?;
+    geometry_styles.get(&source).map(|style| style.color)
 }
 
 #[cfg(test)]

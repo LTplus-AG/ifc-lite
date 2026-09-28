@@ -44,7 +44,7 @@ export function isBetweenChip(row: FoldedRule): row is BetweenChip {
  *  every kind besides the three above). */
 function subjectKey(rule: FilterRule): string | null {
   if (rule.kind === 'quantity') return `quantity\u0000${rule.setName}\u0000${rule.quantityName}`;
-  if (rule.kind === 'property') return `property\u0000${rule.setName}\u0000${rule.propertyName}`;
+  if (rule.kind === 'property') return `property\u0000${rule.setName}\u0000${rule.propertyName}\u0000${(rule.memberPath ?? []).join('\u0000')}`;
   if (rule.kind === 'attribute') return `attribute\u0000${rule.name}`;
   return null;
 }

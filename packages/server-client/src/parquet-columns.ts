@@ -78,6 +78,8 @@ export function meshColumns(table: ArrowTableLike, rowCount: number) {
     geometryClass: usableColumn(table, 'geometry_class', rowCount),
     geometryItemId: usableColumn(table, 'geometry_item_id', rowCount),
     materialId: usableColumn(table, 'material_id', rowCount),
+    metallic: usableColumn(table, 'metallic', rowCount),
+    roughness: usableColumn(table, 'roughness', rowCount),
   };
 }
 
@@ -104,6 +106,8 @@ export function transformFields(
     geometryClass?: ArrayLike<number>;
     geometryItemId?: ArrayLike<number>;
     materialId?: ArrayLike<number>;
+    metallic?: ArrayLike<number>;
+    roughness?: ArrayLike<number>;
   }
 ): Partial<MeshData> {
   // A usable column can still carry a non-finite VALUE at this row. `||` alone
@@ -124,11 +128,24 @@ export function transformFields(
   // for another entity. Non-nullable means no validity bitmap to leak.
   const geometry_item_id = readSourceId(cols.geometryItemId, index);
   const material_id = readSourceId(cols.materialId, index);
+  // The IFC-authored finish (#5984). NaN, not null, marks "unauthored" for
+  // the same parquet-wasm reason; an authored 0 is finite and kept, so this
+  // tests finiteness, never truthiness.
+  const metallic = readFinish(cols.metallic, index);
+  const roughness = readFinish(cols.roughness, index);
 
   return {
     ...(origin ? { origin } : {}),
     ...(geometry_class ? { geometry_class } : {}),
     ...(geometry_item_id ? { geometry_item_id } : {}),
     ...(material_id ? { material_id } : {}),
+    ...(metallic !== undefined ? { metallic } : {}),
+    ...(roughness !== undefined ? { roughness } : {}),
   };
+}
+
+/** One finish column at one row, or `undefined` when absent or NaN (#5984). */
+function readFinish(column: ArrayLike<number> | undefined, index: number): number | undefined {
+  const v = column?.[index];
+  return v !== undefined && Number.isFinite(v) ? v : undefined;
 }

@@ -5,6 +5,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { clashReviewKey, type Clash, type ClashResult } from '@ifc-lite/clash';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
@@ -28,9 +29,10 @@ DATA;
 #2=IFCSITE('0Site000000000000000002',$,'Site',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);
 #3=IFCBUILDING('0Building00000000000003',$,'Building',$,$,$,$,$,.ELEMENT.,$,$,$);
 #5=IFCBUILDINGSTOREY('0Storey00000000000005',$,'Level 2',$,$,$,$,$,.ELEMENT.,3.);
+#6=IFCBUILDINGSTOREY('0Storey00000000000006',$,'Level 1',$,$,$,$,$,.ELEMENT.,0.);
 #11=IFCRELAGGREGATES('0Agg000000000000000011',$,$,$,#1,(#2));
 #12=IFCRELAGGREGATES('0Agg000000000000000012',$,$,$,#2,(#3));
-#13=IFCRELAGGREGATES('0Agg000000000000000013',$,$,$,#3,(#5));
+#13=IFCRELAGGREGATES('0Agg000000000000000013',$,$,$,#3,(#5,#6));
 #42=IFCWALL('0Wall00000000000000042',$,'Wall A',$,$,$,$,$,$);
 #43=IFCBEAM('0Beam00000000000000043',$,'Beam, B',$,$,$,$,$,$);
 #90=IFCRELCONTAINEDINSPATIALSTRUCTURE('0Rel000000000000000090',$,$,$,(#42,#43),#5);
@@ -74,7 +76,7 @@ function resultOf(clashes: Clash[]): ClashResult {
 
 describe('clash table export (#3944)', () => {
   beforeEach(() => {
-    useViewerStore.setState({ clashResult: null, clashGroups: null, clashReviews: new Map(), models: new Map(), activeModelId: null });
+    useViewerStore.setState({ clashResult: null, clashGroups: null, clashReviews: new Map(), models: new Map(), mutationViews: new Map(), activeModelId: null });
   });
 
   it('returns null with no run, so the caller can disable the action rather than download an empty file', () => {
@@ -116,6 +118,23 @@ describe('clash table export (#3944)', () => {
     const [row] = buildClashTable() ?? [];
     assert.strictEqual(row.StoreyA, '');
     assert.strictEqual(row.GlobalIdA, '0Wall00000000000000042');
+  });
+
+  it('reports retargeted containment and omits a tombstoned clash element (#5249)', async () => {
+    const model = await parsedModel('m-str', 'structure.ifc', OFFSET);
+    const view = new MutablePropertyView(null, model.id);
+    view.setAttribute(90, 'RelatingStructure', '#6');
+    view.deleteEntity(43);
+    useViewerStore.setState({
+      models: new Map([[model.id, model]]),
+      mutationViews: new Map([[model.id, view]]),
+      activeModelId: model.id,
+      clashResult: resultOf([clashBetween(model.id, OFFSET, 'edited')]),
+    });
+
+    const [row] = buildClashTable() ?? [];
+    assert.strictEqual(row.StoreyA, 'Level 1');
+    assert.strictEqual(row.StoreyB, '');
   });
 
   it('downloads an RFC 4180 CSV named after the active model with every column and the name quoted', async () => {

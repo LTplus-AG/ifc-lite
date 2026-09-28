@@ -14,7 +14,8 @@ use crate::error::ApiError;
 use crate::services::baked_basis_zup;
 use crate::services::parquet::serialize_combined_for_layout;
 use crate::services::{extract_data_model, serialize_data_model_to_parquet};
-use crate::types::{ModelMetadata, ProcessingStats};
+use crate::types::{finish_meshes, ModelMetadata, ProcessingStats};
+use ifc_lite_processing::style::ModelFinishes;
 use crate::AppState;
 use axum::{
     body::Body,
@@ -140,17 +141,20 @@ pub async fn parse_parquet(
     // future must not release the admission slot while the work runs on.
     let (
         (
-            (geometry_result, combined_parquet),
+            ((geometry_result, mesh_count), combined_parquet),
             (data_model_stats, data_model_parquet),
             symbolic_data,
         ),
         _admission,
     ) = tokio::task::spawn_blocking(move || {
             // First: extract geometry and the data model in parallel.
-            let (geometry_result, mut data_model) = rayon::join(
+            // #5984: the finish index is a third independent read of the bytes.
+            let (mut geometry_result, (mut data_model, mut finishes)) = rayon::join(
                 || process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality),
-                || extract_data_model(&content),
+                || rayon::join(|| extract_data_model(&content), || ModelFinishes::from_content(&content)),
             );
+            let meshes = finish_meshes(&mut finishes, std::mem::take(&mut geometry_result.meshes));
+            drop(finishes);
 
             // Capture stats before moving data_model
             let dm_stats = DataModelStats {
@@ -186,7 +190,7 @@ pub async fn parse_parquet(
                             geometry_result.metadata.coordinate_info.origin_shift,
                         );
                         serialize_combined_for_layout(
-                            &geometry_result.meshes,
+                            &meshes,
                             layout,
                             Some(&basis),
                         )
@@ -197,7 +201,7 @@ pub async fn parse_parquet(
 
             (
                 (
-                    (geometry_result, geo_parquet),
+                    ((geometry_result, meshes.len()), geo_parquet),
                     (dm_stats, dm_parquet),
                     symbolic_data,
                 ),
@@ -212,7 +216,7 @@ pub async fn parse_parquet(
 
     let serialize_time = serialize_start.elapsed();
     tracing::info!(
-        meshes = geometry_result.meshes.len(),
+        meshes = mesh_count,
         geometry_parquet_size = combined_parquet.len(),
         data_model_parquet_size = data_model_parquet.len(),
         total_serialize_time_ms = serialize_time.as_millis(),

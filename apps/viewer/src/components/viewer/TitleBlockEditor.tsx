@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/dialog';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import type { TitleBlockField, RevisionEntry } from '@ifc-lite/drawing-2d';
+import type { TitleBlockField } from '@ifc-lite/drawing-2d';
 
 interface TitleBlockEditorProps {
   open: boolean;
@@ -194,7 +194,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                     {FIELD_ICONS[field.id] || <FileText className="h-4 w-4" />}
                     <span className="truncate">{field.label}</span>
                   </div>
-                  <Input
+                  <Input aria-label={field.label}
                     value={field.value}
                     onChange={(e) => handleFieldChange(field.id, e.target.value)}
                     placeholder={t('sheetsPdf.titleBlock.fieldPlaceholder', { label: field.label.toLowerCase() })}
@@ -220,7 +220,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
 
             {showNewFieldForm && (
               <div className="flex gap-2 p-3 bg-muted/30 rounded-lg">
-                <Input
+                <Input aria-label={t('sheetsPdf.titleBlock.fieldLabelPlaceholder')}
                   value={newFieldLabel}
                   onChange={(e) => setNewFieldLabel(e.target.value)}
                   placeholder={t('sheetsPdf.titleBlock.fieldLabelPlaceholder')}
@@ -253,7 +253,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                   <div key={field.id} className="flex items-center gap-2">
                     <div className="grid grid-cols-[120px_1fr] items-center gap-3 flex-1">
                       <span className="text-sm truncate">{field.label}</span>
-                      <Input
+                      <Input aria-label={field.label}
                         value={field.value}
                         onChange={(e) => handleFieldChange(field.id, e.target.value)}
                         placeholder={t('sheetsPdf.titleBlock.fieldPlaceholder', { label: field.label.toLowerCase() })}
@@ -340,7 +340,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className="text-xs">{t('sheetsPdf.titleBlock.revisionNumberLabel')}</Label>
-                    <Input
+                    <Input aria-label={t('sheetsPdf.titleBlock.revisionNumberLabel')}
                       value={newRevision.revision}
                       onChange={(e) => setNewRevision(prev => ({ ...prev, revision: e.target.value }))}
                       placeholder={t('sheetsPdf.titleBlock.revisionNumberPlaceholder')}
@@ -349,7 +349,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                   </div>
                   <div>
                     <Label className="text-xs">{t('sheetsPdf.titleBlock.dateLabel')}</Label>
-                    <Input
+                    <Input aria-label={t('sheetsPdf.titleBlock.dateLabel')}
                       value={newRevision.date}
                       onChange={(e) => setNewRevision(prev => ({ ...prev, date: e.target.value }))}
                       placeholder={t('sheetsPdf.titleBlock.datePlaceholder')}
@@ -359,7 +359,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                 </div>
                 <div>
                   <Label className="text-xs">{t('sheetsPdf.titleBlock.descriptionLabel')}</Label>
-                  <Input
+                  <Input aria-label={t('sheetsPdf.titleBlock.descriptionLabel')}
                     value={newRevision.description}
                     onChange={(e) => setNewRevision(prev => ({ ...prev, description: e.target.value }))}
                     placeholder={t('sheetsPdf.titleBlock.descriptionPlaceholder')}
@@ -368,7 +368,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
                 </div>
                 <div>
                   <Label className="text-xs">{t('sheetsPdf.titleBlock.authorLabel')}</Label>
-                  <Input
+                  <Input aria-label={t('sheetsPdf.titleBlock.authorLabel')}
                     value={newRevision.author}
                     onChange={(e) => setNewRevision(prev => ({ ...prev, author: e.target.value }))}
                     placeholder={t('sheetsPdf.titleBlock.authorPlaceholder')}

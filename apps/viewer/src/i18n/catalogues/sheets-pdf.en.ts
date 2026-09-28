@@ -87,6 +87,7 @@ export const sheetsPdfEn = {
   'sheetsPdf.sheetSetup.northArrowLabel': 'North Arrow',
   'sheetsPdf.sheetSetup.savedTemplatesHeading': 'Saved Templates',
   'sheetsPdf.sheetSetup.templateNamePlaceholder': 'Template name...',
+  'sheetsPdf.sheetSetup.saveTemplate': 'Save sheet template',
   'sheetsPdf.sheetSetup.noSavedTemplates': 'No saved templates',
   'sheetsPdf.sheetSetup.loadTemplate': 'Load template {name}',
   'sheetsPdf.sheetSetup.deleteTemplate': 'Delete template {name}',

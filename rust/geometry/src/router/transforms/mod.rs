@@ -10,37 +10,6 @@ pub(crate) mod mapped;
 mod mesh_world;
 pub(crate) mod operator;
 
-/// `IfcCartesianPoint` at `attr_index` of `parent`, as a 3D point (Z defaults to
-/// 0 for the 2D form). The router-free form of
-/// `GeometryRouter::parse_cartesian_point`, shared with the 2D drawing extractor.
-pub(crate) fn cartesian_point_at(
-    parent: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-    attr_index: usize,
-) -> crate::Result<crate::Point3<f64>> {
-    let attr = parent
-        .get(attr_index)
-        .ok_or_else(|| crate::Error::geometry("Missing cartesian point".to_string()))?;
-    let entity = decoder
-        .resolve_ref(attr)?
-        .ok_or_else(|| crate::Error::geometry("Failed to resolve cartesian point".to_string()))?;
-    if entity.ifc_type != IfcType::IfcCartesianPoint {
-        return Err(crate::Error::geometry(format!(
-            "Expected IfcCartesianPoint, got {}",
-            entity.ifc_type
-        )));
-    }
-    let coords = entity
-        .get(0)
-        .and_then(|a| a.as_list())
-        .ok_or_else(|| crate::Error::geometry("Expected coordinate list".to_string()))?;
-    Ok(crate::Point3::new(
-        coords.first().and_then(|v| v.as_float()).unwrap_or(0.0),
-        coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0),
-        coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0),
-    ))
-}
-
 mod parsers;
 mod walk;
 
@@ -50,7 +19,7 @@ mod placement_depth_tests;
 
 use super::GeometryRouter;
 use crate::{Mesh, Result, SubMeshCollection};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
 static LOCAL_FRAME_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);

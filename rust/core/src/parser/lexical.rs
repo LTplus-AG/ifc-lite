@@ -17,7 +17,7 @@
 //! to hand-roll this and disagreed with each other on exactly this case
 //! (issue #3303); both now call this one function.
 //!
-//! `ifc-lite-export`'s STEP HEADER prescan (`source_header::Lex`) answers the
+//! The shared STEP HEADER prescan (`header::Lex`) answers the
 //! same question differently, on purpose, and that is not the divergence
 //! #3303 is about: a header prescan that swallows every later record has
 //! lost the schema, so it treats an unterminated `/*` as ordinary text
@@ -92,10 +92,9 @@ pub fn skip_step_trivia(bytes: &[u8], i: usize) -> Option<usize> {
 ///
 /// Spelled out rather than `u8::is_ascii_whitespace`, which follows the
 /// WhatWG Infra Standard's definition and EXCLUDES vertical tab (0x0B) — its
-/// docs say as much. `ifc-lite-export`'s `source_header::is_step_space`
-/// already carries this exact set for this exact reason (see its doc
-/// comment): reaching for a stdlib predicate here once mismatched the
-/// TypeScript half's `isSpaceByte`/`isAsciiSpace` on `\x0B` and, before that
+/// docs say as much. The STEP header scanner now uses this same function;
+/// reaching for a stdlib predicate once mismatched the TypeScript half's
+/// `isSpaceByte`/`isAsciiSpace` on `\x0B` and, before that
 /// mismatch was found, TypeScript's `isSpaceByte` itself omitted both `\x0C`
 /// and `\x0B` — issue #3733, a form feed silently dropping an entity that
 /// this scanner parsed. Keep this set and `isSpaceByte` in

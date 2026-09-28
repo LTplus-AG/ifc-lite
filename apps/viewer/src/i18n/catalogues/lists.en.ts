@@ -99,6 +99,7 @@ export const listsEn = {
   // ListResultsTable
   'lists.resultsTable.defaultTitle': 'List',
   'lists.resultsTable.filterPlaceholder': 'Filter results...',
+  'lists.resultsTable.filterInputLabel': 'Filter list results',
   'lists.resultsTable.noRows': 'No matching rows',
   'lists.resultsTable.rowCount': { one: '{countDisplay} row', other: '{countDisplay} rows' },
   'lists.resultsTable.rowCountOfTotal': { one: '{countDisplay} / {total} row', other: '{countDisplay} / {total} rows' },
@@ -116,6 +117,13 @@ export const listsEn = {
   // ListBuilder
   'lists.builder.namePlaceholder': 'List name…',
   'lists.builder.descriptionPlaceholder': 'Description (optional)',
+  'lists.builder.nameInputLabel': 'List name',
+  'lists.builder.descriptionInputLabel': 'List description',
+  'lists.builder.propertySetInputLabel': 'Property set',
+  'lists.builder.quantitySetInputLabel': 'Quantity set',
+  'lists.builder.propertyNameInputLabel': 'Property name',
+  'lists.builder.quantityNameInputLabel': 'Quantity name',
+  'lists.builder.conditionValueInputLabel': 'Condition value',
   // Section headings — a custom `label` prop, not one of the AST literals
   // gate's policed attributes (#4918 review, PR #5004): the gate only
   // walks aria-label/title/placeholder/alt, so these stayed hardcoded

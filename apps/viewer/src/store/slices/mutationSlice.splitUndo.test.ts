@@ -54,8 +54,9 @@ DATA;
 #30=IFCUNITASSIGNMENT((#31));
 #31=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
 #40=IFCBUILDINGSTOREY('2hQBAVPOr5VxhS3Jl0O47h',$,'L0',$,$,#41,$,$,.ELEMENT.,0.);
+#50=IFCBUILDINGSTOREY('2hQBAVPOr5VxhS3Jl0O47i',$,'L1',$,$,#41,$,$,.ELEMENT.,3.);
 #41=IFCLOCALPLACEMENT($,#21);
-#70=IFCRELAGGREGATES('0kTvXnbbzCWw8lcMd1dR4o',$,$,$,#1,(#40));
+#70=IFCRELAGGREGATES('0kTvXnbbzCWw8lcMd1dR4o',$,$,$,#1,(#40,#50));
 ENDSEC;
 END-ISO-10303-21;
 `;
@@ -188,4 +189,42 @@ describe('undoing a wall split (#4925)', () => {
       'redoing DELETE_ENTITY mirrors the tombstone to collaboration peers');
     assert.equal(useViewerStore.getState().canRedo(MODEL_ID), false, 'redo stack drained');
   });
+});
+
+it('wall split follows the live storey and authors both halves there (#5249)', async () => {
+  await seed();
+  const state = useViewerStore.getState();
+  const wall = state.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.25, Height: 2.8 });
+  assert.ok('expressId' in wall);
+  const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+  const sourceRel = view.getNewEntities().find((entity) => entity.type === 'IfcRelContainedInSpatialStructure'
+    && Array.isArray(entity.attributes[4]) && entity.attributes[4].includes(`#${wall.expressId}`));
+  assert.ok(sourceRel);
+  view.setAttribute(sourceRel.expressId, 'RelatingStructure', '#50');
+
+  const split = useViewerStore.getState().splitWallAtDistance(MODEL_ID, wall.expressId, 2);
+  assert.ok(split.ok, `split failed: ${split.ok ? '' : split.reason}`);
+  if (!split.ok) return;
+  for (const id of [split.left.expressId, split.right.expressId]) {
+    const relation = view.getNewEntities().find((entity) => entity.type === 'IfcRelContainedInSpatialStructure'
+      && Array.isArray(entity.attributes[4]) && entity.attributes[4].includes(`#${id}`));
+    assert.equal(relation?.attributes[5], '#50', `split half #${id} must be authored on the edited storey`);
+  }
+});
+
+it('slab footprint reads the live storey elevation after containment edit (#5249)', async () => {
+  await seed();
+  const state = useViewerStore.getState();
+  const slab = state.addSlab(MODEL_ID, STOREY, {
+    Profile: 'polygon', Position: [0, 0, 0], OuterCurve: [[0, 0], [5, 0], [5, 4], [0, 4]], Thickness: 0.3,
+  } as Parameters<typeof state.addSlab>[2]);
+  assert.ok('expressId' in slab);
+  const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+  const relation = view.getNewEntities().find((entity) => entity.type === 'IfcRelContainedInSpatialStructure'
+    && Array.isArray(entity.attributes[4]) && entity.attributes[4].includes(`#${slab.expressId}`));
+  assert.ok(relation);
+  view.setAttribute(relation.expressId, 'RelatingStructure', '#50');
+
+  const footprint = useViewerStore.getState().readSlabFootprint(MODEL_ID, slab.expressId);
+  assert.equal(footprint?.storeyElevation, 3);
 });

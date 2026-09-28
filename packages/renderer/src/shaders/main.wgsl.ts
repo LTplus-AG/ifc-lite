@@ -6,12 +6,12 @@
  * Main rendering shader for IFC geometry.
  * Features: linear-space lighting of sRGB-authored colours with a GGX
  * specular term (specular.wgsl.ts), section plane clipping, selection
- * highlight, glass, hue-preserving highlight roll-off, screen-space edge
- * enhancement.
+ * highlight, glass, hue-preserving highlight roll-off. Edges come from the
+ * screen-space edge pass (edge-pass.ts), not from this shader (#5746).
  */
-import { MESH_FLAG_RTE_DRAWABLE } from '../mesh-rte-uniforms.js';
 import { colorTransferWgsl } from './color-transfer.wgsl.js';
 import { mainRteWgsl, mainShadowWgsl } from './main-rte-shadow.wgsl.js';
+import { meshUniformsWgsl } from './mesh-uniforms.wgsl.js';
 import { relativeToEyeWgsl } from './relative-to-eye.wgsl.js';
 import { specularWgsl } from './specular.wgsl.js';
 import { entityColorTableWgsl } from './entity-color-table.wgsl.js';
@@ -42,26 +42,7 @@ const TRANSLUCENT_OPACITY_SCALE = 0.7;
 const IRRADIANCE_CALIBRATION = 1.82;
 
 export const mainShaderSource = `
-        struct Uniforms {
-          viewProj: mat4x4<f32>,
-          model: mat4x4<f32>,
-          baseColor: vec4<f32>,
-          metallicRoughness: vec2<f32>, // x = metallic, y = roughness (mesh-material.ts)
-          transmission: vec2<f32>,      // x = 1: authored translucent, drawn as glass; y = pad
-          sectionPlane: vec4<f32>,      // xyz = plane normal, w = plane distance
-          flags: vec4<u32>,             // x = isSelected, y = section/clip bits, z = edgeEnabled, w = edgeIntensityMilli
-          clipBoxMin: vec4<f32>,        // xyz = clip-box min corner (world), w = pad
-          clipBoxMax: vec4<f32>,        // xyz = clip-box max corner (world), w = pad
-          quantParams: vec4<f32>, // local min xyz, lattice step w
-          rteViewProj: mat4x4<f32>, // appended frame; bit 16 selects it
-          drawableDeltaHigh: vec4<f32>,
-          drawableDeltaLow: vec4<f32>,
-          rteCameraHigh: vec4<f32>,
-          rteCameraLow: vec4<f32>,
-          overrideParams: vec4<u32>, // x = draw's id anchor, y = OVERRIDE_* bits (entity-color-table.ts, #6076)
-        }
-        @binding(0) @group(0) var<uniform> uniforms: Uniforms;
-        const RTE_DRAWABLE_FLAG: u32 = ${MESH_FLAG_RTE_DRAWABLE}u;
+        ${meshUniformsWgsl}
         ${relativeToEyeWgsl}
         ${mainRteWgsl}
         // Shared group(1) lighting; packing matches packEnvironmentUniforms().
@@ -104,7 +85,6 @@ export const mainShaderSource = `
           @location(0) worldPos: vec3<f32>,
           @location(1) normal: vec3<f32>,
           @location(2) @interpolate(flat) entityId: u32,
-          @location(3) viewPos: vec3<f32>,  // For edge detection
           // Per-draw albedo carried from the vertex stage so the fragment shader
           // is shared by the flat path (vs_main writes uniforms.baseColor — the
           // per-batch colour) AND the instanced path
@@ -189,7 +169,6 @@ export const mainShaderSource = `
           output.color = uniforms.baseColor;
           output.instSelected = 0u;
           output.eyePos = eyePos;
-          output.viewPos = select((uniforms.viewProj * worldPos).xyz, (uniforms.rteViewProj * vec4<f32>(eyePos, 1.0)).xyz, rte);
           return output;
         }
 
@@ -230,8 +209,6 @@ export const mainShaderSource = `
           output.color = uniforms.baseColor;
           output.instSelected = 0u;  // flat path selects via uniforms.flags.x
           output.eyePos = eyePos;
-          // Store view-space position for edge detection
-          output.viewPos = select((uniforms.viewProj * worldPos).xyz, (uniforms.rteViewProj * vec4<f32>(eyePos, 1.0)).xyz, rte);
           return output;
         }
 
@@ -260,7 +237,6 @@ export const mainShaderSource = `
           output.color = inst.instColor;
           output.instSelected = inst.instSelected;
           output.eyePos = eyePos;
-          output.viewPos = (uniforms.rteViewProj * vec4<f32>(eyePos, 1.0)).xyz;
           return output;
         }
 
@@ -283,7 +259,7 @@ export const mainShaderSource = `
           // that frame; otherwise the RTE vertex precision is thrown away at
           // section/crop/derivative ingress. Instanced geometry is not yet
           // anchored, so its worldPos remains the authoritative input.
-          let fragmentPos = select(input.worldPos, input.eyePos, (uniforms.flags.x & RTE_DRAWABLE_FLAG) != 0u);
+          let fragmentPos = clipSpacePos(input.worldPos, input.eyePos);
           // Per-instance hide/isolate: bit 1 of the instance flags lane marks a hidden
           // occurrence. Discard it so it neither draws nor writes depth (and the pick
           // pass applies the same discard, so it isn't pickable). vs_main writes
@@ -305,27 +281,9 @@ export const mainShaderSource = `
               if (!occOpaque) { discard; }
             }
           }
-          // Section plane clipping - discard fragments ABOVE the plane.
-          // flags.y packs two bits: bit 0 = enabled, bit 1 = flipped.
-          let sectionEnabled = (uniforms.flags.y & 1u) == 1u;
-          if (sectionEnabled) {
-            let planeNormal = uniforms.sectionPlane.xyz;
-            let planeDistance = uniforms.sectionPlane.w;
-            let flipped = (uniforms.flags.y & 2u) == 2u;
-            let side = select(1.0, -1.0, flipped);
-            let distToPlane = (dot(fragmentPos, planeNormal) - planeDistance) * side;
-            if (distToPlane > 0.0) {
-              discard;
-            }
-          }
-          // Clip box (section / crop box): discard fragments OUTSIDE the AABB.
-          // flags.y bit 2 = clip-box enabled.
-          if ((uniforms.flags.y & 4u) != 0u) {
-            let p = fragmentPos;
-            if (any(p < uniforms.clipBoxMin.xyz) || any(p > uniforms.clipBoxMax.xyz)) {
-              discard;
-            }
-          }
+          // Section plane / clip box (mesh-uniforms.wgsl.ts, shared with the
+          // selection mask so an outline is cut where its surface is).
+          if (sectionClipped(fragmentPos)) { discard; }
 
           // Compute normal via derivative-based flat shading.
           //
@@ -504,13 +462,23 @@ export const mainShaderSource = `
             let instancedPass = (uniforms.flags.x & 4u) != 0u;
             let translucent = finalAlpha < 0.99;
             let glass = translucent && uniforms.transmission.x > 0.5 && !instancedPass;
-            let metallic = clamp(uniforms.metallicRoughness.x, 0.0, 1.0);
+            // #5984: an instanced occurrence's own authored finish rides its
+            // flags lane (instanced-render.ts packInstanceFinish); the pass's
+            // uniform row is the shared default.
+            var metallicRoughness = vec2<f32>(uniforms.metallicRoughness.x, uniforms.metallicRoughness.y);
+            if (instancedPass && (input.instSelected & 4u) != 0u) {
+              metallicRoughness.x = f32((input.instSelected >> 16u) & 255u) / 255.0;
+            }
+            if (instancedPass && (input.instSelected & 8u) != 0u) {
+              metallicRoughness.y = f32((input.instSelected >> 24u) & 255u) / 255.0;
+            }
+            let metallic = clamp(metallicRoughness.x, 0.0, 1.0);
             let spec = surfaceSpecular(
               N,
               normalize(-input.eyePos),
               baseColor,
               metallic,
-              uniforms.metallicRoughness.y,
+              metallicRoughness.y,
               env.sunColor * (env.sunIntensity * sunShadow),
             );
             // What the lobe reflects is not there to diffuse; a metal has no
@@ -545,38 +513,6 @@ export const mainShaderSource = `
           // the roll-off threshold.
           color = neutralCompress(color);
 
-          // Subtle edge enhancement using screen-space derivatives.
-          //
-          // Use the SHADED normal (face normal from dpdx/dpdy above)
-          // for the normal-gradient term, not the interpolated vertex
-          // normal — otherwise we get spurious dark stripes on flat
-          // surfaces whose vertex normals carry numerical noise from
-          // CSG output (the visible scar-line symptom would just
-          // resurface here even after the lit-normal fix). With the
-          // face normal, coplanar adjacent triangles agree exactly →
-          // zero normal gradient → no false edge; only the genuine
-          // creases between perpendicular faces produce a real
-          // gradient and get the intended outline.
-          let depthGradient = length(vec2<f32>(
-            dpdx(input.viewPos.z),
-            dpdy(input.viewPos.z)
-          ));
-          let normalGradient = length(vec2<f32>(
-            length(dpdx(N)),
-            length(dpdy(N))
-          ));
-
-          var edgeDarken = 1.0;
-          if (uniforms.flags.z == 1u) {
-            // Threshold filters subtle normal discontinuities at internal
-            // triangle edges between coplanar entities in the same batch.
-            let edgeFactor = smoothstep(0.02, 0.12, depthGradient * 10.0 + normalGradient * 5.0);
-            let edgeIntensity = f32(uniforms.flags.w) / 1000.0;
-            let edgeDarkenStrength = clamp(0.25 * edgeIntensity, 0.0, 0.85);
-            edgeDarken = mix(1.0, 1.0 - edgeDarkenStrength, edgeFactor);
-            color *= edgeDarken;
-          }
-
           color = linearToSrgb(clamp(color, vec3<f32>(0.0), vec3<f32>(1.0)));
 
           var out: FragmentOutput;
@@ -585,7 +521,7 @@ export const mainShaderSource = `
           // renderer marks (overrideParams.y), i.e. depth-writing opaque ones.
           let entityOverride = entityOverrideColor(input.entityId);
           if (entityOverride.a >= 0.0 && !isSelected) {
-            out.color = paintEntityOverride(out.color, entityOverride, irradiance, N, edgeDarken);
+            out.color = paintEntityOverride(out.color, entityOverride, irradiance, N);
           }
           out.objectIdEncoded = encodeId24(input.entityId);
           return out;

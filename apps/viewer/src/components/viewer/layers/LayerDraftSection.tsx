@@ -197,6 +197,7 @@ export function LayerDraftSection() {
       ) : (
         <div className="flex flex-col gap-1.5">
           <Input
+            aria-label={t('layersPanel.draft.intentInputLabel')}
             value={intent}
             onChange={(e) => setIntent(e.target.value)}
             placeholder={t('layersPanel.draft.intentPlaceholder')}
@@ -205,6 +206,7 @@ export function LayerDraftSection() {
           />
           <div className="flex items-center gap-1.5">
             <Input
+              aria-label={t('layersPanel.draft.authorInputLabel')}
               value={author}
               onChange={(e) => setAuthor(e.target.value)}
               placeholder={t('layersPanel.draft.authorPlaceholder')}

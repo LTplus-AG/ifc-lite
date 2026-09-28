@@ -49,7 +49,7 @@ export function SweptDiskRecord({ occurrence, occurrenceIndex, modelId, expressI
     <section className="border border-zinc-200 dark:border-zinc-800 p-2 space-y-1 text-xs" aria-label={t('properties.sweptDisk.solid', { id: occurrence.solid_id })}>
       <div className="font-semibold">{t('properties.sweptDisk.solid', { id: occurrence.solid_id })}</div>
       <div>{t('properties.sweptDisk.status')}: {complete ? t('properties.sweptDisk.complete') : t('properties.sweptDisk.unsupported')}</div>
-      {occurrence.status.type === 'unsupported' && <div role="status">{occurrence.status.reason}</div>}
+      {occurrence.status.type === 'unsupported' && <output>{occurrence.status.reason}</output>}
       <div>{t('properties.sweptDisk.sourceModified')}: {occurrence.source_modified ? t('properties.sweptDisk.yes') : t('properties.sweptDisk.no')}</div>
       {occurrence.source_modified && <p className="text-amber-700 dark:text-amber-400">{t('properties.sweptDisk.modifiedHint')}</p>}
       <div>{t('properties.sweptDisk.directrix')}: #{occurrence.directrix_id}</div>
@@ -100,7 +100,7 @@ export function SweptDiskInspection({ enabled }: { enabled: boolean }) {
   return <section className="space-y-2" aria-label={t('properties.sweptDisk.heading')}>
     <h3 className="text-xs font-semibold uppercase tracking-wide">{t('properties.sweptDisk.heading')}</h3>
     <p className="text-[11px] text-zinc-500">{t('properties.sweptDisk.sourceNote')}</p>
-    {loading && <p role="status">{t('properties.sweptDisk.loading')}</p>}
+    {loading && <output className="block">{t('properties.sweptDisk.loading')}</output>}
     {error && <p role="alert">{error}</p>}
     {!loading && !error && withRecords.length === 0 && <p className="text-xs text-zinc-500">{t('properties.sweptDisk.empty')}</p>}
     {withRecords.map((item) => <div key={`${item.ref.modelId}:${item.ref.expressId}`} className="space-y-2">

@@ -156,22 +156,22 @@ pub fn build_rebar_schedule(
                     if related.is_empty() {
                         links::report(&mut diagnostics, &mut type_link_diagnostics, "type relationship", id, "RelatedObjects is empty");
                     }
-                    if related.len() > type_ref_budget && !type_ref_budget_reported {
-                        diagnostics.push(format!(
-                            "type relationship #{id}: RelatedObjects exceeds work budget; remaining assignments omitted"
-                        ));
-                        type_ref_budget_reported = true;
-                    }
-                    let mut invalid_member = false;
-                    for item in related.iter().take(type_ref_budget) {
-                        let Some(bar_id) = item.as_entity_ref() else {
-                            invalid_member = true;
-                            continue;
-                        };
-                        type_candidates.entry(bar_id).or_default().push(type_id);
-                    }
-                    if invalid_member {
+                    if related.len() > type_ref_budget {
+                        if !type_ref_budget_reported {
+                            diagnostics.push(format!(
+                                "type relationship #{id}: RelatedObjects exceeds work budget; remaining assignments omitted"
+                            ));
+                            type_ref_budget_reported = true;
+                        }
+                    } else if related.iter().any(|item| item.as_entity_ref().is_none()) {
                         links::report(&mut diagnostics, &mut type_link_diagnostics, "type relationship", id, "RelatedObjects contains a non-reference");
+                    } else {
+                        // A malformed relationship cannot provide provenance for
+                        // even its otherwise valid members.
+                        for item in related {
+                            let bar_id = item.as_entity_ref().expect("validated RelatedObjects member");
+                            type_candidates.entry(bar_id).or_default().push(type_id);
+                        }
                     }
                     type_ref_budget = type_ref_budget.saturating_sub(related.len());
                 } else {

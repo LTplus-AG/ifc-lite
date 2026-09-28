@@ -168,6 +168,7 @@ fn issue_5759_malformed_type_links_report_lost_authored_bar_length_with_bounded_
     assert!(schedule.rows[&1].diagnostics.iter().any(|message| message == "assigned type #2 could not decode"));
     for (related, relating, expected) in [
         ("$", "#2", "RelatedObjects is not a reference list"),
+        ("(#1,$)", "#2", "RelatedObjects contains a non-reference"),
         ("(#1)", "$", "RelatingType is not a reference"),
         ("()", "#2", "RelatedObjects is empty"),
     ] {

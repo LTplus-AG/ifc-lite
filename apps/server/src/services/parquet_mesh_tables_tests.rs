@@ -301,8 +301,9 @@ fn v6_is_at_most_40_percent_of_v5_on_a_real_model() {
         "the fixture produced no meshes; the ratio below would be meaningless"
     );
 
-    let v5 = serialize_to_parquet(&result.meshes).unwrap().len();
-    let v6 = serialize_to_parquet_shared_shapes(&result.meshes).unwrap().len();
+    let meshes: Vec<MeshData> = result.meshes.into_iter().map(MeshData::from).collect();
+    let v5 = serialize_to_parquet(&meshes).unwrap().len();
+    let v6 = serialize_to_parquet_shared_shapes(&meshes).unwrap().len();
     let ratio = v6 as f64 / v5 as f64;
     eprintln!("MEASURED v5={v5} v6={v6} ratio={ratio:.4}");
     assert!(

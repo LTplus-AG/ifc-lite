@@ -34,7 +34,7 @@ describe('Search rule editor input names (#6342)', () => {
       { rule: { kind: 'name', op: 'contains', value: 'Wall' }, names: ['Name value'] },
       { rule: { kind: 'type', op: 'contains', value: 'Wall' }, names: ['Type name value'] },
       { rule: { kind: 'parent', op: 'contains', value: 'Wall' }, names: ['Parent name value'] },
-      { rule: { kind: 'property', setName: 'Pset_WallCommon', propertyName: 'FireRating', op: 'eq', value: 'REI60' }, names: ['Property set name', 'Property name', 'Property value'] },
+      { rule: { kind: 'property', setName: 'Pset_WallCommon', propertyName: 'FireRating', op: 'eq', value: 'REI60' }, names: ['Property set name', 'Property name', 'Property value', 'Complex property member'] },
       { rule: { kind: 'quantity', setName: 'Qto_WallBaseQuantities', quantityName: 'Width', op: 'gt', value: 1 }, names: ['Quantity set name', 'Quantity name', 'Quantity value'] },
       { rule: { kind: 'material', op: 'contains', value: 'Concrete' }, names: ['Material name'] },
       { rule: { kind: 'elevation', op: 'gt', value: 1 }, names: ['Storey elevation in metres'] },

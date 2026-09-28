@@ -108,6 +108,7 @@ export const validationEditorEn = {
   'validationEditor.unit.unitAriaLabel': 'Required unit',
 
   'validationEditor.requirementText.ariaLabel': 'Requirement, as text',
+  'validationEditor.requirementText.memberPathReadOnly': 'A complex-property member has no text form; edit this requirement with the fields above',
 
   'validationEditor.modelPicker.allModels': 'All models',
   'validationEditor.modelPicker.noFingerprintTitle': 'This model has no stable fingerprint yet and cannot be targeted by a saved rule set.',

@@ -33,6 +33,9 @@ export interface Material {
   transparency?: number;
 }
 
+/** IFC-authored metallic/roughness (#5582); an absent field keeps the renderer's default. */
+export type MeshFinish = Partial<Pick<Material, 'metallic' | 'roughness'>>;
+
 export interface Mesh {
   expressId: number;
   modelIndex?: number;  // Index of the model this mesh belongs to (for multi-model federation)
@@ -46,6 +49,7 @@ export interface Mesh {
   rteOrigin?: [number, number, number];
   color: [number, number, number, number];
   material?: Material;
+  finish?: MeshFinish; // IFC-authored (#5582); packMeshMaterial prefers it over `material`
   // Per-mesh GPU resources for unique colors
   uniformBuffer?: GPUBuffer;
   bindGroup?: GPUBindGroup;
@@ -79,6 +83,8 @@ export interface BatchedMesh {
   indexBuffer: GPUBuffer;
   indexCount: number;
   color: [number, number, number, number];
+  /** Finish shared by every piece: `colorKey` folds it in at 1/1000, so a batch never mixes finishes (#5582). */
+  finish?: MeshFinish;
   expressIds: number[];  // For picking - all expressIds in this batch
   /** Per-entry modelIndex, parallel to `expressIds` (same index = same source
    *  piece): batches group by colour (see Scene.bucketBaseKey), NOT by model,
@@ -195,10 +201,7 @@ export type SeparationLinesQuality = 'off' | 'low' | 'high';
 
 export interface VisualEnhancementOptions {
   enabled?: boolean;
-  edgeContrast?: {
-    enabled?: boolean;
-    intensity?: number;
-  };
+  edgeContrast?: { enabled?: boolean; intensity?: number }; // no effect since #5746 (edges come from the edge pass, `separationLines`); kept so settings type-check
   /**
    * Screen-space ambient occlusion (the option keeps its historical name).
    * Darkens corners, junctions and contact areas from the depth buffer; the
@@ -263,6 +266,7 @@ export interface RenderOptions {
   selectedId?: number | null;     // Currently selected mesh (for highlighting)
   selectedIds?: Set<number>;      // Multi-selection support
   selectedItemId?: number;        // #4382: narrows selectedId's highlight to one representation item (geometryItemId); no effect on selectedIds
+  hoverOutline?: { id: number; modelIndex?: number } | null; // #5390 thin visible-only pre-highlight; modelIndex scopes federation
   /**
    * Render the active colour overrides almost full-bright so they POP like a
    * highlight rather than reading as normal lit materials. Used while a clash is

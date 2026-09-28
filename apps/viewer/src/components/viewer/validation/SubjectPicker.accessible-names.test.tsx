@@ -26,7 +26,7 @@ describe('SubjectPicker input names (#6342)', () => {
   it('distinguishes property, quantity, group, and classification fields when placeholders disappear', () => {
     const cases: Array<{ subject: Subject; names: string[] }> = [
       { subject: { kind: 'attribute', name: '' }, names: ['Attribute name'] },
-      { subject: { kind: 'property', setName: '', propertyName: '' }, names: ['Property set name', 'Property name'] },
+      { subject: { kind: 'property', setName: '', propertyName: '' }, names: ['Property set name', 'Property name', 'Complex property member'] },
       { subject: { kind: 'quantity', setName: '', quantityName: '' }, names: ['Quantity set name', 'Quantity name'] },
       { subject: { kind: 'group' }, names: ['Group class'] },
       { subject: { kind: 'classification' }, names: ['Classification system'] },

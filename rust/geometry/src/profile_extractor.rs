@@ -597,7 +597,7 @@ fn parse_axis2_placement_2d(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Result<Matrix4<f64>> {
-    crate::router::transforms::mapped::axis2_placement_2d_matrix(placement, decoder)
+    crate::transform::parse_axis2_placement_2d(placement, decoder)
 }
 
 fn parse_axis2_placement_3d(

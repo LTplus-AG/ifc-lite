@@ -20,7 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import type { FilterRule } from '@ifc-lite/rules';
 import { ELEMENT_REQUIREMENT_KINDS } from '@ifc-lite/rules';
-import type { Requirement, RuleBlock } from '@ifc-lite/rules';
+import type { Requirement, RuleBlock, Subject } from '@ifc-lite/rules';
 import { requirementToText, parseRequirementText, type TextRequirement } from '@ifc-lite/rules';
 import { NUMERIC_OPS, OpDropdown } from '../SearchModal.filter.editors.shared';
 import { RuleBlockEditor } from './RuleBlockEditor';
@@ -299,10 +299,15 @@ function RequirementTextField({
   const { t } = useTranslation();
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const text = draft ?? requirementToText(requirement);
+  // The text grammar has no spelling for a complex-property member (#5475):
+  // re-parsing would drop `memberPath` and widen the check to the whole
+  // property, so such a requirement is shown but not editable as text, and a
+  // pending draft or parse error from before is not shown.
+  const readOnly = textSubjects(requirement).some((s) => s.kind === 'property' && s.memberPath !== undefined);
+  const text = readOnly ? requirementToText(requirement) : draft ?? requirementToText(requirement);
 
   const apply = () => {
-    if (draft === null) return;
+    if (draft === null || readOnly) return;
     const result = parseRequirementText(draft);
     if (!result.ok) {
       setError(result.error);
@@ -321,10 +326,19 @@ function RequirementTextField({
         onBlur={apply}
         onKeyDown={(e) => { if (e.key === 'Enter') apply(); }}
         aria-label={t('validationEditor.requirementText.ariaLabel')}
+        readOnly={readOnly}
+        title={readOnly ? t('validationEditor.requirementText.memberPathReadOnly') : undefined}
         spellCheck={false}
         className="h-7 font-mono text-xs"
       />
-      {error && <p role="alert" className="text-2xs text-destructive">{error}</p>}
+      {error && !readOnly && <p role="alert" className="text-2xs text-destructive">{error}</p>}
     </div>
   );
+}
+
+/** The subjects a text requirement names. */
+function textSubjects(requirement: TextRequirement): Subject[] {
+  if (requirement.kind === 'unique') return [requirement.subject];
+  if (requirement.kind === 'compare') return [requirement.left, requirement.right];
+  return [requirement.subject, requirement.groupBy?.subject].filter((s): s is Subject => s !== undefined);
 }

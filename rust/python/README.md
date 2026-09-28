@@ -20,14 +20,14 @@ silicon and Intel), and Windows (x64). No Rust toolchain needed.
 
 ## Quick start
 
-The module is `ifclite_geom` and exposes four functions, all taking the raw IFC
+The module is `ifclite_geom` and exposes five functions, all taking the raw IFC
 file as `bytes`. `geometry_data_buffers` and `geometry_data_json` return the
 same geometry and differ only in output format; pass
 `include_directrices=True` to include analytic swept-disk paths. `entity_data`
 reads attributes and property sets instead, without tessellating.
-`check_swept_disks` checks authored swept-disk paths without tessellating.
-
+`check_swept_disks` checks authored swept-disk paths without tessellating, and
 `swept_disk_definitions` returns reusable raw source paths and occurrence transforms.
+
 ```python
 import ifclite_geom
 import numpy as np

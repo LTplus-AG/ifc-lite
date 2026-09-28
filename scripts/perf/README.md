@@ -44,9 +44,15 @@ See the [browser evidence](evidence/color-overrides-6148/README.md).
 
 The source/instance API is opt-in. The shared bounded walk reuses decoded raw
 solids within one extraction; the default mesh pipeline remains separate.
-The earlier stacked-branch worker-pool trial ran during another geometry build
-and was inconclusive for timing. Recheck current main against this branch on
-an idle host before reporting a performance delta.
+Five balanced native AC20-FZK-Haus pairs on the PR's main parent
+`d9b6e4ec0` and head `7170fb1ba`, each using `perf_probe --iters 5 --json
+--fingerprint`, gave median parse/geometry/total times of 6/23/29 ms and
+6/22/28 ms. Base totals ranged 27–30 ms and head totals 25–31 ms, so the
+1 ms median difference does not support a speedup claim; there was no
+meaningful full-load regression on this fixture. Every run emitted 285 meshes,
+35,940 vertices and 20,322 triangles with ordered FNV-1a64
+`c4d504b83ff698ea`. This is a native default-load check, not a browser
+worker-pool or opt-in analytic extraction measurement.
 
 ## Derived swept-disk metrics (#5754)
 

@@ -97,8 +97,10 @@ export class IfcLiteBridge {
   }
 
   /** After a runtime trap, drop this bridge's potentially wedged IfcAPI and
-   * its caches (#1898). The caller still gets the original error; a later
-   * init() can build a fresh handle without disabling other consumers. */
+   * its per-load caches behind mutexes (#1898). The caller still gets the
+   * original error; a later init() builds a fresh handle. Do not latch a
+   * realm-wide failure: that previously bricked unrelated consumers even
+   * while their already-initialized bridges continued working. */
   private recordWasmRuntimeTrap(): void {
     this.disposeBestEffort();
   }

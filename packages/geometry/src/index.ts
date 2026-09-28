@@ -1113,8 +1113,9 @@ export class GeometryProcessor {
     return this.bridge.extractProfiles(content, modelIndex);
   }
 
-  /** Rust domain exporters return bytes (UTF-8 for text) or null before init().
-   * `isolated`: undefined selects all; an empty array selects none. */
+  /** Rust domain exporters return bytes to avoid V8 string-size limits; decode
+   * text with TextDecoder. They return null before init(). `isolated`:
+   * undefined selects all; an empty array hides every mesh. Keep distinct. */
   exportObj(
     buffer: Uint8Array,
     includeNormals = true,

@@ -49,6 +49,9 @@ export const DEFAULT_DIMS: Readonly<Record<AuthoredElementKind, readonly DimPara
   space: ['Width', 'Depth', 'Height'],
 };
 
+/** The unit symbol after a length field: a symbol, not copy, so it is not translated. */
+export const METRE_SYMBOL = 'm';
+
 /** Metres for display: millimetre precision, no trailing zeros past the centimetres. */
 export function formatMetres(value: number): string {
   if (!Number.isFinite(value)) return '';

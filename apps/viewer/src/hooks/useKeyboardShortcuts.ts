@@ -13,7 +13,7 @@ import { hideSelectionFromStore } from '@/store/hideSelection';
 import { workspacePanelForShortcutCode } from '@/lib/panels/registry';
 import { bottomPanelFlags } from '@/lib/panels/bottom-panels';
 import { closeAllPanelWindows } from '@/services/panel-windows';
-import { WALK_MOVEMENT_KEYS, eventKey } from '@/lib/keyboard-event';
+import { WALK_MOVEMENT_KEYS, eventKey, isTextEditingElement } from '@/lib/keyboard-event';
 import { bindModelWorkspaceKeys } from '@/lib/commands/modeling/keys-workspace';
 import {
   executeBasketIsolate, executeBasketAdd,
@@ -164,11 +164,15 @@ const TOOL_CONTEXT: Partial<Record<KeyCommandId, string>> = {
   'measure.toggleSnap': 'measure',
 };
 
+/** Undo / redo also run from a focused combobox or menu button; only real text editing keeps its own. */
+const HISTORY_COMMANDS: ReadonlySet<KeyCommandId> = new Set(['edit.undo', 'edit.redo']);
+
 export function useKeyboardShortcuts({ enabled = true }: KeyboardShortcutsOptions = {}): void {
   useEffect(() => {
     if (!enabled) return;
     const dispose = RUNNERS.map(([id, run]) => registerKeyboardCommand(id, run, {
       active: TOOL_CONTEXT[id] ? () => useViewerStore.getState().activeTool === TOOL_CONTEXT[id] : undefined,
+      allowInTextEntry: HISTORY_COMMANDS.has(id) ? (event: KeyboardEvent) => !isTextEditingElement(event.target) : undefined,
     }));
     dispose.push(bindModelWorkspaceKeys());
     return () => { for (const remove of dispose) remove(); };

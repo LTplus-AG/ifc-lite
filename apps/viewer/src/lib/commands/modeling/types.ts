@@ -89,9 +89,9 @@ export interface CommitResult {
   select?: number[];
   /**
    * New elements that take the session's per-kind type and layer-set
-   * defaults (`authored-defaults.ts`), in the same undo step. Default:
-   * `created`. A command whose new elements continue an existing one (a
-   * split's halves) passes `[]`.
+   * defaults (`authored-defaults.ts`), in the same undo step. Opt-in, so
+   * default none: a command whose new elements continue an existing one (a
+   * split's pieces keep the source's type and material) leaves it out.
    */
   authored?: readonly number[];
 }

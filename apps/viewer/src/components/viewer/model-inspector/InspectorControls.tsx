@@ -4,9 +4,8 @@
 
 /**
  * The Model inspector's building blocks (charter #6232, M2.5): a titled
- * section, a label ‖ control row, a committed text field, and the compact
- * two-way pill. Sizes stay on the text-xs / text-2xs scale of the side
- * panels.
+ * section, a label ‖ control row, and a committed text field. Sizes stay on
+ * the text-xs / text-2xs scale of the side panels.
  */
 
 import { useEffect, useId, useState, type KeyboardEvent, type ReactNode } from 'react';
@@ -84,38 +83,6 @@ export function CommitField({ id, value, onCommit, ariaLabel, placeholder, suffi
         className={cn('h-7 text-xs tabular-nums', suffix && 'pr-6', readOnly && 'bg-muted/40 text-muted-foreground')}
       />
       {suffix && <span aria-hidden className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-muted-foreground">{suffix}</span>}
-    </div>
-  );
-}
-
-export interface PillOption<V extends string> {
-  value: V;
-  label: string;
-  disabled?: boolean;
-}
-
-/** Two or three exclusive choices, text-2xs, the side-panel sibling of `HudSegmented`. */
-export function InspectorPill<V extends string>({ label, value, options, onChange }: {
-  label: string; value: V; options: readonly PillOption<V>[]; onChange: (value: V) => void;
-}) {
-  return (
-    <div role="radiogroup" aria-label={label} className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          role="radio"
-          aria-checked={option.value === value}
-          disabled={option.disabled}
-          onClick={() => onChange(option.value)}
-          className={cn(
-            'rounded px-2 py-0.5 text-2xs text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-40',
-            option.value === value && 'bg-background text-foreground shadow-sm',
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
     </div>
   );
 }

@@ -71,7 +71,7 @@ export const modelInspectorEn = {
   'modelInspector.layers.wallFollows': 'The wall takes the layers\' total thickness.',
   'modelInspector.layers.defaultsHint': 'New elements get these layers.',
   'modelInspector.layers.needName': 'Name each new material',
-  'modelInspector.layers.needLayer': 'Give at least one layer a thickness greater than zero',
+  'modelInspector.layers.needLayer': 'Give every layer a thickness greater than zero',
   'modelInspector.hosting.title': 'Hosting',
   'modelInspector.hosting.pending': 'The host wall and the offset and sill arrive with door and window placement.',
 } as const satisfies Record<string, TranslationValue>;

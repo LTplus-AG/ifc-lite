@@ -18,10 +18,10 @@ import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import { authoringDim, type AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
-import { setWallSection, type WallSection } from '@/store/slices/mutation-wall-section';
 import { CommitField, InspectorCaption, InspectorRow, InspectorSection } from './InspectorControls';
-import { DEFAULT_DIMS, DIM_LABEL, formatMetres, parseMetres, type DimParam } from './inspector-fields';
-import { runInspectorEdit, type InspectorSelection } from './useInspectorTarget';
+import { DEFAULT_DIMS, DIM_LABEL, METRE_SYMBOL, formatMetres, parseMetres, type DimParam } from './inspector-fields';
+import { setWallDimensions } from './inspector-edits';
+import type { InspectorSelection } from './useInspectorTarget';
 
 function MetreRow({ param, value, onCommit }: { param: DimParam; value: number | null; onCommit?: (metres: number) => boolean }) {
   const { t } = useTranslation();
@@ -39,7 +39,7 @@ function MetreRow({ param, value, onCommit }: { param: DimParam; value: number |
         value={value === null ? '' : formatMetres(value)}
         onCommit={commit}
         readOnly={!onCommit}
-        suffix="m"
+        suffix={METRE_SYMBOL}
         ariaLabel={t('modelInspector.dims.fieldAria', { label })}
       />
     </InspectorRow>
@@ -96,19 +96,13 @@ export function SelectionDimensions({ selection }: { selection: InspectorSelecti
   const measured = useMemo(() => { void mutationVersion; return measure(selection); }, [selection, mutationVersion]);
   const { modelId, expressId } = selection;
 
-  const setSection = (section: WallSection) => runInspectorEdit(modelId, (tx) => {
-    const outcome = setWallSection(() => tx.store, tx.modelId, expressId, section);
-    if (!outcome.ok) throw new Error(outcome.reason);
-    return [expressId];
-  });
-
   return (
     <InspectorSection title={t('modelInspector.dims.title')}>
       {measured.kind === 'wall' && (
         <>
           <MetreRow param="Length" value={measured.length} />
-          <MetreRow param="Thickness" value={measured.thickness} onCommit={(thickness) => setSection({ thickness })} />
-          <MetreRow param="Height" value={measured.height} onCommit={(height) => setSection({ height })} />
+          <MetreRow param="Thickness" value={measured.thickness} onCommit={(thickness) => setWallDimensions(modelId, expressId, { thickness })} />
+          <MetreRow param="Height" value={measured.height} onCommit={(height) => setWallDimensions(modelId, expressId, { height })} />
         </>
       )}
       {measured.kind === 'readOnly' && (

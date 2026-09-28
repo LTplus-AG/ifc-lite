@@ -3,8 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * What the Model inspector edits (charter #6232, M2 §1.7, §2.4), and the one
- * way it writes.
+ * What the Model inspector edits (charter #6232, M2 §1.7, §2.4).
  *
  * Two targets can apply at once: the DEFAULTS of the kind the running
  * command builds (or, with nothing running and nothing selected, the kind
@@ -12,21 +11,16 @@
  * them; a running command starts on its defaults, otherwise the selection
  * wins. Outside the Model workspace there is no target.
  *
- * Every write goes through `runInspectorEdit`, which wraps it in an inline
- * modeling command and runs it through `runTransaction`: one undo step, the
- * shared mutation gate, and the re-mesh seam for what it names.
+ * Every write goes through `inspector-edits.ts`: one undo step each.
  */
 
 import { useEffect, useMemo, useState } from 'react';
 import { liveEntityConforms } from '@ifc-lite/create';
-import { toast } from '@/components/ui/toast';
 import { useViewerStore, type ViewerState } from '@/store';
 import { fromGlobalIdFromModels } from '@/store/globalId';
 import { effectiveListTypeName } from '@/lib/lists/effective-provider-entities';
-import { runTransaction } from '@/lib/commands/modeling/transaction';
 import { elementStoreyId } from '@/lib/commands/modeling/workplane';
 import { authoredKindOf, commandKind, entityName, type LiveModel } from '@/lib/commands/modeling/authored-kinds';
-import type { AuthoringTransaction, ModelingCommand } from '@/lib/commands/modeling/types';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 
 export type InspectorMode = 'defaults' | 'selection';
@@ -106,26 +100,4 @@ export function useInspectorTarget(): InspectorTarget {
     : selection ? 'selection' : defaultsKind ? 'defaults' : null;
   const idle = session !== null && running === null && selection === null;
   return { inSession: session !== null, sessionModel, defaultsKind, selection, mode, both, idle, setMode: setPicked };
-}
-
-/**
- * Run one inspector edit as one undo step. `edit` writes through
- * `tx.store` and returns the express ids whose mesh it changed. False (with
- * a toast) when the edit was refused or threw; nothing is left behind then.
- */
-export function runInspectorEdit(modelId: string, edit: (tx: AuthoringTransaction) => readonly number[]): boolean {
-  const command: ModelingCommand = {
-    id: 'inspector.edit',
-    labelKey: 'modelInspector.edit',
-    hud: {},
-    snap: 'modeling',
-    init: () => null,
-    pointerMove: (g) => g,
-    pointerDown: (g) => g,
-    commit: (_g, tx) => ({ created: [], deleted: [], remesh: [...edit(tx)], authored: [] }),
-  };
-  const get = useViewerStore.getState;
-  const outcome = runTransaction(useViewerStore, command, null, { get, modelId, storeyId: get().session?.storeyId ?? null, workplane: null });
-  if (!outcome.ok) toast.error(outcome.reason);
-  return outcome.ok;
 }

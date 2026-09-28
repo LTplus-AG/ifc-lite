@@ -17,12 +17,14 @@ interface SegmentedControlProps<Value extends string> {
   options: readonly SegmentOption<Value>[];
   onValueChange: (value: Value) => void;
   disabled?: boolean;
+  /** `sm`: the text-2xs scale of the side panels' compact rows. */
+  size?: 'default' | 'sm';
   className?: string;
 }
 
 /** An exclusive choice with radio semantics and one arrow-key focus stop. */
 export function SegmentedControl<Value extends string>({
-  label, value, options, onValueChange, disabled, className,
+  label, value, options, onValueChange, disabled, size = 'default', className,
 }: SegmentedControlProps<Value>) {
   const name = useId();
   const inputs = useRef<Array<HTMLInputElement | null>>([]);
@@ -60,7 +62,7 @@ export function SegmentedControl<Value extends string>({
             onChange={() => onValueChange(option.value)}
             className="peer sr-only"
           />
-          <span className="block rounded px-3 py-1 text-sm text-muted-foreground transition-colors peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-ring peer-disabled:opacity-50">
+          <span className={cn('block rounded text-muted-foreground transition-colors', size === 'sm' ? 'px-2 py-0.5 text-2xs' : 'px-3 py-1 text-sm', 'peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-ring peer-disabled:opacity-50')}>
             {option.label}
           </span>
         </label>

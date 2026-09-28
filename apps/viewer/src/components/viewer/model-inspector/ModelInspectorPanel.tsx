@@ -18,17 +18,19 @@ import { ChevronRight, X } from 'lucide-react';
 import { EditElement } from '@/icons';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { AUTHORED_KINDS, entityName, layerSetOf, readLayerSet, typeOf } from '@/lib/commands/modeling/authored-kinds';
 import { authoringDim, type AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
-import { CommitField, InspectorCaption, InspectorPill, InspectorRow } from './InspectorControls';
+import { CommitField, InspectorCaption, InspectorRow } from './InspectorControls';
 import { DefaultDimensions, SelectionDimensions } from './DimensionsSection';
 import { HostingSection } from './HostingSection';
 import { KIND_LABEL } from './inspector-fields';
 import { LayersSection } from './LayersSection';
 import { TypeSection } from './TypeSection';
-import { runInspectorEdit, useInspectorTarget, type InspectorSelection, type InspectorTarget } from './useInspectorTarget';
+import { renameElement } from './inspector-edits';
+import { useInspectorTarget, type InspectorSelection, type InspectorTarget } from './useInspectorTarget';
 
 const HOSTED: ReadonlySet<AuthoredElementKind> = new Set(['door', 'window']);
 
@@ -98,10 +100,11 @@ function InspectorToolbar({ target }: { target: InspectorTarget }) {
   return (
     <div className="flex min-h-9 items-center gap-2 border-b border-border px-3 py-1.5">
       {target.both && target.mode && (
-        <InspectorPill
+        <SegmentedControl
+          size="sm"
           label={t('modelInspector.mode.aria')}
           value={target.mode}
-          onChange={target.setMode}
+          onValueChange={target.setMode}
           options={[
             { value: 'defaults', label: t('modelInspector.mode.defaults') },
             { value: 'selection', label: t('modelInspector.mode.selection') },
@@ -153,16 +156,19 @@ function SelectionBody({ selection }: { selection: InspectorSelection }) {
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const defaults = useViewerStore((s) => s.authoringDefaults);
   const { modelId, expressId, kind, live } = selection;
-  const { name, typeId, layerSet } = useMemo(() => {
+  const { name, typeId, layerSet, thickness } = useMemo(() => {
     void mutationVersion;
     const layered = kind !== null && AUTHORED_KINDS[kind].layers !== undefined;
-    return { name: entityName(live, expressId), typeId: typeOf(live, expressId), layerSet: layered ? layerSetOf(live, expressId) : null };
-  }, [live, expressId, kind, mutationVersion]);
+    const wallThickness = kind === 'wall' ? useViewerStore.getState().readWallEndpoints(modelId, expressId)?.thickness : undefined;
+    return {
+      name: entityName(live, expressId),
+      typeId: typeOf(live, expressId),
+      layerSet: layered ? layerSetOf(live, expressId) : null,
+      thickness: wallThickness ?? (kind === null ? 0 : authoringDim(defaults, kind, 'Thickness')),
+    };
+  }, [live, modelId, expressId, kind, defaults, mutationVersion]);
 
-  const rename = (next: string) => runInspectorEdit(modelId, (tx) => {
-    if (!tx.store.setAttribute(tx.modelId, expressId, 'Name', next, name)) throw new Error(`Couldn't rename #${expressId}`);
-    return [];
-  });
+  const rename = (next: string) => renameElement(modelId, expressId, next, name);
 
   return (
     <>
@@ -176,7 +182,8 @@ function SelectionBody({ selection }: { selection: InspectorSelection }) {
       {kind !== null && !HOSTED.has(kind) && <SelectionDimensions selection={selection} />}
       {kind !== null && AUTHORED_KINDS[kind].layers && (
         <LayersSection
-          key={`${expressId}:${layerSet?.layerSetId ?? 'none'}`}
+          // Re-seed the draft when the applied layers change, or (with none) the wall's thickness does.
+          key={`${expressId}:${layerSet?.layerSetId ?? `none:${thickness}`}`}
           modelId={modelId}
           live={live}
           kind={kind}
@@ -184,7 +191,7 @@ function SelectionBody({ selection }: { selection: InspectorSelection }) {
           initial={layerSet?.layers ?? []}
           inheritedFromType={layerSet?.via === 'type'}
           typeId={typeId}
-          defaultThickness={kind === 'wall' ? (useViewerStore.getState().readWallEndpoints(modelId, expressId)?.thickness ?? authoringDim(defaults, 'wall', 'Thickness')) : authoringDim(defaults, kind, 'Thickness')}
+          defaultThickness={thickness}
         />
       )}
       {kind !== null && HOSTED.has(kind) && <HostingSection />}

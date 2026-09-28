@@ -79,7 +79,7 @@ export function runTransaction(
   let result: CommitResult;
   try {
     result = cmd.commit(g, tx);
-    applyAuthoredDefaults(store, result.modelId ?? modelId, result.authored ?? result.created);
+    applyAuthoredDefaults(store, result.modelId ?? modelId, result.authored ?? []);
   } catch (error) {
     rollBack(store, before, redoBefore);
     dropOverlayEntitiesSince(get(), overlayBefore);

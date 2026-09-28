@@ -15,7 +15,7 @@
 
 import { liveEntityConforms, readRelatedLists, fromNativeLength } from '@ifc-lite/create';
 import { iterateEffectiveEntityIds, type IfcAttributeValue, type MutablePropertyView } from '@ifc-lite/mutations';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { getAttributeNamesForSchema, type IfcDataStore } from '@ifc-lite/parser';
 import { effectiveListStringAttribute } from '@/lib/lists/effective-provider-entities';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
@@ -72,8 +72,20 @@ export function authoredKindOf({ dataStore, view }: LiveModel, expressId: number
   return KINDS.find((kind) => liveEntityConforms(dataStore, expressId, AUTHORED_KINDS[kind].occurrence, view)) ?? null;
 }
 
+/**
+ * The live `Name`. The entity table indexes names of IfcRoot entities only,
+ * so for a file's IfcMaterial (not an IfcRoot) the source record's `Name`
+ * slot is read instead.
+ */
 export function entityName({ dataStore, view }: LiveModel, expressId: number): string {
-  return effectiveListStringAttribute(dataStore, view ?? undefined, expressId, 'Name', () => dataStore.entities.getName(expressId) ?? '');
+  return effectiveListStringAttribute(dataStore, view ?? undefined, expressId, 'Name', () => {
+    const indexed = dataStore.entities.getName(expressId);
+    if (indexed) return indexed;
+    const entity = dataStore.getEntity(expressId);
+    const slot = entity ? getAttributeNamesForSchema(entity.type, dataStore.schemaVersion).indexOf('Name') : -1;
+    const value = slot < 0 ? undefined : entity?.attributes[slot];
+    return typeof value === 'string' ? value : '';
+  });
 }
 
 function named(model: LiveModel, ids: Iterable<number>): NamedEntity[] {

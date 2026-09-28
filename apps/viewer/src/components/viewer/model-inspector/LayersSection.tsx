@@ -18,18 +18,17 @@ import { useMemo, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
-import { AUTHORED_KINDS, materialsOf, type LayerRow, type LiveModel } from '@/lib/commands/modeling/authored-kinds';
-import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
-import { setWallSection } from '@/store/slices/mutation-wall-section';
+import { materialsOf, type LayerRow, type LiveModel } from '@/lib/commands/modeling/authored-kinds';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
-import { InspectorCaption, InspectorPill, InspectorSection } from './InspectorControls';
-import { formatMetres, parseMetres } from './inspector-fields';
-import { runInspectorEdit } from './useInspectorTarget';
+import { InspectorCaption, InspectorSection } from './InspectorControls';
+import { METRE_SYMBOL, formatMetres, parseMetres } from './inspector-fields';
+import { applyMaterialLayers, type LayerInput } from './inspector-edits';
 
 const NONE = 'none';
 const NEW = 'new';
@@ -77,35 +76,19 @@ export function LayersSection({ modelId, live, kind, initial, inheritedFromType,
   const update = (key: number, patch: Partial<DraftRow>) => setRows((all) => all.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
   const apply = () => {
-    const layers = rows.map((r) => ({ thickness: parseMetres(r.thickness), material: r.material, name: r.newName.trim() }));
-    if (layers.some((l) => l.thickness === null)) { toast.error(t('modelInspector.layers.needLayer')); return; }
-    if (layers.some((l) => l.material === NEW && !l.name)) { toast.error(t('modelInspector.layers.needName')); return; }
-    const info = AUTHORED_KINDS[kind];
-    let layerSetId: number | null = null;
-    const ok = runInspectorEdit(modelId, (tx) => {
-      recordModellingEdit(useViewerStore, tx.modelId, (m) => {
-        const MaterialLayers = layers.map((l) => ({
-          LayerThickness: l.thickness ?? 0,
-          Material: l.material === NEW ? m.addMaterial(tx.modelId, { Name: l.name }).expressId
-            : l.material === NONE ? undefined : Number(l.material),
-        }));
-        layerSetId = m.addMaterialLayerSet(tx.modelId, { MaterialLayers }).expressId;
-        if (target === 'type' && typeId !== null) m.assignMaterial(tx.modelId, layerSetId, [typeId]);
-        else if (elementId !== undefined) {
-          const usage = m.addMaterialLayerSetUsage(tx.modelId, {
-            ForLayerSet: layerSetId, LayerSetDirection: info.layers, OffsetFromReferenceLine: info.layers === 'AXIS2' ? -total / 2 : 0,
-          });
-          m.assignMaterial(tx.modelId, usage.expressId, [elementId]);
-        }
-      });
-      if (kind !== 'wall' || elementId === undefined || target !== 'element') return [];
-      const section = setWallSection(() => tx.store, tx.modelId, elementId, { thickness: total });
-      if (!section.ok) throw new Error(section.reason);
-      return [elementId];
-    });
-    if (ok && elementId === undefined && target === 'element' && layerSetId !== null) {
+    const parsed = rows.map((r) => ({ thickness: parseMetres(r.thickness), material: r.material, name: r.newName.trim() }));
+    if (parsed.some((l) => l.thickness === null)) { toast.error(t('modelInspector.layers.needLayer')); return; }
+    if (parsed.some((l) => l.material === NEW && !l.name)) { toast.error(t('modelInspector.layers.needName')); return; }
+    const layers: LayerInput[] = parsed.map((l) => ({
+      thickness: l.thickness ?? 0,
+      material: l.material === NEW ? { name: l.name } : l.material === NONE ? null : { id: Number(l.material) },
+    }));
+    const layerSetId = applyMaterialLayers(modelId, { kind, layers, target, elementId, typeId });
+    if (layerSetId !== null && elementId === undefined && target === 'element') {
       const s = useViewerStore.getState();
       s.setAuthoringDefaults({ layerSetIds: { ...s.authoringDefaults.layerSetIds, [kind]: { modelId, expressId: layerSetId } } });
+      // The next wall is built as thick as its layers, as a layered selected wall is.
+      if (kind === 'wall') s.setAuthoringDims('wall', { Thickness: layers.reduce((sum, l) => sum + l.thickness, 0) });
     }
   };
 
@@ -134,10 +117,11 @@ export function LayersSection({ modelId, live, kind, initial, inheritedFromType,
         </Button>
         <div className="flex items-center gap-1.5">
           <span className="text-2xs text-muted-foreground">{t('modelInspector.layers.applyTo')}</span>
-          <InspectorPill
+          <SegmentedControl
+            size="sm"
             label={t('modelInspector.layers.applyTo')}
             value={target}
-            onChange={setTarget}
+            onValueChange={setTarget}
             options={[
               { value: 'element', label: t('modelInspector.layers.targetElement') },
               { value: 'type', label: t('modelInspector.layers.targetType'), disabled: typeId === null },
@@ -149,7 +133,7 @@ export function LayersSection({ modelId, live, kind, initial, inheritedFromType,
         </div>
       </div>
       {elementId === undefined && <InspectorCaption>{t('modelInspector.layers.defaultsHint')}</InspectorCaption>}
-      {elementId !== undefined && kind === 'wall' && <InspectorCaption>{t('modelInspector.layers.wallFollows')}</InspectorCaption>}
+      {kind === 'wall' && target === 'element' && <InspectorCaption>{t('modelInspector.layers.wallFollows')}</InspectorCaption>}
     </InspectorSection>
   );
 }
@@ -174,7 +158,7 @@ function LayerRowEditor({ n, row: r, materials, onChange, onRemove }: {
             onKeyDown={stop}
             className="h-7 pr-5 text-xs tabular-nums"
           />
-          <span aria-hidden className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-muted-foreground">m</span>
+          <span aria-hidden className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-muted-foreground">{METRE_SYMBOL}</span>
         </div>
         <Select value={r.material} onValueChange={(material) => onChange({ material })}>
           <SelectTrigger aria-label={t('modelInspector.layers.materialAria', { n })} className="h-7 min-w-0 flex-1 text-xs">

@@ -19,10 +19,9 @@ import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, Sele
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { AUTHORED_KINDS, typeOf, typesOfKind, type LiveModel } from '@/lib/commands/modeling/authored-kinds';
-import { detachFromType, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import { InspectorCaption, InspectorRow, InspectorSection } from './InspectorControls';
-import { runInspectorEdit } from './useInspectorTarget';
+import { createElementType, setElementType } from './inspector-edits';
 
 const NONE = 'none';
 const NEW = 'new';
@@ -58,27 +57,15 @@ export function TypeSection({ modelId, live, kind, elementId }: TypeSectionProps
   const choose = (value: string) => {
     if (value === NEW) { setNaming(true); return; }
     const typeId = value === NONE ? null : Number(value);
-    if (elementId === undefined) { pickDefault(typeId); return; }
-    runInspectorEdit(modelId, (tx) => {
-      recordModellingEdit(useViewerStore, tx.modelId, (methods, draft) => {
-        if (typeId === null) detachFromType(draft, live.dataStore, [elementId]);
-        else methods.assignType(tx.modelId, typeId, [elementId]);
-      });
-      return [];
-    });
+    if (elementId === undefined) pickDefault(typeId);
+    else setElementType(modelId, elementId, typeId);
   };
 
-  const create = (Name: string) => {
-    let typeId: number | null = null;
-    const ok = runInspectorEdit(modelId, (tx) => {
-      recordModellingEdit(useViewerStore, tx.modelId, (methods) => {
-        typeId = methods.addElementType(tx.modelId, { Type: AUTHORED_KINDS[kind].type, Name }).expressId;
-        if (elementId !== undefined) methods.assignType(tx.modelId, typeId, [elementId]);
-      });
-      return [];
-    });
-    if (ok && elementId === undefined && typeId !== null) pickDefault(typeId);
-    if (ok) setNaming(false);
+  const create = (name: string) => {
+    const typeId = createElementType(modelId, kind, name, elementId);
+    if (typeId === null) return;
+    if (elementId === undefined) pickDefault(typeId);
+    setNaming(false);
   };
 
   return (

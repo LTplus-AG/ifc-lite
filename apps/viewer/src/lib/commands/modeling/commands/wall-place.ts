@@ -81,7 +81,7 @@ export const WALL_PLACE: ModelingCommand<WallPlaceGesture> = {
       Start: [anchor[0], anchor[1], 0], End: [end[0], end[1], 0], Thickness, Height,
     });
     if ('error' in wall) throw new Error(`Couldn't add wall: ${wall.error}`);
-    return { created: [wall.expressId], deleted: [], remesh: [wall.expressId], select: [wall.expressId] };
+    return { created: [wall.expressId], authored: [wall.expressId], deleted: [], remesh: [wall.expressId], select: [wall.expressId] };
   },
   // Chain: the next wall starts where this one ended; typed locks are per segment.
   afterCommit: (g) => {

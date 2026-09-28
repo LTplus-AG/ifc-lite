@@ -53,6 +53,20 @@ lesson is to measure cache benefits in opt-in extraction and browser worker
 pools rather than infer them from a default mesh probe. The PR records the
 numeric measurements, binary hashes, and fixture provenance.
 
+## Opt-in swept-disk WASM bridge (#5770)
+
+The geometry bridge exposes a new explicit extraction call; ordinary mesh
+loading does not call it. Source-matched native `perf_probe` builds from the
+main parent and bridge head produced byte-identical executables (SHA-256
+`b5681610450366214773ddaaf808d4fa8ea8fd00894f9ffec5a81ffdc32c9bb4`).
+Both emitted the same ordered mesh fingerprint and mesh, vertex and triangle
+counts on AC20-FZK-Haus. Verdict: the normal **native** load executes the same
+binary, so a noisy timing comparison of those binaries would add no evidence.
+The added WASM export's browser startup and opt-in extraction cost were not
+measured; this result does not establish a browser worker-pool speed change.
+For an opt-in bridge, prove the default path is unchanged separately from
+measuring the new call when a frequent caller exists.
+
 ## Derived swept-disk metrics (#5754)
 
 The length/bend calculations run only when an analytic description is

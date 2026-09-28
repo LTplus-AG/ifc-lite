@@ -21,6 +21,35 @@ function selected(modelId: string, startX: number, sourceModified = false): Sele
 }
 
 describe('selected centreline overlay (#5778)', () => {
+  it('keeps an in-budget directrix larger than the JavaScript argument limit', async () => {
+    const zero = { x: 0, y: 0, z: 0 };
+    const box = { min: zero, max: zero };
+    const prior = useViewerStore.getState();
+    try {
+      useViewerStore.setState({ models: new Map(), geometryResult: {
+        meshes: [], totalVertices: 0, totalTriangles: 0,
+        coordinateInfo: { originShift: zero, wasmRtcOffset: zero,
+          hasLargeCoordinates: false, originalBounds: box, shiftedBounds: box },
+      } });
+      const item = selected('legacy', 0);
+      const occurrence = item.occurrences[0];
+      if (!occurrence) throw new Error('the line fixture has no source occurrence');
+      const segments = Array.from({ length: 30_000 }, (_, index) => ({
+        type: 'line' as const, start: [index, 0, 0] as [number, number, number],
+        end: [index + 1, 0, 0] as [number, number, number],
+      }));
+      const result = await selectedCentrelineWorldLines([
+        { ...item, occurrences: [{ ...occurrence, Directrix: segments }] },
+      ], useViewerStore.getState());
+      assert.equal(result.vertices.length, 180_000);
+      assert.equal(result.vertices[0], 0);
+      assert.equal(result.vertices.at(-3), 30_000);
+      assert.deepEqual(result.diagnostics, []);
+    } finally {
+      useViewerStore.setState(prior);
+    }
+  });
+
   it('keeps a later valid sweep when an earlier complete arc exceeds the display budget', async () => {
     const zero = { x: 0, y: 0, z: 0 };
     const box = { min: zero, max: zero };
@@ -70,7 +99,7 @@ describe('selected centreline overlay (#5778)', () => {
     }
   });
 
-  it('keeps colliding local ids in their own RTC model frames and omits modified sources', async () => {
+  it('keeps colliding local ids in their own RTC model frames and explains omitted sources', async () => {
     const first = fixtureModel('first', { idOffset: 1_000_000 });
     const second = fixtureModel('second', { idOffset: 2_000_000 });
     const frame = (x: number) => {
@@ -89,6 +118,10 @@ describe('selected centreline overlay (#5778)', () => {
       const result = await selectedCentrelineWorldLines([
         selected('first', 5_000_000.001), selected('second', 101),
         { ...selected('second', 101, true), diagnostics: ['product #42: modified by boolean operation'] },
+        { ...selected('second', 101), occurrences: [{
+          ...selected('second', 101).occurrences[0]!,
+          status: { type: 'unsupported', reason: 'unsupported directrix' },
+        }] },
       ], useViewerStore.getState());
       assert.ok(Math.abs(result.vertices[0] - 0.001) < 1e-9);
       assert.ok(Math.abs(result.vertices[3] - 0.003) < 1e-9);
@@ -96,9 +129,10 @@ describe('selected centreline overlay (#5778)', () => {
       assert.ok(Math.abs(result.vertices[6] - 1) < 1e-9);
       assert.ok(Math.abs(result.vertices[9] - 1.002) < 1e-9);
       assert.deepEqual([result.vertices[7], result.vertices[8], result.vertices[10], result.vertices[11]], [2, -1, 2, -1]);
-      assert.equal(result.diagnostics.length, 2);
+      assert.equal(result.diagnostics.length, 3);
       assert.match(result.diagnostics[0], /modified by boolean operation/);
       assert.match(result.diagnostics[1], /does not describe the visible solid/);
+      assert.match(result.diagnostics[2], /unsupported source \(unsupported directrix\)/);
     } finally {
       useViewerStore.setState(prior);
     }

@@ -50,7 +50,7 @@ export async function selectedCentrelineWorldLines(
     const legacy = modelId === 'legacy' && state.models.size === 0;
     const geometry = model?.geometryResult ?? (legacy ? state.geometryResult : null);
     if (!geometry || (model && !model.visible)) continue;
-    diagnostics.push(...item.diagnostics);
+    for (const message of item.diagnostics) diagnostics.push(message);
     const sourceFrame = model?.preAlignment?.coordinateInfo ?? geometry.coordinateInfo;
     const placed = placementFor(state.modelPlacement, modelId);
     const placement = { ...placed, translation: displayedTranslation(state.modelPlacement, modelId) };
@@ -63,8 +63,12 @@ export async function selectedCentrelineWorldLines(
       continue;
     }
     for (const occurrence of item.occurrences) {
-      if (occurrence.status.type !== 'complete' || occurrence.source_modified) {
-        diagnostics.push(`${modelId} #${expressId} solid #${occurrence.solid_id}: analytic source does not describe the visible solid`);
+      if (occurrence.status.type === 'unsupported') {
+        diagnostics.push(`${modelId} #${expressId} solid #${occurrence.solid_id}: unsupported source (${occurrence.status.reason})`);
+        continue;
+      }
+      if (occurrence.source_modified) {
+        diagnostics.push(`${modelId} #${expressId} solid #${occurrence.solid_id}: CSG-modified analytic source does not describe the visible solid`);
         continue;
       }
       try {

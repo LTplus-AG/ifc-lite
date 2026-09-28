@@ -81,8 +81,12 @@ test('selected Revit bar draws and clears its source centreline (#5778)', async 
   const capture = () => page.evaluate(() => (globalThis as unknown as {
     __ifc_lite_capture_color_frame__: () => Promise<string | null>;
   }).__ifc_lite_capture_color_frame__());
-  let before = await capture();
-  expect(before, 'renderer produced a baseline color frame').toMatch(/^data:image\/png;base64,/);
+  let before: string | null = null;
+  await expect.poll(async () => {
+    before = await capture();
+    return before;
+  }, { timeout: 30_000, message: 'renderer produces a baseline color frame' })
+    .toMatch(/^data:image\/png;base64,/);
   if (!before) throw new Error('renderer produced no baseline color frame');
   await expect.poll(async () => {
     const next = await capture();
@@ -100,8 +104,12 @@ test('selected Revit bar draws and clears its source centreline (#5778)', async 
     return frame ? (await frameChange(page, before!, frame, 30)).changed : 0;
   }, { timeout: 120_000, message: 'enabling the directrix draws visible source pixels' })
     .toBeGreaterThan(100);
-  const visible = await capture();
-  expect(visible).toMatch(/^data:image\/png;base64,/);
+  let visible: string | null = null;
+  await expect.poll(async () => {
+    visible = await capture();
+    return visible;
+  }, { timeout: 30_000, message: 'renderer produces an overlay color frame' })
+    .toMatch(/^data:image\/png;base64,/);
   if (!visible) throw new Error('renderer produced no overlay color frame');
   await testInfo.attach('Snowdon selected centreline', {
     body: Buffer.from(visible.split(',')[1], 'base64'), contentType: 'image/png',

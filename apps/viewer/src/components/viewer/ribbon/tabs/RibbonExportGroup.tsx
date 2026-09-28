@@ -29,7 +29,7 @@ import {
   type ExportIconSet,
 } from '../../toolbar/export-commands';
 import { useExportCommands, type ResolvedExportCommand } from '../../toolbar/useExportCommands';
-import { RibbonGroup, RibbonLargeButton, RibbonSmallButton, RibbonSmallStack } from '../primitives';
+import { RibbonGroup, RibbonContentLargeButton, RibbonContentSmallButton, RibbonSmallStack } from '../primitives';
 
 interface RibbonExportButtonProps extends ResolvedExportCommand {
   icons: ExportIconSet;
@@ -45,10 +45,12 @@ function RibbonExportButton({
   onRunAction,
 }: RibbonExportButtonProps) {
   const { t } = useTranslation();
-  const Button = command.emphasis === 'large' ? RibbonLargeButton : RibbonSmallButton;
+  const Button = command.emphasis === 'large' ? RibbonContentLargeButton : RibbonContentSmallButton;
   const shared = {
     icon: icons[command.id],
-    label: t(command.labelKey),
+    contentLabel: t(command.labelKey),
+    contentSource: 'export' as const,
+    contentId: command.id,
     tooltip: t(command.tooltipKey),
     disabled,
     'data-export-command': command.id,
@@ -120,10 +122,12 @@ export function RibbonExportGroup({ icons }: { icons: ExportIconSet }) {
       {groupExportCommands(extensionExporters, (_, index) => Math.floor(index / 3)).map((stack) => (
         <RibbonSmallStack key={stack[0].key}>
           {stack.map((exporter) => (
-            <RibbonSmallButton
+            <RibbonContentSmallButton
               key={exporter.key}
               icon={icons.extension}
-              label={exporter.name}
+              contentSource="extension"
+              contentId={exporter.key}
+              contentLabel={exporter.name}
               tooltip={exporter.extension}
               disabled={extensionExportRunning}
               data-export-extension={exporter.key}

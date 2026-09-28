@@ -10,7 +10,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { chordIdentity, formatChord } from './chord.js';
-import { KEY_COMMANDS, type KeyCommandDefinition } from './keyboard-commands.js';
+import { KEY_COMMANDS, type KeyCommandDefinition, type KeyContext } from './keyboard-commands.js';
 import { formatCommandKeys, primaryShortcutLabel, shortcutLabel } from './shortcut-label.js';
 
 /** Every (context, chord) claimed by more than one command. */
@@ -28,6 +28,27 @@ function collisions(commands: readonly KeyCommandDefinition[]): string[] {
   return clashes;
 }
 
+/** A new dispatcher context must join the collision control, too (#5878). */
+const DISPATCHER_CONTEXTS = {
+  global: true,
+  overlay: true,
+  'tool.walk': true,
+  'tool.measure': true,
+  'tool.addElement': true,
+  'tool.spaceSketch': true,
+  command: true,
+  'command.wall.place': true, // Representative command-specific context.
+  drawing2d: true,
+  flight: true,
+  'search.cycle': true,
+  'search.field': true,
+  'panel.reposition': true,
+  'panel.chat': true,
+  'panel.schedule': true,
+  'panel.script': true,
+  'schedule.drag': true,
+} satisfies Record<KeyContext, true>;
+
 describe('keyboard command table (#5836)', () => {
   it('no two commands share a chord within one context', () => {
     assert.deepEqual(collisions(KEY_COMMANDS), []);
@@ -40,6 +61,18 @@ describe('keyboard command table (#5836)', () => {
     // The same chord in another context is not a clash: a tool context wins
     // over `global` while the tool is active.
     assert.deepEqual(collisions([undo, { ...clash, when: 'tool.spaceSketch' }]), []);
+  });
+
+  it('rejects a duplicated chord in every dispatcher when context (#5878)', () => {
+    const [undo] = KEY_COMMANDS;
+    for (const when of Object.keys(DISPATCHER_CONTEXTS) as KeyContext[]) {
+      const first = { ...undo, when };
+      const second = { ...first, id: `test.clash.${when}` };
+      assert.equal(collisions([first, second]).length, 1, when);
+      assert.deepEqual(collisions([undo, second]), when === 'global'
+        ? [`${when} ${chordIdentity(undo.keys[0])}: ${undo.id} and ${second.id}`]
+        : [], when);
+    }
   });
 
   it('command ids are unique', () => {

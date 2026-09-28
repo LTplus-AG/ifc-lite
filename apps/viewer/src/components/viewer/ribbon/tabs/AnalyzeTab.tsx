@@ -11,7 +11,12 @@ import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelContro
 import { PANEL_GROUPS, panelGroupFor, type WorkspacePanelId } from '@/lib/panels/registry';
 import { PanelGroupBrowser } from '../PanelGroupBrowser';
 import type { SurfaceCommandContext, SurfaceCommandId } from '../../surface-commands';
-import { RibbonGroup, RibbonGroupDivider, RibbonSmallButton, RibbonSmallStack } from '../primitives';
+import {
+  RibbonGroup,
+  RibbonGroupDivider,
+  RibbonContentSmallButton,
+  RibbonSmallStack,
+} from '../primitives';
 import { RibbonCommandLargeButton } from '../command-button';
 
 interface FeaturedPanel {
@@ -105,11 +110,13 @@ export function AnalyzeTab() {
             {chunk(analysisExtensions, 3).map((column, i) => (
               <RibbonSmallStack key={i}>
                 {column.map((extension) => (
-                  <RibbonSmallButton
+                  <RibbonContentSmallButton
                     key={extension.id}
                     data-ribbon-extension={extension.id}
                     icon={extension.icon}
-                    label={extension.label}
+                    contentSource="extension"
+                    contentId={extension.id}
+                    contentLabel={extension.label}
                     active={activeWorkspacePanels.has(extension.id)}
                     onClick={() => handleToggleAnalysisExtension(extension.id)}
                   />

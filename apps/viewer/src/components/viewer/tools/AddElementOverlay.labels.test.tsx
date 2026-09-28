@@ -49,9 +49,9 @@ const labels = (root: ParentNode) =>
   Array.from(root.querySelectorAll('[data-scene-primitive="world-label"]')).map((el) => el.textContent);
 
 describe('AddElementOverlay readouts as WorldLabel (#5503)', () => {
-  it('shows the live wall length as one accent world label at the segment midpoint', () => {
+  it('shows the live beam length as one accent world label at the segment midpoint', () => {
     useViewerStore.setState({
-      addElementType: 'wall',
+      addElementType: 'beam',
       addElementPendingPoints: [{ x: 0, y: 0, z: 0 }],
       addElementHoverPoint: { x: 2, y: 0, z: 0 },
     } as unknown as Partial<ReturnType<typeof useViewerStore.getState>>);

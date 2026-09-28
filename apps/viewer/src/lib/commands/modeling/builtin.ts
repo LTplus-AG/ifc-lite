@@ -11,6 +11,8 @@
 import { getModelingCommand, registerModelingCommand, setWorkplaneResolver } from './registry.js';
 import { buildStoreyWorkplane } from './workplane.js';
 import { ELEMENT_SPLIT } from './commands/element-split.js';
+import { WALL_MOVE_ENDPOINT } from './commands/wall-move-endpoint.js';
+import { WALL_PLACE } from './commands/wall-place.js';
 import type { ModelingCommand } from './types.js';
 
 /** A re-evaluated module (dev HMR) finds its commands already registered. */
@@ -19,6 +21,8 @@ function registerOnce<G>(command: ModelingCommand<G>): void {
 }
 
 registerOnce(ELEMENT_SPLIT);
+registerOnce(WALL_PLACE);
+registerOnce(WALL_MOVE_ENDPOINT);
 
 setWorkplaneResolver((s, modelId, spec) => (spec.kind === 'storey'
   ? buildStoreyWorkplane(s, modelId, spec.storeyId, spec.offset)

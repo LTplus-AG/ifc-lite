@@ -103,7 +103,7 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   }
 
   // A running modeling command takes the click (#6232, commandPointer.ts).
-  if (tool === 'command') { routeCommandPointer(ctx, 'down', x, y); return; }
+  if (tool === 'command') { routeCommandPointer(ctx, 'down', x, y, e); return; }
 
   // Add-element tool — multi-click placement (beams/members, slab
   // rectangle/polygon, single-click columns/doors/windows; walls are the

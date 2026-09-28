@@ -17,13 +17,17 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Box } from 'lucide-react';
 import { cleanup, render } from '@/test/render.js';
-import { RibbonLargeButton } from './primitives.js';
+import { RibbonContentLargeButton, type RibbonContentButtonProps } from './primitives.js';
+
+// @ts-expect-error #5878: the content primitive cannot take a free-form command label.
+const rawCommandLabel: RibbonContentButtonProps = { icon: Box, label: 'Foo', contentSource: 'export', contentId: 'fake' };
+void rawCommandLabel;
 
 afterEach(cleanup);
 
-describe('RibbonLargeButton sizing (#5395)', () => {
+describe('RibbonContentLargeButton sizing (#5395)', () => {
   it('sizes to its longest word with a 56 px floor instead of a fixed width', () => {
-    const container = render(<RibbonLargeButton icon={Box} label="Orthographic" />);
+    const container = render(<RibbonContentLargeButton icon={Box} contentLabel="Orthographic" contentSource="export" contentId="test" />);
     const button = container.querySelector('button');
     assert.ok(button, 'the button rendered');
     const classes = button.className.split(/\s+/);

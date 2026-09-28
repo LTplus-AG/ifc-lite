@@ -40,11 +40,11 @@ const rectSide = (axis: 0 | 1) => (g: SlabPlaceGesture): number | null => {
 const FIELDS: readonly CommandField<SlabPlaceGesture>[] = [
   {
     id: 'width', labelKey: 'modelingCommand.field.width', unit: 'm', group: 'rect',
-    hidden: (g) => g.mode !== 'rectangle', read: rectSide(0), write: (g, v) => ({ ...g, width: Math.abs(v) || null }),
+    hidden: (g) => g.mode !== 'rectangle', read: rectSide(0), write: (g, v) => ({ ...g, width: Math.abs(v) }),
   },
   {
     id: 'depth', labelKey: 'modelingCommand.field.depth', unit: 'm', group: 'rect',
-    hidden: (g) => g.mode !== 'rectangle', read: rectSide(1), write: (g, v) => ({ ...g, depth: Math.abs(v) || null }),
+    hidden: (g) => g.mode !== 'rectangle', read: rectSide(1), write: (g, v) => ({ ...g, depth: Math.abs(v) }),
   },
   defaultsField('thickness', slabClassOf, 'Thickness', 'modelingCommand.field.thickness'),
 ];

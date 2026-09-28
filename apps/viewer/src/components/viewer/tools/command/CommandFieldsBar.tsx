@@ -63,6 +63,10 @@ export function CommandFieldsBar({ measuring = false }: { measuring?: boolean } 
       {fields.map((field, index) => {
         if (field.hidden?.(gesture)) return null;
         const format = UNIT_FORMAT[field.unit];
+        // A field with no value yet shows 0; tabbing through it commits that
+        // placeholder, which must not become a lock (a Slab Width of 0 before
+        // the first corner). A value typed once the field has one still counts.
+        const current = field.read(gesture, ctx);
         const label = t(field.labelKey);
         return (
           <Fragment key={field.id}>
@@ -71,8 +75,8 @@ export function CommandFieldsBar({ measuring = false }: { measuring?: boolean } 
               <span className="text-2xs text-overlay-ink-muted">{label}</span>
               <HudValueField
                 ref={measuring ? undefined : (handle) => { handles.current[index] = handle; }}
-                value={field.read(gesture, ctx) ?? 0}
-                onChange={(next) => writeCommandField(index, next)}
+                value={current ?? 0}
+                onChange={(next) => { if (current !== null || next !== 0) writeCommandField(index, next); }}
                 onSubmit={() => { commitCommand(); }}
                 onTab={(shift) => { requestFieldEdit(shift ? previousShown(fields, gesture, index) : (index + 1) % fields.length); }}
                 unit={t(format.key)}

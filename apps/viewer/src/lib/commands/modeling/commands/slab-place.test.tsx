@@ -119,6 +119,30 @@ describe('slab.place: rectangle (#6232 M2.2)', () => {
     assert.deepEqual(slabs()[0].outline, [[-4, 2], [2, 2], [2, 5], [-4, 5]], 'six wide towards -x, the cursor gives the depth');
   });
 
+  // Review of #6396: `Math.abs(v) || null` dropped a typed 0, so Enter built a
+  // slab sized by the cursor instead of refusing the width the user typed.
+  it('a typed Width of 0 holds, and Enter refuses the rectangle instead of using the cursor', () => {
+    const ui = render(<CommandFieldsBar />);
+    click(0, 0);
+    act(() => { commandPointerMove(at(3, 2)); });
+    press(document.body, '0');
+    const input = ui.querySelector('input') as HTMLInputElement;
+    type(input, '0');
+    press(input, 'Enter');
+    assert.equal(gesture().width, 0, 'the typed zero is kept as the lock');
+    assert.deepEqual(slabs(), [], 'nothing is built from the cursor');
+  });
+
+  it('tabbing past an empty Width before the first corner locks nothing', () => {
+    render(<CommandFieldsBar />);
+    press(document.body, 'Tab');
+    press(document.querySelector('input') as HTMLInputElement, 'Tab');
+    assert.equal(gesture().width, null, 'the shown placeholder 0 is not a lock');
+    click(0, 0);
+    click(2, 1);
+    assert.deepEqual(slabs()[0].outline, [[0, 0], [2, 0], [2, 1], [0, 1]]);
+  });
+
   it('Shift squares the rectangle on its longer side', () => {
     click(0, 0);
     click(3, 1, true);

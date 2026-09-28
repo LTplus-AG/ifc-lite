@@ -244,7 +244,7 @@ function appendMaterialOwnPropertySets(
 function resolveEntityTypeName(store: IfcDataStore, expressId: number): string | undefined {
   const fromTable = store.entities?.getTypeName?.(expressId);
   if (fromTable && fromTable !== 'Unknown') return fromTable;
-  // @raw-entity-enumeration-ok point lookup for the source record whose parsed properties are being projected; live candidate membership and overlay types are resolved separately by the IDS accessor
+  // @raw-entity-enumeration-ok point lookup for one source record to guard the parsed material-owned-property projection; this helper projects source property sets and is not a live candidate/type enumeration
   const entry = store.entityIndex?.byId?.get(expressId);
   if (!entry) return undefined;
   return typeof entry === 'object' && 'type' in entry ? String((entry as { type: unknown }).type) : undefined;

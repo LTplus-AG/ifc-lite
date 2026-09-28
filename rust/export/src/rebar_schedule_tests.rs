@@ -146,6 +146,46 @@ fn issue_5759_invalid_first_type_assignment_does_not_hide_valid_type_metadata() 
 }
 
 #[test]
+fn issue_5759_malformed_type_links_report_lost_authored_bar_length_with_bounded_diagnostics() {
+    let prefix = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+        #1=IFCREINFORCINGBAR('bar',$,'Bar',$,$,$,$,$,$,$,$,$,$,$);\n\
+        #2=IFCREINFORCINGBARTYPE('type',$,'Type',$,$,$,$,$,$,.MAIN.,12.,$,900.,$,$,$);\n";
+    let suffix = "ENDSEC;\nEND-ISO-10303-21;\n";
+    let valid = format!("{prefix}#3=IFCRELDEFINESBYTYPE('rel',$,$,$,(#1),#2);\n{suffix}");
+    let schedule = build_rebar_schedule(valid.as_bytes(), None, &SweptDiskCheckOptions::default()).unwrap();
+    assert_eq!(schedule.rows[&1].authored["BarLength"].source, RebarSource::Type);
+    let unreadable_type = valid.replace("900.", "?");
+    let schedule = build_rebar_schedule(unreadable_type.as_bytes(), None, &SweptDiskCheckOptions::default()).unwrap();
+    assert!(!schedule.rows[&1].authored.contains_key("BarLength"));
+    assert!(schedule.diagnostics.iter().any(|message| message == "type #2: cannot decode"));
+    assert!(schedule.rows[&1].diagnostics.iter().any(|message| message == "assigned type #2 could not decode"));
+    for (related, relating, expected) in [
+        ("$", "#2", "RelatedObjects is not a reference list"),
+        ("(#1)", "$", "RelatingType is not a reference"),
+        ("()", "#2", "RelatedObjects is empty"),
+    ] {
+        let file = format!(
+            "{prefix}#3=IFCRELDEFINESBYTYPE('rel',$,$,$,{related},{relating});\n{suffix}"
+        );
+        let schedule = build_rebar_schedule(file.as_bytes(), None, &SweptDiskCheckOptions::default()).unwrap();
+        assert!(!schedule.rows[&1].authored.contains_key("BarLength"));
+        assert!(schedule.diagnostics.iter().any(|message| message.contains(expected)));
+    }
+    let undecodable = format!("{prefix}#3=IFCRELDEFINESBYTYPE('rel',$,$,$,(#1),?);\n{suffix}");
+    let schedule = build_rebar_schedule(undecodable.as_bytes(), None, &SweptDiskCheckOptions::default()).unwrap();
+    assert!(!schedule.rows[&1].authored.contains_key("BarLength"));
+    assert!(schedule.diagnostics.iter().any(|message| message == "type relationship #3: cannot decode"));
+    let mut file = prefix.to_string();
+    for id in 3..133 {
+        file.push_str(&format!("#{id}=IFCRELDEFINESBYTYPE('rel',$,$,$,$,#2);\n"));
+    }
+    file.push_str(suffix);
+    let schedule = build_rebar_schedule(file.as_bytes(), None, &SweptDiskCheckOptions::default()).unwrap();
+    assert_eq!(schedule.diagnostics.iter().filter(|message| message.starts_with("type relationship #")).count(), 128);
+    assert!(schedule.diagnostics.iter().any(|message| message == "further type-link diagnostics omitted"));
+}
+
+#[test]
 fn issue_5759_ifc2x3_uses_barrole_not_predefinedtype() {
     let file = b"ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n\
         #1=IFCREINFORCINGBAR('bar',$,'Bar',$,$,$,$,'T1','B500B',12.,113.,1500.,.MAIN.,.PLAIN.);\n\

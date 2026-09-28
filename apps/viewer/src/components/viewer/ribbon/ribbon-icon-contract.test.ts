@@ -46,7 +46,7 @@ const ICONS_DIR = path.join(SRC, 'icons');
 const ICONS_INDEX = path.join(ICONS_DIR, 'index.ts');
 
 const RIBBON_BUTTONS = new Set([
-  'RibbonLargeButton', 'RibbonSmallButton',
+  'RibbonContentLargeButton', 'RibbonContentSmallButton',
   'RibbonCommandLargeButton', 'RibbonCommandSmallButton',
 ]);
 

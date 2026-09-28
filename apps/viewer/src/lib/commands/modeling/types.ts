@@ -16,7 +16,7 @@ import type { ComponentType } from 'react';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { TranslationKey } from '@/i18n';
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
-import type { SnapProfile, SnapResult, Vec2 } from '@/lib/snap/types';
+import type { SnapProfile, SnapQuery, SnapResult, Vec2 } from '@/lib/snap/types';
 import type { ViewerState } from '@/store';
 
 /** Render-space 3D point (viewer Y-up), the shape `SnapResult.render` carries. */
@@ -107,6 +107,8 @@ export interface ModelingCommand<G = unknown> {
   /** Per-command keys: rows in the `command.<id>` context of `KEY_COMMANDS`. */
   readonly keys?: readonly { commandKey: KeyCommandId; run(g: G, ctx: CommandContext): G | CommandSignal }[];
   init(ctx: CommandContext): G;
+  /** What the snap solver constrains against: the anchor, the chain so far, typed locks. */
+  snapQuery?(g: G): Pick<SnapQuery, 'anchor' | 'chain' | 'locks'>;
   pointerMove(g: G, s: SnapResult, ctx: CommandContext): G;
   pointerDown(g: G, s: SnapResult, ctx: CommandContext): G | CommandSignal;
   /** Backspace: drop the last placed point. Absent = the key falls through. */
@@ -128,6 +130,12 @@ export interface AuthoringTransaction {
   readonly modelId: string;
   readonly storeyId: number | null;
   readonly workplane: Workplane | null;
+  /**
+   * The undo batch every mutation of this commit is tagged with. Pass it to
+   * batch-aware actions (`resizeWall(…, batchId)`) so their per-batch
+   * bookkeeping (undo mesh rebuilds, WP1's remesh registry) keys on it.
+   */
+  readonly batchId: string;
   /** Live store state; re-read after each action, it changes as you write. */
   readonly store: ViewerState;
 }

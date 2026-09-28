@@ -83,10 +83,11 @@ import { getModelLengthUnitScale, pointToMetres, pointToNative } from '@/lib/len
 import { readWallMetres, refreshWallMeshIn, resizeWallMetres } from './mutation-wall-resize.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
-import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags.js';
+import { withMutationBatchTags } from './mutation-batch-tags.js';
 import { canMutate, mutationDenial } from '../mutation-permission.js';
 import { syncTypeOverride } from './mutation-history-apply.js';
 import { recordMutationBatch, replayHistory } from './mutation-history-replay.js';
+import { positionalMutations } from './mutation-positional-batch.js';
 
 /**
  * IFC-space directions for {@link MutationSlice.duplicateEntity}.
@@ -533,7 +534,7 @@ export interface MutationSlice extends CostUndoMethods {
   readWallEndpoints: (
     modelId: string,
     expressId: number,
-  ) => { start: [number, number, number]; end: [number, number, number]; thickness: number } | null;
+  ) => { start: [number, number, number]; end: [number, number, number]; thickness: number; height: number } | null;
   /**
    * Split a rectangle-profile wall into two walls at `distance`
    * metres along its axis (measured from the wall's start). Produces
@@ -1566,17 +1567,10 @@ export const createMutationSlice: StateCreator<
   },
 
   setPositionalAttributesBatch: (modelId, updates, continuing) => {
-    if (updates.length === 0) return null;
-    // One batch id for every mutation created below, so the undo / redo
-    // handlers group them.
-    const batchId = continuing ?? newMutationBatchId();
-    const ids: string[] = [];
-    for (const { entityId, index, value } of updates) {
-      const mutation = get().setPositionalAttribute(modelId, entityId, index, value);
-      if (mutation) ids.push(mutation.id);
-    }
-    get().tagMutationBatch(ids, batchId);
-    return batchId;
+    // Same gate as setPositionalAttribute; one store update for the whole batch.
+    if (updates.length === 0 || !canMutate(get(), modelId) || !get().mutationViews.get(modelId)) return null;
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    return editor ? recordMutationBatch(set, modelId, positionalMutations(editor, modelId, updates), continuing) : null;
   },
 
   recordMutationBatch: (modelId, mutations, batchId) => recordMutationBatch(set, modelId, mutations, batchId),
@@ -1840,7 +1834,7 @@ export const createMutationSlice: StateCreator<
     const editor = view ? getOrCreateStoreEditor(get, set, modelId) : null;
     const dataStore = get().models.get(modelId)?.ifcDataStore;
     const wall = view && editor && dataStore ? readWallMetres({ dataStore, view, editor }, expressId) : null;
-    return wall ? { start: wall.start, end: wall.end, thickness: wall.thickness } : null;
+    return wall ? { start: wall.start, end: wall.end, thickness: wall.thickness, height: wall.height } : null;
   },
 
   readWallSplitProjection: (modelId, expressId, cursorStoreyLocal) => {

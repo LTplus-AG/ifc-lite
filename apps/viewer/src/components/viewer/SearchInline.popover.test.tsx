@@ -78,6 +78,23 @@ describe('SearchInline popover dismissal (#5817)', () => {
     assert.equal(input.getAttribute('aria-controls'), 'search-inline-popover');
   });
 
+  it('exposes combobox expansion while its results list opens and closes (#6326)', () => {
+    const container = seedOpenWithResults();
+    const input = container.querySelector('input')!;
+    const popover = document.getElementById('search-inline-popover');
+    assert.ok(popover, 'results list is rendered');
+    assert.equal(input.getAttribute('role'), 'combobox');
+    assert.equal(input.getAttribute('aria-autocomplete'), 'list');
+    assert.equal(input.getAttribute('aria-controls'), popover.id);
+    assert.equal(input.getAttribute('aria-expanded'), 'true');
+
+    act(() => input.focus());
+    press(input, 'Escape');
+    assert.equal(document.getElementById('search-inline-popover'), null);
+    assert.equal(input.getAttribute('aria-expanded'), 'false');
+    assert.equal(document.activeElement, input, 'closing the list preserves combobox focus');
+  });
+
   it('Esc closes the popover without moving focus off the input', () => {
     const container = seedOpenWithResults();
     const input = container.querySelector('input')!;

@@ -72,7 +72,8 @@ export function runTransaction(
   const before = undoStackLengths(get().undoStacks);
   const redoBefore = get().redoStacks;
   const overlayBefore = overlayEntityIds(get());
-  const tx: AuthoringTransaction = { modelId, storeyId, workplane, get store() { return get(); } };
+  const batchId = newMutationBatchId();
+  const tx: AuthoringTransaction = { modelId, storeyId, workplane, batchId, get store() { return get(); } };
   let result: CommitResult;
   try {
     result = cmd.commit(g, tx);
@@ -85,14 +86,13 @@ export function runTransaction(
   }
 
   const ids = mutationsSince(get().undoStacks, before);
-  const batchId = ids.length > 0 ? newMutationBatchId() : null;
-  if (batchId) get().tagMutationBatch(ids, batchId);
+  if (ids.length > 0) get().tagMutationBatch(ids, batchId);
   const target = result.modelId ?? modelId;
-  if (batchId && result.remesh.length > 0) {
+  if (ids.length > 0 && result.remesh.length > 0) {
     requestRemesh(get, { modelId: target, batchId, expressIds: result.remesh, cause: result.created.length > 0 ? 'created' : 'shape' });
   }
   applySelection(get, target, result.select);
-  return { ok: true, batchId, result };
+  return { ok: true, batchId: ids.length > 0 ? batchId : null, result };
 }
 
 /** Undo what a failed commit already wrote, then forget that undo's redo entries. */

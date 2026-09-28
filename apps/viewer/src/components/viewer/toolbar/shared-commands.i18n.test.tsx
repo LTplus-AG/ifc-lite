@@ -15,10 +15,9 @@
  * hardcoded, or a consumer that does not re-render on a locale switch,
  * fails here by name.
  *
- * The export and camera registries (`export-commands.ts`, `camera-commands.ts`) are
- * plain data tables with no React import, so they carry a translation KEY
- * per row rather than text; this test exercises them through their real
- * renderers, the same as every other key here.
+ * The export and camera tables carry translation keys for export labels and
+ * camera tooltips; registered View commands own the camera button names.
+ * This test exercises the keys through their real renderers.
  */
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';

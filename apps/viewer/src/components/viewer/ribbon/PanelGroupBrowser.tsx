@@ -13,7 +13,7 @@ import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent,
   DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { RibbonGroup, RibbonLargeButton } from './primitives';
+import { RibbonGroup, RibbonContentLargeButton } from './primitives';
 
 export function PanelGroupBrowser() {
   const { t } = useTranslation();
@@ -34,10 +34,12 @@ export function PanelGroupBrowser() {
     <RibbonGroup label={t('shellChrome.panelGroups.browse')}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <RibbonLargeButton
+          <RibbonContentLargeButton
             data-ribbon-content="panel-browser"
             icon={BrowsePanels}
-            label={t('shellChrome.panelGroups.browse')}
+            contentLabel={t('shellChrome.panelGroups.browse')}
+            contentSource="panel-browser"
+            contentId="panel-browser"
             aria-label={t('shellChrome.panelGroups.browse')}
             hasMenu
           />

@@ -4,15 +4,27 @@ name: Benchmark
 
 on:
   workflow_dispatch:
+    inputs:
+      parent_sha:
+        description: Exact parent commit (40 hex characters)
+        required: true
+        type: string
+      child_sha:
+        description: Exact child or synthetic-merge commit (40 hex characters)
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   native-ab:
-    name: Hosted #6283 native A/B
+    name: Hosted native A/B
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    env:
+      PARENT_SHA: ${{ inputs.parent_sha }}
+      CHILD_SHA: ${{ inputs.child_sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -33,10 +45,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          parent=185ccf276b23dd57820efef592dee3a5a586ef06
-          child=f278a70a3ad10921ccc40a6bbaa12f0b3611b2c4
+          parent="$PARENT_SHA"
+          child="$CHILD_SHA"
+          [[ "$parent" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$child" =~ ^[0-9a-f]{40}$ ]]
           git cat-file -e "$parent^{commit}"
           git cat-file -e "$child^{commit}"
+          git merge-base --is-ancestor "$parent" "$child"
           git worktree add --detach "$RUNNER_TEMP/parent" "$parent"
           git worktree add --detach "$RUNNER_TEMP/child" "$child"
           (cd "$RUNNER_TEMP/parent" && rustup show && cargo build --locked --profile profiling -p ifc-lite-processing --example perf_probe)
@@ -93,8 +108,8 @@ jobs:
                              'geometryDeltaMs': child['geometryMs'] - parent['geometryMs'],
                              'totalDeltaMs': child['totalMs'] - parent['totalMs']})
           summary = {
-              'parent': '185ccf276b23dd57820efef592dee3a5a586ef06',
-              'child': 'f278a70a3ad10921ccc40a6bbaa12f0b3611b2c4',
+              'parent': os.environ['PARENT_SHA'],
+              'child': os.environ['CHILD_SHA'],
               'fixtureSha256': 'ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d',
               'roundOrder': order,
               'identity': baseline,

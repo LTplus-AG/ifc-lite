@@ -7,6 +7,7 @@
 use std::collections::HashSet;
 use ifc_lite_processing::{extract_extrusion_definitions, AnalyticSourceContext};
 use ifc_lite_geometry::analytic::AnalyticCurveSegment;
+use ifc_lite_geometry::extract_profiles_with_diagnostics;
 use nalgebra::{Matrix4, Vector4};
 
 fn mapped_fixture() -> String {
@@ -40,6 +41,32 @@ fn mapped_occurrences_share_one_raw_profile_and_have_distinct_f64_world_frames()
     let empty = extract_extrusion_definitions(model.as_bytes(), Some(&HashSet::new()));
     assert!(empty.sources.is_empty());
     assert!(empty.instances.is_empty());
+}
+
+#[test]
+fn analytic_extraction_preserves_legacy_drawing_profiles_on_same_mapped_fixture() {
+    // #5784: a new analytic consumer must not change the established 2D drawing view.
+    let model = mapped_fixture();
+    let (mut drawing, skipped) = extract_profiles_with_diagnostics(model.as_bytes(), 0);
+    let analytic = extract_extrusion_definitions(model.as_bytes(), Some(&HashSet::from([31, 38])));
+    drawing.retain(|profile| [31, 38].contains(&profile.express_id));
+    drawing.sort_by_key(|profile| profile.express_id);
+    assert!(skipped.is_empty(), "{skipped:?}");
+    assert_eq!(drawing.iter().map(|profile| profile.express_id).collect::<Vec<_>>(), [31, 38]);
+    for profile in &drawing {
+        assert_eq!(profile.ifc_type, "IfcBuildingElementProxy");
+        assert_eq!(profile.outer_points, [-0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, 0.5]);
+        assert!(profile.hole_counts.is_empty());
+        assert!(profile.hole_points.is_empty());
+        assert_eq!(profile.extrusion_depth, 1.0);
+    }
+    assert!((drawing[1].transform[12] - drawing[0].transform[12] - 3.0).abs() < 1e-6);
+    assert!(analytic.diagnostics.is_empty(), "{:?}", analytic.diagnostics);
+    assert_eq!(analytic.sources.len(), 1);
+    assert_eq!(analytic.instances[&31].len(), 1);
+    assert_eq!(analytic.instances[&38].len(), 1);
+    assert!((analytic.instances[&38][0].world_from_source.unwrap()[12]
+        - analytic.instances[&31][0].world_from_source.unwrap()[12] - 3.0).abs() < 1e-12);
 }
 
 #[test]

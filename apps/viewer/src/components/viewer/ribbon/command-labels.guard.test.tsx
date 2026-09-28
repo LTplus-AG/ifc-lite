@@ -48,16 +48,18 @@ it('#5878 File Share invokes its mounted host once through the registry', () => 
   ]);
 });
 
-it('#5878 mounted ribbon commands use their registry names on every tab', () => {
+it('#5870/#5878 mounts every ribbon command with its registry name across all tabs', () => {
+  setCollabEnabledOverride(true);
   act(() => useViewerStore.setState({
     ribbonTab: 'home', ribbonCollapsed: false,
     selectedEntityId: 11, selectedEntityIds: new Set([11]),
-    cesiumAvailable: true, editEnabled: true,
+    cesiumAvailable: true, cesiumEnabled: true, editEnabled: true,
   }));
   const container = render(<RibbonToolbar />);
   assert.equal(container.querySelectorAll('[role="tab"]').length, TABS.length,
     'the guard visits every ribbon tab');
   const rawByTab: Record<string, number> = {};
+  const renderedIds = new Set<string>();
   for (const tab of TABS) {
     const trigger = container.querySelectorAll('[role="tab"]')[TABS.indexOf(tab)];
     assert.ok(trigger, `${tab} tab is mounted`);
@@ -71,21 +73,33 @@ it('#5878 mounted ribbon commands use their registry names on every tab', () => 
     for (const button of buttons) {
       if (button.dataset.ribbonContent === 'panel-browser') {
         assert.equal(tab, 'analyze', 'the panel browser belongs to Analyze');
+        assert.equal(button.dataset.ribbonContentSource, 'panel-browser');
+        assert.equal(button.dataset.ribbonContentId, 'panel-browser');
         assert.equal(button.getAttribute('aria-label'), resolve('shellChrome.panelGroups.browse'));
         panelBrowsers++;
         continue;
       }
       const exportId = button.dataset.exportCommand;
       if (exportId) {
+        assert.equal(button.dataset.ribbonContentSource, 'export', `${tab}: ${exportId} declares its export owner`);
+        assert.equal(button.dataset.ribbonContentId, exportId, `${tab}: ${exportId} carries its export registry id`);
         const exportCommand = EXPORT_COMMANDS.find((item) => item.id === exportId);
         assert.ok(exportCommand, `${tab}: ${exportId} is a registered export`);
         assert.equal(button.getAttribute('aria-label'), resolve(exportCommand.tooltipKey),
           `${tab}: ${exportId} announces its export registry tooltip`);
         continue;
       }
-      if (button.dataset.exportExtension || button.dataset.ribbonExtension) continue;
+      const extensionId = button.dataset.exportExtension ?? button.dataset.ribbonExtension;
+      if (extensionId) {
+        assert.equal(button.dataset.ribbonContentSource, 'extension', `${tab}: ${extensionId} declares its extension owner`);
+        assert.equal(button.dataset.ribbonContentId, extensionId, `${tab}: ${extensionId} carries its contribution id`);
+        continue;
+      }
       const id = button.dataset.commandId;
       if (!id) { raw++; continue; }
+      assert.equal(button.dataset.ribbonContentSource, 'registered', `${tab}: ${id} is a registered button`);
+      assert.equal(button.dataset.ribbonContentId, id, `${tab}: ${id} matches its typed command id`);
+      renderedIds.add(id);
       const command: SurfaceCommandDefinition | undefined = SURFACE_COMMANDS.find((item) => item.id === id);
       assert.ok(command, `${tab}: ${id} is registered`);
       assert.ok(command.surfaces.includes('ribbon'), `${tab}: ${id} declares the ribbon surface`);
@@ -101,6 +115,10 @@ it('#5878 mounted ribbon commands use their registry names on every tab', () => 
   assert.deepEqual(rawByTab, {
     file: 0, home: 0, view: 0, elements: 0, analyze: 0, author: 0,
   });
+  assert.deepEqual(renderedIds,
+    new Set(SURFACE_COMMANDS.filter((command) => command.surfaces.includes('ribbon'))
+      .map((command) => command.id)),
+    'every ribbon-declared command is mounted on one of its six tabs');
 });
 
 it('#5878 enabled collaboration File controls use registered names', () => {

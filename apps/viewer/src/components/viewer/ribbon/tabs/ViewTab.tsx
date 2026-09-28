@@ -11,7 +11,6 @@ import { Orthographic, Viewpoint, SpaceMouse, Lighting, World, Move, FollowWork,
 import { useViewerStore } from '@/store';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
-import { openSettings } from '@/lib/settings/open-settings';
 import { useTranslation } from '@/i18n';
 import { useCameraCommands } from '../../toolbar/CameraCommands';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
@@ -29,18 +28,12 @@ export function ViewTab() {
   // command list (see toolbar/CameraCommands).
   const cameraCommands = useCameraCommands();
   const projectionMode = useViewerStore((state) => state.projectionMode);
-  const toggleProjectionMode = useViewerStore((state) => state.toggleProjectionMode);
   const ribbonContextualTabs = useViewerStore((state) => state.ribbonContextualTabs);
-  const setRibbonContextualTabs = useViewerStore((state) => state.setRibbonContextualTabs);
 
   // Cesium 3D overlay state
   const cesiumAvailable = useViewerStore((state) => state.cesiumAvailable);
   const cesiumEnabled = useViewerStore((state) => state.cesiumEnabled);
-  const toggleCesium = useViewerStore((state) => state.toggleCesium);
   const cesiumPlacementEditMode = useViewerStore((state) => state.cesiumPlacementEditMode);
-  const setCesiumPlacementEditMode = useViewerStore((state) => state.setCesiumPlacementEditMode);
-  const activeTool = useViewerStore((state) => state.activeTool);
-  const setActiveTool = useViewerStore((state) => state.setActiveTool);
   const { activeWorkspacePanels, handleToggleBottomPanel } = useWorkspacePanelControls('ribbon');
 
   // Environment panel state (sky, lighting presets, sun-path study, #5506)
@@ -70,7 +63,6 @@ export function ViewTab() {
           commandId="view:projection"
           icon={Orthographic}
           active={projectionMode === 'orthographic'}
-          onClick={() => toggleProjectionMode()}
         />
       </RibbonGroup>
 
@@ -85,7 +77,6 @@ export function ViewTab() {
               commandId={CAMERA_RIBBON_COMMAND_IDS[command.id]}
               icon={command.icon}
               tooltip={t(command.tooltipKey)}
-              onClick={command.run}
             />
           ))}
       </RibbonGroup>
@@ -105,7 +96,6 @@ export function ViewTab() {
                   key={command.id}
                   commandId={CAMERA_RIBBON_COMMAND_IDS[command.id]}
                   icon={command.icon}
-                  onClick={command.run}
                 />
               ))}
           </RibbonSmallStack>
@@ -120,7 +110,6 @@ export function ViewTab() {
               commandId={CAMERA_RIBBON_COMMAND_IDS[command.id]}
               icon={command.icon}
               tooltip={t(command.tooltipKey)}
-              onClick={command.run}
             />
           ))}
       </RibbonGroup>
@@ -139,13 +128,6 @@ export function ViewTab() {
             tooltip={cesiumEnabled ? t('ribbon.view.worldHideTooltip') : t('ribbon.view.worldShowTooltip')}
             active={cesiumEnabled}
             activeClassName="bg-teal-600/20 text-foreground ring-1 ring-inset ring-teal-600/50"
-            onClick={() => {
-              toggleCesium();
-              if (cesiumEnabled) {
-                setCesiumPlacementEditMode(false);
-                if (activeTool === 'cesium-placement') setActiveTool('select');
-              }
-            }}
           />
         )}
         <RibbonCommandLargeButton
@@ -153,7 +135,6 @@ export function ViewTab() {
           icon={Lighting}
           active={activeWorkspacePanels.has('environment') || solarEnabled || envSkyEnabled || envPreset !== 'default'}
           activeClassName="bg-amber-500/20 text-foreground ring-1 ring-inset ring-amber-500/50"
-          onClick={() => useViewerStore.getState().toggleWorkspacePanel('environment', 'ribbon')}
         />
         <RibbonSmallStack>
           {cesiumAvailable && cesiumEnabled && (
@@ -163,11 +144,6 @@ export function ViewTab() {
               tooltip={cesiumPlacementEditMode ? t('ribbon.view.moveGeorefStopTooltip') : t('ribbon.view.moveGeorefStartTooltip')}
               active={cesiumPlacementEditMode}
               activeClassName="bg-amber-500/20 text-foreground ring-1 ring-inset ring-amber-500/50"
-              onClick={() => {
-                const next = !cesiumPlacementEditMode;
-                setCesiumPlacementEditMode(next);
-                setActiveTool(next ? 'cesium-placement' : 'select');
-              }}
             />
           )}
           <RibbonCommandSmallButton
@@ -175,7 +151,6 @@ export function ViewTab() {
             icon={SpaceMouse}
             active={spaceMouseConnected}
             activeClassName="bg-primary/20 text-foreground ring-1 ring-inset ring-primary/50"
-            onClick={() => openSettings('display')}
           />
         </RibbonSmallStack>
       </RibbonGroup>
@@ -189,7 +164,7 @@ export function ViewTab() {
           tooltip={t('ribbon.view.presentTooltip', { views: basketViewCount, entities: pinboardEntities.size })}
           active={activeWorkspacePanels.has('presentation')}
           disabled={!hasModels}
-          onClick={() => handleToggleBottomPanel('presentation')}
+          commandContext={{ activateBottomPanel: handleToggleBottomPanel }}
           badge={(basketViewCount > 0 || pinboardEntities.size > 0) ? (
             <span className="absolute -top-0.5 right-0.5 flex h-[14px] min-w-[14px] items-center justify-center rounded-full border border-background bg-primary px-0.5 text-2xs font-bold text-primary-foreground">
               {basketViewCount > 0 ? `${basketViewCount}/${pinboardEntities.size}` : pinboardEntities.size}
@@ -201,13 +176,11 @@ export function ViewTab() {
             commandId="view:follow-work"
             icon={FollowWork}
             active={ribbonContextualTabs}
-            onClick={() => setRibbonContextualTabs(!ribbonContextualTabs)}
             {...tourAnchor(TOUR_ANCHORS.ribbonFollowWork)}
           />
           <RibbonCommandSmallButton
             commandId="pref:settings"
             icon={Settings}
-            onClick={() => openSettings()}
           />
         </RibbonSmallStack>
       </RibbonGroup>

@@ -16,7 +16,6 @@ import { useTranslation } from '@/i18n';
 import type { FileCommands } from '../../toolbar/useFileCommands';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
 import { surfaceCommand } from '../../surface-commands';
-import { runSurfaceCommand } from '../../surface-command-run';
 import { RibbonExportGroup } from './RibbonExportGroup';
 import { RIBBON_EXPORT_ICONS } from './ribbon-export-icons';
 import {
@@ -31,7 +30,6 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
   const { handleOpenClick, handleAddModelClick, handleRefresh, canRefresh, hasModelsLoaded, openShareDialog } = fileCommands;
   const { loading, models } = useIfc();
   const saveSetup = surfaceCommand('file:save-federation-setup', 'ribbon');
-  const refreshCommand = surfaceCommand('file:refresh', 'ribbon');
   const shareCommand = surfaceCommand('file:share', 'ribbon');
   const openSetup = surfaceCommand('file:open-federation-setup', 'ribbon');
   const modelTags = surfaceCommand('file:model-tags', 'ribbon');
@@ -62,35 +60,34 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
           icon={loading ? Loading : OpenFile}
           disabled={loading}
           className={loading ? '[&_svg]:animate-spin' : undefined}
-          onClick={() => { void handleOpenClick(); }}
+          commandContext={{ openFiles: () => { void handleOpenClick(); } }}
         />
         <RibbonCommandLargeButton
           commandId="panel:sources"
           icon={CloudSources}
           tooltip={t('ribbon.file.cloudSourcesTooltip')}
           active={activeWorkspacePanels.has('sources')}
-          onClick={() => handleToggleRightPanel('sources')}
+          commandContext={{ activateRightPanel: () => handleToggleRightPanel('sources') }}
         />
         <RibbonSmallStack>
           <RibbonCommandSmallButton
             commandId="file:add-model"
             icon={AddFile}
             disabled={loading || !hasModelsLoaded}
-            onClick={() => { void handleAddModelClick(); }}
+            commandContext={{ addModel: () => { void handleAddModelClick(); } }}
           />
           <RibbonCommandSmallButton
             commandId="file:refresh"
             icon={Refresh}
             tooltip={models.size > 1 ? t('ribbon.file.refreshModelsTooltip') : t('ribbon.file.refreshModelTooltip')}
             disabled={loading || !canRefresh}
-            onClick={() => runSurfaceCommand(refreshCommand, { surface: 'ribbon', refreshModels: handleRefresh })}
+            commandContext={{ refreshModels: handleRefresh }}
           />
         </RibbonSmallStack>
         <RibbonCommandLargeButton
           commandId={saveSetup.id}
           tooltip={t(saveSetup.labelKey)}
           disabled={!saveSetup.enabled({ canEditInSession })}
-          onClick={() => runSurfaceCommand(saveSetup, { surface: 'ribbon' })}
         />
         <RibbonSmallStack className="gap-1">
           {[openSetup, modelTags].map((command) => (
@@ -100,7 +97,6 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
               tooltip={t(command.labelKey)}
               className="min-h-6"
               disabled={!command.enabled({ canEditInSession })}
-              onClick={() => runSurfaceCommand(command, { surface: 'ribbon' })}
             />
           ))}
         </RibbonSmallStack>
@@ -118,7 +114,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
               commandId={shareCommand.id}
               icon={Share}
               disabled={!hasModelsLoaded}
-              onClick={() => runSurfaceCommand(shareCommand, { surface: 'ribbon', openShareDialog })}
+              commandContext={{ openShareDialog }}
               badge={collabPeerCount > 0 ? (
                 <span className="absolute right-1 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-2xs font-medium text-primary-foreground">
                   {collabPeerCount + 1}
@@ -135,7 +131,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
               icon={CollabsRoom}
               tooltip={collabRoomId ? t('ribbon.file.roomTooltip') : t('ribbon.file.roomNotJoinedTooltip')}
               active={collabPanelVisible}
-              onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab', 'ribbon')}
+              commandContext={{ activateRightPanel: () => useViewerStore.getState().toggleWorkspacePanel('collab', 'ribbon') }}
               badge={collabPeerCount > 0 ? (
                 <span className="absolute right-1 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-emerald-500 px-1 text-2xs font-medium text-white">
                   {collabPeerCount + 1}

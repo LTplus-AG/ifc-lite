@@ -85,7 +85,10 @@ export const VISIBILITY_SURFACE_COMMANDS = [
     id: 'vis:toggle-presentation', labelKey: 'commandPalette.vis.togglePresentation.label', ribbonLabelKey: panelTitleKey('presentation'),
     searchLabel: 'Toggle Basket Presentation Dock', keywords: 'basket panel carousel thumbnails',
     category: 'Visibility', icon: Layout, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
-    run: () => { useViewerStore.getState().toggleBottomPanel('presentation', 'palette'); },
+    run: ({ surface, activateBottomPanel }: SurfaceCommandContext) => {
+      if (activateBottomPanel) activateBottomPanel('presentation');
+      else useViewerStore.getState().toggleBottomPanel('presentation', surface);
+    },
   },
   {
     id: 'vis:clear-iso', labelKey: 'commandPalette.vis.clearBasket.label',

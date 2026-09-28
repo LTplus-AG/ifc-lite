@@ -157,13 +157,23 @@ const FILE_AND_VIEW_SURFACE_COMMANDS = [
     keywords: 'cesium globe earth satellite terrain georeference basemap context site',
     category: 'View', icon: Building2, surfaces: paletteAndRibbon,
     enabled: (state: SurfaceCommandState) => state.cesiumAvailable === true,
-    run: () => { useViewerStore.getState().toggleCesium(); },
+    run: () => {
+      const state = useViewerStore.getState();
+      const wasEnabled = state.cesiumEnabled;
+      state.toggleCesium();
+      if (wasEnabled) {
+        state.setCesiumPlacementEditMode(false);
+        if (state.activeTool === 'cesium-placement') state.setActiveTool('select');
+      }
+    },
   },
   {
     id: 'view:lighting', labelKey: panelTitleKey('environment'), ribbonTooltipKey: 'ribbon.view.lightingTooltip',
     keywords: 'sun sky lighting shadow solar daylight study environment preset hdri panel',
     category: 'View', icon: Sun, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
-    run: () => { useViewerStore.getState().toggleWorkspacePanel('environment', 'palette'); },
+    run: ({ surface }: SurfaceCommandContext) => {
+      useViewerStore.getState().toggleWorkspacePanel('environment', surface);
+    },
   },
   {
     id: 'view:spacemouse', labelKey: 'commandPalette.view.spacemouse.label', ribbonLabelKey: 'ribbon.view.spaceMouse', ribbonTooltipKey: 'ribbon.view.spaceMouseTooltip',

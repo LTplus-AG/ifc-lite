@@ -11,7 +11,8 @@ import { paletteSurfaceCommands, SURFACE_COMMANDS } from './surface-commands.js'
 
 const TOOL_IDS = [
   'tool:select', 'tool:walk', 'model:reposition', 'tool:measure',
-  'tool:section', 'tool:annotate', 'tool:add-element', 'tool:wall', 'tool:edit-mode', 'tool:split',
+  'tool:section', 'tool:annotate', 'tool:add-element', 'tool:wall', 'tool:slab', 'tool:column', 'tool:beam',
+  'tool:edit-mode', 'tool:split',
 ] as const;
 const isCoreTool = (id: string) => id.startsWith('tool:') || id === 'model:reposition';
 const originalTool = useViewerStore.getState().activeTool;

@@ -94,14 +94,28 @@ fn issue_6305_preflight_explains_missing_modified_and_invalid_inputs() {
         let bad = RebarPreflightLimits { min_inside_bend_radius_m: invalid, ..limits };
         assert!(build_rebar_schedule_with_preflight(REBAR.as_bytes(), Some(&HashSet::new()), &options, &bad).is_err());
     }
-    let invalid_arc = REBAR.replace(
-        "#72=IFCSWEPTDISKSOLID(#71,14.5,$,0.,820.826726273522);",
-        "#72=IFCSWEPTDISKSOLID(#71,101.5,$,0.,820.826726273522);",
-    );
-    let schedule = build_rebar_schedule_with_preflight(invalid_arc.as_bytes(), None, &options, &limits).unwrap();
-    let report = schedule.rows[&125].sweeps[0].preflight.as_ref().unwrap();
-    assert!(report.unassessed_reasons.iter().any(|reason| reason.contains("centreline radius")));
-    assert!(!report.comparisons.iter().any(|item| item.kind == "inside_bend_radius"));
+}
+
+#[test]
+fn issue_6305_preflight_assesses_zero_and_negative_inside_bend_radius() {
+    let options = SweptDiskCheckOptions::default();
+    let limits = RebarPreflightLimits::new(0.0, 0.0, None).unwrap();
+    for (outer_radius_mm, expected_m, passed) in [(101.5, 0.0, true), (102.5, -0.001, false)] {
+        let file = REBAR.replace(
+            "#72=IFCSWEPTDISKSOLID(#71,14.5,$,0.,820.826726273522);",
+            &format!("#72=IFCSWEPTDISKSOLID(#71,{outer_radius_mm},$,0.,820.826726273522);"),
+        );
+        let schedule = build_rebar_schedule_with_preflight(file.as_bytes(), None, &options, &limits).unwrap();
+        let sweep = &schedule.rows[&125].sweeps[0];
+        let report = sweep.preflight.as_ref().unwrap();
+        let bend = report.comparisons.iter().find(|item|
+            item.kind == "inside_bend_radius" && item.segment_index == Some(1)).unwrap();
+        assert!((bend.measured_m - expected_m).abs() < 1e-12);
+        assert_eq!(bend.passed, passed);
+        assert!(!report.unassessed_reasons.iter().any(|reason| reason.contains("inside bend radius")));
+        assert!(sweep.checks.findings.iter().any(|finding|
+            finding.code == ifc_lite_processing::SweptDiskFindingCode::ArcRadiusNotGreaterThanDiskRadius));
+    }
 }
 
 #[test]

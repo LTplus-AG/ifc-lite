@@ -19,11 +19,13 @@ describe('mesh uniform struct declares every packed field', () => {
   const members = new Set([...struct.matchAll(/^\s*(\w+)\s*:/gm)].map((m) => m[1]));
 
   it('declares each MESH_UNIFORM_OFFSET field as a struct member', () => {
-    // A high/low f32 pair is packed under one name: drawableDelta -> drawableDeltaHigh,
-    // rteCameraOrigin -> rteCameraHigh.
+    // A high/low f32 pair is packed under one name (drawableDelta -> drawableDelta{High,Low},
+    // rteCameraOrigin -> rteCamera{High,Low}); BOTH halves must be declared.
     for (const field of Object.keys(MESH_UNIFORM_OFFSET)) {
-      const declared = members.has(field) || members.has(`${field}High`) || members.has(`${field.replace(/Origin$/, '')}High`);
-      assert.ok(declared, `${field} is packed by MESH_UNIFORM_OFFSET but missing from struct Uniforms`);
+      if (members.has(field)) continue;
+      const base = members.has(`${field}High`) ? field : field.replace(/Origin$/, '');
+      assert.ok(members.has(`${base}High`), `${field} is packed by MESH_UNIFORM_OFFSET but missing from struct Uniforms`);
+      assert.ok(members.has(`${base}Low`), `${field}'s low half (${base}Low) is missing from struct Uniforms`);
     }
   });
 

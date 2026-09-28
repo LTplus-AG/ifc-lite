@@ -18,6 +18,7 @@ import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-f
 import '@/lib/commands/modeling/builtin';
 import { getCommandRuntime, writeCommandField } from '@/lib/commands/modeling/runtime';
 import type { WallPlaceGesture } from '@/lib/commands/modeling/commands/wall-place-geometry';
+import type { SlabPlaceGesture } from '@/lib/commands/modeling/commands/slab-place-geometry';
 import { routeCommandPointer } from './commandPointer.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 
@@ -76,5 +77,41 @@ describe('command pointer on the snap engine (#6232 WP2)', () => {
     const placed = walls.find((w) => Math.abs(w.start[0] - 10) < 1e-6)!;
     assert.ok(placed, 'the typed wall was placed from (10, 10)');
     assert.deepEqual(placed.end.map((v) => +v.toFixed(6)), [10, 12, 0]);
+  });
+});
+
+describe('command pointer: clicks and modifiers for the placing commands (#6232 M2.2)', () => {
+  const slabs = () => useViewerStore.getState().mutationViews.get(MODEL_ID)!.getNewEntities().filter((e) => e.type.toUpperCase() === 'IFCSLAB');
+  const slab = () => getCommandRuntime().gesture as SlabPlaceGesture;
+  const at = (x: number, y: number, mods: { shiftKey?: boolean; detail?: number } = {}) =>
+    routeCommandPointer(fakeCtx(), 'down', x * 100, -y * 100, { shiftKey: false, altKey: false, ...mods });
+
+  beforeEach(() => {
+    useViewerStore.getState().setAuthoringDefaults({ slabMode: 'polygon' });
+    useViewerStore.getState().startCommand('slab.place');
+  });
+
+  it("a click's second half (event.detail 2) closes the polygon instead of adding a corner", () => {
+    at(10, 10); at(13, 10); at(13, 13, { detail: 1 });
+    assert.equal(slabs().length, 0);
+    at(13, 13, { detail: 2 });
+    assert.equal(slabs().length, 1, 'the double-click closed a three-corner slab');
+  });
+
+  it('a click a few pixels off the first corner snaps onto it and closes the polygon', () => {
+    at(10, 10); at(13, 10); at(13, 13);
+    at(10.03, 9.98);
+    assert.equal(slabs().length, 1);
+  });
+
+  it('Shift held on the mouse reaches the gesture: the clicked rectangle is squared', () => {
+    useViewerStore.getState().setAuthoringDefaults({ slabMode: 'rectangle' });
+    useViewerStore.getState().startCommand('slab.place');
+    at(10, 10);
+    at(13, 11, { shiftKey: true });
+    const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+    const profile = view.getNewEntities().filter((e) => e.type.toUpperCase() === 'IFCRECTANGLEPROFILEDEF').at(-1)!; // the seeded wall owns the first
+    assert.deepEqual([profile.attributes[3], profile.attributes[4]].map((v) => +(v as number).toFixed(6)), [3, 3]);
+    assert.equal(slab().points.length, 0);
   });
 });

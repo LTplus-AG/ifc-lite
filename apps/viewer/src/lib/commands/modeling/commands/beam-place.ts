@@ -70,7 +70,7 @@ export const BEAM_PLACE: ModelingCommand<BeamPlaceGesture> = {
   doubleClick: () => init(),
   undoPoint: (g) => ({ ...g, chain: g.chain.slice(0, -1), length: null, angle: null }),
   validate(g, ctx) {
-    if (!ctx.workplane || ctx.storeyId === null) return { ok: false, reasonKey: 'modelingCommand.wall.noPlane' };
+    if (!ctx.workplane || ctx.storeyId === null) return { ok: false, reasonKey: 'modelingCommand.noPlane' };
     if (!anchorOf(g)) return { ok: false, reasonKey: 'modelingCommand.beam.hintStart' };
     return segment(g) ? { ok: true } : { ok: false, reasonKey: 'modelingCommand.beam.tooShort' };
   },

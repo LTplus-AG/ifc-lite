@@ -92,7 +92,7 @@ export const SLAB_PLACE: ModelingCommand<SlabPlaceGesture> = {
   doubleClick: (g) => (g.mode === 'polygon' && g.points.length >= 3 ? { commit: true } : g),
   undoPoint: (g) => ({ ...g, points: g.points.slice(0, -1), ...(g.mode === 'rectangle' ? { width: null, depth: null } : {}) }),
   validate(g, ctx) {
-    if (!ctx.workplane || ctx.storeyId === null) return { ok: false, reasonKey: 'modelingCommand.wall.noPlane' };
+    if (!ctx.workplane || ctx.storeyId === null) return { ok: false, reasonKey: 'modelingCommand.noPlane' };
     if (g.mode === 'polygon') return g.points.length >= 3 ? { ok: true } : { ok: false, reasonKey: 'modelingCommand.slab.needThree' };
     if (g.points.length === 0) return { ok: false, reasonKey: 'modelingCommand.slab.hintCorner' };
     return rectangleExtent(g) ? { ok: true } : { ok: false, reasonKey: 'modelingCommand.slab.noArea' };

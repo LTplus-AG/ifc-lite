@@ -6,8 +6,8 @@
  * `column.place` (charter #6232, M2): one click puts a column's base centre
  * on the workplane. Width, Depth and Height are the column defaults (typed
  * in the bar); Rotation turns the section counter-clockwise, R steps it by
- * 15°. The column and its turn are one transaction, so one undo step: the
- * builder writes it axis-aligned and `rotateEntity` turns its placement.
+ * 15°. The builder writes the turn as the placement's RefDirection, so a
+ * turned column is one entity graph and one undo step.
  */
 
 import { commandGhostId } from '../ghost.js';
@@ -47,24 +47,25 @@ export const COLUMN_PLACE: ModelingCommand<ColumnPlaceGesture> = {
   snapQuery: () => ({ anchor: null, chain: [], locks: {} }),
   pointerMove: (g, s) => ({ ...g, cursor: s.local }),
   pointerDown: () => ({ commit: true }),
+  // The first click of a double-click already placed the column; the second must not stack another on it.
+  doubleClick: (g) => g,
   validate(g, ctx) {
-    if (!ctx.workplane || ctx.storeyId === null) return { ok: false, reasonKey: 'modelingCommand.wall.noPlane' };
+    if (!ctx.workplane || ctx.storeyId === null) return { ok: false, reasonKey: 'modelingCommand.noPlane' };
     return g.cursor ? { ok: true } : { ok: false, reasonKey: 'modelingCommand.column.hint' };
   },
   commit(g, tx) {
     if (!g.cursor || tx.storeyId === null) throw new Error('No column to place');
     const ctx = { get: () => tx.store };
+    const turn = (g.rotation * Math.PI) / 180;
     const column = tx.store.addColumn(tx.modelId, tx.storeyId, {
       Position: [g.cursor[0], g.cursor[1], planeZ(tx.workplane)],
       Width: dimOf(ctx, 'column', 'Width'),
       Depth: dimOf(ctx, 'column', 'Depth'),
       Height: dimOf(ctx, 'column', 'Height'),
+      // The section's Width axis, storey-local: the turn is written with the column.
+      RefDirection: [Math.cos(turn), Math.sin(turn), 0],
     });
     if ('error' in column) throw new Error(`Couldn't add column: ${column.error}`);
-    if (g.rotation !== 0) {
-      const turned = tx.store.rotateEntity(tx.modelId, column.expressId, (g.rotation * Math.PI) / 180);
-      if (!turned.ok) throw new Error(`Couldn't rotate the column: ${turned.reason}`);
-    }
     return { created: [column.expressId], deleted: [], remesh: [column.expressId], select: [column.expressId] };
   },
   // The next column keeps the rotation.

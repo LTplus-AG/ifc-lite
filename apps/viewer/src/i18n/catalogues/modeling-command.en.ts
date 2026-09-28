@@ -19,7 +19,7 @@ export const modelingCommandEn = {
   'modelingCommand.wall.angle': 'Angle',
   'modelingCommand.wall.hintStart': 'Click to start the wall · type a length to lock it',
   'modelingCommand.wall.hintNext': 'Click or Enter to place · type a length, Tab for the angle · Backspace drops a point · Esc stops',
-  'modelingCommand.wall.noPlane': 'No storey to draw on: pick a storey in the Add Element panel',
+  'modelingCommand.noPlane': 'No storey to draw on: pick one in the storey chip, or add an IfcBuildingStorey to the model',
   'modelingCommand.wall.tooShort': 'The wall needs a length',
   'modelingCommand.wall.align': 'Which line the drawn line is',
   'modelingCommand.wall.alignLeft': 'Left',

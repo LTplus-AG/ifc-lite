@@ -20,7 +20,18 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { assertFinitePoint3 } from '../ifc-creator-math.js';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
-import { assertPositiveFinite, ownerHistoryRef, productGuid } from './_emit-helpers.js';
+import { assertPositiveFinite, emitLocalPlacement, ownerHistoryRef, productGuid } from './_emit-helpers.js';
+
+/** A column's RefDirection: horizontal and unit length (it must be orthogonal to Axis +Z). */
+function columnRefDirection(ref: [number, number, number] | undefined): [number, number, number] {
+  if (ref === undefined) return [1, 0, 0];
+  const [x, y, z] = ref;
+  const length = Math.hypot(x, y);
+  if (![x, y, z].every(Number.isFinite) || Math.abs(z) > 1e-9 || !(length > 1e-12)) {
+    throw new Error('addColumnToStore: RefDirection must be a finite, non-zero horizontal direction');
+  }
+  return [x / length, y / length, 0];
+}
 
 export interface ColumnInStoreParams {
   /** Base centre of the column, in storey-local coordinates (metres). */
@@ -31,6 +42,14 @@ export interface ColumnInStoreParams {
   Depth: number;
   /** Extrusion height along +Z (metres). */
   Height: number;
+  /**
+   * The placement's `RefDirection`: where the section's local X (Width)
+   * points, in storey-local coordinates. Must be horizontal; it is
+   * normalised. Default `[1, 0, 0]`. Written explicitly either way, with
+   * `Axis` `[0, 0, 1]`, so the column can be turned later (`rotateEntity`
+   * edits the RefDirection and refuses a placement without one).
+   */
+  RefDirection?: [number, number, number];
   /** IfcRoot Name attribute (default `'Column'`). */
   Name?: string;
   Description?: string;
@@ -76,6 +95,7 @@ export function addColumnToStore(
     [params.Width, params.Depth, params.Height],
     'addColumnToStore: Width, Depth, and Height must be finite positive numbers',
   );
+  const refDirection = columnRefDirection(params.RefDirection);
 
   // Params are metres; convert dimensioned fields to the file's native
   // length unit before emit (see SpatialAnchor.lengthUnitScale).
@@ -87,14 +107,15 @@ export function addColumnToStore(
     Height: toNativeLength(anchor, params.Height),
   };
 
-  // Local placement chain: IfcCartesianPoint → IfcAxis2Placement3D →
-  // IfcLocalPlacement (parent = storey placement).
-  const colOriginPt = editor.addEntity('IfcCartesianPoint', [params.Position]).expressId;
-  const colAxis = editor.addEntity('IfcAxis2Placement3D', [`#${colOriginPt}`, null, null]).expressId;
-  const placementId = editor.addEntity('IfcLocalPlacement', [
-    `#${storeyPlacementId}`,
-    `#${colAxis}`,
-  ]).expressId;
+  // Local placement chain: IfcCartesianPoint → IfcAxis2Placement3D (explicit
+  // Axis + RefDirection) → IfcLocalPlacement (parent = storey placement).
+  const placementId = emitLocalPlacement(
+    editor,
+    storeyPlacementId,
+    params.Position,
+    [0, 0, 1],
+    refDirection,
+  );
 
   // Rectangle profile centred at origin: IfcCartesianPoint(0,0) →
   // IfcAxis2Placement2D → IfcRectangleProfileDef.

@@ -69,7 +69,7 @@ export const WALL_PLACE: ModelingCommand<WallPlaceGesture> = {
   doubleClick: () => init(),
   undoPoint: (g) => ({ ...g, chain: g.chain.slice(0, -1), length: null, angle: null }),
   validate(g, ctx) {
-    if (!ctx.workplane || ctx.storeyId === null) return { ok: false, reasonKey: 'modelingCommand.wall.noPlane' };
+    if (!ctx.workplane || ctx.storeyId === null) return { ok: false, reasonKey: 'modelingCommand.noPlane' };
     const anchor = anchorOf(g);
     const end = endPoint(g);
     if (!anchor) return { ok: false, reasonKey: 'modelingCommand.wall.hintStart' };

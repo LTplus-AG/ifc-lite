@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { edgeSurvives, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName, RelationshipType } from '@ifc-lite/data';
+import { edgeSurvives, isStoreyLikeSpatialTypeName, RelationshipType } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { effectiveMutationRelationships } from '@/sdk/adapters/query-overlay-relations';
 import { effectiveContextType } from './EntityContextMenu.effective-selection.js';
+import { effectiveSpatialMembers } from '@/lib/effective-spatial-members';
 
 /** Direct members of the selected element's effective storey. The parser's
  * byStorey list is direct containment, while elementToStorey can also locate
@@ -84,18 +85,5 @@ export function effectiveStoreyMemberIds(
   view: MutablePropertyView | null,
   storeyId: number,
 ): number[] {
-  const spatial = store.spatialHierarchy;
-  if (!spatial || view?.isDeleted(storeyId)) return [];
-  if (!view?.hasPendingChanges()) return spatial.byStorey.get(storeyId) ?? [];
-  const overlay = effectiveMutationRelationships(store, view);
-  const superseded = (id: number) => view.isDeleted(id) || overlay.supersededSourceIds.has(id);
-  const sourceMembers = store.relationships.forward.getEdges(storeyId, RelationshipType.ContainsElements)
-    .filter((edge) => edgeSurvives(edge, superseded)).map((edge) => edge.target);
-  const editedMembers = overlay.relationships
-    .filter((relation) => relation.relationshipType.toUpperCase() === 'IFCRELCONTAINEDINSPATIALSTRUCTURE'
-      && relation.relating.includes(storeyId))
-    .flatMap((relation) => relation.related);
-  const isSpatial = (id: number) => isSpatialStructureTypeName(effectiveContextType(store, view, id));
-  return [...new Set([...sourceMembers, ...editedMembers])]
-    .filter((id) => !view.isDeleted(id) && !isSpatial(id));
+  return effectiveSpatialMembers(store, view, storeyId);
 }

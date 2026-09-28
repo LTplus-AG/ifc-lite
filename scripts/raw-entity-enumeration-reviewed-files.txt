@@ -33,6 +33,7 @@ packages/export/src/ifc5-tree-scope.ts
 packages/export/src/merged-context.ts
 packages/export/src/merged-subcontext.ts
 packages/export/src/merged-exporter.ts
+packages/export/src/reference-collector.ts
 packages/export/src/schema-conversion-loss-report.ts
 packages/export/src/schema-untranslatable.ts
 packages/export/src/step-map-unit.ts
@@ -78,6 +79,7 @@ apps/viewer/src/components/viewer/add-element-storeys.ts
 apps/viewer/src/components/viewer/hierarchy/effectiveGroupEntities.ts
 apps/viewer/src/components/viewer/properties/modelMetadataStats.ts
 apps/viewer/src/components/viewer/properties/MaterialTotalsPanel.tsx
+apps/viewer/src/components/viewer/properties/RawStepCard.tsx
 apps/viewer/src/components/viewer/properties/effective-classification-systems.ts
 apps/viewer/src/components/viewer/properties/effectiveSelectedClass.ts
 apps/viewer/src/hooks/has-entity-type.ts
@@ -85,13 +87,17 @@ apps/viewer/src/hooks/useIfcFederation.ts
 apps/viewer/src/hooks/ingest/viewerModelIngest.ts
 apps/viewer/src/hooks/useIfcCache.ts
 apps/viewer/src/lib/collab/share-scope.ts
+apps/viewer/src/lib/collab/entity-paths.ts
 apps/viewer/src/lib/collab/owner-seed-paths.ts
 apps/viewer/src/lib/collab/room-step-source.ts
 apps/viewer/src/lib/collab/step-seed.ts
 apps/viewer/src/lib/compare/compareScope.ts
+apps/viewer/src/lib/compare/typeObjectTag.ts
+apps/viewer/src/lib/compare/worldPlacement.ts
 apps/viewer/src/lib/drawing2d-markup/drawing-markup-restore.ts
 apps/viewer/src/lib/lens/adapter-entities.ts
 apps/viewer/src/lib/linear-element-edit.ts
+apps/viewer/src/lib/placement-edit.boot.ts
 apps/viewer/src/lib/lists/adapter.ts
 apps/viewer/src/lib/lists/scope-types.ts
 apps/viewer/src/lib/search/filter-schema-effective.ts
@@ -103,6 +109,7 @@ apps/viewer/src/test/appearance-controller.harness.tsx
 apps/viewer/src/utils/serverDataModel.ts
 apps/viewer/src/utils/spatialHierarchy.ts
 packages/create/src/in-store/extract-walls.ts
+packages/create/src/in-store/placement-frame.ts
 packages/create/src/in-store/resolve-source.ts
 packages/create/src/in-store/spatial-children.ts
 packages/parser/src/schedule-extractor.ts

@@ -39,6 +39,9 @@ export function bindModelWorkspaceKeys(): () => void {
   const active = workspaceKeysLive;
   const disposers = [
     registerKeyboardCommand('model.wall', () => launchModelCommand('wall.place'), { active }),
+    registerKeyboardCommand('model.slab', () => launchModelCommand('slab.place'), { active }),
+    registerKeyboardCommand('model.column', () => launchModelCommand('column.place'), { active }),
+    registerKeyboardCommand('model.beam', () => launchModelCommand('beam.place'), { active }),
     registerKeyboardCommand('model.storeyUp', () => stepSessionStorey(useViewerStore.getState(), 1), { active }),
     registerKeyboardCommand('model.storeyDown', () => stepSessionStorey(useViewerStore.getState(), -1), { active }),
   ];

@@ -22,6 +22,7 @@
 
 import type { SnapResult, SnapSource, Vec2 } from '@/lib/snap/types';
 import {
+  commandDoubleClick,
   commandPointerDown,
   commandPointerMove,
   getCommandRuntime,
@@ -132,7 +133,7 @@ export function routeCommandPointer(
   if (!runtime.command || !runtime.ctx) return false;
   if (kind === 'down') {
     const snap = resolveCommandSnap(ctx, runtime, x, y, mods);
-    if (snap) commandPointerDown(snap);
+    if (snap) ((mods.detail ?? 1) >= 2 ? commandDoubleClick : commandPointerDown)(snap);
     return true;
   }
   latest = { x, y, mods };

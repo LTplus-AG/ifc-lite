@@ -13,6 +13,9 @@ export const modelWorkspaceEn = {
   'modelWorkspace.rail.aria': 'Model tools',
   'modelWorkspace.tool.select': 'Select',
   'modelWorkspace.tool.wall': 'Wall',
+  'modelWorkspace.tool.slab': 'Slab',
+  'modelWorkspace.tool.column': 'Column',
+  'modelWorkspace.tool.beam': 'Beam',
   'modelWorkspace.tool.split': 'Split',
   'modelWorkspace.tool.leave': 'Leave the Model workspace',
   'modelWorkspace.tool.shortcutHint': '· {key}',
@@ -41,5 +44,5 @@ export const modelWorkspaceEn = {
   'modelWorkspace.layout.plan': 'Plan',
   'modelWorkspace.layout.split': 'Split',
   'modelWorkspace.layout.3d': '3D',
-  'modelWorkspace.hint.onboarding': 'W draws a wall · click an element to edit it · E leaves',
+  'modelWorkspace.hint.onboarding': 'W wall · Shift+S slab · click an element to edit it · E leaves',
 } as const satisfies Record<string, TranslationValue>;

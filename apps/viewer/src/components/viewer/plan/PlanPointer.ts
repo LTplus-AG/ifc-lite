@@ -14,7 +14,7 @@
  * the 3D click's own path): Shift toggles, an empty click clears.
  */
 
-import { commandPointerDown, commandPointerMove, getCommandRuntime } from '@/lib/commands/modeling/runtime';
+import { commandDoubleClick, commandPointerDown, commandPointerMove, getCommandRuntime } from '@/lib/commands/modeling/runtime';
 import { profileOf, semanticSource, solveCommandSnap, type PointerModifiers } from '@/lib/commands/modeling/snap-solve';
 import type { SnapProfile, SnapResult, SnapSource, Vec2 } from '@/lib/snap/types';
 import { selectPickedGlobalId, toggleGlobalIdInSelection } from '../viewport-selection';
@@ -56,7 +56,8 @@ export function resolvePlanSnap(input: PlanPointerInput): SnapResult | null {
 export function routePlanPointer(kind: 'move' | 'down', input: PlanPointerInput): boolean {
   const snap = resolvePlanSnap(input);
   if (!snap) return false;
-  if (kind === 'down') commandPointerDown(snap);
+  // The second click of a double-click (detail 2) closes a polygon, as in 3D.
+  if (kind === 'down') ((input.mods.detail ?? 1) >= 2 ? commandDoubleClick : commandPointerDown)(snap);
   else commandPointerMove(snap);
   return true;
 }

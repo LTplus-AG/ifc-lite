@@ -28,9 +28,11 @@
  * GPU-instanced occurrences (#5745) are not copied at all: the mask draws the
  * templates themselves with `vs_instanced`, and the fragment keeps the
  * selected occurrences (their instance flag) or the hovered id's. This packs
- * the one uniform those draws read, the same frame fields as a hover copy
- * with an identity transform (`vs_instanced` ignores the model matrix and the
- * drawable origin; the anchor comes per occurrence).
+ * the one uniform those draws read: the same frame fields as a hover copy, with
+ * an identity model matrix and no drawable origin. `vs_instanced` reads neither; each
+ * occurrence's origin comes from its per-instance RTE delta, exactly as in the
+ * main instanced colour pass. Packing a stand-in origin of [0, 0, 0] threw once
+ * the camera was over 1,000 km from the world origin (#6400).
  */
 
 import { packClipBox } from './clip-box.js';
@@ -76,24 +78,38 @@ function toSelectable(mesh: Mesh): SelectableMesh | null {
   return { vertexBuffer: mesh.vertexBuffer, indexBuffer: mesh.indexBuffer, indexCount: mesh.indexCount, bindGroup: mesh.bindGroup };
 }
 
+const IDENTITY_TRANSFORM: Mesh['transform'] = { m: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) };
+
 /**
- * Packs the mask pipeline's mesh uniform for a mesh that may not have one
- * yet. Exported for unit testing; section / clip data go through the same
+ * Packs the per-frame fields every mask draw reads: view-projection, RTE
+ * view-projection, section plane, clip box and flags, with an identity model
+ * matrix and no drawable origin. Section / clip data go through the same
  * `packClipBox` + `packRteFragmentSpace` pair `index.ts`'s mesh loop uses.
  */
-export function packHoverUniforms(source: SelectionOutlineSource, mesh: Pick<Mesh, 'transform' | 'rteOrigin'>): Float32Array {
+function packMaskFrameUniforms(source: SelectionOutlineSource): Float32Array {
   const scratch = new Float32Array(source.uniformBufferSize / 4);
   scratch.set(source.viewProj, 0);
-  scratch.set(mesh.transform.m, 16);
+  scratch.set(IDENTITY_TRANSFORM.m, MESH_UNIFORM_OFFSET.model);
   source.relativeToEyeFrame.packUniforms(scratch, MESH_UNIFORM_OFFSET.rteViewProj);
-  const origin = mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
-  source.relativeToEyeFrame.packDrawableOrigin(origin, scratch, MESH_UNIFORM_OFFSET.drawableDelta);
   const clipBit = packClipBox(source.clipBox, scratch, MESH_UNIFORM_OFFSET.clipBoxMin);
   packRteFragmentSpace(source.relativeToEyeFrame, source.section, source.clipBox, scratch);
   const flags = new Uint32Array(scratch.buffer, MESH_FLAGS_BYTE_OFFSET, 2);
   flags[0] = MESH_FLAG_RTE_DRAWABLE;
   // flags.y: bit 0 = section enabled, bit 1 = flipped, bit 2 = clip box (as index.ts packs it).
   flags[1] = (source.section?.enabled ? 1 : 0) | (source.sectionFlipped ? 2 : 0) | clipBit;
+  return scratch;
+}
+
+/**
+ * Packs the mask pipeline's mesh uniform for a mesh that may not have one
+ * yet: the frame fields plus the mesh's model matrix and RTE drawable origin.
+ * Exported for unit testing.
+ */
+export function packHoverUniforms(source: SelectionOutlineSource, mesh: Pick<Mesh, 'transform' | 'rteOrigin'>): Float32Array {
+  const scratch = packMaskFrameUniforms(source);
+  scratch.set(mesh.transform.m, MESH_UNIFORM_OFFSET.model);
+  const origin = mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
+  source.relativeToEyeFrame.packDrawableOrigin(origin, scratch, MESH_UNIFORM_OFFSET.drawableDelta);
   return scratch;
 }
 
@@ -105,14 +121,12 @@ export interface SelectionOutlineFrameResult {
   instanced: InstancedMaskFrame | null;
 }
 
-const IDENTITY_TRANSFORM: Mesh['transform'] = { m: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) };
-
 function buildInstancedMaskFrame(source: SelectionOutlineSource): InstancedMaskFrame | null {
   const selected = (source.instancedTemplates ?? []).filter((t) => t.selectedCount > 0);
   const hovered = source.hoveredId != null ? source.instancedHovered ?? [] : [];
   if (selected.length === 0 && hovered.length === 0) return null;
   return {
-    uniforms: packHoverUniforms(source, { transform: IDENTITY_TRANSFORM, rteOrigin: [0, 0, 0] }),
+    uniforms: packMaskFrameUniforms(source),
     rteCamera: source.relativeToEyeFrame.getCameraWorld(),
     selected,
     hovered,

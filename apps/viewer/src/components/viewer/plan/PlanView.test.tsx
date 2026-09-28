@@ -108,6 +108,21 @@ describe('PlanView (#6232 M2.4)', () => {
     assert.ok(ui.querySelector(`[data-plan-entity="${global}"]`), 'the plan cut draws the new wall');
   });
 
+  it('a double-click in the plan closes a polygon slab, like a 3D double-click (#6396 doubleClick)', async () => {
+    const ui = render(<PlanView layout="split" />);
+    await settle();
+    const svg = ui.querySelector('[data-plan-canvas]')!;
+    act(() => useViewerStore.getState().setAuthoringDefaults({ slabMode: 'polygon' }));
+    act(() => useViewerStore.getState().startCommand('slab.place'));
+    const before = undoDepth();
+    planClick(svg, [0, 0]);
+    planClick(svg, [3, 0]);
+    planClick(svg, [3, 2]);
+    assert.equal(undoDepth(), before, 'three vertices, nothing committed yet');
+    planClick(svg, [3, 2]); // the second press of a double-click on the last vertex
+    assert.equal(undoDepth(), before + 1, 'the double-click committed the slab as one undo step');
+  });
+
   it('selection syncs both ways: plan click → both channels, 3D selection → plan highlight', async () => {
     const ui = render(<PlanView layout="split" />);
     await settle();

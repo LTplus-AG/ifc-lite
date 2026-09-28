@@ -103,6 +103,9 @@ const STATES: ReadonlyArray<{ name: string; settleMs?: number; mayBeEmpty?: bool
   { name: 'idle', mayBeEmpty: true },
   { name: 'selection', mayBeEmpty: true },
   { name: 'split' },
+  // #6232 M2.2: the placing commands' bars are the widest command bars; they stack rather than overrun the lane.
+  { name: 'slab' },
+  { name: 'beam' },
   { name: 'spaceSketch', settleMs: 4000 },
   { name: 'addElement' },
   { name: 'measure' },
@@ -173,6 +176,8 @@ for (const width of [1280, 1600, 1920]) {
               if (wall !== undefined) s.setSelectedEntityId(wall);
             },
             split: (s) => { s.setSelectedEntityId(null); s.startCommand('element.split'); },
+            slab: (s) => s.startCommand('slab.place'),
+            beam: (s) => s.startCommand('beam.place'),
             spaceSketch: (s) => { s.endCommand(); s.setActiveTool('spaceSketch'); },
             addElement: (s) => s.setActiveTool('addElement'),
             measure: (s) => s.setActiveTool('measure'),
@@ -188,8 +193,9 @@ for (const width of [1280, 1600, 1920]) {
           };
           enter[name](api.getState());
         }, [STORE, state.name] as const);
-        if (state.name === 'split') {
-          await expect(page.locator('[data-command-id="element.split"]')).toBeVisible();
+        if (state.name === 'split' || state.name === 'slab' || state.name === 'beam') {
+          const id = { split: 'element.split', slab: 'slab.place', beam: 'beam.place' }[state.name];
+          await expect(page.locator(`[data-hud-region] [data-command-id="${id}"]`)).toBeVisible();
         }
         if (state.name === 'spaceSketch') {
           await expect(page.locator('[data-tool-bar="spaceSketch"]')).toBeVisible();

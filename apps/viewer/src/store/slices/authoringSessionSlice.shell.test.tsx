@@ -111,7 +111,7 @@ describe('Model workspace scene layer (#6232 M2.1)', () => {
     render(<><ViewportHud /><ToolOverlays /></>);
     const hint = () => document.querySelector('[data-model-onboarding-hint]');
     act(() => { useViewerStore.getState().enterModelWorkspace(); });
-    assert.match(hint()?.textContent ?? '', /W draws a wall/);
+    assert.match(hint()?.textContent ?? '', /W wall · Shift\+S slab/);
     act(() => {
       useViewerStore.getState().startCommand('wall.place');
       commandPointerMove(at(0, 0)); commandPointerDown(at(0, 0));

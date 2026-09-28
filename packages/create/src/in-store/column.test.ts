@@ -69,6 +69,44 @@ describe('addColumnToStore', () => {
     expect(rel?.attributes[4]).toEqual([`#${result.columnId}`]); // RelatedElements
   });
 
+  // #6232 M2.2: a column placed turned, and one rotatable later. Without an
+  // explicit RefDirection `rotateEntity` refuses the placement, so every
+  // authored column is written with Axis + RefDirection.
+  describe('RefDirection', () => {
+    const ANCHOR = { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54 };
+    const placementAxes = (view: MutablePropertyView, placementId: number) => {
+      const byId = new Map(view.getNewEntities().map((e) => [e.expressId, e]));
+      const ref = (v: unknown) => byId.get(Number(String(v).slice(1)))!;
+      const axis2 = ref(byId.get(placementId)!.attributes[1]);
+      expect(axis2.type).toBe('IfcAxis2Placement3D');
+      return { axis: ref(axis2.attributes[1])?.attributes[0], refDirection: ref(axis2.attributes[2])?.attributes[0] };
+    };
+
+    it('writes Axis +Z and RefDirection +X by default', () => {
+      const view = new MutablePropertyView(null, 'm1');
+      const result = addColumnToStore(new StoreEditor(makeStore(50), view), ANCHOR, { Position: [0, 0, 0], Width: 0.3, Depth: 0.4, Height: 3 });
+      expect(placementAxes(view, result.placementId)).toEqual({ axis: [0, 0, 1], refDirection: [1, 0, 0] });
+    });
+
+    it('writes a given horizontal RefDirection, normalised', () => {
+      const view = new MutablePropertyView(null, 'm1');
+      const result = addColumnToStore(new StoreEditor(makeStore(50), view), ANCHOR, {
+        Position: [0, 0, 0], Width: 0.3, Depth: 0.4, Height: 3, RefDirection: [0, 2, 0],
+      });
+      expect(placementAxes(view, result.placementId)).toEqual({ axis: [0, 0, 1], refDirection: [0, 1, 0] });
+    });
+
+    it('refuses a tilted or zero RefDirection before emitting anything', () => {
+      for (const RefDirection of [[0, 0, 1], [1, 0, 0.5], [0, 0, 0], [Number.NaN, 1, 0]] as [number, number, number][]) {
+        const view = new MutablePropertyView(null, 'm1');
+        expect(() => addColumnToStore(new StoreEditor(makeStore(50), view), ANCHOR, {
+          Position: [0, 0, 0], Width: 0.3, Depth: 0.4, Height: 3, RefDirection,
+        })).toThrow(/RefDirection/);
+        expect(view.getNewEntities()).toEqual([]);
+      }
+    });
+  });
+
   it('allocates ids strictly above the existing store watermark', () => {
     const store = makeStore(100);
     const view = new MutablePropertyView(null, 'm1');

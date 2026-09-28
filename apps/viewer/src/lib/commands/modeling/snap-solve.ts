@@ -23,7 +23,8 @@ import { useViewerStore } from '@/store';
 import type { CommandRuntimeState } from './runtime.js';
 import type { ModelingCommand, Workplane } from './types.js';
 
-export interface PointerModifiers { shiftKey: boolean; altKey: boolean }
+/** `detail` is the click count: the second click of a double-click has 2. */
+export interface PointerModifiers { shiftKey: boolean; altKey: boolean; detail?: number }
 
 export const NO_MODIFIERS: PointerModifiers = { shiftKey: false, altKey: false };
 
@@ -81,5 +82,9 @@ export function solveCommandSnap(runtime: CommandRuntimeState, plane: Workplane,
     input.profile ?? profileOf(command),
     runtime.snap ?? undefined,
   );
-  return { ...solved, render: plane.localToRender([solved.local[0], solved.local[1], 0]) };
+  return {
+    ...solved,
+    render: plane.localToRender([solved.local[0], solved.local[1], 0]),
+    modifiers: { shift: input.mods.shiftKey, alt: input.mods.altKey },
+  };
 }

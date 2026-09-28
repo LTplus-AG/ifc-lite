@@ -168,10 +168,23 @@ export function commandPointerDown(snap: SnapResult): void {
   applyStep(command.pointerDown(moved, snap, ctx));
 }
 
+/**
+ * The second click of a double-click: the command's `doubleClick` (close a
+ * polygon), else a plain down. The pointer sources (3D, plan) call this for
+ * `event.detail >= 2`.
+ */
+export function commandDoubleClick(snap: SnapResult): void {
+  const { command, ctx } = state;
+  if (!command || !ctx) return;
+  if (!command.doubleClick) { commandPointerDown(snap); return; }
+  applyStep(command.doubleClick(state.gesture, ctx));
+}
+
 export function writeCommandField(index: number, value: number): void {
-  const field = state.command?.fields?.[index];
-  if (!field || !Number.isFinite(value)) return;
-  publish({ gesture: field.write(state.gesture, value), dirty: true, activeField: index });
+  const { command, ctx } = state;
+  const field = command?.fields?.[index];
+  if (!field || !ctx || !Number.isFinite(value)) return;
+  publish({ gesture: field.write(state.gesture, value, ctx), dirty: true, activeField: index });
 }
 
 /** A command's own HUD edits its gesture (e.g. a distance typed at the cursor). */
@@ -231,9 +244,12 @@ function undoCommandPoint(): boolean {
 
 /** Ask the fields bar to open field `index` (or the next one) for typing. */
 export function requestFieldEdit(target: number | 'next', draft?: string): boolean {
-  const count = state.command?.fields?.length ?? 0;
-  if (count === 0) return false;
-  const index = target === 'next' ? ((state.activeField ?? -1) + 1) % count : Math.min(Math.max(target, 0), count - 1);
+  const fields = state.command?.fields ?? [];
+  const count = fields.length;
+  const shown = (i: number) => !fields[i].hidden?.(state.gesture);
+  if (!fields.some((_, i) => shown(i))) return false;
+  let index = target === 'next' ? ((state.activeField ?? -1) + 1) % count : Math.min(Math.max(target, 0), count - 1);
+  while (!shown(index)) index = (index + 1) % count;
   requestSeq += 1;
   publish({ fieldRequest: { index, draft, seq: requestSeq }, activeField: index });
   return true;

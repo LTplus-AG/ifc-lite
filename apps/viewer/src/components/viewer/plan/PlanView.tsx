@@ -42,6 +42,9 @@ import { CutLayer, GhostLayer, GridLayer, HighlightLayer, SnapLayer, toScreen } 
 
 /** A press that moves further than this (px) is a drag, not a click. */
 const CLICK_SLOP_PX = 4;
+/** Two presses this close in time and space are a double-click (the 3D click's rule, selectionHandlers.ts). */
+const DOUBLE_CLICK_MS = 300;
+const DOUBLE_CLICK_PX = 5;
 
 interface Press { x: number; y: number; pan: boolean; moved: boolean }
 
@@ -93,6 +96,18 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const press = useRef<Press | null>(null);
+  const lastDown = useRef<{ t: number; x: number; y: number } | null>(null);
+  /**
+   * The click count of a press: `pointerdown.detail` is 0 in Chrome (Pointer
+   * Events), so the plan counts itself, as the 3D click does.
+   */
+  const clickCount = (e: { clientX: number; clientY: number; timeStamp: number }): number => {
+    const prev = lastDown.current;
+    const double = prev !== null && e.timeStamp - prev.t < DOUBLE_CLICK_MS
+      && Math.abs(e.clientX - prev.x) < DOUBLE_CLICK_PX && Math.abs(e.clientY - prev.y) < DOUBLE_CLICK_PX;
+    lastDown.current = double ? null : { t: e.timeStamp, x: e.clientX, y: e.clientY };
+    return double ? 2 : 1;
+  };
 
   const frame = useCallback((w: number, h: number) => fitPlan(cut.polygons, cut.lines, axes, w, h), [cut.polygons, cut.lines, axes]);
   const { size, fit, refit, panBy } = usePlanViewport(hostRef, svgRef, frame, `${session?.modelId}:${session?.storeyId}`, cut.settled);
@@ -128,7 +143,7 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
     return routePlanPointer(kind, {
       local: at.local,
       metresPerPixel: 1 / fit.scale,
-      mods: { shiftKey: e.shiftKey, altKey: e.altKey },
+      mods: { shiftKey: e.shiftKey, altKey: e.altKey, detail: kind === 'down' ? clickCount(e) : 1 },
       snapping: useViewerStore.getState().snapEnabled,
       planSources,
     });

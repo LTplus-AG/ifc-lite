@@ -31,13 +31,15 @@ import { asExpressIdRef, readAttributes } from './placement-core.js';
 import { resolveWallEditChain, type WallEditChain } from './wall-edit.js';
 import { resolveLinearElementChain, type LinearElementEditChain } from './linear-element-edit.js';
 import { resolveSlabEditChain, type SlabEditChain } from './slab-edit.js';
-import { effectiveStoreyId } from './effective-storey.js';
+import { effectiveContainerTypeName, effectiveStoreyId } from './effective-storey.js';
 
 export type SplitUnavailableCode =
   /** Not a wall / beam / column / member / slab / roof / plate / space. */
   | 'type'
-  /** Not contained in a building storey; the halves need one to live in. */
+  /** Not contained in any spatial element; the halves need a storey to live in. */
   | 'storey'
+  /** Contained in a spatial element that is not a storey (IfcBuilding, IfcSite): the halves still need one. */
+  | 'container'
   /** No body representation to cut. */
   | 'noBody'
   /** Triangulated / faceted / B-rep / surface-model body: no profile to cut. */
@@ -102,7 +104,7 @@ export function resolveSplitTarget(
   // The split commit's own storey gate (`resolveSplitContext`) reads the live
   // containment, so a queued re-containment or removal is honoured here too.
   if (effectiveStoreyId(dataStore, view, expressId) === undefined) {
-    return { ok: false, code: 'storey' };
+    return { ok: false, code: effectiveContainerTypeName(dataStore, view, expressId) ? 'container' : 'storey' };
   }
   return target;
 }
@@ -164,6 +166,7 @@ export function splitUnavailableKey(code: SplitUnavailableCode): TranslationKey 
   switch (code) {
     case 'type': return 'splitTool.unavailable.type';
     case 'storey': return 'splitTool.unavailable.storey';
+    case 'container': return 'splitTool.unavailable.container';
     case 'noBody': return 'splitTool.unavailable.noBody';
     case 'mesh': return 'splitTool.unavailable.mesh';
     case 'mapped': return 'splitTool.unavailable.mapped';

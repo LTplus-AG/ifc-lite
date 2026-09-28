@@ -15,7 +15,7 @@
  * 2D→3D lift and cap triangulation to `section-2d-lift.ts`, the per-family
  * vertex buffer to `section-2d-line-buffer.ts`, the cap pipeline descriptors
  * to `section-cap-pipelines.ts`. What is left is one nullable,
- * `init()`-created / `dispose()`-destroyed GPU object (three pipelines, one
+ * `init()`-created / `dispose()`-destroyed GPU object (pipelines, one
  * bind-group layout, one bind group, one uniform buffer holding a 160-byte
  * record per draw site) plus the published API over it: one
  * `setLineOverlay`/`hasLineOverlay`/`drawLineOverlay` trio covering every
@@ -587,5 +587,16 @@ export class Section2DOverlayRenderer {
       this.uniformBuffer.destroy();
       this.uniformBuffer = null;
     }
+    // Pipeline and bind-group objects belong to this initialization epoch.
+    // A later upload on the same instance must rebuild all of them together.
+    this.fillPipeline = null;
+    this.fillDepthPipeline = null;
+    this.linePipeline = null;
+    this.centrelinePipeline = null;
+    this.linePipelineDescriptor = null;
+    this.bindGroupLayout = null;
+    this.bindGroup = null;
+    this.uniformStride = 0;
+    this.initialized = false;
   }
 }

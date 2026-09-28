@@ -300,6 +300,41 @@ describe('Section2DOverlayRenderer: per-family buffer ownership', () => {
 });
 
 describe('selected centreline depth (#5778)', () => {
+  it('rebuilds lazy centreline and shared pipelines after dispose and reinit', () => {
+    const { renderer, pipelineDescs } = newRenderer();
+    renderer.setLineOverlay('centreline', SEGMENTS);
+    const first = makePass();
+    renderer.drawLineOverlay(first.pass, OPTIONS.viewProj, 'centreline');
+    const oldPipeline = first.pipelines[0];
+    renderer.setLineOverlay('grid', SEGMENTS);
+    const oldOrdinary = makePass();
+    renderer.drawLineOverlay(oldOrdinary.pass, OPTIONS.viewProj, 'grid');
+    const oldPipelineCount = pipelineDescs.size;
+    assert.strictEqual(pipelineDescs.get(oldPipeline)?.depthStencil?.depthCompare, 'always');
+
+    renderer.dispose();
+    const empty = makePass();
+    renderer.drawLineOverlay(empty.pass, OPTIONS.viewProj, 'centreline');
+    assert.deepStrictEqual(empty.calls, []);
+    assert.ok(pipelineDescs.size > oldPipelineCount, 'reinit rebuilds the shared device pipelines');
+    assert.strictEqual([...pipelineDescs.values()].filter(
+      (desc) => desc.depthStencil?.depthCompare === 'always').length, 1,
+    'reinit with an empty centreline keeps the x-ray pipeline lazy');
+
+    renderer.setLineOverlay('grid', SEGMENTS);
+    const ordinary = makePass();
+    renderer.drawLineOverlay(ordinary.pass, OPTIONS.viewProj, 'grid');
+    assert.deepStrictEqual(ordinary.calls, ['setPipeline', 'setBindGroup', 'setVertexBuffer', 'draw:4']);
+    assert.notStrictEqual(ordinary.pipelines[0], oldOrdinary.pipelines[0]);
+
+    renderer.setLineOverlay('centreline', SEGMENTS);
+    const second = makePass();
+    renderer.drawLineOverlay(second.pass, OPTIONS.viewProj, 'centreline');
+    assert.deepStrictEqual(second.calls, ['setPipeline', 'setBindGroup', 'setVertexBuffer', 'draw:4']);
+    assert.notStrictEqual(second.pipelines[0], oldPipeline, 'the old GPU pipeline is never rebound');
+    assert.strictEqual(pipelineDescs.get(second.pipelines[0])?.depthStencil?.depthCompare, 'always');
+  });
+
   it('creates the depth pipeline only after a centreline has drawable segments', () => {
     const { renderer, pipelineDescs } = newRenderer();
     renderer.setLineOverlay('grid', SEGMENTS);

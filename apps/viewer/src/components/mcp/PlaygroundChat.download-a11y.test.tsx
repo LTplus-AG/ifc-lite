@@ -23,7 +23,7 @@ it('#6329 names the live MCP download action before and after saving', () => {
   assert.ok(button.textContent?.includes('Save IFC'));
   click(button);
   assert.deepEqual(downloaded.mock.calls.map((call) => call.arguments), [['pg-file-1']]);
-  assert.ok(button.getAttribute('aria-label')?.trim(), 'saved state stays named');
-  assert.ok(button.textContent?.includes(button.getAttribute('aria-label') ?? ''),
+  assert.equal(button.getAttribute('aria-label'), 'Saved — click again to re-download');
+  assert.ok(button.textContent?.includes('Saved — click again to re-download'),
     'saved accessible name matches visible feedback');
 });

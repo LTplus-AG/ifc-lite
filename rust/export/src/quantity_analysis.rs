@@ -157,11 +157,21 @@ fn add_sets(
             }
             continue;
         }
-        let Some((set_name, records)) = decode_quantity_records(decoder, &set, Some(MAX_REL_MEMBERS)) else {
+        if let Some(member_index) = refs.iter().position(|value| value.as_entity_ref().is_none()) {
+            diagnostics.push(format!(
+                "quantity set #{set_id}: malformed Quantities member at index {member_index}"));
+            continue;
+        }
+        let Some(decoded) = decode_quantity_records(decoder, &set, Some(MAX_REL_MEMBERS)) else {
             diagnostics.push(format!("quantity set #{set_id}: malformed or over work budget"));
             continue;
         };
-        for record in records {
+        if decoded.rejected_members > 0 {
+            diagnostics.push(format!("quantity set #{set_id}: {} malformed or unsupported Quantities members; first quantity #{}",
+                decoded.rejected_members, decoded.first_rejected_id.expect("rejected member has an ID")));
+            continue;
+        }
+        for record in decoded.records {
             if budget.rows == 0 {
                 report_once(diagnostics, "authored quantity rows exceed work budget");
                 return;
@@ -175,7 +185,7 @@ fn add_sets(
                 decoder, project_units, kind, record.unit_id, record.invalid_unit_ref);
             let (origin, type_id) = source_sets.origin.fields();
             product.authored.push(AuthoredQuantity {
-                set_name: set_name.clone(), quantity_name: record.value.name,
+                set_name: decoded.name.clone(), quantity_name: record.value.name,
                 set_id, quantity_id: record.id, kind, value: record.value.value,
                 origin, type_id, unit, unit_diagnostic,
             });

@@ -93,6 +93,38 @@ fn issue_5787_malformed_quantity_links_report_lost_observations() {
 }
 
 #[test]
+fn issue_5787_malformed_quantity_member_refuses_partial_set_but_keeps_sibling_set() {
+    let ifc = IFC.replace("(#10,#11,#12,#13)", "(#10,$,#11,#12,#13)");
+    let result = analyze_authored_quantities(ifc.as_bytes(), Some(&HashSet::from([5])));
+    assert_eq!(result.products[&5].authored.iter().map(|quantity| quantity.set_id)
+        .collect::<Vec<_>>(), [21], "malformed set #14 must not yield partial authored rows");
+    assert_eq!(result.products[&5].authored[0].quantity_id, 20,
+        "valid type-assigned set #21 must remain available");
+    assert!(result.diagnostics.iter().any(|message|
+        message == "quantity set #14: malformed Quantities member at index 1"),
+        "{:?}", result.diagnostics);
+}
+
+#[test]
+fn issue_5787_unreadable_quantity_leaf_refuses_partial_set_with_provenance() {
+    for replacement in [
+        "#10=IFCQUANTITYLENGTH('NetLength',$,#30,$,$);",
+        "#10=IFCQUANTITYLENGTH($,$,#30,3.,$);",
+        "#10=IFCPROPERTYSINGLEVALUE('NetLength',$,IFCLENGTHMEASURE(3.),$);",
+    ] {
+        let ifc = IFC.replace("#10=IFCQUANTITYLENGTH('NetLength',$,#30,3.,$);", replacement);
+        let result = analyze_authored_quantities(ifc.as_bytes(), Some(&HashSet::from([5])));
+        assert_eq!(result.products[&5].authored.iter().map(|quantity| quantity.set_id)
+            .collect::<Vec<_>>(), [21], "{replacement}");
+        assert_eq!(result.products[&5].authored[0].quantity_id, 20,
+            "valid sibling set remains available: {replacement}");
+        assert!(result.diagnostics.iter().any(|message|
+            message.contains("quantity set #14: 1 malformed or unsupported Quantities members; first quantity #10")),
+            "{replacement}: {:?}", result.diagnostics);
+    }
+}
+
+#[test]
 fn issue_5787_type_property_sets_refuse_malformed_values_without_hiding_absence() {
     let selected = HashSet::from([5]);
     for (replacement, reason) in [

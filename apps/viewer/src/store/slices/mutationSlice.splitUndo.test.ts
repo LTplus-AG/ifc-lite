@@ -29,7 +29,7 @@
  * `pendingMeshRemovals` renderer-removal signal.
  */
 
-import { beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { IfcParser } from '@ifc-lite/parser';
@@ -37,6 +37,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { effectiveStoreyId } from '@/lib/effective-storey';
+import { installScriptedMesher, settleRemesh } from '@/test/scripted-mesher';
 
 const MODEL_ID = 'ifc';
 const STOREY = 40;
@@ -71,6 +72,8 @@ function emptyGeometry(): GeometryResult {
       originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
       shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
       hasLargeCoordinates: false,
+      // Loaded through the wasm path: authored elements re-mesh in it (#6232).
+      wasmRtcFrame: { x: 0, y: 0, z: 0, needsShift: false },
     },
   } as unknown as GeometryResult;
 }
@@ -114,13 +117,17 @@ function assertTriangleInvariant(what: string): void {
 }
 
 describe('undoing a wall split (#4925)', () => {
-  beforeEach(seed);
+  // Authored elements get their meshes from the re-mesh service (#6232).
+  let mesher: ReturnType<typeof installScriptedMesher>;
+  beforeEach(async () => { mesher = installScriptedMesher(); await seed(); });
+  afterEach(() => mesher.restore());
 
-  it('one undo restores the source mesh and removes the new piece; redo reverses it', () => {
+  it('one undo restores the source mesh and removes the new piece; redo reverses it', async () => {
     const s = useViewerStore.getState();
     const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.25, Height: 2.8 });
     assert.ok('expressId' in wall, `addWall failed: ${'error' in wall ? wall.error : ''}`);
     const sourceId = wall.expressId;
+    await settleRemesh();
     assertTriangleInvariant('after addWall');
     assert.deepEqual(meshedIds(), [sourceId], 'only the source has a mesh before splitting');
     const sourceTriangles = model().geometryResult!.totalTriangles;
@@ -135,6 +142,7 @@ describe('undoing a wall split (#4925)', () => {
     useViewerStore.getState().clearPendingMeshRemovals(); // the renderer's drain
     assert.equal(split.right.expressId, sourceId, 'the 3 m far piece is the source');
     const newId = split.left.expressId;
+    await settleRemesh();
     assertTriangleInvariant('after split');
     assert.deepEqual(meshedIds(), [sourceId, newId].sort((a, b) => a - b), 'split: source reshaped, new piece added');
 

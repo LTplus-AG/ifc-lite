@@ -263,6 +263,35 @@ for instance in view["instances"].get(50, []):
     print(instance["source"], instance["world_from_source"])
 ```
 
+### `authored_quantity_analysis(ifc_bytes: bytes, ids: set[int] | None = None) -> dict`
+
+Return IFC-authored quantities keyed by actual product STEP ID without meshing.
+Each observation retains the exact `IfcElementQuantity.Name` and
+`IfcPhysicalSimpleQuantity.Name`, both source entity IDs, kind, numeric value,
+and occurrence or inherited type origin. A same-named occurrence/type disagreement
+appears in `conflicts`; neither value is overwritten. `unit` records the resolved
+symbol, SI factor, source, and explicit unit ID where present. If a unit cannot
+be resolved or has the wrong dimension, `unit=None` and `unit_diagnostic`
+explains why. `IfcQuantityCount` and IFC4X3 `IfcQuantityNumber` are
+dimensionless when no unit is supplied; a resolved explicit named unit is
+preserved instead of being discarded.
+
+```python
+view = ifclite_geom.authored_quantity_analysis(ifc_bytes, ids={50})
+for quantity in view["products"].get(50, {}).get("authored", []):
+    print(quantity["set_name"], quantity["quantity_name"], quantity["value"], quantity["unit"])
+```
+
+`product_count` counts selected IFC product entities. It is not a physical bar
+count, source-solid count, cutting length or material takeoff. This authored
+view contains no calculated estimate; use the analytic source APIs separately
+and keep their provenance distinct. A malformed or over-budget relationship
+or quantity set appears in `diagnostics`. An absent optional
+`IfcTypeObject.HasPropertySets` is valid; a malformed list or member is
+reported and its type-authored quantities are refused. Conflicting
+`IfcRelDefinesByType` assignments likewise refuse type inheritance for that
+product while preserving its occurrence-authored observations.
+
 ### Tessellation quality
 
 Both geometry functions take an optional `quality` label:

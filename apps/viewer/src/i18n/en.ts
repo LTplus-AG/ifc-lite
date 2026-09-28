@@ -63,6 +63,7 @@ import { propertiesEn } from './catalogues/properties.en';
 import { propertiesPanelEn } from './catalogues/properties-panel.en';
 import { attributeEditorEn } from './catalogues/attribute-editor.en';
 import { propertiesSelectionEn } from './catalogues/properties-selection.en';
+import { sweptDiskInspectionEn } from './catalogues/swept-disk-inspection.en';
 import { relationshipCardEn } from './catalogues/relationship-card.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { scheduleEn } from './catalogues/schedule.en';
@@ -138,6 +139,7 @@ export const en = {
   ...propertiesPanelEn,
   ...attributeEditorEn,
   ...propertiesSelectionEn,
+  ...sweptDiskInspectionEn,
   ...landXmlEn,
   ...terrainImageryEn,
   ...structuralPropertiesEn,

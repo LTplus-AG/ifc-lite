@@ -25,6 +25,7 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumPlacementDraft } from './cesiumSlice.js';
 import { applyThemeClasses, hasLoadedModel, initialShowPerformanceStats, persistShowPerformanceStats } from './uiSlice.helpers.js';
 import type { NavigationPreset } from '@/lib/navigation/presets.js';
+import type { SelectedDirectrixSegment } from '@/lib/analytic/segment-selection.js';
 import { getInitialHierarchyMode, getInitialNavigationPreset, persistHierarchyMode, persistNavigationPreset } from './uiPreferences.js';
 
 export type ThemeMode = 'light' | 'dark' | 'colorful';
@@ -122,6 +123,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   visualEnhancementsEnabled: boolean;
   /** Show exact authored swept-disk directrices for selected IFC products. */
   centrelineOverlayEnabled: boolean;
+  selectedDirectrixSegment: SelectedDirectrixSegment | null;
   contactShadingQuality: ContactShadingQuality;
   contactShadingIntensity: number;
   contactShadingRadius: number;
@@ -166,6 +168,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   setNavigationPreset: (preset: NavigationPreset) => void;
   setVisualEnhancementsEnabled: (enabled: boolean) => void;
   setCentrelineOverlayEnabled: (enabled: boolean) => void;
+  setSelectedDirectrixSegment: (segment: SelectedDirectrixSegment | null) => void;
   setContactShadingQuality: (quality: ContactShadingQuality) => void;
   setContactShadingIntensity: (intensity: number) => void;
   setContactShadingRadius: (radius: number) => void;
@@ -210,6 +213,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   navigationPreset: getInitialNavigationPreset(),
   visualEnhancementsEnabled: UI_DEFAULTS.VISUAL_ENHANCEMENTS_ENABLED,
   centrelineOverlayEnabled: false,
+  selectedDirectrixSegment: null,
   contactShadingQuality: UI_DEFAULTS.CONTACT_SHADING_QUALITY,
   contactShadingIntensity: UI_DEFAULTS.CONTACT_SHADING_INTENSITY,
   contactShadingRadius: UI_DEFAULTS.CONTACT_SHADING_RADIUS,
@@ -336,6 +340,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   },
   setVisualEnhancementsEnabled: (visualEnhancementsEnabled) => set({ visualEnhancementsEnabled }),
   setCentrelineOverlayEnabled: (centrelineOverlayEnabled) => set({ centrelineOverlayEnabled }),
+  setSelectedDirectrixSegment: (selectedDirectrixSegment) => set({ selectedDirectrixSegment }),
   setContactShadingQuality: (contactShadingQuality) => set({ contactShadingQuality }),
   setContactShadingIntensity: (contactShadingIntensity) => set({ contactShadingIntensity }),
   setContactShadingRadius: (contactShadingRadius) => set({ contactShadingRadius }),

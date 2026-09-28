@@ -18,10 +18,8 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ViewerState } from '../index.js';
 import { toGlobalIdFromModels } from '../globalId.js';
 import { mutationDenial } from '../mutation-permission.js';
-import type { AuthoredElement } from './authoredElement.js';
 import { toNativeLength } from '@ifc-lite/create';
 import { mutationsSince, newMutationBatchId, undoStackLengths } from './mutation-batch-tags.js';
-import { mirrorAuthoredGeometry } from './mutation-geometry-mirror.js';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import { resolveSplitTarget, splitChainOfKind } from '@/lib/split-target.js';
 import { effectiveStoreyId } from '@/lib/effective-storey.js';
@@ -89,20 +87,17 @@ export function openSplit<K extends SplitKind>(
 }
 
 /**
- * Reshape the source in place: positional writes (native units). Its local
- * mesh is rebuilt by the wasm re-mesh service when the split's transaction
- * commits (`element.split` returns it in `remesh`, and undo / redo re-mesh
- * the batch again); collaborators get `element`'s builder mesh.
+ * Reshape the source in place: positional writes (native units). Its mesh is
+ * rebuilt by the wasm re-mesh service when the split's transaction commits
+ * (`element.split` returns it in `remesh`, and undo / redo re-mesh the batch
+ * again); the re-mesh also sends that mesh to the room (#6391).
  */
 export function reshapeSource(
   get: Get,
   modelId: string,
-  expressId: number,
   writes: Array<{ entityId: number; index: number; value: IfcAttributeValue }>,
-  element: AuthoredElement,
 ): void {
   for (const w of writes) get().setPositionalAttribute(modelId, w.entityId, w.index, w.value);
-  mirrorAuthoredGeometry(get, modelId, expressId, element);
 }
 
 /** Close the split: clone the source's metadata onto the new piece, make it all one undo step. */
@@ -140,11 +135,11 @@ export function splitWall(
 
   const k = chain.lengthUnitScale;
   const keptLength = Math.hypot(kept.End[0] - kept.Start[0], kept.End[1] - kept.Start[1]);
-  reshapeSource(get, modelId, expressId, [
+  reshapeSource(get, modelId, [
     { entityId: chain.startPointId, index: 0, value: scaled(kept.Start, k) },
     { entityId: chain.profileId, index: 3, value: native(keptLength, k) },
     { entityId: chain.profileOriginPointId, index: 0, value: [native(keptLength, k) / 2, 0] },
-  ], { kind: 'wall', params: { Start: kept.Start, End: kept.End, Thickness: chain.thickness, Height: chain.height } });
+  ]);
 
   // Only openings in the new piece change host. An opening's local X is
   // native units; a kept RIGHT piece starts at the cut, so the openings it
@@ -196,11 +191,7 @@ export function splitLinear(
     { entityId: chain.extrudedSolidId, index: 3, value: native(keptLength, k) },
   ];
   if (!keepFirst) writes.push({ entityId: chain.startPointId, index: 0, value: scaled(keptStart, k) });
-  const linear = { Start: keptStart, End: along(keptStart, axis, keptLength), Width: width, Height: height };
-  const element: AuthoredElement = chain.elementType === 'IfcColumn'
-    ? { kind: 'column', params: { Position: keptStart, Width: width, Depth: height, Height: keptLength } }
-    : chain.elementType === 'IfcBeam' ? { kind: 'beam', params: linear } : { kind: 'member', params: linear };
-  reshapeSource(get, modelId, expressId, writes, element);
+  reshapeSource(get, modelId, writes);
 
   closeSplit(get, modelId, env, expressId, added.expressId);
   const [leftId, rightId] = keepFirst ? [expressId, added.expressId] : [added.expressId, expressId];

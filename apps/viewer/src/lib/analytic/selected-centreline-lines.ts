@@ -10,11 +10,16 @@ import { displayedTranslation, placementFor } from '@/lib/model-placement/state'
 import { directrixDisplayLines, type FederationPointMap } from './directrix-frame';
 import { directrixLineVertices } from './directrix-lines';
 import type { SelectedSweptDisk } from '@/hooks/useSelectedSweptDisks';
+import type { SelectedDirectrixSegment } from './segment-selection';
 
 const MAX_DISPLAY_EDGES = 100_000;
 
+export function sourceOccurrenceKey(modelId: string, expressId: number, occurrenceIndex: number): string {
+  return `${modelId}\u0000${expressId}\u0000${occurrenceIndex}`;
+}
+
 /** Source-frame point mapping follows the same alignment chosen for the mesh. */
-async function modelFrameMap(model: FederatedModel, state: ViewerState): Promise<FederationPointMap | undefined> {
+export async function modelFrameMap(model: FederatedModel, state: ViewerState): Promise<FederationPointMap | undefined> {
   const status = model.federationAlignmentStatus;
   if (status !== 'same-crs' && status !== 'reprojected') return undefined;
   const sourceInfo = model.preAlignment?.coordinateInfo;
@@ -39,13 +44,16 @@ async function modelFrameMap(model: FederatedModel, state: ViewerState): Promise
 /** Exact source curves remain untouched; only this bounded display copy is tessellated. */
 export async function selectedCentrelineWorldLines(
   items: readonly SelectedSweptDisk[], state: ViewerState,
-): Promise<{ vertices: number[]; diagnostics: string[] }> {
+  highlight: SelectedDirectrixSegment | null = null,
+): Promise<{ vertices: number[]; diagnostics: string[]; renderedOccurrences: Set<string> }> {
   const vertices: number[] = [];
   const diagnostics: string[] = [];
+  const renderedOccurrences = new Set<string>();
   const maps = new Map<string, FederationPointMap | undefined>();
   let remaining = MAX_DISPLAY_EDGES;
   for (const item of items) {
     const { modelId, expressId } = item.ref;
+    if (highlight && (modelId !== highlight.modelId || expressId !== highlight.expressId)) continue;
     const model = state.models.get(modelId);
     const legacy = modelId === 'legacy' && state.models.size === 0;
     const geometry = model?.geometryResult ?? (legacy ? state.geometryResult : null);
@@ -62,7 +70,8 @@ export async function selectedCentrelineWorldLines(
       diagnostics.push(`${modelId} #${expressId}: ${String(error)}`);
       continue;
     }
-    for (const occurrence of item.occurrences) {
+    for (const [occurrenceIndex, occurrence] of item.occurrences.entries()) {
+      if (highlight && highlight.occurrenceIndex !== occurrenceIndex) continue;
       if (occurrence.status.type === 'unsupported') {
         diagnostics.push(`${modelId} #${expressId} solid #${occurrence.solid_id}: unsupported source (${occurrence.status.reason})`);
         continue;
@@ -72,14 +81,18 @@ export async function selectedCentrelineWorldLines(
         continue;
       }
       try {
-        const lines = directrixLineVertices(occurrence.Directrix, remaining);
+        const directrix = highlight
+          ? occurrence.Directrix.slice(highlight.segmentIndex, highlight.segmentIndex + 1)
+          : occurrence.Directrix;
+        const lines = directrixLineVertices(directrix, remaining);
         const displayLines = directrixDisplayLines(lines, sourceFrame, placement, map);
         remaining -= lines.length / 6;
         for (const coordinate of displayLines) vertices.push(coordinate);
+        if (displayLines.length > 0) renderedOccurrences.add(sourceOccurrenceKey(modelId, expressId, occurrenceIndex));
       } catch (error) {
         diagnostics.push(`${modelId} #${expressId} solid #${occurrence.solid_id}: ${String(error)}`);
       }
     }
   }
-  return { vertices, diagnostics };
+  return { vertices, diagnostics, renderedOccurrences };
 }

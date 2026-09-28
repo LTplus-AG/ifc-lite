@@ -42,6 +42,16 @@ flowchart TB
 
 Key rendering features include section planes for model slicing, snap detection for precision interaction, GPU picking for object selection, and measurement tools for calculating distances and angles between geometry points. For generating 2D plans and elevations from 3D models, see the [2D Drawing Guide](drawing-2d.md).
 
+## Inspecting swept-disk source geometry
+
+Select a product containing `IfcSweptDiskSolid` geometry, then open **Properties → Quantities → Derived source geometry** or **Measure → Source**. Each solid shows its source solid and directrix IDs, mapped path, effective radius, optional inner radius, complete or unsupported status, and whether a CSG operation modified the source. Complete records show analytic total and per-segment centreline lengths, plus each arc's bend magnitude and signed sweep. Click an unmodified segment row to isolate it in the centreline overlay; click it again to clear the highlight.
+
+These lengths come from the authored directrix in metres, with the viewer's display-unit preference applied. They are separate from authored IFC attributes and `IfcElementQuantity` values. A source modified by CSG may differ from the visible mesh, and an unsupported description cannot provide a derived length. The readout does not infer fabrication quantities or a bar count.
+
+With the centreline overlay enabled, the Measure tool can snap to its authored line and signed arc segments. The snap point is evaluated on the source curve in the displayed model frame, including federation alignment and model placement; the drawn line approximation does not determine it. Segment snapping stops when the overlay is off, the product is hidden or isolated away, or a CSG-modified source cannot describe the visible solid. `SnapTarget.metadata.sourceCurve` identifies the source model, product, solid, directrix, mapped path, occurrence and segment, and carries the exact source length and normalized parameter. Mesh and scan snaps remain available at the same cursor.
+
+For renderer integrations, `Renderer.setSourceSnapCurves(curves)` replaces the opt-in list used by magnetic picking. Each `SourceSnapCurve` supplies a global picking ID, authored source identity, kind (`line` or `arc`), exact length, and `pointAt(t)` evaluator in displayed Y-up world metres; signed arcs also supply `sweepAngle`. Set `affineDisplayFrame: false` when the evaluator includes a nonlinear cross-CRS reprojection, so clip handling checks the evaluated point instead of assuming linear or circular clip roots. An extremely narrow clipped span after nonlinear reprojection may have no candidate; the picker never returns a clipped point. Pass `[]` when the source overlay is hidden or its selection changes.
+
 ## Basic Setup
 
 ```typescript
@@ -988,6 +998,9 @@ The equivalent for 3D line overlays is keyed by channel rather than per item:
 does not. The `centreline` channel is also non-framing: it is intended for a
 selected element's analytic directrix, and clearing it with
 `setLineOverlay('centreline', null)` leaves the other line channels alone.
+The centreline drawing remains visible as x-ray context through section and
+crop cuts. Magnetic snapping to its exact source curve still follows the active
+pick clipping, so a clipped-out part of that drawing is not a snap target.
 
 ## Complete Example
 

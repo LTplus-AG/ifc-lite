@@ -47,9 +47,9 @@ import { getEntityBounds, getEntityCenter } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
 import { meshesForOwningModel } from '../owningModelMeshes.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
-import { buildElementMesh } from './addElementMeshes.js';
-import { authoredElementMeshPayloadOnStorey, type AuthoredElement } from './authoredElement.js';
-import { appendAuthoredMesh, authoredDataStore, syncAuthoredTreeEntry } from './authoredTreeEntry.js';
+import type { AuthoredElement } from './authoredElement.js';
+import { remeshAuthoredElement, rememberAuthoredElement } from './authoredFallbackMesh.js';
+import { authoredDataStore, syncAuthoredTreeEntry } from './authoredTreeEntry.js';
 import { ensureStoreyPlacement } from './storeyPlacement.js';
 import { effectiveStoreyId } from '@/lib/effective-storey';
 
@@ -667,8 +667,6 @@ export interface MutationSlice extends CostUndoMethods {
     modelId: string,
     storeyExpressId: number,
     params: SpaceInStoreParams,
-    /** Plan outline for the 3D mirror — see `profileCornersFromParams`. */
-    previewCorners?: Array<[number, number]>
   ) => { expressId: number } | { error: string };
   /** Add an IfcRoof (flat roof) — slab-like rectangle or polygon. */
   addRoof: (
@@ -865,11 +863,10 @@ function runInStoreElementBuilder(
     return { error: err instanceof Error ? err.message : `Failed to add ${element.kind}` };
   }
 
-  const createdMesh = recordAuthoredElementIn(get, set, modelId, dataStore, view, storeyExpressId, entityId, element);
-
-  // Mirror the new element to peers (entity + mesh blob). No-op outside collab.
-  const newGuid = readNewEntityGuid(editor, entityId);
-  get().mirrorEntityCreate(modelId, entityId, authoredIfcType(element), newGuid, createdMesh);
+  // Mirror the new entity to peers first; its mesh follows from the re-mesh
+  // `recordAuthoredElementIn` asks for. No-op outside collab.
+  get().mirrorEntityCreate(modelId, entityId, authoredIfcType(element), readNewEntityGuid(editor, entityId), null);
+  recordAuthoredElementIn(get, set, modelId, dataStore, view, storeyExpressId, entityId, element);
 
   return { expressId: entityId };
 }
@@ -881,7 +878,9 @@ const authoredIfcType = (element: AuthoredElement): string => `IFC${element.kind
  * the SDK `bim.store.add*` adapter. The adapter used to stop at the builder,
  * so a script's or flow's elements existed only in the export overlay: no
  * mesh, no tree entry, no undo, and no `mutationVersion` bump to tell anything
- * they were there. Returns the mesh it injected, for mirroring.
+ * they were there. The mesh comes from the wasm re-mesh of the written IFC
+ * (#6232), in the model's own frame and mirrored to the room when it lands,
+ * or from the element's parameters where the re-mesh declines.
  */
 function recordAuthoredElementIn(
   get: () => ViewerState,
@@ -892,7 +891,7 @@ function recordAuthoredElementIn(
   storeyExpressId: number,
   entityId: number,
   element: AuthoredElement,
-): MeshData | null {
+): void {
   const ifcType = authoredIfcType(element);
 
   // Make the authored element a first-class citizen immediately: register it in
@@ -909,23 +908,6 @@ function recordAuthoredElementIn(
     const rawName = view.getNewEntity(entityId)?.attributes?.[2];
     const name = typeof rawName === 'string' ? rawName : '';
     registerAuthoredElement(dataStore.spatialHierarchy, storeyExpressId, entityId, ifcType, name);
-  }
-
-  // Build a renderer-frame mesh for the new element so it appears in
-  // 3D the moment the action commits — the ImportError-only behaviour
-  // before this would only surface the change after an export+reparse.
-  const storeyElevation =
-    dataStore.spatialHierarchy?.storeyElevations?.get(storeyExpressId) ?? 0;
-  const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
-  const createdMesh = buildElementMesh({
-    type: element.kind,
-    globalId,
-    storeyElevation,
-    payload: authoredElementMeshPayloadOnStorey(element, dataStore, storeyExpressId, get().models.get(modelId)?.geometryResult?.coordinateInfo),
-  });
-  if (createdMesh) {
-    appendAuthoredMesh(get(), modelId, createdMesh);
-    revealAddedGeometryInModelView(get);
   }
 
   set((s) => {
@@ -955,7 +937,11 @@ function recordAuthoredElementIn(
     };
   });
 
-  return createdMesh;
+  // Real geometry for the new element, from the IFC it was written as; drawn
+  // from its parameters where the re-mesh can't mesh it (authoredFallbackMesh.ts).
+  rememberAuthoredElement(dataStore, entityId, storeyExpressId, element);
+  void remeshAuthoredElement(get, modelId, entityId);
+  revealAddedGeometryInModelView(get);
 }
 
 /**
@@ -1739,7 +1725,7 @@ export const createMutationSlice: StateCreator<
     return result;
   },
 
-  refreshWallMesh: (modelId, expressId) => refreshWallMeshIn(get, modelId, expressId, true),
+  refreshWallMesh: (modelId, expressId) => refreshWallMeshIn(get, modelId, expressId),
 
   readSplitTarget: (modelId, expressId) => {
     const permission = mutationPermission(get(), modelId);
@@ -1860,8 +1846,8 @@ export const createMutationSlice: StateCreator<
     (editor, anchor) => addWindowToStore(editor, anchor, params).windowId,
   ),
 
-  addSpace: (modelId, storeyExpressId, params, previewCorners) => runInStoreElementBuilder(
-    get, set, modelId, storeyExpressId, { kind: 'space', params, previewCorners },
+  addSpace: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
+    get, set, modelId, storeyExpressId, { kind: 'space', params },
     (editor, anchor) => addSpaceToStore(editor, anchor, params).spaceId,
   ),
 

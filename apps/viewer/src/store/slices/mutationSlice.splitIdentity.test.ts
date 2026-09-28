@@ -10,16 +10,14 @@
  * restores exactly the original element.
  *
  * Elements are authored through the same slice builders the Add Element tool
- * uses, in a millimetre file (the demo project's unit). The kept piece's
- * LOCAL mesh is rebuilt by the wasm re-mesh service when `element.split`'s
- * transaction commits (`element-split.identity.test.ts`); what the split
- * action itself sends is the collaborators' mirror, checked here.
+ * uses, in a millimetre file (the demo project's unit). Both pieces are
+ * re-meshed, and sent to the room, by the wasm re-mesh service when
+ * `element.split`'s transaction commits (`element-split.authored.test.tsx`).
  */
 
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { uuidToIfcGuid, uuidV5 } from '@ifc-lite/encoding';
-import type { MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { readAttributes } from '@/lib/placement-core';
 import { SPLIT_GLOBALID_NAMESPACE } from '@/lib/split-guid';
@@ -60,18 +58,8 @@ function span(expressId: number): [number, number] | null {
   return ends ? [Math.round(ends.start[0] * 1e6) / 1e6, Math.round(ends.end[0] * 1e6) / 1e6] : null;
 }
 
-/** Renderer X extent of a mesh. */
-function meshXSpan(mesh: MeshData): [number, number] {
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (let i = 0; i < mesh.positions.length; i += 3) { lo = Math.min(lo, mesh.positions[i]); hi = Math.max(hi, mesh.positions[i]); }
-  return [Math.round(lo * 1e6) / 1e6, Math.round(hi * 1e6) / 1e6];
-}
-
 describe('split identity policy (#6233)', () => {
-  const originalMirror = useViewerStore.getState().mirrorEntityGeometry;
   beforeEach(() => seedModelingSession({ unit: 'millimetre' }));
-  afterEach(() => useViewerStore.setState({ mirrorEntityGeometry: originalMirror }));
 
   it('the longer piece keeps the source; the new piece gets <source>/split/0', () => {
     const id = wall();
@@ -82,17 +70,6 @@ describe('split identity policy (#6233)', () => {
     assert.equal(guidOf(result.left.expressId), derived(WALL_GUID, 0));
     assert.deepEqual(span(id), [1.5, 5], 'the source is reshaped to its piece');
     assert.deepEqual(span(result.left.expressId), [0, 1.5]);
-  });
-
-  it('collaborators get the reshaped source in its storey frame on an offset storey', async () => {
-    await seedModelingSession({ unit: 'millimetre', storeyOffset: [3, 3] }); // the demo storey's (3, 3) m offset
-    const mirrored: Array<[number, MeshData]> = [];
-    useViewerStore.setState({ mirrorEntityGeometry: (_m: string, entityId: number, mesh: MeshData) => { mirrored.push([entityId, mesh]); } });
-    const id = wall();
-    const result = split(id, 1.5);
-    if (!result.ok) return;
-    assert.deepEqual(mirrored.map(([entity]) => entity), [id], 'one mirror, for the reshaped source');
-    assert.deepEqual(meshXSpan(mirrored[0][1]), [4.5, 8], 'source piece mirrored 3 m east, where it reloads');
   });
 
   it('a tie keeps the piece holding the axis start', () => {

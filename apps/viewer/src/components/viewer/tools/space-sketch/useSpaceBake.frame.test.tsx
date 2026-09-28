@@ -133,7 +133,6 @@ before(async () => {
 });
 
 let emittedCurves: Pt[][] = [];
-let previewCurves: Array<Pt[] | undefined> = [];
 let root: Root | null = null;
 let container: HTMLElement | null = null;
 let api: UseSpaceBake | null = null;
@@ -163,14 +162,12 @@ function mount() {
 
 beforeEach(() => {
   emittedCurves = [];
-  previewCurves = [];
   sessions = new Map();
   const s = useViewerStore.getState();
   storeBackup = { addSpace: s.addSpace, removeEntity: s.removeEntity, typeVisibility: s.typeVisibility };
   useViewerStore.setState({
-    addSpace: ((_modelId: string, _storeyId: number, params: { OuterCurve: Pt[] }, preview?: Pt[]) => {
+    addSpace: ((_modelId: string, _storeyId: number, params: { OuterCurve: Pt[] }) => {
       emittedCurves.push(params.OuterCurve);
-      previewCurves.push(preview);
       return { expressId: 5000 + emittedCurves.length };
     }) as typeof s.addSpace,
     removeEntity: (() => true) as typeof s.removeEntity,
@@ -207,19 +204,6 @@ describe('useSpaceBake: the storey frame crossing (#4500)', () => {
     // between. Handing it the chain applied a SECOND time writes something
     // else again — the fixture's rotation is what tells those two apart.
     assertNear(emittedCurves[0], ROOM_STOREY_LOCAL, 'emitted OuterCurve');
-  });
-
-  it('draws the immediate 3D mirror where the user drew the room', () => {
-    // `buildElementMesh` maps its corners straight into the renderer's plan
-    // without putting the storey chain back, so handing it the storey-local
-    // profile would make the confirmed room jump by the whole chain and then
-    // come back on reload. The preview stays in the room frame.
-    store = withoutSpace;
-    mount();
-    sessions.set(STOREY, oneRoomSession(ROOM));
-    api!.createAllSpaces();
-    assert.equal(previewCurves.length, 1);
-    assertNear(previewCurves[0]!, ROOM, 'preview corners');
   });
 
   it('folds authored footprints back to the room frame, so dedup still matches', () => {

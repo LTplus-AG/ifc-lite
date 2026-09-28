@@ -39,25 +39,25 @@ const CHECKER = join(SCRIPTS, 'check-collab-room-model-target.mjs');
 const COLLAB_REL = 'apps/viewer/src/store/slices/collabSlice.ts';
 const MUTATION_REL = 'apps/viewer/src/store/slices/mutationSlice.ts';
 const WALL_RESIZE_REL = 'apps/viewer/src/store/slices/mutation-wall-resize.ts';
-const GEOMETRY_MIRROR_REL = 'apps/viewer/src/store/slices/mutation-geometry-mirror.ts';
+const REMESH_REL = 'apps/viewer/src/lib/remesh/remesh-service.ts';
 // The recipient's reconstruct region moved here with #4444 (one model per slot).
 const RECONSTRUCT_REL = 'apps/viewer/src/lib/collab/room-reconstruct.ts';
 
 const realCollab = readFileSync(join(ROOT, COLLAB_REL), 'utf8');
 const realMutation = readFileSync(join(ROOT, MUTATION_REL), 'utf8');
 const realWallResize = readFileSync(join(ROOT, WALL_RESIZE_REL), 'utf8');
-const realGeometryMirror = readFileSync(join(ROOT, GEOMETRY_MIRROR_REL), 'utf8');
+const realRemesh = readFileSync(join(ROOT, REMESH_REL), 'utf8');
 const realReconstruct = readFileSync(join(ROOT, RECONSTRUCT_REL), 'utf8');
 
 /**
- * Writes a (possibly mutated) five-file tree to a temp dir and runs the
+ * Writes a (possibly mutated) four-file tree to a temp dir and runs the
  * checker on it via `--root`. The checker only ever reads these files by
  * their fixed relative path, so nothing else needs to exist in the tree.
  */
-function runOn({ collab = realCollab, mutation = realMutation, wallResize = realWallResize, geometryMirror = realGeometryMirror, reconstruct = realReconstruct }) {
+function runOn({ collab = realCollab, mutation = realMutation, wallResize = realWallResize, remesh = realRemesh, reconstruct = realReconstruct }) {
   const dir = mkdtempSync(join(tmpdir(), 'collab-room-model-target-'));
   try {
-    for (const [rel, content] of [[COLLAB_REL, collab], [MUTATION_REL, mutation], [WALL_RESIZE_REL, wallResize], [GEOMETRY_MIRROR_REL, geometryMirror], [RECONSTRUCT_REL, reconstruct]]) {
+    for (const [rel, content] of [[COLLAB_REL, collab], [MUTATION_REL, mutation], [WALL_RESIZE_REL, wallResize], [REMESH_REL, remesh], [RECONSTRUCT_REL, reconstruct]]) {
       const abs = join(dir, rel);
       mkdirSync(dirname(abs), { recursive: true });
       writeFileSync(abs, content);
@@ -81,24 +81,24 @@ test('the unmutated repo passes', () => {
   assert.match(out, /check-collab-room-model-target: OK/);
 });
 
-test('the in-place reshape mirror (wall resize, split) must target the edited model (#6233)', () => {
-  const geometryMirror = replaceOnce(
-    realGeometryMirror,
-    'get().mirrorEntityGeometry(modelId, expressId, mesh)',
-    'get().mirrorEntityGeometry(get().activeModelId, expressId, mesh)',
+test('the re-mesh geometry mirror must target the edited model (#6233, #6232)', () => {
+  const remesh = replaceOnce(
+    realRemesh,
+    'get().mirrorEntityGeometry(modelId, id, meshes)',
+    'get().mirrorEntityGeometry(get().activeModelId, id, meshes)',
   );
-  const { status, out } = runOn({ geometryMirror });
+  const { status, out } = runOn({ remesh });
   assert.equal(status, 1, out);
-  assert.match(out, /mutation-geometry-mirror\.ts:\d+: `mirrorEntityGeometry` is handed/);
+  assert.match(out, /remesh-service\.ts:\d+: `mirrorEntityGeometry` is handed/);
 });
 
-test('removing the in-place reshape mirror call fails the call-site floor (#6233)', () => {
-  const geometryMirror = replaceOnce(
-    realGeometryMirror,
-    'get().mirrorEntityGeometry(modelId, expressId, mesh)',
-    'void mesh',
+test('removing the re-mesh geometry mirror call fails the call-site floor (#6233, #6232)', () => {
+  const remesh = replaceOnce(
+    realRemesh,
+    'get().mirrorEntityGeometry(modelId, id, meshes)',
+    'void meshes',
   );
-  const { status, out } = runOn({ geometryMirror });
+  const { status, out } = runOn({ remesh });
   assert.equal(status, 1, out);
   assert.match(out, /mirrorEntityGeometry` is called 0×.*expected at least 1/);
 });

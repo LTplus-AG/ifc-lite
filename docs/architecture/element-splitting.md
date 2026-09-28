@@ -244,8 +244,8 @@ EVERY split path — wall, beam / column / member, slab / roof / plate
   modeling transaction. Undo restores exactly the original element (same
   express id and GlobalId). The kept piece and the new piece are
   re-meshed by the wasm re-mesh service (`requestRemesh`), and again on
-  undo / redo of that batch; collaborators receive the kept piece's
-  builder mesh (`store/slices/mutation-geometry-mirror.ts`).
+  undo / redo of that batch. The re-mesh also sends those meshes to
+  the collaboration room (#6391), so peers see the same geometry.
 
 Property carry-over:
 - `IfcRelDefinesByProperties` and `IfcRelDefinesByType` referring

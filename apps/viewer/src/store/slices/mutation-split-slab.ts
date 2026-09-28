@@ -11,7 +11,6 @@
 
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
-import type { AuthoredElement } from './authoredElement.js';
 import { toNativeLength } from '@ifc-lite/create';
 import { computeSlabSplitGeometry } from '@/lib/slab-edit.js';
 import { keepsFirstPiece } from '@/lib/split-guid.js';
@@ -90,15 +89,11 @@ export function splitSlab(
 
   const origin = chain.placementOrigin;
   const emitted = emitClippedProfile(env.editor, kept, origin, chain.baseElevation - origin[2], env.lengthUnitScale);
-  const outline = { Profile: 'polygon' as const, Position: [0, 0, chain.baseElevation] as [number, number, number], OuterCurve: kept };
-  const element: AuthoredElement = chain.elementType === 'IfcSpace'
-    ? { kind: 'space', params: { ...outline, Height: geo.thickness } }
-    : { kind: chain.elementType === 'IfcSlab' ? 'slab' : chain.elementType === 'IfcRoof' ? 'roof' : 'plate', params: { ...outline, Thickness: geo.thickness } };
-  reshapeSource(get, modelId, expressId, [
+  reshapeSource(get, modelId, [
     { entityId: chain.extrudedSolidId, index: 0, value: `#${emitted.profile}` },
     { entityId: chain.extrudedSolidId, index: 1, value: `#${emitted.solidPosition}` },
     { entityId: chain.extrudedSolidId, index: 2, value: `#${emitted.up}` },
-  ], element);
+  ]);
 
   closeSplit(get, modelId, env, expressId, added.expressId);
   const [leftId, rightId] = keepFirst === leftIsFirst ? [expressId, added.expressId] : [added.expressId, expressId];

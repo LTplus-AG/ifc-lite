@@ -1,289 +1,118 @@
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this
-# file, You can obtain one at https://mozilla.org/MPL/2.0/.
-
-# Advisory viewer performance benchmark. Runs the real viewer (production
-# build + real WASM pipeline) against the two small fixtures and reports
-# per-metric deltas vs tests/benchmark/baseline.json as a PR comment + step
-# summary. A regression is still ADVISORY — surfaced, not blocking (promote to
-# blocking only once the runner-to-runner noise is understood). A HARNESS FAULT
-# is not: if the baseline cannot be read, or a model in VIEWER_BENCHMARK_FILES
-# has no baseline entry, this job goes RED. That distinction is the point --
-# "no regressions" over a model that was never compared is not a result. This
-# header used to say the job could never fail, which stopped being true in the
-# same PR that added the refusal (#3200).
-#
-# The committed baseline is CI-recorded so this job diffs like-for-like:
-# dispatch this workflow with `record_baseline` to produce a refreshed
-# baseline.json as the `benchmark-baseline` artifact, then commit it via a
-# normal PR (see tests/benchmark/README.md). Local machines are a different
-# speed class — never commit locally recorded numbers.
-
+# Temporary, dispatch-only native A/B harness for #6283. This file exists only
+# on scratch/6283-hosted-ab and must never be merged into main.
 name: Benchmark
 
 on:
-  # PUSH TO MAIN, not every PR (CI redesign, step 8). Measured: 87 runs a day,
-  # 76% of them cancelled by the next push before they reported, on a lane
-  # whose verdict is advisory. The per-merge number on main is the one that
-  # tracks the baseline; a PR that needs the number before merging asks for
-  # it with the `ci:benchmark` label (or a dispatch). Only paths that can
-  # plausibly move viewer load performance, on both triggers.
-  push:
-    branches: [main]
-    paths:
-      - 'rust/**'
-      - 'packages/**'
-      - 'apps/viewer/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'rust-toolchain.toml'
-      - 'scripts/build-wasm.sh'
-      - 'scripts/check-benchmark-regression.js'
-      - 'scripts/update-benchmark-baseline.mjs'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - 'turbo.json'
-      - 'package.json'
-      - 'playwright.config.ts'
-      - 'tests/benchmark/**'
-      - 'tests/models/manifest.json'
-      - '.github/workflows/benchmark.yml'
-  pull_request:
-    branches: [main]
-    # `labeled` is the opt-in; `synchronize`/`reopened` keep an opted-in PR
-    # measured on every later push. The job itself gates on the label, so an
-    # unrelated label event skips in seconds.
-    types: [labeled, synchronize, reopened]
-    paths:
-      - 'rust/**'
-      - 'packages/**'
-      - 'apps/viewer/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'rust-toolchain.toml'
-      - 'scripts/build-wasm.sh'
-      - 'scripts/check-benchmark-regression.js'
-      - 'scripts/update-benchmark-baseline.mjs'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - 'turbo.json'
-      - 'package.json'
-      - 'playwright.config.ts'
-      - 'tests/benchmark/**'
-      - 'tests/models/manifest.json'
-      - '.github/workflows/benchmark.yml'
-  schedule:
-    # Weekly, Thursday 04:53 UTC -- a slot no other weekly lane uses
-    # (determinism Mon 03:17, xmatch Tue 05:23, wide-arithmetic Wed 04:29,
-    # moonshot Sun 06:41). Catches baseline drift on a quiet main.
-    - cron: '53 4 * * 4'
   workflow_dispatch:
-    inputs:
-      record_baseline:
-        description: 'Upload a refreshed baseline.json (CI-recorded numbers) as the benchmark-baseline artifact'
-        type: boolean
-        default: false
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 permissions:
   contents: read
-  pull-requests: write
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  benchmark:
-    name: Viewer benchmark (advisory)
-    # On a PR only when asked for by label; every other trigger runs it.
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:benchmark')
-    # Free GitHub-hosted runner (public repo). The benchmark measures a noisy
-    # shared VM anyway; the +50% thresholds in benchmark:check absorb the
-    # jitter, and the job is advisory. When Rust changed we compile wasm32
-    # from source here too — slower than Depot but free, and correctness of
-    # the measurement requires the PR's own WASM.
+  native-ab:
+    name: Hosted #6283 native A/B
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          lfs: false
+          fetch-depth: 0
           persist-credentials: false
 
-      # Same fast path as test.yml's build job: when the WASM source is
-      # byte-identical to the published release tag, fetch the prebuilt
-      # bundle and skip the Rust toolchain entirely.
-      - name: Resolve prebuilt-WASM eligibility
-        id: wasm
-        run: echo "eligible=$(bash scripts/ci-wasm-prebuilt-eligible.sh)" >> "$GITHUB_OUTPUT"
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Setup WASM build toolchain
-        if: steps.wasm.outputs.eligible != 'true'
-        uses: ./.github/actions/setup-wasm-build
-        with:
-          cache-prefix: benchmark
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Fetch prebuilt WASM
-        if: steps.wasm.outputs.eligible == 'true'
+      - name: Download SHA-verified AC20 fixture
+        shell: bash
         run: |
-          for attempt in 1 2 3; do
-            if node scripts/fetch-prebuilt-wasm.mjs; then exit 0; fi
-            echo "::warning::prebuilt WASM fetch attempt ${attempt} failed; retrying…"
-            sleep $((attempt * 5))
-          done
-          echo "::error::Could not fetch the prebuilt @ifc-lite/wasm bundle after 3 attempts."
-          exit 1
+          set -euo pipefail
+          mkdir -p tests/models/ara3d
+          curl --fail --location --retry 5 --retry-all-errors \
+            'https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d' \
+            --output tests/models/ara3d/AC20-FZK-Haus.ifc
+          echo 'ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d  tests/models/ara3d/AC20-FZK-Haus.ifc' | sha256sum --check -
 
-      - name: Build WASM
-        if: steps.wasm.outputs.eligible != 'true'
-        run: bash scripts/build-wasm.sh
-
-      # Only the two small benchmark fixtures (~11 MB), not the full ~994 MiB
-      # fixture tree — namespace the cache away from `ci-fixtures-…`.
-      - name: Cache benchmark fixtures
-        id: fixtures-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: tests/models
-          key: benchmark-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
-
-      - name: Fetch benchmark fixtures
-        if: steps.fixtures-cache.outputs.cache-hit != 'true'
-        run: node scripts/fixtures/fetch-fixtures.mjs "ara3d/AC20-FZK-Haus.ifc" "various/01_Snowdon_Towers_Sample_Structural(1).ifc"
-
-      # Unconditional — the fetch above is gated on a cache miss, so on a cache
-      # hit nothing had ever confirmed the restored tree still matches the
-      # manifest. Scoped to the same two paths: this cache holds only those.
-      - name: Verify benchmark fixtures
-        run: node scripts/fixtures/fetch-fixtures.mjs --check "ara3d/AC20-FZK-Haus.ifc" "various/01_Snowdon_Towers_Sample_Structural(1).ifc"
-
-      # Production build: `vite preview` (the benchmark's webServer) serves
-      # apps/viewer/dist. Turbo builds the workspace deps it needs.
-      - name: Build viewer app
-        run: pnpm turbo build --filter=@ifc-lite/viewer
-
-      # benchmark:check reads every viewer-*.json in the results dir, so make
-      # sure only this run's output is present (results are gitignored run
-      # artifacts, but clear defensively in case one ever gets committed).
-      - name: Clear stale benchmark results
-        run: rm -f tests/benchmark/benchmark-results/viewer-*.json tests/benchmark/benchmark-results/viewer-*.console.log
-
-      - name: Run viewer benchmark
-        id: benchmark
-        env:
-          VIEWER_BENCHMARK_FILES: 'tests/models/ara3d/AC20-FZK-Haus.ifc,tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc'
-          # Advisory: the spec logs threshold violations instead of failing;
-          # the verdict lives in benchmark:check + the PR comment.
-          VIEWER_BENCHMARK_ADVISORY: '1'
-          VIEWER_BENCHMARK_BUILD_MODE: 'production'
-          # Divert the json reporter to a file so the step log stays readable.
-          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/playwright-benchmark.json
-        run: pnpm test:benchmark:viewer:ci
-
-      # The check can now FAIL on a harness fault (#3200) -- a renamed fixture
-      # that matches no baseline, or a metric the baseline had and this run
-      # lost. Those are "the benchmark did not run", not "the benchmark is
-      # slow", so `--advisory` does not cover them.
-      #
-      # The summary is written FIRST, unconditionally: the report is the
-      # DIAGNOSIS of that failure, and a `bash -e` step that dies before the
-      # `cat` would throw away exactly the output someone needs to fix it.
-      - name: Check against baseline (regressions advisory, harness faults fatal)
+      - name: Build exact parent and child probes
+        shell: bash
         run: |
-          set +e
-          node scripts/check-benchmark-regression.js --advisory --markdown "$RUNNER_TEMP/benchmark-report.md"
-          status=$?
-          set -e
-          [ -f "$RUNNER_TEMP/benchmark-report.md" ] && cat "$RUNNER_TEMP/benchmark-report.md" >> "$GITHUB_STEP_SUMMARY"
-          exit $status
+          set -euo pipefail
+          parent=185ccf276b23dd57820efef592dee3a5a586ef06
+          child=f278a70a3ad10921ccc40a6bbaa12f0b3611b2c4
+          git cat-file -e "$parent^{commit}"
+          git cat-file -e "$child^{commit}"
+          git worktree add --detach "$RUNNER_TEMP/parent" "$parent"
+          git worktree add --detach "$RUNNER_TEMP/child" "$child"
+          (cd "$RUNNER_TEMP/parent" && rustup show && cargo build --locked --profile profiling -p ifc-lite-processing --example perf_probe)
+          cp "$RUNNER_TEMP/parent/target/profiling/examples/perf_probe" "$RUNNER_TEMP/probe-parent"
+          (cd "$RUNNER_TEMP/child" && rustup show && cargo build --locked --profile profiling -p ifc-lite-processing --example perf_probe)
+          cp "$RUNNER_TEMP/child/target/profiling/examples/perf_probe" "$RUNNER_TEMP/probe-child"
+          printf 'Built parent %s and child %s\n' "$parent" "$child"
 
-      # Sticky comment: update the existing benchmark comment if present,
-      # else create one. Best-effort — fork PRs get a read-only token, and
-      # the step summary above already carries the same report.
-      - name: Comment benchmark report on PR
-        if: always() && github.event_name == 'pull_request'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+      - name: Five balanced fresh-process A/B pairs and identity assertion
+        shell: bash
         run: |
-          marker='<!-- viewer-benchmark-report -->'
-          body_file="$RUNNER_TEMP/benchmark-report.md"
-          # If the benchmark died before writing a report, `-F body=@` fails,
-          # continue-on-error swallows it, and the PREVIOUS run's comment is
-          # left standing -- a crashed run presenting as the last green one.
-          # Say what happened instead. The marker must stay in the body or the
-          # next run creates a second comment rather than updating this one.
-          if [ ! -s "$body_file" ]; then
-            printf '%s\n\n%s\n' "$marker" \
-              '⚠ The benchmark job produced no report — it failed or was cancelled before the check step. This replaces a stale result rather than leaving one standing; see the job log.' \
-              > "$body_file"
-          fi
-          # --paginate applies --jq per page, so a multi-page comment list can
-          # emit one line per page — keep only the first id.
-          existing=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" --paginate \
-            --jq "[.[] | select(.body | contains(\"$marker\")) | .id] | first // empty" | head -n1)
-          if [ -n "$existing" ]; then
-            gh api --method PATCH "repos/${{ github.repository }}/issues/comments/${existing}" -F body=@"$body_file"
-          else
-            gh api --method POST "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" -F body=@"$body_file"
-          fi
+          set -euo pipefail
+          mkdir -p hosted-ab-results
+          python3 - <<'PY'
+          import json
+          import os
+          import statistics
+          import subprocess
+          from pathlib import Path
 
-      - name: Upload benchmark results
+          out = Path('hosted-ab-results')
+          fixture = str(Path('tests/models/ara3d/AC20-FZK-Haus.ifc').resolve())
+          runner_temp = Path(os.environ['RUNNER_TEMP'])
+          order = [('parent', 'child'), ('child', 'parent'), ('parent', 'child'), ('child', 'parent'), ('parent', 'child')]
+          rows = []
+          keys = ('entities', 'meshes', 'vertices', 'triangles', 'meshFingerprintsFnv1a64')
+          baseline = None
+          for round_number, pair in enumerate(order, 1):
+              for position, side in enumerate(pair, 1):
+                  cmd = [str(runner_temp / f'probe-{side}'), fixture, '--iters', '5', '--json', '--fingerprint']
+                  result = subprocess.run(cmd, text=True, capture_output=True, check=True)
+                  (out / f'{round_number:02d}-{position}-{side}.json').write_text(result.stdout)
+                  (out / f'{round_number:02d}-{position}-{side}.stderr.txt').write_text(result.stderr)
+                  probes = json.loads(result.stdout)
+                  if len(probes) != 1:
+                      raise AssertionError(f'{side} round {round_number}: expected one fixture, got {len(probes)}')
+                  probe = probes[0]
+                  identity = {key: probe[key] for key in keys}
+                  if len(identity['meshFingerprintsFnv1a64']) != 5:
+                      raise AssertionError(f'{side} round {round_number}: expected five ordered fingerprints')
+                  if baseline is None:
+                      baseline = identity
+                  elif identity != baseline:
+                      raise AssertionError(f'{side} round {round_number}: output identity changed: {identity} != {baseline}')
+                  row = {'round': round_number, 'position': position, 'side': side, **probe}
+                  rows.append(row)
+                  print(f"round {round_number} position {position}: {side} parse={probe['parseMs']} geometry={probe['geometryMs']} total={probe['totalMs']} ms", flush=True)
+
+          paired = []
+          for round_number in range(1, 6):
+              parent = next(row for row in rows if row['round'] == round_number and row['side'] == 'parent')
+              child = next(row for row in rows if row['round'] == round_number and row['side'] == 'child')
+              paired.append({'round': round_number, 'parseDeltaMs': child['parseMs'] - parent['parseMs'],
+                             'geometryDeltaMs': child['geometryMs'] - parent['geometryMs'],
+                             'totalDeltaMs': child['totalMs'] - parent['totalMs']})
+          summary = {
+              'parent': '185ccf276b23dd57820efef592dee3a5a586ef06',
+              'child': 'f278a70a3ad10921ccc40a6bbaa12f0b3611b2c4',
+              'fixtureSha256': 'ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d',
+              'roundOrder': order,
+              'identity': baseline,
+              'paired': paired,
+              'medianParentMs': {key: statistics.median(row[key] for row in rows if row['side'] == 'parent') for key in ('parseMs', 'geometryMs', 'totalMs')},
+              'medianChildMs': {key: statistics.median(row[key] for row in rows if row['side'] == 'child') for key in ('parseMs', 'geometryMs', 'totalMs')},
+              'medianPairedDeltaMs': {key: statistics.median(pair[key] for pair in paired) for key in ('parseDeltaMs', 'geometryDeltaMs', 'totalDeltaMs')},
+          }
+          (out / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')
+          (out / 'runs.json').write_text(json.dumps(rows, indent=2) + '\n')
+          print(json.dumps(summary, indent=2))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as step_summary:
+              step_summary.write('## #6283 hosted AC20 native A/B\n\n```json\n' + json.dumps(summary, indent=2) + '\n```\n')
+          PY
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: benchmark-results
-          path: |
-            tests/benchmark/benchmark-results/viewer-*.json
-            tests/benchmark/benchmark-results/viewer-*.console.log
-          retention-days: 30
-          if-no-files-found: error
-
-      # Baseline refresh (workflow_dispatch with record_baseline): merge this
-      # run's numbers into baseline.json and upload it as an artifact. A human
-      # (or agent) commits it via a normal PR so the change is reviewed like
-      # any other — this job intentionally has no push access.
-      # `always()` so this still runs when the baseline COMPARISON failed --
-      # that failure is often exactly why the dispatch was sent, and gating on
-      # job success deadlocks the only supported repair path (#3200).
-      #
-      # But gated on the BENCHMARK step itself succeeding. The spec writes each
-      # result JSON BEFORE asserting `streamCompleteMs` is present and
-      # `totalMeshes > 0`, so a failed load leaves a JSON on disk that
-      # `update-benchmark-baseline.mjs` would happily accept -- refreshing the
-      # baseline from a run that did not load the model. That is a worse
-      # outcome than a stale baseline, and it would look like a successful
-      # refresh.
-      - name: Record refreshed baseline
-        id: record
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.record_baseline && steps.benchmark.outcome == 'success'
-        run: node scripts/update-benchmark-baseline.mjs --environment "github-actions ubuntu-latest, viewer-benchmark-ci (headless Chrome, SwiftShader ANGLE), production build"
-
-      # Gated on the RECORD step, not on the dispatch inputs: a bare `always()`
-      # here would upload the COMMITTED baseline.json unchanged when the record
-      # step failed or was skipped, publishing it as a `benchmark-baseline`
-      # artifact that looks like a refresh of numbers never written.
-      - name: Upload refreshed baseline
-        if: always() && steps.record.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: benchmark-baseline
-          path: tests/benchmark/baseline.json
-          retention-days: 30
-          if-no-files-found: error
+          name: hosted-6283-native-ab
+          path: hosted-ab-results/
+          if-no-files-found: warn

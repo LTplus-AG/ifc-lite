@@ -12,7 +12,6 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import {
   FIXTURE_REL_CONTAINED_1,
   FIXTURE_OPENING,
-  FIXTURE_STOREY_1,
   FIXTURE_STOREY_2,
   FIXTURE_WALL_A,
   guid,
@@ -232,18 +231,15 @@ describe('symbolic cache follows live spatial bucket mappings (#5236/#5249)', ()
       // frozen tombstone set must still remove it after deletion.
       flatOwnerId = FIXTURE_OPENING;
       flatWorldY = 7;
-      const uncontained = {
-        ...target,
-        source: { ...target.source, contentKey: `${target.source.contentKey}:finite-uncontained` },
-      } as IfcDataStore;
-      await Promise.all(ensureParseFor([uncontained]));
-      assert.equal([...getParseFor(uncontained)!.byStorey.values()][0].storeyElevation, 7,
+      __resetSymbolicAnnotationsCacheForTests();
+      await Promise.all(ensureParseFor([target]));
+      assert.equal([...getParseFor(target)!.byStorey.values()][0].storeyElevation, 7,
         'finite geometry elevation stays authoritative when no effective storey applies');
       const tombstone = new MutablePropertyView(null, 'symbolic-uncontained-delete');
       tombstone.deleteEntity(FIXTURE_OPENING);
       useViewerStore.setState({ mutationVersion: 3 } as never);
-      await Promise.all(ensureParseFor([{ store: uncontained, mutationView: tombstone }]));
-      const removed = getParseFor({ store: uncontained, mutationView: tombstone })!;
+      await Promise.all(ensureParseFor([{ store: target, mutationView: tombstone }]));
+      const removed = getParseFor({ store: target, mutationView: tombstone })!;
       assert.equal(removed.byStorey.size + removed.loose.length + removed.looseTexts.length + removed.looseFills.length, 0,
         'deleting a finite-worldY owner invalidates its result even when spatial maps are unchanged');
     } finally {

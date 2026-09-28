@@ -84,7 +84,7 @@ export function spatialBucketSnapshotFor(
   let elementToStorey = elementToStoreyRef ? new Map(elementToStoreyRef) : undefined;
   let storeyElevations = storeyElevationsRef ? new Map(storeyElevationsRef) : undefined;
   if (view?.hasPendingChanges()) {
-    const groups = effectiveScheduleGroups(store, view, 'IfcBuildingStorey');
+    const groups = effectiveScheduleGroups(store, view, 'IfcBuildingStorey', { includeSpatialNodes: true });
     elementToStorey = new Map();
     storeyElevations = new Map();
     const reader = createElementFieldReader(store, view);

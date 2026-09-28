@@ -41,6 +41,7 @@ mod quantity_analysis;
 mod quantity_analysis_derived;
 mod obj;
 mod relationships;
+mod rebar_attributes;
 mod rebar_schedule;
 mod openings;
 #[cfg(feature = "parquet-bos")]

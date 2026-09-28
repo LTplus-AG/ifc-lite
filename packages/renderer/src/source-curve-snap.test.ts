@@ -8,7 +8,7 @@ import { sourceCurveSnapCandidate, sourceCurveMayReachRay, sourceWinsOverMeshSna
 import { SnapType } from './snap-detector.js';
 import { pointCloudWinsOverSourceSnap } from './raycast-point-cloud-query.js';
 import { Camera } from './camera.js';
-import { createProjectableLineInterval } from './camera-projection.js';
+import { querySourceCurves } from './raycast-source-curve-query.js';
 
 const identity = { modelId: 'model-a', expressId: 132347, solidId: 132399, directrixId: 132399,
   mappingPath: [132401], occurrenceIndex: 0, segmentIndex: 2 };
@@ -213,16 +213,15 @@ describe('authored source snapping (#5780)', () => {
     const line: SourceSnapCurve = { identity, globalId: 42, kind: 'line', length: 200_000,
       pointAt: (t) => ({ x: 1_000 * (t - 0.506), y: 0, z: 100_700 - 200_000 * t }) };
     const screen = (point: { x: number; y: number; z: number }) => camera.projectToScreen(point, 800, 600);
-    const interval = createProjectableLineInterval(camera.getRelativeToEyeFrame());
     assert.equal(screen(line.pointAt(0)!), null);
     assert.equal(screen(line.pointAt(1)!), null);
     for (let i = 0; i <= 64; i++) assert.equal(screen(line.pointAt(i / 64)!), null);
     assert.ok(screen(line.pointAt(0.506)!));
-    const hit = sourceCurveSnapCandidate([line], 400, 300, 2, screen, accepts,
-      undefined, undefined, undefined, interval);
+    const hit = querySourceCurves([line], null, camera, camera.unprojectToRay(400, 300, 800, 600),
+      400, 300, { width: 800, height: 600 }, { snapOptions: { screenSnapRadius: 2 } });
     assert.ok(hit, 'the real camera has a projectable span entirely between coarse samples');
-    assert.ok(Math.abs((hit.target.metadata?.sourceCurve?.t ?? Infinity) - 0.506) < 1e-6);
-    assert.equal(hit.target.type, SnapType.EDGE);
+    assert.ok(Math.abs((hit.metadata?.sourceCurve?.t ?? Infinity) - 0.506) < 1e-6);
+    assert.equal(hit.type, SnapType.EDGE);
   });
 
   it('applies pick clipping to an otherwise visible x-ray source line (#5780)', () => {

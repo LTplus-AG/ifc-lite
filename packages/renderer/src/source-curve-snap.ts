@@ -111,6 +111,14 @@ export function sourceCurveSnapCandidate(
       if (!screen) return { distanceSquared: Infinity, point: null };
       return { distanceSquared: (screen.x - x) ** 2 + (screen.y - y) ** 2, point };
     };
+    const visibleBoundary = (inside: number, outside: number): number => {
+      for (let step = 0; step < 24; step++) {
+        const middle = (inside + outside) / 2;
+        if (at(middle).distanceSquared < Infinity) inside = middle;
+        else outside = middle;
+      }
+      return inside;
+    };
     let bestT = 0;
     let curveBest: ReturnType<typeof at> = { distanceSquared: Infinity, point: null };
     for (const [low, high] of sourceCurveClipIntervals(curve, clip)) {
@@ -124,8 +132,13 @@ export function sourceCurveSnapCandidate(
       // Clip boundaries are candidates even when the entire visible piece is
       // narrower than a sampling interval. Interior points use the source equation.
       // Reprojection can give a source line multiple screen-space minima even without a clip.
-      const sampled = curve.kind === 'arc' || curve.affineDisplayFrame === false;
-      const subdivisions = !sampled ? 1
+      const curvedOrNonAffine = curve.kind === 'arc' || curve.affineDisplayFrame === false;
+      // An affine line can enter and leave the camera frustum with both ends
+      // unprojectable. Its visible screen interval is then missed by endpoints.
+      const hiddenAffineEnds = !curvedOrNonAffine && high > low
+        && at(low).distanceSquared === Infinity && at(high).distanceSquared === Infinity;
+      const sampled = curvedOrNonAffine || hiddenAffineEnds;
+      const subdivisions = hiddenAffineEnds ? 64 : !sampled ? 1
         : Math.min(256, Math.max(32, Math.ceil(Math.abs(curve.sweepAngle ?? 0) * (high - low) / (Math.PI / 32))));
       const values: number[] = [];
       for (let i = 0; i <= subdivisions; i++) {
@@ -140,6 +153,15 @@ export function sourceCurveSnapCandidate(
         if (values[i] === Infinity) continue;
         let left = !sampled ? low : low + (high - low) * Math.max(0, i - 1) / subdivisions;
         let right = !sampled ? high : low + (high - low) * Math.min(subdivisions, i + 1) / subdivisions;
+        if (hiddenAffineEnds) {
+          const sample = low + (high - low) * i / subdivisions;
+          if (i > 0 && values[i - 1] === Infinity) left = visibleBoundary(sample, left);
+          if (i < subdivisions && values[i + 1] === Infinity) right = visibleBoundary(sample, right);
+          for (const t of [left, right]) {
+            const value = at(t);
+            if (value.distanceSquared < curveBest.distanceSquared) { bestT = t; curveBest = value; }
+          }
+        }
         for (let step = 0; step < 30; step++) {
           const a = left + (right - left) * 0.3819660112501051;
           const b = right - (right - left) * 0.3819660112501051;

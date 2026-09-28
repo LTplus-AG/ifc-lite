@@ -998,6 +998,9 @@ The equivalent for 3D line overlays is keyed by channel rather than per item:
 does not. The `centreline` channel is also non-framing: it is intended for a
 selected element's analytic directrix, and clearing it with
 `setLineOverlay('centreline', null)` leaves the other line channels alone.
+The centreline drawing remains visible as x-ray context through section and
+crop cuts. Magnetic snapping to its exact source curve still follows the active
+pick clipping, so a clipped-out part of that drawing is not a snap target.
 
 ## Complete Example
 

@@ -189,4 +189,24 @@ describe('authored source snapping (#5780)', () => {
     assert.ok(Math.abs(hit.target.position.x - 0.9) < 1e-6);
     assert.equal(hit.target.type, SnapType.EDGE);
   });
+
+  it('finds a narrow affine line interior when both endpoints miss the camera frustum (#6280)', () => {
+    const line: SourceSnapCurve = { identity, globalId: 42, kind: 'line', length: 1,
+      pointAt: (t) => ({ x: t, y: 0, z: t }) };
+    const projectInsideFrustum = (point: { x: number; y: number; z: number }) =>
+      point.z > 0.43 && point.z < 0.445 ? { x: point.x, y: point.y } : null;
+    const hit = sourceCurveSnapCandidate([line], 0.441, 0, 0.0005, projectInsideFrustum, accepts);
+    assert.ok(hit, 'a source line crossing both near and far planes remains snappable inside');
+    assert.ok(Math.abs(hit.target.position.x - 0.441) < 1e-6);
+    assert.equal(hit.target.type, SnapType.EDGE);
+  });
+
+  it('applies pick clipping to an otherwise visible x-ray source line (#5780)', () => {
+    const line: SourceSnapCurve = { identity, globalId: 42, kind: 'line', length: 1,
+      pointAt: (t) => ({ x: t, y: 0, z: 0 }) };
+    const crop = { clipBox: { enabled: true, min: [0, -1, -1] as [number, number, number],
+      max: [0.4, 1, 1] as [number, number, number] } };
+    assert.ok(sourceCurveSnapCandidate([line], 0.8, 0, 0.01, project, accepts));
+    assert.equal(sourceCurveSnapCandidate([line], 0.8, 0, 0.01, project, accepts, crop), null);
+  });
 });

@@ -56,13 +56,14 @@ was removed with its renderer (#5874).
 
 The shared-commands catalogue (#4918 slice 2) covers the ribbon, palette and
 mobile command lists: the export registry (`export-commands.ts`, rendered by
-`RibbonExportGroup` and the palette/mobile commands), the camera command registry (`camera-commands.ts`,
-rendered by `ViewTab`), panel titles rendered by the ribbon's Analyze and
+`RibbonExportGroup` and the palette/mobile commands), camera tooltips from
+`camera-commands.ts`, panel titles rendered by the ribbon's Analyze and
 Author tabs, and the class-visibility dropdown body
-(`ClassVisibilityMenuContent`). The
-two data-only registries carry a translation key per row rather than calling
-`t()` themselves (no React import), the same pattern `sectionConstants.ts`'s
-`AXIS_INFO` uses; their renderers call `t(row.xKey)`. It deliberately does
+(`ClassVisibilityMenuContent`). Camera button names come from the registered
+surface commands; the camera table retains only its tooltip keys. Data-only
+registries carry translation keys rather than calling `t()` themselves (no
+React import), the same pattern `sectionConstants.ts`'s `AXIS_INFO` uses.
+It deliberately does
 not cover the command palette (`CommandPalette.tsx`, ~745 lines / 84
 literals — sized for its own slice) or extension-contributed labels
 (`extension.label`, sourced from the extension registry, not a literal) —

@@ -39,7 +39,7 @@ const FILE_COMMANDS: FileCommands = {
 };
 
 /**
- * `RibbonLargeButton` labels itself for the
+ * `RibbonContentLargeButton` labels itself for the
  * accessibility tree, which is also how a user finds them. Radix portals menu
  * content onto `document.body`, so query there rather than in the container.
  */

@@ -34,6 +34,7 @@ export function buildCoreCommands(p: CommandPaletteBuildParams): Command[] {
     const fileName = rf.name;
     c.push({
       id: `file:recent:${fileName}`, label: fileName,
+      runtimeSource: 'recent-file',
       keywords: `recent open ${formatFileSize(rf.size)}`,
       category: 'File', icon: Clock,
       detail: formatFileSize(rf.size),

@@ -27,6 +27,22 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Instanced RTE deltas: one upload per template (#6393, PR #6399)
+
+On a large MEP model with ~45K GPU-instanced occurrences, a browser run
+(interleaved base vs branch, same wasm) showed the frame was bound by
+`queue.writeBuffer` COUNT, not by shading or fill. The old path wrote each
+occurrence's 32-byte camera-relative delta separately, once per pass. Moving
+the deltas into a per-template stream that is packed on the CPU (the f64
+contract is unchanged) and uploaded once per template, cached per camera,
+brought orbit, pan and wheel zoom to vsync. The screenshot stayed
+pixel-identical. The lessons:
+
+- Count queue operations per frame before optimising shaders. On this model,
+  switching off AO, edges or dropping DPR moved nothing measurable.
+- A per-object `writeBuffer` in a per-frame path is a GPU-process IPC cost
+  that the main-thread profile shows only as `(program)` time.
+
 ## Renderer colour override table (#6076, PR #6148)
 
 A base-versus-branch browser run on a real Archicad architectural IFC, followed
@@ -111,6 +127,23 @@ mesh probe cannot measure its extraction cost. If nominal-quantity callers make
 that read frequent, measure it on authored profiles with many line/arc edges and
 holes. Keeping validation outside mesh production preserves the normal load;
 the PR records paired timings and binary/fixture provenance.
+
+## Opt-in authored and analytic quantity join (#5787)
+
+The authored/analytic quantity join in #6283 runs only when callers request
+quantity analysis; normal mesh production does not enter it. An idle-host
+native control compared #6272 parent `3e554e841` with join source
+`af84e4d2d` in five balanced, interleaved AC20-FZK-Haus pairs, using fresh
+probe processes and five iterations per process. After the shared Cargo lock
+updated `smallvec` and `thiserror`, a [GitHub-hosted control](https://github.com/LTplus-AG/ifc-lite/actions/runs/36469927760)
+repeated the same paired method on exact current-lock parent `185ccf276` and
+join head `f278a70a3`. The later viewer/TypeScript merges left the native
+probe inputs unchanged. Both controls retained identical mesh counts and all
+ordered mesh fingerprints; parse, geometry and total variation overlapped.
+Verdict: no supported default-load speed change or mesh-output difference.
+The lesson is that a native load probe cannot establish the opt-in join's
+latency; measure that through its caller on representative authored-quantity
+models if it becomes material.
 
 ## Opt-in nominal source quantities (#5787)
 
@@ -2440,3 +2473,33 @@ and its phase timings within noise. Viadotto again emitted the intended extra
 geometry, so its timing remains non-comparable. The lesson is to check
 complete model output before interpreting alignment timings and to trace
 the lookup cost inside each repeated station evaluation.
+
+## Analytic mapped-source reuse (#5786)
+
+The analytic source walker now reuses a validated representation-map source,
+its immutable item list and parsed MappingOrigin across occurrences in one
+extraction. Each MappingTarget and final world transform still resolves for
+its own occurrence; the uncached comparison switch exists only in test builds.
+The generated many-instance test reduces source loads from 64 to one, and the
+real Revit Snowdon model from 1,073 to 128, while cached/uncached descriptions,
+definitions, extrusions, quantities, instance order and diagnostics agree.
+Nested, reflected and scaled mappings retain their distinct f64 world frames.
+
+Earlier idle-host native AC20 and ISSUE_129 controls kept ordered mesh output
+identical and showed overlapping parse, geometry, total-time and peak-RSS
+ranges. A [current-lock hosted AC20 control](https://github.com/LTplus-AG/ifc-lite/actions/runs/36474112703)
+compared a synthetic parent made from then-current `main` (`c17ee39`) plus
+the patch-identical final #6283 source with a clean #6276 merge. Five balanced,
+interleaved fresh-process profiling pairs kept the fixture checksum, ordered mesh
+fingerprints and entity/mesh/vertex/triangle counts identical; paired phase
+timings remained within noise. After #6283 squashed as `d9b05c2f5`, exact
+native probe-input comparisons found no differences between that squash and
+the synthetic parent or between the restacked #6276 source and the synthetic
+child. Only a Python README clarification differed under the broader Rust
+tree. The combined Snowdon analytic
+JSON was byte-identical across the earlier parent and child.
+These ordinary mesh-load probes do not execute the opt-in analytic cache, so
+they establish no browser worker-pool speedup or analytic-call memory win.
+The lesson is to cache only immutable source facts and to measure opt-in
+analytic extraction separately: far fewer source validations need not shorten
+the full call.

@@ -18,6 +18,7 @@ import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { cn } from '@/lib/utils';
 import { useViewportStatusSummary } from '@/hooks/useViewportStatusSummary';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
+import { VIEW_CUBE_INSET_PX } from './viewcube-box';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
 import { FlySpeedIndicator } from './FlySpeedIndicator';
 import { OrbitPivotMarker } from './OrbitPivotMarker';
@@ -264,7 +265,7 @@ export function ViewportOverlays({
 
       {/* ViewCube (top-right) */}
       {!hideViewCube && (
-        <div className="absolute top-6 right-6" {...tourAnchor(TOUR_ANCHORS.viewcube)}>
+        <div className="absolute" style={{ top: VIEW_CUBE_INSET_PX, right: VIEW_CUBE_INSET_PX }} {...tourAnchor(TOUR_ANCHORS.viewcube)}>
           <ViewCube
             ref={viewCubeRef}
             onViewChange={handleViewChange}

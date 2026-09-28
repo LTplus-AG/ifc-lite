@@ -29,6 +29,11 @@
  * positioned relative to the opening, so they move along with it
  * without any extra work.
  *
+ * Either half may BE the source wall: a split keeps the larger piece as
+ * the source (#6233, `lib/split-guid.ts`). Openings staying on it keep
+ * their host and parent placement; only the right half's local-X shift
+ * applies (the kept right piece starts at the cut).
+ *
  * Source-wall openings whose placement does NOT match this
  * canonical shape (e.g. world-absolute openings, openings with
  * non-Cartesian placements, source-buffer entities with mapped
@@ -41,12 +46,12 @@ import { iterateEffectiveEntityIds, type IfcAttributeValue, type MutableProperty
 import { asExpressIdRef, asCoordinateTriple, readAttributes, resolvePlacementChain } from './placement-core.js';
 
 export interface OpeningReassignSummary {
-  /** Openings successfully moved onto the left half. */
+  /** Openings moved onto the left half (when it is not the source). */
   toLeft: number;
-  /** Openings successfully moved onto the right half. */
+  /** Openings moved onto the right half (when it is not the source). */
   toRight: number;
   /** Openings whose placement we couldn't interpret; left attached
-   * to the (tombstoned) source. */
+   * to the source as-is. */
   skipped: number;
   /** Diagnostic reasons for the skips — small enum so the UI can
    * group them in a single toast rather than one per opening. */
@@ -88,9 +93,8 @@ function rewriteRelTarget(
  *      opening's local-X coordinate so its world position stays
  *      the same after the placement reparent.
  *
- * The split distance is in metres along the source wall's axis,
- * measured from the source's start (matches
- * `computeWallSplitGeometry`'s `distance` parameter).
+ * The split distance is along the source wall's axis from its start, in
+ * the file's NATIVE length unit — the unit an opening's local X is in.
  */
 export function reassignWallOpenings(
   dataStore: IfcDataStore,
@@ -206,33 +210,26 @@ export function reassignWallOpenings(
 
     const localX = coords[0];
     const onLeft = localX < splitDistance;
-    if (onLeft) {
-      // Reassign to left half. Left's placement coincides with
-      // source's, so the opening's local coords don't change.
-      editor.setPositionalAttribute(relId, 4, rewriteRelTarget(relAttrs[4], leftWallId));
+    // A piece may BE the source wall (#6233: the larger piece keeps the
+    // source's identity). An opening staying on it keeps its host and
+    // placement parent — nothing to rewrite, and not "reassigned".
+    const host = onLeft ? leftWallId : rightWallId;
+    if (host !== sourceWallId) {
+      editor.setPositionalAttribute(relId, 4, rewriteRelTarget(relAttrs[4], host));
       editor.setPositionalAttribute(
         localPlacementId,
         0,
-        rewriteRelTarget(localPlacementAttrs[0], leftPlacementId),
+        rewriteRelTarget(localPlacementAttrs[0], onLeft ? leftPlacementId : rightPlacementId),
       );
-      summary.toLeft++;
-    } else {
-      // Reassign to right half. Right's placement is offset along
-      // the wall axis by `splitDistance` — so the opening's local-X
-      // shifts by `-splitDistance` to keep its world position fixed.
-      editor.setPositionalAttribute(relId, 4, rewriteRelTarget(relAttrs[4], rightWallId));
-      editor.setPositionalAttribute(
-        localPlacementId,
-        0,
-        rewriteRelTarget(localPlacementAttrs[0], rightPlacementId),
-      );
-      const newCoords: [number, number, number] = [
-        localX - splitDistance,
-        coords[1],
-        coords[2],
-      ];
-      editor.setPositionalAttribute(cartesianId, 0, newCoords);
-      summary.toRight++;
+      if (onLeft) summary.toLeft++;
+      else summary.toRight++;
+    }
+    if (!onLeft) {
+      // The right piece starts at the cut — whether it is a new wall or
+      // the source moved there — so its openings' local X shifts by
+      // `-splitDistance` to keep their world position fixed. The left
+      // piece starts where the source did: no shift.
+      editor.setPositionalAttribute(cartesianId, 0, [localX - splitDistance, coords[1], coords[2]]);
     }
   }
 

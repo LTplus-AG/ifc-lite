@@ -466,6 +466,7 @@ export class ParquetExporter {
 
         traverse(spatialHierarchy.project);
 
+        // @raw-entity-enumeration-ok source-only branch: a supplied mutationView takes the effective relationship-row path above
         for (const [storeyId, elementIds] of spatialHierarchy.byStorey) {
             const buildingId = storeyToBuilding.get(storeyId) ?? -1;
             const siteId = buildingId >= 0 ? (buildingToSite.get(buildingId) ?? -1) : -1;
@@ -473,6 +474,7 @@ export class ParquetExporter {
             for (const elementId of elementIds) {
                 // Check if element is in a space by iterating bySpace
                 let spaceId = -1;
+                // @raw-entity-enumeration-ok source-only branch: live sessions return before this parsed hierarchy walk
                 for (const [sid, spaceElementIds] of spatialHierarchy.bySpace) {
                     if (spaceElementIds.includes(elementId)) {
                         spaceId = sid;

@@ -6,7 +6,8 @@
  * Scene graph and mesh management
  */
 
-import type { InstancedTemplateGPU, InstancedOccurrence, InstancedTemplateCpu } from './scene-instance-types.js';
+import { destroyInstancedTemplateGpu, type InstancedTemplateGPU, type InstancedOccurrence, type InstancedTemplateCpu } from './scene-instance-types.js';
+import { createInstancedRteDeltaStream, invalidateInstancedRteDeltas, type InstancedRteDeltaStream } from './instanced-rte.js';
 import { materializeInstances } from './scene-instance-materialization.js';
 import { InstanceSuppression } from './scene-instance-suppression.js';
 import { createSceneBatch } from './scene-batch-upload.js';
@@ -1643,16 +1644,13 @@ export class Scene {
       const cpu = this.instancedTemplateCpu[occ.templateIndex];
       if (!cpu) continue;
       const b = occ.byteOffset;
-      const translated = translateInstanceRecord(cpu, b, [dx, dy, dz]);
-      // Push only the 12 translation bytes to the GPU buffer (in place). Guarded
-      // on the cached device so CPU-only tests still exercise the matrix math.
-      if (device) {
-        const gpu = this.instancedTemplates[occ.templateIndex]?.instanceBuffer;
-        if (gpu) {
-          device.queue.writeBuffer(gpu, b + 48, translated.translation);
-          if (translated.legacyAnchors) device.queue.writeBuffer(gpu, b + 88, translated.legacyAnchors);
-        }
-      }
+      const translation = translateInstanceRecord(cpu, b, [dx, dy, dz]);
+      // Push only the 12 translation bytes to the GPU buffer (in place), and
+      // repack the moved anchors' delta stream on the next upload. Guarded on
+      // the cached device so CPU-only tests still exercise the matrix math.
+      const gpu = this.instancedTemplates[occ.templateIndex];
+      if (gpu) invalidateInstancedRteDeltas(gpu.rteDeltas);
+      if (device && gpu) device.queue.writeBuffer(gpu.instanceBuffer, b + 48, translation);
       moved = true;
     }
     if (!moved) return false;
@@ -1679,7 +1677,7 @@ export class Scene {
       if (!cpu) continue;
       const dv = new DataView(cpu.instanceData);
       const w = this.unionInstancedWorldAabb(
-        expressId, dv, occ.byteOffset,
+        expressId, dv, occ.byteOffset, cpu.canonicalAnchors,
         cpu.localMin[0], cpu.localMin[1], cpu.localMin[2],
         cpu.localMax[0], cpu.localMax[1], cpu.localMax[2],
       );
@@ -1720,8 +1718,8 @@ export class Scene {
       templates: this.instancedTemplates, cpu: this.instancedTemplateCpu, occurrences: this.instancedEntityMap,
       device: this.instancedDevice, evictHighlight: (id: number) => this.evictHighlightMeshes(id, true),
       clearPartial: () => this.dropAllPartialCaches(),
-      unionBounds: (id: number, view: DataView, offset: number, min: [number, number, number], max: [number, number, number]) =>
-        this.unionInstancedWorldAabb(id, view, offset, ...min, ...max) };
+      unionBounds: (id: number, view: DataView, offset: number, anchors: Float64Array, min: [number, number, number], max: [number, number, number]) =>
+        this.unionInstancedWorldAabb(id, view, offset, anchors, ...min, ...max) };
   }
 
   private dropOrphanedSuppressedBounds(): void {
@@ -2886,9 +2884,7 @@ export class Scene {
     for (let i = 0; i < this.instancedTemplates.length; i++) {
       const t = this.instancedTemplates[i];
       if (!t || t.modelIndex !== modelIndex) continue;
-      t.vertexBuffer.destroy();
-      t.indexBuffer.destroy();
-      t.instanceBuffer.destroy();
+      destroyInstancedTemplateGpu(t);
       this.instancedTemplates[i] = undefined;
       this.instancedTemplateCpu[i] = undefined;
       freed.add(i);
@@ -3038,6 +3034,14 @@ export class Scene {
         new Uint8Array(t.instanceBuffer, 0, instSize),
         GPUBufferUsage.VERTEX,
       );
+      let rteDeltas: InstancedRteDeltaStream;
+      try {
+        rteDeltas = createInstancedRteDeltaStream(device, t.instanceCount);
+      } catch (error) {
+        // Nothing references this template's buffers yet; free them rather than leak them.
+        vertexBuffer.destroy(); indexBuffer.destroy(); instanceBuffer.destroy();
+        throw error;
+      }
 
       // Always append: slots are stable identities, never recycled.
       const templateIndex = this.instancedTemplates.length;
@@ -3049,6 +3053,7 @@ export class Scene {
         instanceBuffer,
         instanceCount: t.instanceCount,
         canonicalAnchors: t.canonicalAnchors,
+        rteDeltas,
         bounds: null,
         maxOccRadius: 0,
         selectedCount: 0,
@@ -3117,7 +3122,7 @@ export class Scene {
         if (this.instancedOverrideColors?.has(eid)) lateOverriddenEids.add(eid);
 
         if (haveBox) {
-          const w = this.unionInstancedWorldAabb(eid, cdv, byteOffset, lmnx, lmny, lmnz, lmxx, lmxy, lmxz);
+          const w = this.unionInstancedWorldAabb(eid, cdv, byteOffset, t.canonicalAnchors, lmnx, lmny, lmnz, lmxx, lmxy, lmxz);
           // Fold the occurrence's world box into the template's cull metadata
           // (union bounds + largest occurrence bounding-sphere radius) for the
           // per-frame instanced frustum/contribution culls. Non-finite boxes
@@ -3146,8 +3151,8 @@ export class Scene {
     this.instancedVisibilityDirty = true;
     this.instancedGhostDirty = true;
   }
-  private unionInstancedWorldAabb(eid: number, dv: DataView, matOffset: number, lmnx: number, lmny: number, lmnz: number, lmxx: number, lmxy: number, lmxz: number): { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number } {
-    return unionInstanceBounds(this.boundingBoxes, eid, dv, matOffset, lmnx, lmny, lmnz, lmxx, lmxy, lmxz);
+  private unionInstancedWorldAabb(eid: number, dv: DataView, matOffset: number, anchors: Float64Array, lmnx: number, lmny: number, lmnz: number, lmxx: number, lmxy: number, lmxz: number): { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number } {
+    return unionInstanceBounds(this.boundingBoxes, eid, dv, matOffset, anchors, lmnx, lmny, lmnz, lmxx, lmxy, lmxz);
   }
   /** Drawn templates holding an occurrence of `expressId` (in `modelIndex` if given), for the hover outline (#5745). */
   getInstancedTemplatesOf(expressId: number, modelIndex?: number): InstancedTemplateGPU[] {
@@ -3626,10 +3631,7 @@ export class Scene {
    */
   private destroyAllInstancedTemplates(): void {
     for (const it of this.instancedTemplates) {
-      if (!it) continue;
-      it.vertexBuffer.destroy();
-      it.indexBuffer.destroy();
-      it.instanceBuffer.destroy();
+      if (it) destroyInstancedTemplateGpu(it);
     }
     this.instancedTemplates = [];
     this.liveInstancedTemplates = [];

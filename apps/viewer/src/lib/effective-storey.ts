@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { edgeSurvives, isStoreyLikeSpatialTypeName, RelationshipType } from '@ifc-lite/data';
+import { effectiveStoreyId as resolveEffectiveStoreyId, type IfcDataStore } from '@ifc-lite/parser';
+import { edgeSurvives, RelationshipType } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import type { IfcDataStore } from '@ifc-lite/parser';
 import { effectiveMutationRelationships } from '@/sdk/adapters/query-overlay-relations';
 import { effectiveContextType } from '@/components/viewer/EntityContextMenu.effective-selection';
 
@@ -14,79 +14,33 @@ export function effectiveStoreyId(
   view: MutablePropertyView | null | undefined,
   selectedId: number,
 ): number | undefined {
-  const spatial = store.spatialHierarchy;
-  if (!spatial) return undefined;
-  if (!view?.hasPendingChanges()) return spatial.elementToStorey.get(selectedId);
-  return walkContainers(store, view, selectedId, (id) => !view.isDeleted(id)
-    && isStoreyLikeSpatialTypeName(effectiveContextType(store, view, id)));
+  if (!view?.hasPendingChanges()) return resolveEffectiveStoreyId(store, selectedId);
+  return resolveEffectiveStoreyId(store, selectedId, {
+    relationships: effectiveMutationRelationships(store, view),
+    isDeleted: (id) => view.isDeleted(id),
+    typeName: (id) => effectiveContextType(store, view, id),
+  });
 }
 
 /**
- * The IFC type of the spatial element the product is effectively contained
- * in (directly, or through an aggregate parent), storey or not: e.g.
- * `IfcBuilding` for a wall placed on the building rather than a storey.
- * Lets a refusal that needs a storey say where the element actually is.
+ * The IFC type of the spatial element that DIRECTLY contains the product
+ * (containment edits included), storey or not: e.g. `IfcBuilding` for a wall
+ * placed on the building rather than a storey. Lets a refusal that needs a
+ * storey say where the element is. Aggregated parts are not walked: this only
+ * names a container, the storey walk above decides.
  */
 export function effectiveContainerTypeName(
   store: IfcDataStore,
   view: MutablePropertyView,
   selectedId: number,
 ): string | undefined {
-  const id = walkContainers(store, view, selectedId, (containerId) => !view.isDeleted(containerId));
-  return id === undefined ? undefined : effectiveContextType(store, view, id);
-}
-
-/** The first containment ancestor `accept` takes, through containment and aggregate edits. */
-function walkContainers(
-  store: IfcDataStore,
-  view: MutablePropertyView,
-  selectedId: number,
-  accept: (containerId: number) => boolean,
-): number | undefined {
   if (view.isDeleted(selectedId)) return undefined;
   const overlay = effectiveMutationRelationships(store, view);
+  const edited = overlay.relationships.find((r) => r.relationshipType.toUpperCase() === 'IFCRELCONTAINEDINSPATIALSTRUCTURE'
+    && r.related.includes(selectedId));
   const superseded = (id: number) => view.isDeleted(id) || overlay.supersededSourceIds.has(id);
-  const containmentParents = new Map<number, number[]>();
-  const aggregateParents = new Map<number, number[]>();
-  const append = (map: Map<number, number[]>, key: number, values: readonly number[]) => {
-    const row = map.get(key) ?? [];
-    for (const value of values) row.push(value);
-    map.set(key, row);
-  };
-  for (const relation of overlay.relationships) {
-    const type = relation.relationshipType.toUpperCase();
-    if (type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE') {
-      for (const id of relation.related) append(containmentParents, id, relation.relating);
-    } else if (type === 'IFCRELAGGREGATES' || type === 'IFCRELNESTS') {
-      for (const id of relation.related) append(aggregateParents, id, relation.relating);
-    }
-  }
-
-  // A part or space inherits its storey through an ancestor. The visited set
-  // bounds malformed aggregate cycles; source edges lose to their queued edit.
-  const queue = [selectedId];
-  const enqueued = new Set<number>([selectedId]);
-  let cursor = 0;
-  const enqueue = (id: number) => {
-    if (!enqueued.has(id)) {
-      queue.push(id);
-      enqueued.add(id);
-    }
-  };
-  while (cursor < queue.length) {
-    const id = queue[cursor++];
-    if (view.isDeleted(id)) continue;
-    const sourceContainers = store.relationships.inverse.getEdges(id, RelationshipType.ContainsElements)
-      .filter((edge) => edgeSurvives(edge, superseded)).map((edge) => edge.target);
-    const editedContainers = containmentParents.get(id) ?? [];
-    for (const containerId of [...sourceContainers, ...editedContainers]) {
-      if (accept(containerId)) return containerId;
-      if (!view.isDeleted(containerId)) enqueue(containerId);
-    }
-    const sourceParents = store.relationships.inverse.getEdges(id, RelationshipType.Aggregates)
-      .filter((edge) => edgeSurvives(edge, superseded)).map((edge) => edge.target);
-    const editedParents = aggregateParents.get(id) ?? [];
-    for (const parentId of [...sourceParents, ...editedParents]) enqueue(parentId);
-  }
-  return undefined;
+  const container = edited?.relating[0]
+    ?? store.relationships.inverse.getEdges(selectedId, RelationshipType.ContainsElements)
+      .find((edge) => edgeSurvives(edge, superseded))?.target;
+  return container === undefined || view.isDeleted(container) ? undefined : effectiveContextType(store, view, container);
 }

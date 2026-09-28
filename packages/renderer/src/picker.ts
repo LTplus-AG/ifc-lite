@@ -21,6 +21,7 @@ import {
 import { isReadbackAbort, releaseReadbacks } from './picker-readbacks.js';
 import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';
 import { drawInstanceRuns, uploadInstancedRteDeltas } from './instanced-rte.js';
+import { INSTANCED_RTE_DELTA_SLOT, INSTANCED_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
 
 /** Point-pick sizing parameters forwarded to the GPU pipeline. */
 export interface PointPickSizing {
@@ -237,9 +238,9 @@ export class Picker {
           @location(5) m2: vec4<f32>,
           @location(6) m3: vec4<f32>,
           @location(7) instEntityId: u32,
-          @location(8) instFlags: u32,
-          @location(9) anchorHigh: vec4<f32>,
-          @location(10) anchorLow: vec4<f32>,
+          @location(9) instFlags: u32,
+          @location(10) anchorHigh: vec4<f32>,
+          @location(11) anchorLow: vec4<f32>,
         }
         struct VertexOutput {
           @builtin(position) position: vec4<f32>,
@@ -297,26 +298,9 @@ export class Picker {
         vertex: {
           module: instancedPickModule,
           entryPoint: 'vs_main',
-          buffers: [
-            // slot 0: template vertex (28B pos+norm+entityId) — only position read.
-            { arrayStride: 28, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }] },
-            // slot 1: V2 per-instance record — mat4 + id/colour/flags +
-            // CPU-packed drawable-minus-camera lanes.
-            {
-              arrayStride: 120,
-              stepMode: 'instance',
-              attributes: [
-                { shaderLocation: 3, offset: 0, format: 'float32x4' },
-                { shaderLocation: 4, offset: 16, format: 'float32x4' },
-                { shaderLocation: 5, offset: 32, format: 'float32x4' },
-                { shaderLocation: 6, offset: 48, format: 'float32x4' },
-                { shaderLocation: 7, offset: 64, format: 'uint32' },
-                { shaderLocation: 8, offset: 84, format: 'uint32' },
-                { shaderLocation: 9, offset: 88, format: 'float32x4' },
-                { shaderLocation: 10, offset: 104, format: 'float32x4' },
-              ],
-            },
-          ],
+          // The shared instanced layout (#6393): the shader reads position, the
+          // matrix, entity id, flags and the slot-2 camera-relative deltas.
+          buffers: INSTANCED_VERTEX_BUFFERS,
         },
         fragment: { module: instancedPickModule, entryPoint: 'fs_main', targets: [{ format: 'r32uint' }] },
         primitive: { topology: 'triangle-list', cullMode: 'none' },
@@ -678,6 +662,7 @@ export class Picker {
       for (const [i, it] of instancedTemplates.entries()) {
         pass.setVertexBuffer(0, it.vertexBuffer);
         pass.setVertexBuffer(1, it.instanceBuffer);
+        pass.setVertexBuffer(INSTANCED_RTE_DELTA_SLOT, it.rteDeltas.buffer);
         pass.setIndexBuffer(it.indexBuffer, 'uint32');
         drawInstanceRuns(pass, it.indexCount, instanceRuns[i]!);
       }

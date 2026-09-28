@@ -15,12 +15,12 @@
  * and undoing a CREATE_ENTITY never touched the created mesh at all — so
  * undo left both halves rendered AND failed to bring the source back.
  *
- * This test builds a wall through the in-store `addWall` builder (so its
- * representation matches what `splitWallAtDistance` requires), splits it,
- * then walks undo and redo one mutation at a time, asserting after EVERY
- * step that `totalTriangles` still equals the sum of `indices.length / 3`
- * over `geometryResult.meshes` — the invariant the issue names — plus the
- * specific composition (which express ids have a mesh) at each step.
+ * Since #6233 a split keeps the longer piece as the source, reshaped in
+ * place, adds one new wall, and is ONE undo step. This test builds a wall
+ * through the in-store `addWall` builder, splits it, then undoes and redoes
+ * it, asserting after each step that `totalTriangles` still equals the sum
+ * of `indices.length / 3` over `geometryResult.meshes` — the invariant the
+ * issue names — plus which express ids have a mesh.
  *
  * There is no mounted renderer in this headless harness, so "removed from
  * the scene" is checked the same way `dataSlice.test.ts`'s own prune tests
@@ -36,6 +36,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { effectiveStoreyId } from '@/lib/effective-storey';
 import { installScriptedMesher, settleRemesh } from '@/test/scripted-mesher';
 
 const MODEL_ID = 'ifc';
@@ -121,13 +122,8 @@ describe('undoing a wall split (#4925)', () => {
   beforeEach(async () => { mesher = installScriptedMesher(); await seed(); });
   afterEach(() => mesher.restore());
 
-  it('removes both halves from the scene + geometryResult, restores the source, and redo reverses it', async () => {
-    const mirroredRemovals: Array<[string, number]> = [];
-    useViewerStore.setState({
-      mirrorEntityRemove: (modelId, entityId) => { mirroredRemovals.push([modelId, entityId]); },
-    });
+  it('one undo restores the source mesh and removes the new piece; redo reverses it', async () => {
     const s = useViewerStore.getState();
-
     const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.25, Height: 2.8 });
     assert.ok('expressId' in wall, `addWall failed: ${'error' in wall ? wall.error : ''}`);
     const sourceId = wall.expressId;
@@ -136,62 +132,40 @@ describe('undoing a wall split (#4925)', () => {
     assert.deepEqual(meshedIds(), [sourceId], 'only the source has a mesh before splitting');
     const sourceTriangles = model().geometryResult!.totalTriangles;
 
+    // Split identity policy (#6233): the longer piece stays the source,
+    // reshaped in place; one new wall takes the other piece. The source's
+    // mesh is rebuilt by the wasm re-mesh service when `element.split`'s
+    // transaction commits (and on undo / redo of its batch), not here.
     const split = useViewerStore.getState().splitWallAtDistance(MODEL_ID, sourceId, 2);
     assert.ok(split.ok, `split failed: ${split.ok ? '' : split.reason}`);
     if (!split.ok) return;
-    const { left, right } = split;
+    useViewerStore.getState().clearPendingMeshRemovals(); // the renderer's drain
+    assert.equal(split.right.expressId, sourceId, 'the 3 m far piece is the source');
+    const newId = split.left.expressId;
     await settleRemesh();
     assertTriangleInvariant('after split');
-    assert.deepEqual(meshedIds(), [left.expressId, right.expressId].sort((a, b) => a - b),
-      'split: source mesh gone, both halves present');
+    assert.deepEqual(meshedIds(), [sourceId, newId].sort((a, b) => a - b), 'split: source reshaped, new piece added');
 
-    // --- Undo #1: reverses the source's DELETE_ENTITY (top of the undo stack). ---
+    // --- ONE undo reverts the whole split. ---
     useViewerStore.getState().undo(MODEL_ID);
-    assertTriangleInvariant('after undo #1 (source restore)');
-    assert.deepEqual(meshedIds(), [sourceId, left.expressId, right.expressId].sort((a, b) => a - b),
-      'undo #1: source mesh is back, both halves still present');
-
-    // --- Undo #2: reverses the right half's CREATE_ENTITY. ---
-    useViewerStore.getState().undo(MODEL_ID);
-    assertTriangleInvariant('after undo #2 (right half removed)');
-    assert.deepEqual(meshedIds(), [sourceId, left.expressId].sort((a, b) => a - b),
-      'undo #2: right half gone, source + left remain');
-
-    // --- Undo #3: reverses the left half's CREATE_ENTITY — fully back to pre-split. ---
-    useViewerStore.getState().undo(MODEL_ID);
-    assertTriangleInvariant('after undo #3 (left half removed)');
-    assert.deepEqual(meshedIds(), [sourceId], 'undo #3: both halves gone, only the source mesh remains');
+    useViewerStore.getState().clearPendingMeshRemovals();
+    assertTriangleInvariant('after undo');
+    assert.deepEqual(meshedIds(), [sourceId], 'undo: new piece gone, only the source mesh remains');
     assert.equal(model().geometryResult!.totalTriangles, sourceTriangles,
-      'fully undone split restores the exact pre-split triangle total');
-    // One more entry remains on the undo stack: the source wall's own
-    // CREATE_ENTITY from `addWall` above (this test authors its source
-    // rather than loading one from a fixture) — the three split mutations
-    // are the ones just undone.
-    assert.equal(useViewerStore.getState().canUndo(MODEL_ID), true, 'the source wall\'s own create is still undoable');
+      'undone split restores the exact pre-split triangle total');
+    // The source wall's own CREATE_ENTITY from `addWall` is still undoable.
+    assert.equal(useViewerStore.getState().canUndo(MODEL_ID), true);
 
-    // --- Redo #1..#3: walks forward through the same three mutations. ---
+    // --- ONE redo re-applies it. ---
     useViewerStore.getState().redo(MODEL_ID);
-    assertTriangleInvariant('after redo #1 (left half re-created)');
-    assert.deepEqual(meshedIds(), [sourceId, left.expressId].sort((a, b) => a - b),
-      'redo #1: left half back, source still present, right still gone');
-
-    useViewerStore.getState().redo(MODEL_ID);
-    assertTriangleInvariant('after redo #2 (right half re-created)');
-    assert.deepEqual(meshedIds(), [sourceId, left.expressId, right.expressId].sort((a, b) => a - b),
-      'redo #2: both halves back, source still present (its delete not yet redone)');
-
-    const removalsBeforeDeleteRedo = mirroredRemovals.length;
-    useViewerStore.getState().redo(MODEL_ID);
-    assertTriangleInvariant('after redo #3 (source deleted again)');
-    assert.deepEqual(meshedIds(), [left.expressId, right.expressId].sort((a, b) => a - b),
-      'redo #3: back to the fully-split state — source gone, both halves present');
-    assert.deepEqual(mirroredRemovals.slice(removalsBeforeDeleteRedo), [[MODEL_ID, sourceId]],
-      'redoing DELETE_ENTITY mirrors the tombstone to collaboration peers');
+    useViewerStore.getState().clearPendingMeshRemovals();
+    assertTriangleInvariant('after redo');
+    assert.deepEqual(meshedIds(), [sourceId, newId].sort((a, b) => a - b), 'redo: back to the split state');
     assert.equal(useViewerStore.getState().canRedo(MODEL_ID), false, 'redo stack drained');
   });
 });
 
-it('wall split follows the live storey and authors both halves there (#5249)', async () => {
+it('wall split follows the live storey and both pieces sit there (#5249, #6233)', async () => {
   await seed();
   const state = useViewerStore.getState();
   const wall = state.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.25, Height: 2.8 });
@@ -205,10 +179,12 @@ it('wall split follows the live storey and authors both halves there (#5249)', a
   const split = useViewerStore.getState().splitWallAtDistance(MODEL_ID, wall.expressId, 2);
   assert.ok(split.ok, `split failed: ${split.ok ? '' : split.reason}`);
   if (!split.ok) return;
+  // The longer piece stays the source (#6233), keeping its edited
+  // containment; the new piece is authored on that same live storey.
+  const dataStore = useViewerStore.getState().models.get(MODEL_ID)!.ifcDataStore!;
+  assert.equal(split.right.expressId, wall.expressId, 'the 3 m piece keeps the source');
   for (const id of [split.left.expressId, split.right.expressId]) {
-    const relation = view.getNewEntities().find((entity) => entity.type === 'IfcRelContainedInSpatialStructure'
-      && Array.isArray(entity.attributes[4]) && entity.attributes[4].includes(`#${id}`));
-    assert.equal(relation?.attributes[5], '#50', `split half #${id} must be authored on the edited storey`);
+    assert.equal(effectiveStoreyId(dataStore, view, id), 50, `piece #${id} must sit on the edited storey`);
   }
 });
 

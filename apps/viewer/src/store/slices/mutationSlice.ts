@@ -51,7 +51,7 @@ import type { AuthoredElement } from './authoredElement.js';
 import { remeshAuthoredElement, rememberAuthoredElement } from './authoredFallbackMesh.js';
 import { authoredDataStore, syncAuthoredTreeEntry } from './authoredTreeEntry.js';
 import { ensureStoreyPlacement } from './storeyPlacement.js';
-import { effectiveContainerTypeName, effectiveStoreyId } from '@/lib/effective-storey';
+import { effectiveStoreyId } from '@/lib/effective-storey';
 
 export type { AuthoredElement };
 import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
@@ -64,27 +64,20 @@ import {
   resolvePlacementChain,
   resolveRotationState,
   resolveWallEditChain,
-  computeWallSplitGeometry,
   projectOntoWallAxis,
 } from '@/lib/placement-edit.js';
-import { cloneElementMetadata } from '@/lib/metadata-clone.js';
 import {
   resolveLinearElementChain,
-  computeLinearElementSplitGeometry,
   projectOntoLinearAxis,
   type LinearElementType,
 } from '@/lib/linear-element-edit.js';
-import { reassignWallOpenings } from '@/lib/wall-opening-reassign.js';
-import {
-  resolveSlabEditChain,
-  computeSlabSplitGeometry,
-  type SlabLikeType,
-} from '@/lib/slab-edit.js';
+import { resolveSlabEditChain, type SlabLikeType } from '@/lib/slab-edit.js';
 import { getModelLengthUnitScale, pointToMetres, pointToNative } from '@/lib/length-unit-scale.js';
 import { readWallMetres, refreshWallMeshIn, resizeWallMetres } from './mutation-wall-resize.js';
-import { resolveSplitTarget, splitChainOfKind, splitUnavailableKey } from '@/lib/split-target.js';
+import { resolveSplitTarget, splitUnavailableKey } from '@/lib/split-target.js';
 import type { TranslationKey } from '@/i18n';
-import { resolve as translate } from '@/i18n/registry';
+import { splitLinear, splitWall } from './mutation-split.js';
+import { splitSlab } from './mutation-split-slab.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
 import { withMutationBatchTags } from './mutation-batch-tags.js';
@@ -550,21 +543,15 @@ export interface MutationSlice extends CostUndoMethods {
     expressId: number,
   ) => { start: [number, number, number]; end: [number, number, number]; thickness: number; height: number } | null;
   /**
-   * Split a rectangle-profile wall into two walls at `distance`
-   * metres along its axis (measured from the wall's start). Produces
-   * two new walls inheriting the source's Pset / Qto / classification
-   * / material / type relationships, then tombstones the source.
-   *
-   * Returns the two new walls' express ids and federation global
-   * ids on success. On failure (non-rectangle wall, distance too
-   * close to an end, missing storey, etc.) returns a descriptive
-   * reason for the UI to surface.
-   *
-   * Undo posture: the action lands as three primitive mutations on
-   * the model's undo stack (one per new wall create, one for the
-   * source delete), so a full revert needs three Ctrl+Z presses
-   * today. A batched-mutation primitive that collapses this to one
-   * step is on the follow-up list from PR #723.
+   * Split a rectangle-profile wall at `distance` metres along its
+   * axis (from the wall's start). Split identity policy
+   * (`lib/split-guid.ts`, #6233): the longer piece stays the source
+   * wall, shortened in place, keeping its express id, GlobalId, rels
+   * and the openings inside it; one new wall with a derived GlobalId
+   * takes the other piece, and only the openings inside it move.
+   * `left` / `right` are the pieces in axis order; one of them is the
+   * source. One Ctrl+Z undoes the whole split
+   * (`store/slices/mutation-split.ts`).
    */
   splitWallAtDistance: (
     modelId: string,
@@ -586,18 +573,16 @@ export interface MutationSlice extends CostUndoMethods {
   ) => { distance: number; length: number; cutPoint: [number, number, number]; axis: [number, number, number] } | null;
   /**
    * Split a linear element (`IfcBeam` / `IfcColumn` / `IfcMember`)
-   * at `distance` metres from start. Unlike walls, the source's
-   * extrusion is shrunk in place so the "left" half keeps the
-   * source's GlobalId and Pset rels — the choice is forced by the
-   * IFC representation (length lives on the extrusion `Depth`, not
-   * on the profile XDim), so one positional write covers it. A new
-   * element is added at the cut point to carry the "right" half.
+   * at `distance` metres from start, under the same identity policy
+   * as `splitWallAtDistance`: the longer piece is the source with its
+   * extrusion shortened (and its start moved to the cut when the far
+   * piece is the longer one); one new element takes the other piece.
    */
   splitLinearElementAtDistance: (
     modelId: string,
     expressId: number,
     distanceFromStart: number,
-  ) => { ok: true; source: { expressId: number; globalId: number }; right: { expressId: number; globalId: number } } | { ok: false; reason: string };
+  ) => { ok: true; left: { expressId: number; globalId: number }; right: { expressId: number; globalId: number } } | { ok: false; reason: string };
   /**
    * Linear-element analogue of `readWallSplitProjection`. Returns
    * null when the entity isn't an `addBeam` / `addColumn` /
@@ -623,11 +608,10 @@ export interface MutationSlice extends CostUndoMethods {
   /**
    * Split a slab-like element (IfcSlab / IfcRoof / IfcPlate /
    * IfcSpace) along a cut line defined by two storey-local 2D
-   * points. Builds two fresh elements with the clipped footprints
-   * (polygon-mode `IfcArbitraryClosedProfileDef` even when the
-   * source was a rectangle — most cuts produce non-rectangular
-   * halves), clones metadata onto both, then tombstones the
-   * source.
+   * points. The larger-area piece stays the source, its profile
+   * rewritten to the clipped polygon (`IfcArbitraryClosedProfileDef`);
+   * one new element with a derived GlobalId takes the other piece
+   * (`store/slices/mutation-split-slab.ts`, #6233).
    *
    * Selection moves to whichever half contains the second click,
    * so the user can keep editing the new piece immediately.
@@ -834,114 +818,6 @@ function resolveEditReadContext(
   return { view, editor, dataStore, scale: getModelLengthUnitScale(dataStore) };
 }
 
-/**
- * Resolve the (view, editor, dataStore, storey) tuple that every
- * splitWall / splitLinearElement / splitSlab action needs. Returns
- * an error result with a stable message when any piece is missing
- * so each action's preamble collapses to a single early-return.
- *
- * Pass `requireStorey: false` when the caller resolves storey from
- * a different source (none currently — but the flag keeps the
- * helper reusable for non-storey-bound split-like flows).
- */
-type SplitContext = {
-  view: MutablePropertyView;
-  editor: StoreEditor;
-  dataStore: import('@ifc-lite/parser').IfcDataStore;
-  storeyExpressId: number;
-};
-function resolveSplitContext(
-  get: () => ViewerState,
-  set: (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void,
-  modelId: string,
-  expressId: number,
-  notInStoreyMessage: string,
-): SplitContext | { ok: false; reason: string } {
-  const state = get();
-  const view = state.mutationViews.get(modelId);
-  if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
-  const editor = getOrCreateStoreEditor(get, set, modelId);
-  if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
-  const dataStore = state.models.get(modelId)?.ifcDataStore;
-  if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
-  const storeyExpressId = effectiveStoreyId(dataStore, view, expressId);
-  if (storeyExpressId === undefined) {
-    // Say where it is when it has a container that is not a storey (a wall on IfcBuilding).
-    const container = effectiveContainerTypeName(dataStore, view, expressId);
-    return { ok: false, reason: container ? `${notInStoreyMessage}: it sits in ${container}, not on a storey` : notInStoreyMessage };
-  }
-  return { view, editor, dataStore, storeyExpressId };
-}
-
-/**
- * Rollback helper for failed atomic operations (e.g. split where
- * the left half was created but the right half's builder threw).
- *
- * Pops the most recent CREATE_ENTITY mutation for `expressId` off
- * the model's undo stack, removes the overlay record via
- * `view.deleteEntity`, and queues the renderer mesh for removal.
- * No DELETE_ENTITY mutation is recorded — the operation never
- * happened from the user's perspective, so the undo history is
- * left clean (Ctrl+Z after a failed split shouldn't bring back
- * the orphan half).
- *
- * Returns true when at least one undo entry was popped.
- */
-function rollbackOverlayCreate(
-  get: () => ViewerState,
-  set: (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void,
-  modelId: string,
-  expressId: number,
-): boolean {
-  const state = get();
-  const view = state.mutationViews.get(modelId);
-  const editor = state.storeEditors.get(modelId);
-  if (!view || !editor) return false;
-
-  // Drop the entity from the overlay. The view.deleteEntity call
-  // is silent for already-gone entities — safe even if the caller
-  // gets the rollback path wrong.
-  editor.removeEntity(expressId);
-
-  // Pop the matching CREATE_ENTITY entry off the undo stack. The
-  // split flow always rolls back immediately after the failed
-  // create, so the entry is at top-of-stack — fast-path that case
-  // with a single `pop()`-style slice and only fall back to the
-  // linear scan if a follow-up mutation slipped in between.
-  set((s) => {
-    const stacks = new Map(s.undoStacks);
-    const stack = stacks.get(modelId);
-    if (!stack || stack.length === 0) return {};
-    const top = stack[stack.length - 1];
-    if (top.type === 'CREATE_ENTITY' && top.entityId === expressId) {
-      stacks.set(modelId, stack.slice(0, -1));
-      return {
-        undoStacks: stacks,
-        mutationVersion: s.mutationVersion + 1,
-      };
-    }
-    for (let i = stack.length - 2; i >= 0; i--) {
-      const m = stack[i];
-      if (m.type === 'CREATE_ENTITY' && m.entityId === expressId) {
-        const next = stack.slice();
-        next.splice(i, 1);
-        stacks.set(modelId, next);
-        return {
-          undoStacks: stacks,
-          mutationVersion: s.mutationVersion + 1,
-        };
-      }
-    }
-    return {};
-  });
-
-  // Drop the entity's mesh from the renderer so the user doesn't
-  // see a phantom half-element after the failed split. Uses the
-  // existing pendingMeshRemovals channel (same as Phase A).
-  const globalId = toGlobalIdFromModels(state.models, modelId, expressId);
-  state.setPendingMeshRemovals(new Set([globalId]));
-  return true;
-}
 
 /**
  * Shared dispatcher for the wall/slab/beam in-store builders. Mirrors the
@@ -1884,120 +1760,8 @@ export const createMutationSlice: StateCreator<
     return { distance, length: chain.wallLength, cutPoint, axis: [dx, dy, dz] };
   },
 
-  splitWallAtDistance: (modelId, expressId, distanceFromStart) => {
-    // Shared mutation gate — same rule and return shape as `resizeWall`.
-    const denial = mutationDenial(get(), modelId);
-    if (denial) return { ok: false, reason: denial };
-    const ctx = resolveSplitContext(get, set, modelId, expressId, 'Wall is not contained in a building storey');
-    if ('ok' in ctx) return ctx;
-    const { view, editor, dataStore, storeyExpressId } = ctx;
-    const state = get();
-
-    // Same predicate as the Split button (`readSplitTarget`), so the two
-    // cannot disagree about whether this wall splits. Lengths are metres.
-    const gate = splitChainOfKind(
-      resolveSplitTarget(dataStore, view, editor, expressId, getModelLengthUnitScale(dataStore)), 'wall');
-    if ('reasonKey' in gate) return { ok: false, reason: translate(gate.reasonKey) };
-    const { chain } = gate;
-
-    const geo = computeWallSplitGeometry(chain, distanceFromStart, chain.height);
-    if (!geo.ok) return geo;
-
-    // Build the two halves. Each `addWall` call already pushes a
-    // CREATE_ENTITY mutation onto the undo stack AND emits a fresh
-    // mesh via appendGeometryBatch, so the new walls appear in 3D
-    // immediately. The source's mesh stays in the geometry result
-    // but is tombstoned in the IFC overlay — for v1 we mark it
-    // hidden via the existing hiddenEntities mechanism so the user
-    // sees the split take effect.
-    const left = state.addWall(modelId, storeyExpressId, {
-      Start: geo.geometry.left.Start,
-      End: geo.geometry.left.End,
-      Thickness: geo.geometry.left.Thickness,
-      Height: geo.geometry.left.Height,
-      Name: 'Wall (split L)',
-    });
-    if ('error' in left) {
-      return { ok: false, reason: `Couldn't build left half: ${left.error}` };
-    }
-    const right = state.addWall(modelId, storeyExpressId, {
-      Start: geo.geometry.right.Start,
-      End: geo.geometry.right.End,
-      Thickness: geo.geometry.right.Thickness,
-      Height: geo.geometry.right.Height,
-      Name: 'Wall (split R)',
-    });
-    if ('error' in right) {
-      // Roll back the left half via the no-history helper so the
-      // failed split doesn't leave a phantom CREATE+DELETE pair on
-      // the undo stack. `rollbackOverlayCreate` pops the orphan
-      // CREATE_ENTITY entry, drops the overlay record, and removes
-      // the renderer mesh.
-      rollbackOverlayCreate(get, set, modelId, left.expressId);
-      return { ok: false, reason: `Couldn't build right half: ${right.error}` };
-    }
-
-    // Carry Pset / Qto / classification / material / type rels
-    // from the source onto both new walls. Done AFTER the new walls
-    // exist so the rels' RelatedObjects lists can include them.
-    cloneElementMetadata(dataStore, view, editor, expressId, [left.expressId, right.expressId]);
-
-    // Reassign hosted openings (doors / windows / generic voids)
-    // to whichever new half they geometrically belong to. The
-    // canonical IFC convention places the opening's
-    // ObjectPlacement relative to the wall's placement, with
-    // local-X = distance along the wall axis — so we read each
-    // opening's local-X to decide left vs right, and offset
-    // right-half openings by -splitDistance so their world
-    // positions stay fixed across the reparent.
-    //
-    // We resolve each new half's IfcLocalPlacement id by
-    // re-walking the placement chain (it's the entity addWall
-    // created internally; the action's return value only carries
-    // the wall id).
-    const leftChain = resolvePlacementChain(dataStore, view, editor, left.expressId);
-    const rightChain = resolvePlacementChain(dataStore, view, editor, right.expressId);
-    let openingSummary: { toLeft: number; toRight: number; skipped: number } = { toLeft: 0, toRight: 0, skipped: 0 };
-    if (leftChain && rightChain) {
-      const s = reassignWallOpenings(
-        dataStore,
-        view,
-        editor,
-        expressId,
-        left.expressId,
-        right.expressId,
-        distanceFromStart / chain.lengthUnitScale, // openings' local X is native units
-        leftChain.localPlacementId,
-        rightChain.localPlacementId,
-      );
-      openingSummary = { toLeft: s.toLeft, toRight: s.toRight, skipped: s.skipped };
-    }
-    void openingSummary; // surfaced as a toast hint by the caller (selectionHandlers)
-
-    // Tombstone the source. `removeEntity` returns false if the
-    // entity wasn't known — shouldn't happen here (we just
-    // resolved its chain), but defend anyway.
-    const removed = state.removeEntity(modelId, expressId);
-    if (!removed) {
-      return {
-        ok: false,
-        reason: 'Wall was unexpectedly removed before split completed',
-      };
-    }
-
-    // `removeEntity` above already dropped the source's mesh out of the
-    // geometry (stashed for undo) and queued the renderer-side removal.
-    // The two new walls already have their meshes via appendGeometryBatch.
-    const leftGlobalId = toGlobalIdFromModels(state.models, modelId, left.expressId);
-    const rightGlobalId = toGlobalIdFromModels(state.models, modelId, right.expressId);
-
-    return {
-      ok: true,
-      left: { expressId: left.expressId, globalId: leftGlobalId },
-      right: { expressId: right.expressId, globalId: rightGlobalId },
-      openings: openingSummary,
-    };
-  },
+  splitWallAtDistance: (modelId, expressId, distanceFromStart) =>
+    splitWall(get, (id) => getOrCreateStoreEditor(get, set, id), modelId, expressId, distanceFromStart),
 
   readLinearElementSplitProjection: (modelId, expressId, cursorStoreyLocal) => {
     const ctx = resolveEditReadContext(get, set, modelId);
@@ -2008,89 +1772,8 @@ export const createMutationSlice: StateCreator<
     return { distance, length: chain.depth, cutPoint, axis: chain.axisDirection, elementType: chain.elementType };
   },
 
-  splitLinearElementAtDistance: (modelId, expressId, distanceFromStart) => {
-    // Shared mutation gate — same rule and return shape as `resizeWall`.
-    const denial = mutationDenial(get(), modelId);
-    if (denial) return { ok: false, reason: denial };
-    const ctx = resolveSplitContext(get, set, modelId, expressId, 'Element is not contained in a building storey');
-    if ('ok' in ctx) return ctx;
-    const { view, editor, dataStore, storeyExpressId } = ctx;
-    const state = get();
-
-    const gate = splitChainOfKind(
-      resolveSplitTarget(dataStore, view, editor, expressId, getModelLengthUnitScale(dataStore)), 'linear');
-    if ('reasonKey' in gate) return { ok: false, reason: translate(gate.reasonKey) };
-    const { chain } = gate;
-    const geo = computeLinearElementSplitGeometry(chain, distanceFromStart);
-    if (!geo.ok) return geo;
-
-    // Add the "right" half FIRST so a builder failure leaves the
-    // source untouched (no partial-commit state). The source's
-    // extrusion shrink happens only after the new half lands.
-    // The dispatch is one-to-one with the chain's resolved
-    // element type.
-    let addResult: { expressId: number } | { error: string };
-    if (chain.elementType === 'IfcBeam') {
-      addResult = state.addBeam(modelId, storeyExpressId, {
-        Start: geo.geometry.cutPoint,
-        End: geo.geometry.endPoint,
-        Width: geo.geometry.width,
-        Height: geo.geometry.height,
-        Name: 'Beam (split)',
-      });
-    } else if (chain.elementType === 'IfcColumn') {
-      // Columns take a Position + Width + Depth + Height (extrusion
-      // is along +Z). Width/Depth come from the cross-section
-      // (profile XDim / YDim). Height is the right half's length.
-      addResult = state.addColumn(modelId, storeyExpressId, {
-        Position: geo.geometry.cutPoint,
-        Width: geo.geometry.width,
-        Depth: geo.geometry.height,
-        Height: geo.geometry.rightDepth,
-        Name: 'Column (split)',
-      });
-    } else {
-      addResult = state.addMember(modelId, storeyExpressId, {
-        Start: geo.geometry.cutPoint,
-        End: geo.geometry.endPoint,
-        Width: geo.geometry.width,
-        Height: geo.geometry.height,
-        Name: 'Member (split)',
-      });
-    }
-    if ('error' in addResult) {
-      return { ok: false, reason: `Couldn't build right half: ${addResult.error}` };
-    }
-
-    // Right half built — now shrink the source's extrusion to the
-    // "left" length. One write, one undo entry, identity
-    // preserved. Goes through the slice's own
-    // setPositionalAttribute action so undo recovers it.
-    state.setPositionalAttribute(modelId, chain.extrudedSolidId, 3, geo.geometry.leftDepth / chain.lengthUnitScale);
-
-    // Carry Pset / classification / material rels onto the new
-    // right half so it inherits the source's metadata. The source
-    // keeps its own rels natively (we didn't tombstone it).
-    cloneElementMetadata(dataStore, view, editor, expressId, [addResult.expressId]);
-
-    // Hide / re-show the source's mesh so the renderer reflects
-    // the new shorter length. The new mesh for the right half
-    // already came via the addElement pipeline's appendGeometryBatch.
-    // For the source, the easiest visual update is to nudge the
-    // geometryUpdateTick so consumers re-derive bounds — the
-    // existing mesh data lingers at full length until the next
-    // full reload (deferred mesh-update from PR #723). Users see
-    // the new wall appear; the source mesh stays visually unchanged
-    // for now. Documented as a known limitation.
-    const sourceGlobalId = toGlobalIdFromModels(state.models, modelId, expressId);
-    const rightGlobalId = toGlobalIdFromModels(state.models, modelId, addResult.expressId);
-
-    return {
-      ok: true,
-      source: { expressId, globalId: sourceGlobalId },
-      right: { expressId: addResult.expressId, globalId: rightGlobalId },
-    };
-  },
+  splitLinearElementAtDistance: (modelId, expressId, distanceFromStart) =>
+    splitLinear(get, (id) => getOrCreateStoreEditor(get, set, id), modelId, expressId, distanceFromStart),
 
   readSlabFootprint: (modelId, expressId) => {
     const ctx = resolveEditReadContext(get, set, modelId);
@@ -2102,113 +1785,8 @@ export const createMutationSlice: StateCreator<
     return { footprint: chain.footprint, elementType: chain.elementType, storeyElevation, thickness: chain.thickness };
   },
 
-  splitSlabByLine: (modelId, expressId, cutA, cutB) => {
-    // Shared mutation gate — same rule and return shape as `resizeWall`.
-    const denial = mutationDenial(get(), modelId);
-    if (denial) return { ok: false, reason: denial };
-    const ctx = resolveSplitContext(get, set, modelId, expressId, 'Slab is not contained in a building storey');
-    if ('ok' in ctx) return ctx;
-    const { view, editor, dataStore, storeyExpressId } = ctx;
-    const state = get();
-
-    const gate = splitChainOfKind(
-      resolveSplitTarget(dataStore, view, editor, expressId, getModelLengthUnitScale(dataStore)), 'slab');
-    if ('reasonKey' in gate) return { ok: false, reason: translate(gate.reasonKey) };
-    const { chain } = gate;
-    const geo = computeSlabSplitGeometry(chain, cutA, cutB);
-    if (!geo.ok) return geo;
-
-    // The clipped footprints are in storey-local XY (placement
-    // origin already added). The builders expect an `OuterCurve`
-    // in *profile-local* 2D + a `Position` in storey-local 3D.
-    // Easiest mapping: keep `Position` at `[0, 0, base]` and pass the
-    // clipped polygon verbatim — the builders fold profile-origin
-    // and placement-origin into one identity. `base` is where the source's
-    // extrusion starts, so a slab hung below its placement (AC20's
-    // `Bodenplatte`) keeps its height (#6233).
-    //
-    // IfcSlab / IfcRoof / IfcPlate carry their extrusion depth on
-    // a `Thickness` param; IfcSpace uses `Height`. Same chain
-    // resolver feeds both because the underlying STEP shape is
-    // identical (IfcExtrudedAreaSolid.Depth) — the divergence is
-    // only in the in-store builder's parameter naming.
-    const buildHalf = (outline: Point2D[], label: string) => {
-      const name = `${chain.elementType.replace(/^Ifc/, '')} (split ${label})`;
-      switch (chain.elementType) {
-        case 'IfcSlab':
-          return state.addSlab(modelId, storeyExpressId, {
-            Profile: 'polygon',
-            Position: [0, 0, chain.baseElevation],
-            OuterCurve: outline,
-            Thickness: geo.thickness,
-            Name: name,
-          });
-        case 'IfcRoof':
-          return state.addRoof(modelId, storeyExpressId, {
-            Profile: 'polygon',
-            Position: [0, 0, chain.baseElevation],
-            OuterCurve: outline,
-            Thickness: geo.thickness,
-            Name: name,
-          });
-        case 'IfcPlate':
-          return state.addPlate(modelId, storeyExpressId, {
-            Profile: 'polygon',
-            Position: [0, 0, chain.baseElevation],
-            OuterCurve: outline,
-            Thickness: geo.thickness,
-            Name: name,
-          });
-        case 'IfcSpace':
-          return state.addSpace(modelId, storeyExpressId, {
-            Profile: 'polygon',
-            Position: [0, 0, chain.baseElevation],
-            OuterCurve: outline,
-            Height: geo.thickness,
-            Name: name,
-          });
-        default: {
-          // Exhaustive switch — compile error here if a new
-          // SlabLikeType lands without a builder dispatch.
-          const exhaust: never = chain.elementType;
-          throw new Error(`Unhandled slab-like type: ${String(exhaust)}`);
-        }
-      }
-    };
-
-    const left = buildHalf(geo.leftFootprint, 'L');
-    if ('error' in left) {
-      return { ok: false, reason: `Couldn't build left half: ${left.error}` };
-    }
-    const right = buildHalf(geo.rightFootprint, 'R');
-    if ('error' in right) {
-      // Roll back the left half via the no-history helper — same
-      // reasoning as the wall-split rollback above.
-      rollbackOverlayCreate(get, set, modelId, left.expressId);
-      return { ok: false, reason: `Couldn't build right half: ${right.error}` };
-    }
-
-    cloneElementMetadata(dataStore, view, editor, expressId, [left.expressId, right.expressId]);
-
-    const removed = state.removeEntity(modelId, expressId);
-    if (!removed) {
-      return {
-        ok: false,
-        reason: 'Slab was unexpectedly removed before split completed',
-      };
-    }
-
-    // `removeEntity` above already dropped the source's mesh out of the
-    // geometry (stashed for undo) and queued the renderer-side removal.
-    // The two new halves already have meshes via addSlab's appendGeometryBatch.
-    const leftGlobalId = toGlobalIdFromModels(state.models, modelId, left.expressId);
-    const rightGlobalId = toGlobalIdFromModels(state.models, modelId, right.expressId);
-    return {
-      ok: true,
-      left: { expressId: left.expressId, globalId: leftGlobalId },
-      right: { expressId: right.expressId, globalId: rightGlobalId },
-    };
-  },
+  splitSlabByLine: (modelId, expressId, cutA, cutB) =>
+    splitSlab(get, (id) => getOrCreateStoreEditor(get, set, id), modelId, expressId, cutA, cutB),
 
   removeEntity: (modelId, expressId, opts) => {
     if (!canMutate(get(), modelId)) return false;

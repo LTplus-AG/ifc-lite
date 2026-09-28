@@ -78,6 +78,7 @@ DATA;
 #75=IFCAXIS2PLACEMENT3D(#98,$,$);
 #98=IFCCARTESIANPOINT((0.,0.,0.));
 #76=IFCDIRECTION((0.,0.,1.));
+#84=IFCRELAGGREGATES('0RELAGG0000000000003',$,$,$,#1,(#2));
 #77=IFCRELAGGREGATES('0RELAGG0000000000000',$,$,$,#2,(#3));
 #78=IFCRELAGGREGATES('0RELAGG0000000000001',$,$,$,#3,(#4));
 #79=IFCRELCONTAINEDINSPATIALSTRUCTURE('0RELCONT000000000000',$,$,$,(#50,#51),#4);
@@ -141,6 +142,27 @@ describe('in-store authoring over the edited model (#5249)', () => {
     const { store, editor } = await session();
     editor.removeEntity(50);
     expect(() => resolveDuplicateSource(store, 50, editor)).toThrow(/deleted/);
+  });
+
+  it('Duplicate: follows edited containment into a storey created this session (#5249)', async () => {
+    const { store, editor } = await session();
+    const createdStorey = editor.addEntity('IfcBuildingStorey', [
+      '2STOREY00000000000000', null, 'New level', null, null, null, null, null, '.ELEMENT.', 3,
+    ]).expressId;
+    editor.removeEntity(79);
+    editor.addEntity('IfcRelContainedInSpatialStructure', [
+      '2RELCONT000000000000', null, null, null, ['#50'], `#${createdStorey}`,
+    ]);
+    expect(resolveDuplicateSource(store, 50, editor).storeyId).toBe(createdStorey);
+    expect(resolveDuplicateSource(store, 51, editor).storeyId).toBeNull();
+  });
+
+  it('Duplicate: a queued positional containment edit removes the old storey (#5249)', async () => {
+    const { store, view, editor } = await session();
+    expect(resolveDuplicateSource(store, 50, editor).storeyId).toBe(4);
+    view.setPositionalAttribute(79, 4, ['#51']);
+    expect(resolveDuplicateSource(store, 50, editor).storeyId).toBeNull();
+    expect(resolveDuplicateSource(store, 51, editor).storeyId).toBe(4);
   });
 });
 

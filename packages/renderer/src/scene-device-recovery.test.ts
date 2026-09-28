@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import type { DecodedInstancedShard, MeshData } from '@ifc-lite/geometry';
 import { Scene } from './scene.js';
+import { INSTANCE_COLOR_OFFSET, INSTANCE_FLAGS_OFFSET, INSTANCE_STRIDE_BYTES } from './instanced-render.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { BatchedMesh, Mesh } from './types.js';
 
@@ -348,18 +349,23 @@ describe('Scene device recovery (#4885)', () => {
       {} as RenderPipeline,
     );
     const old = scene.getInstancedTemplates()[0].vertexBuffer as unknown as FakeBuffer;
+    const oldDeltas = scene.getInstancedTemplates()[0].rteDeltas.buffer as unknown as FakeBuffer;
 
     scene.discardGpuResourcesForRecovery();
     const second = device();
     scene.restoreGpuResourcesAfterRecovery(second.gpu, {} as RenderPipeline);
 
     assert.strictEqual(old.destroyed, 1);
+    assert.strictEqual(oldDeltas.destroyed, 1, 'the RTE delta stream is released with its template (#6393)');
+    const restored = scene.getInstancedTemplates()[0];
+    assert.notStrictEqual(restored.rteDeltas.buffer, oldDeltas, 'a fresh delta stream on the new device');
+    assert.strictEqual(restored.rteDeltas.camera, null, 'packed for no camera until the next frame uploads it');
     assert.strictEqual(scene.getInstancedTemplates().length, 1);
     assert.strictEqual(scene.getInstancedTemplates()[0].modelIndex, 9);
     assert.strictEqual(scene.getInstancedTemplates()[0].selectedCount, 1);
     assert.deepStrictEqual([...scene.getInstancedEntityIds()], [42]);
     const flags = second.writes
-      .filter(write => write.offset % 120 === 84)
+      .filter(write => write.offset % INSTANCE_STRIDE_BYTES === INSTANCE_FLAGS_OFFSET)
       .map(write => new DataView(write.data.buffer, write.data.byteOffset, write.data.byteLength).getUint32(0, true));
     assert.deepStrictEqual(flags, [3], 'selected and hidden flags must survive the global override rebuild');
   });
@@ -374,7 +380,7 @@ describe('Scene device recovery (#4885)', () => {
     const second = device();
     scene.restoreGpuResourcesAfterRecovery(second.gpu, {} as RenderPipeline);
     const colors = second.writes
-      .filter(write => write.offset % 120 === 68)
+      .filter(write => write.offset % INSTANCE_STRIDE_BYTES === INSTANCE_COLOR_OFFSET)
       .map(write => [...new Float32Array(write.data.buffer)]);
 
     assert.strictEqual(colors.length, 2);
@@ -396,7 +402,7 @@ describe('Scene device recovery (#4885)', () => {
     const second = device();
     scene.restoreGpuResourcesAfterRecovery(second.gpu, {} as RenderPipeline);
     const color = second.writes
-      .filter(write => write.offset % 88 === 68)
+      .filter(write => write.offset % INSTANCE_STRIDE_BYTES === INSTANCE_COLOR_OFFSET)
       .map(write => [...new Float32Array(write.data.buffer)])
       .at(-1);
 
@@ -437,28 +443,32 @@ describe('Scene device recovery (#4885)', () => {
     assert.deepStrictEqual(scene.getBatchedMeshes(), []);
   });
 
-  it('destroys partial instance allocations when a replacement upload fails', () => {
-    const scene = new Scene(), first = device();
-    scene.addInstancedShard(first.gpu, shard(), 9);
-    scene.discardGpuResourcesForRecovery();
+  // Allocation order: vertex, index, instance record, RTE delta stream (#6393).
+  for (const failAt of [2, 3]) {
+    it(`destroys partial instance allocations when allocation #${failAt + 1} of a template fails`, () => {
+      const scene = new Scene(), first = device();
+      scene.addInstancedShard(first.gpu, shard(), 9);
+      scene.discardGpuResourcesForRecovery();
 
-    const created: FakeBuffer[] = [];
-    const failing = {
-      limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
-      createBuffer(desc: { size: number }) {
-        if (created.length === 2) throw new Error('instance allocation failed');
-        const value = buffer(desc.size);
-        created.push(value);
-        return value;
-      },
-      queue: { writeBuffer() {} },
-    } as unknown as GPUDevice;
+      const created: FakeBuffer[] = [];
+      const failing = {
+        limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
+        createBuffer(desc: { size: number }) {
+          if (created.length === failAt) throw new Error('instance allocation failed');
+          const value = buffer(desc.size);
+          created.push(value);
+          return value;
+        },
+        queue: { writeBuffer() {} },
+      } as unknown as GPUDevice;
 
-    assert.throws(
-      () => scene.restoreGpuResourcesAfterRecovery(failing, {} as RenderPipeline),
-      /instance allocation failed/,
-    );
-    assert.deepStrictEqual(created.map(value => value.destroyed), [1, 1]);
-    assert.deepStrictEqual(scene.getInstancedTemplates(), []);
-  });
+      assert.throws(
+        () => scene.restoreGpuResourcesAfterRecovery(failing, {} as RenderPipeline),
+        /instance allocation failed/,
+      );
+      assert.deepStrictEqual(created.map(value => value.destroyed), created.map(() => 1));
+      assert.strictEqual(created.length, failAt);
+      assert.deepStrictEqual(scene.getInstancedTemplates(), []);
+    });
+  }
 });

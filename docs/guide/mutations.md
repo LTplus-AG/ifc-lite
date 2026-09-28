@@ -111,6 +111,11 @@ It follows edited and created `IfcRelContainedInSpatialStructure` records,
 filters deleted products and spatial child nodes, and returns only direct
 members. Without a context it reads the parsed spatial hierarchy snapshot.
 
+`effectiveStoreyId(store, expressId, context)` uses the same context to find a
+product's containing storey through edited containment and aggregate ancestors.
+It returns `undefined` if the product is deleted or no longer contained. With
+no context, it reads the parsed `elementToStorey` snapshot.
+
 For per-class totals, `countEffectiveEntityTypes` applies the same membership
 and class changes. It returns a map keyed by uppercase IFC class and keeps a
 zero entry when all source entities of a class were deleted or retyped.

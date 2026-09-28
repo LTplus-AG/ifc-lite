@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MESH_FLAG_RTE_DRAWABLE, MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
 import { RelativeToEyeFrame } from './relative-to-eye.js';
+import { MathUtils } from './math.js';
 import { buildSelectionOutlineFrame, matchesHoveredMesh, packHoverUniforms, type SelectionOutlineSource } from './selection-outline-frame.js';
 import type { Mesh } from './types.js';
 
@@ -121,8 +122,9 @@ describe('buildSelectionOutlineFrame outlines instanced occurrences (#5745)', ()
   const tpl = (selectedCount: number) => ({
     modelIndex: 0, vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 6, instanceBuffer: {} as GPUBuffer, instanceCount: 3,
     canonicalAnchors: new Float64Array(9), bounds: null, maxOccRadius: 1, selectedCount,
+    rteDeltas: { buffer: {} as GPUBuffer, scratch: new Float32Array(24), camera: null, runs: [] },
   });
-  type Built = ReturnType<typeof buildSelectionOutlineFrame> & { instanced?: { uniforms: Float32Array; selected: unknown[]; hovered: unknown[]; hoveredId: number } | null };
+  type Built = ReturnType<typeof buildSelectionOutlineFrame> & { instanced?: { uniforms: Float32Array; rteCamera: readonly number[]; selected: unknown[]; hovered: unknown[]; hoveredId: number } | null };
   const build = (over: Partial<SelectionOutlineSource>) => buildSelectionOutlineFrame(base(over)) as Built;
 
   it('draws only the templates with a selected occurrence', () => {
@@ -131,6 +133,13 @@ describe('buildSelectionOutlineFrame outlines instanced occurrences (#5745)', ()
     assert.ok(instanced, 'a selected instanced occurrence must reach the mask');
     assert.deepEqual(instanced.selected, [withSelection]);
     assert.deepEqual(instanced.hovered, []);
+  });
+
+  it('hands the mask the frame\'s RTE camera, the one the colour pass packed the delta streams for (#6393)', () => {
+    const relativeToEyeFrame = new RelativeToEyeFrame();
+    relativeToEyeFrame.update({ x: 250.25, y: 3, z: -7 }, MathUtils.identity(), MathUtils.identity());
+    const { instanced } = build({ instancedTemplates: [tpl(1)], relativeToEyeFrame });
+    assert.deepEqual(instanced?.rteCamera, [250.25, 3, -7]);
   });
 
   it('hands the hovered id and its templates to the mask, and nothing when nothing is hovered', () => {

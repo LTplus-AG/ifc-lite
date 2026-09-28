@@ -8,8 +8,8 @@
  * storey-anchored builders and placed on a storey workplane, and a building
  * has neither a storey elevation nor a plan frame. But the refusal said "not
  * contained in a building storey", which reads as "not contained at all" for
- * a wall that plainly sits in the building. Both the Split button's reason
- * and the commit's own refusal now say where the wall is.
+ * a wall that plainly sits in the building. The Split button's reason and
+ * the commit's refusal (one gate, `resolveSplitTarget`) now say where it is.
  */
 
 import '@/test/setup-dom.js';
@@ -57,6 +57,6 @@ describe('a wall on IfcBuilding, not a storey (#6232)', () => {
   it('the split commit refuses with where the wall sits', () => {
     const result = useViewerStore.getState().splitWallAtDistance(MODEL_ID, wallId, 2);
     assert.ok(!result.ok);
-    assert.match(result.reason, /not contained in a building storey: it sits in IfcBuilding, not on a storey/i);
+    assert.match(result.reason, /sits directly in the building or site, not on a storey/);
   });
 });

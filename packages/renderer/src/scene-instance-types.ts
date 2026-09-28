@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { InstancedRteDeltaStream } from './instanced-rte.js';
+
 export interface InstancedTemplateGPU {
   /** Owning model (federation index). Templates are identified by
    *  `(modelIndex, slot)`, so one model's templates can be freed without
@@ -14,6 +16,9 @@ export interface InstancedTemplateGPU {
   instanceCount: number;
   /** Canonical f64 Y-up drawable origins, xyz for each GPU record. */
   canonicalAnchors: Float64Array;
+  /** Per-occurrence camera-relative deltas derived from `canonicalAnchors`,
+   *  bound at vertex slot 2 (#6393). Invalidate whenever the anchors change. */
+  rteDeltas: InstancedRteDeltaStream;
   /** Union of the occurrences' world AABBs (null when no occurrence has a
    *  finite box — such templates are never culled). Same tuple layout as
    *  BatchedMesh.bounds so the render loop's frustum test is shared. */
@@ -57,11 +62,19 @@ export interface InstancedTemplateCpu {
   positions: Float32Array;
   normals: Float32Array;
   indices: Uint32Array;
-  instanceData: ArrayBuffer; // packed 120-byte V2 records (V1 mat4 at +0, split anchor at +88)
-  /** Canonical f64 occurrence anchors (xyz per record). These are deliberately
-   * CPU-side until the V2 GPU instance ABI is enabled. */
+  instanceData: ArrayBuffer; // packed INSTANCE_STRIDE_BYTES records (mat4 at +0)
+  /** Canonical f64 occurrence anchors (xyz per record): the source of truth
+   *  for bounds and the GPU delta stream. Shared with the GPU template. */
   canonicalAnchors: Float64Array;
   canonicalMatrixTranslations: Float32Array;
   localMin: [number, number, number];
   localMax: [number, number, number];
+}
+
+/** Free every GPU buffer one instanced template owns. */
+export function destroyInstancedTemplateGpu(template: InstancedTemplateGPU): void {
+  template.vertexBuffer.destroy();
+  template.indexBuffer.destroy();
+  template.instanceBuffer.destroy();
+  template.rteDeltas.buffer.destroy();
 }

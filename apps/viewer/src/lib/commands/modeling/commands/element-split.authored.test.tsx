@@ -30,7 +30,9 @@ import type { SnapResult } from '@/lib/snap/types';
 import type { Vec3 } from '../types.js';
 import '../builtin.js';
 import { commandPointerDown, commandPointerMove, getCommandRuntime } from '../runtime.js';
-import { setRequestRemesh } from '../transaction.js';
+import { setRequestRemesh, type RemeshRequest } from '../transaction.js';
+import { installScriptedMesher, settleRemesh } from '@/test/scripted-mesher';
+import type { MeshData } from '@ifc-lite/geometry';
 import type { SplitGesture } from './element-split.js';
 
 const snapAt = (render: Vec3): SnapResult => ({ local: [0, 0], render, winner: null, guides: [], locked: false });
@@ -48,9 +50,11 @@ function toastTexts(): string[] {
 }
 
 let restoreRemesh: () => void;
+let remeshed: RemeshRequest[];
 beforeEach(async () => {
   await seedModelingSession({ unit: 'millimetre', storeyOffset: [3, 3] });
-  restoreRemesh = setRequestRemesh(() => {});
+  remeshed = [];
+  restoreRemesh = setRequestRemesh((_get, request) => { remeshed.push(request); });
 });
 afterEach(() => {
   for (const button of document.querySelectorAll<HTMLButtonElement>('button[aria-label="Dismiss notification"]')) {
@@ -79,14 +83,59 @@ describe('element.split on authored elements in a mm file on an offset storey (#
     assert.ok(Math.abs(hover.render[0] - 4) < 1e-6, 'the preview is drawn under the cursor');
 
     commandPointerDown(snapAt(cursor));
-    // The source is replaced by two walls meeting at the cut.
-    const pieces = [...(useViewerStore.getState().mutationViews.get(MODEL_ID)?.getNewEntities() ?? [])]
-      .filter((e) => e.type.toUpperCase() === 'IFCWALL' && e.expressId !== wall.expressId)
-      .map((e) => useViewerStore.getState().readWallEndpoints(MODEL_ID, e.expressId))
-      .filter((p): p is NonNullable<typeof p> => p !== null)
-      .map((p) => [p.start[0], p.end[0]])
-      .sort((a, b) => a[0] - b[0]);
-    assert.deepEqual(pieces.map((p) => p.map((v) => Math.round(v * 1e6) / 1e6)), [[0, 1], [1, 4]]);
+    // The longer piece [1, 4] IS the source, reshaped in place (#6233); one
+    // new wall takes [0, 1]. The transaction re-meshes both, as one batch.
+    const walls = [...(useViewerStore.getState().mutationViews.get(MODEL_ID)?.getNewEntities() ?? [])]
+      .filter((e) => e.type.toUpperCase() === 'IFCWALL')
+      .map((e) => ({ id: e.expressId, ends: useViewerStore.getState().readWallEndpoints(MODEL_ID, e.expressId) }))
+      .filter((w) => w.ends !== null)
+      .map((w) => ({ id: w.id, span: [w.ends!.start[0], w.ends!.end[0]].map((v) => Math.round(v * 1e6) / 1e6) }));
+    const kept = walls.find((w) => w.id === wall.expressId);
+    const added = walls.find((w) => w.id !== wall.expressId);
+    assert.deepEqual(kept?.span, [1, 4], 'the source keeps the longer piece');
+    assert.deepEqual(added?.span, [0, 1]);
+    assert.equal(remeshed.length, 1, 'one re-mesh request, for the one transaction');
+    assert.deepEqual([...remeshed[0].expressIds].sort((a, b) => a - b), [wall.expressId, added!.id].sort((a, b) => a - b));
+    assert.equal(remeshed[0].cause, 'created');
+  });
+
+  it('re-meshes both pieces through the transaction and sends each to the room (#6391)', async () => {
+    // The real re-mesh service, answered by the scripted mesher: no second
+    // (builder-param) mirror, just what the re-mesh produced.
+    restoreRemesh();
+    restoreRemesh = () => {};
+    const mesher = installScriptedMesher();
+    // The engine frame the re-mesh aligns to (a real load records it).
+    const info = useViewerStore.getState().models.get(MODEL_ID)!.geometryResult!.coordinateInfo as { wasmRtcFrame?: unknown };
+    info.wasmRtcFrame = { x: 0, y: 0, z: 0, needsShift: false };
+    const original = useViewerStore.getState().mirrorEntityGeometry;
+    const mirrored: Array<[number, readonly MeshData[]]> = [];
+    useViewerStore.setState({ mirrorEntityGeometry: (_m: string, id: number, meshes: readonly MeshData[]) => { mirrored.push([id, meshes]); } });
+    try {
+      const wall = useViewerStore.getState().addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 2.5 });
+      assert.ok('expressId' in wall);
+      await settleRemesh();
+      startOn(wall.expressId);
+      const cursor = gesture().plane!.localToRender([1, 0.05, 1.2]);
+      commandPointerMove(snapAt(cursor));
+      mirrored.length = 0;
+      mesher.requests.length = 0;
+      commandPointerDown(snapAt(cursor));
+      await settleRemesh();
+      await settleRemesh();
+      const newPiece = [...(useViewerStore.getState().mutationViews.get(MODEL_ID)?.getNewEntities() ?? [])]
+        .find((e) => e.type.toUpperCase() === 'IFCWALL' && e.expressId !== wall.expressId);
+      assert.ok(newPiece, 'the split authored one new wall');
+      const remeshed = new Set(mesher.requests.flatMap((r) => [...r.targets]));
+      assert.ok(remeshed.has(wall.expressId) && remeshed.has(newPiece.expressId), `re-meshed ${[...remeshed]}`);
+      const sent = new Set(mirrored.map(([id]) => id));
+      assert.ok(sent.has(wall.expressId), 'the reshaped source reaches the room');
+      assert.ok(sent.has(newPiece.expressId), 'the new piece reaches the room');
+      assert.ok(mirrored.every(([, meshes]) => meshes.length > 0));
+    } finally {
+      useViewerStore.setState({ mirrorEntityGeometry: original });
+      mesher.restore();
+    }
   });
 
   it('cuts a column at the cursor height', () => {

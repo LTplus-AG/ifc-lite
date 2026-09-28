@@ -8,6 +8,7 @@ import type { ModelTranslations, ModelYaw } from './model-translation.js';
 import type { BoundingBox } from './scene-raycaster.js';
 import { foldOccurrenceWorldBox, INSTANCE_STRIDE_BYTES } from './instanced-render.js';
 import { worldAabbFromPieces } from './scene-geometry.js';
+import { invalidateInstancedRteDeltas } from './instanced-rte.js';
 
 type Triple = [number, number, number];
 interface CpuTemplate {
@@ -30,7 +31,7 @@ interface TranslationScene {
   device: GPUDevice | undefined;
   evictHighlight: (id: number) => void;
   clearPartial: () => void;
-  unionBounds: (id: number, view: DataView, offset: number, min: Triple, max: Triple) => {
+  unionBounds: (id: number, view: DataView, offset: number, anchors: Float64Array, min: Triple, max: Triple) => {
     minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number;
   };
 }
@@ -88,6 +89,8 @@ export function placeSceneInstances(scene: TranslationScene, modelIndex: number)
       cpu.canonicalMatrixTranslations,
     )) {
       scene.device?.queue.writeBuffer(gpu.instanceBuffer, 0, cpu.instanceData);
+      // placeInstances moved the canonical anchors the delta stream derives from.
+      invalidateInstancedRteDeltas(gpu.rteDeltas);
     }
     gpu.bounds = null;
     // A yaw (unlike a pure translation) changes each occurrence's WORLD-AXIS
@@ -105,7 +108,7 @@ export function placeSceneInstances(scene: TranslationScene, modelIndex: number)
     for (const occ of occurrences) {
       const gpu = scene.templates[occ.templateIndex], cpu = scene.cpu[occ.templateIndex];
       if (!gpu || !cpu) continue;
-      const world = scene.unionBounds(id, new DataView(cpu.instanceData), occ.byteOffset, cpu.localMin, cpu.localMax);
+      const world = scene.unionBounds(id, new DataView(cpu.instanceData), occ.byteOffset, cpu.canonicalAnchors, cpu.localMin, cpu.localMax);
       if (gpu.modelIndex === modelIndex) foldOccurrenceWorldBox(gpu, world);
     }
   }

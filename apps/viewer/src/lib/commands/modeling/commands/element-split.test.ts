@@ -75,7 +75,8 @@ describe('element.split (#6232 WP2)', () => {
     const selectedId = useViewerStore.getState().selectedEntityId;
     assert.ok(selectedId !== null);
     const selected = resolveEntityRef(selectedId);
-    assert.ok(selected.expressId !== wall.expressId, 'the right half is selected');
+    // 1.5 | 2.5 m: the longer right half IS the source (#6233 identity policy).
+    assert.equal(selected.expressId, wall.expressId, 'the right half is selected');
     assert.equal(gesture().target?.expressId, selected.expressId, 'the command re-targets the new selection');
 
     useViewerStore.getState().undo(MODEL_ID);

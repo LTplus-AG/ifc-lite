@@ -21,6 +21,37 @@ function selected(modelId: string, startX: number, sourceModified = false): Sele
 }
 
 describe('selected centreline overlay (#5778)', () => {
+  it('keeps a later valid sweep when an earlier complete arc exceeds the display budget', async () => {
+    const zero = { x: 0, y: 0, z: 0 };
+    const box = { min: zero, max: zero };
+    const prior = useViewerStore.getState();
+    try {
+      useViewerStore.setState({ models: new Map(), geometryResult: {
+        meshes: [], totalVertices: 0, totalTriangles: 0,
+        coordinateInfo: { originShift: zero, wasmRtcOffset: { x: 100, y: 0, z: 0 },
+          hasLargeCoordinates: false, originalBounds: box, shiftedBounds: box },
+      } });
+      const item = selected('legacy', 101);
+      const valid = item.occurrences[0];
+      if (!valid) throw new Error('the line fixture has no source occurrence');
+      const oversized = { ...valid, solid_id: 90, Directrix: [{
+        type: 'arc' as const, center: [101, 1, 2] as [number, number, number],
+        normal: [0, 0, 1] as [number, number, number],
+        x_axis: [1, 0, 0] as [number, number, number],
+        radius: 10_000, start_angle: 0, sweep_angle: Math.PI * 2,
+      }] };
+      const result = await selectedCentrelineWorldLines([
+        { ...item, occurrences: [oversized, valid] },
+      ], useViewerStore.getState());
+      assert.ok(Math.abs(result.vertices[0] - 1) < 1e-9);
+      assert.ok(Math.abs(result.vertices[3] - 1.002) < 1e-9);
+      assert.equal(result.vertices.length, 6, 'the later source sweep still renders');
+      assert.match(result.diagnostics.join('; '), /solid #90.*display precision budget/);
+    } finally {
+      useViewerStore.setState(prior);
+    }
+  });
+
   it('uses the legacy single-model geometry frame when no federation map exists', async () => {
     const zero = { x: 0, y: 0, z: 0 };
     const box = { min: zero, max: zero };

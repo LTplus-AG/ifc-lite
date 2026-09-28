@@ -54,22 +54,27 @@ export async function selectedCentrelineWorldLines(
     const sourceFrame = model?.preAlignment?.coordinateInfo ?? geometry.coordinateInfo;
     const placed = placementFor(state.modelPlacement, modelId);
     const placement = { ...placed, translation: displayedTranslation(state.modelPlacement, modelId) };
+    let map: FederationPointMap | undefined;
     try {
       if (!maps.has(modelId)) maps.set(modelId, model ? await modelFrameMap(model, state) : undefined);
-      const map = maps.get(modelId);
-      for (const occurrence of item.occurrences) {
-        if (occurrence.status.type !== 'complete' || occurrence.source_modified) {
-          diagnostics.push(`${modelId} #${expressId} solid #${occurrence.solid_id}: analytic source does not describe the visible solid`);
-          continue;
-        }
-        const lines = directrixLineVertices(occurrence.Directrix, remaining);
-        remaining -= lines.length / 6;
-        for (const coordinate of directrixDisplayLines(lines, sourceFrame, placement, map)) {
-          vertices.push(coordinate);
-        }
-      }
+      map = maps.get(modelId);
     } catch (error) {
       diagnostics.push(`${modelId} #${expressId}: ${String(error)}`);
+      continue;
+    }
+    for (const occurrence of item.occurrences) {
+      if (occurrence.status.type !== 'complete' || occurrence.source_modified) {
+        diagnostics.push(`${modelId} #${expressId} solid #${occurrence.solid_id}: analytic source does not describe the visible solid`);
+        continue;
+      }
+      try {
+        const lines = directrixLineVertices(occurrence.Directrix, remaining);
+        const displayLines = directrixDisplayLines(lines, sourceFrame, placement, map);
+        remaining -= lines.length / 6;
+        for (const coordinate of displayLines) vertices.push(coordinate);
+      } catch (error) {
+        diagnostics.push(`${modelId} #${expressId} solid #${occurrence.solid_id}: ${String(error)}`);
+      }
     }
   }
   return { vertices, diagnostics };

@@ -114,7 +114,6 @@ export const propertiesEn = {
   'properties.unitDisplay.kind.temperature': 'Temperature',
   'properties.unitDisplay.kind.density': 'Density',
   'properties.unitDisplay.kind.force': 'Force',
-
   // EpsgLookupDialog
   'properties.epsgLookup.triggerButton': 'EPSG',
   'properties.epsgLookup.title': 'EPSG Lookup',

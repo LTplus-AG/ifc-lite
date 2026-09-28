@@ -129,14 +129,16 @@ The PR carries paired results, binary/fixture hashes, and source provenance.
 ## Opt-in extrusion source definitions (#5784)
 
 The extrusion source/instance walk is requested separately from ordinary mesh
-production. Five balanced, interleaved native AC20-FZK-Haus pairs compared the
-exact #6268 quantity parent with this branch using fresh profiling processes
-and ordered mesh fingerprints. Mesh counts and every fingerprint matched; the
-small upward timing median was within overlapping run variation, including a
-reversed pair that favoured this branch. Verdict: no attributable default-load
-performance change on this fixture. This control does not measure the opt-in
-extrusion extraction or browser worker-pool path; measure those directly if
-their caller-visible cost becomes material.
+production. After #6268's final replay, two balanced, interleaved native
+AC20-FZK-Haus campaigns compared that exact quantity parent with this branch,
+using fresh profiling processes and five iterations each. Mesh counts and all
+100 ordered fingerprints matched. The first campaign's total median was
+higher on the child, while the reversed repeat favoured the child and paired
+differences swung both ways. Verdict: no attributable default-load speed change
+or mesh-output difference on this fixture. This control does not measure the
+opt-in extrusion extraction or browser worker-pool path; measure those directly
+if their caller-visible cost becomes material. The PR carries paired results,
+binary/fixture hashes, and source provenance.
 
 ## Derived swept-disk metrics (#5754)
 

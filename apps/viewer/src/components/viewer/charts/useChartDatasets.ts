@@ -47,7 +47,7 @@ export function useChartDatasets(scope: ChartScope, elementFields: readonly Elem
   );
 
   const clashInputs = useViewerStore(useShallow((s) => ({ clashResult: s.clashResult, clashReviews: s.clashReviews, clashGroups: s.clashGroups, clashRunSeq: s.clashRunSeq, resolveGlobalIdInModel: s.resolveGlobalIdInModel })));
-  const clash = useMemo(() => buildClashDataset({ ...clashInputs, models }), [clashInputs, models]);
+  const clash = useMemo(() => buildClashDataset({ ...clashInputs, models, mutationViews }), [clashInputs, models, mutationViews, mutationVersion]);
 
   const bcfProject = useViewerStore((s) => s.bcfProject);
   const bcf = useMemo(() => buildBcfDataset({ bcfProject, models, ifcDataStore }), [bcfProject, models, ifcDataStore]);

@@ -9,6 +9,7 @@
 
 // IFC-Lite components (recommended - faster)
 export { IfcLiteBridge, type SymbolicRepresentationCollection, type SymbolicPolyline, type SymbolicCircle, type ProfileCollection, type ProfileEntryJs } from './ifc-lite-bridge.js';
+export type { SweptDiskDescriptions } from './analytic-descriptions.js';
 import { safeUtf8Decode } from '@ifc-lite/data';
 
 // Platform bridge abstraction (auto-selects WASM or native based on environment)
@@ -88,6 +89,7 @@ export {
 export * from './types.js';
 export * from './spatial-reference.js';
 import { IfcLiteBridge } from './ifc-lite-bridge.js';
+import type { SweptDiskDescriptions } from './analytic-descriptions.js';
 import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
 import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
@@ -102,6 +104,8 @@ import { resolveRtcFrame, type RtcFrame } from './rtc-frame.js';
 import { streamNativeGeometry } from './geometry-native.js';
 import { processParallel } from './geometry-parallel.js';
 import type { StallPhaseHandle } from './stall-phase.js';
+import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result.js';
+import { buildPrePassWithFinishes } from './style-finishes.js';
 
 /**
  * Default quantization grid (metres) for per-entity geometry hashing,
@@ -109,8 +113,6 @@ import type { StallPhaseHandle } from './stall-phase.js';
  * side (1 mm). Used by {@link GeometryProcessor.enableGeometryHashes}.
  */
 export const DEFAULT_GEOM_HASH_TOLERANCE = 1.0e-3;
-
-import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result.js';
 
 export interface GeometryProcessorOptions {
   preferNative?: boolean; // Default: true in Tauri
@@ -439,7 +441,7 @@ export class GeometryProcessor {
     }
 
     const api = this.bridge.getApi();
-    const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
+    const prePass = buildPrePassWithFinishes(api, buffer);
     const rtc = this.applyPrePassMetadata(prePass, sharedRtcOffset);
     try {
       const meshes: MeshData[] = [];
@@ -502,7 +504,7 @@ export class GeometryProcessor {
     }
 
     const api = this.bridge.getApi();
-    const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
+    const prePass = buildPrePassWithFinishes(api, buffer);
     const rtc = this.applyPrePassMetadata(prePass, sharedRtcOffset);
 
     // try/finally releases the pre-pass cache on every exit: the totalJobs===0
@@ -1091,14 +1093,16 @@ export class GeometryProcessor {
     }
   }
 
-  /**
-   * Extract raw profile polygons from IfcExtrudedAreaSolid building elements.
-   * Returns clean per-element profile outlines + 3D placement transforms.
-   * Used by Drawing2DGenerator for artifact-free 2D projection.
-   * @param buffer IFC file buffer
-   * @param modelIndex Federation model index (0 for single-model files)
-   * @returns Collection of ProfileEntryJs items, or null if not initialized
-   */
+  /** Authored swept-disk curves in IFC Z-up world metres; optional product IDs.
+   * `undefined` selects all and an empty array selects none. Null until init(). */
+  extractSweptDiskDescriptions(buffer: Uint8Array, ids?: Uint32Array): SweptDiskDescriptions | null {
+    return this.bridge?.isInitialized()
+      ? this.bridge.extractSweptDiskDescriptions(buffer, ids)
+      : null;
+  }
+
+  /** Extract IfcExtrudedAreaSolid profiles and transforms for 2D projection.
+   * `modelIndex` is the federation index; null until initialized. */
   extractProfiles(buffer: Uint8Array, modelIndex: number = 0): import('@ifc-lite/wasm').ProfileCollection | null {
     if (!this.bridge || !this.bridge.isInitialized()) {
       return null;
@@ -1109,14 +1113,9 @@ export class GeometryProcessor {
     return this.bridge.extractProfiles(content, modelIndex);
   }
 
-  /**
-   * Domain-format exporters (Rust source of truth in `ifc-lite-export`). Each takes
-   * the raw IFC buffer and returns the serialized output as bytes (`Uint8Array`;
-   * UTF-8 for the text formats, so output is not capped by the V8 max-string
-   * ceiling - decode with `TextDecoder` when a string is needed), or null if
-   * not initialized. `isolated` below: `undefined` ⇒ no filter; empty `Uint32Array`
-   * ⇒ active but matching nothing (hides every mesh) — don't collapse the two.
-   */
+  /** Rust domain exporters return bytes to avoid V8 string-size limits; decode
+   * text with TextDecoder. They return null before init(). `isolated`:
+   * undefined selects all; an empty array hides every mesh. Keep distinct. */
   exportObj(
     buffer: Uint8Array,
     includeNormals = true,
@@ -1376,8 +1375,7 @@ export class GeometryProcessor {
       const trisAfter: Uint32Array = out.trisAfter;
       const cavitiesDropped: Uint32Array = out.cavitiesDropped;
 
-      let rvo = 0;
-      let rio = 0;
+      let rvo = 0, rio = 0;
       for (let i = 0; i < outIds.length; i++) {
         const vCount = outVertexCounts[i] * 3;
         const iCount = outIndexCounts[i];
@@ -1392,6 +1390,7 @@ export class GeometryProcessor {
           origin: [renderOrigins[i * 3], renderOrigins[i * 3 + 1], renderOrigins[i * 3 + 2]],
           geometryClass: 0,
           ...(src?.localToWorld ? { localToWorld: src.localToWorld } : {}),
+          ...(src?.material ? { material: src.material } : {}), // #5582
         };
         result.elements.push({
           expressId: outIds[i],

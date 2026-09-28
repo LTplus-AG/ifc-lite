@@ -24,6 +24,7 @@ import { mutationsSince, newMutationBatchId, undoStackLengths } from './mutation
 import { mirrorAuthoredGeometry } from './mutation-geometry-mirror.js';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import { resolveSplitTarget, splitChainOfKind } from '@/lib/split-target.js';
+import { effectiveStoreyId } from '@/lib/effective-storey.js';
 import { deriveSplitGlobalId, globalIdTakenIn, keepsFirstPiece } from '@/lib/split-guid.js';
 import { computeWallSplitGeometry } from '@/lib/wall-edit.js';
 import { computeLinearElementSplitGeometry } from '@/lib/linear-element-edit.js';
@@ -71,8 +72,8 @@ export function openSplit<K extends SplitKind>(
   const lengthUnitScale = getModelLengthUnitScale(dataStore);
   const gate = splitChainOfKind(resolveSplitTarget(dataStore, view, editor, expressId, lengthUnitScale), kind);
   if ('reasonKey' in gate) return { ok: false as const, reason: translate(gate.reasonKey) };
-  // @raw-entity-enumeration-ok point lookup; authored elements are registered into this map (registerAuthoredElement), the same one resolveSplitTarget gates on
-  const storeyExpressId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
+  // The live storey (queued containment edits count), as resolveSplitTarget gates on.
+  const storeyExpressId = effectiveStoreyId(dataStore, view, expressId);
   if (storeyExpressId === undefined) return { ok: false as const, reason: translate('splitTool.unavailable.storey') };
   const attrs = readAttributes(dataStore, view, editor, expressId);
   const sourceGuid = typeof attrs?.[0] === 'string' ? attrs[0] : String(expressId);

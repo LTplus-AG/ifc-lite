@@ -11,6 +11,7 @@
  */
 
 import { attachCanonicalMeshMetadata } from './canonical-mesh-metadata.js';
+import { readSpecularMaterial } from './mesh-specular.js';
 import type { MeshData, CoordinateInfo } from './types.js';
 import type { DynamicBatchConfig } from './index.js';
 import {
@@ -108,6 +109,7 @@ export function convertMeshCollectionToBatch(
         const localToWorldArr = (mesh as { localToWorld?: ArrayLike<number> }).localToWorld;
         const localToWorld =
           localToWorldArr && localToWorldArr.length === 16 ? Array.from(localToWorldArr) : undefined;
+        const material = readSpecularMaterial(mesh as { metallic?: number; roughness?: number }); // #5582
         const meshData: MeshData = {
           expressId: mesh.expressId,
           ifcType: mesh.ifcType,
@@ -129,6 +131,7 @@ export function convertMeshCollectionToBatch(
           // bundles lack both getters, so both spread to nothing.
           ...(sourceGeometryItemId !== undefined ? { geometryItemId: sourceGeometryItemId } : {}),
           ...(sourceMaterialId !== undefined ? { materialId: sourceMaterialId } : {}),
+          ...(material ? { material } : {}),
         };
 
         // #961: copy the Rust-decoded surface texture + per-vertex UVs (the

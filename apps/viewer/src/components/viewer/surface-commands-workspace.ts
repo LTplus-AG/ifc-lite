@@ -4,7 +4,7 @@
 
 /** Static workspace, schedule, preference, and help commands (#5870). */
 import {
-  CalendarPlus, ChevronsRight, Eraser, GraduationCap, Info, Palette,
+  CalendarPlus, ChevronsRight, Crosshair, Eraser, GraduationCap, Info, Palette,
   PanelRight, RotateCcw, Settings, SlidersHorizontal, Sparkles, Sun,
 } from 'lucide-react';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
@@ -109,6 +109,12 @@ export const WORKSPACE_SURFACE_COMMANDS = [
     keywords: 'entity info mouse hover show hide',
     category: 'Preferences', icon: Info, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
     run: () => { useViewerStore.getState().toggleHoverTooltips(); },
+  },
+  {
+    id: 'pref:hover-outline', labelKey: 'commandPalette.pref.hoverOutline.label', ribbonLabelKey: 'ribbon.elements.hoverHighlight', ribbonTooltipKey: 'ribbon.elements.hoverHighlightTooltip',
+    keywords: 'hover highlight outline pre-highlight entity mouse',
+    category: 'Preferences', icon: Crosshair, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
+    run: () => { useViewerStore.getState().toggleHoverHighlight(); },
   },
   {
     id: 'pref:settings', labelKey: 'commandPalette.pref.settings.label', ribbonLabelKey: 'ribbon.view.settings', ribbonTooltipKey: 'ribbon.view.settingsTooltip',

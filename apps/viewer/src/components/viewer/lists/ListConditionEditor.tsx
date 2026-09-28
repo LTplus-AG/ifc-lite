@@ -168,9 +168,11 @@ export function ListConditionEditor({ rule, onChange }: { rule: ListConditionRul
       {isSet && (
         <>
           <ComboInput value={rule.psetName ?? ''} options={setNames} className="h-7 w-32 text-xs font-mono"
+            aria-label={t(rule.source === 'quantity' ? 'lists.builder.quantitySetInputLabel' : 'lists.builder.propertySetInputLabel')}
             placeholder={rule.source === 'quantity' ? t('lists.builder.qtoPlaceholder') : t('lists.builder.psetPlaceholder')}
             onChange={(psetName) => set({ psetName })} />
           <ComboInput value={rule.propertyName} options={memberNames} className="h-7 w-28 text-xs font-mono"
+            aria-label={t(rule.source === 'quantity' ? 'lists.builder.quantityNameInputLabel' : 'lists.builder.propertyNameInputLabel')}
             placeholder={t('lists.builder.namePropertyPlaceholder')} onChange={(propertyName) => set({ propertyName })} />
           <InheritSelect value={rule.inherit} offered={rule.inherit === 'type' ? ['type', 'aggregation'] : ['aggregation']} className={SELECT_CLASS}
             onChange={(inherit) => set({ inherit })} />
@@ -184,6 +186,7 @@ export function ListConditionEditor({ rule, onChange }: { rule: ListConditionRul
 
       {rule.operator !== 'exists' && (
         <ComboInput value={String(rule.value)} options={valueOptions} placeholder={placeholder}
+          aria-label={t('lists.builder.conditionValueInputLabel')}
           className="h-7 w-44 text-xs font-mono" onChange={(value) => set({ value })} />
       )}
     </>

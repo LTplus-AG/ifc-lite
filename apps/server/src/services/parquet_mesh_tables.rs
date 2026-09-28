@@ -109,6 +109,8 @@ pub(super) fn build_mesh_tables(
     let mut geometry_class = Vec::with_capacity(mesh_count);
     let mut geometry_item_ids: Vec<u32> = Vec::with_capacity(mesh_count);
     let mut material_ids: Vec<u32> = Vec::with_capacity(mesh_count);
+    let mut metallic: Vec<f32> = Vec::with_capacity(mesh_count);
+    let mut roughness: Vec<f32> = Vec::with_capacity(mesh_count);
     let mut rotation: [Vec<f32>; 9] = std::array::from_fn(|_| Vec::with_capacity(mesh_count));
 
     for m in metadata {
@@ -128,6 +130,8 @@ pub(super) fn build_mesh_tables(
         geometry_class.push(m.geometry_class);
         geometry_item_ids.push(m.geometry_item_id.unwrap_or(ABSENT_SOURCE_ID));
         material_ids.push(m.material_id.unwrap_or(ABSENT_SOURCE_ID));
+        metallic.push(m.finish[0]);
+        roughness.push(m.finish[1]);
         for (column, value) in rotation.iter_mut().zip(m.rotation.iter()) {
             column.push(*value);
         }
@@ -196,6 +200,8 @@ pub(super) fn build_mesh_tables(
         Arc::new(UInt8Array::from(geometry_class)),
         Arc::new(UInt32Array::from(geometry_item_ids)),
         Arc::new(UInt32Array::from(material_ids)),
+        Arc::new(Float32Array::from(metallic)),
+        Arc::new(Float32Array::from(roughness)),
     ];
     if layout.has_rotation() {
         for column in rotation {

@@ -33,7 +33,8 @@ export function AuthorTab() {
   const { t } = useTranslation();
   const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
   const activeTool = useViewerStore((state) => state.activeTool);
-  const editEnabled = useViewerStore((state) => state.editEnabled);
+  // Edit mode is the Model workspace (#6232): this button enters and leaves it.
+  const inModelWorkspace = useViewerStore((state) => state.editEnabled);
   // Collab role: editing is reserved for editor/admin. Derive from the
   // reactive role so the Edit switch enables/disables live when the role
   // changes. null role = single-user, always editable.
@@ -57,9 +58,9 @@ export function AuthorTab() {
           commandId="tool:edit-mode"
           icon={EditElement}
           tooltip={canEditInSession
-            ? (editEnabled ? t('ribbon.author.exitEditTooltip') : t('ribbon.author.enterEditTooltip'))
+            ? (inModelWorkspace ? t('ribbon.author.exitEditTooltip') : t('ribbon.author.enterEditTooltip'))
             : t('ribbon.author.editLockedTooltip')}
-          active={editEnabled}
+          active={inModelWorkspace}
           activeClassName={EDIT_ACTIVE_CLASS}
           disabled={!canEditInSession}
         />

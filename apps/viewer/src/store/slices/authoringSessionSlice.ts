@@ -19,6 +19,7 @@
 import type { StateCreator, StoreApi } from 'zustand';
 import type { ViewerState } from '../index.js';
 import { defineSliceTeardown } from '../teardown.js';
+import { fromGlobalIdFromModels } from '../globalId.js';
 import { selectEffectiveStoreyId } from '@/components/viewer/add-element-storeys';
 import { getModelingCommand, resolveWorkplane } from '@/lib/commands/modeling/registry';
 import {
@@ -69,6 +70,22 @@ function resolveModelId(s: ViewerState, preferred: string | undefined): string |
   return candidates.find((id): id is string => id !== undefined && s.models.get(id)?.ifcDataStore != null) ?? null;
 }
 
+function selectedRef(s: ViewerState): { modelId: string; expressId: number } | null {
+  // The store's own resolver first (it knows overlay-allocated ids), then the
+  // offset ranges — `resolveEntityRef`'s order, without importing the store.
+  if (s.selectedEntityId === null) return null;
+  return s.resolveGlobalIdFromModels(s.selectedEntityId) ?? fromGlobalIdFromModels(s.models, s.selectedEntityId) ?? null;
+}
+
+/** The storey the selection sits on (or is), in `modelId`. */
+function selectionStorey(s: ViewerState, modelId: string): number | null {
+  const ref = selectedRef(s);
+  const hierarchy = s.models.get(modelId)?.ifcDataStore?.spatialHierarchy;
+  if (!ref || ref.modelId !== modelId || !hierarchy) return null;
+  if (hierarchy.storeyElevations.has(ref.expressId)) return ref.expressId;
+  return hierarchy.elementToStorey.get(ref.expressId) ?? null;
+}
+
 function patchSession(set: Set, patch: Partial<AuthoringSession>): void {
   set((s) => (s.session ? { session: { ...s.session, ...patch } } : {}));
 }
@@ -93,7 +110,13 @@ function launch(set: Set, get: Get, api: StoreApi<ViewerState>, id: CommandId): 
 
 /** Keep the runtime in step with the tool and the session, whoever changed them. */
 function syncRuntime(api: StoreApi<ViewerState>): void {
-  api.subscribe((s) => {
+  api.subscribe((s, prev) => {
+    // The workspace closed under edit mode (its model removed, a file swap):
+    // edit mode goes with it, so the two never disagree.
+    if (prev.workspaceMode === 'model' && s.workspaceMode === 'view' && s.editEnabled) {
+      s.setEditEnabled(false);
+      return;
+    }
     const running = getCommandRuntime().command;
     const commandTool = s.activeTool === 'command';
     if (running && (!commandTool || s.session?.activeCommandId !== running.id)) endCommandRuntime();
@@ -115,10 +138,16 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
     enterModelWorkspace: (opts = {}) => {
       const s = get();
       if (!s.canCollabEdit()) return false;
-      const modelId = resolveModelId(s, opts.modelId);
+      if (s.session && opts.modelId === undefined && opts.storeyId === undefined) {
+        if (opts.command) get().startCommand(opts.command);
+        return true;
+      }
+      const modelId = resolveModelId(s, opts.modelId ?? selectedRef(s)?.modelId);
       const store = modelId ? s.models.get(modelId)?.ifcDataStore : null;
       if (!modelId || !store) return false;
-      const storeyId = selectEffectiveStoreyId(store, s.mutationViews.get(modelId), opts.storeyId ?? s.addElementStoreyId);
+      // Storey: explicit → the selection's → the Add Element panel's → the first.
+      const preferred = opts.storeyId ?? selectionStorey(s, modelId) ?? s.addElementStoreyId;
+      const storeyId = selectEffectiveStoreyId(store, s.mutationViews.get(modelId), preferred);
       set({
         workspaceMode: 'model',
         editEnabled: true,
@@ -136,8 +165,11 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
     },
 
     exitModelWorkspace: () => {
+      // Leaving cancels the gesture in progress; nothing half-drawn is written.
       if (get().session?.activeCommandId) get().endCommand('cancel');
       set({ workspaceMode: 'view', session: null });
+      // …and edit mode with it (authoring tools, georef drafts: uiSlice).
+      if (get().editEnabled) get().setEditEnabled(false);
     },
 
     setSessionStorey: (storeyId) => {

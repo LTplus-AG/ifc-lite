@@ -72,12 +72,19 @@ export const validationEditorEn = {
   'validationEditor.subjectKind.globalId': 'Global ID',
 
   'validationEditor.subjectPicker.attributeNamePlaceholder': 'Attribute name',
+  'validationEditor.subjectPicker.attributeNameInputLabel': 'Attribute name',
   'validationEditor.subjectPicker.psetNamePlaceholder': 'Property set',
+  'validationEditor.subjectPicker.psetNameInputLabel': 'Property set name',
   'validationEditor.subjectPicker.propertyNamePlaceholder': 'Property',
+  'validationEditor.subjectPicker.propertyNameInputLabel': 'Property name',
   'validationEditor.subjectPicker.qsetNamePlaceholder': 'Quantity set',
+  'validationEditor.subjectPicker.qsetNameInputLabel': 'Quantity set name',
   'validationEditor.subjectPicker.quantityNamePlaceholder': 'Quantity',
+  'validationEditor.subjectPicker.quantityNameInputLabel': 'Quantity name',
   'validationEditor.subjectPicker.classificationSystemPlaceholder': 'Classification system (optional)',
+  'validationEditor.subjectPicker.classificationSystemInputLabel': 'Classification system',
   'validationEditor.subjectPicker.groupClassPlaceholder': 'Group class (any)',
+  'validationEditor.subjectPicker.groupClassInputLabel': 'Group class',
   'validationEditor.subjectPicker.modelFactAriaLabel': 'Fact about the element\'s model',
 
   'validationEditor.unique.subjectAriaLabel': 'Unique value subject',
@@ -85,6 +92,7 @@ export const validationEditorEn = {
   'validationEditor.unique.scope.perModel': 'Per model',
 
   'validationEditor.aggregate.subjectAriaLabel': 'Aggregate subject',
+  'validationEditor.aggregate.valueAriaLabel': 'Aggregate target value',
   'validationEditor.aggregate.groupByToggle': 'Group by',
   'validationEditor.aggregate.groupBySubjectAriaLabel': 'Group by subject',
   'validationEditor.aggregate.universeToggle': 'Define groups from…',
@@ -100,6 +108,7 @@ export const validationEditorEn = {
   'validationEditor.unit.unitAriaLabel': 'Required unit',
 
   'validationEditor.requirementText.ariaLabel': 'Requirement, as text',
+  'validationEditor.requirementText.memberPathReadOnly': 'A complex-property member has no text form; edit this requirement with the fields above',
 
   'validationEditor.modelPicker.allModels': 'All models',
   'validationEditor.modelPicker.noFingerprintTitle': 'This model has no stable fingerprint yet and cannot be targeted by a saved rule set.',

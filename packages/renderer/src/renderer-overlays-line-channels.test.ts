@@ -93,6 +93,7 @@ const EXPECTED_EXPANDS: Record<LineOverlayChannel, boolean> = {
     grid: false,
     dxf: false,
     terrain: true,
+    centreline: false,
 };
 
 describe('setLineOverlay keeps each channel\'s model-bounds policy', () => {

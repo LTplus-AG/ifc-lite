@@ -36,12 +36,12 @@ function ParamField({ def, value, onChange, invalidLabel, node }: { def: ParamDe
         />
       );
     case 'boolean':
-      return <input type="checkbox" checked={current === true} onChange={(e) => onChange(e.target.checked)} className="accent-[#7aa2f7]" />;
+      return <input type="checkbox" aria-label={def.name} checked={current === true} onChange={(e) => onChange(e.target.checked)} className="accent-[#7aa2f7]" />;
     case 'number':
-      return <input type="number" className={input} value={typeof current === 'number' ? current : ''} onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))} />;
+      return <input type="number" aria-label={def.name} className={input} value={typeof current === 'number' ? current : ''} onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))} />;
     case 'enum':
       return (
-        <select className={input} value={String(current ?? '')} onChange={(e) => onChange(e.target.value)}>
+        <select aria-label={def.name} className={input} value={String(current ?? '')} onChange={(e) => onChange(e.target.value)}>
           {(def.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
       );
@@ -52,6 +52,7 @@ function ParamField({ def, value, onChange, invalidLabel, node }: { def: ParamDe
       return (
         <div>
           <textarea
+            aria-label={def.name}
             className={`${input} font-mono ${invalid ? 'border-red-400' : ''}`}
             rows={2}
             value={text}
@@ -66,7 +67,7 @@ function ParamField({ def, value, onChange, invalidLabel, node }: { def: ParamDe
       );
     }
     default:
-      return <input className={input} value={typeof current === 'string' ? current : ''} onChange={(e) => onChange(e.target.value)} />;
+      return <input aria-label={def.name} className={input} value={typeof current === 'string' ? current : ''} onChange={(e) => onChange(e.target.value)} />;
   }
 }
 
@@ -114,7 +115,7 @@ export function FlowInspector({ doc, registry, nodeId, lastRun, onDocChange, onS
                 <div className="flex items-center justify-between">
                   <span title={p.doc}>{p.name}</span>
                   <label className="inline-flex items-center gap-1 text-2xs text-muted-foreground" title={t('flowPanel.inspector.isInput')}>
-                    <input type="checkbox" checked={isInput} onChange={() => onDocChange(toggleInput(doc, node.id, p.name, `${node.label ?? def.title}: ${p.name}`))} className="accent-[#e0af68]" />▸
+                    <input type="checkbox" aria-label={`${t('flowPanel.inspector.isInput')}: ${p.name}`} checked={isInput} onChange={() => onDocChange(toggleInput(doc, node.id, p.name, `${node.label ?? def.title}: ${p.name}`))} className="accent-[#e0af68]" />▸
                   </label>
                 </div>
                 <ParamField def={p} value={node.params?.[p.name]} onChange={(v) => onDocChange(setParam(doc, node.id, p.name, v))} invalidLabel={t('flowPanel.inspector.jsonInvalid')} node={def} />
@@ -162,7 +163,7 @@ export function FlowInspector({ doc, registry, nodeId, lastRun, onDocChange, onS
                   <span className="text-2xs text-muted-foreground">{p.type.kind}/{p.type.access}</span>
                   <span className="ml-auto text-2xs text-muted-foreground">{describeData(data)}</span>
                   <label className="inline-flex items-center gap-1 text-2xs text-muted-foreground" title={t('flowPanel.inspector.isOutput')}>
-                    <input type="checkbox" checked={isOutput} onChange={() => onDocChange(toggleOutput(doc, node.id, p.name, `${node.label ?? def.title}: ${p.name}`))} className="accent-[#9ece6a]" />▪
+                    <input type="checkbox" aria-label={`${t('flowPanel.inspector.isOutput')}: ${p.name}`} checked={isOutput} onChange={() => onDocChange(toggleOutput(doc, node.id, p.name, `${node.label ?? def.title}: ${p.name}`))} className="accent-[#9ece6a]" />▪
                   </label>
                 </div>
                 {data && <div className="mt-1 max-h-40 overflow-auto"><FlowValuePreview data={data} /></div>}

@@ -73,8 +73,8 @@ fn issue_4433_ordinary_product_reference_rendering_is_unchanged() {
 #[test]
 fn issue_4433_reference_direct_shape_cannot_suppress_mapped_body_cutter() {
     let content=fixture(true,true,"IFCOPENINGELEMENT").replace(
-        "#31=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#22));",
-        "#31=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#64));\n\
+            "#31=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#22));",
+            "#31=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#64));\n\
          #61=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#22));\n\
          #62=IFCREPRESENTATIONMAP(#2,#61);\n\
          #63=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,1.,$);\n\
@@ -92,4 +92,68 @@ fn issue_4433_reference_direct_shape_cannot_suppress_mapped_body_cutter() {
     let parts=router.process_element_with_submeshes_and_voids(&host,&mut decoder,&index).unwrap();
     let actual=parts.sub_meshes.iter().map(|part|volume(&part.mesh)).sum::<f64>();
     assert!((actual-96.).abs()<1e-4);
+}
+
+#[test]
+fn issue_5792_mapped_opening_item_keeps_fractional_world_translation() {
+    let content = fixture(true, true, "IFCOPENINGELEMENT")
+        .replace(
+        "#31=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#22));",
+        "#31=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#64));\n\
+         #61=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#22));\n\
+         #62=IFCREPRESENTATIONMAP(#2,#61);\n\
+         #1000=IFCCARTESIANPOINT((5000000.123456,0.,0.));\n\
+         #63=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1000,1.,$);\n\
+         #64=IFCMAPPEDITEM(#62,#63);",
+        )
+        .replace(
+            "#13=IFCPRODUCTDEFINITIONSHAPE($,$,(#12));",
+            "#70=IFCREPRESENTATIONMAP(#2,#12);\n\
+         #71=IFCMAPPEDITEM(#70,#63);\n\
+         #72=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#71));\n\
+         #13=IFCPRODUCTDEFINITIONSHAPE($,$,(#72));",
+        );
+    let mut decoder = EntityDecoder::new(&content);
+    let opening = decoder.decode_by_id(40).unwrap();
+    let items = GeometryRouter::new()
+        .get_opening_item_meshes_world(&opening, &mut decoder)
+        .unwrap();
+    assert_eq!(items.len(), 1);
+    let mesh = &items[0];
+    assert!(
+        mesh.origin[0] > 1_000_000.0,
+        "mapped cutter must retain a local frame"
+    );
+    let low = mesh.positions.chunks_exact(3)
+        .map(|p| p[0] as f64 + mesh.origin[0])
+        .fold(f64::INFINITY, f64::min);
+    let high = mesh.positions.chunks_exact(3)
+        .map(|p| p[0] as f64 + mesh.origin[0])
+        .fold(f64::NEG_INFINITY, f64::max);
+    assert!(
+        (low - 4_999_999.123456).abs() < 1e-5,
+        "mapped opening low X {low:.9}"
+    );
+    assert!(
+        (high - 5_000_001.123456).abs() < 1e-5,
+        "mapped opening high X {high:.9}"
+    );
+    // The per-item bounds also drive rectangular cutter classification. They
+    // must include the mapped mesh's f64 origin, not just its local f32 AABB.
+    let bounds = GeometryRouter::new()
+        .get_opening_item_bounds_with_direction(&opening, &mut decoder)
+        .unwrap();
+    assert_eq!(bounds.len(), 1);
+    assert!((bounds[0].0.x - low).abs() < 1e-5, "mapped opening bound low X: {}", bounds[0].0.x);
+    assert!((bounds[0].1.x - high).abs() < 1e-5, "mapped opening bound high X: {}", bounds[0].1.x);
+    let host = decoder.decode_by_id(20).unwrap();
+    let index = FxHashMap::from_iter([(20, vec![40])]);
+    let cut = GeometryRouter::new()
+        .process_element_with_submeshes_and_voids(&host, &mut decoder, &index)
+        .unwrap();
+    let cut_volume: f64 = cut.sub_meshes.iter().map(|part| volume(&part.mesh)).sum();
+    assert!(
+        (cut_volume - 96.0).abs() < 1e-4,
+        "mapped host must lose the 2x2 opening: {cut_volume}"
+    );
 }

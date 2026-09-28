@@ -80,3 +80,17 @@ test('does not truthiness-gate the source ids the way it gates origin and class'
   const out = convertServerMesh({ ...base, geometry_item_id: 0 });
   assert.equal(out.geometryItemId, 0, 'a 0 id was dropped by a truthiness check');
 });
+
+test('#5984: forwards the IFC-authored finish into MeshData.material, keeping an authored 0', () => {
+  // AC20-FZK-Haus.ifc's 'Glas' authors roughness 0: a truthiness test drops it.
+  assert.deepEqual(convertServerMesh({ ...base, roughness: 0 }).material, { roughness: 0 });
+  assert.deepEqual(convertServerMesh({ ...base, metallic: 1, roughness: 0.25 }).material, {
+    metallic: 1,
+    roughness: 0.25,
+  });
+  assert.deepEqual(convertServerMesh({ ...base, metallic: 0 }).material, { metallic: 0 });
+});
+
+test('#5984: no finish on the wire means no material key (the renderer keeps its default)', () => {
+  assert.equal('material' in convertServerMesh(base), false);
+});

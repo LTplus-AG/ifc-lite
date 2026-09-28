@@ -3,11 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Test-only seed for the modeling command tests: one parsed IFC4 model with a
- * single storey (#40, elevation 0) and an empty geometry result, loaded into
+ * Test-only seed for the modeling command tests: one parsed IFC4 model with
+ * two storeys (#40 at 0 m, #50 at 3 m) and an empty geometry result, loaded into
  * the singleton store with edit mode on — enough for `addWall` and friends.
  *
- * It also carries one imported wall (#50) whose body is a triangulated mesh —
+ * It also carries one imported wall (#130) whose body is a triangulated mesh —
  * the shape of the demo project's walls, which Split cannot cut — and one
  * imported beam (#80) extruded along a rotated solid position (#6233).
  *
@@ -27,8 +27,10 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 
 export const MODEL_ID = 'ifc';
 export const STOREY = 40;
+/** A second storey, 3 m up. */
+export const UPPER_STOREY = 50;
 /** The imported wall with a mesh (IfcTriangulatedFaceSet) body. */
-export const MESH_WALL = 50;
+export const MESH_WALL = 130;
 /**
  * An imported beam laid out like AC20's `Unterzug-1`: a rectangle extrusion
  * whose solid position turns the extrusion onto local +Y, off a non-centred
@@ -68,18 +70,20 @@ DATA;
 #41=IFCLOCALPLACEMENT($,#42);
 #42=IFCAXIS2PLACEMENT3D(#43,$,$);
 #43=IFCCARTESIANPOINT((${ox.toFixed(1)},${oy.toFixed(1)},0.));
-#50=IFCWALL('3wdauVJT5Fx9drrREiDqA$',$,'mesh wall',$,$,#51,#60,$,$);
-#51=IFCLOCALPLACEMENT(#41,#52);
-#52=IFCAXIS2PLACEMENT3D(#53,#54,#55);
-#53=IFCCARTESIANPOINT((0.,${5 * k}.,0.));
-#54=IFCDIRECTION((0.,0.,1.));
-#55=IFCDIRECTION((1.,0.,0.));
-#56=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(${k}.,0.,0.),(0.,${k}.,0.)));
-#57=IFCTRIANGULATEDFACESET(#56,$,$,((1,2,3)),$);
-#58=IFCSHAPEREPRESENTATION(#20,'Body','Tessellation',(#57));
-#60=IFCPRODUCTDEFINITIONSHAPE($,$,(#58));
-#70=IFCRELAGGREGATES('0kTvXnbbzCWw8lcMd1dR4o',$,$,$,#1,(#40));
-#71=IFCRELCONTAINEDINSPATIALSTRUCTURE('1kTvXnbbzCWw8lcMd1dR4o',$,$,$,(#50,#80,#100,#120),#40);
+#50=IFCBUILDINGSTOREY('2hQBAVPOr5VxhS3Jl0O47i',$,'L1',$,$,#51,$,$,.ELEMENT.,${3 * k}.);
+#51=IFCLOCALPLACEMENT($,#42);
+#130=IFCWALL('3wdauVJT5Fx9drrREiDqA$',$,'mesh wall',$,$,#131,#139,$,$);
+#131=IFCLOCALPLACEMENT(#41,#132);
+#132=IFCAXIS2PLACEMENT3D(#133,#134,#135);
+#133=IFCCARTESIANPOINT((0.,${5 * k}.,0.));
+#134=IFCDIRECTION((0.,0.,1.));
+#135=IFCDIRECTION((1.,0.,0.));
+#136=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(${k}.,0.,0.),(0.,${k}.,0.)));
+#137=IFCTRIANGULATEDFACESET(#136,$,$,((1,2,3)),$);
+#138=IFCSHAPEREPRESENTATION(#20,'Body','Tessellation',(#137));
+#139=IFCPRODUCTDEFINITIONSHAPE($,$,(#138));
+#70=IFCRELAGGREGATES('0kTvXnbbzCWw8lcMd1dR4o',$,$,$,#1,(#40,#50));
+#71=IFCRELCONTAINEDINSPATIALSTRUCTURE('1kTvXnbbzCWw8lcMd1dR4o',$,$,$,(#130,#80,#100,#120),#40);
 #100=IFCSLAB('1pPHnf7cXCpPsNEnQf8_6B',$,'hung slab',$,$,#101,#109,$,.FLOOR.);
 #101=IFCLOCALPLACEMENT(#41,#102);
 #102=IFCAXIS2PLACEMENT3D(#103,#89,#104);

@@ -230,19 +230,19 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
             </SettingRow>
 
             <SettingRow label={t('clashTools.settings.toleranceLabel')} hint={t('clashTools.settings.toleranceHint')}>
-              <NumberField value={tolerance} step={0.001} min={0} onCommit={setTolerance} suffix="m" />
+              <NumberField label={t('clashTools.settings.toleranceLabel')} value={tolerance} step={0.001} min={0} onCommit={setTolerance} suffix="m" />
             </SettingRow>
 
             <SettingRow label={t('clashTools.settings.clearanceGapLabel')} hint={t('clashTools.settings.clearanceGapHint')}>
-              <NumberField value={clearance} step={0.01} min={0} onCommit={setClearance} suffix="m" />
+              <NumberField label={t('clashTools.settings.clearanceGapLabel')} value={clearance} step={0.01} min={0} onCommit={setClearance} suffix="m" />
             </SettingRow>
 
             <SettingRow label={t('clashTools.settings.duplicateToleranceLabel')} hint={t('clashTools.settings.duplicateToleranceHint')}>
-              <NumberField value={duplicateTolerance} step={0.001} min={0} onCommit={setDuplicateTolerance} suffix="m" />
+              <NumberField label={t('clashTools.settings.duplicateToleranceLabel')} value={duplicateTolerance} step={0.001} min={0} onCommit={setDuplicateTolerance} suffix="m" />
             </SettingRow>
 
             <SettingRow label={t('clashTools.settings.clusterRadiusLabel')} hint={t('clashTools.settings.clusterRadiusHint')}>
-              <NumberField value={clusterEpsilon} step={0.1} min={0.01} onCommit={setClusterEpsilon} suffix="m" />
+              <NumberField label={t('clashTools.settings.clusterRadiusLabel')} value={clusterEpsilon} step={0.1} min={0.01} onCommit={setClusterEpsilon} suffix="m" />
             </SettingRow>
 
             <SettingRow label={t('clashTools.settings.reportTouchLabel')} hint={t('clashTools.settings.reportTouchHint')}>
@@ -380,13 +380,13 @@ function SettingRow({ label, hint, children }: { label: string; hint: string; ch
   );
 }
 
-/** Numeric input that commits on change, clamped by the store setter. */
 function NumberField({
-  value, step, min, suffix, onCommit,
-}: { value: number; step: number; min: number; suffix?: string; onCommit: (v: number) => void }) {
+  label, value, step, min, suffix, onCommit,
+}: { label: string; value: number; step: number; min: number; suffix?: string; onCommit: (v: number) => void }) {
   return (
     <div className="inline-flex items-center gap-1">
       <input
+        aria-label={label}
         type="number"
         step={step}
         min={min}

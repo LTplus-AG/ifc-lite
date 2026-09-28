@@ -257,14 +257,10 @@ export const UI_DEFAULTS = {
   ACTIVE_TOOL: 'select',
   /** Default theme – respects user's OS colour-scheme preference */
   THEME: getInitialTheme(),
-  /** Default hover tooltips state */
-  HOVER_TOOLTIPS_ENABLED: false,
+  HOVER_TOOLTIPS_ENABLED: false, // default hover tooltips state
+  HOVER_HIGHLIGHT_ENABLED: true, // pre-highlight outline (#5390), on by default, independent of tooltips
   /** Global visual enhancement kill switch */
   VISUAL_ENHANCEMENTS_ENABLED: true,
-  /** Edge contrast enhancement default */
-  EDGE_CONTRAST_ENABLED: true,
-  /** Edge contrast intensity */
-  EDGE_CONTRAST_INTENSITY: 1.2,
   /** Ambient occlusion ("contact shading") quality: 'low' = half resolution, 'high' = full */
   CONTACT_SHADING_QUALITY: 'low' as const,
   /** Ambient occlusion strength, 0-1 */

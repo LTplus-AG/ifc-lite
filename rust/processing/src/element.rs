@@ -51,10 +51,10 @@ use std::collections::BTreeMap;
 mod degenerate;
 mod element_color;
 use element_color::{find_indexed_colour_for_element, infer_opening_subpart_material_name};
-// Re-exported because these two have callers outside this module:
-// `find_geometry_item_color` from processor/color_layer.rs, and
-// `resolve_color_for_representation_map` from processor/jobs.rs.
+// Re-exported because they have callers outside this module: the colour
+// resolvers from processor/, the style-source walks from style::finish_join.
 pub(crate) use element_color::{find_geometry_item_color, resolve_color_for_representation_map};
+pub(crate) use element_color::{find_geometry_item_style_source, product_shape_style_source, representation_map_style_source};
 
 /// Element-level metadata stamped on every produced [`MeshData`]. The native
 /// pipeline resolves these during its metadata phase; the browser passes

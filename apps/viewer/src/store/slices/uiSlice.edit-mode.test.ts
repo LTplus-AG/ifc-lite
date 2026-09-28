@@ -137,14 +137,12 @@ describe('UISlice — edit mode', () => {
     assert.strictEqual(slice.state.activeTool, 'measure');
   });
 
-  it('setEditEnabled(true) auto-opens the Add Element panel when nothing is selected', async () => {
-    // Default state has activeTool === 'select' and no selectedEntity,
-    // so flipping edit on should swap to 'addElement' as a friction-
-    // free entry into the authoring flow.
+  it('setEditEnabled(true) no longer auto-opens the Add Element panel (#6232)', async () => {
+    // Entering edit mode is entering the Model workspace; it opens no tool.
     const slice = await buildSlice({ activeTool: 'select', selectedEntity: null });
     (slice.state.setEditEnabled as (v: boolean) => void)(true);
     assert.strictEqual(slice.state.editEnabled, true);
-    assert.strictEqual(slice.state.activeTool, 'addElement');
+    assert.strictEqual(slice.state.activeTool, 'select');
   });
 
   it('setEditEnabled(true) leaves activeTool=select when an entity IS selected', async () => {

@@ -192,7 +192,7 @@ fn a_cross_batch_stream_ships_no_more_vertices_than_the_buffered_route() {
             &basis_slot,
             |meshes, _, _| {
                 if !meshes.is_empty() {
-                    batches.push(meshes.to_vec());
+                    batches.push(meshes.iter().cloned().map(MeshData::from).collect());
                 }
             },
             |_| {},

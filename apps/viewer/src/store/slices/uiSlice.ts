@@ -60,6 +60,14 @@ const AUTHORING_TOOLS: ReadonlySet<string> = new Set([
   'command',
 ]);
 
+/** The authoring session and collab gate, reached through the combined `get()`. */
+interface WorkspaceCrossSlice {
+  canCollabEdit?: () => boolean;
+  workspaceMode?: 'view' | 'model';
+  enterModelWorkspace?: () => boolean;
+  exitModelWorkspace?: () => void;
+}
+
 /**
  * Cross-slice surface UISlice reaches into via the combined Zustand
  * `get()` to decide whether toggling a load-time setting needs a
@@ -112,8 +120,8 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   showPerformanceStats: boolean;
   navigationPreset: NavigationPreset;
   visualEnhancementsEnabled: boolean;
-  edgeContrastEnabled: boolean;
-  edgeContrastIntensity: number;
+  /** Show exact authored swept-disk directrices for selected IFC products. */
+  centrelineOverlayEnabled: boolean;
   contactShadingQuality: ContactShadingQuality;
   contactShadingIntensity: number;
   contactShadingRadius: number;
@@ -157,8 +165,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   setShowPerformanceStats: (enabled: boolean) => void;
   setNavigationPreset: (preset: NavigationPreset) => void;
   setVisualEnhancementsEnabled: (enabled: boolean) => void;
-  setEdgeContrastEnabled: (enabled: boolean) => void;
-  setEdgeContrastIntensity: (intensity: number) => void;
+  setCentrelineOverlayEnabled: (enabled: boolean) => void;
   setContactShadingQuality: (quality: ContactShadingQuality) => void;
   setContactShadingIntensity: (intensity: number) => void;
   setContactShadingRadius: (radius: number) => void;
@@ -202,8 +209,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   showPerformanceStats: initialShowPerformanceStats(),
   navigationPreset: getInitialNavigationPreset(),
   visualEnhancementsEnabled: UI_DEFAULTS.VISUAL_ENHANCEMENTS_ENABLED,
-  edgeContrastEnabled: UI_DEFAULTS.EDGE_CONTRAST_ENABLED,
-  edgeContrastIntensity: UI_DEFAULTS.EDGE_CONTRAST_INTENSITY,
+  centrelineOverlayEnabled: false,
   contactShadingQuality: UI_DEFAULTS.CONTACT_SHADING_QUALITY,
   contactShadingIntensity: UI_DEFAULTS.CONTACT_SHADING_INTENSITY,
   contactShadingRadius: UI_DEFAULTS.CONTACT_SHADING_RADIUS,
@@ -238,9 +244,11 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
       // Collab role gate: in a shared session only editor/admin may
       // unlock authoring. Viewers/commenters can still pick read-only
       // tools, so we only block the authoring branch.
-      const canEdit = (get() as unknown as { canCollabEdit?: () => boolean }).canCollabEdit;
-      if (canEdit && !canEdit()) return;
+      const cross = get() as unknown as WorkspaceCrossSlice;
+      if (cross.canCollabEdit && !cross.canCollabEdit()) return;
       if (leavingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
+      // Authoring happens in the Model workspace; no editable model, no tool.
+      if (cross.workspaceMode !== 'model' && cross.enterModelWorkspace && !cross.enterModelWorkspace()) return;
       set({ activeTool, editEnabled: true, spaceSketchMinimized: false });
       return;
     }
@@ -249,44 +257,34 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   },
   setSpaceSketchMinimized: (spaceSketchMinimized) => set({ spaceSketchMinimized }),
   setEditEnabled: (editEnabled) => {
+    // Edit mode is the Model workspace's (#6232): entering or leaving goes
+    // through the session slice, which keeps `editEnabled` in step (no
+    // editable model = no workspace = edit mode stays off). The bare flag is
+    // for a UISlice composed without the session slice.
+    const cross = get() as unknown as WorkspaceCrossSlice;
     if (editEnabled) {
       // Collab role gate: only editor/admin (or single-user, role===null)
-      // may enter edit mode. This is the single chokepoint that unlocks
-      // the gizmo, geometry card, add-element draw tools, and the inline
-      // property editors — gating it here covers every authoring surface.
-      const canEdit = (get() as unknown as { canCollabEdit?: () => boolean }).canCollabEdit;
-      if (canEdit && !canEdit()) return;
-    }
-    if (!editEnabled) {
-      // Flipping edit mode off must clear every authoring sub-state
-      // that depends on it — otherwise the viewer ends up "not in
-      // edit mode" but still carrying a georef draft or a half-drawn
-      // slab polygon. Cross-slice reset lives here so callers don't
-      // have to remember to mop up.
-      set((s) => ({
-        editEnabled: false,
-        activeTool: AUTHORING_TOOLS.has(s.activeTool) ? 'select' : s.activeTool,
-        spaceSketchMinimized: false,
-        cesiumPlacementEditMode: false,
-        cesiumPlacementDraftModelId: null,
-        cesiumPlacementDraft: null,
-      }));
+      // may enter edit mode — the single chokepoint for every authoring surface.
+      if (cross.canCollabEdit && !cross.canCollabEdit()) return;
+      if (cross.enterModelWorkspace) cross.enterModelWorkspace();
+      else set({ editEnabled: true });
       return;
     }
-    // Turning edit mode ON with nothing selected auto-opens the
-    // AddElement panel — most "I want to edit" sessions start
-    // with adding something, and forcing the user to click an
-    // extra button to reach the panel adds friction. When a
-    // selection already exists, leave activeTool alone so the
-    // Properties panel + Geometry edit card stay primary.
-    set((s) => {
-      const next: Partial<UISlice & UICrossSliceState> = { editEnabled: true };
-      const slice = s as unknown as { selectedEntity?: unknown };
-      if (s.activeTool === 'select' && !slice.selectedEntity) {
-        next.activeTool = 'addElement';
-      }
-      return next;
-    });
+    if (cross.workspaceMode === 'model' && cross.exitModelWorkspace) {
+      cross.exitModelWorkspace();
+      return;
+    }
+    // Flipping edit mode off must clear every authoring sub-state that
+    // depends on it — otherwise the viewer ends up "not in edit mode" but
+    // still carrying a georef draft or a half-drawn slab polygon.
+    set((s) => ({
+      editEnabled: false,
+      activeTool: AUTHORING_TOOLS.has(s.activeTool) ? 'select' : s.activeTool,
+      spaceSketchMinimized: false,
+      cesiumPlacementEditMode: false,
+      cesiumPlacementDraftModelId: null,
+      cesiumPlacementDraft: null,
+    }));
   },
   toggleEditEnabled: () => {
     get().setEditEnabled(!get().editEnabled);
@@ -337,8 +335,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     set({ navigationPreset });
   },
   setVisualEnhancementsEnabled: (visualEnhancementsEnabled) => set({ visualEnhancementsEnabled }),
-  setEdgeContrastEnabled: (edgeContrastEnabled) => set({ edgeContrastEnabled }),
-  setEdgeContrastIntensity: (edgeContrastIntensity) => set({ edgeContrastIntensity }),
+  setCentrelineOverlayEnabled: (centrelineOverlayEnabled) => set({ centrelineOverlayEnabled }),
   setContactShadingQuality: (contactShadingQuality) => set({ contactShadingQuality }),
   setContactShadingIntensity: (contactShadingIntensity) => set({ contactShadingIntensity }),
   setContactShadingRadius: (contactShadingRadius) => set({ contactShadingRadius }),

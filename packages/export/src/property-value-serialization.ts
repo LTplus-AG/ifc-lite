@@ -131,7 +131,8 @@ export function serializePropertyValue(value: unknown, type: PropertyValueType):
       return '$';
 
     // Includes `Reference`, which no extraction path produces (an
-    // `IfcPropertyReferenceValue` comes back as a String holding `#id`) and
+    // `IfcPropertyReferenceValue` comes back as a String holding the
+    // referenced object's Name, or `#id` when it has none, #5475) and
     // which this function could not express anyway: an entity reference is a
     // different property CLASS, not a different `NominalValue` token.
     default:

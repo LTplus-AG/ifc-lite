@@ -3,6 +3,51 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 export type {
+  CommitArtifact,
+  CommitCapabilities,
+  CommitEvent,
+  CommitPayload,
+  CommitPayloadFormat,
+  CommitRef,
+  CommitStats,
+  CommitStatus,
+  CommitWatchResult,
+  ListCommitsOptions,
+  LoadCommitOptions,
+  ModelRef,
+  SourceCommit,
+  SourceModel,
+} from './commits.js';
+
+export type {
+  CommitFingerprintSet,
+  ElementHistoryEntry,
+  ElementHistoryQuery,
+  ElementHistoryState,
+  GetCommitDiffOptions,
+  IdentityEntryLike,
+  IdentityRecordSet,
+  LoadFingerprintsOptions,
+  SourceFingerprint,
+  StoredChangeKind,
+  StoredCommitDiff,
+  StoredDiffEntry,
+  StoredDiffState,
+} from './commit-history.js';
+
+export type {
+  CreateCommitInput,
+  CreateModelInput,
+  RevisionDecision,
+  RevisionResolutionRecord,
+} from './commit-write.js';
+
+export type { CommitSourceMethods, ListModelsOptions } from './commit-provider.js';
+
+export { isCommitSourceError } from './commit-errors.js';
+export type { CommitSourceErrorCode, CommitSourceErrorLike } from './commit-errors.js';
+
+export type {
   ConnectionTestResult,
   DownloadOptions,
   DropdownOption,

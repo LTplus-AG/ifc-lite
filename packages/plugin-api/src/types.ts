@@ -17,6 +17,14 @@
 // declared capability rather than as an assumption.
 // ============================================================================
 
+import type { SourceAuth, SourceIdentity } from './auth.js';
+import type { CommitSourceMethods } from './commit-provider.js';
+import type { CommitCapabilities } from './commits.js';
+
+// Re-exported so `SourceIdentity` / `SourceAuth` keep resolving from here, the
+// path every provider already imports them by.
+export type { SourceAuth, SourceIdentity };
+
 // ---------------------------------------------------------------------------
 // Plugin manifest
 // ---------------------------------------------------------------------------
@@ -159,6 +167,11 @@ export interface ProviderCapabilities {
    * `apps/viewer/src/components/sources/sourceCatalogPaging.ts`).
    */
   readonly eagerFileSweep?: boolean;
+  /**
+   * Present ONLY on commit-aware providers (contract 2.1.0). Its presence is
+   * the feature detection: see `commits.ts`, which owns the flags.
+   */
+  readonly commits?: CommitCapabilities;
 }
 
 // ---------------------------------------------------------------------------
@@ -375,40 +388,10 @@ export interface FileFilter {
 }
 
 // ---------------------------------------------------------------------------
-// Interactive authentication
-// ---------------------------------------------------------------------------
-
-export interface SourceIdentity {
-  /** Stable account id, provider-scoped. */
-  readonly id: string;
-  readonly displayName?: string;
-  readonly email?: string;
-  /** Tenant or organisation label, when the provider has one. */
-  readonly organization?: string;
-}
-
-/**
- * Implemented by providers declaring `auth: 'interactive'`.
- *
- * `restore` runs at registration and must be silent and non-blocking: no
- * popups, no navigation. `signIn` may open a popup and must therefore only be
- * called from a user gesture — the host guarantees this.
- */
-export interface SourceAuth {
-  /** Re-establish a session from cache, silently. Returns null if not signed in. */
-  restore(ctx: PluginContext): Promise<SourceIdentity | null>;
-  /** Interactive sign-in. Called only from a user gesture. */
-  signIn(ctx: PluginContext): Promise<SourceIdentity>;
-  signOut(ctx: PluginContext): Promise<void>;
-  /** Current identity, or null. Must not perform interactive work. */
-  getIdentity(ctx: PluginContext): Promise<SourceIdentity | null>;
-}
-
-// ---------------------------------------------------------------------------
 // FileSourceProvider — the core interface plugins implement
 // ---------------------------------------------------------------------------
 
-export interface FileSourceProvider {
+export interface FileSourceProvider extends CommitSourceMethods {
   readonly manifest: PluginManifest;
 
   /** Required when `manifest.auth === 'interactive'`. */

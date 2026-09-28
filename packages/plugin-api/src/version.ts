@@ -16,7 +16,7 @@
  * shipped provider's manifest is asserted against this value by
  * `test/conformance.test.ts`, so a mismatch fails CI rather than the browser.
  */
-export const PLUGIN_API_VERSION = '2.0.0';
+export const PLUGIN_API_VERSION = '2.1.0';
 
 /**
  * Minimal `^x.y.z` caret-range check: same major, and host >= required.

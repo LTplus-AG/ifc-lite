@@ -269,13 +269,7 @@ export interface RenderOptions {
   selectedId?: number | null;     // Currently selected mesh (for highlighting)
   selectedIds?: Set<number>;      // Multi-selection support
   selectedItemId?: number;        // #4382: narrows selectedId's highlight to one representation item (geometryItemId); no effect on selectedIds
-  /**
-   * Hovered entity id (#5390): draws a thin pre-highlight outline through
-   * the same mask/outline composite as the selection outline, but never
-   * through occluders (visible portion only). `null`/absent draws nothing.
-   */
-  hoveredId?: number | null;
-  hoveredModelIndex?: number; // model of `hoveredId` (federation); absent = any model
+  hoverOutline?: { id: number; modelIndex?: number } | null; // #5390 thin visible-only pre-highlight; modelIndex scopes federation
   /**
    * Render the active colour overrides almost full-bright so they POP like a
    * highlight rather than reading as normal lit materials. Used while a clash is

@@ -31,11 +31,11 @@ export function useHoverOutline(rendererRef: MutableRefObject<Renderer | null>) 
 }
 
 /**
- * This frame's hover-outline render options (`RenderOptions.hoveredId` /
- * `hoveredModelIndex`), read from the store by the animation loop each frame,
+ * This frame's hover-outline render option (`RenderOptions.hoverOutline`),
+ * read from the store by the animation loop each frame,
  * so no ref needs threading through it.
  */
-export function hoverOutlineTarget(state = useViewerStore.getState()): { hoveredId?: number; hoveredModelIndex?: number } {
+export function hoverOutlineTarget(state = useViewerStore.getState()): { hoverOutline?: { id: number; modelIndex?: number } } {
   if (!state.hoverHighlightEnabled || state.hoverState.entityId == null) return {};
-  return { hoveredId: state.hoverState.entityId, hoveredModelIndex: state.hoverState.modelIndex };
+  return { hoverOutline: { id: state.hoverState.entityId, modelIndex: state.hoverState.modelIndex } };
 }

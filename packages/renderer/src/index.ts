@@ -3064,9 +3064,10 @@ export class Renderer {
             // Selection/hover outline input (#5390): built from the meshes the
             // highlight-draw loop above already prepared this frame.
             // A hidden / isolated-out entity is never outlined; the lookup is scoped to the hovered entity's own model.
-            const hoverId = options.hoveredId != null && !options.hiddenIds?.has(options.hoveredId)
-                && (!hasIsolatedFilter || options.isolatedIds!.has(options.hoveredId)) ? options.hoveredId : null;
-            const hoverModel = options.hoveredModelIndex;
+            const hovered = options.hoverOutline;
+            const hoverId = hovered && !options.hiddenIds?.has(hovered.id)
+                && (!hasIsolatedFilter || options.isolatedIds!.has(hovered.id)) ? hovered.id : null;
+            const hoverModel = hovered?.modelIndex;
             const hoverPieces = hoverId != null && !selectedMeshesForMask.some((m) => matchesHoveredMesh(m, hoverId, hoverModel))
                 ? this.hoverMeshes.resolve(device, hoverId, hoverModel, () => this.scene.getMeshDataPieces(hoverId, hoverModel), (m) => this.individualMeshFrame(m))
                 : (this.hoverMeshes.release(), []);

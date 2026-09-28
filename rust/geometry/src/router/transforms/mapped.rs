@@ -160,9 +160,15 @@ mod tests {
         let origin = router.mapping_origin_transform(&source, &mut decoder).unwrap();
         let cached = router.resolve_scaled_mapped_item_transform_with_origin_loader(
             &item, &mut decoder, |_| Ok(origin)).unwrap();
-        assert_eq!(cached, standard);
-        let matrix = cached.unwrap();
-        assert!((matrix[12] - 0.12).abs() < 1e-12);
-        assert!((matrix[13] - 0.04).abs() < 1e-12);
+        // Target(100, 0) · Scale(2) · Origin(10, 20) = (120, 40) mm.
+        // Pin both public routes to that authored result independently.
+        for transform in [standard, cached] {
+            let matrix = transform.unwrap();
+            assert_eq!(matrix[0], 2.0);
+            assert_eq!(matrix[5], 2.0);
+            assert_eq!(matrix[10], 2.0);
+            assert!((matrix[12] - 0.12).abs() < 1e-12);
+            assert!((matrix[13] - 0.04).abs() < 1e-12);
+        }
     }
 }

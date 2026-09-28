@@ -247,6 +247,9 @@ column-major f64. The first two use raw IFC file units; the last includes file
 unit scale and maps to absolute IFC Z-up world metres. A missing position matrix
 is identity. A non-finite transform is `None`; a singular transform retains its
 matrix, and both have unsupported status.
+Source reference keys use exact IFC names: both profile and extrusion carry
+`Position`, and the extrusion carries `ExtrudedDirection`; the separate
+derived matrices keep their descriptive names.
 The API does not infer a post-boolean solid or a world volume from a raw source.
 Source and occurrence budgets are independent; truncation is reported in
 `diagnostics`.

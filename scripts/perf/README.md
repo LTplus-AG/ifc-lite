@@ -145,6 +145,22 @@ The lesson is that a native load probe cannot establish the opt-in join's
 latency; measure that through its caller on representative authored-quantity
 models if it becomes material.
 
+## Opt-in reinforcing-bar schedule inputs (#5759)
+
+The schedule reuses bounded analytic source views only when a Rust or Python
+caller requests it; ordinary mesh loading does not enter this path. A
+[GitHub-hosted current-lock control](https://github.com/LTplus-AG/ifc-lite/actions/runs/36475446893)
+compared a synthetic parent containing the reviewed quantity join and mapped
+source cache with a patch-identical #5801 child on AC20-FZK-Haus. Five balanced,
+interleaved fresh-process pairs used five iterations each. Entity, mesh, vertex,
+and triangle counts and every ordered mesh fingerprint were identical, while
+paired parse, geometry, and total timings varied within noise. Verdict: no
+supported default-load timing or mesh-output change. The native source closure
+must still be checked against the eventual parent squashes before treating this
+as the exact final-base control. The ordinary load probe cannot measure the
+opt-in schedule call; measure that on representative authored bars if needed.
+The PR carries the paired numbers and fixture/source provenance.
+
 ## Opt-in nominal source quantities (#5787)
 
 Nominal swept-disk and extrusion quantities are computed only when the analytic

@@ -78,6 +78,8 @@ pub(crate) mod alignment;
 pub(crate) mod alignment_arc_length;
 pub(crate) mod alignment_axis;
 pub mod analytic;
+mod curve_source;
+mod trimmed_curve;
 pub(crate) mod gradient;
 pub(crate) mod curve_segment;
 pub(crate) mod bool2d;

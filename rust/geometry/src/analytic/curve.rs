@@ -4,6 +4,7 @@
 
 use super::helpers::*;
 use super::AnalyticCurveSegment as Segment;
+use crate::trimmed_curve::{decode_trimmed_primitive, TrimRecovery, TrimmedPrimitive};
 use crate::{Error, Result};
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 use std::{collections::HashSet, f64::consts::TAU};
@@ -292,54 +293,13 @@ impl CurveWalk {
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Vec<Segment>>> {
         let basis = resolve(curve.get(0), decoder)?;
-        let sense = curve
-            .get(3)
-            .and_then(AttributeValue::as_enum)
-            .unwrap_or("T")
-            == "T";
-        let cartesian = curve.get(4).and_then(AttributeValue::as_enum).unwrap_or("") == "CARTESIAN";
-        match basis.ifc_type {
-            IfcType::IfcLine => {
-                let (origin, direction) = line_basis(&basis, decoder)?;
-                let Some(start) = trim_point(curve.get(1), origin, direction, cartesian, decoder)?
-                else {
-                    return Ok(None);
-                };
-                let Some(end) = trim_point(curve.get(2), origin, direction, cartesian, decoder)?
-                else {
-                    return Ok(None);
-                };
-                Ok(Some(vec![Segment::Line { start, end }]))
-            }
-            IfcType::IfcCircle => {
-                let (center, normal, x_axis, y_axis, radius) = circle_basis(&basis, decoder)?;
-                let Some(start) =
-                    trim_angle(curve.get(1), center, x_axis, y_axis, cartesian, decoder)?
-                else {
-                    return Ok(None);
-                };
-                let Some(end) =
-                    trim_angle(curve.get(2), center, x_axis, y_axis, cartesian, decoder)?
-                else {
-                    return Ok(None);
-                };
-                let mut sweep = (end - start).rem_euclid(TAU);
-                if !sense {
-                    sweep -= TAU;
-                }
-                if sweep.abs() < 1e-12 {
-                    sweep = if sense { TAU } else { -TAU };
-                }
-                Ok(Some(vec![Segment::Arc {
-                    center,
-                    normal,
-                    x_axis,
-                    radius,
-                    start_angle: start,
-                    sweep_angle: sweep,
-                }]))
-            }
-            _ => Ok(None),
-        }
+        Ok(decode_trimmed_primitive(curve, &basis, decoder, TrimRecovery::RequireBoth)?
+            .map(|primitive| vec![match primitive {
+                TrimmedPrimitive::Line { start, end } => Segment::Line { start, end },
+                TrimmedPrimitive::Circle { center, normal, x_axis, radius,
+                    start_angle, sweep_angle, .. } => Segment::Arc {
+                    center, normal, x_axis, radius, start_angle, sweep_angle,
+                },
+            }]))
     }
 }

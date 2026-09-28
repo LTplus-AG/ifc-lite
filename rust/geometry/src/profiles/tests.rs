@@ -6,6 +6,69 @@ use super::*;
 use super::outline::trim_polyline;
 
     #[test]
+    fn trimmed_line_descending_false_sense_follows_ifc_first_trim_6402() {
+        // IFC4.3 IfcTrimmedCurve: Trim1 is the first point; false sense on an
+        // open line corresponds to descending basis parameters (10 to 2).
+        let data = "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#2=IFCDIRECTION((1.,0.,0.));\n#3=IFCVECTOR(#2,1.);\n#4=IFCLINE(#1,#3);\n#5=IFCTRIMMEDCURVE(#4,(IFCPARAMETERVALUE(10.)),(IFCPARAMETERVALUE(2.)),.F.,.PARAMETER.);";
+        let mut decoder = EntityDecoder::new(data);
+        let curve = decoder.decode_by_id(5).unwrap();
+        let points = ProfileProcessor::new(IfcSchema::new())
+            .get_curve_points(&curve, &mut decoder, TessellationQuality::Medium).unwrap();
+        assert_eq!(points, vec![Point3::new(10.0, 0.0, 0.0), Point3::new(2.0, 0.0, 0.0)]);
+    }
+
+    #[test]
+    fn trimmed_line_master_representation_selects_cartesian_or_parameter_6402() {
+        let data = "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#2=IFCDIRECTION((1.,0.,0.));\n#3=IFCVECTOR(#2,2.);\n#4=IFCLINE(#1,#3);\n#5=IFCCARTESIANPOINT((3.,0.,0.));\n#6=IFCCARTESIANPOINT((7.,0.,0.));\n#7=IFCTRIMMEDCURVE(#4,(#5,IFCPARAMETERVALUE(10.)),(#6,IFCPARAMETERVALUE(2.)),.F.,.CARTESIAN.);\n#8=IFCTRIMMEDCURVE(#4,(#5,IFCPARAMETERVALUE(10.)),(#6,IFCPARAMETERVALUE(2.)),.F.,.PARAMETER.);";
+        let mut decoder = EntityDecoder::new(data);
+        let processor = ProfileProcessor::new(IfcSchema::new());
+        let cartesian = decoder.decode_by_id(7).unwrap();
+        let parameter = decoder.decode_by_id(8).unwrap();
+        let a = processor.get_curve_points(&cartesian, &mut decoder, TessellationQuality::Medium).unwrap();
+        let b = processor.get_curve_points(&parameter, &mut decoder, TessellationQuality::Medium).unwrap();
+        assert_eq!(a, vec![Point3::new(3.0, 0.0, 0.0), Point3::new(7.0, 0.0, 0.0)]);
+        assert_eq!(b, vec![Point3::new(20.0, 0.0, 0.0), Point3::new(4.0, 0.0, 0.0)]);
+    }
+
+    #[test]
+    fn trimmed_line_mesh_recovers_bad_cartesian_ref_using_parameter_6402() {
+        let data = "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#2=IFCDIRECTION((1.,0.,0.));\n#3=IFCVECTOR(#2,1.);\n#4=IFCLINE(#1,#3);\n#5=IFCTRIMMEDCURVE(#4,(#999,IFCPARAMETERVALUE(2.)),(IFCPARAMETERVALUE(5.)),.T.,.CARTESIAN.);";
+        let mut decoder = EntityDecoder::new(data);
+        let curve = decoder.decode_by_id(5).unwrap();
+        let points = ProfileProcessor::new(IfcSchema::new())
+            .get_curve_points(&curve, &mut decoder, TessellationQuality::Medium).unwrap();
+        assert_eq!(points, vec![Point3::new(2.0, 0.0, 0.0), Point3::new(5.0, 0.0, 0.0)]);
+    }
+
+    #[test]
+    fn trimmed_circle_rotated_wrap_and_clockwise_follow_authored_trims_6402() {
+        let data = "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#2=IFCDIRECTION((0.,0.,1.));\n#3=IFCDIRECTION((0.,1.,0.));\n#4=IFCAXIS2PLACEMENT3D(#1,#2,#3);\n#5=IFCCIRCLE(#4,2.);\n#6=IFCTRIMMEDCURVE(#5,(IFCPARAMETERVALUE(5.5)),(IFCPARAMETERVALUE(0.5)),.T.,.PARAMETER.);\n#7=IFCTRIMMEDCURVE(#5,(IFCPARAMETERVALUE(0.5)),(IFCPARAMETERVALUE(5.5)),.F.,.PARAMETER.);";
+        let mut decoder = EntityDecoder::new(data);
+        let processor = ProfileProcessor::new(IfcSchema::new());
+        let forward = decoder.decode_by_id(6).unwrap();
+        let backward = decoder.decode_by_id(7).unwrap();
+        let a = processor.get_curve_points(&forward, &mut decoder, TessellationQuality::Medium).unwrap();
+        let b = processor.get_curve_points(&backward, &mut decoder, TessellationQuality::Medium).unwrap();
+        let point_at = |angle: f64| Point3::new(-2.0 * angle.sin(), 2.0 * angle.cos(), 0.0);
+        assert!(approx_eq_p3(a[0], point_at(5.5), 1e-9));
+        assert!(approx_eq_p3(*a.last().unwrap(), point_at(0.5), 1e-9));
+        assert!(approx_eq_p3(b[0], point_at(0.5), 1e-9));
+        assert!(approx_eq_p3(*b.last().unwrap(), point_at(5.5), 1e-9));
+        assert_eq!(a.len(), b.len());
+    }
+
+    #[test]
+    fn trimmed_circle_parameter_bounds_use_project_plane_angle_unit_6402() {
+        let data = "#1=IFCPROJECT('guid',$,'Test',$,$,$,$,(#2),#3);\n#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);\n#3=IFCUNITASSIGNMENT((#5,#10));\n#4=IFCAXIS2PLACEMENT3D(#7,$,$);\n#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#7=IFCCARTESIANPOINT((0.,0.,0.));\n#8=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);\n#9=IFCMEASUREWITHUNIT(IFCRATIOMEASURE(0.0174532925199433),#8);\n#10=IFCCONVERSIONBASEDUNIT(#11,.PLANEANGLEUNIT.,'DEGREE',#9);\n#11=IFCDIMENSIONALEXPONENTS(0,0,0,0,0,0,0);\n#12=IFCCIRCLE(#4,2.);\n#13=IFCTRIMMEDCURVE(#12,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(90.)),.T.,.PARAMETER.);";
+        let mut decoder = EntityDecoder::new(data);
+        let curve = decoder.decode_by_id(13).unwrap();
+        let points = ProfileProcessor::new(IfcSchema::new())
+            .get_curve_points(&curve, &mut decoder, TessellationQuality::Medium).unwrap();
+        assert!(approx_eq_p3(points[0], Point3::new(2.0, 0.0, 0.0), 1e-9));
+        assert!(approx_eq_p3(*points.last().unwrap(), Point3::new(0.0, 2.0, 0.0), 1e-9));
+    }
+
+    #[test]
     fn test_rectangle_profile() {
         let content = r#"
 #1=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,100.0,200.0);

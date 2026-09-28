@@ -5,17 +5,79 @@
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useLayoutEffect } from 'react';
 import type { RefObject } from 'react';
+import { flushSync } from 'react-dom';
 import type { Renderer } from '@ifc-lite/renderer';
 import { toast } from '@/components/ui/toast.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, waitFor } from '@/test/render.js';
 import { useViewerStore } from '@/store/index.js';
 import { selectedSweptDiskCache, type ProductSweptDisks } from '@/lib/analytic/swept-disk-cache.js';
+import type { selectedCentrelineWorldLines } from '@/lib/analytic/selected-centreline-lines.js';
 import { useCentrelineRendererOverlay } from './useCentrelineRendererOverlay.js';
 
 afterEach(cleanup);
+
+it('clears the old centreline before a selection-switch paint and rejects its late result (#5778)', async () => {
+  const prior = useViewerStore.getState();
+  const originalGet = selectedSweptDiskCache.get;
+  const model = fixtureModel('switch', { idOffset: 1_000_000 });
+  model.maxExpressId = 2;
+  Object.assign(model.ifcDataStore!, { source: { byteLength: 1 } });
+  selectedSweptDiskCache.get = async (_model, ids) => new Map(ids.map((id) => [id, {
+    occurrences: [], diagnostics: [],
+  }]));
+  type Lines = Awaited<ReturnType<typeof selectedCentrelineWorldLines>>;
+  let resolveOld: (lines: Lines) => void = () => { throw new Error('old line builder did not start'); };
+  const oldLines = new Promise<Lines>((resolve) => { resolveOld = resolve; });
+  let builds = 0;
+  const lineBuilder: typeof selectedCentrelineWorldLines = async () => {
+    builds++;
+    return builds === 1 ? oldLines : { vertices: [], diagnostics: [] };
+  };
+  let line: Parameters<Renderer['setLineOverlay']>[1] = null;
+  let lineAtLayout: Parameters<Renderer['setLineOverlay']>[1] | undefined;
+  let staleUploads = 0;
+  const renderer = {
+    setLineOverlay(_channel: Parameters<Renderer['setLineOverlay']>[0], value: Parameters<Renderer['setLineOverlay']>[1]) {
+      line = value;
+      if (useViewerStore.getState().selectedEntityId === 1_000_002 && value !== null) staleUploads++;
+    },
+  } as unknown as Renderer;
+  const ref: RefObject<Renderer | null> = { current: renderer };
+  const Overlay = () => {
+    const id = useViewerStore((state) => state.selectedEntityId);
+    useCentrelineRendererOverlay(ref, true, lineBuilder);
+    useLayoutEffect(() => {
+      if (id !== 1_000_002) return;
+      lineAtLayout = line;
+      resolveOld({ vertices: [0, 0, 0, 1, 0, 0], diagnostics: [] });
+    }, [id]);
+    return null;
+  };
+  try {
+    useViewerStore.setState({ ...fixtureModels(model), centrelineOverlayEnabled: true,
+      selectedEntityIds: new Set([1_000_001]), selectedEntityId: 1_000_001,
+      selectedEntitiesSet: new Set(), selectedEntity: { modelId: 'switch', expressId: 1 } });
+    render(<Overlay />);
+    await waitFor(() => builds === 1, 'the first source line build is pending');
+    // Stand in for the last rendered source line while the next source is pending.
+    line = new Float32Array([0, 0, 0, 1, 0, 0]);
+    await act(async () => {
+      flushSync(() => useViewerStore.setState({ selectedEntityIds: new Set([1_000_002]),
+        selectedEntityId: 1_000_002, selectedEntity: { modelId: 'switch', expressId: 2 } }));
+      await Promise.resolve();
+    });
+    assert.equal(lineAtLayout, null, 'the previous frame is cleared in the selection commit');
+    assert.equal(staleUploads, 0, 'the old async source cannot repopulate the channel');
+    assert.equal(line, null);
+  } finally {
+    cleanup();
+    selectedSweptDiskCache.get = originalGet;
+    useViewerStore.setState(prior);
+  }
+});
 
 it('keeps the active source within 256 products and visibly reports omitted sources (#5778)', async () => {
   const prior = useViewerStore.getState();

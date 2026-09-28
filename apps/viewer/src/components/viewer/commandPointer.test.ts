@@ -20,6 +20,7 @@ import { getCommandRuntime, writeCommandField } from '@/lib/commands/modeling/ru
 import type { WallPlaceGesture } from '@/lib/commands/modeling/commands/wall-place-geometry';
 import type { SlabPlaceGesture } from '@/lib/commands/modeling/commands/slab-place-geometry';
 import { routeCommandPointer } from './commandPointer.js';
+import { handleSelectionClick } from './selectionHandlers.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 
 const W = 1000, H = 1000;
@@ -113,5 +114,26 @@ describe('command pointer: clicks and modifiers for the placing commands (#6232 
     const profile = view.getNewEntities().filter((e) => e.type.toUpperCase() === 'IFCRECTANGLEPROFILEDEF').at(-1)!; // the seeded wall owns the first
     assert.deepEqual([profile.attributes[3], profile.attributes[4]].map((v) => +(v as number).toFixed(6)), [3, 3]);
     assert.equal(slab().points.length, 0);
+  });
+
+  // Review of #6396: no caller was seen to build `detail`. None needs to:
+  // the canvas click listener hands the DOM MouseEvent itself to
+  // handleSelectionClick, which passes it on as the modifiers. So a real
+  // click event's `detail` must decide it, with no hand-built mods.
+  it('a real canvas click event: detail 1 adds a corner, detail 2 closes the polygon', async () => {
+    const base = fakeCtx();
+    const canvas = document.createElement('canvas');
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: W, height: H, right: W, bottom: H, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+    const ctx = { ...base, canvas, mouseState: { didDrag: false }, activeToolRef: { current: 'command' } } as unknown as MouseHandlerContext;
+    const clickAt = (x: number, y: number, detail: number) => handleSelectionClick(ctx, new window.MouseEvent('click', {
+      clientX: x * 100, clientY: -y * 100, detail,
+    }) as unknown as MouseEvent);
+    await clickAt(10, 10, 1);
+    await clickAt(13, 10, 1);
+    await clickAt(13, 13, 1); // first click of a double-click: a corner
+    assert.equal(slab().points.length, 3);
+    assert.equal(slabs().length, 0);
+    await clickAt(13, 13, 2); // its second click: close
+    assert.equal(slabs().length, 1, 'the double-click closed the slab');
   });
 });

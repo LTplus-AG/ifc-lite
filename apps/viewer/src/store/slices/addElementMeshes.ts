@@ -24,7 +24,6 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type {
   AddElementType,
-  AddElementWallParams,
   AddElementSlabParams,
   AddElementBeamParams,
   AddElementColumnParams,
@@ -76,7 +75,7 @@ export interface ElementBuildContext {
 }
 
 export type ElementMeshPayload =
-  | { type: 'wall'; params: AddElementWallParams; start: Vec3; end: Vec3 }
+  | { type: 'wall'; params: { Thickness: number; Height: number }; start: Vec3; end: Vec3 }
   | { type: 'beam'; params: AddElementBeamParams; start: Vec3; end: Vec3 }
   | { type: 'member'; params: AddElementMemberParams; start: Vec3; end: Vec3 }
   | { type: 'column'; params: AddElementColumnParams; position: Vec3 }

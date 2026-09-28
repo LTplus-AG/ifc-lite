@@ -194,6 +194,7 @@ export class IfcQuery {
     if (!this.store.spatialHierarchy) {
       throw new Error('Spatial hierarchy not available.');
     }
+    // @raw-entity-enumeration-ok IfcQuery's constructor accepts a parsed store only; this fluent query is a source snapshot (docs/guide/querying.md), while SDK query covers live edits
     const ids = this.store.spatialHierarchy.byStorey.get(storeyId) ?? [];
     return new EntityQuery(this.store, null, ids);
   }
@@ -220,6 +221,7 @@ export class IfcQuery {
   
   get storeys(): EntityNode[] {
     if (!this.store.spatialHierarchy) return [];
+    // @raw-entity-enumeration-ok enumerate storeys in this parsed-store snapshot; live SDK storeys use the session mutation view
     return [...this.store.spatialHierarchy.byStorey.keys()]
       .sort((a, b) => {
         const elevA = this.store.spatialHierarchy!.storeyElevations.get(a) ?? 0;

@@ -6,7 +6,7 @@
 import {
   BarChart3, Box, CalendarClock, ClipboardCheck, Cloud, Coins, Crosshair,
   FileCode2, FileSpreadsheet, FileText, FileWarning, GitCompareArrows,
-  History, Layout, Layers, MessageSquare, Palette, PencilRuler, Puzzle,
+  History, Layout, Layers, MessageSquare, Palette, PencilLine, PencilRuler, Puzzle,
   Ruler, Scan, Sparkles, TreeDeciduous, Users, Workflow,
 } from 'lucide-react';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
@@ -83,6 +83,7 @@ export const PANEL_SURFACE_COMMANDS = [
   rightCommand('panel:clash', 'clash', 'collision interference clearance coordination clash matrix mep', Crosshair, true),
   rightCommand('panel:compare', 'compare', 'diff revision version change added deleted modified geometry data', GitCompareArrows, true),
   rightCommand('panel:changes', 'changes', 'authored edits modifications properties history review', History),
+  rightCommand('panel:model', 'model', 'model inspector author defaults wall type dimensions edit workspace', PencilLine),
   rightCommand('panel:cost', 'cost', '5d cost schedule item quantity budget estimate', Coins, true),
   {
     id: 'panel:chat', panelId: 'script', panelGroup: panelGroupFor('script'),

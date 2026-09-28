@@ -55,6 +55,7 @@ export const commandPaletteEn = {
   'commandPalette.tool.section.label': 'Section',
   'commandPalette.tool.annotate.label': 'Annotate',
   'commandPalette.tool.addElement.label': 'Add Element',
+  'commandPalette.tool.wall.label': 'Draw walls',
   'commandPalette.tool.editMode.label': 'Toggle Edit Mode',
   'commandPalette.tool.split.label': 'Split selected entity',
   'commandPalette.tool.extensionsAuthor.label': 'Author an extension…',

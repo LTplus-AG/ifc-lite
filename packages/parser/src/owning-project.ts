@@ -57,6 +57,7 @@ export function resolveOwningIfcProjectId(
   relationships: RelatedLookup | undefined,
   expressId: number
 ): number | undefined {
+  // @raw-entity-enumeration-ok file-level unit resolution checks the source projects; live entity membership is not inferred from this count
   const projectIds = entityIndex.byType.get('IFCPROJECT') || [];
   if (projectIds.length <= 1) return undefined;
   if (!relationships) return undefined;

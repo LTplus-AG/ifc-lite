@@ -113,6 +113,8 @@ export class BulkQueryEngine {
   private canEdit: MutationGuard | undefined;
   /** The model's declared schema, which decides the attributes SET_ATTRIBUTE may write. */
   private schemaVersion: ModelSchema | undefined;
+  /** Live container membership supplied by a parser-aware caller. */
+  private spatialMembers: ((containerId: number) => readonly number[]) | undefined;
 
   constructor(
     entities: EntityTable,
@@ -120,7 +122,8 @@ export class BulkQueryEngine {
     spatialHierarchy?: SpatialHierarchy | null,
     strings?: { get(idx: number): string } | null,
     canEdit?: MutationGuard,
-    schemaVersion?: ModelSchema
+    schemaVersion?: ModelSchema,
+    spatialMembers?: (containerId: number) => readonly number[],
   ) {
     this.entities = entities;
     this.mutationView = mutationView;
@@ -128,9 +131,11 @@ export class BulkQueryEngine {
     this.strings = strings || null;
     this.canEdit = canEdit;
     this.schemaVersion = schemaVersion;
+    this.spatialMembers = spatialMembers;
 
     // Build O(1) lookup map once instead of O(n) linear scan per query
     this.expressIdIndex = new Map<number, number>();
+    // @raw-entity-enumeration-ok source rows build an expressId-to-slot lookup; effectiveBulkCandidates applies the mutation view
     for (let i = 0; i < entities.count; i++) {
       this.expressIdIndex.set(entities.expressId[i], i);
     }
@@ -144,64 +149,23 @@ export class BulkQueryEngine {
     // creations in, a retyped entity under its new class.
     let candidates = effectiveBulkCandidates(this.entities, this.expressIdIndex, this.mutationView, criteria.entityTypes);
 
-    // Filter by storeys
-    if (criteria.storeys && criteria.storeys.length > 0 && this.spatialHierarchy) {
-      const storeySet = new Set(criteria.storeys);
-      const storeyElements = new Set<number>();
-      for (const storeyId of storeySet) {
-        const elements = this.spatialHierarchy.byStorey.get(storeyId);
-        if (elements) {
-          for (const el of elements) {
-            storeyElements.add(el);
-          }
-        }
+    // @raw-entity-enumeration-ok these source buckets are consumed only for an unchanged session; a live resolver replaces them for edited sessions
+    for (const [ids, bucket] of [
+      [criteria.storeys, this.spatialHierarchy?.byStorey],
+      [criteria.buildings, this.spatialHierarchy?.byBuilding],
+      [criteria.sites, this.spatialHierarchy?.bySite],
+      [criteria.spaces, this.spatialHierarchy?.bySpace],
+    ] as const) {
+      if (!ids?.length) continue;
+      if (!this.spatialMembers && (this.mutationView.hasPendingChanges() || !bucket)) {
+        throw new Error('BulkQueryEngine: spatial filter requires live membership for edited or unavailable spatial data.');
       }
-      candidates = candidates.filter((id) => storeyElements.has(id));
-    }
-
-    // Filter by buildings
-    if (criteria.buildings && criteria.buildings.length > 0 && this.spatialHierarchy) {
-      const buildingSet = new Set(criteria.buildings);
-      const buildingElements = new Set<number>();
-      for (const buildingId of buildingSet) {
-        const elements = this.spatialHierarchy.byBuilding.get(buildingId);
-        if (elements) {
-          for (const el of elements) {
-            buildingElements.add(el);
-          }
-        }
+      const members = new Set<number>();
+      for (const containerId of ids) {
+        // @raw-entity-enumeration-ok parsed bucket is used only for a session with no pending mutation; live sessions use spatialMembers
+        for (const member of this.spatialMembers?.(containerId) ?? bucket?.get(containerId) ?? []) members.add(member);
       }
-      candidates = candidates.filter((id) => buildingElements.has(id));
-    }
-
-    // Filter by sites
-    if (criteria.sites && criteria.sites.length > 0 && this.spatialHierarchy) {
-      const siteSet = new Set(criteria.sites);
-      const siteElements = new Set<number>();
-      for (const siteId of siteSet) {
-        const elements = this.spatialHierarchy.bySite.get(siteId);
-        if (elements) {
-          for (const el of elements) {
-            siteElements.add(el);
-          }
-        }
-      }
-      candidates = candidates.filter((id) => siteElements.has(id));
-    }
-
-    // Filter by spaces
-    if (criteria.spaces && criteria.spaces.length > 0 && this.spatialHierarchy) {
-      const spaceSet = new Set(criteria.spaces);
-      const spaceElements = new Set<number>();
-      for (const spaceId of spaceSet) {
-        const elements = this.spatialHierarchy.bySpace.get(spaceId);
-        if (elements) {
-          for (const el of elements) {
-            spaceElements.add(el);
-          }
-        }
-      }
-      candidates = candidates.filter((id) => spaceElements.has(id));
+      candidates = candidates.filter((id) => members.has(id));
     }
 
     // Filter by express IDs (direct selection)

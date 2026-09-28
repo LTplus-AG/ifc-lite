@@ -28,7 +28,8 @@ export function CommandBar() {
   const hint = command.hud.hint?.(gesture);
   return (
     <>
-      <HudToolbar data-command-id={command.id}>
+      {/* One row: a narrow lane (Model rail + sidebar open) would otherwise wrap ✕ alone. */}
+      <HudToolbar data-command-id={command.id} className="flex-nowrap">
         <span className="px-1.5 text-2xs font-medium uppercase tracking-wide text-overlay-ink-muted">
           {t(command.labelKey)}
         </span>

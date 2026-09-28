@@ -197,12 +197,18 @@ it('#5878 keyboard opening of the class filter emits one registered command even
   ]);
 });
 
-it('#5878 Author edit and Space Sketch execute through registered ribbon controls', () => {
+it('#5878 Author edit and Space Sketch execute through registered ribbon controls', (t) => {
+  // Edit mode is the Model workspace (#6232), which opens on a loaded model.
   act(() => useViewerStore.setState({
+    ...fixtureModels(fixtureModel('m')),
     ribbonTab: 'author', ribbonCollapsed: false,
     editEnabled: false, activeTool: 'select', collabRole: null,
     // Edit mode is the Model workspace (#6232): it needs an editable model.
     ...fixtureModels(fixtureModel('m')),
+  }));
+  t.after(() => act(() => {
+    useViewerStore.getState().exitModelWorkspace();
+    useViewerStore.setState({ models: new Map(), activeModelId: null });
   }));
   const container = render(<RibbonToolbar />);
   const control = (id: string): HTMLButtonElement => {

@@ -173,6 +173,12 @@ round-trip — this caveat is scoped to entities created via `createEntity` /
 
 Use `@ifc-lite/rules` to evaluate property filter groups and pass the resulting Express IDs in `select.expressIds`.
 
+Spatial filters (`storeys`, `buildings`, `sites`, `spaces`) use the supplied
+`SpatialHierarchy` for an unchanged source model. After session edits, supply a
+live container-membership reader as the seventh `BulkQueryEngine` constructor
+argument. A spatial filter throws if its hierarchy is missing or an edited
+session has no live reader, so a bulk edit cannot silently target a wider set.
+
 ```typescript
 import { BulkQueryEngine } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';

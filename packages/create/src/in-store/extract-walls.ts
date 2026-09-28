@@ -208,9 +208,9 @@ export function extractWallSegmentsForStorey(
       overlayCount++;
       const result = extractWallAxisFromOverlay(store, extractor, overlay, ent, storeyChain, log);
       if (result.segment) {
-        // Overlay walls are authored via addWallToStore which emits
-        // metre coords — don't double-scale.
-        segments.push(result.segment);
+        // Overlay walls are authored via addWallToStore, which writes the
+        // file's native length unit like the source (#6232): scale them too.
+        segments.push(scaleSegment(result.segment, lengthUnitScale));
         contributing.push(ent.expressId);
         wallThicknesses.push(undefined); // overlay walls carry no material yet
       } else {

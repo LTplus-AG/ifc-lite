@@ -8,6 +8,8 @@ import {
   Slice, StickyNote,
 } from 'lucide-react';
 import { openRepositionModels } from '@/lib/model-placement/commands';
+import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
+import { WallIcon } from './model/model-icons';
 import { useViewerStore } from '@/store';
 import type { SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
 
@@ -67,6 +69,14 @@ export const TOOL_SURFACE_COMMANDS = [
     run: () => { useViewerStore.getState().setActiveTool('addElement'); },
   },
   {
+    // The Model workspace rail's Wall (#6232); enters the workspace first.
+    id: 'tool:wall', labelKey: 'commandPalette.tool.wall.label',
+    searchLabel: 'Draw walls', keywords: 'wall draw place model author build create',
+    category: 'Tools', icon: WallIcon, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.wall',
+    run: () => { launchModelCommand('wall.place'); },
+  },
+  {
     id: 'tool:edit-mode', labelKey: 'commandPalette.tool.editMode.label', ribbonLabelKey: 'ribbon.author.editMode',
     searchLabel: 'Toggle Edit Mode', keywords: 'edit mode pen unlock readonly properties geometry author modify',
     category: 'Tools', icon: PenLine, surfaces: ['palette', 'ribbon'], enabled: editable,
@@ -80,8 +90,7 @@ export const TOOL_SURFACE_COMMANDS = [
     category: 'Tools', icon: Slice, surfaces: paletteOnly, enabled: editable,
     shortcut: 'tool.split',
     run: () => {
-      const state = useViewerStore.getState();
-      if (state.selectedEntity) state.startCommand('element.split');
+      if (useViewerStore.getState().selectedEntity) launchModelCommand('element.split', { drawsOnWorkplane: false });
     },
   },
 ] as const satisfies readonly SurfaceCommandDefinition[];

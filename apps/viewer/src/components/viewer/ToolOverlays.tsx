@@ -32,10 +32,13 @@ import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
 import { HudHint, HudItem } from '../viewport-ui/hud';
 import { TOOL_HUD, isToolId } from '@/lib/viewport-ui/tool-hud-registry';
+import { WorkplaneScene } from './model/WorkplaneScene';
+import { ModelOnboardingHint } from './model/ModelOnboardingHint';
 
 export function ToolOverlays(): ReactNode {
   const activeTool = useViewerStore((s) => s.activeTool);
   const repositionOpen = useViewerStore((s) => s.repositionOpen);
+  const modelWorkspace = useViewerStore((s) => s.workspaceMode === 'model');
   useEffect(() => {
     if (repositionOpen && activeTool !== 'select') useViewerStore.getState().closeReposition();
   }, [repositionOpen, activeTool]);
@@ -44,6 +47,9 @@ export function ToolOverlays(): ReactNode {
   const entry = isToolId(activeTool) ? TOOL_HUD[activeTool] : undefined;
   return (
     <>
+      {/* The Model workspace's own layer, under whatever tool runs in it (#6232). */}
+      {modelWorkspace && <WorkplaneScene />}
+      {modelWorkspace && <ModelOnboardingHint />}
       {entry?.Bar && (
         <HudItem region="top-center" order={0}>
           <entry.Bar />

@@ -35,6 +35,7 @@ import {
 import { toGlobalIdFromModels } from '@/store/globalId';
 import type { FederatedModel } from '@/store/types';
 import { computeMaxExpressId, effectiveRows, resolveGlobalId, type ModelEntry, type ModelRef } from './adapter-entities.js';
+import { effectiveGroupIds, effectiveGroupRecord, effectiveGroups, type EffectiveGroups } from './adapter-groups.js';
 
 /** `expressId`'s type-inherited psets, mutation-aware (#5207); mirrors
  *  `filter-evaluate.ts`'s `getInheritedTypePsets`. */
@@ -95,6 +96,8 @@ export function createLensDataProvider(
       mutationView: mutationViews?.get('legacy'),
     });
   }
+
+  const groupOverlays = new Map<string, EffectiveGroups | null>();
 
   // Lens evaluation reads several fields inside forEachEntity's callback.
   // Carry that exact model-local ref through the callback so a million-row
@@ -350,23 +353,12 @@ export function createLensDataProvider(
     getEntityGroups(globalId: number): ReadonlyArray<{ id: number; name?: string; type: string; objectType?: string }> {
       const resolved = resolve(globalId);
       if (!resolved) return [];
-      const store = resolved.entry.ifcDataStore;
-      if (!store.relationships) return [];
-      // Inverse IfcRelAssignsToGroup: entity → the groups/zones it belongs to.
-      const groupIds = store.relationships.getRelated(resolved.expressId, RelationshipType.AssignsToGroup, 'inverse');
-      if (!groupIds || groupIds.length === 0) return [];
-      const out: Array<{ id: number; name?: string; type: string; objectType?: string }> = [];
-      for (const gid of groupIds) {
-        const name = store.entities?.getName(gid);
-        // Canonical IfcPascalCase so the "By Zone" lens can match `IfcZone`
-        // deterministically; `byId.get(gid).type` is the raw STEP token. (#1075)
-        const type = store.entities?.getTypeName?.(gid) || store.entityIndex?.byId.get(gid)?.type || 'Unknown';
-        // ObjectType carries the system designation for unnamed groups; the
-        // lens legend falls back to it when Name/LongName are empty. (#1075)
-        const objectType = store.entities?.getObjectType?.(gid);
-        out.push({ id: gid, name: name || undefined, type, objectType: objectType || undefined });
+      const { ifcDataStore: store, mutationView: view } = resolved.entry;
+      if (!groupOverlays.has(resolved.entry.id)) {
+        groupOverlays.set(resolved.entry.id, effectiveGroups(store, view));
       }
-      return out;
+      return effectiveGroupIds(store, view, resolved.expressId, groupOverlays.get(resolved.entry.id) ?? null)
+        .map((id) => effectiveGroupRecord(store, view, id));
     },
   };
 }

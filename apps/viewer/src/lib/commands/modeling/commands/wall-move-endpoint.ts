@@ -15,6 +15,7 @@
  */
 
 import { useViewerStore } from '@/store';
+import { authoringDim } from '@/store/slices/authoringDefaultsSlice';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { dist } from '@/lib/snap/constraints';
 import type { Vec2 } from '@/lib/snap/types';
@@ -57,7 +58,7 @@ function init(ctx: CommandContext): WallEndpointGesture {
     start: wall.start,
     end: wall.end,
     thickness: wall.thickness,
-    height: Number.isFinite(wall.height) ? wall.height : s.addElementWallParams.Height,
+    height: Number.isFinite(wall.height) ? wall.height : authoringDim(s.authoringDefaults, 'wall', 'Height'),
   };
 }
 

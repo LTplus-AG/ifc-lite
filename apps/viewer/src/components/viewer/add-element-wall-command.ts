@@ -15,19 +15,26 @@ import { useViewerStore, type ViewerState } from '@/store';
 
 const WALL_PLACE = 'wall.place';
 
-/** The Add Element panel is open: its own tool, or its wall type's command. */
+/**
+ * The Add Element panel is open: its own tool, or its wall type's command.
+ * A wall started from the Model workspace (rail, W, palette) is not the
+ * panel's and leaves the sidebar alone.
+ */
 export function selectAddElementPanelOpen(s: ViewerState): boolean {
-  return s.activeTool === 'addElement' || s.session?.activeCommandId === WALL_PLACE;
+  return s.activeTool === 'addElement' || (s.addElementDrawsWall && s.session?.activeCommandId === WALL_PLACE);
 }
 
 /** Keep the canvas tool in step with the panel's element type. */
 export function useWallPlaceBridge(): void {
   const addElementType = useViewerStore((s) => s.addElementType);
   const activeTool = useViewerStore((s) => s.activeTool);
-  const placingWalls = useViewerStore((s) => s.session?.activeCommandId === WALL_PLACE);
+  const placingWalls = useViewerStore((s) => s.addElementDrawsWall && s.session?.activeCommandId === WALL_PLACE);
   useEffect(() => {
     const s = useViewerStore.getState();
-    if (addElementType === 'wall' && activeTool === 'addElement') s.startCommand(WALL_PLACE);
+    if (addElementType === 'wall' && activeTool === 'addElement') {
+      s.setAddElementDrawsWall(true);
+      s.startCommand(WALL_PLACE);
+    }
     else if (addElementType !== 'wall' && placingWalls) s.setActiveTool('addElement');
   }, [addElementType, activeTool, placingWalls]);
 

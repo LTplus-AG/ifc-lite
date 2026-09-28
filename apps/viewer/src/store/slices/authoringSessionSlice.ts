@@ -29,6 +29,10 @@ import {
   type CommandPhase,
 } from '@/lib/commands/modeling/runtime';
 import type { CommandId, SnapProfileId, WorkplaneSpec } from '@/lib/commands/modeling/types';
+import {
+  loadModelLayout, persistModelLayout, restoreSidebar, showModelInspector,
+  type ModelLayout, type SidebarRestore,
+} from './authoringSessionSidebar.js';
 
 export type WorkspaceMode = 'view' | 'model';
 export type EndCommandReason = 'commit' | 'cancel' | 'switch';
@@ -41,6 +45,8 @@ export interface AuthoringSession {
   readonly activeCommandId: CommandId | null;
   readonly phase: CommandPhase;
   readonly snap: { readonly profile: SnapProfileId };
+  /** The sidebar panel to put back on exit (null: the workspace took nothing over). */
+  readonly sidebarRestore: SidebarRestore | null;
 }
 
 export interface EnterModelWorkspaceOptions {
@@ -52,6 +58,9 @@ export interface EnterModelWorkspaceOptions {
 export interface AuthoringSessionSlice {
   workspaceMode: WorkspaceMode;
   session: AuthoringSession | null;
+  /** Plan ‖ 3D split of the Model workspace's viewport (persisted per browser). */
+  modelLayout: ModelLayout;
+  setModelLayout: (layout: ModelLayout) => void;
   /** False when refused (collab role, no editable model). */
   enterModelWorkspace: (opts?: EnterModelWorkspaceOptions) => boolean;
   exitModelWorkspace: () => void;
@@ -111,11 +120,15 @@ function launch(set: Set, get: Get, api: StoreApi<ViewerState>, id: CommandId): 
 /** Keep the runtime in step with the tool and the session, whoever changed them. */
 function syncRuntime(api: StoreApi<ViewerState>): void {
   api.subscribe((s, prev) => {
-    // The workspace closed under edit mode (its model removed, a file swap):
-    // edit mode goes with it, so the two never disagree.
-    if (prev.workspaceMode === 'model' && s.workspaceMode === 'view' && s.editEnabled) {
-      s.setEditEnabled(false);
-      return;
+    // The workspace closed, however (Leave, its model removed, a file swap):
+    // the sidebar gets its panel back, and edit mode goes with it, so the two
+    // never disagree.
+    if (prev.workspaceMode === 'model' && s.workspaceMode === 'view') {
+      restoreSidebar(api.getState, prev.session?.sidebarRestore ?? null);
+      if (api.getState().editEnabled) {
+        api.getState().setEditEnabled(false);
+        return;
+      }
     }
     const running = getCommandRuntime().command;
     const commandTool = s.activeTool === 'command';
@@ -134,6 +147,11 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
   return {
     workspaceMode: 'view',
     session: null,
+    modelLayout: loadModelLayout(),
+    setModelLayout: (modelLayout) => {
+      persistModelLayout(modelLayout);
+      set({ modelLayout });
+    },
 
     enterModelWorkspace: (opts = {}) => {
       const s = get();
@@ -148,6 +166,8 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
       // Storey: explicit → the selection's → the Add Element panel's → the first.
       const preferred = opts.storeyId ?? selectionStorey(s, modelId) ?? s.addElementStoreyId;
       const storeyId = selectEffectiveStoreyId(store, s.mutationViews.get(modelId), preferred);
+      // Re-entering on another model keeps the panel the FIRST entry took over.
+      const sidebarRestore = s.session ? s.session.sidebarRestore : showModelInspector(s);
       set({
         workspaceMode: 'model',
         editEnabled: true,
@@ -158,6 +178,7 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
           activeCommandId: null,
           phase: 'idle',
           snap: { profile: 'modeling' },
+          sidebarRestore,
         },
       });
       if (opts.command) get().startCommand(opts.command);

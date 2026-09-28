@@ -15,6 +15,8 @@ import { AddElementPanel } from './AddElementPanel';
 import { selectAddElementPanelOpen } from './add-element-wall-command';
 import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
+import { ModelToolRail } from './model/ModelToolRail';
+import { ModelWorkspaceSplit } from './model/ModelWorkspaceSplit';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog, type InfoDialogTab } from './KeyboardShortcutsDialog';
 import { SettingsDialogHost } from './settings/SettingsDialog';
 import { ConfirmDialogHost } from '@/components/ui/confirm-dialog';
@@ -324,7 +326,10 @@ export function ViewerLayout() {
                         (#1201) snap to THIS region, not the whole window, so a
                         dock never hides under the toolbar (its own close control
                         with it) or over the hierarchy / sidebar (#1245). */}
-                    <div data-floating-snap-bounds className="h-full w-full overflow-hidden relative">
+                    <div data-floating-snap-bounds className="h-full w-full overflow-hidden relative flex">
+                      {/* Model workspace (#6232): its tool rail, then the Plan ‖ 3D split. */}
+                      <ModelToolRail />
+                      <ModelWorkspaceSplit>
                       {sideBySideDrawing ? (
                         // Side-by-side 2D/3D preset (#5515): the drawing docks
                         // beside the 3D view instead of below it, in its own
@@ -350,6 +355,7 @@ export function ViewerLayout() {
                       ) : (
                         <ViewportContainer />
                       )}
+                      </ModelWorkspaceSplit>
                     </div>
                   </Panel>
                 </PanelGroup>

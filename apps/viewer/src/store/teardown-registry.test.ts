@@ -217,6 +217,7 @@ function modelRemovedFixture() {
  */
 const PINNED_OWNED_KEYS: readonly string[] = [
   'workspaceMode', 'session', // #6232 authoring session: it names one model and storey
+  'authoringDefaults', // #6232 M2: type / layer-set picks name one model's entities; dimensions survive
   'documentPanelVisible', // #4594 documents
   'flowPanelVisible', 'flowRunning', 'flowLastRun', 'flowLastError', 'flowLastRunWindow', // #5167 flow
   'chartPanelVisible', 'chartSelectionRevision', 'chartSlice', 'chartSliceSource', 'chartSliceBuckets', 'chartVisibilityOwned', 'chartVisibilityRevision', // #3944 charts

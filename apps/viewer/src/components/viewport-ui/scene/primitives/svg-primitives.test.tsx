@@ -290,6 +290,24 @@ describe('PlaneOutline', () => {
     // `display: ''` here instead — verified by reverting the fix.
   });
 
+  it('with allowOffscreen, an outline larger than the view still draws, but not from behind the camera (#6232)', () => {
+    const corners = [
+      { x: -100, y: -100, z: 0 },
+      { x: 5000, y: -100, z: 0 },
+      { x: 5000, y: 5000, z: 0 },
+      { x: -100, y: 5000, z: 0 },
+    ];
+    const { container, source, flush } = renderScene(<PlaneOutline corners={corners} allowOffscreen />);
+    flush();
+    const polygon = container.querySelector('[data-scene-primitive="plane-outline"]') as SVGPolygonElement;
+    assert.equal(polygon.style.display, '', 'the SVG clips what the canvas cannot show');
+    assert.equal(polygon.getAttribute('points'), '-100,-100 5000,-100 5000,5000 -100,5000');
+    source.camera.behind = true;
+    source.dirty = true;
+    flush();
+    assert.equal(polygon.style.display, 'none');
+  });
+
   it('re-projects when corner VALUES change without corners.length changing (#5636 review)', () => {
     let setCorners!: (c: Vec3[]) => void;
     function Harness() {

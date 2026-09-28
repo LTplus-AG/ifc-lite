@@ -4,6 +4,25 @@ const REBAR: &str = include_str!("../../geometry/tests/fixtures/swept_disk_compo
 const MAPPED: &str = include_str!("../../geometry/tests/fixtures/swept_disk_trimmed_line.ifc");
 
 #[test]
+fn issue_5759_zero_authored_area_is_retained_and_diagnosed() {
+    // This authored IFC2X3 fixture uses 0 for CrossSectionArea, not `$`.
+    let schedule = build_rebar_schedule(
+        REBAR.as_bytes(), None, &SweptDiskCheckOptions::default(),
+    ).unwrap();
+    let row = &schedule.rows[&125];
+    assert_eq!(
+        row.authored["CrossSectionArea"].value,
+        AuthoredRebarValue::Measure {
+            value_file_units: 0.0,
+            value_si: 0.0,
+            si_unit: "m2",
+        },
+    );
+    assert!(row.diagnostics.iter().any(|message| message ==
+        "CrossSectionArea on occurrence: authored zero retained; physical section area is not established"));
+}
+
+#[test]
 fn issue_5759_revit_snowdon_schedule_preserves_authored_and_measured_lengths() {
     // Revit 24.2.0.63 / IFC 24.2.0.63, from the catalogued structural model.
     let Some(content) = crate::test_support::fixture_opt(

@@ -267,6 +267,17 @@ pub fn build_rebar_schedule(
                             .map(|value| (RebarSource::Type, type_id.unwrap_or_default(), value))
                     })
                 {
+                    if field == "CrossSectionArea"
+                        && matches!(&value, AuthoredRebarValue::Measure { value_file_units, .. } if *value_file_units == 0.0)
+                    {
+                        let origin = match source {
+                            RebarSource::Occurrence => "occurrence",
+                            RebarSource::Type => "type",
+                        };
+                        row.diagnostics.push(format!(
+                            "CrossSectionArea on {origin}: authored zero retained; physical section area is not established"
+                        ));
+                    }
                     row.authored.insert(
                         field.to_string(),
                         AuthoredRebarAttribute {

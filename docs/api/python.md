@@ -333,7 +333,9 @@ Each row exposes the occurrence's `GlobalId` and `Name` under their exact
 EXPRESS names.
 Authored attributes use exact EXPRESS names and record whether they came from
 the occurrence or its `IfcReinforcingBarType`. Numeric attributes retain their
-raw IFC value and an SI conversion. Each source sweep separately carries
+raw IFC value and an SI conversion. An authored `CrossSectionArea` of zero
+remains in the record, with a row diagnostic stating that it does not establish
+a physical section area. Each source sweep separately carries
 radius, centreline length and bend angles, geometric checks, and reusable
 `source` identity. For complete paths, radii are effective world values in
 metres; an unsupported transform retains source radii in metres and does not

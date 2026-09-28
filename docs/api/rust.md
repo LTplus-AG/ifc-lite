@@ -722,6 +722,8 @@ reported per row without dropping the world sweep. The `authored` map uses exact
 attribute names; each entry identifies the occurrence or type entity that
 supplied it. Numeric measures retain `value_file_units` and their `value_si`
 conversion, while centreline lengths are separately derived world metres.
+An authored `CrossSectionArea` of zero remains in the record with its provenance;
+the row diagnostic states that it does not establish a physical section area.
 Radii are effective world metres for complete paths; an unsupported transform
 retains source radii in metres without implying a world circular radius.
 Conflicting occurrence/type values are reported, with the occurrence taking

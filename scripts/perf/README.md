@@ -42,17 +42,16 @@ See the [browser evidence](evidence/color-overrides-6148/README.md).
 
 ## Reusable swept-disk source definitions (#5785)
 
-The source/instance API is opt-in. The shared bounded walk reuses decoded raw
+The source/instance API is opt-in. Its bounded walk reuses decoded raw
 solids within one extraction; the default mesh pipeline remains separate.
-Five balanced native AC20-FZK-Haus pairs on the PR's main parent
-`d9b6e4ec0` and head `7170fb1ba`, each using `perf_probe --iters 5 --json
---fingerprint`, gave median parse/geometry/total times of 6/23/29 ms and
-6/22/28 ms. Base totals ranged 27–30 ms and head totals 25–31 ms, so the
-1 ms median difference does not support a speedup claim; there was no
-meaningful full-load regression on this fixture. Every run emitted 285 meshes,
-35,940 vertices and 20,322 triangles with ordered FNV-1a64
-`c4d504b83ff698ea`. This is a native default-load check, not a browser
-worker-pool or opt-in analytic extraction measurement.
+Five alternating fresh-process native AC20-FZK-Haus pairs compared merged
+main `80d1ba901` with the #5810 source head `55109fdbd`, each with five
+inner iterations and ordered mesh fingerprints. Counts and fingerprints were
+identical throughout; parse, geometry, and total timing ranges overlapped.
+Verdict: no supported default full-load speed change on this fixture. The
+lesson is to measure cache benefits in opt-in extraction and browser worker
+pools rather than infer them from a default mesh probe. The PR records the
+numeric measurements, binary hashes, and fixture provenance.
 
 ## Derived swept-disk metrics (#5754)
 

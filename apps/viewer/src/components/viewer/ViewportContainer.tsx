@@ -58,6 +58,7 @@ import {
 } from '@/services/sources/source-host';
 import { useOptionalSourceHost } from '@/services/sources/SourceHostProvider';
 import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
+import { applyDownloadedModel, captureModelSwap, describeDownloadItem } from '@/lib/sources/sourceDownloadApply';
 import { sanitizeFilename } from '@/lib/export/download';
 import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { toast } from '@/components/ui/toast';
@@ -422,20 +423,22 @@ export function ViewportContainer() {
             // syncSourceModel uses. Without it the toast would falsely report
             // a failure and the model would get no source tag (no sync
             // button, no badge, no downloaded-file record).
-            const providerTitle =
-              sourceHost?.get(item.tag.provider)?.manifest.title ?? item.tag.provider;
+            const { providerTitle, modelName } = describeDownloadItem(item, sourceHost, safeName);
             // Isolate each item: a single corrupt or unparseable file must not
             // abandon the rest of the batch. Without this, one bad IFC out of
             // ten throws to the outer catch and the other nine silently never
             // load — with one generic toast for the whole batch.
             try {
               const modelId = crypto.randomUUID();
-              const added = await addModel(file, { name: safeName, modelId });
+              // Captured BEFORE the load: `removeModel` takes the outgoing
+              // model's placement and selection with it.
+              const swap = captureModelSwap(item.replaceModelId);
+              const added = await addModel(file, { name: modelName, modelId, ...(swap.placement ?? {}) });
               const registered = added !== null || useViewerStore.getState().models.has(modelId);
               if (registered) {
-                useViewerStore.getState().setSourceTag(modelId, item.tag);
-                recordDownloadedSourceFile(item.tag, item.sourceFile);
-                toast.success(`Loaded ${safeName} from ${providerTitle}`);
+                applyDownloadedModel(item, modelId, swap, (loaded) =>
+                  recordDownloadedSourceFile(loaded.tag!, loaded.sourceFile!));
+                toast.success(`Loaded ${modelName} from ${providerTitle}`);
               } else {
                 toast.error(`Failed to load ${safeName} from ${providerTitle}`);
               }

@@ -8,6 +8,8 @@ import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { ViewerState } from '@/store';
 import { createMutationSlice } from '@/store/slices/mutationSlice.js';
+// The real `canEditModel` gate every writer now checks (commit-history spec 02).
+import { createHistorySlice } from '@/store/slices/historySlice.js';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { applyAppearanceEntities, replayAppearanceEntitiesInDraft } from './apply-plan.js';
 import { prepareCoordinatedAppearanceHistory } from './coordinated-history.js';
@@ -23,7 +25,7 @@ async function fixture() {
       edits: [{ expressId: 2, index: 0, value: `#${next}` }], removed: [] }, 'base');
     return { modelId, view, editor, edit };
   });
-  const store = createStore<ViewerState>((...args) => ({ ...createMutationSlice(...args), canCollabEdit: () => true,
+  const store = createStore<ViewerState>((...args) => ({ ...createMutationSlice(...args), ...createHistorySlice(...args), canCollabEdit: () => true,
     models: new Map(entries.map(entry => [entry.modelId, { ...fixtureModel(entry.modelId), ifcDataStore: data }])),
     storeEditors: new Map(entries.map(entry => [entry.modelId, entry.editor])),
     mutationViews: new Map(entries.map(entry => [entry.modelId, entry.view])),

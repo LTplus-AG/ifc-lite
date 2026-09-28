@@ -12,6 +12,7 @@ import {
   type SourceFile,
   type SourceTag,
 } from '@ifc-lite/plugin-api';
+import type { CommitTag } from '@/store/slices/historySlice';
 import {
   applyRelay,
   fetchWithBoundedRetry,
@@ -289,8 +290,30 @@ export const SOURCE_DOWNLOAD_EVENT = 'ifc-lite:source-download';
 export interface SourceDownloadItem {
   readonly name: string;
   readonly buffer: ArrayBuffer;
-  readonly sourceFile: SourceFile;
-  readonly tag: SourceTag;
+  /**
+   * Optional since commit loads (`useCommitLoad`): a commit service need not
+   * expose the model as a FILE at all, so there may be no `SourceFile` to
+   * record — and `recordDownloadedSourceFile` is skipped rather than fed a
+   * fabricated one.
+   */
+  readonly sourceFile?: SourceFile;
+  readonly tag?: SourceTag;
+  /** Set when the bytes are a commit of a versioned model. */
+  readonly commit?: CommitTag;
+  /**
+   * Model name to register under, when it should differ from the file name —
+   * a commit opened alongside reads as `Structural model @ 3f9a1c2 · 12 Sep 2026`,
+   * because three copies of `structural.ifc` in the model list are
+   * indistinguishable.
+   */
+  readonly displayName?: string;
+  /**
+   * Replace this viewer model instead of federating a new one — the "Open
+   * (replace)" path. The listener loads the replacement FIRST and removes the
+   * old model only on success, the same order `syncSourceModel` uses and for
+   * the same reason: a failed load must not delete the user's model.
+   */
+  readonly replaceModelId?: string;
 }
 
 export type SourceDownloadEvent = CustomEvent<{ items: SourceDownloadItem[] }>;

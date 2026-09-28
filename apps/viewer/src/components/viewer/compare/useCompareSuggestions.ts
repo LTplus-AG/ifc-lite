@@ -19,6 +19,7 @@
 import { useMemo } from 'react';
 import { ACCEPTED_AMBIGUOUS_REASON, SUCCESSOR_REASON_PREFIX } from '@ifc-lite/diff';
 import { useViewerStore } from '@/store';
+import { useRecordCommitIdentity } from '@/hooks/history/useRecordCommitIdentity';
 import { posthog } from '@/lib/analytics';
 import type { CompareResult } from '@/store/slices/compareSlice';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
@@ -65,6 +66,8 @@ export function useCompareSuggestions(
     [result, decisions],
   );
 
+  const recordCommitIdentity = useRecordCommitIdentity();
+
   const kindAndReason = (d: SuggestionDecision): { kind: 'successor' | 'ambiguous'; reason: string } =>
     d.row.kind === 'successor'
       ? { kind: 'successor', reason: `${SUCCESSOR_REASON_PREFIX}${d.row.confidence}` }
@@ -79,6 +82,10 @@ export function useCompareSuggestions(
       store.setCompareError(`${d.base} or ${d.here} is already part of an accepted pair.`);
       return;
     }
+    // Persist to the commit service when both sides are commits of one model
+    // and the provider can write. Best-effort and AFTER the local accept: the
+    // user's decision is already made, and a failed write-back must not undo it.
+    recordCommitIdentity(result.baseModelId, result.headModelId, [{ base: d.base, here: d.here, reason }]);
     if (store.compareSelectedKey === d.row.key) store.setCompareSelectedKey(null);
     posthog.capture('model_compare_claim_accept', claimDecisionPayload(kind, reason, d.row.confidence));
   };

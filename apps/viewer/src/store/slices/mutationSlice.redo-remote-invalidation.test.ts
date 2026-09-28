@@ -8,6 +8,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createMutationSlice, type MutationSlice } from './mutationSlice.js';
+import { createHistorySlice } from './historySlice.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 import type { ViewerState } from '../index.js';
@@ -29,6 +30,9 @@ function buildSlice() {
     dirtyModels: new Set(),
     mutationVersion: 0,
     canCollabEdit: () => true,
+    // No commit tags, so the real `canEditModel` below reduces to the collab
+    // role — which is what this harness has always modelled.
+    commitTags: new Map(),
     mirrorPropertyEdit: () => {},
     mirrorPropertyDelete: () => {},
     mirrorAttributeEdit: () => {},
@@ -48,7 +52,8 @@ function buildSlice() {
   // function, so it falls through to the plain undo/redo stacks below.
   const api = { getState, setState, subscribe: () => () => {} };
   const slice = createMutationSlice(setState as never, getState as never, api as never) as MutationSlice;
-  state = { ...slice, ...state };
+  const history = createHistorySlice(setState as never, getState as never, api as never);
+  state = { ...slice, canEditModel: history.canEditModel, ...state };
   return {
     view,
     state: () => state as unknown as ViewerState & MutationSlice,

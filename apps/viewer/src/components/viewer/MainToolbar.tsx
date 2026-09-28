@@ -60,6 +60,7 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
+import { useCanEditActiveModel } from '@/hooks/history/useCanEditActiveModel';
 import { useEffectiveSkyEnabled } from '@/hooks/useEffectiveSkyEnabled';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
@@ -149,10 +150,10 @@ function ToolButton({
  */
 function UndoRedoButtons() {
   const { t } = useTranslation();
-  // Undo/redo replay authoring mutations, so they honour the same collab
-  // role gate as edit mode (null role = single-user, always editable).
-  const collabRole = useViewerStore((s) => s.collabRole);
-  const canEditInSession = collabRole === null || collabRole === 'editor' || collabRole === 'admin';
+  // Undo/redo replay authoring mutations, so they honour the same gate as
+  // edit mode: the collab role, AND whether the active model is a past
+  // version (which nobody may edit).
+  const { canEdit: canEditInSession } = useCanEditActiveModel();
 
   const hasUndo = useViewerStore(state => hasWorkspaceHistory(state, 'undo'));
   const canUndo = canEditInSession && hasUndo;
@@ -287,13 +288,11 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
   const editEnabled = useViewerStore((state) => state.editEnabled);
   const toggleEditEnabled = useViewerStore((state) => state.toggleEditEnabled);
-  // Collab role: editing (gizmo, geometry card, add-element, inline property
-  // editors) is reserved for editor/admin. Derive from the reactive role so
-  // the Edit pill enables/disables live when the role changes. null role
-  // = single-user, always editable.
-  const collabEditRole = useViewerStore((state) => state.collabRole);
-  const canEditInSession =
-    collabEditRole === null || collabEditRole === 'editor' || collabEditRole === 'admin';
+  // Editing (gizmo, geometry card, add-element, inline property editors) is
+  // reserved for editor/admin in a shared session, and refused outright on a
+  // past version. Reactive, so the Edit pill enables/disables live when the
+  // role changes or the user opens another commit.
+  const { canEdit: canEditInSession, blockedBy: editBlockedBy } = useCanEditActiveModel();
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
   const selectedEntityIds = useViewerStore((state) => state.selectedEntityIds);
   const hideEntities = useViewerStore((state) => state.hideEntities);
@@ -723,6 +722,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             <>
               {editEnabled ? t('mainToolbar.editModeExitTooltip') : t('mainToolbar.editModeEnterTooltip')} <span className="opacity-50">{t('mainToolbar.editModeShortcutHint')}</span>
             </>
+          ) : editBlockedBy === 'historical-version' ? (
+            t('history.readOnly.tooltip')
           ) : (
             t('mainToolbar.editModeLocked')
           )}

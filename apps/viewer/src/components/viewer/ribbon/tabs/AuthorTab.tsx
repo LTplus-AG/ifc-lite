@@ -12,6 +12,7 @@ import { hasWorkspaceHistory, replayWorkspaceHistory } from '@/lib/model-placeme
 
 import { Extension, SpaceSketch, AddElement, EditElement, EditProperty, ImportData, Undo, Redo, Appearance } from '@/icons';
 import { useViewerStore } from '@/store';
+import { useCanEditActiveModel } from '@/hooks/history/useCanEditActiveModel';
 import { useIfc } from '@/hooks/useIfc';
 import { useTranslation } from '@/i18n';
 import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
@@ -37,15 +38,14 @@ export function AuthorTab() {
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
   const editEnabled = useViewerStore((state) => state.editEnabled);
   const toggleEditEnabled = useViewerStore((state) => state.toggleEditEnabled);
-  // Collab role: editing is reserved for editor/admin. Derive from the
-  // reactive role so the Edit switch enables/disables live when the role
-  // changes. null role = single-user, always editable.
-  const collabEditRole = useViewerStore((state) => state.collabRole);
-  const canEditInSession =
-    collabEditRole === null || collabEditRole === 'editor' || collabEditRole === 'admin';
+  // Editing is reserved for editor/admin in a shared session, and refused
+  // outright on a past version. Reactive, so the Edit switch enables and
+  // disables live when the role changes or the user opens another commit —
+  // the same hook `MainToolbar` uses, which is what keeps the two toolbars
+  // from disagreeing about whether the model can be edited.
+  const { canEdit: canEditInSession, blockedBy: editBlockedBy } = useCanEditActiveModel();
 
-  // Undo/redo replay authoring mutations, so they honour the same collab
-  // role gate as edit mode.
+  // Undo/redo replay authoring mutations, so they honour the same gate.
   const hasUndo = useViewerStore(state => hasWorkspaceHistory(state, 'undo'));
   const canUndo = canEditInSession && hasUndo;
   const hasRedo = useViewerStore(state => hasWorkspaceHistory(state, 'redo'));
@@ -61,7 +61,9 @@ export function AuthorTab() {
           label={t('ribbon.author.editMode')}
           tooltip={canEditInSession
             ? (editEnabled ? t('ribbon.author.exitEditTooltip') : t('ribbon.author.enterEditTooltip'))
-            : t('ribbon.author.editLockedTooltip')}
+            : editBlockedBy === 'historical-version'
+              ? t('history.readOnly.tooltip')
+              : t('ribbon.author.editLockedTooltip')}
           shortcut="E"
           active={editEnabled}
           activeClassName={EDIT_ACTIVE_CLASS}

@@ -34,6 +34,7 @@ import { documentEn } from './catalogues/document.en';
 import { documentMenuEn } from './catalogues/document-menu.en';
 import { drawingUnderlayEn } from './catalogues/drawing-underlay.en';
 import { hierarchyEn } from './catalogues/hierarchy.en';
+import { historyEn } from './catalogues/history.en';
 import { idsPanelEn } from './catalogues/ids-panel.en';
 import { validationEditorEn } from './catalogues/validation-editor.en';
 import { validationPanelEn } from './catalogues/validation-panel.en';
@@ -134,6 +135,7 @@ export const en = {
   ...clashToolsEn,
   ...bcfEn,
   ...layersPanelEn,
+  ...historyEn,
   ...lensPanelEn,
   ...searchModalEn,
   ...searchFiltersEn,

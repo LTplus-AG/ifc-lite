@@ -98,6 +98,8 @@ export const commandPaletteEn = {
   'commandPalette.panel.layers.label': 'Layer Stack',
   'commandPalette.panel.sources.label': 'Cloud Sources',
   'commandPalette.panel.zones.label': 'Location Zones',
+  'commandPalette.panel.history.label': 'Show Model History',
+  'commandPalette.panel.historyLatest.label': 'Back to Latest Version',
   'commandPalette.panel.loadReport.label': 'Load Report',
   'commandPalette.panel.appearance.label': 'Appearance',
   'commandPalette.panel.collab.label': 'Collaboration Room',

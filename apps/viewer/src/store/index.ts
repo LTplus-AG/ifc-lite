@@ -61,6 +61,7 @@ import { createSpaceMouseSlice, type SpaceMouseSlice } from './slices/spaceMouse
 import { createLayerStackSlice, type LayerStackSlice } from './slices/layerStackSlice.js';
 import { createZonesSlice, type ZonesSlice } from './slices/zonesSlice.js';
 import { createModelTagsSlice, type ModelTagsSlice } from './slices/modelTagsSlice.js';
+import { createHistorySlice, type HistorySlice } from './slices/historySlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 import { withPlacementHistory } from './placement-history.js';
 import { withVisibilityOwnershipInvalidation } from './visibility-invalidation.js';
@@ -180,7 +181,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   SplitToolSlice &
   LevelDisplaySlice &
   PointCloudSlice & ModelPlacementSlice &
-  UnitDisplaySlice & SpaceMouseSlice & ZonesSlice & ModelTagsSlice &
+  UnitDisplaySlice & SpaceMouseSlice & ZonesSlice & ModelTagsSlice & HistorySlice &
   ExtensionsSlice & SourcesSlice & {
     resetViewerState: () => void;
     /**
@@ -281,6 +282,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createSpaceMouseSlice(...args),
   ...createZonesSlice(...args),
   ...createModelTagsSlice(...args),
+  ...createHistorySlice(...args),
   ...createExtensionsSlice(...args),
   ...createSourcesSlice(...args),
   ...createAppearanceSlice(...args),

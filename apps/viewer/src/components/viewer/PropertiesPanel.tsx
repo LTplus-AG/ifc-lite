@@ -44,6 +44,7 @@ import { ScheduleCard } from './properties/ScheduleCard';
 import { StructuralCard } from './properties/StructuralCard';
 import { TaskEditCard } from './properties/TaskEditCard';
 import { DocumentCard } from './properties/DocumentCard';
+import { ElementHistoryCard } from './properties/ElementHistoryCard';
 import { RelationshipsCard } from './properties/RelationshipsCard';
 import { SpatialLocationBadge } from './properties/SpatialLocationBadge';
 import { AssemblyBadge } from './properties/AssemblyBadge';
@@ -1791,6 +1792,13 @@ export function PropertiesPanel() {
                       selectedGlobalId={selectedEntityGlobalId}
                     />
                   </>
+                )}
+
+                {/* Version history of this element (commit-history spec 02).
+                    Renders itself away unless the model carries a commit tag,
+                    so a locally-opened file shows nothing extra. */}
+                {selectedEntity && selectedEntity.modelId !== 'legacy' && (
+                  <ElementHistoryCard modelId={selectedEntity.modelId} elementKey={selectedEntityGlobalId} />
                 )}
               </div>
             )}

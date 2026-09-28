@@ -114,6 +114,7 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.5",
+    "@ifc-lite/source-fixture": "workspace:^",
     "@svgr/core": "^8.1.0",
     "@svgr/plugin-jsx": "^8.1.0",
     "@tailwindcss/postcss": "^4.3.3",

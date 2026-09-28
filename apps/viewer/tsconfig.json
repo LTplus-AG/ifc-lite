@@ -38,6 +38,7 @@
       "@ifc-lite/sandbox/schema": ["../../packages/sandbox/src/bridge-schema"],
       "@ifc-lite/plugin-api": ["../../packages/plugin-api/src"],
       "@ifc-lite/source-dalux": ["../../packages/source-dalux/src"],
+      "@ifc-lite/source-fixture": ["../../packages/source-fixture/src"],
       "@ifc-lite/source-dropbox": ["../../packages/source-dropbox/src"],
       "@ifc-lite/source-msgraph": ["../../packages/source-msgraph/src"]
     }

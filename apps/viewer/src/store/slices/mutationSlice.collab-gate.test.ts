@@ -15,6 +15,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { createMutationSlice, type MutationSlice } from './mutationSlice.js';
+import { createHistorySlice } from './historySlice.js';
 import type { Mutation } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
 
@@ -59,6 +60,9 @@ function buildSlice(canEdit: boolean, editedModelId = 'm1') {
     dirtyModels: new Set(),
     mutationVersion: 0,
     canCollabEdit: () => canEdit,
+    // No commit tags: every model here is the live version, so `canEditModel`
+    // reduces to the collab role — which is what this suite is about.
+    commitTags: new Map(),
     // Mirrors are cross-slice; the role gate under test runs before they would.
     // Each records the modelId it was handed — see the wiring suite below.
     mirrorPropertyEdit: (modelId: unknown) => {
@@ -84,7 +88,12 @@ function buildSlice(canEdit: boolean, editedModelId = 'm1') {
     getState as never,
     {} as never,
   ) as MutationSlice;
-  state = { ...slice, ...state };
+  // The REAL `canEditModel` (historySlice), not a stub of it: since the
+  // commit-history work it is the single gate every writer below checks, and
+  // stubbing it here would leave this suite asserting against a fake while
+  // the composition it actually gates on went untested.
+  const history = createHistorySlice(setState as never, getState as never, {} as never);
+  state = { ...slice, canEditModel: history.canEditModel, ...state };
   return { spy, mirrors, state: () => state as unknown as ViewerState & MutationSlice };
 }
 

@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import type { TreeNode } from './types';
+import { ModelCommitBadge } from './ModelCommitBadge';
 import { ModelRowTags } from './ModelRowTags';
 
 export interface ModelHeaderRowProps {
@@ -91,6 +92,7 @@ export function ModelHeaderRow({
             {formatLocaleNumber(locale, node.elementCount)}
           </span>
         )}
+        <ModelCommitBadge modelId={modelId} />
         <ModelRowTags modelId={modelId} modelName={node.name} />
 
         <button

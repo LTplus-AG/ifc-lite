@@ -11,6 +11,8 @@ import { createStore } from 'zustand/vanilla';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { createMutationSlice } from '@/store/slices/mutationSlice.js';
+// The real `canEditModel` gate every writer now checks (commit-history spec 02).
+import { createHistorySlice } from '@/store/slices/historySlice.js';
 import type { ViewerState } from '@/store/index.js';
 import { applyAppearanceEntities, replayAppearanceEntities } from './apply-plan.js';
 import { prepareAppearanceHistory, registerAppearanceHistory } from './history.js';
@@ -34,7 +36,7 @@ END-ISO-10303-21;`);
   const view = new MutablePropertyView(data.properties, modelId);
   const editor = new StoreEditor(data, view);
   const store = createStore<ViewerState>((...args) => ({
-    ...createMutationSlice(...args), canCollabEdit: () => true,
+    ...createMutationSlice(...args), ...createHistorySlice(...args), canCollabEdit: () => true,
     models: new Map(), storeEditors: new Map([[modelId, editor]]),
   } as ViewerState));
   store.getState().registerMutationView(modelId, view);

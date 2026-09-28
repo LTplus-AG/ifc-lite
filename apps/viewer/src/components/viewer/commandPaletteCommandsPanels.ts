@@ -22,6 +22,7 @@ import {
   FileSpreadsheet, Palette, Puzzle, Camera, Download, FileJson, ShieldQuestion, Sun, Info,
   CalendarPlus, Sparkles, Eraser, GraduationCap, Layers, Users, PanelRight,
   SlidersHorizontal, ChevronsRight, RotateCcw, GitCompareArrows, Crosshair,
+  History as HistoryIcon,
 } from 'lucide-react';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { useViewerStore } from '@/store';
@@ -69,6 +70,19 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
       action: () => { p.activateRightPanel('sources'); } },
     { id: 'panel:zones', label: 'Location Zones', ...withKey('commandPalette.panel.zones.label'), keywords: 'zone section takt area construction location apportionment storey', category: 'Panels', icon: Box,
       action: () => { p.activateRightPanel('zones'); } },
+    { id: 'panel:history', label: 'Show Model History', ...withKey('commandPalette.panel.history.label'), keywords: 'version history commit revision timeline past previous time machine', category: 'Panels', icon: HistoryIcon,
+      action: () => { p.activateRightPanel('history'); } },
+    { id: 'history:backToLatest', label: 'Back to Latest Version', ...withKey('commandPalette.panel.historyLatest.label'), keywords: 'version history latest head newest restore current', category: 'Panels', icon: HistoryIcon,
+      action: () => {
+        const s = useViewerStore.getState();
+        // The ACTIVE model, because that is the one the user is looking at;
+        // a model that is not on a past version has nothing to go back to and
+        // the command is a no-op rather than an error.
+        const modelId = s.activeModelId;
+        if (!modelId || !s.isHistoricalModel(modelId)) return;
+        s.setHistoryFocus(modelId);
+        s.showWorkspacePanel('history');
+      } },
     { id: 'panel:loadReport', label: 'Load Report', ...withKey('commandPalette.panel.loadReport.label'), keywords: 'geometry diagnostics warnings dropped items csg openings unsupported load report', category: 'Panels', icon: FileWarning,
       action: () => { p.activateRightPanel('loadReport'); } },
     { id: 'panel:appearance', label: 'Appearance', ...withKey('commandPalette.panel.appearance.label'), keywords: 'image texture upload UV planar box projection surfaces', category: 'Panels', icon: Palette,

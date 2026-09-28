@@ -29,10 +29,10 @@ it('moves a newly highlighted source inside the bounded extraction after select-
       selectedEntityId: 1_000_001, selectedEntitiesSet: new Set(),
       selectedEntity: { modelId: 'selection', expressId: 1 },
       selectedDirectrixSegment: null });
-    function Selection() {
+    const Selection = () => {
       useSelectedSweptDisks(true);
       return null;
-    }
+    };
     render(<Selection />);
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     assert.equal(requested[0]?.length, 256);

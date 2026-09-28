@@ -30,9 +30,22 @@ fn issue_5786_mapped_extrusion_source_cache_preserves_quantities_and_instances()
 fn issue_5786_revit_mapped_sources_are_loaded_once_without_changing_analytic_order() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"),
         "/../../tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc");
-    let Ok(content) = std::fs::read(path) else {
-        eprintln!("Skipping catalogued Revit Snowdon fixture; run pnpm fixtures");
-        return;
+    let content = match std::fs::read(path) {
+        Ok(content) => content,
+        Err(error) => {
+            let required = match std::env::var("IFC_LITE_REQUIRE_FIXTURES") {
+                Ok(value) if value == "1" => true,
+                Ok(value) if value.is_empty() || value == "0" => false,
+                Err(std::env::VarError::NotPresent) => false,
+                other => panic!("Invalid IFC_LITE_REQUIRE_FIXTURES value: {other:?}"),
+            };
+            assert!(
+                !required,
+                "IFC_LITE_REQUIRE_FIXTURES=1 but Snowdon fixture is missing ({error}); run pnpm fixtures"
+            );
+            eprintln!("Skipping catalogued Revit Snowdon fixture; run pnpm fixtures");
+            return;
+        }
     };
 
     for (definitions, descriptions, extrusions) in

@@ -35,7 +35,7 @@ pub struct QuantitySourceOccurrence {
     pub mapping_path: Vec<u32>,
     pub source_modified: bool,
     pub status: &'static str,
-    /// Explains unsupported sources and missing nominal swept-disk quantities.
+    /// Explains unsupported sources and missing nominal source quantities.
     pub status_reason: Option<String>,
     pub quantities: Vec<DerivedQuantity>,
 }
@@ -189,7 +189,7 @@ pub fn analyze_quantities(content: &[u8], ids: Option<&HashSet<u32>>) -> Quantit
                 diagnostics.push(format!("product #{product_id}: extrusion source #{} is missing", instance.solid_id));
                 continue;
             };
-            let (status, status_reason) = source_status(instance);
+            let (status, mut status_reason) = source_status(instance);
             let mut quantities = Vec::new();
             if let Some(depth) = definition.source.depth.filter(|value| value.is_finite()) {
                 quantities.push(quantity("Depth", depth, "ifc_file_length_units",
@@ -202,6 +202,8 @@ pub fn analyze_quantities(content: &[u8], ids: Option<&HashSet<u32>>) -> Quantit
                     "Depth * abs(dot(extrusion_direction, profile_normal))", "derived", instance.solid_id, status));
                 quantities.push(quantity("nominal_volume", nominal.nominal_volume, "ifc_file_length_units3",
                     "profile_area * projected_height", "derived", instance.solid_id, status));
+            } else if status == "complete" {
+                status_reason = Some("Nominal extrusion quantities unavailable: source profile or extrusion does not support a positive volume".into());
             }
             unique_sources.insert(instance.source.clone());
             sources.push(QuantitySourceOccurrence { source_kind: "IfcExtrudedAreaSolid",

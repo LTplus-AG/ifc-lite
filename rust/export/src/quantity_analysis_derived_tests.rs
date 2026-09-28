@@ -30,6 +30,27 @@ fn mapped_products_share_one_source_but_keep_distinct_occurrences() {
 }
 
 #[test]
+fn issue_5787_complete_extrusion_with_overflowed_volume_explains_nominal_refusal() {
+    let source = std::str::from_utf8(MAPPED).unwrap();
+    let oversized = source.replace(
+        "#8=IFCRECTANGLEPROFILEDEF(.AREA.,$,#7,1.0,1.0);",
+        "#8=IFCRECTANGLEPROFILEDEF(.AREA.,$,#7,1.0E100,1.0E100);",
+    ).replace(
+        "#12=IFCEXTRUDEDAREASOLID(#8,#11,#9,1.0);",
+        "#12=IFCEXTRUDEDAREASOLID(#8,#11,#9,1.0E200);",
+    );
+    assert_ne!(source, oversized);
+    let view = analyze_quantities(oversized.as_bytes(), Some(&HashSet::from([31])));
+    let extrusion = &view.products[&31].sources[0];
+    assert_eq!(extrusion.source_kind, "IfcExtrudedAreaSolid");
+    assert_eq!(extrusion.status, "complete");
+    assert!(extrusion.status_reason.as_deref().is_some_and(|reason|
+        reason.contains("Nominal extrusion quantities unavailable")));
+    assert!(extrusion.quantities.iter().all(|quantity| quantity.name != "nominal_volume"));
+    assert!(view.products[&31].product_total.is_none());
+}
+
+#[test]
 fn repeated_source_in_one_product_is_not_summed_twice() {
     let source = String::from_utf8(MAPPED.to_vec()).unwrap();
     let repeated = source.replace(

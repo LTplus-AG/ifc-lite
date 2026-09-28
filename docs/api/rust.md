@@ -736,7 +736,9 @@ min_straight_segment_length_m, max_developed_centreline_length_m)` with finite,
 nonnegative SI-metre limits. Each comparison retains its measured value, limit,
 segment index (when applicable), and pass/fail result; equality passes. The
 inside radius is the centreline arc radius minus the swept outer radius.
-Modified CSG sources and unsupported directrices receive a skip reason; rows
+Modified CSG sources, unsupported directrices, and paths with gaps or zero-length
+segments receive a skip reason; the underlying source findings remain in `checks`.
+Tangent discontinuities remain inspection cues and do not skip comparisons. Rows
 without a swept-disk source receive `preflight_skipped_reason`. Missing line or
 arc segments are listed as unassessed. These comparisons do not certify a
 cutting length or fabrication-code compliance.

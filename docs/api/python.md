@@ -356,8 +356,10 @@ min_straight_segment_length_m, max_developed_centreline_length_m=None)` adds
 caller-defined comparisons in SI metres. Each represented sweep's `preflight`
 includes measured values, limits, segment indices, and pass/fail results;
 equality passes. Inside bend radius means centreline arc radius minus swept
-outer radius. Modified CSG sources and unsupported directrices have a
-`skipped_reason` and no comparisons. A row with no represented sweep carries
+outer radius. Modified CSG sources, unsupported directrices, and paths with
+gaps or zero-length segments have a `skipped_reason` and no comparisons; the
+source findings remain in `checks`. Tangent discontinuities remain inspection
+cues. A row with no represented sweep carries
 `preflight_skipped_reason`; missing arc or line segments are listed under
 `unassessed_reasons`. This does not certify cutting length or code compliance.
 

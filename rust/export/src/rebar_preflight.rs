@@ -5,7 +5,9 @@
 //! Caller-supplied geometric comparisons for represented bar source sweeps.
 
 use ifc_lite_geometry::analytic::{AnalyticCurveSegment, AnalyticStatus};
-use ifc_lite_processing::{SweptDiskCheckError, SweptDiskOccurrence};
+use ifc_lite_processing::{
+    SweptDiskCheckError, SweptDiskCheckReport, SweptDiskFindingCode, SweptDiskOccurrence,
+};
 use serde::Serialize;
 
 /// Project-specific limits in SI metres. No default fabrication code is implied.
@@ -95,6 +97,7 @@ pub struct RebarPreflightReport {
 
 pub(super) fn assess_sweep(
     disk: &SweptDiskOccurrence,
+    checks: &SweptDiskCheckReport,
     limits: &RebarPreflightLimits,
 ) -> RebarPreflightReport {
     let mut report = RebarPreflightReport { skipped_reason: None, comparisons: Vec::new(), unassessed_reasons: Vec::new() };
@@ -104,6 +107,25 @@ pub(super) fn assess_sweep(
     }
     if let AnalyticStatus::Unsupported(reason) = &disk.status {
         report.skipped_reason = Some(format!("unsupported directrix: {reason}"));
+        return report;
+    }
+    if let Some(reason) = &checks.skipped_reason {
+        report.skipped_reason = Some(format!("source geometry checks could not run: {reason}"));
+        return report;
+    }
+    if let Some(finding) = checks.findings.iter().find(|finding| matches!(
+        finding.code,
+        SweptDiskFindingCode::ConsecutiveGap | SweptDiskFindingCode::ZeroLengthSegment
+    )) {
+        let defect = match finding.code {
+            SweptDiskFindingCode::ConsecutiveGap => "a consecutive gap",
+            SweptDiskFindingCode::ZeroLengthSegment => "a zero-length segment",
+            _ => unreachable!(),
+        };
+        report.skipped_reason = Some(format!(
+            "source directrix has {defect} at segment {}; whole-sweep comparisons are unavailable",
+            finding.segment_index,
+        ));
         return report;
     }
     let Some(metrics) = disk.directrix_metrics() else {

@@ -126,4 +126,21 @@ describe('RuleSetEditor — requirement kind switching (#5138)', () => {
       'the forced block’s Selector text toggle must be disabled',
     );
   });
+
+  it('names the distinct advanced cardinality bounds and edits the intended bound (#6342)', () => {
+    const initial: RuleSetFile = { version: 1, name: 'fixture', rules: [fixtureRule()] };
+    let current = initial;
+    const container = render(<Harness initial={initial} onFileChange={(next) => { current = next; }} />);
+    const advanced = [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Advanced');
+    assert.ok(advanced);
+    click(advanced);
+    const min = container.querySelector('input[aria-label="Min applicable"]') as HTMLInputElement | null;
+    const max = container.querySelector('input[aria-label="Max applicable"]') as HTMLInputElement | null;
+    assert.ok(min);
+    assert.ok(max);
+    type(min, '2');
+    assert.deepEqual(current.rules[0].cardinality, { minApplicable: 2 });
+    type(max, '5');
+    assert.deepEqual(current.rules[0].cardinality, { minApplicable: 2, maxApplicable: 5 });
+  });
 });

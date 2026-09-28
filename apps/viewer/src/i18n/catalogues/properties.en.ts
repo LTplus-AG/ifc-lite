@@ -120,6 +120,7 @@ export const propertiesEn = {
   'properties.epsgLookup.title': 'EPSG Lookup',
   'properties.epsgLookup.description': 'Search by code, name, country, or datum',
   'properties.epsgLookup.searchPlaceholder': 'e.g. 2056, UTM, Switzerland, Tokyo...',
+  'properties.epsgLookup.searchInputLabel': 'Search coordinate reference systems',
   'properties.epsgLookup.noResults': 'No coordinate reference systems found',
   'properties.epsgLookup.searchUnavailable': 'Search unavailable',
 

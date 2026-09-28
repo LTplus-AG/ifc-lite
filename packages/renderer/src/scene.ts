@@ -7,7 +7,7 @@
  */
 
 import { destroyInstancedTemplateGpu, type InstancedTemplateGPU, type InstancedOccurrence, type InstancedTemplateCpu } from './scene-instance-types.js';
-import { createInstancedRteDeltaStream, invalidateInstancedRteDeltas } from './instanced-rte.js';
+import { createInstancedRteDeltaStream, invalidateInstancedRteDeltas, type InstancedRteDeltaStream } from './instanced-rte.js';
 import { materializeInstances } from './scene-instance-materialization.js';
 import { InstanceSuppression } from './scene-instance-suppression.js';
 import { createSceneBatch } from './scene-batch-upload.js';
@@ -3034,7 +3034,14 @@ export class Scene {
         new Uint8Array(t.instanceBuffer, 0, instSize),
         GPUBufferUsage.VERTEX,
       );
-      const rteDeltas = createInstancedRteDeltaStream(device, t.instanceCount);
+      let rteDeltas: InstancedRteDeltaStream;
+      try {
+        rteDeltas = createInstancedRteDeltaStream(device, t.instanceCount);
+      } catch (error) {
+        // Nothing references this template's buffers yet; free them rather than leak them.
+        vertexBuffer.destroy(); indexBuffer.destroy(); instanceBuffer.destroy();
+        throw error;
+      }
 
       // Always append: slots are stable identities, never recycled.
       const templateIndex = this.instancedTemplates.length;

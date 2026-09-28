@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { FsBlobStorage } from '../src/blob-storage-fs.js';
+import { FsBlobStorage } from '../src/blob-route.js';
 
 const HASH = 'a'.repeat(32);
 const dirs: string[] = [];
@@ -44,7 +44,7 @@ describe('FsBlobStorage initialization (#6286)', () => {
       expect(unhandled).toEqual([]);
 
       // Observing the failure must not swallow it: callers still get it.
-      await expect(storage.whenReady()).rejects.toBe(error);
+      await expect(storage.ready).rejects.toBe(error);
       await expect(storage.list()).rejects.toBe(error);
       await expect(storage.put(HASH, new Uint8Array([1]))).rejects.toBe(error);
     } finally {
@@ -52,7 +52,7 @@ describe('FsBlobStorage initialization (#6286)', () => {
     }
   });
 
-  it('surfaces a real mkdir failure through whenReady and every method', async () => {
+  it('surfaces a real mkdir failure through ready and every method', async () => {
     // `dataDir` is a regular file, so `<dataDir>/blobs` cannot be created.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blob-fs-init-'));
     dirs.push(dir);
@@ -60,7 +60,7 @@ describe('FsBlobStorage initialization (#6286)', () => {
     fs.writeFileSync(dataDir, 'x');
 
     const storage = new FsBlobStorage(dataDir);
-    await expect(storage.whenReady()).rejects.toMatchObject({ code: 'ENOTDIR' });
+    await expect(storage.ready).rejects.toMatchObject({ code: 'ENOTDIR' });
     await expect(storage.get(HASH)).rejects.toMatchObject({ code: 'ENOTDIR' });
     await expect(storage.has(HASH)).rejects.toMatchObject({ code: 'ENOTDIR' });
     await expect(storage.delete(HASH)).rejects.toMatchObject({ code: 'ENOTDIR' });
@@ -69,11 +69,11 @@ describe('FsBlobStorage initialization (#6286)', () => {
     });
   });
 
-  it('whenReady resolves once the blobs directory exists', async () => {
+  it('ready resolves once the blobs directory exists', async () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'blob-fs-init-'));
     dirs.push(dataDir);
     const storage = new FsBlobStorage(dataDir);
-    await storage.whenReady();
+    await storage.ready;
     expect(fs.statSync(path.join(dataDir, 'blobs')).isDirectory()).toBe(true);
   });
 });

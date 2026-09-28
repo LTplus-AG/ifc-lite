@@ -6,7 +6,7 @@
 /** CLI entry point: `ifc-lite-collab-server`. */
 
 import { FilePersistence, startCollabServer } from './server.js';
-import { FsBlobStorage } from './blob-storage-fs.js';
+import { FsBlobStorage } from './blob-route.js';
 import { resolveBlobGcConfig, startBlobGc } from './blob-gc-worker.js';
 import { FsLayerRegistry } from './layer-registry-fs.js';
 import { createAccessControl } from './access-control.js';
@@ -76,7 +76,7 @@ async function main() {
     : null;
   const blobStorage = new FsBlobStorage(dataDir);
   // Fail at startup, not on the first blob request, if the blobs dir can't be made.
-  await blobStorage.whenReady();
+  await blobStorage.ready;
   const blobGcConfig = resolveBlobGcConfig();
   const handle = await startCollabServer({
     port,

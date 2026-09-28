@@ -15,7 +15,7 @@ import * as path from 'node:path';
 import * as Y from 'yjs';
 import { createModelSlot, geometryMap } from '@ifc-lite/collab';
 import { FilePersistence } from '../src/persistence.js';
-import { FsBlobStorage } from '../src/blob-storage-fs.js';
+import { FsBlobStorage } from '../src/blob-route.js';
 import {
   collectLiveBlobRefs,
   collectPersistedBlobRefs,
@@ -48,7 +48,7 @@ afterEach(async () => {
   try {
     // The constructor's mkdir may still be pending when a test never called a
     // storage method; removing the tree under it made it reject (#6286).
-    await Promise.all(storages.splice(0).map((s) => s.whenReady()));
+    await Promise.all(storages.splice(0).map((s) => s.ready));
   } finally {
     fs.rmSync(dataDir, { recursive: true, force: true });
   }

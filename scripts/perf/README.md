@@ -2281,15 +2281,21 @@ retain their prior vertex path. One fresh-process native run per fixture used
 `d79ca0fe95c3f75282f0c0b0b3464deaf644ce9d`. AC20 matched at 285 meshes,
 20,322 triangles and ordered FNV `c4d504b83ff698ea`; ISSUE_129 matched at
 1,402 meshes, 136,807 triangles and ordered FNV `ff42e1a3f7fcf540`. The
-hashes cover ordered mesh
-identifiers, geometry, colours, transforms and bounds. These single runs show
-output identity only. The host was contested, so source-matched interleaved
-worker-pool timing on an otherwise idle host remains pending; no current
-performance verdict follows from these samples.
+hashes cover ordered mesh identifiers, geometry, colours, transforms and bounds.
+
+Five balanced fresh-process base/branch pairs per fixture then ran the same
+source-matched native binaries with `--iters 5 --json --fingerprint`. AC20's
+median parse/geometry/total times were 6/23/30 ms on both sides; the base
+total spread was 46.67%. ISSUE_129's medians were 23/952/976 ms on base and
+21/950/972 ms on branch; its base total spread was 4.61%. Every paired run
+retained the same counts and ordered fingerprint. Verdict: no meaningful
+full-load regression on these two native fixtures and no speedup claim. This
+does not measure browser worker-pool performance or rare mapped-item cost.
 
 The lesson is that protecting high-coordinate geometry at the mapped-item
 boundary can affect the normal path even when its mesh bytes are unchanged;
-measure the whole worker pipeline rather than only the rare mapped case.
+qualify the full load on both ordinary and CSG-heavy fixtures, and measure
+browser worker-pool cost separately when that claim matters.
 
 ## IFC4x3 alignment geometry on Viadotto Acerno (#5327)
 

@@ -13,12 +13,14 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
-import { cleanup, press, render, type } from '@/test/render.js';
+import { cleanup, click as clickEl, press, render, type } from '@/test/render.js';
 import { MODEL_ID, seedModelingSession } from '@/test/modeling-session-fixture';
+import { act } from 'react';
 import { CommandFieldsBar } from '@/components/viewer/tools/command/CommandFieldsBar';
+import { WallPlaceBar } from '@/components/viewer/tools/command/PlacementBars';
 import type { SnapResult, Vec2 } from '@/lib/snap/types';
 import '../builtin.js';
-import { commandPointerDown, commandPointerMove, getCommandRuntime } from '../runtime.js';
+import { commandDoubleClick, commandPointerDown, commandPointerMove, getCommandRuntime } from '../runtime.js';
 import type { CommandContext } from '../types.js';
 import { WALL_PLACE } from './wall-place.js';
 import type { WallPlaceGesture } from './wall-place-geometry.js';
@@ -40,6 +42,7 @@ function walls(): [Vec2, Vec2][] {
 
 beforeEach(async () => {
   await seedModelingSession();
+  useViewerStore.getState().setAuthoringDefaults({ wallAlign: 'centre', chain: true });
   useViewerStore.getState().startCommand('wall.place');
 });
 afterEach(() => {
@@ -118,8 +121,65 @@ describe('wall.place (#6232 WP2)', () => {
     commandPointerMove(at(4, 0));
     const [ghost] = WALL_PLACE.ghost!(gesture(), ctx);
     assert.ok(ghost);
-    assert.equal(ghost.positions.length, 24 * 3, 'a six-face box');
+    assert.equal(ghost.positions.length, 12 * 9, 'a box: twelve triangles');
     const xs = [...ghost.positions].filter((_, i) => i % 3 === 0);
     assert.ok(Math.abs(Math.min(...xs)) < 1e-6 && Math.abs(Math.max(...xs) - 4) < 1e-6, 'spans the segment');
+  });
+});
+
+describe('wall.place Align and Chain (#6232 M2.2)', () => {
+  // Walking a→b, Left means the drawn line is the wall's left face, so the
+  // axis sits half the thickness (0.2 m default) to the right of it.
+  for (const [align, y] of [['left', -0.1], ['centre', 0], ['right', 0.1]] as const) {
+    it(`Align ${align}: the drawn line is the wall's ${align === 'centre' ? 'axis' : `${align} face`}`, () => {
+      const ui = render(<WallPlaceBar />);
+      const label = { left: 'Left', centre: 'Centre', right: 'Right' }[align];
+      clickEl([...ui.querySelectorAll('button')].find((b) => b.textContent === label)!);
+      assert.equal(useViewerStore.getState().authoringDefaults.wallAlign, align);
+      click(0, 0);
+      click(4, 0);
+      assert.deepEqual(walls(), [[[0, y], [4, y]]]);
+    });
+  }
+
+  it('Align offsets the ghost the same way the commit does', () => {
+    useViewerStore.getState().setAuthoringDefaults({ wallAlign: 'left' });
+    const ctx = getCommandRuntime().ctx as CommandContext;
+    click(0, 0);
+    commandPointerMove(at(4, 0));
+    const [ghost] = WALL_PLACE.ghost!(gesture(), ctx);
+    const ys: number[] = [];
+    for (let i = 0; i < ghost.positions.length; i += 3) {
+      ys.push(ctx.workplane!.renderToLocal([ghost.positions[i], ghost.positions[i + 1], ghost.positions[i + 2]])[1]);
+    }
+    assert.deepEqual([Math.min(...ys), Math.max(...ys)].map((v) => +v.toFixed(6)), [-0.2, 0], 'the wall body lies right of the drawn line');
+  });
+
+  it('a chained, aligned run keeps chaining from the drawn line, not the offset axis', () => {
+    useViewerStore.getState().setAuthoringDefaults({ wallAlign: 'right' });
+    click(0, 0);
+    click(4, 0);
+    click(4, 3);
+    assert.deepEqual(gesture().chain.at(-1), [4, 3], 'the chain follows the clicks');
+    assert.deepEqual(walls(), [[[0, 0.1], [4, 0.1]], [[3.9, 0], [3.9, 3]]]);
+  });
+
+  it('Chain off: each wall is its own two clicks', () => {
+    const ui = render(<WallPlaceBar />);
+    clickEl([...ui.querySelectorAll('button')].find((b) => b.textContent === 'Chain')!);
+    assert.equal(useViewerStore.getState().authoringDefaults.chain, false);
+    click(0, 0);
+    click(2, 0);
+    assert.deepEqual(gesture().chain, [], 'a fresh start after the wall');
+    click(5, 5);
+    assert.deepEqual(walls(), [[[0, 0], [2, 0]]], 'the next click only anchors');
+  });
+
+  it('a double-click ends the chain at the double-clicked point', () => {
+    click(0, 0);
+    click(3, 0);
+    act(() => { commandDoubleClick(at(3, 0)); });
+    assert.deepEqual(gesture().chain, []);
+    assert.deepEqual(walls(), [[[0, 0], [3, 0]]], 'exactly one wall, no zero-length second one');
   });
 });

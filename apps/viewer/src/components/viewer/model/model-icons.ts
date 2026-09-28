@@ -21,3 +21,24 @@ export const WallIcon = createLucideIcon('model-wall', [
   ['path', { d: 'M8 9v6', key: 'joint-a' }],
   ['path', { d: 'M11 15v6', key: 'joint-b' }],
 ]);
+
+/** A slab seen from a corner: a thin plate, top and two edges. */
+export const SlabIcon = createLucideIcon('model-slab', [
+  ['path', { d: 'M2 14 8 8h14l-6 6z', key: 'top' }],
+  ['path', { d: 'M2 14v3h14v-3', key: 'front' }],
+  ['path', { d: 'M16 17l6-6V8', key: 'end' }],
+]);
+
+/** A column seen from a corner: a tall box on the floor. */
+export const ColumnIcon = createLucideIcon('model-column', [
+  ['path', { d: 'M8 6h6v15H8z', key: 'front' }],
+  ['path', { d: 'm8 6 3-3h6l-3 3', key: 'top' }],
+  ['path', { d: 'M17 3v15l-3 3', key: 'side' }],
+]);
+
+/** A beam seen from a corner: a long box lying across. */
+export const BeamIcon = createLucideIcon('model-beam', [
+  ['path', { d: 'M2 12h15v5H2z', key: 'front' }],
+  ['path', { d: 'm2 12 5-5h15l-5 5', key: 'top' }],
+  ['path', { d: 'M22 7v5l-5 5', key: 'end' }],
+]);

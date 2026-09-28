@@ -13,12 +13,8 @@ import { FilePersistence, MemoryPersistence, type Persistence } from './persiste
 import { allowAnonymousEditor, canWrite, type AuthenticateFn, type Principal } from './auth.js';
 import { type AuditSink } from './audit-log.js';
 import { type RateLimitOptions } from './rate-limit.js';
-import {
-  handleBlobRequest,
-  InMemoryBlobStorage,
-  type BlobAuthorizeFn,
-  type ServerBlobStorage,
-} from './blob-route.js';
+import { handleBlobRequest, type BlobAuthorizeFn } from './blob-route.js';
+import { InMemoryBlobStorage, type ServerBlobStorage } from './blob-storage.js';
 import {
   handleTokenMintRequest,
   handleRevokeRequest,

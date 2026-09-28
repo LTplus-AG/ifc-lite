@@ -24,6 +24,7 @@ import { MODELING_SNAP_PROFILE } from '@/lib/snap/rank';
 import { solveSnap } from '@/lib/snap/solve';
 import type { SnapProfile, SnapResult, SnapSource, Vec2 } from '@/lib/snap/types';
 import {
+  commandDoubleClick,
   commandPointerDown,
   commandPointerMove,
   getCommandRuntime,
@@ -37,7 +38,8 @@ import { createSemanticSource, type SemanticSource } from '@/lib/snap/sources/se
 import { storeyWallAxes } from '@/lib/snap/sources/semantic-walls';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 
-export interface PointerModifiers { shiftKey: boolean; altKey: boolean }
+/** `detail` is the click count: the second click of a double-click has 2. */
+export interface PointerModifiers { shiftKey: boolean; altKey: boolean; detail?: number }
 
 /** Ghost ids a command preview may use (`ghost.ts` allocates from `commandGhostId`). */
 const GHOST_PICK_GUARD = 4;
@@ -155,7 +157,11 @@ function resolveCommandSnap(
     profileOf(command),
     runtime.snap ?? undefined,
   );
-  return { ...solved, render: plane.localToRender([solved.local[0], solved.local[1], 0]) };
+  return {
+    ...solved,
+    render: plane.localToRender([solved.local[0], solved.local[1], 0]),
+    modifiers: { shift: mods.shiftKey, alt: mods.altKey },
+  };
 }
 
 /** True when a command is running and took the event. */
@@ -170,7 +176,7 @@ export function routeCommandPointer(
   if (!runtime.command || !runtime.ctx) return false;
   if (kind === 'down') {
     const snap = resolveCommandSnap(ctx, runtime, x, y, mods);
-    if (snap) commandPointerDown(snap);
+    if (snap) ((mods.detail ?? 1) >= 2 ? commandDoubleClick : commandPointerDown)(snap);
     return true;
   }
   latest = { x, y, mods };

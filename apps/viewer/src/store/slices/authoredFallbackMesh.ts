@@ -117,7 +117,13 @@ export function authoredElementMeshPayload(element: AuthoredElement, frame?: Sto
   switch (payload.type) {
     case 'wall': case 'beam': case 'member':
       return { ...payload, start: at(payload.start), end: at(payload.end) };
-    case 'column': case 'door': case 'window':
+    case 'column': {
+      if (!payload.refDirection || !frame) return { ...payload, position: at(payload.position) };
+      // A direction maps as the difference of two mapped points (the storey frame may turn it).
+      const o = at([0, 0, 0]), d = at([payload.refDirection[0], payload.refDirection[1], 0]);
+      return { ...payload, position: at(payload.position), refDirection: [d[0] - o[0], d[1] - o[1]] };
+    }
+    case 'door': case 'window':
       return { ...payload, position: at(payload.position) };
     default:
       return { ...payload, corners: payload.corners.map(at) };
@@ -128,19 +134,21 @@ function storeyLocalPayload(element: AuthoredElement): ElementMeshPayload {
   switch (element.kind) {
     case 'column': {
       const p = element.params;
-      return { type: 'column', params: { Width: p.Width, Depth: p.Depth, Height: p.Height }, position: p.Position };
+      return {
+        type: 'column', params: { Width: p.Width, Depth: p.Depth, Height: p.Height }, position: p.Position,
+        ...(p.RefDirection ? { refDirection: [p.RefDirection[0], p.RefDirection[1]] as const } : {}),
+      };
     }
     case 'wall': {
       const p = element.params;
       return { type: 'wall', params: { Thickness: p.Thickness, Height: p.Height }, start: p.Start, end: p.End };
     }
-    case 'beam': {
+    // The builders centre the section on Start-End; the box grows up from
+    // its segment, so it starts half the section height below the axis.
+    case 'beam': case 'member': {
       const p = element.params;
-      return { type: 'beam', params: { Width: p.Width, Height: p.Height }, start: p.Start, end: p.End };
-    }
-    case 'member': {
-      const p = element.params;
-      return { type: 'member', params: { Width: p.Width, Height: p.Height }, start: p.Start, end: p.End };
+      const down = (q: Vec3): Vec3 => [q[0], q[1], q[2] - p.Height / 2];
+      return { type: element.kind, params: { Width: p.Width, Height: p.Height }, start: down(p.Start), end: down(p.End) };
     }
     case 'door': {
       const p = element.params;

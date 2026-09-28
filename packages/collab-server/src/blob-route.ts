@@ -22,50 +22,7 @@ import * as http from 'node:http';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-
-export interface ServerBlobMeta {
-  hash: string;
-  byteLength: number;
-  contentType?: string;
-  uploadedAt: string;
-}
-
-export interface ServerBlobStorage {
-  put(hash: string, bytes: Uint8Array, contentType?: string): Promise<ServerBlobMeta>;
-  get(hash: string): Promise<{ bytes: Uint8Array; meta: ServerBlobMeta } | null>;
-  has(hash: string): Promise<boolean>;
-  delete(hash: string): Promise<boolean>;
-  list(): Promise<string[]>;
-}
-
-/** In-memory storage. Default for tests + dev. */
-export class InMemoryBlobStorage implements ServerBlobStorage {
-  private readonly blobs = new Map<string, { bytes: Uint8Array; meta: ServerBlobMeta }>();
-
-  async put(hash: string, bytes: Uint8Array, contentType?: string): Promise<ServerBlobMeta> {
-    const meta: ServerBlobMeta = {
-      hash,
-      byteLength: bytes.byteLength,
-      contentType,
-      uploadedAt: new Date().toISOString(),
-    };
-    this.blobs.set(hash, { bytes: new Uint8Array(bytes), meta });
-    return meta;
-  }
-  async get(hash: string) {
-    const v = this.blobs.get(hash);
-    return v ? { bytes: new Uint8Array(v.bytes), meta: v.meta } : null;
-  }
-  async has(hash: string) {
-    return this.blobs.has(hash);
-  }
-  async delete(hash: string) {
-    return this.blobs.delete(hash);
-  }
-  async list() {
-    return Array.from(this.blobs.keys());
-  }
-}
+import type { ServerBlobMeta, ServerBlobStorage } from './blob-storage.js';
 
 /** Match exactly 32 lowercase hex chars (the client's `fnv128` output). */
 const HASH_REGEX = /^[a-f0-9]{32}$/;
@@ -82,12 +39,21 @@ const HASH_REGEX = /^[a-f0-9]{32}$/;
  */
 export class FsBlobStorage implements ServerBlobStorage {
   private readonly dir: string;
-  private readonly ready: Promise<void>;
+  /**
+   * Resolves once `<dataDir>/blobs` exists, else rejects with the mkdir error.
+   * Every method awaits it and so rethrows that error. Await it to fail fast at
+   * startup, or before removing `dataDir` (#6286).
+   */
+  readonly ready: Promise<void>;
   private readonly locks = new Map<string, Promise<void>>();
 
   constructor(dataDir: string) {
     this.dir = path.join(dataDir, 'blobs');
     this.ready = fs.promises.mkdir(this.dir, { recursive: true }).then(() => undefined);
+    // Observe a failed mkdir right away (#6286). Methods still see the error via
+    // `ready`; this only stops a storage no method has touched yet from raising
+    // an unhandled rejection, which Node and Vitest treat as a process failure.
+    this.ready.catch(() => undefined);
   }
 
   private file(hash: string): string {

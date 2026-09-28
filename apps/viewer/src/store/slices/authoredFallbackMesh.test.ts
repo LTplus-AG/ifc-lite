@@ -172,3 +172,44 @@ describe('an added element has a mesh when the wasm re-mesh declines (#6232)', (
     assertFallbackWall(wall.expressId);
   });
 });
+
+// #6232 M2.2: the fallback is drawn from what the BUILDER writes. A column
+// turned through its RefDirection falls back turned, and a beam or member,
+// whose section the builder centres on Start-End, falls back centred there
+// (not standing on the axis half a height too high).
+describe('the parameter fallback matches the builder (#6232 M2.2)', () => {
+  beforeEach(() => { mesher = installScriptedMesher(() => []); });
+  afterEach(() => mesher.restore());
+
+  /** Plan corners (IFC x, y) and the height span of a fallback mesh; renderer is Y-up with z = -ifc y. */
+  const shape = (id: number) => {
+    const [mesh] = meshesOf(id);
+    assert.ok(mesh, 'the fallback drew it');
+    const plan = new Set<string>(); const ys: number[] = [];
+    for (let i = 0; i < mesh.positions.length; i += 3) {
+      plan.add(`${+mesh.positions[i].toFixed(4)},${+(-mesh.positions[i + 2]).toFixed(4)}`);
+      ys.push(mesh.positions[i + 1]);
+    }
+    return { plan: [...plan].sort(), y: [+Math.min(...ys).toFixed(4), +Math.max(...ys).toFixed(4)] };
+  };
+
+  it('a column with RefDirection +y falls back with its Width along y', async () => {
+    await seed();
+    const c = useViewerStore.getState().addColumn(MODEL, STOREY, { Position: [0, 0, 0], Width: 0.8, Depth: 0.2, Height: 3, RefDirection: [0, 1, 0] });
+    assert.ok('expressId' in c);
+    await settleRemesh(); await settleRemesh();
+    assert.deepEqual(shape(c.expressId).plan, ['-0.1,-0.4', '-0.1,0.4', '0.1,-0.4', '0.1,0.4']);
+  });
+
+  for (const kind of ['beam', 'member'] as const) {
+    it(`a ${kind} falls back centred on its axis`, async () => {
+      await seed();
+      const s = useViewerStore.getState();
+      const params = { Start: [0, 0, 2] as [number, number, number], End: [4, 0, 2] as [number, number, number], Width: 0.3, Height: 0.5 };
+      const made = kind === 'beam' ? s.addBeam(MODEL, STOREY, params) : s.addMember(MODEL, STOREY, params);
+      assert.ok('expressId' in made);
+      await settleRemesh(); await settleRemesh();
+      assert.deepEqual(shape(made.expressId).y, [1.75, 2.25]);
+    });
+  }
+});

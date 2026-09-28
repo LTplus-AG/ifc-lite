@@ -42,6 +42,20 @@ describe('Model workspace keys (#6232 M2.1)', () => {
     assert.equal(getCommandRuntime().command?.id, 'wall.place');
   });
 
+  // #6232 M2.2: Shift + the class initial, so S stays snap and C / B stay free.
+  it('Shift+S, Shift+C and Shift+B start slab, column and beam in the workspace only', () => {
+    press(document.body, 'S', { shiftKey: true });
+    assert.equal(getCommandRuntime().command, null, 'nothing outside the workspace');
+    useViewerStore.getState().enterModelWorkspace();
+    for (const [key, id] of [['S', 'slab.place'], ['C', 'column.place'], ['B', 'beam.place']] as const) {
+      press(document.body, key, { shiftKey: true });
+      assert.equal(useViewerStore.getState().session?.activeCommandId, id, `Shift+${key}`);
+      assert.equal(getCommandRuntime().command?.id, id);
+    }
+    press(document.body, 's');
+    assert.equal(getCommandRuntime().command?.id, 'beam.place', 'plain S is the running command\'s snap toggle, not Slab');
+  });
+
   it('walking keeps W for moving forward', () => {
     useViewerStore.getState().enterModelWorkspace();
     useViewerStore.getState().setActiveTool('walk');

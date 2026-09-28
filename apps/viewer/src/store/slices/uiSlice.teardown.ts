@@ -30,8 +30,6 @@ export const uiTeardown = defineSliceTeardown(
     'editEnabled',
     'pendingPropertyFocus',
     'visualEnhancementsEnabled',
-    'edgeContrastEnabled',
-    'edgeContrastIntensity',
     'contactShadingQuality',
     'contactShadingIntensity',
     'contactShadingRadius',
@@ -49,8 +47,6 @@ export const uiTeardown = defineSliceTeardown(
       // a stale focus could otherwise match an unrelated entity (#1107).
       pendingPropertyFocus: null,
       visualEnhancementsEnabled: UI_DEFAULTS.VISUAL_ENHANCEMENTS_ENABLED,
-      edgeContrastEnabled: UI_DEFAULTS.EDGE_CONTRAST_ENABLED,
-      edgeContrastIntensity: UI_DEFAULTS.EDGE_CONTRAST_INTENSITY,
       contactShadingQuality: UI_DEFAULTS.CONTACT_SHADING_QUALITY,
       contactShadingIntensity: UI_DEFAULTS.CONTACT_SHADING_INTENSITY,
       contactShadingRadius: UI_DEFAULTS.CONTACT_SHADING_RADIUS,

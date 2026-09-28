@@ -20,12 +20,12 @@
 /// Serving a smaller payload is not worth silently drawing the wrong building.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]
 pub enum ParquetLayout {
-    /// `-parquet-v5`: one block of vertices per mesh row, no rotation columns.
+    /// `-parquet-v8`: one block of vertices per mesh row, no rotation columns.
     /// Byte-identical to what the route emitted before issue #3888.
     #[default]
     #[serde(rename = "flat")]
     Flat,
-    /// `-parquet-v7`: occurrences of one shape share a block of vertices,
+    /// `-parquet-v9`: occurrences of one shape share a block of vertices,
     /// placed by `world = origin + R * p` via the `rot0..rot8` columns. `v7` =
     /// `v6`'s schema plus a second, content-hash sharing stage
     /// (`ShapePlan::shared_shapes`, issue #5130): `v6` only ran the
@@ -51,8 +51,8 @@ impl ParquetLayout {
     /// The cache-key suffix naming this layout.
     pub(crate) fn cache_suffix(self) -> &'static str {
         match self {
-            Self::Flat => "parquet-v5",
-            Self::SharedShapes => "parquet-v7",
+            Self::Flat => "parquet-v8",
+            Self::SharedShapes => "parquet-v9",
         }
     }
 }

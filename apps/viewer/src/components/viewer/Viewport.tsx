@@ -286,8 +286,6 @@ export function Viewport({
     theme,
     isMobile,
     visualEnhancementsEnabled,
-    edgeContrastEnabled,
-    edgeContrastIntensity,
     contactShadingQuality,
     contactShadingIntensity,
     contactShadingRadius,
@@ -362,10 +360,6 @@ export function Viewport({
   const clearColorRef = useRef<[number, number, number, number]>([0.102, 0.106, 0.149, 1]);
   const visualEnhancement = useMemo<VisualEnhancementOptions>(() => ({
     enabled: isMobile ? false : visualEnhancementsEnabled,
-    edgeContrast: {
-      enabled: isMobile ? false : edgeContrastEnabled,
-      intensity: edgeContrastIntensity,
-    },
     contactShading: {
       quality: isMobile ? 'off' : contactShadingQuality,
       intensity: contactShadingIntensity,
@@ -379,8 +373,6 @@ export function Viewport({
     },
   }), [
     visualEnhancementsEnabled,
-    edgeContrastEnabled,
-    edgeContrastIntensity,
     isMobile,
     contactShadingQuality,
     contactShadingIntensity,

@@ -224,6 +224,7 @@ export { getAttributeNames, getAttributeNamesAcrossSchemas, getAttributeNamesFor
 export { resolveEffectiveEntityRecord, type EffectiveEntityRecord, type EntityRecordEdits } from './effective-entity-record.js';
 export { resolveEffectiveRelationshipOverlay, effectiveRelationshipEdges, type EffectiveRelationship, type EffectiveRelationshipOverlay, type RelationshipOverlayReader } from './effective-relationship-overlay.js';
 export { effectiveSpatialMemberIds, type EffectiveSpatialContext } from './effective-spatial-members.js';
+export { effectiveStoreyId } from './effective-storey.js';
 
 import type { IfcEntity, ParseResult } from './types.js';
 import { EntityIndexBuilder } from './entity-index.js';

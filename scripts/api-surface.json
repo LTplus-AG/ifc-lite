@@ -8013,6 +8013,7 @@
     "deterministicGlobalId: function",
     "effectiveRelationshipEdges: function",
     "effectiveSpatialMemberIds: function",
+    "effectiveStoreyId: function",
     "enumVal: function",
     "evaluateCostItem: function",
     "evaluateCostValue: function",

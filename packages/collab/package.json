@@ -43,11 +43,11 @@
     "@ifc-lite/data": "workspace:^",
     "@ifc-lite/ifcx": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
-    "lib0": "^0.2.99",
+    "lib0": "^0.2.118",
     "y-indexeddb": "^9.0.12",
     "y-protocols": "^1.0.6",
     "y-websocket": "^3.1.0",
-    "yjs": "^13.6.32"
+    "yjs": "^13.6.33"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

@@ -44,7 +44,11 @@ import type { FederatedModel } from '@/store/types';
 
 function modelGeometryRefs(model: FederatedModel): Map<number, object> {
   const refs = new Map<number, object>();
-  for (const mesh of model.geometryResult?.meshes ?? []) refs.set(mesh.expressId, mesh);
+  for (const mesh of model.geometryResult?.meshes ?? []) {
+    // Use the first piece: appending another piece must not make us translate
+    // the already-lifted pieces a second time as though all were replaced.
+    if (!refs.has(mesh.expressId)) refs.set(mesh.expressId, mesh);
+  }
   const instancedIndex = model.geometryResult?.instancedGeometryHashes;
   if (instancedIndex) for (const id of instancedIndex.keys()) {
     if (!refs.has(id)) refs.set(id, instancedIndex);

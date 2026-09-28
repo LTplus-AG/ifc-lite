@@ -201,16 +201,7 @@ export type SeparationLinesQuality = 'off' | 'low' | 'high';
 
 export interface VisualEnhancementOptions {
   enabled?: boolean;
-  /**
-   * Accepted so existing settings still type-check, but it has no effect:
-   * the in-shader derivative edge darkening it drove was removed in #5746.
-   * Edges are drawn by the screen-space edge pass, which
-   * {@link VisualEnhancementOptions.separationLines} controls.
-   */
-  edgeContrast?: {
-    enabled?: boolean;
-    intensity?: number;
-  };
+  edgeContrast?: { enabled?: boolean; intensity?: number }; // no effect since #5746 (edges come from the edge pass, `separationLines`); kept so settings type-check
   /**
    * Screen-space ambient occlusion (the option keeps its historical name).
    * Darkens corners, junctions and contact areas from the depth buffer; the

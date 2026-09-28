@@ -44,7 +44,7 @@ describe('mesh shaders carry no derivative edge darkening (#5746)', () => {
       const fs = wgslFnBody(src, 'fs_main');
       // Positive control: fs_main still reads the lanes that remain live.
       assert.match(fs, /uniforms\.flags\.x/);
-      assert.match(fs, /uniforms\.flags\.y/);
+      assert.match(fs, /sectionClipped\(fragmentPos\)/);
       assert.doesNotMatch(src, /uniforms\.flags\.z/, 'flags.z (edgeEnabled) is no longer read');
       assert.doesNotMatch(src, /uniforms\.flags\.w/, 'flags.w (edgeIntensityMilli) is no longer read');
     });

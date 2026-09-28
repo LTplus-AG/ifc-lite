@@ -511,7 +511,7 @@ export const mainShaderSource = `
           // renderer marks (overrideParams.y), i.e. depth-writing opaque ones.
           let entityOverride = entityOverrideColor(input.entityId);
           if (entityOverride.a >= 0.0 && !isSelected) {
-            out.color = paintEntityOverride(out.color, entityOverride, irradiance, N, edgeDarken);
+            out.color = paintEntityOverride(out.color, entityOverride, irradiance, N);
           }
           out.objectIdEncoded = encodeId24(input.entityId);
           return out;

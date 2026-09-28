@@ -2457,3 +2457,29 @@ and its phase timings within noise. Viadotto again emitted the intended extra
 geometry, so its timing remains non-comparable. The lesson is to check
 complete model output before interpreting alignment timings and to trace
 the lookup cost inside each repeated station evaluation.
+
+## Analytic mapped-source reuse (#5786)
+
+The analytic source walker now reuses a validated representation-map source,
+its immutable item list and parsed MappingOrigin across occurrences in one
+extraction. Each MappingTarget and final world transform still resolves for
+its own occurrence; the uncached comparison switch exists only in test builds.
+The generated many-instance test reduces source loads from 64 to one, and the
+real Revit Snowdon model from 1,073 to 128, while cached/uncached descriptions,
+definitions, extrusions, quantities, instance order and diagnostics agree.
+Nested, reflected and scaled mappings retain their distinct f64 world frames.
+
+Five idle-host interleaved native profiling pairs compared parent `3ffbbbe33`
+with cache source `807f32356` on AC20 and ISSUE_129. After #6271 landed,
+`Cargo.toml`, `Cargo.lock`, `rust/core`, `rust/geometry`, `rust/processing`, and
+the probe script were verified byte-identical between those measured revisions
+and this PR's rebased parent and child. Ordered mesh fingerprints and
+mesh/triangle counts matched in every run. The combined Snowdon analytic JSON
+was also byte-identical across the parent and child. Whole-process peak RSS was
+measured around the prebuilt probes; its ranges overlapped, as did
+parse/geometry/total timing variation.
+These ordinary mesh-load probes do not execute the opt-in analytic cache, so
+they establish no browser worker-pool speedup or analytic-call memory win.
+The lesson is to cache only immutable source facts and to measure opt-in
+analytic extraction separately: far fewer source validations need not shorten
+the full call.

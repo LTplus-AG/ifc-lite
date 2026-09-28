@@ -4,6 +4,7 @@
 
 import { useState, useRef, useCallback, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { cn } from '@/lib/utils';
+import { VIEW_CUBE_SIZE_PX } from './viewcube-box';
 
 interface ViewCubeProps {
   onViewChange?: (view: string) => void;
@@ -82,7 +83,7 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
       }
     }, []); // Empty deps - only set initial rotation
 
-    const size = 60;
+    const size = VIEW_CUBE_SIZE_PX;
     const half = size / 2;
 
     const handleMouseDown = useCallback((e: React.MouseEvent) => {

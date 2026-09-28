@@ -189,7 +189,6 @@ function getSelectedStoreyElementRefs(state: ViewerStateSnapshot): EntityRef[] {
   if (state.selectedStoreys.size === 0) return [];
 
   const refs: EntityRef[] = [];
-
   if (state.models.size > 0) {
     for (const [modelId, model] of state.models) {
       const modelStore = model.ifcDataStore;

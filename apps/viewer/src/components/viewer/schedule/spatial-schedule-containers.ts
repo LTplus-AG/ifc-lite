@@ -5,7 +5,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { createElementFieldReader, type ElementFieldReader } from '@/lib/charts/element-field-reader';
-import { effectiveScheduleGroups } from './effective-schedule-groups.js';
+import { effectiveScheduleGroups } from '@/lib/effective-spatial-groups';
 import type { GenerateScheduleOptions, GroupEntry } from './generate-schedule.js';
 
 /** Resolve a spatial-container expressId → friendly name for the task label. */

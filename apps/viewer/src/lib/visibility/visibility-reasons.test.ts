@@ -65,6 +65,7 @@ const LEVEL_DISPLAY_FIELDS = {
   levelDisplayMode: ['storey', 'exploded'],
   explodedGap: [], // Only changes spacing while Exploded is already active.
   appliedStoreyOffsets: [], // Renderer bookkeeping, not a separate hide.
+  appliedEntityLevelOffsets: [], // Renderer bookkeeping for live membership edits.
 } satisfies Record<StateKeys<LevelDisplaySlice>, readonly VisibilityReasonId[]>;
 
 it('enumerates the visibility-bearing store fields and gives each mechanism a row (#5869)', () => {

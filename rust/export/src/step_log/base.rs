@@ -371,3 +371,7 @@ fn explicit_unit(src: &Source<'_>, ty: &str, attrs: &[JsVal]) -> Option<String> 
         _ => Some(format!("#{unit_ref}")),
     }
 }
+
+#[cfg(test)]
+#[path = "base_tests.rs"]
+mod tests;

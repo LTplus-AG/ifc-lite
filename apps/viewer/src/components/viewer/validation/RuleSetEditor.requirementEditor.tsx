@@ -299,11 +299,12 @@ function RequirementTextField({
   const { t } = useTranslation();
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const text = draft ?? requirementToText(requirement);
   // The text grammar has no spelling for a complex-property member (#5475):
   // re-parsing would drop `memberPath` and widen the check to the whole
-  // property, so such a requirement is shown but not editable as text.
+  // property, so such a requirement is shown but not editable as text, and a
+  // pending draft or parse error from before is not shown.
   const readOnly = textSubjects(requirement).some((s) => s.kind === 'property' && s.memberPath !== undefined);
+  const text = readOnly ? requirementToText(requirement) : draft ?? requirementToText(requirement);
 
   const apply = () => {
     if (draft === null || readOnly) return;
@@ -330,7 +331,7 @@ function RequirementTextField({
         spellCheck={false}
         className="h-7 font-mono text-xs"
       />
-      {error && <p role="alert" className="text-2xs text-destructive">{error}</p>}
+      {error && !readOnly && <p role="alert" className="text-2xs text-destructive">{error}</p>}
     </div>
   );
 }

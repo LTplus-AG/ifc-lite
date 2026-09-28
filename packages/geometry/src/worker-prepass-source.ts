@@ -26,6 +26,16 @@ export interface ShardStyles {
   orphanColors: Float32Array;
   geomIds: Uint32Array;
   geomColors: Float32Array;
+  /** #5582 `[metallic, roughness]` per geometry id (NaN = unauthored); older wasm omits it. */
+  geomFinishes?: Float32Array;
+}
+
+/** The byte-taking prepass-assist entry points, plus the optional #5582 stash
+ *  that feeds `finalizePrepassStyles`'s `styleFinishes` (absent on older wasm). */
+export interface BytePrepassApi {
+  resolveStyledItemsShard(data: Uint8Array, spans: Uint32Array): ShardStyles;
+  finalizePrepassStyles(data: Uint8Array, ...args: FinalizeStyleArgs): Record<string, unknown>;
+  setPrepassGeometryFinishes?: (geomIds: Uint32Array, geomFinishes: Float32Array) => void;
 }
 
 export type FinalizeStyleArgs = [

@@ -190,6 +190,8 @@ describe('ListResultsTable / ListGroupingBar / ColumnHeaderMenu localization (#4
     const nestedViewKeys = STATIC_KEYS.filter((k) => !k.startsWith('lists.scheduleTable.'));
     const covered = assertCoverage(english, after, nestedViewKeys);
 
+    assert.ok(covered.has('lists.resultsTable.filterInputLabel'), 'the mounted results filter must have a translated accessible name');
+
     assert.ok(covered.has('lists.resultsTable.showingAllObjects'), 'expected the toggled-off state\'s label/tooltip to be visible');
     assert.ok(covered.size > 0, 'expected at least one static key to be visible in the nested-view render');
 

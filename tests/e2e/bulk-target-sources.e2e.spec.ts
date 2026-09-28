@@ -40,9 +40,11 @@ test('Bulk Selection edits three walls across two IFC models in one undo step (#
   const alignmentNotice = page.locator('[role="alert"] button').first();
   if (await alignmentNotice.isVisible()) await alignmentNotice.click();
 
-  // Bulk authoring is available through the viewer's explicit Edit mode.
+  // Bulk authoring is available through the viewer's Model workspace.
   await page.getByRole('tab', { name: 'Author', exact: true }).click();
-  await page.getByRole('button', { name: 'Enter edit mode' }).click();
+  const modelWorkspace = page.getByRole('tabpanel', { name: 'Author' }).getByRole('button', { name: 'Model', exact: true });
+  await modelWorkspace.click();
+  await expect(modelWorkspace).toHaveAttribute('aria-pressed', 'true');
 
   const refs = await page.evaluate((key) => {
     type Model = { id: string; ifcDataStore: { entityIndex: { byType: Map<string, number[]> } } };

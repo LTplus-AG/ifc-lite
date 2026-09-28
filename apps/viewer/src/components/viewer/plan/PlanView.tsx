@@ -20,7 +20,6 @@
  */
 
 import { useCallback, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { StoreEditor } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { resolveWorkplane } from '@/lib/commands/modeling/registry';
@@ -73,8 +72,7 @@ function usePlanFrame(): { plane: Workplane | null; axes: WallAxis[] } {
     const store = s.models.get(session.modelId)?.ifcDataStore;
     const view = s.mutationViews.get(session.modelId);
     if (!store || !view) return [];
-    const editor = s.storeEditors.get(session.modelId) ?? new StoreEditor(store, view);
-    return storeyWallAxes(store, view, editor, session.storeyId);
+    return storeyWallAxes(store, view, session.storeyId);
   }, [session?.modelId, session?.storeyId, models, mutationVersion]);
   return { plane, axes };
 }

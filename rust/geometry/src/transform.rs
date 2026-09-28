@@ -11,6 +11,9 @@ use crate::error::{Error, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::{Matrix4, Point3, Vector3};
 
+mod placement_2d;
+pub(crate) use placement_2d::parse_axis2_placement_2d;
+
 /// Parse IfcAxis2Placement3D into transformation matrix
 ///
 /// IfcAxis2Placement3D attributes:
@@ -149,6 +152,11 @@ pub fn parse_cartesian_point(
         .resolve_ref(point_attr)?
         .ok_or_else(|| Error::geometry("Failed to resolve cartesian point".to_string()))?;
 
+    parse_decoded_cartesian_point(&point_entity)
+}
+
+/// Parse a point already decoded by a caller that must verify its IFC type.
+pub(crate) fn parse_decoded_cartesian_point(point_entity: &DecodedEntity) -> Result<Point3<f64>> {
     if point_entity.ifc_type != IfcType::IfcCartesianPoint {
         return Err(Error::geometry(format!(
             "Expected IfcCartesianPoint, got {}",

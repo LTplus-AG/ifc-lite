@@ -73,7 +73,7 @@ async fn parquet_cache_hit_does_not_swap_body_and_metadata() {
     let content = b"not-a-real-ifc-file-cache-hit-probe";
     let query = ParseQuery::default();
     let cache_key = request_cache_key(content, &query, TessellationQuality::default());
-    let parquet_key = format!("{cache_key}-parquet-v5");
+    let parquet_key = format!("{cache_key}-parquet-v8");
     let metadata_key = format!("{cache_key}-parquet-metadata-v5");
 
     state
@@ -152,7 +152,7 @@ async fn a_geometry_hit_with_a_stale_data_model_still_writes_the_current_data_mo
 
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-v5"), b"OLD-GEOMETRY-PAYLOAD")
+        .set_bytes(&format!("{cache_key}-parquet-v8"), b"OLD-GEOMETRY-PAYLOAD")
         .await
         .expect("seed geometry cache entry");
     state
@@ -243,7 +243,7 @@ async fn issue_5542_parquet_cache_hit_reports_from_cache() {
         data_model_stats: None,
     };
     assert!(!stored.stats.from_cache, "seeded as the live parse writes it");
-    state.cache.set_bytes(&format!("{cache_key}-parquet-v5"), b"GEOMETRY").await.unwrap();
+    state.cache.set_bytes(&format!("{cache_key}-parquet-v8"), b"GEOMETRY").await.unwrap();
     state
         .cache
         .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &serde_json::to_vec(&stored).unwrap())

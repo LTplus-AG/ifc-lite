@@ -19,7 +19,8 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render, type as typeInto } from '@/test/render.js';
+import { useViewerStore } from '@/store';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { TranslationValue } from '@/i18n/types';
 import type { clashToolsEn as ClashToolsEnType } from '@/i18n/catalogues/clash-tools.en';
@@ -119,6 +120,25 @@ describe(
   'ClashSettingsDialog localization (#4918)',
   { skip: !HAS_CATALOGUE && 'clash-tools.en.ts catalogue module not present (revert-oracle probe)' },
   () => {
+    it('#6342 names every numeric detection field and keeps its setter active', () => {
+      openDialog();
+      const inputs = [...document.body.querySelectorAll<HTMLInputElement>('input[type="number"]')];
+      const keys = [
+        'clashTools.settings.toleranceLabel',
+        'clashTools.settings.clearanceGapLabel',
+        'clashTools.settings.duplicateToleranceLabel',
+        'clashTools.settings.clusterRadiusLabel',
+      ] as const;
+      assert.deepEqual(inputs.map((input) => input.getAttribute('aria-label')),
+        keys.map((key) => CATALOGUE[key]));
+      typeInto(inputs[0]!, '0.02');
+      assert.equal(useViewerStore.getState().clashTolerance, 0.02);
+      registerLocale(PSEUDO_LOCALE, PSEUDO);
+      act(() => setLocale(PSEUDO_LOCALE));
+      assert.deepEqual(inputs.map((input) => input.getAttribute('aria-label')),
+        keys.map((key) => `⟦${key}|${CATALOGUE[key]}⟧`));
+    });
+
     it('Detection tab: title, summary, every setting row, and the reset button', () => {
       openDialog();
       const english = readable();

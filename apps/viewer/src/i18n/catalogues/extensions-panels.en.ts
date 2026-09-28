@@ -247,6 +247,7 @@ export const extensionsPanelsEn = {
   'extensionsPanels.privacyPanel.editingOverlayFor': 'Editing overlay for {name}',
   'extensionsPanels.privacyPanel.overlayPlaceholder':
     'e.g. Always export CSV with semicolon separators. Default lens for IfcWall: by-fire-rating.',
+  'extensionsPanels.privacyPanel.overlayInputLabel': 'Prompt overlay notes',
   'extensionsPanels.privacyPanel.approxTokens': '{tokens} approx tokens',
   'extensionsPanels.privacyPanel.saveOverlayButton': 'Save overlay',
   'extensionsPanels.privacyPanel.candidatePreferenceCount': {

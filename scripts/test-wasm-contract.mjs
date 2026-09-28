@@ -35,6 +35,7 @@ import { runOverlayFrameContracts } from './lib/wasm-overlay-frame-contracts.mjs
 import { runRtcPrecisionContracts } from './lib/wasm-rtc-precision-contracts.mjs';
 import { finishContractRun, runLandXmlContracts } from './lib/wasm-landxml-contracts.mjs';
 import { runStepLogContracts } from './lib/wasm-step-log-contracts.mjs';
+import { runSweptDiskContracts } from './lib/wasm-swept-disk-contracts.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
 const FIXTURES_DIR = join(ROOT_DIR, 'tests/models');
@@ -114,11 +115,10 @@ function test(name, fn) {
     failed++;
   }
 }
-
 runAppearanceContracts(IfcAPI, test);
 runLandXmlContracts(api, test);
 runStepLogContracts(api, test);
-
+runSweptDiskContracts(api, test, ROOT_DIR);
 if (!COLUMN_AVAILABLE) {
   skip('IFC-backed WASM contracts', `column fixture missing — ${FIXTURES_HINT}`);
   finishContractRun(api, passed, failed, skipped);

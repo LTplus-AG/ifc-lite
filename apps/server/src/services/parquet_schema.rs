@@ -28,7 +28,7 @@ use std::sync::Arc;
 
 /// The flat transport's mesh table.
 ///
-/// `-parquet-v6` (issue #3888; `-parquet-v7` since #5130): the `vertex_start`/`vertex_count` and
+/// `-parquet-v6` (issue #3888; `-parquet-v9` since #5130): the `vertex_start`/`vertex_count` and
 /// `index_start`/`index_count` columns no longer name a block this row OWNS.
 /// Several rows can point at ONE shared block — the rotation-aware shape
 /// sharing `/optimized` has carried since #3575, brought to the flat route —
@@ -122,6 +122,8 @@ pub(super) struct MeshRow<'a> {
     pub geometry_class: u8,
     pub geometry_item_id: Option<u32>,
     pub material_id: Option<u32>,
+    /// `[metallic, roughness]`, NaN where unauthored (#5984).
+    pub finish: [f32; 2],
     /// Row-major 3x3, Y-up, placing the SHARED block this row points at:
     /// `world = origin + R * p`. Identity for a row that owns its geometry.
     pub rotation: [f32; 9],
@@ -149,7 +151,7 @@ impl<'a> MeshRow<'a> {
     ///
     /// Here rather than at the call site so the field order is stated once,
     /// next to the schema whose column order it feeds. On every unshared row,
-    /// which is every row of a `-parquet-v5` payload, the block is `mesh`'s own.
+    /// which is every row of a `-parquet-v8` payload, the block is `mesh`'s own.
     pub fn new(mesh: &'a crate::types::MeshData, placement: RowPlacement) -> Self {
         Self {
             express_id: mesh.express_id,
@@ -163,6 +165,7 @@ impl<'a> MeshRow<'a> {
             geometry_class: mesh.geometry_class,
             geometry_item_id: mesh.geometry_item_id,
             material_id: mesh.material_id,
+            finish: mesh.finish_wire(),
             rotation: placement.rotation,
         }
     }
@@ -214,6 +217,15 @@ pub(super) fn shared_trailing_fields() -> Vec<Field> {
         // an absence marker the domain can produce is one change from wrong.
         Field::new("geometry_item_id", DataType::UInt32, false),
         Field::new("material_id", DataType::UInt32, false),
+        // The IFC-authored finish (#5984), `crate::types::MeshData`'s
+        // `metallic` / `roughness`. NaN where unauthored, NOT a null, for the
+        // reason the two ids above use a sentinel: parquet-wasm 0.7.x leaks the
+        // neighbouring row's value into a nullable column's null slots, which
+        // here would hand an unauthored mesh another mesh's finish. NaN is the
+        // wasm `styleFinishes` wire's own "unauthored", and an authored value
+        // is always finite in [0, 1], so the sentinel cannot collide.
+        Field::new("metallic", DataType::Float32, false),
+        Field::new("roughness", DataType::Float32, false),
     ]
 }
 

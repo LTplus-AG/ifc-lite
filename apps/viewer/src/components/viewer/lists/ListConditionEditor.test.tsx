@@ -171,6 +171,12 @@ describe('List value rules in the Lists builder (#6190)', () => {
       choose(select(row, 'Operator'), 'exists');
       assert.equal(row.querySelectorAll('input').length, source === 'property' || source === 'quantity' ? 2 : 0,
         `${source} presence needs no value`);
+      if (source === 'property' || source === 'quantity') {
+        const names = [...row.querySelectorAll('input')].map((input) => input.getAttribute('aria-label'));
+        assert.deepEqual(names, source === 'property' ? ['Property set', 'Property name'] : ['Quantity set', 'Quantity name']);
+        choose(select(row, 'Operator'), 'equals');
+        assert.equal(row.querySelectorAll('input')[2]?.getAttribute('aria-label'), 'Condition value');
+      }
     }
     choose(select(row, 'List value source'), 'attribute');
     assert.ok(options(select(row, 'Attribute')).includes('GlobalId'), 'pseudo-attributes are offered');

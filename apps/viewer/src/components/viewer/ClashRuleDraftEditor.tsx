@@ -66,6 +66,7 @@ export function ClashRuleDraftEditor({
           onChange((previous) => ({ ...previous, name }));
         }}
         placeholder={t('clashTools.ruleEditor.namePlaceholder')}
+        aria-label={t('clashTools.ruleEditor.nameLabel')}
         className="h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-sm"
       />
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
@@ -75,6 +76,7 @@ export function ClashRuleDraftEditor({
           count={matchCount(draft.selectorA)}
           hasModel={hasModel}
           placeholder={t('clashTools.ruleEditor.selectorAPlaceholder')}
+          label={t('clashTools.ruleEditor.selectorALabel')}
         />
         <span className="text-xs text-muted-foreground">×</span>
         <SelectorField
@@ -83,6 +85,7 @@ export function ClashRuleDraftEditor({
           count={matchCount(draft.selectorB)}
           hasModel={hasModel}
           placeholder={t('clashTools.ruleEditor.selectorBPlaceholder')}
+          label={t('clashTools.ruleEditor.selectorBLabel')}
         />
       </div>
 
@@ -129,8 +132,8 @@ export function ClashRuleDraftEditor({
 
 /** Type-selector input with a live "matches N classes" hint. */
 function SelectorField({
-  value, onChange, count, hasModel, placeholder,
-}: { value: string; onChange: (v: string) => void; count: number | null; hasModel: boolean; placeholder: string }) {
+  value, onChange, count, hasModel, placeholder, label,
+}: { value: string; onChange: (v: string) => void; count: number | null; hasModel: boolean; placeholder: string; label: string }) {
   const { t } = useTranslation();
   return (
     <div className="min-w-0">
@@ -138,6 +141,7 @@ function SelectorField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        aria-label={label}
         className="h-8 w-full rounded-md border border-border bg-transparent px-2 text-xs font-mono"
       />
       <div className="mt-0.5 h-3 text-xs text-muted-foreground truncate">

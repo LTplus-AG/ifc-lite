@@ -15,7 +15,7 @@ import '@/test/setup-dom.js';
 
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { render, cleanup, click, mouseDown, press, advance } from '@/test/render.js';
+import { render, cleanup, click, mouseDown, press, advance, type } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
 import { emptyFilterState } from '@/store/slices/searchSlice';
@@ -42,6 +42,11 @@ describe('SearchModalFilterBuilder — groups (#4904)', () => {
 
   it('starts with one group and no "Add group" tabs row (nothing to switch between yet)', () => {
     const container = mount();
+    const limit = container.querySelector<HTMLInputElement>('input[aria-label="Limit"]');
+    assert.ok(limit, '#6342: the numeric limit is named by its visible label');
+    type(limit, '25');
+    assert.equal(limit.getAttribute('aria-label'), 'Limit');
+    assert.equal(useViewerStore.getState().searchFilter.limit, 25);
     assert.equal(useViewerStore.getState().searchFilter.groups.length, 1);
     assert.equal(container.querySelector('[role="tablist"]'), null);
   });

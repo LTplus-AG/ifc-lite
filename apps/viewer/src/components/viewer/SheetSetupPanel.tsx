@@ -99,6 +99,7 @@ export function SheetSetupPanel({ onOpenTitleBlockEditor }: SheetSetupPanelProps
   const [scaleBarOpen, setScaleBarOpen] = useState(true);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState('');
+  const templateNameLabel = t('sheetsPdf.sheetSetup.templateNamePlaceholder');
 
   // Get current paper size ID
   const currentPaperId = useMemo(() => {
@@ -405,7 +406,8 @@ export function SheetSetupPanel({ onOpenTitleBlockEditor }: SheetSetupPanelProps
                   {/* Save current as template */}
                   <div className="flex gap-2">
                     <Input
-                      placeholder={t('sheetsPdf.sheetSetup.templateNamePlaceholder')}
+                      placeholder={templateNameLabel}
+                      aria-label={templateNameLabel}
                       value={newTemplateName}
                       onChange={(e) => setNewTemplateName(e.target.value)}
                       className="h-8 text-sm flex-1"

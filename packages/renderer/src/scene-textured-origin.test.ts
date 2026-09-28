@@ -332,3 +332,15 @@ describe('#4406 multi-part authored owner staging', () => {
   });
 
 });
+
+describe('textured meshes carry their IFC-authored finish (#5984)', () => {
+  it('copies MeshData.material onto the TexturedMesh, keeping an authored 0', () => {
+    const scene = new Scene();
+    const { device } = fakeDevice();
+    const glossy = { ...meshData(1, ORIGIN, true), material: { roughness: 0 } };
+    scene.appendToBatches([glossy, meshData(2, ORIGIN, true)], device, fakePipeline);
+    const [withFinish, without] = scene.getTexturedMeshes();
+    assert.deepStrictEqual(withFinish.finish, { roughness: 0 });
+    assert.strictEqual('finish' in without, false, 'unauthored keeps the renderer default');
+  });
+});

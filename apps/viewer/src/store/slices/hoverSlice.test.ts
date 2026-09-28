@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { hoverTeardown } from './hoverSlice.js';
+import { createHoverSlice, hoverTeardown } from './hoverSlice.js';
 import { modelRemovedScope } from '../teardown-scope.js';
 import type { FederatedModel } from '../types.js';
 
@@ -91,5 +91,26 @@ describe('hoverTeardown — all-models-cleared', () => {
 
     assert.deepStrictEqual(patch.hoverState, { entityId: null, screenX: 0, screenY: 0 });
     assert.deepStrictEqual(patch.contextMenu, { isOpen: false, entityId: null, screenX: 0, screenY: 0 });
+  });
+});
+
+/**
+ * The hover pre-highlight outline (#5390) is on by default, independent of
+ * `hoverTooltipsEnabled` (`uiSlice`, defaults to false — see
+ * `UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED`): a first-time user should see the
+ * highlight without also turning on tooltips.
+ */
+describe('hoverSlice — hoverHighlightEnabled (#5390)', () => {
+  it('defaults to true and can be toggled independently of hoverState', () => {
+    let state: ReturnType<typeof createHoverSlice>;
+    const set = (partial: Partial<typeof state> | ((s: typeof state) => Partial<typeof state>)) => {
+      state = { ...state, ...(typeof partial === 'function' ? partial(state) : partial) };
+    };
+    state = createHoverSlice(set as any, (() => state) as any, {} as any);
+
+    assert.equal(state.hoverHighlightEnabled, true);
+    state.toggleHoverHighlight();
+    assert.equal(state.hoverHighlightEnabled, false);
+    assert.deepStrictEqual(state.hoverState, { entityId: null, screenX: 0, screenY: 0 }, 'unrelated to hoverState');
   });
 });

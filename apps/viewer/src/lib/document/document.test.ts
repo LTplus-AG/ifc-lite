@@ -207,6 +207,27 @@ describe('bindings', () => {
     assert.equal(resolveBinding('IfcBuildingStorey[1].Name', deleted).value, 'Level 2');
     assert.equal(resolveBinding('IfcBuildingStorey["Level One"].Name', deleted).ok, false);
   });
+
+  it('follows retargeted and created containment in live document bindings (#5249)', () => {
+    const store = ctx.models[0].store;
+    const view = new MutablePropertyView(store.properties, 'm1');
+    view.setExpressIdWatermark(100);
+    view.setAttribute(90, 'RelatingStructure', '#6');
+    const wall = view.createEntity('IfcWall', ['0NewWall000000000000041', null, 'New wall', null, null, '#24', '#28', null, null]);
+    view.createEntity('IfcRelContainedInSpatialStructure', [
+      '0NewRel0000000000000041', null, null, null, [`#${wall.expressId}`], '#5',
+    ]);
+    const live: BindingContext = { ...ctx, models: [{ ...ctx.models[0], view }] };
+
+    assert.equal(resolveBinding('IfcBuildingStorey["Level 1"].Elements', live).value, '1');
+    assert.equal(resolveBinding('IfcBuildingStorey["Level 2"].Elements', live).value, '3');
+    assert.equal(resolveBinding(`Element[${WALL}].Storey`, live).value, 'Level 2');
+
+    view.deleteEntity(wall.expressId);
+    assert.equal(resolveBinding('IfcBuildingStorey["Level 1"].Elements', live).value, '0');
+    view.deleteEntity(90);
+    assert.equal(resolveBinding(`Element[${WALL}].Storey`, live).ok, false);
+  });
 });
 
 describe('document file', () => {

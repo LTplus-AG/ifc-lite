@@ -18,6 +18,7 @@ import { numericOpMatches } from '../filter/filter-ops.js';
 import { evaluateFilterGroupsFederated } from '../filter/filter-evaluate-groups.js';
 import type { FilteredElement, EvaluatorModel } from '../filter/filter-evaluate.js';
 import { readSubjectWhole } from '../filter/read-subject.js';
+import { memberPathLabel } from '../filter/subject-read-options.js';
 import type { Subject, UniqueRequirement, AggregateRequirement } from '../rule-set/rule-set.js';
 import { OP_LABEL, type ValidationOpts } from './rule-engine-requirements.js';
 import { maybeYieldChunk, finalProgress, type RuleEngineProgress } from './rule-engine-chunk.js';
@@ -27,7 +28,7 @@ const SET_RESULT_CAP = 1_000;
 /** Shared with `rule-engine-compare.ts` (same `Subject` label rendering). */
 export function describeSubject(subject: Subject): string {
   switch (subject.kind) {
-    case 'property': return `${subject.setName}.${subject.propertyName}`;
+    case 'property': return `${subject.setName}.${subject.propertyName}${memberPathLabel(subject.memberPath)}`;
     case 'quantity': return `${subject.setName}.${subject.quantityName}`;
     case 'attribute': return subject.name;
     case 'classification': return subject.system ? `Classification[${subject.system}]` : 'Classification';

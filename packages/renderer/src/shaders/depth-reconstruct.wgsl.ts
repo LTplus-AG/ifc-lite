@@ -12,14 +12,19 @@
  */
 
 /**
- * Declares `depthTex` at `@group(0) @binding(binding)` and `loadDepth(ip)`,
+ * Declares `depthTex` at `@group(group) @binding(binding)` and `loadDepth(ip)`,
  * which clamps the coordinate to the texture and reads sample 0 when the
  * attachment is multisampled.
+ *
+ * `group` must match the index of the bind-group layout that carries the
+ * depth texture in the caller's pipeline layout. The full-screen passes (AO,
+ * edges) own group 0; the selection mask draws mesh geometry, so group 0 is
+ * the mesh uniform and the depth texture sits in group 1 (#5390).
  */
-export function depthTextureWgsl(binding: number, multisampled: boolean): string {
+export function depthTextureWgsl(binding: number, multisampled: boolean, group = 0): string {
   const type = multisampled ? 'texture_depth_multisampled_2d' : 'texture_depth_2d';
   return `
-        @group(0) @binding(${binding}) var depthTex: ${type};
+        @group(${group}) @binding(${binding}) var depthTex: ${type};
 
         fn loadDepth(ip: vec2<i32>) -> f32 {
           let dims = vec2<i32>(textureDimensions(depthTex));

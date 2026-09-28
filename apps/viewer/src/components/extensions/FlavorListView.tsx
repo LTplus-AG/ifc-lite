@@ -22,7 +22,7 @@
  * no path forward.
  */
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Camera, Copy, Download, FilePlus, Pencil, RefreshCcw, Upload, X, Check } from 'lucide-react';
 import type { Flavor } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
@@ -81,6 +81,7 @@ export function FlavorListView({
   onCreate,
 }: FlavorListViewProps) {
   const { t, locale } = useTranslation();
+  const newFlavorNameId = useId();
   const [creating, setCreating] = useState<Creating>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -152,7 +153,7 @@ export function FlavorListView({
           modal stack inside the Flavors dialog. */}
       {creating && (
         <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
-          <label className="text-xs font-medium block mb-1">
+          <label htmlFor={newFlavorNameId} className="text-xs font-medium block mb-1">
             {creating.mode === 'snapshot'
               ? t('extensionsFlavors.flavorListView.nameSnapshotLabel', {
                   count: liveLensCount,
@@ -164,6 +165,7 @@ export function FlavorListView({
             {/* The inline editor opens by explicit user action; focus starts in its text field. */}
             {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
             <Input autoFocus
+              id={newFlavorNameId}
               value={creating.name}
               onChange={(e) => setCreating({ ...creating, name: e.target.value })}
               onKeyDown={(e) => {
@@ -236,6 +238,7 @@ export function FlavorListView({
                         {/* Rename opens by explicit user action; focus starts in its text field. */}
                         {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
                         <Input autoFocus
+                          aria-label={t('extensionsFlavors.flavorListView.renameAriaLabel', { name: localizedFlavorName(flavor, t) })}
                           value={renameValue}
                           onChange={(e) => setRenameValue(e.target.value)}
                           onKeyDown={(e) => {

@@ -9,12 +9,15 @@ import {
   type SpatialNode,
 } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { effectiveSpatialMembers } from '@/lib/effective-spatial-members';
 import type { NodeType } from './types';
 
 function collectDescendantSpaceElements(
   spatialNode: SpatialNode,
-  hierarchy: IfcDataStore['spatialHierarchy'],
+  dataStore: IfcDataStore,
   cache: Map<number, Set<number>>,
+  view?: MutablePropertyView | null,
 ): Set<number> {
   const cached = cache.get(spatialNode.expressId);
   if (cached) return cached;
@@ -22,11 +25,11 @@ function collectDescendantSpaceElements(
   const elementIds = new Set<number>();
   for (const child of spatialNode.children ?? []) {
     if (isSpaceLikeSpatialType(child.type)) {
-      for (const elementId of hierarchy?.bySpace.get(child.expressId) ?? []) {
+      for (const elementId of effectiveSpatialMembers(dataStore, view, child.expressId)) {
         elementIds.add(elementId);
       }
     }
-    for (const elementId of collectDescendantSpaceElements(child, hierarchy, cache)) {
+    for (const elementId of collectDescendantSpaceElements(child, dataStore, cache, view)) {
       elementIds.add(elementId);
     }
   }
@@ -52,22 +55,25 @@ export function getSpatialNodeElements(
   dataStore: IfcDataStore,
   nodeType: NodeType,
   descendantSpaceCache: Map<number, Set<number>>,
+  view?: MutablePropertyView | null,
 ): number[] {
   if (isSpaceLikeSpatialType(spatialNode.type)) {
-    return (dataStore.spatialHierarchy?.bySpace.get(spatialNode.expressId) as number[]) || [];
+    return effectiveSpatialMembers(dataStore, view, spatialNode.expressId);
   }
   if (!isStoreyLikeSpatialType(spatialNode.type)) {
     if (!isSpatialStructureType(spatialNode.type)) return [];
-    return spatialNode.elements || [];
+    return view?.hasPendingChanges()
+      ? effectiveSpatialMembers(dataStore, view, spatialNode.expressId)
+      : spatialNode.elements || [];
   }
   if (nodeType !== 'IfcBuildingStorey') return [];
 
-  const storeyElements =
-    (dataStore.spatialHierarchy?.byStorey.get(spatialNode.expressId) as number[]) || [];
+  const storeyElements = effectiveSpatialMembers(dataStore, view, spatialNode.expressId);
   const descendantSpaceElements = collectDescendantSpaceElements(
     spatialNode,
-    dataStore.spatialHierarchy,
+    dataStore,
     descendantSpaceCache,
+    view,
   );
   return storeyElements.filter((elementId) => !descendantSpaceElements.has(elementId));
 }

@@ -355,17 +355,13 @@ for step_id, row in schedule["rows"].items():
     print(step_id, row["GlobalId"], row["Name"], row["authored"].get("BarLength"), row["sweeps"])
 ```
 
+For project-specific comparisons, call
 `rebar_schedule_with_preflight(ifc_bytes, min_inside_bend_radius_m,
-min_straight_segment_length_m, max_developed_centreline_length_m=None)` adds
-caller-defined comparisons in SI metres. Each represented sweep's `preflight`
-includes measured values, limits, segment indices, and pass/fail results;
-equality passes. Inside bend radius means centreline arc radius minus swept
-outer radius. Modified CSG sources, unsupported directrices, and paths with
-gaps or zero-length segments have a `skipped_reason` and no comparisons; the
-source findings remain in `checks`. Tangent discontinuities remain inspection
-cues. A row with no represented sweep carries
-`preflight_skipped_reason`; missing arc or line segments are listed under
-`unassessed_reasons`. This does not certify cutting length or code compliance.
+min_straight_segment_length_m, max_developed_centreline_length_m=None)`.
+The measured comparisons identify their source segments; equality passes.
+Inside bend radius is arc centreline radius minus swept outer radius. Modified
+or unsupported sources and rows without sweeps carry explicit skip reasons.
+No result certifies a cutting length or fabrication-code compliance.
 
 ### Tessellation quality
 

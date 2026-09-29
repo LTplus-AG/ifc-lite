@@ -46,8 +46,11 @@ afterEach(() => { useViewerStore.getState().exitModelWorkspace(); cleanup(); });
 
 it('a plan click gives the inspector a selection target', async () => {
   const fit = entryFit();
-  let target: InspectorTarget | null = null;
-  function Probe() { target = useInspectorTarget(); return null; }
+  // Written by the probe on every render (an object, so TypeScript keeps the type across the closure).
+  const seen: { target: InspectorTarget | null } = { target: null };
+  function Probe() { seen.target = useInspectorTarget(); return null; }
+  // Read through a call: an assert on one read must not narrow the next one.
+  const target = (): InspectorTarget => seen.target!;
   const ui = render(<><PlanView layout="split" /><Probe /></>);
   await settle();
   const svg = ui.querySelector('[data-plan-canvas]')!;
@@ -56,9 +59,9 @@ it('a plan click gives the inspector a selection target', async () => {
   act(() => useViewerStore.getState().endCommand('cancel'));
   act(() => useViewerStore.getState().setSelectedEntityId(null));
   await settle();
-  assert.equal(target!.selection, null);
+  assert.equal(target().selection, null);
   click(svg, [0.5, 1], fit);
   const wall = useViewerStore.getState().mutationViews.get(MODEL_ID)!.getNewEntities().find((e) => e.type.toUpperCase() === 'IFCWALL')!;
-  assert.equal(target!.selection?.expressId, wall.expressId);
-  assert.equal(target!.mode, 'selection');
+  assert.equal(target().selection?.expressId, wall.expressId);
+  assert.equal(target().mode, 'selection');
 });

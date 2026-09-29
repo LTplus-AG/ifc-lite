@@ -16,7 +16,8 @@ node scripts/check-test-revert-oracle.mjs --base 3fe909341 \
 ```
 
 The oracle reports `OBSERVED`: the baseline passes 7/7 quantity tests; the
-mutation leaves six passing tests and one assertion failure. It then restores
+mutation leaves five passing tests and two assertion failures, including the
+real buildingSMART fixture's expected `2 m³` readout. It then restores
 the production line and verifies `git status --porcelain` is empty. This patch
 is review evidence only; normal builds and tests do not apply it. A whole-file
 revert removes the newly added component and breaks the test import before an

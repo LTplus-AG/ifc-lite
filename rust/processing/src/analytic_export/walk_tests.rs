@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+include!("walk_bench_tests.rs");
 
 #[test]
 fn issue_5786_mapped_extrusion_source_cache_preserves_quantities_and_instances() {

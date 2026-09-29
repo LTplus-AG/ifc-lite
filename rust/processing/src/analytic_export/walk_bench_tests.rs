@@ -47,11 +47,15 @@ fn nested_reflected_scaled() -> String {
     source
 }
 
-fn rss_kib() -> usize {
+fn proc_kib(label: &str) -> usize {
     let status = std::fs::read_to_string("/proc/self/status").expect("Linux /proc/self/status");
-    status.lines().find_map(|line| line.strip_prefix("VmRSS:")
+    status.lines().find_map(|line| line.strip_prefix(label)
         .and_then(|value| value.split_whitespace().next())
-        .and_then(|value| value.parse().ok())).expect("VmRSS in proc status")
+        .and_then(|value| value.parse().ok())).expect("memory field in proc status")
+}
+
+fn rss_kib() -> usize {
+    proc_kib("VmRSS:")
 }
 
 struct StopSampler<'a>(&'a std::sync::atomic::AtomicBool);
@@ -78,6 +82,7 @@ fn issue_6442_analytic_cache_process_measurement() {
         _ => panic!("unknown fixture: {fixture}"),
     };
     let baseline_rss_kib = rss_kib();
+    let baseline_hwm_kib = proc_kib("VmHWM:");
     let stop = std::sync::atomic::AtomicBool::new(false);
     let peak = std::sync::atomic::AtomicUsize::new(baseline_rss_kib);
     let mut cache = MappedSourceCache::new();
@@ -99,7 +104,8 @@ fn issue_6442_analytic_cache_process_measurement() {
         let elapsed_ns = started.elapsed().as_nanos();
         (result, elapsed_ns)
     });
-    let peak_rss_kib = peak.load(std::sync::atomic::Ordering::Relaxed).max(rss_kib());
+    let sampled_peak_rss_kib = peak.load(std::sync::atomic::Ordering::Relaxed).max(rss_kib());
+    let peak_rss_kib = proc_kib("VmHWM:");
     // This separate index-only sample is outside the analytic call. It is a
     // parse-cost reference, not a partition of the measured call.
     let index_started = Instant::now();
@@ -115,6 +121,8 @@ fn issue_6442_analytic_cache_process_measurement() {
         "fixture": fixture, "mode": mode, "elapsed_ns": elapsed_ns,
         "standalone_index_ns": standalone_index_ns,
         "baseline_rss_kib": baseline_rss_kib,
+        "baseline_hwm_kib": baseline_hwm_kib,
+        "sampled_peak_rss_kib": sampled_peak_rss_kib,
         "peak_rss_kib": peak_rss_kib,
         "source_loads": cache.loads, "cache_hits": cache.hits,
         "output_bytes": payload.len(),

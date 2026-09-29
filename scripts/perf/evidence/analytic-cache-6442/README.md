@@ -26,8 +26,10 @@ Pair order alternates control/cache and cache/control. The generated 1,024-item
 case shares one map; the nested case adds mirrored and scaled mappings. The
 same test harness constructs both generated cases outside the timed call.
 The IFC read is likewise outside the timed call. `elapsed_ns` brackets only the
-analytic extraction; `baseline_rss_kib` and `peak_rss_kib` come from 1 ms
-`/proc/self/status` VmRSS samples around that call. The separate
+analytic extraction. `peak_rss_kib` is the kernel's VmHWM immediately after
+the call, with `baseline_hwm_kib` recorded before it; the test also samples
+VmRSS every 1 ms during the call. These process RSS measures include the
+test runner and the IFC already read into memory. The separate
 `standalone_index_ns` sample runs after extraction on the same bytes and is a
 parse-cost reference, not a decomposition of `elapsed_ns`. The canonical API
 builds its index and scans products inside the measured call, so an exact

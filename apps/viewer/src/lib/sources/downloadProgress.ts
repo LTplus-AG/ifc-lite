@@ -12,11 +12,19 @@ export type SourceDownloadState =
   | { readonly phase: 'downloading'; readonly received: number; readonly total?: number }
   | { readonly phase: 'failed' };
 
-/** Percent complete (0-100), or `undefined` while the total is unknown. */
+/**
+ * Percent complete (0-100), or `undefined` while the total is unknown. The
+ * numbers come from provider code, including third-party providers, so a
+ * total or count that is not a finite, non-negative number counts as unknown
+ * rather than becoming a NaN percentage.
+ */
 export function downloadPercent(state: SourceDownloadState): number | undefined {
-  if (state.phase !== 'downloading' || state.total === undefined) return undefined;
-  if (state.total === 0) return 100;
-  return Math.min(100, (state.received / state.total) * 100);
+  if (state.phase !== 'downloading') return undefined;
+  const { received, total } = state;
+  if (total === undefined || !Number.isFinite(total) || total < 0) return undefined;
+  if (!Number.isFinite(received) || received < 0) return undefined;
+  if (total === 0) return 100;
+  return Math.min(100, (received / total) * 100);
 }
 
 // ── Sync progress, keyed by model id ──

@@ -17,6 +17,8 @@ import { ROOM_PLACE } from './commands/room-place.js';
 import { SLAB_PLACE } from './commands/slab-place.js';
 import { WALL_MOVE_ENDPOINT } from './commands/wall-move-endpoint.js';
 import { WALL_PLACE } from './commands/wall-place.js';
+import { ELEMENT_ARRAY } from './commands/element-array.js';
+import { ELEMENT_PASTE } from './commands/element-paste.js';
 import type { ModelingCommand } from './types.js';
 
 /** A re-evaluated module (dev HMR) finds its commands already registered. */
@@ -31,6 +33,8 @@ registerOnce(SLAB_PLACE);
 registerOnce(COLUMN_PLACE);
 registerOnce(BEAM_PLACE);
 registerOnce(ROOM_PLACE);
+registerOnce(ELEMENT_PASTE);
+registerOnce(ELEMENT_ARRAY);
 
 setWorkplaneResolver((s, modelId, spec) => (spec.kind === 'storey'
   ? buildStoreyWorkplane(s, modelId, spec.storeyId, spec.offset)

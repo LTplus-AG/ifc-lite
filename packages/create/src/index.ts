@@ -163,6 +163,15 @@ export {
 } from './in-store/duplicate.js';
 export { resolveDuplicateSource } from './in-store/resolve-source.js';
 export {
+  createCopyContext,
+  copyProductInStore,
+  copyRefusal,
+  productStoreyOrigin,
+  type CopyContext,
+  type CopyTransform,
+  type CopyProductResult,
+} from './in-store/copy-product.js';
+export {
   detectEnclosedAreas,
   type Vec2 as AutoSpaceVec2,
   type Segment as AutoSpaceSegment,

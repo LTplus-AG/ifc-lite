@@ -255,6 +255,7 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
       {editing && (
         <div className="border-b border-border bg-muted/20">
           <ChartEditor
+            key={editing.id}
             spec={editing}
             datasets={datasets}
             elementFieldCatalog={fieldCatalog.catalog}

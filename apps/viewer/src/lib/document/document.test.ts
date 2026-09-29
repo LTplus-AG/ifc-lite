@@ -681,7 +681,7 @@ function recordingSeams(): { seams: DocumentPdfSeams; calls: Array<{ op: string;
       calls.push({ op: 'create', args: [format, orientation] });
       return {
         addPage: () => { pages += 1; },
-        setFont: () => {}, setFontSize: () => {}, setTextColor: () => {},
+        setFont: () => {}, setFontSize: () => {}, setTextColor: () => {}, fillRect: () => {},
         text: (t, x, y) => calls.push({ op: 'text', args: [t, x, y] }),
         addImage: (bytes, format, x, y, w, h) => calls.push({ op: 'image', args: [bytes.length, format, x, y, w, h] }),
         svg: async (svg) => { calls.push({ op: 'svg', args: [svg] }); },

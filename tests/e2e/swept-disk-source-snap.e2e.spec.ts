@@ -6,6 +6,7 @@
 import { expect, test } from '@playwright/test';
 import { existsSync, writeFileSync } from 'node:fs';
 import { sweptDiskFixture } from './swept-disk-fixture.js';
+import { skipForGpuDeviceLoss, watchGpuDeviceLoss } from './gpu-device-loss.js';
 
 type SourceHit = { modelId: string; expressId: number; segmentIndex: number; kind: 'line' | 'arc'; length: number; t: number };
 type BrowserState = {
@@ -46,10 +47,7 @@ function distanceFromFiniteLine(
 test('selected authored source curve snaps on hover, click and drag, then clears with overlay (#5780)', async ({ page }, testInfo) => {
   test.skip(!existsSync(sweptDiskFixture.path), `Swept-disk IFC missing at ${sweptDiskFixture.path}; run pnpm fixtures or provide REBAR_IFC`);
   test.setTimeout(600_000);
-  let deviceLostBeforeSnap: string | null = null;
-  page.on('console', (message) => {
-    if (message.text().includes('[WebGPU] Device lost:')) deviceLostBeforeSnap = message.text();
-  });
+  const gpu = await watchGpuDeviceLoss(page);
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/');
   await page.locator('#file-input-open').setInputFiles(sweptDiskFixture.path);
@@ -93,11 +91,7 @@ test('selected authored source curve snaps on hover, click and drag, then clears
     }, { timeout: 30_000, message: 'renderer produces a baseline frame before source snapping' })
       .toMatch(/^data:image\/png;base64,/);
   } catch (error) {
-    if (!captureThrew && baseline === null && deviceLostBeforeSnap && process.env.E2E_GPU_STRICT === '0') {
-      const reason = `Hosted software WebGPU device was lost before source snapping: ${deviceLostBeforeSnap}`;
-      console.warn(`[e2e] ${reason}`);
-      test.skip(true, reason);
-    }
+    if (!captureThrew && baseline === null && gpu.evidence) skipForGpuDeviceLoss('source snapping', gpu.evidence);
     throw error;
   }
   await page.evaluate(() => {

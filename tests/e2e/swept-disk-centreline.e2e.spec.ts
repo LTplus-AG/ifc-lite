@@ -6,6 +6,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { existsSync, writeFileSync } from 'node:fs';
 import { sweptDiskFixture } from './swept-disk-fixture.js';
+import { skipForGpuDeviceLoss, watchGpuDeviceLoss } from './gpu-device-loss.js';
 
 type BrowserState = {
   models: Map<string, { id: string; ifcDataStore?: {
@@ -57,10 +58,7 @@ async function frameChange(
 test('selected swept-disk bar draws and clears its source centreline (#5778)', async ({ page }, testInfo) => {
   test.skip(!existsSync(sweptDiskFixture.path), `Swept-disk IFC missing at ${sweptDiskFixture.path}; run pnpm fixtures or provide REBAR_IFC`);
   test.setTimeout(600_000);
-  let deviceLostBeforeOverlay: string | null = null;
-  page.on('console', (message) => {
-    if (message.text().includes('[WebGPU] Device lost:')) deviceLostBeforeOverlay = message.text();
-  });
+  const gpu = await watchGpuDeviceLoss(page);
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/');
   await page.locator('#file-input-open').setInputFiles(sweptDiskFixture.path);
@@ -104,11 +102,7 @@ test('selected swept-disk bar draws and clears its source centreline (#5778)', a
   } catch (error) {
     // Hosted SwiftShader can destroy its device during model load, before this
     // test enables the overlay. The local strict run still requires pixels.
-    if (!captureThrew && before === null && deviceLostBeforeOverlay && process.env.E2E_GPU_STRICT === '0') {
-      const reason = `Hosted software WebGPU device was lost before the centreline overlay: ${deviceLostBeforeOverlay}`;
-      console.warn(`[e2e] ${reason}`);
-      test.skip(true, reason);
-    }
+    if (!captureThrew && before === null && gpu.evidence) skipForGpuDeviceLoss('the centreline overlay', gpu.evidence);
     throw error;
   }
   if (!before) throw new Error('renderer produced no baseline color frame');

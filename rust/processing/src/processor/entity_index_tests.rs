@@ -41,7 +41,7 @@ fn native_wide_offsets_keep_the_hash_representation() {
         let mut builder = IndexBuilder::Hash(FxHashMap::default());
         let span = (u32::MAX as usize + 10, u32::MAX as usize + 20);
         builder.insert(1, span);
-        let ProcessingIndex::Hash(index) = builder.finish() else { panic!("wide offsets must not narrow") };
+        let ProcessingIndex::Hash(index, _) = builder.finish() else { panic!("wide offsets must not narrow") };
         assert_eq!(index.get(&1), Some(&span));
     }
 }
@@ -59,7 +59,7 @@ fn duplicate_heavy_input_bounds_rows_and_keeps_the_last_authored_span() {
             assert!(pages.iter().map(Vec::capacity).sum::<usize>() <= budget + PAGE_ROWS);
         }
     }
-    let ProcessingIndex::Hash(index) = builder.finish() else { panic!("dense records must leave bounded staging") };
+    let ProcessingIndex::Hash(index, _) = builder.finish() else { panic!("dense records must leave bounded staging") };
     assert_eq!(index.len(), 3);
     for row in budget * 2 - 3..budget * 2 {
         assert_eq!(index.get(&((row % 3) as u32)), Some(&(row * 10, row * 10 + 5)));
@@ -73,7 +73,7 @@ fn staging_budget_transition_preserves_unique_and_sparse_ids() {
     builder.insert(u32::MAX, (11, 17));
     builder.insert(42, (20, 24));
     builder.insert(u32::MAX, (30, 38));
-    let ProcessingIndex::Hash(index) = builder.finish() else { panic!("budget transition must coalesce directly") };
+    let ProcessingIndex::Hash(index, _) = builder.finish() else { panic!("budget transition must coalesce directly") };
     assert_eq!(index.len(), 3);
     assert_eq!(index.get(&0), Some(&(0, 0)));
     assert_eq!(index.get(&42), Some(&(20, 24)));

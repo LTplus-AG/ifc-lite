@@ -6,17 +6,23 @@
 //! avoiding hash bucket padding for large sources with 32-bit byte offsets.
 
 use std::sync::Arc;
-use ifc_lite_core::{ColumnarEntityIndex, DenseEntityIndex, EntityDecoder, EntityIndex};
+use ifc_lite_core::{ColumnarEntityIndex, DenseEntityIndex, EntityDecoder, EntityIndex, GridAxisIndex};
 use rustc_hash::FxHashMap;
 
 #[derive(Clone)]
 pub(super) enum ProcessingIndex {
-    Hash(Arc<EntityIndex>),
+    // A bare hash map has nowhere to keep source-scoped lookups, so it travels
+    // with its own; the compact indexes carry theirs (#6232 F2).
+    Hash(Arc<EntityIndex>, Arc<GridAxisIndex>),
     Columnar(Arc<ColumnarEntityIndex>),
     Dense(Arc<DenseEntityIndex>),
 }
 
 impl ProcessingIndex {
+    pub(super) fn hash(index: Arc<EntityIndex>) -> Self {
+        Self::Hash(index, Arc::default())
+    }
+
     pub(super) fn decoder<'a>(&self, content: &'a [u8]) -> EntityDecoder<'a> {
         let mut decoder = EntityDecoder::new(content);
         self.install(&mut decoder);
@@ -25,7 +31,10 @@ impl ProcessingIndex {
 
     pub(super) fn install(&self, decoder: &mut EntityDecoder<'_>) {
         match self {
-            Self::Hash(index) => decoder.set_entity_index(index.clone()),
+            Self::Hash(index, grid_axes) => {
+                decoder.set_entity_index(index.clone());
+                decoder.set_grid_axis_index(grid_axes.clone());
+            }
             Self::Columnar(index) => decoder.set_columnar_index(index.clone()),
             Self::Dense(index) => decoder.set_dense_index(index.clone()),
         }
@@ -86,7 +95,7 @@ impl IndexBuilder {
 
     pub(super) fn finish(self) -> ProcessingIndex {
         match self {
-            Self::Hash(index) => ProcessingIndex::Hash(Arc::new(index)),
+            Self::Hash(index) => ProcessingIndex::hash(Arc::new(index)),
             Self::Compact { pages, len, .. } => {
                 // Fixed pages avoid geometric Vec over-allocation. At most
                 // two 12-byte representations overlap; release each consumed

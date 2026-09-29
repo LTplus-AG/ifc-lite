@@ -242,12 +242,16 @@ fn a_truncated_grid_placement_walk_does_not_poison_the_placement_memo() {
 #{capped_id}=IFCGRIDPLACEMENT(#{},#907,$);",
         capped_id - 1
     );
-    let content = deep_placement_chain(links).replace(
-        &format!("#{capped_id}=IFCLOCALPLACEMENT(#{},#1);", capped_id - 1),
-        &grid,
-    );
+    // `IFCGRIDPLACEMENT(PlacementRelTo, ...)` is the IFC4X1+ layout; the
+    // header must say so, since IFC2X3/IFC4 read the record without that slot.
+    let content = deep_placement_chain(links)
+        .replace(
+            &format!("#{capped_id}=IFCLOCALPLACEMENT(#{},#1);", capped_id - 1),
+            &grid,
+        )
+        .replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3'))");
     assert!(
-        content.contains("IFCGRIDPLACEMENT"),
+        content.contains("IFCGRIDPLACEMENT") && content.contains("'IFC4X3'"),
         "the substitution must land, or this test re-runs the IfcLocalPlacement case"
     );
     assert_two_orders_agree(&content, capped_id, links);

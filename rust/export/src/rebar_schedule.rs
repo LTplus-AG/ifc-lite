@@ -335,7 +335,10 @@ fn build_rebar_schedule_impl(
                     ));
                 }
                 let checks = check_swept_disk(disk, options)?;
-                let preflight = limits.map(|limits| assess_sweep(disk, &checks, limits));
+                let directrix_metrics = disk.directrix_metrics();
+                let preflight = limits.map(|limits| assess_sweep(
+                    disk, &checks, directrix_metrics.as_ref(), limits,
+                ));
                 row.sweeps.push(RebarSweep {
                     occurrence_index,
                     source,
@@ -346,7 +349,7 @@ fn build_rebar_schedule_impl(
                     status: disk.status.clone(),
                     radius_m: disk.radius,
                     inner_radius_m: disk.inner_radius,
-                    directrix_metrics: disk.directrix_metrics(),
+                    directrix_metrics,
                     checks,
                     preflight,
                 });

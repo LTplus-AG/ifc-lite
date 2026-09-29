@@ -6,7 +6,8 @@
 
 use ifc_lite_geometry::analytic::{AnalyticCurveSegment, AnalyticStatus};
 use ifc_lite_processing::{
-    SweptDiskCheckError, SweptDiskCheckReport, SweptDiskFindingCode, SweptDiskOccurrence,
+    DirectrixMetrics, SweptDiskCheckError, SweptDiskCheckReport, SweptDiskFindingCode,
+    SweptDiskOccurrence,
 };
 use serde::Serialize;
 
@@ -99,6 +100,7 @@ pub struct RebarPreflightReport {
 pub(super) fn assess_sweep(
     disk: &SweptDiskOccurrence,
     checks: &SweptDiskCheckReport,
+    metrics: Option<&DirectrixMetrics>,
     limits: &RebarPreflightLimits,
 ) -> RebarPreflightReport {
     let mut report = RebarPreflightReport { skipped_reason: None, comparisons: None, unassessed_reasons: Vec::new() };
@@ -129,7 +131,7 @@ pub(super) fn assess_sweep(
         ));
         return report;
     }
-    let Some(metrics) = disk.directrix_metrics() else {
+    let Some(metrics) = metrics else {
         report.skipped_reason = Some("directrix measurements are unavailable".into());
         return report;
     };

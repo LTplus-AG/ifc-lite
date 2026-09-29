@@ -21,9 +21,11 @@
  *   as `destroyed` ("Device was destroyed."), and in the second shape that is
  *   the ONLY loss line the page logs (run 36602083993: mobile-long-press and
  *   the swept-disk specs). The renderer treats `destroyed` as a teardown and
- *   does not recover, so the view stays dead either way. Skips happen only
- *   after a step that needs rendering has already failed, so a benign
- *   teardown line cannot mask a healthy-path failure into a skip,
+ *   does not recover, so the view stays dead either way: every reason counts
+ *   as a loss here. A teardown line on a healthy page cannot turn a failure
+ *   into a skip, because `requireLiveGpu` and the per-spec guards skip only
+ *   after the rendering-dependent step has itself failed (the one exception,
+ *   `skipIfLost`, is an explicit pre-check a spec opts into),
  * - `[Renderer] GPU device lost` from the renderer's `handleDeviceLost`,
  * - `[Viewport] GPU device lost:` and its toast from
  *   apps/viewer/src/components/viewer/device-loss-report.ts,
@@ -31,8 +33,9 @@
  *   (device likely lost)`, `A valid external Instance reference no longer
  *   exists`).
  *
- * Skips happen only when `E2E_GPU_STRICT=0` and the device really was lost; a
- * strict run (a real GPU) still fails, with the loss evidence annotated.
+ * Skips happen only when `E2E_GPU_STRICT=0` and loss evidence exists; a strict
+ * run (a real GPU) never skips and still fails, with the loss evidence
+ * annotated.
  *
  * `E2E_FORCE_DEVICE_LOSS=1|destroyed` reproduces the CI fault in any spec that
  * calls {@link watchGpuDeviceLoss}: the first WebGPU device is destroyed right

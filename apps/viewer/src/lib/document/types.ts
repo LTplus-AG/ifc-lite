@@ -16,6 +16,10 @@ import { isSavedListShape, type ListDefinition } from '@ifc-lite/lists';
 import { isFilterGroup } from '@ifc-lite/rules';
 import { migrateDocumentListBlocks } from './document-list-migration.js';
 import { validateManualReportBlock, type ManualReportBlock } from './manual-report-types.js';
+import { validateIdsReportBlock, type IdsReportBlock } from './ids-report-types.js';
+
+export { reportBlockSourceKind } from './ids-report-types.js';
+export type { IdsReportBlock, IdsReportCardinality, IdsReportCheckSummary, IdsReportRuleSummary, IdsReportSetRow, ReportSourceKind } from './ids-report-types.js';
 
 export const DOCUMENT_VERSION = 7;
 
@@ -61,56 +65,6 @@ export interface ChartBlock {
   height?: number;
   /** `'half'` pairs this block with the next half text/chart/image into one row (#4940). Default `'full'`. */
   width?: BlockWidth;
-}
-
-/**
- * One check (IDS specification, or a future rule-set's equivalent) inside an
- * IDS report block (#5125): the counts and description the issue asks for,
- * taken straight off `SpecificationResult` — `shortDescription` is the
- * specification's `name`, `longDescription` its optional `description`, so
- * neither is invented here.
- */
-export interface IdsReportCheckSummary {
-  id: string;
-  shortDescription: string;
-  longDescription?: string;
-  checked: number;
-  passed: number;
-  failed: number;
-  /** 0-100, floor-rounded; 100 when `checked` is 0 (no applicable entities) — matches `SpecificationResult.passRate`. */
-  passRate: number;
-  rules: IdsReportRuleSummary[];
-}
-
-/** A requirement under one IDS specification. Null metrics mean the source
- * report omitted passing entities, so an exact per-rule count is unavailable. */
-export interface IdsReportRuleSummary {
-  id: string;
-  shortDescription: string;
-  longDescription?: string;
-  checked: number;
-  passed: number | null;
-  failed: number | null;
-  passRate: number | null;
-}
-
-/**
- * A frozen snapshot of an IDS/rule-set validation report (#5125), taken from
- * the live `ValidationReport` when the block is added or refreshed — like a
- * table block's list copy, it travels with the document instead of reading
- * the store, so a saved document still prints the run that produced it.
- *
- * Each check carries a child row for its IDS requirements (#5125).
- */
-export interface IdsReportBlock {
-  kind: 'ids-report';
-  id: string;
-  /** IDS document title, or rule-set name, printed as the block's heading. */
-  sourceName: string;
-  /** When the snapshotted run finished (`ValidationReport.timestamp`, ISO). */
-  generatedAt: string;
-  summary: { checked: number; passed: number; failed: number; passRate: number };
-  checks: IdsReportCheckSummary[];
 }
 
 export interface TopicBlock {
@@ -218,12 +172,14 @@ export function isHalfPairable<T extends { kind: string }>(block: T): block is T
  * `.ifclite-document.json` version 1 -> 2 (#4940) -> 3 (#5142) -> 4 (#5138) -> 5 (#5125) -> 6 (#4940 follow ups) -> 7 (#6401):
  * every step is additive (v2: chart/image `width`/`height`, text styles, spacer; v3: table
  * over a list; v4: its validation source; v5: IDS report block; v6: text font, size and
- * half-width layout; v7: manual-validation report block), so an older file only has its
- * version raised. Embedded v1 Lists conditions are also normalized into Rules groups (#5894),
- * including in a document already at the current version. The bump makes an older viewer
- * refuse a block it cannot print instead of misreporting it as broken (see `TableBlock`).
- * Anything that is not a recognizable older document passes through unchanged so
- * `validateDocumentSpec` reports the real problem.
+ * half-width layout; v7: manual-validation report block). The report block's optional
+ * `sourceKind` (#6372) is additive within v6: an absent value reads as `'ids'`, the label
+ * every earlier block printed. An older file only has its version raised. Embedded v1 Lists
+ * conditions are also normalized into Rules groups (#5894), including in a document already
+ * at the current version. The bump makes an older viewer refuse a block it cannot print
+ * instead of misreporting it as broken (see `TableBlock`). Anything that is not a
+ * recognizable older document passes through unchanged so `validateDocumentSpec` reports
+ * the real problem.
  */
 export function migrateDocumentSpec(raw: unknown): unknown {
   if (!isRecord(raw)) return raw;
@@ -349,47 +305,6 @@ function validateTableBlock(block: Record<string, unknown>, at: string, errors: 
   if (block.maxRows !== undefined && (!Number.isInteger(block.maxRows) || (block.maxRows as number) < 1 || (block.maxRows as number) > TABLE_ROWS_MAX)) {
     errors.push({ path: `${at}.maxRows`, message: `expected an integer between 1 and ${TABLE_ROWS_MAX}` });
   }
-}
-
-/** Structural check of an IDS report block (#5125): a finite, non-negative count and a 0-100 pass rate at both the block and every check. */
-function validateIdsReportBlock(block: Record<string, unknown>, at: string, errors: DocumentValidationError[]): void {
-  const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
-  const isRate = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100;
-  if (!isString(block.sourceName)) errors.push({ path: `${at}.sourceName`, message: 'expected a string' });
-  if (!isString(block.generatedAt)) errors.push({ path: `${at}.generatedAt`, message: 'expected a string' });
-  const summary = block.summary;
-  if (!isRecord(summary) || !isCount(summary.checked) || !isCount(summary.passed) || !isCount(summary.failed) || !isRate(summary.passRate)) {
-    errors.push({ path: `${at}.summary`, message: 'expected { checked, passed, failed: non-negative numbers; passRate: 0-100 }' });
-  }
-  if (!Array.isArray(block.checks)) {
-    errors.push({ path: `${at}.checks`, message: 'expected an array' });
-    return;
-  }
-  block.checks.forEach((check: unknown, i) => {
-    const checkAt = `${at}.checks[${i}]`;
-    if (!isRecord(check)) { errors.push({ path: checkAt, message: 'expected an object' }); return; }
-    if (!isString(check.id) || check.id.length === 0) errors.push({ path: `${checkAt}.id`, message: 'expected a non-empty string' });
-    if (!isString(check.shortDescription)) errors.push({ path: `${checkAt}.shortDescription`, message: 'expected a string' });
-    if (check.longDescription !== undefined && !isString(check.longDescription)) errors.push({ path: `${checkAt}.longDescription`, message: 'expected a string' });
-    if (!isCount(check.checked) || !isCount(check.passed) || !isCount(check.failed)) errors.push({ path: `${checkAt}`, message: 'expected checked/passed/failed: non-negative numbers' });
-    if (!isRate(check.passRate)) errors.push({ path: `${checkAt}.passRate`, message: 'expected a number between 0 and 100' });
-    if (!Array.isArray(check.rules)) {
-      errors.push({ path: `${checkAt}.rules`, message: 'expected an array' });
-      return;
-    }
-    check.rules.forEach((rule: unknown, j) => {
-      const ruleAt = `${checkAt}.rules[${j}]`;
-      if (!isRecord(rule)) { errors.push({ path: ruleAt, message: 'expected an object' }); return; }
-      if (!isString(rule.id) || rule.id.length === 0) errors.push({ path: `${ruleAt}.id`, message: 'expected a non-empty string' });
-      if (!isString(rule.shortDescription)) errors.push({ path: `${ruleAt}.shortDescription`, message: 'expected a string' });
-      if (rule.longDescription !== undefined && !isString(rule.longDescription)) errors.push({ path: `${ruleAt}.longDescription`, message: 'expected a string' });
-      if (!isCount(rule.checked)) errors.push({ path: `${ruleAt}.checked`, message: 'expected a non-negative number' });
-      const unavailable = rule.passed === null && rule.failed === null && rule.passRate === null;
-      if (!unavailable && (!isCount(rule.passed) || !isCount(rule.failed) || !isRate(rule.passRate))) {
-        errors.push({ path: ruleAt, message: 'expected passed/failed: non-negative numbers and passRate: 0-100, or all null' });
-      }
-    });
-  });
 }
 
 /** The copy of a list a table block stores: a fresh id, no selection snapshot (see `ListTableSource.list`). */

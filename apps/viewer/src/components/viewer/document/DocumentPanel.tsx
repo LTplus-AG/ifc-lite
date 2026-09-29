@@ -196,7 +196,8 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
             <DropdownMenuItem onSelect={() => addBlock('topic')} disabled={data.topics.size === 0} title={data.topics.size === 0 ? t('document.addBlock.topicDisabledTitle') : undefined}>{t('document.addBlock.topic')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('spacer')}>{t('document.addBlock.spacer')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('table')}>{t('document.addBlock.table')}</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => addBlock('ids-report')} disabled={!idsValidationReport} title={idsValidationReport ? undefined : t('document.addBlock.idsReportDisabledTitle')}>{t('document.addBlock.idsReport')}</DropdownMenuItem>
+            {/* One report slot serves IDS and information validation; the item is named for what it would add (#6372). */}
+            <DropdownMenuItem onSelect={() => addBlock('ids-report')} disabled={!idsValidationReport} title={idsValidationReport ? undefined : t('document.addBlock.idsReportDisabledTitle')}>{t(idsValidationReport?.source.kind === 'rules' ? 'document.addBlock.rulesReport' : 'document.addBlock.idsReport')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('manual-report')} disabled={!manualSource.available} title={manualSource.available ? undefined : t('manualValidation.report.unavailableTitle')}>{t('manualValidation.report.add')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

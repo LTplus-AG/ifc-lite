@@ -199,7 +199,9 @@ function finalizeSpecification(
   outcome: SetCheckOutcome,
   error?: string,
 ): SpecificationResult {
-  const specification = { id: rule.id, name: rule.name, description: rule.description };
+  // `severity` travels with the result (#6372) so a report consumer — the
+  // CLI's exit code, the viewer's report block — never needs the rule file.
+  const specification = { id: rule.id, name: rule.name, description: rule.description, severity: rule.severity ?? 'error' };
   if (error !== undefined) {
     // Existing IDS convention (`packages/ids/src/report-types.ts`'s
     // `SpecificationResult.error` doc): an unevaluable rule is `status:

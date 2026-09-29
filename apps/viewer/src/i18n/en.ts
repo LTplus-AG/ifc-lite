@@ -88,6 +88,7 @@ import { modelWorkspaceEn } from './catalogues/model-workspace.en';
 import { roomToolEn } from './catalogues/room-tool.en';
 import { modelInspectorEn } from './catalogues/model-inspector.en';
 import { remeshEn } from './catalogues/remesh.en';
+import { storeyContextEn } from './catalogues/storey-context.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
 import { webgpuTroubleshootingEn } from './catalogues/webgpu-troubleshooting.en';
 import { scriptPanelEn } from './catalogues/script-panel.en';
@@ -137,6 +138,7 @@ export const en = {
   ...roomToolEn,
   ...modelInspectorEn,
   ...remeshEn,
+  ...storeyContextEn,
   ...documentEn,
   ...documentMenuEn,
   ...drawingUnderlayEn,

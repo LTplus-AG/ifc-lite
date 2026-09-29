@@ -102,6 +102,23 @@ output-neutral by counting how often the new branch fires across the corpus
 and fingerprinting every file on both sides. The guard itself is one origin
 comparison per item, which does not show up in timing.
 
+## Mapped-source items keep separate frame parts too (#6446)
+
+The same 1 km frame rule now applies one level down, inside one
+`IfcRepresentationMap`'s own items (`mapped_item.rs`, `textured.rs`). A
+multi-frame source is never cached or instanced. Over the 120-file fixture
+corpus, 0 of 46,339 representation maps and 0 of 33,809 mapped items produced
+a second frame part. `perf_probe --iters 1 --fingerprint` matched base
+`216453b4e` byte for byte on every file in both frame modes.
+
+Paired native runs on a shared host (load average about 10 on 24 cores) put
+the branch-minus-base median deltas inside each fixture's own spread. With 20
+alternating pairs per fixture, ISSUE_129 geometry was +0.9%, AC20 total -11%
+and Holter total -4%. Verdict: no measurable cost and no speedup claim. Per
+item, the only new work is one `Vec` per mapped or opening item on the
+fallback and cutter paths, plus one origin comparison. The cache now clones a
+source only when it actually inserts it.
+
 ## Instanced RTE deltas: one upload per template (#6393, PR #6399)
 
 On a large MEP model with ~45K GPU-instanced occurrences, a browser run

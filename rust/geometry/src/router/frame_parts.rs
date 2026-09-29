@@ -362,6 +362,9 @@ mod tests {
     #[test]
     fn issue_6446_mixed_source_parts_are_never_instanced() {
         // #66 / #71 map a near box plus a nested far box; #14 is the far box alone.
+        // #14's source (#11) was cached while meshing #66, so its call is a cache
+        // hit; the repeated #66 is a second cold walk, since a mixed source is
+        // never cached.
         let source = include_str!("../../tests/fixtures/issue_6446_mapped_source_frames.ifc");
         let mut decoder = EntityDecoder::new(source);
         let router = GeometryRouter::new();

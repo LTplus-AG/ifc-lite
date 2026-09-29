@@ -13,7 +13,7 @@ import { guardSpreadsheetFormula } from '@ifc-lite/export';
 import { groupingColumnIds, type CellValue, type ColumnDefinition, type ListRow, type ListGrouping } from '@ifc-lite/lists';
 import type { ProjectUnits } from '@ifc-lite/parser';
 import type { GroupSort, GroupOrder } from '@/lib/lists/group-sort';
-import { buildGroupedExport } from './grouping';
+import { buildGroupedExport, sumColumnIndices } from './grouping';
 import { resolveListColumnUnits } from '@/lib/units/list-column-units';
 
 export interface ExportColumn {
@@ -201,9 +201,7 @@ export function buildExportModel(input: BuildModelInput): ExportModel {
     ? rows.map((r) => ({ ...r, values: r.values.map((v, i) => resolver.convertCell(i, v, r.modelId)) }))
     : rows;
 
-  const sumIdx = sumColumnIds
-    .map((id) => ({ id, idx: columns.findIndex((c) => c.id === id) }))
-    .filter((s) => s.idx >= 0);
+  const sumIdx = sumColumnIndices(columns, sumColumnIds);
   const zeroSums = (): Record<string, number> => Object.fromEntries(sumIdx.map((s) => [s.id, 0]));
   const addSums = (acc: Record<string, number>, values: CellValue[]) => {
     for (const s of sumIdx) {

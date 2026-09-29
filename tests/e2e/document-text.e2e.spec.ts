@@ -8,6 +8,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { contrastOfTextOnSurface, WCAG_AA_NORMAL_TEXT } from '../../apps/viewer/src/test/contrast/wcag';
+import { inflateSync } from 'node:zlib';
+import { IfcTypeEnum } from '../../packages/data/src/index';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 interface DevServer {
@@ -441,4 +443,93 @@ test('#6506 three real model pairs survive reload and export the selected saved 
   expect(await page.evaluate(() => localStorage.getItem('ifc-lite-saved-comparisons:unreadable'))).toBe(damagedHistory);
   await page.getByRole('combobox', { name: 'Saved comparison', exact: true }).selectOption(history[0].id);
   await library.screenshot({ path: testInfo.outputPath('saved-model-comparison-recovery.png') });
+});
+
+test('#6489 real IFC document tables retain independent ordering and coloured repeated PDF headers', async ({ page }, testInfo) => {
+  test.setTimeout(180000);
+  await page.setViewportSize({ width: 1680, height: 1050 });
+  const settle = async (count: number) => page.waitForFunction((n) => {
+    const state = globalThis.__ifc_lite_viewer_store__?.getState();
+    return state && state.models.size === n && !state.loading && !state.geometryStreamingActive;
+  }, count, { timeout: 120000 });
+  await page.goto(`${viewerUrl}?model=/samples/building-architecture.ifc`);
+  await settle(1);
+  await page.evaluate(async () => {
+    const response = await fetch('/samples/infra-bridge.ifc');
+    if (!response.ok) throw new Error('Bridge sample fetch failed');
+    window.dispatchEvent(new CustomEvent('ifc-lite:add-model', {
+      detail: new File([await response.blob()], 'infra-bridge.ifc', { type: 'application/x-step' }),
+    }));
+  });
+  await settle(2);
+  await page.evaluate((entityTypes) => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    const list = { id: 'ifc-products-6489', name: 'IFC products', createdAt: 1, updatedAt: 1, entityTypes, groups: [],
+      columns: [{ id: 'class', source: 'attribute' as const, propertyName: 'Class' }, { id: 'name', source: 'attribute' as const, propertyName: 'Name' }],
+      grouping: { columnId: 'class', sumColumnIds: [] } };
+    state.upsertDocument({ version: 9, id: 'table-options-6489', name: 'IFC table options', page: { size: 'A4', orientation: 'portrait' },
+      blocks: [{ kind: 'table', id: 'largest', source: { kind: 'list', list }, title: 'Largest first', maxRows: 500 },
+        { kind: 'table', id: 'labels', source: { kind: 'list', list: { ...list, id: 'copy-6489' } }, title: 'By label', maxRows: 500 }] });
+    state.setActiveDocumentId('table-options-6489'); state.showWorkspacePanel('document'); state.setSidebarActivePanel('document');
+  }, [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcBuildingElementProxy, IfcTypeEnum.IfcFurniture, IfcTypeEnum.IfcBeam]);
+  const panel = page.locator('[data-document-panel]');
+  await expect(panel.locator('[data-block-table] table')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Maximize', exact: true }).click();
+  const editor = panel.locator('[data-block-editor="labels"]');
+  const preview = panel.locator('[data-preview-block="labels"]');
+  const firstPreview = panel.locator('[data-preview-block="largest"]');
+  const largest = ['IfcBuildingElementProxy  (14)', 'IfcBeam  (8)', 'IfcWall  (8)', 'IfcFurniture  (1)'];
+  const alphabetic = ['IfcBeam  (8)', 'IfcBuildingElementProxy  (14)', 'IfcFurniture  (1)', 'IfcWall  (8)'];
+  await expect(firstPreview.locator('tr[data-role="group"] td:first-child')).toHaveText(largest);
+  await editor.getByRole('combobox', { name: 'Group order', exact: true }).selectOption('label');
+  await expect(preview.locator('tr[data-role="group"] td:first-child')).toHaveText(alphabetic);
+  await expect(firstPreview.locator('tr[data-role="group"] td:first-child')).toHaveText(largest);
+  const color = editor.locator('input[aria-label="Header background"]');
+  await color.fill('#332244');
+  await expect(preview.locator('th').first()).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await editor.getByRole('button', { name: 'Reset table header background', exact: true }).click();
+  await expect(preview.locator('th').first()).toHaveCSS('background-color', 'rgb(51, 65, 85)');
+  await color.fill('#ffee88');
+  await expect(preview.locator('th').first()).toHaveCSS('background-color', 'rgb(255, 238, 136)');
+  await expect(preview.locator('th').first()).toHaveCSS('color', 'rgb(0, 0, 0)');
+  await editor.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('document-table-options.png') });
+  const downloadPromise = page.waitForEvent('download'); await panel.locator('[data-document-export]').click();
+  const pdfPath = testInfo.outputPath('document-table-options.pdf');
+  await (await downloadPromise).saveAs(pdfPath);
+  const { readFile } = await import('node:fs/promises');
+  const pdf = await readFile(pdfPath);
+  const text = await page.evaluate(async (bytes) => {
+    const moduleUrl = '/src/lib/llm/document-text.ts';
+    const documentText: typeof import('../../apps/viewer/src/lib/llm/document-text') = await import(moduleUrl);
+    return documentText.extractPdfText(new Blob([new Uint8Array(bytes)]));
+  }, Array.from(pdf));
+  expect(text).toContain('[Page 2]');
+  const normalized = text.replace(/\s+/g, ' ');
+  const orderedText = normalized.slice(normalized.indexOf('By label'));
+  const positions = alphabetic.map((label) => orderedText.indexOf(label.replace(/\s+/g, ' ')));
+  expect(positions.every((position) => position >= 0)).toBe(true);
+  expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  // Inspect actual emitted page-stream fill colours, including Flate streams.
+  // At least two pages must carry the custom header; a recording seam alone
+  // would not catch a browser adapter that silently retained its default.
+  const streams: string[] = [];
+  for (const match of pdf.toString('latin1').matchAll(/<<([^<>]*)>>\s*stream\r?\n/g)) {
+    const length = Number(match[1].match(/\/Length\s+(\d+)\b/)?.[1]);
+    if (!Number.isSafeInteger(length) || length < 0) continue;
+    const start = match.index + match[0].length;
+    expect(start + length).toBeLessThanOrEqual(pdf.length);
+    const bytes = pdf.subarray(start, start + length);
+    streams.push((match[1].includes('/FlateDecode') ? inflateSync(bytes, { maxOutputLength: 1024 * 1024 }) : bytes).toString('latin1'));
+  }
+  const number = '(-?\\d+(?:\\.\\d*)?)';
+  const customPages = streams.filter((stream) => [...stream.matchAll(new RegExp(`${number}\\s+${number}\\s+${number}\\s+rg`, 'g'))]
+    .some((match) => [1, 238 / 255, 136 / 255].every((channel, index) => Math.abs(Number(match[index + 1]) - channel) < 0.01)));
+  expect(customPages.length).toBeGreaterThanOrEqual(2);
+  await page.reload(); await settle(1);
+  await page.getByRole('tab', { name: 'Analyze', exact: true }).click();
+  await page.getByRole('button', { name: /^Document/ }).first().click();
+  const restored = page.locator('[data-block-editor="labels"]');
+  await expect(restored.getByRole('combobox', { name: 'Group order', exact: true })).toHaveValue('label');
+  await expect(restored.locator('input[aria-label="Header background"]')).toHaveValue('#ffee88');
 });

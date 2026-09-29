@@ -7,6 +7,10 @@ import type { CellValue } from '@ifc-lite/lists';
 import { buildNestedGroupBuckets, type GroupSort, type GroupOrder } from '../group-sort';
 import type { ExportColumn, ExportGroup, ExportModel } from './model';
 
+export function sumColumnIndices(columns: readonly { id: string }[], ids: readonly string[]): Array<{ id: string; idx: number }> {
+  return ids.map((id) => ({ id, idx: columns.findIndex((column) => column.id === id) })).filter((column) => column.idx >= 0);
+}
+
 export interface GroupedExportInput {
   columns: ExportColumn[];
   rows: CellValue[][];
@@ -19,7 +23,7 @@ export interface GroupedExportInput {
 }
 
 export function buildGroupedExport({ columns, rows, groupColumnIds, sumColumnIds, formatLabel, sort, scheduleView, groupOrder }: GroupedExportInput): Pick<ExportModel, 'groups' | 'schedule'> {
-  const sumIdx = sumColumnIds.map((id) => ({ id, idx: columns.findIndex((c) => c.id === id) })).filter((s) => s.idx >= 0);
+  const sumIdx = sumColumnIndices(columns, sumColumnIds);
   let groups: ExportGroup[] | null = null;
   let schedule: ExportModel['schedule'] = null;
   if (groupColumnIds.length > 0) {

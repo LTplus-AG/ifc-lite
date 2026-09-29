@@ -21,7 +21,10 @@ export interface ManualReportSourceHandle {
   models: ManualModelOption[];
   /** The model a snapshot reads when none is picked. */
   defaultModelId: string | null;
-  /** A fresh snapshot under `id`, or null without a checklist. */
+  /**
+   * A fresh snapshot under `id` of `modelId`'s answers (null: the default
+   * model), or null without a checklist or when `modelId` is not loaded.
+   */
   snapshot: (id: string, modelId?: string | null) => ManualReportBlock | null;
 }
 
@@ -35,8 +38,11 @@ export function useManualReportSource(): ManualReportSourceHandle {
 
   const snapshot = useCallback((id: string, modelId: string | null = null) => {
     if (!checklist) return null;
-    const model = pickManualModel(models, modelId, activeModelId);
-    return manualReportBlockFromChecklist({ checklist, answers: answersForModel(answers, model), modelName: model?.name }, id);
+    const model = modelId === null ? pickManualModel(models, null, activeModelId) : models.find((m) => m.id === modelId);
+    if (model === undefined) return null;
+    return manualReportBlockFromChecklist({
+      checklist, answers: answersForModel(answers, model), modelName: model?.name, modelFingerprint: model?.fingerprint,
+    }, id);
   }, [checklist, answers, models, activeModelId]);
 
   return { available: checklist !== null, models, defaultModelId, snapshot };

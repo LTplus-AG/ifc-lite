@@ -48,8 +48,14 @@ export interface ManualReportBlock {
   id: string;
   /** The checklist's name, printed in the block's heading. */
   checklistName: string;
-  /** The model the answers were recorded against, when there was one. */
+  /** The model the answers were recorded against, when there was one (display only). */
   modelName?: string;
+  /**
+   * That model's source fingerprint, the key its answers are stored under:
+   * Refresh reads this model and no other. Absent when no model (or one
+   * without a fingerprint) was loaded; such a block follows the tab's pick.
+   */
+  modelFingerprint?: string;
   /** When the snapshot was taken (ISO). */
   generatedAt: string;
   summary: ManualReportCounts;
@@ -73,23 +79,33 @@ const COUNTS_MESSAGE = 'expected { total, pass, fail, warning, unanswered: non-n
 export function validateManualReportBlock(block: Record<string, unknown>, at: string, errors: DocumentValidationError[]): void {
   if (!isString(block.checklistName)) errors.push({ path: `${at}.checklistName`, message: 'expected a string' });
   if (block.modelName !== undefined && !isString(block.modelName)) errors.push({ path: `${at}.modelName`, message: 'expected a string' });
+  if (block.modelFingerprint !== undefined && !(isString(block.modelFingerprint) && block.modelFingerprint.length > 0)) {
+    errors.push({ path: `${at}.modelFingerprint`, message: 'expected a non-empty string' });
+  }
   if (!isString(block.generatedAt)) errors.push({ path: `${at}.generatedAt`, message: 'expected a string' });
   if (!isCounts(block.summary)) errors.push({ path: `${at}.summary`, message: COUNTS_MESSAGE });
   if (!Array.isArray(block.groups)) {
     errors.push({ path: `${at}.groups`, message: 'expected an array' });
     return;
   }
+  // One id space across groups and checks, as the checklist parser enforces; the preview keys rows by id.
+  const seenIds = new Set<string>();
+  const checkId = (value: unknown, path: string): void => {
+    if (!isString(value) || value.length === 0) errors.push({ path, message: 'expected a non-empty string' });
+    else if (seenIds.has(value)) errors.push({ path, message: `duplicate id "${value}"` });
+    else seenIds.add(value);
+  };
   block.groups.forEach((group: unknown, i) => {
     const groupAt = `${at}.groups[${i}]`;
     if (!isRecord(group)) { errors.push({ path: groupAt, message: 'expected an object' }); return; }
-    if (!isString(group.id) || group.id.length === 0) errors.push({ path: `${groupAt}.id`, message: 'expected a non-empty string' });
+    checkId(group.id, `${groupAt}.id`);
     if (!isString(group.name)) errors.push({ path: `${groupAt}.name`, message: 'expected a string' });
     if (!isCounts(group.counts)) errors.push({ path: `${groupAt}.counts`, message: COUNTS_MESSAGE });
     if (!Array.isArray(group.items)) { errors.push({ path: `${groupAt}.items`, message: 'expected an array' }); return; }
     group.items.forEach((item: unknown, j) => {
       const itemAt = `${groupAt}.items[${j}]`;
       if (!isRecord(item)) { errors.push({ path: itemAt, message: 'expected an object' }); return; }
-      if (!isString(item.id) || item.id.length === 0) errors.push({ path: `${itemAt}.id`, message: 'expected a non-empty string' });
+      checkId(item.id, `${itemAt}.id`);
       if (!isString(item.text)) errors.push({ path: `${itemAt}.text`, message: 'expected a string' });
       if (item.description !== undefined && !isString(item.description)) errors.push({ path: `${itemAt}.description`, message: 'expected a string' });
       if (!VERDICTS.includes(item.status)) errors.push({ path: `${itemAt}.status`, message: 'expected pass | fail | warning | null' });

@@ -33,3 +33,29 @@ export function pickManualModel(options: readonly ManualModelOption[], picked: s
 export function answersForModel(all: ManualAnswersByModel, model: ManualModelOption | null): ManualAnswerMap {
   return (model?.fingerprint && all[model.fingerprint]) || NO_ANSWERS;
 }
+
+/**
+ * The model a report block's Refresh reads (#6401). An explicit pick wins.
+ * Otherwise a block bound to a fingerprint reads that model only: when it is
+ * not loaded the result is `missing`, never a stand-in, so answers from
+ * another model cannot be snapshotted under this block. An unbound block
+ * (none was loaded when it was taken) follows `defaultModelId`.
+ */
+export type ReportModelResolution =
+  | { kind: 'model'; model: ManualModelOption | null }
+  | { kind: 'missing' };
+
+export function resolveReportModel(
+  options: readonly ManualModelOption[],
+  boundFingerprint: string | undefined,
+  picked: string | null,
+  defaultModelId: string | null,
+): ReportModelResolution {
+  const pickedModel = picked === null ? undefined : options.find((m) => m.id === picked);
+  if (pickedModel) return { kind: 'model', model: pickedModel };
+  if (boundFingerprint) {
+    const bound = options.find((m) => m.fingerprint === boundFingerprint);
+    return bound ? { kind: 'model', model: bound } : { kind: 'missing' };
+  }
+  return { kind: 'model', model: options.find((m) => m.id === defaultModelId) ?? null };
+}

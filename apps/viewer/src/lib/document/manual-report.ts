@@ -19,6 +19,8 @@ export interface ManualReportSource {
   answers: ManualAnswerMap;
   /** The model the answers belong to, for the heading. */
   modelName?: string;
+  /** That model's fingerprint (its answers' key), which Refresh re-reads. */
+  modelFingerprint?: string | null;
   now?: Date;
 }
 
@@ -30,6 +32,7 @@ export function manualReportBlockFromChecklist(source: ManualReportSource, id: s
     id,
     checklistName: checklist.name,
     ...(source.modelName ? { modelName: source.modelName } : {}),
+    ...(source.modelFingerprint ? { modelFingerprint: source.modelFingerprint } : {}),
     generatedAt: (source.now ?? new Date()).toISOString(),
     summary: { ...summary.overall },
     groups: checklist.groups.map((group) => ({

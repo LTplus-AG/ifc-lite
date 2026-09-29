@@ -3,7 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** The manual report block's editor body (#6401): which checklist it holds,
- *  which model's answers to take, and a Refresh that re-snapshots both. */
+ *  which model's answers to take, and a Refresh that re-snapshots both.
+ *  Refresh reads the model the block was taken from (by fingerprint, not
+ *  name); when that model is not loaded it says so and waits for a pick. */
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -11,15 +13,16 @@ import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import type { ManualReportBlock } from '@/lib/document/manual-report-types';
 import { field } from './BlockEditor.parts';
+import { resolveReportModel } from '@/lib/validation/manual/manual-model';
 import { useManualReportSource } from './useManualReportSource';
 
 export function ManualReportBlockEditor({ block, onChange }: { block: ManualReportBlock; onChange: (block: ManualReportBlock) => void }) {
   const { t } = useTranslation();
   const source = useManualReportSource();
-  const [modelId, setModelId] = useState<string | null>(
-    () => source.models.find((m) => m.name === block.modelName)?.id ?? null,
-  );
-  const chosen = modelId ?? source.defaultModelId;
+  const [picked, setPicked] = useState<string | null>(null);
+  const resolved = resolveReportModel(source.models, block.modelFingerprint, picked, source.defaultModelId);
+  const missing = resolved.kind === 'missing';
+  const chosen = resolved.kind === 'model' ? resolved.model?.id ?? null : null;
 
   return (
     <div className="flex flex-col gap-1">
@@ -28,9 +31,17 @@ export function ManualReportBlockEditor({ block, onChange }: { block: ManualRepo
           {block.checklistName.trim() || t('manualValidation.name.placeholder')}
         </span>
       </div>
-      {source.models.length > 1 && (
+      {missing && (
+        <p className="text-destructive" data-manual-report-model-missing>
+          {block.modelName?.trim()
+            ? t('manualValidation.report.modelNotLoaded', { model: block.modelName })
+            : t('manualValidation.report.modelNotLoadedUnnamed')}
+        </p>
+      )}
+      {(source.models.length > 1 || (missing && source.models.length > 0)) && (
         <label className="inline-flex min-w-0 items-center gap-1 text-muted-foreground">{t('manualValidation.report.modelLabel')}
-          <select className={`${field} min-w-0 flex-1`} value={chosen ?? ''} onChange={(e) => setModelId(e.target.value)}>
+          <select className={`${field} min-w-0 flex-1`} value={chosen ?? ''} onChange={(e) => setPicked(e.target.value)}>
+            {missing && <option value="" disabled>{t('manualValidation.report.pickModel')}</option>}
             {source.models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
         </label>
@@ -39,9 +50,10 @@ export function ManualReportBlockEditor({ block, onChange }: { block: ManualRepo
         variant="outline"
         size="sm"
         className="h-6 w-fit px-2 text-xs"
-        disabled={!source.available}
-        title={source.available ? undefined : t('manualValidation.report.unavailableTitle')}
+        disabled={!source.available || missing}
+        title={!source.available ? t('manualValidation.report.unavailableTitle') : missing ? t('manualValidation.report.pickModel') : undefined}
         onClick={() => {
+          if (missing) return;
           const next = source.snapshot(block.id, chosen);
           if (!next) return;
           onChange(next);

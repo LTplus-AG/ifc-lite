@@ -12,6 +12,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_THEME } from '@ifc-lite/charts';
 import { CHECKLIST_VERSION, type ChecklistTemplate, type ManualAnswerMap } from '../validation/manual/checklist.js';
+import { resolveReportModel, type ManualModelOption } from '../validation/manual/manual-model.js';
 import { REPORT_MARGIN } from '../export/report/compose.js';
 import { composeDocument, estimateTextWidth } from './compose.js';
 import { generateDocumentPdf, type DocumentPdfSeams } from './generate-document-pdf.js';
@@ -91,6 +92,28 @@ describe('manual report in the document format (#6401)', () => {
     assert.ok(statusErrors.some((e) => e.path === 'blocks[0].groups[0].items[0].status'), JSON.stringify(statusErrors));
   });
 
+  // CodeRabbit on #6486: ids were only checked non-empty, so a hand-edited file with a reused id
+  // passed although the checklist parser refuses one and the preview keys its rows by id.
+  it('refuses a reused group or check id across the whole block, as the checklist parser does', () => {
+    const dupItem = block();
+    dupItem.groups[1].items[0].id = 'on-time';
+    const dupGroup = block();
+    dupGroup.groups[1].id = 'naming';
+    assert.deepEqual(validateDocumentSpec(docWith([dupItem])).map((e) => `${e.path}: ${e.message}`), ['blocks[0].groups[1].items[0].id: duplicate id "on-time"']);
+    assert.deepEqual(validateDocumentSpec(docWith([dupGroup])).map((e) => `${e.path}: ${e.message}`), ['blocks[0].groups[1].id: duplicate id "naming"']);
+  });
+
+  it('carries the model fingerprint the answers were keyed by, and still opens a block without one', () => {
+    const bound = manualReportBlockFromChecklist({ checklist: CHECKLIST, answers: ANSWERS, modelName: 'tower.ifc', modelFingerprint: 'fp-tower' }, 'b1');
+    assert.equal(bound.modelFingerprint, 'fp-tower');
+    assert.equal(block().modelFingerprint, undefined);
+    assert.deepEqual(validateDocumentSpec(docWith([bound, { ...block(), id: 'b2' }])), []);
+    const reopened = parseDocumentFile(JSON.stringify(docWith([bound]))).blocks[0];
+    assert.equal(reopened.kind === 'manual-report' ? reopened.modelFingerprint : null, 'fp-tower');
+    const empty = { ...bound, modelFingerprint: '' };
+    assert.deepEqual(validateDocumentSpec(docWith([empty])).map((e) => e.path), ['blocks[0].modelFingerprint']);
+  });
+
   it('opens a v6 document by raising its version, and a v7 block in a v6 viewer is "newer", not broken', () => {
     const v6 = { ...docWith([]), version: 6 };
     assert.equal((migrateDocumentSpec(v6) as DocumentSpec).version, DOCUMENT_VERSION);
@@ -142,5 +165,27 @@ describe('manual report on the page (#6401)', () => {
     // The overall ring holds all four buckets; the "Delivery" ring only pass and warning.
     assert.ok(['#16a34a', '#e0a100', '#dc2626'].every((c) => svgs[0].includes(c)));
     assert.ok(svgs[1].includes('#16a34a') && svgs[1].includes('#e0a100') && !svgs[1].includes('#dc2626'));
+  });
+});
+
+// CodeRabbit on #6486: Refresh matched the model by display name and fell back to the active
+// model, so it could snapshot another model's answers and still report success.
+describe('which model a manual report block refreshes from (#6401)', () => {
+  const tower: ManualModelOption = { id: 'm1', name: 'model.ifc', fingerprint: 'fp-tower' };
+  const annex: ManualModelOption = { id: 'm2', name: 'model.ifc', fingerprint: 'fp-annex' };
+
+  it('reads the model the block was taken from, by fingerprint, even when another shares its name and is active', () => {
+    assert.deepEqual(resolveReportModel([tower, annex], 'fp-annex', null, 'm1'), { kind: 'model', model: annex });
+  });
+
+  it('is "missing", never a stand-in, when that model is not loaded', () => {
+    assert.deepEqual(resolveReportModel([tower], 'fp-annex', null, 'm1'), { kind: 'missing' });
+    assert.deepEqual(resolveReportModel([], 'fp-annex', null, null), { kind: 'missing' });
+  });
+
+  it('takes an explicit pick over the bound model, and an unbound block follows the default', () => {
+    assert.deepEqual(resolveReportModel([tower], 'fp-annex', 'm1', 'm1'), { kind: 'model', model: tower });
+    assert.deepEqual(resolveReportModel([tower, annex], undefined, null, 'm2'), { kind: 'model', model: annex });
+    assert.deepEqual(resolveReportModel([], undefined, null, null), { kind: 'model', model: null });
   });
 });

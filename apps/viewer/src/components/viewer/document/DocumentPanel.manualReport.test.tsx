@@ -46,11 +46,12 @@ ENDSEC;
 END-ISO-10303-21;
 `;
 
-async function towerModel(): Promise<FederatedModel> {
+async function parsedModel(id: string, name: string, sourceFingerprint: string): Promise<FederatedModel> {
   const bytes = new TextEncoder().encode(MINI_IFC);
   const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-  return { ...fixtureModel('m1'), name: 'tower.ifc', sourceFingerprint: 'fp-tower', ifcDataStore: store, maxExpressId: 2 } as FederatedModel;
+  return { ...fixtureModel(id), name, sourceFingerprint, ifcDataStore: store, maxExpressId: 2 } as FederatedModel;
 }
+const towerModel = (): Promise<FederatedModel> => parsedModel('m1', 'tower.ifc', 'fp-tower');
 const initial = useViewerStore.getState();
 
 beforeEach(async () => {
@@ -105,6 +106,61 @@ describe('Document panel manual validation report (#6401)', () => {
     await settle();
     assert.equal(stored().groups[0].items[1].status, 'fail');
     assert.deepEqual(stored().summary, { total: 2, pass: 1, fail: 1, warning: 0, unanswered: 0 });
+  });
+
+  // CodeRabbit on #6486: Refresh found the model by display name and fell back to the active
+  // one, so it could snapshot another model's answers and still toast success.
+  it('Refresh reads the model the block was taken from, and says so instead of reading another when it is not loaded', async () => {
+    const tower = useViewerStore.getState().models.get('m1')!;
+    const annex = await parsedModel('m2', 'tower.ifc', 'fp-annex'); // same display name, different file
+    useViewerStore.setState({
+      models: new Map([['m1', tower], ['m2', annex]]),
+      activeModelId: 'm2',
+      manualAnswers: { ...useViewerStore.getState().manualAnswers, 'fp-annex': { a: { status: 'fail', updatedAt: 1 } } },
+    });
+    const ui = render(<DocumentPanel />);
+    await settle();
+    openMenu([...ui.querySelectorAll('button')].find((b) => b.title === 'Add a block to the page')!);
+    click(menuItem('Manual validation report')!);
+    await settle();
+    const stored = (): ManualReportBlock => useViewerStore.getState().documents[0].blocks.find((b): b is ManualReportBlock => b.kind === 'manual-report')!;
+    assert.equal(stored().modelFingerprint, 'fp-annex');
+    const refresh = (): HTMLButtonElement => [...ui.querySelectorAll('button')].find((b) => b.textContent === 'Refresh from current checklist')!;
+
+    // Another model becomes active and the annex gains an answer: Refresh still reads the annex.
+    act(() => {
+      useViewerStore.setState({ activeModelId: 'm1' });
+      useViewerStore.getState().setManualAnswer('fp-annex', 'b', { status: 'pass' });
+    });
+    await settle();
+    click(refresh());
+    await settle();
+    assert.equal(stored().modelFingerprint, 'fp-annex');
+    assert.deepEqual(stored().groups[0].items.map((i) => i.status), ['fail', 'pass']);
+
+    // The annex is unloaded: no silent switch to the tower's answers.
+    act(() => { useViewerStore.setState({ models: new Map([['m1', tower]]), activeModelId: 'm1' }); });
+    await settle();
+    assert.match(ui.querySelector('[data-manual-report-model-missing]')?.textContent ?? '', /\(tower\.ifc\) is not loaded/);
+    assert.equal(refresh().disabled, true);
+    click(refresh());
+    await settle();
+    assert.equal(stored().modelFingerprint, 'fp-annex');
+    assert.deepEqual(stored().groups[0].items.map((i) => i.status), ['fail', 'pass']);
+
+    // An explicit pick re-binds the block to that model.
+    const select = [...ui.querySelectorAll('select')].find((el) => el.querySelector('option[value="m1"]'))!;
+    act(() => {
+      // Through the prototype setter, so React's value tracker sees the change.
+      Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')?.set?.call(select, 'm1');
+      select.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+    await settle();
+    assert.ok(!ui.querySelector('[data-manual-report-model-missing]'), 'the picked model clears the not-loaded state');
+    click(refresh());
+    await settle();
+    assert.equal(stored().modelFingerprint, 'fp-tower');
+    assert.deepEqual(stored().groups[0].items.map((i) => i.status), ['pass', 'warning']);
   });
 
   it('is unavailable until a checklist exists', async () => {

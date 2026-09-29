@@ -10,7 +10,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { composeDocument, estimateTextWidth, wrapText } from './compose.js';
-import { expandTabs, tabEdit, TAB_SIZE } from './text-tabs.js';
+import { tabEdit, tabFill, TAB_SIZE } from './text-tabs.js';
 import type { TextBlock } from './types.js';
 
 const perChar = (text: string): number => text.length;
@@ -49,13 +49,27 @@ describe('Text block line breaks and indents in the PDF (#6370)', () => {
     assert.deepEqual(wrapText('one two three four', 40, 10, false, estimateTextWidth), ['one two', 'three', 'four']);
     assert.deepEqual(wrapText('a\r\nb', 100, 10, false, perChar), ['a', 'b'], 'a Windows line break from an imported template');
   });
+
+  it('a tab after a wrap measures from the start of the line it lands on, as the preview does', () => {
+    // "f" starts the second line, so the tab runs from column 1 to the stop at 4.
+    assert.deepEqual(wrapText('abcde f\tX', 6, 10, false, perChar), ['abcde', 'f   X']);
+    // A tab at the wrap point hangs at the end of the line, like any whitespace there.
+    assert.deepEqual(wrapText('abcde\tX', 6, 10, false, perChar), ['abcde', 'X']);
+  });
+
+  it('a wide run of spaces or tabs never pushes a printed line past the column', () => {
+    const text = `Name${' '.repeat(30)}Value\n\t\t\t\t\t\t\tDeep\nA\t\t\t\t\tB`;
+    const lines = wrapText(text, 12, 10, false, perChar);
+    for (const line of lines) assert.ok(line.length <= 12, JSON.stringify(lines));
+    assert.deepEqual(lines, ['Name', 'Value', 'Deep', 'A', 'B']);
+  });
 });
 
-describe('expandTabs', () => {
+describe('tabFill', () => {
   it('fills to the next stop in the line\'s own measure', () => {
-    assert.equal(expandTabs('\tx', perChar), `${' '.repeat(TAB_SIZE)}x`);
-    assert.equal(expandTabs('abcd\tx', perChar), `abcd${' '.repeat(TAB_SIZE)}x`, 'a stop already reached is passed');
-    assert.equal(expandTabs('no tabs', perChar), 'no tabs');
+    assert.equal(tabFill('', perChar), ' '.repeat(TAB_SIZE));
+    assert.equal(tabFill('ab', perChar), ' '.repeat(TAB_SIZE - 2));
+    assert.equal(tabFill('abcd', perChar), ' '.repeat(TAB_SIZE), 'a stop already reached is passed');
   });
 });
 
@@ -76,5 +90,8 @@ describe('tabEdit (the text box\'s Tab and Shift+Tab)', () => {
     assert.deepEqual(tabEdit('      a\n\tb', 0, 10, true), { text: '  a\nb', selectionStart: 0, selectionEnd: 5 });
     assert.deepEqual(tabEdit('\na', 0, 0, true), null, 'the first, empty line has nothing to outdent');
     assert.equal(tabEdit('plain', 3, 3, true), null);
+    // An end inside the last line's removed indent moves to that line's new start, so the
+    // selection still spans both lines (and a following Tab indents both, not replaces "a").
+    assert.deepEqual(tabEdit('  a\n  b', 0, 5, true), { text: 'a\nb', selectionStart: 0, selectionEnd: 2 });
   });
 });

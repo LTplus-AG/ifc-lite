@@ -18,7 +18,7 @@ import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type BlockWidth, type TextB
 import { layoutTable, type LayoutCursor, type TableColumnLayout, type TableLayoutBlock, type TextDrawnItem } from './compose-table.js';
 import { layoutIdsReport, type IdsReportLayoutBlock } from './compose-ids-report.js';
 import type { TableRowOut } from './resolve-table.js';
-import { expandTabs } from './text-tabs.js';
+import { tabFill } from './text-tabs.js';
 
 const HEADER_HEIGHT = 30;
 const FOOTER_HEIGHT = 24;
@@ -122,14 +122,16 @@ export function halfTextFitsPage(block: Pick<TextBlock, 'style' | 'text' | 'font
 export function wrapText(text: string, width: number, size: number, bold: boolean, measure: ComposeDocumentInput['measure'], font?: TextFont): string[] {
   const lines: string[] = [];
   const fits = (line: string): boolean => measure(line, size, bold, font) <= width;
-  for (const raw of text.replace(/\r\n?/g, '\n').split('\n')) {
-    const paragraph = expandTabs(raw, (t) => measure(t, size, bold, font));
+  for (const paragraph of text.replace(/\r\n?/g, '\n').split('\n')) {
     if (!/\S/.test(paragraph)) {
       lines.push('');
       continue;
     }
     let line = '';
-    for (const token of paragraph.match(/\s+|\S+/g) ?? []) {
+    for (const token of paragraph.match(/\t|[^\S\t]+|\S+/g) ?? []) {
+      // Whitespace never wraps by itself: at a wrap point it hangs and is dropped (below), as in
+      // `pre-wrap`. A tab measures from the start of the line it lands on, after any wrap.
+      if (token === '\t') { line += tabFill(line, (t) => measure(t, size, bold, font)); continue; }
       if (/^\s/.test(token) || fits(line + token)) {
         line += token;
         continue;

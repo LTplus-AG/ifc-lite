@@ -13,24 +13,20 @@
 export const TAB_SIZE = 4;
 
 /**
- * Replace each tab with spaces up to the next tab stop, a stop every
- * `TAB_SIZE` space-widths from the start of the line, measured in the line's
- * own font: what the browser does for `tab-size` on a proportional font.
+ * The spaces a tab typed after `before` becomes: up to the next tab stop, a stop
+ * every `TAB_SIZE` space-widths from the start of the output line, measured in
+ * the line's own font — what the browser does for `tab-size` on a proportional
+ * font. A stop the text already reached is passed, like a typewriter's: the tab
+ * always moves right. `before` must be the text already on the same OUTPUT line,
+ * so a tab after a wrap measures from the wrapped line's start, as the preview does.
  */
-export function expandTabs(line: string, measure: (text: string) => number): string {
-  if (!line.includes('\t')) return line;
+export function tabFill(before: string, measure: (text: string) => number): string {
   const space = measure(' ');
-  if (!(space > 0)) return line.replaceAll('\t', ' '.repeat(TAB_SIZE));
+  if (!(space > 0)) return ' '.repeat(TAB_SIZE);
   const stop = space * TAB_SIZE;
-  let out = '';
-  for (const part of line.split(/(\t)/)) {
-    if (part !== '\t') { out += part; continue; }
-    const width = measure(out);
-    // A stop the text already reached is passed, like a typewriter's: the tab always moves right.
-    const next = (Math.floor(width / stop + 1e-6) + 1) * stop;
-    out += ' '.repeat(Math.max(1, Math.round((next - width) / space)));
-  }
-  return out;
+  const width = measure(before);
+  const next = (Math.floor(width / stop + 1e-6) + 1) * stop;
+  return ' '.repeat(Math.max(1, Math.round((next - width) / space)));
 }
 
 export interface TextEdit {
@@ -57,19 +53,22 @@ export function tabEdit(text: string, selectionStart: number, selectionEnd: numb
   // A selection that ends right after a line break does not touch the next line.
   const last = end > start && text[end - 1] === '\n' ? end - 1 : end;
   const lineEnd = text.indexOf('\n', last) === -1 ? text.length : text.indexOf('\n', last);
-  let shiftStart = 0;
-  let shiftTotal = 0;
-  const edited = text.slice(first, lineEnd).split('\n').map((line, i) => {
+  const touched: Array<{ at: number; removed: number }> = [];
+  let at = first;
+  const edited = text.slice(first, lineEnd).split('\n').map((line) => {
     const removed = outdent ? (line.startsWith('\t') ? 1 : (/^ {1,4}/.exec(line)?.[0].length ?? 0)) : 0;
-    const delta = outdent ? -removed : 1;
-    if (i === 0) shiftStart = outdent ? -Math.min(removed, start - first) : delta;
-    shiftTotal += delta;
+    touched.push({ at, removed });
+    at += line.length + 1;
     return outdent ? line.slice(removed) : `\t${line}`;
   });
-  if (shiftTotal === 0) return null;
+  if (outdent && touched.every((l) => l.removed === 0)) return null;
+  // Where a position lands after the edit: every touched line at or before it shifts it by
+  // its own change, and a position inside removed indentation moves to that line's new start.
+  const map = (pos: number): number => touched.reduce(
+    (moved, line) => (pos < line.at ? moved : moved + (outdent ? -Math.min(line.removed, pos - line.at) : 1)), pos);
   return {
     text: `${text.slice(0, first)}${edited.join('\n')}${text.slice(lineEnd)}`,
-    selectionStart: start + shiftStart,
-    selectionEnd: Math.max(start + shiftStart, end + shiftTotal),
+    selectionStart: map(start),
+    selectionEnd: map(end),
   };
 }

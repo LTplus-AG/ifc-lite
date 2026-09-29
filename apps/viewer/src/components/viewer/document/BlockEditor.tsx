@@ -75,6 +75,8 @@ function useFieldOptions(bindings: BindingContext): Array<{ path: string; label:
   }, [bindings, selected]);
 }
 
+const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'AltGraph', 'CapsLock']);
+
 function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings: BindingContext; onChange: (b: TextBlock) => void }) {
   const { t } = useTranslation();
   const textarea = useRef<HTMLTextAreaElement | null>(null);
@@ -99,6 +101,8 @@ function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings:
     if (selection) textarea.current?.setSelectionRange(selection[0], selection[1]);
   }, [block.text]);
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+    // A modifier on its own (the Shift of Esc, Shift+Tab) neither arms nor disarms the exit.
+    if (MODIFIER_KEYS.has(event.key)) return;
     const armed = tabExitArmed.current;
     tabExitArmed.current = event.key === 'Escape';
     if (event.key !== 'Tab' || armed || event.ctrlKey || event.altKey || event.metaKey || event.nativeEvent.isComposing) return;

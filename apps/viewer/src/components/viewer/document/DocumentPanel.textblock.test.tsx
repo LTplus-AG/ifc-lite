@@ -118,6 +118,11 @@ describe('Document Text block line breaks and indentation (#6370)', () => {
     await settle();
     assert.equal(storedText(), 'Project\nName', 'and nothing was inserted');
 
+    // Shift on its own keeps the exit armed, so Esc, Shift+Tab leaves backwards.
+    assert.equal(keyDown(textarea, 'Escape'), true);
+    assert.equal(keyDown(textarea, 'Shift', { shiftKey: true }), true);
+    assert.equal(keyDown(textarea, 'Tab', { shiftKey: true }), true, 'Esc then Shift+Tab also leaves');
+
     // Any other key disarms it again.
     assert.equal(keyDown(textarea, 'Escape'), true);
     assert.equal(keyDown(textarea, 'a'), true);

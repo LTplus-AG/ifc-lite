@@ -60,8 +60,8 @@ describe('Document text colours (#6492)', () => {
       await settle();
       const preview = ui.querySelector<HTMLElement>('[data-preview-block="colour"] [data-block-text]');
       assert.ok(preview);
-      assert.equal(window.getComputedStyle(preview).color, 'rgb(18, 100, 200)');
-      assert.equal(window.getComputedStyle(preview).backgroundColor, 'rgb(241, 195, 90)');
+      assert.equal(window.getComputedStyle(preview).color, '#1264c8');
+      assert.equal(window.getComputedStyle(preview).backgroundColor, '#f1c35a');
       const saved = loadDocuments().find((document) => document.id === spec.id);
       assert.ok(saved);
       const imported = parseDocumentFile(JSON.stringify(saved));

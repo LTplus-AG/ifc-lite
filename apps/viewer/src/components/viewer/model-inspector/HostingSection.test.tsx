@@ -108,6 +108,23 @@ describe('Hosting section (#6232 A1)', () => {
     assert.equal(input(root, 'Sill').value, '0.90');
   });
 
+  // Review of #6476: the inspector held a moved window to no bounds; the placing command's fit rule now applies.
+  it('refuses an offset or sill that takes the window out of its wall, writing nothing', () => {
+    const root = render(<ModelInspectorPanel />);
+    const depth = s().undoStacks.get(MODEL_ID)?.length ?? 0;
+    for (const [label, text] of [['Offset', '20'], ['Offset', '5.5'], ['Sill', '2']] as const) {
+      const field = input(root, label);
+      type(field, text);
+      blur(field);
+    }
+    assert.deepEqual(hosted(window), { host: wall, offset: 2, sill: 0.9 }, '1.2 m wide at 5.5 m pokes past a 6 m wall; 2 + 1.5 m past its 3 m');
+    assert.equal(s().undoStacks.get(MODEL_ID)?.length ?? 0, depth);
+    const edge = input(root, 'Offset');
+    type(edge, '5.4');
+    blur(edge);
+    assert.deepEqual(hosted(window), { host: wall, offset: 5.4, sill: 0.9 }, 'flush with the wall end still fits');
+  });
+
   it('D2: in an IFC2X3 model a window offers no type (IFC2X3 has no IfcWindowType)', () => {
     const dataStore = s().models.get(MODEL_ID)!.ifcDataStore!;
     const schema = dataStore.schemaVersion;

@@ -42,16 +42,36 @@ pub(super) fn single_frame(element_id: u32, mut parts: Vec<Mesh>) -> Result<Mesh
     if parts.len() <= 1 {
         return Ok(parts.pop().unwrap_or_default());
     }
-    let span = parts
+    Err(Error::geometry(format!(
+        "Element #{element_id}: body items lie in {} frames up to {:.3} m apart; one f32 \
+         Mesh cannot keep all of them to 1e-5 m (#6349). Use the *_parts router API.",
+        parts.len(),
+        frame_span(&parts)
+    )))
+}
+
+/// [`single_frame`] for one mapped source (#6446): `entity` names the
+/// `IfcMappedItem` or `IfcRepresentationMap` whose source items would share
+/// the single mesh.
+pub(super) fn single_frame_source(entity: &str, id: u32, mut parts: Vec<Mesh>) -> Result<Mesh> {
+    if parts.len() <= 1 {
+        return Ok(parts.pop().unwrap_or_default());
+    }
+    Err(Error::geometry(format!(
+        "{entity} #{id}: mapped source items lie in {} frames up to {:.3} m apart; one f32 \
+         Mesh cannot keep all of them to 1e-5 m (#6446). Use the *_parts router API.",
+        parts.len(),
+        frame_span(&parts)
+    )))
+}
+
+/// Largest per-axis distance between any two part origins.
+fn frame_span(parts: &[Mesh]) -> f64 {
+    parts
         .iter()
         .flat_map(|part| parts.iter().map(move |other| (part.origin, other.origin)))
         .map(|(a, b)| (0..3).map(|axis| (a[axis] - b[axis]).abs()).fold(0.0, f64::max))
-        .fold(0.0, f64::max);
-    Err(Error::geometry(format!(
-        "Element #{element_id}: body items lie in {} frames up to {span:.3} m apart; one f32 \
-         Mesh cannot keep all of them to 1e-5 m (#6349). Use the *_parts router API.",
-        parts.len()
-    )))
+        .fold(0.0, f64::max)
 }
 
 /// Object-frame AABB of a mesh's f32 positions.
@@ -114,6 +134,38 @@ impl FrameParts {
 
     pub(super) fn into_parts(self) -> impl Iterator<Item = (Mesh, Option<[f32; 6]>)> {
         self.parts.into_iter()
+    }
+}
+
+/// The items of one mapped source (`IfcRepresentationMap`), merged the way
+/// `mapped_item.rs` and `textured.rs` always merged them, except that an item
+/// in a frame at least 1 km from the primary accumulator's opens a frame part
+/// (#6446). A single-frame source, which is every source observed in the
+/// fixture corpus, runs the exact historical `Mesh::merge` sequence.
+#[derive(Default)]
+pub(super) struct SourceParts {
+    primary: Mesh,
+    far: FrameParts,
+}
+
+impl SourceParts {
+    pub(super) fn merge(&mut self, mesh: &Mesh) {
+        if mesh.is_empty() {
+            return; // Mesh::merge would ignore it too
+        }
+        if self.primary.is_empty() || frames_mergeable(self.primary.origin, mesh.origin) {
+            self.primary.merge(mesh);
+        } else {
+            self.far.merge(mesh, mesh_bounds(mesh));
+        }
+    }
+
+    /// The primary accumulator (possibly empty) followed by any frame parts.
+    /// Mapped-source meshes carry no `local_bounds`, as the merged mesh never did.
+    pub(super) fn into_parts(self) -> Vec<Mesh> {
+        let mut parts = vec![self.primary];
+        parts.extend(self.far.into_parts().map(|(part, _bounds)| part));
+        parts
     }
 }
 
@@ -304,6 +356,21 @@ mod tests {
             let (near, far) = near_and_far(&parts, [0.0; 3], (FAR_X - 0.5, FAR_X + 0.5), opening);
             assert!((volume(&near) - 0.84).abs() < 1e-4, "near volume {}", volume(&near));
             assert!((volume(&far) - far_volume).abs() < 1e-4, "far volume {}", volume(&far));
+        }
+    }
+
+    #[test]
+    fn issue_6446_mixed_source_parts_are_never_instanced() {
+        // #66 / #71 map a near box plus a nested far box; #14 is the far box alone.
+        let source = include_str!("../../tests/fixtures/issue_6446_mapped_source_frames.ifc");
+        let mut decoder = EntityDecoder::new(source);
+        let router = GeometryRouter::new();
+        for (id, frames) in [(66, 2), (71, 2), (14, 1), (66, 2)] {
+            let item = decoder.decode_by_id(id).unwrap();
+            let parts = router.process_mapped_item_parts(&item, &mut decoder).unwrap();
+            assert_eq!(parts.len(), frames, "#{id}");
+            // One `rep_identity` template cannot carry two frames.
+            assert_eq!(parts.iter().filter(|p| p.instance_meta.is_some()).count(), usize::from(frames == 1), "#{id}");
         }
     }
 

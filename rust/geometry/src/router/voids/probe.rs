@@ -510,29 +510,28 @@ impl GeometryRouter {
             for item in items {
                 // A raw national-grid cutter rebases in this opening's own
                 // frame, like the host it cuts (#5698).
-                let item_mesh = match self.process_raw_item_for_element(&item, element, decoder) {
-                    Ok(Some(mesh)) => Ok(mesh),
-                    Ok(None) => self.process_representation_item(&item, decoder),
+                // A mapped source mixing frames yields one cutter per frame (#6446).
+                let item_parts = match self.process_raw_item_for_element(&item, element, decoder) {
+                    Ok(Some(mesh)) => Ok(vec![mesh]),
+                    Ok(None) => self.process_representation_item_parts(&item, decoder),
                     Err(error) => Err(error),
                 };
-                let mut mesh = match item_mesh {
-                    Ok(m) if !m.is_empty() => m,
-                    _ => continue,
-                };
+                let Ok(item_parts) = item_parts else { continue };
+                for mut mesh in item_parts.into_iter().filter(|mesh| !mesh.is_empty()) {
+                    // Keep ordinary opening cutters in the world/RTC frame. A large
+                    // mapped origin would lose its fractional translation when the
+                    // world point is cast to f32; the void context folds each cutter's
+                    // origin into the host frame before cutting.
+                    let frame_mapped_origin =
+                        self.mapped_origin_needs_local_frame(&mesh, &placement_transform);
+                    self.transform_mesh_world_framed(
+                        &mut mesh,
+                        &placement_transform,
+                        frame_mapped_origin,
+                    );
 
-                // Keep ordinary opening cutters in the world/RTC frame. A large
-                // mapped origin would lose its fractional translation when the
-                // world point is cast to f32; the void context folds each cutter's
-                // origin into the host frame before cutting.
-                let frame_mapped_origin =
-                    self.mapped_origin_needs_local_frame(&mesh, &placement_transform);
-                self.transform_mesh_world_framed(
-                    &mut mesh,
-                    &placement_transform,
-                    frame_mapped_origin,
-                );
-
-                item_meshes.push(mesh);
+                    item_meshes.push(mesh);
+                }
             }
         }
 
@@ -620,86 +619,87 @@ impl GeometryRouter {
                     None
                 };
 
-                // Get mesh bounds (same as original function)
-                let mesh = match self.process_representation_item(&item, decoder) {
-                    Ok(m) if !m.is_empty() => m,
-                    _ => continue,
+                // Get mesh bounds (same as original function), one entry per frame
+                // part in the order `get_opening_item_meshes_world` emits them (#6446).
+                let Ok(item_parts) = self.process_representation_item_parts(&item, decoder) else {
+                    continue;
                 };
+                for mesh in item_parts.into_iter().filter(|mesh| !mesh.is_empty()) {
+                    // Mesh::bounds is local to mesh.positions. Mapped items can
+                    // carry a large f64 origin that must be folded in before the
+                    // element placement, or the cutter box lands near zero.
+                    let (mesh_min, mesh_max) = mesh.bounds();
 
-                // Mesh::bounds is local to mesh.positions. Mapped items can
-                // carry a large f64 origin that must be folded in before the
-                // element placement, or the cutter box lands near zero.
-                let (mesh_min, mesh_max) = mesh.bounds();
+                    // Transform corner points to world coordinates
+                    let corners = [
+                        Point3::new(mesh_min.x as f64, mesh_min.y as f64, mesh_min.z as f64),
+                        Point3::new(mesh_max.x as f64, mesh_min.y as f64, mesh_min.z as f64),
+                        Point3::new(mesh_min.x as f64, mesh_max.y as f64, mesh_min.z as f64),
+                        Point3::new(mesh_max.x as f64, mesh_max.y as f64, mesh_min.z as f64),
+                        Point3::new(mesh_min.x as f64, mesh_min.y as f64, mesh_max.z as f64),
+                        Point3::new(mesh_max.x as f64, mesh_min.y as f64, mesh_max.z as f64),
+                        Point3::new(mesh_min.x as f64, mesh_max.y as f64, mesh_max.z as f64),
+                        Point3::new(mesh_max.x as f64, mesh_max.y as f64, mesh_max.z as f64),
+                    ];
 
-                // Transform corner points to world coordinates
-                let corners = [
-                    Point3::new(mesh_min.x as f64, mesh_min.y as f64, mesh_min.z as f64),
-                    Point3::new(mesh_max.x as f64, mesh_min.y as f64, mesh_min.z as f64),
-                    Point3::new(mesh_min.x as f64, mesh_max.y as f64, mesh_min.z as f64),
-                    Point3::new(mesh_max.x as f64, mesh_max.y as f64, mesh_min.z as f64),
-                    Point3::new(mesh_min.x as f64, mesh_min.y as f64, mesh_max.z as f64),
-                    Point3::new(mesh_max.x as f64, mesh_min.y as f64, mesh_max.z as f64),
-                    Point3::new(mesh_min.x as f64, mesh_max.y as f64, mesh_max.z as f64),
-                    Point3::new(mesh_max.x as f64, mesh_max.y as f64, mesh_max.z as f64),
-                ];
+                    // Transform all corners and compute new AABB
+                    let transformed: Vec<Point3<f64>> = corners
+                        .iter()
+                        .map(|p| {
+                            let source = Point3::new(
+                                p.x + mesh.origin[0],
+                                p.y + mesh.origin[1],
+                                p.z + mesh.origin[2],
+                            );
+                            placement_transform.transform_point(&source)
+                        })
+                        .collect();
 
-                // Transform all corners and compute new AABB
-                let transformed: Vec<Point3<f64>> = corners
-                    .iter()
-                    .map(|p| {
-                        let source = Point3::new(
-                            p.x + mesh.origin[0],
-                            p.y + mesh.origin[1],
-                            p.z + mesh.origin[2],
-                        );
-                        placement_transform.transform_point(&source)
-                    })
-                    .collect();
+                    let world_min = Point3::new(
+                        transformed
+                            .iter()
+                            .map(|p| p.x)
+                            .fold(f64::INFINITY, f64::min),
+                        transformed
+                            .iter()
+                            .map(|p| p.y)
+                            .fold(f64::INFINITY, f64::min),
+                        transformed
+                            .iter()
+                            .map(|p| p.z)
+                            .fold(f64::INFINITY, f64::min),
+                    );
+                    let world_max = Point3::new(
+                        transformed
+                            .iter()
+                            .map(|p| p.x)
+                            .fold(f64::NEG_INFINITY, f64::max),
+                        transformed
+                            .iter()
+                            .map(|p| p.y)
+                            .fold(f64::NEG_INFINITY, f64::max),
+                        transformed
+                            .iter()
+                            .map(|p| p.z)
+                            .fold(f64::NEG_INFINITY, f64::max),
+                    );
 
-                let world_min = Point3::new(
-                    transformed
-                        .iter()
-                        .map(|p| p.x)
-                        .fold(f64::INFINITY, f64::min),
-                    transformed
-                        .iter()
-                        .map(|p| p.y)
-                        .fold(f64::INFINITY, f64::min),
-                    transformed
-                        .iter()
-                        .map(|p| p.z)
-                        .fold(f64::INFINITY, f64::min),
-                );
-                let world_max = Point3::new(
-                    transformed
-                        .iter()
-                        .map(|p| p.x)
-                        .fold(f64::NEG_INFINITY, f64::max),
-                    transformed
-                        .iter()
-                        .map(|p| p.y)
-                        .fold(f64::NEG_INFINITY, f64::max),
-                    transformed
-                        .iter()
-                        .map(|p| p.z)
-                        .fold(f64::NEG_INFINITY, f64::max),
-                );
+                    // Apply RTC offset to opening bounds so they match wall mesh coordinate system
+                    // Wall mesh positions have RTC subtracted during transform_mesh, so opening bounds must match
+                    let rtc = self.rtc_offset;
+                    let rtc_min = Point3::new(
+                        world_min.x - rtc.0,
+                        world_min.y - rtc.1,
+                        world_min.z - rtc.2,
+                    );
+                    let rtc_max = Point3::new(
+                        world_max.x - rtc.0,
+                        world_max.y - rtc.1,
+                        world_max.z - rtc.2,
+                    );
 
-                // Apply RTC offset to opening bounds so they match wall mesh coordinate system
-                // Wall mesh positions have RTC subtracted during transform_mesh, so opening bounds must match
-                let rtc = self.rtc_offset;
-                let rtc_min = Point3::new(
-                    world_min.x - rtc.0,
-                    world_min.y - rtc.1,
-                    world_min.z - rtc.2,
-                );
-                let rtc_max = Point3::new(
-                    world_max.x - rtc.0,
-                    world_max.y - rtc.1,
-                    world_max.z - rtc.2,
-                );
-
-                bounds_list.push((rtc_min, rtc_max, extrusion_direction));
+                    bounds_list.push((rtc_min, rtc_max, extrusion_direction));
+                }
             }
         }
 

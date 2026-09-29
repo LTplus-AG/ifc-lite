@@ -10,6 +10,7 @@
 
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
+use super::frame_parts::{single_frame_source, SourceParts};
 use super::GeometryRouter;
 use crate::{Error, Mesh, Result, SubMeshCollection};
 
@@ -54,6 +55,10 @@ impl GeometryRouter {
     /// MappingOrigin axis placement is the only transform. It is the caller's
     /// responsibility to only invoke this for orphan representation maps so
     /// normally-instanced typed products aren't double-rendered.
+    ///
+    /// Errors when the map's items cannot share one f64 frame (#6446); use
+    /// [`Self::process_representation_map_with_texture`] to keep such a map
+    /// at full precision.
     pub fn process_representation_map(
         &self,
         rep_map: &DecodedEntity,
@@ -61,11 +66,11 @@ impl GeometryRouter {
     ) -> Result<Mesh> {
         let empty = rustc_hash::FxHashMap::default();
         let parts = self.process_representation_map_with_texture(rep_map, decoder, &empty)?;
-        let mut mesh = Mesh::new();
+        let mut mesh = SourceParts::default();
         for (part, _uvs, _texture) in parts {
             mesh.merge(&part);
         }
-        Ok(mesh)
+        single_frame_source("IfcRepresentationMap", rep_map.id, mesh.into_parts())
     }
 
     /// Texture-aware variant of [`Self::process_representation_map`] (issue
@@ -73,8 +78,9 @@ impl GeometryRouter {
     /// `IfcTriangulatedFaceSet` item becomes its OWN part carrying its UVs +
     /// decoded image (so a representation with several differently-textured
     /// items renders each with the correct image), and all untextured items are
-    /// merged into a single part with empty UVs / no texture. The MappingOrigin
-    /// placement is baked into every part.
+    /// merged into a single part with empty UVs / no texture, except that
+    /// untextured items in frames at least 1 km apart stay separate untextured
+    /// parts (#6446). The MappingOrigin placement is baked into every part.
     pub fn process_representation_map_with_texture(
         &self,
         rep_map: &DecodedEntity,
@@ -122,7 +128,7 @@ impl GeometryRouter {
         // `GeometryRouter::enter_unsupported_source`.
         let _drop_scope = self.enter_unsupported_source(rep_map.id, &mapped_rep);
 
-        let mut untextured = Mesh::new();
+        let mut untextured = SourceParts::default();
         // One entry per textured item — keeps each item with its own image.
         let mut textured: Vec<(
             Mesh,
@@ -133,8 +139,9 @@ impl GeometryRouter {
             // A nested IfcMappedItem inside a type's own representation: process
             // it (applies its MappingTarget) rather than dropping its geometry.
             if item.ifc_type == IfcType::IfcMappedItem {
-                match self.process_mapped_item_cached(&item, decoder) {
-                    Ok(sub_mesh) => untextured.merge(&sub_mesh), // already scaled inside the cached path
+                match self.process_mapped_item_parts(&item, decoder) {
+                    // already scaled inside the cached path
+                    Ok(sub_parts) => sub_parts.iter().for_each(|part| untextured.merge(part)),
                     Err(_e) => {
                         self.record_unsupported_item(item.ifc_type.clone());
                         crate::diag::diag_debug!(
@@ -244,7 +251,7 @@ impl GeometryRouter {
             mesh.clean_degenerate();
             out.push((mesh, uvs, Some(texture)));
         }
-        if !untextured.is_empty() {
+        for mut untextured in untextured.into_parts().into_iter().filter(|mesh| !mesh.is_empty()) {
             if let Some(t) = &origin_transform {
                 self.transform_mesh_local(&mut untextured, t);
             }

@@ -33,7 +33,13 @@ function paletteOptionTypeContract(runtime: Extract<Command, { runtimeSource: st
   const railIds: RegisteredPaletteOptionProps['commandId'][] = ['tool:wall', 'tool:slab', 'tool:column', 'tool:beam'];
   // @ts-expect-error A runtime row cannot be rendered without its runtime owner.
   const unowned: DynamicPaletteOptionProps = { command: { ...runtime, runtimeSource: undefined }, ...placement };
-  void manualLabel; void unknownId; void railIds; void unowned;
+  const registered = { id: 'view:frame', label: 'Frame', labelKey: 'commandPalette.tool.wall.label', keywords: '',
+    category: 'View', icon: FolderOpen, registryOwned: true, action: () => {} } as const;
+  // @ts-expect-error A registered row renders only its registry label, so it takes no label parameters.
+  const withParams: Command = { ...registered, labelKeyParams: { count: 1 } };
+  // @ts-expect-error A registered row has no runtime detail to drop.
+  const withDetail: Command = { ...registered, detail: '1.4 MB' };
+  void manualLabel; void unknownId; void railIds; void unowned; void withParams; void withDetail;
 }
 void paletteOptionTypeContract;
 

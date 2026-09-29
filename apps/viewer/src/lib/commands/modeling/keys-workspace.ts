@@ -48,6 +48,8 @@ export function bindModelWorkspaceKeys(): () => void {
     registerKeyboardCommand('model.window', () => launchModelCommand('window.place'), { active }),
     registerKeyboardCommand('model.storeyUp', () => stepSessionStorey(useViewerStore.getState(), 1), { active }),
     registerKeyboardCommand('model.storeyDown', () => stepSessionStorey(useViewerStore.getState(), -1), { active }),
+    registerKeyboardCommand('model.pushPull', () => launchModelCommand('element.pushPull', { drawsOnWorkplane: false }), { active }),
+    registerKeyboardCommand('model.align', () => launchModelCommand('element.align'), { active }),
   ];
   return () => { for (const dispose of disposers) dispose(); };
 }

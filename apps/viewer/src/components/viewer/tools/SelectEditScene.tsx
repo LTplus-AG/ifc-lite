@@ -4,6 +4,7 @@
 
 import { GizmoOverlay } from './GizmoOverlay';
 import { WallEndpointOverlay } from './WallEndpointOverlay';
+import { PushPullHandles } from './command/PushPullHandles';
 
 /**
  * The Select tool's scene layer (`TOOL_HUD.select.Scene`): the move gizmo
@@ -18,6 +19,7 @@ export function SelectEditScene() {
     <>
       <GizmoOverlay />
       <WallEndpointOverlay />
+      <PushPullHandles />
     </>
   );
 }

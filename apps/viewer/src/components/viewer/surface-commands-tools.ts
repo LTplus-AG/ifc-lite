@@ -4,7 +4,7 @@
 
 /** Static Tools palette family. The key-command table remains the chord source. */
 import {
-  Box, Crosshair, MousePointer2, PenLine, PersonStanding, Ruler, Scissors,
+  AlignHorizontalJustifyStart, ArrowUpFromLine, Box, Crosshair, MousePointer2, PenLine, PersonStanding, Ruler, Scissors,
   Slice, StickyNote,
 } from 'lucide-react';
 import { openRepositionModels } from '@/lib/model-placement/commands';
@@ -141,5 +141,23 @@ export const TOOL_SURFACE_COMMANDS = [
     run: () => {
       if (useViewerStore.getState().selectedEntity) launchModelCommand('element.split', { drawsOnWorkplane: false });
     },
+  },
+  {
+    id: 'tool:push-pull', labelKey: 'commandPalette.tool.pushPull.label',
+    searchLabel: 'Push or pull a face',
+    keywords: 'push pull face extrude thickness height length taller thicker resize wall slab column beam dimension model author',
+    category: 'Tools', icon: ArrowUpFromLine, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.pushPull',
+    run: () => {
+      if (useViewerStore.getState().selectedEntity) launchModelCommand('element.pushPull', { drawsOnWorkplane: false });
+    },
+  },
+  {
+    id: 'tool:align', labelKey: 'commandPalette.tool.align.label',
+    searchLabel: 'Align elements',
+    keywords: 'align edge left right centre center top middle bottom line up reference elements model author',
+    category: 'Tools', icon: AlignHorizontalJustifyStart, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.align',
+    run: () => { launchModelCommand('element.align'); },
   },
 ] as const satisfies readonly SurfaceCommandDefinition[];

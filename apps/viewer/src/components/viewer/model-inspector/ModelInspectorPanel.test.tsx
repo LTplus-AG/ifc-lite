@@ -96,3 +96,66 @@ describe('ModelInspectorPanel (#6232 M2.5)', () => {
     assert.equal(input(root, 'Thickness in metres').value, '0.20', 'the field reverts');
   });
 });
+
+describe('ModelInspectorPanel dimensions of slabs, columns and beams (#6232 C4)', () => {
+  const select = (expressId: number) => act(() => s().setSelectedEntityId(toGlobalIdFromModels(s().models, MODEL_ID, expressId)));
+  const commitField = (root: HTMLElement, label: string, text: string) => { const field = input(root, label); type(field, text); blur(field); };
+  const made = (m: { expressId: number } | { error: string }): number => { assert.ok('expressId' in m, 'error' in m ? m.error : ''); return m.expressId; };
+
+  it('a slab\'s thickness is editable, one undo step, and re-meshes the slab', () => {
+    const slab = made(s().addSlab(MODEL_ID, STOREY, { Position: [0, 0, 0], Width: 4, Depth: 3, Thickness: 0.2 }));
+    select(slab);
+    const root = render(<ModelInspectorPanel />);
+    const field = input(root, 'Thickness in metres');
+    assert.equal(field.readOnly, false, 'no longer read-only');
+    const depth = undoDepth();
+    commitField(root, 'Thickness in metres', '0.35');
+    assert.equal(undoDepth() - depth, 1);
+    assert.equal(input(root, 'Thickness in metres').value, '0.35');
+    act(() => s().undo(MODEL_ID));
+    assert.equal(input(root, 'Thickness in metres').value, '0.20', 'one undo');
+  });
+
+  it('a column edits Width, Depth and Height; a beam Length, Width and Height, each one undo step', () => {
+    const column = made(s().addColumn(MODEL_ID, STOREY, { Position: [2, 2, 0], Width: 0.3, Depth: 0.4, Height: 3 }));
+    select(column);
+    const root = render(<ModelInspectorPanel />);
+    assert.deepEqual(['Width', 'Depth', 'Height'].map((l) => input(root, `${l} in metres`).value), ['0.30', '0.40', '3.00']);
+    for (const [label, text, expected] of [['Width', '0.5', '0.50'], ['Depth', '0.6', '0.60'], ['Height', '4', '4.00']]) {
+      const depth = undoDepth();
+      commitField(root, `${label} in metres`, text);
+      assert.equal(undoDepth() - depth, 1, `${label}: one undo step`);
+      assert.equal(input(root, `${label} in metres`).value, expected);
+    }
+
+    const beam = made(s().addBeam(MODEL_ID, STOREY, { Start: [0, 0, 3], End: [4, 0, 3], Width: 0.2, Height: 0.3 }));
+    select(beam);
+    assert.deepEqual(['Length', 'Width', 'Height'].map((l) => input(root, `${l} in metres`).value), ['4.00', '0.20', '0.30']);
+    commitField(root, 'Length in metres', '5.5');
+    assert.equal(input(root, 'Length in metres').value, '5.50');
+    assert.equal(input(root, 'Length in metres').readOnly, false);
+  });
+
+  it('a wall thickened from the inspector keeps its window cut through, in the same undo step', () => {
+    const placed = s().addHostedFill(MODEL_ID, wall, { kind: 'window', params: { Offset: 2, Sill: 0.9, Width: 1, Height: 1.2 } });
+    assert.ok('expressId' in placed);
+    const root = render(<ModelInspectorPanel />);
+    const depth = undoDepth();
+    commitField(root, 'Thickness in metres', '0.6');
+    assert.equal(input(root, 'Thickness in metres').value, '0.60');
+    const tags = new Set(s().undoStacks.get(MODEL_ID)!.slice(depth).map((m) => s().mutationBatchTags.get(m.id)));
+    assert.equal(tags.size, 1, 'the wall and its re-cut opening are one batch');
+    act(() => s().undo(MODEL_ID));
+    assert.equal(undoDepth(), depth, 'one undo');
+  });
+
+  it('a wall height below its window is refused and the field reverts', () => {
+    const placed = s().addHostedFill(MODEL_ID, wall, { kind: 'window', params: { Offset: 2, Sill: 0.9, Width: 1, Height: 1.2 } });
+    assert.ok('expressId' in placed);
+    const root = render(<ModelInspectorPanel />);
+    const depth = undoDepth();
+    commitField(root, 'Height in metres', '1.5');
+    assert.equal(undoDepth(), depth);
+    assert.equal(input(root, 'Height in metres').value, '3.00');
+  });
+});

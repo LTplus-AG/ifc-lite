@@ -11,7 +11,7 @@
  */
 
 import type { ComponentType } from 'react';
-import { LogOut, MousePointer2, Slice } from 'lucide-react';
+import { AlignHorizontalJustifyStart, ArrowUpFromLine, LogOut, MousePointer2, Slice } from 'lucide-react';
 import { BeamIcon, ColumnIcon, DoorIcon, OpeningIcon, RoomIcon, SlabIcon, WallIcon, WindowIcon } from './model-icons';
 import type { TranslationKey } from '@/i18n';
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
@@ -98,6 +98,19 @@ export const RAIL_TOOLS: readonly RailTool[] = [
     isActive: commandActive('element.split'),
     blockedKey: (s) => (s.selectedEntityId === null ? 'modelWorkspace.blocked.split' : null),
     run: () => { launchModelCommand('element.split', { drawsOnWorkplane: false }); },
+  },
+  {
+    id: 'element.pushPull', group: 'edit', labelKey: 'modelWorkspace.tool.pushPull', Icon: ArrowUpFromLine,
+    shortcut: 'model.pushPull', drawsOnWorkplane: false,
+    isActive: commandActive('element.pushPull'),
+    blockedKey: (s) => (s.selectedEntityId === null ? 'modelWorkspace.blocked.pushPull' : null),
+    run: () => { launchModelCommand('element.pushPull', { drawsOnWorkplane: false }); },
+  },
+  {
+    id: 'element.align', group: 'edit', labelKey: 'modelWorkspace.tool.align', Icon: AlignHorizontalJustifyStart,
+    shortcut: 'model.align', drawsOnWorkplane: true,
+    isActive: commandActive('element.align'),
+    run: () => { launchModelCommand('element.align'); },
   },
 ];
 

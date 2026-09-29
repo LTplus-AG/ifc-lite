@@ -16,6 +16,7 @@ import { ELEMENT_SPLIT } from './commands/element-split.js';
 import { ELEMENT_MOVE } from './commands/element-move.js';
 import { ELEMENT_ROTATE } from './commands/element-rotate.js';
 import { ROOM_PLACE } from './commands/room-place.js';
+import { DOOR_PLACE, OPENING_PLACE, WINDOW_PLACE } from './commands/hosted-place.js';
 import { SLAB_PLACE } from './commands/slab-place.js';
 import { WALL_MOVE_ENDPOINT } from './commands/wall-move-endpoint.js';
 import { WALL_PLACE } from './commands/wall-place.js';
@@ -33,6 +34,9 @@ registerOnce(SLAB_PLACE);
 registerOnce(COLUMN_PLACE);
 registerOnce(BEAM_PLACE);
 registerOnce(ROOM_PLACE);
+registerOnce(OPENING_PLACE);
+registerOnce(DOOR_PLACE);
+registerOnce(WINDOW_PLACE);
 registerOnce(ELEMENT_MOVE);
 registerOnce(ELEMENT_ROTATE);
 

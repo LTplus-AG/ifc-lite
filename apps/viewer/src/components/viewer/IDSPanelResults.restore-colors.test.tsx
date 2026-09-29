@@ -188,6 +188,26 @@ for (const host of HOSTS) {
         assert.ok(button(ui, 'Show validation colors'));
       });
 
+      it('reopening the panel keeps the original colors the user restored', () => {
+        seed(host, modelCount);
+        const first = render(host.mount());
+        click(button(first, 'Restore original colors'));
+        assert.deepEqual(painted(), []);
+        cleanup();
+        const reopened = render(host.mount());
+        assert.deepEqual(painted(), [], 'a remount must not repaint the red/green');
+        assert.ok(button(reopened, 'Show validation colors'));
+      });
+
+      it('a new validation run shows its colors again', () => {
+        const ids = seed(host, modelCount);
+        const ui = render(host.mount());
+        click(button(ui, 'Restore original colors'));
+        act(() => useViewerStore.getState().setIdsValidationReport(reportFor(host.kind, 'm1')));
+        assert.deepEqual(painted(), [[ids.failed, DEFAULT_FAILED_COLOR], [ids.passed, DEFAULT_PASSED_COLOR]]);
+        assert.ok(button(ui, 'Restore original colors'));
+      });
+
       it('clearing the report takes its colors with it', () => {
         seed(host, modelCount);
         render(host.mount());

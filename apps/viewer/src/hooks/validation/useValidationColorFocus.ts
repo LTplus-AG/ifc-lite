@@ -36,7 +36,7 @@ export interface ValidationColorFocusApi {
   paintColors: (colors: Map<number, ColorTuple>) => void;
   /** Whether the report colours are what is on screen (drives the toggle). */
   colorsShown: boolean;
-  /** Show the report colours (#6373: the toggle's "on"; also the auto-apply on a new report). */
+  /** Show the report colours (#6373: the toggle's "on"). */
   applyColors: () => void;
   setSpecColors: (specId: string) => void;
   restoreReportColors: () => void;
@@ -203,10 +203,14 @@ export function useValidationColorFocus(params: UseValidationColorFocusParams): 
     paintFocus(null);
   }, [setIdsActiveEntity, setSelectedEntityId, setSelectedEntity, releaseFocusVisibility, paintFocus]);
 
-  const applyColorsRef = useRef(applyColors);
-  applyColorsRef.current = applyColors;
+  // Paints on a landing report AND on every mount with one already loaded
+  // (panel reopened, IDS <-> Information validation host switch). A landing
+  // report turns the colours on in the slice; a mount must not, or reopening
+  // the panel would undo the user's "Restore original colors" (#6373).
+  const restoreReportColorsRef = useRef(restoreReportColors);
+  restoreReportColorsRef.current = restoreReportColors;
   useEffect(() => {
-    if (autoApplyColors && report) applyColorsRef.current();
+    if (autoApplyColors && report && useViewerStore.getState().idsColorsShown) restoreReportColorsRef.current();
   }, [autoApplyColors, report]);
 
   return {

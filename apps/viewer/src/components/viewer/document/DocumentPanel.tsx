@@ -98,6 +98,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
       : kind === 'table' ? { kind, id, source: { kind: 'list', list: listCopyForDocument(seedList, freshListCopyId()), fromListId: seedList.id }, maxRows: TABLE_ROWS_DEFAULT }
       : kind === 'image' ? { kind, id, dataUrl: '', height: 60, align: 'left' }
         : kind === 'chart' ? { kind, id, chart: charts[0]?.chart ? { ...charts[0].chart, id: freshBlockId() } : newChartSpec(), snapshot: false }
+          : kind === 'page-break' ? { kind, id }
           : kind === 'spacer' ? { kind, id, height: 20 }
             : kind === 'ids-report' ? (idsValidationReport ? idsReportBlockFromReport(idsValidationReport, id, 'compact') : { kind, id, variant: 'compact', sourceName: '', generatedAt: new Date().toISOString(), summary: { checked: 0, passed: 0, failed: 0, passRate: 100 }, checks: [] })
               : kind === 'manual-report' ? (manualSource.snapshot(id) ?? emptyManualReportBlock(id))
@@ -194,6 +195,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
             <DropdownMenuItem onSelect={() => addBlock('image')}>{t('document.addBlock.image')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('chart')}>{t('document.addBlock.chart')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('topic')} disabled={data.topics.size === 0} title={data.topics.size === 0 ? t('document.addBlock.topicDisabledTitle') : undefined}>{t('document.addBlock.topic')}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => addBlock('page-break')}>{t('document.addBlock.pageBreak')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('spacer')}>{t('document.addBlock.spacer')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('table')}>{t('document.addBlock.table')}</DropdownMenuItem>
             {/* One report slot serves IDS and information validation; the item is named for what it would add (#6372). */}

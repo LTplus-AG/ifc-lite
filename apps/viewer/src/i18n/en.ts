@@ -90,6 +90,7 @@ import { copyArrayEn } from './catalogues/copy-array.en';
 import { moveRotateEn } from './catalogues/move-rotate.en';
 import { modelInspectorEn } from './catalogues/model-inspector.en';
 import { hostedPlaceEn } from './catalogues/hosted-place.en';
+import { stairRailingEn } from './catalogues/stair-railing.en';
 import { planHandlesEn } from './catalogues/plan-handles.en';
 import { remeshEn } from './catalogues/remesh.en';
 import { storeyContextEn } from './catalogues/storey-context.en';
@@ -144,6 +145,7 @@ export const en = {
   ...moveRotateEn,
   ...modelInspectorEn,
   ...hostedPlaceEn,
+  ...stairRailingEn,
   ...planHandlesEn,
   ...remeshEn,
   ...storeyContextEn,

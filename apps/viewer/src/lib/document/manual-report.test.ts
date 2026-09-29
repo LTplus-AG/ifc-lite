@@ -70,9 +70,10 @@ describe('manual report snapshot (#6401)', () => {
 
 describe('manual report in the document format (#6401)', () => {
   it('is a valid block of the current document version and survives a file round trip', () => {
-    assert.equal(DOCUMENT_VERSION, 7);
     assert.deepEqual(validateDocumentSpec(docWith([block()])), []);
-    const reopened = parseDocumentFile(JSON.stringify(docWith([block()])));
+    // A saved version-7 manual report must retain its verdicts after later format additions (#6485).
+    const reopened = parseDocumentFile(JSON.stringify({ ...docWith([block()]), version: 7 }));
+    assert.equal(reopened.version, DOCUMENT_VERSION);
     const b = reopened.blocks[0];
     assert.equal(b.kind, 'manual-report');
     assert.deepEqual(b.kind === 'manual-report' ? b.summary : null, block().summary);

@@ -73,7 +73,7 @@ interface ChildRow { name: string; compactName?: string; description?: string; d
 function childRows(check: IdsReportCheckSummary): ChildRow[] {
   const rows: ChildRow[] = check.rules.map((rule) => ({
     name: rule.shortDescription || rule.id,
-    compactName: rule.name ?? (rule.shortDescription || rule.id),
+    compactName: rule.name || rule.shortDescription || rule.id,
     bar: { passed: rule.passed, checked: rule.checked, rate: rule.passRate },
     description: rule.longDescription,
     detail: rule.passRate === null

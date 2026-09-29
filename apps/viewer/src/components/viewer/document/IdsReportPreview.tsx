@@ -80,11 +80,14 @@ function RateBar({ rate }: { rate: number | null }) {
 }
 
 /** Compact row: name, bar and percent on one line, nothing else. `error` replaces the bar when a check could not be evaluated. */
-function CompactRow({ name, passed, checked, rate, nested, error }: { name: string; passed: number | null; checked: number; rate: number | null; nested?: boolean; error?: string }) {
+function CompactRow({ name, passed, checked, rate, nested, error, warning }: { name: string; passed: number | null; checked: number; rate: number | null; nested?: boolean; error?: string; warning?: boolean }) {
   const { t, locale } = useTranslation();
   return (
     <li className={`flex items-center gap-2 ${nested ? 'text-2xs' : 'text-xs font-medium'}`} data-ids-report-row>
-      <span className="w-2/5 min-w-0 truncate" title={name}>{name}</span>
+      <span className="w-2/5 min-w-0 truncate" title={name}>
+        {warning && <span className="mr-1 rounded bg-amber-100 px-1 font-semibold text-amber-900" data-ids-report-warning>{t('document.preview.idsReportWarningTag')}</span>}
+        {name}
+      </span>
       {error !== undefined ? (
         <span className="min-w-0 flex-1 truncate text-2xs text-red-700" title={error} data-ids-report-error>{t('document.preview.idsReportError', { error })}</span>
       ) : (
@@ -103,7 +106,7 @@ function CompactChecks({ block }: { block: IdsReportBlock }) {
   return (
     <ul className="mt-1 flex flex-col gap-1" data-ids-report-checks={block.checks.length} data-ids-report-variant="compact">
       {block.checks.flatMap((check) => [
-        <CompactRow key={check.id} name={check.shortDescription || check.id} passed={check.passed} checked={check.checked} rate={check.passRate} error={check.error} />,
+        <CompactRow key={check.id} name={check.shortDescription || check.id} passed={check.passed} checked={check.checked} rate={check.passRate} error={check.error} warning={check.severity === 'warning'} />,
         ...check.rules.map((rule) => (
           <CompactRow key={`${check.id}/${rule.id}`} nested name={rule.name ?? (rule.shortDescription || rule.id)} passed={rule.passed} checked={rule.checked} rate={rule.passRate} />
         )),

@@ -102,12 +102,17 @@ type Line = { text: string; size: number; bold: boolean; gray: number };
 /** Height of a row of `n` lines: 26 for two, 38 for three, as the original layout had it. */
 const rowHeight = (n: number): number => n * (LINE_PITCH + 1) + 2;
 
-/** Draws `lines` from the cursor at a fixed pitch and advances past them. */
+/** Draws `lines` from the cursor at a fixed pitch and advances past them, moving to a new page for each page-sized chunk of a very long row. */
 function emitLines(cursor: LayoutCursor, x: number, lines: Line[]): void {
-  lines.forEach((line, i) => {
-    cursor.push({ kind: 'text', x, y: cursor.y + 10 + i * LINE_PITCH, size: line.size, bold: line.bold, gray: line.gray, text: line.text });
-  });
-  cursor.y += rowHeight(lines.length);
+  const perPage = Math.max(1, Math.floor((cursor.bottom - cursor.top - 2) / (LINE_PITCH + 1)));
+  for (let start = 0; start < lines.length; start += perPage) {
+    const chunk = lines.slice(start, start + perPage);
+    cursor.ensure(rowHeight(chunk.length));
+    chunk.forEach((line, i) => {
+      cursor.push({ kind: 'text', x, y: cursor.y + 10 + i * LINE_PITCH, size: line.size, bold: line.bold, gray: line.gray, text: line.text });
+    });
+    cursor.y += rowHeight(chunk.length);
+  }
 }
 
 export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCursor, contentW: number, blockGap: number, wrap?: IdsReportWrap): void {
@@ -163,7 +168,7 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
     if (compact) {
       // A check that could not be evaluated has no meaningful rate: print its error instead of a bar.
       const bar = check.error === undefined ? { passed: check.passed, checked: check.checked, rate: check.passRate } : undefined;
-      compactRow(cursor.x, contentW, check.shortDescription || check.id, 9, true, 0, bar, check.error === undefined ? undefined : checkCountsLine(check));
+      compactRow(cursor.x, contentW, `${check.severity === 'warning' ? '(Warning) ' : ''}${check.shortDescription || check.id}`, 9, true, 0, bar, check.error === undefined ? undefined : checkCountsLine(check));
       for (const row of children) compactRow(cursor.x + 10, contentW - 10, row.compactName ?? row.name, 8, false, 45, row.bar, row.detail);
       continue;
     }

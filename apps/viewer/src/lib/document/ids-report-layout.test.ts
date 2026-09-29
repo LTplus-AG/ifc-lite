@@ -119,3 +119,22 @@ describe('IDS report block validation (#6470)', () => {
     assert.deepEqual(validateDocumentSpec(doc({ ...block(), variant: 'wide' })).map((e) => e.path), ['blocks[0].variant']);
   });
 });
+
+describe('IDS report layout edge cases (review of #6494)', () => {
+  it('long paginates a requirement taller than a page without leaving the printable area', () => {
+    const huge = Array.from({ length: 4000 }, (_, i) => `word${i}`).join(' ');
+    const ids = block('long');
+    ids.checks[0].rules[0].shortDescription = huge;
+    const layout = composeDocument({ name: 'Doc', page: { size: 'A4', orientation: 'landscape' }, generatedAt: 'now', measure: estimateTextWidth, blocks: [ids] });
+    assert.ok(layout.pages.length >= 2);
+    for (const page of layout.pages) for (const item of page.items) assert.ok(item.y <= layout.size.h - 40, `y=${item.y} on page ${page.index}`);
+    const words = layout.pages.flatMap((p) => p.items.flatMap((i) => (i.kind === 'text' && i.size === 8.5 ? i.text.split(' ') : []))).filter((w) => /^word\d+$/.test(w));
+    assert.equal(words.length, 4000);
+  });
+
+  it('compact marks a warning check in the PDF', () => {
+    const ids = block('compact');
+    ids.checks[0].severity = 'warning';
+    assert.ok(compose(ids).texts.some((t) => t.text === '(Warning) Walls'));
+  });
+});

@@ -5,8 +5,10 @@
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { act } from 'react';
 import type { ExtrusionDefinitions } from '@ifc-lite/geometry';
 import { cleanup, render } from '@/test/render.js';
+import { registerLocale, setLocale } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { ExtrusionInspection, ExtrusionRecord } from './ExtrusionInspection.js';
 
@@ -35,7 +37,7 @@ const instance: Instance = { ordinal: 1, source: key, product_id: 7, solid_id: 3
   status: { type: 'complete' } };
 
 const prior = useViewerStore.getState();
-afterEach(() => { cleanup(); useViewerStore.setState(prior, true); });
+afterEach(() => { cleanup(); setLocale('en'); useViewerStore.setState(prior, true); });
 
 it('keeps the properties pane quiet when no extrusion source is selected (#6432)', () => {
   useViewerStore.setState({ selectedEntity: null, selectedEntityId: null,
@@ -73,4 +75,29 @@ it('reports an unsupported source without inventing profile geometry (#6432)', (
   assert.match(ui.textContent ?? '', /mapped transform unsupported/);
   assert.match(ui.textContent ?? '', /Source definition is unavailable/);
   assert.equal(ui.querySelectorAll('details').length, 0);
+});
+
+it('updates the extrusion source-modified answer when the locale changes (#6432)', () => {
+  const ui = render(<ExtrusionRecord instance={instance} definition={definition} lengthUnitScale={0.001} />);
+  assert.match(ui.textContent ?? '', /Source modified by CSG: Yes/);
+  registerLocale('extrusion-pseudo', {
+    'properties.extrusion.solid': '⟦solid #{id}⟧',
+    'properties.extrusion.status': '⟦status⟧',
+    'properties.extrusion.depth': '⟦depth⟧',
+    'properties.extrusion.profile': '⟦profile⟧',
+    'properties.extrusion.placement': '⟦placement⟧',
+    'properties.extrusion.sourceModified': '⟦source modified⟧',
+    'properties.extrusion.yes': '⟦yes⟧',
+    'properties.extrusion.no': '⟦no⟧',
+  });
+  act(() => setLocale('extrusion-pseudo'));
+  const translated = ui.textContent ?? '';
+  for (const label of ['⟦solid #30⟧', '⟦status⟧', '⟦depth⟧', '⟦profile⟧', '⟦placement⟧']) {
+    assert.ok(translated.includes(label), `${label} must render from the active locale`);
+  }
+  assert.match(translated, /⟦source modified⟧: ⟦yes⟧/);
+  cleanup();
+  const unmodified = render(<ExtrusionRecord instance={{ ...instance, source_modified: false }}
+    definition={definition} lengthUnitScale={0.001} />);
+  assert.match(unmodified.textContent ?? '', /⟦source modified⟧: ⟦no⟧/);
 });

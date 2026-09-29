@@ -111,7 +111,9 @@ it('keeps the active source within 256 products and visibly reports omitted sour
     useViewerStore.setState({ ...fixtureModels(model), centrelineOverlayEnabled: true,
       selectedEntityIds: new Set(Array.from({ length: 300 }, (_, index) => 1_000_001 + index)),
       selectedEntityId: 1_000_300, selectedEntitiesSet: new Set(),
-      selectedEntity: { modelId: 'selection', expressId: 300 } });
+      selectedEntity: { modelId: 'selection', expressId: 300 },
+      // This fixture seeds the models map directly without registering its renderer offset.
+      toGlobalId: (_modelId, expressId) => 1_000_000 + expressId });
     const renderer = { setLineOverlay: () => {}, setSourceSnapCurves: () => {} } as unknown as Renderer;
     const Overlay = () => {
       useCentrelineRendererOverlay({ current: renderer } as RefObject<Renderer | null>, true);

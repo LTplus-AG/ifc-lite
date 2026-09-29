@@ -157,8 +157,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   SheetSlice &
   BCFSlice &
   IDSSlice &
-  ValidationDraftSlice &
-  ManualValidationSlice &
+  ValidationDraftSlice & ManualValidationSlice &
   ListSlice &
   ChartSlice &
   FlowSlice &
@@ -256,8 +255,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createSheetSlice(...args),
   ...createBcfSlice(...args),
   ...createIdsSlice(...args),
-  ...createValidationDraftSlice(...args),
-  ...createManualValidationSlice(...args),
+  ...createValidationDraftSlice(...args), ...createManualValidationSlice(...args),
   ...createListSlice(...args),
   ...createChartSlice(...args),
   ...createFlowSlice(...args),
@@ -283,8 +281,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createCollabSlice(...args),
   ...createAddElementSlice(...args),
   ...createAuthoringSessionSlice(...args), ...createAuthoringDefaultsSlice(...args),
-  ...createLevelDisplaySlice(...args),
-  ...createStoreyContextSlice(...args),
+  ...createLevelDisplaySlice(...args), ...createStoreyContextSlice(...args),
   ...createPointCloudSlice(...args),
   ...createModelPlacementSlice(...args),
   ...createUnitDisplaySlice(...args),

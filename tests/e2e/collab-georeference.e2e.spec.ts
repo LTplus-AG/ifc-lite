@@ -11,6 +11,7 @@ import { startRelay, relayBinary, type Relay } from './collab/relay';
 import { startViewerPreview, viewerDist, type ViewerPreview } from './collab/preview';
 import { enableCollab, openViewer, openFileTab } from './collab/viewer-page';
 import { loadFile, waitForRoomModels } from './collab/federation-scope';
+import { collabRenderedWitness } from './collab-georeference.rendering';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const FIXTURE_NAME = process.env.E2E_GEOREFERENCED_SAMPLE ?? 'building-architecture.ifc';
@@ -39,6 +40,9 @@ async function facts(page: Page, guest: boolean) {
         coordinateInfo: model.geometryResult?.coordinateInfo, meshes: model.geometryResult?.meshes.length,
         lengthUnitScale: model.ifcDataStore?.lengthUnitScale,
         geometryClasses: model.geometryResult?.meshes.map(mesh => mesh.geometryClass ?? 0),
+        meshPoints: model.geometryResult?.meshes.map(mesh => [0, 1, 2]
+          .map(axis => mesh.positions[axis] + (mesh.origin?.[axis] ?? 0))).sort((a, b) =>
+            a[0] - b[0] || a[1] - b[1] || a[2] - b[2]),
         instancedShards: model.geometryResult?.instancedShards?.length ?? 0 };
     });
   }, guest);
@@ -66,6 +70,11 @@ for (const copies of [1, 2]) test.describe(`georeferencing in a ${copies}-model 
       });
       await owner.page.getByRole('tab', { name: 'View', exact: true }).click();
       await expect(owner.page.getByRole('button', { name: 'World', exact: true })).toBeVisible();
+      // One-model raster/pick proof; the two-slot case proves the independent
+      // coordinate facts and resident mesh points without conflating duplicate
+      // model visibility behavior with spatial metadata transport.
+      const ownerWitness = copies === 1 ? await collabRenderedWitness(owner.page) : undefined;
+      if (ownerWitness) await info.attach(`${copies}-owner-renderer.png`, { body: ownerWitness.png, contentType: 'image/png' });
       await openFileTab(owner.page);
       await owner.page.getByRole('button', { name: 'Share', exact: true }).click();
       const dialog = owner.page.getByRole('dialog');
@@ -97,6 +106,7 @@ for (const copies of [1, 2]) test.describe(`georeferencing in a ${copies}-model 
             const actual = received[i], original = expected![i];
             expect(actual.meshes).toBe(original.meshes);
             expect(actual.coordinateInfo).toEqual(original.coordinateInfo);
+            expect(actual.meshPoints).toEqual(original.meshPoints);
             expect(actual.lengthUnitScale).toBe(0.001);
             const geo = actual.georeferencing as { mapConversion: Record<string, unknown>; projectedCRS: Record<string, unknown> };
             const ownerGeo = original.georeferencing as typeof geo;
@@ -121,10 +131,15 @@ for (const copies of [1, 2]) test.describe(`georeferencing in a ${copies}-model 
           await guest.page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
           const image = await guest.page.screenshot();
           await info.attach(`${copies}-${phase}.png`, { body: image, contentType: 'image/png' });
+          const guestWitness = copies === 1 ? await collabRenderedWitness(guest.page) : undefined;
+          if (guestWitness) await info.attach(`${copies}-${phase}-renderer.png`, { body: guestWitness.png, contentType: 'image/png' });
           if (EVIDENCE_DIR) {
             mkdirSync(EVIDENCE_DIR, { recursive: true });
             writeFileSync(join(EVIDENCE_DIR, `${copies}-${phase}.png`), image);
-            writeFileSync(join(EVIDENCE_DIR, `${copies}-${phase}.json`), JSON.stringify({ fixture: FIXTURE_NAME, expected, received }, null, 2));
+            if (guestWitness) writeFileSync(join(EVIDENCE_DIR, `${copies}-${phase}-renderer.png`), guestWitness.png);
+            if (ownerWitness) writeFileSync(join(EVIDENCE_DIR, `${copies}-owner-renderer.png`), ownerWitness.png);
+            writeFileSync(join(EVIDENCE_DIR, `${copies}-${phase}.json`), JSON.stringify({ fixture: FIXTURE_NAME, expected, received,
+              ownerRendered: ownerWitness?.rendered, guestRendered: guestWitness?.rendered }, null, 2));
           }
         } finally { await guest.context.close(); }
       }

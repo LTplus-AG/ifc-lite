@@ -110,6 +110,8 @@ const STATES: ReadonlyArray<{ name: string; settleMs?: number; mayBeEmpty?: bool
   { name: 'room', settleMs: 1500 },
   // #6232 A1: the hosted placing commands' bar (offset, sill, width, height).
   { name: 'window' },
+  // #6232 C3: the Array bar (count, spacing, linear / polar, spacing / fit).
+  { name: 'array' },
   // #6232 C4: Push / Pull (a field and a readout) and Align (six edges and a count).
   { name: 'pushPull' },
   { name: 'align' },
@@ -187,6 +189,7 @@ for (const width of [1280, 1600, 1920]) {
             beam: (s) => s.startCommand('beam.place'),
             room: (s) => s.startCommand('room.place'),
             window: (s) => s.startCommand('window.place'),
+            array: (s) => s.startCommand('element.array'),
             pushPull: (s) => { s.setSelectedEntityId(null); s.startCommand('element.pushPull'); },
             align: (s) => s.startCommand('element.align'),
             spaceSketch: (s) => { s.endCommand(); s.setActiveTool('spaceSketch'); },
@@ -204,8 +207,8 @@ for (const width of [1280, 1600, 1920]) {
           };
           enter[name](api.getState());
         }, [STORE, state.name] as const);
-        if (state.name === 'split' || state.name === 'slab' || state.name === 'beam' || state.name === 'room' || state.name === 'window' || state.name === 'pushPull' || state.name === 'align') {
-          const id = { split: 'element.split', slab: 'slab.place', beam: 'beam.place', room: 'room.place', window: 'window.place', pushPull: 'element.pushPull', align: 'element.align' }[state.name];
+        if (state.name === 'split' || state.name === 'slab' || state.name === 'beam' || state.name === 'room' || state.name === 'window' || state.name === 'array' || state.name === 'pushPull' || state.name === 'align') {
+          const id = { split: 'element.split', slab: 'slab.place', beam: 'beam.place', room: 'room.place', window: 'window.place', array: 'element.array', pushPull: 'element.pushPull', align: 'element.align' }[state.name];
           await expect(page.locator(`[data-hud-region] [data-command-id="${id}"]`)).toBeVisible();
         }
         if (state.name === 'spaceSketch') {

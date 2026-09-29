@@ -197,9 +197,15 @@ export function readChartTheme(): ChartTheme {
   };
 }
 
+/** The host element's measured size in px; 0 until measured. */
+export interface ChartSize {
+  width: number;
+  height: number;
+}
+
 export interface UseEChartArgs {
-  /** Builds the option for the host's measured width (0 before the first measure); `null` draws nothing. */
-  option: (width: number) => EChartsOptionObject | null;
+  /** Builds the option for the host's measured size (0 before the first measure); `null` draws nothing. */
+  option: (size: ChartSize) => EChartsOptionObject | null;
   /** Items fully selected in 3D (marked selected in the option) and partially selected (emphasised). */
   selected: readonly ChartItem[];
   partial: readonly ChartItem[];
@@ -212,7 +218,7 @@ export interface UseEChartArgs {
 /**
  * Mount a chart in the returned ref's element and keep it in step with
  * `option` / `selected`. `width` is the host's measured width in px (0 until
- * measured), for options that size themselves to it.
+ * measured); the option builder also receives the height, for options that size themselves to it.
  */
 export function useEChart({ option, selected, partial, onSelect, canClearSelection, renderer = echartsRenderer }: UseEChartArgs): { ref: React.RefObject<HTMLDivElement | null>; ready: boolean; width: number } {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -222,7 +228,8 @@ export function useEChart({ option, selected, partial, onSelect, canClearSelecti
   const canClearSelectionRef = useRef(canClearSelection);
   canClearSelectionRef.current = canClearSelection;
   const [ready, setReady] = useState(false);
-  const [width, setWidth] = useState(0);
+  const [size, setSize] = useState<ChartSize>({ width: 0, height: 0 });
+  const { width, height } = size;
   // Re-render on theme change so the tokens are re-read.
   const theme = useViewerStore((s) => s.theme);
 
@@ -238,10 +245,14 @@ export function useEChart({ option, selected, partial, onSelect, canClearSelecti
       });
       setReady(true);
     });
-    setWidth(Math.round(el.clientWidth));
+    const measure = () => setSize((prev) => {
+      const next = { width: Math.round(el.clientWidth), height: Math.round(el.clientHeight) };
+      return prev.width === next.width && prev.height === next.height ? prev : next;
+    });
+    measure();
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
       handleRef.current?.resize();
-      setWidth(Math.round(el.clientWidth));
+      measure();
     });
     observer?.observe(el);
     return () => {
@@ -255,11 +266,11 @@ export function useEChart({ option, selected, partial, onSelect, canClearSelecti
 
   useEffect(() => {
     if (!ready) return;
-    const built = option(width);
+    const built = option({ width, height });
     if (!built) return;
     handleRef.current?.setOption(built);
     handleRef.current?.select(selected, partial);
-  }, [ready, option, width, theme, selected, partial]);
+  }, [ready, option, width, height, theme, selected, partial]);
 
   return { ref, ready, width };
 }

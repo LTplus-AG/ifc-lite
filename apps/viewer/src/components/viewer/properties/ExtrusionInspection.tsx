@@ -23,21 +23,23 @@ function vector(values: readonly number[] | null): string {
 function TransformDetail({ label, matrix, translationScale, units }: {
   label: string; matrix: readonly number[] | null; translationScale: number; units: string;
 }) {
+  const { t } = useTranslation();
   if (!matrix || matrix.length !== 16) return null;
   return <details className="border-t border-zinc-200 dark:border-zinc-800 pt-1">
     <summary className="cursor-pointer">{label}</summary>
-    <div>Translation: {vector(matrix.slice(12, 15).map((value) => value * translationScale))} {units}</div>
-    <div>X axis: {vector(matrix.slice(0, 3))}</div>
-    <div>Y axis: {vector(matrix.slice(4, 7))}</div>
-    <div>Z axis: {vector(matrix.slice(8, 11))}</div>
+    <div>{t('properties.extrusion.translation')}: {vector(matrix.slice(12, 15).map((value) => value * translationScale))} {units}</div>
+    <div>{t('properties.extrusion.xBasis')}: {vector(matrix.slice(0, 3))}</div>
+    <div>{t('properties.extrusion.yBasis')}: {vector(matrix.slice(4, 7))}</div>
+    <div>{t('properties.extrusion.zBasis')}: {vector(matrix.slice(8, 11))}</div>
   </details>;
 }
 
-function segmentDescription(segment: Segment, scale: number, overrides: Record<string, string>): string {
+function segmentDescription(segment: Segment, scale: number, overrides: Record<string, string>,
+  labels: { center: string; radius: string; normal: string; xAxis: string }): string {
   if (segment.type === 'line') {
     return `${vector(segment.start.map((v) => v * scale))} → ${vector(segment.end.map((v) => v * scale))} m`;
   }
-  return `center ${vector(segment.center.map((v) => v * scale))} m · radius ${formatAnalyticLength(segment.radius * scale, overrides)} · ${number(segment.start_angle)} → ${number(segment.start_angle + segment.sweep_angle)} rad · normal ${vector(segment.normal)} · x-axis ${vector(segment.x_axis)}`;
+  return `${labels.center} ${vector(segment.center.map((v) => v * scale))} m · ${labels.radius} ${formatAnalyticLength(segment.radius * scale, overrides)} · ${number(segment.start_angle)} → ${number(segment.start_angle + segment.sweep_angle)} rad · ${labels.normal} ${vector(segment.normal)} · ${labels.xAxis} ${vector(segment.x_axis)}`;
 }
 
 /** Authored source parameters. Values remain distinct from placed or cut mesh measurements. */
@@ -91,7 +93,10 @@ export function ExtrusionRecord({ instance, definition, lengthUnitScale }: {
         <div>{t('properties.extrusion.signedArea')}: {number(loop.signed_area * lengthUnitScale ** 2)} m²</div>
         <ol className="list-decimal pl-5 space-y-1">
           {loop.segments.map((segment, segmentIndex) => <li key={segmentIndex} className="break-all">
-            {segment.type} · {segmentDescription(segment, lengthUnitScale, overrides)}
+            {segment.type} · {segmentDescription(segment, lengthUnitScale, overrides, {
+              center: t('properties.extrusion.center'), radius: t('properties.extrusion.radius'),
+              normal: t('properties.extrusion.normal'), xAxis: t('properties.extrusion.xAxis'),
+            })}
           </li>)}
         </ol>
       </details>)}

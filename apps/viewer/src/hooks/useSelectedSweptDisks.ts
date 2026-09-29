@@ -5,8 +5,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SweptDiskDescriptions } from '@ifc-lite/geometry';
 import { useViewerStore, type EntityRef } from '@/store';
+import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { selectedSweptDiskCache, sourceIdentity, type AnalyticSourceModel } from '@/lib/analytic/swept-disk-cache';
-import { selectedSourceProducts } from '@/lib/analytic/selected-source-products';
+import { loadSelectedSourceGroups, selectedSourceProducts } from '@/lib/analytic/selected-source-products';
 
 type Occurrences = SweptDiskDescriptions['elements'][string];
 
@@ -64,7 +65,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
     const state = useViewerStore.getState();
     const priority = highlightedSegment
       ? { modelId: highlightedSegment.modelId, expressId: highlightedSegment.expressId } : null;
-    const { grouped, overlayRefs, diagnostics, priorityMissing } = selectedSourceProducts(state, 'centreline', priority);
+    const { grouped, overlayRefs, diagnostics, priorityMissing } = selectedSourceProducts(state, 'centreline', resolveEntityRef, priority);
     if (priorityMissing) state.setSelectedDirectrixSegment(null);
     const createdInOverlay: SelectedSweptDisk[] = overlayRefs.map((ref) => ({ ref, occurrences: [], diagnostics: [
       `product #${ref.expressId}: created in the overlay; no authored swept-disk source is available`,
@@ -74,7 +75,7 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
       return () => { active = false; };
     }
     setResult({ items: [], loading: true, error: null });
-    void Promise.all([...grouped].map(async ([modelId, ids]) => {
+    void loadSelectedSourceGroups(grouped, async (modelId, ids) => {
       const model = models.get(modelId) ?? (modelId === 'legacy' && legacyStore
         ? { id: 'legacy', ifcDataStore: legacyStore } : null);
       if (!model) return [];
@@ -83,8 +84,9 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
         const product = products.get(expressId);
         return { ref: { modelId, expressId }, occurrences: product?.occurrences ?? [], diagnostics: product?.diagnostics ?? [] };
       });
-    })).then((groups) => {
-      if (active) setResult({ items: [...groups.flat(), ...createdInOverlay], loading: false, error: diagnostics.join('; ') || null });
+    }).then(({ items, errors }) => {
+      if (active) setResult({ items: [...items, ...createdInOverlay], loading: false,
+        error: [...diagnostics, ...errors].join('; ') || null });
     }).catch((error: unknown) => {
       if (active) setResult({ items: [], loading: false, error: String(error) });
     });

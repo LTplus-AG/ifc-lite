@@ -4,9 +4,10 @@
 
 import { useEffect, useState } from 'react';
 import { useViewerStore, type EntityRef } from '@/store';
+import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { selectedExtrusionCache, type ProductExtrusions } from '@/lib/analytic/extrusion-cache';
 import type { AnalyticSourceModel } from '@/lib/analytic/swept-disk-cache';
-import { selectedSourceProducts } from '@/lib/analytic/selected-source-products';
+import { loadSelectedSourceGroups, selectedSourceProducts } from '@/lib/analytic/selected-source-products';
 
 export interface SelectedExtrusion {
   ref: EntityRef;
@@ -46,7 +47,7 @@ export function useSelectedExtrusions(enabled: boolean): SelectedExtrusionsState
     if (!enabled) { setResult(EMPTY); return; }
     let active = true;
     const state = useViewerStore.getState();
-    const { grouped, overlayRefs, diagnostics } = selectedSourceProducts(state, 'extrusion inspection');
+    const { grouped, overlayRefs, diagnostics } = selectedSourceProducts(state, 'extrusion inspection', resolveEntityRef);
     const overlayItems: SelectedExtrusion[] = overlayRefs.map((ref) => ({ ref, product: {
       occurrences: [], lengthUnitScale: 1,
       diagnostics: [`product #${ref.expressId}: created in the overlay; no authored extrusion source is available`],
@@ -56,7 +57,7 @@ export function useSelectedExtrusions(enabled: boolean): SelectedExtrusionsState
       return () => { active = false; };
     }
     setResult({ items: [], loading: true, error: null });
-    void Promise.all([...grouped].map(async ([modelId, ids]) => {
+    void loadSelectedSourceGroups(grouped, async (modelId, ids) => {
       const model = models.get(modelId) ?? (modelId === 'legacy' && legacyStore
         ? { id: 'legacy', ifcDataStore: legacyStore } : null);
       if (!model) return [];
@@ -66,8 +67,9 @@ export function useSelectedExtrusions(enabled: boolean): SelectedExtrusionsState
           occurrences: [], diagnostics: [], lengthUnitScale: 1,
         },
       }));
-    })).then((groups) => {
-      if (active) setResult({ items: [...groups.flat(), ...overlayItems], loading: false, error: diagnostics.join('; ') || null });
+    }).then(({ items, errors }) => {
+      if (active) setResult({ items: [...items, ...overlayItems], loading: false,
+        error: [...diagnostics, ...errors].join('; ') || null });
     }).catch((error: unknown) => {
       if (active) setResult({ items: [], loading: false, error: String(error) });
     });

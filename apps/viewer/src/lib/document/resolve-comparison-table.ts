@@ -9,7 +9,7 @@ import type { TableState } from './resolve-table';
 export function resolveComparisonTableState(saved: SavedComparison): TableState {
   const optional = ['key', 'match', 'matchedGlobalId'] as const;
   const fields = ['globalId', 'name', 'ifcType', 'state', 'change', 'movedDistance', 'model',
-    ...optional.filter((key) => saved.report.rows.some((r) => r[key]))] as const;
+    ...optional.filter((key) => saved.report.rows.some((r) => r[key] !== undefined))] as const;
   const labels: Record<typeof fields[number], string> = {
     globalId: 'GlobalId', name: 'Name', ifcType: 'IfcType', state: 'State', change: 'Change',
     movedDistance: 'Moved distance (m)', model: 'Model', key: 'Authored key', match: 'Content match', matchedGlobalId: 'Matched GlobalId',

@@ -12,6 +12,8 @@ import { comparisonModels, comparisonResult } from '@/test/saved-comparison-fixt
 import { render, click, type, cleanup } from '@/test/render';
 import { loadSavedComparisons, SAVED_COMPARISONS_KEY } from '@/lib/compare/savedComparisonPersistence';
 import { SavedComparisonLibrary } from './SavedComparisonLibrary';
+import { snapshotComparison } from '@/lib/compare/savedComparisons';
+import type { ReportTableArgs } from '@/lib/export/report/generate-report-pdf';
 import { DocumentPanel } from '../document/DocumentPanel';
 import { TABLE_ROWS_DEFAULT, DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types';
 import { parseDocumentFile } from '@/lib/document/persistence';
@@ -24,6 +26,14 @@ import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
 function Library() { const result = useViewerStore((s) => s.compareResult); return <SavedComparisonLibrary result={result} running={false} />; }
 const select = (el: HTMLSelectElement, value: string): void => { act(() => { el.value = value; el.dispatchEvent(new window.Event('change', { bubbles: true })); }); };
 const settle = async (): Promise<void> => { await act(async () => { await new Promise((r) => setTimeout(r, 5)); }); };
+function recordingSeams(printed: string[], tables: ReportTableArgs[]): () => Promise<DocumentPdfSeams> {
+  return async () => ({
+    createDoc: async () => ({ addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {},
+      text: (text) => { printed.push(text); }, fillRect: () => {}, addImage: () => {}, svg: async () => {},
+      table: (table) => { tables.push(table); }, pageCount: () => 1, output: () => new Blob(['pdf']),
+    }), renderSvg: () => '', capture: null, theme: DEFAULT_THEME, now: () => new Date(0), imageSize: async () => ({ w: 1, h: 1 }),
+  });
+}
 afterEach(() => { cleanup(); localStorage.removeItem(SAVED_COMPARISONS_KEY); });
 
 describe('Multiple saved pairs in mounted UI and documentation (#6506)', () => {
@@ -45,6 +55,28 @@ describe('Multiple saved pairs in mounted UI and documentation (#6506)', () => {
     } finally {
       Object.defineProperty(localStorage, 'setItem', { configurable: true, value: original });
     }
+  });
+
+  it('keeps schema-valid empty authored key columns in mounted preview and the production PDF pipeline', async () => {
+    const saved = snapshotComparison(comparisonResult('A', 'B'), comparisonModels(), 'Blank authored keys');
+    saved.keyProperty = 'Tag';
+    saved.report.rows = saved.report.rows.map((row) => ({ ...row, key: '' }));
+    const spec = parseDocumentFile(JSON.stringify({ version: DOCUMENT_VERSION, id: 'blank-key-doc', name: 'Authored keys',
+      page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'table', id: 'keys', source: { kind: 'comparison', comparison: saved } }] }));
+    act(() => useViewerStore.setState({ models: new Map(), activeModelId: null, documents: [spec], activeDocumentId: spec.id,
+      dashboards: [], bcfProject: null, selectedEntityIds: new Set(), mutationViews: new Map() }));
+    const tables: ReportTableArgs[] = [];
+    const ui = render(<DocumentPanel pdfSeams={recordingSeams([], tables)} />); await settle();
+    const head = [...ui.querySelectorAll('[data-block-table] th')].map((cell) => cell.textContent);
+    assert.equal(head.at(-1), 'Authored key');
+    const rows = [...ui.querySelectorAll('[data-block-table] tbody tr')];
+    assert.deepEqual(rows.map((row) => row.lastElementChild?.textContent), ['', '', '']);
+    click(ui.querySelector('[data-document-export]')!);
+    for (let i = 0; i < 20 && !tables.length; i++) await settle();
+    assert.equal(tables.length, 1);
+    assert.equal(tables[0].head[0].at(-1), 'Authored key');
+    assert.deepEqual(tables[0].body.map((row) => row.at(-1)), ['', '', '']);
+    assert.deepEqual(tables[0].body.map((row) => row[0]), ['new', 'wall', 'removed']);
   });
 
   it('saves three real engine comparisons, reloads history, selects a document copy and prints its rows after library deletion/model unload', async () => {
@@ -82,13 +114,8 @@ describe('Multiple saved pairs in mounted UI and documentation (#6506)', () => {
     };
     act(() => useViewerStore.setState({ documents: [spec], activeDocumentId: spec.id, activeModelId: null, dashboards: [], bcfProject: null,
       selectedEntityIds: new Set(), mutationViews: new Map() }));
-    const printed: string[] = []; const tableCells: string[][] = [];
-    const seams = async (): Promise<DocumentPdfSeams> => ({
-      createDoc: async () => ({ addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {},
-        text: (text) => { printed.push(text); }, fillRect: () => {}, addImage: () => {}, svg: async () => {},
-        table: (table) => { tableCells.push(...table.body); }, pageCount: () => 1, output: () => new Blob(['pdf']),
-      }), renderSvg: () => '', capture: null, theme: DEFAULT_THEME, now: () => new Date(0), imageSize: async () => ({ w: 1, h: 1 }),
-    });
+    const printed: string[] = []; const tables: ReportTableArgs[] = [];
+    const seams = recordingSeams(printed, tables);
     ui = render(<DocumentPanel pdfSeams={seams} />); await settle();
     const previewBlock = ui.querySelector('[data-preview-block="table"]'); assert.ok(previewBlock); click(previewBlock);
     await settle();
@@ -110,7 +137,7 @@ describe('Multiple saved pairs in mounted UI and documentation (#6506)', () => {
       assert.ok(downloaded);
     } finally { window.removeEventListener(EVENT_FILE_DOWNLOADED, onDownload); }
     assert.ok(printed.includes('Base: A; Head: C'));
-    assert.deepEqual(tableCells.map((r) => r[0]), ['new', 'third', 'wall', 'removed']);
+    assert.deepEqual(tables.flatMap((table) => table.body).map((r) => r[0]), ['new', 'third', 'wall', 'removed']);
     assert.ok(printed.some((line) => line.includes('Products: Added 2; deleted 1; modified 1')));
   });
 });

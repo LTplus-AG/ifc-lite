@@ -60,6 +60,23 @@ describe('Saved comparison invariants (#6506)', () => {
     assert.equal(named.report.baseModel, '  exact authored name  ', 'nonblank authored names retain their exact evidence');
   });
 
+  it('preserves explicitly empty authored keys and counterpart IDs through saved import and table projection', () => {
+    const saved = snapshotComparison(comparisonResult('A', 'B'), comparisonModels(), 'Imported authored keys');
+    const ordinary = resolveComparisonTableState(saved);
+    assert.ok(ordinary.status === 'ok' && ordinary.kind === 'comparison');
+    assert.equal(ordinary.model.columns.some((column) => column.label === 'Authored key'), false, 'absent metadata stays absent');
+    saved.keyProperty = 'Tag';
+    saved.report.rows = saved.report.rows.map((row) => ({ ...row, key: '', matchedGlobalId: '' }));
+    localStorage.setItem(SAVED_COMPARISONS_KEY, JSON.stringify([saved]));
+    const [imported] = loadSavedComparisons();
+    assert.ok(imported && isSavedComparison(imported));
+    const state = resolveComparisonTableState(imported);
+    assert.ok(state.status === 'ok' && state.kind === 'comparison');
+    assert.deepEqual(state.model.columns.slice(-2).map((column) => column.label), ['Authored key', 'Matched GlobalId']);
+    assert.deepEqual(state.model.rows.map((row) => row.cells.slice(-2)), [['', ''], ['', ''], ['', '']]);
+    assert.deepEqual(state.model.rows.map((row) => row.cells[0]), ['new', 'wall', 'removed']);
+  });
+
   it('retains a completed no-change pair and reports it explicitly without loaded models', () => {
     const result = comparisonResult('A', 'B');
     const base = result.diff.entries.flatMap((e) => e.base ? [e.base] : []);

@@ -88,6 +88,7 @@ import { modelWorkspaceEn } from './catalogues/model-workspace.en';
 import { roomToolEn } from './catalogues/room-tool.en';
 import { roomLayoutEn } from './catalogues/room-layout.en';
 import { modelInspectorEn } from './catalogues/model-inspector.en';
+import { hostedPlaceEn } from './catalogues/hosted-place.en';
 import { remeshEn } from './catalogues/remesh.en';
 import { storeyContextEn } from './catalogues/storey-context.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
@@ -139,6 +140,7 @@ export const en = {
   ...roomToolEn,
   ...roomLayoutEn,
   ...modelInspectorEn,
+  ...hostedPlaceEn,
   ...remeshEn,
   ...storeyContextEn,
   ...documentEn,

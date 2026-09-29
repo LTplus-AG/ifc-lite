@@ -31,6 +31,9 @@ import { setValidationSourceChoice } from '@/lib/validation/validation-source-ch
 import { ValidationPanel, RunningState } from './ValidationPanel.js';
 import { IdsSummary } from './ValidationPanel.idsSummary.js';
 import { resetValidationPanelFixture } from './validation-test-fixture.js';
+import { emptyManualReportBlock } from '@/lib/document/manual-report';
+import { SavedReportSource } from '../document/SavedReportSource.js';
+import { DocumentPanel } from '../document/DocumentPanel.js';
 
 installLayout();
 
@@ -216,6 +219,37 @@ async function mountAll(): Promise<Set<string>> {
   render(<RunningState progress={{ ruleIndex: 0, phase: 'requirements', done: 5, total: 10 }} totalRules={2} onCancel={() => {}} />);
   collect();
   cleanup();
+
+  // #6500: history labels also appear in Manual validation and Documentation.
+  // Mount their real controls under both locales; they are reachable states,
+  // not gaps to exempt from the catalogue's coverage contract.
+  resetValidationPanelFixture();
+  useViewerStore.getState().saveValidationReport(emptyManualReportBlock('i18n-report'), 'Saved fixture');
+  useViewerStore.setState({
+    validationReportsSaveFailed: true,
+    manualChecklist: { version: 1, name: 'Manual fixture', groups: [] },
+    manualAnswers: {},
+    documents: [],
+    activeDocumentId: null,
+  });
+  setValidationSourceChoice('manual');
+  render(<ValidationPanel />);
+  collect();
+  cleanup();
+  render(<SavedReportSource block={emptyManualReportBlock('embedded')} onChange={() => {}} />);
+  collect();
+  cleanup();
+  const documentHost = render(<DocumentPanel />);
+  await act(async () => { await Promise.resolve(); });
+  const addBlock = [...documentHost.querySelectorAll('button')].find((button) => button.title === 'Add a block to the page');
+  assert.ok(addBlock, 'the Documentation add menu must be reachable');
+  act(() => {
+    addBlock.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+    addBlock.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
+  collect();
+  cleanup();
+  useViewerStore.setState({ ...initial, idsValidationReport: null, validationSource: null });
 
   resetValidationPanelFixture();
   useViewerStore.setState({ idsValidationReport: reportFixture(), validationSource: 'rules' });

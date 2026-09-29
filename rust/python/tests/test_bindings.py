@@ -409,8 +409,45 @@ def test_issue_5759_rebar_schedule_rejects_nonfinite_radius_before_json():
         "#6=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);", huge_unit,
     )
     assert source_with_huge_unit != source
-    with pytest.raises(ValueError, match=r"rebar #125 sweep 0 has a non-finite radius"):
+    with pytest.raises(ValueError, match=r"rebar #125 sweep 0 radius_m is non-finite"):
         ifclite_geom.rebar_schedule(source_with_huge_unit.encode())
+
+
+def test_issue_5801_rebar_schedule_omits_overflowed_authored_measure():
+    source = read(REBAR).decode()
+    huge_unit = (
+        "#3=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);\n"
+        "#4=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n"
+        "#5=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(1.E308),#4);\n"
+        "#6=IFCCONVERSIONBASEDUNIT(#3,.LENGTHUNIT.,'huge',#5);"
+    )
+    source = source.replace("#6=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);", huge_unit)
+    source = source.replace("#72=IFCSWEPTDISKSOLID(#71,14.5,", "#72=IFCSWEPTDISKSOLID(#71,1.E-308,")
+    source = source.replace("#33,#124,$,$,29.,0.,$", "#33,#124,$,$,29.,0.,900.")
+    assert "#72=IFCSWEPTDISKSOLID(#71,1.E-308," in source
+    assert "#33,#124,$,$,29.,0.,900." in source
+    row = ifclite_geom.rebar_schedule(source.encode())["rows"][125]
+    assert math.isfinite(row["sweeps"][0]["radius_m"])
+    assert "BarLength" not in row["authored"]
+    assert "BarLength on occurrence: non-finite measure or unit conversion" in row["diagnostics"]
+
+
+def test_issue_5801_rebar_schedule_handles_overflowed_total_length():
+    source = read(REBAR).decode()
+    large_unit = (
+        "#3=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);\n"
+        "#4=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n"
+        "#5=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(1.7E305),#4);\n"
+        "#6=IFCCONVERSIONBASEDUNIT(#3,.LENGTHUNIT.,'large',#5);"
+    )
+    source = source.replace("#6=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);", large_unit)
+    assert "1.7E305" in source
+    sweep = ifclite_geom.rebar_schedule(source.encode())["rows"][125]["sweeps"][0]
+    assert math.isfinite(sweep["radius_m"])
+    # Every segment fits f64, but their sum does not. The analytic metrics
+    # constructor reports unavailability before JSON serialization.
+    assert sweep["directrix_metrics"] is None
+    assert sweep["checks"]["skipped_reason"] == "directrix total length is not finite"
 
 
 def test_issue_5759_rebar_schedule_retains_unsupported_source_reason():

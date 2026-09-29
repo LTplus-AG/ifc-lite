@@ -10,6 +10,9 @@
  * storey through the one storey-isolation channel (`applyLevelDisplayMode`)
  * and follows the session when the storey changes.
  *
+ * Beside the name, the context control picks what 3D does with the storeys
+ * above: hidden by default, ghosted, or shown (#6232 D9).
+ *
  * With more than one editable model the chip names the model too, and
  * picking another model's storey leaves and re-enters the workspace on it,
  * keeping the running command. A model without a storey reads "No storey"
@@ -25,6 +28,7 @@ import { useTranslation } from '@/i18n';
 import { editableModels, modelStoreys, type WorkspaceStorey } from '@/lib/commands/modeling/workspace-storeys';
 import { HudChip, HudItem, HudNotice, HudPopover, HudPopoverContent, HudPopoverTrigger } from '../../viewport-ui/hud';
 import { StoreyPicker, formatStoreyElevation, type StoreyPickerGroup } from './StoreyPicker';
+import { StoreyContextControl } from './StoreyContextControl';
 
 function isIsolated(s: ViewerState, modelId: string, storeyId: number): boolean {
   return s.levelDisplayMode === 'solo' && s.selectedStoreys.has(toGlobalIdFromModels(s.models, modelId, storeyId));
@@ -101,18 +105,21 @@ export function WorkspaceStoreyChip() {
                 : <Eye aria-hidden className="h-3.5 w-3.5" />,
             } : undefined}
           >
-            <HudPopoverTrigger asChild>
-              <button
-                type="button"
-                data-workspace-storey-chip
-                title={t('modelWorkspace.storey.pick')}
-                className="inline-flex max-w-full items-center gap-1.5 rounded-sm hover:text-foreground"
-              >
-                <span className="min-w-0 truncate" title={name}>{name}</span>
-                {elevation && <span className="shrink-0 tabular-nums text-muted-foreground">{elevation}</span>}
-                <ChevronDown aria-hidden className="h-3 w-3 shrink-0 opacity-70" />
-              </button>
-            </HudPopoverTrigger>
+            <span className="flex min-w-0 items-center gap-1">
+              <HudPopoverTrigger asChild>
+                <button
+                  type="button"
+                  data-workspace-storey-chip
+                  title={t('modelWorkspace.storey.pick')}
+                  className="inline-flex min-w-0 items-center gap-1.5 rounded-sm hover:text-foreground"
+                >
+                  <span className="min-w-0 truncate" title={name}>{name}</span>
+                  {elevation && <span className="shrink-0 tabular-nums text-muted-foreground">{elevation}</span>}
+                  <ChevronDown aria-hidden className="h-3 w-3 shrink-0 opacity-70" />
+                </button>
+              </HudPopoverTrigger>
+              {current && <StoreyContextControl />}
+            </span>
           </HudChip>
           <HudPopoverContent align="start" className="p-1">
             <StoreyPicker groups={groups} current={{ modelId: session.modelId, storeyId: session.storeyId }} onPick={pickWorkspaceStorey} />

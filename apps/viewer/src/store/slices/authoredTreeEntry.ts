@@ -15,6 +15,7 @@ import type { NewEntity } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ViewerState } from '../index.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
+import { findSpatialNode } from '@/utils/spatialNode.js';
 
 type ModelState = Pick<ViewerState, 'models' | 'ifcDataStore' | 'activeModelId'>;
 
@@ -47,6 +48,11 @@ export function unregisterAuthoredElement(hierarchy: SpatialHierarchy, entityId:
   const contained = hierarchy.byStorey.get(storeyId);
   const index = contained?.indexOf(entityId) ?? -1;
   if (contained && index >= 0) contained.splice(index, 1);
+  // A copied hierarchy keeps the storey node's `elements` apart from `byStorey`
+  // (see `registerAuthoredElement`); take the row out of both.
+  const listed = findSpatialNode(hierarchy.project, storeyId)?.elements;
+  const at = listed && listed !== contained ? listed.indexOf(entityId) : -1;
+  if (listed && at >= 0) listed.splice(at, 1);
   if (dropChild(hierarchy.project, entityId)) hierarchy.bySpace.delete(entityId);
 }
 

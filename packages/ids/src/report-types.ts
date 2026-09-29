@@ -28,6 +28,13 @@ export interface SpecificationSummary {
   name: string;
   description?: string;
   ifcVersions?: string[];
+  /**
+   * How much a failure of this specification matters (#6372): a `'warning'`
+   * failure is reported apart from failures and never fails a delivery
+   * verdict. Absent means `'error'`. IDS has no severity and never sets it;
+   * the rule engine copies each rule's `severity` here.
+   */
+  severity?: 'error' | 'warning';
 }
 
 /** Reduced requirement shape shared by every validation source. */

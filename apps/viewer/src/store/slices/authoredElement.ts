@@ -14,6 +14,9 @@ import type {
   DoorInStoreParams,
   MemberInStoreParams,
   PlateInStoreParams,
+  ProfiledBeamInStoreParams,
+  ProfiledColumnInStoreParams,
+  ProfiledMemberInStoreParams,
   RoofInStoreParams,
   SlabInStoreParams,
   SpaceInStoreParams,
@@ -23,13 +26,13 @@ import type {
 
 /** An element one of the `@ifc-lite/create` in-store builders makes, with the params it took. */
 export type AuthoredElement =
-  | { kind: 'column'; params: ColumnInStoreParams }
+  | { kind: 'column'; params: ColumnInStoreParams | ProfiledColumnInStoreParams }
   | { kind: 'wall'; params: WallInStoreParams }
   | { kind: 'slab'; params: SlabInStoreParams }
-  | { kind: 'beam'; params: BeamInStoreParams }
+  | { kind: 'beam'; params: BeamInStoreParams | ProfiledBeamInStoreParams }
   | { kind: 'door'; params: DoorInStoreParams }
   | { kind: 'window'; params: WindowInStoreParams }
   | { kind: 'space'; params: SpaceInStoreParams }
   | { kind: 'roof'; params: RoofInStoreParams }
   | { kind: 'plate'; params: PlateInStoreParams }
-  | { kind: 'member'; params: MemberInStoreParams };
+  | { kind: 'member'; params: MemberInStoreParams | ProfiledMemberInStoreParams };

@@ -24,6 +24,7 @@ import { createSheetSlice, type SheetSlice } from './slices/sheetSlice.js';
 import { createBcfSlice, type BCFSlice } from './slices/bcfSlice.js';
 import { createIdsSlice, type IDSSlice } from './slices/idsSlice.js';
 import { createValidationDraftSlice, type ValidationDraftSlice } from './slices/validationDraftSlice.js';
+import { createManualValidationSlice, type ManualValidationSlice } from './slices/manualValidationSlice.js';
 import { createExtensionsSlice, type ExtensionsSlice } from './slices/extensionsSlice.js';
 import { createSourcesSlice, type SourcesSlice } from './slices/sourcesSlice.js';
 import { createSceneStateSlice, type SceneStateSlice } from './slices/sceneStateSlice.js';
@@ -56,6 +57,7 @@ import { createAddElementSlice, type AddElementSlice } from './slices/addElement
 import { createAuthoringSessionSlice, type AuthoringSessionSlice } from './slices/authoringSessionSlice.js';
 import { createAuthoringDefaultsSlice, type AuthoringDefaultsSlice } from './slices/authoringDefaultsSlice.js';
 import { createLevelDisplaySlice, type LevelDisplaySlice } from './slices/levelDisplaySlice.js';
+import { createStoreyContextSlice, type StoreyContextSlice } from './slices/storeyContextSlice.js';
 import { createModelPlacementSlice, type ModelPlacementSlice } from './slices/modelPlacementSlice.js';
 import { createPointCloudSlice, type PointCloudSlice } from './slices/pointCloudSlice.js';
 import { createUnitDisplaySlice, type UnitDisplaySlice } from './slices/unitDisplaySlice.js';
@@ -156,6 +158,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   BCFSlice &
   IDSSlice &
   ValidationDraftSlice &
+  ManualValidationSlice &
   ListSlice &
   ChartSlice &
   FlowSlice &
@@ -181,7 +184,7 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   CollabSlice &
   AddElementSlice &
   AuthoringSessionSlice & AuthoringDefaultsSlice &
-  LevelDisplaySlice &
+  LevelDisplaySlice & StoreyContextSlice &
   PointCloudSlice & ModelPlacementSlice &
   UnitDisplaySlice & SpaceMouseSlice & ZonesSlice & ModelTagsSlice &
   ExtensionsSlice & SourcesSlice & SceneStateSlice & {
@@ -254,6 +257,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createBcfSlice(...args),
   ...createIdsSlice(...args),
   ...createValidationDraftSlice(...args),
+  ...createManualValidationSlice(...args),
   ...createListSlice(...args),
   ...createChartSlice(...args),
   ...createFlowSlice(...args),
@@ -280,6 +284,7 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createAddElementSlice(...args),
   ...createAuthoringSessionSlice(...args), ...createAuthoringDefaultsSlice(...args),
   ...createLevelDisplaySlice(...args),
+  ...createStoreyContextSlice(...args),
   ...createPointCloudSlice(...args),
   ...createModelPlacementSlice(...args),
   ...createUnitDisplaySlice(...args),

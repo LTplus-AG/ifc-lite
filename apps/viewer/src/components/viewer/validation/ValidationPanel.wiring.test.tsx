@@ -144,7 +144,7 @@ describe('ValidationPanel wiring (#5138)', () => {
     setValidationSourceChoice('ids');
     const ui = render(<ValidationPanel />);
     const tabs = [...ui.querySelectorAll<HTMLElement>('[role="tab"]')];
-    assert.equal(tabs.length, 2);
+    assert.equal(tabs.length, 3); // IDS, Information, Manual validation (#6401)
     tabs[0].focus();
     press(tabs[0], 'ArrowRight');
     await advance(5);

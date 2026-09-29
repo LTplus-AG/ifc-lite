@@ -15,7 +15,7 @@ import {
   type MutationStoreShape,
 } from '@ifc-lite/mutations';
 import type { SpatialAnchor, SpatialAnchorSchema } from './anchor.js';
-import type { ProfileSection } from './profile.js';
+import { profileSectionExtent, type ProfileSection } from './profile.js';
 import { addBeamToStore } from './beam.js';
 import { addColumnToStore } from './column.js';
 import { addMemberToStore } from './member.js';
@@ -101,6 +101,14 @@ describe('profile factory', () => {
     const { editor, anchor, view } = setup('IFC4');
     expect(() => addBeamToStore(editor, anchor, { Start: [0, 0, 0], End: [1, 0, 0], Profile: section })).toThrow(message);
     expect(view.getNewEntities()).toHaveLength(0);
+  });
+});
+
+describe('profileSectionExtent', () => {
+  it('is each section\'s outer size, [along profile X, along profile Y]', () => {
+    expect(SECTIONS.map(([s]) => profileSectionExtent(s))).toEqual([
+      [0.3, 0.5], [0.2, 0.4], [0.08, 0.1], [0.12, 0.12], [0.075, 0.2], [0.07, 0.2], [0.3, 0.3], [0.1, 0.2], [0.2, 0.2],
+    ]);
   });
 });
 

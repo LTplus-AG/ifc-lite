@@ -53,8 +53,10 @@ export interface UseValidationResults extends ValidationExportsApi {
   setFocusMode: (mode: IDSFocusMode) => void;
   setDisplayOptions: (options: Partial<IDSDisplayOptions>) => void;
 
-  applyColors: () => void;
-  clearColors: () => void;
+  /** Whether the report's red/green is what is on screen (#6373). */
+  colorsShown: boolean;
+  /** Off restores the model's original colours, keeping the report; on shows the report's again (#6373). */
+  toggleColors: () => void;
 
   isolateFailed: () => void;
   isolatePassed: () => void;
@@ -103,6 +105,7 @@ export function useValidationResults(options: UseValidationResultsOptions = {}):
   const isolation = useValidationIsolation({
     isolationScope, activeSpecificationId,
     buildColors: colorFocus.buildColors,
+    paintColors: colorFocus.paintColors,
     setSpecColors: colorFocus.setSpecColors,
     restoreReportColors: colorFocus.restoreReportColors,
   });
@@ -151,8 +154,8 @@ export function useValidationResults(options: UseValidationResultsOptions = {}):
     setFocusMode: colorFocus.setFocusMode,
     setDisplayOptions: setIdsDisplayOptions,
 
-    applyColors: colorFocus.applyColors,
-    clearColors: colorFocus.clearColors,
+    colorsShown: colorFocus.colorsShown,
+    toggleColors: colorFocus.toggleColors,
 
     isolateFailed: isolation.isolateFailed,
     isolatePassed: isolation.isolatePassed,

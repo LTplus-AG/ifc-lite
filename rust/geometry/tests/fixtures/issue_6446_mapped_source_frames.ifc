@@ -1,0 +1,104 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [DesignTransferView]'),'2;1');
+FILE_NAME('issue_6446_mapped_source_frames.ifc','2026-09-29T00:00:00',(''),(''),'ifc-lite','ifc-lite','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+/* #6446: IfcRepresentationMaps whose OWN items mix a near-origin solid with a
+   nested IfcMappedItem translated to X = 5,000,000.123456 m. Metres. */
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCAXIS2PLACEMENT3D(#1,$,$);
+#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#4=IFCUNITASSIGNMENT((#3));
+#5=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#2,$);
+#6=IFCDIRECTION((0.,0.,1.));
+#7=IFCRECTANGLEPROFILEDEF(.AREA.,'Box',$,1.,1.);
+/* Inner map #11: a 1 m box (x, y in [-0.5, 0.5], z in [0, 1]) at its origin. */
+#8=IFCEXTRUDEDAREASOLID(#7,#2,#6,1.);
+#9=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#8));
+#11=IFCREPRESENTATIONMAP(#2,#9);
+/* The far MappingTarget and the nested far box. */
+#12=IFCCARTESIANPOINT((5000000.123456,0.,0.));
+#13=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#12,1.,$);
+#14=IFCMAPPEDITEM(#11,#13);
+/* The same 1 m box used directly inside the outer maps. */
+#15=IFCEXTRUDEDAREASOLID(#7,#2,#6,1.);
+/* Outer map #21: near box first, then the nested far box. */
+#20=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#15,#14));
+#21=IFCREPRESENTATIONMAP(#2,#20);
+/* Outer map #23: nested far box first, then the near box. */
+#22=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#14,#15));
+#23=IFCREPRESENTATIONMAP(#2,#22);
+/* Hole maps: a hexagonal through-hole (corners at 0.2 m radius, z from -1 to 2) at the near box and,
+   through nested map #32, at the far box. #35 near first, #37 far first. */
+#24=IFCCARTESIANPOINT((0.2,0.));
+#25=IFCCARTESIANPOINT((0.1,0.173205080756888));
+#26=IFCCARTESIANPOINT((-0.1,0.173205080756888));
+#27=IFCCARTESIANPOINT((-0.2,0.));
+#28=IFCCARTESIANPOINT((-0.1,-0.173205080756888));
+#29=IFCCARTESIANPOINT((0.1,-0.173205080756888));
+#42=IFCPOLYLINE((#24,#25,#26,#27,#28,#29,#24));
+#30=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,'Hole',#42);
+#31=IFCCARTESIANPOINT((0.,0.,-1.));
+#33=IFCAXIS2PLACEMENT3D(#31,$,$);
+#34=IFCEXTRUDEDAREASOLID(#30,#33,#6,3.);
+#36=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#34));
+#32=IFCREPRESENTATIONMAP(#2,#36);
+#38=IFCMAPPEDITEM(#32,#13);
+#39=IFCEXTRUDEDAREASOLID(#30,#33,#6,3.);
+#40=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#39,#38));
+#35=IFCREPRESENTATIONMAP(#2,#40);
+#41=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#38,#39));
+#37=IFCREPRESENTATIONMAP(#2,#41);
+/* Spatial structure. */
+#50=IFCPROJECT('3Pf0nMhN10ERnoRrSeUUx0',$,'Issue 6446',$,$,$,$,(#5),#4);
+#51=IFCLOCALPLACEMENT($,#2);
+#52=IFCSITE('3Pf0nMhN10ERnoRrSeUUx1',$,'Site',$,$,#51,$,$,.ELEMENT.,$,$,$,$,$);
+#53=IFCLOCALPLACEMENT(#51,#2);
+#54=IFCBUILDING('3Pf0nMhN10ERnoRrSeUUx2',$,'Building',$,$,#53,$,$,.ELEMENT.,$,$,$);
+#55=IFCLOCALPLACEMENT(#53,#2);
+#56=IFCBUILDINGSTOREY('3Pf0nMhN10ERnoRrSeUUx3',$,'Storey',$,$,#55,$,$,.ELEMENT.,0.);
+#57=IFCRELAGGREGATES('3Pf0nMhN10ERnoRrSeUUx4',$,$,$,#50,(#52));
+#58=IFCRELAGGREGATES('3Pf0nMhN10ERnoRrSeUUx5',$,$,$,#52,(#54));
+#59=IFCRELAGGREGATES('3Pf0nMhN10ERnoRrSeUUx6',$,$,$,#54,(#56));
+#60=IFCLOCALPLACEMENT(#55,#2);
+#61=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,1.,$);
+/* Occurrences #70 (map #21) and #75 (map #23), no openings. */
+#66=IFCMAPPEDITEM(#21,#61);
+#67=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#66));
+#68=IFCPRODUCTDEFINITIONSHAPE($,$,(#67));
+#70=IFCBUILDINGELEMENTPROXY('3Pf0nMhN10ERnoRrSeUUx7',$,'Near then far',$,$,#60,#68,$,$);
+#71=IFCMAPPEDITEM(#23,#61);
+#72=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#71));
+#73=IFCPRODUCTDEFINITIONSHAPE($,$,(#72));
+#75=IFCBUILDINGELEMENTPROXY('3Pf0nMhN10ERnoRrSeUUx8',$,'Far then near',$,$,#60,#73,$,$);
+/* Voided hosts: #80 (map #21) cut by opening #85 (hole map #35), and
+   #90 (map #23) cut by opening #95 (hole map #37). */
+#80=IFCBUILDINGELEMENTPROXY('3Pf0nMhN10ERnoRrSeUUx9',$,'Host near then far',$,$,#60,#68,$,$);
+#81=IFCMAPPEDITEM(#35,#61);
+#82=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#81));
+#83=IFCPRODUCTDEFINITIONSHAPE($,$,(#82));
+#84=IFCLOCALPLACEMENT(#60,#2);
+#85=IFCOPENINGELEMENT('3Pf0nMhN10ERnoRrSeUUxA',$,'Hole near then far',$,$,#84,#83,$,.OPENING.);
+#86=IFCRELVOIDSELEMENT('3Pf0nMhN10ERnoRrSeUUxB',$,$,$,#80,#85);
+#90=IFCBUILDINGELEMENTPROXY('3Pf0nMhN10ERnoRrSeUUxC',$,'Host far then near',$,$,#60,#73,$,$);
+#91=IFCMAPPEDITEM(#37,#61);
+#92=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#91));
+#93=IFCPRODUCTDEFINITIONSHAPE($,$,(#92));
+#95=IFCOPENINGELEMENT('3Pf0nMhN10ERnoRrSeUUxD',$,'Hole far then near',$,$,#84,#93,$,.OPENING.);
+#96=IFCRELVOIDSELEMENT('3Pf0nMhN10ERnoRrSeUUxE',$,$,$,#90,#95);
+#99=IFCRELCONTAINEDINSPATIALSTRUCTURE('3Pf0nMhN10ERnoRrSeUUxF',$,$,$,(#70,#75,#80,#90),#56);
+/* Orphan type geometry: maps #101 / #103 repeat #21 / #23 on a type that no
+   occurrence instantiates, so they reach the type-geometry (textured) path. */
+#100=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#15,#14));
+#101=IFCREPRESENTATIONMAP(#2,#100);
+#102=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#14,#15));
+#103=IFCREPRESENTATIONMAP(#2,#102);
+/* Map #108 nests a whole mixed map: its one item is mapped item #66 (map #21). */
+#107=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#66));
+#108=IFCREPRESENTATIONMAP(#2,#107);
+#105=IFCBUILDINGELEMENTPROXYTYPE('3Pf0nMhN10ERnoRrSeUUxG',$,'Orphan mixed-frame type',$,$,$,(#101,#103,#108),$,$,.NOTDEFINED.);
+#106=IFCRELDECLARES('3Pf0nMhN10ERnoRrSeUUxH',$,$,$,#50,(#105));
+ENDSEC;
+END-ISO-10303-21;

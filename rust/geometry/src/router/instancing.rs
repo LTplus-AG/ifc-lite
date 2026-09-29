@@ -50,6 +50,10 @@ impl GeometryRouter {
     /// change, the walk below bails without inserting rather than registering a mesh
     /// short of the source's real geometry — a truncated source under a key that does
     /// not encode the truncation is served to every later occurrence.
+    ///
+    /// The #6446 single-frame guard needs no copy here: one non-mapped item is one
+    /// mesh with one origin, so it can never be a multi-frame source. A mixed
+    /// near+far source has at least two items, so it never reaches this walk.
     pub(super) fn ensure_shared_mapped_source(
         &self,
         mapped_repr: &DecodedEntity,

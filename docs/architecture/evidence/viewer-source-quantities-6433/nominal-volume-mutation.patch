@@ -1,0 +1,10 @@
+diff --git a/apps/viewer/src/components/viewer/tools/SourceQuantityInspection.tsx b/apps/viewer/src/components/viewer/tools/SourceQuantityInspection.tsx
+--- a/apps/viewer/src/components/viewer/tools/SourceQuantityInspection.tsx
++++ b/apps/viewer/src/components/viewer/tools/SourceQuantityInspection.tsx
+@@ -84,5 +84,5 @@
+         {hasNominal ? <>
+           <div>{t('measure.source.profileArea')}: <SourceValue value={nominal.profile_area * scale ** 2} type={QuantityType.Area} /></div>
+           <div>{t('measure.source.projectedHeight')}: <SourceValue value={nominal.projected_height * scale} type={QuantityType.Length} /></div>
+-          <div>{t('measure.source.nominalVolume')}: <SourceValue value={nominal.nominal_volume * scale ** 2} type={QuantityType.Volume} /></div>
++          <div>{t('measure.source.nominalVolume')}: <SourceValue value={nominal.nominal_volume * scale ** 3} type={QuantityType.Volume} /></div>
+         </> : <div>{t('measure.source.nominalVolume')}: {t('measure.source.unavailable')}</div>}

@@ -11,16 +11,29 @@ use rustc_hash::FxHashMap;
 
 #[derive(Clone)]
 pub(super) enum ProcessingIndex {
-    // A bare hash map has nowhere to keep source-scoped lookups, so it travels
-    // with its own; the compact indexes carry theirs (#6232 F2).
-    Hash(Arc<EntityIndex>, Arc<GridAxisIndex>),
+    Hash(HashIndex),
     Columnar(Arc<ColumnarEntityIndex>),
     Dense(Arc<DenseEntityIndex>),
 }
 
+/// A bare hash map has nowhere to keep source-scoped lookups, so it travels
+/// with its own; the compact indexes carry theirs (#6232 F2).
+#[derive(Clone)]
+pub(super) struct HashIndex {
+    spans: Arc<EntityIndex>,
+    grid_axes: Arc<GridAxisIndex>,
+}
+
+impl std::ops::Deref for HashIndex {
+    type Target = EntityIndex;
+    fn deref(&self) -> &EntityIndex {
+        &self.spans
+    }
+}
+
 impl ProcessingIndex {
-    pub(super) fn hash(index: Arc<EntityIndex>) -> Self {
-        Self::Hash(index, Arc::default())
+    pub(super) fn hash(spans: Arc<EntityIndex>) -> Self {
+        Self::Hash(HashIndex { spans, grid_axes: Arc::default() })
     }
 
     pub(super) fn decoder<'a>(&self, content: &'a [u8]) -> EntityDecoder<'a> {
@@ -31,9 +44,9 @@ impl ProcessingIndex {
 
     pub(super) fn install(&self, decoder: &mut EntityDecoder<'_>) {
         match self {
-            Self::Hash(index, grid_axes) => {
-                decoder.set_entity_index(index.clone());
-                decoder.set_grid_axis_index(grid_axes.clone());
+            Self::Hash(index) => {
+                decoder.set_entity_index(index.spans.clone());
+                decoder.set_grid_axis_index(index.grid_axes.clone());
             }
             Self::Columnar(index) => decoder.set_columnar_index(index.clone()),
             Self::Dense(index) => decoder.set_dense_index(index.clone()),

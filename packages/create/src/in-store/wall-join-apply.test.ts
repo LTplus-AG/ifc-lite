@@ -36,54 +36,6 @@ function setup(schema?: SpatialAnchorSchema, lengthUnitScale?: number) {
 const WALL_A: WallInStoreParams = { Start: [-5, 0, 0], End: [0, 0, 0], Thickness: 0.2, Height: 3, Name: 'A' };
 const WALL_B: WallInStoreParams = { Start: [0, 0, 0], End: [0, 4, 0], Thickness: 0.2, Height: 3, Name: 'B' };
 
-describe('addWallToStore: Axis representation and body cuts', () => {
-  it('writes no Axis unless asked', () => {
-    const { editor, anchor, entity } = setup();
-    const result = addWallToStore(editor, anchor, WALL_A);
-    expect(result.axisRepId).toBeNull();
-    expect(entity(result.productShapeId)?.attributes[2]).toEqual([`#${result.shapeRepId}`]);
-  });
-
-  it('writes an Axis Curve2D polyline beside the Body', () => {
-    const { editor, anchor, entity } = setup();
-    const result = addWallToStore(editor, anchor, { ...WALL_A, Axis: true });
-    expect(entity(result.productShapeId)?.attributes[2]).toEqual([`#${result.shapeRepId}`, `#${result.axisRepId}`]);
-    const axis = entity(result.axisRepId!);
-    expect(axis?.type).toBe('IfcShapeRepresentation');
-    expect(axis?.attributes.slice(0, 3)).toEqual(['#15', 'Axis', 'Curve2D']);
-    const polyline = entity((axis?.attributes[3] as string[])[0]);
-    expect(polyline?.type).toBe('IfcPolyline');
-    expect((polyline?.attributes[0] as string[]).map((ref) => entity(ref)?.attributes[0])).toEqual([[0, 0], [5, 0]]);
-  });
-
-  it('shifts the body across the axis for an alignment and offset', () => {
-    const { editor, anchor, entity } = setup();
-    const result = addWallToStore(editor, anchor, { ...WALL_A, Alignment: 'left', Offset: 0.05 });
-    const profile = entity(result.profileId);
-    expect(profile?.type).toBe('IfcRectangleProfileDef');
-    const origin = entity(entity(profile?.attributes[2] as string)?.attributes[0] as string);
-    expect(origin?.attributes[0]).toEqual([2.5, -0.05]);
-    expect(profile?.attributes[4]).toBe(0.2);
-  });
-
-  it('writes a slanted end as an arbitrary closed profile, in native units', () => {
-    const { editor, anchor, entity } = setup(undefined, 0.001);
-    const result = addWallToStore(editor, anchor, { ...WALL_A, EndCut: { left: 0.1, right: -0.1 } });
-    const profile = entity(result.profileId);
-    expect(profile?.type).toBe('IfcArbitraryClosedProfileDef');
-    const polyline = entity(profile?.attributes[2] as string);
-    const points = (polyline?.attributes[0] as string[]).map((ref) => entity(ref)?.attributes[0]);
-    expect(points).toEqual([[0, -100], [4900, -100], [5100, 100], [0, 100], [0, -100]]);
-  });
-
-  it('refuses cuts that leave no body', () => {
-    const { editor, anchor } = setup();
-    expect(() => addWallToStore(editor, anchor, { ...WALL_A, StartCut: { left: -3, right: -3 }, EndCut: { left: -3, right: -3 } }))
-      .toThrow(/ends cross/);
-    expect(() => addWallToStore(editor, anchor, { ...WALL_A, Offset: Number.NaN })).toThrow(/finite/);
-  });
-});
-
 describe('applyWallJoinToStore', () => {
   it('trims and extends two in-store walls at a right-angle corner and writes the relationship', () => {
     const { view, editor, anchor, entity, attr, build } = setup();

@@ -108,7 +108,7 @@ describe('DocumentPanel localization (#4918)', () => {
     registerLocale('document-panel-x-export', TEST_LOCALE);
     const seams = async (): Promise<DocumentPdfSeams> => ({
       createDoc: async () => ({
-        addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {},
+        addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {}, fillRect: () => {},
         text: () => {}, addImage: () => {}, svg: async () => {}, table: () => {},
         pageCount: () => 1, output: () => new Blob(['pdf']),
       }),

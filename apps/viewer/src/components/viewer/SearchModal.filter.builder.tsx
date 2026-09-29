@@ -22,7 +22,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { promptDialog } from '@/components/ui/confirm-dialog';
+import { useDialogs } from '@/components/ui/confirm-dialog';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -47,6 +47,7 @@ import { useTranslation } from '@/i18n';
 
 export function SearchModalFilterBuilder() {
   const { t } = useTranslation();
+  const { promptDialog } = useDialogs();
   const {
     filter,
     activeGroupIndex,
@@ -168,7 +169,7 @@ export function SearchModalFilterBuilder() {
     if (!result.persisted) {
       toast.error(t('searchModal.filterBuilder.saveFilterFailed'));
     }
-  }, [filter.groups, totalRules, t]);
+  }, [filter.groups, totalRules, t, promptDialog]);
 
   const handleLoadPreset = useCallback((preset: SavedFilterPreset) => {
     setSearchFilter({

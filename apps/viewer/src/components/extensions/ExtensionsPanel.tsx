@@ -21,7 +21,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Beaker, FilePlus, FileText, GitFork, Lightbulb, Puzzle, Sparkles, Trash2, Upload, Wrench, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
-import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { useDialogs } from '@/components/ui/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Switch } from '@/components/ui/switch';
@@ -50,6 +50,7 @@ interface ExtensionsPanelProps {
 
 export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   const { t, locale } = useTranslation();
+  const { confirmDialog } = useDialogs();
   const host = useExtensionHost();
   const installed = useInstalledExtensions();
   const handleFork = useForkExtension();
@@ -60,7 +61,6 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   const queueChatPrompt = useViewerStore((s) => s.queueChatPrompt);
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
   const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
-  /** Active-flavor name surfaced in the panel header to give the concept impressions. */
   const setFlavorDialogRequested = useViewerStore((s) => s.setFlavorDialogRequested);
   const activeFlavor = useActiveFlavor(host);
   const activeFlavorName = activeFlavor ? localizedFlavorName(activeFlavor, t) : undefined;

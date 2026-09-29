@@ -5,6 +5,7 @@ import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import type { ViewerState } from '../../apps/viewer/src/store';
 import { snapshotRenderedPointCloud } from './federation-control-triplet.rendering';
+import { DEVICE_LOST_SIGNAL, GPU_STRICT, skipForGpuDeviceLoss, watchGpuDeviceLoss } from './gpu-device-loss';
 
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
@@ -16,9 +17,10 @@ const OFFSET = [10_000, 20_000, 30_000];
 /** The viewer's own point-cloud error when the GPU device died mid-load
  * (apps/viewer/src/hooks/useIfcLoader.ts). */
 const DEVICE_LOST_ERROR = /graphics device was lost during the load/;
-// The final alternative is the renderer's documented device-loss race: the
-// device can disappear after whenReady() resolves but before stream creation.
-const DEVICE_LOST_CONSOLE = /\[WebGPU\] Device lost:|\[Renderer\] GPU device lost|CONTEXT_LOST_WEBGL|Renderer not initialized\. Call init\(\) first\./;
+// The shared viewer signal, plus two load-specific ones. The final alternative
+// is the renderer's documented device-loss race: the device can disappear
+// after whenReady() resolves but before stream creation.
+const DEVICE_LOST_CONSOLE = new RegExp(`${DEVICE_LOST_SIGNAL.source}|CONTEXT_LOST_WEBGL|Renderer not initialized\\. Call init\\(\\) first\\.`);
 
 async function load(page: Page, file: string | { name: string; mimeType: string; buffer: Buffer }, count: number) {
   const consoleStart = consoleLines.length;
@@ -92,10 +94,7 @@ async function load(page: Page, file: string | { name: string; mimeType: string;
   // own, so the documented skip never fired and the flake read as a failure.
   const softwareDeviceLost = outcome === 'device-lost'
     || [...consoleLines, ...pageErrorLines].some((line) => DEVICE_LOST_CONSOLE.test(line));
-  if (softwareDeviceLost && process.env.E2E_GPU_STRICT === '0') {
-    console.warn(`[e2e] E2E_GPU_STRICT=0 — skipping: software-GPU device lost during load(${name}, ${count})`);
-    test.skip(true, `hosted software-GPU device lost during load(${name}, ${count}): ${detail}`);
-  }
+  if (softwareDeviceLost) skipForGpuDeviceLoss(`load(${name}, ${count})`, detail);
   throw new Error(`load(${name}, ${count}) ${outcome === 'device-lost' ? 'aborted: GPU device lost' : 'did not settle'}: ${detail}`);
 }
 
@@ -164,6 +163,9 @@ for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan,
   pageErrorLines = [];
   consoleLines = [];
   captureDiagnostics(page, errors);
+  // Watches only the page under test: the scan-first seed page below is closed
+  // (and destroys its own device) before this page loads anything.
+  const gpu = await watchGpuDeviceLoss(page);
   // #6257: a successful recovery toast is independent evidence that the renderer
   // discarded transient point-cloud handles. Record it before loading either
   // model: the toast expires after three seconds and may be gone by assertion.
@@ -200,11 +202,13 @@ for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan,
     const scan = { name: 'known-offset.xyz', mimeType: 'text/plain', buffer: await diagnosticScan(page) };
     await load(page, scan, 2);
   }
-  await openScanMove(page);
-  for (const [i, axis] of ['X', 'Y', 'Z'].entries()) await page.getByLabel(`Delta ${axis}`, { exact: true }).fill(String(-OFFSET[i]));
-  await page.getByRole('button', { name: 'Preview values', exact: true }).click();
-  await page.getByRole('button', { name: 'Apply', exact: true }).click();
-  await page.getByRole('button', { name: 'Frame both', exact: true }).click();
+  await gpu.requireLiveGpu('the reposition dialog', async () => {
+    await openScanMove(page);
+    for (const [i, axis] of ['X', 'Y', 'Z'].entries()) await page.getByLabel(`Delta ${axis}`, { exact: true }).fill(String(-OFFSET[i]));
+    await page.getByRole('button', { name: 'Preview values', exact: true }).click();
+    await page.getByRole('button', { name: 'Apply', exact: true }).click();
+    await page.getByRole('button', { name: 'Frame both', exact: true }).click();
+  });
   const placement = await page.evaluate(() => {
     const s = globalThis.__ifc_lite_viewer_store__.getState();
     // The streamed GPU handle is intentionally transient: hosted software-GPU
@@ -216,11 +220,15 @@ for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan,
       fixed: [...s.models].filter(([, model]) => !isScan(model)).map(([id]) => s.modelPlacement.placements.get(id)?.translation ?? [0, 0, 0]), count: s.pointCloudAssetCount };
   });
   expect(placement.translations).toEqual([OFFSET.map((v) => -v)]);
-  if (placement.count === 0 && process.env.E2E_GPU_STRICT === '0') {
+  if (placement.count === 0 && !GPU_STRICT) {
     // reportDeviceRecovery deliberately clears streamed point-cloud handles.
     // A missing asset is permitted only when this page actually reported that
-    // successful recovery and named point-clouds among the omitted layers.
-    expect(await page.evaluate(() => globalThis.__ifc_lite_point_cloud_recovery_omitted__)).toBe(true);
+    // successful recovery and named point-clouds among the omitted layers, or
+    // (skip) when the device was lost and never came back.
+    const omitted = await page.evaluate(() => globalThis.__ifc_lite_point_cloud_recovery_omitted__);
+    const lost = omitted ? null : await gpu.lost();
+    if (lost !== null) skipForGpuDeviceLoss('the reposition (no point-cloud asset after the loss)', lost);
+    expect(omitted).toBe(true);
   } else {
     expect(placement.count).toBe(1);
   }
@@ -229,7 +237,7 @@ for (const scanFirst of [false, true]) test(`reposition IFC and diagnostic scan,
   expect(placement.fixed).toEqual([[0, 0, 0]]);
   // Match the existing smoke suite: hosted SwiftShader devices are unstable.
   // CPU assertions above still gate CI; strict local runs exercise actual GPU picks.
-  if (process.env.E2E_GPU_STRICT === '0') { info.annotations.push({ type: 'GPU coverage', description: 'Picking requires a healthy WebGPU device; run locally without E2E_GPU_STRICT=0.' }); return; }
+  if (!GPU_STRICT) { info.annotations.push({ type: 'GPU coverage', description: 'Picking requires a healthy WebGPU device; run locally without E2E_GPU_STRICT=0.' }); return; }
 
   const previewRun = await page.evaluate(async () => {
     const initial = globalThis.__ifc_lite_viewer_store__.getState();

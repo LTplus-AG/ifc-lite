@@ -10,7 +10,7 @@
 import { useRef } from 'react';
 import { Copy, Download, MoreHorizontal, Pencil, Trash2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { promptDialog } from '@/components/ui/confirm-dialog';
+import { useDialogs } from '@/components/ui/confirm-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from '@/components/ui/toast';
 import { DOCUMENT_FILE_SUFFIX, exportDocument, freshBlockId, freshDocumentId, importDocument } from '@/lib/document/persistence';
@@ -27,6 +27,7 @@ export interface DocumentMenuProps {
 export function DocumentMenu({ document, onUpsert, onDelete, onActivate }: DocumentMenuProps) {
   const fileInput = useRef<HTMLInputElement | null>(null);
   const { t } = useTranslation();
+  const { promptDialog } = useDialogs();
 
   const rename = async (): Promise<void> => {
     if (!document) return;

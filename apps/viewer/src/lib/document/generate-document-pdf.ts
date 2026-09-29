@@ -127,7 +127,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
       case 'text': {
         const rendered = renderTemplate(block.text, input.bindings);
         for (const b of rendered.bindings) if (!b.ok) result.unresolved.push(b.path);
-        blocks.push({ kind: 'text', id: block.id, style: block.style, text: rendered.text, font: block.font, fontSize: block.fontSize, width: block.width });
+        blocks.push({ ...block, text: rendered.text });
         break;
       }
       case 'image': {
@@ -262,9 +262,12 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
         case 'text':
           doc.setFont(item.font ?? 'helvetica', item.bold ? 'bold' : 'normal');
           doc.setFontSize(item.size);
-          doc.setTextColor(item.gray);
+          doc.setTextColor(item.color ?? item.gray);
           doc.text(item.text, item.x, item.y);
           doc.setTextColor(0);
+          break;
+        case 'text-background':
+          doc.fillRect(item.x, item.y, item.w, item.h, item.color);
           break;
         case 'image': {
           const block = byId.get(item.blockId);

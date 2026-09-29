@@ -1,0 +1,5 @@
+---
+"@ifc-lite/create": minor
+---
+
+Wall joins. `computeWallJoin` works out L-corner, T and in-line butt joins between two straight walls at any angle, with any thickness, alignment or offset. One wall runs through, and the other is trimmed or extended so the two bodies meet with no overlap and no gap. `applyWallJoinToStore` writes a join onto two in-store walls: it rewrites each body profile and Axis, leaves the placements in place, and adds an `IfcRelConnectsPathElements` (ATSTART/ATEND/ATPATH). The relationship is also available on its own as `addRelConnectsPathElementsToStore`. `addWallToStore` takes `Alignment`, `Offset`, `StartCut` and `EndCut`. With `Axis: true` it also writes an `Axis` representation (`Curve2D` IfcPolyline) beside the Body. Joined walls always get one. A square end stays an IfcRectangleProfileDef, and a slanted end becomes a four-point IfcArbitraryClosedProfileDef. The new builders write IFC2X3, IFC4 and IFC4X3 and refuse IFC5/IFCX.

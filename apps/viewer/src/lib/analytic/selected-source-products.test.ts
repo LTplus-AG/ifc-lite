@@ -78,6 +78,28 @@ it('uses the current model-aware primary instead of stale renderer IDs with an e
   assert.deepEqual([...selection.grouped], [['current', [2]]]);
 });
 
+it('retains a coherent federated renderer multi-selection but ignores its stale singleton (#6432)', () => {
+  const oldModel = fixtureModel('old', { idOffset: 1_000_000 });
+  const currentModel = fixtureModel('current', { idOffset: 2_000_000 });
+  for (const model of [oldModel, currentModel]) {
+    Object.assign(model.ifcDataStore!, { source: { byteLength: 1 } });
+    model.loadFormat = 'ifc';
+  }
+  const state = { ...useViewerStore.getState(),
+    models: new Map([[oldModel.id, oldModel], [currentModel.id, currentModel]]),
+    selectedEntity: { modelId: 'current', expressId: 2 },
+    selectedEntitiesSet: new Set<string>(),
+    selectedEntityId: 1_000_001,
+    selectedEntityIds: new Set([2_000_002, 2_000_003]),
+    toGlobalId: (modelId: string, expressId: number) =>
+      (modelId === 'old' ? 1_000_000 : 2_000_000) + expressId,
+  };
+  const selection = selectedSourceProducts(state, 'extrusion inspection', (id) => ({
+    modelId: id < 2_000_000 ? 'old' : 'current', expressId: id % 1_000_000,
+  }));
+  assert.deepEqual([...selection.grouped], [['current', [2, 3]]]);
+});
+
 it('retains valid model records when another model source rejects (#6432)', async () => {
   const result = await loadSelectedSourceGroups(new Map([['bad', [1]], ['good', [2]]]),
     async (modelId) => {

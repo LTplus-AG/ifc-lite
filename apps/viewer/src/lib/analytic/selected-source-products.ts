@@ -20,6 +20,7 @@ export function selectedSourceProducts(
   state: ViewerState, label: string, resolve: (globalId: number) => EntityRef,
   priorityRef: EntityRef | null = null,
 ): SelectedSourceProducts {
+  const diagnostics: string[] = [];
   const refs = new Map<string, EntityRef>();
   // Model-aware selection is authoritative when its basket is populated.
   // removeEntityFromSelection can retain an older renderer selectedEntityId.
@@ -28,13 +29,24 @@ export function selectedSourceProducts(
     refs.set(entityRefToString(state.selectedEntity), state.selectedEntity);
   }
   if (state.selectedEntitiesSet.size === 0) {
-    // setSelectedEntity may update the model-aware primary before renderer IDs.
-    // Use legacy renderer IDs only when no model-aware primary exists.
-    if (!state.selectedEntity) {
-      if (state.selectedEntityId !== null) {
-        const ref = resolve(state.selectedEntityId);
-        refs.set(entityRefToString(ref), ref);
+    // The renderer's multi-selection is current only when it still contains
+    // the model-aware primary. setSelectedEntity can leave older renderer IDs.
+    let includeRendererSet = !state.selectedEntity;
+    if (state.selectedEntity && state.selectedEntityIds.size > 0) {
+      try {
+        const primaryGlobalId = state.selectedEntity.modelId === 'legacy' && state.models.size === 0
+          ? state.selectedEntity.expressId
+          : state.toGlobalId(state.selectedEntity.modelId, state.selectedEntity.expressId);
+        includeRendererSet = state.selectedEntityIds.has(primaryGlobalId);
+      } catch (error) {
+        diagnostics.push(`selected ${entityRefToString(state.selectedEntity)}: ${String(error)}`);
       }
+    }
+    if (!state.selectedEntity && state.selectedEntityId !== null) {
+      const ref = resolve(state.selectedEntityId);
+      refs.set(entityRefToString(ref), ref);
+    }
+    if (includeRendererSet) {
       for (const id of state.selectedEntityIds) {
         const ref = resolve(id);
         refs.set(entityRefToString(ref), ref);
@@ -55,7 +67,6 @@ export function selectedSourceProducts(
 
   const grouped = new Map<string, number[]>();
   const overlayRefs: EntityRef[] = [];
-  const diagnostics: string[] = [];
   let included = 0;
   let omitted = 0;
   for (const ref of ordered.values()) {
@@ -75,7 +86,8 @@ export function selectedSourceProducts(
     try { globalId = ref.modelId === 'legacy' && state.models.size === 0
       ? ref.expressId : state.toGlobalId(ref.modelId, ref.expressId); }
     catch (error) {
-      diagnostics.push(`selected ${entityRefToString(ref)}: ${String(error)}`);
+      const message = `selected ${entityRefToString(ref)}: ${String(error)}`;
+      if (!diagnostics.includes(message)) diagnostics.push(message);
       continue;
     }
     if (state.hiddenEntities.has(globalId) || state.lensHiddenIds.has(globalId)

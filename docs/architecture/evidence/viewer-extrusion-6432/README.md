@@ -15,8 +15,8 @@ node scripts/check-test-revert-oracle.mjs --base origin/main \
   --ci --json
 ```
 
-The oracle reports `OBSERVED`: the unmodified baseline passes 12/12 tests;
-reverse-applying this patch leaves eleven passing tests and one assertion failure
+The oracle reports `OBSERVED`: the unmodified baseline passes 15/15 tests;
+reverse-applying this patch leaves fourteen passing tests and one assertion failure
 in `selected-source-products.test.ts`. It then forward-applies the patch and
 verifies `git status --porcelain` is empty. The patch is separate from
 production and is never applied during normal builds or tests.

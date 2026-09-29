@@ -186,6 +186,7 @@ export {
   type OverlayWallReader,
   type WallExtractionResult,
 } from './in-store/extract-walls.js';
+export { extractGridAxesForStorey, type GridAxisSegment, type StoreyGridAxes } from './in-store/extract-grids.js';
 export {
   storeyPlanFrame,
   toStoreyLocal,

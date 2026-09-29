@@ -475,7 +475,7 @@ export interface CameraCallbacks {
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
 import type { ModelLoadReportFields } from '../lib/loadReport'; // #3927 load report
-export type AuthoringOverlayChannel = 'spaceSketch' | 'command'; // authoring ghost-mesh channels (#6232)
+export type AuthoringOverlayChannel = 'spaceSketch' | 'command' | 'grids'; // authoring ghost-mesh channels (#6232)
 /**
  * Compound identifier for entities across multiple models.
  *

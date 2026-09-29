@@ -18,7 +18,7 @@
  */
 
 import { commandDoubleClick, commandPointerDown, commandPointerMove, getCommandRuntime } from '@/lib/commands/modeling/runtime';
-import { profileOf, semanticSource, solveCommandSnap, type PointerModifiers } from '@/lib/commands/modeling/snap-solve';
+import { modelSnapSources, profileOf, solveCommandSnap, type PointerModifiers } from '@/lib/commands/modeling/snap-solve';
 import type { SnapProfile, SnapResult, SnapSource, Vec2 } from '@/lib/snap/types';
 import { selectPickedGlobalId, toggleGlobalIdInSelection } from '../viewport-selection';
 import { beginWallEndpointDrag } from '@/lib/commands/modeling/commands/wall-move-endpoint';
@@ -49,7 +49,7 @@ export function resolvePlanSnap(input: PlanPointerInput): SnapResult | null {
   const { command, ctx } = runtime;
   if (!command || !ctx?.workplane) return null;
   const snapping = input.snapping && !input.mods.altKey;
-  const sources = snapping ? [semanticSource(ctx.modelId), ...input.planSources] : [];
+  const sources = snapping ? [...modelSnapSources(ctx.modelId), ...input.planSources] : [];
   return solveCommandSnap(runtime, ctx.workplane, {
     cursor: input.local,
     metresPerPixel: input.metresPerPixel,

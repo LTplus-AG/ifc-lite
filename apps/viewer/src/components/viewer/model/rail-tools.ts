@@ -12,7 +12,7 @@
 
 import type { ComponentType } from 'react';
 import { LogOut, MousePointer2, Slice } from 'lucide-react';
-import { BeamIcon, ColumnIcon, DoorIcon, OpeningIcon, RoomIcon, SlabIcon, WallIcon, WindowIcon } from './model-icons';
+import { BeamIcon, ColumnIcon, CurtainWallIcon, DoorIcon, GridIcon, OpeningIcon, RoomIcon, SlabIcon, WallIcon, WindowIcon } from './model-icons';
 import type { TranslationKey } from '@/i18n';
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
@@ -73,6 +73,18 @@ export const RAIL_TOOLS: readonly RailTool[] = [
     shortcut: 'model.room', drawsOnWorkplane: true,
     isActive: commandActive('room.place'),
     run: () => { launchModelCommand('room.place'); },
+  },
+  {
+    id: 'curtainwall.place', group: 'build', labelKey: 'curtainWall.label', Icon: CurtainWallIcon,
+    shortcut: 'model.curtainWall', drawsOnWorkplane: true,
+    isActive: commandActive('curtainwall.place'),
+    run: () => { launchModelCommand('curtainwall.place'); },
+  },
+  {
+    id: 'grid.place', group: 'build', labelKey: 'grid.label', Icon: GridIcon,
+    shortcut: 'model.grid', drawsOnWorkplane: true,
+    isActive: commandActive('grid.place'),
+    run: () => { launchModelCommand('grid.place'); },
   },
   {
     id: 'opening.place', group: 'host', labelKey: 'hostedPlace.tool.opening', Icon: OpeningIcon,

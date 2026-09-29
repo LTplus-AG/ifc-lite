@@ -12,7 +12,7 @@ import { paletteSurfaceCommands, SURFACE_COMMANDS } from './surface-commands.js'
 const TOOL_IDS = [
   'tool:select', 'tool:walk', 'model:reposition', 'tool:measure',
   'tool:section', 'tool:annotate', 'tool:add-element', 'tool:wall', 'tool:slab', 'tool:column', 'tool:beam', 'tool:room',
-  'tool:opening', 'tool:door', 'tool:window',
+  'tool:curtain-wall', 'tool:grid', 'tool:opening', 'tool:door', 'tool:window',
   'tool:edit-mode', 'tool:split',
 ] as const;
 const isCoreTool = (id: string) => id.startsWith('tool:') || id === 'model:reposition';

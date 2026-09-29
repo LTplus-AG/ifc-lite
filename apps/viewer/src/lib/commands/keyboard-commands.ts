@@ -128,6 +128,8 @@ export const KEY_COMMANDS = [
   { id: 'model.column', labelKey: 'commands.model.column', category: 'tools', when: 'workspace.model', keys: [k('c', { shift: true })] },
   { id: 'model.beam', labelKey: 'commands.model.beam', category: 'tools', when: 'workspace.model', keys: [k('b', { shift: true })] },
   { id: 'model.room', labelKey: 'commands.model.room', category: 'tools', when: 'workspace.model', keys: [k('o', { shift: true })] },
+  { id: 'model.curtainWall', labelKey: 'commands.model.curtainWall', category: 'tools', when: 'workspace.model', keys: [k('u', { shift: true })] },
+  { id: 'model.grid', labelKey: 'commands.model.grid', category: 'tools', when: 'workspace.model', keys: [k('g', { shift: true })] },
   { id: 'model.opening', labelKey: 'commands.model.opening', category: 'tools', when: 'workspace.model', keys: [k('h', { shift: true })] },
   { id: 'model.door', labelKey: 'commands.model.door', category: 'tools', when: 'workspace.model', keys: [k('d', { shift: true })] },
   { id: 'model.window', labelKey: 'commands.model.window', category: 'tools', when: 'workspace.model', keys: [k('w', { shift: true })] },

@@ -17,6 +17,14 @@ import tempfile
 
 MARKER = "ANALYTIC_CACHE_MEASURE "
 TEST = "issue_6442_analytic_cache_process_measurement"
+EXPECTED = {
+    "snowdon": {"cache": 128, "control": 1073, "description_occurrences": 149,
+                "extrusion_occurrences": 911},
+    "many": {"cache": 1, "control": 1024, "description_occurrences": 1024,
+             "extrusion_occurrences": 0},
+    "nested": {"cache": 2, "control": 6, "description_occurrences": 4,
+               "extrusion_occurrences": 0},
+}
 
 
 def run(binary, snowdon, fixture, mode, payload_path):
@@ -69,6 +77,12 @@ def main():
                 order = ("control", "cache") if pair % 2 == 0 else ("cache", "control")
                 for mode in order:
                     record, payload = run(args.binary, snowdon, fixture, mode, payload_path)
+                    expected = EXPECTED[fixture]
+                    for key, wanted in (("source_loads", expected[mode]),
+                                        ("description_occurrences", expected["description_occurrences"]),
+                                        ("extrusion_occurrences", expected["extrusion_occurrences"])):
+                        if record[key] != wanted:
+                            raise RuntimeError(f"{fixture}/{mode}: {key}={record[key]}, expected {wanted}")
                     record["pair"] = pair + 1
                     if reference is None:
                         reference = payload

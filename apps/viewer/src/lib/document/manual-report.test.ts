@@ -155,7 +155,7 @@ describe('manual report on the page (#6401)', () => {
     const svgs: string[] = [];
     const seams: DocumentPdfSeams = {
       createDoc: async () => ({
-        addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {}, text: () => {}, addImage: () => {},
+        addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {}, fillRect: () => {}, text: () => {}, addImage: () => {},
         svg: async (svg) => { svgs.push(svg); }, table: () => {}, pageCount: () => 1, output: () => new Blob(['pdf']),
       }),
       renderSvg: () => '', capture: null, theme: DEFAULT_THEME, now: () => new Date(0), imageSize: async () => ({ w: 1, h: 1 }),

@@ -217,7 +217,7 @@ END-ISO-10303-21;`);
     const drawn: string[] = [];
     const seams = async (): Promise<DocumentPdfSeams> => ({
       createDoc: async () => ({
-        addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {},
+        addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {}, fillRect: () => {},
         text: (t) => { drawn.push(t); }, addImage: () => {}, svg: async () => {}, table: () => { drawn.push('<table>'); },
         pageCount: () => 1, output: () => new Blob(['pdf']),
       }),
@@ -254,7 +254,7 @@ END-ISO-10303-21;`);
       createDoc: async (format, orientation) => {
         created = [format, orientation];
         return {
-          addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {},
+          addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {}, fillRect: () => {},
           text: (t) => { drawn.push(`text:${t}`); },
           addImage: () => { drawn.push('image'); },
           svg: async (svg) => { drawn.push(`svg:${svg.length > 100 ? 'ok' : 'short'}`); },

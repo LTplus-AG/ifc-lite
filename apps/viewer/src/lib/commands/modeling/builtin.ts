@@ -20,6 +20,8 @@ import { WALL_MOVE_ENDPOINT } from './commands/wall-move-endpoint.js';
 import { WALL_PLACE } from './commands/wall-place.js';
 import { HOSTED_SLIDE } from './commands/hosted-slide.js';
 import { PLAN_MOVE } from './commands/plan-move.js';
+import { STAIR_PLACE } from './commands/stair-place.js';
+import { RAILING_PLACE } from './commands/railing-place.js';
 import type { ModelingCommand } from './types.js';
 
 /** A re-evaluated module (dev HMR) finds its commands already registered. */
@@ -39,6 +41,8 @@ registerOnce(DOOR_PLACE);
 registerOnce(WINDOW_PLACE);
 registerOnce(HOSTED_SLIDE);
 registerOnce(PLAN_MOVE);
+registerOnce(STAIR_PLACE);
+registerOnce(RAILING_PLACE);
 
 setWorkplaneResolver((s, modelId, spec) => (spec.kind === 'storey'
   ? buildStoreyWorkplane(s, modelId, spec.storeyId, spec.offset)

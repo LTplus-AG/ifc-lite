@@ -47,8 +47,8 @@ export function SourceQuantityInspection() {
 
 export function SourceQuantityContent({ disks, extrusions }: SourceQuantityData) {
   const { t } = useTranslation();
-  const hasDisks = disks.items.some((item) => item.occurrences.length > 0);
-  const hasExtrusions = extrusions.items.some((item) => item.product.occurrences.length > 0);
+  const hasDisks = disks.items.some((item) => item.occurrences.length > 0 || item.diagnostics.length > 0);
+  const hasExtrusions = extrusions.items.some((item) => item.product.occurrences.length > 0 || item.product.diagnostics.length > 0);
   if (!hasDisks && !hasExtrusions && !disks.loading && !extrusions.loading && !disks.error && !extrusions.error) return null;
 
   return <section className="space-y-1.5 border-t border-border pt-2" aria-label={t('measure.source.heading')}>
@@ -57,6 +57,15 @@ export function SourceQuantityContent({ disks, extrusions }: SourceQuantityData)
     {(disks.loading || extrusions.loading) && <output className="block text-2xs">{t('measure.source.loading')}</output>}
     {disks.error && <p role="alert" className="text-2xs text-amber-600">{disks.error}</p>}
     {extrusions.error && <p role="alert" className="text-2xs text-amber-600">{extrusions.error}</p>}
+
+    {disks.items.flatMap(({ ref, diagnostics }) => diagnostics.map((diagnostic, index) =>
+      <p key={`disk-diagnostic:${ref.modelId}:${ref.expressId}:${index}`} className="text-2xs text-amber-600 dark:text-amber-500">
+        {t('measure.source.product', { modelId: ref.modelId, productId: ref.expressId })}: {diagnostic}
+      </p>))}
+    {extrusions.items.flatMap(({ ref, product }) => product.diagnostics.map((diagnostic, index) =>
+      <p key={`extrusion-diagnostic:${ref.modelId}:${ref.expressId}:${index}`} className="text-2xs text-amber-600 dark:text-amber-500">
+        {t('measure.source.product', { modelId: ref.modelId, productId: ref.expressId })}: {diagnostic}
+      </p>))}
 
     {disks.items.map(({ ref, occurrences }) => occurrences.map((source, index) => {
       const length = source.directrix_metrics?.total_length;

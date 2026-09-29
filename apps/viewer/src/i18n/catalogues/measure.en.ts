@@ -208,6 +208,7 @@ export const measureEn = {
 
   // Nominal source measurements shown beneath the independent Qto/mesh rows.
   'measure.source.heading': 'Nominal IFC source geometry',
+  'measure.source.product': '{modelId} · #{productId}',
   'measure.source.sweptDiskSolid': '{modelId} · #{productId} · IfcSweptDiskSolid #{solidId}',
   'measure.source.extrusionSolid': '{modelId} · #{productId} · IfcExtrudedAreaSolid #{solidId}',
   'measure.source.limitation':

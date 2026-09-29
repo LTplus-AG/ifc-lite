@@ -160,4 +160,22 @@ describe('nominal source quantity readout (#6433)', () => {
     />);
     assert.equal(ui.textContent, '');
   });
+
+  it('shows selected unsupported-source diagnostics when no solid occurrence was extracted (#6433)', () => {
+    const ui = render(<SourceQuantityContent
+      disks={{ loading: false, error: null, items: [{
+        ref: { modelId: 'model-a', expressId: 31 }, occurrences: [],
+        diagnostics: ['Directrix is not a supported curve'],
+      }] }}
+      extrusions={{ loading: false, error: null, items: [{
+        ref: { modelId: 'model-b', expressId: 42 }, product: {
+          occurrences: [], lengthUnitScale: 1,
+          diagnostics: ['SweptArea has no supported profile'],
+        },
+      }] }}
+    />);
+    assert.match(ui.textContent ?? '', /Nominal IFC source geometry/);
+    assert.match(ui.textContent ?? '', /model-a · #31: Directrix is not a supported curve/);
+    assert.match(ui.textContent ?? '', /model-b · #42: SweptArea has no supported profile/);
+  });
 });

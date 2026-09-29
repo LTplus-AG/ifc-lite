@@ -17,7 +17,7 @@
  * targeted (it already ran across all of them in one pass).
  */
 
-import { Boxes, Eye, EyeOff, Filter, Focus, Layers, RefreshCw } from 'lucide-react';
+import { Boxes, Eye, EyeOff, Filter, Focus, Layers, Palette } from 'lucide-react';
 import type { ValidationReport, IDSAuditReport } from '@ifc-lite/ids';
 import type { UseValidationResults } from '@/hooks/validation/useValidationResults';
 import type { IDSFocusMode } from '@/store/slices/idsSlice';
@@ -73,7 +73,7 @@ export function IDSPanelResults({
     report, activeSpecificationId, filterMode,
     isolationScope, isolateMode, isolationActive, visibilityFilterActive, focusMode,
     clearIsolation, setFilterMode, setIsolationScope, setFocusMode,
-    applyColors, isolateFailed, isolatePassed, isolateInvolved, isolateSetMembers,
+    colorsShown, toggleColors, isolateFailed, isolatePassed, isolateInvolved, isolateSetMembers,
     exportReportJSON, exportReportHTML, exportReportBCF, bcfExportProgress,
     setActiveSpecification,
   } = results;
@@ -233,13 +233,19 @@ export function IDSPanelResults({
           <Focus className="h-4 w-4" />
         </IconButton>
 
+        {/* #6373: this was "Reapply Colors" (it re-sent the red/green), and
+            nothing gave the model's own colours back. A toggle now: pressed
+            while the report colours are on screen, and pressing it restores
+            the originals without discarding the report. */}
         <IconButton
-          label={t('idsPanel.reapplyColors')}
+          label={colorsShown ? t('idsPanel.restoreOriginalColors') : t('idsPanel.showValidationColors')}
+          variant={colorsShown ? 'secondary' : 'ghost'}
           size="sm"
           className="h-8 w-8 p-0"
-          onClick={applyColors}
+          aria-pressed={colorsShown}
+          onClick={toggleColors}
         >
-          <RefreshCw className="h-4 w-4" />
+          <Palette className="h-4 w-4" />
         </IconButton>
 
         <Separator orientation="vertical" className="h-4 mx-1" />

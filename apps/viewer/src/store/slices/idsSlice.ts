@@ -23,6 +23,8 @@ import {
   type IDSRowFocusPresentation,
   type IDSFocusVisibilityOwnership,
 } from '../../lib/ids/visibility-ownership.js';
+import { endIdsColorPresentation, type IdsColorPresentation } from '../../lib/ids/color-ownership.js';
+import { buildEntityIdSets } from './idsSlice.entity-sets.js';
 
 // ============================================================================
 // Types
@@ -127,6 +129,10 @@ export interface IDSSliceState {
    * `lib/ids/visibility-ownership.ts`.
    */
   idsFocusVisibilityOwned: IDSFocusVisibilityOwnership;
+  /** Report colours on (default) or off = original colours (#6373); a new report turns them on. */
+  idsColorsShown: boolean;
+  /** `colorPresentationRevision` of IDS's last paint; see `lib/ids/color-ownership.ts`. */
+  idsColorRevision: number | null;
   /** Cached set of failed entity IDs for efficient lookup */
   idsFailedEntityIds: Set<string>; // "modelId:expressId" format
   /** Cached set of passed entity IDs */
@@ -163,6 +169,8 @@ export interface IDSSlice extends IDSSliceState {
   setIdsIsolateMode: (mode: IDSIsolateMode) => void;
   setIdsFocusMode: (mode: IDSFocusMode) => void;
   setIdsFocusVisibilityOwned: (owned: IDSFocusVisibilityOwnership) => void;
+  setIdsColorsShown: (shown: boolean) => void;
+  setIdsColorRevision: (revision: number | null) => void;
 
   // Utility getters
   getActiveSpecificationResult: () => SpecificationResult | null;
@@ -196,37 +204,6 @@ const getDefaultLocale = (): SupportedLocale => {
 };
 
 // ============================================================================
-// Helper Functions
-// ============================================================================
-
-/**
- * Build cached entity ID sets from validation report
- */
-function buildEntityIdSets(
-  report: ValidationReport | null
-): { failed: Set<string>; passed: Set<string> } {
-  const failed = new Set<string>();
-  const passed = new Set<string>();
-
-  if (!report) {
-    return { failed, passed };
-  }
-
-  for (const specResult of report.specificationResults) {
-    for (const entityResult of specResult.entityResults) {
-      const key = `${entityResult.modelId}:${entityResult.expressId}`;
-      if (entityResult.passed) {
-        passed.add(key);
-      } else {
-        failed.add(key);
-      }
-    }
-  }
-
-  return { failed, passed };
-}
-
-// ============================================================================
 // Slice Creator
 // ============================================================================
 
@@ -245,6 +222,9 @@ function buildEntityIdSets(
  * own set-level isolation occupying the channel instead is left alone.
  */
 function endIdsRowFocus(get: () => IDSSlice): void {
+  // The report's red/green goes with it (#6373). First: it restores the whole
+  // channel, which also takes the row's focus tint off before the next line looks.
+  endIdsColorPresentation(get() as unknown as IdsColorPresentation);
   endIdsRowFocusPresentation(get() as unknown as IDSRowFocusPresentation);
 }
 
@@ -273,6 +253,8 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
   // half and loses the context; `highlight` answers neither on its own.
   idsFocusMode: 'ghost',
   idsFocusVisibilityOwned: null,
+  idsColorsShown: true,
+  idsColorRevision: null,
   idsFailedEntityIds: new Set(),
   idsPassedEntityIds: new Set(),
 
@@ -350,6 +332,7 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
       validationSource: report ? report.source.kind : null,
       idsFailedEntityIds: failed,
       idsPassedEntityIds: passed,
+      idsColorsShown: true,
       idsIsolateMode: null,
       idsFocusVisibilityOwned: null,
       idsError: null,
@@ -422,6 +405,8 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
   setIdsFocusMode: (idsFocusMode) => set({ idsFocusMode }),
 
   setIdsFocusVisibilityOwned: (idsFocusVisibilityOwned) => set({ idsFocusVisibilityOwned }),
+  setIdsColorsShown: (idsColorsShown) => set({ idsColorsShown }),
+  setIdsColorRevision: (idsColorRevision) => set({ idsColorRevision }),
 
   // Utility getters
   getActiveSpecificationResult: () => {

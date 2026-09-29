@@ -25,16 +25,24 @@ import {
   type ColorTuple,
 } from '../ids/idsColorSystem';
 import { releaseOwnedIdsFocusVisibility } from '@/lib/ids/visibility-ownership';
+import { idsColorsOnScreen, paintIdsColors } from '@/lib/ids/color-ownership';
 import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import type { IDSFocusMode, IDSDisplayOptions } from '@/store/slices/idsSlice';
 import { useToViewerGlobalId } from './toViewerGlobalId';
 
 export interface ValidationColorFocusApi {
   buildColors: (specId?: string, bothHighlights?: boolean) => Map<number, ColorTuple>;
+  /** Paint a validation overlay through the one owned write (`paintIdsColors`). */
+  paintColors: (colors: Map<number, ColorTuple>) => void;
+  /** Whether the report colours are what is on screen (drives the toggle). */
+  colorsShown: boolean;
+  /** Show the report colours (#6373: the toggle's "on"; also the auto-apply on a new report). */
   applyColors: () => void;
   setSpecColors: (specId: string) => void;
   restoreReportColors: () => void;
+  /** Restore the model's original colours; the report stays (#6373: the toggle's "off"). */
   clearColors: () => void;
+  toggleColors: () => void;
   releaseFocusVisibility: () => void;
   focusEntity: (modelId: string, expressId: number, mode?: IDSFocusMode, zoomToEntity?: boolean) => void;
   clearEntitySelection: () => void;
@@ -56,8 +64,8 @@ export function useValidationColorFocus(params: UseValidationColorFocusParams): 
   const { report, displayOptions, defaultFailedColor, defaultPassedColor, focusMode, isolationScope, activeSpecificationId, autoApplyColors } = params;
 
   const models = useViewerStore((s) => s.models);
-  const geometryResult = useViewerStore((s) => s.geometryResult);
-  const setPendingColorUpdates = useViewerStore((s) => s.setPendingColorUpdates);
+  const colorsShown = useViewerStore(idsColorsOnScreen);
+  const setIdsColorsShown = useViewerStore((s) => s.setIdsColorsShown);
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
   const setSelectedEntity = useViewerStore((s) => s.setSelectedEntity);
   const setIdsActiveEntity = useViewerStore((s) => s.setIdsActiveEntity);
@@ -66,19 +74,23 @@ export function useValidationColorFocus(params: UseValidationColorFocusParams): 
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
 
   const toViewerGlobalId = useToViewerGlobalId();
-  const originalColorsRef = useRef<Map<number, ColorTuple>>(new Map());
-  const geometryResultRef = useRef(geometryResult);
-  geometryResultRef.current = geometryResult;
 
+  // Every report paint below goes through here, so each one claims the
+  // channel and a later report clear can hand it back (#6373).
+  const paintColors = useCallback((colors: Map<number, ColorTuple>) => {
+    paintIdsColors(useViewerStore.getState, colors);
+  }, []);
+
+  // Read at call time, not closed over: the toggle and a row click can land in
+  // the same tick, and two hook instances (ValidationPanel + IDSPanel) share it.
   const buildColors = useCallback(
     (specId?: string, bothHighlights = false): Map<number, ColorTuple> => {
-      if (!report) return new Map<number, ColorTuple>();
+      if (!report || !useViewerStore.getState().idsColorsShown) return new Map<number, ColorTuple>();
       const opts = bothHighlights
         ? { ...displayOptions, highlightFailed: true, highlightPassed: true }
         : displayOptions;
       return buildValidationColorUpdates(
         report, models, opts, defaultFailedColor, defaultPassedColor,
-        geometryResultRef.current, originalColorsRef.current,
         specId ? { specId } : undefined,
       );
     },
@@ -86,23 +98,28 @@ export function useValidationColorFocus(params: UseValidationColorFocusParams): 
   );
 
   const applyColors = useCallback(() => {
-    const colorUpdates = buildColors();
-    if (colorUpdates.size > 0) setPendingColorUpdates(colorUpdates);
-  }, [buildColors, setPendingColorUpdates]);
+    setIdsColorsShown(true);
+    paintColors(buildColors());
+  }, [setIdsColorsShown, buildColors, paintColors]);
 
   const setSpecColors = useCallback((specId: string) => {
-    setPendingColorUpdates(buildColors(specId, true));
-  }, [buildColors, setPendingColorUpdates]);
+    paintColors(buildColors(specId, true));
+  }, [buildColors, paintColors]);
 
   const restoreReportColors = useCallback(() => {
     if (!report) return;
-    setPendingColorUpdates(buildColors());
-  }, [report, buildColors, setPendingColorUpdates]);
+    paintColors(buildColors());
+  }, [report, buildColors, paintColors]);
 
   const clearColors = useCallback(() => {
-    setPendingColorUpdates(new Map());
-    originalColorsRef.current.clear();
-  }, [setPendingColorUpdates]);
+    setIdsColorsShown(false);
+    paintColors(new Map());
+  }, [setIdsColorsShown, paintColors]);
+
+  const toggleColors = useCallback(() => {
+    if (idsColorsOnScreen(useViewerStore.getState())) clearColors();
+    else applyColors();
+  }, [clearColors, applyColors]);
 
   const installFocusIsolation = useCallback((ids: Set<number>): void => {
     const state = useViewerStore.getState();
@@ -126,8 +143,8 @@ export function useValidationColorFocus(params: UseValidationColorFocusParams): 
       ? buildColors(activeSpecificationId, true)
       : buildColors();
     if (focusedGlobalId != null) colors.set(focusedGlobalId, IDS_FOCUS_COLOR);
-    setPendingColorUpdates(colors);
-  }, [report, isolationScope, activeSpecificationId, buildColors, setPendingColorUpdates]);
+    paintColors(colors);
+  }, [report, isolationScope, activeSpecificationId, buildColors, paintColors]);
 
   const applyFocusMode = useCallback((globalId: number, mode: IDSFocusMode): void => {
     if (mode === 'highlight') {
@@ -193,7 +210,7 @@ export function useValidationColorFocus(params: UseValidationColorFocusParams): 
   }, [autoApplyColors, report]);
 
   return {
-    buildColors, applyColors, setSpecColors, restoreReportColors, clearColors,
+    buildColors, paintColors, colorsShown, applyColors, setSpecColors, restoreReportColors, clearColors, toggleColors,
     releaseFocusVisibility, focusEntity, clearEntitySelection, setFocusMode,
   };
 }

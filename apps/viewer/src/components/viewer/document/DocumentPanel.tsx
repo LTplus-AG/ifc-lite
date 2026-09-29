@@ -26,6 +26,7 @@ import { LIST_PRESETS } from '@/lib/lists';
 import { newChartSpec } from '@/lib/charts/presets';
 import { largestBucketIds } from '@/lib/charts/buckets';
 import { idsReportBlockFromReport } from '@/lib/document/ids-report';
+import { emptyManualReportBlock } from '@/lib/document/manual-report';
 import { listCopyForDocument, TABLE_ROWS_DEFAULT, type DocumentBlock, type DocumentSpec } from '@/lib/document/types';
 import { browserImageSize, generateDocumentPdf, type DocumentPdfSeams } from '@/lib/document/generate-document-pdf';
 import { browserReportSeams } from '@/lib/export/report/generate-report-pdf';
@@ -34,6 +35,7 @@ import { BlockEditor } from './BlockEditor';
 import { DocumentMenu } from './DocumentMenu';
 import { DocumentPreview } from './DocumentPreview';
 import { useDocumentData } from './useDocumentData';
+import { useManualReportSource } from './useManualReportSource';
 
 export interface DocumentPanelProps {
   /** Test seam: the PDF seams to print with instead of the browser's. */
@@ -62,6 +64,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const dashboards = useViewerStore((s) => s.dashboards);
   const listDefinitions = useViewerStore((s) => s.listDefinitions);
   const idsValidationReport = useViewerStore((s) => s.idsValidationReport);
+  const manualSource = useManualReportSource();
 
   useEffect(() => { ensureActiveDocument(); }, [documents, activeDocumentId]);
 
@@ -97,6 +100,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         : kind === 'chart' ? { kind, id, chart: charts[0]?.chart ? { ...charts[0].chart, id: freshBlockId() } : newChartSpec(), snapshot: false }
           : kind === 'spacer' ? { kind, id, height: 20 }
             : kind === 'ids-report' ? (idsValidationReport ? idsReportBlockFromReport(idsValidationReport, id, 'compact') : { kind, id, variant: 'compact', sourceName: '', generatedAt: new Date().toISOString(), summary: { checked: 0, passed: 0, failed: 0, passRate: 100 }, checks: [] })
+              : kind === 'manual-report' ? (manualSource.snapshot(id) ?? emptyManualReportBlock(id))
               : { kind, id, guid: [...data.topics.keys()][0] ?? '', snapshot: true };
     setBlocks([...document.blocks, block]);
     setSelectedBlockId(id);
@@ -194,6 +198,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
             <DropdownMenuItem onSelect={() => addBlock('table')}>{t('document.addBlock.table')}</DropdownMenuItem>
             {/* One report slot serves IDS and information validation; the item is named for what it would add (#6372). */}
             <DropdownMenuItem onSelect={() => addBlock('ids-report')} disabled={!idsValidationReport} title={idsValidationReport ? undefined : t('document.addBlock.idsReportDisabledTitle')}>{t(idsValidationReport?.source.kind === 'rules' ? 'document.addBlock.rulesReport' : 'document.addBlock.idsReport')}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => addBlock('manual-report')} disabled={!manualSource.available} title={manualSource.available ? undefined : t('manualValidation.report.unavailableTitle')}>{t('manualValidation.report.add')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={busy || tablesResolving || !document || document.blocks.length === 0} aria-busy={tablesResolving || undefined} onClick={() => void exportPdf()} title={t('document.panel.exportTitle')} data-document-export>

@@ -65,7 +65,12 @@ export {
   type ProfiledColumnInStoreParams,
   type ColumnBuildResult,
 } from './in-store/column.js';
-export { addWallToStore, type WallInStoreParams, type WallBuildResult } from './in-store/wall.js';
+export { addWallToStore, emitWallAxisRepresentation, emitWallBodyProfile, wallJoinWallFromParams, type WallInStoreParams, type WallBuildResult } from './in-store/wall.js';
+// Wall joins (L / T / butt) and the IfcRelConnectsPathElements they write.
+export { computeWallJoin, wallBodyLateralRange, wallBodyOutline } from './in-store/wall-join.js';
+export type * from './in-store/wall-join.js';
+export { applyWallJoinToStore, wallJoinTargetFromBuild, type WallJoinApplyOptions, type WallJoinApplyResult, type WallJoinTarget } from './in-store/wall-join-apply.js';
+export { addRelConnectsPathElementsToStore, type RelConnectsAnchor, type RelConnectsPathElementsParams } from './in-store/rel-connects-path.js';
 export { addSlabToStore, type SlabInStoreParams, type SlabRectangleParams, type SlabPolygonParams, type SlabBuildResult } from './in-store/slab.js';
 export { addBeamToStore, type BeamInStoreParams, type ProfiledBeamInStoreParams, type BeamBuildResult } from './in-store/beam.js';
 export {
@@ -87,6 +92,11 @@ export {
 } from './in-store/profile.js';
 export { addStairToStore, stairFlightOutline, type StairInStoreParams, type StairBuildResult } from './in-store/stair.js';
 export { addRailingToStore, railingPostPoints, type RailingInStoreParams, type RailingBuildResult } from './in-store/railing.js';
+export { addCurtainWallToStore, curtainWallLayout, type CurtainWallInStoreParams, type CurtainWallGridSpec, type CurtainWallLayout, type CurtainWallBuildResult } from './in-store/curtain-wall.js';
+export {
+  addGridToStore, rectangularGridAxes, gridIntersectionPlacement, type GridInStoreParams, type GridAxisInStoreParams,
+  type GridBuildResult, type GridIntersectionParams, type GridPlacementParams, type GridPlacementResult,
+} from './in-store/grid.js';
 export { addDoorToStore, type DoorInStoreParams, type DoorBuildResult } from './in-store/door.js';
 export { addWindowToStore, type WindowInStoreParams, type WindowBuildResult } from './in-store/window.js';
 export {
@@ -103,6 +113,7 @@ export {
   type HostedWindowInStoreParams,
   type HostedFillBuildResult,
 } from './in-store/hosted-fill.js';
+export { hostPlanFrame, readHostedFill, type HostPlanFrame, type HostedFillRead } from './in-store/hosted-fill-read.js';
 export {
   addElementTypeToStore,
   assignTypeInStore,
@@ -151,7 +162,7 @@ export {
 } from './in-store/cost.js';
 export { removeCostEntityInStore, type CostRemovalReferrers } from './in-store/cost-removal.js';
 export { resolveSpatialAnchor } from './in-store/resolve-anchor.js';
-export { resolveHostAnchor } from './in-store/resolve-host.js';
+export { placedBodyExtent, resolveHostAnchor } from './in-store/resolve-host.js';
 export { toNativeLength, fromNativeLength } from './in-store/anchor.js';
 export type { SpatialAnchor, HostAnchor, HostBounds, HostKind } from './in-store/anchor.js';
 export {

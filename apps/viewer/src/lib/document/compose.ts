@@ -17,6 +17,7 @@ import { pageBox, REPORT_MARGIN } from '../export/report/compose.js';
 import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type BlockWidth, type TextBlock, type TextFont } from './types.js';
 import { layoutTable, type LayoutCursor, type TableColumnLayout, type TableLayoutBlock, type TextDrawnItem, type RectDrawnItem } from './compose-table.js';
 import { layoutIdsReport, type IdsReportLayoutBlock } from './compose-ids-report.js';
+import { layoutManualReport, type ManualReportLayoutBlock, type RingDrawnItem } from './compose-manual-report.js';
 import type { TableRowOut } from './resolve-table.js';
 import { tabFill } from './text-tabs.js';
 
@@ -66,11 +67,14 @@ export type ResolvedBlock =
   | { kind: 'topic'; id: string; title: string; lines: string[]; /** null when there is no snapshot to print */ snapshotAspect: number | null }
   | { kind: 'spacer'; id: string; height: number }
   | ({ kind: 'table' } & TableLayoutBlock)
-  | ({ kind: 'ids-report' } & IdsReportLayoutBlock);
+  | ({ kind: 'ids-report' } & IdsReportLayoutBlock)
+  | ({ kind: 'manual-report' } & ManualReportLayoutBlock);
 
 export type DrawnItem =
   | TextDrawnItem
   | RectDrawnItem
+  /** A manual-validation ring chart (#6401), drawn from its counts. */
+  | RingDrawnItem
   | { kind: 'image'; blockId: string; x: number; y: number; w: number; h: number }
   | { kind: 'chart'; blockId: string; x: number; y: number; w: number; h: number }
   | { kind: 'snapshot'; blockId: string; x: number; y: number; w: number; h: number }
@@ -336,6 +340,11 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       }
       case 'ids-report': {
         layoutIdsReport(block, cursor, contentW, BLOCK_GAP, (text, width, size, bold) => wrapText(text, width, size, bold, input.measure));
+        break;
+      }
+      case 'manual-report': {
+        const wrap = (text: string, width: number, size: number, bold: boolean) => wrapText(text, width, size, bold, input.measure);
+        layoutManualReport(block, cursor, contentW, BLOCK_GAP, wrap, (ring) => { page.items.push(ring); });
         break;
       }
       case 'topic': {

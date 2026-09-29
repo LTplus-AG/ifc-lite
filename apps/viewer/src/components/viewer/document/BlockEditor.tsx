@@ -27,6 +27,7 @@ import { TAB_SIZE, tabEdit } from '@/lib/document/text-tabs';
 import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, TEXT_SIZE_MAX, TEXT_SIZE_MIN, reportBlockSourceKind, type DocumentBlock, type IdsReportBlock, type IdsReportVariant, type TextBlock, type TextFont } from '@/lib/document/types';
 import { ClampedNumberInput, WidthEditor, field } from './BlockEditor.parts';
 import { TableBlockEditor } from './TableBlockEditor';
+import { ManualReportBlockEditor } from './ManualReportBlockEditor';
 
 export interface BlockEditorProps {
   block: DocumentBlock;
@@ -51,6 +52,7 @@ const KIND_LABEL_KEY = {
   spacer: 'document.block.kindSpacer',
   table: 'document.block.kindTable',
   'ids-report': 'document.block.kindIdsReport',
+  'manual-report': 'manualValidation.report.kind',
 } as const satisfies Record<DocumentBlock['kind'], TranslationKey>;
 
 /**
@@ -299,6 +301,8 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
       {block.kind === 'table' && <TableBlockEditor block={block} onChange={onChange} />}
 
       {block.kind === 'ids-report' && <ReportBlockSource block={block} report={idsValidationReport} onChange={onChange} />}
+
+      {block.kind === 'manual-report' && <ManualReportBlockEditor block={block} onChange={onChange} />}
 
       {block.kind === 'topic' && (
         <div className="flex flex-wrap items-center gap-2">

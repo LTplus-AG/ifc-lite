@@ -27,6 +27,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import type {
+  DownloadOptions,
   FileSourceProvider,
   ListOptions,
   Page,
@@ -54,7 +55,9 @@ Object.defineProperty(globalThis, 'localStorage', {
 
 const { useViewerStore } = await import('@/store/index.js');
 const { syncSourceModel, isSourceModelSyncing } = await import('./syncSourceModel.js');
+const { getSourceSyncProgress } = await import('./downloadProgress.js');
 type FederatedModel = import('@/store/types.js').FederatedModel;
+type SourceDownloadState = import('./downloadProgress.js').SourceDownloadState;
 type SourceHost = import('@/services/sources/source-host.js').SourceHost;
 
 // ---------------------------------------------------------------------------
@@ -125,7 +128,7 @@ const manifest = {
 
 interface ProviderStub {
   readonly pages?: ReadonlyArray<Page<SourceFile>>;
-  readonly download?: () => Promise<ArrayBuffer>;
+  readonly download?: (ctx: PluginContext, ref: unknown, options?: DownloadOptions) => Promise<ArrayBuffer>;
 }
 
 interface Harness {
@@ -627,5 +630,57 @@ describe('syncSourceModel — 2D drawing markup on the synced (active) model, #4
       [],
       'the old model\'s measurement must not still be attached once the replacement is active',
     );
+  });
+});
+
+// #6375: both Sync buttons (hierarchy model row, source browser file row)
+// draw their ring from this per-model progress, whichever one was clicked.
+describe('syncSourceModel — download progress for the Sync ring', () => {
+  it('publishes the download progress under the model id and clears it once the bytes are in', async () => {
+    const seen: Array<SourceDownloadState | undefined> = [];
+    const h = makeHarness({
+      download: async (_ctx, _ref, options) => {
+        options?.onProgress?.(0, 4);
+        seen.push(getSourceSyncProgress().get(MODEL_ID));
+        options?.onProgress?.(3, 4);
+        seen.push(getSourceSyncProgress().get(MODEL_ID));
+        return new Uint8Array([1, 2, 3, 4]).buffer;
+      },
+    });
+
+    await syncSourceModel({
+      modelId: MODEL_ID,
+      tag: makeTag(),
+      sourceHost: h.sourceHost,
+      addModel: h.addModel,
+      removeModel: h.removeModel,
+    });
+
+    assert.deepEqual(seen, [
+      { phase: 'downloading', received: 0, total: 4 },
+      { phase: 'downloading', received: 3, total: 4 },
+    ]);
+    assert.equal(getSourceSyncProgress().has(MODEL_ID), false, 'no ring once the download is done');
+  });
+
+  it('clears the progress when the download fails', async () => {
+    const h = makeHarness({
+      download: async (_ctx, _ref, options) => {
+        options?.onProgress?.(1, 4);
+        throw new Error('network is down');
+      },
+    });
+
+    await assert.rejects(
+      syncSourceModel({
+        modelId: MODEL_ID,
+        tag: makeTag(),
+        sourceHost: h.sourceHost,
+        addModel: h.addModel,
+        removeModel: h.removeModel,
+      }),
+      /network is down/,
+    );
+    assert.equal(getSourceSyncProgress().has(MODEL_ID), false, 'a failed sync leaves no ring behind');
   });
 });

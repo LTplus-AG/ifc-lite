@@ -24,6 +24,7 @@ import type { AuthoringTransaction, ModelingCommand } from '@/lib/commands/model
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import { detachFromType, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { setWallSection, type WallSection } from '@/store/slices/mutation-wall-section';
+import { moveHostedFillIn, type HostedFillPosition } from '@/store/slices/mutation-hosted-fill';
 
 /**
  * Run one inspector edit as one undo step. `edit` writes through
@@ -87,6 +88,19 @@ export function setWallDimensions(modelId: string, expressId: number, section: W
     const outcome = setWallSection(() => tx.store, tx.modelId, expressId, section);
     if (!outcome.ok) throw new Error(outcome.reason);
     return [expressId];
+  });
+}
+
+/**
+ * A door's, window's or opening's offset along its host and its sill, in
+ * metres: one write to the opening's placement, which the filling follows.
+ * The host re-meshes with the moved void.
+ */
+export function moveHostedElement(modelId: string, expressId: number, position: HostedFillPosition): boolean {
+  return runInspectorEdit(modelId, (tx) => {
+    const moved = moveHostedFillIn(() => tx.store, tx.modelId, expressId, position);
+    if (!moved.ok) throw new Error(moved.reason);
+    return moved.remesh;
   });
 }
 

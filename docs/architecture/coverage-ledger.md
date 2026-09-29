@@ -280,14 +280,14 @@ Columns:
 | IfcGasTerminalType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcGeneralMaterialProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcGeneralProfileProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcGeometricCurveSet | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcGeometricCurveSet | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcGeometricRepresentationContext | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcGeometricRepresentationSubContext | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcGeometricSet | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcGloballyUniqueId | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcGrid | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcGridAxis | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcGridPlacement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcGrid | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
+| IfcGridAxis | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
+| IfcGridPlacement | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcGroup | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcHalfSpaceSolid | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc |
 | IfcHeatExchangerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -497,7 +497,7 @@ Columns:
 | IfcRelAssociatesProfileProperties | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelaxation | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelConnectsElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcRelConnectsPathElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelConnectsPathElements | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsPorts | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsPortToElement | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsStructuralActivity | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
@@ -678,7 +678,7 @@ Columns:
 | IfcVertexPoint | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcVibrationIsolatorType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcVirtualElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcVirtualGridIntersection | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcVirtualGridIntersection | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcVolumeMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcVolumetricFlowRateMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcWall | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc |
@@ -1008,14 +1008,14 @@ Columns:
 | IfcFurnitureType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
 | IfcGeographicElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcGeographicElementType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
-| IfcGeometricCurveSet | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
+| IfcGeometricCurveSet | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcGeometricRepresentationContext | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcGeometricRepresentationSubContext | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcGeometricSet | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcGloballyUniqueId | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcGrid | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcGridAxis | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcGridPlacement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcGrid | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcGridAxis | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcGridPlacement | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcGroup | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcHalfSpaceSolid | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcHeatExchanger | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
@@ -1264,7 +1264,7 @@ Columns:
 | IfcRelAssociatesLibrary | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelAssociatesMaterial | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcRelConnectsElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcRelConnectsPathElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcRelConnectsPathElements | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelConnectsPorts | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelConnectsPortToElement | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelConnectsStructuralActivity | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -1482,7 +1482,7 @@ Columns:
 | IfcVibrationIsolator | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcVibrationIsolatorType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcVirtualElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcVirtualGridIntersection | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcVirtualGridIntersection | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcVoidingFeature | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcVolumeMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcVolumetricFlowRateMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -1842,7 +1842,7 @@ Columns:
 | IfcGeographicCRS | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcGeographicElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcGeographicElementType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcGeometricCurveSet | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
+| IfcGeometricCurveSet | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
 | IfcGeometricRepresentationContext | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
 | IfcGeometricRepresentationSubContext | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
 | IfcGeometricSet | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -1851,9 +1851,9 @@ Columns:
 | IfcGeotechnicalStratum | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcGloballyUniqueId | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcGradientCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcGrid | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcGridAxis | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcGridPlacement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcGrid | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
+| IfcGridAxis | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
+| IfcGridPlacement | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcGroup | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcHalfSpaceSolid | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcHeatExchanger | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -2125,7 +2125,7 @@ Columns:
 | IfcRelAssociatesMaterial | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
 | IfcRelAssociatesProfileDef | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelConnectsElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
-| IfcRelConnectsPathElements | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelConnectsPathElements | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsPorts | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsPortToElement | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelConnectsStructuralActivity | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
@@ -2365,7 +2365,7 @@ Columns:
 | IfcVibrationIsolator | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcVibrationIsolatorType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcVirtualElement | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcVirtualGridIntersection | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcVirtualGridIntersection | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcVoidingFeature | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/processing/tests/fixtures/issue_3641_voiding_trap.ifc |
 | IfcVolumeMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcVolumetricFlowRateMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |

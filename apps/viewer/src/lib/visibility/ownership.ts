@@ -101,6 +101,20 @@ export function ownsCurrentVisibility(
 }
 
 /**
+ * Is `owned` a claim on the ISOLATE channel that still verifiably holds? A
+ * "Visible only" scope uses this to ignore its own panel's isolation (Lists,
+ * #6368; Charts, #6473) so isolating a bucket never collapses the rows it
+ * isolates from; an isolation another feature installed does not match and
+ * still filters.
+ */
+export function ownsCurrentIsolation(
+  state: VisibilityChannels,
+  owned: VisibilityOwnership,
+): boolean {
+  return owned?.channel === 'isolate' && ownsCurrentVisibility(state, owned);
+}
+
+/**
  * Clear the shared channel `owned` names — and ONLY if it still holds exactly
  * what was installed. Isolation or ghosting established by another feature
  * does not content-match, so it survives untouched.

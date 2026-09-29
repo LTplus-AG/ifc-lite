@@ -21,18 +21,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { IconButton } from '@/components/ui/icon-button';
 import { EMPTY_MANUAL_COUNTS, summarizeChecklist } from '@/lib/validation/manual/checklist-summary';
-import type { ManualAnswerMap } from '@/lib/validation/manual/checklist';
+import { answersForModel, manualModelOptions, pickManualModel } from '@/lib/validation/manual/manual-model';
 import type { UseManualValidationResult } from '@/hooks/validation/useManualValidation';
 import { ManualValidationEntry } from './ManualValidationEntry';
 import { ManualValidationGroup } from './ManualValidationGroup';
 import { ManualValidationLegend, ManualValidationRing } from './ManualValidationRing';
 
-const NO_ANSWERS: ManualAnswerMap = Object.freeze({});
-
 export function ManualValidationTab({ manual }: { manual: UseManualValidationResult }) {
   const { t } = useTranslation();
   const checklist = manual.checklist;
   const storeModels = useViewerStore((s) => s.models);
+  const activeModelId = useViewerStore((s) => s.activeModelId);
   const allAnswers = useViewerStore((s) => s.manualAnswers);
   const saveError = useViewerStore((s) => s.manualSaveError);
   const renameChecklist = useViewerStore((s) => s.renameManualChecklist);
@@ -41,10 +40,10 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
   const [editing, setEditing] = useState(() => checklist !== null && checklist.groups.length === 0);
   const [pickedModelId, setPickedModelId] = useState<string | null>(null);
 
-  const models = useMemo(() => [...storeModels.values()].map((m) => ({ id: m.id, name: m.name, fingerprint: m.sourceFingerprint || null })), [storeModels]);
-  const activeModel = models.find((m) => m.id === pickedModelId) ?? models[0] ?? null;
+  const models = useMemo(() => manualModelOptions(storeModels), [storeModels]);
+  const activeModel = pickManualModel(models, pickedModelId, activeModelId);
   const fingerprint = activeModel?.fingerprint ?? null;
-  const answers = (fingerprint && allAnswers[fingerprint]) || NO_ANSWERS;
+  const answers = answersForModel(allAnswers, activeModel);
   const summary = useMemo(() => (checklist ? summarizeChecklist(checklist, answers) : null), [checklist, answers]);
 
   if (!checklist || !summary) {

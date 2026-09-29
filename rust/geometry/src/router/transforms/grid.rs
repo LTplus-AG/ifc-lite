@@ -5,10 +5,11 @@
 //! IfcGridPlacement resolution (#883): locate the grid-axis intersection and orient it.
 
 use super::super::GeometryRouter;
+use super::grid_frame::GridPlacementLayout;
 use super::walk::PlacementWalk;
 use crate::profiles::ProfileProcessor;
 use crate::{Point2, Point3, Result, TessellationQuality, Vector2, Vector3};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
+use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
 impl GeometryRouter {
@@ -16,40 +17,54 @@ impl GeometryRouter {
     /// referenced grid-axis intersection. Never panics; degrades to the
     /// parent transform (or identity) when the intersection can't be read.
     ///
-    /// Attribute layout (IFC4x3 — `PlacementRelTo` is inherited from the
-    /// `IfcObjectPlacement` supertype, hence index 0):
-    ///   0 PlacementRelTo        (IfcObjectPlacement, optional) — the grid's
-    ///                           own placement; composes like IfcLocalPlacement.
-    ///   1 PlacementLocation     (IfcVirtualGridIntersection) — the axis pair
-    ///                           and offsets the product sits on.
-    ///   2 PlacementRefDirection (IfcGridPlacementDirectionSelect, optional) —
-    ///                           an IfcDirection sets local +X; the
-    ///                           IfcVirtualGridIntersection variant is not yet
-    ///                           handled (falls back to the grid orientation).
+    /// The result is `grid frame * intersection frame`, where the grid frame is
+    ///   • IFC4X1+: `PlacementRelTo` (the grid's own placement), composed like
+    ///     IfcLocalPlacement's parent;
+    ///   • IFC2X3/IFC4 (no `PlacementRelTo`): the `ObjectPlacement` of the
+    ///     `IfcGrid` that owns the location's axes, since the axis curves are
+    ///     given in that grid's object coordinate system.
+    /// See [`GridPlacementLayout`] for the per-schema attribute positions.
     pub(super) fn resolve_grid_placement_with_depth(
         &self,
         placement: &DecodedEntity,
         decoder: &mut EntityDecoder,
         depth: usize,
     ) -> Result<PlacementWalk> {
-        // PlacementRelTo (attr 0) composes the same way IfcLocalPlacement does
-        // — it carries the grid's own world position/orientation, truncation
-        // included: a parent walk cut short by the depth guard makes this
-        // result depth-dependent too, so it must not be memoised. #3012
-        let parent = match placement.get(0) {
-            Some(attr) if !attr.is_null() => match decoder.resolve_ref(attr)? {
-                Some(p) => self.get_placement_transform_with_depth(&p, decoder, depth + 1)?,
+        let layout = GridPlacementLayout::of(decoder);
+        let location = layout
+            .location
+            .and_then(|i| placement.get(i))
+            .filter(|attr| !attr.is_null())
+            .and_then(|attr| decoder.resolve_ref(attr).ok().flatten())
+            .filter(|loc| loc.ifc_type == IfcType::IfcVirtualGridIntersection);
+
+        // The grid frame carries the grid's world position/orientation,
+        // truncation included: a parent walk cut short by the depth guard
+        // makes this result depth-dependent too, so it must not be memoised.
+        // #3012
+        let parent = match layout.rel_to {
+            Some(i) => match placement.get(i) {
+                Some(attr) if !attr.is_null() => match decoder.resolve_ref(attr)? {
+                    Some(p) => self.get_placement_transform_with_depth(&p, decoder, depth + 1)?,
+                    None => PlacementWalk::complete(Matrix4::identity()),
+                },
+                _ => PlacementWalk::complete(Matrix4::identity()),
+            },
+            None => match &location {
+                Some(loc) => self.owning_grid_frame(loc, decoder, depth)?,
                 None => PlacementWalk::complete(Matrix4::identity()),
             },
-            _ => PlacementWalk::complete(Matrix4::identity()),
         };
 
-        // PlacementLocation (attr 1) → grid-local transform at the intersection.
-        let local = self
-            .try_resolve_grid_intersection(placement, decoder)
+        // PlacementLocation → grid-local transform at the intersection.
+        let local = location
+            .and_then(|loc| self.try_resolve_grid_intersection(placement, &loc, &layout, decoder))
             .unwrap_or_else(Matrix4::identity);
 
-        Ok(PlacementWalk { transform: parent.transform * local, truncated: parent.truncated })
+        Ok(PlacementWalk {
+            transform: parent.transform * local,
+            truncated: parent.truncated,
+        })
     }
 
     /// Decode `IfcGridPlacement.PlacementLocation` (an
@@ -60,26 +75,19 @@ impl GeometryRouter {
     fn try_resolve_grid_intersection(
         &self,
         placement: &DecodedEntity,
+        location: &DecodedEntity,
+        layout: &GridPlacementLayout,
         decoder: &mut EntityDecoder,
     ) -> Option<Matrix4<f64>> {
-        // PlacementLocation (attr 1) → the grid intersection the product sits on.
-        let loc_attr = placement.get(1)?;
-        if loc_attr.is_null() {
-            return None;
-        }
-        let location = decoder.resolve_ref(loc_attr).ok().flatten()?;
-        if location.ifc_type != IfcType::IfcVirtualGridIntersection {
-            return None;
-        }
-        let p = self.grid_intersection_point(&location, decoder)?;
+        let p = self.grid_intersection_point(location, decoder)?;
 
-        // Orientation from PlacementRefDirection (attr 2) — full
-        // IfcGridPlacementDirectionSelect coverage:
+        // Orientation from PlacementRefDirection:
         //   • IfcDirection              → its XY is local +X directly.
         //   • IfcVirtualGridIntersection → local +X points from this location
         //                                  to that second intersection.
         //   • null / unresolved         → axis-aligned (inherit grid orientation).
-        let mut m = match self.grid_ref_direction_vector(placement, &p, decoder) {
+        let ref_attr = layout.ref_direction.and_then(|i| placement.get(i));
+        let mut m = match self.grid_ref_direction_vector(ref_attr, &p, decoder) {
             Some(x_dir) => orient_x_in_plane(x_dir),
             None => Matrix4::identity(),
         };
@@ -112,9 +120,18 @@ impl GeometryRouter {
         // axis (the point lies on a line parallel to the axis at that
         // distance); the third is a vertical offset.
         let offsets = intersection.get_list(1);
-        let off_u = offsets.and_then(|o| o.first()).and_then(|v| v.as_float()).unwrap_or(0.0);
-        let off_v = offsets.and_then(|o| o.get(1)).and_then(|v| v.as_float()).unwrap_or(0.0);
-        let off_z = offsets.and_then(|o| o.get(2)).and_then(|v| v.as_float()).unwrap_or(0.0);
+        let off_u = offsets
+            .and_then(|o| o.first())
+            .and_then(|v| v.as_float())
+            .unwrap_or(0.0);
+        let off_v = offsets
+            .and_then(|o| o.get(1))
+            .and_then(|v| v.as_float())
+            .unwrap_or(0.0);
+        let off_z = offsets
+            .and_then(|o| o.get(2))
+            .and_then(|v| v.as_float())
+            .unwrap_or(0.0);
 
         // Shift each axis line parallel to itself toward its left normal by the
         // corresponding offset, then intersect the offset lines.
@@ -157,9 +174,9 @@ impl GeometryRouter {
         Some((Point2::new(start.x, start.y), dir))
     }
 
-    /// Resolve the optional `PlacementRefDirection` (attr 2) into a 2D local
-    /// +X direction in the grid plane, covering both members of
-    /// `IfcGridPlacementDirectionSelect`:
+    /// Resolve the optional `PlacementRefDirection` into a 2D local +X
+    /// direction in the grid plane, covering both members of
+    /// `IfcGridPlacementDirectionSelect` (and IFC2X3's intersection-only type):
     ///   • `IfcDirection`              → its XY components.
     ///   • `IfcVirtualGridIntersection` → the vector from `origin` (the
     ///     placement location) to that second intersection point.
@@ -167,11 +184,11 @@ impl GeometryRouter {
     /// ref direction, so the caller stays axis-aligned.
     fn grid_ref_direction_vector(
         &self,
-        placement: &DecodedEntity,
+        dir_attr: Option<&AttributeValue>,
         origin: &Point3<f64>,
         decoder: &mut EntityDecoder,
     ) -> Option<Vector2<f64>> {
-        let dir_attr = placement.get(2)?;
+        let dir_attr = dir_attr?;
         if dir_attr.is_null() {
             return None;
         }

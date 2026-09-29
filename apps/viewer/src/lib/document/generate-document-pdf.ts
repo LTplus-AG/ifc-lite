@@ -17,6 +17,7 @@ import { renderTemplate, type BindingContext } from './bindings.js';
 import { composeDocument, estimateTextWidth, type DocumentLayout, type ResolvedBlock } from './compose.js';
 import { flattenExportModel, flattenRawModel, tableMessageKind, type TableLabels, type TableMessageKind, type TableState } from './resolve-table.js';
 import { TABLE_ROWS_DEFAULT, type DocumentSpec, type TableBlock } from './types.js';
+import { ringSvg } from '../validation/manual/ring.js';
 
 export interface DocumentPdfSeams extends ReportPdfSeams {
   /** Natural size of an image (data URL); the layout keeps its aspect ratio. */
@@ -175,6 +176,11 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         blocks.push({ ...block, kind: 'ids-report' });
         break;
       }
+      case 'manual-report': {
+        // Also a frozen snapshot (`manual-report.ts`, #6401).
+        blocks.push({ ...block, kind: 'manual-report' });
+        break;
+      }
       case 'topic': {
         const topic = input.topics.get(block.guid);
         if (!topic) {
@@ -307,6 +313,10 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
           }
           break;
         }
+        case 'ring':
+          // Colour lives only in the ring; its counts are printed beside it in words (#6401).
+          await doc.svg(ringSvg(item.counts, item.size), item.x, item.y, item.size, item.size);
+          break;
         case 'topic-snapshot': {
           const topic = topicsByBlock.get(item.blockId);
           placeImage(doc, topic ? topicSnapshotDataUrl(topic) : null, topic ? `viewpoint of "${topic.title}"` : 'viewpoint', item, result);

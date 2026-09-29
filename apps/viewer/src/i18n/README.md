@@ -303,7 +303,11 @@ root, and `ui/` (a companion slice covers `extensions/**`):
   host-generated status remains localized when the locale changes.
 - `sources.en.ts` covers the Cloud Sources panel across all ten
   `sources/` components. Real file/folder/project names from a connected
-  source stay as interpolation params, never literal text.
+  source stay as interpolation params, never literal text. Its
+  `sources.downloadStatus.*` keys (#6375) cover `SourceDownloadStatus.tsx`:
+  a file row's queued / downloading / failed state and the Sync progress
+  ring, which the hierarchy's model row reuses. The percentage beside a ring
+  is a locale-formatted number (`style: 'percent'`), not a message.
 - `tours.en.ts` covers the tour UI's own chrome (Learn tab, per-panel
   launcher, prerequisite card, first-run invite, step card controls).
   `tour.title` / `description` / `step.title` / `step.body` /

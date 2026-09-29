@@ -20,9 +20,11 @@ interface ManualValidationRingProps {
   /** Whose ring this is ("Overall", a group name), for the accessible name. */
   name: string;
   size?: number;
+  /** Class of the centre percentage; the document preview's fixed paper passes its own ink. */
+  textClassName?: string;
 }
 
-export function ManualValidationRing({ counts, name, size = 40 }: ManualValidationRingProps) {
+export function ManualValidationRing({ counts, name, size = 40, textClassName = 'fill-foreground' }: ManualValidationRingProps) {
   const { t } = useTranslation();
   const stroke = size >= 64 ? 8 : 5;
   const radius = (size - stroke) / 2;
@@ -69,7 +71,7 @@ export function ManualValidationRing({ counts, name, size = 40 }: ManualValidati
           y={center}
           textAnchor="middle"
           dominantBaseline="central"
-          className="fill-foreground"
+          className={textClassName}
           fontSize={size >= 64 ? 14 : 10}
           fontWeight={600}
           aria-hidden="true"
@@ -95,14 +97,14 @@ export function VerdictIcon({ bucket, className }: { bucket: RingBucket; classNa
 }
 
 /** Icon + label + count per bucket, in the ring's segment order. */
-export function ManualValidationLegend({ counts }: { counts: ManualCounts }) {
+export function ManualValidationLegend({ counts, mutedClassName = 'text-muted-foreground' }: { counts: ManualCounts; mutedClassName?: string }) {
   const { t } = useTranslation();
   return (
     <ul className="flex flex-col gap-0.5 text-xs">
       {RING_BUCKETS.map((bucket) => (
         <li key={bucket} className="flex items-center gap-1.5" data-bucket={bucket}>
           <VerdictIcon bucket={bucket} />
-          <span className="text-muted-foreground">{t(BUCKET_LABEL[bucket])}</span>
+          <span className={mutedClassName}>{t(BUCKET_LABEL[bucket])}</span>
           <span className="ml-auto pl-3 font-medium tabular-nums">{counts[bucket]}</span>
         </li>
       ))}

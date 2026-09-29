@@ -65,3 +65,22 @@ export function ringSegments(counts: ManualCounts, radius: number, gap = 2): Rin
 export function passPercent(counts: ManualCounts): number {
   return counts.total > 0 ? Math.floor((counts.pass / counts.total) * 100) : 0;
 }
+
+/**
+ * The ring as a standalone SVG string, for the print path (svg2pdf): the
+ * same track, segments and order the panel's `ManualValidationRing` draws.
+ * No text inside — the page prints the counts beside it as words.
+ */
+export function ringSvg(counts: ManualCounts, size: number): string {
+  const stroke = Math.max(2, Math.round(size / 8));
+  const radius = (size - stroke) / 2;
+  const c = size / 2;
+  const circumference = 2 * Math.PI * radius;
+  const circle = (color: string, extra: string): string =>
+    `<circle cx="${c}" cy="${c}" r="${radius}" fill="none" stroke="${color}" stroke-width="${stroke}"${extra}/>`;
+  const segments = ringSegments(counts, radius, Math.max(1, size / 40)).map((seg) =>
+    circle(RING_COLORS[seg.bucket], ` stroke-dasharray="${seg.length} ${circumference - seg.length}" stroke-dashoffset="${-seg.offset}"`));
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`
+    + circle(RING_COLORS.unanswered, ' stroke-opacity="0.25"')
+    + `<g transform="rotate(-90 ${c} ${c})">${segments.join('')}</g></svg>`;
+}

@@ -9,11 +9,12 @@
  */
 
 import type { IfcxFile, IfcxNode, IfcxHeader } from './types.js';
-import type { EntityTable, PropertyTable, PropertySet, SpatialHierarchy } from '@ifc-lite/data';
+import type { EntityTable, PropertyTable, SpatialHierarchy } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { IFCX_VERSION } from '@ifc-lite/data';
 import { collectRequiredImports } from './writer-imports.js';
 import { writerEntities } from './writer-entities.js';
+import { hasSpatialRelationshipEdits, indexSpatialEdges } from './writer-spatial.js';
 
 /**
  * Options for IFCX export
@@ -43,6 +44,17 @@ export interface IfcxExportData {
   properties?: PropertyTable;
   /** Spatial hierarchy */
   spatialHierarchy?: SpatialHierarchy;
+  /**
+   * Complete effective spatial relationship edges for an edited session.
+   * A caller with source STEP records can derive these from the parser's
+   * effective relationship overlay. This replaces the parsed hierarchy when
+   * applyMutations is true; pass the entire spatial edge set, not only edits.
+   */
+  effectiveSpatialEdges?: ReadonlyArray<{
+    sourceId: number;
+    targetId: number;
+    relationshipType: string;
+  }>;
   /** String table for lookups */
   strings?: { get(idx: number): string };
   /** Optional mutation view for property changes */
@@ -130,6 +142,13 @@ export class IfcxWriter {
     const nodes: IfcxNode[] = [];
     const { spatialHierarchy, mutationView, idToPath } = this.data;
     const rows = writerEntities(this.data, options.applyMutations !== false);
+    const effectiveSpatial = options.applyMutations !== false
+      ? this.data.effectiveSpatialEdges : undefined;
+    if (mutationView && options.applyMutations !== false
+      && !effectiveSpatial && hasSpatialRelationshipEdits(this.data.entities, mutationView)) {
+      throw new Error('IFCX export needs effectiveSpatialEdges for edited spatial relationships');
+    }
+    const effectiveChildren = effectiveSpatial && indexSpatialEdges(effectiveSpatial);
 
     // Single source of truth for expressId -> path, built once up front so that
     // an entity's own path and any *reference* to that entity as a child
@@ -202,7 +221,7 @@ export class IfcxWriter {
       };
 
       // Add children based on spatial hierarchy
-      const children = this.getChildrenForEntity(expressId, spatialHierarchy, resolvedPaths);
+      const children = this.getChildrenForEntity(expressId, spatialHierarchy, resolvedPaths, effectiveChildren);
       if (Object.keys(children).length > 0) {
         node.children = children;
       }
@@ -252,17 +271,25 @@ export class IfcxWriter {
   private getChildrenForEntity(
     entityId: number,
     spatialHierarchy: SpatialHierarchy | undefined,
-    resolvedPaths: Map<number, string>
+    resolvedPaths: Map<number, string>,
+    effectiveChildren?: ReadonlyMap<number, readonly number[]>,
   ): Record<string, string | null> {
     const children: Record<string, string | null> = {};
 
-    if (!spatialHierarchy) return children;
+    if (!spatialHierarchy && !effectiveChildren) return children;
 
     // Check if this entity has contained elements
-    const containedElements = spatialHierarchy.byStorey.get(entityId) ||
-                              spatialHierarchy.byBuilding.get(entityId) ||
-                              spatialHierarchy.bySite.get(entityId) ||
-                              spatialHierarchy.bySpace.get(entityId);
+    // @raw-entity-enumeration-ok parsed hierarchy is the source-only/default path; effectiveSpatialEdges replaces it for live relationships
+    const sourceChildren = effectiveChildren ? [] : [
+      ...(spatialHierarchy?.byStorey.get(entityId) ?? []),
+      // @raw-entity-enumeration-ok source hierarchy only when complete effective edges are absent
+      ...(spatialHierarchy?.byBuilding.get(entityId) ?? []),
+      // @raw-entity-enumeration-ok source hierarchy only when complete effective edges are absent
+      ...(spatialHierarchy?.bySite.get(entityId) ?? []),
+      // @raw-entity-enumeration-ok source hierarchy only when complete effective edges are absent
+      ...(spatialHierarchy?.bySpace.get(entityId) ?? []),
+    ];
+    const containedElements = effectiveChildren ? effectiveChildren.get(entityId) ?? [] : sourceChildren;
 
     if (containedElements) {
       for (const childId of containedElements) {

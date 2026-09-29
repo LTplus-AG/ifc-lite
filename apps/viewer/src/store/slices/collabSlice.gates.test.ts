@@ -153,7 +153,7 @@ describe('collabSlice: mirrors are inert in a single-user store', () => {
     const st = s.get();
     st.mirrorEntityRemove('m1', 1);
     st.mirrorPlacementEdit('m1', 1, [1, 0, 0]);
-    st.mirrorEntityGeometry('m1', 1, { expressId: 1 } as never);
+    st.mirrorEntityGeometry('m1', 1, [{ expressId: 1 }] as never);
     assert.deepEqual(s.calls, []);
   });
 

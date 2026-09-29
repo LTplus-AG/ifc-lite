@@ -23,6 +23,7 @@ import assert from 'node:assert/strict';
 import { advance, cleanup, press, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { SearchInline } from './SearchInline.js';
 
 const MODEL_ID = 'model-a';
@@ -77,17 +78,48 @@ describe('SearchInline popover dismissal (#5817)', () => {
     assert.equal(input.getAttribute('aria-controls'), 'search-inline-popover');
   });
 
+  it('exposes combobox expansion while its results list opens and closes (#6326)', () => {
+    const container = seedOpenWithResults();
+    const input = container.querySelector('input')!;
+    const popover = document.getElementById('search-inline-popover');
+    assert.ok(popover, 'results list is rendered');
+    assert.equal(input.getAttribute('role'), 'combobox');
+    assert.equal(input.getAttribute('aria-autocomplete'), 'list');
+    assert.equal(input.getAttribute('aria-controls'), popover.id);
+    assert.equal(input.getAttribute('aria-expanded'), 'true');
+
+    act(() => input.focus());
+    press(input, 'Escape');
+    assert.equal(document.getElementById('search-inline-popover'), null);
+    assert.equal(input.getAttribute('aria-expanded'), 'false');
+    assert.equal(document.activeElement, input, 'closing the list preserves combobox focus');
+  });
+
   it('Esc closes the popover without moving focus off the input', () => {
     const container = seedOpenWithResults();
     const input = container.querySelector('input')!;
+    useViewerStore.setState({ selectedEntityId: 42, selectedEntityIds: new Set([42]) });
+    let toolCancels = 0;
+    let globalEscapes = 0;
+    const removeTool = registerKeyboardCommand('measure.cancel', () => { toolCancels++; }, { allowInTextEntry: true });
+    const removeGlobal = registerKeyboardCommand('selection.escape', () => { globalEscapes++; }, { allowInTextEntry: true });
     act(() => input.focus());
     assert.ok(document.getElementById('search-inline-popover'), 'popover open before Escape');
 
-    press(input, 'Escape');
+    try {
+      press(input, 'Escape');
 
-    assert.equal(useViewerStore.getState().searchOpen, false);
-    assert.equal(document.getElementById('search-inline-popover'), null, 'Escape closes the popover');
-    assert.equal(document.activeElement, input, 'focus stays on the input — this is a combobox, not a dialog');
+      assert.equal(useViewerStore.getState().searchOpen, false);
+      assert.equal(document.getElementById('search-inline-popover'), null, 'Escape closes the popover');
+      assert.equal(document.activeElement, input, 'focus stays on the input — this is a combobox, not a dialog');
+      assert.equal(toolCancels, 0, 'the search dropdown owns its Escape before the tool');
+      assert.equal(globalEscapes, 0, 'the global selection handler does not run');
+      assert.equal(useViewerStore.getState().selectedEntityId, 42);
+      assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [42]);
+    } finally {
+      removeTool();
+      removeGlobal();
+    }
   });
 
   it('an outside click closes the popover without moving focus off the input', async () => {

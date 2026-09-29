@@ -8,7 +8,7 @@
  * Evaluation and the hide sync used to be effects of `LensPanel`, a panel body
  * that unmounts when its panel closes. The lens stayed active (colours, a
  * claim on the hidden channel) while nothing re-evaluated it, so a model
- * federated in afterwards was never hidden by it, and Home wiped its hides
+ * federated in afterwards was never hidden by it, and Show all wiped its hides
  * while re-sending its colours. These tests mount ONLY `useLens` — what
  * `LensRuntimeHost` mounts for the viewer's lifetime — never the panel, over
  * real parsed models at 1 and N federated models.
@@ -22,7 +22,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { Lens } from '@ifc-lite/lens';
 import { useViewerStore } from '@/store';
-import { resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { showAllFromStore } from '@/store/homeView';
 import { useLens } from './useLens.js';
 
 /** What `LensRuntimeHost` mounts: `useLens()` and nothing else. */
@@ -123,7 +123,7 @@ for (const modelCount of [1, 3]) {
         'the late model\'s wall must be hidden by the still-active lens');
     });
 
-    it('Home keeps the active lens\'s hides, drops the user\'s, and deactivation restores all', async () => {
+    it('Show all keeps the active lens\'s hides, drops the user\'s, and deactivation restores all', async () => {
       await mountHost();
       const walls: number[] = [];
       for (let i = 0; i < modelCount; i++) walls.push(await loadModel(`m${i}`));
@@ -131,19 +131,19 @@ for (const modelCount of [1, 3]) {
       const slab = useViewerStore.getState().toGlobalId('m0', 2);
       await act(async () => { useViewerStore.getState().hideEntities([slab]); });
 
-      await act(async () => { resetVisibilityForHomeFromStore('home'); });
+      await act(async () => { showAllFromStore('show_all'); });
       const after = useViewerStore.getState();
       assert.deepEqual(sorted(after.hiddenEntities), sorted(walls),
-        'Home must keep exactly the lens hides and drop the manual slab hide');
+        'Show all must keep exactly the lens hides and drop the manual slab hide');
       assert.deepEqual(sorted(after.lensAppliedHiddenIds), sorted(walls),
         'the lens must own every id it still hides, or deactivation could not restore them');
 
       await act(async () => { useViewerStore.setState({ activeLensId: null }); });
       assert.deepEqual(sorted(useViewerStore.getState().hiddenEntities), [],
-        'deactivating the lens after Home restores every lens hide');
+        'deactivating the lens after Show all restores every lens hide');
     });
 
-    it('Home does not transfer ownership of a manually hidden wall to the lens', async () => {
+    it('Show all does not transfer ownership of a manually hidden wall to the lens', async () => {
       await mountHost();
       const walls: number[] = [];
       for (let i = 0; i < modelCount; i++) walls.push(await loadModel(`m${i}`));
@@ -155,12 +155,12 @@ for (const modelCount of [1, 3]) {
         'the lens must not claim a wall hidden before it was activated');
       await act(async () => { useViewerStore.getState().hideEntities([manualSlab]); });
 
-      await act(async () => { resetVisibilityForHomeFromStore('home'); });
+      await act(async () => { showAllFromStore('show_all'); });
       const afterHome = useViewerStore.getState();
       assert.deepEqual(sorted(afterHome.hiddenEntities), sorted(walls),
-        'Home keeps lens matches, including the manual overlap, but clears the slab');
+        'Show all keeps lens matches, including the manual overlap, but clears the slab');
       assert.deepEqual(sorted(afterHome.lensAppliedHiddenIds), sorted(walls.slice(1)),
-        'Home must not change ownership of the overlapping wall');
+        'Show all must not change ownership of the overlapping wall');
 
       await act(async () => { useViewerStore.setState({ activeLensId: null }); });
       assert.deepEqual(sorted(useViewerStore.getState().hiddenEntities), [manualWall],

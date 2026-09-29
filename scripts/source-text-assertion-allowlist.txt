@@ -4,15 +4,15 @@
 # if a NEW file appears, and also fails if a file listed here no longer matches
 # — so a conversion cannot silently leave a stale entry behind.
 #
-# The baseline was 12 when the guard landed. Eight have since been converted:
+# The baseline was 12 when the guard landed. Nine have since been converted:
 # SearchInline.wiring, SearchModal.text.wiring, measure-parity,
 # zone-apportionment-parity, using-declaration-build, the two codegen files, and
-# frameWait — whose absence sweep became scripts/check-unbounded-frame-wait.mjs,
+# frameWait and export-ui-parity — whose absence sweep became scripts/check-unbounded-frame-wait.mjs,
 # because "nobody re-introduced a bare rAF" has nothing to drive.
 #
 # What made the rest convertible was not a new technique but a retired belief:
 # "this component cannot be mounted under `tsx --test`" was false for
-# MainToolbar, HomeTab, RibbonToolbar, AnalyzeTab, ZonesPanel, PropertiesPanel,
+# HomeTab, RibbonToolbar, AnalyzeTab, ZonesPanel, PropertiesPanel,
 # FileTab and even ViewportContainer — the last two needing only a
 # `fileCommands` prop and a stubbed `navigator.gpu`.
 #
@@ -27,7 +27,6 @@
 packages/data/scripts/generate-ifc-schema.test.ts                          # behavioural, and carefully so: spawns the generator against a temp copy of the vendored .g.cs data with one marker renamed, then asserts `r.status` is non-zero BEFORE the stderr message, and that stdout lacks "Done.". Its rename/edit helpers assert the mutation changed something, so a no-op edit cannot make a case vacuous. What trips the guard: reads are fixture setup, the .ts literal is a copyFileSync of the script under test, and the .indexOf() calls splice fixture text. Not one assertion touches source text.
 
 # ── Genuinely source-text, and genuinely blocked ──
-apps/viewer/src/components/viewer/toolbar/export-ui-parity.test.tsx         # narrowed to ONE assertion: the CSV success toast. That exporter loads the wasm over a file:// URL, which fetch refuses, so its click cannot be driven in node. JSON -- same code path, same note -- IS driven, in the same test.
 apps/viewer/src/components/viewer/colorful-popover-opacity.test.ts          # a CSS `!important` cascade-order contract. Tailwind utilities are not materialised in the test env, so getComputedStyle would agree with whatever the file said: the "behavioural" form is strictly weaker here, not stronger.
 packages/geometry/src/prepass-class-spans.test.ts                           # pins TS constants against `pub const` in rust/processing/src/shard_classes.rs. TS cannot import a Rust const; the root fix is emitting them, not rewriting the test.
 apps/viewer/src/hooks/modelLoadedGeometryProps.test.ts                    # wiring into the wasm-path ifc_model_loaded capture (#2388). The builder itself has behavioural unit tests; only the two wiring checks read useIfcLoader.ts. Driving them through the real hook (harness now exists, see apps/viewer/src/hooks/useIfcLoader.sabStreaming.test.tsx) does not reach this capture: GeometryProcessor.init() throws on the file:// wasm fetch in node/happy-dom before loadStage leaves 'engine-init', so the STEP/wasm-path event.diagnostics -> ifc_model_loaded flow this PR instruments never fires. NEITHER check is comment-proof by construction -- both depend entirely on the shared stripper apps/viewer/src/test/strip-comments.ts (unit-tested), which handles block comments, whole-line AND trailing // comments, and // inside string/template literals. Scoping the first check to the capture's own balanced-paren argument span buys the OTHER half: an import line or one of the other five ifc_model_loaded call sites cannot stand in for it. Three decoys demonstrated red in #2393 review: a comment quoting the loadDiagnostics hoist, a trailing comment quoting the geometry-props spread, and a block comment quoting it. The CACHE-HIT half of #2388 is NOT covered by this exception and never reads source text -- that path IS drivable in node (the hit is decided at loadStage 'cache-lookup', before any GeometryProcessor exists) and is tested behaviourally against real posthog.capture payloads in apps/viewer/src/hooks/useIfcLoader.cacheHitTelemetry.test.tsx.
@@ -42,7 +41,6 @@ apps/viewer/src/hooks/modelLoadedGeometryProps.test.ts                    # wiri
 # turns into decoration. It still cannot tell "read a production module and
 # assert on its text" from "read the artifact this tool just GENERATED and
 # assert on it".
-apps/viewer/src/components/viewer/toolbar-parity.test.ts                    # every assertion is on the TypeScript AST. The surviving hits are PATH checks (`spec.startsWith('@/')`, `base.endsWith('.js')`) and an array-key `.startsWith`, on names the flat taint set reaches from an unrelated read -- no assertion reads source text.
 packages/create-ifc-lite/test/config-fixers.test.ts                         # asserts on the `vite.config.ts` the scaffolder writes into a temp dir, i.e. on its OUTPUT. Nothing here reads a production source file.
 
 # --- Added by #3639, when TEST_FILE_RE finally included .mjs ---

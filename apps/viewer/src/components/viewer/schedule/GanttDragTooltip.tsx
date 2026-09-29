@@ -37,16 +37,15 @@ export function GanttDragTooltip({ live }: GanttDragTooltipProps) {
     : live.mode === 'resize-finish' ? t('schedule.dragTooltip.resizingFinish')
     : '';
   return (
-    <div
-      className="fixed z-50 pointer-events-none top-16 left-1/2 -translate-x-1/2 rounded-md border border-sky-400 bg-sky-50 dark:bg-sky-950 dark:border-sky-700 px-3 py-1.5 shadow-lg text-[11px] font-mono text-sky-900 dark:text-sky-100"
-      role="status"
+    <output
+      className="fixed z-50 pointer-events-none top-16 left-1/2 -translate-x-1/2 rounded-md border border-sky-400 bg-sky-50 dark:bg-sky-950 dark:border-sky-700 px-3 py-1.5 shadow-lg text-2xs font-mono text-sky-900 dark:text-sky-100"
       aria-live="polite"
     >
-      <div className="font-sans text-[10px] uppercase tracking-wider opacity-70">{modeLabel}</div>
-      <div>{t('schedule.dragTooltip.start', { value: fmt(live.liveStartMs) })}</div>
-      <div>{t('schedule.dragTooltip.finish', { value: fmt(live.liveFinishMs) })}</div>
-      <div className="opacity-80">{t('schedule.dragTooltip.duration', { count: durationDays, days: durDays })}</div>
-      <div className="font-sans text-[9px] opacity-50 mt-0.5">{t('schedule.dragTooltip.hint')}</div>
-    </div>
+      <span className="block font-sans text-2xs uppercase tracking-wider opacity-70">{modeLabel}</span>
+      <span className="block">{t('schedule.dragTooltip.start', { value: fmt(live.liveStartMs) })}</span>
+      <span className="block">{t('schedule.dragTooltip.finish', { value: fmt(live.liveFinishMs) })}</span>
+      <span className="block opacity-80">{t('schedule.dragTooltip.duration', { count: durationDays, days: durDays })}</span>
+      <span className="mt-0.5 block font-sans text-2xs opacity-50">{t('schedule.dragTooltip.hint')}</span>
+    </output>
   );
 }

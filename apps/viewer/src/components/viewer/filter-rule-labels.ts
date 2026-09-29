@@ -22,4 +22,10 @@ export const RULE_KIND_LABEL: Record<FilterRule['kind'], string> = {
   parent: 'Parent',
   group: 'Group',
   modelFact: 'Model fact',
+  listCondition: 'List value',
 };
+
+/** Kinds only a host with its own reader can evaluate (#6190: `listCondition`
+ *  needs the Lists data provider), so a builder offers them only when its
+ *  `allowedKinds` names them explicitly. */
+export const HOST_READ_KINDS: ReadonlySet<FilterRule['kind']> = new Set(['listCondition']);

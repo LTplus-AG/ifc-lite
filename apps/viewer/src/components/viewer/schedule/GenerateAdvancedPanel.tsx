@@ -10,6 +10,7 @@
  */
 
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useId } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -169,13 +170,14 @@ interface ToggleRowProps {
 }
 
 function ToggleRow({ label, description, checked, onChange }: ToggleRowProps) {
+  const id = useId();
   return (
-    <label className="flex items-center justify-between gap-3 cursor-pointer">
+    <Label htmlFor={id} className="flex items-center justify-between gap-3 cursor-pointer">
       <span className="grid gap-0.5">
         <span className="text-sm font-medium">{label}</span>
-        <span className="text-xs text-muted-foreground">{description}</span>
+        <span id={`${id}-description`} className="text-xs text-muted-foreground">{description}</span>
       </span>
-      <Switch checked={checked} onCheckedChange={onChange} />
-    </label>
+      <Switch id={id} aria-label={label} aria-describedby={`${id}-description`} checked={checked} onCheckedChange={onChange} />
+    </Label>
   );
 }

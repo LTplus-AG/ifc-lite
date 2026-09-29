@@ -199,6 +199,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
+              aria-label={t('commandPalette.searchAriaLabel')}
               placeholder={t('commandPalette.searchPlaceholder')}
               className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               autoComplete="off"
@@ -220,7 +221,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             )}
 
             {grouped.map((group) => (
-              <div key={group.category || '__flat'}>
+              <div key={group.category || '__flat'} data-command-category={group.category}>
                 {group.category && (
                   <div className="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground select-none">
                     {t(CATEGORY_LABEL_KEY[group.category as Category])}
@@ -233,10 +234,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                     onActivate: () => runCommand(cmd),
                     onHover: () => { if (selectedIndex !== flatIdx) setSelectedIndex(flatIdx); },
                   };
-                  const commandId = registeredPaletteId(cmd);
-                  return commandId
-                    ? <RegisteredPaletteOption key={`${group.category}:${cmd.id}`} commandId={commandId} {...placement} />
-                    : <DynamicPaletteOption key={`${group.category}:${cmd.id}`} command={cmd} {...placement} />;
+                  const key = `${group.category}:${cmd.id}`;
+                  return cmd.registryOwned
+                    ? <RegisteredPaletteOption key={key} commandId={registeredPaletteId(cmd)} {...placement} />
+                    : <DynamicPaletteOption key={key} command={cmd} {...placement} />;
                 })}
               </div>
             ))}

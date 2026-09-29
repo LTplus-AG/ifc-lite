@@ -1,0 +1,143 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * #6232 — `bim.store.addOpening` / `addHostedDoor` / `addHostedWindow` through
+ * the real `createStoreAdapter`, on the committed Bonsai hello-wall sample
+ * (host wall #1222). Same minimal fake `StoreApi` as the cost/structural
+ * adapter tests: a real `MutablePropertyView`, spies for the undo and room
+ * mirroring hooks.
+ */
+
+import { afterEach, beforeEach, describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { IfcParser } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import type { StoreApi } from './types.js';
+import { createStoreAdapter } from './store-adapter.js';
+import { pathForGuid, registerEntityPath, registerStoreSlot } from '@/lib/collab/entity-paths.js';
+import { installScriptedMesher, settleRemesh } from '@/test/scripted-mesher';
+
+const SAMPLE = new URL('../../../public/samples/hello-wall.ifc', import.meta.url);
+const WALL = 1222;
+
+async function makeStore(canCollabEdit = true) {
+  const bytes = readFileSync(SAMPLE);
+  const dataStore = await new IfcParser().parseColumnar(
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+    { disableWorkerScan: true },
+  );
+  const mutationViews = new Map<string, MutablePropertyView>();
+  const undoCalls: Array<[number, string]> = [];
+  const relationshipMutationCalls: string[] = [];
+  const created: Array<{ entityId: number; ifcType: string }> = [];
+  // Loaded through the wasm path, so a hosted filling re-meshes in this frame (#6232).
+  const geometryResult = { meshes: [], totalTriangles: 0, totalVertices: 0,
+    coordinateInfo: { wasmRtcFrame: { x: 0, y: 0, z: 0, needsShift: false } } };
+  const model = { id: 'm', name: 'hello-wall.ifc', ifcDataStore: dataStore, schemaVersion: 'IFC4', fileSize: bytes.byteLength, loadedAt: 0, idOffset: 0, maxExpressId: 5000, geometryResult };
+  const swapped: number[] = [];
+  const mirroredGeometry: number[] = [];
+  registerStoreSlot(dataStore, { slotId: 'm0', pathPrefix: '/m0' });
+  const state = {
+    activeModelId: 'm',
+    ifcDataStore: null,
+    models: new Map([['m', model]]),
+    collabRoomId: 'room',
+    collabRoomModels: new Map([['m', { slotId: 'm0', pathPrefix: '/m0' }]]),
+    getMutationView: (id: string) => mutationViews.get(id) ?? null,
+    registerMutationView: (id: string, view: MutablePropertyView) => { mutationViews.set(id, view); },
+    pushCreateEntityUndo: (_modelId: string, entityId: number, ifcType: string) => { undoCalls.push([entityId, ifcType]); },
+    markCostRelationshipMutation: (modelId: string) => { relationshipMutationCalls.push(modelId); },
+    canCollabEdit: () => canCollabEdit,
+    editEnabled: true,
+    mirrorEntityCreate: (_modelId: string, entityId: number, ifcType: string, roomKey: string) => {
+      created.push({ entityId, ifcType });
+      registerEntityPath(dataStore, entityId, pathForGuid(dataStore, roomKey));
+    },
+    mirrorAttributeEdit: () => {},
+    mirrorEntityRemove: () => {},
+    mutationViews,
+    mutationVersion: 0,
+    mergeLayers: false,
+    georefMutations: new Map(),
+    replaceEntityMeshes: (_modelId: string, byGlobalId: ReadonlyMap<number, unknown>) => { swapped.push(...byGlobalId.keys()); },
+    mirrorEntityGeometry: (_modelId: string, entityId: number) => { mirroredGeometry.push(entityId); },
+  };
+  const store = { getState: () => state, subscribe: () => () => {} } as unknown as StoreApi;
+  return { store, mutationViews, undoCalls, relationshipMutationCalls, created, swapped, mirroredGeometry };
+}
+
+describe('#6232 store-adapter modelling surface', () => {
+  let mesher: ReturnType<typeof installScriptedMesher>;
+  beforeEach(() => { mesher = installScriptedMesher(); });
+  afterEach(() => mesher.restore());
+
+  it('re-meshes the host with a hosted door, so the wall comes back cut and both reach the room', async () => {
+    const { store, swapped, mirroredGeometry } = await makeStore();
+    const door = createStoreAdapter(store).addHostedDoor('m', WALL, { Offset: 8, Width: 0.9, Height: 2.1 });
+    await settleRemesh();
+    assert.equal(mesher.requests.length, 1);
+    const targets = [...mesher.requests[0].targets];
+    for (const id of [door.expressId, WALL]) assert.ok(targets.includes(id), `#${id} is re-meshed`);
+    const buffer = new TextDecoder().decode(mesher.requests[0].buffer);
+    assert.match(buffer, /IFCRELVOIDSELEMENT\(/, 'the host is meshed with the void that cuts it');
+    for (const id of [door.expressId, WALL]) {
+      assert.ok(swapped.includes(id), `#${id}'s mesh is swapped in`);
+      assert.ok(mirroredGeometry.includes(id), `#${id}'s mesh is mirrored to the room`);
+    }
+  });
+
+  it('a colour-merged host keeps its mesh, and the new door still gets its own (#6232)', async () => {
+    const { store, swapped, mirroredGeometry } = await makeStore();
+    const merged = { expressId: WALL, ifcType: 'IfcWall', positions: new Float32Array(9), normals: new Float32Array(9),
+      indices: new Uint32Array([0, 1, 2]), color: [1, 1, 1, 1], entityIds: new Uint32Array([WALL, 7, 7]) };
+    (store.getState().models.get('m')!.geometryResult!.meshes as unknown[]).push(merged);
+    const door = createStoreAdapter(store).addHostedDoor('m', WALL, { Offset: 8, Width: 0.9, Height: 2.1 });
+    await settleRemesh();
+    const targets = [...mesher.requests[0].targets];
+    assert.ok(targets.includes(door.expressId), 'the door is re-meshed');
+    assert.ok(!targets.includes(WALL), 'the merged host is left alone');
+    assert.ok(swapped.includes(door.expressId) && mirroredGeometry.includes(door.expressId));
+    assert.ok(!swapped.includes(WALL) && !mirroredGeometry.includes(WALL));
+  });
+
+  it('refuses every hosted-opening call for a read-only participant, overlay untouched', async () => {
+    const { store, mutationViews } = await makeStore(false);
+    const adapter = createStoreAdapter(store);
+    assert.throws(() => adapter.addOpening('m', WALL, { Offset: 1, Width: 1, Height: 1 }), /Editing is disabled for your role/);
+    assert.throws(() => adapter.addHostedDoor('m', WALL, { Offset: 8, Width: 0.9, Height: 2.1 }), /Editing is disabled for your role/);
+    assert.throws(() => adapter.addHostedWindow('m', WALL, { Offset: 8, Sill: 1, Width: 1, Height: 1 }), /Editing is disabled for your role/);
+    assert.equal(mutationViews.get('m')?.getNewEntities().length ?? 0, 0);
+  });
+
+  it('authors the door graph, publishes all of it to the room, and fences undo', async () => {
+    const { store, mutationViews, undoCalls, relationshipMutationCalls, created } = await makeStore();
+    const adapter = createStoreAdapter(store);
+    const door = adapter.addHostedDoor('m', WALL, { Offset: 8, Width: 0.9, Height: 2.1 });
+
+    const view = mutationViews.get('m');
+    assert.equal(view?.getNewEntity(door.expressId)?.type, 'IfcDoor');
+    const types = new Set(created.map((c) => c.ifcType.toUpperCase()));
+    for (const type of ['IFCDOOR', 'IFCOPENINGELEMENT', 'IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT', 'IFCRELCONTAINEDINSPATIALSTRUCTURE']) {
+      assert.ok(types.has(type), `${type} was not published to the room`);
+    }
+    // A single CREATE_ENTITY entry cannot invert the compound write; the
+    // model is marked dirty and its undo history fenced instead.
+    assert.deepEqual(undoCalls, []);
+    assert.deepEqual(relationshipMutationCalls, ['m']);
+  });
+
+  it('undoes a new type as one record, and fences undo for a type assignment', async () => {
+    const { store, undoCalls, relationshipMutationCalls, created } = await makeStore();
+    const adapter = createStoreAdapter(store);
+    const type = adapter.addElementType('m', { Type: 'IfcWallType', Name: 'EW-300' });
+    assert.deepEqual(undoCalls, [[type.expressId, 'IFCWALLTYPE']]);
+    assert.deepEqual(relationshipMutationCalls, []);
+
+    const rel = adapter.assignType('m', type.expressId, [WALL]);
+    assert.ok(created.some((c) => c.entityId === rel.expressId && c.ifcType.toUpperCase() === 'IFCRELDEFINESBYTYPE'));
+    assert.deepEqual(relationshipMutationCalls, ['m']);
+  });
+});

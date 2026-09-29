@@ -4,7 +4,7 @@
 
 /** Static workspace, schedule, preference, and help commands (#5870). */
 import {
-  CalendarPlus, ChevronsRight, Eraser, GraduationCap, Info, Palette,
+  CalendarPlus, ChevronsRight, Crosshair, Eraser, GraduationCap, Info, Palette,
   PanelRight, RotateCcw, Settings, SlidersHorizontal, Sparkles, Sun,
 } from 'lucide-react';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
@@ -14,6 +14,7 @@ import { useViewerStore } from '@/store';
 import type { SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
 
 const paletteOnly = ['palette'] as const;
+const paletteAndRibbon = ['palette', 'ribbon'] as const;
 const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 
 export const WORKSPACE_SURFACE_COMMANDS = [
@@ -104,15 +105,21 @@ export const WORKSPACE_SURFACE_COMMANDS = [
     run: () => { useViewerStore.getState().toggleTheme(); },
   },
   {
-    id: 'pref:tooltips', labelKey: 'commandPalette.pref.tooltips.label',
+    id: 'pref:tooltips', labelKey: 'commandPalette.pref.tooltips.label', ribbonLabelKey: 'ribbon.elements.hoverTips', ribbonTooltipKey: 'ribbon.elements.hoverTipsTooltip',
     keywords: 'entity info mouse hover show hide',
-    category: 'Preferences', icon: Info, surfaces: paletteOnly, enabled: alwaysEnabled,
+    category: 'Preferences', icon: Info, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
     run: () => { useViewerStore.getState().toggleHoverTooltips(); },
   },
   {
-    id: 'pref:settings', labelKey: 'commandPalette.pref.settings.label',
+    id: 'pref:hover-outline', labelKey: 'commandPalette.pref.hoverOutline.label', ribbonLabelKey: 'ribbon.elements.hoverHighlight', ribbonTooltipKey: 'ribbon.elements.hoverHighlightTooltip',
+    keywords: 'hover highlight outline pre-highlight entity mouse',
+    category: 'Preferences', icon: Crosshair, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
+    run: () => { useViewerStore.getState().toggleHoverHighlight(); },
+  },
+  {
+    id: 'pref:settings', labelKey: 'commandPalette.pref.settings.label', ribbonLabelKey: 'ribbon.view.settings', ribbonTooltipKey: 'ribbon.view.settingsTooltip',
     keywords: 'settings preferences options configure theme toolbar spacemouse',
-    category: 'Preferences', icon: Settings, surfaces: paletteOnly, enabled: alwaysEnabled,
+    category: 'Preferences', icon: Settings, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
     run: () => { openSettings(); },
   },
   {

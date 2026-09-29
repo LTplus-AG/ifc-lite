@@ -26,7 +26,9 @@ import { toast } from '../ui/toast.js';
 import { reshapeSceneKeepingPresentInstanced } from './geometry-rebuild';
 import { runGpuUpload } from './gpu-upload-guard';
 import { createRobustFitBoundsAccumulator } from './robustFitBoundsAccumulator.js';
+import { liftNewInstancedOccurrences, placeNewMeshesAtCurrentLevel } from '@/lib/level-arrival';
 import { useColorOverlaySync } from './useColorOverlaySync.js';
+import { useMeshEditDrain } from './useMeshEditDrain.js';
 import { invalidateLandXmlGpuOwnershipAfterSceneClear, takeLandXmlGpuUploaded } from '../../hooks/ingest/landXmlGpuOwnership.js';
 
 let linearFitHintShown = false;
@@ -110,6 +112,9 @@ export interface UseGeometryStreamingParams {
    * processGeometryBatchInstanced.
    */
   pendingInstancedShards: Array<{ modelId: string; bytes: ArrayBuffer }> | null;
+  /** Current absolute renderer-Y lifts, keyed by global entity id. New arrivals
+   * inherit them before upload; later level changes still use pending deltas. */
+  currentLevelY?: ReadonlyMap<number, number>;
   /**
    * modelId → renderer modelIndex (same map ViewportContainer stamps onto
    * flat meshes / point clouds — reused here rather than re-derived, so a
@@ -208,6 +213,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     pendingMeshTranslations,
     pendingMeshRotations,
     pendingInstancedShards,
+    currentLevelY,
     modelIdToIndex,
     modelIdToOffset,
     presentInstancedModelIndices,
@@ -264,6 +270,13 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       }
     }, 0);
   };
+
+  // Declared BEFORE the main effect: it swaps edited meshes in the scene and
+  // advances the refs below past them (see useMeshEditDrain.ts).
+  useMeshEditDrain({
+    rendererRef, isInitialized, isStreaming, geometry, pendingMeshRemovals, clearPendingMeshRemovals,
+    pruneGeometryMeshes, lastGeometryLengthRef, lastGeometryRef, processedMeshIdsRef,
+  });
 
   // ─── Main geometry effect ────────────────────────────────────────────
   // Runs on every geometry change (new file, incremental batch, visibility toggle).
@@ -464,6 +477,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     // one-shot marker so normal scene rebuilds still own later re-uploads.
     newMeshes = newMeshes.filter((mesh) => !takeLandXmlGpuUploaded(mesh));
     if (newMeshes.length > 0) {
+      newMeshes = placeNewMeshesAtCurrentLevel(newMeshes, currentLevelY ?? new Map());
       const pipeline = renderer.getPipeline();
       if (pipeline) {
         if (isStreaming) {
@@ -762,42 +776,6 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     }
   }, [pendingMeshColorUpdates, isInitialized, clearPendingMeshColorUpdates]);
 
-  // ─── Mesh removals (split / delete) ───────────────────────────────────
-  // Authoring actions push globalIds into pendingMeshRemovals; drain
-  // here so the renderer actually drops them rather than leaving the
-  // mesh hidden via the visibility set. The bucket rebuild rides
-  // along on the existing rebuildPendingBatches path the streaming
-  // queue already exercises every frame.
-  useEffect(() => {
-    if (pendingMeshRemovals === null || !isInitialized) return;
-    const renderer = rendererRef.current;
-    if (!renderer) return;
-    const device = renderer.getGPUDevice();
-    const pipeline = renderer.getPipeline();
-    const scene = renderer.getScene();
-    if (!device || !pipeline) return;
-
-    if (pendingMeshRemovals.size > 0) {
-      scene.removeMeshesForEntities(pendingMeshRemovals);
-      // Keep the store's geometryResult.meshes (and totalTriangles /
-      // totalVertices) in sync with what the scene just dropped — see
-      // `pruneGeometryMeshes` in dataSlice.ts. Idempotent: a retry after a
-      // failed rebuild below re-prunes the same ids for zero net effect.
-      pruneGeometryMeshes(pendingMeshRemovals);
-      if (scene.hasPendingBatches()) {
-        const rebuilt = runGpuUpload(
-          'rebuildPendingBatches:removals',
-          () => { scene.rebuildPendingBatches(device, pipeline); return true; },
-        ) ?? false;
-        // Leave the pending map intact on failure so the next mutation retries
-        // this rebuild instead of dropping it.
-        if (!rebuilt) return;
-      }
-      renderer.requestRender();
-    }
-    clearPendingMeshRemovals();
-  }, [pendingMeshRemovals, isInitialized, clearPendingMeshRemovals, pruneGeometryMeshes]);
-
   // ─── GPU-instancing shards ───────────────────────────────────────────
   // The geometry worker collates each batch into an IFNS shard; the loader
   // pushes the raw bytes into pendingInstancedShards, tagged with the owning
@@ -826,6 +804,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
           const shard = decodeInstancedShard(new Uint8Array(bytes));
           if (!shard) continue;
           applyFederationOffsetToShard(shard, modelIdToOffset?.get(modelId) ?? 0);
+          liftNewInstancedOccurrences(shard, currentLevelY ?? new Map());
           const modelIndex = modelIdToIndex?.get(modelId) ?? 0;
           scene.addInstancedShard(device, shard, modelIndex);
         } catch (err) {

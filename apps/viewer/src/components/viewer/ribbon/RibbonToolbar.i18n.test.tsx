@@ -28,11 +28,11 @@ const RIBBON_KEYS = Object.keys(ribbonToolbarEn) as RibbonKey[];
 
 /**
  * Keys a tab owns: its own namespace plus the always-visible strip and notice.
- * Shared registries (camera commands, exporters) render some identical English
- * text on other tabs — "Home" is both a Home-tab button and a camera command —
- * and those registry strings are not this catalogue's to translate.
+ * Shared registries can render labels from another tab's namespace: the View
+ * camera Home control now uses the same ribbon command as the Home tab (#5878).
  */
 function ownedBy(tab: RibbonTabId, key: RibbonKey): boolean {
+  if (tab === 'view' && key === 'ribbon.home.home') return true;
   const scope = key.split('.')[1];
   return scope === tab || !TABS.some((name) => name === scope);
 }
@@ -45,6 +45,8 @@ const NOT_RENDERED_IN_THIS_STATE: RibbonKey[] = [
   'ribbon.themeTooltip', // Radix tooltip content, only mounted on hover
   'ribbon.infoTooltip', // Radix tooltip content, only mounted on hover
   'ribbon.expand', // ribbon is expanded
+  'ribbon.file.addModelTooltip', // small-button tooltip, only mounted on hover
+  'ribbon.file.refreshModelTooltip', // small-button tooltip, only mounted on hover
   'ribbon.file.refreshModelsTooltip', // no models loaded
   'ribbon.file.shareGroup', // collab feature flag is off under test
   'ribbon.file.share',
@@ -52,8 +54,18 @@ const NOT_RENDERED_IN_THIS_STATE: RibbonKey[] = [
   'ribbon.file.roomTooltip',
   'ribbon.file.roomNotJoinedTooltip',
   'ribbon.view.worldShowTooltip', // Cesium is enabled
+  'ribbon.view.moveGeorefStartTooltip', // small-button tooltip, only mounted on hover
   'ribbon.view.moveGeorefStopTooltip', // not in placement mode
+  'ribbon.view.spaceMouseTooltip', // small-button tooltip, only mounted on hover
+  'ribbon.view.followWorkTooltip', // small-button tooltip, only mounted on hover
+  'ribbon.view.settingsTooltip', // small-button tooltip, only mounted on hover
   'ribbon.elements.selectionGroup', // a selection exists
+  'ribbon.elements.frameTooltip', // small-button tooltip, only mounted on hover
+  'ribbon.analyze.validateGroup', // Analyze group browser is closed
+  'ribbon.analyze.compareGroup',
+  'ribbon.analyze.dataGroup',
+  'ribbon.analyze.listsTooltip', // its tooltip is not hovered
+  'ribbon.analyze.styleGroup',
   'ribbon.analyze.appsGroup', // no analysis extensions installed
   'ribbon.author.exitEditTooltip', // edit mode is off
   'ribbon.author.editLockedTooltip', // single-user session can edit

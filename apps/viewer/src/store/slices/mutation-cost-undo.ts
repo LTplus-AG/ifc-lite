@@ -35,17 +35,27 @@ export function mirrorCreateEntityRedo(
   state: ViewerState,
   modelId: string,
   entity: NewEntity,
-  mesh: MeshData | null = null,
+  meshes: readonly MeshData[] = [],
 ): void {
   const names = getAttributeNamesAcrossSchemas(entity.type);
   const guid = names[0] === 'GlobalId' && typeof entity.attributes[0] === 'string'
     ? entity.attributes[0]
     : costEntityRoomKeys.get(entity) ?? null;
-  state.mirrorEntityCreate(modelId, entity.expressId, entity.type, guid, mesh);
+  state.mirrorEntityCreate(modelId, entity.expressId, entity.type, guid, null);
+  mirrorRestoredMeshes(state, modelId, entity.expressId, meshes);
   entity.attributes.forEach((value, index) => {
     const name = names[index];
     if (name) state.mirrorAttributeEdit(modelId, entity.expressId, name, value);
   });
+}
+
+/**
+ * Every stashed mesh goes back to the room, not just the first: a re-meshed
+ * element carries one per material layer or style (#6232). Replaces, so a
+ * re-mesh of the same redo landing first or second leaves one copy.
+ */
+function mirrorRestoredMeshes(state: ViewerState, modelId: string, entityId: number, meshes: readonly MeshData[]): void {
+  if (meshes.length > 0) state.mirrorEntityGeometry(modelId, entityId, meshes);
 }
 
 /** Re-publish a restored source record after its room tombstone is undone. */
@@ -53,7 +63,7 @@ export function mirrorSourceEntityRestore(
   state: ViewerState,
   modelId: string,
   entityId: number,
-  mesh: MeshData | null,
+  meshes: readonly MeshData[],
 ): void {
   const store = state.models.get(modelId)?.ifcDataStore ?? state.ifcDataStore;
   if (!store) return;
@@ -62,7 +72,8 @@ export function mirrorSourceEntityRestore(
   const names = getAttributeNamesAcrossSchemas(entity.type);
   const guid = store.entities.getGlobalId(entityId)
     ?? (names[0] === 'GlobalId' && typeof entity.attributes[0] === 'string' ? entity.attributes[0] : null);
-  state.mirrorEntityCreate(modelId, entityId, entity.type, guid, mesh);
+  state.mirrorEntityCreate(modelId, entityId, entity.type, guid, null);
+  mirrorRestoredMeshes(state, modelId, entityId, meshes);
   entity.attributes.forEach((value, index) => {
     const name = names[index];
     if (name) state.mirrorAttributeEdit(modelId, entityId, name, value);

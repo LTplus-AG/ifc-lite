@@ -3,7 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useCallback } from 'react';
+import type { CSSProperties } from 'react';
 import { cn } from '@/lib/utils';
+import { VIEW_CUBE_REACH_PX } from '@/components/viewer/viewcube-box';
 import { HUD_REGIONS, setHudLaneRulerNode, setHudRegionNode, type HudRegionName } from './hud-regions';
 
 /**
@@ -11,9 +13,8 @@ import { HUD_REGIONS, setHudLaneRulerNode, setHudRegionNode, type HudRegionName 
  * inset per touched edge (`env(safe-area-inset-*)`, `max()`'d against a
  * 1rem/1.5rem floor so an inset-free desktop browser still gets a margin).
  *
- * `top-right` additionally reserves the 60px ViewCube box anchored at
- * `top-6 right-6` (`ViewportOverlays.tsx` ~284-302, unmoved by this PR): 24px
- * inset + 60px cube = 84px, so anything placed in this region starts below
+ * `top-right` additionally reserves the ViewCube's box (`viewcube-box.ts`:
+ * its inset plus its size), so anything placed in this region starts below
  * the cube instead of colliding with it.
  *
  * `bottom-center` used to reserve the always-on Presentation pill and the
@@ -23,29 +24,52 @@ import { HUD_REGIONS, setHudLaneRulerNode, setHudRegionNode, type HudRegionName 
  * `presentation` bottom panel (#5508), so this region is back to the same
  * 1rem inset every other edge uses.
  *
- * `top-center` is capped at the viewport width minus a 14rem lane on each
- * side (#5503): the left lane holds the status chips (a `HudChip` is capped
- * at 13rem and truncates, so a long model name in the Editing chip cannot
- * outgrow the lane), the right lane the ViewCube. A tool bar wider than what
- * is left wraps (`HudToolbar` is `flex-wrap`) and a card shrinks, instead of
- * sliding under either — the Space Sketch bar and plan card did exactly that
- * at 1600px / 1280px with both side panels open. Wrapping is the fallback: a
- * bar with lower-priority controls steps down to a narrower one-row form
- * first (`useHudBarTier`, measured against the lane ruler rendered below).
+ * `top-center` is the lane between two reserves (#5503), and they are not
+ * the same width. The LEFT one is 14rem: it holds the status chips (a
+ * `HudChip` is capped at 13rem and truncates, so a long model or storey name
+ * cannot outgrow it). The RIGHT one is only the ViewCube's reach plus the
+ * 1rem edge gap. It used to mirror the left one, which kept ~124px clear of
+ * a cube that was never there; with the Model workspace's tool rail in the
+ * viewport, those pixels were what the Space Sketch bar's one-row form
+ * needed at 1280px (#6315). So the lane is centred in the space BETWEEN the
+ * reserves, not on the viewport. Below `left + right` (phones) the offset
+ * fades to zero, and the lane collapses to a centred zero-width column just
+ * as it did before (`max-width` clamps a negative width to 0).
+ *
+ * A tool bar wider than the lane wraps (`HudToolbar` is `flex-wrap`) and a
+ * card shrinks, instead of sliding under a chip or the cube. Wrapping is the
+ * fallback: a bar with lower-priority controls steps down to a narrower
+ * one-row form first (`useHudBarTier`, measured against the lane ruler
+ * rendered below).
  */
 const REGION_CLASSNAME: Record<HudRegionName, string> = {
   'top-left':
     'top-0 left-0 items-start pt-[max(1rem,env(safe-area-inset-top))] pl-[max(1rem,env(safe-area-inset-left))]',
   'top-center':
-    'top-0 left-1/2 -translate-x-1/2 items-center pt-[max(1rem,env(safe-area-inset-top))] max-w-[calc(100%-28rem)]',
+    'top-0 -translate-x-1/2 items-center pt-[max(1rem,env(safe-area-inset-top))]',
   'top-right':
-    'top-0 right-0 items-end pt-[84px] pr-[max(1.5rem,env(safe-area-inset-right))]',
+    'top-0 right-0 items-end pr-[max(1.5rem,env(safe-area-inset-right))]',
   'bottom-left':
     'bottom-0 left-0 items-start pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]',
   'bottom-center':
     'bottom-0 left-1/2 -translate-x-1/2 items-center pb-[max(1rem,env(safe-area-inset-bottom))]',
   'bottom-right':
     'bottom-0 right-0 items-end pb-[max(1rem,env(safe-area-inset-bottom))] pr-[max(1rem,env(safe-area-inset-right))]',
+};
+
+/** The top-center lane's reserves (see above). */
+const LEFT_RESERVE = '14rem';
+const RIGHT_RESERVE = `(${VIEW_CUBE_REACH_PX}px + 1rem)`;
+
+/** Geometry derived from the ViewCube's box, which classes cannot carry. */
+const REGION_STYLE: Partial<Record<HudRegionName, CSSProperties>> = {
+  'top-center': {
+    // Centred between the reserves: shifted right of the viewport's centre by
+    // half their difference, faded to no shift once they no longer fit.
+    left: `calc(50% + clamp(0px, (100% - ${LEFT_RESERVE} - ${RIGHT_RESERVE}) / 2, (${LEFT_RESERVE} - ${RIGHT_RESERVE}) / 2))`,
+    maxWidth: `calc(100% - ${LEFT_RESERVE} - ${RIGHT_RESERVE})`,
+  },
+  'top-right': { paddingTop: VIEW_CUBE_REACH_PX },
 };
 
 /**
@@ -67,8 +91,8 @@ const REGION_CLASSNAME: Record<HudRegionName, string> = {
  * docked bottom panel that shrinks the viewport shrinks this with it instead
  * of being covered by it — no separate sizing logic needed here.
  *
- * Consumers portal in through `HudItem`; the first is the edit-mode chip
- * (`EditModeHudChip`, #5489). The remaining overlays migrate in later items.
+ * Consumers portal in through `HudItem`, e.g. the Model workspace's storey
+ * chip (`WorkspaceStoreyChip`, #6232) top-left.
  */
 export function ViewportHud() {
   return (
@@ -82,6 +106,7 @@ export function ViewportHud() {
         ref={setHudLaneRulerNode}
         aria-hidden="true"
         className={cn('pointer-events-none invisible absolute h-0 w-full', REGION_CLASSNAME['top-center'])}
+        style={REGION_STYLE['top-center']}
       />
     </div>
   );
@@ -97,6 +122,7 @@ function HudRegionSlot({ name }: { name: HudRegionName }) {
       ref={ref}
       data-hud-region={name}
       className={cn('pointer-events-none absolute flex flex-col gap-2', REGION_CLASSNAME[name])}
+      style={REGION_STYLE[name]}
     />
   );
 }

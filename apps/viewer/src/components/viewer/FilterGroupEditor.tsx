@@ -191,7 +191,7 @@ export function FilterGroupEditor({
           variant="ghost"
           size="sm"
           onClick={addGroup}
-          className="h-7 gap-1 text-[11px]"
+          className="h-7 gap-1 text-2xs"
           title={t('filterGroups.addGroupTitle')}
         >
           <Plus className="h-3 w-3" /> {t('filterGroups.addGroup')}

@@ -109,6 +109,13 @@ function getBrowser(): Promise<Browser> {
   return browserPromise;
 }
 
+/** Compiles the CSS and launches the browser up front. Call from a `before()`
+ *  hook so that one-off cost (tens of seconds on a loaded runner) is not
+ *  charged to the first test against the suite's per-test timeout. */
+export async function warmContrastBrowser(): Promise<void> {
+  await Promise.all([compileAppCss(), getBrowser()]);
+}
+
 /** Closes the shared browser. Call once from an `after()` hook. */
 export async function closeContrastBrowser(): Promise<void> {
   if (browserPromise) {
@@ -127,23 +134,17 @@ export async function measureTextHoverColors(
   textClassName: string,
   expectedHoverClassName: string,
 ): Promise<{ before: string; after: string; expected: string }> {
-  const css = await compileAppCss();
-  const browser = await getBrowser();
-  const page = await browser.newPage();
-  try {
-    await page.setContent(`<!doctype html>
-<html class="${themeHtmlClass(theme)}">
-<head><meta charset="utf-8"><style>${css}</style></head>
-<body><button id="target" class="${textClassName}">Target</button><span id="expected" class="${expectedHoverClassName}">Expected</span></body>
-</html>`, { waitUntil: 'load' });
-    const before = await page.$eval('#target', (el) => getComputedStyle(el).color);
-    const expected = await page.$eval('#expected', (el) => getComputedStyle(el).color);
-    await page.hover('#target');
-    const after = await page.$eval('#target', (el) => getComputedStyle(el).color);
-    return { before, after, expected };
-  } finally {
-    await page.close();
-  }
+  return withThemedPage(
+    theme,
+    `<button id="target" class="${textClassName}">Target</button><span id="expected" class="${expectedHoverClassName}">Expected</span>`,
+    async (page) => {
+      const before = await page.$eval('#target', (el) => getComputedStyle(el).color);
+      const expected = await page.$eval('#expected', (el) => getComputedStyle(el).color);
+      await page.hover('#target');
+      const after = await page.$eval('#target', (el) => getComputedStyle(el).color);
+      return { before, after, expected };
+    },
+  );
 }
 
 /** The class the real app puts on `<html>` for each theme, mirroring
@@ -229,31 +230,44 @@ export async function measureTextContrastOnSurface(
   );
 }
 
-/** Measure a selector in rendered component markup against its panel surface. */
-export async function measureRenderedTextContrastOnSurface(
+/** Loads `bodyHtml` under `theme` with the compiled app CSS in a fresh page
+ *  of the shared browser, runs `fn`, and always closes the page. */
+export async function withThemedPage<T>(
+  theme: Theme,
+  bodyHtml: string,
+  fn: (page: Page) => Promise<T>,
+): Promise<T> {
+  const css = await compileAppCss();
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  try {
+    await page.setContent(`<!doctype html>
+<html class="${themeHtmlClass(theme)}">
+<head><meta charset="utf-8"><style>${css}</style></head>
+<body>
+  ${bodyHtml}
+</body>
+</html>`, { waitUntil: 'load' });
+    return await fn(page);
+  } finally {
+    await page.close();
+  }
+}
+
+/** Measure a selector in `markup` against the surface it is wrapped in. */
+async function measureRenderedTextContrastOnSurface(
   theme: Theme,
   surfaceClassName: string,
   markup: string,
   textSelector: string,
   backdropClassName?: string,
 ): Promise<number> {
-  const css = await compileAppCss();
-  const browser = await getBrowser();
-  const page = await browser.newPage();
-  try {
-    const surfaceMarkup = `<div id="surface" class="${surfaceClassName}">${markup}</div>`;
-    const body =
-      backdropClassName === undefined
-        ? surfaceMarkup
-        : `<div id="backdrop" class="${backdropClassName}">${surfaceMarkup}</div>`;
-    const html = `<!doctype html>
-<html class="${themeHtmlClass(theme)}">
-<head><meta charset="utf-8"><style>${css}</style></head>
-<body>
-  ${body}
-</body>
-</html>`;
-    await page.setContent(html, { waitUntil: 'load' });
+  const surfaceMarkup = `<div id="surface" class="${surfaceClassName}">${markup}</div>`;
+  const body =
+    backdropClassName === undefined
+      ? surfaceMarkup
+      : `<div id="backdrop" class="${backdropClassName}">${surfaceMarkup}</div>`;
+  return withThemedPage(theme, body, async (page) => {
     const surfaceColorRaw = await page.$eval('#surface', (el) => getComputedStyle(el).backgroundColor);
     const textColorRaw = await page.$eval(textSelector, (el) => getComputedStyle(el).color);
     let surface: Rgba;
@@ -266,9 +280,7 @@ export async function measureRenderedTextContrastOnSurface(
     const surfaceCss = `rgb(${surface.r}, ${surface.g}, ${surface.b})`;
     const text = await resolveOverBackdrop(page, textColorRaw, surfaceCss);
     return contrastRatio(text, surface);
-  } finally {
-    await page.close();
-  }
+  });
 }
 
 /**

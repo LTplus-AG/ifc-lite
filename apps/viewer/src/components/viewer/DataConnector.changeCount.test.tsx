@@ -67,7 +67,7 @@ describe('DataConnector — CSV import refreshes the pending-changes count (#560
   it('shows the Export modified IFC button once a CSV import has written a property', async () => {
     const container = render(
       <>
-        <ExportChangesButton />
+        <ExportChangesButton surface="ribbon" />
         <DataConnector trigger={<button>Open</button>} />
       </>,
     );

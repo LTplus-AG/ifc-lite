@@ -28,9 +28,16 @@ export interface PlaneOutlineProps {
   /** World-space corners, in winding order. Needs at least 3 to draw anything. */
   corners: Vec3[];
   className?: string;
+  /**
+   * Keep drawing while some corners are off the canvas (the SVG clips it), as
+   * long as none is behind the camera. For outlines larger than the view —
+   * a storey's workplane seen from inside the building. Default: every corner
+   * must be on screen, the section plane's rule.
+   */
+  allowOffscreen?: boolean;
 }
 
-export function PlaneOutline({ corners, className }: PlaneOutlineProps) {
+export function PlaneOutline({ corners, className, allowOffscreen = false }: PlaneOutlineProps) {
   const svgLayer = useSceneLayer('svg');
   const projector = useSceneProjector();
   const polygonRef = useRef<SVGPolygonElement | null>(null);
@@ -39,6 +46,8 @@ export function PlaneOutline({ corners, className }: PlaneOutlineProps) {
 
   const latest = useRef(corners);
   latest.current = corners;
+  const offscreenOk = useRef(allowOffscreen);
+  offscreenOk.current = allowOffscreen;
 
   useEffect(() => {
     if (!projector) return;
@@ -48,7 +57,8 @@ export function PlaneOutline({ corners, className }: PlaneOutlineProps) {
       const polygon = polygonRef.current;
       if (!polygon) return;
       const points = projections.current;
-      const allVisible = points.length >= 3 && points.every(isAnchorVisible);
+      const drawable = offscreenOk.current ? (p: AnchorProjection | null) => !!p?.screen : isAnchorVisible;
+      const allVisible = points.length >= 3 && points.every(drawable);
       if (!allVisible) {
         polygon.style.display = 'none';
         return;

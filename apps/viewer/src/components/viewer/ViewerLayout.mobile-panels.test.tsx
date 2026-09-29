@@ -37,11 +37,10 @@ const model: FederatedModel = {
 const ORIGINAL_WIDTH = window.innerWidth;
 
 function expectedRailIds(): WorkspacePanelId[] {
-  const { sidebarOrder, sidebarHiddenIds, pointCloudAssetCount } = useViewerStore.getState();
+  const { sidebarOrder, sidebarHiddenIds } = useViewerStore.getState();
   return sidebarOrder.filter((id) =>
     (!sidebarHiddenIds.includes(id) || id === 'properties') &&
-    (id !== 'collab' || isCollabEnabled()) &&
-    (id !== 'pointclouds' || pointCloudAssetCount > 0));
+    (id !== 'collab' || isCollabEnabled()));
 }
 
 function panelName(id: WorkspacePanelId): string {
@@ -78,6 +77,18 @@ afterEach(() => {
 });
 
 describe('mobile Panels sheet (#5853)', () => {
+  it('#5873 keeps Point Cloud reachable before any scan is loaded', async () => {
+    act(() => useViewerStore.getState().setPointCloudAssetCount(0));
+    const { MobilePanelLauncher } = await import('./MobilePanelLauncher.js');
+    const container = render(<MobilePanelLauncher bottomInset={0} />);
+    openList(container);
+    const item = listItem(container, 'pointclouds');
+    assert.ok(item, 'the empty Point Cloud panel must remain reachable');
+    click(item);
+    assert.equal(useViewerStore.getState().sidebarActivePanel, 'pointclouds');
+    assert.equal(useViewerStore.getState().rightPanelCollapsed, false);
+  });
+
   it('lists every panel the rail offers and opens each in its mobile home', async () => {
     // This assertion must run before loading the new launcher: when production
     // is reverted, the mounted viewer should fail for the missing entry point.

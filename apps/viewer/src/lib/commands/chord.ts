@@ -59,6 +59,8 @@ const NAMED_KEYS: Record<string, { apple: string; other: string }> = {
   arrowleft: { apple: '←', other: '←' },
   arrowright: { apple: '→', other: '→' },
   shift: { apple: '⇧', other: 'Shift' },
+  pageup: { apple: 'PgUp', other: 'PgUp' },
+  pagedown: { apple: 'PgDn', other: 'PgDn' },
   '-': { apple: '−', other: '−' },
 };
 

@@ -25,10 +25,15 @@
       "types": "./dist/rtc-rebase.d.ts",
       "import": "./dist/rtc-rebase.js",
       "default": "./dist/rtc-rebase.js"
+    },
+    "./remesh": {
+      "types": "./dist/remesh/index.d.ts",
+      "import": "./dist/remesh/index.js",
+      "default": "./dist/remesh/index.js"
     }
   },
   "scripts": {
-    "build": "pnpm exec tsc && node -e \"const fs=require('fs');for(const f of ['dist/index.js','dist/geometry-parallel.js']){if(!fs.existsSync(f))continue;fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/geometry\\.worker\\.ts/g,'geometry.worker.js'))}\"",
+    "build": "pnpm exec tsc && node -e \"const fs=require('fs');for(const f of ['dist/index.js','dist/geometry-parallel.js','dist/remesh/remesh-client.js']){if(!fs.existsSync(f))continue;fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/geometry\\.worker\\.ts/g,'geometry.worker.js').replace(/remesh\\.worker\\.ts/g,'remesh.worker.js'))}\"",
     "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run"
@@ -44,7 +49,7 @@
   "devDependencies": {
     "@tauri-apps/api": "^2.11.1",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.2"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

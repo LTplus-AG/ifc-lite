@@ -2,25 +2,29 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Ribbon · Analyze tab — the workspace panels: validation, comparison,
- * data tables, styling rules, and analysis extensions. Buttons latch to
- * mirror each panel's open state; the single-tenant dock rules live in
- * `useWorkspacePanelControls`, shared with the classic toolbar.
- */
-
+/** Ribbon Analyze tab. Panel shortcuts and the browser share registry groups (#5873). */
+import type { ElementType } from 'react';
 import { Issue, List, Compare, Layer, Clash, Check, Script, Schedule, Coloring, Zones, LoadReport, Chart, Document, Cost, Flow, Drawing } from '@/icons';
 import { useViewerStore } from '@/store';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
-import { panelTitleKey } from '@/lib/panels/registry';
+import { PANEL_GROUPS, panelGroupFor, type WorkspacePanelId } from '@/lib/panels/registry';
+import { PanelGroupBrowser } from '../PanelGroupBrowser';
+import type { SurfaceCommandContext, SurfaceCommandId } from '../../surface-commands';
 import {
   RibbonGroup,
   RibbonGroupDivider,
-  RibbonLargeButton,
-  RibbonSmallButton,
+  RibbonContentSmallButton,
   RibbonSmallStack,
 } from '../primitives';
+import { RibbonCommandLargeButton } from '../command-button';
+
+interface FeaturedPanel {
+  id: WorkspacePanelId;
+  commandId: SurfaceCommandId;
+  icon: ElementType;
+  tooltipKey?: TranslationKey;
+}
 
 /** Chunk dynamic extension entries into ribbon-height stacks of three. */
 function chunk<T>(items: T[], size: number): T[][] {
@@ -40,163 +44,65 @@ export function AnalyzeTab() {
     bottomAnalysisExtensions,
   } = useWorkspacePanelControls('ribbon');
 
+  // Existing quick actions keep their behavior and icons. Their visible
+  // sections come from the registry, so they cannot introduce another panel
+  // taxonomy beside the rail and Browse menu.
+  const featuredPanels: FeaturedPanel[] = [
+    { id: 'bcf', commandId: 'panel:bcf', icon: Issue },
+    { id: 'validation', commandId: 'panel:ids', icon: Check, tooltipKey: 'ribbon.analyze.idsTooltip' },
+    { id: 'clash', commandId: 'panel:clash', icon: Clash, tooltipKey: 'ribbon.analyze.clashTooltip' },
+    { id: 'compare', commandId: 'panel:compare', icon: Compare, tooltipKey: 'ribbon.analyze.compareTooltip' },
+    { id: 'layers', commandId: 'panel:layers', icon: Layer, tooltipKey: 'ribbon.analyze.layersTooltip' },
+    { id: 'zones', commandId: 'panel:zones', icon: Zones, tooltipKey: 'ribbon.analyze.zonesTooltip' },
+    { id: 'loadReport', commandId: 'panel:loadReport', icon: LoadReport, tooltipKey: 'ribbon.analyze.loadReportTooltip' },
+    { id: 'cost', commandId: 'panel:cost', icon: Cost, tooltipKey: 'ribbon.analyze.costTooltip' },
+    { id: 'lists', commandId: 'panel:lists', icon: List },
+    { id: 'gantt', commandId: 'panel:gantt', icon: Schedule, tooltipKey: 'ribbon.analyze.scheduleTooltip' },
+    { id: 'charts', commandId: 'panel:charts', icon: Chart, tooltipKey: 'ribbon.analyze.chartsTooltip' },
+    { id: 'document', commandId: 'panel:document', icon: Document, tooltipKey: 'ribbon.analyze.documentTooltip' },
+    { id: 'drawing', commandId: 'panel:drawing', icon: Drawing, tooltipKey: 'ribbon.analyze.drawingTooltip' },
+    { id: 'script', commandId: 'panel:script', icon: Script, tooltipKey: 'ribbon.analyze.scriptTooltip' },
+    { id: 'flow', commandId: 'panel:flow', icon: Flow, tooltipKey: 'ribbon.analyze.flowTooltip' },
+    { id: 'lens', commandId: 'panel:lens', icon: Coloring, tooltipKey: 'ribbon.analyze.lensTooltip' },
+  ];
   const analysisExtensions = [...rightAnalysisExtensions, ...bottomAnalysisExtensions];
+  const commandContext: Omit<SurfaceCommandContext, 'surface'> = {
+    activateRightPanel: (panel) => {
+      if (panel === 'bcf' || panel === 'validation' || panel === 'clash' || panel === 'compare' || panel === 'lens') {
+        handleToggleRightPanel(panel);
+      } else {
+        useViewerStore.getState().toggleWorkspacePanel(panel, 'ribbon');
+      }
+    },
+    activateBottomPanel: handleToggleBottomPanel,
+  };
 
   return (
     <>
-      <RibbonGroup label={t('ribbon.analyze.validateGroup')}>
-        <RibbonLargeButton
-          icon={Issue}
-          label={t(panelTitleKey('bcf'))}
-          aria-label={t(panelTitleKey('bcf'))}
-          active={activeWorkspacePanels.has('bcf')}
-          onClick={() => handleToggleRightPanel('bcf')}
-        />
-        <RibbonLargeButton
-          icon={Check}
-          label={t(panelTitleKey('validation'))}
-          aria-label={t(panelTitleKey('validation'))}
-          tooltip={t('ribbon.analyze.idsTooltip')}
-          active={activeWorkspacePanels.has('validation')}
-          onClick={() => handleToggleRightPanel('validation')}
-        />
-        <RibbonLargeButton
-          icon={Clash}
-          label={t(panelTitleKey('clash'))}
-          aria-label={t(panelTitleKey('clash'))}
-          tooltip={t('ribbon.analyze.clashTooltip')}
-          active={activeWorkspacePanels.has('clash')}
-          onClick={() => handleToggleRightPanel('clash')}
-        />
-      </RibbonGroup>
+      <PanelGroupBrowser />
+      {PANEL_GROUPS.map((group) => {
+        const panels = featuredPanels.filter((panel) => panelGroupFor(panel.id) === group.id);
+        if (panels.length === 0) return null;
+        return (
+          <div key={group.id} className="contents">
+            <RibbonGroupDivider />
+            <RibbonGroup label={t(group.labelKey)}>
+              {panels.map((panel) => (
+                <RibbonCommandLargeButton
+                  key={panel.id}
+                  commandId={panel.commandId}
+                  icon={panel.icon}
+                  tooltip={panel.tooltipKey ? t(panel.tooltipKey) : undefined}
+                  active={activeWorkspacePanels.has(panel.id)}
+                  commandContext={commandContext}
+                />
+              ))}
+            </RibbonGroup>
+          </div>
+        );
+      })}
 
-      <RibbonGroupDivider />
-
-      <RibbonGroup label={t('ribbon.analyze.compareGroup')}>
-        <RibbonLargeButton
-          icon={Compare}
-          label={t(panelTitleKey('compare'))}
-          aria-label={t(panelTitleKey('compare'))}
-          tooltip={t('ribbon.analyze.compareTooltip')}
-          active={activeWorkspacePanels.has('compare')}
-          onClick={() => handleToggleRightPanel('compare')}
-        />
-        <RibbonLargeButton
-          icon={Layer}
-          label={t(panelTitleKey('layers'))}
-          aria-label={t(panelTitleKey('layers'))}
-          tooltip={t('ribbon.analyze.layersTooltip')}
-          active={activeWorkspacePanels.has('layers')}
-          onClick={() => useViewerStore.getState().toggleWorkspacePanel('layers', 'ribbon')}
-        />
-        {/* Location zones (#1810), reachable from a toolbar for the first time
-            (#2508): the ActivityBar rail was its only entry point. */}
-        <RibbonLargeButton
-          icon={Zones}
-          label={t(panelTitleKey('zones'))}
-          aria-label={t(panelTitleKey('zones'))}
-          tooltip={t('ribbon.analyze.zonesTooltip')}
-          active={activeWorkspacePanels.has('zones')}
-          onClick={() => useViewerStore.getState().toggleWorkspacePanel('zones', 'ribbon')}
-        />
-        {/* Per-model load report (#3927): actionable geometry warnings. */}
-        <RibbonLargeButton
-          icon={LoadReport}
-          label={t(panelTitleKey('loadReport'))}
-          aria-label={t(panelTitleKey('loadReport'))}
-          tooltip={t('ribbon.analyze.loadReportTooltip')}
-          active={activeWorkspacePanels.has('loadReport')}
-          onClick={() => useViewerStore.getState().toggleWorkspacePanel('loadReport', 'ribbon')}
-        />
-      </RibbonGroup>
-
-      <RibbonGroupDivider />
-
-      <RibbonGroup label={t('ribbon.analyze.dataGroup')}>
-        {/* IFC 5D cost inspector (#4858): reachable from a toolbar for the
-            first time — the ActivityBar rail was its only entry point. */}
-        <RibbonLargeButton
-          icon={Cost}
-          label={t(panelTitleKey('cost'))}
-          aria-label={t(panelTitleKey('cost'))}
-          tooltip={t('ribbon.analyze.costTooltip')}
-          active={activeWorkspacePanels.has('cost')}
-          onClick={() => useViewerStore.getState().toggleWorkspacePanel('cost', 'ribbon')}
-        />
-        <RibbonLargeButton
-          icon={List}
-          label={t(panelTitleKey('lists'))}
-          aria-label={t(panelTitleKey('lists'))}
-          tooltip={t('ribbon.analyze.listsTooltip')}
-          active={activeWorkspacePanels.has('lists')}
-          onClick={() => handleToggleBottomPanel('lists')}
-        />
-        <RibbonLargeButton
-          icon={Schedule}
-          label={t(panelTitleKey('gantt'))}
-          aria-label={t(panelTitleKey('gantt'))}
-          tooltip={t('ribbon.analyze.scheduleTooltip')}
-          active={activeWorkspacePanels.has('gantt')}
-          onClick={() => handleToggleBottomPanel('gantt')}
-        />
-        <RibbonLargeButton
-          icon={Chart}
-          label={t(panelTitleKey('charts'))}
-          aria-label={t(panelTitleKey('charts'))}
-          tooltip={t('ribbon.analyze.chartsTooltip')}
-          active={activeWorkspacePanels.has('charts')}
-          onClick={() => handleToggleBottomPanel('charts')}
-        />
-        <RibbonLargeButton
-          icon={Document}
-          label={t(panelTitleKey('document'))}
-          aria-label={t(panelTitleKey('document'))}
-          tooltip={t('ribbon.analyze.documentTooltip')}
-          active={activeWorkspacePanels.has('document')}
-          onClick={() => handleToggleBottomPanel('document')}
-        />
-        <RibbonLargeButton
-          icon={Drawing}
-          label={t(panelTitleKey('drawing'))}
-          aria-label={t(panelTitleKey('drawing'))}
-          tooltip={t('ribbon.analyze.drawingTooltip')}
-          active={activeWorkspacePanels.has('drawing')}
-          onClick={() => handleToggleBottomPanel('drawing')}
-        />
-        <RibbonLargeButton
-          icon={Script}
-          label={t(panelTitleKey('script'))}
-          aria-label={t(panelTitleKey('script'))}
-          tooltip={t('ribbon.analyze.scriptTooltip')}
-          active={activeWorkspacePanels.has('script')}
-          onClick={() => handleToggleBottomPanel('script')}
-        />
-        <RibbonLargeButton
-          icon={Flow}
-          label={t(panelTitleKey('flow'))}
-          aria-label={t(panelTitleKey('flow'))}
-          tooltip={t('ribbon.analyze.flowTooltip')}
-          active={activeWorkspacePanels.has('flow')}
-          onClick={() => handleToggleBottomPanel('flow')}
-        />
-      </RibbonGroup>
-
-      <RibbonGroupDivider />
-
-      <RibbonGroup label={t('ribbon.analyze.styleGroup')}>
-        <RibbonLargeButton
-          icon={Coloring}
-          label={t(panelTitleKey('lens'))}
-          aria-label={t(panelTitleKey('lens'))}
-          tooltip={t('ribbon.analyze.lensTooltip')}
-          active={activeWorkspacePanels.has('lens')}
-          onClick={() => handleToggleRightPanel('lens')}
-        />
-      </RibbonGroup>
-
-      {/* Analysis panels contributed by installed extensions. Only the
-          contributed ANALYSIS panels live here — managing extensions and
-          flavors themselves is workspace customization (Author tab). */}
+      {/* Installed analysis extensions have no workspace-panel registry id. */}
       {analysisExtensions.length > 0 && (
         <>
           <RibbonGroupDivider />
@@ -204,10 +110,13 @@ export function AnalyzeTab() {
             {chunk(analysisExtensions, 3).map((column, i) => (
               <RibbonSmallStack key={i}>
                 {column.map((extension) => (
-                  <RibbonSmallButton
+                  <RibbonContentSmallButton
                     key={extension.id}
+                    data-ribbon-extension={extension.id}
                     icon={extension.icon}
-                    label={extension.label}
+                    contentSource="extension"
+                    contentId={extension.id}
+                    contentLabel={extension.label}
                     active={activeWorkspacePanels.has(extension.id)}
                     onClick={() => handleToggleAnalysisExtension(extension.id)}
                   />

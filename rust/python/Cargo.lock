@@ -358,7 +358,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-python"
-version = "4.6.0"
+version = "4.13.0"
 dependencies = [
  "ifc-lite-export",
  "ifc-lite-processing",

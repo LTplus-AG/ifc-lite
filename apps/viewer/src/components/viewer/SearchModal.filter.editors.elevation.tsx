@@ -26,12 +26,12 @@ export function ElevationEditor({
         type="number"
         step="any"
         placeholder={t('searchModal.filterEditors.elevationPlaceholder')}
+        aria-label={t('searchModal.filterEditors.elevationInputLabel')}
         value={value}
         onChange={(e) => onChange(op, Number.parseFloat(e.target.value) || 0)}
         className="h-7 w-28 text-xs font-mono"
       />
-      <span className="text-[10px] text-muted-foreground">{t('searchModal.filterEditors.elevationUnitHint')}</span>
+      <span className="text-2xs text-muted-foreground">{t('searchModal.filterEditors.elevationUnitHint')}</span>
     </>
   );
 }
-

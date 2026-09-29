@@ -82,7 +82,10 @@ async function chooseReferenceModel(page: Page, panel: Locator, reference: Model
 async function openRepositionPanelForModel(
   page: Page, moving: ModelSnapshot, models: readonly ModelSnapshot[],
 ): Promise<Locator> {
-  await page.getByRole('button', { name: 'Reposition models and pointclouds', exact: true }).click();
+  const reposition = page.locator('button[data-command-id="model:reposition"]');
+  await expect(reposition).toHaveAccessibleName('Reposition');
+  await expect(reposition).toHaveAccessibleDescription('Reposition models and pointclouds');
+  await reposition.click();
   const panel = page.locator('section[aria-label="Reposition models"]');
   await expect(panel, 'the visible Reposition workflow opens').toBeVisible();
   const movingCheckbox = panel.getByLabel(moving.name, { exact: true });

@@ -6,7 +6,7 @@
 //! item's `MappingTarget`.
 
 use super::super::GeometryRouter;
-use crate::{Error, Result, Vector3};
+use crate::{Error, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
 
@@ -20,7 +20,23 @@ impl GeometryRouter {
         source: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<[f64; 16]>> {
-        let Some(mut matrix) = self.mapped_item_transform(item, source, decoder)? else {
+        self.resolve_scaled_mapped_item_transform_with_origin_loader(item, decoder,
+            |decoder| self.mapping_origin_transform(source, decoder))
+    }
+
+    /// Resolve a mapped target with a caller-supplied source-origin loader.
+    /// The loader runs after target parsing, preserving the standard error
+    /// precedence, and may reuse a parsed origin for repeated source maps.
+    pub fn resolve_scaled_mapped_item_transform_with_origin_loader<F>(
+        &self,
+        item: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        origin: F,
+    ) -> Result<Option<[f64; 16]>>
+    where F: FnOnce(&mut EntityDecoder) -> Result<Option<Matrix4<f64>>> {
+        let target = self.mapping_target_transform(item, decoder)?;
+        let origin = origin(decoder)?;
+        let Some(mut matrix) = Self::compose_mapped_transform(target, origin) else {
             return Ok(None);
         };
         self.scale_transform(&mut matrix);
@@ -48,20 +64,32 @@ impl GeometryRouter {
         source: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Matrix4<f64>>> {
-        let target = match item.get(1) {
-            Some(attr) if !attr.is_null() => match decoder.resolve_ref(attr)? {
-                Some(entity) => Some(self.parse_cartesian_transformation_operator(&entity, decoder)?),
-                None => None,
-            },
-            _ => None,
-        };
+        let target = self.mapping_target_transform(item, decoder)?;
         let origin = self.mapping_origin_transform(source, decoder)?;
-        Ok(match (target, origin) {
+        Ok(Self::compose_mapped_transform(target, origin))
+    }
+
+    fn mapping_target_transform(
+        &self, item: &DecodedEntity, decoder: &mut EntityDecoder,
+    ) -> Result<Option<Matrix4<f64>>> {
+        match item.get(1) {
+            Some(attr) if !attr.is_null() => match decoder.resolve_ref(attr)? {
+                Some(entity) => Ok(Some(self.parse_cartesian_transformation_operator(&entity, decoder)?)),
+                None => Ok(None),
+            },
+            _ => Ok(None),
+        }
+    }
+
+    fn compose_mapped_transform(
+        target: Option<Matrix4<f64>>, origin: Option<Matrix4<f64>>,
+    ) -> Option<Matrix4<f64>> {
+        match (target, origin) {
             (Some(t), Some(o)) => Some(t * o),
             (Some(t), None) => Some(t),
             (None, Some(o)) => Some(o),
             (None, None) => None,
-        })
+        }
     }
 
     /// `IfcRepresentationMap.MappingOrigin` (attr 0) as a 4x4, or `None` when it
@@ -75,7 +103,7 @@ impl GeometryRouter {
     /// probes defer the opening to the exact kernel, and the 2D drawing extractor
     /// abandons the profile. Substituting the identity here would render the item
     /// at a position nothing else agrees with. #1985
-    pub(crate) fn mapping_origin_transform(
+    pub fn mapping_origin_transform(
         &self,
         source: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -109,40 +137,38 @@ impl GeometryRouter {
         placement: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Matrix4<f64>> {
-        axis2_placement_2d_matrix(placement, decoder)
+        crate::transform::parse_axis2_placement_2d(placement, decoder)
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// The router-free form of [`GeometryRouter::parse_axis2_placement_2d`], so the
-/// 2D drawing extractor shares this definition instead of copying it. #1985
-pub(crate) fn axis2_placement_2d_matrix(
-    placement: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-) -> Result<Matrix4<f64>> {
-    let location = super::cartesian_point_at(placement, decoder, 0)?;
-    // A present RefDirection that is not an IfcDirection is a structural error and
-    // propagates, matching the 3D sibling and this module's contract that a broken
-    // MappingOrigin fails the item rather than being silently substituted. A
-    // dangling reference or a zero-length direction still falls back to +X: those
-    // are the degenerate-but-recoverable cases every placement parser here absorbs
-    // (see `build_axis2_matrix`), and erroring on them would drop geometry that
-    // renders fine today.
-    let ref_dir = match placement.get(1) {
-        Some(attr) if !attr.is_null() => match decoder.resolve_ref(attr)? {
-            Some(e) => super::operator::parse_direction_ratios(&e)?
-                .try_normalize(1e-9)
-                .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0)),
-            None => Vector3::new(1.0, 0.0, 0.0),
-        },
-        _ => Vector3::new(1.0, 0.0, 0.0),
-    };
-    let mut m = Matrix4::identity();
-    m[(0, 0)] = ref_dir.x;
-    m[(1, 0)] = ref_dir.y;
-    m[(0, 1)] = -ref_dir.y;
-    m[(1, 1)] = ref_dir.x;
-    m[(0, 3)] = location.x;
-    m[(1, 3)] = location.y;
-    m[(2, 3)] = location.z;
-    Ok(m)
+    #[test]
+    fn issue_5786_cached_origin_uses_standard_mapped_composition() {
+        let content = b"#1=IFCCARTESIANPOINT((10.,20.,0.));\n\
+            #2=IFCAXIS2PLACEMENT3D(#1,$,$);\n\
+            #3=IFCREPRESENTATIONMAP(#2,#9);\n\
+            #4=IFCCARTESIANPOINT((100.,0.,0.));\n\
+            #5=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#4,2.,$);\n\
+            #6=IFCMAPPEDITEM(#3,#5);";
+        let router = GeometryRouter::with_scale(0.001);
+        let mut decoder = EntityDecoder::new(content);
+        let item = decoder.decode_by_id(6).unwrap();
+        let source = decoder.decode_by_id(3).unwrap();
+        let standard = router.resolve_scaled_mapped_item_transform(&item, &source, &mut decoder).unwrap();
+        let origin = router.mapping_origin_transform(&source, &mut decoder).unwrap();
+        let cached = router.resolve_scaled_mapped_item_transform_with_origin_loader(
+            &item, &mut decoder, |_| Ok(origin)).unwrap();
+        // Target(100, 0) · Scale(2) · Origin(10, 20) = (120, 40) mm.
+        // Pin both public routes to that authored result independently.
+        for transform in [standard, cached] {
+            let matrix = transform.unwrap();
+            assert_eq!(matrix[0], 2.0);
+            assert_eq!(matrix[5], 2.0);
+            assert_eq!(matrix[10], 2.0);
+            assert!((matrix[12] - 0.12).abs() < 1e-12);
+            assert!((matrix[13] - 0.04).abs() < 1e-12);
+        }
+    }
 }

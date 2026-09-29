@@ -150,7 +150,7 @@ export const geometryExportDialogsEn = {
 
   // --- GeometryEditCard.tsx ---
   'geometryExport.editCard.header': 'Geometry',
-  'geometryExport.editCard.positionSectionLabel': 'Storey-local position (IFC Z-up)',
+  'geometryExport.editCard.positionSectionLabel': 'Storey-local position in m (IFC Z-up)',
   'geometryExport.editCard.nudgeStepAriaLabel': 'Nudge step in metres',
   'geometryExport.editCard.nudgeStepOption': '±{step} m',
   'geometryExport.editCard.nonStandardPlacementHint':
@@ -161,7 +161,7 @@ export const geometryExportDialogsEn = {
   'geometryExport.editCard.applyXyzButton': 'Apply XYZ',
   'geometryExport.editCard.enterNumericError': 'Enter numeric X, Y, Z coordinates',
   'geometryExport.editCard.moveFailedError': "Couldn't move: {reason}",
-  'geometryExport.editCard.movedSuccess': 'Moved to ({coordinates})',
+  'geometryExport.editCard.movedSuccess': 'Moved to ({coordinates}) m',
   'geometryExport.editCard.yawReadout': 'yaw {degrees}°',
   'geometryExport.editCard.yawReadoutEmpty': 'yaw —',
   'geometryExport.editCard.rotateMinus15AriaLabel': 'Rotate −15°',
@@ -172,7 +172,7 @@ export const geometryExportDialogsEn = {
   'geometryExport.editCard.rotatePlus90Tooltip': 'Rotate +90°',
   'geometryExport.editCard.rotateFailedError': "Couldn't rotate: {reason}",
   'geometryExport.editCard.splitButton': 'Split',
-  'geometryExport.editCard.splitTooltip': 'Click on this wall to split it (K)',
+  'geometryExport.editCard.splitTooltip': 'Point at this element to place the cut, then click (K)',
   'geometryExport.editCard.duplicateButton': 'Duplicate',
   'geometryExport.editCard.duplicateTooltip': 'Clone the entity along its first axis',
   'geometryExport.editCard.duplicateFailedError': "Couldn't duplicate: {reason}",

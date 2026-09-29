@@ -13,9 +13,9 @@
  * new in this slice, so reverting production deletes it, and a guarded
  * import here would let the revert-oracle see a skipped suite instead of a
  * real failure). The card is rendered against a model id with no
- * registered model, so Move stays disabled and rotation/split stay
- * hidden — the same "no model" shape every mutation reader in this store
- * falls back to safely.
+ * registered model, so Move stays disabled, rotation stays hidden and
+ * Split is disabled — the same "no model" shape every mutation reader in
+ * this store falls back to safely.
  */
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -28,7 +28,7 @@ import { GeometryEditCard } from './GeometryEditCard.js';
 
 const STRINGS: Record<string, string> = {
   'geometryExport.editCard.header': 'Geometry',
-  'geometryExport.editCard.positionSectionLabel': 'Storey-local position (IFC Z-up)',
+  'geometryExport.editCard.positionSectionLabel': 'Storey-local position in m (IFC Z-up)',
   'geometryExport.editCard.nudgeStepAriaLabel': 'Nudge step in metres',
   'geometryExport.editCard.nonStandardPlacementHint':
     "Entity has a non-standard placement (mapped representation or 2D-only). Move isn't supported directly — Duplicate and Delete still work.",

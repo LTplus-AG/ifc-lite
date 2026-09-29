@@ -23,12 +23,15 @@
  */
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { normalizeIfcTypeName } from '@ifc-lite/parser';
-import { EntityFlags, IfcTypeEnum, IfcTypeEnumFromString, IfcTypeEnumToString, type SpatialNode } from '@ifc-lite/data';
+import { EntityFlags, IfcTypeEnum, IfcTypeEnumFromString, type SpatialNode } from '@ifc-lite/data';
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 import { createListDataProvider } from '../lists/adapter.js';
 import type { ListDataProvider } from '@ifc-lite/lists';
 import { iterateEffectiveChartRows } from '../charts/datasets/effective-elements.js';
 import { effectiveAttribute, effectiveProperty, effectivePropertyPaths, findEffectiveElementId } from './effective-binding-fields.js';
+import { effectiveSpatialMembers } from '../effective-spatial-members.js';
+import { effectiveStoreyId } from '../effective-storey.js';
+import { spatialBindingNodes } from './spatial-binding-nodes.js';
 
 export interface BindingModel {
   id: string;
@@ -220,7 +223,7 @@ export function resolveBinding(path: string, ctx: BindingContext): ResolvedBindi
     if (!active) return fail(path, 'no model loaded');
     const hierarchy = active.store.spatialHierarchy;
     if (!hierarchy) return fail(path, 'the model has no spatial structure');
-    const node = spatialNode(active, hierarchy.project, head);
+    const node = spatialNode(active, head);
     if (!node) return fail(path, head.selector ? `no ${head.name} "${head.selector}"` : `no ${head.name} in the model`);
     return spatialAttribute(path, active, node, rest[0]?.name, rest.length);
   }
@@ -228,16 +231,8 @@ export function resolveBinding(path: string, ctx: BindingContext): ResolvedBindi
   return fail(path, `unknown root "${head.name}"`);
 }
 
-function spatialNode(model: BindingModel, project: SpatialNode, head: Segment): SpatialNode | null {
-  if (head.name === 'IfcProject') return model.view?.isDeleted(project.expressId) ? null : project;
-  const matches: SpatialNode[] = [];
-  const walk = (node: SpatialNode): void => {
-    const edited = model.view?.getEntityTypeMutation(node.expressId)?.newType;
-    const type = edited ? normalizeIfcTypeName(edited) : IfcTypeEnumToString(node.type);
-    if (!model.view?.isDeleted(node.expressId) && type === head.name) matches.push(node);
-    for (const child of node.children) walk(child);
-  };
-  walk(project);
+function spatialNode(model: BindingModel, head: Segment): SpatialNode | null {
+  const matches = spatialBindingNodes(model, head.name);
   if (matches.length === 0) return null;
   if (head.selector === undefined) return matches[0];
   const index = /^\d+$/.test(head.selector) ? Number(head.selector) : NaN;
@@ -258,11 +253,13 @@ function spatialAttribute(path: string, model: BindingModel, node: SpatialNode, 
         return succeed(path, effectiveAttribute(model, node.expressId, attr));
       case 'Elevation': {
         const edited = model.view.getAttributeMutationsForEntity(node.expressId).find((mutation) => mutation.name === 'Elevation')?.value;
-        const source = model.store.spatialHierarchy?.storeyElevations.get(node.expressId) ?? node.elevation;
-        const elevation = edited === undefined ? source : Number(edited);
+        const source = model.store.spatialHierarchy?.storeyElevations.get(node.expressId)
+          ?? node.elevation ?? effectiveAttribute(model, node.expressId, 'Elevation');
+        const raw = edited ?? source;
+        const elevation = raw === undefined || raw === '' ? undefined : Number(raw);
         return elevation === undefined || !Number.isFinite(elevation) ? fail(path, 'no elevation') : succeed(path, `${elevation.toFixed(2)} m`);
       }
-      case 'Elements': return succeed(path, String(countElements(node, model.view)));
+      case 'Elements': return succeed(path, String(countElements(node, model)));
     }
   }
   switch (attr) {
@@ -275,14 +272,16 @@ function spatialAttribute(path: string, model: BindingModel, node: SpatialNode, 
       const elevation = model.store.spatialHierarchy?.storeyElevations.get(node.expressId) ?? node.elevation;
       return elevation === undefined ? fail(path, 'no elevation') : succeed(path, `${elevation.toFixed(2)} m`);
     }
-    case 'Elements': return succeed(path, String(countElements(node)));
+    case 'Elements': return succeed(path, String(countElements(node, model)));
     default: return fail(path, `unknown attribute "${attr ?? ''}"`);
   }
 }
 
-function countElements(node: SpatialNode, view?: MutablePropertyView): number {
-  let n = view ? node.elements.filter((id) => !view.isDeleted(id)).length : node.elements.length;
-  for (const child of node.children) n += countElements(child, view);
+function countElements(node: SpatialNode, model: BindingModel): number {
+  const view = model.view;
+  if (view?.isDeleted(node.expressId)) return 0;
+  let n = view ? effectiveSpatialMembers(model.store, view, node.expressId).length : node.elements.length;
+  for (const child of node.children) n += countElements(child, model);
   return n;
 }
 
@@ -303,8 +302,8 @@ function elementAttribute(path: string, model: BindingModel, expressId: number, 
       case 'Tag': return succeed(path, provider.getEntityTag(expressId));
       case 'GlobalId': return succeed(path, provider.getEntityGlobalId(expressId));
       case 'Storey': {
-        const storeyId = model.store.spatialHierarchy?.elementToStorey.get(expressId);
-        if (storeyId === undefined || model.view?.isDeleted(storeyId)) return fail(path, 'not contained in a storey');
+        const storeyId = effectiveStoreyId(model.store, model.view, expressId);
+        if (storeyId === undefined) return fail(path, 'not contained in a storey');
         return succeed(path, model.view ? effectiveAttribute(model, storeyId, 'Name') : model.store.entities.getName(storeyId));
       }
       default: break;

@@ -8,14 +8,15 @@ import { replayWorkspaceHistory } from '@/lib/model-placement/history';
 import { registerKeyboardCommand, type CommandRun } from '@/lib/commands/dispatcher';
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
 import { useViewerStore } from '@/store';
-import { resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { showAllFromStore } from '@/store/homeView';
 import { hideSelectionFromStore } from '@/store/hideSelection';
 import { workspacePanelForShortcutCode } from '@/lib/panels/registry';
 import { bottomPanelFlags } from '@/lib/panels/bottom-panels';
 import { closeAllPanelWindows } from '@/services/panel-windows';
-import { WALK_MOVEMENT_KEYS, eventKey } from '@/lib/keyboard-event';
+import { WALK_MOVEMENT_KEYS, eventKey, isTextEditingElement } from '@/lib/keyboard-event';
+import { bindModelWorkspaceKeys } from '@/lib/commands/modeling/keys-workspace';
 import {
-  executeBasketIsolate, executeBasketSet, executeBasketAdd,
+  executeBasketIsolate, executeBasketAdd,
   executeBasketRemove, executeBasketSaveView,
 } from '@/store/basket/basketCommands';
 
@@ -80,15 +81,12 @@ function cancelMeasurement(): boolean {
 
 function splitSelected(): void {
   const state = useViewerStore.getState();
-  if (state.activeTool === 'split') {
-    state.clearSplitHover();
-    state.setActiveTool('select');
+  if (state.session?.activeCommandId === 'element.split') {
+    state.endCommand('cancel');
     return;
   }
-  const selected = state.selectedEntity;
-  if (!selected) return;
-  state.setSplitTarget(selected.modelId, selected.expressId);
-  state.setActiveTool('split');
+  if (state.selectedEntityId === null) return;
+  state.startCommand('element.split');
 }
 
 function hideSelected(event: KeyboardEvent): boolean {
@@ -121,14 +119,8 @@ const RUNNERS: readonly [KeyCommandId, CommandRun][] = [
   ['ui.toggleSidebar', () => { useViewerStore.getState().cycleSidebarMode(); }],
   ['edit.toggleEditMode', () => { useViewerStore.getState().toggleEditEnabled(); }],
   ['tool.split', () => { splitSelected(); }],
-  ['split.exit', () => {
-    const state = useViewerStore.getState();
-    state.clearSplitHover();
-    state.setActiveTool('select', 'esc');
-  }],
   ['edit.rotate', rotateSelected],
   ['basket.isolate', () => { executeBasketIsolate(); }],
-  ['basket.set', () => { executeBasketSet(); }],
   ['basket.add', () => { executeBasketAdd(); }],
   ['basket.remove', () => { executeBasketRemove(); }],
   ['basket.toggleDock', (event) => {
@@ -142,12 +134,12 @@ const RUNNERS: readonly [KeyCommandId, CommandRun][] = [
   ['visibility.hideSelection', hideSelected],
   ['visibility.showAll', (event) => {
     if (walkOwns(event)) return false;
-    resetVisibilityForHomeFromStore('a');
+    showAllFromStore('a');
   }],
   ['addElement.commit', () => {
     const state = useViewerStore.getState();
     if (!['slab', 'roof', 'plate', 'space'].includes(state.addElementType) || state.addElementSlabMode !== 'polygon') return false;
-    void import('@/components/viewer/selectionHandlers').then((module) => module.commitAddElementSlabPolygon());
+    void import('@/components/viewer/add-element-handlers').then((module) => module.commitAddElementSlabPolygon());
   }],
   ['addElement.clearPending', () => {
     const state = useViewerStore.getState();
@@ -157,26 +149,32 @@ const RUNNERS: readonly [KeyCommandId, CommandRun][] = [
   ['measure.cancel', cancelMeasurement],
   ['measure.finish', finishMeasurement],
   ['measure.toggleSnap', () => { useViewerStore.getState().toggleSnap(); }],
+  ['addElement.toggleSnap', () => { useViewerStore.getState().toggleSnap(); }],
   ['selection.escape', () => { escapeGlobal(false); }],
   ['ui.closeAllPanels', () => { escapeGlobal(true); }],
   ['ui.toggleTheme', () => { useViewerStore.getState().toggleTheme(); }],
 ];
 
 const TOOL_CONTEXT: Partial<Record<KeyCommandId, string>> = {
-  'split.exit': 'split',
   'addElement.commit': 'addElement',
   'addElement.clearPending': 'addElement',
+  'addElement.toggleSnap': 'addElement',
   'measure.cancel': 'measure',
   'measure.finish': 'measure',
   'measure.toggleSnap': 'measure',
 };
+
+/** Undo / redo also run from a focused combobox or menu button; only real text editing keeps its own. */
+const HISTORY_COMMANDS: ReadonlySet<KeyCommandId> = new Set(['edit.undo', 'edit.redo']);
 
 export function useKeyboardShortcuts({ enabled = true }: KeyboardShortcutsOptions = {}): void {
   useEffect(() => {
     if (!enabled) return;
     const dispose = RUNNERS.map(([id, run]) => registerKeyboardCommand(id, run, {
       active: TOOL_CONTEXT[id] ? () => useViewerStore.getState().activeTool === TOOL_CONTEXT[id] : undefined,
+      allowInTextEntry: HISTORY_COMMANDS.has(id) ? (event: KeyboardEvent) => !isTextEditingElement(event.target) : undefined,
     }));
+    dispose.push(bindModelWorkspaceKeys());
     return () => { for (const remove of dispose) remove(); };
   }, [enabled]);
 }

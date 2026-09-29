@@ -5,6 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { computeTypeIsolationLabel, type TypeIsolationModelMapLike } from './typeIsolationLabel.js';
 
 /** A minimal `IfcDataStore` stub — only `entities.getTypeName` is read. */
@@ -23,7 +24,9 @@ describe('computeTypeIsolationLabel', () => {
   });
 
   it('single-model mode: labels with the shared type when every id is the same class', () => {
-    const store = storeWithTypes({ 1: 'IfcWall', 2: 'IfcWall' });
+    // The real parsed table answers 'Unknown' for an id it does not hold.
+    const types: Record<number, string> = { 1: 'IfcWall', 2: 'IfcWall' };
+    const store = { entities: { getTypeName: (id: number) => types[id] ?? 'Unknown' } } as unknown as IfcDataStore;
     const models: TypeIsolationModelMapLike = new Map([
       ['m', { idOffset: 0, maxExpressId: 1000, ifcDataStore: store }],
     ]);
@@ -77,5 +80,23 @@ describe('computeTypeIsolationLabel', () => {
     // model -> must be skipped, not looked up in fallbackStore.
     const label = computeTypeIsolationLabel(new Set([1, 1_000_001, 5000]), models, fallbackStore);
     assert.equal(label, 'IfcWall', `an unresolved id must not pull in fallbackStore's IfcDoor; got ${label}`);
+  });
+
+  // #6233: an element authored this session is not in the parsed table, which
+  // answers 'Unknown' for it; the chip reads the class through the overlay.
+  it('labels an isolated authored wall by its authored class, and a retype by its new class', () => {
+    // The real parsed table answers 'Unknown' for an id it does not hold.
+    const types: Record<number, string> = { 1: 'IfcWall', 2: 'IfcWall' };
+    const store = { entities: { getTypeName: (id: number) => types[id] ?? 'Unknown' } } as unknown as IfcDataStore;
+    const models: TypeIsolationModelMapLike = new Map([
+      ['m', { idOffset: 0, maxExpressId: 1000, ifcDataStore: store }],
+    ]);
+    const view = new MutablePropertyView(null, 'm');
+    view.setExpressIdWatermark(100);
+    const authored = view.createEntity('IfcWall', ['0Authored0000000000001', null, 'W']).expressId;
+    const overlay = (modelId: string) => (modelId === 'm' ? view : undefined);
+    assert.equal(computeTypeIsolationLabel(new Set([1, authored]), models, null, overlay), 'IfcWall');
+    view.setEntityType(2, 'IfcColumn', null, 'IfcWall');
+    assert.equal(computeTypeIsolationLabel(new Set([2]), models, null, overlay), 'IfcColumn');
   });
 });

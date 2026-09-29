@@ -118,7 +118,7 @@ export function MobileToolbar() {
   };
 
   return (
-    <div className="flex items-center gap-0.5 px-1.5 h-11 border-b bg-white dark:bg-black border-zinc-200 dark:border-zinc-800 relative z-50 overflow-x-auto">
+    <div data-command-surface="mobile" className="flex items-center gap-0.5 px-1.5 h-11 border-b bg-white dark:bg-black border-zinc-200 dark:border-zinc-800 relative z-50 overflow-x-auto">
       {/* Hidden file inputs */}
       <input
         ref={fileInputRef}
@@ -221,7 +221,7 @@ export function MobileToolbar() {
       {loading && activeProgress && (
         <div className="flex items-center gap-1.5 mr-1 flex-shrink-0">
           <Progress value={activeProgress.percent} className="w-16 h-1.5" />
-          <span className="text-[10px] text-muted-foreground tabular-nums">
+          <span className="text-2xs text-muted-foreground tabular-nums">
             {Math.round(activeProgress.percent)}%
           </span>
         </div>
@@ -234,12 +234,13 @@ export function MobileToolbar() {
             variant="ghost"
             size="icon-sm"
             className="h-9 w-9 flex-shrink-0"
+            data-command-disclosure="mobile:more"
             aria-label={t('shellChrome.mobileToolbar.moreActionsAriaLabel')}
           >
             <MoreHorizontal className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64 max-h-[80vh] overflow-y-auto">
+        <DropdownMenuContent data-mobile-command-menu align="end" className="w-64 max-h-[80vh] overflow-y-auto">
           {menuItem('ui:commands')}
           <DropdownMenuSeparator />
           {/* Walk Mode */}
@@ -274,10 +275,12 @@ export function MobileToolbar() {
             {t('shellChrome.mobileToolbar.export')}
           </DropdownMenuLabel>
           {exportRows.map((row) => (
-            <DropdownMenuItem key={row.id} data-export-row={row.id} onClick={() => {
-              if (!row.registryOwned) trackCommandExecution(row.id, 'mobile');
-              row.action();
-            }}>
+            <DropdownMenuItem key={row.id} data-export-row={row.id}
+              data-extension-exporter-id={!row.registryOwned ? row.id : undefined}
+              onClick={() => {
+                if (!row.registryOwned) trackCommandExecution(row.id, 'mobile');
+                row.action();
+              }}>
               <row.icon className="h-4 w-4 mr-2" />
               {row.labelKey ? t(row.labelKey, row.labelKeyParams) : row.label}
             </DropdownMenuItem>

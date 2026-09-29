@@ -22,6 +22,7 @@ import { CLASH_TABLE_COLUMNS, clashTableRows, type ClashElementRef, type ClashTa
 import { tableToCsv } from '@ifc-lite/export';
 import { useViewerStore } from '@/store';
 import { activeModelName, buildExportFilename, downloadFile, modelExportFilename } from '@/lib/export/download';
+import { effectiveStoreyId } from '@/lib/effective-storey';
 
 export interface ClashTableExportResult {
   rows: number;
@@ -39,7 +40,7 @@ export function buildClashTable(): ClashTableRow[] | null {
     const hit = state.resolveGlobalIdInModel(ref.model, ref.ref);
     if (!hit) return undefined;
     const store = state.models.get(hit.modelId)?.ifcDataStore;
-    const storeyId = store?.spatialHierarchy?.elementToStorey.get(hit.expressId);
+    const storeyId = store ? effectiveStoreyId(store, state.mutationViews.get(hit.modelId), hit.expressId) : undefined;
     if (!storeyId) return undefined;
     return store?.entities.getName(storeyId) || undefined;
   };

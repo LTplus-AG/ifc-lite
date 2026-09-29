@@ -139,6 +139,7 @@ export function RuleCard({ rule, onChange, onRemove, models, schemaVersion }: Ru
               min={0}
               value={rule.cardinality?.minApplicable ?? ''}
               placeholder={t('validationEditor.ruleCard.cardinalityAny')}
+              aria-label={t('validationEditor.ruleCard.cardinalityMin')}
               onChange={(e) => {
                 const raw = e.target.value;
                 const minApplicable = raw === '' ? undefined : Math.max(0, Number.parseInt(raw, 10) || 0);
@@ -153,6 +154,7 @@ export function RuleCard({ rule, onChange, onRemove, models, schemaVersion }: Ru
               min={0}
               value={rule.cardinality?.maxApplicable ?? ''}
               placeholder={t('validationEditor.ruleCard.cardinalityAny')}
+              aria-label={t('validationEditor.ruleCard.cardinalityMax')}
               onChange={(e) => {
                 const raw = e.target.value;
                 const maxApplicable = raw === '' ? undefined : Math.max(0, Number.parseInt(raw, 10) || 0);

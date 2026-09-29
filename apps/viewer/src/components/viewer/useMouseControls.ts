@@ -19,7 +19,7 @@ import type {
   EdgeLockState,
   SectionPlane,
 } from '@/store';
-import type { MeasurementConstraintEdge, OrthogonalAxis } from '@/store/types.js';
+import type { HoverState, MeasurementConstraintEdge, OrthogonalAxis } from '@/store/types.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
 import { isPivotRaycastTooExpensive } from './orbitPivotCensus.js';
 import { focusedClashOrbitPivot, sceneAnchorOrbitPivot } from './orbitPivot.js';
@@ -33,11 +33,14 @@ import type { PointerGesture } from './pointerGesture.js';
 import { resolveNavigationPointerGesture, resolveWheelNavigation } from '@/lib/navigation/presets.js';
 import { handleMeasureTap, ignoreTouchPointers, setMeasureTapHandler } from './touchRouting.js';
 import { invalidateSelectionPick } from './referenceSelection.js';
-import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover, handleSplitHover, finishPolylineFromDoubleClick, finishRadiusFromDoubleClick } from './selectionHandlers.js';
+import { routeCommandPointer } from './commandPointer.js';
+import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, finishPolylineFromDoubleClick, finishRadiusFromDoubleClick } from './selectionHandlers.js';
+import { handleAddElementHover } from './add-element-handlers.js';
 import { applyWheelZoom, createFineZoomModifierTracker } from './wheelZoom.js';
 import { createZoomSurfacePicker } from './zoomSurface.js';
 import { createFlyController } from './flyControls.js';
 import { MIN_RADIUS_POINTS } from './tools/measure-modes/radius.js';
+import { closeAddElementPolygonFromDoubleClick, isAddElementPolygonRepeatClick } from './add-element-double-click.js';
 
 export interface MouseState {
   isDragging: boolean;
@@ -119,12 +122,7 @@ export interface UseMouseControlsParams {
 
   // Callbacks
   handlePickForSelection: (pickResult: PickResult | null) => void;
-  setHoverState: (state: {
-    entityId: number;
-    screenX: number;
-    screenY: number;
-    worldXYZ?: { x: number; y: number; z: number };
-  }) => void;
+  setHoverState: (state: HoverState & { entityId: number }) => void;
   /**
    * Called during a rectangle-selection drag with the current rect
    * (CSS pixels, canvas-relative). Passed `null` on drag end to clear
@@ -590,12 +588,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         if (handleAddElementHover(ctx, x, y)) return;
       }
 
-      // Split-tool hover preview — projects the cursor onto the
-      // hovered wall's axis and pushes the cut distance into the
-      // store so SplitOverlay renders the perpendicular guide.
-      if (tool === 'split' && !mouseState.isDragging) {
-        if (handleSplitHover(ctx, x, y)) return;
-      }
+      // A running modeling command owns the hover (#6232, commandPointer.ts).
+      if (tool === 'command' && !mouseState.isDragging && routeCommandPointer(ctx, 'move', x, y, e)) return;
 
       // Section tool face-pick: dwell-aware hover preview (issue #243
       // follow-up). Runs INSTEAD of the generic tooltip path while
@@ -654,7 +648,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
               entityId: pickResult.expressId,
               screenX: e.clientX,
               screenY: e.clientY,
-              worldXYZ: pickResult.worldXYZ,
+              worldXYZ: pickResult.worldXYZ, modelIndex: pickResult.modelIndex,
             });
           } else {
             clearHover();
@@ -811,7 +805,7 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       }
     };
 
-    const handleClick = (e: MouseEvent) => handleSelectionClick(ctx, e);
+    const handleClick = (e: MouseEvent) => { if (!isAddElementPolygonRepeatClick(e)) void handleSelectionClick(ctx, e); };
 
     // Double-click finishes an in-progress polyline sequence as OPEN (#2199)
     // — the same "reads the length so far, does not close the loop" outcome
@@ -825,6 +819,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     // `activeRadius` is ever non-null, so the two `!== null` checks below
     // never both fire.
     const handleDoubleClick = (e: MouseEvent) => {
+      // Add Element: double-click closes a polygon outline, like Enter (#6233).
+      if (closeAddElementPolygonFromDoubleClick()) { e.preventDefault(); return; }
       if (activeToolRef.current !== 'measure') return;
       // The store side lives in selectionHandlers.ts (beside
       // handlePolylineClick / handleRadiusClick) so it is reachable from a

@@ -43,4 +43,12 @@ test('#5394: storey names are readable in the default hierarchy panel', async ({
     expect(m.rowWidth, `${m.name} row width`).toBeLessThan(288);
     expect(m.needs - m.shown, `${m.name} is truncated (${m.shown}px of ${m.needs}px)`).toBeLessThanOrEqual(1);
   }
+
+  // #5873: the grouped rail costs 16px; preserving names must not overflow a
+  // narrower desktop viewport with the default split.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const horizontalOverflow = await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(horizontalOverflow, 'the wider hierarchy split keeps the desktop shell within 1280px').toBeLessThanOrEqual(1);
 });

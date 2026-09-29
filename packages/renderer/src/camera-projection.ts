@@ -13,6 +13,44 @@ import { MathUtils, viewBasis } from './math.js';
 import { DEFAULT_ORTHO_SIZE, isUsableBounds } from './camera-guards.js';
 import type { RelativeToEyeFrame } from './relative-to-eye.js';
 
+/** Capture one camera frame for all affine source-line depth checks in a pick. */
+export function createProjectableLineInterval(
+  frame: RelativeToEyeFrame,
+): (start: Vec3, end: Vec3) => readonly [number, number] | null {
+  if (!frame.isAvailable()) return () => null;
+  const snapshot = frame.snapshot();
+  const m = snapshot.getViewProjection().m;
+  const depth = (p: readonly number[]) => ({
+    z: m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14],
+    w: m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15],
+  });
+  return (start, end) => {
+    const a = snapshot.worldToRelative([start.x, start.y, start.z]);
+    const b = snapshot.worldToRelative([end.x, end.y, end.z]);
+    if (![...a, ...b].every(Number.isFinite)) return null;
+    const first = depth(a), last = depth(b);
+    if (![first.z, first.w, last.z, last.w].every(Number.isFinite)) return null;
+    let low = 0, high = 1;
+    // projectToScreen requires W > 0 and -1 <= Z/W <= 1. With positive W,
+    // these are three linear halfspaces along an affine source line.
+    for (const [from, to] of [
+      [first.w, last.w],
+      [first.w + first.z, last.w + last.z],
+      [first.w - first.z, last.w - last.z],
+    ]) {
+      const slope = to - from;
+      if (slope === 0) { if (from < 0) return null; continue; }
+      const root = -from / slope;
+      if (slope > 0) low = Math.max(low, root);
+      else high = Math.min(high, root);
+      if (low > high) return null;
+    }
+    // W=0 is excluded even when it lies on the other two plane boundaries.
+    if (!(first.w + (last.w - first.w) * ((low + high) / 2) > 0)) return null;
+    return [low, high];
+  };
+}
+
 /**
  * One NDC axis: `screen / extent * scale + offset`, degrading to the centre
  * of the axis when the extent is unusable.

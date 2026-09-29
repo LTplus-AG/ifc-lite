@@ -35,6 +35,7 @@ import { ElevationEditor } from './SearchModal.filter.editors.elevation';
 import { ClassificationEditor, GroupEditor, ModelFactEditor } from './SearchModal.filter.editors.membership';
 import { ReadOptionControls } from './SearchModal.filter.editors.readOptions';
 import { ModelTagRuleEditor } from './ModelTagRuleEditor';
+import { ListConditionEditor } from './lists/ListConditionEditor';
 import type { ModelTag } from '@ifc-lite/rules';
 import {
   SET_OPS,
@@ -113,6 +114,7 @@ export function RuleRow({ rule, modelOptions, tagOptions, ifcTypeOptions, storey
 
       {rule.kind === 'name' && (
         <NameEditor
+          label={t('searchModal.filterEditors.nameInputLabel')}
           op={rule.op}
           value={rule.value}
           onChange={(op, value) => onChange(Rule.name(op, value))}
@@ -162,6 +164,7 @@ export function RuleRow({ rule, modelOptions, tagOptions, ifcTypeOptions, storey
 
       {rule.kind === 'type' && (
         <NameEditor
+          label={t('searchModal.filterEditors.typeNameInputLabel')}
           op={rule.op}
           value={rule.value}
           onChange={(op, value) => onChange(Rule.typeName(op, value))}
@@ -170,9 +173,11 @@ export function RuleRow({ rule, modelOptions, tagOptions, ifcTypeOptions, storey
 
       {rule.kind === 'group' && <GroupEditor rule={rule} onChange={onChange} />}
       {rule.kind === 'modelFact' && <ModelFactEditor rule={rule} onChange={onChange} />}
+      {rule.kind === 'listCondition' && <ListConditionEditor rule={rule} onChange={onChange} />}
 
       {rule.kind === 'parent' && (
         <NameEditor
+          label={t('searchModal.filterEditors.parentNameInputLabel')}
           op={rule.op}
           value={rule.value}
           onChange={(op, value) => onChange(Rule.parent(op, value, rule.valueKind))}
@@ -290,7 +295,7 @@ function PredefinedTypeEditor({
     <>
       <OpDropdown ops={SET_OPS} value={op} onChange={(next) => onChange(values, next)} />
       <Input
-        placeholder={t('searchModal.filterEditors.predefinedTypePlaceholder')}
+        placeholder={t('searchModal.filterEditors.predefinedTypePlaceholder')} aria-label={t('searchModal.filterEditors.predefinedTypeInputLabel')}
         value={text}
         onChange={(e) => setFromText(e.target.value)}
         className="h-7 w-56 text-xs font-mono"
@@ -327,10 +332,12 @@ function PredefinedTypeEditor({
 }
 
 function NameEditor({
+  label,
   op,
   value,
   onChange,
 }: {
+  label: string;
   op: StringOp;
   value: string;
   onChange: (op: StringOp, value: string) => void;
@@ -340,7 +347,7 @@ function NameEditor({
     <>
       <OpDropdown ops={STRING_OPS} value={op} onChange={(next) => onChange(next, value)} />
       <Input
-        placeholder={t('searchModal.filterEditors.textPlaceholder')}
+        placeholder={t('searchModal.filterEditors.textPlaceholder')} aria-label={label}
         value={value}
         onChange={(e) => onChange(op, e.target.value)}
         className="h-7 w-56 text-xs font-mono"
@@ -374,7 +381,7 @@ function PropertyEditor({ rule, psetQto, valueSchema, onChange }: PropertyEditor
   return (
     <>
       <ComboInput
-        placeholder={t('searchModal.filterEditors.psetNamePlaceholder')}
+        placeholder={t('searchModal.filterEditors.psetNamePlaceholder')} aria-label={t('searchModal.filterEditors.psetNameInputLabel')}
         value={rule.setName}
         options={psetNames}
         className="h-7 w-52 text-xs font-mono"
@@ -382,7 +389,7 @@ function PropertyEditor({ rule, psetQto, valueSchema, onChange }: PropertyEditor
       />
       <span className="text-muted-foreground">.</span>
       <ComboInput
-        placeholder={t('searchModal.filterEditors.propertyNamePlaceholder')}
+        placeholder={t('searchModal.filterEditors.propertyNamePlaceholder')} aria-label={t('searchModal.filterEditors.propertyNameInputLabel')}
         value={rule.propertyName}
         options={propNames}
         className="h-7 w-44 text-xs font-mono"
@@ -391,7 +398,7 @@ function PropertyEditor({ rule, psetQto, valueSchema, onChange }: PropertyEditor
       <OpDropdown ops={VALUE_OPS} value={rule.op} onChange={(next) => onChange({ ...rule, op: next })} />
       {!valueless && (
         <ComboInput
-          placeholder={t('searchModal.filterEditors.valuePlaceholder')}
+          placeholder={t('searchModal.filterEditors.valuePlaceholder')} aria-label={t('searchModal.filterEditors.propertyValueInputLabel')}
           value={rule.value}
           options={valueOptions}
           className="h-7 w-44 text-xs font-mono"
@@ -421,7 +428,7 @@ function QuantityEditor({ rule, psetQto, onChange }: QuantityEditorProps) {
   return (
     <>
       <ComboInput
-        placeholder={t('searchModal.filterEditors.qsetNamePlaceholder')}
+        placeholder={t('searchModal.filterEditors.qsetNamePlaceholder')} aria-label={t('searchModal.filterEditors.qsetNameInputLabel')}
         value={rule.setName}
         options={qsetNames}
         className="h-7 w-56 text-xs font-mono"
@@ -429,7 +436,7 @@ function QuantityEditor({ rule, psetQto, onChange }: QuantityEditorProps) {
       />
       <span className="text-muted-foreground">.</span>
       <ComboInput
-        placeholder={t('searchModal.filterEditors.quantityNamePlaceholder')}
+        placeholder={t('searchModal.filterEditors.quantityNamePlaceholder')} aria-label={t('searchModal.filterEditors.quantityNameInputLabel')}
         value={rule.quantityName}
         options={qtyNames}
         className="h-7 w-44 text-xs font-mono"
@@ -438,7 +445,7 @@ function QuantityEditor({ rule, psetQto, onChange }: QuantityEditorProps) {
       <OpDropdown ops={NUMERIC_OPS} value={rule.op} onChange={(next) => onChange({ ...rule, op: next })} />
       <Input
         type="number"
-        placeholder={t('searchModal.filterEditors.valuePlaceholder')}
+        placeholder={t('searchModal.filterEditors.valuePlaceholder')} aria-label={t('searchModal.filterEditors.quantityValueInputLabel')}
         value={rule.value}
         onChange={(e) => onChange({ ...rule, value: Number.parseFloat(e.target.value) || 0 })}
         className="h-7 w-32 text-xs font-mono"
@@ -464,7 +471,7 @@ function MaterialEditor({
     <>
       <OpDropdown ops={STRING_OPS} value={op} onChange={(next) => onChange(next, value)} />
       <ComboInput
-        placeholder={t('searchModal.filterEditors.materialNamePlaceholder')}
+        placeholder={t('searchModal.filterEditors.materialNamePlaceholder')} aria-label={t('searchModal.filterEditors.materialNameInputLabel')}
         value={value}
         options={options}
         className="h-7 w-56 text-xs font-mono"

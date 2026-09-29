@@ -7,7 +7,8 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
 import type { TreeNode, UnifiedStorey, HierarchySortMode } from './types';
-import { HIERARCHY_SORT_MODES, DEFAULT_HIERARCHY_SORT } from './types';
+import { readStoredSortMode, persistSortMode } from './hierarchy-sort-storage';
+import { useEffectiveMaterialStores } from '@/hooks/useEffectiveMaterialStores';
 import {
   buildUnifiedStoreys,
   getUnifiedStoreyElements as getUnifiedStoreyElementsFn,
@@ -23,26 +24,11 @@ import {
   collectGeometryReadyModelIds,
 } from './hierarchyGeometry';
 import { flattenVisibleHierarchy, indexHierarchyTree } from './treeProjection';
+import { effectiveSpatialMembers } from '@/lib/effective-spatial-members';
 
 export type { HierarchyMode } from '@/store';
 
-const SORT_STORAGE_KEY = 'hierarchy-sort';
 const EXPAND_ALL = { has: () => true };
-
-/** Read the persisted sort mode, falling back to the default for missing or
- *  stale (e.g. renamed) localStorage values. Reads can throw (private mode,
- *  opaque origin), so guard and fall back rather than break the panel mount. */
-function readStoredSortMode(): HierarchySortMode {
-  if (typeof window === 'undefined') return DEFAULT_HIERARCHY_SORT;
-  try {
-    const stored = localStorage.getItem(SORT_STORAGE_KEY);
-    return stored && (HIERARCHY_SORT_MODES as readonly string[]).includes(stored)
-      ? (stored as HierarchySortMode)
-      : DEFAULT_HIERARCHY_SORT;
-  } catch {
-    return DEFAULT_HIERARCHY_SORT;
-  }
-}
 
 interface UseHierarchyTreeParams {
   models: Map<string, FederatedModel>;
@@ -95,11 +81,17 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   );
 
   const georefMutations = useViewerStore((state) => state.georefMutations); // storey badges only (#4843)
+  // The session's edits; the trees read authored rows' name and class through them (#5249, #6233).
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
   // Build unified storey data for multi-model mode (moved before useEffect that depends on it)
   const unifiedStoreys = useMemo(
-    (): UnifiedStorey[] => buildUnifiedStoreys(models, sortMode, geometricIds, geometryReadyModelIds, georefMutations),
-    [models, sortMode, geometricIds, geometryReadyModelIds, georefMutations]
+    (): UnifiedStorey[] => buildUnifiedStoreys(models, sortMode, geometricIds, geometryReadyModelIds, georefMutations,
+      (modelId) => mutationViews.get(modelId)),
+    // mutationVersion: the views mutate in place, so their identity alone never changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [models, sortMode, geometricIds, geometryReadyModelIds, georefMutations, mutationViews, mutationVersion]
   );
 
   // Auto-expand nodes on initial load based on model count
@@ -215,8 +207,9 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   // not the columnar parse the class/type builders scan, so a baked IfcSpace was
   // absent from the "By Class" tree. Filtering by geometricIds keeps it to real
   // products (the space has a mesh; its helper points/placements/solids don't).
-  const mutationViews = useViewerStore((s) => s.mutationViews);
-  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const { stores: materialSourceStores, ready: materialReady } = useEffectiveMaterialStores(
+    models, ifcDataStore, groupingMode === 'material',
+  );
   const authoredProducts = useMemo<AuthoredProduct[]>(() => {
     const out: AuthoredProduct[] = [];
     const state = useViewerStore.getState();
@@ -247,14 +240,14 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   // visible rows and never calls the builder.
   // hiddenEntities intentionally NOT in deps - visibility computed lazily.
   const structuralTree = useMemo(
-    (): TreeNode[] => buildTreeForGrouping(
+    (): TreeNode[] => groupingMode === 'material' && !materialReady ? [] : buildTreeForGrouping(
       groupingMode, models, ifcDataStore, EXPAND_ALL, isMultiModel, unifiedStoreys, sortMode,
       geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds,
-      georefMutations, mutationViews,
+      georefMutations, mutationViews, materialSourceStores,
     ),
     [groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode,
       geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds,
-      georefMutations, mutationViews, mutationVersion],
+      georefMutations, mutationViews, mutationVersion, materialSourceStores, materialReady],
   );
   const treeIndex = useMemo(() => indexHierarchyTree(structuralTree), [structuralTree]);
   const getExpandedTreeForReveal = useCallback(() => structuralTree, [structuralTree]);
@@ -307,7 +300,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
       const modelId = node.modelIds[0];
       const model = models.get(modelId);
       if (model?.ifcDataStore?.spatialHierarchy) {
-        const localIds = (model.ifcDataStore.spatialHierarchy.byStorey.get(storeyId) as number[]) || [];
+        const localIds = effectiveSpatialMembers(model.ifcDataStore, mutationViews.get(modelId), storeyId);
         return toGlobalIdsForModel(modelId, localIds);
       }
     } else if (node.type === 'IfcBuildingStorey') {
@@ -316,13 +309,13 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
       const modelId = node.modelIds[0];
 
       if (modelId === 'legacy' && ifcDataStore?.spatialHierarchy) {
-        const elements = ifcDataStore.spatialHierarchy.byStorey.get(storeyId);
-        if (elements) return elements as number[];
+        const elements = effectiveSpatialMembers(ifcDataStore, mutationViews.get('legacy'), storeyId);
+        if (elements.length) return elements;
       }
 
       const model = models.get(modelId);
       if (model?.ifcDataStore?.spatialHierarchy) {
-        const localIds = (model.ifcDataStore.spatialHierarchy.byStorey.get(storeyId) as number[]) || [];
+        const localIds = effectiveSpatialMembers(model.ifcDataStore, mutationViews.get(modelId), storeyId);
         return toGlobalIdsForModel(modelId, localIds);
       }
     } else if (node.type === 'IfcSpace' || node.type === 'IfcSpatialZone') {
@@ -330,13 +323,13 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
       const modelId = node.modelIds[0];
 
       if (modelId === 'legacy' && ifcDataStore?.spatialHierarchy) {
-        const elements = ifcDataStore.spatialHierarchy.bySpace.get(spaceId) ?? [];
-        return [spaceId, ...(elements as number[])];
+        const elements = effectiveSpatialMembers(ifcDataStore, mutationViews.get('legacy'), spaceId);
+        return [spaceId, ...elements];
       }
 
       const model = models.get(modelId);
       if (model?.ifcDataStore?.spatialHierarchy) {
-        const localIds = (model.ifcDataStore.spatialHierarchy.bySpace.get(spaceId) as number[]) || [];
+        const localIds = effectiveSpatialMembers(model.ifcDataStore, mutationViews.get(modelId), spaceId);
         return [...node.globalIds, ...toGlobalIdsForModel(modelId, localIds)];
       }
     } else if (node.type === 'element') {
@@ -348,18 +341,14 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     }
     // Spatial containers (Project, Site, Building) and top-level models don't have direct element visibility toggle
     return [];
-  }, [models, ifcDataStore, unifiedStoreys, getUnifiedStoreyElements, toGlobalIdsForModel]);
+  // Views mutate in place; mutationVersion refreshes this callback after edits.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [models, ifcDataStore, unifiedStoreys, getUnifiedStoreyElements, toGlobalIdsForModel, mutationViews, mutationVersion]);
 
   // Persist storey sort-order preference (issue #1296)
   const handleSetSortMode = useCallback((mode: HierarchySortMode) => {
     setSortMode(mode);
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(SORT_STORAGE_KEY, mode);
-      } catch {
-        // Private mode / quota — keep the in-memory choice, just don't persist.
-      }
-    }
+    persistSortMode(mode);
   }, []);
 
   return {
@@ -372,6 +361,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     groupFilter,
     setGroupFilter,
     unifiedStoreys,
+    materialReady,
     treeData,
     filteredNodes,
     storeysNodes,

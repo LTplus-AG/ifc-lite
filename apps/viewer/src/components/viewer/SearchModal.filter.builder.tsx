@@ -197,6 +197,7 @@ export function SearchModalFilterBuilder() {
             </label>
             <Input
               type="number"
+              aria-label={t('searchModal.filterBuilder.limitLabel')}
               min={0}
               value={filter.limit}
               onChange={(e) => setFilterLimit(Number.parseInt(e.target.value, 10) || 0)}

@@ -25,7 +25,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, cleanup, click, activate, advance } from '@/test/render.js';
+import { render, cleanup, click, activate, advance, type } from '@/test/render.js';
 import { registerLocale, setLocale, localeCount, type Catalogue } from '@/i18n';
 import { resolve } from '@/i18n/registry';
 import { en } from '@/i18n/en';
@@ -293,6 +293,13 @@ describe('DataConnector localization (#4918)', () => {
       { key: 'dataConnector.propertyPlaceholder' },
       { key: 'dataConnector.removeMappingLabel' },
     ]);
+    const targetPset = document.body.querySelector<HTMLInputElement>('input[aria-label="Target Pset"]');
+    const targetProperty = document.body.querySelector<HTMLInputElement>('input[aria-label="Target Property"]');
+    assert.ok(targetPset && targetProperty, '#6342: mapping targets have distinct accessible names');
+    type(targetPset, 'Pset_WallCommon');
+    type(targetProperty, 'Reference');
+    assert.equal(targetPset.getAttribute('aria-label'), 'Target Pset');
+    assert.equal(targetProperty.getAttribute('aria-label'), 'Target Property');
 
     triggers = comboboxTriggers();
     const valueTypeTrigger = triggers[triggers.length - 1];
@@ -316,6 +323,13 @@ describe('DataConnector localization (#4918)', () => {
       { key: 'dataConnector.propertyNameFieldLabel' },
       { key: 'dataConnector.propertyNamePlaceholder' },
     ]);
+    const matchPset = document.body.querySelector<HTMLInputElement>('input[aria-label="Property Set"]');
+    const matchProperty = document.body.querySelector<HTMLInputElement>('input[aria-label="Property Name"]');
+    assert.ok(matchPset && matchProperty, '#6342: matching fields use their visible translated names');
+    type(matchPset, 'Pset_WallCommon');
+    type(matchProperty, 'Reference');
+    assert.equal(matchPset.getAttribute('aria-label'), 'Property Set');
+    assert.equal(matchProperty.getAttribute('aria-label'), 'Property Name');
   });
 
   it('translates the match-results and import-complete alerts once a real model is connected', async () => {

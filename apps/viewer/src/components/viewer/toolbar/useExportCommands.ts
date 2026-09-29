@@ -7,15 +7,13 @@
  * one-click exports (CSV / JSON / screenshot) plus the gating that decides
  * which registry entries are live right now.
  *
- * Both toolbar styles call this hook and render `commands` — the classic strip
- * through `ClassicExportMenuItems`, the ribbon through `RibbonExportGroup` —
- * so the enabled/disabled rule for a format is written once. The dialog-based
- * formats stay dialog components with a `trigger` prop; each style supplies
- * its own trigger element.
+ * The ribbon renders `commands` through `RibbonExportGroup`, while palette
+ * and mobile requests use the same handlers. The enabled/disabled rule for a
+ * format is written once. Dialog formats keep their `trigger` prop.
  */
 
 import { useCallback, useMemo } from 'react';
-import { useIfc } from '@/hooks/useIfc';
+import { selectHasModelsLoaded, selectModelCount } from '@/hooks/model-presence';
 import { useChangedModels } from '@/hooks/useUnexportedChanges';
 import { totalChangeCount } from '@/lib/export/model-changes';
 import { useExtensionExporters } from '@/components/extensions/useExtensionExporters';
@@ -46,12 +44,11 @@ const CSV_SUFFIX: Record<CsvExportType, string> = {
 };
 
 export function useExportCommands(surface: ExportSurface) {
-  const { ifcDataStore, models, geometryResult } = useIfc();
-
+  const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
+  const modelCount = useViewerStore(selectModelCount);
   // Same rule as `useFileCommands.hasModelsLoaded`: federated sessions fill
   // `models` and leave the legacy single-model `geometryResult` null.
-  const hasModelsLoaded =
-    models.size > 0 || Boolean(geometryResult?.meshes && geometryResult.meshes.length > 0);
+  const hasModelsLoaded = useViewerStore(selectHasModelsLoaded);
   const canExport = hasModelsLoaded || Boolean(ifcDataStore);
   // The same live change set the amber Export modified IFC button counts.
   const hasChanges = totalChangeCount(useChangedModels()) > 0;
@@ -72,7 +69,7 @@ export function useExportCommands(surface: ExportSurface) {
    * are unaffected — they go through their own dialogs, which handle the
    * federation themselves.
    */
-  const otherModelCount = Math.max(0, models.size - 1);
+  const otherModelCount = Math.max(0, modelCount - 1);
   const activeModelOnlyNote =
     otherModelCount > 0
       ? ` — active model only, ${otherModelCount} other loaded model${otherModelCount === 1 ? '' : 's'} not included`

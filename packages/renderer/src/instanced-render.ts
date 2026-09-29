@@ -26,11 +26,13 @@
  * Rust (`verify_recomposition`), this lands instanced + flat geometry in one
  * frame. (See instanced-render.test.ts for the GPU-free proof.)
  *
- * PRECISION: the GPU record remains an f32 matrix for V1 rendering, but the
- * decoded template origin is f64. V2 appends high/low lanes to the record.
- * CPU records retain a split world anchor, while each render submission replaces
- * the GPU copy with the f64 drawable-minus-camera delta. This keeps colour,
- * picking, and shadows in one precision contract without GPU world subtraction.
+ * PRECISION: the GPU record remains an f32 matrix, but the decoded template
+ * origin is f64. The record carries no anchor: `canonicalAnchors` (f64, one
+ * xyz per occurrence) is the source of truth, and each template's separate
+ * delta stream (`instanced-rte.ts`, vertex slot 2) receives the f64
+ * drawable-minus-camera split per camera change. This keeps colour, picking,
+ * shadows and the selection mask in one precision contract without GPU world
+ * subtraction, and keeps the per-frame upload to one write per template (#6393).
  */
 
 import { MathUtils } from './math.js';
@@ -60,21 +62,41 @@ export const SWAP_ZUP_TO_YUP: Mat4 = {
  *   [64..67] entityId (u32)
  *   [68..83] rgba (4 f32)
  *   [84..87] flags (u32 — bit 0 = selected; bit 1 = hidden)
+ *
+ * Static between edits: the camera-relative anchor lives in a separate
+ * per-template stream (`instanced-rte.ts`), not in this record (#6393).
  */
-export const INSTANCE_STRIDE_BYTES = 120;
+export const INSTANCE_STRIDE_BYTES = 88;
 
 /** Byte offset of the rgba colour within an instance record (patched by lens/IDS overlays). */
 export const INSTANCE_COLOR_OFFSET = 68;
 /** Byte offset of the flags u32 within an instance record (patched by selection/visibility). */
 export const INSTANCE_FLAGS_OFFSET = 84;
-/** V2: two vec4 lanes hold a split Y-up source anchor on CPU, submission delta on GPU. */
-export const INSTANCE_ANCHOR_HIGH_OFFSET = 88;
-export const INSTANCE_ANCHOR_LOW_OFFSET = 104;
 /** flags bit 0 — this occurrence is selected (blue highlight in the shader). */
 export const INSTANCE_FLAG_SELECTED = 1;
 /** flags bit 1 — this occurrence is hidden (hide/isolate); the shader discards it
  *  in both the render and pick passes so it neither draws nor is pickable. */
 export const INSTANCE_FLAG_HIDDEN = 2;
+/** #5984: flags bit 2 / 3 — this occurrence authors a metallic / roughness,
+ *  quantized to unorm8 in bits 16-23 / 24-31 of the same lane. The IFNS shard
+ *  carries the finish per occurrence (trailing field 2), but every instanced
+ *  draw shares ONE uniform material row, so the finish has to ride the
+ *  instance record; the flags lane already reaches the fragment stage flat,
+ *  so no stride, vertex layout or picker/shadow pipeline changes. */
+export const INSTANCE_FLAG_METALLIC = 4;
+export const INSTANCE_FLAG_ROUGHNESS = 8;
+/** Every flags bit the finish owns; a selection/visibility rewrite keeps them. */
+export const INSTANCE_FINISH_FLAGS_MASK = 0xffff000c;
+
+/** Pack an occurrence's authored finish into its flags lane (see above). An
+ *  unauthored field sets no bit, so the shader keeps the renderer default. */
+export function packInstanceFinish(metallic?: number, roughness?: number): number {
+  const unorm8 = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
+  let bits = 0;
+  if (metallic !== undefined && Number.isFinite(metallic)) bits |= INSTANCE_FLAG_METALLIC | (unorm8(metallic) << 16);
+  if (roughness !== undefined && Number.isFinite(roughness)) bits |= INSTANCE_FLAG_ROUGHNESS | (unorm8(roughness) << 24);
+  return bits >>> 0;
+}
 
 /** Transpose a row-major mat4 (the IFNS / `DecodedInstance.transform` convention)
  *  into a column-major `Mat4` (MathUtils / WGSL convention). */
@@ -158,7 +180,7 @@ export interface InstancedRenderTemplate {
    *  piece", never "how is it drawn". */
   itemIds?: Uint32Array;
   /** f64 Y-up occurrence source anchors, xyz per instance-buffer record.
-   * The GPU record is refreshed from this sidecar as an RTE delta per draw. */
+   * The per-template RTE delta stream is derived from this sidecar. */
   canonicalAnchors: Float64Array;
   /** Matrix translations paired with canonicalAnchors so interactive placement
    * preserves the authoritative f64 source anchor. */
@@ -177,7 +199,6 @@ export function writeInstanceRecord(
   entityId: number,
   color: readonly [number, number, number, number],
   flags = 0,
-  anchor: readonly [number, number, number] = [instanceMatrix[12], instanceMatrix[13], instanceMatrix[14]],
 ): void {
   for (let j = 0; j < 16; j++) {
     dv.setFloat32(byteOffset + j * 4, instanceMatrix[j], true);
@@ -187,23 +208,6 @@ export function writeInstanceRecord(
     dv.setFloat32(byteOffset + INSTANCE_COLOR_OFFSET + j * 4, color[j], true);
   }
   dv.setUint32(byteOffset + INSTANCE_FLAGS_OFFSET, flags >>> 0, true);
-  writeInstanceAnchor(dv, byteOffset, anchor);
-}
-
-/** Write V2's split source-anchor lanes without touching selection/colour fields.
- * The renderer overwrites the GPU copy per submission with an RTE delta. */
-export function writeInstanceAnchor(
-  dv: DataView,
-  byteOffset: number,
-  anchor: readonly [number, number, number],
-): void {
-  for (let axis = 0; axis < 3; axis++) {
-    const high = Math.fround(anchor[axis]);
-    dv.setFloat32(byteOffset + INSTANCE_ANCHOR_HIGH_OFFSET + axis * 4, high, true);
-    dv.setFloat32(byteOffset + INSTANCE_ANCHOR_LOW_OFFSET + axis * 4, Math.fround(anchor[axis] - high), true);
-  }
-  dv.setFloat32(byteOffset + INSTANCE_ANCHOR_HIGH_OFFSET + 12, 0, true);
-  dv.setFloat32(byteOffset + INSTANCE_ANCHOR_LOW_OFFSET + 12, 0, true);
 }
 
 /**
@@ -249,8 +253,9 @@ export function prepareInstancedRender(shard: DecodedInstancedShard): InstancedR
       const inst = insts[i];
       const mat = composeInstanceMatrix(inst.transform, tmpl.origin);
       const anchor = composeInstanceAnchor(inst.transform, tmpl.origin);
-      // flags = 0: every occurrence starts unselected.
-      writeInstanceRecord(dv, i * INSTANCE_STRIDE_BYTES, mat, inst.entityId, inst.color, 0, anchor);
+      // Every occurrence starts unselected; the flags carry only its finish (#5984).
+      const flags = packInstanceFinish(inst.metallic, inst.roughness);
+      writeInstanceRecord(dv, i * INSTANCE_STRIDE_BYTES, mat, inst.entityId, inst.color, flags);
       entityIds[i] = inst.entityId >>> 0;
       canonicalAnchors.set(anchor, i * 3);
       canonicalMatrixTranslations.set([mat[12], mat[13], mat[14]], i * 3);

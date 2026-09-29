@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { browseCommands, type Command } from './commandPaletteSearch.js';
 
 const command = (id: string, category: Command['category']): Command => ({
-  id, category, label: id, keywords: '', icon: () => null, action: () => {},
+  id, category, label: id, runtimeSource: 'script-template', keywords: '', icon: () => null, action: () => {},
 });
 
 test('extension and Learn rows stay in their browse groups (#5862)', () => {

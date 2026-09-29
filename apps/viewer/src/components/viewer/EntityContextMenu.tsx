@@ -10,7 +10,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useMemo, useState } fr
 import { useViewerStore, resolveEntityRef, resolveGlobalId, toGlobalIdFromModels } from '@/store';
 import type { DuplicateDirection } from '@/store/slices/mutationSlice';
 import { useContextMutationAccess } from './useContextMutationAccess';
-import { resetVisibilityForHomeFromStore } from '@/store/homeView';
+import { effectiveTreeEntityName } from './hierarchy/effectiveTypeEntities';
+import { showAllFromStore } from '@/store/homeView';
 import { hideFromContextMenuFromStore } from '@/store/hideSelection';
 import {
   executeBasketSet,
@@ -25,6 +26,9 @@ import {
   ContextMenu, ContextMenuContent, ContextMenuSeparator, ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import { CommandMenuItem, DuplicateItems, ExtensionContextItems } from './EntityContextMenuItems';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { effectiveContextType, sameEffectiveTypeIds } from './EntityContextMenu.effective-selection';
+import { sameEffectiveStoreyIds } from './EntityContextMenu.effective-storey';
 import { surfaceCommand, type SurfaceCommandId } from './surface-commands';
 import { runSurfaceCommand } from './surface-command-run';
 
@@ -44,6 +48,13 @@ export function EntityContextMenu() {
   const focusReturnRef = useRef<HTMLElement | null>(null);
   const wasOpenRef = useRef(false);
   const [radixOpen, setRadixOpen] = useState(false);
+  const getMutationView = useViewerStore((s) => s.getMutationView);
+  const mutationViewFor = useCallback((modelId: string): MutablePropertyView | null => {
+    const view = getMutationView(modelId);
+    return modelId === 'legacy'
+      ? view ?? getMutationView('__legacy__') ?? getMutationView('default')
+      : view;
+  }, [getMutationView]);
   const { ifcDataStore, models } = useIfc();
 
   // Resolve contextMenu.entityId (globalId) to original expressId/model (IfcDataStore uses original expressIds, not globalIds).
@@ -115,7 +126,7 @@ export function EntityContextMenu() {
     closeContextMenu();
   }, [contextMenu.entityId, setSelectedEntityIds, setSelectedEntityId, cameraCallbacks, closeContextMenu]);
 
-  // Basket: = Set basket to this entity
+  // Basket: Set basket to this entity
   const handleSetBasket = useCallback(() => {
     executeBasketSet(contextEntityRef);
     closeContextMenu();
@@ -151,7 +162,7 @@ export function EntityContextMenu() {
   }, [contextMenu.entityId, closeContextMenu]);
 
   const handleShowAll = useCallback(() => {
-    resetVisibilityForHomeFromStore('show_all');
+    showAllFromStore('show_all');
     closeContextMenu();
   }, [closeContextMenu]);
 
@@ -162,52 +173,32 @@ export function EntityContextMenu() {
       return;
     }
 
-    // Get the type of the selected entity
-    const entity = activeDataStore.entities;
-    let entityType: string | null = null;
-
-    for (let i = 0; i < entity.count; i++) {
-      if (entity.expressId[i] === resolvedExpressId) {
-        entityType = entity.getTypeName(resolvedExpressId);
-        break;
+    if (contextEntityRef) {
+      const view = mutationViewFor(contextEntityRef.modelId);
+      const localIds = sameEffectiveTypeIds(activeDataStore, view, resolvedExpressId);
+      if (localIds.length === 0) {
+        closeContextMenu();
+        return;
       }
-    }
-
-    if (entityType && contextEntityRef) {
-      // `entity.expressId` is model-space — resolve through the model
-      // offset before it reaches `selectedEntityIds` (renderer-space).
-      const sameTypeIds: number[] = [];
-      for (let i = 0; i < entity.count; i++) {
-        if (entity.getTypeName(entity.expressId[i]) === entityType) {
-          sameTypeIds.push(toGlobalIdFromModels(models, contextEntityRef.modelId, entity.expressId[i]));
-        }
-      }
+      // Effective ids are model-space — resolve through the model offset
+      // before they reach `selectedEntityIds` (renderer-space).
+      const sameTypeIds = localIds.map(id => toGlobalIdFromModels(models, contextEntityRef.modelId, id));
       setSelectedEntityIds(sameTypeIds);
     }
 
     closeContextMenu();
-  }, [resolvedExpressId, activeDataStore, contextEntityRef, models, setSelectedEntityIds, closeContextMenu]);
+  }, [resolvedExpressId, activeDataStore, contextEntityRef, mutationViewFor, models, setSelectedEntityIds, closeContextMenu]);
 
   const handleSelectSameStorey = useCallback(() => {
-    // Use resolvedExpressId (original ID) for IfcDataStore lookups
-    if (!resolvedExpressId || !activeDataStore?.spatialHierarchy) {
+    if (!resolvedExpressId || !activeDataStore || !contextEntityRef) {
       closeContextMenu();
       return;
     }
-
-    const storeyId = activeDataStore.spatialHierarchy.elementToStorey.get(resolvedExpressId);
-    if (storeyId && contextEntityRef) {
-      const storeyElements = activeDataStore.spatialHierarchy.byStorey.get(storeyId);
-      if (storeyElements) {
-        // Same model-space -> renderer-space resolution as above.
-        setSelectedEntityIds(
-          Array.from(storeyElements, (id) => toGlobalIdFromModels(models, contextEntityRef.modelId, id)),
-        );
-      }
-    }
-
+    const view = mutationViewFor(contextEntityRef.modelId);
+    const ids = sameEffectiveStoreyIds(activeDataStore, view, resolvedExpressId);
+    setSelectedEntityIds(ids.map((id) => toGlobalIdFromModels(models, contextEntityRef.modelId, id)));
     closeContextMenu();
-  }, [resolvedExpressId, activeDataStore, contextEntityRef, models, setSelectedEntityIds, closeContextMenu]);
+  }, [resolvedExpressId, activeDataStore, contextEntityRef, mutationViewFor, models, setSelectedEntityIds, closeContextMenu]);
 
   // "Export anonymized…" (#2934): seed `AnonymizedExportDialog` — whose
   // `useAnonymizedExportSet` reads `selectedEntityIds`, the multi-select
@@ -233,11 +224,16 @@ export function EntityContextMenu() {
     closeContextMenu();
   }, [contextMenu.entityId, closeContextMenu]);
 
-  // Right-clicked entity's type — used in the toast message.
-  const contextEntityType = useMemo(() => {
-    if (!resolvedExpressId || !activeDataStore) return '';
-    return activeDataStore.entities.getTypeName(resolvedExpressId) || '';
-  }, [resolvedExpressId, activeDataStore]);
+  // Right-clicked entity's name and class for the header and toasts, read
+  // through the session's mutation view so an element authored this session
+  // shows its own name and class, not the parsed table's 'Unknown' (#6233).
+  let entityName = '';
+  let entityType = '';
+  if (resolvedExpressId && activeDataStore) {
+    const view = contextEntityRef ? mutationViewFor(contextEntityRef.modelId) : null;
+    entityName = effectiveTreeEntityName(activeDataStore, view, resolvedExpressId, '');
+    entityType = effectiveContextType(activeDataStore, view, resolvedExpressId);
+  }
 
   const { canEdit, editReasonKey, showMutationActions } = useContextMutationAccess(contextEntityRef, contextMenu.isOpen);
   const editReason = editReasonKey ? t(editReasonKey) : undefined;
@@ -275,20 +271,12 @@ export function EntityContextMenu() {
       hideEntity(contextMenu.entityId);
       // Drop the selection so the right panel doesn't cling to a tombstoned id.
       setSelectedEntityId(null);
-      toast.success(`${contextEntityType || 'Entity'} #${contextEntityRef.expressId} deleted — undo to restore`);
+      toast.success(`${entityType || 'Entity'} #${contextEntityRef.expressId} deleted — undo to restore`);
     } else {
       toast.error('Delete failed — entity not found in store overlay');
     }
     closeContextMenu();
-  }, [contextEntityRef, canEdit, contextEntityType, contextMenu.entityId, removeEntity, hideEntity, setSelectedEntityId, closeContextMenu]);
-
-  // Get entity info for display (resolvedExpressId is the original ID for IfcDataStore lookups)
-  let entityName = '';
-  let entityType = '';
-  if (resolvedExpressId && activeDataStore) {
-    entityName = activeDataStore.entities.getName(resolvedExpressId) || '';
-    entityType = activeDataStore.entities.getTypeName(resolvedExpressId) || '';
-  }
+  }, [contextEntityRef, canEdit, entityType, contextMenu.entityId, removeEntity, hideEntity, setSelectedEntityId, closeContextMenu]);
 
   const contextItem = (id: SurfaceCommandId, action: () => void, options: {
     title?: string; tone?: 'default' | 'destructive';

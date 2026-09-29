@@ -32,6 +32,26 @@ import { join } from 'path';
 const STORE = '__ifc_lite_viewer_store__';
 const FIXTURE = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
 
+// #6365: authoring HUD states need the current Model workspace before a tool can mount.
+async function enterModelWorkspace(page: Page): Promise<void> {
+  // Streaming geometry can arrive before the IFC data store. Model workspace
+  // entry is refused until an editable model has that store (#6365).
+  await page.waitForFunction((key) => {
+    const store = (globalThis as unknown as Record<string, {
+      getState(): { models: Map<string, { ifcDataStore: unknown | null }> };
+    }>)[key];
+    return [...store.getState().models.values()].some((entry) => entry.ifcDataStore != null);
+  }, STORE, { timeout: 180000 });
+  await page.getByRole('tab', { name: 'Author', exact: true }).click();
+  const model = page.getByRole('tabpanel', { name: 'Author' }).getByRole('button', { name: 'Model', exact: true });
+  await model.click();
+  await expect(model).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => page.evaluate((key) => {
+    const store = (globalThis as unknown as Record<string, { getState(): { workspaceMode: string } }>)[key];
+    return store.getState().workspaceMode;
+  }, STORE)).toBe('model');
+}
+
 test('#5813 Measure Clear all uses the themed dialog', async ({ page }, testInfo) => {
   test.skip(!existsSync(join(process.cwd(), FIXTURE)), `${FIXTURE} missing — run \`pnpm fixtures\``);
   await page.goto('/');
@@ -83,6 +103,9 @@ const STATES: ReadonlyArray<{ name: string; settleMs?: number; mayBeEmpty?: bool
   { name: 'idle', mayBeEmpty: true },
   { name: 'selection', mayBeEmpty: true },
   { name: 'split' },
+  // #6232 M2.2: the placing commands' bars are the widest command bars; they stack rather than overrun the lane.
+  { name: 'slab' },
+  { name: 'beam' },
   { name: 'spaceSketch', settleMs: 4000 },
   { name: 'addElement' },
   { name: 'measure' },
@@ -139,6 +162,7 @@ for (const width of [1280, 1600, 1920]) {
         (globalThis as Record<string, { getState(): Record<string, (v: unknown) => void> }>)[k].getState().setTheme(theme);
       }, [STORE, scheme] as const);
       await expect(page.locator('[data-viewport]').first()).toBeAttached({ timeout: 60000 });
+      await enterModelWorkspace(page);
 
       const failures: string[] = [];
       for (const state of STATES) {
@@ -151,8 +175,10 @@ for (const width of [1280, 1600, 1920]) {
               const wall = model?.ifcDataStore?.entityIndex.byType.get('IFCWALL')?.[0] ?? model?.ifcDataStore?.entityIndex.byType.get('IFCWALLSTANDARDCASE')?.[0];
               if (wall !== undefined) s.setSelectedEntityId(wall);
             },
-            split: (s) => { s.setSelectedEntityId(null); s.setActiveTool('split'); },
-            spaceSketch: (s) => s.setActiveTool('spaceSketch'),
+            split: (s) => { s.setSelectedEntityId(null); s.startCommand('element.split'); },
+            slab: (s) => s.startCommand('slab.place'),
+            beam: (s) => s.startCommand('beam.place'),
+            spaceSketch: (s) => { s.endCommand(); s.setActiveTool('spaceSketch'); },
             addElement: (s) => s.setActiveTool('addElement'),
             measure: (s) => s.setActiveTool('measure'),
             section: (s) => { s.setActiveTool('section'); s.setSectionPlaneAxis('down'); s.setSectionPlanePosition(50); },
@@ -167,6 +193,13 @@ for (const width of [1280, 1600, 1920]) {
           };
           enter[name](api.getState());
         }, [STORE, state.name] as const);
+        if (state.name === 'split' || state.name === 'slab' || state.name === 'beam') {
+          const id = { split: 'element.split', slab: 'slab.place', beam: 'beam.place' }[state.name];
+          await expect(page.locator(`[data-hud-region] [data-command-id="${id}"]`)).toBeVisible();
+        }
+        if (state.name === 'spaceSketch') {
+          await expect(page.locator('[data-tool-bar="spaceSketch"]')).toBeVisible();
+        }
         if (state.name === 'section+cap') {
           await page.locator('[data-tool-bar="section"] button', { hasText: 'Cap' }).click();
           await expect(page.locator('[data-testid="section-cap-popover"]')).toBeVisible({ timeout: 10000 });
@@ -237,6 +270,7 @@ for (const width of [1280, 1600]) {
         s.setLeftPanelCollapsed(false);
         s.setRightPanelCollapsed(false);
       }, STORE);
+      await enterModelWorkspace(page);
       await page.evaluate((k) => {
         (globalThis as Record<string, { getState(): Record<string, (v: unknown) => void> }>)[k].getState().setActiveTool('spaceSketch');
       }, STORE);
@@ -263,7 +297,7 @@ for (const width of [1280, 1600]) {
         };
       });
       expect(rows, 'the bar rendered').not.toBeNull();
-      expect(rows!.count, 'the bar has visible children').toBeGreaterThan(0);
+      expect(rows!.count, 'draw mode, footprint, overflow, options, confirm, minimize and close remain visible').toBeGreaterThanOrEqual(9);
       expect(
         rows!.maxTop,
         `Space Sketch bar wraps at ${width}px (tier ${rows!.tier}): a child starts at ${rows!.maxTop}px, below another ending at ${rows!.minBottom}px`,

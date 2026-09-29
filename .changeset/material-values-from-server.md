@@ -5,4 +5,4 @@
 "@ifc-lite/viewer": patch
 ---
 
-Preserve server forwarded IFC material associations and their names, categories, and definition identities so server parsed models can evaluate material values without mistaking partial legacy payloads for verified mismatches.
+Preserve IFC material associations forwarded by the server, including their names, categories, and definition identities, so models parsed by the server can evaluate material values without mistaking partial legacy payloads for verified mismatches.

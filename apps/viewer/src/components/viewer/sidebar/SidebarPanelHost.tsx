@@ -47,6 +47,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { AddElementPanel } from '../AddElementPanel';
+import { selectAddElementPanelOpen } from '../add-element-wall-command';
 import {
   closeActiveAnalysisExtension,
   getAnalysisExtensionById,
@@ -86,7 +87,7 @@ function SplitMenu({ primaryId }: { primaryId: WorkspacePanelId }) {
               aria-label={t('shellChrome.sidebarPanelHost.splitPanelAriaLabel')}
               aria-pressed={!!secondary}
               className={
-                'h-5 w-5 inline-flex items-center justify-center rounded transition-colors '
+                'h-6 w-6 inline-flex items-center justify-center rounded transition-colors '
                 + (secondary
                   ? 'text-primary bg-primary/10'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground')
@@ -99,7 +100,7 @@ function SplitMenu({ primaryId }: { primaryId: WorkspacePanelId }) {
         <TooltipContent side="bottom">{t('shellChrome.sidebarPanelHost.splitTooltip')}</TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <DropdownMenuLabel className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
           {t(secondary ? 'shellChrome.sidebarPanelHost.panelBelowLabel' : 'shellChrome.sidebarPanelHost.splitShowBelowLabel')}
         </DropdownMenuLabel>
         {options.map((p) => (
@@ -153,7 +154,7 @@ function PanelChromeBar({ detachId }: { detachId: WorkspacePanelId }) {
             data-no-drag
             aria-label={t('shellChrome.sidebarPanelHost.collapseSidebarAriaLabel')}
             onClick={() => setSidebarMode('collapsed')}
-            className="h-5 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            className="h-6 w-6 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           >
             <ChevronRight className="h-3.5 w-3.5" />
           </button>
@@ -169,13 +170,34 @@ function PanelChromeBar({ detachId }: { detachId: WorkspacePanelId }) {
  *  header close button (and the Split menu), so the divider stays clutter-free. */
 function SplitDivider({ onResizeStart }: { onResizeStart: (e: React.MouseEvent) => void }) {
   const { t } = useTranslation();
+  const ratio = useViewerStore((s) => s.sidebarSplitRatio);
+  const setRatio = useViewerStore((s) => s.setSidebarSplitRatio);
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    let next: number;
+    switch (event.key) {
+      case 'ArrowUp': next = ratio - 0.05; break;
+      case 'ArrowDown': next = ratio + 0.05; break;
+      case 'Home': next = 0.2; break;
+      case 'End': next = 0.8; break;
+      default: return;
+    }
+    event.preventDefault();
+    setRatio(next);
+  };
   return (
     <div
       onMouseDown={onResizeStart}
+      onKeyDown={onKeyDown}
+      tabIndex={0}
+      // Interactive separators support pointer and keyboard resizing; a decorative <hr> cannot.
+      // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
       role="separator"
       aria-orientation="horizontal"
       aria-label={t('shellChrome.sidebarPanelHost.resizeSplitAriaLabel')}
-      className="group relative h-2.5 shrink-0 cursor-row-resize flex items-center justify-center border-y border-border/60 bg-muted/30 hover:bg-primary/10 transition-colors"
+      aria-valuemin={20}
+      aria-valuemax={80}
+      aria-valuenow={Math.round(ratio * 100)}
+      className="group relative h-2.5 shrink-0 cursor-row-resize flex items-center justify-center border-y border-border/60 bg-muted/30 hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-primary transition-colors"
     >
       <GripHorizontal className="h-3 w-3 text-muted-foreground/50 group-hover:text-primary/70 transition-colors" />
     </div>
@@ -223,7 +245,7 @@ function SplitContainer({
 
 export function SidebarPanelHost() {
   const activePanel = useViewerStore((s) => s.sidebarActivePanel);
-  const activeTool = useViewerStore((s) => s.activeTool);
+  const addElementOpen = useViewerStore(selectAddElementPanelOpen);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const secondaryPanel = useViewerStore((s) => s.sidebarSecondaryPanel);
   const splitRatio = useViewerStore((s) => s.sidebarSplitRatio);
@@ -294,7 +316,7 @@ export function SidebarPanelHost() {
       </div>
     );
   }
-  if (activeTool === 'addElement') {
+  if (addElementOpen) {
     return (
       <div data-detach-root className="h-full flex flex-col panel-container">
         <AddElementPanel onClose={() => setActiveTool('select')} />

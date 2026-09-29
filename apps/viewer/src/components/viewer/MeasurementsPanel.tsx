@@ -26,13 +26,15 @@ import type { TranslationKey } from '@/i18n/en';
 import { MeasurementList } from './tools/MeasurementList';
 import { MeasurePointReadout } from './tools/MeasurePointReadout';
 import { MeasureQuantities } from './tools/MeasureQuantities';
+import { SweptDiskInspection } from './properties/SweptDiskInspection';
 
-type PanelTab = 'list' | 'point' | 'quantities';
+type PanelTab = 'list' | 'point' | 'quantities' | 'centreline';
 
 const TABS: ReadonlyArray<{ id: PanelTab; labelKey: TranslationKey; titleKey: TranslationKey; icon: typeof List }> = [
   { id: 'list', labelKey: 'measure.section.list.label', titleKey: 'measure.section.list.title', icon: List },
   { id: 'point', labelKey: 'measure.section.point.label', titleKey: 'measure.section.point.title', icon: Crosshair },
   { id: 'quantities', labelKey: 'measure.section.quantities.label', titleKey: 'measure.section.quantities.title', icon: Boxes },
+  { id: 'centreline', labelKey: 'measure.section.centreline.label', titleKey: 'measure.section.centreline.title', icon: Ruler },
 ];
 
 export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
@@ -92,6 +94,7 @@ export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
       <TabsContent value="list" className="mt-0 min-h-0 flex-1 overflow-y-auto"><MeasurementList /></TabsContent>
       <TabsContent value="point" className="mt-0 min-h-0 flex-1 overflow-y-auto"><MeasurePointReadout /></TabsContent>
       <TabsContent value="quantities" className="mt-0 min-h-0 flex-1 overflow-y-auto"><MeasureQuantities /></TabsContent>
+      <TabsContent value="centreline" className="mt-0 min-h-0 flex-1 overflow-y-auto p-2"><SweptDiskInspection enabled={tab === 'centreline'} /></TabsContent>
     </Tabs>
   );
 }

@@ -55,6 +55,7 @@ export function buildTreeForGrouping(
   geometryReadyModelIds: ReadonlySet<string>,
   georefMutations: GeorefMutationsByModel,
   mutationViews: Map<string, MutablePropertyView>,
+  materialSourceStores?: ReadonlyMap<string, IfcDataStore>,
 ): TreeNode[] {
   const treeOverlay = (modelId: string) => mutationViews.get(modelId); // deletes/retypes, re-run per mutationVersion (#5249)
   if (groupingMode === 'type') {
@@ -64,12 +65,12 @@ export function buildTreeForGrouping(
     return buildIfcTypeTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, geometryReadyModelIds, treeOverlay);
   }
   if (groupingMode === 'material') {
-    return buildMaterialTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, geometryReadyModelIds);
+    return buildMaterialTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, geometryReadyModelIds, materialSourceStores);
   }
   if (groupingMode === 'groups') {
     return buildGroupTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, groupFilter, treeOverlay);
   }
-  return buildTreeData(models, ifcDataStore, expansion, isMultiModel, unifiedStoreys, sortMode, geometricIds, geometryReadyModelIds, georefMutations);
+  return buildTreeData(models, ifcDataStore, expansion, isMultiModel, unifiedStoreys, sortMode, geometricIds, geometryReadyModelIds, georefMutations, treeOverlay);
 }
 
 interface TreeBuildParams {

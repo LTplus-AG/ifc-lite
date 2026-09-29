@@ -27,6 +27,8 @@ import { Camera } from './camera.js';
 import { Scene, type TexturedMesh } from './scene.js';
 import type { Mesh, BatchedMesh, PickOptions } from './types.js';
 import type { DecodedInstancedShard, MeshData } from '@ifc-lite/geometry';
+import type { SourceSnapCurve } from './source-curve-snap.js';
+import { PointCloudSpatialIndex } from './pointcloud/point-cloud-spatial-index.js';
 
 (globalThis as Record<string, unknown>).GPUBufferUsage = {
   COPY_DST: 1, INDEX: 2, VERTEX: 4,
@@ -682,6 +684,50 @@ describe('RaycastEngine.raycastScene', () => {
         `instead of model 1's own batch entry (distance ~40); got ${hit2!.intersection.distance}`,
       );
     });
+  });
+});
+
+describe('magnetic authored source curves (#5780)', () => {
+  const lock = { edge: null, meshExpressId: null, lockStrength: 0 };
+  const snapOptions = { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 4 };
+  const source = (modelId: string, globalId: number, x: number): SourceSnapCurve => ({
+    identity: { modelId, expressId: 42, solidId: 50, directrixId: 51, mappingPath: [], occurrenceIndex: 0, segmentIndex: 0 },
+    globalId, kind: 'line', length: 0.2,
+    pointAt: (t) => ({ x: x + (t - 0.5) * 0.2, y: 0, z: 0 }),
+  });
+
+  it('scopes equal STEP IDs to their federated model and obeys hide, isolate and lifecycle clear', () => {
+    const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+    const engine = engineFor(new Scene(), camera);
+    engine.setSourceSnapCurves([source('a', 42, 0), source('b', 1_000_042, 10)]);
+    const pick = (x: number, options = {}) => engine.raycastSceneMagnetic(x, 300, lock, { ...options, snapOptions });
+    const secondScreen = camera.projectToScreen({ x: 10, y: 0, z: 0 }, 800, 600);
+    assert.ok(secondScreen);
+    assert.deepEqual([pick(400).snapTarget?.expressId, pick(secondScreen.x).snapTarget?.expressId], [42, 1_000_042]);
+    assert.equal(pick(secondScreen.x).snapTarget?.metadata?.sourceCurve?.modelId, 'b');
+    assert.equal(pick(secondScreen.x, { hiddenIds: new Set([1_000_042]) }).snapTarget, null);
+    assert.equal(pick(secondScreen.x, { isolatedIds: new Set([42]) }).snapTarget, null);
+    engine.setSourceSnapCurves([]);
+    assert.equal(pick(400).snapTarget, null);
+  });
+
+  it('clips new source curves without changing existing magnetic mesh or scan picks (#5780)', () => {
+    const scene = new Scene();
+    addRegularQuad(scene, makeQuad({ expressId: 1, translate: [0, 0, 10] }));
+    addRegularQuad(scene, makeQuad({ expressId: 2, translate: [0, 0, -10] }));
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    engine.setSourceSnapCurves([{ ...source('a', 42, 0), pointAt: (t) => ({ x: (t - 0.5) * 0.2, y: 0, z: 1 }) }]);
+    const index = new PointCloudSpatialIndex(0.5);
+    index.insertRange(new Float32Array([0, 0, 1]), 1, null);
+    engine.setPointCloudProvider(() => [{ expressId: 77, index }]);
+    const clip = { sectionPlane: { normal: [0, 0, 1] as [number, number, number], distance: 0, flipped: false } };
+    const hit = engine.raycastSceneMagnetic(400, 300, lock, { snapOptions }, clip);
+    assert.equal(hit.intersection?.expressId, 1, 'preexisting magnetic mesh pick remains reachable');
+    assert.equal(hit.snapTarget?.metadata?.sourceCurve, undefined);
+    const scanOnly = engineFor(new Scene(), orthoCameraLookingDownZ([0, 0, 0], 50));
+    scanOnly.setPointCloudProvider(() => [{ expressId: 77, index }]);
+    const scanHit = scanOnly.raycastSceneMagnetic(400, 300, lock, { snapOptions }, clip);
+    assert.equal(scanHit.snapTarget?.expressId, 77, 'preexisting magnetic scan pick remains reachable');
   });
 });
 

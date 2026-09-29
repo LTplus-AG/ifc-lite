@@ -10,13 +10,16 @@
 
 import '@/test/setup-dom.js';
 
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useRef } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import { render, cleanup, press } from '@/test/render.js';
 import { useViewerStore } from '@/store';
+import { goHomeFromStore } from '@/store/homeView';
 import { useKeyboardControls } from './useKeyboardControls.js';
+
+let initialState: ReturnType<typeof useViewerStore.getState>;
 
 function Harness(props: { cameraCalls: string[] }) {
   const record = (name: string) => () => { props.cameraCalls.push(name); };
@@ -55,9 +58,10 @@ function Harness(props: { cameraCalls: string[] }) {
 }
 
 describe('useKeyboardControls — camera shortcuts ignore modifier chords (#5596)', () => {
+  beforeEach(() => { initialState = useViewerStore.getState(); });
   afterEach(() => {
     cleanup();
-    useViewerStore.getState().setCameraCallbacks({});
+    useViewerStore.setState(initialState, true);
   });
 
   it('plain Z and 1 still move the camera (control)', () => {
@@ -78,5 +82,22 @@ describe('useKeyboardControls — camera shortcuts ignore modifier chords (#5596
     press(window, 'f', { ctrlKey: true });
     press(window, '1', { altKey: true });
     assert.deepEqual(cameraCalls, []);
+  });
+
+  it('H and the shared Home action fit the camera without resetting visibility (#5855)', () => {
+    const cameraCalls: string[] = [];
+    useViewerStore.setState({
+      hiddenEntities: new Set([5]),
+      isolatedEntities: new Set([7]),
+      cameraCallbacks: { home: () => { cameraCalls.push('home'); } },
+    });
+    render(<Harness cameraCalls={cameraCalls} />);
+
+    press(window, 'h');
+    goHomeFromStore(); // the Home button and palette call the same action
+
+    assert.deepEqual(cameraCalls, ['home', 'home']);
+    assert.deepEqual(useViewerStore.getState().hiddenEntities, new Set([5]));
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([7]));
   });
 });

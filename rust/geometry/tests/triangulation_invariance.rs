@@ -1988,7 +1988,11 @@ const ISSUE_068_MODEL: &str = "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc";
 // #5033 judged the conform candidate with its collinear slivers removed. The
 // same change first tore #1401204 (0 -> 6) through the stray-shard sweep,
 // which is the fix #5127 carries; that host is back on its blessed row.
-const ISSUE_068_KNOWN_TORN_HOSTS: usize = 23;
+// #6379: 23 -> 19. #426780 (open 14 -> 0) closed with #5411 (no AABB fallback
+// on a kernel-disjoint opening). #144568 (26 -> 0), #891553 (10 -> 0) and
+// #892717 (27 -> 0; #5361 had already moved its no-void pass 29 -> 22) closed
+// with #5943's strictly-closed retry on quantum-snapped wall-frame operands.
+const ISSUE_068_KNOWN_TORN_HOSTS: usize = 19;
 
 /// Coverage floors, one per heavy fixture, bounding BOTH the checked-in golden
 /// and every sweep that gates or blesses against it. [`MIN_VOID_HOSTS`]'s job,

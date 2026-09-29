@@ -36,12 +36,6 @@ export {
 } from './material-resolver.js';
 export type { MaterialLeaf, MaterialUsage } from './material-resolver.js';
 
-import {
-    resolveAllMaterialDefIds as resolveAllMaterialDefIdsImpl,
-    collectMaterialLeaves as collectMaterialLeavesImpl,
-    getMaterialDisplay as getMaterialDisplayImpl,
-} from './material-resolver.js';
-
 // ============================================================================
 // Remaining Interfaces
 // ============================================================================
@@ -82,17 +76,6 @@ export interface DocumentInfo {
 
 export type { GeoreferenceInfo as GeorefInfo };
 
-/**
- * Property sets attached to a material via IfcMaterialProperties (e.g.
- * Pset_MaterialConcrete). Grouped per underlying IfcMaterial so the UI can
- * show which material each set belongs to. See {@link extractMaterialPropertiesOnDemand}.
- */
-export interface MaterialPsetGroup {
-    materialId: number;
-    materialName: string;
-    psets: Array<{ name: string; properties: Array<ExtractedProperty> }>;
-}
-
 // ============================================================================
 // Property Value Parsing Helpers
 // ============================================================================
@@ -106,7 +89,7 @@ export {
     resolveComplexPropertyValue,
     parsePropertyValueWithComplex,
 } from './property-value-parser.js';
-import { parsePropertyValueWithComplex, type ExtractedProperty } from './property-value-parser.js';
+import { copyParsedExtras, parsePropertyValueWithComplex, type ExtractedProperty } from './property-value-parser.js';
 import { resolvePropertyUnit } from './property-unit.js';
 // ============================================================================
 // Property Set Extraction Helpers
@@ -121,6 +104,7 @@ export function extractPsetsFromIds(
     const result: Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> = [];
 
     for (const psetId of psetIds) {
+        // @raw-entity-enumeration-ok one requested set id is decoded from its source STEP span
         const psetRef = store.entityIndex.byId.get(psetId) ?? store.deferredEntityIndex?.get(psetId);
         if (!psetRef) continue;
 
@@ -141,6 +125,7 @@ export function extractPsetsFromIds(
             for (const propRef of hasProperties) {
                 if (typeof propRef !== 'number') continue;
 
+                // @raw-entity-enumeration-ok one referenced property id is decoded from its source STEP span
                 const propEntityRef = store.entityIndex.byId.get(propRef) ?? store.deferredEntityIndex?.get(propRef);
                 if (!propEntityRef) continue;
 
@@ -157,10 +142,7 @@ export function extractPsetsFromIds(
                     type: parsed.type,
                     value: parsed.value,
                 };
-                if (parsed.values) entry.values = parsed.values;
-                if (parsed.dataType) entry.dataType = parsed.dataType;
-                if (parsed.dataTypeMixed) entry.dataTypeMixed = true;
-                if (parsed.structure) entry.structure = parsed.structure;
+                copyParsedExtras(entry, parsed);
                 const unit = resolvePropertyUnit(store, extractor, propEntity.type, propAttrs, parsed.dataType);
                 if (unit) entry.unit = unit.symbol;
                 if (unit?.siScale !== undefined) entry.unitSiScale = unit.siScale;
@@ -203,6 +185,7 @@ export function extractTypePropertiesOnDemand(
     if (typeIds.length === 0) return null;
 
     const typeId = typeIds[0]; // An element typically has one type
+    // @raw-entity-enumeration-ok typeIds came from this selected entity's relationship lookup
     const typeRef = store.entityIndex.byId.get(typeId);
     if (!typeRef) return null;
 
@@ -259,6 +242,7 @@ export function extractTypeEntityOwnProperties(
     store: IfcDataStore,
     typeEntityId: number
 ): Array<{ name: string; globalId?: string; properties: Array<ExtractedProperty> }> {
+    // @raw-entity-enumeration-ok the caller selected this one source type entity by id
     const ref = store.entityIndex.byId.get(typeEntityId);
     if (!ref || !store.source?.length) return [];
 
@@ -308,6 +292,7 @@ export function extractQsetsFromIds(
     const result: Array<{ name: string; globalId?: string; quantities: CollectedQuantity[] }> = [];
 
     for (const qsetId of qsetIds) {
+        // @raw-entity-enumeration-ok one requested quantity-set id is decoded from its source STEP span
         const qsetRef = store.entityIndex.byId.get(qsetId);
         if (!qsetRef) continue;
 
@@ -347,6 +332,7 @@ export function extractTypeQuantitiesOnDemand(
     if (typeIds.length === 0) return null;
 
     const typeId = typeIds[0];
+    // @raw-entity-enumeration-ok typeIds came from this selected entity's relationship lookup
     const typeRef = store.entityIndex.byId.get(typeId);
     if (!typeRef) return null;
 
@@ -436,6 +422,7 @@ export function extractDocumentsOnDemand(
     const results: DocumentInfo[] = [];
 
     for (const docId of docRefIds) {
+        // @raw-entity-enumeration-ok one relationship-selected document id is decoded from its source STEP span
         const docRef = store.entityIndex.byId.get(docId);
         if (!docRef) continue;
 
@@ -457,6 +444,7 @@ export function extractDocumentsOnDemand(
 
             // Walk to IfcDocumentInformation if ReferencedDocument is set (IFC4 attr[4])
             if (typeof attrs[4] === 'number') {
+                // @raw-entity-enumeration-ok follow this document's one ReferencedDocument source id
                 const docInfoRef = store.entityIndex.byId.get(attrs[4]);
                 if (docInfoRef) {
                     const docInfoEntity = extractor.extractEntity(docInfoRef);
@@ -523,6 +511,7 @@ export function extractRelationshipsOnDemand(
     result.relations = extractExactRelationshipEdges(store, entityId);
 
     const getEntityInfo = (id: number): { name?: string; type: string } => {
+        // @raw-entity-enumeration-ok graph already selected this related id; source index supplies its STEP class only
         const ref = store.entityIndex.byId.get(id);
         // Canonical IfcPascalCase (e.g. "IfcZone") for display + case-sensitive
         // consumers; `ref.type` is the raw STEP token ("IFCZONE"). Groups now
@@ -595,6 +584,7 @@ export function extractGroupMembersOnDemand(
     const memberIds = store.relationships.getRelated(groupId, RelationshipType.AssignsToGroup, 'forward');
     const members: GroupMember[] = [];
     for (const id of memberIds) {
+        // @raw-entity-enumeration-ok graph already selected this group member id; source index supplies its STEP class only
         const ref = store.entityIndex.byId.get(id);
         // Canonical IfcPascalCase (e.g. "IfcSpace") — `ref.type` is the raw STEP
         // token ("IFCSPACE"), which would break case-sensitive class checks in
@@ -624,167 +614,7 @@ export { extractGroupAssignmentFactorOnDemand } from './group-assignment-factor.
 // of this module keeps resolving.
 export { extractGeoreferencingOnDemand } from './on-demand-georeferencing.js';
 
-// ============================================================================
-// Material Property Set Extraction (issue #978)
-//
-// Material psets are attached to an IfcMaterial via IfcMaterialProperties
-// (the material's `Material` attribute points back to the material), NOT via
-// IfcRelDefinesByProperties — so they never appear in `onDemandPropertyMap`.
-// We build a reverse index (materialId -> material psets) by scanning every
-// *MaterialProperties entity once, then resolve it for the selected element's
-// underlying materials.
-// ============================================================================
-
-interface MaterialPsetEntry { name: string; properties: MaterialPsetGroup['psets'][number]['properties'] }
-
-const materialPropertyIndexCache = new WeakMap<IfcDataStore, Map<number, MaterialPsetEntry[]>>();
-
-/** Resolve an entity ref from the primary index, falling back to deferred atoms. */
-function refFromStore(store: IfcDataStore, id: number) {
-    return store.entityIndex.byId.get(id) ?? store.deferredEntityIndex?.get(id);
-}
-
-/**
- * Resolve the (materialId, propsList, psetName) triple for a *MaterialProperties
- * entity, dispatching on its concrete class rather than guessing attribute
- * positions. The two generic forms that carry an IfcProperty list are handled:
- *   - IfcMaterialProperties      (IFC4+):  [Name, Description, Properties, Material]
- *   - IfcExtendedMaterialProperties (IFC2x3): [Material, ExtendedProperties, Description, Name]
- * The typed IFC2x3 subtypes (IfcMechanicalMaterialProperties, IfcThermalMaterialProperties,
- * …) expose domain-specific scalar fields instead of a generic property list and
- * are not surfaced (returns null) — they are not the Pset_Material* this targets.
- */
-function readMaterialPropsEntity(
-    typeKey: string,
-    attrs: readonly unknown[],
-    entityType: string,
-): { materialId: number; propsList: unknown[]; psetName: string } | null {
-    let materialId: unknown;
-    let propsList: unknown;
-    let name: unknown;
-
-    if (typeKey === 'IFCMATERIALPROPERTIES') {
-        name = attrs[0]; propsList = attrs[2]; materialId = attrs[3];
-    } else if (typeKey === 'IFCEXTENDEDMATERIALPROPERTIES') {
-        materialId = attrs[0]; propsList = attrs[1]; name = attrs[3];
-    } else {
-        return null; // typed IFC2x3 scalar subtype — no generic property list
-    }
-
-    if (typeof materialId !== 'number' || !Array.isArray(propsList)) return null;
-    const psetName = typeof name === 'string' && name ? name : (entityType || 'Material Properties');
-    return { materialId, propsList, psetName };
-}
-
-/**
- * Build (and memoise) the model-wide map of materialId -> property sets defined
- * via IfcMaterialProperties / IfcExtendedMaterialProperties. These reference the
- * material directly (not through IfcRelDefinesByProperties), so they are found by
- * scanning every *MaterialProperties entity once.
- */
-function getMaterialPropertyIndex(store: IfcDataStore): Map<number, MaterialPsetEntry[]> {
-    const cached = materialPropertyIndexCache.get(store);
-    if (cached) return cached;
-
-    const index = new Map<number, MaterialPsetEntry[]>();
-    if (!store.source?.length || !store.entityIndex?.byType) {
-        materialPropertyIndexCache.set(store, index);
-        return index;
-    }
-
-    const extractor = new EntityExtractor(store.source);
-
-    for (const [typeKey, ids] of store.entityIndex.byType) {
-        if (!typeKey.endsWith('MATERIALPROPERTIES')) continue;
-        for (const matPropsId of ids) {
-            const ref = refFromStore(store, matPropsId);
-            if (!ref) continue;
-            const entity = extractor.extractEntity(ref);
-            const attrs = entity?.attributes;
-            if (!attrs) continue;
-
-            const parsed = readMaterialPropsEntity(typeKey, attrs, entity!.type);
-            if (!parsed) continue;
-
-            const properties: MaterialPsetEntry['properties'] = [];
-            for (const propRef of parsed.propsList) {
-                if (typeof propRef !== 'number') continue;
-                const propEntityRef = refFromStore(store, propRef);
-                if (!propEntityRef) continue;
-                const propEntity = extractor.extractEntity(propEntityRef);
-                if (!propEntity) continue;
-                const propAttrs = propEntity.attributes || [];
-                const propName = typeof propAttrs[0] === 'string' ? propAttrs[0] : '';
-                if (!propName) continue;
-                const pv = parsePropertyValueWithComplex(store, extractor, propEntity);
-                const entry: MaterialPsetEntry['properties'][number] = {
-                    name: propName,
-                    type: pv.type,
-                    value: pv.value,
-                };
-                if (pv.values) entry.values = pv.values;
-                if (pv.dataType) entry.dataType = pv.dataType;
-                if (pv.dataTypeMixed) entry.dataTypeMixed = true;
-                properties.push(entry);
-            }
-            if (properties.length === 0) continue;
-
-            let list = index.get(parsed.materialId);
-            if (!list) { list = []; index.set(parsed.materialId, list); }
-            list.push({ name: parsed.psetName, properties });
-        }
-    }
-
-    materialPropertyIndexCache.set(store, index);
-    return index;
-}
-
-/** Build pset groups for a set of candidate material ids using the reverse index. */
-function buildMaterialPsetGroups(store: IfcDataStore, materialIds: number[]): MaterialPsetGroup[] {
-    const index = getMaterialPropertyIndex(store);
-    if (index.size === 0) return [];
-
-    const groups: MaterialPsetGroup[] = [];
-    const seen = new Set<number>();
-    for (const matId of materialIds) {
-        if (seen.has(matId)) continue;
-        seen.add(matId);
-        const entries = index.get(matId);
-        if (!entries || entries.length === 0) continue;
-        const { name } = getMaterialDisplayImpl(store, matId);
-        groups.push({
-            materialId: matId,
-            materialName: name,
-            psets: entries.map((e) => ({ name: e.name, properties: e.properties })),
-        });
-    }
-    return groups;
-}
-
-/**
- * Material property sets associated with a selected element, resolved through
- * its material association. Fans out a layer/profile/constituent set to its
- * member IfcMaterials (where Pset_Material* typically lives) and also checks
- * the set definition itself. Returns one group per material that has psets.
- */
-export function extractMaterialPropertiesOnDemand(store: IfcDataStore, entityId: number): MaterialPsetGroup[] {
-    // Every association, not just the primary — psets on a second
-    // IfcRelAssociatesMaterial's definition were previously invisible.
-    const defIds = resolveAllMaterialDefIdsImpl(store, entityId);
-    if (defIds.length === 0) return [];
-    const ids: number[] = [];
-    for (const defId of defIds) {
-        ids.push(defId, ...collectMaterialLeavesImpl(store, defId).map((l) => l.id));
-    }
-    return buildMaterialPsetGroups(store, ids);
-}
-
-/**
- * Material property sets for a directly-selected material entity (the Materials
- * hierarchy tab). Includes the material's own psets plus, when it is a set
- * definition, those of its member materials.
- */
-export function extractMaterialPropertiesForMaterialId(store: IfcDataStore, materialId: number): MaterialPsetGroup[] {
-    const leafIds = collectMaterialLeavesImpl(store, materialId).map((l) => l.id);
-    return buildMaterialPsetGroups(store, [materialId, ...leafIds]);
-}
+// Material property sets are isolated here because their reverse index is a
+// separate concern from the other on-demand entity extractors.
+export { extractMaterialPropertiesOnDemand, extractMaterialPropertiesForMaterialId } from './material-properties-extractor.js';
+export type { MaterialPropertiesView, MaterialPsetGroup } from './material-properties-extractor.js';

@@ -61,7 +61,7 @@
    525 apps/viewer/src/components/mcp/McpPlayground.tsx
   2051 apps/viewer/src/components/mcp/playground-dispatcher.ts
   1187 apps/viewer/src/components/mcp/PlaygroundChat.tsx
-   750 apps/viewer/src/components/viewer/AddElementPanel.tsx
+   634 apps/viewer/src/components/viewer/AddElementPanel.tsx
    415 apps/viewer/src/components/viewer/bcf/BCFTopicDetail.tsx
    529 apps/viewer/src/components/viewer/BCFPanel.tsx
    623 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
@@ -74,14 +74,13 @@
    409 apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx
    644 apps/viewer/src/components/viewer/ExportDialog.tsx
    468 apps/viewer/src/components/viewer/GLBExportDialog.tsx
-  1369 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
+  1357 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    782 apps/viewer/src/components/viewer/HierarchyPanel.tsx
    432 apps/viewer/src/components/viewer/IDSCorrectionDialog.tsx
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
   1012 apps/viewer/src/components/viewer/LensPanel.tsx
-  1005 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
+   989 apps/viewer/src/components/viewer/lists/ListBuilder.tsx
    521 apps/viewer/src/components/viewer/lists/ListResultsTable.tsx
-  1132 apps/viewer/src/components/viewer/MainToolbar.tsx
    594 apps/viewer/src/components/viewer/measureHandlers.ts
    522 apps/viewer/src/components/viewer/properties/BsddCard.tsx
    418 apps/viewer/src/components/viewer/properties/EpsgLookupDialog.tsx
@@ -99,16 +98,14 @@
    578 apps/viewer/src/components/viewer/SearchInline.tsx
    508 apps/viewer/src/components/viewer/SearchModal.filter.editors.tsx
    835 apps/viewer/src/components/viewer/SearchModal.filter.tsx
-  1124 apps/viewer/src/components/viewer/selectionHandlers.ts
    493 apps/viewer/src/components/viewer/SheetSetupPanel.tsx
    435 apps/viewer/src/components/viewer/TitleBlockEditor.tsx
-   524 apps/viewer/src/components/viewer/tools/AddElementOverlay.tsx
    501 apps/viewer/src/components/viewer/tools/measure-modes/radius.ts
    818 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
    677 apps/viewer/src/components/viewer/tools/MeasureQuantities.tsx
   1428 apps/viewer/src/components/viewer/tools/SpaceSketchOverlay.tsx
    970 apps/viewer/src/components/viewer/useGeometryStreaming.ts
-   914 apps/viewer/src/components/viewer/useMouseControls.ts
+   912 apps/viewer/src/components/viewer/useMouseControls.ts
    512 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1776 apps/viewer/src/components/viewer/Viewport.tsx
   1089 apps/viewer/src/components/viewer/ViewportContainer.tsx
@@ -141,9 +138,8 @@
    991 apps/viewer/src/lib/llm/script-edit-ops.ts
   1141 apps/viewer/src/lib/llm/script-preflight.ts
    410 apps/viewer/src/lib/llm/stream-client.ts
-   809 apps/viewer/src/lib/llm/system-prompt.ts
+   747 apps/viewer/src/lib/llm/system-prompt.ts
    450 apps/viewer/src/lib/search/tier1-index.ts
-   440 apps/viewer/src/lib/slab-edit.ts
    412 apps/viewer/src/lib/sources/persistence.ts
    426 apps/viewer/src/lib/tours/controller.ts
    812 apps/viewer/src/sdk/adapters/export-adapter.ts
@@ -161,7 +157,7 @@
    489 apps/viewer/src/store/slices/idsSlice.ts
    820 apps/viewer/src/store/slices/measurementSlice.ts
    630 apps/viewer/src/store/slices/modelSlice.ts
-  2779 apps/viewer/src/store/slices/mutationSlice.ts
+  2305 apps/viewer/src/store/slices/mutationSlice.ts
   1317 apps/viewer/src/store/slices/scheduleSlice.ts
    536 apps/viewer/src/store/slices/scriptSlice.ts
    498 apps/viewer/src/store/slices/sectionSlice.ts
@@ -262,7 +258,7 @@
    467 packages/parser/src/compact-entity-index.ts
    530 packages/parser/src/data-store-transport.ts
    835 packages/parser/src/material-resolver.ts
-   790 packages/parser/src/on-demand-extractors.ts
+   787 packages/parser/src/on-demand-extractors.ts
    494 packages/parser/src/source-bytes.ts
    513 packages/plugin-api/src/types.ts
    678 packages/pointcloud/src/formats/e57-decode.ts
@@ -277,8 +273,8 @@
    529 packages/query/src/duckdb-integration.ts
    583 packages/renderer/src/camera-controls.ts
    684 packages/renderer/src/camera.ts
-  3730 packages/renderer/src/index.ts
-   756 packages/renderer/src/picker.ts
+  3699 packages/renderer/src/index.ts
+   741 packages/renderer/src/picker.ts
    952 packages/renderer/src/pipeline.ts
    475 packages/renderer/src/pointcloud/point-cloud-renderer.ts
    758 packages/renderer/src/pointcloud/point-cloud-spatial-index.ts
@@ -287,11 +283,11 @@
    462 packages/renderer/src/scene-raycaster.ts
   4118 packages/renderer/src/scene.ts
    639 packages/renderer/src/section-2d-overlay.ts
-   639 packages/renderer/src/shaders/main.wgsl.ts
-   454 packages/renderer/src/shadow-pass.ts
+   564 packages/renderer/src/shaders/main.wgsl.ts
+   417 packages/renderer/src/shadow-pass.ts
    768 packages/renderer/src/snap-detector.ts
    765 packages/renderer/src/symbolic-overlay-pipelines.ts
-   583 packages/rules/src/filter/filter-evaluate.ts
+   572 packages/rules/src/filter/filter-evaluate.ts
    587 packages/sandbox/src/bridge-create.ts
    421 packages/sandbox/src/bridge-query.ts
    498 packages/sandbox/src/bridge-schema.ts

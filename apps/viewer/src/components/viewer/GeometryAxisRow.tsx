@@ -9,6 +9,7 @@
  * handler, and the two nudge callbacks.
  */
 
+import { useId } from 'react';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { useTranslation } from '@/i18n';
@@ -23,9 +24,10 @@ interface AxisRowProps {
 
 export function GeometryAxisRow({ label, value, onChange, onNudgeMinus, onNudgePlus }: AxisRowProps) {
   const { t } = useTranslation();
+  const inputId = useId();
   return (
     <div className="flex items-center gap-1">
-      <span className="w-4 text-[11px] font-mono text-muted-foreground">{label}</span>
+      <label htmlFor={inputId} className="w-4 text-2xs font-mono text-muted-foreground">{label}</label>
       <IconButton
         label={t('geometryAxisRow.decreaseAriaLabel', { label })}
         variant="ghost"
@@ -36,6 +38,7 @@ export function GeometryAxisRow({ label, value, onChange, onNudgeMinus, onNudgeP
         −
       </IconButton>
       <Input
+        id={inputId}
         type="number"
         value={value}
         onChange={(e) => onChange(e.target.value)}

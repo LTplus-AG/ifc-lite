@@ -294,13 +294,13 @@ export interface HoverState {
   screenX: number;
   screenY: number;
   /**
-   * World-space hit position from the GPU pick (depth readback +
-   * inverse view-projection). Unset when the picker couldn't recover
-   * one (e.g. `pointCount === 0` clear, or the pick fell on the
-   * background). Useful for point-cloud hover tooltips where the
-   * synthetic entity has no surface property to display.
+   * World-space hit position from the GPU pick (depth readback + inverse view-projection).
+   * Unset when the picker couldn't recover one (e.g. `pointCount === 0` clear, or the pick
+   * fell on the background). Useful for point-cloud hover tooltips where the synthetic
+   * entity has no surface property to display.
    */
   worldXYZ?: { x: number; y: number; z: number };
+  modelIndex?: number; // model of the picked entity (federation), for the hover outline (#5390)
 }
 
 export interface ContextMenuState {
@@ -421,14 +421,13 @@ export interface CameraCallbacks {
    */
   frameBuildingExtent?: () => void;
   /**
-   * Replace the Space Sketch draft "ghost" overlay meshes in the 3D scene. These
-   * go straight to the renderer scene (NOT through geometryResult), so frequent
-   * per-edit updates can't trip the streaming reclassifier (which would reset the
-   * camera / un-pick newly created spaces). Pass [] (or use clear) to remove all.
+   * Replace one authoring channel's ghost meshes (Space Sketch rooms, a command
+   * preview; `useAuthoringOverlay.ts`). They bypass geometryResult so per-edit
+   * updates can't trip the streaming reclassifier. [] (or clear) removes them.
    */
-  setSpaceOverlayMeshes?: (meshes: MeshData[]) => void;
-  /** Remove all Space Sketch overlay ghost meshes from the scene. */
-  clearSpaceOverlayMeshes?: () => void;
+  setAuthoringOverlayMeshes?: (channel: AuthoringOverlayChannel, meshes: MeshData[]) => void;
+  /** Remove one authoring channel's overlay ghost meshes from the scene. */
+  clearAuthoringOverlayMeshes?: (channel: AuthoringOverlayChannel) => void;
   /**
    * Frame an explicit world-space box (min/max corners) from the canonical
    * isometric view, animating there. Used to frame a focused clash's contact
@@ -476,6 +475,7 @@ export interface CameraCallbacks {
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
 import type { ModelLoadReportFields } from '../lib/loadReport'; // #3927 load report
+export type AuthoringOverlayChannel = 'spaceSketch' | 'command'; // authoring ghost-mesh channels (#6232)
 /**
  * Compound identifier for entities across multiple models.
  *

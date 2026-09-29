@@ -11,7 +11,7 @@
  * edit settles once, so the blur after Enter / Escape cannot commit again.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
 import { PenLine, X, Check, AlertCircle } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -54,6 +54,7 @@ export function RawStepRow({
   onNavigate,
 }: RawStepRowProps) {
   const { t } = useTranslation();
+  const nameId = useId();
   const setPositionalAttribute = useViewerStore((s) => s.setPositionalAttribute);
 
   const [editing, setEditing] = useState(false);
@@ -145,6 +146,7 @@ export function RawStepRow({
 
       {/* Schema attribute name */}
       <span
+        id={nameId}
         className="text-zinc-600 dark:text-zinc-400 truncate font-mono text-xs"
         title={name}
       >
@@ -155,6 +157,7 @@ export function RawStepRow({
       {editing ? (
         <div className="flex items-center gap-1 min-w-0">
           <input
+            aria-labelledby={nameId}
             ref={inputRef}
             value={draft}
             onChange={(e) => {

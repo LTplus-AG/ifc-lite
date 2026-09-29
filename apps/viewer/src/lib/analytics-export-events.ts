@@ -79,6 +79,7 @@ const BOOLEAN_KEYS = new Set<string>(KEYS.filter((key) => key.startsWith('anonym
 ]));
 const ENUMS: Readonly<Record<string, readonly string[]>> = {
   format: EXPORT_FORMATS,
+  // Historical `classic` exports remain valid at the privacy scrubber boundary.
   surface: ['ribbon', 'classic', 'rail', 'palette', 'shortcut', ...PANEL_EXPORT_SURFACES],
   scope: ['single', 'merged'],
   color_source: ['rendering', 'shading'],

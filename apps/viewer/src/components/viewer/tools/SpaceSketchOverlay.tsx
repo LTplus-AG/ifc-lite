@@ -30,7 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useConstructionUnderlay } from '@/hooks/useConstructionUnderlay';
 import { useIfc } from '@/hooks/useIfc';
-import { snapPoint, alignToAxes, type SnapKind } from '@/lib/space-snap';
+import { snapSketchPoint, alignToAxes, type SketchSnapKind } from '@/lib/snap/space-sketch';
 import { editError } from '@/lib/space-edit-error';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { pointerButton, isRemoveModifier } from '@/lib/space-interaction';
@@ -51,6 +51,7 @@ import { useSpaceBake } from './space-sketch/useSpaceBake';
 import { floorToFloorHeight } from './space-sketch/space-bake';
 import type { Hover, SplitTarget, IntentTone } from './space-sketch/types';
 import { useTranslation } from '@/i18n';
+import { formatSquareMetres } from './computePolygonArea';
 
 const PICK_PX = 12;
 const SNAP_PX = 10;
@@ -125,7 +126,7 @@ export function SpaceSketchOverlay() {
   const [splitHover, setSplitHover] = useState<Pt | null>(null);
   const [snapPos, setSnapPos] = useState<Pt | null>(null);
   // What the live snap landed on, so the cue can differ for a wall vs a corner.
-  const [snapKind, setSnapKind] = useState<SnapKind>('none');
+  const [snapKind, setSnapKind] = useState<SketchSnapKind>('none');
   // Snap every node to the building's 2D wall lines (corners + along walls).
   // Default on; the magnet toggle in the toolbar turns it off (vertex-only).
   const [snapToBuilding, setSnapToBuilding] = useState(true);
@@ -169,7 +170,7 @@ export function SpaceSketchOverlay() {
   // losing the user's edits.
   const buildsRef = useRef<Map<number, { rects: WallRect[]; label: string; extraction: Extraction }>>(new Map());
   const [hist, setHist] = useState(0);
-  const [status, setStatus] = useState('Pick a storey to derive rooms from its walls.');
+  const [status, setStatus] = useState(() => t('spaceSketch.status.pickStorey'));
   const [showBuilding, setShowBuilding] = useState(true);
   const [showDiagnostics, setShowDiagnostics] = useState(false); // Issue 7 — leak diagnostics
   // Default to the wall AXIS (face-based rooms are the gaps between wall
@@ -358,12 +359,12 @@ export function SpaceSketchOverlay() {
         if (snapDeltaTimerRef.current) clearTimeout(snapDeltaTimerRef.current);
         snapDeltaTimerRef.current = setTimeout(() => setSnapDelta(null), 1800);
       }
-      const total = snap.reduce((s, r) => s + r.area, 0);
-      setStatus(`${label}: ${snap.length} room(s), ${total.toFixed(1)} m² · ${rects.length} walls.`);
+      const area = formatSquareMetres(snap.reduce((s, r) => s + r.area, 0));
+      setStatus(t('spaceSketch.status.derived', { label, count: snap.length, area, walls: rects.length }));
     } catch (e) {
       setStatus(`Build failed: ${String(e)}`);
     }
-  }, [buildPlate, resetInteraction, fitToPoints]);
+  }, [buildPlate, resetInteraction, fitToPoints, t]);
 
   // Manual weld-tolerance override (null → 5 cm default). Rebuilds the current
   // plate from its wall rectangles at the chosen tolerance.
@@ -427,10 +428,10 @@ export function SpaceSketchOverlay() {
     fitToPoints(snap.length > 0
       ? snap.flatMap((r) => r.outline)
       : (build?.rects ?? []).flatMap((r) => r.corners));
-    const total = snap.reduce((s, r) => s + r.area, 0);
-    setStatus(`${build?.label ?? `Storey ${storey}`}: ${snap.length} room(s), ${total.toFixed(1)} m² (your draft).`);
+    const area = formatSquareMetres(snap.reduce((s, r) => s + r.area, 0));
+    setStatus(t('spaceSketch.status.draftRestored', { label: build?.label ?? `Storey ${storey}`, count: snap.length, area }));
     return true;
-  }, [sessionsRef, sessionRef, resetInteraction, fitToPoints]);
+  }, [sessionsRef, sessionRef, resetInteraction, fitToPoints, t]);
 
   // On a storey change (and on open): restore that storey's existing draft if we
   // have one, otherwise derive it from the walls. Edits on every storey persist
@@ -884,7 +885,7 @@ export function SpaceSketchOverlay() {
       setHover(null); setDeleteHover(null); setSplitHover(null);
       setAlignGuides({ vRef: null, hRef: null });
       const tol = PICK_PX / fitRef.current.scale;
-      const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
+      const snap = snapSketchPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
       setSnapKind(snap.kind); setSnapPos(snap.kind === 'none' ? null : snap.pt);
       if (rectStartRef.current) {
         setRectPreview(rectCornersFrom(rectStartRef.current, snap.pt, m.shift));
@@ -903,7 +904,7 @@ export function SpaceSketchOverlay() {
       draggedRef.current = true;
       // Snap to other room vertices + building wall lines (corners and along
       // walls), with Shift constraining to ortho from the drag start first.
-      const snap = snapPoint([wx, wy], {
+      const snap = snapSketchPoint([wx, wy], {
         vertices: otherVertsRef.current,
         segments: buildingSegmentsRef.current,
         tol: SNAP_PX / fitRef.current.scale,
@@ -924,7 +925,7 @@ export function SpaceSketchOverlay() {
     if (drawPts.length > 0) {
       const tol = PICK_PX / fitRef.current.scale;
       const anchor = drawPts[drawPts.length - 1];
-      const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol, ortho: m.shift, anchor });
+      const snap = snapSketchPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol, ortho: m.shift, anchor });
       let pt = snap.pt;
       // Axis-align to the drawn corners only when NOT holding Shift — under Shift
       // the ortho constraint is authoritative and alignToAxes (which snaps X and Y
@@ -987,7 +988,7 @@ export function SpaceSketchOverlay() {
     // Empty space → draw a room (or Shift = pan; hide the draw dot then).
     setHover(null); setDeleteHover(null); setSplitHover(null); setAlignGuides({ vRef: null, hRef: null });
     const tol = PICK_PX / fitRef.current.scale;
-    const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
+    const snap = snapSketchPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
     setDrawCursor(m.shift ? null : snap.pt); setSnapKind(snap.kind);
     setIntent(m.shift ? { text: 'Pan', tone: 'pan' } : { text: 'Draw room', tone: 'draw' });
   }, [drawPts, splitPick, rooms, pickEdge, pickVertex, nearestVertPos, resolveSplitTarget, refreshRooms, drawMode, rectCornersFrom]);
@@ -1133,7 +1134,7 @@ export function SpaceSketchOverlay() {
     // 0. Rectangle tool (modal): first click sets a corner, second commits the
     // room. Drag/cut/draw are suspended while it's active.
     if (drawMode === 'rect' && !mod) {
-      const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
+      const snap = snapSketchPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
       if (rectStartRef.current == null) {
         rectStartRef.current = snap.pt;
         setRectPreview(null);
@@ -1147,7 +1148,7 @@ export function SpaceSketchOverlay() {
     // 1. Drawing in progress → add a corner (or close on the first dot).
     if (drawPts.length > 0) {
       const anchor = drawPts[drawPts.length - 1];
-      const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol, ortho: e.shiftKey, anchor });
+      const snap = snapSketchPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol, ortho: e.shiftKey, anchor });
       // Under Shift the ortho point is authoritative; only axis-align when free.
       const p = snap.kind === 'none' && !e.shiftKey ? alignToAxes(snap.pt, drawPts, tol).pt : snap.pt;
       setAlignGuides({ vRef: null, hRef: null });
@@ -1217,7 +1218,7 @@ export function SpaceSketchOverlay() {
       capturePointer(svgRef.current, e.pointerId);
       return;
     }
-    const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
+    const snap = snapSketchPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
     drawRedoRef.current = [];
     setDrawPts([snap.pt]);
     setStatus('Drawing — click to add corners · Enter / double-click / first dot to close · Shift = straight.');
@@ -1235,9 +1236,8 @@ export function SpaceSketchOverlay() {
     const session = sessionRef.current;
     if (draggedRef.current) { session?.commitDrag(); commit(); }
     else session?.cancelDrag(); // a click without a drag → discard the snapshot
-    const total = rooms.reduce((s, r) => s + r.area, 0);
-    if (draggedRef.current) setStatus(`Drag done — ${rooms.length} room(s), ${total.toFixed(1)} m² (conserved).`);
-  }, [rooms, commit]);
+    if (draggedRef.current) setStatus(t('spaceSketch.status.dragDone', { count: rooms.length, area: formatSquareMetres(rooms.reduce((s, r) => s + r.area, 0)) }));
+  }, [rooms, commit, t]);
 
   const f = fitRef.current;
   const total = rooms.reduce((s, r) => s + r.area, 0);

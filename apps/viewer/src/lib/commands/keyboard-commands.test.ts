@@ -28,6 +28,28 @@ function collisions(commands: readonly KeyCommandDefinition[]): string[] {
   return clashes;
 }
 
+/** A new dispatcher context must join the collision control, too (#5878). */
+const DISPATCHER_CONTEXTS = {
+  global: true,
+  overlay: true,
+  'tool.walk': true,
+  'tool.measure': true,
+  'tool.addElement': true,
+  'tool.spaceSketch': true,
+  command: true,
+  'command.wall.place': true, // Representative command-specific context.
+  'workspace.model': true,
+  drawing2d: true,
+  flight: true,
+  'search.cycle': true,
+  'search.field': true,
+  'panel.reposition': true,
+  'panel.chat': true,
+  'panel.schedule': true,
+  'panel.script': true,
+  'schedule.drag': true,
+} satisfies Record<KeyContext, true>;
+
 describe('keyboard command table (#5836)', () => {
   it('no two commands share a chord within one context', () => {
     assert.deepEqual(collisions(KEY_COMMANDS), []);
@@ -42,25 +64,15 @@ describe('keyboard command table (#5836)', () => {
     assert.deepEqual(collisions([undo, { ...clash, when: 'tool.spaceSketch' }]), []);
   });
 
-  it('checks every declared shortcut context independently (#5878)', () => {
-    // Adding a new context without a binding must extend this coverage before
-    // its collision behavior can be trusted.
-    type MissingContext = Exclude<KeyContext, (typeof KEY_COMMANDS)[number]['when']>;
-    const allContextsRepresented: MissingContext extends never ? true : false = true;
-    assert.equal(allContextsRepresented, true);
-
-    const firstByContext = new Map<KeyContext, KeyCommandDefinition>();
-    for (const command of KEY_COMMANDS) {
-      if (!firstByContext.has(command.when)) firstByContext.set(command.when, command);
-    }
-    assert.ok(firstByContext.size > 1);
-    for (const [context, command] of firstByContext) {
-      const duplicate: KeyCommandDefinition = { ...command, id: `test.${context}` };
-      assert.equal(collisions([command, duplicate]).length, command.keys.length, context);
-      for (const other of firstByContext.keys()) {
-        if (other === context) continue;
-        assert.deepEqual(collisions([command, { ...duplicate, when: other }]), [], `${context} vs ${other}`);
-      }
+  it('rejects a duplicated chord in every dispatcher when context (#5878)', () => {
+    const [undo] = KEY_COMMANDS;
+    for (const when of Object.keys(DISPATCHER_CONTEXTS) as KeyContext[]) {
+      const first = { ...undo, when };
+      const second = { ...first, id: `test.clash.${when}` };
+      assert.equal(collisions([first, second]).length, 1, when);
+      assert.deepEqual(collisions([undo, second]), when === 'global'
+        ? [`${when} ${chordIdentity(undo.keys[0])}: ${undo.id} and ${second.id}`]
+        : [], when);
     }
   });
 
@@ -84,7 +96,7 @@ describe('platform key glyphs (#5836)', () => {
     assert.equal(shortcutLabel('edit.undo', true), '⌘Z');
     assert.equal(shortcutLabel('edit.undo', false), 'Ctrl+Z');
     assert.equal(shortcutLabel('edit.redo', true), '⇧⌘Z');
-    assert.equal(shortcutLabel('edit.redo', false), 'Ctrl+Shift+Z');
+    assert.equal(shortcutLabel('edit.redo', false), 'Ctrl+Shift+Z, Ctrl+Y');
   });
 
   it('writes Alt as ⌥ on Apple, and positional digits as the digit', () => {
@@ -104,6 +116,7 @@ describe('platform key glyphs (#5836)', () => {
   });
 
   it('lists every chord of a multi-key command', () => {
+    assert.equal(shortcutLabel('basket.add', false), '=, +');
     assert.equal(shortcutLabel('visibility.hideSelection', false), 'Del, Backspace, Space');
     assert.equal(shortcutLabel('ui.closeAllPanels', false), 'Esc Esc');
     assert.equal(formatChord({ key: 'n', shift: true }, false), 'Shift+N');

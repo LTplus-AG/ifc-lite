@@ -43,6 +43,9 @@ DATA;
 #60=IFCQUANTITYLENGTH('Length',$,$,5000.,$);
 #61=IFCELEMENTQUANTITY('0Qto00000000000000061',$,'Qto_WallBaseQuantities',$,'BaseQuantities',(#60));
 #62=IFCRELDEFINESBYPROPERTIES('0Rel00000000000000062',$,$,$,(#41),#61);
+#70=IFCZONE('0Zone000000000000070',$,'Source zone',$,$);
+#71=IFCZONE('0Zone000000000000071',$,'Other zone',$,$);
+#72=IFCRELASSIGNSTOGROUP('0Rel00000000000000072',$,$,$,(#41),$,#70);
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -88,6 +91,46 @@ async function selectedIds(lens: Lens, store: IfcDataStore, view?: MutableProper
 }
 
 describe('lens adapter reads the live mutation overlay (#5207)', () => {
+  it('By Zone follows retargeted, deleted, and authored group relationships (#5249)', async () => {
+    const store = await parsedStore();
+    const view = liveView(store);
+    const models = new Map([['m1', federatedModel('m1', store)]]);
+    const groups = () => createLensDataProvider(models, null, new Map([['m1', view]])).getEntityGroups!(41);
+    assert.deepEqual(groups().map((group) => [group.id, group.name]), [[70, 'Source zone']]);
+
+    view.setPositionalAttribute(72, 6, '#71');
+    view.setAttribute(71, 'Name', 'Renamed zone');
+    assert.deepEqual(groups().map((group) => [group.id, group.name]), [[71, 'Renamed zone']]);
+
+    view.deleteEntity(72);
+    assert.deepEqual(groups(), []);
+
+    view.setExpressIdWatermark(999);
+    const created = view.createEntity('IfcZone', ['0Zone000000000000999', null, 'Authored zone', null, null]);
+    view.createEntity('IfcRelAssignsToGroup', [
+      '0Rel0000000000000999', null, null, null, ['#41'], null, `#${created.expressId}`,
+    ]);
+    assert.deepEqual(groups().map((group) => [group.id, group.name, group.type]),
+      [[created.expressId, 'Authored zone', 'IfcZone']]);
+    view.deleteEntity(created.expressId);
+    assert.deepEqual(groups(), []);
+  });
+
+  it('By Zone resolves group edits within their own federated model (#5249)', async () => {
+    const store = await parsedStore();
+    const first = liveView(store);
+    const second = liveView(store);
+    first.deleteEntity(72);
+    second.setAttribute(70, 'Name', 'Only in second');
+    const models = new Map([
+      ['m1', federatedModel('m1', store)],
+      ['m2', { ...federatedModel('m2', store), idOffset: 1_000_000 }],
+    ]);
+    const provider = createLensDataProvider(models, null, new Map([['m1', first], ['m2', second]]));
+    assert.deepEqual(provider.getEntityGroups!(41), []);
+    assert.deepEqual(provider.getEntityGroups!(1_000_000 + 41).map((group) => group.name), ['Only in second']);
+  });
+
   it('enumerates live source rows and creations, excluding tombstones and created-then-deleted rows (#5249)', async () => {
     const store = await parsedStore();
     const view = liveView(store);

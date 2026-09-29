@@ -1,0 +1,186 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { MESH_FLAG_RTE_DRAWABLE, MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
+import { RelativeToEyeFrame } from './relative-to-eye.js';
+import { MathUtils } from './math.js';
+import { buildSelectionOutlineFrame, matchesHoveredMesh, packHoverUniforms, type SelectionOutlineSource } from './selection-outline-frame.js';
+import type { Mesh } from './types.js';
+
+/**
+ * The pure "is this the hovered mesh" predicate (#5390) that
+ * `buildSelectionOutlineFrame` uses to find the hovered mesh among the
+ * meshes the frame drew, honouring the same per-model disambiguation
+ * `selectedMeshes` already filters by (see `index.ts`'s selection filter).
+ */
+
+function mesh(expressId: number, modelIndex?: number): Mesh {
+  return { expressId, modelIndex, vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 3, transform: { m: new Float32Array(16) }, color: [1, 1, 1, 1] };
+}
+
+describe('matchesHoveredMesh (#5390)', () => {
+  it('matches by express id when no model index is required', () => {
+    assert.equal(matchesHoveredMesh(mesh(42), 42, undefined), true);
+    assert.equal(matchesHoveredMesh(mesh(42), 43, undefined), false);
+  });
+
+  it('also requires the model index to match when one is given', () => {
+    assert.equal(matchesHoveredMesh(mesh(42, 0), 42, 0), true);
+    assert.equal(matchesHoveredMesh(mesh(42, 1), 42, 0), false);
+  });
+
+  it('treats an undefined mesh model index as not matching a specific requested index', () => {
+    assert.equal(matchesHoveredMesh(mesh(42), 42, 0), false);
+  });
+});
+
+/**
+ * #5390 review: the hovered mesh's packed uniform must carry the frame's
+ * section plane and clip box, with the `flags.y` bits `fs_main` reads, or
+ * the hover outline traces geometry the section tool removed.
+ */
+describe('packHoverUniforms carries the section / clip state (#5390)', () => {
+  const source = (over: Partial<SelectionOutlineSource>): SelectionOutlineSource => ({
+    uniformBufferSize: 512,
+    viewProj: new Float32Array(16),
+    relativeToEyeFrame: new RelativeToEyeFrame(),
+    selectedMeshes: [],
+    hoverPieces: [],
+    hoveredId: 42,
+    selectedModelIndex: undefined,
+    section: undefined,
+    sectionFlipped: undefined,
+    clipBox: undefined,
+    ...over,
+  });
+  const flagsY = (u: Float32Array) => new Uint32Array(u.buffer, MESH_FLAGS_BYTE_OFFSET, 2)[1];
+
+  it('packs no clip bits when nothing is cut', () => {
+    assert.equal(flagsY(packHoverUniforms(source({}), mesh(42))), 0);
+  });
+
+  it('packs the section plane with its enabled and flipped bits', () => {
+    const u = packHoverUniforms(source({ section: { enabled: true, normal: [0, 1, 0], distance: 3 }, sectionFlipped: true }), mesh(42));
+    assert.equal(flagsY(u), 0b011);
+    assert.deepEqual([...u.subarray(MESH_UNIFORM_OFFSET.sectionPlane, MESH_UNIFORM_OFFSET.sectionPlane + 3)], [0, 1, 0]);
+  });
+
+  it('packs the clip box bit', () => {
+    const u = packHoverUniforms(source({ clipBox: { enabled: true, min: [0, 0, 0], max: [1, 1, 1] } }), mesh(42));
+    assert.equal(flagsY(u), 0b100);
+  });
+});
+
+/**
+ * Bugbot review of #5390: the hover outline looked only among hydrated scene
+ * meshes (none exist for an unselected entity on a batched model) and kept
+ * just the first piece. Every piece must be outlined, from the hover copies
+ * or from the selection meshes when the hovered entity is selected.
+ */
+describe('buildSelectionOutlineFrame hovers every piece (#5390)', () => {
+  const base = (over: Partial<SelectionOutlineSource>): SelectionOutlineSource => ({
+    uniformBufferSize: 512, viewProj: new Float32Array(16), relativeToEyeFrame: new RelativeToEyeFrame(),
+    selectedMeshes: [], hoverPieces: [], hoveredId: 42, selectedModelIndex: undefined,
+    section: undefined, sectionFlipped: undefined, clipBox: undefined, ...over,
+  });
+  const piece = () => ({ vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 3, transform: { m: new Float32Array(16) }, rteOrigin: [0, 0, 0] as [number, number, number] });
+
+  it('draws every hover copy of an unselected entity, each with packed uniforms', () => {
+    const { hovered } = buildSelectionOutlineFrame(base({ hoverPieces: [piece(), piece(), piece()] }));
+    assert.equal(hovered.length, 3);
+    assert.ok(hovered.every((h) => h.uniforms instanceof Float32Array && h.bindGroup === undefined));
+  });
+
+  it('reuses every selection mesh of a hovered entity that is also selected', () => {
+    const selectedPiece = (): Mesh => ({ ...mesh(42), bindGroup: {} as GPUBindGroup });
+    const { hovered } = buildSelectionOutlineFrame(base({ selectedMeshes: [selectedPiece(), selectedPiece()], hoverPieces: [piece()] }));
+    assert.equal(hovered.length, 2, 'both selected pieces, not the unrelated hover copy');
+    assert.ok(hovered.every((h) => h.bindGroup !== undefined));
+  });
+
+  it('hovers nothing when nothing is hovered', () => {
+    assert.deepEqual(buildSelectionOutlineFrame(base({ hoveredId: null, hoverPieces: [piece()] })).hovered, []);
+  });
+});
+
+
+/**
+ * #5745: instanced occurrences are outlined by drawing their templates, not
+ * copies. Only templates holding a selected occurrence are drawn for the
+ * selection, and the uniform they read carries the frame's section / clip
+ * state in the camera-relative frame the main instanced draw uses.
+ */
+describe('buildSelectionOutlineFrame outlines instanced occurrences (#5745)', () => {
+  const base = (over: Partial<SelectionOutlineSource>): SelectionOutlineSource => ({
+    uniformBufferSize: 512, viewProj: new Float32Array(16), relativeToEyeFrame: new RelativeToEyeFrame(),
+    selectedMeshes: [], hoverPieces: [], hoveredId: null, selectedModelIndex: undefined,
+    section: undefined, sectionFlipped: undefined, clipBox: undefined, ...over,
+  });
+  const tpl = (selectedCount: number) => ({
+    modelIndex: 0, vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 6, instanceBuffer: {} as GPUBuffer, instanceCount: 3,
+    canonicalAnchors: new Float64Array(9), bounds: null, maxOccRadius: 1, selectedCount,
+    rteDeltas: { buffer: {} as GPUBuffer, scratch: new Float32Array(24), camera: null, runs: [] },
+  });
+  type Built = ReturnType<typeof buildSelectionOutlineFrame> & { instanced?: { uniforms: Float32Array; rteCamera: readonly number[]; selected: unknown[]; hovered: unknown[]; hoveredId: number } | null };
+  const build = (over: Partial<SelectionOutlineSource>) => buildSelectionOutlineFrame(base(over)) as Built;
+
+  it('draws only the templates with a selected occurrence', () => {
+    const withSelection = tpl(1);
+    const { instanced } = build({ instancedTemplates: [tpl(0), withSelection, tpl(0)] });
+    assert.ok(instanced, 'a selected instanced occurrence must reach the mask');
+    assert.deepEqual(instanced.selected, [withSelection]);
+    assert.deepEqual(instanced.hovered, []);
+  });
+
+  it('hands the mask the frame\'s RTE camera, the one the colour pass packed the delta streams for (#6393)', () => {
+    const relativeToEyeFrame = new RelativeToEyeFrame();
+    relativeToEyeFrame.update({ x: 250.25, y: 3, z: -7 }, MathUtils.identity(), MathUtils.identity());
+    const { instanced } = build({ instancedTemplates: [tpl(1)], relativeToEyeFrame });
+    assert.deepEqual(instanced?.rteCamera, [250.25, 3, -7]);
+  });
+
+  it('hands the hovered id and its templates to the mask, and nothing when nothing is hovered', () => {
+    const hoveredTpl = tpl(0);
+    const { instanced } = build({ instancedTemplates: [hoveredTpl], instancedHovered: [hoveredTpl], hoveredId: 77 });
+    assert.ok(instanced);
+    assert.equal(instanced.hoveredId, 77);
+    assert.deepEqual(instanced.hovered, [hoveredTpl]);
+    assert.equal(build({ instancedTemplates: [hoveredTpl], instancedHovered: [hoveredTpl], hoveredId: null }).instanced ?? null, null);
+  });
+
+  it('packs the RTE flag and the section / clip bits the fragment cut reads', () => {
+    const { instanced } = build({
+      instancedTemplates: [tpl(2)],
+      section: { enabled: true, normal: [0, 1, 0], distance: 3 }, sectionFlipped: true,
+      clipBox: { enabled: true, min: [0, 0, 0], max: [1, 1, 1] },
+    });
+    assert.ok(instanced);
+    const flags = new Uint32Array(instanced.uniforms.buffer, MESH_FLAGS_BYTE_OFFSET, 2);
+    assert.equal(flags[0]! & MESH_FLAG_RTE_DRAWABLE, MESH_FLAG_RTE_DRAWABLE, 'vs_instanced positions are camera-relative, so the cut must be too');
+    assert.equal(flags[1], 0b111);
+  });
+
+  it('packs the mask uniform with the RTE camera ~6,378 km from the world origin (#6400)', () => {
+    // The #6393 setup: a georeferenced camera far outside the ±1,000 km
+    // camera-relative envelope around the world origin. The instanced mask
+    // reads no drawable origin (each occurrence brings its own RTE delta, as in
+    // the colour pass), so packing must not validate one against the camera.
+    const relativeToEyeFrame = new RelativeToEyeFrame();
+    relativeToEyeFrame.update({ x: 6_378_137, y: 12, z: -3 }, MathUtils.identity(), MathUtils.identity());
+    const hoveredTpl = tpl(0);
+    const { instanced } = build({
+      instancedTemplates: [tpl(1), hoveredTpl], instancedHovered: [hoveredTpl], hoveredId: 77, relativeToEyeFrame,
+      section: { enabled: true, normal: [1, 0, 0], distance: 6_378_140 },
+    });
+    assert.ok(instanced);
+    assert.deepEqual(instanced.rteCamera, [6_378_137, 12, -3]);
+    const flags = new Uint32Array(instanced.uniforms.buffer, MESH_FLAGS_BYTE_OFFSET, 2);
+    assert.equal(flags[0]! & MESH_FLAG_RTE_DRAWABLE, MESH_FLAG_RTE_DRAWABLE);
+    assert.equal(flags[1], 0b001);
+    // The section plane is still rebased into the camera-relative frame.
+    assert.equal(instanced.uniforms[MESH_UNIFORM_OFFSET.sectionPlane + 3], 3);
+  });
+});

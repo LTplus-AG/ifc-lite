@@ -4,6 +4,7 @@
 
 import { useState, useRef, useCallback, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { cn } from '@/lib/utils';
+import { VIEW_CUBE_SIZE_PX } from './viewcube-box';
 
 interface ViewCubeProps {
   onViewChange?: (view: string) => void;
@@ -82,7 +83,7 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
       }
     }, []); // Empty deps - only set initial rotation
 
-    const size = 60;
+    const size = VIEW_CUBE_SIZE_PX;
     const half = size / 2;
 
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -148,6 +149,8 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
     }, [onViewChange]);
 
     return (
+      // Mouse dragging changes the cube orientation; the child face buttons provide keyboard views.
+      // eslint-disable-next-line jsx-a11y/no-static-element-interactions
       <div
         className="relative select-none"
         style={{
@@ -170,7 +173,7 @@ export const ViewCube = forwardRef<ViewCubeRef, ViewCubeProps>(
               key={id}
               type="button"
               className={cn(
-                'absolute w-full h-full flex items-center justify-center text-[10px] font-bold transition-colors cursor-pointer',
+                'absolute w-full h-full flex items-center justify-center text-2xs font-bold transition-colors cursor-pointer',
                 'bg-card/95 border border-border/50',
                 hovered === id ? 'bg-primary/30 border-primary text-primary' : 'hover:bg-muted'
               )}

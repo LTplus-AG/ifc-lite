@@ -39,6 +39,7 @@ function rawTypeOf(ref: unknown): string | undefined {
 export function resolveEntityTypeName(store: IfcDataStore, expressId: number): string {
   const fromTable = store.entities.getTypeName(expressId);
   if (fromTable !== 'Unknown') return fromTable;
+  // @raw-entity-enumeration-ok point fallback for one parsed entity whose columnar type is Unknown; no membership walk
   const raw = rawTypeOf(store.entityIndex.byId.get(expressId));
   return raw === undefined ? fromTable : normalizeIfcTypeName(raw);
 }

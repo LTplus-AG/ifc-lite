@@ -2,21 +2,33 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** Decode v1 saved List conditions without claiming that unsupported sources
- * have been converted. Unreadable rows remain explicit and active. */
-import { isFilterGroup, legacyListOperatorToFilterRule, type FilterGroup, type FilterRule } from '@ifc-lite/rules';
+/** Decode saved List conditions into Rules groups (#5894, #6190). A property
+ * comparison becomes a canonical `property` rule; every other Lists predicate
+ * becomes a `listCondition` rule, which the Lists engine still answers, so no
+ * saved predicate changes the rows it keeps. Only data no build can evaluate
+ * (malformed members, an unknown operator or source, a rule this build cannot
+ * read) stays in `unreadableConditions`, visible and removable. */
+import {
+  LIST_CONDITION_OPERATORS, LIST_CONDITION_SOURCES, Rule, isFilterRule, legacyListOperatorToFilterRule,
+  type FilterGroup, type FilterRule,
+} from '@ifc-lite/rules';
 import { isNamePattern } from './name-pattern.js';
 import type { ListDefinition, PropertyCondition, UnreadableListCondition } from './types.js';
 
 type MigrationResult = { groups: FilterGroup[]; unreadableConditions: UnreadableListCondition[] };
+type Converted = { rule: FilterRule } | { unreadable: UnreadableListCondition };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const COLUMN_SOURCES = new Set(['attribute', 'property', 'quantity', 'material', 'classification', 'spatial', 'model', 'zone', 'geometry']);
 const UNREADABLE_REASONS = new Set(['unsupported-source', 'unsupported-attribute', 'name-pattern', 'inherit', 'operator', 'invalid-value', 'mixed-groups']);
+const OPERATORS: ReadonlySet<string> = new Set(LIST_CONDITION_OPERATORS);
+const SOURCES: ReadonlySet<string> = new Set(LIST_CONDITION_SOURCES);
 
-/** Saved JSON crosses a trust boundary before the typed Lists API sees it. */
+/** Saved JSON crosses a trust boundary before the typed Lists API sees it.
+ * Group CONTENTS are checked by `migrateLegacyListDefinition`, which keeps an
+ * unreadable rule visible instead of rejecting the whole list. */
 export function isSavedListShape(value: unknown): value is Record<string, unknown> {
   if (!isRecord(value) || typeof value.id !== 'string' || value.id.length === 0 || typeof value.name !== 'string'
     || typeof value.createdAt !== 'number' || !Number.isFinite(value.createdAt)
@@ -25,7 +37,7 @@ export function isSavedListShape(value: unknown): value is Record<string, unknow
     || !Array.isArray(value.columns) || !value.columns.every((column) => isRecord(column)
       && typeof column.id === 'string' && typeof column.source === 'string' && COLUMN_SOURCES.has(column.source)
       && typeof column.propertyName === 'string')) return false;
-  if (value.groups !== undefined && (!Array.isArray(value.groups) || !value.groups.every(isFilterGroup))) return false;
+  if (value.groups !== undefined && !Array.isArray(value.groups)) return false;
   if (value.unreadableConditions !== undefined && (!Array.isArray(value.unreadableConditions)
     || !value.unreadableConditions.every((row) => isRecord(row) && (
       (row.reason === 'invalid-condition' && 'condition' in row)
@@ -53,84 +65,96 @@ function isStoredCondition(value: unknown): value is PropertyCondition {
     && (row.inherit === undefined || row.inherit === 'type' || row.inherit === 'aggregation');
 }
 
+/** One saved condition as the Rules rule that keeps its rows, or why it has none. */
+function convertCondition(condition: unknown): Converted {
+  if (!isStoredCondition(condition)) return { unreadable: { condition, reason: 'invalid-condition' } };
+  const { source, psetName, propertyName, operator, value, inherit } = condition;
+  if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
+    return { unreadable: { condition, reason: 'invalid-value' } };
+  }
+  if (!OPERATORS.has(operator)) return { unreadable: { condition, reason: 'operator' } };
+  if (!SOURCES.has(source)) return { unreadable: { condition, reason: 'unsupported-source' } };
+  // A plain property comparison has a canonical form with the v1 first-match contract (#5894).
+  if (source === 'property' && !inherit && !isNamePattern(psetName ?? '') && !isNamePattern(propertyName)) {
+    const converted = legacyListOperatorToFilterRule(operator, {
+      kind: 'property', setName: psetName ?? '', propertyName,
+      nameCaseMode: 'exact', legacyListFirst: true, op: 'eq', value: String(value),
+    });
+    if (converted.status === 'readable') return { rule: converted.value };
+  }
+  return { rule: Rule.listCondition({
+    source, propertyName, operator, value,
+    ...(psetName !== undefined ? { psetName } : {}), ...(inherit ? { inherit } : {}),
+  }) };
+}
+
 export function migrateLegacyListConditions(conditions: readonly unknown[]): MigrationResult {
   const rules: FilterRule[] = [];
   const unreadableConditions: UnreadableListCondition[] = [];
-
   for (const condition of conditions) {
-    if (!isStoredCondition(condition)) {
-      unreadableConditions.push({ condition, reason: 'invalid-condition' });
-      continue;
-    }
-    if (typeof condition.value !== 'string' && typeof condition.value !== 'number' && typeof condition.value !== 'boolean') {
-      unreadableConditions.push({ condition, reason: 'invalid-value' });
-      continue;
-    }
-    if (condition.source === 'attribute') {
-      // V1's pseudo-attributes (Name, GlobalId, Class, Type, etc.) have
-      // distinct source semantics; keep them on the old path until parity is
-      // proved for each rather than convert a superficially similar rule.
-      unreadableConditions.push({ condition, reason: 'unsupported-attribute' });
-      continue;
-    }
-    if (condition.source === 'property') {
-      // Subject inheritance has a separate Rules read path that does not
-      // preserve the v1 first-property scalar contract yet.
-      if (condition.inherit) {
-        unreadableConditions.push({ condition, reason: 'inherit' });
-        continue;
-      }
-      // Rules' regex names have their own syntax; keep v1 `/regex/flags`
-      // conditions on the old path until flags and first-match parity land.
-      if (isNamePattern(condition.psetName ?? '') || isNamePattern(condition.propertyName)) {
-        unreadableConditions.push({ condition, reason: 'name-pattern' });
-        continue;
-      }
-      const converted = legacyListOperatorToFilterRule(condition.operator, {
-        kind: 'property', setName: condition.psetName ?? '', propertyName: condition.propertyName,
-        nameCaseMode: 'exact', legacyListFirst: true,
-        op: 'eq', value: String(condition.value),
-      });
-      if (converted.status === 'readable') rules.push(converted.value);
-      else unreadableConditions.push({ condition, reason: 'operator' });
-      continue;
-    }
-    unreadableConditions.push({ condition, reason: 'unsupported-source' });
+    const converted = convertCondition(condition);
+    if ('rule' in converted) rules.push(converted.rule);
+    else unreadableConditions.push(converted.unreadable);
   }
-
-  return {
-    groups: rules.length > 0 ? [{ rules, combinator: 'AND' }] : [],
-    unreadableConditions,
-  };
+  return { groups: conjoin([], rules), unreadableConditions };
 }
 
-/** Normalize a saved v1 definition before it enters the public Lists API. */
-export function migrateLegacyListDefinition(
-  definition: unknown,
-): ListDefinition {
-  if (!isSavedListShape(definition)) throw new Error('Invalid saved list definition');
-  const { conditions, ...canonical } = definition as Omit<ListDefinition, 'groups'> & {
-    groups?: ListDefinition['groups']; conditions?: unknown;
-  };
-  const existing = canonical.unreadableConditions ?? [];
-  const legacy = conditions === undefined ? [] : Array.isArray(conditions) ? conditions : [conditions];
-  if (canonical.groups !== undefined) {
-    if (legacy.length === 0) return canonical as ListDefinition;
-    // Groups are ORed. Keep mixed v1 predicates in the provider candidate pass,
-    // which ANDs them with the existing groups rather than widening the list.
-    const mixed: UnreadableListCondition[] = legacy.map((condition) => {
-      if (!isStoredCondition(condition)) return { condition, reason: 'invalid-condition' };
-      if (!['string', 'number', 'boolean'].includes(typeof condition.value)) {
-        return { condition, reason: 'invalid-value' };
-      }
-      return { condition, reason: 'mixed-groups' };
-    });
-    return { ...canonical, unreadableConditions: [...existing, ...mixed] } as ListDefinition;
+/** Groups OR; saved flat conditions narrow every one. AND them into each
+ * group, splitting an OR group into one AND group per rule, so
+ * `(a OR b) AND c` is kept as `(a AND c) OR (b AND c)`. */
+function conjoin(groups: readonly FilterGroup[], rules: readonly FilterRule[]): FilterGroup[] {
+  if (rules.length === 0) return [...groups];
+  const active = groups.filter((group) => group.rules.length > 0);
+  if (active.length === 0) return [{ combinator: 'AND', rules: [...rules] }];
+  return active.flatMap((group): FilterGroup[] => group.combinator === 'AND' || group.rules.length === 1
+    ? [{ combinator: 'AND', rules: [...group.rules, ...rules] }]
+    : group.rules.map((rule) => ({ combinator: 'AND', rules: [rule, ...rules] })));
+}
+
+/** Rules this build cannot read leave their group as visible, removable rows
+ * rather than making the whole saved list disappear. */
+function readGroups(raw: readonly unknown[]): MigrationResult {
+  const groups: FilterGroup[] = [];
+  const unreadableConditions: UnreadableListCondition[] = [];
+  for (const group of raw) {
+    if (!isRecord(group) || !Array.isArray(group.rules) || (group.combinator !== 'AND' && group.combinator !== 'OR')) {
+      unreadableConditions.push({ condition: group, reason: 'invalid-condition' });
+      continue;
+    }
+    const rules: FilterRule[] = [];
+    for (const rule of group.rules) {
+      if (isFilterRule(rule)) rules.push(rule);
+      else unreadableConditions.push({ condition: rule, reason: 'invalid-condition' });
+    }
+    groups.push({ rules, combinator: group.combinator });
   }
-  const migrated = migrateLegacyListConditions(
-    legacy,
-  );
-  const unreadableConditions = [...existing, ...migrated.unreadableConditions];
-  return { ...canonical, groups: migrated.groups,
-    ...(unreadableConditions.length ? { unreadableConditions } : {}) };
+  return { groups, unreadableConditions };
+}
+
+/** Normalize a saved definition before it enters the public Lists API:
+ * v1 `conditions` and earlier provider-only rows become Rules, idempotently. */
+export function migrateLegacyListDefinition(definition: unknown): ListDefinition {
+  if (!isSavedListShape(definition)) throw new Error('Invalid saved list definition');
+  const { conditions, groups: rawGroups, unreadableConditions: saved, ...rest } = definition as Omit<ListDefinition, 'groups'> & {
+    groups?: unknown[]; conditions?: unknown;
+  };
+  const read = readGroups(rawGroups ?? []);
+  const rules: FilterRule[] = [];
+  const unreadable = [...read.unreadableConditions];
+  // Rows saved while the scoped compatibility editor existed: convertible ones become rules.
+  for (const row of saved ?? []) {
+    const converted = row.reason === 'invalid-condition' ? null : convertCondition(row.condition);
+    if (converted && 'rule' in converted) rules.push(converted.rule);
+    else unreadable.push(row);
+  }
+  const legacy = conditions === undefined ? [] : Array.isArray(conditions) ? conditions : [conditions];
+  for (const condition of legacy) {
+    const converted = convertCondition(condition);
+    if ('rule' in converted) rules.push(converted.rule);
+    else unreadable.push(converted.unreadable);
+  }
+  return {
+    ...rest, groups: conjoin(read.groups, rules),
+    ...(unreadable.length > 0 || saved !== undefined ? { unreadableConditions: unreadable } : {}),
+  } as ListDefinition;
 }

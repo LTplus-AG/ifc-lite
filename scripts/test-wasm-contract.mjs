@@ -35,6 +35,7 @@ import { runOverlayFrameContracts } from './lib/wasm-overlay-frame-contracts.mjs
 import { runRtcPrecisionContracts } from './lib/wasm-rtc-precision-contracts.mjs';
 import { finishContractRun, runLandXmlContracts } from './lib/wasm-landxml-contracts.mjs';
 import { runStepLogContracts } from './lib/wasm-step-log-contracts.mjs';
+import { runSweptDiskContracts } from './lib/wasm-swept-disk-contracts.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
 const FIXTURES_DIR = join(ROOT_DIR, 'tests/models');
@@ -114,11 +115,11 @@ function test(name, fn) {
     failed++;
   }
 }
-
 runAppearanceContracts(IfcAPI, test);
 runLandXmlContracts(api, test);
 runStepLogContracts(api, test);
-
+runSweptDiskContracts(api, test, ROOT_DIR);
+await (await import('./lib/wasm-extrusion-bridge-contracts.mjs')).runExtrusionBridgeContracts(test, ROOT_DIR); // #6306
 if (!COLUMN_AVAILABLE) {
   skip('IFC-backed WASM contracts', `column fixture missing — ${FIXTURES_HINT}`);
   finishContractRun(api, passed, failed, skipped);
@@ -2154,8 +2155,7 @@ await runShardRefusalBoundaryTests(api, test);
 // The fixture is built from the viewer's class-toggle table, so a class added
 // there and not to the Rust partition fails here.
 await runClassToggleShardContract(IfcAPI, test);
-
-
+await (await import('./lib/wasm-remesh-contracts.mjs')).runRemeshContracts({ IfcAPI, FIXTURES_DIR, FIXTURES_HINT, test, skip }); // #6232
 finishContractRun(api, passed, failed, skipped);
 
 if (failed > 0) {

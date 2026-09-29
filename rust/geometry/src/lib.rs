@@ -201,8 +201,8 @@ pub use geom_hash::{
 pub use extrusion::{extrude_profile, extrude_profile_lofted, extrude_profile_with_voids};
 pub use instancing::{
     bake_source_at_world, collate_and_encode, collate_instances, collate_refs,
-    collate_refs_in_basis, collate_refs_verified_in, compose_instance_world_row_major, decode_instanced,
-    encode_instanced, encode_refs, instance_rel_row_major_f32, verify_recomposition, Collated,
+    collate_refs_in_basis, collate_refs_verified_in, compose_instance_world_row_major, decode_instance_finishes, decode_instanced,
+    encode_instanced, encode_refs, encode_refs_with_finishes, instance_rel_row_major_f32, verify_recomposition, Collated,
     DecodedInstance, DecodedInstanced, DecodedTemplate, InstanceMeshRef, InstanceOccurrence,
     InstanceTemplate, INSTANCED_MAGIC, INSTANCED_VERSION,
 };
@@ -220,7 +220,11 @@ pub use processors::{
 };
 pub use alignment::{AlignmentCurve, AlignmentFrame};
 pub use alignment_axis::locate_axis_curve;
-pub use analytic::{extract_swept_disk, AnalyticCurveSegment, AnalyticStatus, AnalyticSweptDisk};
+pub use analytic::{
+    extract_analytic_extrusion, extract_analytic_profile, extract_swept_disk,
+    AnalyticCurveSegment, AnalyticExtrusion, AnalyticProfile, AnalyticProfileLoop,
+    AnalyticStatus, AnalyticSweptDisk, ProfileLoopKind,
+};
 pub use profile::{Profile2D, Profile2DWithVoids, ProfileType, VoidInfo};
 pub use profile_extractor::{extract_profiles, extract_profiles_with_diagnostics, ExtractedProfile};
 pub use profile_skip::SkippedProfile;

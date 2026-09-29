@@ -3,9 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * A wall split can be committed from TWO places: the canvas click handler
- * (`selectionHandlers.ts`, covered by `selectionHandlers.wallSplitToast.test.ts`)
- * and the cursor-anchored distance entry's Enter key. Both call the same
+ * A wall split can be committed from TWO places: a click while the
+ * `element.split` command aims (covered by
+ * `lib/commands/modeling/commands/element-split.test.ts`) and the
+ * cursor-anchored distance entry's Enter key. Both call the same
  * `MutationSlice.splitWallAtDistance`, so both see the same `openings.skipped`
  * count — openings that stay attached to the source wall the split has just
  * tombstoned, and can end up orphaned.
@@ -28,16 +29,42 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
+import { toGlobalIdFromModels } from '@/store/globalId';
 import { blur, cleanup, type } from '@/test/render';
+import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
+import '@/lib/commands/modeling/builtin';
+import { commandPointerMove, getCommandRuntime } from '@/lib/commands/modeling/runtime';
+import type { SplitGesture } from '@/lib/commands/modeling/commands/element-split';
 import { renderScene } from '../../viewport-ui/scene/test/scene-test-support.js';
 import { SplitCursorInput, parseCutDistance } from './SplitCursorInput.js';
 
+let wallGlobalId = 0;
+
+/** Start `element.split` on a real 3 m wall, aiming 1.5 m along it. */
+async function aimAtWall(): Promise<void> {
+  await seedModelingSession();
+  const s = useViewerStore.getState();
+  const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [3, 0, 0], Thickness: 0.2, Height: 3 });
+  assert.ok('expressId' in wall);
+  wallGlobalId = toGlobalIdFromModels(s.models, MODEL_ID, wall.expressId);
+  reaim();
+}
+
+/** (Re)target the wall — the stubbed split selects a fake half — and aim. */
+function reaim(): void {
+  useViewerStore.getState().setSelectedEntityId(wallGlobalId);
+  useViewerStore.getState().startCommand('element.split');
+  const plane = (getCommandRuntime().gesture as SplitGesture).plane;
+  assert.ok(plane);
+  commandPointerMove({ local: [1.5, 0], render: plane.localToRender([1.5, 0, 0]), winner: null, guides: [], locked: false });
+}
+
 /** The mounted entry, after one projector flush so the anchor has projected. */
 function mountInput(): HTMLInputElement {
-  const scene = renderScene(<SplitCursorInput />);
+  const scene = renderScene(<SplitCursorInput gesture={getCommandRuntime().gesture as SplitGesture} />);
   scene.flush();
   const input = scene.container.querySelector('[data-scene-primitive="cursor-input"] input');
-  assert.ok(input, 'expected the cursor input to render in the aiming state');
+  assert.ok(input, 'expected the cursor input to render while aiming at a wall');
   return input as HTMLInputElement;
 }
 
@@ -82,29 +109,20 @@ describe('SplitCursorInput: wall-split notices', () => {
   let infoCalls: string[];
   let successCalls: string[];
 
-  beforeEach(() => {
+  beforeEach(async () => {
     infoCalls = [];
     successCalls = [];
     (toast as { info: (m: string) => void }).info = (m: string) => infoCalls.push(m);
     (toast as { success: (m: string) => void }).success = (m: string) => successCalls.push(m);
-    useViewerStore.setState({
-      activeTool: 'split',
-      splitMode: 'aiming',
-      splitHoverPoint: [0, 0, 0],
-      splitHoverDistance: 1.5,
-      splitHoverLength: 3,
-      splitTargetModelId: 'm1',
-      splitTargetExpressId: 42,
-      clearSplitHover: () => {},
-      setSelectedEntityId: () => {},
-    } as unknown as Partial<ReturnType<typeof useViewerStore.getState>>);
+    await aimAtWall();
   });
 
   afterEach(() => {
     cleanup();
     (toast as { info: (m: string) => void }).info = original.info;
     (toast as { success: (m: string) => void }).success = original.success;
-    useViewerStore.setState({ splitWallAtDistance: original.splitWallAtDistance, activeTool: 'select', splitMode: 'idle' });
+    useViewerStore.getState().exitModelWorkspace();
+    useViewerStore.setState({ splitWallAtDistance: original.splitWallAtDistance });
   });
 
   it('warns about openings the split could not reassign', () => {
@@ -142,6 +160,8 @@ describe('SplitCursorInput: wall-split notices', () => {
     assert.deepEqual(distances, [0.75], '25% of a 3 m element is 0.75 m');
 
     // Blank + Enter is the same edit as a click: the live cursor distance.
+    cleanup();
+    reaim();
     const input2 = mountInput();
     pressEnter(input2);
     assert.deepEqual(distances, [0.75, 1.5]);

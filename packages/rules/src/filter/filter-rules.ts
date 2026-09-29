@@ -15,8 +15,9 @@
 
 import { type ModelTagOp } from './model-tag.js';
 import { groupRule, type GroupRule } from './filter-group-rule.js';
-import type { SubjectReadOptions } from './subject-read-options.js';
+import type { PropertyReadOptions, SubjectReadOptions } from './subject-read-options.js';
 import { modelFactRule, type ModelFactRule } from './filter-model-fact.js';
+import { listConditionRule, type ListConditionRule } from './filter-list-condition.js';
 
 import type {
   SetOp, StringOp, NumericOp, ValueOp, ClassificationOp, Combinator, ValueComparison, TextKind,
@@ -120,7 +121,7 @@ export interface AttributeRule {
   comparison?: ValueComparison;
 }
 
-export interface PropertyRule extends SubjectReadOptions {
+export interface PropertyRule extends PropertyReadOptions {
   kind: 'property';
   setName: string;
   /** Preserve exact IFC name matching when decoding older saved List conditions. */
@@ -235,7 +236,7 @@ export type FilterRule =
   | ElevationRule
   | TypeNameRule
   | ParentRule
-  | GroupRule | ModelFactRule;
+  | GroupRule | ModelFactRule | ListConditionRule;
 
 // ── Combinator helpers ────────────────────────────────────────────────────────
 /** Combine an array of per-rule booleans according to AND/OR semantics. */
@@ -331,13 +332,14 @@ export const Rule = {
     ({ kind: 'type', op, value, ...(valueKind ? { valueKind } : {}) }),
   parent: (op: StringOp, value: string, valueKind?: TextKind): ParentRule =>
     ({ kind: 'parent', op, value, ...(valueKind ? { valueKind } : {}) }),
-  group: groupRule, modelFact: modelFactRule,
+  group: groupRule, modelFact: modelFactRule, listCondition: listConditionRule,
 } as const;
 
 // ── JSON guards (`filter-rule-guards.ts`, re-exported for existing imports) ─
 export { isFilterRule, parseFilterRules } from './filter-rule-guards.js';
 export type { GroupRule } from './filter-group-rule.js';
 export type { ModelFactRule } from './filter-model-fact.js';
+export type { ListConditionRule } from './filter-list-condition.js';
 // Re-exported so existing `from './filter-rules.js'` imports (HierarchyPanel,
 // etc.) can pull in the groups helper too without a second import line (#4904).
 export { activeGroupRules } from './filter-groups.js';

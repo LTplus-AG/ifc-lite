@@ -28,6 +28,8 @@ import { en } from '@/i18n/en';
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud.js';
 import { SceneOverlayRoot } from '../viewport-ui/scene';
 import { ToolOverlays } from './ToolOverlays.js';
+import { registerModelingCommand } from '@/lib/commands/modeling/registry';
+import { seedModelingSession } from '@/test/modeling-session-fixture';
 
 const region = (name: string) => document.querySelector(`[data-hud-region="${name}"]`) as HTMLElement;
 
@@ -35,8 +37,6 @@ beforeEach(() => {
   useViewerStore.setState({
     activeTool: 'select',
     repositionOpen: false,
-    splitMode: 'idle',
-    splitHoverPoint: null,
     cameraCallbacks: { projectToScreen: () => null, getViewpoint: () => null },
   } as unknown as Partial<ReturnType<typeof useViewerStore.getState>>);
 });
@@ -58,21 +58,35 @@ describe('ToolOverlays on the TOOL_HUD table (#5503)', () => {
     // `[data-scene-overlay-root]` nodes here, not one.
   });
 
-  it('places the Split bar top-center and its hint bottom-center, and removes both when the tool changes', () => {
-    render(<ViewportHud />);
-    render(<SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot>);
-    act(() => useViewerStore.setState({ activeTool: 'split' }));
+  it('places a running command\'s bar top-center and its hint bottom-center, and removes both when the tool changes', async () => {
+    await seedModelingSession();
+    // Back in Select the Model workspace shows its one-time hint (#6232 M2.1);
+    // a returning user has seen it, and it is not the command's hint.
+    localStorage.setItem('ifc-lite:model-hint-seen', '1');
+    const unregister = registerModelingCommand<null>({
+      id: 'test.hud', labelKey: 'splitTool.barLabel', hud: { hint: () => 'splitTool.hint' }, snap: 'modeling',
+      init: () => null, pointerMove: (g) => g, pointerDown: (g) => g, commit: () => ({ created: [], deleted: [], remesh: [] }),
+    });
+    try {
+      render(<ViewportHud />);
+      render(<SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot>);
+      act(() => useViewerStore.getState().startCommand('test.hud'));
 
-    const bar = region('top-center').querySelector('[data-hud-item]');
-    assert.ok(bar, 'the Split bar is a top-center HUD item');
-    assert.match(bar.textContent ?? '', new RegExp(en['splitTool.barLabel']));
-    const hint = region('bottom-center').querySelector('[data-hud-item] [role="status"]');
-    assert.ok(hint, 'the registry hint is a bottom-center HUD item');
-    assert.equal(hint.textContent, en['splitTool.hint']);
+      const bar = region('top-center').querySelector('[data-hud-item]');
+      assert.ok(bar, 'the command bar is a top-center HUD item');
+      assert.match(bar.textContent ?? '', new RegExp(en['splitTool.barLabel']));
+      const hint = region('bottom-center').querySelector('[data-hud-item] [role="status"]');
+      assert.ok(hint, 'the command hint is a bottom-center HUD item');
+      assert.equal(hint.textContent, en['splitTool.hint']);
 
-    act(() => useViewerStore.setState({ activeTool: 'select' }));
-    assert.equal(region('top-center').querySelectorAll('[data-hud-item]').length, 0);
-    assert.equal(region('bottom-center').querySelectorAll('[data-hud-item]').length, 0);
+      act(() => useViewerStore.getState().setActiveTool('select'));
+      assert.equal(region('top-center').querySelectorAll('[data-hud-item]').length, 0);
+      assert.equal(region('bottom-center').querySelectorAll('[data-hud-item]').length, 0);
+    } finally {
+      useViewerStore.getState().exitModelWorkspace();
+      unregister();
+      localStorage.removeItem('ifc-lite:model-hint-seen');
+    }
   });
 
   it('places the Space Sketch bar top-center and its plan card as the next top-center item', () => {

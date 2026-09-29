@@ -47,10 +47,11 @@ import { getEntityBounds, getEntityCenter } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
 import { meshesForOwningModel } from '../owningModelMeshes.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
-import { buildElementMesh } from './addElementMeshes.js';
-import { authoredElementMeshPayload, type AuthoredElement } from './authoredElement.js';
-import { appendAuthoredMesh, authoredDataStore, syncAuthoredTreeEntry } from './authoredTreeEntry.js';
+import type { AuthoredElement } from './authoredElement.js';
+import { remeshAuthoredElement, rememberAuthoredElement } from './authoredFallbackMesh.js';
+import { authoredDataStore, syncAuthoredTreeEntry } from './authoredTreeEntry.js';
 import { ensureStoreyPlacement } from './storeyPlacement.js';
+import { effectiveStoreyId } from '@/lib/effective-storey';
 
 export type { AuthoredElement };
 import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
@@ -63,29 +64,27 @@ import {
   resolvePlacementChain,
   resolveRotationState,
   resolveWallEditChain,
-  computeWallSplitGeometry,
   projectOntoWallAxis,
 } from '@/lib/placement-edit.js';
-import { cloneElementMetadata } from '@/lib/metadata-clone.js';
 import {
   resolveLinearElementChain,
-  computeLinearElementSplitGeometry,
   projectOntoLinearAxis,
   type LinearElementType,
 } from '@/lib/linear-element-edit.js';
-import { reassignWallOpenings } from '@/lib/wall-opening-reassign.js';
-import {
-  resolveSlabEditChain,
-  computeSlabSplitGeometry,
-  type SlabLikeType,
-} from '@/lib/slab-edit.js';
-import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
+import { resolveSlabEditChain, type SlabLikeType } from '@/lib/slab-edit.js';
+import { getModelLengthUnitScale, pointToMetres, pointToNative } from '@/lib/length-unit-scale.js';
+import { readWallMetres, refreshWallMeshIn, resizeWallMetres } from './mutation-wall-resize.js';
+import { resolveSplitTarget, splitUnavailableKey } from '@/lib/split-target.js';
+import type { TranslationKey } from '@/i18n';
+import { splitLinear, splitWall } from './mutation-split.js';
+import { splitSlab } from './mutation-split-slab.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
-import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags.js';
-import { canMutate, mutationDenial } from '../mutation-permission.js';
+import { withMutationBatchTags } from './mutation-batch-tags.js';
+import { canMutate, mutationDenial, mutationDenialKey, mutationPermission } from '../mutation-permission.js';
 import { syncTypeOverride } from './mutation-history-apply.js';
 import { recordMutationBatch, replayHistory } from './mutation-history-replay.js';
+import { positionalMutations } from './mutation-positional-batch.js';
 
 /**
  * IFC-space directions for {@link MutationSlice.duplicateEntity}.
@@ -393,11 +392,13 @@ export interface MutationSlice extends CostUndoMethods {
    * Used by compound operations like `resizeWall` (4 coordinated
    * positional writes) so the user doesn't have to press Ctrl+Z
    * four times to undo one resize. Returns the batchId so callers
-   * can correlate; empty input is a no-op (returns null).
+   * can correlate; empty input is a no-op (returns null). Pass `batchId`
+   * to extend an earlier batch instead of starting one.
    */
   setPositionalAttributesBatch: (
     modelId: string,
     updates: Array<{ entityId: number; index: number; value: IfcAttributeValue }>,
+    batchId?: string,
   ) => string | null;
   /** Tag already-recorded mutations as one undo batch (SDK `bim.mutate.batch`). */
   tagMutationBatch: (mutationIds: readonly string[], batchId: string) => void;
@@ -426,7 +427,8 @@ export interface MutationSlice extends CostUndoMethods {
    */
   recordEntityRemoval: (modelId: string, expressId: number, overlayRecord: NewEntity | null | undefined) => void;
   /**
-   * Translate an IfcProduct by a storey-local delta (IFC Z-up). Walks
+   * Translate an IfcProduct by a storey-local delta (IFC Z-up) in METRES,
+   * whatever the file's length unit (#6233). Walks
    * the placement chain to the terminal `IfcCartesianPoint` and writes
    * the new coordinates via `setPositionalAttribute` so the edit
    * stacks with other overlay mutations and undoes cleanly.
@@ -486,7 +488,7 @@ export interface MutationSlice extends CostUndoMethods {
     expressId: number,
   ) => { yawZ: number; refDirection: [number, number, number] } | null;
   /**
-   * Read the entity's storey-local placement coordinates. Returns
+   * Read the entity's storey-local placement coordinates in metres. Returns
    * null when the placement chain isn't a simple
    * `IfcLocalPlacement → IfcAxis2Placement3D → IfcCartesianPoint`
    * (i.e. when `translateEntity` / `setEntityPosition` wouldn't work
@@ -504,40 +506,52 @@ export interface MutationSlice extends CostUndoMethods {
   ) => [number, number, number] | null;
   /**
    * Resize a rectangular-profile wall by setting new start AND end
-   * points. Atomically updates the placement origin, RefDirection,
-   * profile length, and profile origin. Returns null for walls that
-   * don't follow the `addWallToStore` shape.
+   * points (storey-local metres). Updates the placement origin,
+   * RefDirection, profile length, and profile origin as ONE undo step;
+   * refuses walls that don't follow the `addWallToStore` shape.
+   *
+   * `batchId` joins an ongoing step: an endpoint drag passes one id for
+   * all its frames (as the move gizmo does with `translateEntity`), and
+   * then calls `refreshWallMesh` on release. Without it the local mesh
+   * is rebuilt straight away (see `mutation-wall-resize.ts`).
    */
   resizeWall: (
     modelId: string,
     expressId: number,
     newStart: [number, number, number],
     newEnd: [number, number, number],
+    batchId?: string,
   ) => { ok: true; newLength: number } | { ok: false; reason: string };
+  /** Rebuild a resized wall's mesh locally and for collaborators. */
+  refreshWallMesh: (modelId: string, expressId: number) => void;
   /**
-   * Read a wall's current start/end so the UI can render endpoint
-   * handles. Returns null for non-rectangle walls.
+   * Whether the Split tool can cut this element, and which commit action
+   * does it — the one predicate the Split button and every commit path
+   * share (`lib/split-target.ts`, #6233). A refusal carries the catalogue
+   * key of its reason for the disabled button's tooltip / error notice.
+   */
+  readSplitTarget: (
+    modelId: string,
+    expressId: number,
+  ) => { ok: true; kind: 'wall' | 'linear' | 'slab' } | { ok: false; reasonKey: TranslationKey };
+  /**
+   * Read a wall's current start/end (storey-local metres) so the UI can
+   * render endpoint handles. Returns null for non-rectangle walls.
    */
   readWallEndpoints: (
     modelId: string,
     expressId: number,
-  ) => { start: [number, number, number]; end: [number, number, number]; thickness: number } | null;
+  ) => { start: [number, number, number]; end: [number, number, number]; thickness: number; height: number } | null;
   /**
-   * Split a rectangle-profile wall into two walls at `distance`
-   * metres along its axis (measured from the wall's start). Produces
-   * two new walls inheriting the source's Pset / Qto / classification
-   * / material / type relationships, then tombstones the source.
-   *
-   * Returns the two new walls' express ids and federation global
-   * ids on success. On failure (non-rectangle wall, distance too
-   * close to an end, missing storey, etc.) returns a descriptive
-   * reason for the UI to surface.
-   *
-   * Undo posture: the action lands as three primitive mutations on
-   * the model's undo stack (one per new wall create, one for the
-   * source delete), so a full revert needs three Ctrl+Z presses
-   * today. A batched-mutation primitive that collapses this to one
-   * step is on the follow-up list from PR #723.
+   * Split a rectangle-profile wall at `distance` metres along its
+   * axis (from the wall's start). Split identity policy
+   * (`lib/split-guid.ts`, #6233): the longer piece stays the source
+   * wall, shortened in place, keeping its express id, GlobalId, rels
+   * and the openings inside it; one new wall with a derived GlobalId
+   * takes the other piece, and only the openings inside it move.
+   * `left` / `right` are the pieces in axis order; one of them is the
+   * source. One Ctrl+Z undoes the whole split
+   * (`store/slices/mutation-split.ts`).
    */
   splitWallAtDistance: (
     modelId: string,
@@ -559,18 +573,16 @@ export interface MutationSlice extends CostUndoMethods {
   ) => { distance: number; length: number; cutPoint: [number, number, number]; axis: [number, number, number] } | null;
   /**
    * Split a linear element (`IfcBeam` / `IfcColumn` / `IfcMember`)
-   * at `distance` metres from start. Unlike walls, the source's
-   * extrusion is shrunk in place so the "left" half keeps the
-   * source's GlobalId and Pset rels — the choice is forced by the
-   * IFC representation (length lives on the extrusion `Depth`, not
-   * on the profile XDim), so one positional write covers it. A new
-   * element is added at the cut point to carry the "right" half.
+   * at `distance` metres from start, under the same identity policy
+   * as `splitWallAtDistance`: the longer piece is the source with its
+   * extrusion shortened (and its start moved to the cut when the far
+   * piece is the longer one); one new element takes the other piece.
    */
   splitLinearElementAtDistance: (
     modelId: string,
     expressId: number,
     distanceFromStart: number,
-  ) => { ok: true; source: { expressId: number; globalId: number }; right: { expressId: number; globalId: number } } | { ok: false; reason: string };
+  ) => { ok: true; left: { expressId: number; globalId: number }; right: { expressId: number; globalId: number } } | { ok: false; reason: string };
   /**
    * Linear-element analogue of `readWallSplitProjection`. Returns
    * null when the entity isn't an `addBeam` / `addColumn` /
@@ -596,11 +608,10 @@ export interface MutationSlice extends CostUndoMethods {
   /**
    * Split a slab-like element (IfcSlab / IfcRoof / IfcPlate /
    * IfcSpace) along a cut line defined by two storey-local 2D
-   * points. Builds two fresh elements with the clipped footprints
-   * (polygon-mode `IfcArbitraryClosedProfileDef` even when the
-   * source was a rectangle — most cuts produce non-rectangular
-   * halves), clones metadata onto both, then tombstones the
-   * source.
+   * points. The larger-area piece stays the source, its profile
+   * rewritten to the clipped polygon (`IfcArbitraryClosedProfileDef`);
+   * one new element with a derived GlobalId takes the other piece
+   * (`store/slices/mutation-split-slab.ts`, #6233).
    *
    * Selection moves to whichever half contains the second click,
    * so the user can keep editing the new piece immediately.
@@ -656,8 +667,6 @@ export interface MutationSlice extends CostUndoMethods {
     modelId: string,
     storeyExpressId: number,
     params: SpaceInStoreParams,
-    /** Plan outline for the 3D mirror — see `profileCornersFromParams`. */
-    previewCorners?: Array<[number, number]>
   ) => { expressId: number } | { error: string };
   /** Add an IfcRoof (flat roof) — slab-like rectangle or polygon. */
   addRoof: (
@@ -779,7 +788,7 @@ function getOrCreateStoreEditor(
   // `storeEditors` is an internal, non-reactive cache (no component
   // subscribes to it). Mutate the existing Map in place rather than
   // `set({...})` — the read functions (readSlabFootprint, etc.) call
-  // this during render via GeometryEditCard's `splittable` memo, and a
+  // this during render via GeometryEditCard's `readSplitTarget` memo, and a
   // reactive `set()` there triggers React's "cannot update a component
   // while rendering a different component" warning. In-place caching
   // keeps the editor memoised without scheduling a render-phase update.
@@ -787,110 +796,28 @@ function getOrCreateStoreEditor(
   return editor;
 }
 
-/**
- * Resolve the (view, editor, dataStore, storey) tuple that every
- * splitWall / splitLinearElement / splitSlab action needs. Returns
- * an error result with a stable message when any piece is missing
- * so each action's preamble collapses to a single early-return.
- *
- * Pass `requireStorey: false` when the caller resolves storey from
- * a different source (none currently — but the flag keeps the
- * helper reusable for non-storey-bound split-like flows).
- */
-type SplitContext = {
-  view: MutablePropertyView;
-  editor: StoreEditor;
-  dataStore: import('@ifc-lite/parser').IfcDataStore;
-  storeyExpressId: number;
-};
-function resolveSplitContext(
-  get: () => ViewerState,
-  set: (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void,
-  modelId: string,
-  expressId: number,
-  notInStoreyMessage: string,
-): SplitContext | { ok: false; reason: string } {
-  const state = get();
-  const view = state.mutationViews.get(modelId);
-  if (!view) return { ok: false, reason: 'Model has no editable mutation view yet' };
-  const editor = getOrCreateStoreEditor(get, set, modelId);
-  if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
-  const dataStore = state.models.get(modelId)?.ifcDataStore;
-  if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
-  const storeyExpressId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
-  if (storeyExpressId === undefined) return { ok: false, reason: notInStoreyMessage };
-  return { view, editor, dataStore, storeyExpressId };
+/** `start + axis · t`. */
+function alongAxis(start: readonly number[], axis: readonly number[], t: number): [number, number, number] {
+  return [start[0] + axis[0] * t, start[1] + axis[1] * t, start[2] + axis[2] * t];
 }
 
 /**
- * Rollback helper for failed atomic operations (e.g. split where
- * the left half was created but the right half's builder threw).
- *
- * Pops the most recent CREATE_ENTITY mutation for `expressId` off
- * the model's undo stack, removes the overlay record via
- * `view.deleteEntity`, and queues the renderer mesh for removal.
- * No DELETE_ENTITY mutation is recorded — the operation never
- * happened from the user's perspective, so the undo history is
- * left clean (Ctrl+Z after a failed split shouldn't bring back
- * the orphan half).
- *
- * Returns true when at least one undo entry was popped.
+ * The (view, editor, dataStore, metre scale) every read-only chain reader
+ * needs, created lazily so handles surface on first selection. Null while
+ * the model has no editable view.
  */
-function rollbackOverlayCreate(
+function resolveEditReadContext(
   get: () => ViewerState,
-  set: (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void,
+  set: (partial: Partial<ViewerState>) => void,
   modelId: string,
-  expressId: number,
-): boolean {
-  const state = get();
-  const view = state.mutationViews.get(modelId);
-  const editor = state.storeEditors.get(modelId);
-  if (!view || !editor) return false;
-
-  // Drop the entity from the overlay. The view.deleteEntity call
-  // is silent for already-gone entities — safe even if the caller
-  // gets the rollback path wrong.
-  editor.removeEntity(expressId);
-
-  // Pop the matching CREATE_ENTITY entry off the undo stack. The
-  // split flow always rolls back immediately after the failed
-  // create, so the entry is at top-of-stack — fast-path that case
-  // with a single `pop()`-style slice and only fall back to the
-  // linear scan if a follow-up mutation slipped in between.
-  set((s) => {
-    const stacks = new Map(s.undoStacks);
-    const stack = stacks.get(modelId);
-    if (!stack || stack.length === 0) return {};
-    const top = stack[stack.length - 1];
-    if (top.type === 'CREATE_ENTITY' && top.entityId === expressId) {
-      stacks.set(modelId, stack.slice(0, -1));
-      return {
-        undoStacks: stacks,
-        mutationVersion: s.mutationVersion + 1,
-      };
-    }
-    for (let i = stack.length - 2; i >= 0; i--) {
-      const m = stack[i];
-      if (m.type === 'CREATE_ENTITY' && m.entityId === expressId) {
-        const next = stack.slice();
-        next.splice(i, 1);
-        stacks.set(modelId, next);
-        return {
-          undoStacks: stacks,
-          mutationVersion: s.mutationVersion + 1,
-        };
-      }
-    }
-    return {};
-  });
-
-  // Drop the entity's mesh from the renderer so the user doesn't
-  // see a phantom half-element after the failed split. Uses the
-  // existing pendingMeshRemovals channel (same as Phase A).
-  const globalId = toGlobalIdFromModels(state.models, modelId, expressId);
-  state.setPendingMeshRemovals(new Set([globalId]));
-  return true;
+) {
+  const view = get().mutationViews.get(modelId);
+  const editor = view ? getOrCreateStoreEditor(get, set, modelId) : null;
+  const dataStore = get().models.get(modelId)?.ifcDataStore;
+  if (!view || !editor || !dataStore) return null;
+  return { view, editor, dataStore, scale: getModelLengthUnitScale(dataStore) };
 }
+
 
 /**
  * Shared dispatcher for the wall/slab/beam in-store builders. Mirrors the
@@ -936,11 +863,10 @@ function runInStoreElementBuilder(
     return { error: err instanceof Error ? err.message : `Failed to add ${element.kind}` };
   }
 
-  const createdMesh = recordAuthoredElementIn(get, set, modelId, dataStore, view, storeyExpressId, entityId, element);
-
-  // Mirror the new element to peers (entity + mesh blob). No-op outside collab.
-  const newGuid = readNewEntityGuid(editor, entityId);
-  get().mirrorEntityCreate(modelId, entityId, authoredIfcType(element), newGuid, createdMesh);
+  // Mirror the new entity to peers first; its mesh follows from the re-mesh
+  // `recordAuthoredElementIn` asks for. No-op outside collab.
+  get().mirrorEntityCreate(modelId, entityId, authoredIfcType(element), readNewEntityGuid(editor, entityId), null);
+  recordAuthoredElementIn(get, set, modelId, dataStore, view, storeyExpressId, entityId, element);
 
   return { expressId: entityId };
 }
@@ -952,7 +878,9 @@ const authoredIfcType = (element: AuthoredElement): string => `IFC${element.kind
  * the SDK `bim.store.add*` adapter. The adapter used to stop at the builder,
  * so a script's or flow's elements existed only in the export overlay: no
  * mesh, no tree entry, no undo, and no `mutationVersion` bump to tell anything
- * they were there. Returns the mesh it injected, for mirroring.
+ * they were there. The mesh comes from the wasm re-mesh of the written IFC
+ * (#6232), in the model's own frame and mirrored to the room when it lands,
+ * or from the element's parameters where the re-mesh declines.
  */
 function recordAuthoredElementIn(
   get: () => ViewerState,
@@ -963,7 +891,7 @@ function recordAuthoredElementIn(
   storeyExpressId: number,
   entityId: number,
   element: AuthoredElement,
-): MeshData | null {
+): void {
   const ifcType = authoredIfcType(element);
 
   // Make the authored element a first-class citizen immediately: register it in
@@ -980,23 +908,6 @@ function recordAuthoredElementIn(
     const rawName = view.getNewEntity(entityId)?.attributes?.[2];
     const name = typeof rawName === 'string' ? rawName : '';
     registerAuthoredElement(dataStore.spatialHierarchy, storeyExpressId, entityId, ifcType, name);
-  }
-
-  // Build a renderer-frame mesh for the new element so it appears in
-  // 3D the moment the action commits — the ImportError-only behaviour
-  // before this would only surface the change after an export+reparse.
-  const storeyElevation =
-    dataStore.spatialHierarchy?.storeyElevations?.get(storeyExpressId) ?? 0;
-  const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
-  const createdMesh = buildElementMesh({
-    type: element.kind,
-    globalId,
-    storeyElevation,
-    payload: authoredElementMeshPayload(element),
-  });
-  if (createdMesh) {
-    appendAuthoredMesh(get(), modelId, createdMesh);
-    revealAddedGeometryInModelView(get);
   }
 
   set((s) => {
@@ -1026,7 +937,11 @@ function recordAuthoredElementIn(
     };
   });
 
-  return createdMesh;
+  // Real geometry for the new element, from the IFC it was written as; drawn
+  // from its parameters where the re-mesh can't mesh it (authoredFallbackMesh.ts).
+  rememberAuthoredElement(dataStore, entityId, storeyExpressId, element);
+  void remeshAuthoredElement(get, modelId, entityId);
+  revealAddedGeometryInModelView(get);
 }
 
 /**
@@ -1553,18 +1468,11 @@ export const createMutationSlice: StateCreator<
     return stack ? stack[stack.length - 1] : null;
   },
 
-  setPositionalAttributesBatch: (modelId, updates) => {
-    if (updates.length === 0) return null;
-    // One batch id for every mutation created below, so the undo / redo
-    // handlers group them.
-    const batchId = newMutationBatchId();
-    const ids: string[] = [];
-    for (const { entityId, index, value } of updates) {
-      const mutation = get().setPositionalAttribute(modelId, entityId, index, value);
-      if (mutation) ids.push(mutation.id);
-    }
-    get().tagMutationBatch(ids, batchId);
-    return batchId;
+  setPositionalAttributesBatch: (modelId, updates, continuing) => {
+    // Same gate as setPositionalAttribute; one store update for the whole batch.
+    if (updates.length === 0 || !canMutate(get(), modelId) || !get().mutationViews.get(modelId)) return null;
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    return editor ? recordMutationBatch(set, modelId, positionalMutations(editor, modelId, updates), continuing) : null;
   },
 
   recordMutationBatch: (modelId, mutations, batchId) => recordMutationBatch(set, modelId, mutations, batchId),
@@ -1602,11 +1510,13 @@ export const createMutationSlice: StateCreator<
           'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D → IfcCartesianPoint chain',
       };
     }
+    // `delta` is metres; the point holds the file's native unit (#6233).
     const [x, y, z] = chain.coordinates;
-    const next: [number, number, number] = [x + delta[0], y + delta[1], z + delta[2]];
+    const [nx, ny, nz] = pointToNative(dataStore, delta);
+    const nativeNext: [number, number, number] = [x + nx, y + ny, z + nz];
     // Go through the slice's own `setPositionalAttribute` action so
     // the mutation lands on the undo stack with the standard envelope.
-    const mutation = get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, next);
+    const mutation = get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, nativeNext);
 
     // Push the renderer-frame delta so the visible mesh follows
     // the IFC mutation. IFC is Z-up; renderer is Y-up. Conversion:
@@ -1638,7 +1548,7 @@ export const createMutationSlice: StateCreator<
     // (`usd::xformop`). No-op outside a collab session.
     get().mirrorPlacementEdit(modelId, expressId, delta);
 
-    return { ok: true, newCoordinates: next };
+    return { ok: true, newCoordinates: pointToMetres(dataStore, nativeNext) };
   },
 
   setEntityPosition: (modelId, expressId, position) => {
@@ -1673,12 +1583,13 @@ export const createMutationSlice: StateCreator<
       };
     }
     // Push the IFC → renderer delta for the rendered mesh. Same
-    // Z-up → Y-up conversion as `translateEntity` above.
-    const [oldX, oldY, oldZ] = chain.coordinates;
+    // Z-up → Y-up conversion as `translateEntity` above. `position` is
+    // metres; the point holds the file's native unit (#6233).
+    const [oldX, oldY, oldZ] = pointToMetres(dataStore, chain.coordinates);
     const dx = position[0] - oldX;
     const dy = position[1] - oldY;
     const dz = position[2] - oldZ;
-    const mutation = get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, position);
+    const mutation = get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, pointToNative(dataStore, position));
     if (dx !== 0 || dy !== 0 || dz !== 0) {
       const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
       const rendererDelta: [number, number, number] = [dx, dz, -dy];
@@ -1789,7 +1700,7 @@ export const createMutationSlice: StateCreator<
       const editor = getOrCreateStoreEditor(get, set, modelId);
       if (editor) {
         const chain = resolvePlacementChain(dataStore, view, editor, expressId);
-        if (chain) return chain.coordinates;
+        if (chain) return pointToMetres(dataStore, chain.coordinates);
       }
     }
     // No STEP chain (recipient's IFCX-reconstructed store): fall back to the
@@ -1799,7 +1710,7 @@ export const createMutationSlice: StateCreator<
     return get().readCollabPlacement(modelId, expressId)?.location ?? null;
   },
 
-  resizeWall: (modelId, expressId, newStart, newEnd) => {
+  resizeWall: (modelId, expressId, newStart, newEnd, batchId) => {
     const denial = mutationDenial(get(), modelId);
     if (denial) return { ok: false, reason: denial };
     const view = get().mutationViews.get(modelId);
@@ -1808,60 +1719,21 @@ export const createMutationSlice: StateCreator<
     if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
     const dataStore = get().models.get(modelId)?.ifcDataStore;
     if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
+    const result = resizeWallMetres(get, { dataStore, view, editor }, modelId, expressId, newStart, newEnd, batchId);
+    // A drag rebuilds the mesh once, on release; a one-off resize right away.
+    if (result.ok && batchId === undefined) get().refreshWallMesh(modelId, expressId);
+    return result;
+  },
 
-    // resolveWallEditChain reads all four ids without mutating.
-    // The four writes are then committed as a single atomic batch
-    // via setPositionalAttributesBatch — one Ctrl+Z reverts the
-    // whole resize, no walking through inconsistent intermediate
-    // wall states.
-    const chain = resolveWallEditChain(dataStore, view, editor, expressId);
-    if (!chain) {
-      return {
-        ok: false,
-        reason:
-          'Wall does not have a simple IfcRectangleProfileDef → IfcExtrudedAreaSolid representation',
-      };
-    }
-    const dx = newEnd[0] - newStart[0];
-    const dy = newEnd[1] - newStart[1];
-    const dz = newEnd[2] - newStart[2];
-    const length = Math.hypot(dx, dy);
-    if (length < 1e-6) return { ok: false, reason: 'Wall length must be greater than zero' };
-    if (Math.abs(dz) > Math.max(1e-6 * length, 1e-9)) {
-      return { ok: false, reason: 'Start and end must lie on the same storey plane' };
-    }
-    const dir: [number, number, number] = [dx / length, dy / length, 0];
+  refreshWallMesh: (modelId, expressId) => refreshWallMeshIn(get, modelId, expressId),
 
-    get().setPositionalAttributesBatch(modelId, [
-      { entityId: chain.startPointId, index: 0, value: newStart },
-      { entityId: chain.refDirectionId, index: 0, value: dir },
-      { entityId: chain.profileId, index: 3, value: length },
-      { entityId: chain.profileOriginPointId, index: 0, value: [length / 2, 0] },
-    ]);
-
-    // Mirror the resize to peers as a geometry replace: regenerate the wall mesh
-    // at the new dimensions (built at its current world position) and swap the
-    // entity's room blob. The owner's own mesh is unchanged here (resize is
-    // data-only locally today); peers re-hydrate the new blob. No-op off-collab.
-    if (Number.isFinite(chain.height) && chain.height > 0) {
-      const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
-      const meshes = meshesForOwningModel(get(), modelId);
-      const bounds = getEntityBounds(meshes, globalId);
-      const newMesh = buildElementMesh({
-        type: 'wall',
-        globalId,
-        storeyElevation: bounds?.min.y ?? 0, // renderer Y base = IFC Z storey elevation
-        payload: {
-          type: 'wall',
-          params: { Thickness: chain.thickness, Height: chain.height },
-          start: newStart,
-          end: newEnd,
-        },
-      });
-      if (newMesh) get().mirrorEntityGeometry(modelId, expressId, newMesh);
-    }
-
-    return { ok: true, newLength: length };
+  readSplitTarget: (modelId, expressId) => {
+    const permission = mutationPermission(get(), modelId);
+    if (!permission.allowed) return { ok: false, reasonKey: mutationDenialKey(permission.reason) };
+    const ctx = resolveEditReadContext(get, set, modelId);
+    if (!ctx) return { ok: false, reasonKey: mutationDenialKey('model-unavailable') };
+    const target = resolveSplitTarget(ctx.dataStore, ctx.view, ctx.editor, expressId, ctx.scale);
+    return target.ok ? { ok: true, kind: target.kind } : { ok: false, reasonKey: splitUnavailableKey(target.code) };
   },
 
   readWallEndpoints: (modelId, expressId) => {
@@ -1870,414 +1742,51 @@ export const createMutationSlice: StateCreator<
     // selection, not after an unrelated mutation has primed the
     // editor cache.
     const view = get().mutationViews.get(modelId);
-    if (!view) return null;
-    const editor = getOrCreateStoreEditor(get, set, modelId);
-    if (!editor) return null;
+    const editor = view ? getOrCreateStoreEditor(get, set, modelId) : null;
     const dataStore = get().models.get(modelId)?.ifcDataStore;
-    if (!dataStore) return null;
-    const chain = resolveWallEditChain(dataStore, view, editor, expressId);
-    if (!chain) return null;
-    const [sx, sy, sz] = chain.startCoordinates;
-    const [dx, dy, dz] = chain.refDirection;
-    const end: [number, number, number] = [
-      sx + dx * chain.wallLength,
-      sy + dy * chain.wallLength,
-      sz + dz * chain.wallLength,
-    ];
-    return { start: [sx, sy, sz], end, thickness: chain.thickness };
+    const wall = view && editor && dataStore ? readWallMetres({ dataStore, view, editor }, expressId) : null;
+    return wall ? { start: wall.start, end: wall.end, thickness: wall.thickness, height: wall.height } : null;
   },
 
   readWallSplitProjection: (modelId, expressId, cursorStoreyLocal) => {
-    const view = get().mutationViews.get(modelId);
-    if (!view) return null;
-    const editor = getOrCreateStoreEditor(get, set, modelId);
-    if (!editor) return null;
-    const dataStore = get().models.get(modelId)?.ifcDataStore;
-    if (!dataStore) return null;
-    const chain = resolveWallEditChain(dataStore, view, editor, expressId);
+    const ctx = resolveEditReadContext(get, set, modelId);
+    const chain = ctx && resolveWallEditChain(ctx.dataStore, ctx.view, ctx.editor, expressId, ctx.scale);
     if (!chain) return null;
     const distance = projectOntoWallAxis(chain, cursorStoreyLocal);
-    const [sx, sy, sz] = chain.startCoordinates;
+    // Walls lie on a storey plane (refDirection.z === 0 by the builder's
+    // contract), but whatever the IFC says is surfaced as-is.
     const [dx, dy, dz] = chain.refDirection;
-    const cutPoint: [number, number, number] = [
-      sx + dx * distance,
-      sy + dy * distance,
-      sz + dz * distance,
-    ];
-    // Walls always lie on a storey plane (refDirection.z === 0 by
-    // the builder's contract) but the type lets us carry whatever
-    // the IFC actually says, so we surface it as-is.
+    const cutPoint = alongAxis(chain.startCoordinates, chain.refDirection, distance);
     return { distance, length: chain.wallLength, cutPoint, axis: [dx, dy, dz] };
   },
 
-  splitWallAtDistance: (modelId, expressId, distanceFromStart) => {
-    // Shared mutation gate — same rule and return shape as `resizeWall`.
-    const denial = mutationDenial(get(), modelId);
-    if (denial) return { ok: false, reason: denial };
-    const ctx = resolveSplitContext(get, set, modelId, expressId, 'Wall is not contained in a building storey');
-    if ('ok' in ctx) return ctx;
-    const { view, editor, dataStore, storeyExpressId } = ctx;
-    const state = get();
-
-    const chain = resolveWallEditChain(dataStore, view, editor, expressId);
-    if (!chain) {
-      return {
-        ok: false,
-        reason:
-          'Wall does not have a simple IfcRectangleProfileDef → IfcExtrudedAreaSolid representation. Split supports walls built by addWallToStore.',
-      };
-    }
-    if (!Number.isFinite(chain.height) || chain.height <= 0) {
-      return {
-        ok: false,
-        reason: 'Wall has no readable extrusion height',
-      };
-    }
-
-    const geo = computeWallSplitGeometry(chain, distanceFromStart, chain.height);
-    if (!geo.ok) return geo;
-
-    // Build the two halves. Each `addWall` call already pushes a
-    // CREATE_ENTITY mutation onto the undo stack AND emits a fresh
-    // mesh via appendGeometryBatch, so the new walls appear in 3D
-    // immediately. The source's mesh stays in the geometry result
-    // but is tombstoned in the IFC overlay — for v1 we mark it
-    // hidden via the existing hiddenEntities mechanism so the user
-    // sees the split take effect.
-    const left = state.addWall(modelId, storeyExpressId, {
-      Start: geo.geometry.left.Start,
-      End: geo.geometry.left.End,
-      Thickness: geo.geometry.left.Thickness,
-      Height: geo.geometry.left.Height,
-      Name: 'Wall (split L)',
-    });
-    if ('error' in left) {
-      return { ok: false, reason: `Couldn't build left half: ${left.error}` };
-    }
-    const right = state.addWall(modelId, storeyExpressId, {
-      Start: geo.geometry.right.Start,
-      End: geo.geometry.right.End,
-      Thickness: geo.geometry.right.Thickness,
-      Height: geo.geometry.right.Height,
-      Name: 'Wall (split R)',
-    });
-    if ('error' in right) {
-      // Roll back the left half via the no-history helper so the
-      // failed split doesn't leave a phantom CREATE+DELETE pair on
-      // the undo stack. `rollbackOverlayCreate` pops the orphan
-      // CREATE_ENTITY entry, drops the overlay record, and removes
-      // the renderer mesh.
-      rollbackOverlayCreate(get, set, modelId, left.expressId);
-      return { ok: false, reason: `Couldn't build right half: ${right.error}` };
-    }
-
-    // Carry Pset / Qto / classification / material / type rels
-    // from the source onto both new walls. Done AFTER the new walls
-    // exist so the rels' RelatedObjects lists can include them.
-    cloneElementMetadata(dataStore, view, editor, expressId, [left.expressId, right.expressId]);
-
-    // Reassign hosted openings (doors / windows / generic voids)
-    // to whichever new half they geometrically belong to. The
-    // canonical IFC convention places the opening's
-    // ObjectPlacement relative to the wall's placement, with
-    // local-X = distance along the wall axis — so we read each
-    // opening's local-X to decide left vs right, and offset
-    // right-half openings by -splitDistance so their world
-    // positions stay fixed across the reparent.
-    //
-    // We resolve each new half's IfcLocalPlacement id by
-    // re-walking the placement chain (it's the entity addWall
-    // created internally; the action's return value only carries
-    // the wall id).
-    const leftChain = resolvePlacementChain(dataStore, view, editor, left.expressId);
-    const rightChain = resolvePlacementChain(dataStore, view, editor, right.expressId);
-    let openingSummary: { toLeft: number; toRight: number; skipped: number } = { toLeft: 0, toRight: 0, skipped: 0 };
-    if (leftChain && rightChain) {
-      const s = reassignWallOpenings(
-        dataStore,
-        view,
-        editor,
-        expressId,
-        left.expressId,
-        right.expressId,
-        distanceFromStart,
-        leftChain.localPlacementId,
-        rightChain.localPlacementId,
-      );
-      openingSummary = { toLeft: s.toLeft, toRight: s.toRight, skipped: s.skipped };
-    }
-    void openingSummary; // surfaced as a toast hint by the caller (selectionHandlers)
-
-    // Tombstone the source. `removeEntity` returns false if the
-    // entity wasn't known — shouldn't happen here (we just
-    // resolved its chain), but defend anyway.
-    const removed = state.removeEntity(modelId, expressId);
-    if (!removed) {
-      return {
-        ok: false,
-        reason: 'Wall was unexpectedly removed before split completed',
-      };
-    }
-
-    // `removeEntity` above already dropped the source's mesh out of the
-    // geometry (stashed for undo) and queued the renderer-side removal.
-    // The two new walls already have their meshes via appendGeometryBatch.
-    const leftGlobalId = toGlobalIdFromModels(state.models, modelId, left.expressId);
-    const rightGlobalId = toGlobalIdFromModels(state.models, modelId, right.expressId);
-
-    return {
-      ok: true,
-      left: { expressId: left.expressId, globalId: leftGlobalId },
-      right: { expressId: right.expressId, globalId: rightGlobalId },
-      openings: openingSummary,
-    };
-  },
+  splitWallAtDistance: (modelId, expressId, distanceFromStart) =>
+    splitWall(get, (id) => getOrCreateStoreEditor(get, set, id), modelId, expressId, distanceFromStart),
 
   readLinearElementSplitProjection: (modelId, expressId, cursorStoreyLocal) => {
-    const view = get().mutationViews.get(modelId);
-    if (!view) return null;
-    const editor = getOrCreateStoreEditor(get, set, modelId);
-    if (!editor) return null;
-    const dataStore = get().models.get(modelId)?.ifcDataStore;
-    if (!dataStore) return null;
-    const chain = resolveLinearElementChain(dataStore, view, editor, expressId);
+    const ctx = resolveEditReadContext(get, set, modelId);
+    const chain = ctx && resolveLinearElementChain(ctx.dataStore, ctx.view, ctx.editor, expressId, ctx.scale);
     if (!chain) return null;
     const distance = projectOntoLinearAxis(chain, cursorStoreyLocal);
-    const [sx, sy, sz] = chain.startCoordinates;
-    const [dx, dy, dz] = chain.axisDirection;
-    const cutPoint: [number, number, number] = [
-      sx + dx * distance,
-      sy + dy * distance,
-      sz + dz * distance,
-    ];
-    return {
-      distance,
-      length: chain.depth,
-      cutPoint,
-      axis: chain.axisDirection,
-      elementType: chain.elementType,
-    };
+    const cutPoint = alongAxis(chain.startCoordinates, chain.axisDirection, distance);
+    return { distance, length: chain.depth, cutPoint, axis: chain.axisDirection, elementType: chain.elementType };
   },
 
-  splitLinearElementAtDistance: (modelId, expressId, distanceFromStart) => {
-    // Shared mutation gate — same rule and return shape as `resizeWall`.
-    const denial = mutationDenial(get(), modelId);
-    if (denial) return { ok: false, reason: denial };
-    const ctx = resolveSplitContext(get, set, modelId, expressId, 'Element is not contained in a building storey');
-    if ('ok' in ctx) return ctx;
-    const { view, editor, dataStore, storeyExpressId } = ctx;
-    const state = get();
-
-    const chain = resolveLinearElementChain(dataStore, view, editor, expressId);
-    if (!chain) {
-      return {
-        ok: false,
-        reason:
-          'Element is not a rectangular-profile beam / column / member built by the in-store builders.',
-      };
-    }
-    const geo = computeLinearElementSplitGeometry(chain, distanceFromStart);
-    if (!geo.ok) return geo;
-
-    // Add the "right" half FIRST so a builder failure leaves the
-    // source untouched (no partial-commit state). The source's
-    // extrusion shrink happens only after the new half lands.
-    // The dispatch is one-to-one with the chain's resolved
-    // element type.
-    let addResult: { expressId: number } | { error: string };
-    if (chain.elementType === 'IfcBeam') {
-      addResult = state.addBeam(modelId, storeyExpressId, {
-        Start: geo.geometry.cutPoint,
-        End: geo.geometry.endPoint,
-        Width: geo.geometry.width,
-        Height: geo.geometry.height,
-        Name: 'Beam (split)',
-      });
-    } else if (chain.elementType === 'IfcColumn') {
-      // Columns take a Position + Width + Depth + Height (extrusion
-      // is along +Z). Width/Depth come from the cross-section
-      // (profile XDim / YDim). Height is the right half's length.
-      addResult = state.addColumn(modelId, storeyExpressId, {
-        Position: geo.geometry.cutPoint,
-        Width: geo.geometry.width,
-        Depth: geo.geometry.height,
-        Height: geo.geometry.rightDepth,
-        Name: 'Column (split)',
-      });
-    } else {
-      addResult = state.addMember(modelId, storeyExpressId, {
-        Start: geo.geometry.cutPoint,
-        End: geo.geometry.endPoint,
-        Width: geo.geometry.width,
-        Height: geo.geometry.height,
-        Name: 'Member (split)',
-      });
-    }
-    if ('error' in addResult) {
-      return { ok: false, reason: `Couldn't build right half: ${addResult.error}` };
-    }
-
-    // Right half built — now shrink the source's extrusion to the
-    // "left" length. One write, one undo entry, identity
-    // preserved. Goes through the slice's own
-    // setPositionalAttribute action so undo recovers it.
-    state.setPositionalAttribute(modelId, chain.extrudedSolidId, 3, geo.geometry.leftDepth);
-
-    // Carry Pset / classification / material rels onto the new
-    // right half so it inherits the source's metadata. The source
-    // keeps its own rels natively (we didn't tombstone it).
-    cloneElementMetadata(dataStore, view, editor, expressId, [addResult.expressId]);
-
-    // Hide / re-show the source's mesh so the renderer reflects
-    // the new shorter length. The new mesh for the right half
-    // already came via the addElement pipeline's appendGeometryBatch.
-    // For the source, the easiest visual update is to nudge the
-    // geometryUpdateTick so consumers re-derive bounds — the
-    // existing mesh data lingers at full length until the next
-    // full reload (deferred mesh-update from PR #723). Users see
-    // the new wall appear; the source mesh stays visually unchanged
-    // for now. Documented as a known limitation.
-    const sourceGlobalId = toGlobalIdFromModels(state.models, modelId, expressId);
-    const rightGlobalId = toGlobalIdFromModels(state.models, modelId, addResult.expressId);
-
-    return {
-      ok: true,
-      source: { expressId, globalId: sourceGlobalId },
-      right: { expressId: addResult.expressId, globalId: rightGlobalId },
-    };
-  },
+  splitLinearElementAtDistance: (modelId, expressId, distanceFromStart) =>
+    splitLinear(get, (id) => getOrCreateStoreEditor(get, set, id), modelId, expressId, distanceFromStart),
 
   readSlabFootprint: (modelId, expressId) => {
-    const view = get().mutationViews.get(modelId);
-    if (!view) return null;
-    const editor = getOrCreateStoreEditor(get, set, modelId);
-    if (!editor) return null;
-    const dataStore = get().models.get(modelId)?.ifcDataStore;
-    if (!dataStore) return null;
-    const chain = resolveSlabEditChain(dataStore, view, editor, expressId, getModelLengthUnitScale(dataStore));
-    if (!chain) return null;
-    const storeyId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
-    const storeyElevation =
-      (storeyId !== undefined
-        ? dataStore.spatialHierarchy?.storeyElevations?.get(storeyId)
-        : undefined) ?? 0;
-    return {
-      footprint: chain.footprint,
-      elementType: chain.elementType,
-      storeyElevation,
-      thickness: chain.thickness,
-    };
+    const ctx = resolveEditReadContext(get, set, modelId);
+    const chain = ctx && resolveSlabEditChain(ctx.dataStore, ctx.view, ctx.editor, expressId, ctx.scale);
+    if (!ctx || !chain) return null;
+    const { dataStore, view } = ctx;
+    const storeyId = effectiveStoreyId(dataStore, view, expressId);
+    const storeyElevation = (storeyId !== undefined ? dataStore.spatialHierarchy?.storeyElevations?.get(storeyId) : undefined) ?? 0;
+    return { footprint: chain.footprint, elementType: chain.elementType, storeyElevation, thickness: chain.thickness };
   },
 
-  splitSlabByLine: (modelId, expressId, cutA, cutB) => {
-    // Shared mutation gate — same rule and return shape as `resizeWall`.
-    const denial = mutationDenial(get(), modelId);
-    if (denial) return { ok: false, reason: denial };
-    const ctx = resolveSplitContext(get, set, modelId, expressId, 'Slab is not contained in a building storey');
-    if ('ok' in ctx) return ctx;
-    const { view, editor, dataStore, storeyExpressId } = ctx;
-    const state = get();
-
-    const chain = resolveSlabEditChain(dataStore, view, editor, expressId, getModelLengthUnitScale(dataStore));
-    if (!chain) {
-      return {
-        ok: false,
-        reason:
-          'Element representation is not a rectangle / polygon profile extruded along Z. Split supports slab-like elements built by addSlab / addRoof / addPlate / addSpace.',
-      };
-    }
-    const geo = computeSlabSplitGeometry(chain, cutA, cutB);
-    if (!geo.ok) return geo;
-
-    // The clipped footprints are in storey-local XY (placement
-    // origin already added). The builders expect an `OuterCurve`
-    // in *profile-local* 2D + a `Position` in storey-local 3D.
-    // Easiest mapping: keep `Position` at `[0, 0, 0]` and pass the
-    // clipped polygon verbatim — the builders fold profile-origin
-    // and placement-origin into one identity.
-    //
-    // IfcSlab / IfcRoof / IfcPlate carry their extrusion depth on
-    // a `Thickness` param; IfcSpace uses `Height`. Same chain
-    // resolver feeds both because the underlying STEP shape is
-    // identical (IfcExtrudedAreaSolid.Depth) — the divergence is
-    // only in the in-store builder's parameter naming.
-    const buildHalf = (outline: Point2D[], label: string) => {
-      const name = `${chain.elementType.replace(/^Ifc/, '')} (split ${label})`;
-      switch (chain.elementType) {
-        case 'IfcSlab':
-          return state.addSlab(modelId, storeyExpressId, {
-            Profile: 'polygon',
-            Position: [0, 0, 0],
-            OuterCurve: outline,
-            Thickness: geo.thickness,
-            Name: name,
-          });
-        case 'IfcRoof':
-          return state.addRoof(modelId, storeyExpressId, {
-            Profile: 'polygon',
-            Position: [0, 0, 0],
-            OuterCurve: outline,
-            Thickness: geo.thickness,
-            Name: name,
-          });
-        case 'IfcPlate':
-          return state.addPlate(modelId, storeyExpressId, {
-            Profile: 'polygon',
-            Position: [0, 0, 0],
-            OuterCurve: outline,
-            Thickness: geo.thickness,
-            Name: name,
-          });
-        case 'IfcSpace':
-          return state.addSpace(modelId, storeyExpressId, {
-            Profile: 'polygon',
-            Position: [0, 0, 0],
-            OuterCurve: outline,
-            Height: geo.thickness,
-            Name: name,
-          });
-        default: {
-          // Exhaustive switch — compile error here if a new
-          // SlabLikeType lands without a builder dispatch.
-          const exhaust: never = chain.elementType;
-          throw new Error(`Unhandled slab-like type: ${String(exhaust)}`);
-        }
-      }
-    };
-
-    const left = buildHalf(geo.leftFootprint, 'L');
-    if ('error' in left) {
-      return { ok: false, reason: `Couldn't build left half: ${left.error}` };
-    }
-    const right = buildHalf(geo.rightFootprint, 'R');
-    if ('error' in right) {
-      // Roll back the left half via the no-history helper — same
-      // reasoning as the wall-split rollback above.
-      rollbackOverlayCreate(get, set, modelId, left.expressId);
-      return { ok: false, reason: `Couldn't build right half: ${right.error}` };
-    }
-
-    cloneElementMetadata(dataStore, view, editor, expressId, [left.expressId, right.expressId]);
-
-    const removed = state.removeEntity(modelId, expressId);
-    if (!removed) {
-      return {
-        ok: false,
-        reason: 'Slab was unexpectedly removed before split completed',
-      };
-    }
-
-    // `removeEntity` above already dropped the source's mesh out of the
-    // geometry (stashed for undo) and queued the renderer-side removal.
-    // The two new halves already have meshes via addSlab's appendGeometryBatch.
-    const leftGlobalId = toGlobalIdFromModels(state.models, modelId, left.expressId);
-    const rightGlobalId = toGlobalIdFromModels(state.models, modelId, right.expressId);
-    return {
-      ok: true,
-      left: { expressId: left.expressId, globalId: leftGlobalId },
-      right: { expressId: right.expressId, globalId: rightGlobalId },
-    };
-  },
+  splitSlabByLine: (modelId, expressId, cutA, cutB) =>
+    splitSlab(get, (id) => getOrCreateStoreEditor(get, set, id), modelId, expressId, cutA, cutB),
 
   removeEntity: (modelId, expressId, opts) => {
     if (!canMutate(get(), modelId)) return false;
@@ -2337,8 +1846,8 @@ export const createMutationSlice: StateCreator<
     (editor, anchor) => addWindowToStore(editor, anchor, params).windowId,
   ),
 
-  addSpace: (modelId, storeyExpressId, params, previewCorners) => runInStoreElementBuilder(
-    get, set, modelId, storeyExpressId, { kind: 'space', params, previewCorners },
+  addSpace: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
+    get, set, modelId, storeyExpressId, { kind: 'space', params },
     (editor, anchor) => addSpaceToStore(editor, anchor, params).spaceId,
   ),
 

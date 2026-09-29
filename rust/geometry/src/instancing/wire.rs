@@ -29,15 +29,22 @@ const INSTANCED_VERSION_BASE_RECORD: u32 = 1;
 /// Instance record bytes BEFORE any trailing field: templateIndex(4) +
 /// entityId(4) + color(16) + transform(64). Also the stride of a v1 shard, and
 /// the floor every declared stride is validated against.
-const INSTANCE_RECORD_BASE_BYTES: usize = 88;
+pub(super) const INSTANCE_RECORD_BASE_BYTES: usize = 88;
 /// Byte offset of trailing field 1, `item_id`, within an instance record.
-const INSTANCE_ITEM_ID_OFFSET: usize = INSTANCE_RECORD_BASE_BYTES;
+pub(super) const INSTANCE_ITEM_ID_OFFSET: usize = INSTANCE_RECORD_BASE_BYTES;
 /// Stride of a record carrying trailing field 1 (`item_id`) and nothing after it.
-const INSTANCE_RECORD_ITEM_ID_BYTES: usize = INSTANCE_ITEM_ID_OFFSET + 4;
+pub(super) const INSTANCE_RECORD_ITEM_ID_BYTES: usize = INSTANCE_ITEM_ID_OFFSET + 4;
+/// Version written when a record carries trailing field 2, the finish (#5984).
+pub(super) const INSTANCED_VERSION_FINISH: u32 = 3;
+/// Byte offset of trailing field 2, `[metallic, roughness]` (2× f32, NaN =
+/// unauthored), and the stride of a record carrying it. Field 1 precedes it
+/// on such a record (fields are append-only), so its `item_id` is written too.
+pub(super) const INSTANCE_FINISH_OFFSET: usize = INSTANCE_RECORD_ITEM_ID_BYTES;
+const INSTANCE_RECORD_FINISH_BYTES: usize = INSTANCE_FINISH_OFFSET + 8;
 /// Bytes a template record occupies (6× u32 + 3× f64).
-const TEMPLATE_RECORD_BYTES: usize = 48;
+pub(super) const TEMPLATE_RECORD_BYTES: usize = 48;
 /// Bytes the fixed header occupies (8× u32).
-const HEADER_BYTES: usize = 32;
+pub(super) const HEADER_BYTES: usize = 32;
 
 const INST_IDENTITY_F32: [f32; 16] = [
     1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
@@ -79,6 +86,18 @@ pub struct DecodedInstanced {
 /// Encode a [`Collated`] result + its source mesh views into an instanced shard.
 /// Per-occurrence entity id + colour come from each `InstanceMeshRef`.
 pub fn encode_refs(meshes: &[InstanceMeshRef], collated: &Collated) -> Vec<u8> {
+    encode_refs_with_finishes(meshes, collated, &[])
+}
+
+/// [`encode_refs`] plus each occurrence's IFC-authored finish (#5984):
+/// `finishes[i]` is `meshes[i]`'s `[metallic, roughness]`, NaN where
+/// unauthored, and a missing entry is unauthored. `InstanceMeshRef` is
+/// published with public fields, so the finish travels beside it rather than
+/// in it. Only a shard where some written occurrence authors a finish widens
+/// its records to trailing field 2 (stride 100, version 3); every other shard
+/// is byte-identical to [`encode_refs`]'s, so a model without finishes pays
+/// nothing. Read back with [`super::decode_instance_finishes`].
+pub fn encode_refs_with_finishes(meshes: &[InstanceMeshRef], collated: &Collated, finishes: &[[f32; 2]]) -> Vec<u8> {
     // (template mesh index, [(occurrence mesh index, rel transform)]).
     struct TSpec {
         mesh_idx: usize,
@@ -131,13 +150,22 @@ pub fn encode_refs(meshes: &[InstanceMeshRef], collated: &Collated) -> Vec<u8> {
     // mesh, an all-empty rep group), so a batch whose only id-bearing entry is
     // a dropped one would declare 92 and write 0 into every record — the exact
     // hole this predicate exists to close.
-    let carries_item_id = tspecs
+    let finish_of = |i: usize| finishes.get(i).copied().unwrap_or([f32::NAN; 2]);
+    let carries_finish = tspecs
         .iter()
         .flat_map(|t| t.instances.iter())
-        .any(|(occ_idx, _)| meshes[*occ_idx].item_id.is_some());
+        .any(|(occ_idx, _)| finish_of(*occ_idx).iter().any(|v| v.is_finite()));
+    // Field 2 sits after field 1, so carrying it carries field 1 as well.
+    let carries_item_id = carries_finish
+        || tspecs
+            .iter()
+            .flat_map(|t| t.instances.iter())
+            .any(|(occ_idx, _)| meshes[*occ_idx].item_id.is_some());
     // A base-record shard is declared v1, word 7 at the literal `0` v1 wrote
     // there: byte-identical to a pre-#2985 shard. Only a widened record is v2.
-    let (version, instance_stride, stride_word) = if carries_item_id {
+    let (version, instance_stride, stride_word) = if carries_finish {
+        (INSTANCED_VERSION_FINISH, INSTANCE_RECORD_FINISH_BYTES, INSTANCE_RECORD_FINISH_BYTES as u32)
+    } else if carries_item_id {
         (INSTANCED_VERSION, INSTANCE_RECORD_ITEM_ID_BYTES, INSTANCE_RECORD_ITEM_ID_BYTES as u32)
     } else {
         (INSTANCED_VERSION_BASE_RECORD, INSTANCE_RECORD_BASE_BYTES, 0u32)
@@ -208,6 +236,12 @@ pub fn encode_refs(meshes: &[InstanceMeshRef], collated: &Collated) -> Vec<u8> {
             if carries_item_id {
                 pu32(&mut buf, meshes[*occ_idx].item_id.unwrap_or(0));
             }
+            // Trailing field 2 (v3, #5984): the occurrence's finish.
+            if carries_finish {
+                for v in finish_of(*occ_idx) {
+                    pf32(&mut buf, if v.is_finite() { v } else { f32::NAN });
+                }
+            }
         }
     }
 
@@ -263,138 +297,4 @@ pub fn encode_instanced(
 pub fn collate_and_encode(meshes: &[InstanceMeshRef], min_group: usize, rtc: [f64; 3]) -> Vec<u8> {
     let collated = collate_refs(meshes, min_group, rtc);
     encode_refs(meshes, &collated)
-}
-
-/// Decode an instanced shard. Returns None on a bad magic/version or truncation.
-pub fn decode_instanced(bytes: &[u8]) -> Option<DecodedInstanced> {
-    let ru32 = |o: usize| -> Option<u32> {
-        bytes.get(o..o + 4).map(|s| u32::from_le_bytes(s.try_into().unwrap()))
-    };
-    let rf32 = |o: usize| -> Option<f32> {
-        bytes.get(o..o + 4).map(|s| f32::from_le_bytes(s.try_into().unwrap()))
-    };
-    let rf64 = |o: usize| -> Option<f64> {
-        bytes.get(o..o + 8).map(|s| f64::from_le_bytes(s.try_into().unwrap()))
-    };
-    // PERMISSIVE on version, STRICT on stride. Rejecting a version above this
-    // build's would reject exactly the shards forward compatibility is for: a
-    // v3 that APPENDS a trailing field is still fully readable here, because
-    // every field this build knows sits at a fixed offset inside the base
-    // record and the declared stride steps over the tail it does not know.
-    // Refusing it would also have rejected the v1 shards already sitting in
-    // browser caches, which persist IFNS bytes verbatim rather than re-encoding
-    // — a silent loss of all instanced geometry on every existing entry.
-    // Version 0 is not a version.
-    let version = ru32(4)?;
-    if ru32(0)? != INSTANCED_MAGIC || version == 0 {
-        return None;
-    }
-    let template_count = ru32(8)? as usize;
-    let instance_count = ru32(12)? as usize;
-    let positions_len = ru32(16)? as usize;
-    let normals_len = ru32(20)? as usize;
-    let _indices_len = ru32(24)? as usize;
-    // Word 7 is `reserved` in v1 and the instance record STRIDE from v2 on. v1
-    // wrote a literal 0 there, which is not a legal stride, so both readings of
-    // a v1 shard land on the 88-byte base record.
-    let declared_stride = if version >= 2 { ru32(28)? as usize } else { 0 };
-    let inst_bytes = if declared_stride == 0 {
-        INSTANCE_RECORD_BASE_BYTES
-    } else {
-        declared_stride
-    };
-    // A stride below the base is not a shorter record, it is a corrupt header:
-    // the base fields are not optional. Reading at it would slice each record
-    // out of its predecessor's transform and yield plausible garbage. An
-    // UNALIGNED stride is refused beside it, in BOTH languages: every field on
-    // this wire is 4 bytes, so a boundary off a 4-byte multiple names no field,
-    // and the TS decoder cannot even attempt one — it views the data pools as
-    // `Float32Array` over the shard buffer, which throws an opaque `RangeError`
-    // where this decoder used to read the same bytes happily.
-    if inst_bytes < INSTANCE_RECORD_BASE_BYTES || inst_bytes % 4 != 0 {
-        return None;
-    }
-
-    // Checked throughout: `instance_count` and the stride are both attacker-
-    // controlled u32s, so their product overflows a 32-bit usize (wasm32) and
-    // can reach 2^64 on a 64-bit host. An overflow here would wrap the data
-    // offset back INSIDE the buffer and every bounds check below would pass.
-    let tt_off = HEADER_BYTES;
-    let it_off = tt_off.checked_add(template_count.checked_mul(TEMPLATE_RECORD_BYTES)?)?;
-    let data_off = it_off.checked_add(instance_count.checked_mul(inst_bytes)?)?;
-    let nrm_data = data_off.checked_add(positions_len.checked_mul(4)?)?;
-    let idx_data = nrm_data.checked_add(normals_len.checked_mul(4)?)?;
-
-    // A corrupt/hostile header can claim an arbitrary template_count or
-    // instance_count. Bound both against the buffer we actually have BEFORE
-    // sizing `Vec::with_capacity` below — otherwise a bogus huge count tries
-    // to reserve gigabytes (or aborts the process via the allocator's OOM
-    // handler) long before the per-field `ru32`/`rf32` reads below would ever
-    // get a chance to fail gracefully and return `None`. This is also what
-    // validates the declared stride against the buffer: a stride that does not
-    // fit the instance table it describes cannot reach the data pools.
-    if bytes.len() < data_off {
-        return None;
-    }
-
-    // Byte offset of element `k` of the pool at `base` whose template range
-    // starts at element `off` — checked against the same attacker-controlled
-    // u32s, and what makes "Checked throughout" above true of the pool reads
-    // too. On wasm32 (usize = 32 bits) `pos_off = 0xFFFFFFFF` overflows
-    // `base + (off + k) * 4`: debug traps rather than returning the promised
-    // `None`, release wraps back INSIDE the buffer and returns WRONG geometry.
-    let elem = |base: usize, off: usize, k: usize| -> Option<usize> {
-        base.checked_add(off.checked_add(k)?.checked_mul(4)?)
-    };
-
-    let mut templates = Vec::with_capacity(template_count);
-    for t in 0..template_count {
-        let r = tt_off + t * TEMPLATE_RECORD_BYTES;
-        let pos_off = ru32(r)? as usize;
-        let pos_len = ru32(r + 4)? as usize;
-        let nrm_off = ru32(r + 8)? as usize;
-        let nrm_len = ru32(r + 12)? as usize;
-        let i_off = ru32(r + 16)? as usize;
-        let i_len = ru32(r + 20)? as usize;
-        let origin = [rf64(r + 24)?, rf64(r + 32)?, rf64(r + 40)?];
-        let positions = (0..pos_len)
-            .map(|k| rf32(elem(data_off, pos_off, k)?))
-            .collect::<Option<Vec<f32>>>()?;
-        let normals = (0..nrm_len)
-            .map(|k| rf32(elem(nrm_data, nrm_off, k)?))
-            .collect::<Option<Vec<f32>>>()?;
-        let indices = (0..i_len)
-            .map(|k| ru32(elem(idx_data, i_off, k)?))
-            .collect::<Option<Vec<u32>>>()?;
-        templates.push(DecodedTemplate { positions, normals, indices, origin });
-    }
-
-    let mut instances = Vec::with_capacity(instance_count);
-    for i in 0..instance_count {
-        let r = it_off + i * inst_bytes;
-        let template_index = ru32(r)?;
-        let entity_id = ru32(r + 4)?;
-        let mut color = [0.0f32; 4];
-        for (k, c) in color.iter_mut().enumerate() {
-            *c = rf32(r + 8 + k * 4)?;
-        }
-        let mut transform = [0.0f32; 16];
-        for (k, v) in transform.iter_mut().enumerate() {
-            *v = rf32(r + 24 + k * 4)?;
-        }
-        // Trailing field 1, present only when the stride makes room for it.
-        // Anything the stride reaches BEYOND it is a field appended by a newer
-        // producer: skipped, not an error — that is the forward compatibility
-        // the stride buys. 0 is the producer's "no item" sentinel (STEP names
-        // start at #1), and a shard without the field has none at all — both
-        // surface as None, so a consumer cannot tell an absent id apart from a
-        // fabricated #0.
-        let item_id = if inst_bytes >= INSTANCE_RECORD_ITEM_ID_BYTES {
-            Some(ru32(r + INSTANCE_ITEM_ID_OFFSET)?).filter(|&id| id != 0)
-        } else {
-            None
-        };
-        instances.push(DecodedInstance { template_index, entity_id, color, transform, item_id });
-    }
-    Some(DecodedInstanced { templates, instances })
 }

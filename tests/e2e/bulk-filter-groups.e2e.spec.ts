@@ -26,8 +26,9 @@ test('Bulk Query unions two filter groups before applying to an authored IFC (#5
   }, STORE, { timeout: 180_000 });
 
   await page.getByRole('tab', { name: 'Author', exact: true }).click();
-  await page.getByRole('button', { name: 'Enter edit mode' }).click();
-  await expect(page.getByRole('button', { name: 'Exit edit mode' })).toBeVisible();
+  const modelWorkspace = page.getByRole('tabpanel', { name: 'Author' }).getByRole('button', { name: 'Model', exact: true });
+  await modelWorkspace.click();
+  await expect(modelWorkspace).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Bulk property editor' }).click();
   const dialog = page.getByRole('dialog', { name: 'Bulk Property Editor' });
   await expect(dialog.getByRole('combobox', { name: 'Target source' })).toContainText('Query');

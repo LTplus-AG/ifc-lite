@@ -6,12 +6,20 @@
 //! A description does not claim to include later boolean operations.
 
 mod curve;
+mod frame;
 mod helpers;
+mod profile;
+mod profile_topology;
+mod topology_interval;
+pub use profile::{extract_analytic_profile, AnalyticProfile, AnalyticProfileLoop, ProfileLoopKind};
+mod extrusion;
+pub use extrusion::{extract_analytic_extrusion, AnalyticExtrusion};
 #[cfg(test)]
 mod tests;
 
 use crate::{Error, Result};
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+pub use frame::{AnalyticPoint, AnalyticSegmentFrame};
 
 /// An ordered directrix primitive. Angles are radians in the circle's local frame.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

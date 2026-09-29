@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Unit tests for `parquet_mesh_tables.rs` — the `-parquet-v7` shape plan
+//! Unit tests for `parquet_mesh_tables.rs` — the `-parquet-v9` shape plan
 //! (issue #3888). Split into this ratchet-exempt sibling file, the same
 //! pattern as `parquet_tests.rs` and `parquet_optimized_tests.rs`.
 
@@ -301,8 +301,9 @@ fn v6_is_at_most_40_percent_of_v5_on_a_real_model() {
         "the fixture produced no meshes; the ratio below would be meaningless"
     );
 
-    let v5 = serialize_to_parquet(&result.meshes).unwrap().len();
-    let v6 = serialize_to_parquet_shared_shapes(&result.meshes).unwrap().len();
+    let meshes: Vec<MeshData> = result.meshes.into_iter().map(MeshData::from).collect();
+    let v5 = serialize_to_parquet(&meshes).unwrap().len();
+    let v6 = serialize_to_parquet_shared_shapes(&meshes).unwrap().len();
     let ratio = v6 as f64 / v5 as f64;
     eprintln!("MEASURED v5={v5} v6={v6} ratio={ratio:.4}");
     assert!(

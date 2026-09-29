@@ -147,6 +147,35 @@ export async function fetchVersionRecord(crate, ver, fetchImpl = fetch, opts = {
 }
 
 /**
+ * Latest published baseline for a release gate. Only a real 404 or a valid
+ * crate record with no versions means "no baseline". HTTP errors, exhausted
+ * transient retries and malformed responses must reach the caller as errors;
+ * treating any of those as absence makes a published crate look uncheckable.
+ */
+export async function fetchLatestPublishedVersion(crate, fetchImpl = fetch, opts = {}) {
+  const res = await cratesIoGet(`https://crates.io/api/v1/crates/${crate}`, { fetchImpl, ...opts });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`crates.io returned ${res.status} for ${crate}`);
+
+  const body = await res.json();
+  if (!body?.crate || typeof body.crate !== 'object') {
+    throw new Error(`crates.io returned no crate record for ${crate}`);
+  }
+  if (!('max_stable_version' in body.crate) && !('max_version' in body.crate)) {
+    throw new Error(`crates.io returned no version fields for ${crate}`);
+  }
+  const stable = body.crate.max_stable_version;
+  const latest = body.crate.max_version;
+  if ([stable, latest].some((value) => value != null && (typeof value !== 'string' || !value))) {
+    throw new Error(`crates.io returned an invalid latest version for ${crate}`);
+  }
+  const version = stable ?? latest;
+  if (version === undefined) throw new Error(`crates.io returned an invalid latest version for ${crate}`);
+  if (version === null) return null;
+  return version;
+}
+
+/**
  * Is `crate@ver` published AND still good?
  *
  * The `yanked` clause is load-bearing and is not obvious from the shape of

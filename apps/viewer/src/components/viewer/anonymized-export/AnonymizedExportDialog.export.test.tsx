@@ -175,7 +175,7 @@ describe('AnonymizedExportDialog — export', () => {
   });
 
   it('"Keep names" leaves the original name in the exported STEP', async () => {
-    render(<AnonymizedExportDialog />);
+    render(<AnonymizedExportDialog surface="context_menu" />);
     act(() => { useViewerStore.getState().setAnonymizedExportRequested(true); });
 
     const namesSwitch = anonymizeSwitch('Names');
@@ -197,13 +197,15 @@ describe('AnonymizedExportDialog — export', () => {
   });
 
   it('the user-entered file name is used for the .ifc download', async () => {
-    render(<AnonymizedExportDialog />);
+    render(<AnonymizedExportDialog surface="context_menu" />);
     act(() => { useViewerStore.getState().setAnonymizedExportRequested(true); });
 
     const stemInput = document.body.querySelector<HTMLInputElement>('#anon-file-stem');
     assert.ok(stemInput, 'no file name input');
     assert.equal(stemInput.value, 'anonymized', 'the field must not be prefilled from the model name');
     typeInto(stemInput, 'repro case 12.ifc');
+    const preview = document.body.querySelector('[data-export-dialog-shell] .font-mono');
+    assert.equal(preview?.textContent, 'repro case 12.ifc', 'the preview uses the same normalized filename as the download');
 
     const exportButton = [...document.body.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith('Export .ifc'));
     assert.ok(exportButton);
@@ -216,6 +218,7 @@ describe('AnonymizedExportDialog — export', () => {
     const ifcDownload = downloads.find((d) => d.filename.endsWith('.ifc'));
     assert.ok(ifcDownload);
     assert.equal(ifcDownload.filename, 'repro case 12.ifc', 'stem used as typed (a typed extension is stripped once, then re-added)');
+    assert.equal(preview?.textContent, ifcDownload.filename);
     assert.equal(downloads.length, 1, 'exactly one file: the GUID map is never offered from the dialog');
   });
 });

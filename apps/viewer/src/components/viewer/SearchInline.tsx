@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * SearchInline — always-visible search field in the MainToolbar.
+ * SearchInline — always-visible search field in the ribbon toolbar.
  *
  * P0: Tier-0 linear scan over cached EntityTable columns.
  * P1: Tier-1 per-model inverted token index, built post-load.
@@ -417,6 +417,9 @@ export function SearchInline() {
             onFocus={() => setSearchOpen(true)}
             onKeyDown={handleInputKeyDown}
             className={cn(hasFilters ? 'pr-[4.5rem]' : 'pr-9')}
+            // Input renders a native input; the combobox role permits its expanded state.
+            // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+            role="combobox"
             aria-label={t('searchModal.inline.searchAriaLabel')}
             aria-autocomplete="list"
             aria-expanded={showPopover}
@@ -457,7 +460,7 @@ export function SearchInline() {
             >
               <SlidersHorizontal className="h-3.5 w-3.5" />
               {hasFilters && (
-                <span className="font-mono text-[10px] font-semibold leading-none">{activeRuleCount}</span>
+                <span className="font-mono text-2xs font-semibold leading-none">{activeRuleCount}</span>
               )}
             </button>
           </div>
@@ -477,8 +480,7 @@ export function SearchInline() {
           unchanged, since neither listener intercepts them.
           `onFocusOutside` is suppressed for the Anchor: the input is a
           SIBLING of Content, not a descendant of it, so — without this —
-          Radix's `DismissableLayer` reads every keystroke's focus staying
-          on the input as focus moving OUTSIDE the popover and closes it
+          Radix's `DismissableLayer` reads input focus as OUTSIDE and closes it
           on the very next render; a combobox needs focus to stay on its
           input while the list is open, so that "outside" reading is wrong
           here specifically. `onPointerDownOutside` needs the SAME
@@ -489,6 +491,8 @@ export function SearchInline() {
           the popover. Real outside clicks still close it via `onOpenChange`. */}
       <PopoverContent
         id="search-inline-popover"
+        // Search results contain actions and rich previews that a native select cannot render.
+        // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
         role="listbox"
         align="start"
         sideOffset={4}

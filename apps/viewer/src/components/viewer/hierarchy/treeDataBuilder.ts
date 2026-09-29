@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { effectiveTreeType, type TreeOverlay } from './treeOverlay.js';
+import { effectiveRowType, effectiveTreeType, overlayViewFor, type TreeOverlay } from './treeOverlay.js';
 import { effectiveTreeEntityName, effectiveTypeAssignments, effectiveTypeEntities, effectiveTypeInstanceIds } from './effectiveTypeEntities.js';
 import { effectiveGroupAssignments, effectiveGroupIds, effectiveGroupMembers, effectiveGroupName } from './effectiveGroupEntities.js';
 import { GROUP_ENTITY_TYPES, groupMatchesSubFilter } from './groupEntityTypes.js';
@@ -25,7 +25,7 @@ import type { FederatedModel } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { mergeObjectCounts, summarizeObjects } from './objectCountSummary';
 import { buildOtherGroupNodes, type OtherBucketEntry } from './otherBucket';
-import { emitElementsWithOtherBucket } from './elementSubtree';
+import { elementRowType, emitElementsWithOtherBucket, makeShapeTest, type ElementRowView } from './elementSubtree';
 import {
   makeAssemblyGeometry,
   partsOrOwnIds,
@@ -135,36 +135,6 @@ export function getNodeType(ifcType: IfcTypeEnum): NodeType {
   }
 }
 
-/**
- * The shape half of the object count: "would this entity put anything on
- * screen?".
- *
- * It is `makeAssemblyGeometry`'s own `renders`, not a second reading of the
- * mesh set, so the spatial badge and the By Class tab cannot answer the same
- * question differently -- an `IfcRoof` whose geometry sits on its
- * `IfcRelAggregates` beams renders in both or neither.
- *
- * `null` while nothing has streamed: the shape test is unanswerable then, so
- * the count reports every physical object and says on hover that it is still
- * provisional, rather than reading an empty mesh set as "nothing has a shape".
- */
-function makeShapeTest(
-  dataStore: IfcDataStore,
-  modelId: string,
-  models: Map<string, FederatedModel>,
-  geometricIds: Set<number> | undefined,
-  geometryKnown = !!geometricIds && geometricIds.size > 0,
-): ((id: number) => boolean) | null {
-  if (!geometryKnown) return null;
-  const assemblyGeometry = makeAssemblyGeometry(dataStore, modelId, models, geometricIds, true);
-  return (id: number) =>
-    assemblyGeometry.renders(
-      dataStore.entities?.getTypeName(id) ?? 'Unknown',
-      id,
-      resolveTreeGlobalId(modelId, id, models),
-    );
-}
-
 /** Build unified storey data for multi-model mode */
 export function buildUnifiedStoreys(
   models: Map<string, FederatedModel>,
@@ -172,6 +142,7 @@ export function buildUnifiedStoreys(
   geometricIds?: Set<number>,
   geometryReadyModelIds?: ReadonlySet<string>,
   georefMutations?: GeorefMutationsByModel,
+  overlay?: TreeOverlay,
 ): UnifiedStorey[] {
   if (models.size <= 1) return [];
 
@@ -190,6 +161,7 @@ export function buildUnifiedStoreys(
       : new Map<number, SpatialNode>();
     const descendantSpaceCache = new Map<number, Set<number>>();
     const displayElevationOf = storeyDisplayElevationFor(modelId, dataStore, model, georefMutations);
+    const view = overlayViewFor(overlay, modelId);
 
     for (const [storeyId, elements] of byStorey.entries()) {
       const elevation = storeyElevations.get(storeyId) ?? 0;
@@ -201,7 +173,7 @@ export function buildUnifiedStoreys(
             storeyNode,
             dataStore,
             'IfcBuildingStorey',
-            descendantSpaceCache,
+            descendantSpaceCache, view,
           )
         : elements as number[];
       const spacesNotCounted = storeyNode
@@ -217,9 +189,10 @@ export function buildUnifiedStoreys(
         elements: directElements,
         objects: summarizeObjects(
           directElements,
-          (id) => dataStore.entities?.getTypeName(id),
+          (id) => elementRowType(dataStore, view, id),
           makeShapeTest(
             dataStore,
+            view,
             modelId,
             models,
             geometricIds,
@@ -294,6 +267,7 @@ function buildSpatialNodes(
   sortMode: HierarchySortMode,
   hasShape: ((id: number) => boolean) | null = null,
   displayElevationOf: StoreyDisplayElevation | null = null,
+  view: ElementRowView = null,
 ): void {
   const nodeId = `${parentNodeId}-${spatialNode.expressId}`;
   const nodeType = getNodeType(spatialNode.type);
@@ -304,7 +278,7 @@ function buildSpatialNodes(
     return;
   }
 
-  const elements = getSpatialNodeElements(spatialNode, dataStore, nodeType, descendantSpaceCache);
+  const elements = getSpatialNodeElements(spatialNode, dataStore, nodeType, descendantSpaceCache, view);
   const hasDirectElements = elements.length > 0;
   // The badge answers "how many objects are on this storey"; the rows below
   // still list everything it contains, so an annotation or a shapeless element
@@ -314,7 +288,7 @@ function buildSpatialNodes(
   const spaceChildren = (spatialNode.children ?? []).filter((c) => isSpaceLikeSpatialType(c.type));
   const objects = summarizeObjects(
     elements,
-    (id) => dataStore.entities?.getTypeName(id),
+    (id) => elementRowType(dataStore, view, id),
     hasShape,
     spaceChildren.length,
   );
@@ -392,6 +366,7 @@ function buildSpatialNodes(
         sortMode,
         hasShape,
         displayElevationOf,
+        view,
       );
     }
 
@@ -405,6 +380,7 @@ function buildSpatialNodes(
         modelId,
         models,
         dataStore,
+        view,
         depth + 1,
         expandedNodes,
         nodes,
@@ -427,6 +403,7 @@ export function buildTreeData(
   geometricIds?: Set<number>,
   geometryReadyModelIds?: ReadonlySet<string>,
   georefMutations?: GeorefMutationsByModel,
+  overlay?: TreeOverlay,
 ): TreeNode[] {
   const nodes: TreeNode[] = [];
 
@@ -491,17 +468,20 @@ export function buildTreeData(
           // IfcRelAggregates parts — issue #1133), ordered by the active name
           // sort so it reaches inside the storey (issue #1476).
           if (contribExpanded && model?.ifcDataStore) {
+            const view = overlayViewFor(overlay, storey.modelId);
             emitElementsWithOtherBucket(
               storey.elements,
               storey.modelId,
               models,
               model.ifcDataStore,
+              view,
               2,
               expandedNodes,
               nodes,
               sortMode,
               makeShapeTest(
                 model.ifcDataStore,
+                view,
                 storey.modelId,
                 models,
                 geometricIds,
@@ -552,6 +532,7 @@ export function buildTreeData(
       // If expanded, show Project -> Site -> Building (stop at building, no storeys)
       if (isModelExpanded && model.ifcDataStore?.spatialHierarchy?.project) {
         const descendantSpaceCache = new Map<number, Set<number>>();
+        const view = overlayViewFor(overlay, modelId);
         buildSpatialNodes(
           model.ifcDataStore.spatialHierarchy.project,
           modelId,
@@ -567,12 +548,14 @@ export function buildTreeData(
           sortMode,
           makeShapeTest(
             model.ifcDataStore,
+            view,
             modelId,
             models,
             geometricIds,
             geometryReadyModelIds?.has(modelId),
           ),
           storeyDisplayElevationFor(modelId, model.ifcDataStore, model, georefMutations),
+          view,
         );
       }
     }
@@ -581,6 +564,7 @@ export function buildTreeData(
     const [modelId, model] = Array.from(models.entries())[0];
     if (model.ifcDataStore?.spatialHierarchy?.project) {
       const descendantSpaceCache = new Map<number, Set<number>>();
+      const view = overlayViewFor(overlay, modelId);
       buildSpatialNodes(
         model.ifcDataStore.spatialHierarchy.project,
         modelId,
@@ -596,17 +580,20 @@ export function buildTreeData(
         sortMode,
         makeShapeTest(
           model.ifcDataStore,
+          view,
           modelId,
           models,
           geometricIds,
           geometryReadyModelIds?.has(modelId),
         ),
         storeyDisplayElevationFor(modelId, model.ifcDataStore, model, georefMutations),
+        view,
       );
     }
   } else if (ifcDataStore?.spatialHierarchy?.project) {
     // Legacy single-model mode (no offset)
     const descendantSpaceCache = new Map<number, Set<number>>();
+    const view = overlayViewFor(overlay, 'legacy');
     buildSpatialNodes(
       ifcDataStore.spatialHierarchy.project,
       'legacy',
@@ -622,12 +609,14 @@ export function buildTreeData(
       sortMode,
       makeShapeTest(
         ifcDataStore,
+        view,
         'legacy',
         models,
         geometricIds,
         geometryReadyModelIds?.has('legacy'),
       ),
       storeyDisplayElevationFor('legacy', ifcDataStore, undefined, georefMutations),
+      view,
     );
   }
 
@@ -676,7 +665,7 @@ export function buildTypeTree(
       geometricIds,
       geometryReadyModelIds?.has(modelId),
     );
-    const view = overlay?.(modelId);
+    const view = overlayViewFor(overlay, modelId);
     // @raw-entity-enumeration-ok parsed rows, each passed through effectiveTreeType (deleted skipped, retype applied); created products arrive as authoredProducts
     for (let i = 0; i < dataStore.entities.count; i++) {
       const expressId = dataStore.entities.expressId[i];
@@ -687,7 +676,7 @@ export function buildTypeTree(
       // geometry-less assembly).
       const typeName = effectiveTreeType(view, expressId, dataStore.entities.getTypeName(expressId) || 'Unknown');
       if (typeName === null) continue;
-      const entityName = dataStore.entities.getName(expressId) || `${typeName} #${expressId}`;
+      const entityName = effectiveTreeEntityName(dataStore, view, expressId, `${typeName} #${expressId}`);
       if (!assemblyGeometry.renders(typeName, expressId, globalId)) {
         if (assemblyGeometry.isOther(typeName, expressId, globalId)) {
           otherEntities.push({ expressId, globalId, name: entityName, modelId, ifcType: typeName });
@@ -838,7 +827,7 @@ export function buildIfcTypeTree(
       geometryReadyModelIds?.has(modelId),
     );
 
-    const view = overlay?.(modelId);
+    const view = overlayViewFor(overlay, modelId);
     const assignments = effectiveTypeAssignments(dataStore, view);
     for (const { expressId, typeClassName, name: typeName } of effectiveTypeEntities(dataStore, view)) {
 
@@ -850,8 +839,7 @@ export function buildIfcTypeTree(
         const instGlobalId = resolveTreeGlobalId(modelId, instId, models);
         // An IfcElementAssemblyType's occurrences carry no geometry of their
         // own — without this the type row reported 0 elements (#1133).
-        const instIfcType = effectiveTreeType(view, instId,
-          (view?.getNewEntity(instId)?.type ?? dataStore.entities.getTypeName(instId)) || 'Unknown');
+        const instIfcType = effectiveRowType(dataStore, view, instId);
         if (instIfcType === null) continue;
         const instName = effectiveTreeEntityName(dataStore, view, instId);
         if (!assemblyGeometry.renders(instIfcType, instId, instGlobalId)) {
@@ -1007,6 +995,7 @@ export function buildMaterialTree(
   _isMultiModel: boolean,
   geometricIds?: Set<number>,
   geometryReadyModelIds?: ReadonlySet<string>,
+  effectiveStores?: ReadonlyMap<string, IfcDataStore>,
 ): TreeNode[] {
   interface MatEntry {
     name: string;
@@ -1043,22 +1032,21 @@ export function buildMaterialTree(
       }
     }
   };
-
   if (models.size > 0) {
     // IFCX layers can share one composed store. Its material usage has no
     // per-layer provenance, so emit one unattributed row for that store.
     const storeOwners = new Map<IfcDataStore, string[]>();
     for (const [modelId, model] of models) {
-      if (!model.ifcDataStore) continue;
-      const owners = storeOwners.get(model.ifcDataStore) ?? [];
+      const materialStore = effectiveStores?.get(modelId) ?? model.ifcDataStore;
+      if (!materialStore) continue;
+      const owners = storeOwners.get(materialStore) ?? [];
       owners.push(modelId);
-      storeOwners.set(model.ifcDataStore, owners);
+      storeOwners.set(materialStore, owners);
     }
     for (const [store, owners] of storeOwners) processDataStore(store, owners);
   } else if (ifcDataStore) {
-    processDataStore(ifcDataStore, ['legacy']);
+    processDataStore(effectiveStores?.get('legacy') ?? ifcDataStore, ['legacy']);
   }
-
   const nodes: TreeNode[] = [];
   const entries = Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name) || a.modelIds[0].localeCompare(b.modelIds[0]));
   for (const entry of entries) {
@@ -1179,7 +1167,7 @@ export function buildGroupTree(
     const entities = dataStore.entities;
     if (!entities) return;
     const toGlobal = (expressId: number) => resolveTreeGlobalId(modelId, expressId, models);
-    const view = overlay?.(modelId);
+    const view = overlayViewFor(overlay, modelId);
     const groups = effectiveGroupIds(dataStore, view);
     const assignments = effectiveGroupAssignments(dataStore, view);
 

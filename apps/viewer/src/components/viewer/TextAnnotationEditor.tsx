@@ -80,6 +80,8 @@ export function TextAnnotationEditor({
   }, [text, annotation.id, onConfirm, onCancel]);
 
   return (
+    // The wrapper only stops canvas click placement; the textarea and buttons own keyboard interaction.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       className="absolute z-20 pointer-events-auto"
       style={{
@@ -97,6 +99,7 @@ export function TextAnnotationEditor({
         onKeyDown={handleKeyDown}
         onBlur={handleBlur}
         placeholder={t('textAnnotationEditor.placeholder')}
+        aria-label={t('textAnnotationEditor.inputLabel')}
         className="min-w-[120px] max-w-[300px] min-h-[32px] px-2 py-1 text-sm border-2 border-blue-500 rounded resize shadow-lg outline-none"
         rows={2}
         style={{
@@ -106,7 +109,7 @@ export function TextAnnotationEditor({
           caretColor: '#000000',
         }}
       />
-      <div className="text-[10px] text-muted-foreground mt-0.5 bg-white/80 px-1 rounded">
+      <div className="text-2xs text-muted-foreground mt-0.5 bg-white/80 px-1 rounded">
         {t('textAnnotationEditor.hint')}
       </div>
     </div>

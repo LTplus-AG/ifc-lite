@@ -23,7 +23,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
-import { render, cleanup } from '@/test/render';
+import { render, cleanup, type as typeInto } from '@/test/render';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
 import { registerLocale, setLocale } from '@/i18n';
@@ -237,6 +237,26 @@ it('GeometryAxisRow: renders decrease/increase aria-labels in English and transl
   assert.ok(container.querySelector('[aria-label="X verringern"]'));
 });
 
+it('GeometryAxisRow: each numeric axis has a visible programmatic label and edits its axis (#6342)', () => {
+  const changes: string[] = [];
+  const container = render(<>
+    {(['X', 'Y', 'Z'] as const).map((axis) => (
+      <GeometryAxisRow
+        key={axis}
+        label={axis}
+        value="1"
+        onChange={(value) => changes.push(`${axis}:${value}`)}
+        onNudgeMinus={() => {}}
+        onNudgePlus={() => {}}
+      />
+    ))}
+  </>);
+  const inputs = [...container.querySelectorAll('input[type="number"]')];
+  assert.deepEqual(inputs.map((input) => (input as HTMLInputElement).labels?.[0]?.textContent), ['X', 'Y', 'Z']);
+  typeInto(inputs[1] as HTMLInputElement, '2');
+  assert.deepEqual(changes, ['Y:2']);
+});
+
 // ---- VisibilityChips -----------------------------------------------------------
 
 it('VisibilityChips: renders the exploded/solo labels in English and translates them (#5882)', async () => {
@@ -370,7 +390,7 @@ it('ExportChangesButton: renders the button label and single-change tooltip in E
       mutationViews: new Map([['model-1', makeChangedView()]]),
     });
   });
-  const container = render(<ExportChangesButton />);
+  const container = render(<ExportChangesButton surface="ribbon" />);
   assert.ok(container.textContent?.includes('Export modified IFC…'));
   assert.equal(resolve('exportChangesButton.tooltipSingle', { count: 1 }), 'Export modified IFC… with 1 change applied');
   assert.equal(resolve('exportChangesButton.tooltipSingle', { count: 2 }), 'Export modified IFC… with 2 changes applied');

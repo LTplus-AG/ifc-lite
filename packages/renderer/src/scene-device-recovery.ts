@@ -5,7 +5,8 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { RenderPipeline } from './pipeline.js';
 import type { BatchedMesh, Mesh } from './types.js';
-import type { InstancedOccurrence, InstancedTemplateCpu, InstancedTemplateGPU } from './scene-instance-types.js';
+import { destroyInstancedTemplateGpu, type InstancedOccurrence, type InstancedTemplateCpu, type InstancedTemplateGPU } from './scene-instance-types.js';
+import { createInstancedRteDeltaStream, type InstancedRteDeltaStream } from './instanced-rte.js';
 import type { TexturedMesh } from './scene.js';
 import { destroyGpuResources, splitMeshDataForBufferLimit } from './scene-geometry.js';
 import { cloneOverrides } from './scene-derived-batches.js';
@@ -83,7 +84,7 @@ export interface SceneRecoveryHost {
   writeInstanceColor(device: GPUDevice, eid: number, color: readonly [number, number, number, number]): void;
   writeOriginalInstanceColors(device: GPUDevice, eid: number, alpha: number): void;
   unionInstancedWorldAabb(
-    eid: number, view: DataView, offset: number,
+    eid: number, view: DataView, offset: number, anchors: Float64Array,
     minX: number, minY: number, minZ: number,
     maxX: number, maxY: number, maxZ: number,
   ): WorldBox;
@@ -146,9 +147,7 @@ export function discardSceneGpuResourcesForRecovery(
   host.texturedMeshes = [];
   for (const entry of host.sharedTextures.values()) entry.texture.destroy();
   host.sharedTextures.clear(); host.rgbaTexturePool.clear(); host.texturedDevice = undefined;
-  for (const template of host.instancedTemplates) {
-    template?.vertexBuffer.destroy(); template?.indexBuffer.destroy(); template?.instanceBuffer.destroy();
-  }
+  for (const template of host.instancedTemplates) if (template) destroyInstancedTemplateGpu(template);
   host.instancedTemplates = new Array(host.instancedTemplateCpu.length);
   host.liveInstancedTemplates = [];
   host.instancedDevice = undefined;
@@ -286,6 +285,7 @@ function restoreInstancedTemplates(host: SceneRecoveryHost, device: GPUDevice): 
     const cpu = host.instancedTemplateCpu[slot];
     if (!cpu) continue;
     let vertexBuffer: GPUBuffer | undefined, indexBuffer: GPUBuffer | undefined, instanceBuffer: GPUBuffer | undefined;
+    let rteDeltas: InstancedRteDeltaStream | undefined;
     try {
       const vertexData = new ArrayBuffer((cpu.positions.length / 3) * 28);
       const floats = new Float32Array(vertexData);
@@ -297,14 +297,15 @@ function restoreInstancedTemplates(host: SceneRecoveryHost, device: GPUDevice): 
       vertexBuffer = createStaticGpuBuffer(device, vertexData, GPUBufferUsage.VERTEX);
       indexBuffer = createStaticGpuBuffer(device, cpu.indices, GPUBufferUsage.INDEX);
       instanceBuffer = createStaticGpuBuffer(device, cpu.instanceData, GPUBufferUsage.VERTEX);
+      const instanceCount = cpu.instanceData.byteLength / INSTANCE_STRIDE_BYTES;
+      rteDeltas = createInstancedRteDeltaStream(device, instanceCount);
       host.instancedTemplates[slot] = {
         modelIndex: cpu.modelIndex, vertexBuffer, indexBuffer, indexCount: cpu.indices.length,
-        instanceBuffer, instanceCount: cpu.instanceData.byteLength / INSTANCE_STRIDE_BYTES,
-        canonicalAnchors: cpu.canonicalAnchors,
+        instanceBuffer, instanceCount, canonicalAnchors: cpu.canonicalAnchors, rteDeltas,
         bounds: null, maxOccRadius: 0, selectedCount: 0,
       };
     } catch (error) {
-      vertexBuffer?.destroy(); indexBuffer?.destroy(); instanceBuffer?.destroy();
+      vertexBuffer?.destroy(); indexBuffer?.destroy(); instanceBuffer?.destroy(); rteDeltas?.buffer.destroy();
       throw error;
     }
   }
@@ -315,7 +316,7 @@ function restoreInstancedTemplates(host: SceneRecoveryHost, device: GPUDevice): 
       const template = host.instancedTemplates[occurrence.templateIndex];
       if (!cpu || !template || !Number.isFinite(cpu.localMin[0])) continue;
       const world = host.unionInstancedWorldAabb(
-        eid, new DataView(cpu.instanceData), occurrence.byteOffset,
+        eid, new DataView(cpu.instanceData), occurrence.byteOffset, cpu.canonicalAnchors,
         cpu.localMin[0], cpu.localMin[1], cpu.localMin[2], cpu.localMax[0], cpu.localMax[1], cpu.localMax[2],
       );
       foldOccurrenceWorldBox(template, world);

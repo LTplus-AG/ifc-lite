@@ -75,6 +75,7 @@ export const chatEn = {
   'chat.panel.attachTooltipDisabled': 'Selected model does not support attachments',
   'chat.panel.removeAttachment': 'Remove attachment {name}',
   'chat.panel.placeholderNeedsKey': 'Add your {provider} key to chat with this model',
+  'chat.panel.messageLabel': 'Chat message',
   'chat.panel.placeholderDefault': 'Ask anything...',
   'chat.panel.stopGeneratingTooltip': 'Stop generating',
   'chat.panel.sendTooltip': 'Send (Enter)',

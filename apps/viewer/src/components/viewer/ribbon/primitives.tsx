@@ -46,9 +46,12 @@ function RibbonTooltip({ label, shortcut, tooltip, children }: RibbonTooltipProp
   );
 }
 
-export interface RibbonButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'children'> {
+export interface RibbonContentButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'children'> {
   icon: React.ElementType;
-  label: string;
+  /** Visible runtime content; static commands use RibbonCommand* and a registry id. */
+  contentLabel: string;
+  contentSource: 'registered' | 'export' | 'extension' | 'panel-browser';
+  contentId: string;
   /** Latched/toggled state (aria-pressed). */
   active?: boolean;
   /** Tailwind classes for the latched state; defaults to the shared tint. */
@@ -68,9 +71,9 @@ export interface RibbonButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLB
  * headline commands of each group. Forwards ref so it can serve as a
  * DropdownMenu / Dialog trigger via `asChild`.
  */
-export const RibbonLargeButton = forwardRef<HTMLButtonElement, RibbonButtonProps>(
-  function RibbonLargeButton(
-    { icon: Icon, label, active, activeClassName, tooltip, shortcut, hasMenu, badge, className, onClick, ...rest },
+export const RibbonContentLargeButton = forwardRef<HTMLButtonElement, RibbonContentButtonProps>(
+  function RibbonContentLargeButton(
+    { icon: Icon, contentLabel: label, contentSource, contentId, active, activeClassName, tooltip, shortcut, hasMenu, badge, className, onClick, ...rest },
     ref,
   ) {
     const descriptionId = useId();
@@ -97,13 +100,15 @@ export const RibbonLargeButton = forwardRef<HTMLButtonElement, RibbonButtonProps
             // `w-min` is the min-content width, so multi-word labels still wrap
             // onto two lines instead of widening the button.
             'relative flex h-full w-min min-w-14 shrink-0 select-none flex-col items-center justify-start gap-1 rounded-md px-1 py-1',
-            'text-[10px] font-medium leading-[1.15] text-foreground/90 transition-colors',
+            'text-2xs font-medium leading-[1.15] text-foreground/90 transition-colors',
             'hover:bg-muted/70 disabled:pointer-events-none disabled:opacity-40',
             'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
             active && (activeClassName ?? RIBBON_ACTIVE_CLASS),
             className,
           )}
           {...rest}
+          data-ribbon-content-source={contentSource}
+          data-ribbon-content-id={contentId}
         >
           <Icon className="h-8 w-8 shrink-0" aria-hidden="true" />
           <span className="flex h-[2.3em] w-full items-start justify-center gap-0.5">
@@ -123,9 +128,9 @@ export const RibbonLargeButton = forwardRef<HTMLButtonElement, RibbonButtonProps
  * Small ribbon button: one icon+label row, stacked up to three per
  * column inside a group (wrap in `RibbonSmallStack`).
  */
-export const RibbonSmallButton = forwardRef<HTMLButtonElement, RibbonButtonProps>(
-  function RibbonSmallButton(
-    { icon: Icon, label, active, activeClassName, tooltip, shortcut, hasMenu, badge, className, onClick, ...rest },
+export const RibbonContentSmallButton = forwardRef<HTMLButtonElement, RibbonContentButtonProps>(
+  function RibbonContentSmallButton(
+    { icon: Icon, contentLabel: label, contentSource, contentId, active, activeClassName, tooltip, shortcut, hasMenu, badge, className, onClick, ...rest },
     ref,
   ) {
     return (
@@ -141,13 +146,15 @@ export const RibbonSmallButton = forwardRef<HTMLButtonElement, RibbonButtonProps
           }}
           className={cn(
             'relative flex h-[20px] w-full min-w-0 select-none items-center gap-1.5 rounded px-1.5',
-            'text-[11px] leading-none text-foreground/90 transition-colors',
+            'text-2xs leading-none text-foreground/90 transition-colors',
             'hover:bg-muted/70 disabled:pointer-events-none disabled:opacity-40',
             'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
             active && (activeClassName ?? RIBBON_ACTIVE_CLASS),
             className,
           )}
           {...rest}
+          data-ribbon-content-source={contentSource}
+          data-ribbon-content-id={contentId}
         >
           <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span className="truncate">{label}</span>
@@ -182,11 +189,14 @@ export function RibbonGroup({ label, children, className }: {
   className?: string;
 }) {
   return (
-    <div role="group" aria-label={label} className={cn('flex h-full shrink-0 flex-col px-1.5', className)}>
+    <div
+      // Ribbon commands need a named ARIA group; a fieldset would add form semantics here.
+      // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
+      role="group" aria-label={label} className={cn('flex h-full shrink-0 flex-col px-1.5', className)}>
       <div className="flex min-h-0 flex-1 items-stretch justify-center gap-0.5 pt-1">
         {children}
       </div>
-      <div className="pb-1 pt-0.5 text-center text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+      <div className="pb-1 pt-0.5 text-center text-2xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
         {label}
       </div>
     </div>

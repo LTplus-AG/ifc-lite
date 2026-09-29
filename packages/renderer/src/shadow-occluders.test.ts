@@ -18,6 +18,8 @@ import {
   type ShadowOccluderSources,
 } from './shadow-occluders.js';
 import { ShadowPass } from './shadow-pass.js';
+import { INSTANCED_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
+import { INSTANCE_FLAGS_OFFSET } from './instanced-render.js';
 import type { BatchedMesh, Mesh } from './types.js';
 import type { InstancedTemplateGPU, TexturedMesh } from './scene.js';
 
@@ -56,6 +58,7 @@ function instancedTemplate(): InstancedTemplateGPU {
     instanceBuffer: buf('inst-inst'),
     instanceCount: 5,
     canonicalAnchors: new Float64Array(15),
+    rteDeltas: { buffer: buf('inst-rte'), scratch: new Float32Array(40), camera: null, runs: [] },
     bounds: null,
     maxOccRadius: 1,
     selectedCount: 0,
@@ -105,6 +108,16 @@ describe('collectShadowOccluders', () => {
     const inst = draws.find((d) => d.kind === 'instanced');
     assert.ok(inst?.instanceBuffer, 'instance buffer missing');
     assert.equal(inst?.instanceCount, 5);
+    assert.equal((inst?.rteDeltas?.buffer as unknown as { label: string }).label, 'inst-rte', 'the template\'s own delta stream (#6393)');
+  });
+
+  it('skips an instanced occluder with no delta stream instead of drawing stale deltas (#6393)', () => {
+    const rec = emptyRecord();
+    const pass = new ShadowPass(mockShadowDevice(), 1024);
+    const draws = collectShadowOccluders({ batches: [], instanced: [instancedTemplate()], textured: [] });
+    delete draws[0]!.rteDeltas;
+    pass.render(mockEncoder(rec), { m: new Float32Array(16) }, draws);
+    assert.deepEqual(rec.drawPipelines, []);
   });
 
   it('skips an evicted (non-resident) batch', () => {
@@ -553,15 +566,14 @@ describe('ShadowPass instanced pipeline', () => {
 
     const inst = dev.pipelines.find((p) => p.label === 'shadow-pipeline-vs_shadow_instanced');
     assert.ok(inst, 'instanced shadow pipeline built');
-    const instanceLayout = inst!.buffers?.find((b) => b.stepMode === 'instance');
-    assert.ok(instanceLayout, 'slot-1 instance-step layout present');
+    // #6393: the depth pass reads the colour pass's layout, not its own copy.
+    assert.equal(inst!.buffers, INSTANCED_VERTEX_BUFFERS);
+    const instanceLayout = inst!.buffers?.[1];
+    assert.equal(instanceLayout?.stepMode, 'instance', 'slot-1 instance-step layout present');
     const flags = [...instanceLayout!.attributes].find((a) => a.shaderLocation === 9);
     assert.ok(flags, 'flags lane (shaderLocation 9) bound');
-    // Offset 84 within the V1 prefix (mat4 + id + rgba + flags).
-    assert.equal(flags!.offset, 84);
+    // Offset 84 within the record (mat4 + id + rgba + flags).
+    assert.equal(flags!.offset, INSTANCE_FLAGS_OFFSET);
     assert.equal(flags!.format, 'uint32');
-    // The mat4 columns (3..6) stay bound so the transform still arrives.
-    const locs = [...instanceLayout!.attributes].map((a) => a.shaderLocation).sort((x, y) => x - y);
-    assert.deepEqual(locs, [3, 4, 5, 6, 9, 10, 11]);
   });
 });

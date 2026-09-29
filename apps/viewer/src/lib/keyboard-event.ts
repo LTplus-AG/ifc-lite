@@ -75,6 +75,20 @@ export function isTextEntryElement(target: unknown): boolean {
   return typeof el.closest === 'function' && el.closest(INPUT_ROLE_SELECTOR) !== null;
 }
 
+/**
+ * True when `target` edits text itself (`<input>`, `<textarea>`, a native
+ * `<select>`, a `contenteditable` host, a CodeMirror editor), so Ctrl+Z there
+ * is the browser's text undo. An ARIA combobox or menu BUTTON is not one:
+ * after a pick it keeps focus, and Ctrl+Z must still undo the model edit the
+ * pick made (#6232 M2.5).
+ */
+export function isTextEditingElement(target: unknown): boolean {
+  const el = target as (Partial<HTMLElement> | null | undefined);
+  if (!el) return false;
+  if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable === true) return true;
+  return typeof el.closest === 'function' && el.closest('.cm-editor') !== null;
+}
+
 /** {@link isTextEntryElement} for a key event's target. */
 export function isTextEntryTarget(e: Event): boolean {
   return isTextEntryElement(e.target);

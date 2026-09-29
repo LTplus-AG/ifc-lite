@@ -3,15 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Workspace-panel toggling shared by the classic toolbar's Panels menu
- * and the ribbon's Analyze / Author tabs. Encodes the single-tenant
- * right-slot and bottom-slot rules (one docked panel per region) plus
- * the analysis-extension handoff, exactly as the toolbar always did.
+ * Workspace-panel toggling for the ribbon's Analyze / Author tabs.
+ * Encodes the single-tenant right-slot and bottom-slot rules plus
+ * analysis-extension handoff.
  */
 
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
-import { useTranslation } from '@/i18n';
-import { isWorkspacePanelId, panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
 import {
   closeActiveAnalysisExtension,
@@ -35,7 +32,6 @@ export type WorkspacePanel = BottomPanel | RightPanel | string;
 
 /** `surface`: the chrome these controls sit in, reported with each open (#5618). */
 export function useWorkspacePanelControls(surface?: UiSurface) {
-  const { t, revision } = useTranslation();
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
   const bcfPanelVisible = useViewerStore((state) => state.bcfPanelVisible);
@@ -65,8 +61,7 @@ export function useWorkspacePanelControls(surface?: UiSurface) {
   const poppedOutIds = useViewerStore((state) => state.poppedOutIds);
   // Zones (#1810) has no dedicated visibility flag — it is a pure sidebar
   // panel, driven by `sidebarActivePanel`. Reading it HERE rather than in each
-  // toolbar is what keeps the classic strip and the ribbon from drifting on
-  // whether the Zones button looks active (#2508).
+  // hook keeps the ribbon's Zones button in sync with the active panel (#2508).
   const sidebarActivePanel = useViewerStore((state) => state.sidebarActivePanel);
   const setRightPanelCollapsed = useViewerStore((state) => state.setRightPanelCollapsed);
 
@@ -286,18 +281,8 @@ export function useWorkspacePanelControls(surface?: UiSurface) {
     sourcesPanelVisible,
   ]);
 
-  const workspacePanelLabel = useMemo(() => {
-    if (activeWorkspacePanels.size === 0) return null;
-    if (activeWorkspacePanels.size > 1) return t('workspacePanels.multiplePanels');
-    const id = activeWorkspacePanels.values().next().value;
-    if (id === 'addElement') return t('workspacePanels.author.addElement');
-    if (id && isWorkspacePanelId(id)) return t(panelTitleKey(id));
-    return activeAnalysisExtension?.label ?? t('shellChrome.layout.analysisFallback');
-  }, [activeAnalysisExtension?.label, activeWorkspacePanels, revision, t]);
-
   return {
     activeWorkspacePanels,
-    workspacePanelLabel,
     handleToggleBottomPanel,
     handleToggleRightPanel,
     handleToggleAnalysisExtension,

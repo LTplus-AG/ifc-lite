@@ -21,7 +21,7 @@ import type { TranslationValue } from '../types';
  *  - Extension-contributed entries (`ext:*`) — `payload.title`, sourced
  *    from the extension registry at runtime, not a literal in this repo.
  *  - Built-in panel rows resolve their names from the workspace panel registry
- *    so the palette, rail, ribbon, and classic toolbar display the same name.
+ *    so the palette, rail, and ribbon display the same name.
  */
 export const commandPaletteEn = {
   // ── File ──
@@ -55,6 +55,10 @@ export const commandPaletteEn = {
   'commandPalette.tool.section.label': 'Section',
   'commandPalette.tool.annotate.label': 'Annotate',
   'commandPalette.tool.addElement.label': 'Add Element',
+  'commandPalette.tool.wall.label': 'Draw walls',
+  'commandPalette.tool.slab.label': 'Draw slabs',
+  'commandPalette.tool.column.label': 'Place columns',
+  'commandPalette.tool.beam.label': 'Draw beams',
   'commandPalette.tool.editMode.label': 'Toggle Edit Mode',
   'commandPalette.tool.split.label': 'Split selected entity',
   'commandPalette.tool.extensionsAuthor.label': 'Author an extension…',
@@ -101,6 +105,7 @@ export const commandPaletteEn = {
   // ── Preferences ──
   'commandPalette.pref.theme.label': 'Theme',
   'commandPalette.pref.tooltips.label': 'Hover Tooltips',
+  'commandPalette.pref.hoverOutline.label': 'Hover Outline',
   'commandPalette.pref.settings.label': 'Settings…',
 
   // ── Learn ──
@@ -110,6 +115,7 @@ export const commandPaletteEn = {
 
   // ── Chrome ──
   'commandPalette.ariaLabel': 'Command palette',
+  'commandPalette.searchAriaLabel': 'Search commands',
   'commandPalette.searchPlaceholder': 'What do you need?',
   'commandPalette.escKey': 'Esc',
   'commandPalette.noResults': 'No results',

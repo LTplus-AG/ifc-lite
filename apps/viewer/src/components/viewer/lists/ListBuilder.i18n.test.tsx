@@ -28,7 +28,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { StringTable, EntityTableBuilder } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { ListDefinition, ListDataProvider } from '@ifc-lite/lists';
+import { migrateLegacyListDefinition, type ListDefinition, type ListDataProvider } from '@ifc-lite/lists';
 import { render, cleanup, click, type as typeInto } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { en } from '@/i18n/en';
@@ -178,6 +178,10 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     const container = render(
       <ListBuilder providers={[provider]} stores={[store]} initial={null} onSave={() => {}} onCancel={() => {}} onExecute={() => {}} />,
     );
+    const nameInput = container.querySelector<HTMLInputElement>(`input[placeholder="${englishOf('lists.builder.namePlaceholder')}"]`);
+    const descriptionInput = container.querySelector<HTMLInputElement>(`input[placeholder="${englishOf('lists.builder.descriptionPlaceholder')}"]`);
+    assert.equal(nameInput?.getAttribute('aria-label'), englishOf('lists.builder.nameInputLabel'));
+    assert.equal(descriptionInput?.getAttribute('aria-label'), englishOf('lists.builder.descriptionInputLabel'));
     const english = readableStrings(container);
 
     // The "no type selected" paragraph interleaves plain text with a
@@ -202,6 +206,8 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     for (const key of [
       'lists.builder.namePlaceholder',
       'lists.builder.descriptionPlaceholder',
+      'lists.builder.nameInputLabel',
+      'lists.builder.descriptionInputLabel',
       'lists.builder.sectionScope',
       'lists.builder.scopeAllElementsHint',
       'lists.builder.sectionFilters',
@@ -251,123 +257,40 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     assert.ok(after.has(expectedHint), 'filterSnapshotHint must be translated with its interpolated count');
   });
 
-  it('keeps a provider-only saved condition editable until the user removes it (#5894)', () => {
+  it('opens a saved provider-only condition as a List value rule in the shared editor (#6190)', () => {
     const store = buildStore();
     const provider = buildProvider(store);
-    const initial: ListDefinition = {
+    // What localStorage held while the scoped compatibility editor existed.
+    const initial = migrateLegacyListDefinition({
       id: 'legacy-filter', name: 'Legacy filter', createdAt: 1, updatedAt: 1,
       entityTypes: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
       groups: [], unreadableConditions: [{
-        condition: { source: 'attribute', propertyName: 'Name', operator: 'contains', value: 'Wall' },
+        condition: { source: 'attribute', propertyName: 'GlobalId', operator: 'contains', value: 'Wall' },
         reason: 'unsupported-attribute',
       }],
-    };
+    });
     let saved: ListDefinition | undefined;
     const container = render(
       <ListBuilder providers={[provider]} stores={[store]} initial={initial} onSave={(value) => { saved = value; }} onCancel={() => {}} onExecute={() => {}} />,
     );
-    assert.ok(container.textContent?.includes('Attribute'));
+    assert.equal(container.querySelector<HTMLSelectElement>('select[aria-label="List value source"]')?.value, 'attribute');
+    assert.equal(container.querySelector<HTMLSelectElement>('select[aria-label="Attribute"]')?.value, 'GlobalId');
     assert.equal(container.querySelector<HTMLInputElement>('input[placeholder="value"]')?.value, 'Wall');
+    assert.equal(container.querySelector('[role="alert"]'), null, 'a converted condition is not reported as unreadable');
 
     const english = readableStrings(container);
     registerLocale('list-builder-legacy-pseudo', PSEUDO);
     act(() => setLocale('list-builder-legacy-pseudo'));
     const after = readableStrings(container);
-    assertCoverage(english, after, ['lists.builder.compatibilityFilters', 'lists.builder.compatibilityFiltersHint', 'lists.builder.compatibilityActiveWarning', 'lists.builder.compatibilityPresetAriaLabel']);
+    const covered = assertCoverage(english, after, ['lists.builder.listValueSourceAriaLabel', 'lists.builder.attributeAriaLabel', 'lists.builder.operatorAriaLabel']);
+    assert.equal(covered.size, 3);
     act(() => setLocale('en'));
 
     click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
-    assert.equal(saved?.unreadableConditions?.length, 1);
-    assert.equal(saved?.groups?.length, 1);
-    click(container.querySelector('button[aria-label="Remove filter"]') as Element);
-    assert.equal(container.querySelector('input[placeholder="value"]'), null);
-    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
+    assert.deepEqual(saved?.groups, [{ combinator: 'AND', rules: [
+      { kind: 'listCondition', source: 'attribute', propertyName: 'GlobalId', operator: 'contains', value: 'Wall' },
+    ] }]);
     assert.deepEqual(saved?.unreadableConditions, []);
-  });
-
-  it('authors zone and exact spatial modes through the retained Lists evaluator (#5894)', () => {
-    useViewerStore.setState({ zoneSets: [
-      { id: 'sections', name: 'Sections', zones: [{ id: 'a', name: 'Section A', center: [0, 0, 0], size: [1, 1, 1], rotationY: 0 }], visible: true, createdAt: 1, updatedAt: 1 },
-      { id: 'takt', name: 'Takt', zones: [{ id: 'b', name: 'Takt B', center: [0, 0, 0], size: [1, 1, 1], rotationY: 0 }], visible: true, createdAt: 1, updatedAt: 1 },
-    ] } as never);
-    const store = buildStore();
-    let saved: ListDefinition | undefined;
-    const initial: ListDefinition = {
-      id: 'compat-authoring', name: 'Compatibility authoring', createdAt: 1, updatedAt: 1,
-      entityTypes: [], groups: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
-    };
-    const container = render(
-      <ListBuilder providers={[buildProvider(store)]} stores={[store]} initial={initial}
-        onSave={(value) => { saved = value; }} onCancel={() => {}} onExecute={() => {}} />,
-    );
-    const preset = container.querySelector<HTMLSelectElement>('select[aria-label="List filter kind"]')!;
-    const addFilter = () => click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Add filter') as Element);
-    addFilter();
-    assert.equal(preset.value, 'zone');
-    selectValue(container.querySelector<HTMLSelectElement>('select[aria-label="Zone set"]')!, 'takt');
-    const mode = container.querySelector<HTMLSelectElement>('select[aria-label="Zone display mode"]')!;
-    for (const value of ['Straddles', 'Volume (mesh)', 'Volume breakdown (mesh)', 'Zone']) {
-      selectValue(mode, value);
-      assert.equal(mode.value, value);
-    }
-    typeInto(container.querySelector<HTMLInputElement>('input[placeholder="zone name"]')!, 'Takt B');
-    selectValue(preset, 'spatial');
-    addFilter();
-    const level = container.querySelector<HTMLSelectElement>('select[aria-label="Spatial level"]')!;
-    selectValue(level, 'Building');
-    selectValue([...container.querySelectorAll<HTMLSelectElement>('select[aria-label="Operator"]')][1], 'contains');
-    typeInto(container.querySelector<HTMLInputElement>('input[placeholder="Building name"]')!, 'East');
-    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
-    assert.deepEqual(saved?.unreadableConditions?.map((row) => row.condition), [
-      { source: 'zone', psetName: 'takt', propertyName: 'Zone', operator: 'equals', value: 'Takt B' },
-      { source: 'spatial', propertyName: 'Building', operator: 'contains', value: 'East' },
-    ]);
-  });
-
-  it('promotes a now-lossless inherited property into every AND Rules group (#5894)', () => {
-    const store = buildStore();
-    let saved: ListDefinition | undefined;
-    const initial: ListDefinition = {
-      id: 'inherited-property', name: 'Inherited property', createdAt: 1, updatedAt: 1,
-      entityTypes: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
-      groups: [{ rules: [], combinator: 'AND' }, { rules: [], combinator: 'AND' }],
-      unreadableConditions: [{ condition: {
-        source: 'property', psetName: 'Pset_Test', propertyName: 'Code', operator: 'equals', value: 'A', inherit: 'aggregation',
-      }, reason: 'inherit' }],
-    };
-    const container = render(
-      <ListBuilder providers={[buildProvider(store)]} stores={[store]} initial={initial}
-        onSave={(definition) => { saved = definition; }} onCancel={() => {}} onExecute={() => {}} />,
-    );
-    const inheritance = container.querySelector<HTMLSelectElement>('select[aria-label="Where a missing value may come from"]');
-    assert.equal(inheritance?.value, 'aggregation');
-    selectValue(inheritance!, '');
-    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
-    assert.deepEqual(saved?.unreadableConditions, []);
-    assert.deepEqual(saved?.groups?.map((group) => group.rules.map((rule) => rule.kind)), [['property'], ['property']]);
-  });
-
-  it('keeps a provider filter outside OR groups when promotion would change its meaning (#5894)', () => {
-    const store = buildStore();
-    let saved: ListDefinition | undefined;
-    const initial: ListDefinition = {
-      id: 'or-property', name: 'OR property', createdAt: 1, updatedAt: 1,
-      entityTypes: [], columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
-      groups: [{ rules: [], combinator: 'OR' }],
-      unreadableConditions: [{ condition: {
-        source: 'property', psetName: 'Pset_Test', propertyName: 'Code', operator: 'equals', value: 'A', inherit: 'aggregation',
-      }, reason: 'inherit' }],
-    };
-    const container = render(
-      <ListBuilder providers={[buildProvider(store)]} stores={[store]} initial={initial}
-        onSave={(definition) => { saved = definition; }} onCancel={() => {}} onExecute={() => {}} />,
-    );
-    selectValue(container.querySelector<HTMLSelectElement>('select[aria-label="Where a missing value may come from"]')!, '');
-    click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
-    assert.equal(saved?.groups?.[0]?.rules.length, 0);
-    assert.deepEqual(saved?.unreadableConditions?.map(({ condition }) => condition), [{
-      source: 'property', psetName: 'Pset_Test', propertyName: 'Code', operator: 'equals', value: 'A', inherit: undefined,
-    }]);
   });
 
   it('keeps a malformed saved condition visible and removable without evaluating its fields (#5894)', () => {
@@ -391,7 +314,7 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     assert.deepEqual(saved?.unreadableConditions, []);
   });
 
-  it('warns and preserves future source/operator and invalid-value filters instead of rendering broken editors (#5894)', () => {
+  it('warns and preserves future source/operator and invalid-value filters instead of rendering broken editors (#5894, #6190)', () => {
     const store = buildStore();
     const raw = [
       { condition: { source: 'future', propertyName: 'X', operator: 'equals', value: 'a' }, reason: 'unsupported-source' },
@@ -411,11 +334,11 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
         onSave={(definition) => { saved = definition; }} onCancel={() => {}} onExecute={() => {}} />,
     );
     const warning = container.querySelector('[role="alert"]');
-    assert.match(warning?.textContent ?? '', /future: X equals \(unsupported-source\)/);
-    assert.match(warning?.textContent ?? '', /property: Code equals \(invalid-value\)/);
-    assert.match(warning?.textContent ?? '', /property: Code futureOp \(operator\)/);
+    assert.match(warning?.textContent ?? '', /future X equals \(unsupported-source\)/);
+    assert.match(warning?.textContent ?? '', /property Code equals \(invalid-value\)/);
+    assert.match(warning?.textContent ?? '', /property Code futureOp \(operator\)/);
     assert.match(warning?.textContent ?? '', /Malformed saved condition/);
-    assert.equal(container.querySelectorAll('button[aria-label="Remove filter"]').length, 0);
+    assert.equal(container.querySelectorAll('select[aria-label="List value source"]').length, 0, 'no editor for data it cannot read');
     click([...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Save') as Element);
     assert.deepEqual(saved?.unreadableConditions, raw);
     click([...warning!.querySelectorAll('button')][0]);
@@ -452,6 +375,9 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     const openButton = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Custom column'));
     assert.ok(openButton, 'expected the "+ Custom column" opener');
     click(openButton as Element);
+
+    assert.ok(container.querySelector('input[aria-label="Property set"]'));
+    assert.ok(container.querySelector('input[aria-label="Property name"]'));
 
     // The default hint interleaves plain text with two <code> chunks
     // (`{prefix} <code>/…/</code> {suffix} <code>{example}</code>.`), same
@@ -520,6 +446,9 @@ describe('ListBuilder localization (#4918)', { skip: !HAS_CATALOGUE && 'lists.en
     const quantityChip = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Quantity');
     assert.ok(quantityChip, 'expected the "Quantity" source chip');
     click(quantityChip as Element);
+
+    assert.ok(container.querySelector('input[aria-label="Quantity set"]'));
+    assert.ok(container.querySelector('input[aria-label="Quantity name"]'));
 
     const english = readableStrings(container);
     assert.ok(english.has('Qto_… or /Qto_.*/'), 'expected the quantity-set placeholder');

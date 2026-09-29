@@ -3,11 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The user-facing notices a committed wall split emits.
+ * The user-facing notices a committed split emits: a wall split and a
+ * linear-element split. (A refused split is a command refusal: transient and
+ * scoped to the running command, `lib/commands/modeling/runtime.ts`.)
  *
- * `MutationSlice.splitWallAtDistance` is reached from TWO places — the canvas
- * click handler (`selectionHandlers.ts`) and the Split tool's numeric-distance
- * panel (`tools/SplitNumericInput.tsx`) — and both must report the same split
+ * `MutationSlice.splitWallAtDistance` is reached from TWO places — the
+ * `element.split` command's click and its cursor distance entry
+ * (`tools/SplitCursorInput.tsx`) — and both must report the same split
  * the same way. They previously each inlined their own copy of the
  * "(N openings reassigned)" wording, and #3023 taught only the click handler to
  * also surface `openings.skipped`, so committing the identical split by typing
@@ -57,9 +59,9 @@ export function formatOpeningReassignSuffix(op: OpeningReassignCounts): string {
  * Announce a wall split that has already been committed.
  *
  * Always emits the success toast. Additionally warns when
- * `openings.skipped > 0`: those openings stay attached to the source wall the
- * split has just tombstoned rather than moving to either half, so they can end
- * up orphaned.
+ * `openings.skipped > 0`: those openings stay attached to the source wall,
+ * unchanged, even when they now lie in the new piece (#6233: the source is
+ * the larger piece, reshaped in place), so they can end up misplaced.
  *
  * `skipped` is incremented at twelve distinct sites in
  * `@/lib/wall-opening-reassign.ts` (lines 123-203), only one of which is an
@@ -78,3 +80,10 @@ export function notifyWallSplit(op: OpeningReassignCounts): void {
     );
   }
 }
+
+/** Announce a committed split: a wall split carries its opening counts, a linear one none. */
+export function notifySplitCommitted(result: { ok: true; openings?: OpeningReassignCounts }): void {
+  if (result.openings) notifyWallSplit(result.openings);
+  else toast.success(`Element split — ${shortcutLabel('edit.undo')} to undo`);
+}
+

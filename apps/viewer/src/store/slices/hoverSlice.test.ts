@@ -4,7 +4,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { hoverTeardown } from './hoverSlice.js';
+import { create } from 'zustand';
+import { createHoverSlice, hoverTeardown, type HoverSlice } from './hoverSlice.js';
 import { modelRemovedScope } from '../teardown-scope.js';
 import type { FederatedModel } from '../types.js';
 
@@ -91,5 +92,51 @@ describe('hoverTeardown — all-models-cleared', () => {
 
     assert.deepStrictEqual(patch.hoverState, { entityId: null, screenX: 0, screenY: 0 });
     assert.deepStrictEqual(patch.contextMenu, { isOpen: false, entityId: null, screenX: 0, screenY: 0 });
+  });
+});
+
+/**
+ * The hover pre-highlight outline (#5390) is on by default, independent of
+ * `hoverTooltipsEnabled` (`uiSlice`, defaults to false — see
+ * `UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED`): a first-time user should see the
+ * highlight without also turning on tooltips.
+ */
+describe('hoverSlice — hoverHighlightEnabled (#5390)', () => {
+  it('defaults to true and can be toggled independently of hoverState', () => {
+    let state: ReturnType<typeof createHoverSlice>;
+    const set = (partial: Partial<typeof state> | ((s: typeof state) => Partial<typeof state>)) => {
+      state = { ...state, ...(typeof partial === 'function' ? partial(state) : partial) };
+    };
+    state = createHoverSlice(set as any, (() => state) as any, {} as any);
+
+    assert.equal(state.hoverHighlightEnabled, true);
+    state.toggleHoverHighlight();
+    assert.equal(state.hoverHighlightEnabled, false);
+    assert.deepStrictEqual(state.hoverState, { entityId: null, screenX: 0, screenY: 0 }, 'unrelated to hoverState');
+  });
+});
+
+// Orbit/pan call clearHover on every pointermove. A fresh empty object each
+// time notified every hoverState subscriber (the Viewport among them) at input
+// rate while nothing had changed (#5390 made hover picking default-on).
+describe('clearHover', () => {
+  it('does not notify subscribers when hover is already clear', () => {
+    const store = create<HoverSlice>()(createHoverSlice);
+    let notified = 0;
+    store.subscribe(() => { notified += 1; });
+    store.getState().clearHover();
+    store.getState().clearHover();
+    assert.equal(notified, 0);
+  });
+
+  it('clears a hovered entity, notifying once', () => {
+    const store = create<HoverSlice>()(createHoverSlice);
+    store.getState().setHoverState({ entityId: 7, screenX: 1, screenY: 2 });
+    let notified = 0;
+    store.subscribe(() => { notified += 1; });
+    store.getState().clearHover();
+    store.getState().clearHover();
+    assert.equal(store.getState().hoverState.entityId, null);
+    assert.equal(notified, 1);
   });
 });

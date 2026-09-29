@@ -378,7 +378,7 @@ export function EpsgLookupDialog({ onSelect, children }: EpsgLookupDialogProps) 
         <div className="px-4 pb-3">
           <Input
             ref={focusSearch}
-            placeholder={t('properties.epsgLookup.searchPlaceholder')}
+            placeholder={t('properties.epsgLookup.searchPlaceholder')} aria-label={t('properties.epsgLookup.searchInputLabel')}
             value={query}
             onChange={handleInputChange}
             leftIcon={loading ? <Spinner size="sm" /> : <Search className="h-3.5 w-3.5" />}

@@ -111,4 +111,15 @@ describe('sumResidentGpuBytes', () => {
     assert.strictEqual(r.instanced, 2800 + 1200 + 88 * 32);
     assert.strictEqual(r.total, r.meshes + r.instanced);
   });
+
+  it('counts each template\'s RTE delta stream (#6393)', () => {
+    const r = sumResidentGpuBytes({
+      batches: [],
+      partialBatches: [],
+      meshes: [],
+      textured: [],
+      instanced: [{ vertexBuffer: buf(2800), indexBuffer: buf(1200), instanceBuffer: buf(88 * 32), rteDeltas: { buffer: buf(32 * 32) } }],
+    });
+    assert.strictEqual(r.instanced, 2800 + 1200 + 88 * 32 + 32 * 32);
+  });
 });

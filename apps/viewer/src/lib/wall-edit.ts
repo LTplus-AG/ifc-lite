@@ -16,6 +16,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { fromNativeLength } from '@ifc-lite/create';
 import {
   asExpressIdRef,
   readAttributes,
@@ -23,10 +24,22 @@ import {
   resolveRotationState,
 } from './placement-core.js';
 
+/** Only these classes are walls; a beam or member built by the in-store
+ * builders carries the same rectangle-profile + explicit-RefDirection shape,
+ * so the representation alone cannot tell them apart. */
+const WALL_STEP_TYPES = new Set(['IFCWALL', 'IFCWALLSTANDARDCASE']);
+
+/**
+ * Every length on a {@link WallEditChain} is in METRES — the viewer's render
+ * and authoring space — whatever the file's length unit. Raw STEP reads are
+ * in native units (e.g. millimetres) and are multiplied by the model's
+ * `lengthUnitScale` on the way in; the ids are what a writer needs to divide
+ * back out (#6233).
+ */
 export interface WallEditChain {
   /** IfcLocalPlacement.RelativePlacement.Location — the wall's start point. */
   startPointId: number;
-  /** Current start coordinates (storey-local). */
+  /** Current start coordinates (storey-local, metres). */
   startCoordinates: [number, number, number];
   /** IfcAxis2Placement3D.RefDirection — wall direction (start→end). */
   refDirectionId: number;
@@ -44,6 +57,8 @@ export interface WallEditChain {
   extrudedSolidId: number;
   /** Extrusion depth ( = wall height in metres ); `NaN` when the slot wasn't a number. */
   height: number;
+  /** The native-unit → metre factor the lengths above were scaled by. */
+  lengthUnitScale: number;
 }
 
 /**
@@ -57,13 +72,19 @@ export interface WallEditChain {
  * profile / extruded-solid pair. Callers should treat null as
  * "endpoints not editable" and hide their drag handles rather than
  * crashing.
+ *
+ * `lengthUnitScale` is the model's native-unit → metre factor
+ * (`getModelLengthUnitScale`); the viewer's slice actions always pass it.
  */
 export function resolveWallEditChain(
   dataStore: IfcDataStore,
   view: MutablePropertyView,
   editor: StoreEditor,
   expressId: number,
+  lengthUnitScale = 1,
 ): WallEditChain | null {
+  const stepType = editor.getEntityType(expressId);
+  if (!stepType || !WALL_STEP_TYPES.has(stepType.toUpperCase())) return null;
   const wallAttrs = readAttributes(dataStore, view, editor, expressId);
   if (!wallAttrs) return null;
 
@@ -131,17 +152,22 @@ export function resolveWallEditChain(
   const depth = solidAttrs[3];
   const height = typeof depth === 'number' ? depth : NaN;
 
+  // In-store-authored walls are native-unit too (`addWallToStore` converts
+  // its metre params), so the scale applies to every wall alike.
+  const m = (native: number) => fromNativeLength({ lengthUnitScale }, native);
+  const [sx, sy, sz] = chain.coordinates;
   return {
     startPointId: chain.cartesianPointId,
-    startCoordinates: chain.coordinates,
+    startCoordinates: [m(sx), m(sy), m(sz)],
     refDirectionId: rot.refDirectionId,
     refDirection: rot.refDirection,
     profileId,
-    wallLength: xdim,
-    thickness: ydim,
+    wallLength: m(xdim),
+    thickness: m(ydim),
     profileOriginPointId,
     extrudedSolidId: solidId,
-    height,
+    height: m(height),
+    lengthUnitScale,
   };
 }
 
@@ -293,10 +319,11 @@ export type WallResizeResult =
 
 /**
  * Resize a rectangular-profile wall by setting new start AND end
- * points. Updates four entities atomically (from the caller's
- * perspective — the four writes still land as four mutations on
- * the undo stack today; a batched-mutation primitive is a planned
- * follow-up so a drag interaction collapses to one undo step).
+ * points, in the wall's native STEP units, straight through the
+ * editor with no history. The viewer's undoable resize is
+ * `MutationSlice.resizeWall` (`store/slices/mutation-wall-resize.ts`):
+ * it works in metres, writes the same four entities as one batched
+ * undo step, and folds an endpoint drag's frames into that step.
  *
  *   - wall placement origin (IfcCartesianPoint)
  *   - RefDirection (IfcDirection)  → new normalised (end-start)

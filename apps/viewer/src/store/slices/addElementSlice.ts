@@ -19,18 +19,10 @@
  */
 
 import { type StateCreator } from 'zustand';
+import type { AuthoredElementKind } from './authoringDefaultsSlice.js';
 
-export type AddElementType =
-  | 'wall'
-  | 'slab'
-  | 'beam'
-  | 'column'
-  | 'door'
-  | 'window'
-  | 'space'
-  | 'roof'
-  | 'plate'
-  | 'member';
+/** The kinds the panel places; the Model workspace's defaults share them. */
+export type AddElementType = AuthoredElementKind;
 export type AddElementSlabMode = 'rectangle' | 'polygon';
 
 /**
@@ -44,11 +36,6 @@ export interface AddElementVec3 {
   x: number;
   y: number;
   z: number;
-}
-
-export interface AddElementWallParams {
-  Thickness: number;
-  Height: number;
 }
 
 export interface AddElementSlabParams {
@@ -78,6 +65,14 @@ export interface AddElementWindowParams {
   Width: number;
   Height: number;
   FrameThickness: number;
+  /** Sill height above the storey floor (m) — the window's storey-local Z. */
+  SillHeight: number;
+}
+
+/** The (model, storey) a placement gesture authors into — see `addElementGestureStorey`. */
+export interface AddElementStoreyRef {
+  modelId: string;
+  storeyId: number;
 }
 
 export interface AddElementSpaceParams {
@@ -158,7 +153,13 @@ export interface AddElementSlice {
   addElementStoreyId: number | null;
   /** Target model id; `null` ⇒ auto-pick the active model on click. */
   addElementModelId: string | null;
-  addElementWallParams: AddElementWallParams;
+  /**
+   * The running `wall.place` was started by this panel's wall type (#6232):
+   * the panel stays up while it draws. A wall started from the Model
+   * workspace's rail, W or the palette clears it, so the rail's wall does
+   * not reopen the panel it supersedes.
+   */
+  addElementDrawsWall: boolean;
   addElementSlabParams: AddElementSlabParams;
   addElementBeamParams: AddElementBeamParams;
   addElementColumnParams: AddElementColumnParams;
@@ -175,13 +176,30 @@ export interface AddElementSlice {
   addElementSlabMode: AddElementSlabMode;
   /** In-progress click points. Cleared on tool exit, type change, or Esc. */
   addElementPendingPoints: AddElementVec3[];
-  /** Live preview point under the cursor (snap-aware). */
+  /**
+   * Live preview point under the cursor — the snapped point PROJECTED onto
+   * the workplane (the target storey's floor), i.e. exactly what the next
+   * click commits. Pending points are stored the same way.
+   */
   addElementHoverPoint: AddElementVec3 | null;
+  /**
+   * The raw snapped 3D point the hover was projected from, when it is off the
+   * workplane (a slab top, a wall face). The overlay draws a drop line from
+   * here to `addElementHoverPoint`; null when the two coincide.
+   */
+  addElementHoverSnapPoint: AddElementVec3 | null;
+  /**
+   * The storey a multi-click gesture was locked to at its FIRST click
+   * (#6233). Every later click, the hover preview and the commit use it, so a
+   * wall started on one storey cannot be committed on another. Null between
+   * gestures; cleared with the pending points.
+   */
+  addElementGestureStorey: AddElementStoreyRef | null;
 
   setAddElementType: (t: AddElementType) => void;
   setAddElementStoreyId: (id: number | null) => void;
   setAddElementModelId: (id: string | null) => void;
-  setAddElementWallParams: (p: Partial<AddElementWallParams>) => void;
+  setAddElementDrawsWall: (on: boolean) => void;
   setAddElementSlabParams: (p: Partial<AddElementSlabParams>) => void;
   setAddElementBeamParams: (p: Partial<AddElementBeamParams>) => void;
   setAddElementColumnParams: (p: Partial<AddElementColumnParams>) => void;
@@ -195,18 +213,18 @@ export interface AddElementSlice {
   setAddElementAutoSpacePreview: (preview: AddElementAutoSpacePreview | null) => void;
   setAddElementSlabMode: (m: AddElementSlabMode) => void;
   appendAddElementPendingPoint: (p: AddElementVec3) => void;
-  setAddElementHoverPoint: (p: AddElementVec3 | null) => void;
+  setAddElementHoverPoint: (p: AddElementVec3 | null, snap?: AddElementVec3 | null) => void;
+  setAddElementGestureStorey: (ref: AddElementStoreyRef | null) => void;
   clearAddElementPending: () => void;
 }
 
 const ADD_ELEMENT_DEFAULTS = {
   type: 'wall' as AddElementType,
-  wall: { Thickness: 0.2, Height: 3 } as AddElementWallParams,
   slab: { Width: 5, Depth: 5, Thickness: 0.3 } as AddElementSlabParams,
   beam: { Width: 0.3, Height: 0.5 } as AddElementBeamParams,
   column: { Width: 0.4, Depth: 0.4, Height: 3 } as AddElementColumnParams,
   door: { Width: 0.9, Height: 2.1, FrameThickness: 0.05 } as AddElementDoorParams,
-  window: { Width: 1.2, Height: 1.5, FrameThickness: 0.05 } as AddElementWindowParams,
+  window: { Width: 1.2, Height: 1.5, FrameThickness: 0.05, SillHeight: 0.9 } as AddElementWindowParams,
   space: { Width: 4, Depth: 4, Height: 3 } as AddElementSpaceParams,
   roof: { Width: 8, Depth: 8, Thickness: 0.3 } as AddElementRoofParams,
   plate: { Width: 1, Depth: 1, Thickness: 0.02 } as AddElementPlateParams,
@@ -220,11 +238,19 @@ const ADD_ELEMENT_DEFAULTS = {
   } as AddElementAutoSpaceParams,
 };
 
+const CLEARED_GESTURE: Pick<AddElementSlice,
+  'addElementPendingPoints' | 'addElementHoverPoint' | 'addElementHoverSnapPoint' | 'addElementGestureStorey'> = {
+  addElementPendingPoints: [],
+  addElementHoverPoint: null,
+  addElementHoverSnapPoint: null,
+  addElementGestureStorey: null,
+};
+
 export const createAddElementSlice: StateCreator<AddElementSlice, [], [], AddElementSlice> = (set) => ({
   addElementType: ADD_ELEMENT_DEFAULTS.type,
   addElementStoreyId: null,
   addElementModelId: null,
-  addElementWallParams: { ...ADD_ELEMENT_DEFAULTS.wall },
+  addElementDrawsWall: false,
   addElementSlabParams: { ...ADD_ELEMENT_DEFAULTS.slab },
   addElementBeamParams: { ...ADD_ELEMENT_DEFAULTS.beam },
   addElementColumnParams: { ...ADD_ELEMENT_DEFAULTS.column },
@@ -239,12 +265,14 @@ export const createAddElementSlice: StateCreator<AddElementSlice, [], [], AddEle
   addElementSlabMode: 'rectangle',
   addElementPendingPoints: [],
   addElementHoverPoint: null,
+  addElementHoverSnapPoint: null,
+  addElementGestureStorey: null,
 
   setAddElementType: (addElementType) =>
     // Switching types resets the pending-click queue — a wall's start
     // doesn't make sense as a slab's first corner. Hover is cleared
     // alongside so a stale preview doesn't flash with the new shape.
-    set({ addElementType, addElementPendingPoints: [], addElementHoverPoint: null }),
+    set({ addElementType, ...CLEARED_GESTURE }),
   // Auto Spaces' preview is a dry-run detection keyed to the storey it ran
   // against (`AddElementAutoSpacePreview.storeyExpressId`) — nothing re-runs
   // detection when the target storey or model changes, so switching either
@@ -253,12 +281,13 @@ export const createAddElementSlice: StateCreator<AddElementSlice, [], [], AddEle
   // since navigated away from. Clear it here, at the single setter both the
   // panel's Select and its "no longer valid" auto-reset go through, rather
   // than at each call site.
+  // A gesture's pending points sit on the old storey's workplane, so
+  // retargeting the storey or model abandons the gesture too.
   setAddElementStoreyId: (addElementStoreyId) =>
-    set({ addElementStoreyId, addElementAutoSpacePreview: null }),
+    set({ addElementStoreyId, addElementAutoSpacePreview: null, ...CLEARED_GESTURE }),
   setAddElementModelId: (addElementModelId) =>
-    set({ addElementModelId, addElementAutoSpacePreview: null }),
-  setAddElementWallParams: (p) =>
-    set((s) => ({ addElementWallParams: { ...s.addElementWallParams, ...p } })),
+    set({ addElementModelId, addElementAutoSpacePreview: null, ...CLEARED_GESTURE }),
+  setAddElementDrawsWall: (addElementDrawsWall) => set({ addElementDrawsWall }),
   setAddElementSlabParams: (p) =>
     set((s) => ({ addElementSlabParams: { ...s.addElementSlabParams, ...p } })),
   setAddElementBeamParams: (p) =>
@@ -282,10 +311,11 @@ export const createAddElementSlice: StateCreator<AddElementSlice, [], [], AddEle
   setAddElementAutoSpacePreview: (preview) =>
     set({ addElementAutoSpacePreview: preview }),
   setAddElementSlabMode: (addElementSlabMode) =>
-    set({ addElementSlabMode, addElementPendingPoints: [], addElementHoverPoint: null }),
+    set({ addElementSlabMode, ...CLEARED_GESTURE }),
   appendAddElementPendingPoint: (p) =>
     set((s) => ({ addElementPendingPoints: [...s.addElementPendingPoints, p] })),
-  setAddElementHoverPoint: (addElementHoverPoint) => set({ addElementHoverPoint }),
-  clearAddElementPending: () =>
-    set({ addElementPendingPoints: [], addElementHoverPoint: null }),
+  setAddElementHoverPoint: (addElementHoverPoint, snap = null) =>
+    set({ addElementHoverPoint, addElementHoverSnapPoint: addElementHoverPoint ? snap : null }),
+  setAddElementGestureStorey: (addElementGestureStorey) => set({ addElementGestureStorey }),
+  clearAddElementPending: () => set({ ...CLEARED_GESTURE }),
 });

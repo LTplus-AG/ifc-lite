@@ -11,7 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useViewerStore, resolveEntityRef } from '@/store';
-import { useIfc } from '@/hooks/useIfc';
+import { useIfcLoader } from '@/hooks/useIfcLoader';
+import { useIfcFederation } from '@/hooks/useIfcFederation';
 import { useEntityListMultiSelect } from '@/hooks/useEntityListMultiSelect';
 import { Rule, activeGroupRules, type FilterRule } from '@ifc-lite/rules';
 import { toast } from '@/components/ui/toast';
@@ -41,19 +42,20 @@ import { HierarchySortControl } from './hierarchy/HierarchySortControl';
 import { hierarchyRowSelection } from './hierarchy/rowSelection';
 import type { HierarchyRowAction } from './hierarchy/HierarchyRowActions';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
+import { createHierarchyModelsSelector, selectLegacyHierarchyGeometry } from './hierarchy/hierarchy-models-selector';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 
 export function HierarchyPanel() {
   const { t } = useTranslation();
-  const {
-    ifcDataStore,
-    geometryResult,
-    models,
-    setActiveModel,
-    setModelVisibility,
-    removeModel,
-    addModel,
-  } = useIfc();
+  // Narrow subscriptions (#6232 perf): `useIfc()` re-rendered the panel and
+  // every row on each geometry update, a re-meshed element included.
+  const [selectHierarchyModels] = useState(createHierarchyModelsSelector);
+  const models = useViewerStore(selectHierarchyModels);
+  const geometryResult = useViewerStore(selectLegacyHierarchyGeometry);
+  const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
+  const setActiveModel = useViewerStore((s) => s.setActiveModel);
+  const setModelVisibility = useViewerStore((s) => s.setModelVisibility);
+  const { addModel, removeModel } = useIfcFederation(useIfcLoader().loadFile);
   const sourceHost = useSourceHost();
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
   const selectedEntityIds = useViewerStore((s) => s.selectedEntityIds);
@@ -96,9 +98,14 @@ export function HierarchyPanel() {
   // that don't resolve to any federated model rather than querying the
   // fallback store with a raw, un-offset id (#2532 review: could hit an
   // unrelated entity in a multi-model scene and mislabel the chip).
+  // Classes come through the session's mutation views (#6233); they mutate in
+  // place, so mutationVersion re-runs the label.
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const typeIsolationLabel = useMemo(
-    () => computeTypeIsolationLabel(isolatedEntities, models, ifcDataStore),
-    [isolatedEntities, models, ifcDataStore],
+    () => computeTypeIsolationLabel(isolatedEntities, models, ifcDataStore, (modelId) => mutationViews.get(modelId)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isolatedEntities, models, ifcDataStore, mutationViews, mutationVersion],
   );
 
   const hasActiveFilters = selectedStoreys.size > 0 || isolatedEntities !== null || classFilter !== null;
@@ -120,6 +127,7 @@ export function HierarchyPanel() {
     setSortMode,
     groupFilter,
     setGroupFilter,
+    materialReady,
     filteredNodes: rawFilteredNodes,
     storeysNodes: rawStoreysNodes,
     modelsNodes: rawModelsNodes,
@@ -491,7 +499,7 @@ export function HierarchyPanel() {
       <Button
         variant={groupingMode === 'spatial' ? 'default' : 'outline'}
         size="sm"
-        className="h-6 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider"
+        className="h-6 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider"
         onClick={() => setGroupingMode('spatial')}
         title={t('hierarchy.panel.grouping.spatial')}
       >
@@ -501,7 +509,7 @@ export function HierarchyPanel() {
       <Button
         variant={groupingMode === 'type' ? 'default' : 'outline'}
         size="sm"
-        className="h-6 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider"
+        className="h-6 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider"
         onClick={() => setGroupingMode('type')}
         title={t('hierarchy.panel.grouping.class')}
       >
@@ -511,7 +519,7 @@ export function HierarchyPanel() {
       <Button
         variant={groupingMode === 'ifc-type' ? 'default' : 'outline'}
         size="sm"
-        className="h-6 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider"
+        className="h-6 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider"
         onClick={() => setGroupingMode('ifc-type')}
         title={t('hierarchy.panel.grouping.type')}
       >
@@ -521,7 +529,7 @@ export function HierarchyPanel() {
       <Button
         variant={groupingMode === 'material' ? 'default' : 'outline'}
         size="sm"
-        className="h-6 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider"
+        className="h-6 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider"
         onClick={() => setGroupingMode('material')}
         title={t('hierarchy.panel.grouping.materialsTooltip')}
       >
@@ -531,7 +539,7 @@ export function HierarchyPanel() {
       <Button
         variant={groupingMode === 'groups' ? 'default' : 'outline'}
         size="sm"
-        className="h-6 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider"
+        className="h-6 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider"
         onClick={() => setGroupingMode('groups')}
         title={t('hierarchy.panel.grouping.groupsTooltip')}
       >
@@ -553,7 +561,7 @@ export function HierarchyPanel() {
           variant={groupFilter === value ? 'default' : 'outline'}
           size="sm"
           className={cn(
-            'h-5 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider px-1',
+            'h-5 text-2xs flex-1 min-w-0 rounded-none uppercase tracking-wider px-1',
             // Inactive (outline) chips inherited a too-light zinc-400 in light
             // mode (2.52:1 at 10px). Pin a darker foreground for light mode only;
             // dark mode kept at zinc-400 which already passes.
@@ -576,6 +584,7 @@ export function HierarchyPanel() {
         <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
           <Input
             placeholder={t('hierarchy.panel.searchPlaceholder')}
+            aria-label={t('hierarchy.panel.searchInputLabel')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             leftIcon={<Search className="h-4 w-4" />}
@@ -669,6 +678,7 @@ export function HierarchyPanel() {
       <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
         <Input
           placeholder={t('hierarchy.panel.searchPlaceholder')}
+          aria-label={t('hierarchy.panel.searchInputLabel')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           leftIcon={<Search className="h-4 w-4" />}
@@ -693,7 +703,7 @@ export function HierarchyPanel() {
       {groupingMode === 'spatial' && <StoreyDisplayControls />}
 
       {/* Tree */}
-      {searchEmptyState ?? <div ref={parentRef} role="tree" tabIndex={legacyTreeKeyboard.containerTabIndex} aria-label={singleTreeSectionTitle} onKeyDown={legacyTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
+      {searchEmptyState ?? <div ref={parentRef} role="tree" aria-busy={groupingMode === 'material' && !materialReady} tabIndex={legacyTreeKeyboard.containerTabIndex} aria-label={singleTreeSectionTitle} onKeyDown={legacyTreeKeyboard.onKeyDown} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,

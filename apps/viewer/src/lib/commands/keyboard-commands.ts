@@ -11,10 +11,9 @@
  * that names a key asks `shortcutLabel(id)` for it, so a key can no longer be
  * documented one way in the dialog and another on a button.
  *
- * The handlers still live where they did (`useKeyboardShortcuts`,
- * `useKeyboardControls`, the per-tool listeners). The layered dispatcher
- * (#5841) moves them onto this table as `run`, and the surfaces work (#5870)
- * adds `icon` and `surfaces`; neither field exists before its first consumer.
+ * Handlers register by command id with the layered dispatcher (#5841), which
+ * reads the chords and contexts here. Surfaces work (#5870) adds icons and
+ * placements in its own registry.
  *
  * Adding a binding = adding a row here, in the same PR as its handler.
  * `keyboard-commands.test.ts` fails when two rows claim one chord in one
@@ -35,9 +34,14 @@ export type KeyContext =
   | 'overlay'
   | 'tool.walk'
   | 'tool.measure'
-  | 'tool.split'
   | 'tool.addElement'
   | 'tool.spaceSketch'
+  /** While a modeling command runs (Model workspace, charter #6232). */
+  | 'command'
+  /** One modeling command's own keys, e.g. `command.wall.place`. */
+  | `command.${string}`
+  /** While the Model workspace is open (not while walking): its tool rail keys. */
+  | 'workspace.model'
   /** The 2D drawing's measure and annotation tools. */
   | 'drawing2d'
   /** While right mouse is held in the 3D view (fly). */
@@ -80,13 +84,15 @@ export interface KeyCommandDefinition {
 
 const k = (key: string, mods: Omit<KeyChord, 'key'> = {}): KeyChord => ({ key, ...mods });
 
+const DIGITS: readonly KeyChord[] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => k(d));
+
 const ALT_DIGITS: readonly KeyChord[] = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
   .map((d) => k(`code:Digit${d}`, { alt: true }));
 
 export const KEY_COMMANDS = [
   // ── Editing ───────────────────────────────────────────────────────────
   { id: 'edit.undo', labelKey: 'commands.edit.undo', category: 'editing', when: 'global', keys: [k('z', { mod: true })] },
-  { id: 'edit.redo', labelKey: 'commands.edit.redo', category: 'editing', when: 'global', keys: [k('z', { mod: true, shift: true })] },
+  { id: 'edit.redo', labelKey: 'commands.edit.redo', category: 'editing', when: 'global', keys: [k('z', { mod: true, shift: true }), k('y', { mod: true, only: 'other' })] },
   { id: 'edit.toggleEditMode', labelKey: 'commands.edit.toggleEditMode', category: 'editing', when: 'global', keys: [k('e')] },
   { id: 'edit.rotate', labelKey: 'commands.edit.rotate', category: 'editing', when: 'global', keys: [k('r'), k('r', { shift: true })] },
   { id: 'edit.duplicate', labelKey: 'commands.edit.duplicate', category: 'editing', when: 'global', keys: [k('d', { mod: true }), k('d', { mod: true, shift: true }), k('d', { mod: true, alt: true })] },
@@ -98,7 +104,6 @@ export const KEY_COMMANDS = [
   { id: 'tool.annotate', labelKey: 'commands.tool.annotate', category: 'tools', when: 'global', keys: [k('p')] },
   { id: 'tool.section', labelKey: 'commands.tool.section', category: 'tools', when: 'global', keys: [k('x')] },
   { id: 'tool.split', labelKey: 'commands.tool.split', category: 'tools', when: 'global', keys: [k('k')] },
-  { id: 'split.exit', labelKey: 'commands.split.exit', category: 'tools', when: 'tool.split', keys: [k('escape')] },
   { id: 'walk.move', labelKey: 'commands.walk.move', category: 'tools', when: 'tool.walk', keys: [k('w'), k('a'), k('s'), k('d')] },
   { id: 'walk.moveArrows', labelKey: 'commands.walk.moveArrows', category: 'tools', when: 'tool.walk', keys: [k('arrowup'), k('arrowleft'), k('arrowdown'), k('arrowright')] },
   { id: 'measure.toggleSnap', labelKey: 'commands.measure.toggleSnap', category: 'tools', when: 'tool.measure', keys: [k('s')] },
@@ -106,10 +111,24 @@ export const KEY_COMMANDS = [
   { id: 'measure.finish', labelKey: 'commands.measure.finish', category: 'tools', when: 'tool.measure', keys: [k('enter')] },
   { id: 'addElement.commit', labelKey: 'commands.addElement.commit', category: 'tools', when: 'tool.addElement', keys: [k('enter')] },
   { id: 'addElement.clearPending', labelKey: 'commands.addElement.clearPending', category: 'tools', when: 'tool.addElement', keys: [k('escape')] },
+  { id: 'addElement.toggleSnap', labelKey: 'commands.addElement.toggleSnap', category: 'tools', when: 'tool.addElement', keys: [k('s')] },
   { id: 'spaceSketch.undo', labelKey: 'commands.spaceSketch.undo', category: 'tools', when: 'tool.spaceSketch', keys: [k('z', { mod: true })] },
   { id: 'spaceSketch.redo', labelKey: 'commands.spaceSketch.redo', category: 'tools', when: 'tool.spaceSketch', keys: [k('z', { mod: true, shift: true })] },
   { id: 'spaceSketch.commit', labelKey: 'commands.spaceSketch.commit', category: 'tools', when: 'tool.spaceSketch', keys: [k('enter')] },
   { id: 'spaceSketch.cancel', labelKey: 'commands.spaceSketch.cancel', category: 'tools', when: 'tool.spaceSketch', keys: [k('escape')] },
+  { id: 'command.commit', labelKey: 'commands.command.commit', category: 'tools', when: 'command', keys: [k('enter')] },
+  { id: 'command.cancel', labelKey: 'commands.command.cancel', category: 'tools', when: 'command', keys: [k('escape')] },
+  { id: 'command.undoPoint', labelKey: 'commands.command.undoPoint', category: 'tools', when: 'command', keys: [k('backspace')] },
+  { id: 'command.nextField', labelKey: 'commands.command.nextField', category: 'tools', when: 'command', keys: [k('tab')] },
+  { id: 'command.typeValue', labelKey: 'commands.command.typeValue', category: 'tools', when: 'command', keys: DIGITS, display: 'range' },
+  { id: 'command.toggleSnap', labelKey: 'commands.command.toggleSnap', category: 'tools', when: 'command', keys: [k('s')] },
+  { id: 'command.column.rotate', labelKey: 'commands.command.columnRotate', category: 'tools', when: 'command.column.place', keys: [k('r')] },
+  { id: 'model.wall', labelKey: 'commands.model.wall', category: 'tools', when: 'workspace.model', keys: [k('w')] },
+  { id: 'model.slab', labelKey: 'commands.model.slab', category: 'tools', when: 'workspace.model', keys: [k('s', { shift: true })] },
+  { id: 'model.column', labelKey: 'commands.model.column', category: 'tools', when: 'workspace.model', keys: [k('c', { shift: true })] },
+  { id: 'model.beam', labelKey: 'commands.model.beam', category: 'tools', when: 'workspace.model', keys: [k('b', { shift: true })] },
+  { id: 'model.storeyUp', labelKey: 'commands.model.storeyUp', category: 'tools', when: 'workspace.model', keys: [k('pageup')] },
+  { id: 'model.storeyDown', labelKey: 'commands.model.storeyDown', category: 'tools', when: 'workspace.model', keys: [k('pagedown')] },
   { id: 'drawing2d.cancel', labelKey: 'commands.drawing2d.cancel', category: 'tools', when: 'drawing2d', keys: [k('escape')] },
   { id: 'drawing2d.delete', labelKey: 'commands.drawing2d.delete', category: 'tools', when: 'drawing2d', keys: [k('delete'), k('backspace')] },
   { id: 'drawing2d.orthogonal', labelKey: 'commands.drawing2d.orthogonal', category: 'tools', when: 'drawing2d', keys: [k('shift')] },
@@ -133,8 +152,7 @@ export const KEY_COMMANDS = [
   { id: 'visibility.hideSelection', labelKey: 'commands.visibility.hideSelection', category: 'visibility', when: 'global', keys: [k('delete'), k('backspace'), k(' ')] },
   { id: 'visibility.showAll', labelKey: ACTION_NAME_KEYS.showAll, category: 'visibility', when: 'global', keys: [k('a')] },
   { id: 'basket.isolate', labelKey: 'commands.basket.isolate', category: 'visibility', when: 'global', keys: [k('i')] },
-  { id: 'basket.set', labelKey: 'commands.basket.set', category: 'visibility', when: 'global', keys: [k('=')] },
-  { id: 'basket.add', labelKey: 'commands.basket.add', category: 'visibility', when: 'global', keys: [k('+')] },
+  { id: 'basket.add', labelKey: 'commands.basket.add', category: 'visibility', when: 'global', keys: [k('='), k('+')] },
   { id: 'basket.remove', labelKey: 'commands.basket.remove', category: 'visibility', when: 'global', keys: [k('-')] },
   { id: 'basket.toggleDock', labelKey: 'commands.basket.toggleDock', category: 'visibility', when: 'global', keys: [k('d')] },
   { id: 'basket.saveView', labelKey: 'commands.basket.saveView', category: 'visibility', when: 'global', keys: [k('b')] },

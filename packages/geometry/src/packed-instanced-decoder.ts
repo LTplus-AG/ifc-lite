@@ -89,6 +89,11 @@ const INSTANCE_RECORD_BASE_BYTES = 88;
 const INSTANCE_ITEM_ID_OFFSET = INSTANCE_RECORD_BASE_BYTES;
 /** Stride of a record carrying trailing field 1 (itemId) and nothing after it. */
 const INSTANCE_RECORD_ITEM_ID_BYTES = INSTANCE_ITEM_ID_OFFSET + 4;
+/** Trailing field 2 (#5984, written as v3): the occurrence's IFC-authored
+ *  finish, metallic(f32) + roughness(f32), NaN where unauthored. Mirrors
+ *  `INSTANCE_FINISH_OFFSET` in wire.rs. */
+const INSTANCE_FINISH_OFFSET = INSTANCE_RECORD_ITEM_ID_BYTES;
+const INSTANCE_RECORD_FINISH_BYTES = INSTANCE_FINISH_OFFSET + 8;
 
 /** A unique geometry decoded from an instanced shard (uploaded once). */
 export interface DecodedInstancedTemplate {
@@ -113,6 +118,11 @@ export interface DecodedInstance {
    *  trailing item-id field (a v1 shard, or a model whose producer named no
    *  item at all) and when this record's own id is the `0` sentinel. */
   itemId?: number;
+  /** IFC-authored metallic / roughness (#5984), the same finish a flat mesh
+   *  carries as `MeshData.material`. Undefined where unauthored and on a shard
+   *  whose stride stops short of trailing field 2. `0` is a value. */
+  metallic?: number;
+  roughness?: number;
 }
 
 /** A decoded instanced shard. */
@@ -127,6 +137,10 @@ export interface DecodedInstancedShard {
    *  it from the data, so `false` means no occurrence in the shard names an
    *  item, not merely that this build cannot see them. */
   carriesItemIds: boolean;
+  /** Whether the stride reaches trailing field 2, the finish (#5984). Optional
+   *  so a shard built by hand before it existed still type-checks; the decoder
+   *  always sets it. */
+  carriesFinishes?: boolean;
 }
 
 /** Whether a payload's leading magic marks it as an instanced ("IFNS") shard. */
@@ -195,6 +209,7 @@ export function decodeInstancedShard(payload: unknown): DecodedInstancedShard {
     );
   }
   const carriesItemIds = instanceRecordStride >= INSTANCE_RECORD_ITEM_ID_BYTES;
+  const carriesFinishes = instanceRecordStride >= INSTANCE_RECORD_FINISH_BYTES;
 
   const templateTableOffset = HEADER_WORDS * 4;
   const instanceTableOffset = templateTableOffset + templateCount * TEMPLATE_RECORD_BYTES;
@@ -275,6 +290,9 @@ export function decodeInstancedShard(payload: unknown): DecodedInstancedShard {
     // at all — both surface as absent, so a consumer cannot tell an absent id
     // apart from a fabricated #0.
     const itemId = carriesItemIds ? view.getUint32(base + INSTANCE_ITEM_ID_OFFSET, true) : 0;
+    // Trailing field 2 (#5984): NaN is the producer's "unauthored".
+    const metallic = carriesFinishes ? view.getFloat32(base + INSTANCE_FINISH_OFFSET, true) : NaN;
+    const roughness = carriesFinishes ? view.getFloat32(base + INSTANCE_FINISH_OFFSET + 4, true) : NaN;
     // One object SHAPE for every instance. A conditional spread allocates a
     // throwaway object per occurrence and gives DecodedInstance two hidden
     // classes, which the consumer then reads in a tight loop
@@ -286,8 +304,10 @@ export function decodeInstancedShard(payload: unknown): DecodedInstancedShard {
       color,
       transform,
       itemId: itemId !== 0 ? itemId : undefined,
+      metallic: Number.isFinite(metallic) ? metallic : undefined,
+      roughness: Number.isFinite(roughness) ? roughness : undefined,
     });
   }
 
-  return { templates, instances, carriesItemIds };
+  return { templates, instances, carriesItemIds, carriesFinishes };
 }

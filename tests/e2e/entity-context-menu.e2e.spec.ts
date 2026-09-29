@@ -42,7 +42,9 @@ test('authored IFC entity menu exposes actions, arrow navigation, submenu and fo
   }, undefined, { timeout: 180_000 });
 
   await page.getByRole('tab', { name: 'Author', exact: true }).click();
-  await page.getByRole('button', { name: 'Enter edit mode' }).click();
+  const modelWorkspace = page.getByRole('tabpanel', { name: 'Author' }).getByRole('button', { name: 'Model', exact: true });
+  await modelWorkspace.click();
+  await expect(modelWorkspace).toHaveAttribute('aria-pressed', 'true');
 
   // The real viewport menu is opened by the picking handler, which has already
   // resolved a renderer ID. Supply that same ID to exercise the shell without
@@ -94,10 +96,23 @@ test('authored IFC entity menu exposes actions, arrow navigation, submenu and fo
   await page.keyboard.press('ArrowLeft');
   await expect(submenu).toBeFocused();
 
+  const selectedOnDismiss = await page.evaluate(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    const id = state.contextMenu.entityId;
+    if (id == null) throw new Error('authored IFC menu has no entity owner');
+    state.setSelectedEntityIds([id]);
+    state.setSelectedEntityId(id);
+    return id;
+  });
   await page.screenshot({ path: info.outputPath('entity-context-menu-authored-ifc.png') });
   await page.keyboard.press('Escape');
   await expect(menu).toBeHidden();
   await expect(page.locator('#context-menu-focus-origin')).toBeFocused();
+  const selectionAfterDismiss = await page.evaluate(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    return { selectedEntityId: state.selectedEntityId, selectedEntityIds: [...state.selectedEntityIds] };
+  });
+  expect(selectionAfterDismiss).toEqual({ selectedEntityId: selectedOnDismiss, selectedEntityIds: [selectedOnDismiss] });
 
   await openWallMenu(page);
   await menu.getByRole('menuitem', { name: 'Hide', exact: true }).click();

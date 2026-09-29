@@ -93,7 +93,7 @@ export function StoreyDisplayControls() {
                         aria-pressed={pressed}
                         onClick={() => applyLevelDisplayMode(key)}
                         className={cn(
-                          'flex flex-1 items-center justify-center gap-1 rounded px-1.5 py-1 text-[11px] font-medium transition-colors',
+                          'flex min-h-6 flex-1 items-center justify-center gap-1 rounded px-1.5 py-1 text-2xs font-medium transition-colors',
                           pressed
                             ? 'bg-primary text-primary-foreground'
                             : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
@@ -118,7 +118,7 @@ export function StoreyDisplayControls() {
                   aria-pressed={isExploded}
                   onClick={toggleExploded}
                   className={cn(
-                    'inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border px-2 text-[11px] font-medium transition-colors',
+                    'inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border px-2 text-2xs font-medium transition-colors',
                     isExploded
                       ? 'border-primary bg-primary text-primary-foreground'
                       : 'border-zinc-200 dark:border-zinc-800 text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -156,7 +156,7 @@ export function StoreyDisplayControls() {
       </div>
 
       {showModes && isExploded && (
-        <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+        <label className="mt-1.5 flex items-center gap-2 text-2xs text-muted-foreground">
           <span>{t('hierarchy.storeyControls.gapLabel')}</span>
           <input
             type="number"
@@ -168,15 +168,15 @@ export function StoreyDisplayControls() {
               const next = e.currentTarget.valueAsNumber;
               if (Number.isFinite(next)) setExplodedGap(next);
             }}
-            className="w-16 rounded border border-zinc-300 bg-white px-1.5 py-0.5 font-mono text-[11px] focus:outline-none focus:ring-1 focus:ring-primary dark:border-zinc-700 dark:bg-zinc-950"
+            className="w-16 rounded border border-zinc-300 bg-white px-1.5 py-0.5 font-mono text-2xs focus:outline-none focus:ring-1 focus:ring-primary dark:border-zinc-700 dark:bg-zinc-950"
           />
           <span>{t('hierarchy.storeyControls.gapUnitLabel')}</span>
-        </div>
+        </label>
       )}
 
       {/* Discoverability hint (#1265): the storey rows ARE the Solo picker. */}
       {showModes && !isExploded && (
-        <div className="mt-1 text-[10px] leading-tight text-muted-foreground">
+        <div className="mt-1 text-2xs leading-tight text-muted-foreground">
           {levelDisplayMode === 'solo' ? (
             activeInfo ? (
               styleInterpolatedValues(t, 'hierarchy.storeyControls.soloHintWithStorey', [

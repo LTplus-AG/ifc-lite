@@ -6,8 +6,10 @@
  * Inline geometry editor for the Properties panel. Surfaces the
  * three IFC-level mutations every authoring user reaches for:
  *
- *   - Move — numeric XYZ for the entity's storey-local origin, with
- *     ±step quick buttons on each axis.
+ *   - Move — numeric XYZ in metres for the entity's storey-local
+ *     origin, with ±step quick buttons on each axis. The slice converts
+ *     to and from the file's length unit, so a millimetre model reads
+ *     and nudges in metres too (#6233).
  *   - Duplicate — clone the entity along a picked axis (reuses
  *     `MutationSlice.duplicateEntity` so the new geometry shares the
  *     existing representation reference).
@@ -73,6 +75,15 @@ function useEntityCoordinates(
 
 const STEP_PRESETS = [0.1, 0.5, 1];
 
+/**
+ * Position readout in metres at millimetre precision (#6233). The slice's
+ * placement actions already speak metres whatever the file's length unit,
+ * so this only trims float noise: `-5.618216808585` reads `-5.618`.
+ */
+export function formatMetres(value: number): string {
+  return String(Number(value.toFixed(3)) || 0);
+}
+
 export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEditCardProps) {
   const { t } = useTranslation();
   const setEntityPosition = useViewerStore((s) => s.setEntityPosition);
@@ -95,22 +106,24 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
   // clobber an in-progress edit when the user types into X then the
   // mutationVersion bumps from an unrelated mutation.
   const seededForRef = useRef<string>('');
+  // The rounded text each input was seeded with: an axis the user left
+  // untouched applies its exact coordinate, so "Apply XYZ" after editing
+  // only X doesn't also snap Y and Z to the nearest millimetre.
+  const seededTextRef = useRef<string[]>([]);
 
   useEffect(() => {
     const key = `${modelId}:${entityId}:${coordinates?.join(',') ?? 'none'}`;
     if (seededForRef.current === key) return;
     seededForRef.current = key;
-    if (coordinates) {
-      setX(coordinates[0].toString());
-      setY(coordinates[1].toString());
-      setZ(coordinates[2].toString());
-    } else {
-      setX(''); setY(''); setZ('');
-    }
+    const text = coordinates ? coordinates.map(formatMetres) : ['', '', ''];
+    seededTextRef.current = text;
+    setX(text[0]); setY(text[1]); setZ(text[2]);
   }, [modelId, entityId, coordinates]);
 
   const applyAbsolute = useCallback(() => {
-    const parsed: [number, number, number] = [parseFloat(x), parseFloat(y), parseFloat(z)];
+    const parsed = [x, y, z].map((text, axis) =>
+      coordinates && text === seededTextRef.current[axis] ? coordinates[axis] : parseFloat(text),
+    ) as [number, number, number];
     if (parsed.some((n) => !Number.isFinite(n))) {
       toast.error(t('geometryExport.editCard.enterNumericError'));
       return;
@@ -120,8 +133,8 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
       toast.error(t('geometryExport.editCard.moveFailedError', { reason: result.reason }));
       return;
     }
-    toast.success(t('geometryExport.editCard.movedSuccess', { coordinates: parsed.map((n) => n.toFixed(2)).join(', ') }));
-  }, [modelId, entityId, x, y, z, setEntityPosition, t]);
+    toast.success(t('geometryExport.editCard.movedSuccess', { coordinates: parsed.map(formatMetres).join(', ') }));
+  }, [modelId, entityId, coordinates, x, y, z, setEntityPosition, t]);
 
   const nudge = useCallback(
     (axis: 0 | 1 | 2, sign: 1 | -1) => {
@@ -155,41 +168,21 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
     [modelId, entityId, rotateEntity, t],
   );
 
-  // Resolve whether the selected entity can be split. Three paths:
-  // walls, linear elements (beam / column / member), and slab-like
-  // (slab / roof / plate / space — only slab supports split in v1
-  // but the chain resolver accepts all four). The Split action
-  // surfaces only when the entity matches one of them — keeps
-  // panel chrome out of the user's way for unrelated selections.
-  const readWallEndpoints = useViewerStore((s) => s.readWallEndpoints);
-  const readLinearElementSplitProjection = useViewerStore((s) => s.readLinearElementSplitProjection);
-  const readSlabFootprint = useViewerStore((s) => s.readSlabFootprint);
-  const splittable = useMemo(() => {
-    if (readWallEndpoints(modelId, entityId) !== null) return true;
-    // Probe with [0,0,0] — we only care whether the chain resolves,
-    // not the projection value.
-    if (readLinearElementSplitProjection(modelId, entityId, [0, 0, 0]) !== null) return true;
-    // Slab-like types (IfcSlab / IfcRoof / IfcPlate / IfcSpace)
-    // all share the same chain shape; any of them is splittable.
-    return readSlabFootprint(modelId, entityId) !== null;
+  // Whether the selected entity can be split: the SAME predicate every
+  // split commit path runs (`readSplitTarget`, #6233) — walls, beams,
+  // columns, members, slabs, roofs, plates and spaces whose body is a
+  // profile extrusion. When it can't, the button stays visible but
+  // disabled, and its tooltip names the reason.
+  const readSplitTarget = useViewerStore((s) => s.readSplitTarget);
+  const splitTarget = useMemo(
+    () => readSplitTarget(modelId, entityId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    modelId,
-    entityId,
-    mutationVersion,
-    readWallEndpoints,
-    readLinearElementSplitProjection,
-    readSlabFootprint,
-  ]);
-  const setActiveTool = useViewerStore((s) => s.setActiveTool);
-  const setSplitTarget = useViewerStore((s) => s.setSplitTarget);
-  const onSplit = useCallback(() => {
-    // Arm the tool with this entity pre-targeted so the user's next
-    // cursor move lights up the guide. setActiveTool('split')
-    // auto-enables edit mode if needed.
-    setSplitTarget(modelId, entityId);
-    setActiveTool('split');
-  }, [modelId, entityId, setActiveTool, setSplitTarget]);
+    [modelId, entityId, mutationVersion, readSplitTarget],
+  );
+  const startCommand = useViewerStore((s) => s.startCommand);
+  // The Split command targets the selection this card edits; the next
+  // cursor move lights up the guide.
+  const onSplit = useCallback(() => startCommand('element.split'), [startCommand]);
 
   const onDuplicate = useCallback(() => {
     const result = duplicateEntity(modelId, entityId);
@@ -328,26 +321,30 @@ export function GeometryEditCard({ modelId, entityId, entityLabel }: GeometryEdi
             </div>
           )}
 
-          {/* Actions — split (when applicable) + duplicate + delete.
-              Available even when Move isn't. Split surfaces only
-              for resizable walls so the panel stays uncluttered
-              for selections where the action doesn't apply. */}
+          {/* Actions — split + duplicate + delete. Available even when
+              Move isn't. Split is always shown; an element it can't cut
+              gets a disabled button whose tooltip says why. */}
           <div className="flex items-center gap-1 pt-1 border-t border-overlay-accent/40">
-            {splittable && (
-              <Tooltip>
-                <TooltipTrigger asChild>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                {/* A disabled button fires no pointer events, so the span
+                    carries the tooltip trigger for the unavailable state. */}
+                <span className="flex flex-1" tabIndex={splitTarget.ok ? undefined : 0}>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-7 flex-1 text-xs"
                     onClick={onSplit}
+                    disabled={!splitTarget.ok}
                   >
                     <KnifeIcon className="h-3 w-3 mr-1" /> {t('geometryExport.editCard.splitButton')}
                   </Button>
-                </TooltipTrigger>
-                <TooltipContent>{t('geometryExport.editCard.splitTooltip')}</TooltipContent>
-              </Tooltip>
-            )}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {splitTarget.ok ? t('geometryExport.editCard.splitTooltip') : t(splitTarget.reasonKey)}
+              </TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

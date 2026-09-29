@@ -21,7 +21,6 @@ import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore, type RibbonTabId } from '@/store';
-import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
@@ -68,7 +67,10 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
   // hidden file inputs exactly once for this toolbar style.
   const fileCommands = useFileCommands();
 
-  const { loading, geometryProgress, metadataProgress } = useIfc();
+  // Narrow selectors: `useIfc()` also subscribes to `models` / `geometryResult` (#6232).
+  const loading = useViewerStore((s) => s.loading);
+  const geometryProgress = useViewerStore((s) => s.geometryProgress);
+  const metadataProgress = useViewerStore((s) => s.metadataProgress);
   const activeProgress = useViewerStore(selectActiveLoadProgress);
 
   const handleTabClick = (id: RibbonTabId) => {
@@ -144,13 +146,11 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
 
         <div className="flex-1" />
 
-        {/* Inline search — the very component the classic strip hosts, not
-            a ribbon copy of it, so `/` and ⌘F focus a field here too, the
-            n/N result cycle is reachable, and the recent-search popover
-            plus the "N filter rules active" badge (with its one-click
-            clear) exist in both styles. It sits in the tab strip rather
-            than inside a tab so it survives collapse and tab switches,
-            matching the classic strip's always-visible field.
+        {/* Inline search uses the shared SearchInline component, so `/` and
+            ⌘F focus this field. The n/N result cycle, recent-search popover,
+            and "N filter rules active" badge (with its one-click
+            clear) remain available. It sits in the tab strip rather than
+            inside a tab so it survives collapse and tab switches.
 
             Right-oriented: the tab strip's left edge is tab geography, so
             a field parked there competes with the tabs for the same
@@ -161,8 +161,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
           <SearchInline />
         </div>
 
-        {/* Extension toolbar contributions (right-aligned, same slot as
-            the classic toolbar). */}
+        {/* Extension toolbar contributions, right-aligned beside search. */}
         <ExtensionToolbarSlot slot="toolbar.right" />
 
         {/* Export modified IFC… — pending-mutation affordance must stay visible

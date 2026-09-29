@@ -41,7 +41,7 @@ import {
   HudChip, HudHint, HudItem, HudPopover, HudPopoverContent, HudPopoverTrigger, HudSegmented, HudSurface, HudToolbar,
   useHudBarTier,
 } from '../../../viewport-ui/hud';
-import { formatArea } from '../computePolygonArea';
+import { formatSquareMetres } from '../computePolygonArea';
 import { OptionsPopover, HelpPopover, MorePopover, type OptionsPopoverProps } from './SpaceSketchPopovers';
 
 const ICON_BTN =
@@ -132,7 +132,7 @@ export function SpaceSketchBarContent(p: SpaceSketchBarProps & { tier: number; m
     : t('spaceSketch.footer.doneButton');
   return (
     <HudToolbar
-      className={cn('select-none', p.measuring && 'flex-nowrap')}
+      className={cn('select-none', minimal && 'gap-0.5 px-1', p.measuring && 'flex-nowrap')}
       data-tool-bar={p.measuring ? undefined : 'spaceSketch'}
       data-bar-tier={p.measuring ? undefined : p.tier}
     >
@@ -303,7 +303,7 @@ export function SpaceSketchPlanCard(p: SpaceSketchPlanCardProps) {
             <Building2 aria-hidden className={ICON} />
           </button>
           <span className="ml-auto whitespace-nowrap px-1 text-2xs tabular-nums text-muted-foreground">
-            {t('spaceSketch.panel.roomCount', { count: p.roomCount })} · {formatArea(p.totalArea)}
+            {t('spaceSketch.panel.roomCount', { count: p.roomCount })} · {formatSquareMetres(p.totalArea)}
           </span>
           <button type="button" className={ICON_BTN} onClick={p.onCleanup} disabled={!p.canCleanup} title={t('spaceSketch.tools.cleanupTitle')}>
             <Eraser aria-hidden className={ICON} />

@@ -57,7 +57,11 @@ import { EpsgLookupDialog } from './EpsgLookupDialog.js';
 import { EpsgLookupError } from './EpsgLookupError.js';
 import { TaskEditCard } from './TaskEditCard.js';
 
-const CATALOGUE: Catalogue = Object.fromEntries(Object.entries(en).filter(([key]) => key.startsWith('properties.')));
+// This oracle mounts the established property cards below. SweptDiskInspection
+// has its own rendered locale-switch witness; including its unmounted keys
+// would misattribute shared English words such as "Yes" to this render.
+const CATALOGUE: Catalogue = Object.fromEntries(Object.entries(en).filter(([key]) =>
+  key.startsWith('properties.') && !key.startsWith('properties.sweptDisk.')));
 const HAS_CATALOGUE = 'properties.assemblyBadge.label' in en;
 
 type PropertiesKey = keyof typeof CATALOGUE;
@@ -645,6 +649,16 @@ describe('Properties panel localization (#4918 slice 4)', () => {
     assert.match(container.textContent ?? '', /\[no results A\]/);
     act(() => setLocale('epsg-b'));
     assert.match(container.textContent ?? '', /\[no results B\]/);
+  });
+
+  catalogueIt('names the EPSG search field independently of its example placeholder (#6342)', () => {
+    const container = render(<EpsgLookupDialog onSelect={() => {}} />);
+    const trigger = [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'EPSG');
+    assert.ok(trigger);
+    click(trigger);
+    const search = document.body.querySelector('input[aria-label="Search coordinate reference systems"]');
+    assert.ok(search, 'the opened EPSG dialog exposes a stable search name');
+    assert.match(search.getAttribute('placeholder') ?? '', /2056/);
   });
 
   catalogueIt('resolves a retained projection error after active catalogue replacement', async () => {

@@ -21,6 +21,7 @@ fn output(
     ElementMeshOutput {
         id: 4242,
         meshes: Vec::new(),
+        finishes: Vec::new(),
         geometry_hash,
         geometry_aabb,
         geometry_volume,

@@ -27,6 +27,33 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Placement identity from memory (#6431)
+
+Before parsing, the loader awaited a full-content SHA-256 identity (1 MiB chunks)
+that it computed by re-reading the file through `Blob.slice().arrayBuffer()`,
+although the file was already in memory. Hashing the in-memory bytes with the
+same chunking gives an identical identity. On a 1 GB file, file-read to
+parse-start went from 3.9-5.1 s to 0.9-1.1 s, and the gap shrank on every
+corpus model. Lesson: look at the gap BEFORE `loadFile` too. Whole-file work
+that runs before parsing delays everything behind it, and a profile window that
+starts at "first geometry" never shows it.
+
+## Instanced RTE deltas: one upload per template (#6393, PR #6399)
+
+On a large MEP model with ~45K GPU-instanced occurrences, a browser run
+(interleaved base vs branch, same wasm) showed the frame was bound by
+`queue.writeBuffer` COUNT, not by shading or fill. The old path wrote each
+occurrence's 32-byte camera-relative delta separately, once per pass. Moving
+the deltas into a per-template stream that is packed on the CPU (the f64
+contract is unchanged) and uploaded once per template, cached per camera,
+brought orbit, pan and wheel zoom to vsync. The screenshot stayed
+pixel-identical. The lessons:
+
+- Count queue operations per frame before optimising shaders. On this model,
+  switching off AO, edges or dropping DPR moved nothing measurable.
+- A per-object `writeBuffer` in a per-frame path is a GPU-process IPC cost
+  that the main-thread profile shows only as `(program)` time.
+
 ## Renderer colour override table (#6076, PR #6148)
 
 A base-versus-branch browser run on a real Archicad architectural IFC, followed
@@ -40,6 +67,142 @@ and GPU-process private memory after applying a lens: the renderer's resident
 geometry counter alone omits the allocation that dominated the old path.
 See the [browser evidence](evidence/color-overrides-6148/README.md).
 
+## Reusable swept-disk source definitions (#5785)
+
+The source/instance API is opt-in. Its bounded walk reuses decoded raw
+solids within one extraction; the default mesh pipeline remains separate.
+Five alternating fresh-process native AC20-FZK-Haus pairs compared merged
+main `80d1ba901` with the #5810 source head `55109fdbd`, each with five
+inner iterations and ordered mesh fingerprints. Counts and fingerprints were
+identical throughout; parse, geometry, and total timing ranges overlapped.
+Verdict: no supported default full-load speed change on this fixture. The
+lesson is to measure cache benefits in opt-in extraction and browser worker
+pools rather than infer them from a default mesh probe. The PR records the
+numeric measurements, binary hashes, and fixture provenance.
+
+## Opt-in swept-disk WASM bridge (#5770)
+
+The geometry bridge exposes a new explicit extraction call; ordinary mesh
+loading does not call it. For the #5770 control, native `perf_probe` builds
+from base `724674528` and bridge head `6e454b771` were byte-identical
+(SHA-256 `b5681610450366214773ddaaf808d4fa8ea8fd00894f9ffec5a81ffdc32c9bb4`).
+The base is an ancestor of the PR's main parent `f06d11798`, with no intervening
+changes under `rust/core`, `rust/geometry`, or `rust/processing`. Both builds used
+`cargo build --profile profiling -p ifc-lite-processing --example perf_probe`.
+On AC20-FZK-Haus (fixture SHA-256 `ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d`),
+`perf_probe <fixture> --iters 1 --json --fingerprint` returned the same ordered
+mesh FNV-1a64 `c4d504b83ff698ea`, 285 meshes, 35,940 vertices, and 20,322
+triangles from each binary. Verdict: the normal **native** load executes the
+same binary, so a noisy timing comparison of those binaries would add no evidence.
+After the checker merged, a new five-pair, balanced fresh-process AC20 control
+compared a profiling binary from checker source `cdbefec6e` (Rust/Cargo identical
+to merged main `80d1ba901`) with bridge source `b72d706de` (identical native
+source to the final comment-only head). Each process ran five iterations with
+ordered mesh fingerprints. Every run kept the same mesh counts and ordered FNV;
+parse, geometry, and total ranges overlapped. Verdict: the bridge preserves
+ordinary native-load output, with no supported default-path speed change.
+After #5810 advanced main to `ba85514d3`, those timings remain prior-base
+evidence. The bridge's current-base diff has no changes under `rust/core`,
+`rust/geometry`, `rust/processing`, Cargo manifests/lockfile, the native probe,
+or the fixture manifest. Both sides therefore compile the same native default
+path; #5810's own control above preserved the ordered mesh fingerprint. This
+source-equivalence check supports no new native-load work from the bridge, but
+does not turn the earlier timings into a measurement against `ba85514d3`.
+The added WASM export's browser startup and opt-in extraction cost were not
+measured; this result does not establish a browser worker-pool speed change.
+For an opt-in bridge, prove the default path is unchanged separately from
+measuring the new call when a frequent caller exists.
+
+## Exact extrusion source profiles (#5784)
+
+Five interleaved fresh-process native pairs compared merged #5810 main
+`ba85514d3` with the exact-profile branch on AC20-FZK-Haus, using five inner
+iterations and ordered mesh fingerprints per process. The default load emitted
+identical mesh payloads on both sides; parse timings matched, while geometry
+and total ranges overlapped. Verdict: no measurable ordinary-load cost or mesh
+change on this fixture. The profile decoder is opt-in; the default-load probe
+does not measure its extraction cost. The lesson is to keep the source read
+separate from renderer geometry and measure opt-in extraction on authored
+profile models when that workflow becomes a performance target. The PR records
+the numeric measurements and binary/fixture provenance.
+
+## Arbitrary-profile topology validation (#6316)
+
+Five interleaved fresh-process native pairs compared merged #6263 main with
+the topology validator on AC20-FZK-Haus, with five inner iterations and ordered
+mesh fingerprints per process. Parse, geometry, and total ranges overlapped;
+every run emitted identical mesh counts and ordered mesh fingerprints. Verdict:
+no measurable default-load cost or mesh change on this fixture. Validation
+runs only for an opt-in analytic read of an arbitrary profile, so the ordinary
+mesh probe cannot measure its extraction cost. If nominal-quantity callers make
+that read frequent, measure it on authored profiles with many line/arc edges and
+holes. Keeping validation outside mesh production preserves the normal load;
+the PR records paired timings and binary/fixture provenance.
+
+## Opt-in authored and analytic quantity join (#5787)
+
+The authored/analytic quantity join in #6283 runs only when callers request
+quantity analysis; normal mesh production does not enter it. An idle-host
+native control compared #6272 parent `3e554e841` with join source
+`af84e4d2d` in five balanced, interleaved AC20-FZK-Haus pairs, using fresh
+probe processes and five iterations per process. After the shared Cargo lock
+updated `smallvec` and `thiserror`, a [GitHub-hosted control](https://github.com/LTplus-AG/ifc-lite/actions/runs/36469927760)
+repeated the same paired method on exact current-lock parent `185ccf276` and
+join head `f278a70a3`. The later viewer/TypeScript merges left the native
+probe inputs unchanged. Both controls retained identical mesh counts and all
+ordered mesh fingerprints; parse, geometry and total variation overlapped.
+Verdict: no supported default-load speed change or mesh-output difference.
+The lesson is that a native load probe cannot establish the opt-in join's
+latency; measure that through its caller on representative authored-quantity
+models if it becomes material.
+
+## Opt-in reinforcing-bar schedule inputs (#5759)
+
+The schedule reuses bounded analytic source views only when a Rust or Python
+caller requests it; ordinary mesh loading does not enter this path. A
+[GitHub-hosted current-lock control](https://github.com/LTplus-AG/ifc-lite/actions/runs/36475446893)
+compared a synthetic parent containing the reviewed quantity join and mapped
+source cache with a patch-identical #5801 child on AC20-FZK-Haus. Five balanced,
+interleaved fresh-process pairs used five iterations each. Entity, mesh, vertex,
+and triangle counts and every ordered mesh fingerprint were identical, while
+paired parse, geometry, and total timings varied within noise. Verdict: no
+supported default-load timing or mesh-output change. The native source closure
+must still be checked against the eventual parent squashes before treating this
+as the exact final-base control. The ordinary load probe cannot measure the
+opt-in schedule call; measure that on representative authored bars if needed.
+The PR carries the paired numbers and fixture/source provenance.
+
+## Opt-in nominal source quantities (#5787)
+
+Nominal swept-disk and extrusion quantities are computed only when the analytic
+source API is requested; ordinary mesh production does not call them. After
+the #6319 topology parent, five balanced fresh-process AC20-FZK-Haus pairs
+compared source-matched profiling binaries with five iterations per process.
+All 50 ordered mesh fingerprints and mesh/triangle counts matched. The child
+median total was 2 ms higher (30 to 32 ms), but paired total differences ran
+from 2 ms faster to 3 ms slower, with overlapping phase ranges. Verdict: no
+meaningful default-load regression or speedup is demonstrated. The default
+probe does not measure opt-in quantity extraction or browser worker-pool
+latency, which need separate caller-level evidence if they become hot paths.
+The PR carries paired results, binary/fixture hashes, and source provenance.
+
+## Opt-in extrusion source definitions (#5784)
+
+The extrusion source/instance walk is requested separately from ordinary mesh
+production. The final-parent control compared main `888a9a72` (Rust tree
+`0997415df1603d5c802bbf658b1dc12001c39990`) with the #6271 source
+(Rust tree `88e3c3a26f1e7e4dde087c65cab81ec7d0e9c046`) in five interleaved,
+fresh-process AC20-FZK-Haus pairs with five inner iterations each. All 50
+ordered mesh fingerprints, mesh counts, vertex counts, and triangle counts
+matched. The paired timings varied in both directions, so no supported
+default-load speedup or meaningful regression is demonstrated. This control
+does not measure opt-in extraction or browser worker-pool latency; measure
+those directly if their caller-visible cost becomes material. Paired results
+and source provenance are recorded in [PR #6271](https://github.com/LTplus-AG/ifc-lite/pull/6271);
+base/head binary SHA-256 values are `a2f586ce7f5c38d1bcd24275e5f1fef4d00b45fcf3b0041cd6d6492b8d389640`
+and `2b20fdad11da01f6c4cc9a531509b921347aaa343736488d3658f184b9f3cf9e`,
+and the fixture SHA-256 is `ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d`.
+
 ## Derived swept-disk metrics (#5754)
 
 The length/bend calculations run only when an analytic description is
@@ -48,6 +211,27 @@ output is byte-identical (same ordered mesh hash on both revisions); a
 default-load probe cannot measure this code's cost, and timing on a contested
 host was unresolved. Measure opt-in analytic extraction on representative
 swept-disk models separately from ordinary mesh loading.
+
+## Swept-disk source-geometry checks (#5758)
+
+The checker is opt-in and consumes the analytic description without entering
+normal mesh production. After #6265 changed the Rust base, five balanced,
+interleaved fresh-process native pairs compared main `0c7481ff6` with checker
+source `cdbefec6e`, built with the same `profiling` profile and probed on
+AC20-FZK-Haus (`--iters 5 --json --fingerprint`). The later main `41825cb48`
+changes only workflow/test-script files, so this is also source-matched to that
+base. An earlier pair set measured during concurrent compilation was discarded;
+the cited set ran after other builds and browser tests stopped. The host still
+had background load; parse medians matched, geometry and total ranges
+overlapped, and the small median difference is run variation, not a speed
+claim. Every run on both sides emitted 285 meshes, 35,940 vertices and
+20,322 triangles with the same ordered mesh FNV-1a64 `c4d504b83ff698ea`.
+
+Verdict: no ordinary-load mesh-output difference or measurable cost from this
+opt-in checker. The lesson is to measure the checker through an explicit
+extraction call on repeated mapped bars if its own latency becomes important;
+the default mesh load cannot measure code it never calls. The earlier single
+absolute Snowdon observation is not a base/branch comparison.
 
 ## Opt-in swept-disk source descriptions (#5559)
 
@@ -1115,6 +1299,44 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
 Reuse checked ID-prefix accumulation and the scanner's existing ASCII proof; obtain native geometry flags from one immutable classification lookup. Generated type parsing checks canonical names before normalization, and schema detection retains the original match priority. Own-layer native subset comparisons showed a modest full-load improvement, not a corpus-wide or browser result. Keep the cumulative verdict separate and exclude invalid Firefox cohorts and unrun follow-ups. Scalar tokenizer dispatch, scanner dictionaries and ordinal transport are separate experiments, not part of this change.
 
 ### Measured feature costs (not levers — recorded so nobody re-measures)
+- **Re-meshing an edited wall through the wasm mesher (#6232 WP1, measured
+  2026-09-27, real-GPU Windows Chrome over CDP, production `vite build`).**
+  Commit → rendered frame for `resizeWall` on a wall hosting a window, 20
+  resizes each: demo project p50 64 ms / p95 98 ms; AC20-FZK-Haus p50 74 ms /
+  p95 83 ms. The re-mesh itself is a small part of that: serialize the
+  subgraph ~1 ms, worker pre-pass + produce ~3-6 ms (`scripts/perf/remesh-latency.mjs`,
+  node/wasm, AC20 walls with openings: p50 4.4 ms total). The rest is the
+  viewer re-rendering on two store updates: the commit's own mutations (~30 ms
+  before the worker's answer is even read) and the geometry replacement
+  (~18 ms to the drained frame). That is the design's 50 ms p50 budget missed
+  by React work the re-mesh does not add, so the lever is fewer re-renders per
+  geometry update, not the mesher. In a dev build the same loop is ~200 ms
+  (React dev mode dominates a CPU profile). The first request per model also
+  pays a one-time whole-file pre-pass for the style wire (AC20: ~170 ms).
+
+- **Re-mesh commit → frame, render-cost follow-up (#6232, measured
+  2026-09-28, same harness, production builds, 5 interleaved rounds of 20
+  resizes, fresh tab per run).** Median p50 / p95: demo 71.5 / 82.6 ms →
+  45.1 / 59.0 ms; AC20-FZK-Haus 72.9 / 84.1 ms → 47.1 / 63.0 ms (every
+  branch round's p50 42-48.5 ms, every base round's 64.8-77.1 ms). The mesher
+  was never the cost; the viewer shell was. Counted with a fiber-commit hook in
+  a dev build: one resize was 19 store notifications and 6 commits, and three
+  of those commits re-rendered `ViewerLayout`, the whole app, because hooks
+  mounted there (`useSearchIndex`, `useUnexportedChangesGuard`, and
+  `useModelUrlAutoload` via `useIfc()`) select `models`, which every geometry
+  update republishes. The levers, in order of effect: those hooks moved to a
+  leaf (`ShellStoreEffects`) or off `useIfc()`; the hierarchy reads `models`
+  through a selector that keeps its identity while the same ids have geometry
+  (a re-mesh), so the panel and its rows stop re-rendering; the file/export
+  commands, ribbon, Author tab and Add Element panel select primitives or the
+  model roster (`useModelRoster`) instead of `useIfc()`; a positional batch is
+  one store update (was N + 1); `useModelSelection` and `useLevelDisplayEffect`
+  stop writing unchanged state back on every `models` change. Left: the edit
+  commit still re-renders what legitimately reacts to `mutationVersion`
+  (hierarchy authored rows, undo buttons, change counts), and the placed
+  spatial index is rebuilt 200 ms after each edit, off the latency path but
+  O(model).
+
 - **Local-frame void-cut origin preservation** (#3446, measured 2026-08-31,
   base = `2edd144329`, arm64 native). This correctness fix keeps a rotated
   local-frame cut's centre and nested origin out of absolute-world `f32`.
@@ -2233,6 +2455,32 @@ not establish that removing a framework or a few subscriptions buys the same
 wall time; test the actual change, and measure the avoidable upload work before
 committing to permanent renderer pages.
 
+## High-coordinate mapped-operator precision (#5792)
+
+Mapped translations beyond the local f32 precision range now stay in the f64
+mesh origin through the final world/RTC transform. Normal-size mapped items
+retain their prior vertex path. One fresh-process native run per fixture used
+`perf_probe --iters 1 --json --fingerprint` to compare exact main base
+`382d1190d51750dce28b9f9568392d29c43e579f` with head
+`d79ca0fe95c3f75282f0c0b0b3464deaf644ce9d`. AC20 matched at 285 meshes,
+20,322 triangles and ordered FNV `c4d504b83ff698ea`; ISSUE_129 matched at
+1,402 meshes, 136,807 triangles and ordered FNV `ff42e1a3f7fcf540`. The
+hashes cover ordered mesh identifiers, geometry, colours, transforms and bounds.
+
+Five balanced fresh-process base/branch pairs per fixture then ran the same
+source-matched native binaries with `--iters 5 --json --fingerprint`. AC20's
+median parse/geometry/total times were 6/23/30 ms on both sides; the base
+total spread was 46.67%. ISSUE_129's medians were 23/952/976 ms on base and
+21/950/972 ms on branch; its base total spread was 4.61%. Every paired run
+retained the same counts and ordered fingerprint. Verdict: no meaningful
+full-load regression on these two native fixtures and no speedup claim. This
+does not measure browser worker-pool performance or rare mapped-item cost.
+
+The lesson is that protecting high-coordinate geometry at the mapped-item
+boundary can affect the normal path even when its mesh bytes are unchanged;
+qualify the full load on both ordinary and CSG-heavy fixtures, and measure
+browser worker-pool cost separately when that claim matters.
+
 ## IFC4x3 alignment geometry on Viadotto Acerno (#5327)
 
 Five interleaved native base-versus-branch runs covered AC20-FZK-Haus and the
@@ -2252,3 +2500,33 @@ and its phase timings within noise. Viadotto again emitted the intended extra
 geometry, so its timing remains non-comparable. The lesson is to check
 complete model output before interpreting alignment timings and to trace
 the lookup cost inside each repeated station evaluation.
+
+## Analytic mapped-source reuse (#5786)
+
+The analytic source walker now reuses a validated representation-map source,
+its immutable item list and parsed MappingOrigin across occurrences in one
+extraction. Each MappingTarget and final world transform still resolves for
+its own occurrence; the uncached comparison switch exists only in test builds.
+The generated many-instance test reduces source loads from 64 to one, and the
+real Revit Snowdon model from 1,073 to 128, while cached/uncached descriptions,
+definitions, extrusions, quantities, instance order and diagnostics agree.
+Nested, reflected and scaled mappings retain their distinct f64 world frames.
+
+Earlier idle-host native AC20 and ISSUE_129 controls kept ordered mesh output
+identical and showed overlapping parse, geometry, total-time and peak-RSS
+ranges. A [current-lock hosted AC20 control](https://github.com/LTplus-AG/ifc-lite/actions/runs/36474112703)
+compared a synthetic parent made from then-current `main` (`c17ee39`) plus
+the patch-identical final #6283 source with a clean #6276 merge. Five balanced,
+interleaved fresh-process profiling pairs kept the fixture checksum, ordered mesh
+fingerprints and entity/mesh/vertex/triangle counts identical; paired phase
+timings remained within noise. After #6283 squashed as `d9b05c2f5`, exact
+native probe-input comparisons found no differences between that squash and
+the synthetic parent or between the restacked #6276 source and the synthetic
+child. Only a Python README clarification differed under the broader Rust
+tree. The combined Snowdon analytic
+JSON was byte-identical across the earlier parent and child.
+These ordinary mesh-load probes do not execute the opt-in analytic cache, so
+they establish no browser worker-pool speedup or analytic-call memory win.
+The lesson is to cache only immutable source facts and to measure opt-in
+analytic extraction separately: far fewer source validations need not shorten
+the full call.

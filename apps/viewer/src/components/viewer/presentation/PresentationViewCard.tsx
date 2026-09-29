@@ -74,6 +74,7 @@ export function PresentationViewCard({
       <div className={cn('absolute inset-x-0 bottom-0 bg-black/60 text-white px-2 py-1', !isEditing && 'pointer-events-none')}>
         {isEditing ? (
           <Input
+            aria-label={`${t('presentationPanel.renameViewTitle')}: ${view.name}`}
             // The input only mounts when the user clicks Rename, so taking focus
             // is the response to their own action, not a focus jump on load.
             // eslint-disable-next-line jsx-a11y/no-autofocus
@@ -94,7 +95,7 @@ export function PresentationViewCard({
           />
         ) : (
           <>
-            <div className="text-[12px] font-medium truncate">{view.name}</div>
+            <div className="text-xs font-medium truncate">{view.name}</div>
             <div className="text-2xs opacity-80">
               {t('presentationPanel.objectsCount', { count: view.entityRefs.length })}
               {view.transitionMs ? t('presentationPanel.transitionSuffix', { duration: (view.transitionMs / 1000).toFixed(1) }) : ''}

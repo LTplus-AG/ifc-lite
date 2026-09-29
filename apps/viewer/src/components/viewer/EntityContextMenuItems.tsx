@@ -24,7 +24,7 @@ import { primaryShortcutLabel, shortcutLabel, type KeyCommandId } from '@/lib/co
 
 type MenuItemTone = 'default' | 'destructive';
 
-interface MenuItemProps {
+interface MenuItemViewProps {
   icon: ElementType<{ className?: string }>;
   label: string;
   onClick: () => void;
@@ -33,10 +33,14 @@ interface MenuItemProps {
   primaryShortcut?: boolean;
   title?: string;
   tone?: MenuItemTone;
-  commandId?: string;
 }
 
-function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, primaryShortcut, title, tone = 'default', commandId }: MenuItemProps) {
+type MenuItemProps = MenuItemViewProps & (
+  | { commandId: SurfaceCommandId; extensionCommandId?: never }
+  | { commandId?: never; extensionCommandId: string }
+);
+
+function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, primaryShortcut, title, tone = 'default', commandId, extensionCommandId }: MenuItemProps) {
   const descriptionId = useId();
   const iconClass = tone === 'destructive'
     ? 'h-4 w-4 text-red-500 dark:text-red-400'
@@ -49,6 +53,7 @@ function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, primaryShort
       <button
         type="button"
         data-command-id={commandId}
+        data-extension-command-id={extensionCommandId}
         aria-label={label}
         aria-describedby={disabled && title ? descriptionId : undefined}
         title={title}
@@ -66,7 +71,7 @@ function MenuItem({ icon: Icon, label, onClick, disabled, shortcut, primaryShort
 }
 
 /** Built-in context rows get all command presentation from the shared registry. */
-export type CommandMenuItemProps = Omit<MenuItemProps, 'icon' | 'label' | 'shortcut' | 'commandId'> & {
+export type CommandMenuItemProps = Omit<MenuItemViewProps, 'icon' | 'label' | 'shortcut'> & {
   commandId: SurfaceCommandId;
   commandState: SurfaceCommandState;
 };
@@ -101,7 +106,8 @@ export function DuplicateItems({ onDuplicate, canEdit, reason }: {
         onClick={() => runSurfaceCommand(duplicate, { surface: 'context', contextAction: () => onDuplicate('+X') })}
       />
       <ContextMenuSub>
-        <ContextMenuSubTrigger disabled={disabled} title={reason} aria-description={reason}>
+        <ContextMenuSubTrigger data-command-disclosure="context:duplicate-direction"
+          disabled={disabled} title={reason} aria-description={reason}>
           <CopyPlus className="mr-2 h-4 w-4 text-muted-foreground" />
           <span className="flex-1">{t('entityContextMenu.duplicateDirectionLabel')}</span>
           <ChevronRight className="h-4 w-4" />
@@ -152,6 +158,7 @@ export function ExtensionContextItems({
         return (
           <MenuItem
             key={`${c.extensionId}:${c.payload.command}`}
+            extensionCommandId={`${c.extensionId}:${c.payload.command}`}
             icon={Icon}
             label={label}
             onClick={() => {

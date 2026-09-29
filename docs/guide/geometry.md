@@ -179,6 +179,41 @@ const bounds = result.coordinateInfo.shiftedBounds;
 console.log(`Model bounds:`, bounds);
 ```
 
+### Exact extrusion source definitions
+
+`GeometryProcessor.extractExtrusionDefinitions` returns the authored
+`IfcExtrudedAreaSolid` profile, direction, depth, and placement separately from
+each product occurrence. It accepts raw IFC bytes and optional product STEP IDs.
+Omit the IDs to inspect every product; pass an empty `Uint32Array` to select none.
+The result type comes from the generated WASM binding.
+
+```typescript
+import { GeometryProcessor, type ExtrusionDefinitions } from '@ifc-lite/geometry';
+
+async function inspectExtrusions(bytes: Uint8Array, productId: number): Promise<ExtrusionDefinitions> {
+  const geometry = new GeometryProcessor();
+  await geometry.init();
+  try {
+    const definitions = geometry.extractExtrusionDefinitions(bytes, new Uint32Array([productId]));
+    if (!definitions) throw new Error('Geometry processor is not initialized');
+    return definitions;
+  } finally {
+    geometry.dispose();
+  }
+}
+```
+
+Source references use exact EXPRESS keys: `SweptArea`, `Position`, and
+`ExtrudedDirection` on the solid, and `Position` on the profile. `source.Depth`,
+profile loop coordinates and the optional `position_matrix` and
+`profile_position` retain IFC file length units. `length_unit_scale` converts
+file lengths to metres; nominal area and volume remain in squared and cubed
+file units. Each occurrence's column-major `world_from_source` maps solid-local
+coordinates to absolute IFC Z-up metres. For a profile point, apply
+`world_from_source × position_matrix × profile_position` in that order, using
+identity for an absent position. The `status` field reports unsupported or
+invalid sources explicitly; a missing `nominal_quantities` value is not zero.
+
 ### Drilling from a Mesh Back to its Source Item
 
 An element's `expressId` names the wall; it does not name the piece of the wall
@@ -751,3 +786,32 @@ budgets refuse the fill and report an unsupported item. Limits are 64 rings and
 2,048 input vertices per fill, with a source-scoped style lookup bounded to
 256 MiB of source, one million attached-style edges, 16 KiB per styled record,
 and 64 styled items per geometry item. This does not enable PDF vector conversion.
+
+### Re-meshing edited elements
+
+`@ifc-lite/geometry/remesh` re-meshes a few elements after an edit, without reloading the model. `RemeshClient.create(config)` spawns one long-lived wasm worker. Each `remesh` request takes a standalone subgraph buffer from `serializeEntitySubgraph` (`@ifc-lite/export`) and meshes only the requested targets. It runs the load path's own calls: `buildPrePassOnce`, `processGeometryBatch`, then `convertMeshCollectionToBatch`. The request carries the RTC frame the model was meshed in and the load-time style wire, because the subgraph cannot derive either. Pass the same toggles the model was loaded with in the config, or the re-meshed element will not match its neighbours.
+
+```typescript
+import { RemeshClient, filterStyleWire } from '@ifc-lite/geometry/remesh';
+import { serializeEntitySubgraph } from '@ifc-lite/export';
+
+// Captured when the model loaded: its RTC frame and the pre-pass style wire.
+declare const loadFrame: { x: number; y: number; z: number; needsShift: boolean };
+declare const loadStyles: { styleIds: Uint32Array; styleColors: Uint8Array };
+
+const client = await RemeshClient.create({
+  mergeLayers: false, tessellationQuality: null, skipSmallCuts: false, rectParamFastPath: true,
+});
+const sub = serializeEntitySubgraph(store, mutationView, { targets: new Set([wallId]) });
+const { meshes, csgFailures } = await client.remesh({
+  buffer: sub.bytes, // transferred to the worker
+  targets: Uint32Array.of(wallId),
+  frame: loadFrame,
+  ...filterStyleWire(loadStyles.styleIds, loadStyles.styleColors, sub.ids),
+});
+client.dispose(); // terminates the worker; in-flight requests reject
+```
+
+`client.styleWire(sourceBytes)` runs one whole-file pre-pass in the worker and returns that style wire, for a model whose load did not keep one; the viewer captures it once per model. A client whose worker fails or does not answer within `requestTimeoutMs` (default 30 s) is dead: `alive` turns false, requests still in flight and any later ones reject at once, and the caller creates a new client.
+
+The meshes come back in the same frame and units as the load, so they can replace the element's load-time meshes directly. `scripts/lib/wasm-remesh-contracts.mjs` pins this. For each wall of several fixtures, including one with an RTC shift, it re-meshes the wall from its subgraph and checks the positions, indices, colours and origins against meshing the whole file.

@@ -70,6 +70,8 @@ interface InstancedLike {
   vertexBuffer: SizedBuffer;
   indexBuffer: SizedBuffer;
   instanceBuffer: SizedBuffer;
+  /** Per-template camera-relative delta stream (#6393). */
+  rteDeltas?: { buffer: SizedBuffer };
 }
 
 /** Byte totals per GPU-resident collection. All values in bytes. */
@@ -80,7 +82,7 @@ export interface ResidentGpuBytes {
   meshes: number;
   /** Textured meshes, including an estimated 4 B/texel for the texture. */
   textured: number;
-  /** Instanced templates: template geometry + per-occurrence instance buffers. */
+  /** Instanced templates: template geometry + per-occurrence instance and RTE-delta buffers. */
   instanced: number;
   total: number;
 }
@@ -116,7 +118,7 @@ export function sumResidentGpuBytes(input: {
 
   let instanced = 0;
   for (const t of input.instanced) {
-    instanced += t.vertexBuffer.size + t.indexBuffer.size + t.instanceBuffer.size;
+    instanced += t.vertexBuffer.size + t.indexBuffer.size + t.instanceBuffer.size + (t.rteDeltas?.buffer.size ?? 0);
   }
 
   return { batches, meshes, textured, instanced, total: batches + meshes + textured + instanced };

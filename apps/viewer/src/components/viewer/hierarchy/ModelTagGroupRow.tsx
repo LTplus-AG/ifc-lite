@@ -75,7 +75,7 @@ export function ModelTagGroupRow({
         <Tag className="h-3.5 w-3.5 shrink-0 text-zinc-400" style={tag?.color ? { color: tag.color } : undefined} />
         <span className={cn('flex-1 truncate text-xs font-semibold', isUntagged && 'italic')}>{node.name}</span>
         <span
-          className="text-[10px] font-mono bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 text-zinc-500 dark:text-zinc-400"
+          className="text-2xs font-mono bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 text-zinc-500 dark:text-zinc-400"
           title={t('hierarchy.modelTagGroup.memberCount', { count: members.length, formatted: formatLocaleNumber(locale, members.length) })}
         >
           {formatLocaleNumber(locale, members.length)}

@@ -132,6 +132,56 @@ export interface LandXmlPipeJs { source_id: string; source_path: string; name: s
 
 
 
+export type AnalyticStatusJs = { type: "complete" } | { type: "unsupported"; reason: string };
+export type AnalyticSourceContextJs =
+| { kind: "direct"; representation_id: number }
+| { kind: "mapped"; representation_map_path: number[] };
+export interface AnalyticSourceKeyJs {
+    model_sha256: string; schema: string | null; length_unit_scale_bits: string;
+    context: AnalyticSourceContextJs; solid_id: number;
+}
+export type AnalyticCurveSegmentJs =
+| { type: "line"; start: number[]; end: number[] }
+| { type: "arc"; center: number[]; normal: number[]; x_axis: number[];
+radius: number; start_angle: number; sweep_angle: number };
+export interface AnalyticProfileLoopJs {
+    kind: "outer" | "inner"; segments: AnalyticCurveSegmentJs[];
+    signed_area: number; perimeter: number;
+}
+export interface AnalyticProfileJs {
+    profile_id: number; ifc_type_name: string; ProfileType: string | null;
+    Position: number | null; profile_position: number[] | null;
+    loops: AnalyticProfileLoopJs[]; status: AnalyticStatusJs;
+}
+export interface AnalyticExtrusionJs {
+    solid_id: number; SweptArea: number | null; profile: AnalyticProfileJs | null;
+    Position: number | null; position_matrix: number[] | null;
+    ExtrudedDirection: number | null; DirectionRatios: number[] | null;
+    axis_unit_vector: number[] | null; Depth: number | null; status: AnalyticStatusJs;
+}
+export interface ExtrusionNominalQuantitiesJs {
+    profile_area: number; projected_height: number; nominal_volume: number;
+}
+export interface ExtrusionDefinitionJs {
+    key: AnalyticSourceKeyJs; source: AnalyticExtrusionJs;
+    /** Squared/cubed IFC file-length units; null for unsupported or invalid sources. */
+    nominal_quantities: ExtrusionNominalQuantitiesJs | null;
+}
+export interface ExtrusionInstanceJs {
+    ordinal: number; source: AnalyticSourceKeyJs; product_id: number;
+    solid_id: number; mapping_path: number[]; source_modified: boolean;
+    world_from_source: number[] | null; status: AnalyticStatusJs;
+}
+export interface ExtrusionDefinitionsJs {
+    up_axis: "Z"; source_units: "ifc_file_length_units"; world_units: "m";
+    coordinate_space: "absolute_ifc_world"; model_sha256: string;
+    schema: string | null; length_unit_scale: number;
+    sources: ExtrusionDefinitionJs[];
+    instances: Record<number, ExtrusionInstanceJs[]>; diagnostics: string[];
+}
+
+
+
 /**
  * The overlap solid of one clashing pair, or the reason there is none.
  */
@@ -726,6 +776,22 @@ export class IfcAPI {
      */
     extractProfiles(content: string, model_index: number): ProfileCollection;
     /**
+     * Return authored swept-disk occurrences, including exact line/arc
+     * directrices and derived measurements, in absolute IFC Z-up metres.
+     * `ids` contains product STEP IDs; omit it for all products or pass an
+     * empty `Uint32Array` for none. Unsupported records keep their status and
+     * a null `directrix_metrics`; malformed representation walks report a
+     * diagnostic and omit that product atomically.
+     */
+    extractSweptDiskDescriptions(content: Uint8Array, ids?: Uint32Array | null): any;
+    /**
+     * `ids` is an optional product STEP-ID filter; `None` selects all and
+     * `Some([])` selects no products, matching the Rust and Python APIs.
+     * Matrices are column-major f64; profile_position and position_matrix are
+     * applied before world_from_source. No mesh is decoded on this path.
+     */
+    extrusionDefinitions(content: Uint8Array, ids?: Uint32Array | null): ExtrusionDefinitionsJs;
+    /**
      * Sharded pre-pass: merge the shard-resolved styled-item columns with the
      * SUPPORT spans (extracted host-side from the shard classes) and run the
      * CANONICAL styles flatten. Returns the exact `styles` event payload the
@@ -733,7 +799,9 @@ export class IfcAPI {
      * Span arguments are `[id, start, len]` triples; `plane_angle_to_radians`
      * comes from the meta event. `orphanColors` / `geomColors` carry exactly
      * four floats per id in `orphanIds` / `geomIds`; any other length throws
-     * before either column is read.
+     * before either column is read. The payload's `styleFinishes` come from
+     * the geometry finishes a preceding `setPrepassGeometryFinishes` stashed
+     * (consumed here); without that call they are all NaN.
      */
     finalizePrepassStyles(data: Uint8Array, orphan_ids: Uint32Array, orphan_colors: Float32Array, geom_ids: Uint32Array, geom_colors: Float32Array, colour_map_spans: Uint32Array, material_def_spans: Uint32Array, rel_material_spans: Uint32Array, void_spans: Uint32Array, fills_spans: Uint32Array, aggregate_spans: Uint32Array, plane_angle_to_radians: number): any;
     /**
@@ -975,7 +1043,10 @@ export class IfcAPI {
      * Sharded pre-pass: resolve ONE contiguous (file-ordered) slice of the
      * styled-item span list on this worker, against the entity index installed
      * by `setEntityIndex`. Returns raw resolved maps as flat columns:
-     * `{ orphanIds, orphanColors (f32 rgba per id), geomIds, geomColors }`.
+     * `{ orphanIds, orphanColors (f32 rgba per id), geomIds, geomColors,
+     * geomFinishes }`, where `geomFinishes` is the #5582 `[metallic,
+     * roughness]` pair per `geomIds` entry (NaN when unauthored), from
+     * `resolve_geometry_finishes` over this slice.
      * The host merges shard results IN SHARD ORDER with first-wins per
      * geometry id, reproducing the serial resolver's file-order precedence,
      * then hands the merged columns to `finalizePrepassStyles`.
@@ -1144,6 +1215,15 @@ export class IfcAPI {
      */
     setMergeLayers(enabled: boolean): void;
     /**
+     * Sharded pre-pass (#5582): stash the shard-merged geometry finishes —
+     * the `geomFinishes` columns `resolveStyledItemsShard` returns, merged
+     * first-wins like `geomColors` — for the next `finalizePrepassStyles` /
+     * `finalizePrepassStylesFromSource` call on this instance, which consumes
+     * them and emits the aligned `styleFinishes`. Without this call that
+     * finalize emits NaN finishes, as it always emitted colours only.
+     */
+    setPrepassGeometryFinishes(geom_ids: Uint32Array, geom_finishes: Float32Array): void;
+    /**
      * Enable or disable the PARAMETRIC rectangular-opening fast path (the
      * placement-frame, ground-truth-exact analytic cut) for `processGeometryBatch`.
      *
@@ -1198,6 +1278,22 @@ export class IfcAPI {
      * single JS→wasm copy directly; we wrap it in `Arc` with no second copy.
      */
     setSourceBytes(data: Uint8Array): void;
+    /**
+     * Install the prepass's authored metallic/roughness per style (#5582):
+     * `styleFinishes` carries two floats per `styleIds` entry,
+     * `[metallic, roughness]`, NaN for an unauthored field — the
+     * `styleFinishes` array every prepass result carries beside `styleColors`.
+     * Call it with the same `styleIds` later passed to `processGeometryBatch*`;
+     * finishes set for a different style wire are ignored. Empty arrays clear
+     * them. Malformed lengths never throw: a style without a complete pair
+     * simply gets no finish.
+     *
+     * The batch stamps each returned `MeshDataJs` (`metallic` / `roughness`)
+     * from these, taking each mesh's finish from the style its colour came
+     * from (#5984). Occurrences that ride the instanced (IFNS) shard carry
+     * theirs in the shard's per-instance finish field (v3).
+     */
+    setStyleFinishes(style_ids: Uint32Array, style_finishes: Float32Array): void;
     /**
      * Select the tessellation detail level applied by every subsequent
      * `processGeometryBatch` call (issue #976, step 4).
@@ -1498,6 +1594,10 @@ export class MeshDataJs {
      */
     readonly materialId: number | undefined;
     /**
+     * IFC-authored metallic/roughness (#5582). `undefined` when unauthored.
+     */
+    readonly metallic: number | undefined;
+    /**
      * Get normals as Float32Array (copy to JS)
      */
     readonly normals: Float32Array;
@@ -1511,6 +1611,7 @@ export class MeshDataJs {
      * Get positions as Float32Array (copy to JS)
      */
     readonly positions: Float32Array;
+    readonly roughness: number | undefined;
     /**
      * Optional SurfaceColour for the "Shading" GLB-export choice — only
      * present when the file authored a distinct DiffuseColour. JS sees
@@ -2388,6 +2489,8 @@ export interface InitOutput {
     readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
     readonly ifcapi_exportUsd: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_extractProfiles: (a: number, b: number, c: number, d: number) => number;
+    readonly ifcapi_extractSweptDiskDescriptions: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly ifcapi_extrusionDefinitions: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_finalizePrepassStyles: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number) => void;
     readonly ifcapi_finalizePrepassStylesFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number) => void;
     readonly ifcapi_getMemory: (a: number) => number;
@@ -2435,10 +2538,12 @@ export interface InitOutput {
     readonly ifcapi_setMappedInstancePlan: (a: number, b: number, c: number) => void;
     readonly ifcapi_setMaterialLayerIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => void;
     readonly ifcapi_setMergeLayers: (a: number, b: number) => void;
+    readonly ifcapi_setPrepassGeometryFinishes: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_setRectParamFastPath: (a: number, b: number) => void;
     readonly ifcapi_setReferencedRepmaps: (a: number, b: number, c: number) => void;
     readonly ifcapi_setSkipSmallCuts: (a: number, b: number) => void;
     readonly ifcapi_setSourceBytes: (a: number, b: number, c: number) => void;
+    readonly ifcapi_setStyleFinishes: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_setTessellationQuality: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_simplifyMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number) => void;
     readonly ifcapi_version: (a: number, b: number) => void;
@@ -2480,9 +2585,11 @@ export interface InitOutput {
     readonly meshdatajs_localBounds: (a: number, b: number) => void;
     readonly meshdatajs_localToWorld: (a: number, b: number) => void;
     readonly meshdatajs_materialId: (a: number) => number;
+    readonly meshdatajs_metallic: (a: number) => number;
     readonly meshdatajs_normals: (a: number) => number;
     readonly meshdatajs_origin: (a: number) => number;
     readonly meshdatajs_positions: (a: number) => number;
+    readonly meshdatajs_roughness: (a: number) => number;
     readonly meshdatajs_shadingColor: (a: number, b: number) => void;
     readonly meshdatajs_textureHeight: (a: number) => number;
     readonly meshdatajs_textureId: (a: number) => number;

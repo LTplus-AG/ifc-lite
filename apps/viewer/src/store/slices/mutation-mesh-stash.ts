@@ -14,6 +14,7 @@
  */
 
 import { hostsOtherEntities } from '@ifc-lite/renderer';
+import { remeshAuthoredElement } from './authoredFallbackMesh.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { ViewerState } from '../index.js';
 import { toGlobalIdFromModels } from '../globalId.js';
@@ -107,7 +108,13 @@ export function restoreStashedEntityMesh(
 ): void {
   const key = `${modelId}:${expressId}`;
   const stash = get().removedMeshes.get(key);
-  if (!stash || stash.meshes.length === 0) return;
+  if (!stash || stash.meshes.length === 0) {
+    // An element created and undone before its re-mesh landed (#6232) left
+    // nothing to stash; mesh it now from the restored record, which also
+    // gives the room the geometry its re-created entity arrived without.
+    if (get().mutationViews.get(modelId)?.getNewEntity(expressId)) void remeshAuthoredElement(get, modelId, expressId);
+    return;
+  }
 
   set((s) => {
     const next = new Map(s.removedMeshes);

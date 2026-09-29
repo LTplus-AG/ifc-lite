@@ -6,7 +6,8 @@
  * Scene graph and mesh management
  */
 
-import type { InstancedTemplateGPU, InstancedOccurrence, InstancedTemplateCpu } from './scene-instance-types.js';
+import { destroyInstancedTemplateGpu, type InstancedTemplateGPU, type InstancedOccurrence, type InstancedTemplateCpu } from './scene-instance-types.js';
+import { createInstancedRteDeltaStream, invalidateInstancedRteDeltas, type InstancedRteDeltaStream } from './instanced-rte.js';
 import { materializeInstances } from './scene-instance-materialization.js';
 import { InstanceSuppression } from './scene-instance-suppression.js';
 import { createSceneBatch } from './scene-batch-upload.js';
@@ -17,7 +18,7 @@ import { AuthoredPreparationRegistry, prepareSceneAuthoredOwner } from './scene-
 import { interleaveTexturedVertices } from './textured-vertices.js';
 import { RgbaTexturePool } from './rgba-texture-pool.js';
 import { splitMeshForStreaming } from './scene-stream-split.js';
-import type { Mesh, BatchedMesh, Vec3, PickClipState, Material } from './types.js';
+import type { Mesh, BatchedMesh, Vec3, PickClipState, Material, MeshFinish } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import { hostsOtherEntities } from './mesh-entity-hosting.js';
 import type { RenderPipeline } from './pipeline.js';
@@ -35,7 +36,7 @@ import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, dest
 import { resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, writeOriginalInstancedColors } from './instanced-override-color.js';
-import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
+import { bucketBaseKeyFor, colorKey, type MaterialKeySource, type SpatialChunkingConfig } from './chunk-grid.js';
 import { cloneOverrides, inheritedQuantization, type BatchQuantization } from './scene-derived-batches.js';
 import { EntityColorTable, entityIdPageKey } from './entity-color-table.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
@@ -64,6 +65,7 @@ import {
   INSTANCE_FLAGS_OFFSET,
   INSTANCE_FLAG_SELECTED,
   INSTANCE_FLAG_HIDDEN,
+  INSTANCE_FINISH_FLAGS_MASK,
 } from './instanced-render.js';
 import { translateInstanceRecord } from './scene-instance-translation.js';
 import { discardSceneGpuResourcesForRecovery, prepareSceneDeviceRecovery, repartitionHydratedRecoveryBucket, restoreSceneGpuResourcesAfterRecovery, type SceneDeviceRecoveryPreparation, type SceneRecoveryHost } from './scene-device-recovery.js';
@@ -106,15 +108,11 @@ export interface TexturedMesh {
   bindGroup: GPUBindGroup;
   /** Authored tint (multiplies the sampled texel); white = texture passthrough. */
   color: [number, number, number, number];
-  /**
-   * A caller-supplied finish, mirroring {@link Mesh.material}. Nothing writes
-   * this today — `MeshData` (the WASM extraction boundary) carries no
-   * metallic/roughness fields, and IFC-authored specular is not extracted yet
-   * (#5582) — so `packMeshMaterial` falls back to its defaults for every
-   * textured draw. The field exists so a textured mesh has the SAME optional
-   * hook `Mesh` does, ready for #5582 without a second API.
-   */
+  /** A caller-supplied finish, mirroring {@link Mesh.material}. */
   material?: Material;
+  /** IFC-authored finish (#5582), copied from `MeshData.material` at upload
+   *  (#5984); like {@link Mesh.finish}, `packMeshMaterial` prefers it. */
+  finish?: MeshFinish;
   /**
    * The mesh's per-element local frame (`MeshData.origin`, already Y-up) — the
    * renderer must reconstruct `world = origin + position`.
@@ -937,7 +935,10 @@ export class Scene {
    */
   private bucketBaseKey(meshData: MeshData, color?: [number, number, number, number]): string {
     const source = this.modelTranslations.sourceMesh(meshData);
-    const key = entityIdPageKey(source.expressId, bucketBaseKeyFor(source, this.colorKey(color ?? meshData.color), this.spatialChunking));
+    // #5582: material is the mesh's OWN authored finish regardless of a
+    // colour override — a recolour changes what a piece looks like, not
+    // what it is physically made of.
+    const key = entityIdPageKey(source.expressId, bucketBaseKeyFor(source, this.colorKey(color ?? meshData.color, meshData.material), this.spatialChunking));
     return source.modelIndex ? `model${source.modelIndex}~${key}` : key;
   }
 
@@ -1123,6 +1124,23 @@ export class Scene {
   }
 
   /**
+   * Whether more than `limit` entities with mesh data pass the hide/isolate
+   * filter. Stops at `limit + 1` and allocates nothing, so a per-pick budget
+   * check stays cheap on a large model (#6392).
+   */
+  visibleMeshDataEntitiesExceed(
+    limit: number,
+    hiddenIds?: ReadonlySet<number> | null,
+    isolatedIds?: ReadonlySet<number> | null,
+  ): boolean {
+    let count = 0;
+    for (const expressId of this.meshDataMap.keys()) {
+      if (isEntityVisible(expressId, hiddenIds, isolatedIds) && ++count > limit) return true;
+    }
+    return false;
+  }
+
+  /**
    * Get all MeshData pieces for an expressId (without merging).
    * Optionally filter by modelIndex for multi-model safety.
    */
@@ -1186,18 +1204,12 @@ export class Scene {
   }
 
   /**
-   * Generate color key for grouping meshes.
-   * Quantizes RGBA to 10-bit per channel and packs into a compact string.
-   * Avoids floating-point template literal overhead of the old approach.
+   * Colour key for grouping meshes: `chunk-grid.ts`'s `colorKey` (RGBA
+   * quantized to 1/1000), with the authored finish folded in (#5582) so one
+   * batch never mixes finishes.
    */
-  private colorKey(color: readonly [number, number, number, number]): string {
-    // Quantize to 1000 levels (same precision as before, but integer math only)
-    const r = Math.round(color[0] * 1000);
-    const g = Math.round(color[1] * 1000);
-    const b = Math.round(color[2] * 1000);
-    const a = Math.round(color[3] * 1000);
-    // Pack into single string with fixed-width separator for uniqueness
-    return `${r}|${g}|${b}|${a}`;
+  private colorKey(color: readonly [number, number, number, number], material?: MaterialKeySource): string {
+    return colorKey(color, material);
   }
 
   /**
@@ -1632,16 +1644,13 @@ export class Scene {
       const cpu = this.instancedTemplateCpu[occ.templateIndex];
       if (!cpu) continue;
       const b = occ.byteOffset;
-      const translated = translateInstanceRecord(cpu, b, [dx, dy, dz]);
-      // Push only the 12 translation bytes to the GPU buffer (in place). Guarded
-      // on the cached device so CPU-only tests still exercise the matrix math.
-      if (device) {
-        const gpu = this.instancedTemplates[occ.templateIndex]?.instanceBuffer;
-        if (gpu) {
-          device.queue.writeBuffer(gpu, b + 48, translated.translation);
-          if (translated.legacyAnchors) device.queue.writeBuffer(gpu, b + 88, translated.legacyAnchors);
-        }
-      }
+      const translation = translateInstanceRecord(cpu, b, [dx, dy, dz]);
+      // Push only the 12 translation bytes to the GPU buffer (in place), and
+      // repack the moved anchors' delta stream on the next upload. Guarded on
+      // the cached device so CPU-only tests still exercise the matrix math.
+      const gpu = this.instancedTemplates[occ.templateIndex];
+      if (gpu) invalidateInstancedRteDeltas(gpu.rteDeltas);
+      if (device && gpu) device.queue.writeBuffer(gpu.instanceBuffer, b + 48, translation);
       moved = true;
     }
     if (!moved) return false;
@@ -1668,7 +1677,7 @@ export class Scene {
       if (!cpu) continue;
       const dv = new DataView(cpu.instanceData);
       const w = this.unionInstancedWorldAabb(
-        expressId, dv, occ.byteOffset,
+        expressId, dv, occ.byteOffset, cpu.canonicalAnchors,
         cpu.localMin[0], cpu.localMin[1], cpu.localMin[2],
         cpu.localMax[0], cpu.localMax[1], cpu.localMax[2],
       );
@@ -1709,8 +1718,8 @@ export class Scene {
       templates: this.instancedTemplates, cpu: this.instancedTemplateCpu, occurrences: this.instancedEntityMap,
       device: this.instancedDevice, evictHighlight: (id: number) => this.evictHighlightMeshes(id, true),
       clearPartial: () => this.dropAllPartialCaches(),
-      unionBounds: (id: number, view: DataView, offset: number, min: [number, number, number], max: [number, number, number]) =>
-        this.unionInstancedWorldAabb(id, view, offset, ...min, ...max) };
+      unionBounds: (id: number, view: DataView, offset: number, anchors: Float64Array, min: [number, number, number], max: [number, number, number]) =>
+        this.unionInstancedWorldAabb(id, view, offset, anchors, ...min, ...max) };
   }
 
   private dropOrphanedSuppressedBounds(): void {
@@ -2498,7 +2507,9 @@ export class Scene {
     );
     if (!origin) throw new Error('Unable to resolve a topology-safe GPU frame for mesh geometry.');
     const result = createSceneBatch(meshes, color, device, pipeline, {
-      id: this.nextBatchId, colorKey: bucketKey ?? this.colorKey(color),
+      // A derived batch (no bucketKey) is a subset of ONE material-uniform
+      // bucket, so its first piece's finish labels it like bucketBaseKey does (#5582).
+      id: this.nextBatchId, colorKey: bucketKey ?? this.colorKey(color, meshes[0]?.material),
       origin,
       quantized: quantization, lod: this.lodBuildsEnabled,
     }, bucketKey);
@@ -2873,9 +2884,7 @@ export class Scene {
     for (let i = 0; i < this.instancedTemplates.length; i++) {
       const t = this.instancedTemplates[i];
       if (!t || t.modelIndex !== modelIndex) continue;
-      t.vertexBuffer.destroy();
-      t.indexBuffer.destroy();
-      t.instanceBuffer.destroy();
+      destroyInstancedTemplateGpu(t);
       this.instancedTemplates[i] = undefined;
       this.instancedTemplateCpu[i] = undefined;
       freed.add(i);
@@ -3025,6 +3034,14 @@ export class Scene {
         new Uint8Array(t.instanceBuffer, 0, instSize),
         GPUBufferUsage.VERTEX,
       );
+      let rteDeltas: InstancedRteDeltaStream;
+      try {
+        rteDeltas = createInstancedRteDeltaStream(device, t.instanceCount);
+      } catch (error) {
+        // Nothing references this template's buffers yet; free them rather than leak them.
+        vertexBuffer.destroy(); indexBuffer.destroy(); instanceBuffer.destroy();
+        throw error;
+      }
 
       // Always append: slots are stable identities, never recycled.
       const templateIndex = this.instancedTemplates.length;
@@ -3036,6 +3053,7 @@ export class Scene {
         instanceBuffer,
         instanceCount: t.instanceCount,
         canonicalAnchors: t.canonicalAnchors,
+        rteDeltas,
         bounds: null,
         maxOccRadius: 0,
         selectedCount: 0,
@@ -3090,7 +3108,7 @@ export class Scene {
           this.instancedEntityMap.set(eid, arr);
         }
         // #2985; no id column or the 0 sentinel ⇒ none. ASSIGNED, never conditionally spread: ONE object shape for records that outlive the shard.
-        arr.push({ templateIndex, byteOffset, originalColor, itemId: t.itemIds?.[i] || undefined });
+        arr.push({ templateIndex, byteOffset, originalColor, itemId: t.itemIds?.[i] || undefined, finishBits: (cdv.getUint32(byteOffset + INSTANCE_FLAGS_OFFSET, true) & INSTANCE_FINISH_FLAGS_MASK) >>> 0 });
 
         // A shard can stream in AFTER a selection was recorded (its ids may
         // exist in earlier shards or the flat path). setInstancedSelection
@@ -3104,7 +3122,7 @@ export class Scene {
         if (this.instancedOverrideColors?.has(eid)) lateOverriddenEids.add(eid);
 
         if (haveBox) {
-          const w = this.unionInstancedWorldAabb(eid, cdv, byteOffset, lmnx, lmny, lmnz, lmxx, lmxy, lmxz);
+          const w = this.unionInstancedWorldAabb(eid, cdv, byteOffset, t.canonicalAnchors, lmnx, lmny, lmnz, lmxx, lmxy, lmxz);
           // Fold the occurrence's world box into the template's cull metadata
           // (union bounds + largest occurrence bounding-sphere radius) for the
           // per-frame instanced frustum/contribution culls. Non-finite boxes
@@ -3133,8 +3151,14 @@ export class Scene {
     this.instancedVisibilityDirty = true;
     this.instancedGhostDirty = true;
   }
-  private unionInstancedWorldAabb(eid: number, dv: DataView, matOffset: number, lmnx: number, lmny: number, lmnz: number, lmxx: number, lmxy: number, lmxz: number): { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number } {
-    return unionInstanceBounds(this.boundingBoxes, eid, dv, matOffset, lmnx, lmny, lmnz, lmxx, lmxy, lmxz);
+  private unionInstancedWorldAabb(eid: number, dv: DataView, matOffset: number, anchors: Float64Array, lmnx: number, lmny: number, lmnz: number, lmxx: number, lmxy: number, lmxz: number): { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number } {
+    return unionInstanceBounds(this.boundingBoxes, eid, dv, matOffset, anchors, lmnx, lmny, lmnz, lmxx, lmxy, lmxz);
+  }
+  /** Drawn templates holding an occurrence of `expressId` (in `modelIndex` if given), for the hover outline (#5745). */
+  getInstancedTemplatesOf(expressId: number, modelIndex?: number): InstancedTemplateGPU[] {
+    if (!this.instancedVisible) return [];
+    const slots = new Set((this.instancedEntityMap.get(expressId) ?? []).map((o) => o.templateIndex));
+    return [...slots].flatMap((s) => { const t = this.instancedTemplates[s]; return t && (modelIndex === undefined || t.modelIndex === modelIndex) ? [t] : []; });
   }
   /** True when `expressId` has a GPU-instanced occurrence. */
   isInstancedEntity(expressId: number): boolean {
@@ -3428,7 +3452,7 @@ export class Scene {
         ? (loc.itemId === this.instancedSelectedItemId ? INSTANCE_FLAG_SELECTED : 0)
         : (eidSelected ? INSTANCE_FLAG_SELECTED : 0);
       const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
-      if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_FLAGS_OFFSET, new Uint32Array([(selectedBit | hiddenBit) >>> 0]));
+      if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_FLAGS_OFFSET, new Uint32Array([(selectedBit | hiddenBit | (loc.finishBits ?? 0)) >>> 0]));
     }
   }
 
@@ -3564,6 +3588,7 @@ export class Scene {
         sampler,
         bindGroup,
         color: meshData.color,
+        ...(meshData.material ? { finish: meshData.material } : {}), // IFC-authored (#5984)
         // `world = origin + position` (#1973). Absent on the orphan
         // type-geometry path, whose positions are already absolute.
         origin: meshData.origin
@@ -3606,10 +3631,7 @@ export class Scene {
    */
   private destroyAllInstancedTemplates(): void {
     for (const it of this.instancedTemplates) {
-      if (!it) continue;
-      it.vertexBuffer.destroy();
-      it.indexBuffer.destroy();
-      it.instanceBuffer.destroy();
+      if (it) destroyInstancedTemplateGpu(it);
     }
     this.instancedTemplates = [];
     this.liveInstancedTemplates = [];

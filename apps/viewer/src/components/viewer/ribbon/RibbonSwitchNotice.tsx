@@ -81,7 +81,7 @@ export function RibbonSwitchNotice() {
   };
 
   return (
-    <div className="flex items-center gap-2 border-t border-primary/25 bg-primary/5 px-3 py-1 text-[11px] text-muted-foreground">
+    <div className="flex items-center gap-2 border-t border-primary/25 bg-primary/5 px-3 py-1 text-2xs text-muted-foreground">
       <PanelTop className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
       <span className="min-w-0 truncate text-foreground/80">
         {t('ribbon.notice.message')}

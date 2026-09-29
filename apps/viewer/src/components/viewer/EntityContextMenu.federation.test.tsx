@@ -16,23 +16,32 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, beforeEach, after } from 'node:test';
+import { describe, it, beforeEach, after, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { FederatedModel } from '@/store/types.js';
 import { EntityContextMenu } from './EntityContextMenu.js';
+import { ElementsTab } from './ribbon/tabs/ElementsTab.js';
+import { TooltipProvider } from '@/components/ui/tooltip.js';
 import { surfaceCommand, SURFACE_COMMANDS } from './surface-commands.js';
 import { DUPLICATE_CONTEXT_DIRECTIONS } from './surface-commands-context.js';
 import { resolveEnglish } from '@/i18n/registry.js';
+import { posthog } from '@/lib/analytics.js';
 import {
   parseFixtureModel,
   FIXTURE_WALL_A,
   FIXTURE_WALL_B,
   FIXTURE_WALL_C,
+  FIXTURE_WINDOW,
+  FIXTURE_BUILDING,
+  FIXTURE_STOREY_1,
+  FIXTURE_REL_CONTAINED_2,
+  guid,
 } from './anonymized-export/anonymized-export-fixture.test-support.js';
 
 const ID_OFFSET = 1_000_000;
@@ -55,11 +64,11 @@ function federatedModel(id: string, ifcDataStore: FederatedModel['ifcDataStore']
 }
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
-function render(): HTMLElement {
+function render(withRibbon = false): HTMLElement {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
-  act(() => { root.render(<EntityContextMenu />); });
+  act(() => { root.render(<TooltipProvider>{withRibbon && <ElementsTab />}<EntityContextMenu /></TooltipProvider>); });
   mounted.push({ root, container });
   return container;
 }
@@ -70,6 +79,7 @@ function unmountAll(): void {
   }
 }
 after(unmountAll);
+afterEach(() => mock.restoreAll());
 
 function menuItem(container: HTMLElement, label: string): HTMLButtonElement {
   const btn = [...container.querySelectorAll('button')].find((b) =>
@@ -78,14 +88,28 @@ function menuItem(container: HTMLElement, label: string): HTMLButtonElement {
   return btn as HTMLButtonElement;
 }
 
+function openRibbonEntityActions(container: HTMLElement, selectedId: number): void {
+  const button = container.querySelector<HTMLButtonElement>('[data-command-id="elements:entity-actions"]');
+  assert.ok(button, 'the Elements ribbon exposes selected-entity actions');
+  assert.equal(button.getAttribute('aria-label'),
+    resolveEnglish(surfaceCommand('elements:entity-actions', 'ribbon').labelKey),
+    'the ribbon announces the registered command name');
+  assert.ok(button.querySelector('svg'), 'the ribbon renders its entity-actions icon');
+  assert.equal(button.disabled, false);
+  act(() => { button.click(); });
+  assert.equal(useViewerStore.getState().contextMenu.entityId, selectedId,
+    'the ribbon opens the existing entity menu for the selected global ID');
+  assert.ok(container.querySelector('[role="menu"]'), 'the shared menu is visible');
+}
+
 beforeEach(async () => {
   unmountAll();
   const store = await parseFixtureModel();
   useViewerStore.setState({
     models: new Map([['m1', federatedModel('m1', store)]]),
+    mutationViews: new Map(),
     selectedEntityIds: new Set<number>(),
     anonymizedExportRequested: false,
-    mutationViews: new Map(),
     storeEditors: new Map(),
     undoStacks: new Map(),
     dirtyModels: new Set(),
@@ -95,6 +119,67 @@ beforeEach(async () => {
 });
 
 describe('EntityContextMenu — federation-space selection', () => {
+  for (const twoModels of [false, true]) {
+    it(`opens context-only selection commands from the ribbon in ${twoModels ? 'two-model' : 'one-model'} mode (#5870)`, async () => {
+      if (twoModels) {
+        const store = await parseFixtureModel();
+        useViewerStore.setState({ models: new Map([
+          ['m0', federatedModel('m0', store, 0)],
+          ['m1', federatedModel('m1', store)],
+        ]) });
+      }
+      const selectedId = globalId(FIXTURE_WALL_B);
+      act(() => { useViewerStore.setState({ selectedEntityId: null, selectedEntityIds: new Set([selectedId]) }); });
+      const container = render(true);
+      openRibbonEntityActions(container, selectedId);
+      assert.ok(menuItem(container, 'Select all IfcWall'));
+      assert.ok(menuItem(container, 'Select same storey'));
+      assert.ok(menuItem(container, 'Duplicate'));
+      assert.ok(menuItem(container, 'Delete entity'));
+
+      act(() => { menuItem(container, 'Select all IfcWall').click(); });
+      assert.deepEqual(useViewerStore.getState().selectedEntityIds,
+        new Set([globalId(FIXTURE_WALL_A), globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]));
+      act(() => { useViewerStore.setState({ selectedEntityId: null, selectedEntityIds: new Set([selectedId]) }); });
+      openRibbonEntityActions(container, selectedId);
+      act(() => { menuItem(container, 'Select same storey').click(); });
+      assert.deepEqual(useViewerStore.getState().selectedEntityIds,
+        new Set([globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]));
+      if (twoModels) assert.ok(!useViewerStore.getState().selectedEntityIds.has(FIXTURE_WALL_A));
+    });
+
+    it(`routes ribbon Duplicate and Delete through the existing ${twoModels ? 'two-model' : 'one-model'} IFC menu (#5870)`, async () => {
+      const bytes = await readFile(new URL('../../../public/samples/hello-wall.ifc', import.meta.url));
+      const targetStore = await new IfcParser().parseColumnar(
+        bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+        { disableWorkerScan: true },
+      );
+      const otherStore = useViewerStore.getState().models.get('m1')!.ifcDataStore;
+      useViewerStore.setState({
+        models: twoModels
+          ? new Map([['m0', federatedModel('m0', otherStore, 0)], ['m1', federatedModel('m1', targetStore)]])
+          : new Map([['m1', federatedModel('m1', targetStore)]]),
+      });
+      const selectedId = globalId(1222);
+      useViewerStore.setState({ selectedEntityId: selectedId, selectedEntityIds: new Set([selectedId]) });
+      const container = render(true);
+      openRibbonEntityActions(container, selectedId);
+      assert.equal(menuItem(container, 'Duplicate').disabled, true);
+      assert.equal(menuItem(container, 'Delete entity').disabled, true);
+      act(() => { useViewerStore.setState({ editEnabled: true }); });
+      assert.equal(menuItem(container, 'Duplicate').disabled, false);
+      act(() => { menuItem(container, 'Duplicate').click(); });
+      assert.equal(useViewerStore.getState().undoStacks.get('m1')?.at(-1)?.type, 'CREATE_ENTITY');
+      if (twoModels) assert.equal(useViewerStore.getState().undoStacks.has('m0'), false);
+
+      act(() => { useViewerStore.setState({ selectedEntityId: selectedId, selectedEntityIds: new Set([selectedId]) }); });
+      openRibbonEntityActions(container, selectedId);
+      act(() => { menuItem(container, 'Delete entity').click(); });
+      assert.equal(useViewerStore.getState().mutationViews.get('m1')?.isDeleted(1222), true);
+      if (twoModels) assert.equal(useViewerStore.getState().mutationViews.has('m0'), false);
+    });
+  }
+
   it('renders the literal entity and canvas context registry matrix (#5870)', () => {
     useViewerStore.setState({ editEnabled: true });
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
@@ -193,6 +278,10 @@ describe('EntityContextMenu — federation-space selection', () => {
   }
 
   it('"Select all IfcWall" resolves through the model offset', () => {
+    const events: Array<{ event: string; properties: Record<string, unknown> }> = [];
+    mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
+      events.push({ event, properties });
+    });
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
     const container = render();
 
@@ -204,6 +293,48 @@ describe('EntityContextMenu — federation-space selection', () => {
       new Set([globalId(FIXTURE_WALL_A), globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]),
       'selectedEntityIds must carry renderer-space (offset) ids, not raw model-space expressIds',
     );
+    assert.deepEqual(events.filter(({ event }) => event === 'command_executed'), [
+      { event: 'command_executed', properties: { command_id: 'context:select-all-type', surface: 'context' } },
+    ], 'the mounted context click emits one command event');
+  });
+
+  it('selects the live class after deletion, creation, and retype (#5249)', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(88);
+    view.deleteEntity(FIXTURE_WALL_C);
+    view.setEntityType(FIXTURE_WALL_B, 'IfcDoor');
+    view.setEntityType(FIXTURE_WINDOW, 'IfcWall');
+    const created = view.createEntity('IfcWall', [guid(89), null, 'New Wall', null, null, null, null, null]);
+    useViewerStore.setState({ mutationViews: new Map([['m1', view]]) });
+
+    act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
+    const container = render();
+    act(() => { menuItem(container, 'Select all IfcWall').click(); });
+
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds,
+      new Set([globalId(FIXTURE_WALL_A), globalId(FIXTURE_WINDOW), globalId(created.expressId)]));
+
+    act(() => { useViewerStore.setState({ selectedEntityIds: new Set() }); });
+    act(() => { useViewerStore.getState().openContextMenu(globalId(created.expressId), 10, 10); });
+    act(() => { menuItem(container, 'Select all IfcWall').click(); });
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds,
+      new Set([globalId(FIXTURE_WALL_A), globalId(FIXTURE_WINDOW), globalId(created.expressId)]));
+  });
+
+  it('reads the legacy mutation view when no federation model is registered (#5249)', () => {
+    const store = useViewerStore.getState().models.get('m1')!.ifcDataStore!;
+    const view = new MutablePropertyView(null, '__legacy__');
+    view.setExpressIdWatermark(88);
+    view.deleteEntity(FIXTURE_WALL_B);
+    const created = view.createEntity('IfcWall', [guid(89), null, 'New Wall', null, null, null, null, null]);
+    useViewerStore.setState({ models: new Map(), ifcDataStore: store,
+      mutationViews: new Map([['__legacy__', view]]) });
+
+    act(() => { useViewerStore.getState().openContextMenu(FIXTURE_WALL_A, 10, 10); });
+    const container = render();
+    act(() => { menuItem(container, 'Select all IfcWall').click(); });
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds,
+      new Set([FIXTURE_WALL_A, FIXTURE_WALL_C, created.expressId]));
   });
 
   it('"Select same storey" resolves through the model offset', () => {
@@ -218,5 +349,96 @@ describe('EntityContextMenu — federation-space selection', () => {
       new Set([globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]),
       'selectedEntityIds must carry renderer-space (offset) ids, not raw model-space expressIds',
     );
+  });
+
+  it('selects live containment after deleting an element and creating an element plus relationship (#5249)', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(88);
+    view.deleteEntity(FIXTURE_WALL_B);
+    const created = view.createEntity('IfcWall', [guid(89), null, 'New Wall', null, null, null, null, null]);
+    view.createEntity('IfcRelContainedInSpatialStructure', [
+      guid(90), null, null, null, [`#${created.expressId}`], '#5',
+    ]);
+    useViewerStore.setState({ mutationViews: new Map([['m1', view]]) });
+
+    act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_C), 10, 10); });
+    const container = render();
+    act(() => { menuItem(container, 'Select same storey').click(); });
+
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds,
+      new Set([globalId(FIXTURE_WALL_C), globalId(created.expressId)]));
+  });
+
+  it('moves the selected set when a source containment relationship is retargeted (#5249)', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    view.setAttribute(FIXTURE_REL_CONTAINED_2, 'RelatingStructure', `#${FIXTURE_STOREY_1}`);
+    useViewerStore.setState({ mutationViews: new Map([['m1', view]]) });
+
+    act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_B), 10, 10); });
+    const container = render();
+    act(() => { menuItem(container, 'Select same storey').click(); });
+
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds,
+      new Set([globalId(FIXTURE_WALL_A), globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]));
+  });
+
+  it('selects members of a source building retyped as a storey (#5249 review)', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    view.setEntityType(FIXTURE_BUILDING, 'IfcBuildingStorey');
+    view.setAttribute(FIXTURE_REL_CONTAINED_2, 'RelatingStructure', `#${FIXTURE_BUILDING}`);
+    useViewerStore.setState({ mutationViews: new Map([['m1', view]]) });
+
+    act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_B), 10, 10); });
+    const container = render();
+    act(() => { menuItem(container, 'Select same storey').click(); });
+
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds,
+      new Set([globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]));
+  });
+
+  it('finds the storey of an overlay-created aggregated part but selects direct members (#5249)', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(88);
+    const part = view.createEntity('IfcBuildingElementPart', [guid(89), null, 'Part', null, null, null, null, null]);
+    view.createEntity('IfcRelAggregates', [
+      guid(90), null, null, null, `#${FIXTURE_WALL_B}`, [`#${part.expressId}`],
+    ]);
+    useViewerStore.setState({ mutationViews: new Map([['m1', view]]) });
+
+    act(() => { useViewerStore.getState().openContextMenu(globalId(part.expressId), 10, 10); });
+    const container = render();
+    act(() => { menuItem(container, 'Select same storey').click(); });
+
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds,
+      new Set([globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]));
+  });
+
+  it('finds the storey through an overlay-created IfcRelNests edge (#5249 review)', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(88);
+    const part = view.createEntity('IfcBuildingElementPart', [guid(89), null, 'Nested part', null, null, null, null, null]);
+    view.createEntity('IfcRelNests', [
+      guid(90), null, null, null, `#${FIXTURE_WALL_B}`, [`#${part.expressId}`],
+    ]);
+    useViewerStore.setState({ mutationViews: new Map([['m1', view]]) });
+
+    act(() => { useViewerStore.getState().openContextMenu(globalId(part.expressId), 10, 10); });
+    const container = render();
+    act(() => { menuItem(container, 'Select same storey').click(); });
+
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds,
+      new Set([globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]));
+  });
+
+  it('does not select members from a deleted containment relationship (#5249)', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    view.deleteEntity(FIXTURE_REL_CONTAINED_2);
+    useViewerStore.setState({ mutationViews: new Map([['m1', view]]) });
+
+    act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_B), 10, 10); });
+    const container = render();
+    act(() => { menuItem(container, 'Select same storey').click(); });
+
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set());
   });
 });

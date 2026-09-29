@@ -245,29 +245,29 @@ describe('Scene.removeInstancedTemplatesForModel — index stability', () => {
 describe('Scene.removeInstancedTemplatesForModel — disposal', () => {
   it('destroys exactly the removed model\'s GPU handles, once each', () => {
     const { scene, modelA, modelB } = twoModelScene();
-    assert.strictEqual(modelA.length, 6, '2 templates x (vertex, index, instance)');
-    assert.strictEqual(modelB.length, 9, '3 templates x (vertex, index, instance)');
+    assert.strictEqual(modelA.length, 8, '2 templates x (vertex, index, instance, RTE deltas #6393)');
+    assert.strictEqual(modelB.length, 12, '3 templates x (vertex, index, instance, RTE deltas #6393)');
 
     scene.removeInstancedTemplatesForModel(3);
 
-    assert.deepStrictEqual(modelA.map((b) => b.destroyed), [1, 1, 1, 1, 1, 1]);
-    assert.deepStrictEqual(modelB.map((b) => b.destroyed), [0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    assert.deepStrictEqual(modelA.map((b) => b.destroyed), new Array(8).fill(1));
+    assert.deepStrictEqual(modelB.map((b) => b.destroyed), new Array(12).fill(0));
   });
 
   it('does not re-destroy an already-removed model\'s handles on clear()', () => {
     const { scene, modelA, modelB } = twoModelScene();
     scene.removeInstancedTemplatesForModel(3);
     scene.clear();
-    assert.deepStrictEqual(modelA.map((b) => b.destroyed), [1, 1, 1, 1, 1, 1]);
-    assert.deepStrictEqual(modelB.map((b) => b.destroyed), [1, 1, 1, 1, 1, 1, 1, 1, 1]);
+    assert.deepStrictEqual(modelA.map((b) => b.destroyed), new Array(8).fill(1));
+    assert.deepStrictEqual(modelB.map((b) => b.destroyed), new Array(12).fill(1));
     assert.strictEqual(scene.getInstancedTemplates().length, 0);
   });
 
   it('is a no-op for a model that holds no templates', () => {
     const { scene, modelA, modelB } = twoModelScene();
     assert.strictEqual(scene.removeInstancedTemplatesForModel(99), 0);
-    assert.deepStrictEqual(modelA.map((b) => b.destroyed), [0, 0, 0, 0, 0, 0]);
-    assert.deepStrictEqual(modelB.map((b) => b.destroyed), [0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    assert.deepStrictEqual(modelA.map((b) => b.destroyed), new Array(8).fill(0));
+    assert.deepStrictEqual(modelB.map((b) => b.destroyed), new Array(12).fill(0));
     assert.deepStrictEqual(liveTags(scene), [[3, 0], [3, 1], [7, 2], [7, 3], [7, 4]]);
   });
 
@@ -283,7 +283,7 @@ describe('Scene.removeInstancedTemplatesForModel — disposal', () => {
     assert.strictEqual(scene.removeInstancedTemplatesForModel(7), 3);
     assert.strictEqual(scene.getInstancedTemplates().length, 0);
     assert.deepStrictEqual([...scene.getInstancedModelIndices()], []);
-    assert.deepStrictEqual(modelA.concat(modelB).map((b) => b.destroyed), new Array(15).fill(1));
+    assert.deepStrictEqual(modelA.concat(modelB).map((b) => b.destroyed), new Array(20).fill(1));
     assert.strictEqual(scene.getResidentGpuBytes().instanced, 0);
   });
 });
@@ -574,5 +574,34 @@ describe('Scene.setModelRotation (#4890)', () => {
   it('is a no-op that changes nothing when the angle is already zero', () => {
     const { scene } = twoModelScene();
     assert.strictEqual(scene.setModelRotation(7, 0, [1, 0, 1]), false);
+  });
+});
+
+/**
+ * #5745: the hover outline draws only the templates that hold the hovered
+ * id, scoped to the hovered entity's model, and none while the instanced
+ * pass itself is hidden (the Types view).
+ */
+describe('Scene.getInstancedTemplatesOf (#5745)', () => {
+  function sharedIdScene() {
+    const scene = new Scene();
+    const { device } = fakeDevice();
+    scene.addInstancedShard(device, shard(2, [10, 11]), 3);
+    scene.addInstancedShard(device, shard(3, [10, 21, 22]), 7);
+    return scene;
+  }
+
+  it('returns every template holding the id, or only the given model\'s', () => {
+    const scene = sharedIdScene();
+    assert.deepStrictEqual(scene.getInstancedTemplatesOf(10).map((t) => t.modelIndex).sort(), [3, 7]);
+    assert.deepStrictEqual(scene.getInstancedTemplatesOf(10, 7).map((t) => t.modelIndex), [7]);
+    assert.deepStrictEqual(scene.getInstancedTemplatesOf(21).length, 1);
+    assert.deepStrictEqual(scene.getInstancedTemplatesOf(99), []);
+  });
+
+  it('returns nothing while the instanced pass is hidden', () => {
+    const scene = sharedIdScene();
+    scene.setInstancedVisible(false);
+    assert.deepStrictEqual(scene.getInstancedTemplatesOf(10), []);
   });
 });

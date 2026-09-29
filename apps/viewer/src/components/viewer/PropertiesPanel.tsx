@@ -39,6 +39,7 @@ import { displayStoreyElevationMeters } from '@/lib/geo/storey-elevation';
 import { useRenderFrameOffsets } from '@/hooks/useRenderFrameOffsets';
 import { PropertySetCard } from './properties/PropertySetCard';
 import { QuantitySetCard } from './properties/QuantitySetCard';
+import { SweptDiskInspection } from './properties/SweptDiskInspection';
 import { ModelMetadataPanel } from './properties/ModelMetadataPanel';
 import { useLandXmlSourceInspector } from './properties/useLandXmlSourceInspector';
 import { ClassificationCard } from './properties/ClassificationCard';
@@ -63,6 +64,8 @@ import { attributesFromOverlayEntity } from './properties/overlayAttributes';
 import { createQueryAdapter } from '@/sdk/adapters/query-adapter';
 import { groupMembersForRef, relationshipsForSelection } from './properties/merge-relationship-data';
 import { effectiveSelectedClass } from './properties/effectiveSelectedClass';
+import { effectiveStructuralView } from './properties/effectiveStructuralView';
+import { selectedOverlayEntity } from './properties/selectedOverlayEntity';
 import { mergePropertySetLists, type DisplayPropertySet } from './properties/mergePropertySetLists';
 import { filterMaterialPropertyGroups, filterPropertySets, filterQuantitySets, matchesPropertySearch, searchTabForHits } from './properties/propertySearch';
 import { PropertySearchHighlight } from './properties/PropertySearchHighlight';
@@ -382,17 +385,9 @@ export function PropertiesPanel() {
     return { expressId: parent.expressId, name: parent.name || undefined };
   }, [entityNode]);
 
-  // Overlay-only entity record (duplicates, scripted adds). Carries
-  // the type + positional attributes the StoreEditor recorded — used
-  // as a fallback when the parsed entityNode comes up empty so the
-  // panel doesn't render `UNKNOWN / Unknown` for fresh entities.
+  // Keep overlay-created entities out of the panel's `UNKNOWN / Unknown` display path.
   const overlayEntity = useMemo(() => {
-    let modelId = selectedEntity?.modelId;
-    if (modelId === 'legacy') modelId = '__legacy__';
-    const expressId = selectedEntity?.expressId;
-    if (!modelId || !expressId) return null;
-    const view = mutationViews.get(modelId);
-    return view?.getNewEntity(expressId) ?? null;
+    return selectedOverlayEntity(selectedEntity, mutationViews);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEntity, mutationViews, mutationVersion]);
 
@@ -635,8 +630,9 @@ export function PropertiesPanel() {
     if (!selectedEntity || lookupExpressId === null) return [];
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return [];
-    return extractMaterialPropertiesOnDemand(dataStore as IfcDataStore, lookupExpressId);
-  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
+    const view = mutationViews.get(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId);
+    return extractMaterialPropertiesOnDemand(dataStore as IfcDataStore, lookupExpressId, view, mutationVersion);
+  }, [selectedEntity, lookupExpressId, model, ifcDataStore, mutationViews, mutationVersion]);
 
   // Extract documents for the selected entity from the IFC data store
   const documents = useMemo(() => {
@@ -792,9 +788,12 @@ export function PropertiesPanel() {
   const structuralData = useMemo(() => {
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return null;
-    const out = extractStructuralOnDemand(dataStore as IfcDataStore);
+    const id = selectedEntity?.modelId === 'legacy' ? '__legacy__' : (model?.id ?? selectedEntity?.modelId);
+    const mutationView = id ? mutationViews.get(id) : undefined;
+    const effectiveView = effectiveStructuralView(mutationView);
+    const out = extractStructuralOnDemand(dataStore as IfcDataStore, effectiveView);
     return out.hasStructural ? out : null;
-  }, [model, ifcDataStore]);
+  }, [model, ifcDataStore, selectedEntity?.modelId, mutationViews, mutationVersion]);
   /** True when the selection is itself a structural member the extraction
    *  knows about — used, like `hasScheduleForSelection`, to keep the
    *  separator above StructuralCard from rendering on its own. */
@@ -1751,8 +1750,8 @@ export function PropertiesPanel() {
               </div>
             )}
           </TabsContent>
-
           <TabsContent value="quantities" className="m-0 p-3 overflow-hidden">
+            <div className="mb-3"><SweptDiskInspection enabled={propertiesActiveTab === 'quantities'} /></div>
             {foundQuantities.length === 0 ? (
               findQuery ? null : <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">{t('properties.panel.noQuantities')}</p>
             ) : (
@@ -1763,7 +1762,6 @@ export function PropertiesPanel() {
               </div>
             )}
           </TabsContent>
-
           <TabsContent value="bsdd" className="m-0 p-3 overflow-hidden">
             {selectedEntity && (
               <BsddCard

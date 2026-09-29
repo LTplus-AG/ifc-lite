@@ -20,16 +20,11 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useViewerStore } from '@/store';
+import { useWallPlaceBridge } from './add-element-wall-command';
 import { canMutate, mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
-import { useIfc } from '@/hooks/useIfc';
+import { useModelRoster } from '@/hooks/useModelRoster';
 import { EntityNode } from '@ifc-lite/query';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
@@ -37,6 +32,7 @@ import { ELEMENT_OPTIONS, SPACE_PREDEFINED_TYPES } from './add-element-options';
 import { formatWallSkipReasons } from './add-element-wall-skip-i18n';
 import { effectiveStoreyIds } from './add-element-storeys';
 import { DropGuidance } from './add-element-guidance';
+import { NumberField } from './add-element-number-field';
 
 interface StoreyOption {
   expressId: number;
@@ -49,18 +45,19 @@ interface AddElementPanelProps {
 
 export function AddElementPanel({ onClose }: AddElementPanelProps) {
   const { t, locale, revision } = useTranslation();
-  const { models, ifcDataStore } = useIfc();
-
+  const models = useModelRoster();
+  const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
   const addElementType = useViewerStore((s) => s.addElementType);
   const setAddElementType = useViewerStore((s) => s.setAddElementType);
+  useWallPlaceBridge();
 
   const addElementModelId = useViewerStore((s) => s.addElementModelId);
   const setAddElementModelId = useViewerStore((s) => s.setAddElementModelId);
   const addElementStoreyId = useViewerStore((s) => s.addElementStoreyId);
   const setAddElementStoreyId = useViewerStore((s) => s.setAddElementStoreyId);
 
-  const wallParams = useViewerStore((s) => s.addElementWallParams);
-  const setWallParams = useViewerStore((s) => s.setAddElementWallParams);
+  const wallParams = useViewerStore((s) => s.authoringDefaults.dims.wall);
+  const setWallParams = useViewerStore((s) => s.setAuthoringDims);
   const slabParams = useViewerStore((s) => s.addElementSlabParams);
   const setSlabParams = useViewerStore((s) => s.setAddElementSlabParams);
   const beamParams = useViewerStore((s) => s.addElementBeamParams);
@@ -283,8 +280,8 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
 
           {addElementType === 'wall' && (
             <div className="grid grid-cols-2 gap-2">
-              <NumberField label={t('addElement.dimension.thicknessUnit', { unit: 'm' })} value={wallParams.Thickness} min={0.01} onChange={(v) => setWallParams({ Thickness: v })} />
-              <NumberField label={t('addElement.dimension.heightUnit', { unit: 'm' })} value={wallParams.Height} min={0.01} onChange={(v) => setWallParams({ Height: v })} />
+              <NumberField label={t('addElement.dimension.thicknessUnit', { unit: 'm' })} value={wallParams.Thickness} min={0.01} onChange={(v) => setWallParams('wall', { Thickness: v })} />
+              <NumberField label={t('addElement.dimension.heightUnit', { unit: 'm' })} value={wallParams.Height} min={0.01} onChange={(v) => setWallParams('wall', { Height: v })} />
             </div>
           )}
 
@@ -316,10 +313,11 @@ export function AddElementPanel({ onClose }: AddElementPanelProps) {
           )}
 
           {addElementType === 'window' && (
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <NumberField label={t('addElement.dimension.widthUnit', { unit: 'm' })} value={windowParams.Width} min={0.01} onChange={(v) => setWindowParams({ Width: v })} />
               <NumberField label={t('addElement.dimension.heightUnit', { unit: 'm' })} value={windowParams.Height} min={0.01} onChange={(v) => setWindowParams({ Height: v })} />
               <NumberField label={t('addElement.dimension.frameUnit', { unit: 'm' })} value={windowParams.FrameThickness} min={0.005} onChange={(v) => setWindowParams({ FrameThickness: v })} />
+              <NumberField label={t('addElement.dimension.sillUnit', { unit: 'm' })} value={windowParams.SillHeight} min={0} onChange={(v) => setWindowParams({ SillHeight: v })} />
             </div>
           )}
 
@@ -405,13 +403,6 @@ function ModeChip({ selected, onClick, children }: ModeChipProps) {
   );
 }
 
-interface NumberFieldProps {
-  label: string;
-  value: number;
-  min: number;
-  onChange: (v: number) => void;
-}
-
 interface AutoSpacesSectionProps {
   modelId: string | null;
   storeyId: number | null;
@@ -435,8 +426,6 @@ function AutoSpacesSection({ modelId, storeyId, commitAllowed, editReason }: Aut
 
   const ready = modelId !== null && storeyId !== null;
 
-  const [debugLogging, setDebugLogging] = useState(false);
-
   const runPreview = () => {
     if (!ready || busy) return;
     setBusy(true);
@@ -448,7 +437,6 @@ function AutoSpacesSection({ modelId, storeyId, commitAllowed, editReason }: Aut
         namePattern: params.NamePattern,
         predefinedType: params.PredefinedType,
         dryRun: true,
-        debug: debugLogging,
       });
       if ('error' in result) {
         toast.error(result.error);
@@ -493,7 +481,6 @@ function AutoSpacesSection({ modelId, storeyId, commitAllowed, editReason }: Aut
         height: params.Height,
         namePattern: params.NamePattern,
         predefinedType: params.PredefinedType,
-        debug: debugLogging,
       });
       if ('error' in result) {
         toast.error(result.error);
@@ -593,16 +580,6 @@ function AutoSpacesSection({ modelId, storeyId, commitAllowed, editReason }: Aut
         </Button>
       </div>
 
-      <label className="flex items-center gap-1.5 text-2xs font-mono text-zinc-500 dark:text-zinc-400 select-none cursor-pointer">
-        <input
-          type="checkbox"
-          checked={debugLogging}
-          onChange={(e) => setDebugLogging(e.target.checked)}
-          className="h-3 w-3 accent-emerald-600"
-        />
-        {t('addElement.auto.verbose')}
-      </label>
-
       {preview && (
         <div className="rounded-sm border border-emerald-200 dark:border-emerald-900 bg-emerald-50/60 dark:bg-emerald-950/20 px-2 py-1.5 text-2xs font-mono text-emerald-800 dark:text-emerald-300 leading-snug">
           <div>
@@ -649,28 +626,5 @@ function AutoSpacesSection({ modelId, storeyId, commitAllowed, editReason }: Aut
         </div>
       )}
     </section>
-  );
-}
-
-function NumberField({ label, value, min, onChange }: NumberFieldProps) {
-  const id = `add-elem-${label.toLowerCase()}`;
-  return (
-    <div className="space-y-1">
-      <Label htmlFor={id} className="text-2xs font-mono text-zinc-500 dark:text-zinc-400">
-        {label}
-      </Label>
-      <Input
-        id={id}
-        type="number"
-        step={0.05}
-        min={min}
-        value={Number.isFinite(value) ? value : ''}
-        onChange={(e) => {
-          const next = Number(e.target.value);
-          if (Number.isFinite(next) && next >= min) onChange(next);
-        }}
-        className="h-8 font-mono text-xs"
-      />
-    </div>
   );
 }

@@ -11,21 +11,23 @@ import { BimReactContext } from '@/sdk/BimProvider.js';
 import { resolve } from '@/i18n/registry';
 import { posthog } from '@/lib/analytics';
 import { isCollabEnabled } from '@/lib/collab/config';
+import { recordRecentFiles } from '@/lib/recent-files';
 import { useViewerStore } from '@/store';
 import { cleanup, click, render, type as typeInto } from '@/test/render.js';
 import type { FileCommands } from './toolbar/useFileCommands.js';
 import { FileTab } from './ribbon/tabs/FileTab.js';
 import { ElementsTab } from './ribbon/tabs/ElementsTab.js';
 import { CommandPalette } from './CommandPalette.js';
+import type { SurfaceCommandDefinition } from './surface-commands.js';
 
 // Dynamic import keeps the mounted regression runnable when the changed-test
-// oracle reverts the newly added registry. Its ribbon assertion must then fail
-// on the missing controls, rather than failing to load this test file.
+// oracle reverts the shared registry. The original #5870 homes remain a
+// stable sentinel while the six-tab guard covers later ribbon additions.
 const loadRegistry = async () => import('./surface-commands.js').catch(() => null);
 
 const EXPECTED_IDS = [
   'file:save-federation-setup', 'file:open-federation-setup', 'file:model-tags',
-  'vis:toggle-iso', 'vis:reset-colors',
+  'vis:toggle-iso', 'vis:reset-colors', 'elements:entity-actions',
 ] as const;
 const VISIBILITY_IDS = [
   'vis:hide', 'vis:show', 'vis:set-iso', 'vis:add-iso', 'vis:remove-iso',
@@ -43,25 +45,26 @@ const FILE_COMMANDS: FileCommands = {
 afterEach(() => { cleanup(); mock.restoreAll(); });
 
 describe('shared palette and ribbon commands (#5870)', () => {
-  it('renders every declared ribbon home with its one registry name and icon', async () => {
+  it('keeps the original shared ribbon homes with their registry names and icons', async () => {
     render(<FileTab fileCommands={FILE_COMMANDS} />);
     render(<ElementsTab />);
 
     const rendered = [...document.querySelectorAll<HTMLButtonElement>('[data-command-id]')];
-    assert.deepEqual(new Set(rendered.map((button) => button.dataset.commandId)), new Set(EXPECTED_IDS),
-      'every newly reachable command has one ribbon home');
+    const renderedIds = new Set(rendered.map((button) => button.dataset.commandId));
+    for (const id of EXPECTED_IDS) {
+      assert.ok(renderedIds.has(id), `${id} keeps its ribbon home`);
+    }
     const registry = await loadRegistry();
     assert.ok(registry, 'the shared registry loads');
     const { SURFACE_COMMANDS, paletteSurfaceCommands } = registry;
-    const registered = new Set(SURFACE_COMMANDS.filter((command) => command.surfaces.some((surface) => surface === 'ribbon')).map((command) => command.id));
     assert.equal(new Set(SURFACE_COMMANDS.map((command) => command.id)).size, SURFACE_COMMANDS.length,
       'command ids are unique');
-    assert.deepEqual(new Set(rendered.map((button) => button.dataset.commandId)), registered,
-      'every registry-declared ribbon command is rendered');
+    // The mounted six-tab guard covers the entire growing ribbon registry.
+    // These two tabs retain the original cross-surface homes from #5870.
     for (const button of rendered) {
-      const definition = SURFACE_COMMANDS.find((command) => command.id === button.dataset.commandId);
+      const definition: SurfaceCommandDefinition | undefined = SURFACE_COMMANDS.find((command) => command.id === button.dataset.commandId);
       assert.ok(definition, 'ribbon command id exists in the shared table');
-      assert.equal(button.getAttribute('aria-label'), resolve(definition.labelKey));
+      assert.equal(button.getAttribute('aria-label'), resolve(definition.ribbonLabelKey ?? definition.labelKey));
       assert.ok(button.querySelector('svg'), `${definition.id} has the registry icon`);
     }
 
@@ -202,6 +205,30 @@ describe('shared palette and ribbon commands (#5870)', () => {
     ]);
   });
 
+  it('uses the registry accessible name for shortcut rows while retaining runtime file detail (#5878)', () => {
+    recordRecentFiles([{ name: 'authored-sample.ifc', size: 2048 }]);
+    try {
+      render(<BimReactContext.Provider value={{} as BimContext}>
+        <CommandPalette open onOpenChange={() => {}} />
+      </BimReactContext.Provider>);
+      const home = document.querySelector<HTMLButtonElement>('[role="option"][data-command-id="view:home"]');
+      assert.ok(home, 'Home is a mounted registered row');
+      assert.ok(home.querySelector('kbd')?.textContent?.trim(), 'the shortcut is visibly retained');
+      assert.equal(home.getAttribute('aria-label'), resolve('commandPalette.view.home.label'),
+        'shortcut text does not become part of the registered accessible name');
+
+      const recent = document.querySelector<HTMLButtonElement>(
+        '[role="option"][data-runtime-source="recent-file"][data-runtime-command-id="file:recent:authored-sample.ifc"]',
+      );
+      assert.ok(recent, 'the recent authored file has a runtime-owned row');
+      assert.equal(recent.getAttribute('aria-label'), null,
+        'runtime content keeps its native name including the file-size detail');
+      assert.ok(recent.textContent?.includes('2 KB'), 'the runtime detail remains visible');
+    } finally {
+      localStorage.removeItem('ifc-lite:recent-files');
+    }
+  });
+
   it('renders every palette-declared command with its registry label (#5870 matrix)', async () => {
     const registry = await loadRegistry();
     const exports = await import('./commandPaletteExports.js');
@@ -215,13 +242,38 @@ describe('shared palette and ribbon commands (#5870)', () => {
       const state = { canEditInSession: true, cesiumAvailable: false, collabEnabled: isCollabEnabled() };
       const expected = [...registry.SURFACE_COMMANDS, ...exports.EXPORT_SURFACE_COMMANDS]
         .filter((command) => command.surfaces.some((surface) => surface === 'palette') && command.enabled(state));
-      const rows = [...document.querySelectorAll<HTMLButtonElement>('[role="option"][data-command-id]')];
+      const rows = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')];
+      const runtimePrefixes = {
+        'recent-file': 'file:recent:',
+        'script-template': 'auto:',
+        tour: 'tour:',
+        'extension-command': 'ext:',
+        'extension-export': 'export:ext:',
+      } as const;
       assert.equal(new Set(expected.map((command) => command.id)).size, expected.length, 'registry ids are unique');
-      assert.deepEqual(new Set(rows.map((row) => row.dataset.commandId)),
+      const browseRows = rows.filter((row) => !row.closest('[data-command-category="Recent"]'));
+      const renderedStaticIds = browseRows.filter((row) => row.dataset.commandId).map((row) => row.dataset.commandId);
+      assert.equal(new Set(renderedStaticIds).size, renderedStaticIds.length,
+        'a registered palette command is rendered exactly once');
+      assert.deepEqual(new Set(renderedStaticIds),
         new Set(expected.map((command) => command.id)), 'declared palette ids equal rendered rows');
       for (const row of rows) {
+        const source = row.dataset.runtimeSource;
+        assert.notEqual(Boolean(row.dataset.commandId), Boolean(source),
+          'each option has exactly one registered command id or runtime owner');
+        if (source) {
+          const prefix = runtimePrefixes[source as keyof typeof runtimePrefixes];
+          assert.ok(prefix && row.dataset.runtimeCommandId?.startsWith(prefix),
+            `${source} owns its runtime command id`);
+          assert.equal(row.getAttribute('aria-label'), null,
+            `${source} retains its native accessible name and detail`);
+          assert.ok(row.querySelector('span.flex-1')?.textContent?.trim(), 'runtime content has a visible name');
+          continue;
+        }
         const command = expected.find((item) => item.id === row.dataset.commandId);
         assert.ok(command);
+        assert.equal(row.getAttribute('aria-label'), resolve(command.labelKey),
+          `${command.id} exposes its registry name to assistive technology`);
         assert.equal(row.querySelector('span.flex-1')?.textContent, resolve(command.labelKey),
           `${command.id} renders only its registry label`);
       }

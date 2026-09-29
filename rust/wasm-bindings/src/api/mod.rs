@@ -5,6 +5,7 @@
 //! JavaScript API for IFC-Lite; feature methods live in focused child modules.
 
 mod alignment_lines;
+mod analytic_serialization;
 mod appearance;
 mod appearance_page;
 mod appearance_atlas;
@@ -20,6 +21,7 @@ mod clash_solid;
 mod csg_diagnostics;
 mod diagnose;
 mod entity_index;
+mod extrusion_definitions;
 mod export_data;
 mod export_dfjson;
 mod export_glb;
@@ -36,6 +38,7 @@ mod overlay_frame;
 mod parsing;
 mod pipeline_diagnostics;
 mod simplify;
+mod swept_disk_descriptions;
 mod space_plate;
 mod space_plate_input;
 pub(crate) mod styling;
@@ -253,6 +256,23 @@ pub struct IfcAPI {
             )>,
         )>,
     >,
+    /// #5582: authored metallic/roughness per style id, installed by
+    /// `setStyleFinishes` from the prepass `styleFinishes` wire and stamped on
+    /// each batch mesh by its representation item id. Tagged with the
+    /// `styleIds` signature it was set for, so a batch only applies finishes
+    /// that belong to its own style wire. Cleared by `clearPrePassCache`.
+    #[allow(clippy::type_complexity)]
+    style_finishes: std::sync::Mutex<
+        Option<(
+            (usize, u32, u32),
+            std::sync::Arc<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::SpecularMaterial>>,
+        )>,
+    >,
+    /// #5582, sharded pre-pass: the shard-merged geometry finishes stashed by
+    /// `setPrepassGeometryFinishes` and taken by the next
+    /// `finalizePrepassStyles`, which has no finishes argument of its own.
+    pending_geometry_finishes:
+        std::sync::Mutex<Option<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::SpecularMaterial>>>,
 
     /// Per-load structured pipeline diagnostics (`PipelineDiagnostics`
     /// contract, see `api::pipeline_diagnostics`): every
@@ -297,6 +317,8 @@ impl IfcAPI {
             skip_small_cuts: std::sync::atomic::AtomicBool::new(false),
             cached_plane_angle_to_radians: std::sync::Mutex::new(None),
             cached_geometry_styles: std::sync::Mutex::new(None),
+            style_finishes: std::sync::Mutex::new(None),
+            pending_geometry_finishes: std::sync::Mutex::new(None),
             pipeline_diagnostics: std::sync::Mutex::new(
                 ifc_lite_processing::PipelineDiagnostics::default(),
             ),
@@ -376,6 +398,8 @@ impl IfcAPI {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
+        // So do the #5582 style finishes, and any unconsumed sharded stash.
+        self.clear_style_finishes();
         // The content-dedup cache holds the previous model's item meshes, keyed by
         // a content hash of that model's entities. Drop it so a new file on the
         // same reused IfcAPI starts with an empty cache (bounds memory across

@@ -48,7 +48,6 @@ import { layersPanelEn } from './catalogues/layers-panel.en';
 import { landXmlEn } from './catalogues/landxml.en';
 import { terrainImageryEn } from './catalogues/terrain-imagery.en';
 import { lensPanelEn } from './catalogues/lens-panel.en';
-import { mainToolbarEn } from './catalogues/main-toolbar.en';
 import { propertyEditorEn } from './catalogues/property-editor.en';
 import { placementPanelEn } from './catalogues/placement-panel.en';
 import { repositionPanelEn } from './catalogues/reposition-panel.en';
@@ -64,6 +63,7 @@ import { propertiesEn } from './catalogues/properties.en';
 import { propertiesPanelEn } from './catalogues/properties-panel.en';
 import { attributeEditorEn } from './catalogues/attribute-editor.en';
 import { propertiesSelectionEn } from './catalogues/properties-selection.en';
+import { sweptDiskInspectionEn } from './catalogues/swept-disk-inspection.en';
 import { relationshipCardEn } from './catalogues/relationship-card.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { scheduleEn } from './catalogues/schedule.en';
@@ -81,6 +81,10 @@ import { viewerShellEn } from './catalogues/viewer-shell.en';
 import { viewportLightingEn } from './catalogues/viewport-lighting.en';
 import { spaceSketchEn } from './catalogues/space-sketch.en';
 import { splitToolEn } from './catalogues/split-tool.en';
+import { modelingCommandEn } from './catalogues/modeling-command.en';
+import { modelWorkspaceEn } from './catalogues/model-workspace.en';
+import { modelInspectorEn } from './catalogues/model-inspector.en';
+import { remeshEn } from './catalogues/remesh.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
 import { webgpuTroubleshootingEn } from './catalogues/webgpu-troubleshooting.en';
 import { scriptPanelEn } from './catalogues/script-panel.en';
@@ -103,7 +107,6 @@ export const en = {
   ...costPanelEn,
   ...ribbonToolbarEn,
   ...relationshipCardEn,
-  ...mainToolbarEn,
   ...propertyEditorEn,
   ...sharedCommandsEn,
   ...commandPaletteEn,
@@ -126,6 +129,10 @@ export const en = {
   ...mutationPermissionEn,
   ...spaceSketchEn,
   ...splitToolEn,
+  ...modelingCommandEn,
+  ...modelWorkspaceEn,
+  ...modelInspectorEn,
+  ...remeshEn,
   ...documentEn,
   ...documentMenuEn,
   ...drawingUnderlayEn,
@@ -136,6 +143,7 @@ export const en = {
   ...propertiesPanelEn,
   ...attributeEditorEn,
   ...propertiesSelectionEn,
+  ...sweptDiskInspectionEn,
   ...landXmlEn,
   ...terrainImageryEn,
   ...structuralPropertiesEn,

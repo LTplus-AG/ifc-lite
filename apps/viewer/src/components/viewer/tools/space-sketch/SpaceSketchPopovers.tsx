@@ -88,6 +88,7 @@ export function OptionsPopover(props: OptionsPopoverProps) {
         </div>
         <div className="flex items-center gap-1.5">
           <input type="range" min={0.05} max={1} step={0.05} value={usedTol} className="flex-1 accent-overlay-accent"
+            aria-label={t('spaceSketch.options.weldToleranceLabel')}
             disabled={snapDisabled} onChange={(e) => onSnap(Number(e.target.value))} />
           <input type="number" min={0.05} max={1} step={0.05} value={usedTol} aria-label={t('spaceSketch.options.weldToleranceAriaLabel')}
             className="w-12 rounded-sm border border-border bg-background px-1 py-0.5 tabular-nums disabled:opacity-40"

@@ -12,6 +12,11 @@ use nalgebra::Matrix4;
 // mapped translation into vertices can visibly perturb small IFC features.
 pub(crate) const LARGE_MAPPED_ORIGIN_M: f64 = 1_000.0;
 
+// Beyond 1,000 km an absolute f32 coordinate has 6 cm spacing or worse, which
+// no longer holds an opening or a host face (#6478). Nearer RTC-frame meshes keep
+// the absolute frame the native router has always used.
+pub(crate) const FAR_RTC_FRAME_M: f64 = 1_000_000.0;
+
 #[inline]
 fn source_point<const HAS_ORIGIN: bool>(chunk: &[f32], origin: [f64; 3]) -> Point3<f64> {
     if HAS_ORIGIN {
@@ -107,11 +112,11 @@ impl GeometryRouter {
         // Native normally keeps absolute f32 vertices, but an intermediate
         // mapped origin at this scale needs the same local frame as the viewer.
         // Opening cutters also use this policy when their mapped origin is large.
-        let mapped_origin_is_large = self.mapped_origin_needs_local_frame(mesh, transform);
+        let needs_local_frame = self.needs_local_frame(mesh, transform);
         self.transform_mesh_world_framed(
             mesh,
             transform,
-            self.local_frame_enabled() || mapped_origin_is_large,
+            self.local_frame_enabled() || needs_local_frame,
         );
     }
 
@@ -134,6 +139,32 @@ impl GeometryRouter {
                 .iter()
                 .any(|v| v.abs() >= LARGE_MAPPED_ORIGIN_M)
         }
+    }
+
+    /// Whether a mesh placed by `transform` must be stored in a per-mesh local
+    /// frame: its mapped origin is large ([`Self::mapped_origin_needs_local_frame`]),
+    /// or the model RTC offset leaves it at least [`FAR_RTC_FRAME_M`] from the
+    /// RTC origin. In the second case absolute f32 positions would sit on a
+    /// coarse grid (0.5 m at 5,000 km), quantising host geometry and collapsing
+    /// opening cutters into degenerate boxes (#6478). Shared by host and cutter
+    /// placement so both are framed before any f32 cast.
+    pub(crate) fn needs_local_frame(&self, mesh: &Mesh, transform: &Matrix4<f64>) -> bool {
+        if self.mapped_origin_needs_local_frame(mesh, transform) {
+            return true;
+        }
+        if !self.has_rtc_offset() || mesh.rtc_applied || mesh.is_empty() {
+            return false;
+        }
+        let (min, max) = mesh.bounds();
+        let centre = transform.transform_point(&Point3::new(
+            mesh.origin[0] + (min.x as f64 + max.x as f64) / 2.0,
+            mesh.origin[1] + (min.y as f64 + max.y as f64) / 2.0,
+            mesh.origin[2] + (min.z as f64 + max.z as f64) / 2.0,
+        ));
+        let rtc = self.rtc_offset;
+        [centre.x - rtc.0, centre.y - rtc.1, centre.z - rtc.2]
+            .iter()
+            .any(|v| v.abs() >= FAR_RTC_FRAME_M)
     }
 
     /// World placement with an explicit choice of whether to relativize positions

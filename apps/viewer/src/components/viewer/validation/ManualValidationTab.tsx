@@ -25,6 +25,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { EMPTY_MANUAL_COUNTS, summarizeChecklist } from '@/lib/validation/manual/checklist-summary';
 import { answersForModel, manualModelOptions, pickManualModel } from '@/lib/validation/manual/manual-model';
 import type { UseManualValidationResult } from '@/hooks/validation/useManualValidation';
+import { ManualChecklistLibrary } from './ManualChecklistLibrary';
 import { ManualValidationEntry } from './ManualValidationEntry';
 import { ManualValidationGroup } from './ManualValidationGroup';
 import { ManualValidationLegend, ManualValidationRing } from './ManualValidationRing';
@@ -51,6 +52,8 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
   if (!checklist || !summary) {
     return (
       <div className="flex-1 min-h-0 overflow-auto p-4">
+        <ManualChecklistLibrary model={activeModel} active={false} onNew={() => { manual.newChecklist(); setEditing(true); }} onSelected={setEditing} />
+        {saveError && <p role="alert" className="text-xs text-red-600">{t('manualValidation.error.notSaved')}</p>}
         <ManualValidationEntry
           onNew={() => { manual.newChecklist(); setEditing(true); }}
           onOpenFile={async (file) => { await manual.openFromFile(file); setEditing(false); }}
@@ -66,6 +69,7 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
+      <ManualChecklistLibrary model={activeModel} active onNew={() => { manual.newChecklist(); setEditing(true); }} onSelected={setEditing} />
       <div className="flex items-center gap-1.5 border-b p-2">
         <Input
           aria-label={t('manualValidation.name.label')}
@@ -98,6 +102,7 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
           <label className="flex items-center gap-2 text-xs">
             <span className="text-muted-foreground">{t('manualValidation.model.label')}</span>
             <select
+              aria-label={t('manualValidation.model.label')}
               className="h-7 flex-1 rounded-md border border-input bg-transparent px-2 text-xs"
               value={activeModel?.id ?? ''}
               onChange={(e) => setPickedModelId(e.target.value)}

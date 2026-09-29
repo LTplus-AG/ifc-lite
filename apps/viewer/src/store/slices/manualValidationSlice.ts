@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Manual validation state (#6401): the working checklist template and the
- * answers recorded against it, per model.
+ * Manual validation state (#6507): independently editable checklist
+ * instances, with active projections for the canonical existing editor.
  *
  * Deliberately NOT part of `idsSlice`'s `idsValidationReport`: a manual
  * verdict is a different kind of evidence, and an IDS or information run
@@ -19,6 +19,7 @@ import type { StateCreator } from 'zustand';
 import {
   MAX_ANSWER_COMMENT,
   blankChecklist,
+  serializeChecklist,
   type ChecklistTemplate,
   type ManualAnswer,
   type ManualVerdict,
@@ -26,15 +27,19 @@ import {
 import * as edit from '@/lib/validation/manual/checklist-edit';
 import {
   isMeaningfulAnswer,
-  loadManualAnswers,
-  loadWorkingChecklist,
-  saveManualAnswers,
-  saveWorkingChecklist,
+  loadManualLibrary,
+  saveManualLibrary,
   type ManualAnswersByModel,
   type ManualSaveResult,
 } from '@/lib/validation/manual/persistence';
+import { claimLegacyManualAnswers, manualLibraryProjection, type ManualChecklistLibrary } from '@/lib/validation/manual/library';
 
 export interface ManualValidationSlice {
+  /** Independent live instances; saved report snapshots remain separate. */
+  manualLibrary: ManualChecklistLibrary;
+  selectManualChecklist: (id: string) => void;
+  removeManualChecklist: (id: string) => void;
+  duplicateManualChecklist: (id: string, name?: string) => void;
   /** The checklist being filled in or edited; null before one is created or opened. */
   manualChecklist: ChecklistTemplate | null;
   /** fingerprint → itemId → answer. */
@@ -42,7 +47,7 @@ export interface ManualValidationSlice {
   /** The last persistence failure, until the next successful write. */
   manualSaveError: ManualSaveResult | null;
 
-  /** Replace the working checklist (new / opened / recent); null closes it. Answers are kept. */
+  /** Open/select a template; null deactivates it while retaining its instance. */
   setManualChecklist: (template: ChecklistTemplate | null) => void;
   newManualChecklist: () => void;
   renameManualChecklist: (name: string) => void;
@@ -63,23 +68,61 @@ export interface ManualValidationSlice {
 }
 
 export const createManualValidationSlice: StateCreator<ManualValidationSlice, [], [], ManualValidationSlice> = (set, get) => {
-  const commitChecklist = (next: ChecklistTemplate | null) => {
-    if (next === get().manualChecklist) return;
-    const result = saveWorkingChecklist(next);
-    set({ manualChecklist: next, manualSaveError: result.ok ? null : result });
+  const initial = loadManualLibrary();
+  const commitLibrary = (manualLibrary: ManualChecklistLibrary) => {
+    const result = saveManualLibrary(manualLibrary);
+    set({ manualLibrary, ...manualLibraryProjection(manualLibrary), manualSaveError: result.ok ? null : result });
+    return result;
   };
-  const withChecklist = (fn: (t: ChecklistTemplate) => ChecklistTemplate) => {
+  const commitChecklist = (template: ChecklistTemplate) => {
+    const library = get().manualLibrary;
+    if (!library.activeId) return;
+    commitLibrary({ ...library, checklists: library.checklists.map((entry) => entry.id === library.activeId ? { ...entry, template } : entry) });
+  };
+  const withChecklist = (fn: (template: ChecklistTemplate) => ChecklistTemplate) => {
     const current = get().manualChecklist;
     if (current) commitChecklist(fn(current));
   };
+  const addChecklist = (template: ChecklistTemplate, imported: boolean) => {
+    const library = get().manualLibrary;
+    const id = `manual-checklist-${crypto.randomUUID()}`;
+    const claim = imported ? claimLegacyManualAnswers(template, library.pendingLegacyAnswers ?? {}) : { answers: {}, remaining: library.pendingLegacyAnswers ?? {} };
+    const next = { ...library, activeId: id, checklists: [...library.checklists, { id, template, answers: claim.answers }] };
+    if (Object.keys(claim.remaining).length) next.pendingLegacyAnswers = claim.remaining;
+    else delete next.pendingLegacyAnswers;
+    commitLibrary(next);
+  };
 
   return {
-    manualChecklist: loadWorkingChecklist(),
-    manualAnswers: loadManualAnswers(),
-    manualSaveError: null,
+    manualLibrary: initial.library,
+    ...manualLibraryProjection(initial.library),
+    manualSaveError: initial.error,
 
-    setManualChecklist: (template) => commitChecklist(template),
-    newManualChecklist: () => commitChecklist(blankChecklist()),
+    selectManualChecklist: (id) => {
+      const library = get().manualLibrary;
+      if (library.checklists.some((entry) => entry.id === id)) commitLibrary({ ...library, activeId: id });
+    },
+    removeManualChecklist: (id) => {
+      const library = get().manualLibrary;
+      const checklists = library.checklists.filter((entry) => entry.id !== id);
+      commitLibrary({ ...library, checklists, activeId: library.activeId === id ? checklists[0]?.id ?? null : library.activeId });
+    },
+    duplicateManualChecklist: (id, name) => {
+      const entry = get().manualLibrary.checklists.find((candidate) => candidate.id === id);
+      if (entry) addChecklist({ ...structuredClone(entry.template), name: name ?? entry.template.name }, false);
+    },
+    setManualChecklist: (template) => {
+      const library = get().manualLibrary;
+      if (template === null) { commitLibrary({ ...library, activeId: null }); return; }
+      // Reopening the same saved template selects its existing instance and
+      // answers; differently named disciplines with identical item ids stay
+      // independent. Template editing updates only the selected instance.
+      const encoded = serializeChecklist(template);
+      const existing = library.checklists.find((entry) => serializeChecklist(entry.template) === encoded);
+      if (existing) commitLibrary({ ...library, activeId: existing.id });
+      else addChecklist(template, true);
+    },
+    newManualChecklist: () => addChecklist(blankChecklist(), false),
     renameManualChecklist: (name) => withChecklist((t) => edit.renameChecklist(t, name)),
     addManualGroup: (name) => {
       const current = get().manualChecklist;
@@ -103,6 +146,8 @@ export const createManualValidationSlice: StateCreator<ManualValidationSlice, []
     moveManualItem: (groupId, itemId, delta) => withChecklist((t) => edit.moveItem(t, groupId, itemId, delta)),
 
     setManualAnswer: (fingerprint, itemId, patch) => {
+      const library = get().manualLibrary;
+      if (!library.activeId) return { ok: true };
       const all = get().manualAnswers;
       const forModel = { ...all[fingerprint] };
       const prev = forModel[itemId];
@@ -113,11 +158,9 @@ export const createManualValidationSlice: StateCreator<ManualValidationSlice, []
       if (isMeaningfulAnswer(answer)) forModel[itemId] = answer;
       else delete forModel[itemId];
       const next = { ...all, [fingerprint]: forModel };
-      const result = saveManualAnswers(next);
-      // Reflect the edit even when storage refused it, so the UI stays
-      // responsive; `manualSaveError` lets the panel say it was not kept.
-      set({ manualAnswers: next, manualSaveError: result.ok ? null : result });
-      return result;
+      // Reflect the edit even if storage refuses it, while keeping the same
+      // visible persistence alert as the original manual-validation flow.
+      return commitLibrary({ ...library, checklists: library.checklists.map((entry) => entry.id === library.activeId ? { ...entry, answers: next } : entry) });
     },
   };
 };

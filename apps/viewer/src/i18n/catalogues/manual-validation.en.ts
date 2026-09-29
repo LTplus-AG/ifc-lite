@@ -14,6 +14,13 @@ export const manualValidationEn = {
   'manualValidation.entry.open': 'Open .checklist.json',
   'manualValidation.entry.recent': 'Recent checklists',
 
+  'manualValidation.library.select': 'Select checklist',
+  'manualValidation.library.none': 'No checklist selected',
+  'manualValidation.library.duplicate': 'New from this checklist',
+  'manualValidation.library.copyName': '{name} (copy)',
+  'manualValidation.library.remove': 'Delete checklist',
+  'manualValidation.library.progress': '{completed}/{total} completed ({percent}%)',
+
   'manualValidation.name.label': 'Checklist name',
   'manualValidation.name.placeholder': 'Untitled checklist',
   'manualValidation.edit': 'Edit checklist',

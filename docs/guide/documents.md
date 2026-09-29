@@ -86,3 +86,9 @@ When the backup cannot be written, the original remains untouched and saving is
 blocked; free browser storage and retry saving. Retry retains in-memory edits
 and reports whether the browser now saved them.
 Document format 9 adds comparison table sources; older documents remain readable.
+
+### Live manual checklists
+
+In **Data validation → Manual validation**, **New checklist** creates another independently editable checklist. Use **New from this checklist** to reuse the same questions in a new review with empty decisions. Name it for its discipline and use **Select checklist** to switch between reviews. Each checklist keeps its own decisions and comments for each model; importing templates with the same check identifiers does not share their answers. The selector shows completion for the currently selected model. A warning completes a check, while the report's pass score still counts only passes.
+
+**Close checklist** leaves the review in the selector for later. Reopening the same saved template selects its existing review and decisions. **Delete checklist** removes that editable review; previously saved reports and document snapshots remain unchanged. Existing checklist decisions migrate automatically, including decisions retained after the old checklist was closed. If browser storage refuses a write, the current review remains visible with a warning.

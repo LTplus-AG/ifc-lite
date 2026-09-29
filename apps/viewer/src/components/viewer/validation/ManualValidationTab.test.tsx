@@ -18,7 +18,9 @@ import { clearDownloads, downloadedNames } from '@/test/download-capture.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
-import { loadManualAnswers } from '@/lib/validation/manual/persistence';
+import { loadManualLibrary } from '@/lib/validation/manual/persistence';
+import { manualLibraryProjection } from '@/lib/validation/manual/library';
+const loadActiveAnswers = () => manualLibraryProjection(loadManualLibrary().library).manualAnswers;
 import { loadRecentChecklists } from '@/lib/validation/manual/recent-checklists';
 import { ValidationPanel } from './ValidationPanel.js';
 
@@ -110,7 +112,7 @@ describe('Manual validation tab (#6401)', () => {
 
     // Persisted under the model's fingerprint, so it survives a reload.
     const itemIds = useViewerStore.getState().manualChecklist!.groups[0].items.map((i) => i.id);
-    const stored = loadManualAnswers()['fp-1'];
+    const stored = loadActiveAnswers()['fp-1'];
     assert.equal(stored[itemIds[0]].status, 'pass');
     assert.equal(stored[itemIds[1]].status, 'warning');
     assert.equal(stored[itemIds[1]].comment, 'Level 3 is called "L3 new"');
@@ -120,7 +122,7 @@ describe('Manual validation tab (#6401)', () => {
     assert.equal(pass.getAttribute('aria-pressed'), 'true');
     click(pass);
     assert.equal(checkRow(ui, 'Uploaded on time').getAttribute('data-status'), 'unanswered');
-    assert.equal(loadManualAnswers()['fp-1'][itemIds[0]], undefined);
+    assert.equal(loadActiveAnswers()['fp-1'][itemIds[0]], undefined);
   });
 
   it('opens a .checklist.json, lists it under Recent, and saves the template back as a file', async () => {
@@ -158,7 +160,7 @@ describe('Manual validation tab (#6401)', () => {
     await selectFile(ui.querySelector<HTMLInputElement>('[data-testid="manual-checklist-input"]')!, new File([CHECKLIST_JSON], 'c.checklist.json'));
 
     click(buttonByText(checkRow(ui, 'Uploaded to the CDE on time'), 'Fail'));
-    const picker = ui.querySelector('select')!;
+    const picker = byLabel<HTMLSelectElement>(ui, 'Model');
     act(() => {
       picker.value = 'm2';
       picker.dispatchEvent(new Event('change', { bubbles: true }));
@@ -166,8 +168,8 @@ describe('Manual validation tab (#6401)', () => {
     assert.equal(checkRow(ui, 'Uploaded to the CDE on time').getAttribute('data-status'), 'unanswered');
     click(buttonByText(checkRow(ui, 'Uploaded to the CDE on time'), 'Pass'));
 
-    assert.deepEqual(loadManualAnswers()['fp-1']['on-time'].status, 'fail');
-    assert.deepEqual(loadManualAnswers()['fp-2']['on-time'].status, 'pass');
+    assert.deepEqual(loadActiveAnswers()['fp-1']['on-time'].status, 'fail');
+    assert.deepEqual(loadActiveAnswers()['fp-2']['on-time'].status, 'pass');
     assert.equal(useViewerStore.getState().idsValidationReport, null);
   });
 
@@ -198,4 +200,98 @@ describe('Manual validation tab (#6401)', () => {
     click(ui.querySelectorAll('button[aria-label="Delete group"]')[1]);
     assert.deepEqual(useViewerStore.getState().manualChecklist!.groups.map((g) => g.id), ['structure']);
   });
+
+  it('clones shared questions into independent discipline reviews, model decisions and saved evidence (#6507)', async () => {
+    useViewerStore.setState(fixtureModels(model('m1', 'fp-1'), model('m2', 'fp-2')));
+    setValidationSourceChoice('manual');
+    const ui = render(<ValidationPanel />);
+    const importDiscipline = async (name: string) => {
+      const template = { ...JSON.parse(CHECKLIST_JSON) as Record<string, unknown>, name };
+      await selectFile(ui.querySelector<HTMLInputElement>('[data-testid="manual-checklist-input"]')!, new File([JSON.stringify(template)], `${name}.checklist.json`));
+    };
+    await importDiscipline('Architecture');
+    click(buttonByText(checkRow(ui, 'Uploaded to the CDE on time'), 'Pass'));
+    typeInput(byLabel<HTMLTextAreaElement>(ui, 'Comment on Uploaded to the CDE on time'), 'Architect approved delivery');
+    click(buttonByText(ui, 'Save report'));
+    const architectureId = useViewerStore.getState().manualLibrary.activeId!;
+    const frozen = useViewerStore.getState().savedValidationReports[0];
+    click(buttonByText(ui, 'New from this checklist'));
+    typeInput(byLabel<HTMLInputElement>(ui, 'Checklist name'), 'Structure');
+    assert.deepEqual(useViewerStore.getState().manualLibrary.checklists.map((entry) => entry.template.groups.map((group) => group.items.map((item) => item.id))), [[['on-time'], ['storeys']], [['on-time'], ['storeys']]]);
+    assert.equal(checkRow(ui, 'Uploaded to the CDE on time').getAttribute('data-status'), 'unanswered');
+    click(buttonByText(checkRow(ui, 'Uploaded to the CDE on time'), 'Warning'));
+    const structureId = useViewerStore.getState().manualLibrary.activeId!;
+    const choose = (label: string, id: string) => {
+      const picker = byLabel<HTMLSelectElement>(ui, label);
+      act(() => { picker.value = id; picker.dispatchEvent(new Event('change', { bubbles: true })); });
+    };
+    choose('Model', 'm2');
+    assert.equal(checkRow(ui, 'Uploaded to the CDE on time').getAttribute('data-status'), 'unanswered');
+    click(buttonByText(checkRow(ui, 'Uploaded to the CDE on time'), 'Fail'));
+    choose('Select checklist', architectureId);
+    assert.equal(checkRow(ui, 'Uploaded to the CDE on time').getAttribute('data-status'), 'unanswered');
+    choose('Model', 'm1');
+    assert.equal(checkRow(ui, 'Uploaded to the CDE on time').getAttribute('data-status'), 'pass');
+    assert.equal(byLabel<HTMLTextAreaElement>(ui, 'Comment on Uploaded to the CDE on time').value, 'Architect approved delivery');
+    const options = byLabel<HTMLSelectElement>(ui, 'Select checklist').options;
+    assert.deepEqual([...options].filter((option) => option.value).map((option) => option.textContent), ['Architecture · 1/2 completed (50%)', 'Structure · 1/2 completed (50%)']);
+    choose('Select checklist', structureId);
+    assert.equal(checkRow(ui, 'Uploaded to the CDE on time').getAttribute('data-status'), 'warning');
+    assert.equal(ui.querySelector('[data-testid="manual-overall"] text')?.textContent, '0%', 'warnings complete a check but never count as passed');
+    const persisted = loadManualLibrary().library;
+    assert.equal(persisted.checklists.length, 2);
+    assert.equal(persisted.checklists[0].answers['fp-1']['on-time'].status, 'pass');
+    assert.equal(persisted.checklists[1].answers['fp-1']['on-time'].status, 'warning');
+    assert.equal(persisted.checklists[1].answers['fp-2']['on-time'].status, 'fail');
+    // Removing the editable instance does not erase immutable report history.
+    choose('Select checklist', architectureId);
+    click(buttonByText(ui, 'Delete checklist'));
+    assert.equal(useViewerStore.getState().manualLibrary.activeId, structureId);
+    assert.equal(checkRow(ui, 'Uploaded to the CDE on time').getAttribute('data-status'), 'warning');
+    assert.equal(useViewerStore.getState().savedValidationReports[0].id, frozen.id);
+    assert.equal(frozen.snapshot.kind, 'manual-report');
+    if (frozen.snapshot.kind !== 'manual-report') assert.fail();
+    assert.equal(frozen.snapshot.groups[0].items[0].status, 'pass');
+    assert.equal(frozen.snapshot.groups[0].items[0].comment, 'Architect approved delivery');
+  });
+
+  it('reopens the same saved template without losing its decisions or creating another instance (#6507)', async () => {
+    useViewerStore.setState(fixtureModels(model('m1', 'fp-1')));
+    setValidationSourceChoice('manual');
+    const ui = render(<ValidationPanel />);
+    const open = async () => selectFile(ui.querySelector<HTMLInputElement>('[data-testid="manual-checklist-input"]')!, new File([CHECKLIST_JSON], 'round.checklist.json'));
+    await open();
+    click(buttonByText(checkRow(ui, 'Uploaded to the CDE on time'), 'Fail'));
+    const id = useViewerStore.getState().manualLibrary.activeId;
+    click(byLabel(ui, 'Close checklist'));
+    await open();
+    assert.equal(useViewerStore.getState().manualLibrary.activeId, id);
+    assert.equal(useViewerStore.getState().manualLibrary.checklists.length, 1);
+    assert.equal(checkRow(ui, 'Uploaded to the CDE on time').getAttribute('data-status'), 'fail');
+  });
+
+  it('a new blank checklist cannot consume migrated answers intended for a reopened template (#6507)', async () => {
+    localStorage.setItem('ifc-lite:validation:manual-answers', JSON.stringify({ schemaVersion: 1, models: { 'fp-1': { 'on-time': { status: 'warning', comment: 'Original coordination round', updatedAt: 1 }, 'other-discipline': { status: 'fail', comment: 'Still needs its template', updatedAt: 2 } } } }));
+    const loaded = loadManualLibrary().library;
+    useViewerStore.setState({ ...fixtureModels(model('m1', 'fp-1')), manualLibrary: loaded, ...manualLibraryProjection(loaded) });
+    setValidationSourceChoice('manual');
+    const ui = render(<ValidationPanel />);
+    click(buttonByText(ui, 'New checklist'));
+    const blankId = useViewerStore.getState().manualLibrary.activeId;
+    assert.ok(useViewerStore.getState().manualLibrary.pendingLegacyAnswers);
+    click(byLabel(ui, 'Close checklist'));
+    await selectFile(ui.querySelector<HTMLInputElement>('[data-testid="manual-checklist-input"]')!, new File([CHECKLIST_JSON], 'original.checklist.json'));
+    assert.equal(checkRow(ui, 'Uploaded to the CDE on time').getAttribute('data-status'), 'warning');
+    assert.equal(byLabel<HTMLTextAreaElement>(ui, 'Comment on Uploaded to the CDE on time').value, 'Original coordination round');
+    const persisted = loadManualLibrary().library;
+    assert.deepEqual(persisted.pendingLegacyAnswers, { 'fp-1': { 'other-discipline': { status: 'fail', comment: 'Still needs its template', updatedAt: 2 } } });
+    assert.deepEqual(persisted.checklists.find((entry) => entry.id === blankId)?.answers, {});
+    click(byLabel(ui, 'Close checklist'));
+    const other = { version: 1, name: 'Other discipline', groups: [{ id: 'g', name: 'G', items: [{ id: 'other-discipline', text: 'Survey geometry verified' }] }] };
+    await selectFile(ui.querySelector<HTMLInputElement>('[data-testid="manual-checklist-input"]')!, new File([JSON.stringify(other)], 'other.checklist.json'));
+    assert.equal(checkRow(ui, 'Survey geometry verified').getAttribute('data-status'), 'fail');
+    assert.equal(byLabel<HTMLTextAreaElement>(ui, 'Comment on Survey geometry verified').value, 'Still needs its template');
+    assert.equal(loadManualLibrary().library.pendingLegacyAnswers, undefined);
+  });
+
 });

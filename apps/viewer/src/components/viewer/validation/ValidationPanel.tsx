@@ -62,6 +62,7 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
   const info = useInformationValidation();
   const results = useValidationResults();
   const manual = useManualValidation();
+  const hasManualChecklists = useViewerStore((state) => state.manualLibrary.checklists.length > 0);
   const idsDocument = useViewerStore((s) => s.idsDocument);
   const validationSource = useViewerStore((s) => s.validationSource);
   const storeModels = useViewerStore((s) => s.models);
@@ -74,7 +75,7 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
   const effectiveSource: Source | null =
     activeSource ?? (idsDocument ? 'ids'
       : (info.file || validationSource === 'rules') ? 'rules'
-        : manual.checklist ? 'manual' : null);
+        : (manual.checklist || hasManualChecklists) ? 'manual' : null);
 
   const modelsForPicker: RuleModelPickerModel[] = [...storeModels.values()].map((m) => ({
     id: m.id, name: m.name, sourceFingerprint: m.sourceFingerprint,

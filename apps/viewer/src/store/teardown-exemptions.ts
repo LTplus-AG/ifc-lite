@@ -156,7 +156,7 @@ export const TEARDOWN_EXEMPTIONS: Readonly<Record<string, string>> = {
     'survive model removal, federation clearing and session reset, like document templates.',
 
   manualValidationSlice:
-    'Manual validation (#6401) holds a checklist template (no model reference at all) and ' +
+    'Manual validation (#6507) holds a persisted library of independent templates, their active projections (no model references) and ' +
     'answers keyed by a model\'s `sourceFingerprint`, the durable content identity, never a ' +
     'runtime modelId or expressId. Both are persisted to localStorage on purpose so a verdict ' +
     're-attaches when the same file is loaded again (the clash-review pattern, #1468); ' +

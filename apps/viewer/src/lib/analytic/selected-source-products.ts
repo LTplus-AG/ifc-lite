@@ -28,13 +28,17 @@ export function selectedSourceProducts(
     refs.set(entityRefToString(state.selectedEntity), state.selectedEntity);
   }
   if (state.selectedEntitiesSet.size === 0) {
-    if (state.selectedEntityId !== null) {
-      const ref = resolve(state.selectedEntityId);
-      refs.set(entityRefToString(ref), ref);
-    }
-    for (const id of state.selectedEntityIds) {
-      const ref = resolve(id);
-      refs.set(entityRefToString(ref), ref);
+    // setSelectedEntity may update the model-aware primary before renderer IDs.
+    // Use legacy renderer IDs only when no model-aware primary exists.
+    if (!state.selectedEntity) {
+      if (state.selectedEntityId !== null) {
+        const ref = resolve(state.selectedEntityId);
+        refs.set(entityRefToString(ref), ref);
+      }
+      for (const id of state.selectedEntityIds) {
+        const ref = resolve(id);
+        refs.set(entityRefToString(ref), ref);
+      }
     }
   }
   for (const key of state.selectedEntitiesSet) {

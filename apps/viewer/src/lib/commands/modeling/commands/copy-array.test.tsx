@@ -27,6 +27,7 @@ import { clearCopyClipboard, readCopyClipboard } from '../copy-clipboard.js';
 import { commandPointerDown, commandPointerMove, commitCommand, getCommandRuntime, updateCommandGesture } from '../runtime.js';
 import { setRequestRemesh, type RemeshRequest } from '../transaction.js';
 import type { ArrayGesture } from './element-array.js';
+import { ArrayBar } from '@/components/viewer/tools/command/ArrayBar';
 import { buildStoreyWorkplane, isWorkplane } from '../workplane.js';
 
 function Keys() { useKeyboardShortcuts(); return null; }
@@ -118,6 +119,17 @@ describe('element.array (#6232 C3)', () => {
     click(0, 0);
     click(10, 0);
     assert.ok(columns().some(([x, y]) => x === 1.5 && y === 0), 'typed spacing 1.5 m along the clicked direction');
+  });
+
+  it('switching Spacing to Fit drops a typed spacing: it would read as the total (review)', () => {
+    select(addColumn(0, 0));
+    useViewerStore.getState().startCommand('element.array');
+    const ui = render(<ArrayBar gesture={getCommandRuntime().gesture as ArrayGesture} ctx={getCommandRuntime().ctx!} />);
+    act(() => updateCommandGesture((g) => ({ ...(g as ArrayGesture), distance: 2 })));
+    act(() => { ([...ui.querySelectorAll('[role="radio"]')].find((b) => b.textContent === 'Fit') as HTMLButtonElement).click(); });
+    const g = getCommandRuntime().gesture as ArrayGesture;
+    assert.equal(g.fit, true);
+    assert.equal(g.distance, null);
   });
 
   it('a polar array turns the copies about the centre, one undo step', () => {

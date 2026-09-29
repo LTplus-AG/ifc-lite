@@ -37,7 +37,8 @@ export function ArrayBar({ gesture }: CommandHudProps<ArrayGesture>) {
             { value: 'fit', label: t('copyArray.fit.fit'), title: t('copyArray.fit.fitTitle') },
           ]}
           value={gesture.fit ? 'fit' : 'spacing'}
-          onChange={(value) => updateCommandGesture((g) => ({ ...(g as ArrayGesture), fit: value === 'fit' }))}
+          // A typed distance means a step in one and the whole length in the other: it does not carry over.
+          onChange={(value) => updateCommandGesture((g) => ({ ...(g as ArrayGesture), fit: value === 'fit', distance: null }))}
         />
       )}
     </>

@@ -293,6 +293,32 @@ describe('room spatial context (#6499)', () => {
       assert.equal(ownerUpdates, 3); assert.equal(writerUpdates, 3);
       assert.equal(JSON.stringify(doc.getMap('entities').toJSON()), entities);
       assert.equal(JSON.stringify(writerDoc.getMap('entities').toJSON()), entities);
+      // #6499: explicit absence is a fact, not deletion of the owner's
+      // immutable native resource provenance. Restoring/editing must reuse it.
+      const beforeClear = collab.getModelSlot(writerDoc, 'm0')!;
+      writerDoc.getMap('models').set('m0', { ...beforeClear,
+        spatialContext: { ...beforeClear.spatialContext, georeferencing: null } });
+      assert.equal(extractGeoreferencingOnDemand(owner.getState().models.get(a.id)!.ifcDataStore!), null);
+      writerDoc.getMap('models').set('m0', beforeClear);
+      owner.getState().setGeorefField(a.id, 'mapConversion', 'eastings', original + 7500, original + 5000);
+      const afterRestore = new StepExporter(owner.getState().models.get(a.id)!.ifcDataStore!).export({
+        schema: 'IFC4', includeGeometry: true, georefMutations: owner.getState().georefMutations.get(a.id) });
+      const restoredBytes = afterRestore.content.slice();
+      const restoredExport = await new IfcParser().parseColumnar(restoredBytes.buffer as ArrayBuffer);
+      assert.equal(restoredExport.entityIndex.byType.get('IFCMAPCONVERSION')?.length, 1,
+        'clear/restore/edit must not duplicate the native conversion');
+      assert.equal(restoredExport.entityIndex.byType.get('IFCPROJECTEDCRS')?.length, 1);
+      assert.equal(extractGeoreferencingOnDemand(restoredExport)?.mapConversion?.eastings, original + 7500);
+      const restoredOwner = extractGeoreferencingOnDemand(owner.getState().models.get(a.id)!.ifcDataStore!)!;
+      assert.equal(restoredOwner.mapConversion?.id, sourceGeo.mapConversion?.id);
+      assert.equal(restoredOwner.mapConversion?.sourceCRS, sourceGeo.mapConversion?.sourceCRS);
+      assert.equal(restoredOwner.mapConversion?.targetCRS, sourceGeo.mapConversion?.targetCRS);
+      assert.equal(restoredOwner.projectedCRS?.id, sourceGeo.projectedCRS?.id);
+      const restoredWriter = extractGeoreferencingOnDemand(writer.getState().models.get(b.id)!.ifcDataStore!)!;
+      assert.equal(restoredWriter.mapConversion?.id, 0);
+      assert.equal(restoredWriter.mapConversion?.sourceCRS, 0);
+      assert.equal(restoredWriter.mapConversion?.targetCRS, 0);
+      assert.equal(restoredWriter.projectedCRS?.id, 0);
     } finally {
       stopOwner(); stopWriter(); doc.off('update', sendOwner); writerDoc.off('update', sendWriter);
       reconstructed.reconstructor.teardown(); ownerSession.dispose(); writerSession.dispose();

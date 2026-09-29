@@ -105,21 +105,37 @@ export function roomGeoreference(georef: GeoreferenceInfo | null): GeoreferenceI
   } : null;
 }
 
+// Nullable received facts do not delete the native source's resource identity.
+// Keep only proven ids, not an old visible georeference or a store-owning ref.
+type NativeResourceIds = {
+  mapConversion?: Pick<NonNullable<GeoreferenceInfo['mapConversion']>, 'id' | 'sourceCRS' | 'targetCRS'>;
+  projectedCRS?: Pick<NonNullable<GeoreferenceInfo['projectedCRS']>, 'id'>;
+};
+const nativeResourceIds = new WeakMap<IfcDataStore, NativeResourceIds>();
+const nativeConversion = (store: IfcDataStore, id: number): boolean =>
+  ['IfcMapConversion', 'IfcMapConversionScaled'].includes(store.entities.getTypeName(id));
+
 /** Restore format-independent facts before registering the reconstructed model. */
 export function restoreRoomSpatialFacts(store: IfcDataStore, context: RoomSpatialContext): void {
   const previous = extractGeoreferencingOnDemand(store);
+  const resources = { ...nativeResourceIds.get(store) };
+  if (previous?.mapConversion && nativeConversion(store, previous.mapConversion.id)) {
+    const { id, sourceCRS, targetCRS } = previous.mapConversion;
+    resources.mapConversion = { id, sourceCRS, targetCRS };
+  }
+  if (previous?.projectedCRS && store.entities.getTypeName(previous.projectedCRS.id) === 'IfcProjectedCRS') {
+    resources.projectedCRS = { id: previous.projectedCRS.id };
+  }
+  if (resources.mapConversion || resources.projectedCRS) nativeResourceIds.set(store, resources);
   const georef = roomGeoreference(structuredClone(context.georeferencing));
   // Only a native store can prove these ids still refer to its resource rows.
   // Dense recipient stores keep zero ids even when a source blob is attached.
-  if (georef?.mapConversion && previous?.mapConversion
-    && ['IfcMapConversion', 'IfcMapConversionScaled'].includes(store.entities.getTypeName(previous.mapConversion.id))) {
-    georef.mapConversion.id = previous.mapConversion.id;
-    georef.mapConversion.sourceCRS = previous.mapConversion.sourceCRS;
-    georef.mapConversion.targetCRS = previous.mapConversion.targetCRS;
+  if (georef?.mapConversion && resources.mapConversion && nativeConversion(store, resources.mapConversion.id)) {
+    Object.assign(georef.mapConversion, resources.mapConversion);
   }
-  if (georef?.projectedCRS && previous?.projectedCRS
-    && store.entities.getTypeName(previous.projectedCRS.id) === 'IfcProjectedCRS') {
-    georef.projectedCRS.id = previous.projectedCRS.id;
+  if (georef?.projectedCRS && resources.projectedCRS
+    && store.entities.getTypeName(resources.projectedCRS.id) === 'IfcProjectedCRS') {
+    georef.projectedCRS.id = resources.projectedCRS.id;
   }
   store.georeferencing = georef;
   store.lengthUnitScale = context.lengthUnitScale;

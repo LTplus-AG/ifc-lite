@@ -87,6 +87,25 @@ export {
 } from './in-store/profile.js';
 export { addStairToStore, stairFlightOutline, type StairInStoreParams, type StairBuildResult } from './in-store/stair.js';
 export { addRailingToStore, railingPostPoints, type RailingInStoreParams, type RailingBuildResult } from './in-store/railing.js';
+export {
+  addCurtainWallToStore,
+  curtainWallLayout,
+  type CurtainWallInStoreParams,
+  type CurtainWallGridSpec,
+  type CurtainWallLayout,
+  type CurtainWallBuildResult,
+} from './in-store/curtain-wall.js';
+export {
+  addGridToStore,
+  rectangularGridAxes,
+  gridIntersectionPlacement,
+  type GridInStoreParams,
+  type GridAxisInStoreParams,
+  type GridBuildResult,
+  type GridIntersectionParams,
+  type GridPlacementParams,
+  type GridPlacementResult,
+} from './in-store/grid.js';
 export { addDoorToStore, type DoorInStoreParams, type DoorBuildResult } from './in-store/door.js';
 export { addWindowToStore, type WindowInStoreParams, type WindowBuildResult } from './in-store/window.js';
 export {

@@ -694,7 +694,10 @@ jobs:
           rust: ${{ needs.changes.outputs.rust }}
           browser: ${{ steps.browser.outputs.needed }}
       - name: Prove the changed tests observe the production change
-        timeout-minutes: ${{ steps.browser.outputs.needed == 'true' && 40 || needs.changes.outputs.python == 'true' && 85 || 18 }}
+        # `&&` binds tighter than `||`: python is tested first so a PR that
+        # changes both keeps the wheel builds' 85 minutes (which also covers
+        # the <= ~36-minute browser path); a browser-only PR gets 40.
+        timeout-minutes: ${{ needs.changes.outputs.python == 'true' && 85 || steps.browser.outputs.needed == 'true' && 40 || 18 }}
         env:
           PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
           # Same as the viewer-e2e lane: GPU-dependent assertions skip on the

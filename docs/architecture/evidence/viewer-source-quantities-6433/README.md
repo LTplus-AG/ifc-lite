@@ -10,7 +10,7 @@ assertion expects the correctly converted `2 m³` value.
 Run from a clean checkout at the stacked PR head:
 
 ```sh
-node scripts/check-test-revert-oracle.mjs --base 4704cd52a \
+node scripts/check-test-revert-oracle.mjs --base 3fe909341 \
   --mutation docs/architecture/evidence/viewer-source-quantities-6433/nominal-volume-mutation.patch \
   --ci --json
 ```

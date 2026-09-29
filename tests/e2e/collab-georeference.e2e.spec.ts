@@ -13,7 +13,8 @@ import { enableCollab, openViewer, openFileTab } from './collab/viewer-page';
 import { loadFile, waitForRoomModels } from './collab/federation-scope';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
-const FIXTURE = join(ROOT, 'apps/viewer/public/samples/building-architecture.ifc');
+const FIXTURE_NAME = process.env.E2E_GEOREFERENCED_SAMPLE ?? 'building-architecture.ifc';
+const FIXTURE = join(ROOT, 'apps/viewer/public/samples', FIXTURE_NAME);
 const EVIDENCE_DIR = process.env.E2E_EVIDENCE_DIR;
 
 // Same real-Chrome SwiftShader WebGPU flags as the viewer smoke lane.
@@ -36,7 +37,9 @@ async function facts(page: Page, guest: boolean) {
       const context = ownerRecord as { spatialContext?: { georeferencing?: unknown } } | undefined;
       return { slot: slot?.slotId, georeferencing: isGuest ? model.ifcDataStore?.georeferencing : context?.spatialContext?.georeferencing,
         coordinateInfo: model.geometryResult?.coordinateInfo, meshes: model.geometryResult?.meshes.length,
-        lengthUnitScale: model.ifcDataStore?.lengthUnitScale };
+        lengthUnitScale: model.ifcDataStore?.lengthUnitScale,
+        geometryClasses: model.geometryResult?.meshes.map(mesh => mesh.geometryClass ?? 0),
+        instancedShards: model.geometryResult?.instancedShards?.length ?? 0 };
     });
   }, guest);
 }
@@ -70,48 +73,61 @@ for (const copies of [1, 2]) test.describe(`georeferencing in a ${copies}-model 
       await expect(dialog.locator('#share-link')).toHaveValue(/[?&]room=[^&]+&t=/, { timeout: 300000 });
       url = await dialog.locator('#share-link').inputValue();
       expected = await facts(owner.page, false);
-    } finally { await owner.context.close(); }
-    for (const phase of ['fresh-guest', 'rejoin']) {
-      const guest = await fresh(browser, relay, url!);
-      try {
-        await waitForRoomModels(guest.page, copies);
-        await guest.page.getByRole('tab', { name: 'View', exact: true }).click();
-        await expect(guest.page.getByRole('button', { name: 'World', exact: true })).toBeVisible();
-        const received = await facts(guest.page, true);
-        for (let i = 0; i < copies; i++) {
-          const actual = received[i], original = expected![i];
-          expect(actual.meshes).toBe(original.meshes);
-          expect(actual.coordinateInfo).toEqual(original.coordinateInfo);
-          expect(actual.lengthUnitScale).toBe(0.001);
-          const geo = actual.georeferencing as { mapConversion: Record<string, unknown>; projectedCRS: Record<string, unknown> };
-          const ownerGeo = original.georeferencing as typeof geo;
-          expect(geo.projectedCRS).toEqual({ ...ownerGeo.projectedCRS, id: 0 });
-          expect(geo.mapConversion).toEqual({ ...ownerGeo.mapConversion, id: 0, sourceCRS: 0, targetCRS: 0 });
-          expect(geo.projectedCRS.name).toBe('EPSG:32760');
-        }
-        // Inspector entry is reached through the real Model panel control.
-        if (copies > 1) {
-          if (!await guest.page.getByRole('textbox', { name: 'Search hierarchy' }).isVisible()) {
-            await guest.page.keyboard.press('Control+k');
-            await guest.page.keyboard.type('Hierarchy');
-            await guest.page.keyboard.press('Enter');
+      for (const phase of ['fresh-guest', 'rejoin']) {
+        const guest = await fresh(browser, relay, url!);
+        try {
+          await waitForRoomModels(guest.page, copies);
+          await guest.page.getByRole('tab', { name: 'View', exact: true }).click();
+          await expect(guest.page.getByRole('button', { name: 'World', exact: true })).toBeVisible();
+          if (phase === 'fresh-guest') {
+            const entities = await guest.page.evaluate(() => JSON.stringify(globalThis.__ifc_lite_viewer_store__.getState().collabSession?.doc.getMap('entities').toJSON()));
+            const geo = expected![0].georeferencing as { mapConversion: { eastings: number } };
+            const edited = geo.mapConversion.eastings + 2500;
+            await owner.page.evaluate(({ before, after }) => {
+              const state = globalThis.__ifc_lite_viewer_store__.getState();
+              state.setEditEnabled(true);
+              state.setGeorefField([...state.models.keys()][0], 'mapConversion', 'eastings', after, before);
+            }, { before: geo.mapConversion.eastings, after: edited });
+            await guest.page.waitForFunction(value => [...globalThis.__ifc_lite_viewer_store__.getState().models.values()][0]?.ifcDataStore?.georeferencing?.mapConversion?.eastings === value, edited);
+            expect(await guest.page.evaluate(() => JSON.stringify(globalThis.__ifc_lite_viewer_store__.getState().collabSession?.doc.getMap('entities').toJSON()))).toBe(entities);
+            expected = await facts(owner.page, false);
           }
-          await guest.page.getByRole('treeitem').filter({ hasText: 'building-architecture.ifc' }).first().click();
-        }
-        await guest.page.keyboard.press('Alt+1');
-        await expect(guest.page.getByRole('button', { name: 'Projected CRS EPSG:32760', exact: true })).toBeVisible();
-        await expect(guest.page.getByText('3D Rendering Failed', { exact: true })).not.toBeVisible();
-        await expect(guest.page.getByText('EPSG:32760', { exact: true }).first()).toBeVisible();
-        await guest.page.getByRole('button', { name: 'Fit all', exact: true }).click();
-        await guest.page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-        const image = await guest.page.screenshot();
-        await info.attach(`${copies}-${phase}.png`, { body: image, contentType: 'image/png' });
-        if (EVIDENCE_DIR) {
-          mkdirSync(EVIDENCE_DIR, { recursive: true });
-          writeFileSync(join(EVIDENCE_DIR, `${copies}-${phase}.png`), image);
-          writeFileSync(join(EVIDENCE_DIR, `${copies}-${phase}.json`), JSON.stringify({ fixture: 'building-architecture.ifc', expected, received }, null, 2));
-        }
-      } finally { await guest.context.close(); }
-    }
+          const received = await facts(guest.page, true);
+          for (let i = 0; i < copies; i++) {
+            const actual = received[i], original = expected![i];
+            expect(actual.meshes).toBe(original.meshes);
+            expect(actual.coordinateInfo).toEqual(original.coordinateInfo);
+            expect(actual.lengthUnitScale).toBe(0.001);
+            const geo = actual.georeferencing as { mapConversion: Record<string, unknown>; projectedCRS: Record<string, unknown> };
+            const ownerGeo = original.georeferencing as typeof geo;
+            expect(geo.projectedCRS).toEqual({ ...ownerGeo.projectedCRS, id: 0 });
+            expect(geo.mapConversion).toEqual({ ...ownerGeo.mapConversion, id: 0, sourceCRS: 0, targetCRS: 0 });
+            expect(geo.projectedCRS.name).toBe('EPSG:32760');
+          }
+          // Inspector entry is reached through the real Model panel control.
+          if (copies > 1) {
+            if (!await guest.page.getByRole('textbox', { name: 'Search hierarchy' }).isVisible()) {
+              await guest.page.keyboard.press('Control+k');
+              await guest.page.keyboard.type('Hierarchy');
+              await guest.page.keyboard.press('Enter');
+            }
+            await guest.page.getByRole('treeitem').filter({ hasText: FIXTURE_NAME }).first().click();
+          }
+          await guest.page.keyboard.press('Alt+1');
+          await expect(guest.page.getByRole('button', { name: 'Projected CRS EPSG:32760', exact: true })).toBeVisible();
+          await expect(guest.page.getByText('3D Rendering Failed', { exact: true })).not.toBeVisible();
+          await expect(guest.page.getByText('EPSG:32760', { exact: true }).first()).toBeVisible();
+          await guest.page.getByRole('button', { name: 'Fit all', exact: true }).click();
+          await guest.page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+          const image = await guest.page.screenshot();
+          await info.attach(`${copies}-${phase}.png`, { body: image, contentType: 'image/png' });
+          if (EVIDENCE_DIR) {
+            mkdirSync(EVIDENCE_DIR, { recursive: true });
+            writeFileSync(join(EVIDENCE_DIR, `${copies}-${phase}.png`), image);
+            writeFileSync(join(EVIDENCE_DIR, `${copies}-${phase}.json`), JSON.stringify({ fixture: FIXTURE_NAME, expected, received }, null, 2));
+          }
+        } finally { await guest.context.close(); }
+      }
+    } finally { await owner.context.close(); }
   });
 });

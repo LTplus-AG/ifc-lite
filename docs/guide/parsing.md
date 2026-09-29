@@ -773,3 +773,6 @@ Stores reconstructed without STEP resource rows can supply immutable
 fact before scanning STEP bytes. An absent field retains ordinary source
 extraction; `null` explicitly records that no georeference was supplied. The
 worker transport preserves these fields when reconstructing a store.
+
+`computeTransformMatrix(MapConversion)` derives the canonical 4×4 matrix
+from the current conversion, including its optional axis scale factors.

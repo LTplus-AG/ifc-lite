@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** #6499: immutable spatial facts belong to the model slot, not its GUID roots. */
-import { extractGeoreferencingOnDemand, type GeoreferenceInfo, type IfcDataStore } from '@ifc-lite/parser';
+import { computeTransformMatrix, extractGeoreferencingOnDemand, type GeoreferenceInfo, type IfcDataStore } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { ModelSlot } from '@ifc-lite/collab';
 import type { ViewerModelPayload } from '@/hooks/ingest/viewerModelIngest';
@@ -88,7 +88,7 @@ export function createRoomSpatialContext(
     mapConversion: effective.mapConversion,
     projectedCRS: effective.projectedCRS,
     source: effective.source,
-    transformMatrix: effective.transformMatrix,
+    transformMatrix: effective.mapConversion ? computeTransformMatrix(effective.mapConversion) : effective.transformMatrix,
   } : original;
   const value: RoomSpatialContext = { version: 1, georeferencing, coordinateInfo: frame, lengthUnitScale: getIfcLengthUnitScale(store) };
   // Validate before stringify, which otherwise converts non-finite numbers into null.
@@ -106,13 +106,31 @@ export function roomGeoreference(georef: GeoreferenceInfo | null): GeoreferenceI
 }
 
 /** Restore format-independent facts before registering the reconstructed model. */
+export function restoreRoomSpatialFacts(store: IfcDataStore, context: RoomSpatialContext): void {
+  const previous = extractGeoreferencingOnDemand(store);
+  const georef = roomGeoreference(structuredClone(context.georeferencing));
+  // Only a native store can prove these ids still refer to its resource rows.
+  // Dense recipient stores keep zero ids even when a source blob is attached.
+  if (georef?.mapConversion && previous?.mapConversion
+    && ['IfcMapConversion', 'IfcMapConversionScaled'].includes(store.entities.getTypeName(previous.mapConversion.id))) {
+    georef.mapConversion.id = previous.mapConversion.id;
+    georef.mapConversion.sourceCRS = previous.mapConversion.sourceCRS;
+    georef.mapConversion.targetCRS = previous.mapConversion.targetCRS;
+  }
+  if (georef?.projectedCRS && previous?.projectedCRS
+    && store.entities.getTypeName(previous.projectedCRS.id) === 'IfcProjectedCRS') {
+    georef.projectedCRS.id = previous.projectedCRS.id;
+  }
+  store.georeferencing = georef;
+  store.lengthUnitScale = context.lengthUnitScale;
+}
+
 export function applyRoomSpatialContext(payload: ViewerModelPayload, slot: ModelSlot, notify: (message: string) => void): void {
   try {
     const decoded = decodeRoomSpatialContext(slot.spatialContext);
     const context = decoded ? structuredClone(decoded) : undefined;
     if (!context) return;
-    payload.dataStore.georeferencing = roomGeoreference(context.georeferencing);
-    payload.dataStore.lengthUnitScale = context.lengthUnitScale;
+    restoreRoomSpatialFacts(payload.dataStore, context);
     if (context.coordinateInfo) payload.geometryResult.coordinateInfo = context.coordinateInfo;
   } catch (error) {
     notify(error instanceof Error ? error.message : String(error));

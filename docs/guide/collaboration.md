@@ -154,7 +154,8 @@ A new shared room preserves each model's `IfcMapConversion`,
 `IfcProjectedCRS`, project length unit, and the coordinate frame used by its
 meshes. A recipient can use **View → Context → World** and inspect the same
 georeferencing values as the owner, including when several models are shared.
-Georeferencing edits made before creating the link are included.
+Georeferencing edits made before creating the link are included. Subsequent
+edits and undo/redo update the same room metadata for connected recipients.
 
 Rooms created before this support remain readable. If a room never stored
 its CRS and coordinate offsets, its owner must create a new share from the

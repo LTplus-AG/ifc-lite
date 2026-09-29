@@ -1837,10 +1837,10 @@ export const createMutationSlice: StateCreator<
 
   invalidateHistoryForEntity: (modelId, entityId) => set((s) => {
     const patch = invalidateHistoryPatch(s.undoStacks, s.redoStacks, s.mutationBatchTags, s.mutationMeshTranslations, modelId, entityId);
-    // A peer's edit clears this entity's local history; its edits leave their change sets too.
-    return patch.undoStacks
-      ? { ...patch, ...dropFromChangeSets(s, (s.undoStacks.get(modelId) ?? []).filter((m) => m.entityId === entityId)) }
-      : patch;
+    // Whatever the patch removed from this model's undo stack also leaves its change sets.
+    if (!patch.undoStacks) return patch;
+    const kept = new Set((patch.undoStacks.get(modelId) ?? []).map((m) => m.id));
+    return { ...patch, ...dropFromChangeSets(s, (s.undoStacks.get(modelId) ?? []).filter((m) => !kept.has(m.id))) };
   }),
   // Change Sets (#6232 D4). Edits are filed by `recordHistory`.
   createChangeSet: (name) => {

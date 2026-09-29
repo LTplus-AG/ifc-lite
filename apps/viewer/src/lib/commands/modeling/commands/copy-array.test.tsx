@@ -259,4 +259,39 @@ describe('copy and paste (#6232 C3)', () => {
     ctrl('c');
     assert.equal(readCopyClipboard(), null);
   });
+
+  it('an assembly is copied with its parts and their aggregation, and a part alone is refused (C3 follow-up); one undo', () => {
+    const state = useViewerStore.getState();
+    const { editor } = modelEditTarget(state, MODEL_ID)!;
+    const point = editor.addEntity('IfcCartesianPoint', [[1, 1, 0]]);
+    const axis = editor.addEntity('IfcAxis2Placement3D', [`#${point.expressId}`, null, null]);
+    const placement = editor.addEntity('IfcLocalPlacement', ['#41', `#${axis.expressId}`]);
+    const assembly = editor.addEntity('IfcElementAssembly', ['0$abcdefghijklmnopqrstu', null, 'Assembly', null, null, `#${placement.expressId}`, null, null, null, null]);
+    editor.addEntity('IfcRelContainedInSpatialStructure', ['1$abcdefghijklmnopqrstu', null, null, null, [`#${assembly.expressId}`], `#${STOREY}`]);
+    const parts = [addColumn(1, 1), addColumn(2, 1)];
+    editor.addEntity('IfcRelAggregates', ['2$abcdefghijklmnopqrstu', null, null, null, `#${assembly.expressId}`, parts.map((id) => `#${id}`)]);
+
+    select(parts[0]);
+    ctrl('c');
+    assert.equal(readCopyClipboard(), null, 'a part alone is refused');
+    select(assembly.expressId);
+    const before = undoDepth();
+    ctrl('c');
+    assert.deepEqual(readCopyClipboard()?.ids, [assembly.expressId]);
+    ctrl('v');
+    click(6, 6);
+    assert.equal(live('IFCELEMENTASSEMBLY').length, 2);
+    assert.equal(live('IFCCOLUMN').length, 4, 'two parts, two part copies');
+    const rels = live('IFCRELAGGREGATES');
+    assert.equal(rels.length, 2, 'the aggregation is re-created');
+    const copyRel = rels.find((r) => !parts.map((id) => `#${id}`).includes((r.attributes[5] as string[])[0]))!;
+    assert.equal((copyRel.attributes[5] as string[]).length, 2);
+    assert.notEqual(copyRel.attributes[0], '2$abcdefghijklmnopqrstu');
+    const lastRemesh = remeshes.at(-1)!;
+    assert.equal(lastRemesh.expressIds.length, 3, 'the assembly copy and its two parts are re-meshed');
+    useViewerStore.getState().undo(MODEL_ID);
+    assert.equal(live('IFCELEMENTASSEMBLY').length, 1);
+    assert.equal(live('IFCCOLUMN').length, 2);
+    assert.equal(live('IFCRELAGGREGATES').length, 1);
+  });
 });

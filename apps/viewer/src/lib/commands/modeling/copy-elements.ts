@@ -43,12 +43,17 @@ export function copySources(state: ViewerState, modelId: string, ids: readonly n
   const hostOf = new Map<number, number>();
   for (const [host, openings] of ctx.voids) for (const { id } of openings) hostOf.set(id, host);
   const chosen = new Set(ids);
-  const hostChosen = (id: number): boolean => {
-    const opening = ctx.filledBy.get(id) ?? id;
-    const host = hostOf.get(opening);
-    return host !== undefined && chosen.has(host);
+  // Whatever rides with a chosen element (its opening, door or window, its parts, at any depth) is not copied on its own.
+  const carried = (id: number): boolean => {
+    const seen = new Set<number>();
+    for (let up: number | undefined = id; up !== undefined && !seen.has(up); ) {
+      seen.add(up);
+      up = ctx.partOf.get(up) ?? hostOf.get(ctx.filledBy.get(up) ?? up);
+      if (up !== undefined && chosen.has(up)) return true;
+    }
+    return false;
   };
-  const kept = ids.filter((id) => !hostChosen(id));
+    const kept = ids.filter((id) => !carried(id));
   for (const id of kept) {
     const refusal = copyRefusal(ctx, id);
     if (refusal) return { refusal };
@@ -56,12 +61,19 @@ export function copySources(state: ViewerState, modelId: string, ids: readonly n
   return kept.length > 0 ? { ids: kept } : { refusal: 'Nothing to copy' };
 }
 
-/** `ids` and the doors and windows in their openings: what a preview of their copies shows. */
+/** `ids`, the doors and windows in their openings and their assemblies' parts, at any depth: what a preview of their copies shows. */
 export function withHostedFillings(state: ViewerState, modelId: string, ids: readonly number[]): number[] {
   const ctx = readContext(state, modelId);
   if (!ctx) return [...ids];
-  const fillings = ids.flatMap((id) => (ctx.voids.get(id) ?? []).flatMap(({ id: opening }) => (ctx.fills.get(opening) ?? []).map((f) => f.id)));
-  return [...ids, ...fillings];
+  const shown = new Set<number>();
+  const add = (id: number): void => {
+    if (shown.has(id)) return;
+    shown.add(id);
+    for (const { id: opening } of ctx.voids.get(id) ?? []) for (const filling of ctx.fills.get(opening) ?? []) add(filling.id);
+    for (const link of ctx.parts.get(id) ?? []) link.parts.forEach(add);
+  };
+  ids.forEach(add);
+  return [...shown];
 }
 
 /** Write one copy of every element of `ids` per transform, as one atomic batch. */

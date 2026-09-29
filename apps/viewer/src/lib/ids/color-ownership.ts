@@ -53,13 +53,15 @@ function baseColors(state: IdsColorPresentation): ColorMap {
 }
 
 /**
- * Paint `colors` as the validation overlay and claim the channel. An empty map
- * paints the base (original colours, or the lens's), which is what a hidden
- * report or a report with nothing to colour must show.
+ * Paint `colors` as the validation overlay and claim the channel. While the
+ * report colours are OFF, `colors` is at most the row-focus marker, so it is
+ * layered onto the base (original colours, or the lens's) instead of replacing
+ * it; an empty map likewise paints just the base.
  */
 export function paintIdsColors(getState: () => IdsColorPresentation, colors: ColorMap): void {
   const state = getState();
-  state.setPendingColorUpdates?.(colors.size > 0 ? colors : baseColors(state));
+  const layered = state.idsColorsShown === false || colors.size === 0;
+  state.setPendingColorUpdates?.(layered ? new Map([...baseColors(state), ...colors]) : colors);
   const after = getState();
   after.setIdsColorRevision?.(after.colorPresentationRevision ?? null);
 }

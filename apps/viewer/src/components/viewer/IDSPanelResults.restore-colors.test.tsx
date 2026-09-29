@@ -32,7 +32,8 @@ import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import type { IDSDocument, ValidationReport } from '@ifc-lite/ids';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
-import { DEFAULT_FAILED_COLOR, DEFAULT_PASSED_COLOR } from '@/hooks/ids/idsColorSystem';
+import { DEFAULT_FAILED_COLOR, DEFAULT_PASSED_COLOR, IDS_FOCUS_COLOR } from '@/hooks/ids/idsColorSystem';
+import { useValidationResults, type UseValidationResults } from '@/hooks/validation/useValidationResults';
 import { IDSPanel } from './IDSPanel.js';
 import { ValidationPanel } from './validation/ValidationPanel.js';
 
@@ -176,6 +177,23 @@ for (const host of HOSTS) {
         const ui = render(host.mount());
         click(button(ui, 'Restore original colors'));
         assert.deepEqual(painted(), [[ids.failed, lens], [77, lens]].sort(([x], [y]) => (x as number) - (y as number)));
+      });
+
+      it('focusing a row while the colors are off keeps the lens and adds only the focus marker', () => {
+        const ids = seed(host, modelCount);
+        const lens: RGBA = [0.1, 0.2, 0.9, 1];
+        useViewerStore.setState({ lensAppliedColors: new Map([[ids.passed, lens], [77, lens]]) });
+        let results: UseValidationResults | null = null;
+        function Probe(): null { results = useValidationResults(); return null; }
+        const ui = render(<>{host.mount()}<Probe /></>);
+        click(button(ui, 'Restore original colors'));
+        act(() => results!.focusEntity('m1', 1, 'highlight', false));
+        // The row focus resolves through the store's `toGlobalId` (the
+        // federation registry, which this fixture does not populate), so ask
+        // it rather than assuming the report's offset arithmetic.
+        const focused = useViewerStore.getState().toGlobalId('m1', 1);
+        const expected: Array<[number, RGBA]> = [[focused, IDS_FOCUS_COLOR], [ids.passed, lens], [77, lens]];
+        assert.deepEqual(painted(), expected.sort(([x], [y]) => x - y));
       });
 
       it('a later isolate/clear-isolation round trip does not repaint colors the user turned off', () => {

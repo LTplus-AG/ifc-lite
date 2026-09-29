@@ -1,0 +1,12 @@
+--- a/apps/viewer/src/lib/analytic/selected-source-products.ts
++++ b/apps/viewer/src/lib/analytic/selected-source-products.ts
+@@ -23,7 +23,8 @@
+   const refs = new Map<string, EntityRef>();
+   // Model-aware selection is authoritative when its basket is populated.
+   // removeEntityFromSelection can retain an older renderer selectedEntityId.
+-  if (state.selectedEntity) {
++  if (state.selectedEntity && (state.selectedEntitiesSet.size === 0
++    || state.selectedEntitiesSet.has(entityRefToString(state.selectedEntity)))) {
+     refs.set(entityRefToString(state.selectedEntity), state.selectedEntity);
+   }
+   if (state.selectedEntitiesSet.size === 0) {

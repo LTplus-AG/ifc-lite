@@ -155,7 +155,7 @@ export class MsGraphProvider implements FileSourceProvider {
     const client = await this.createClient(ctx);
     const raw = await client.get(
       `/me/drive/items/${enc(ref.fileId)}`,
-      { $select: 'id,name,cTag,eTag,@microsoft.graph.downloadUrl' },
+      { $select: 'id,name,size,cTag,eTag,@microsoft.graph.downloadUrl' },
       options?.signal,
     );
     const item = decodeDriveItem(raw);
@@ -182,7 +182,7 @@ export class MsGraphProvider implements FileSourceProvider {
       throw new Error(`Microsoft Graph item ${ref.fileId} does not expose a download URL`);
     }
 
-    return client.getPublicBinary(downloadUrl, options?.signal);
+    return client.getPublicBinary(downloadUrl, options, item.size);
   }
 
   async listRevisions(ctx: PluginContext, ref: SourceFileRef, options?: ListOptions): Promise<Page<SourceRevision>> {

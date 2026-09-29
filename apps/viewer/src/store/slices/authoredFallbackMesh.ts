@@ -23,6 +23,7 @@ import type { CoordinateInfo, MeshData } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ViewerState } from '../index.js';
 import type { AuthoredElement } from './authoredElement.js';
+import { profileSectionExtent } from '@ifc-lite/create';
 import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
 import { authoredDataStore } from './authoredTreeEntry.js';
 import { toGlobalIdFromModels } from '../globalId.js';
@@ -134,8 +135,9 @@ function storeyLocalPayload(element: AuthoredElement): ElementMeshPayload {
   switch (element.kind) {
     case 'column': {
       const p = element.params;
+      const [Width, Depth] = 'Profile' in p ? profileSectionExtent(p.Profile) : [p.Width, p.Depth];
       return {
-        type: 'column', params: { Width: p.Width, Depth: p.Depth, Height: p.Height }, position: p.Position,
+        type: 'column', params: { Width, Depth, Height: p.Height }, position: p.Position,
         ...(p.RefDirection ? { refDirection: [p.RefDirection[0], p.RefDirection[1]] as const } : {}),
       };
     }
@@ -144,11 +146,13 @@ function storeyLocalPayload(element: AuthoredElement): ElementMeshPayload {
       return { type: 'wall', params: { Thickness: p.Thickness, Height: p.Height }, start: p.Start, end: p.End };
     }
     // The builders centre the section on Start-End; the box grows up from
-    // its segment, so it starts half the section height below the axis.
+    // its segment, so it starts half the section height below the axis. A
+    // profiled section draws as its bounding box.
     case 'beam': case 'member': {
       const p = element.params;
-      const down = (q: Vec3): Vec3 => [q[0], q[1], q[2] - p.Height / 2];
-      return { type: element.kind, params: { Width: p.Width, Height: p.Height }, start: down(p.Start), end: down(p.End) };
+      const [Width, Height] = 'Profile' in p ? profileSectionExtent(p.Profile) : [p.Width, p.Height];
+      const down = (q: Vec3): Vec3 => [q[0], q[1], q[2] - Height / 2];
+      return { type: element.kind, params: { Width, Height }, start: down(p.Start), end: down(p.End) };
     }
     case 'door': {
       const p = element.params;

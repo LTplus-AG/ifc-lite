@@ -9,7 +9,8 @@
 import type { StateCreator } from 'zustand';
 import type { ListDefinition, ListResult } from '@ifc-lite/lists';
 import { loadListDefinitions, saveListDefinitions } from '../../lib/lists/persistence.js';
-import { defineSliceTeardown, notApplicable } from '../teardown.js';
+import { defineSliceTeardown } from '../teardown.js';
+import type { VisibilityOwnership } from '../../lib/visibility/ownership.js';
 
 export interface ListSlice {
   // State
@@ -26,6 +27,9 @@ export interface ListSlice {
   /** A list definition handed off from elsewhere (e.g. "Create list" in the
    *  search filter) for the ListPanel to open straight into the builder. */
   pendingListDraft: ListDefinition | null;
+  /** The panel's claim on the isolate / ghost channel from a group row's
+   *  Isolate / X-ray context action (#6368), released only if still owned. */
+  listVisibilityOwned: VisibilityOwnership;
 
   // Actions
   setListDefinitions: (definitions: ListDefinition[]) => void;
@@ -50,6 +54,7 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
   listExecuting: false,
   listError: null,
   pendingListDraft: null,
+  listVisibilityOwned: null,
 
   // Actions
   setListDefinitions: (listDefinitions) => {
@@ -102,7 +107,7 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
  */
 export const listTeardown = defineSliceTeardown(
   'listSlice',
-  ['listPanelVisible', 'activeListId', 'listResult', 'listExecuting'],
+  ['listPanelVisible', 'activeListId', 'listResult', 'listExecuting', 'listVisibilityOwned'],
   {
     'session-reset': () => ({
       listPanelVisible: false,
@@ -111,8 +116,18 @@ export const listTeardown = defineSliceTeardown(
       // the definition against the new one.
       listResult: null,
       listExecuting: false,
+      // The claim names the outgoing model's renderer ids (#6368).
+      listVisibilityOwned: null,
     }),
-    'model-removed': notApplicable,
-    'all-models-cleared': notApplicable,
+    // Keep the claim on what survives, in the same patch that prunes the
+    // channel, so the list still owns (and can release) the rest (#6368).
+    'model-removed': ({ isStale }, state) => {
+      const owned = state.listVisibilityOwned;
+      if (!owned) return {};
+      const ids = new Set([...owned.ids].filter((id) => !isStale(id)));
+      if (ids.size === owned.ids.size) return {};
+      return { listVisibilityOwned: ids.size > 0 ? { channel: owned.channel, ids } : null };
+    },
+    'all-models-cleared': () => ({ listVisibilityOwned: null }),
   },
 );

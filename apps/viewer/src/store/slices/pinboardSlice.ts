@@ -95,23 +95,22 @@ interface PinboardCrossSliceState {
   idsFocusVisibilityOwned: VisibilityOwnership;
   clashVisibilityOwned: VisibilityOwnership;
   chartVisibilityOwned: VisibilityOwnership;
+  listVisibilityOwned: VisibilityOwnership;
 }
 
 /** A basket install is a producer handoff even when its ids equal the prior
  * producer's. Neutral capture/restore replays intentionally preserve equal
  * ownership in the middleware, so producers must name the handoff atomically. */
-function basketVisibilityHandoff(owned: BasketIsolationOwnership): {
-  ghostExceptEntities?: null;
-  idsFocusVisibilityOwned?: null;
-  clashVisibilityOwned?: null;
-  chartVisibilityOwned?: null;
-} {
+function basketVisibilityHandoff(
+  owned: BasketIsolationOwnership,
+): Partial<Record<'ghostExceptEntities' | 'idsFocusVisibilityOwned' | 'clashVisibilityOwned' | 'chartVisibilityOwned' | 'listVisibilityOwned', null>> {
   return owned
     ? {
         ghostExceptEntities: null,
         idsFocusVisibilityOwned: null,
         clashVisibilityOwned: null,
         chartVisibilityOwned: null,
+        listVisibilityOwned: null,
       }
     : {};
 }

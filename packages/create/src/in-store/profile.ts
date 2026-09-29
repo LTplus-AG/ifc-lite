@@ -192,6 +192,31 @@ function isNonNegativeFinite(value: unknown): boolean {
 }
 
 /**
+ * The section's axis-aligned extent in its own frame (metres):
+ * `[along profile X, along profile Y]`. Profiles are centred, so the section
+ * spans half of each on either side of the element axis. For callers that
+ * need the outer size without meshing (fallback meshes, snapping, HUDs).
+ */
+export function profileSectionExtent(section: ProfileSection): [number, number] {
+  switch (section.Type) {
+    case 'Rectangle':
+    case 'RectangleHollow':
+      return [section.XDim, section.YDim];
+    case 'I':
+      return [section.OverallWidth, section.OverallDepth];
+    case 'L':
+    case 'C':
+      return [section.Width, section.Depth];
+    case 'T':
+    case 'U':
+      return [section.FlangeWidth, section.Depth];
+    case 'Circle':
+    case 'CircleHollow':
+      return [2 * section.Radius, 2 * section.Radius];
+  }
+}
+
+/**
  * Everything `emitProfileSection` would refuse, checked without emitting, so a
  * builder can validate its whole input before it writes its first entity.
  */

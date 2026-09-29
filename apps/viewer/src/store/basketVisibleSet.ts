@@ -440,17 +440,14 @@ function getVisibleGlobalIds(state: ViewerStateSnapshot): Set<number> {
   return visible;
 }
 
-export function getVisibleBasketEntityRefsFromStore(): EntityRef[] {
-  const state = useViewerStore.getState();
+/** `ignoreIsolatedEntities`: as if `isolatedEntities` were unset, so a panel's own isolation does not filter its own rows (#6368). */
+export function getVisibleBasketEntityRefsFromStore(ignoreIsolatedEntities = false): EntityRef[] {
+  const live = useViewerStore.getState();
+  const state = ignoreIsolatedEntities && live.isolatedEntities !== null ? { ...live, isolatedEntities: null } : live;
   const key = visibilityFingerprint(state);
   if (_visibleCache?.key === key) return _visibleCache.refs;
 
   const visibleIds = getVisibleGlobalIds(state);
-  if (visibleIds.size === 0) {
-    _visibleCache = { key, refs: [] };
-    return [];
-  }
-
   const refs: EntityRef[] = [];
   for (const globalId of visibleIds) {
     const resolved = state.resolveGlobalIdFromModels(globalId);

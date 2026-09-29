@@ -203,6 +203,31 @@ describe('MsGraphProvider', () => {
       expect(new TextDecoder().decode(buf)).toBe('MODEL-BYTES-1');
     });
 
+    // #6375: the CDN response streams with no Content-Length here, so the
+    // ring's total has to come from the item's `size`, which only arrives if
+    // `download()` selects it.
+    it('reports streamed progress with the item size as the total when Content-Length is missing', async () => {
+      const content = 'IFC-BYTES-STREAMED-IN-CHUNKS';
+      const sizedWorld: GraphMockWorld = {
+        ...WORLD,
+        items: [
+          ...WORLD.items,
+          { id: 'file-sized', name: 'big.ifc', parentId: 'f-alpha', kind: 'file', size: content.length, content },
+        ],
+      };
+      const ctx = createGraphMockContext(sizedWorld);
+      const calls: Array<readonly [number, number | undefined]> = [];
+      const buf = await provider.download(
+        ctx,
+        { projectId: 'me', containerId: 'f-alpha', fileId: 'file-sized' },
+        { onProgress: (received, total) => calls.push([received, total]) },
+      );
+
+      expect(new TextDecoder().decode(buf)).toBe(content);
+      expect(calls[0]).toEqual([0, content.length]);
+      expect(calls.at(-1)).toEqual([content.length, content.length]);
+    });
+
     it('rejects a historical revisionId instead of silently serving current bytes', async () => {
       const ctx = createGraphMockContext(WORLD);
       await expect(

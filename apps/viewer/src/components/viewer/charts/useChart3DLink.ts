@@ -155,6 +155,7 @@ export function presentChartIds(ids: number[], mode: ChartFocusMode): void {
       idsFocusVisibilityOwned: null,
       clashVisibilityOwned: null,
       basketVisibilityOwned: null,
+      listVisibilityOwned: null,
       chartVisibilityOwned: { channel: 'ghost', ids: installed },
       chartVisibilityRevision: visibilityRevision,
     });
@@ -168,6 +169,7 @@ export function presentChartIds(ids: number[], mode: ChartFocusMode): void {
       idsFocusVisibilityOwned: null,
       clashVisibilityOwned: null,
       basketVisibilityOwned: null,
+      listVisibilityOwned: null,
       chartVisibilityOwned: { channel: 'isolate', ids: installed },
       chartVisibilityRevision: visibilityRevision,
     });

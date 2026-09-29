@@ -446,6 +446,44 @@ describe('DaluxBuildProvider', () => {
       expect(buf.byteLength).toBe(8);
     });
 
+    // #6375: the relay in front of Dalux can drop Content-Length, so the
+    // ring's total falls back to the file's own `fileSize`.
+    it('reports streamed progress with the file metadata size as the total when Content-Length is missing', async () => {
+      const bytes = new TextEncoder().encode('IFC-BYTES-STREAMED-IN-CHUNKS');
+      const mockFetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/5.0/projects/proj1/file_areas/fa1/files/f1')) {
+          return Promise.resolve(
+            mockResponse({
+              json: () =>
+                Promise.resolve({
+                  data: { fileId: 'f1', fileName: 'a.ifc', fileAreaId: 'fa1', deleted: false, fileSize: bytes.byteLength, downloadLink: 'https://cdn.dalux.com/x' },
+                }),
+            }),
+          );
+        }
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(bytes.slice(0, 10));
+            controller.enqueue(bytes.slice(10));
+            controller.close();
+          },
+        });
+        return Promise.resolve(new Response(body, { status: 200 }));
+      });
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+      const calls: Array<readonly [number, number | undefined]> = [];
+
+      const buf = await provider.download(
+        ctx,
+        { projectId: 'proj1', containerId: fileAreaContainerId('fa1'), fileId: 'f1' },
+        { onProgress: (received, total) => calls.push([received, total]) },
+      );
+
+      expect(new Uint8Array(buf)).toEqual(bytes);
+      expect(calls[0]).toEqual([0, bytes.byteLength]);
+      expect(calls.at(-1)).toEqual([bytes.byteLength, bytes.byteLength]);
+    });
+
     it('treats the LATEST_REVISION sentinel the same as an omitted revisionId, never hitting /revisions/.../content', async () => {
       const mockFetch = vi.fn().mockImplementation((url: string) => {
         if (url.includes('/revisions/')) throw new Error('should never call the revisions endpoint for the sentinel');

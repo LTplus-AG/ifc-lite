@@ -211,5 +211,33 @@ describe('the parameter fallback matches the builder (#6232 M2.2)', () => {
       await settleRemesh(); await settleRemesh();
       assert.deepEqual(shape(made.expressId).y, [1.75, 2.25]);
     });
+
+    // `addBeam`/`addMember` are typed for the rectangle, but the builders
+    // take a `Profile` (#6232 A5), and untyped callers (scripts) pass one.
+    it(`a profiled ${kind} falls back as its section's bounding box`, async () => {
+      await seed();
+      const s = useViewerStore.getState();
+      const params = {
+        Start: [0, 0, 2] as [number, number, number], End: [4, 0, 2] as [number, number, number],
+        Profile: { Type: 'I' as const, OverallWidth: 0.2, OverallDepth: 0.4, WebThickness: 0.01, FlangeThickness: 0.016 },
+      } as unknown as Parameters<typeof s.addBeam>[2];
+      const made = kind === 'beam' ? s.addBeam(MODEL, STOREY, params) : s.addMember(MODEL, STOREY, params);
+      assert.ok('expressId' in made, 'error' in made ? made.error : 'no id');
+      await settleRemesh(); await settleRemesh();
+      const { plan, y } = shape(made.expressId);
+      assert.deepEqual(y, [1.8, 2.2], 'OverallDepth 0.4, centred on the axis');
+      assert.deepEqual(plan, ['0,-0.1', '0,0.1', '4,-0.1', '4,0.1'], 'OverallWidth 0.2 across the axis');
+    });
   }
+
+  it('a profiled column falls back as its section\'s bounding box', async () => {
+    await seed();
+    const s = useViewerStore.getState();
+    const c = s.addColumn(MODEL, STOREY, {
+      Position: [0, 0, 0], Height: 3, Profile: { Type: 'CircleHollow', Radius: 0.15, WallThickness: 0.01 },
+    } as unknown as Parameters<typeof s.addColumn>[2]);
+    assert.ok('expressId' in c, 'error' in c ? c.error : 'no id');
+    await settleRemesh(); await settleRemesh();
+    assert.deepEqual(shape(c.expressId).plan, ['-0.15,-0.15', '-0.15,0.15', '0.15,-0.15', '0.15,0.15']);
+  });
 });

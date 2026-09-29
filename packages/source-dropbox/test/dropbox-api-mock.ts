@@ -81,6 +81,32 @@ function mockResponse({ status = 200, json, body }: MockResponseInit): Response 
   } as unknown as Response;
 }
 
+/** Serves file bytes the way a real download does: a streamed body, split
+ *  into a few chunks and with no `Content-Length`, so a download exercises
+ *  `readWithProgress`'s stream path and its listing-size fallback (#6375). */
+function binaryResponse(content: string, headers: Record<string, string> = {}): Response {
+  const bytes = new TextEncoder().encode(content);
+  const chunkSize = Math.max(1, Math.ceil(bytes.byteLength / 3));
+  let offset = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (offset >= bytes.byteLength) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(bytes.slice(offset, offset + chunkSize));
+      offset += chunkSize;
+    },
+  });
+  return new Response(body, { status: 200, headers: { 'Content-Type': 'application/octet-stream', ...headers } });
+}
+
+/** The `Dropbox-API-Result` header real `files/download` answers with: the
+ *  downloaded file's JSON `FileMetadata`, `size` included. */
+function apiResultHeader(metadata: Record<string, unknown>): Record<string, string> {
+  return { 'Dropbox-API-Result': JSON.stringify(metadata) };
+}
+
 /** Renders an item marked `deleted: true` as real Dropbox's `DeletedMetadata`
  *  — `name`/`path_lower` only, deliberately **no `id`** (real Dropbox never
  *  includes one on a deleted entry). Only used for the flat/watch-mode
@@ -398,7 +424,7 @@ export function createDropboxContentMock(world: DropboxMockWorld): typeof fetch 
         const match = revisions.find((r) => r.rev === rev);
         if (match) {
           if (match.content === undefined) return Promise.resolve(mockResponse({ status: 409, body: 'path/not_found' }));
-          return Promise.resolve(mockResponse({ body: match.content }));
+          return Promise.resolve(binaryResponse(match.content, apiResultHeader({ rev: match.rev, size: match.size })));
         }
       }
       return Promise.resolve(mockResponse({ status: 409, body: 'path/not_found' }));
@@ -409,7 +435,7 @@ export function createDropboxContentMock(world: DropboxMockWorld): typeof fetch 
       return Promise.resolve(mockResponse({ status: 409, body: 'path/not_found' }));
     }
     if (item.content === undefined) return Promise.resolve(mockResponse({ status: 409, body: 'path/not_found' }));
-    return Promise.resolve(mockResponse({ body: item.content }));
+    return Promise.resolve(binaryResponse(item.content, apiResultHeader(itemJson(world, item))));
   }) as typeof fetch;
 }
 

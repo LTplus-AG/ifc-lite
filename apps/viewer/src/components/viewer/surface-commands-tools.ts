@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { openRepositionModels } from '@/lib/model-placement/commands';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
-import { WallIcon } from './model/model-icons';
+import { BeamIcon, ColumnIcon, SlabIcon, WallIcon } from './model/model-icons';
 import { useViewerStore } from '@/store';
 import type { SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
 
@@ -75,6 +75,27 @@ export const TOOL_SURFACE_COMMANDS = [
     category: 'Tools', icon: WallIcon, surfaces: paletteOnly, enabled: editable,
     shortcut: 'model.wall',
     run: () => { launchModelCommand('wall.place'); },
+  },
+  {
+    id: 'tool:slab', labelKey: 'commandPalette.tool.slab.label',
+    searchLabel: 'Draw slabs', keywords: 'slab floor roof plate rectangle polygon draw model author build create',
+    category: 'Tools', icon: SlabIcon, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.slab',
+    run: () => { launchModelCommand('slab.place'); },
+  },
+  {
+    id: 'tool:column', labelKey: 'commandPalette.tool.column.label',
+    searchLabel: 'Place columns', keywords: 'column pillar post place model author build create',
+    category: 'Tools', icon: ColumnIcon, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.column',
+    run: () => { launchModelCommand('column.place'); },
+  },
+  {
+    id: 'tool:beam', labelKey: 'commandPalette.tool.beam.label',
+    searchLabel: 'Draw beams', keywords: 'beam member girder joist brace draw model author build create',
+    category: 'Tools', icon: BeamIcon, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.beam',
+    run: () => { launchModelCommand('beam.place'); },
   },
   {
     id: 'tool:edit-mode', labelKey: 'commandPalette.tool.editMode.label', ribbonLabelKey: 'ribbon.author.editMode',

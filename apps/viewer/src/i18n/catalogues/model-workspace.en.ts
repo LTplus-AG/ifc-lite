@@ -13,6 +13,9 @@ export const modelWorkspaceEn = {
   'modelWorkspace.rail.aria': 'Model tools',
   'modelWorkspace.tool.select': 'Select',
   'modelWorkspace.tool.wall': 'Wall',
+  'modelWorkspace.tool.slab': 'Slab',
+  'modelWorkspace.tool.column': 'Column',
+  'modelWorkspace.tool.beam': 'Beam',
   'modelWorkspace.tool.split': 'Split',
   'modelWorkspace.tool.leave': 'Leave the Model workspace',
   'modelWorkspace.tool.shortcutHint': '· {key}',
@@ -29,5 +32,5 @@ export const modelWorkspaceEn = {
   'modelWorkspace.noStorey.description': 'This model has no IfcBuildingStorey, so walls have no floor to stand on.',
   'modelWorkspace.plan.title': 'Plan',
   'modelWorkspace.plan.placeholder': 'The plan view of this storey arrives in the next update.',
-  'modelWorkspace.hint.onboarding': 'W draws a wall · click an element to edit it · E leaves',
+  'modelWorkspace.hint.onboarding': 'W wall · Shift+S slab · click an element to edit it · E leaves',
 } as const satisfies Record<string, TranslationValue>;

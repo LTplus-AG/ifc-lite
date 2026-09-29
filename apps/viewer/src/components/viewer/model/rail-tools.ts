@@ -12,7 +12,7 @@
 
 import type { ComponentType } from 'react';
 import { LogOut, MousePointer2, Slice } from 'lucide-react';
-import { WallIcon } from './model-icons';
+import { BeamIcon, ColumnIcon, SlabIcon, WallIcon } from './model-icons';
 import type { TranslationKey } from '@/i18n';
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
@@ -49,6 +49,24 @@ export const RAIL_TOOLS: readonly RailTool[] = [
     shortcut: 'model.wall', drawsOnWorkplane: true,
     isActive: commandActive('wall.place'),
     run: () => { launchModelCommand('wall.place'); },
+  },
+  {
+    id: 'slab.place', group: 'build', labelKey: 'modelWorkspace.tool.slab', Icon: SlabIcon,
+    shortcut: 'model.slab', drawsOnWorkplane: true,
+    isActive: commandActive('slab.place'),
+    run: () => { launchModelCommand('slab.place'); },
+  },
+  {
+    id: 'column.place', group: 'build', labelKey: 'modelWorkspace.tool.column', Icon: ColumnIcon,
+    shortcut: 'model.column', drawsOnWorkplane: true,
+    isActive: commandActive('column.place'),
+    run: () => { launchModelCommand('column.place'); },
+  },
+  {
+    id: 'beam.place', group: 'build', labelKey: 'modelWorkspace.tool.beam', Icon: BeamIcon,
+    shortcut: 'model.beam', drawsOnWorkplane: true,
+    isActive: commandActive('beam.place'),
+    run: () => { launchModelCommand('beam.place'); },
   },
   {
     id: 'element.split', group: 'edit', labelKey: 'modelWorkspace.tool.split', Icon: Slice,

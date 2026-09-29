@@ -75,6 +75,8 @@ async function main() {
       })
     : null;
   const blobStorage = new FsBlobStorage(dataDir);
+  // Fail at startup, not on the first blob request, if the blobs dir can't be made.
+  await blobStorage.ready;
   const blobGcConfig = resolveBlobGcConfig();
   const handle = await startCollabServer({
     port,

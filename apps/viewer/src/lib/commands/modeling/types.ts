@@ -65,13 +65,21 @@ export function isCommandSignal(value: unknown): value is CommandSignal {
   return keys.length === 1 && ((value as { commit?: unknown }).commit === true || (value as { exit?: unknown }).exit === true);
 }
 
-/** A typed value the HUD's fields bar edits (length, angle, …). */
+/**
+ * A typed value the HUD's fields bar edits (length, angle, …). A gesture lock
+ * lives in `G`; a dimension the command builds with lives in the defaults
+ * slice, which `read` / `write` reach through `ctx` (`defaultsField`).
+ */
 export interface CommandField<G> {
   readonly id: string;
   readonly labelKey: TranslationKey;
   readonly unit: 'm' | 'deg' | 'count';
-  read(g: G): number | null;
-  write(g: G, v: number): G;
+  /** Fields with different groups get a divider between them in the bar. */
+  readonly group?: string;
+  /** Not shown (and skipped by Tab) for this gesture, e.g. Width in polygon mode. */
+  hidden?(g: G): boolean;
+  read(g: G, ctx: CommandContext): number | null;
+  write(g: G, v: number, ctx: CommandContext): G;
 }
 
 export interface CommitResult {
@@ -111,6 +119,11 @@ export interface ModelingCommand<G = unknown> {
   snapQuery?(g: G): Pick<SnapQuery, 'anchor' | 'chain' | 'locks'>;
   pointerMove(g: G, s: SnapResult, ctx: CommandContext): G;
   pointerDown(g: G, s: SnapResult, ctx: CommandContext): G | CommandSignal;
+  /**
+   * The second click of a double-click (`event.detail >= 2`), instead of
+   * `pointerDown`: e.g. close a polygon. Absent = a plain `pointerDown`.
+   */
+  doubleClick?(g: G, ctx: CommandContext): G | CommandSignal;
   /** Backspace: drop the last placed point. Absent = the key falls through. */
   undoPoint?(g: G): G;
   ghost?(g: G, ctx: CommandContext): MeshData[];

@@ -8,6 +8,7 @@
  * it without importing the command (which imports the scene).
  */
 
+import { dist } from '@/lib/snap/constraints';
 import type { Vec2 } from '@/lib/snap/types';
 
 export const MIN_WALL_LENGTH = 0.01;
@@ -48,3 +49,34 @@ export function endPoint(g: WallPlaceGesture): Vec2 | null {
   return [anchor[0] + dir[0] * along, anchor[1] + dir[1] * along];
 }
 
+
+/**
+ * The wall axis for a drawn line a→b: with Align Left or Right the drawn line
+ * is that face of the wall (walking a→b), so the axis sits t/2 to the other
+ * side along the line's normal; Centre draws the axis itself.
+ */
+export function alignedAxis(a: Vec2, b: Vec2, thickness: number, align: 'left' | 'centre' | 'right'): [Vec2, Vec2] {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const length = Math.hypot(dx, dy);
+  if (align === 'centre' || !(length > 1e-9)) return [a, b];
+  // Unit normal to the right of a→b, scaled by half the thickness.
+  const side = align === 'left' ? thickness / 2 : -thickness / 2;
+  const ox = (dy / length) * side, oy = (-dx / length) * side;
+  return [[a[0] + ox, a[1] + oy], [b[0] + ox, b[1] + oy]];
+}
+
+/** The segment's length as the Length field shows it: the lock, else the live one. */
+export function currentLength(g: WallPlaceGesture): number | null {
+  const anchor = anchorOf(g);
+  const end = endPoint(g);
+  return g.length ?? (anchor && end ? dist(anchor, end) : null);
+}
+
+/** The segment's angle as the Angle field shows it (0 = +x, CCW). */
+export function currentAngle(g: WallPlaceGesture): number | null {
+  const anchor = anchorOf(g);
+  const end = endPoint(g);
+  if (g.angle !== null) return g.angle;
+  if (!anchor || !end || dist(anchor, end) < 1e-9) return null;
+  return ((Math.atan2(end[1] - anchor[1], end[0] - anchor[0]) * 180) / Math.PI + 360) % 360;
+}

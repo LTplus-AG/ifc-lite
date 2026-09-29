@@ -16,6 +16,8 @@
  */
 
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import * as collab from '@ifc-lite/collab';
 import type { CollabSession, ModelSlotRef } from '@ifc-lite/collab';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -35,6 +37,15 @@ import type { CollabGeomApi } from '../lib/collab/geometry-sync.js';
 import type { PlacementSweepApi } from '../lib/collab/placement-sweep.js';
 
 export type RoomDoc = ReturnType<typeof collab.createCollabDoc>;
+
+// Yjs' CJS and ESM class identities differ; update transport must use the
+// exact runtime consumed by collab, rather than a second viewer dependency.
+const collabResolve = createRequire(import.meta.resolve('@ifc-lite/collab'));
+const runtimePath = collabResolve.resolve('yjs').replace(/dist[\\/]yjs\.cjs$/, 'dist/yjs.mjs');
+export const roomYjs: {
+  applyUpdate(doc: RoomDoc, update: Uint8Array): void;
+  encodeStateAsUpdate(doc: RoomDoc): Uint8Array;
+} = await import(pathToFileURL(runtimePath).href);
 
 export const geomApi: CollabGeomApi = {
   createGeometry: (doc, geomId, opts) => collab.createGeometry(doc, geomId, opts),

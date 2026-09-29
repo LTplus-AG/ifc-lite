@@ -7,8 +7,6 @@ import { act, createElement } from 'react';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { pathToFileURL } from 'node:url';
 import * as collab from '@ifc-lite/collab';
 import { IfcParser, EMPTY_SOURCE_BYTES, extractGeoreferencingOnDemand } from '@ifc-lite/parser';
 import type { CoordinateInfo, MeshData } from '@ifc-lite/geometry';
@@ -19,7 +17,7 @@ import { buildShareSeed } from './share-scope.js';
 import { buildGeometryResultFromMeshes } from './geometry-sync.js';
 import { roomSlotRef } from './model-slot-ref.js';
 import { createRoomSpatialContext, decodeRoomSpatialContext } from './room-spatial-context.js';
-import { ownerShare, joiner } from '@/test/collab-room-harness.js';
+import { ownerShare, joiner, roomYjs as Y } from '@/test/collab-room-harness.js';
 import type { FederatedModel } from '@/store/types.js';
 import { useViewerStore, type ViewerState } from '@/store/index.js';
 import { createStore } from 'zustand/vanilla';
@@ -33,14 +31,6 @@ import { attachRoomSpatialContextMirror } from './room-spatial-context-mirror.js
 import { ModelMetadataPanel } from '@/components/viewer/properties/ModelMetadataPanel.js';
 import { render, cleanup } from '@/test/render.js';
 import { fixtureModels } from '@/test/store-fixture.js';
-
-// Use collab's exact ESM Yjs runtime, as the existing room peer tests do.
-const collabResolve = createRequire(import.meta.resolve('@ifc-lite/collab'));
-const runtimePath = collabResolve.resolve('yjs').replace(/dist[\\/]yjs\.cjs$/, 'dist/yjs.mjs');
-const Y: {
-  applyUpdate(doc: ReturnType<typeof collab.createCollabDoc>, update: Uint8Array): void;
-  encodeStateAsUpdate(doc: ReturnType<typeof collab.createCollabDoc>): Uint8Array;
-} = await import(pathToFileURL(runtimePath).href);
 
 const sample = new URL('../../../public/samples/building-architecture.ifc', import.meta.url);
 const frame: CoordinateInfo = {

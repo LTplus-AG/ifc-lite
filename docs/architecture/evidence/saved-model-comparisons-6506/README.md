@@ -18,4 +18,6 @@ Run from the repository root after building dependencies:
 pnpm exec playwright test tests/e2e/document-text.e2e.spec.ts --project=viewer-e2e-ci --grep '#6506' --workers=1 --reporter=line
 ```
 
-The test starts its own source Vite server. On 2026-09-30, the regression passed in 32.2 seconds against the comparison branch rebased onto the saved-validation-report changes. These are observed IFC and downloaded PDF results; the screenshots supplement the behavioral assertions.
+The test starts its own source Vite server. On 2026-09-30, all five document browser scenarios passed in 1.2 minutes on the comparison branch rebased onto the integrated saved-validation-report changes. The scenarios cover mixed PDF text, popup behavior, scoped fields/page breaks, saved validation reports, and saved comparisons. These are observed IFC and downloaded PDF results; the screenshots supplement the behavioral assertions.
+
+The production-revert oracle also returned `OBSERVED` against the stacked base `89695a72b`: reverting this feature left the four existing scenarios green and made the saved-comparison UI assertion fail. Restoring the production patch produced an attributable five-test green baseline, and the oracle verified byte-identical source restoration. No import weakening or oracle exemptions were used.

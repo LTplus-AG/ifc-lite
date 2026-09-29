@@ -8,6 +8,7 @@
  * the same jsPDF + svg2pdf + snapshot path the coordination report uses,
  * so a chart block prints exactly as it does in a report.
  */
+import { tableHeaderStyle } from '../table-header-style';
 import { comparisonSummary } from '../compare/savedComparisonSchema';
 import type { Aggregation } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
@@ -164,13 +165,13 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         if (state?.status === 'ok' && message === null) {
           const flat = state.kind === 'validation' || state.kind === 'comparison'
             ? flattenRawModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS)
-            : flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS);
-          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, columns: flat.columns, rows: flat.rows });
+            : flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS, block.groupOrder);
+          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, headerStyle: block.headerBackground ? tableHeaderStyle(block.headerBackground) : undefined, summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, columns: flat.columns, rows: flat.rows });
           break;
         }
         if (state?.status !== 'ok') result.tableFailures.push(block.id);
         // `tableMessage` is non-null for every non-ok state; the fallback only satisfies the types.
-        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, message: message ?? 'No rows to print.', columns: [], rows: [] });
+        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, headerStyle: block.headerBackground ? tableHeaderStyle(block.headerBackground) : undefined, summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, message: message ?? 'No rows to print.', columns: [], rows: [] });
         break;
       }
       case 'ids-report': {
@@ -334,6 +335,7 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
             body: item.rows.map((r) => r.cells),
             columns: item.columns.map((c) => ({ width: c.width, align: c.align })),
             rowRoles: item.rows.map((r) => r.role),
+            headerStyle: item.headerStyle,
           });
           break;
       }

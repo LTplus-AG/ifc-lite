@@ -9,6 +9,7 @@
  * rows) in its place when there is nothing to print. The preview does not
  * paginate (text never did either); the composer's tests cover chunking.
  */
+import { tableHeaderStyle } from '@/lib/table-header-style';
 import { comparisonSummary } from '@/lib/compare/savedComparisonSchema';
 import { useMemo } from 'react';
 import { useTranslation } from '@/i18n';
@@ -32,6 +33,7 @@ export interface TablePreviewProps {
 
 export function TablePreview({ block, state }: TablePreviewProps) {
   const { t, locale } = useTranslation();
+  const header = tableHeaderStyle(block.headerBackground);
   // The PDF's `tableTitle` fallback ("Validation results") is plain English on purpose (every other
   // PDF fallback string is); the on-screen preview is interactive UI, so it translates its own
   // fallback instead of calling that helper (#5138 review).
@@ -44,8 +46,8 @@ export function TablePreview({ block, state }: TablePreviewProps) {
     };
     return state.kind === 'validation' || state.kind === 'comparison'
       ? flattenRawModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, labels)
-      : flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, labels);
-  }, [state, block.maxRows, t, locale]);
+      : flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, labels, block.groupOrder);
+  }, [state, block.maxRows, block.groupOrder, t, locale]);
 
   // The same state → message decision the PDF makes (`tableMessageKind`), worded from the catalogue.
   const kind = tableMessageKind(state);
@@ -68,7 +70,7 @@ export function TablePreview({ block, state }: TablePreviewProps) {
         <table className="w-full border-collapse text-2xs leading-tight" data-table-rows={table.rows.length}>
           <thead>
             <tr>
-              {table.columns.map((c, i) => <th key={i} className={`border border-neutral-200 bg-slate-700 px-1 py-0.5 font-semibold text-white ${c.numeric ? 'text-right' : 'text-left'}`}>{c.id ? t(TABLE_COLUMN_LABEL_KEY[c.id as TableColumnId]) : c.label}</th>)}
+              {table.columns.map((c, i) => <th key={i} style={{ backgroundColor: header.backgroundColor, color: header.textColor }} className={`border border-neutral-200 px-1 py-0.5 font-semibold ${c.numeric ? 'text-right' : 'text-left'}`}>{c.id ? t(TABLE_COLUMN_LABEL_KEY[c.id as TableColumnId]) : c.label}</th>)}
             </tr>
           </thead>
           <tbody>

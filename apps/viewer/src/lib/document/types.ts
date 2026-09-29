@@ -11,6 +11,8 @@
  *
  * The shape is plain JSON: it is what `.ifclite-document.json` carries.
  */
+import { isRgbColor } from '../color-contrast';
+import type { GroupOrder } from '../lists/group-sort';
 import { isSavedComparison, type SavedComparison } from '../compare/savedComparisonSchema';
 import { validateChartSpec, type ChartSpec, type ReportPageSetup } from '@ifc-lite/charts';
 import { isSavedListShape, type ListDefinition } from '@ifc-lite/lists';
@@ -162,6 +164,10 @@ export interface TableBlock {
   caption?: string;
   /** Data rows printed before "… n more rows"; 1..TABLE_ROWS_MAX, default TABLE_ROWS_DEFAULT. */
   maxRows?: number;
+  /** Group ordering at every nesting level; absent retains count-descending defaults. */
+  groupOrder?: GroupOrder;
+  /** Optional opaque table-header background; ink is chosen for readable contrast. */
+  headerBackground?: string;
 }
 
 export type DocumentBlock = TextBlock | ImageBlock | ChartBlock | TopicBlock | SpacerBlock | PageBreakBlock | TableBlock | IdsReportBlock | ManualReportBlock;
@@ -254,7 +260,7 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
         if (block.font !== undefined && block.font !== 'helvetica' && block.font !== 'times' && block.font !== 'courier') errors.push({ path: `${at}.font`, message: 'expected helvetica | times | courier' });
         if (block.fontSize !== undefined && (typeof block.fontSize !== 'number' || !Number.isFinite(block.fontSize) || block.fontSize < TEXT_SIZE_MIN || block.fontSize > TEXT_SIZE_MAX)) errors.push({ path: `${at}.fontSize`, message: `expected a number between ${TEXT_SIZE_MIN} and ${TEXT_SIZE_MAX}` });
         for (const key of ['textColor', 'backgroundColor']) {
-          if (block[key] !== undefined && (typeof block[key] !== 'string' || !/^#[0-9a-f]{6}$/i.test(block[key]))) errors.push({ path: `${at}.${key}`, message: 'expected an RGB colour in #RRGGBB form' });
+          if (block[key] !== undefined && !isRgbColor(block[key])) errors.push({ path: `${at}.${key}`, message: 'expected an RGB colour in #RRGGBB form' });
         }
         checkWidth(block, at);
         break;
@@ -324,6 +330,8 @@ function validateTableBlock(block: Record<string, unknown>, at: string, errors: 
   }
   if (block.title !== undefined && !isString(block.title)) errors.push({ path: `${at}.title`, message: 'expected a string' });
   if (block.caption !== undefined && !isString(block.caption)) errors.push({ path: `${at}.caption`, message: 'expected a string' });
+  if (block.groupOrder !== undefined && block.groupOrder !== 'count' && block.groupOrder !== 'label') errors.push({ path: `${at}.groupOrder`, message: 'expected count | label' });
+  if (block.headerBackground !== undefined && !isRgbColor(block.headerBackground)) errors.push({ path: `${at}.headerBackground`, message: 'expected an RGB colour in #RRGGBB form' });
   if (block.maxRows !== undefined && (!Number.isInteger(block.maxRows) || (block.maxRows as number) < 1 || (block.maxRows as number) > TABLE_ROWS_MAX)) {
     errors.push({ path: `${at}.maxRows`, message: `expected an integer between 1 and ${TABLE_ROWS_MAX}` });
   }

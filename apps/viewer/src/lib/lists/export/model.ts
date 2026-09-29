@@ -12,7 +12,8 @@
 import { guardSpreadsheetFormula } from '@ifc-lite/export';
 import { groupingColumnIds, type CellValue, type ColumnDefinition, type ListRow, type ListGrouping } from '@ifc-lite/lists';
 import type { ProjectUnits } from '@ifc-lite/parser';
-import { buildNestedGroupBuckets, type GroupSort } from '@/lib/lists/group-sort';
+import type { GroupSort, GroupOrder } from '@/lib/lists/group-sort';
+import { buildGroupedExport } from './grouping';
 import { resolveListColumnUnits } from '@/lib/units/list-column-units';
 
 export interface ExportColumn {
@@ -218,86 +219,14 @@ export function buildExportModel(input: BuildModelInput): ExportModel {
   const groupColumnIds = groupingColumnIds(grouping).filter((id) => columns.some((c) => c.id === id));
   const groupColumnId = groupColumnIds[0] ?? null;
 
-  let groups: ExportGroup[] | null = null;
-  let schedule: ExportModel['schedule'] = null;
-  if (groupColumnIds.length > 0) {
-    const levelIndices = groupColumnIds.map((id) => columns.findIndex((c) => c.id === id));
-    const leafLevel = levelIndices.length - 1;
-    // Bucket + subtotal via the shared helper so the sections match the table
-    // exactly (multi-criteria grouping nests one section level per group
-    // column), then project each LEAF group's member rows to display values.
-    const nested = buildNestedGroupBuckets(
-      convertedRows,
-      levelIndices,
-      sumIdx,
-      (r, idx) => r.values[idx],
-      displayCell,
-      sort ?? null,
-    );
-    groups = nested.map((g) => ({
-      label: g.label,
-      count: g.count,
-      sums: g.sums,
-      level: g.level,
-      path: g.path,
-      rows: g.level === leafLevel ? g.rows.map((r) => r.values) : [],
-    }));
-
-    // Schedule / pivot presentation (issue #1790 round 2): one row per
-    // group-value tuple (leaf group), grouping columns first, then a
-    // first-class Count column, then the configured sums — the same leaf
-    // buckets, just flattened into a single tuple row instead of a section.
-    if (grouping?.view === 'schedule') {
-      const scheduleCols: ExportColumn[] = [
-        ...groupColumnIds.map((id) => {
-          const i = columns.findIndex((c) => c.id === id);
-          // `numeric` is INHERITED from the source column, not hard-coded false.
-          // In this presentation the grouping value is a data cell -- it is the
-          // only place the value appears -- so a numeric grouping column has to
-          // reach the writers as numeric or they format it for a human.
-          return {
-            id,
-            label: exportCols[i]?.label ?? id,
-            numeric: exportCols[i]?.numeric ?? false,
-            summed: false,
-            width: exportCols[i]?.width ?? 120,
-          };
-        }),
-        { id: '__count', label: 'Count', numeric: true, summed: false, width: 80 },
-        ...sumIdx.map((s) => exportCols[s.idx]),
-      ];
-      // RAW group values, not `g.path`. `path` is built by the shared bucketing
-      // helper from `displayCell`, so it is already locale-formatted text by the
-      // time it gets here: grouping by a quantity wrote `"'-3,000"` as the sole
-      // rendering of -3000, and under a `.`-grouping locale a bare `-3.000` that
-      // a `,`-grouping spreadsheet reads back as -3. Every row in a leaf group
-      // shares the grouping cell by construction, so the first row carries it.
-      const rawGroupValues = (g: (typeof nested)[number]): CellValue[] =>
-        levelIndices.map((idx, level) => {
-          // The bucket's LABEL is true of every member by construction; a raw
-          // value is only true of the members that share it. Prefer the raw
-          // value, fall back to the label whenever it would not be.
-          const label = g.path[level] ?? null;
-          if (idx < 0) return label;
-          const first = g.rows[0]?.values[idx] ?? null;
-          // An empty grouping cell is bucketed under the literal label
-          // `(none)`, and `-1` above means "no column at this level" -- the
-          // same bucket. Writing a blank instead would be indistinguishable
-          // from a missing value.
-          if (first === null || first === undefined || first === '') return label;
-          // `buildGroupBuckets` keys buckets by the FORMATTED label, so two
-          // distinct raw values that format alike land in ONE bucket (12.345671
-          // and 12.345679 both render "12.3457"). Emitting row 0's value would
-          // assert a number only one member actually has.
-          if (g.rows.some((r) => r.values[idx] !== first)) return label;
-          return first;
-        });
-      const scheduleRows: CellValue[][] = nested
-        .filter((g) => g.level === leafLevel)
-        .map((g) => [...rawGroupValues(g), g.count, ...sumIdx.map((s) => g.sums[s.id])]);
-      schedule = { columns: scheduleCols, rows: scheduleRows };
-    }
-  }
+  const { groups, schedule } = buildGroupedExport({ columns: exportCols, rows: flatRows, groupColumnIds, sumColumnIds, formatLabel: displayCell, sort: sort ?? null, scheduleView: grouping?.view === 'schedule' });
 
   return { title, generatedAt, columns: exportCols, groups, rows: flatRows, groupColumnId, groupColumnIds, sumColumnIds, totals, schedule };
+}
+
+/** Document-only group ordering (#6489), using cached converted rows without rerunning IFC evaluation. */
+export function orderExportModelGroups(model: ExportModel, order?: GroupOrder): ExportModel {
+  if (!order || !model.groups) return model;
+  const grouped = buildGroupedExport({ columns: model.columns, rows: model.rows, groupColumnIds: model.groupColumnIds, sumColumnIds: model.sumColumnIds, formatLabel: displayCell, sort: null, scheduleView: model.schedule !== null, groupOrder: order });
+  return { ...model, ...grouped };
 }

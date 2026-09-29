@@ -14,6 +14,7 @@
  */
 import { AUTOTABLE_ROW_HEIGHT } from '../export/report/generate-report-pdf.js';
 import type { TableColumnOut, TableRowOut } from './resolve-table.js';
+import type { TableHeaderStyle } from '../table-header-style';
 import type { TextFont } from './types.js';
 import { layoutReportProvenance, wrappedReportProvenance, REPORT_PROVENANCE_LINE_HEIGHT, type WrapLines } from './compose-report-provenance.js';
 
@@ -43,6 +44,7 @@ export interface TableLayoutBlock {
   caption?: string;
   /** Provenance and counts before the rows; wrapped and paginated with the shared text measure. */
   summary?: string[];
+  headerStyle?: TableHeaderStyle;
   /** Printed instead of the table: nothing to print, still resolving, or an error. */
   message?: string;
   columns: TableColumnOut[];
@@ -58,7 +60,7 @@ export interface RectDrawnItem { kind: 'rect'; x: number; y: number; w: number; 
 export type TableDrawnItem =
   | TextDrawnItem
   | RectDrawnItem
-  | { kind: 'table'; blockId: string; x: number; y: number; w: number; columns: TableColumnLayout[]; rows: TableRowOut[] };
+  | { kind: 'table'; blockId: string; x: number; y: number; w: number; columns: TableColumnLayout[]; rows: TableRowOut[]; headerStyle?: TableHeaderStyle };
 
 /** The page cursor `composeDocument` lays blocks out with; `y` is the running position. */
 export interface LayoutCursor {
@@ -134,7 +136,7 @@ export function layoutTable(block: TableLayoutBlock, cursor: LayoutCursor, conte
       // A group header is never the last row of a page: it moves to the next chunk with its rows —
       // and so does a parent header directly above it (nested grouping, review finding).
       while (n > 1 && i + n < rows.length && rows[i + n - 1].role === 'group') n -= 1;
-      cursor.push({ kind: 'table', blockId: block.id, x: cursor.x, y: cursor.y, w: contentW, columns, rows: rows.slice(i, i + n) });
+      cursor.push({ kind: 'table', blockId: block.id, x: cursor.x, y: cursor.y, w: contentW, columns, rows: rows.slice(i, i + n), ...(block.headerStyle ? { headerStyle: block.headerStyle } : {}) });
       cursor.y += head + n * row;
       i += n;
       if (i < rows.length) cursor.newPage();

@@ -47,6 +47,10 @@ A binding the model cannot answer is never printed as an empty string: the previ
 
 Documents persist in the browser like dashboards. The **⋯** menu renames, duplicates, deletes, exports the document as an `.ifclite-document.json` file or imports one; an imported document gets fresh ids and keeps its bindings — that is the template. *New from preset* adds a **Blank page** (a title reading `{IfcProject.Name}`) or a **Cover sheet** (project, site, building, storey and element counts, an elements-by-type chart, the date). Page size and orientation are part of the document.
 
+Each grouped list table has its own **Group order**: **Largest first** (the default, by member count with stable label ties) or **By label**. The choice applies at every nesting level and to schedule rows before the printed-row limit. Two blocks over the same list can choose different orders without rerunning the list. Ungrouped tables retain the list's saved row order.
+
+**Header background** chooses an opaque RGB colour for any document table. Header text automatically uses black or white for readable contrast; **Reset** restores the default slate background. The selected palette appears in preview and on every repeated PDF header. Ordering and colours persist with the document; older documents retain their existing defaults.
+
 The file is `version: 9`; versions 1–8 open and re-save as version 9 automatically (version 8 added page breaks, and version 9 adds saved comparison table sources). Older viewers refuse a newer file with a clear version error. A table block embeds its list (lists otherwise live only in the browser), so a shared document brings its tables along; the copy never carries a selection snapshot (`expressIdsByModel`), which is bound to one load of one model. More than two columns per row, arbitrary font files, a per-chart legend position, page margins, and drag-resize are not currently available.
 
 ### Saved validation reports

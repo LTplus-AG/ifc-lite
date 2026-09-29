@@ -12,7 +12,8 @@
  * labels come in from the caller).
  */
 import type { CellValue } from '@ifc-lite/lists';
-import { displayCell, groupHeaderLabel, totalsRowCells, type ExportModel } from '../lists/export/model.js';
+import type { GroupOrder } from '../lists/group-sort';
+import { displayCell, groupHeaderLabel, totalsRowCells, orderExportModelGroups, type ExportModel } from '../lists/export/model.js';
 
 export type TableRowRole = 'row' | 'group' | 'total' | 'more';
 
@@ -101,7 +102,8 @@ export interface TableLabels {
 /** One line per cell: a value with a line break (`\X\0D\X\0A\` in a Revit comment) would otherwise make autotable draw a taller row than the composer counted (review finding). */
 const oneLine = (text: string): string => text.replace(/\s*[\r\n]+\s*/g, ' ');
 
-export function flattenExportModel(model: ExportModel, maxRows: number, labels: TableLabels): FlattenedTable {
+export function flattenExportModel(input: ExportModel, maxRows: number, labels: TableLabels, groupOrder?: GroupOrder): FlattenedTable {
+  const model = orderExportModelGroups(input, groupOrder);
   const cap = Math.max(1, Math.floor(maxRows));
   const cols = model.schedule?.columns ?? model.columns;
   const columns: TableColumnOut[] = cols.map((c) => ({ label: oneLine(c.label), numeric: c.numeric }));

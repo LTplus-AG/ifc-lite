@@ -18,6 +18,7 @@
  * `rendererOverlayTheme` (`lib/viewport-ui/overlay-theme-renderer.ts`).
  */
 
+import { relativeLuminance, contrastRatio } from './color-contrast';
 import type { ThemeMode } from '@/store/slices/uiSlice';
 import { getThemeClearColor } from '@/utils/viewportUtils';
 
@@ -50,18 +51,6 @@ function annotationTextInk(theme: ThemeMode): Rgba {
   return isDarkBackdrop(theme) ? LIGHT_INK_ON_DARK : DARK_INK_ON_LIGHT_TEXT;
 }
 
-/** WCAG 2 relative luminance of an sRGB colour with 0..1 channels. */
-function relativeLuminance([r, g, b]: readonly number[]): number {
-  const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-}
-
-/** WCAG 2 contrast ratio between two sRGB colours (1..21). */
-function contrastRatio(a: readonly number[], b: readonly number[]): number {
-  const la = relativeLuminance(a);
-  const lb = relativeLuminance(b);
-  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
-}
 
 /**
  * The colour to draw a label in under `theme`: the theme ink when the file

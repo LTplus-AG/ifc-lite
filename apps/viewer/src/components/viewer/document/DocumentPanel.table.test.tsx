@@ -21,11 +21,12 @@ import type { ListDefinition } from '@ifc-lite/lists';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
-import { render, click, cleanup } from '@/test/render.js';
+import { render, click, cleanup, type as typeInput } from '@/test/render.js';
 import type { DocumentPdfSeams } from '@/lib/document/generate-document-pdf.js';
 import type { ReportTableArgs } from '@/lib/export/report/generate-report-pdf.js';
 import { DOCUMENT_VERSION, type DocumentSpec, type ListTableSource, type TableBlock } from '@/lib/document/types.js';
 import type { TableState } from '@/lib/document/resolve-table.js';
+import { loadDocuments, parseDocumentFile } from '@/lib/document/persistence';
 import { renderTemplate } from '@/lib/document/bindings.js';
 import { DocumentPanel } from './DocumentPanel.js';
 import { TableBlockEditor } from './TableBlockEditor.js';
@@ -111,6 +112,25 @@ const wallList = (extra: Partial<ListDefinition> = {}): ListDefinition => ({
 const tableDoc = (blocks: TableBlock[]): DocumentSpec => ({ version: DOCUMENT_VERSION, id: 'doc-t', name: 'Tables', page: { size: 'A4', orientation: 'portrait' }, blocks });
 const tableBlock = (id: string, list: ListDefinition, extra: Partial<TableBlock> = {}): TableBlock => ({ kind: 'table', id, source: { kind: 'list', list, fromListId: list.id }, ...extra });
 
+function recordingSeams(tables: ReportTableArgs[], texts: string[] = []): () => Promise<DocumentPdfSeams> {
+  return async () => ({
+    createDoc: async () => ({
+      addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {}, fillRect: () => {},
+      text: (t) => { texts.push(t); },
+      addImage: () => {},
+      svg: async () => {},
+      table: (args) => { tables.push(args); },
+      pageCount: () => 1,
+      output: () => new Blob(['pdf']),
+    }),
+    renderSvg: (aggregation, w, h, theme) => renderChartSvg({ aggregation, width: w, height: h, theme, showTitle: false }),
+    capture: null,
+    theme: DEFAULT_THEME,
+    now: () => new Date(0),
+    imageSize: async () => ({ w: 2, h: 1 }),
+  });
+}
+
 describe('DocumentPanel table block (#5142)', () => {
   beforeEach(async () => {
     const model = await parsedModel();
@@ -128,6 +148,46 @@ describe('DocumentPanel table block (#5142)', () => {
     });
   });
   afterEach(() => cleanup());
+
+  it('edits independent group order and readable header colour, persists them and prints both parsed IFC tables (#6489)', async () => {
+    const list = wallList({ name: 'Products by class', entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcDoor],
+      columns: [{ id: 'class', source: 'attribute', propertyName: 'Class' }, { id: 'name', source: 'attribute', propertyName: 'Name' }],
+      grouping: { columnId: 'class', sumColumnIds: [] } });
+    const doc = tableDoc([tableBlock('t1', list), tableBlock('t2', list)]);
+    useViewerStore.setState({ documents: [doc], activeDocumentId: doc.id, listDefinitions: [list] });
+    const tables: ReportTableArgs[] = [];
+    const ui = render(<DocumentPanel pdfSeams={recordingSeams(tables)} />);
+    await settle(); await runLists();
+    const groupLabels = (id: string): string[] => [...ui.querySelectorAll(`[data-preview-block="${id}"] tr[data-role="group"]`)].map((r) => r.firstElementChild?.textContent ?? '');
+    assert.deepEqual(groupLabels('t1'), ['IfcWall  (2)', 'IfcDoor  (1)']);
+    assert.deepEqual(groupLabels('t2'), groupLabels('t1'));
+    const editor = ui.querySelector('[data-block-editor="t2"]'); assert.ok(editor);
+    const order = editor.querySelector<HTMLSelectElement>('select[aria-label="Group order"]'); assert.ok(order);
+    act(() => { order.value = 'label'; order.dispatchEvent(new window.Event('change', { bubbles: true })); });
+    const color = editor.querySelector<HTMLInputElement>('input[aria-label="Header background"]'); assert.ok(color);
+    typeInput(color, '#ffee88'); await settle();
+    assert.deepEqual(groupLabels('t1'), ['IfcWall  (2)', 'IfcDoor  (1)'], 'other block retains largest-first ordering');
+    assert.deepEqual(groupLabels('t2'), ['IfcDoor  (1)', 'IfcWall  (2)']);
+    assert.equal(frames.length, 0, 'cosmetic ordering and palette changes schedule no further IFC list run');
+    const header = ui.querySelector<HTMLElement>('[data-preview-block="t2"] th'); assert.ok(header);
+    assert.equal(header.style.backgroundColor, '#ffee88');
+    assert.equal(header.style.color, '#000000');
+    const persisted = loadDocuments().find((d) => d.id === doc.id); assert.ok(persisted);
+    const imported = parseDocumentFile(JSON.stringify(persisted));
+    const second = imported.blocks.find((b) => b.id === 't2'); assert.ok(second?.kind === 'table');
+    assert.equal(second.groupOrder, 'label'); assert.equal(second.headerBackground, '#ffee88');
+    click(ui.querySelector('[data-document-export]')!);
+    for (let i = 0; i < 20 && tables.length < 2; i++) await settle();
+    assert.equal(tables.length, 2);
+    assert.deepEqual(tables[0].body.filter((_, i) => tables[0].rowRoles?.[i] === 'group').map((r) => r[0]), groupLabels('t1'));
+    assert.deepEqual(tables[1].body.filter((_, i) => tables[1].rowRoles?.[i] === 'group').map((r) => r[0]), groupLabels('t2'));
+    assert.deepEqual(tables[1].headerStyle, { backgroundColor: '#ffee88', textColor: '#000000' });
+    click(editor.querySelector('button[aria-label="Reset table header background"]')!); await settle();
+    assert.equal(header.style.backgroundColor, '#334155'); assert.equal(header.style.color, '#ffffff');
+    const reset = loadDocuments().find((d) => d.id === doc.id)?.blocks.find((b) => b.id === 't2');
+    assert.ok(reset?.kind === 'table'); assert.equal(reset.headerBackground, undefined);
+    assert.equal(reset.groupOrder, 'label', 'resetting the palette preserves group ordering');
+  });
 
   it('"Add block › Table" seeds a preset copy without a selection snapshot, and the preview runs it against the model', async () => {
     const ui = render(<DocumentPanel />);
@@ -183,22 +243,7 @@ describe('DocumentPanel table block (#5142)', () => {
     useViewerStore.setState({ documents: [doc], activeDocumentId: doc.id });
     const tables: ReportTableArgs[] = [];
     const texts: string[] = [];
-    const seams = async (): Promise<DocumentPdfSeams> => ({
-      createDoc: async () => ({
-        addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {}, fillRect: () => {},
-        text: (t) => { texts.push(t); },
-        addImage: () => {},
-        svg: async () => {},
-        table: (args) => { tables.push(args); },
-        pageCount: () => 1,
-        output: () => new Blob(['pdf']),
-      }),
-      renderSvg: (aggregation, w, h, theme) => renderChartSvg({ aggregation, width: w, height: h, theme, showTitle: false }),
-      capture: null,
-      theme: DEFAULT_THEME,
-      now: () => new Date(0),
-      imageSize: async () => ({ w: 2, h: 1 }),
-    });
+    const seams = recordingSeams(tables, texts);
     const ui = render(<DocumentPanel pdfSeams={seams} />);
     await settle();
     await runLists();

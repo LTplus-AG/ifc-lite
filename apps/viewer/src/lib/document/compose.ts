@@ -18,6 +18,7 @@ import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type BlockWidth, type TextB
 import { layoutTable, type LayoutCursor, type TableColumnLayout, type TableLayoutBlock, type TextDrawnItem } from './compose-table.js';
 import { layoutIdsReport, type IdsReportLayoutBlock } from './compose-ids-report.js';
 import type { TableRowOut } from './resolve-table.js';
+import { tabFill } from './text-tabs.js';
 
 const HEADER_HEIGHT = 30;
 const FOOTER_HEIGHT = 24;
@@ -112,32 +113,40 @@ export function halfTextFitsPage(block: Pick<TextBlock, 'style' | 'text' | 'font
   return style.gapBefore + lines.length * size * style.lineHeight <= frameHeight;
 }
 
-/** Greedy word wrap on the measure; a word longer than the line is broken by characters. */
+/**
+ * Greedy word wrap on the measure; a word longer than the line is broken by characters.
+ * Whitespace is kept as typed, like the preview's `white-space: pre-wrap` (#6370): a `\n`
+ * starts a new line, a tab becomes spaces to the next tab stop, and a run of spaces
+ * inside a line stays a run. Only the whitespace at a wrap point is dropped.
+ */
 export function wrapText(text: string, width: number, size: number, bold: boolean, measure: ComposeDocumentInput['measure'], font?: TextFont): string[] {
   const lines: string[] = [];
-  for (const paragraph of text.split('\n')) {
-    const words = paragraph.split(/\s+/).filter((w) => w.length > 0);
-    if (words.length === 0) {
+  const fits = (line: string): boolean => measure(line, size, bold, font) <= width;
+  for (const paragraph of text.replace(/\r\n?/g, '\n').split('\n')) {
+    if (!/\S/.test(paragraph)) {
       lines.push('');
       continue;
     }
     let line = '';
-    for (const word of words) {
-      const candidate = line ? `${line} ${word}` : word;
-      if (measure(candidate, size, bold, font) <= width) {
-        line = candidate;
+    for (const token of paragraph.match(/\t|[^\S\t]+|\S+/g) ?? []) {
+      // Whitespace never wraps by itself: at a wrap point it hangs and is dropped (below), as in
+      // `pre-wrap`. A tab measures from the start of the line it lands on, after any wrap.
+      if (token === '\t') { line += tabFill(line, (t) => measure(t, size, bold, font)); continue; }
+      if (/^\s/.test(token) || fits(line + token)) {
+        line += token;
         continue;
       }
-      if (line) lines.push(line);
-      line = word;
-      while (measure(line, size, bold, font) > width && line.length > 1) {
+      const kept = line.trimEnd();
+      if (kept) lines.push(kept);
+      line = token;
+      while (!fits(line) && line.length > 1) {
         let cut = line.length - 1;
-        while (cut > 1 && measure(line.slice(0, cut), size, bold, font) > width) cut -= 1;
+        while (cut > 1 && !fits(line.slice(0, cut))) cut -= 1;
         lines.push(line.slice(0, cut));
         line = line.slice(cut);
       }
     }
-    lines.push(line);
+    lines.push(line.trimEnd());
   }
   return lines;
 }

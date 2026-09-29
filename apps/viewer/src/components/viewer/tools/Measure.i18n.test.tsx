@@ -48,6 +48,8 @@ import { MeasureOverlay } from './MeasurePanel.js';
 import { MeasurementsPanel } from '../MeasurementsPanel.js';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { SceneOverlayRoot } from '../../viewport-ui/scene/index.js';
+import { SourceQuantityContent } from './SourceQuantityInspection.js';
+import type { ExtrusionDefinitions, SweptDiskDescriptions } from '@ifc-lite/geometry';
 
 /** The shipped surfaces together: the HUD host (the bar and hint portal into
  *  it), the scene root (the world labels portal into it), the tool's
@@ -265,6 +267,10 @@ const NOT_RENDERED_IN_THIS_STATE: MeasureKey[] = [
   'measure.quantities.legend',
   'measure.quantities.massLegend',
   'measure.quantities.massLegendWithEstimated',
+  // These headings appear only when a loaded model supplies authored Qto or
+  // computed mesh quantities; the unresolved selection above supplies neither.
+  'measure.quantities.authoredHeading',
+  'measure.quantities.computedHeading',
   // MeasurementsVisibilityChip.tsx's own rows (#5893) — a separate,
   // always-mounted HUD chip this suite's `renderMeasure()` never renders
   // (it exercises MeasurePanel/MeasureToolbar only); the chip has its own
@@ -568,6 +574,67 @@ describe('Measure tool localization (#4918)', { skip: !HAS_CATALOGUE && 'measure
     coveredStatic.add('measure.quantities.selectPrompt'); // selectPrompt itself only shows with NO selection; covered by the prior test.
     coveredParams.add('measure.quantities.elementsCount');
     coveredParams.add('measure.quantities.unresolvedElements');
+  });
+
+  it('source quantities: localized provenance, values and loading state (#6439)', () => {
+    const key: ExtrusionDefinitions['sources'][number]['key'] = {
+      model_sha256: 'fixture', schema: 'IFC4', length_unit_scale_bits: '0',
+      context: { kind: 'mapped', representation_map_path: [40] }, solid_id: 80,
+    };
+    const disk: SweptDiskDescriptions['elements'][string][number] = {
+      solid_id: 90, directrix_id: 91, mapping_path: [40], source_modified: true,
+      Radius: 0.1, InnerRadius: null, Directrix: [], status: { type: 'complete' },
+      directrix_metrics: null,
+    };
+    const container = render(<SourceQuantityContent
+      disks={{ loading: true, error: null, items: [{
+        ref: { modelId: 'model', expressId: 31 }, occurrences: [disk],
+        diagnostics: ['Unsupported directrix'],
+      }] }}
+      extrusions={{ loading: false, error: null, items: [{
+        ref: { modelId: 'model', expressId: 31 }, product: {
+          lengthUnitScale: 1, diagnostics: [], occurrences: [{
+            instance: {
+              ordinal: 0, source: key, product_id: 31, solid_id: 80,
+              mapping_path: [40], source_modified: true, world_from_source: null,
+              status: { type: 'complete' },
+            },
+            definition: {
+              key, source: {
+                solid_id: 80, SweptArea: null, profile: null, Position: null,
+                position_matrix: null, ExtrudedDirection: null, DirectionRatios: null,
+                axis_unit_vector: null, Depth: null, status: { type: 'complete' },
+              },
+              nominal_quantities: { profile_area: 2, projected_height: 3, nominal_volume: 6 },
+            },
+          }],
+        },
+      }] }}
+    />);
+    const english = chromeStrings(container);
+
+    registerLocale(PSEUDO_LOCALE, PSEUDO);
+    act(() => setLocale(PSEUDO_LOCALE));
+    const after = chromeStrings(container);
+
+    assertStaticCoverage(english, after);
+    const sourceStatic = [
+      'measure.source.heading', 'measure.source.limitation', 'measure.source.loading',
+      'measure.source.centrelineLength', 'measure.source.profileArea',
+      'measure.source.projectedHeight', 'measure.source.nominalVolume',
+      'measure.source.unavailable', 'measure.source.mapped',
+      'measure.source.modified', 'measure.source.unplaced',
+    ] as const satisfies readonly MeasureKey[];
+    for (const key of sourceStatic) {
+      assertMarked(after, key);
+      coveredStatic.add(key);
+    }
+    assertMarked(after, 'measure.source.product', { modelId: 'model', productId: 31 });
+    assertMarked(after, 'measure.source.sweptDiskSolid', { modelId: 'model', productId: 31, solidId: 90 });
+    assertMarked(after, 'measure.source.extrusionSolid', { modelId: 'model', productId: 31, solidId: 80 });
+    coveredParams.add('measure.source.product');
+    coveredParams.add('measure.source.sweptDiskSolid');
+    coveredParams.add('measure.source.extrusionSolid');
   });
 
   it('point section: empty prompt (no live point)', () => {

@@ -58,10 +58,12 @@ import { EpsgLookupError } from './EpsgLookupError.js';
 import { TaskEditCard } from './TaskEditCard.js';
 
 // This oracle mounts the established property cards below. SweptDiskInspection
-// has its own rendered locale-switch witness; including its unmounted keys
-// would misattribute shared English words such as "Yes" to this render.
+// and ExtrusionInspection have their own rendered locale-switch witnesses;
+// including their unmounted keys would misattribute shared English words such
+// as "Yes" to this render.
 const CATALOGUE: Catalogue = Object.fromEntries(Object.entries(en).filter(([key]) =>
-  key.startsWith('properties.') && !key.startsWith('properties.sweptDisk.')));
+  key.startsWith('properties.') && !key.startsWith('properties.sweptDisk.')
+    && !key.startsWith('properties.extrusion.')));
 const HAS_CATALOGUE = 'properties.assemblyBadge.label' in en;
 
 type PropertiesKey = keyof typeof CATALOGUE;

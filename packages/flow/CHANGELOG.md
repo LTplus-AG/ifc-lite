@@ -1,5 +1,12 @@
 # @ifc-lite/flow
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [[`9828849`](https://github.com/LTplus-AG/ifc-lite/commit/9828849515862f0649f31a6433a5870e77249709)]:
+  - @ifc-lite/encoding@2.3.0
+
 ## 0.4.0
 
 ### Minor Changes

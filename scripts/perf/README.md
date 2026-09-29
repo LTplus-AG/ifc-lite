@@ -27,6 +27,16 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Caller-supplied rebar precheck (#5797)
+
+On the Revit Snowdon fixture, interleaved base/branch Python schedule calls
+produced byte-identical default reports and no measurable runtime change within
+local run spread. Interleaved calls on the branch likewise showed no measurable
+added cost for the opt-in policy. The policy reuses schedule decoding and exact
+directrix metrics, so a worker-pool geometry probe would not exercise it.
+Lesson: time the export API that owns an opt-in check and verify default output
+identity; a general geometry load number cannot establish its overhead.
+
 ## Streaming-time panel refresh (#6411)
 
 On a 127K-element, ~1 GB MEP model, the geometry workers were ~100% busy and
@@ -2558,6 +2568,33 @@ they establish no browser worker-pool speedup or analytic-call memory win.
 The lesson is to cache only immutable source facts and to measure opt-in
 analytic extraction separately: far fewer source validations need not shorten
 the full call.
+
+### Fresh-process analytic cache control (#6442)
+
+The [raw five-pair A/B runs and reproduction commands](evidence/analytic-cache-6442/README.md)
+now measure the combined opt-in analytic call itself, using the `cfg(test)`
+uncached control in a separate process for every run. The catalogued Snowdon
+IFC yielded 1,073 → 128 source loads and identical ordered analytic JSON
+(2,297,028 bytes, SHA-256 `63e64dd4a18a29b5d99abdd5d476032fba53aa43e389c2aff92cde7f3b6adc1d`):
+149 swept-disk products/occurrences and 869 extrusion products with 911
+occurrences. Cache-minus-control wall deltas were -1.87, -6.27, -5.36, -1.73
+and -4.50 ms; medians were 70.66 → 65.04 ms. All five pairs favor caching,
+but the two run ranges overlap, so this is a directional Snowdon signal, not
+a general speedup claim. Peak RSS ranges also overlap (control 33,408–33,984
+KiB; cache 33,600–34,244 KiB), establishing no memory win.
+
+The generated 1,024-occurrence case reduced loads 1,024 → 1 and retained
+1,024 ordered occurrences byte-identically; its median moved 3.12 → 2.90 ms,
+with one of five pairs slower under caching. The nested reflected/scaled case
+reduced loads 6 → 2 and retained four ordered occurrences; its medians were
+0.619 → 0.617 ms. These small-call deltas are within run-to-run noise, and
+neither fixture showed a consistent peak-RSS reduction. A separate post-call
+index-build sample provides parse-cost context, not a parse/extraction split;
+the canonical analytic call builds its index internally. The lesson is that
+eliminating source validations can lower extraction time on a repeated-source
+real model, while absolute memory cost and small-input timing remain dominated
+by the surrounding walk and process variation. This result says nothing about
+ordinary mesh loading or browser worker-pool throughput.
 
 ## Shared trimmed line and circle decoding (#6402)
 

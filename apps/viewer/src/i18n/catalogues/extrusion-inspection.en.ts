@@ -1,0 +1,45 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { TranslationValue } from '../types';
+
+export const extrusionInspectionEn = {
+  'properties.extrusion.heading': 'Authored extrusion sources',
+  'properties.extrusion.sourceNote': 'Exact IFC profile and extrusion parameters. Depth, radius and perimeter use metres or your selected unit; profile coordinates and frame translations stay in metres. Profiles are source geometry before placement, openings, and other cuts.',
+  'properties.extrusion.loading': 'Reading selected extrusion sources…',
+  'properties.extrusion.solid': 'IfcExtrudedAreaSolid #{id}',
+  'properties.extrusion.status': 'Status',
+  'properties.extrusion.complete': 'Complete',
+  'properties.extrusion.unsupported': 'Unsupported',
+  'properties.extrusion.missingSource': 'Source definition is unavailable for this occurrence.',
+  'properties.extrusion.sourceModified': 'Source modified by CSG',
+  'properties.extrusion.modifiedHint': 'The authored profile may differ from the visible result.',
+  'properties.extrusion.yes': 'Yes',
+  'properties.extrusion.no': 'No',
+  'properties.extrusion.none': 'None',
+  'properties.extrusion.mappingPath': 'Mapped path',
+  'properties.extrusion.depth': 'Depth',
+  'properties.extrusion.direction': 'ExtrudedDirection ratios',
+  'properties.extrusion.position': 'Solid Position',
+  'properties.extrusion.profile': 'SweptArea',
+  'properties.extrusion.profileType': 'ProfileType',
+  'properties.extrusion.profilePosition': 'Profile Position',
+  'properties.extrusion.placement': 'Source placement',
+  'properties.extrusion.placementNote': 'Profile and solid translations are converted from IFC file units to metres. World translation is absolute IFC Z-up metres; viewer render-origin shifts are not applied. Axis vectors include mapping scale.',
+  'properties.extrusion.profileFrame': 'Profile Position frame',
+  'properties.extrusion.solidFrame': 'Solid Position frame',
+  'properties.extrusion.worldFrame': 'World from source frame',
+  'properties.extrusion.translation': 'Translation',
+  'properties.extrusion.xBasis': 'X basis column',
+  'properties.extrusion.yBasis': 'Y basis column',
+  'properties.extrusion.zBasis': 'Z basis column',
+  'properties.extrusion.center': 'center',
+  'properties.extrusion.radius': 'radius',
+  'properties.extrusion.normal': 'normal',
+  'properties.extrusion.xAxis': 'x-axis',
+  'properties.extrusion.loop': 'Loop {index}',
+  'properties.extrusion.segments': 'segments',
+  'properties.extrusion.perimeter': 'Perimeter',
+  'properties.extrusion.signedArea': 'Signed area',
+} satisfies Record<string, TranslationValue>;

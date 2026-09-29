@@ -221,7 +221,7 @@ describe('selection changes do not re-sum the corpus (mesh area is selection-ind
   });
 });
 
-describe('a present-but-empty mesh record reads as no mesh, not measured-zero (CodeRabbit)', () => {
+describe('a present-but-empty mesh record reads as no mesh, not measured-zero (#6452)', () => {
   it('does not count toward "Area mesh" and is reported as no triangulated mesh', () => {
     useViewerStore.setState({
       selectedEntitiesSet: new Set(['legacy:42']),
@@ -235,7 +235,7 @@ describe('a present-but-empty mesh record reads as no mesh, not measured-zero (C
     const text = container.textContent ?? '';
     assert.match(
       text,
-      /no triangulated mesh area could be measured/,
+      /1 element had no triangulated mesh to measure/,
       `an empty mesh record must not read as a measured zero: ${text}`,
     );
     assert.doesNotMatch(text, /Area mesh/, text);

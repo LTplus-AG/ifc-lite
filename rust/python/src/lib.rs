@@ -212,6 +212,7 @@ fn ifclite_geom(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(quantity_analysis::quantity_analysis, m)?)?;
     m.add_function(wrap_pyfunction!(rebar_schedule::rebar_schedule, m)?)?;
     m.add_function(wrap_pyfunction!(rebar_schedule::rebar_schedule_with_preflight, m)?)?;
+    m.add_function(wrap_pyfunction!(rebar_schedule::rebar_schedule_with_fabrication_precheck, m)?)?;
     m.add_function(wrap_pyfunction!(entity_data::entity_data, m)?)?;
     m.add_function(wrap_pyfunction!(swept_disk_checks::check_swept_disks, m)?)?;
     m.add("__doc__", "Native ifc-lite geometry and attribute export for Python.")?;

@@ -1,5 +1,50 @@
 # @ifc-lite/lists
 
+## 3.0.0
+
+### Major Changes
+
+- [#6179](https://github.com/LTplus-AG/ifc-lite/pull/6179) [`bffa875`](https://github.com/LTplus-AG/ifc-lite/commit/bffa875a07ed2b4e3e61e12bc25966278f346d6a) Thanks [@louistrue](https://github.com/louistrue)! - Replace `ListDefinition.conditions` with required Rules `groups: FilterGroup[]`.
+  Viewer lists now evaluate those groups through `@ifc-lite/rules`, including
+  federated models and live property edits. Saved v1 lists and imported
+  `.list.json` files migrate on read; predicates without an equivalent Rules
+  form remain active and visible in `unreadableConditions`.
+  
+  Consumers constructing a definition should replace flat `conditions` with
+  `groups`. The synchronous provider-only `executeList` accepts already-filtered
+  snapshots through `expressIdsByModel`; it rejects nonempty groups so it cannot
+  silently return extra rows. For a v1 predicate that has no Rules equivalent,
+  pass it as `legacyConditions` to that provider-only path.
+  
+  The SDK's `bim.list.execute()` keeps its optional `conditions` contract by
+  passing an empty Rules group set and translating supplied conditions into
+  provider-only predicates for the updated Lists engine.
+
+### Minor Changes
+
+- [#6251](https://github.com/LTplus-AG/ifc-lite/pull/6251) [`e45167d`](https://github.com/LTplus-AG/ifc-lite/commit/e45167dc7c70e1f24c5386da8e7d51834e352db3) Thanks [@louistrue](https://github.com/louistrue)! - Saved list filters migrate losslessly into Rules groups ([#6190](https://github.com/LTplus-AG/ifc-lite/issues/6190)). `migrateLegacyListDefinition` and `migrateLegacyListConditions` now turn every Lists predicate without a canonical Rules form into a `listCondition` rule instead of an unreadable row. That covers zones, spatial levels, quantity and material presence, model file name, Lists attributes, inherited and regex-named properties, and world coordinates. It applies both to v1 `conditions` and to provider-only rows saved by earlier builds. Flat conditions are ANDed into every group, and an OR group is split so `(a OR b) AND c` becomes `(a AND c) OR (b AND c)`. `unreadableConditions` now holds only data that cannot be evaluated: malformed members, unknown operators or sources, and group rules this build cannot read. A saved group with such a rule no longer makes the whole list disappear. The rule shows as a removable row instead.
+  
+  The viewer removes the Lists-only compatibility editor and its provider-only filter path. Every filter is edited in the shared Rules editor. A list with an unreadable row shows it with a Remove button and will not run until it is removed. Document table lists still reject malformed embedded groups at load.
+  
+  `@ifc-lite/rules` exports `LIST_CONDITION_SOURCES` and `LIST_CONDITION_OPERATORS`, the sources and operators a `listCondition` rule may hold, which the migration validates against.
+
+- [#6250](https://github.com/LTplus-AG/ifc-lite/pull/6250) [`1ecb4a6`](https://github.com/LTplus-AG/ifc-lite/commit/1ecb4a6b010c4dd07d01f4df3a4ee0649bb3f9b0) Thanks [@louistrue](https://github.com/louistrue)! - The Lists builder's Rules editor now offers a "List value" rule ([#6190](https://github.com/LTplus-AG/ifc-lite/issues/6190)) that authors every Lists-only predicate mode: zone-set assignment and its four display modes, exact Container/Storey/Building/Site/Project levels, model file name, Lists attributes, properties and quantities (including aggregation inheritance), material, classification and world coordinates. A zone rule stores the zone set's id and shows the set's current name. If the set has been deleted, the rule keeps pointing at it and the picker shows it as missing. Suggestions come from every loaded model. Search, Lens and clash builders do not offer the rule.
+  
+  Each mode offers the operators that can match the value it reads, so a zone volume can be compared with `gt`, `lt` and the other numeric operators, and Straddles offers only equality and presence. `@ifc-lite/lists` exports `listConditionValueKind(source, propertyName)`, the kind of value the engine compares for each source and mode.
+
+- [#6249](https://github.com/LTplus-AG/ifc-lite/pull/6249) [`6ea079d`](https://github.com/LTplus-AG/ifc-lite/commit/6ea079d943f6bc95fb8316a100bef1f3eac7d472) Thanks [@louistrue](https://github.com/louistrue)! - Add a `listCondition` filter rule ([#6190](https://github.com/LTplus-AG/ifc-lite/issues/6190)). It carries a saved Lists value predicate (zone assignment and the zone volume modes, exact spatial levels, quantity and material presence, model file name, Lists attributes, inherited properties) inside a Rules `FilterGroup`, so it can combine with other rules under AND or OR. The Lists engine evaluates it. Each evaluated model supplies `EvaluatorModel.listConditions`, and `@ifc-lite/lists` exports `listConditionMatcher(provider)` to build one. A run whose rules hold a `listCondition` throws before reading any element when a model has no matcher, instead of matching nothing. Rule-set files reject the kind. The viewer's list runner attaches the matcher to every model it runs.
+
+- [#6172](https://github.com/LTplus-AG/ifc-lite/pull/6172) [`5eff834`](https://github.com/LTplus-AG/ifc-lite/commit/5eff8349cc35129549327273d938bc49e405bf53) Thanks [@louistrue](https://github.com/louistrue)! - Decode saved List conditions into canonical filter groups without dropping unsupported rows.
+
+### Patch Changes
+
+- [#6166](https://github.com/LTplus-AG/ifc-lite/pull/6166) [`36fcb46`](https://github.com/LTplus-AG/ifc-lite/commit/36fcb4614d66a4d2fc57ae0efdcb7c8edba4d3d1) Thanks [@louistrue](https://github.com/louistrue)! - Share the guarded IFC name matcher between Lists and Rules to prepare unified list filters.
+- Updated dependencies [[`8901816`](https://github.com/LTplus-AG/ifc-lite/commit/8901816fa9171b1af0a9af5036105db0fa72cb24), [`05a2221`](https://github.com/LTplus-AG/ifc-lite/commit/05a222113355eea2e89d81acab74c62a5e77aa3f), [`e45167d`](https://github.com/LTplus-AG/ifc-lite/commit/e45167dc7c70e1f24c5386da8e7d51834e352db3), [`05a2221`](https://github.com/LTplus-AG/ifc-lite/commit/05a222113355eea2e89d81acab74c62a5e77aa3f), [`6ea079d`](https://github.com/LTplus-AG/ifc-lite/commit/6ea079d943f6bc95fb8316a100bef1f3eac7d472), [`236b076`](https://github.com/LTplus-AG/ifc-lite/commit/236b076ca7ee967691380335b4637a5be3c61562), [`5eff834`](https://github.com/LTplus-AG/ifc-lite/commit/5eff8349cc35129549327273d938bc49e405bf53), [`9828849`](https://github.com/LTplus-AG/ifc-lite/commit/9828849515862f0649f31a6433a5870e77249709), [`36fcb46`](https://github.com/LTplus-AG/ifc-lite/commit/36fcb4614d66a4d2fc57ae0efdcb7c8edba4d3d1), [`0943da2`](https://github.com/LTplus-AG/ifc-lite/commit/0943da2a068efd24847cdb1282a4c55f766563e4)]:
+  - @ifc-lite/data@6.1.0
+  - @ifc-lite/rules@0.5.0
+  - @ifc-lite/encoding@2.3.0
+  - @ifc-lite/regex-guard@0.3.0
+
 ## 2.3.3
 
 ### Patch Changes

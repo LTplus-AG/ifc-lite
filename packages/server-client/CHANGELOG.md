@@ -1,5 +1,23 @@
 # @ifc-lite/server-client
 
+## 4.0.0
+
+### Major Changes
+
+- [#5791](https://github.com/LTplus-AG/ifc-lite/pull/5791) [`013b43c`](https://github.com/LTplus-AG/ifc-lite/commit/013b43cea4d7bff58c803b7774666d8b0d122026) Thanks [@louistrue](https://github.com/louistrue)! - **Migration: `getCached(key)` now throws for a key that is not a request `cache_key`. Callers who followed the old docs and passed the bare SHA-256 file hash used to get `null`; against a server that includes [#5750](https://github.com/LTplus-AG/ifc-lite/issues/5750) they now get an `IfcServerError` with `status` 400 and `code` `BAD_REQUEST`. Pass `result.cache_key` (the `cache_key` a parse returned) instead. `null` still means "well-formed key, nothing cached".**
+  
+  Errors from the server are now thrown as `IfcServerError`, which carries the HTTP `status` and the server's error `code` (`NOT_FOUND`, `BAD_REQUEST`, `UNAUTHORIZED`, `OVERLOADED`, ...). It extends `Error` and keeps the same `message`, so existing `catch` blocks are unaffected. A JSON body that is not the server's error envelope no longer produces the message `Server error (undefined): undefined`; it falls back to the HTTP status, with `code` set to `HTTP_<status>`. The `getCached` docs now say what `key` is: the `cache_key` a parse returned, not the bare file hash.
+
+### Minor Changes
+
+- [#6380](https://github.com/LTplus-AG/ifc-lite/pull/6380) [`8cf50cc`](https://github.com/LTplus-AG/ifc-lite/commit/8cf50ccee934a6418516fdba7841163d991248e5) Thanks [@louistrue](https://github.com/louistrue)! - Carry the IFC-authored specular finish ([#5582](https://github.com/LTplus-AG/ifc-lite/issues/5582)) over the server transports ([#5984](https://github.com/LTplus-AG/ifc-lite/issues/5984)). `MeshData` gains optional `metallic` / `roughness`, sent by `POST /api/v1/parse`, the SSE stream, and both Parquet transports (new non-nullable `metallic` / `roughness` columns, NaN where unauthored, decoded by both Parquet decoders). The server joins each mesh's finish from the style its colour came from, which now also reaches type geometry and finishes styled on an `IfcMappedItem`. The viewer maps them into `MeshData.material`, so an authored roughness of 0 survives.
+
+- [#6198](https://github.com/LTplus-AG/ifc-lite/pull/6198) [`f05d031`](https://github.com/LTplus-AG/ifc-lite/commit/f05d0319c271fb7f73958695199274f5543206c3) Thanks [@louistrue](https://github.com/louistrue)! - `ParseRequestOptions` gains `dataModelEntities: 'all' | 'rooted'` ([#6034](https://github.com/LTplus-AG/ifc-lite/issues/6034)). `'rooted'` asks the server for a data model whose entities table carries only the objects (rows with a GlobalId) and the instances other tables reference, leaving out the geometry and property plumbing that makes up most of the table on large models. `fetchDataModel(cacheKey, options)` now also accepts an options object (`{ maxRetries, dataModelEntities }`), so the parse call's options can be passed straight through; the numeric `maxRetries` form still works. Use the same value on the parse and the fetch: the two variants are separate server cache entries.
+
+### Patch Changes
+
+- [#6069](https://github.com/LTplus-AG/ifc-lite/pull/6069) [`d0d79ed`](https://github.com/LTplus-AG/ifc-lite/commit/d0d79ed15415c7391640ad0660ad17f8d5ebbb5b) Thanks [@louistrue](https://github.com/louistrue)! - Preserve IFC material associations forwarded by the server, including their names, categories, and definition identities, so models parsed by the server can evaluate material values without mistaking partial legacy payloads for verified mismatches.
+
 ## 3.2.0
 
 ### Minor Changes

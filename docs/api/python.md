@@ -365,6 +365,32 @@ For a skipped sweep, `comparisons` is `None`; an assessed sweep has a list of
 measured comparisons. Check `skipped_reason` before interpreting pass results.
 No result certifies a cutting length or fabrication-code compliance.
 
+For independently optional SI policy checks use
+`rebar_schedule_with_fabrication_precheck(ifc_bytes, ids=None, **policy)`.
+Options are `min_inside_bend_radius_m`, `min_straight_segment_length_m`,
+`max_developed_centreline_length_m`,
+`max_nominal_geometric_diameter_delta_m`, and paired `min_bend_angle_rad` /
+`max_bend_angle_rad` (finite, nonnegative, ordered radians). Each requested check
+reports `pass`, `fail` or `uncheckable`, with source IDs, measured value,
+threshold, units and reason. Missing/conflicting authored `NominalDiameter`,
+modified CSG, unsupported transforms and incomplete directrices cannot pass.
+
+```python
+schedule = ifclite_geom.rebar_schedule_with_fabrication_precheck(
+    ifc_bytes, min_inside_bend_radius_m=0.05,
+    max_nominal_geometric_diameter_delta_m=0.001,
+)
+for row in schedule["rows"].values():
+    for sweep in row["sweeps"]:
+        report = sweep["fabrication_precheck"]
+        print(report["outcome"], report["checks"], report["unchecked_factors"])
+```
+
+Every outcome is `precheck_only`; material, fabrication process, allowances,
+jurisdiction and physical bar count are unchecked. Authored `BarLength` is not
+a verified cutting length. The Revit Snowdon fixture validates source geometry
+but its authored schedule is not independently verified.
+
 ### Tessellation quality
 
 Both geometry functions take an optional `quality` label:

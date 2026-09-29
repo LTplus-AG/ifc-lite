@@ -1,5 +1,39 @@
 # @ifc-lite/lens
 
+## 2.0.0
+
+### Major Changes
+
+- [#6173](https://github.com/LTplus-AG/ifc-lite/pull/6173) [`866cfe8`](https://github.com/LTplus-AG/ifc-lite/commit/866cfe878e2a8b94e36a5a3b352d1d93b4d17906) Thanks [@louistrue](https://github.com/louistrue)! - Require the third `matchedByRule` argument when calling `evaluateLens`. Manual
+  Lens rules now apply actions only to global IDs selected by the shared
+  `@ifc-lite/rules` FilterGroup evaluator. The former `LensCriteria` fallback
+  could disagree with saved group filters and color the wrong entities.
+  
+  Consumers must evaluate each rule's `FilterGroup[]`, translate model-local IDs
+  to global IDs, and pass a map from rule ID to the selected global-ID set.
+  Missing map entries match nothing. `evaluateAutoColorLens` is unchanged.
+
+- [#6181](https://github.com/LTplus-AG/ifc-lite/pull/6181) [`c94feac`](https://github.com/LTplus-AG/ifc-lite/commit/c94feacf6684a27b99876cc48f1e569bc98d09d2) Thanks [@louistrue](https://github.com/louistrue)! - Remove the retired `LensCriteria`, `LensOperator`, and v1 operator/compound constants from the published Lens API, and remove the SDK's `LensCriteria` re-export. `LensRule` now carries shared `FilterGroup` rules instead of a `criteria` field. Consumers creating manual rules should supply `groups`; saved v1 viewer JSON is still migrated on import, with unreadable conditions shown for explicit replacement.
+
+- [#6178](https://github.com/LTplus-AG/ifc-lite/pull/6178) [`a8bc2c6`](https://github.com/LTplus-AG/ifc-lite/commit/a8bc2c664db43966f3b6698dc8afa089e65a7f3a) Thanks [@louistrue](https://github.com/louistrue)! - Remove the retired `matchesCriteria` export and its standalone v1 evaluator.
+  It was no longer called by `evaluateLens`, so keeping a second matcher invited
+  future drift from the shared `@ifc-lite/rules` FilterGroup evaluator.
+  
+  Consumers that called `matchesCriteria` should express the condition as a
+  `FilterGroup[]` and evaluate it with `@ifc-lite/rules`. Pass the selected global
+  IDs by rule ID to `evaluateLens` when applying colors or visibility.
+
+### Minor Changes
+
+- [#6165](https://github.com/LTplus-AG/ifc-lite/pull/6165) [`c30d387`](https://github.com/LTplus-AG/ifc-lite/commit/c30d387da6078434271f67cea3a39677a05321e3) Thanks [@louistrue](https://github.com/louistrue)! - Allow a Lens action run to consume global-ID selections from the shared FilterGroup evaluator while retaining the existing criteria path during the stacked migration.
+
+- [#6171](https://github.com/LTplus-AG/ifc-lite/pull/6171) [`a478751`](https://github.com/LTplus-AG/ifc-lite/commit/a47875135016cc559a484e0d07df174aa9ee2253) Thanks [@louistrue](https://github.com/louistrue)! - Add canonical shared filter groups to Lens rules and built-in presets while preserving legacy criteria through the staged migration.
+
+### Patch Changes
+
+- Updated dependencies [[`05a2221`](https://github.com/LTplus-AG/ifc-lite/commit/05a222113355eea2e89d81acab74c62a5e77aa3f), [`e45167d`](https://github.com/LTplus-AG/ifc-lite/commit/e45167dc7c70e1f24c5386da8e7d51834e352db3), [`05a2221`](https://github.com/LTplus-AG/ifc-lite/commit/05a222113355eea2e89d81acab74c62a5e77aa3f), [`6ea079d`](https://github.com/LTplus-AG/ifc-lite/commit/6ea079d943f6bc95fb8316a100bef1f3eac7d472), [`236b076`](https://github.com/LTplus-AG/ifc-lite/commit/236b076ca7ee967691380335b4637a5be3c61562), [`5eff834`](https://github.com/LTplus-AG/ifc-lite/commit/5eff8349cc35129549327273d938bc49e405bf53), [`36fcb46`](https://github.com/LTplus-AG/ifc-lite/commit/36fcb4614d66a4d2fc57ae0efdcb7c8edba4d3d1), [`0943da2`](https://github.com/LTplus-AG/ifc-lite/commit/0943da2a068efd24847cdb1282a4c55f766563e4)]:
+  - @ifc-lite/rules@0.5.0
+
 ## 1.19.1
 
 ### Patch Changes

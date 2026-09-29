@@ -1,5 +1,17 @@
 # @ifc-lite/collab-server
 
+## 0.8.0
+
+### Minor Changes
+
+- [#6413](https://github.com/LTplus-AG/ifc-lite/pull/6413) [`02b1291`](https://github.com/LTplus-AG/ifc-lite/commit/02b1291fb0f3b6e645dd93ef93728537fd8ae8df) Thanks [@louistrue](https://github.com/louistrue)! - `FsBlobStorage` no longer raises an unhandled rejection when creating its `blobs` directory fails before any method has run ([#6286](https://github.com/LTplus-AG/ifc-lite/issues/6286)). The failure is still reported: every storage method rethrows it, and `ready` is now public. It resolves once the directory exists and rejects with the `mkdir` error otherwise. The reference server entrypoint awaits `ready` at startup, so a data directory it cannot write fails the boot instead of the first blob request.
+
+### Patch Changes
+
+- Updated dependencies [[`8901816`](https://github.com/LTplus-AG/ifc-lite/commit/8901816fa9171b1af0a9af5036105db0fa72cb24), [`8ac81f7`](https://github.com/LTplus-AG/ifc-lite/commit/8ac81f7346ac346d2b8279b44df72a1679d105f3)]:
+  - @ifc-lite/collab@0.9.2
+  - @ifc-lite/ifcx@4.3.0
+
 ## 0.7.3
 
 ### Patch Changes

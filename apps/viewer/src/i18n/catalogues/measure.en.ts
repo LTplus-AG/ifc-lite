@@ -149,12 +149,14 @@ export const measureEn = {
     'Mass ESTIMATED as the meshed geometry volume (after opening cuts) x a density from the project density library. The file does not declare this density. A mass, not a force.',
   'measure.quantities.selectPrompt': 'Select elements to read their quantities',
   'measure.quantities.header': 'Quantities',
+  'measure.quantities.authoredHeading': 'Authored IFC Qto',
+  'measure.quantities.computedHeading': 'Computed from mesh',
   'measure.quantities.elementsCount': {
     one: '{count} element',
     other: '{count} elements',
   },
   'measure.quantities.nothingFound':
-    'The selection declares no quantities, no enclosed volume could be proved from its geometry, and no triangulated mesh area could be measured either.',
+    'No authored Qto, proved enclosed mesh volume, or triangulated mesh area is available for this selection.',
   'measure.quantities.volumeMeshLabel': 'Volume mesh',
   'measure.quantities.volumeMeshTitle':
     'Enclosed volume computed from the meshed geometry, after opening cuts. Not an IFC GrossVolume.',
@@ -203,6 +205,23 @@ export const measureEn = {
     one: '{count} selected element could not be resolved to a loaded model.',
     other: '{count} selected elements could not be resolved to a loaded model.',
   },
+
+  // Nominal source measurements shown beneath the independent Qto/mesh rows.
+  'measure.source.heading': 'Nominal IFC source geometry',
+  'measure.source.product': '{modelId} · #{productId}',
+  'measure.source.sweptDiskSolid': '{modelId} · #{productId} · IfcSweptDiskSolid #{solidId}',
+  'measure.source.extrusionSolid': '{modelId} · #{productId} · IfcExtrudedAreaSolid #{solidId}',
+  'measure.source.limitation':
+    'Each row describes one IFC source solid, not an authored Qto or final product total. Extrusion estimates exclude occurrence transforms; swept-disk centreline lengths include them. Voids, CSG and overlaps may change the product.',
+  'measure.source.loading': 'Reading IFC source solids…',
+  'measure.source.centrelineLength': 'Centreline length',
+  'measure.source.profileArea': 'Profile area',
+  'measure.source.projectedHeight': 'Projected height',
+  'measure.source.nominalVolume': 'Nominal source volume',
+  'measure.source.unavailable': 'unavailable from this source',
+  'measure.source.mapped': 'mapped occurrence',
+  'measure.source.modified': 'CSG operand: final geometry differs from this source.',
+  'measure.source.unplaced': 'Source values use file units converted to display units; occurrence transforms are excluded.',
 
   // MeasurementVisuals.tsx — in-progress polyline overlay label.
   'measure.visuals.polylineSoFar': '{basis} so far - {count} pts',

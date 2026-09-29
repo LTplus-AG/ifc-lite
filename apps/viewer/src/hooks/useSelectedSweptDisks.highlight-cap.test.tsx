@@ -29,6 +29,7 @@ it('moves a newly highlighted source inside the bounded extraction after select-
       selectedEntityIds: new Set(Array.from({ length: 300 }, (_, index) => 1_000_001 + index)),
       selectedEntityId: 1_000_001, selectedEntitiesSet: new Set(),
       selectedEntity: { modelId: 'selection', expressId: 1 },
+      toGlobalId: (_modelId, expressId) => 1_000_000 + expressId,
       selectedDirectrixSegment: null });
     const Selection = () => {
       useSelectedSweptDisks(true);

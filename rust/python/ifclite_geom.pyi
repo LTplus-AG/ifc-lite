@@ -287,6 +287,7 @@ class AuthoredRebarAttribute(TypedDict):
 
 class RebarSweepPreflightFields(TypedDict, total=False):
     preflight: RebarPreflightReport
+    fabrication_precheck: RebarFabricationReport
 
 class RebarSweep(RebarSweepPreflightFields):
     occurrence_index: int
@@ -313,8 +314,34 @@ class RebarPreflightReport(TypedDict):
     comparisons: Optional[List[RebarPreflightComparison]]
     unassessed_reasons: List[str]
 
+class RebarFabricationCheck(TypedDict):
+    kind: Literal["inside_bend_radius", "straight_segment_length", "bend_angle", "nominal_geometric_diameter_delta", "developed_centreline_length"]
+    status: Literal["pass", "fail", "uncheckable"]
+    bar_id: int
+    solid_id: int
+    directrix_id: int
+    segment_index: Optional[int]
+    measured: Optional[float]
+    minimum: Optional[float]
+    maximum: Optional[float]
+    units: Literal["m", "rad"]
+    reason: Optional[str]
+    authored_source: Optional[Literal["occurrence", "type"]]
+    authored_source_id: Optional[int]
+    nominal_diameter_m: Optional[float]
+    geometric_diameter_m: Optional[float]
+
+class RebarFabricationReport(TypedDict):
+    outcome: Literal["precheck_only"]
+    mapping_path: List[int]
+    source_modified: bool
+    checks: List[RebarFabricationCheck]
+    limitations: List[str]
+    unchecked_factors: List[str]
+
 class RebarRowPreflightFields(TypedDict, total=False):
     preflight_skipped_reason: str
+    fabrication_precheck_skipped_reason: str
 
 class RebarScheduleRow(RebarRowPreflightFields):
     GlobalId: Optional[str]
@@ -541,6 +568,21 @@ def rebar_schedule_with_preflight(
     min_straight_segment_length_m: float,
     ids: Optional[Set[int]] = None,
     *,
+    max_developed_centreline_length_m: Optional[float] = None,
+    zero_length_tolerance_m: float = 1e-9,
+    gap_tolerance_m: float = 1e-6,
+    tangent_tolerance_rad: float = 1e-6,
+) -> RebarSchedule: ...
+
+def rebar_schedule_with_fabrication_precheck(
+    ifc_bytes: bytes,
+    ids: Optional[Set[int]] = None,
+    *,
+    min_inside_bend_radius_m: Optional[float] = None,
+    min_straight_segment_length_m: Optional[float] = None,
+    min_bend_angle_rad: Optional[float] = None,
+    max_bend_angle_rad: Optional[float] = None,
+    max_nominal_geometric_diameter_delta_m: Optional[float] = None,
     max_developed_centreline_length_m: Optional[float] = None,
     zero_length_tolerance_m: float = 1e-9,
     gap_tolerance_m: float = 1e-6,

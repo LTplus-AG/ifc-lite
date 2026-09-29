@@ -1,5 +1,18 @@
 # @ifc-lite/charts
 
+## 0.7.0
+
+### Minor Changes
+
+- [#6354](https://github.com/LTplus-AG/ifc-lite/pull/6354) [`60f6cb9`](https://github.com/LTplus-AG/ifc-lite/commit/60f6cb91ee652b7ae62cc2faf7a523bbd6c9b7a3) Thanks [@louistrue](https://github.com/louistrue)! - Allow live chart hosts to supply effective storey labels for element rows.
+
+### Patch Changes
+
+- Updated dependencies [[`8901816`](https://github.com/LTplus-AG/ifc-lite/commit/8901816fa9171b1af0a9af5036105db0fa72cb24), [`c30d387`](https://github.com/LTplus-AG/ifc-lite/commit/c30d387da6078434271f67cea3a39677a05321e3), [`05a2221`](https://github.com/LTplus-AG/ifc-lite/commit/05a222113355eea2e89d81acab74c62a5e77aa3f), [`a478751`](https://github.com/LTplus-AG/ifc-lite/commit/a47875135016cc559a484e0d07df174aa9ee2253), [`e45167d`](https://github.com/LTplus-AG/ifc-lite/commit/e45167dc7c70e1f24c5386da8e7d51834e352db3), [`05a2221`](https://github.com/LTplus-AG/ifc-lite/commit/05a222113355eea2e89d81acab74c62a5e77aa3f), [`6ea079d`](https://github.com/LTplus-AG/ifc-lite/commit/6ea079d943f6bc95fb8316a100bef1f3eac7d472), [`236b076`](https://github.com/LTplus-AG/ifc-lite/commit/236b076ca7ee967691380335b4637a5be3c61562), [`5eff834`](https://github.com/LTplus-AG/ifc-lite/commit/5eff8349cc35129549327273d938bc49e405bf53), [`866cfe8`](https://github.com/LTplus-AG/ifc-lite/commit/866cfe878e2a8b94e36a5a3b352d1d93b4d17906), [`36fcb46`](https://github.com/LTplus-AG/ifc-lite/commit/36fcb4614d66a4d2fc57ae0efdcb7c8edba4d3d1), [`c94feac`](https://github.com/LTplus-AG/ifc-lite/commit/c94feacf6684a27b99876cc48f1e569bc98d09d2), [`a8bc2c6`](https://github.com/LTplus-AG/ifc-lite/commit/a8bc2c664db43966f3b6698dc8afa089e65a7f3a), [`0943da2`](https://github.com/LTplus-AG/ifc-lite/commit/0943da2a068efd24847cdb1282a4c55f766563e4)]:
+  - @ifc-lite/data@6.1.0
+  - @ifc-lite/lens@2.0.0
+  - @ifc-lite/rules@0.5.0
+
 ## 0.6.1
 
 ### Patch Changes

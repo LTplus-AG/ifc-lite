@@ -1,5 +1,17 @@
 # @ifc-lite/ifcx
 
+## 4.3.0
+
+### Minor Changes
+
+- [#6409](https://github.com/LTplus-AG/ifc-lite/pull/6409) [`8ac81f7`](https://github.com/LTplus-AG/ifc-lite/commit/8ac81f7346ac346d2b8279b44df72a1679d105f3) Thanks [@louistrue](https://github.com/louistrue)! - Allow the low-level IFCX writer to use complete effective spatial edges for live relationship edits, and reject stale parsed hierarchy links when those edges are missing.
+
+### Patch Changes
+
+- Updated dependencies [[`8901816`](https://github.com/LTplus-AG/ifc-lite/commit/8901816fa9171b1af0a9af5036105db0fa72cb24), [`48e64d4`](https://github.com/LTplus-AG/ifc-lite/commit/48e64d44d418c913860c21e457d9053690ebd66c), [`28ae5b0`](https://github.com/LTplus-AG/ifc-lite/commit/28ae5b0bf1ce37fd592651113f3e765caa980291), [`84cd157`](https://github.com/LTplus-AG/ifc-lite/commit/84cd157d5afe30572481bd3c2b96a57c92dbbe19), [`efc652c`](https://github.com/LTplus-AG/ifc-lite/commit/efc652c475f71b0d884d5c746b3156516618d1e3), [`0943da2`](https://github.com/LTplus-AG/ifc-lite/commit/0943da2a068efd24847cdb1282a4c55f766563e4)]:
+  - @ifc-lite/data@6.1.0
+  - @ifc-lite/mutations@3.0.0
+
 ## 4.2.1
 
 ### Patch Changes

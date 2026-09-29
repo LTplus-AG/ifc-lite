@@ -15,6 +15,8 @@
  *   - exactly one entity is selected
  *   - the selection has a placement chain that can be translated
  *     (`resolvePlacementChain` returns non-null)
+ *   - the Model workspace is NOT open: there, Move and Rotate are commands
+ *     (`TransformHandles`, #6232 C2) and replace this free drag
  *
  * Coordinate spaces:
  *   The renderer is Y-up. IFC is Z-up. We project two world points
@@ -76,6 +78,7 @@ export function GizmoOverlay() {
   const editEnabled = useViewerStore((s) => s.editEnabled);
   const collabRole = useViewerStore((s) => s.collabRole);
   const activeTool = useViewerStore((s) => s.activeTool);
+  const inModelWorkspace = useViewerStore((s) => s.workspaceMode === 'model');
   const selectedEntity = useViewerStore((s) => s.selectedEntity);
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
@@ -101,7 +104,7 @@ export function GizmoOverlay() {
   // mutation to prime the editor cache.
   const ready = useMemo(() => {
     if (!selectedEntity || !canMutate(useViewerStore.getState(), selectedEntity.modelId)) return null;
-    if (activeTool !== 'select') return null;
+    if (activeTool !== 'select' || inModelWorkspace) return null;
     if (selectedEntityId === null) return null;
     if (!projectToScreen) return null;
 
@@ -122,6 +125,7 @@ export function GizmoOverlay() {
     editEnabled,
     collabRole,
     activeTool,
+    inModelWorkspace,
     selectedEntity,
     selectedEntityId,
     models,

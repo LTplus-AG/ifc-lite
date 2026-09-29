@@ -286,6 +286,10 @@ describe('copy and paste (#6232 C3)', () => {
     const copyRel = rels.find((r) => !parts.map((id) => `#${id}`).includes((r.attributes[5] as string[])[0]))!;
     assert.equal((copyRel.attributes[5] as string[]).length, 2);
     assert.notEqual(copyRel.attributes[0], '2$abcdefghijklmnopqrstu');
+    const hierarchy = useViewerStore.getState().models.get(MODEL_ID)!.ifcDataStore!.spatialHierarchy!;
+    const partCopies = live('IFCCOLUMN').map((e) => e.expressId).filter((id) => !parts.includes(id));
+    assert.equal(partCopies.length, 2);
+    for (const id of partCopies) assert.equal(hierarchy.elementToStorey.get(id), STOREY, 'a part copy is listed under its storey, as the source parts are');
     const lastRemesh = remeshes.at(-1)!;
     assert.equal(lastRemesh.expressIds.length, 3, 'the assembly copy and its two parts are re-meshed');
     useViewerStore.getState().undo(MODEL_ID);

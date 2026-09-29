@@ -89,11 +89,12 @@ export function copyElements(
     const ctx = createCopyContext(target.dataStore, draft);
     return transforms.flatMap((transform) => ids.map((id) => copyProductInStore(ctx, id, transform)));
   });
-  // The copies and their doors and windows join their storey in the spatial tree.
+  // The copies, their doors and windows and their assembly parts join their storey in the spatial tree,
+  // as the source's parts are listed under theirs (`effectiveStoreyId` reaches a part through its assembly).
   const hierarchy = target.dataStore.spatialHierarchy;
   for (const result of results) {
     if (!hierarchy || result.storeyId === null) continue;
-    for (const id of [result.copyId, ...result.fillingIds]) {
+    for (const id of [result.copyId, ...result.partIds, ...result.fillingIds]) {
       const record = target.view.getNewEntity(id);
       if (!record) continue;
       const name = record.attributes[2];

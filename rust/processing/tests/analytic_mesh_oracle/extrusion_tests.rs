@@ -29,6 +29,21 @@ fn replace_line(model: &str, old: &str, new: &str) -> String {
 #[test]
 fn rectangular_mapped_scaled_mirrored_and_large_occurrences_match() {
     let base = mapped();
+    let placed = replace_line(
+        &base,
+        "#6=IFCCARTESIANPOINT((0.,0.));",
+        "#6=IFCCARTESIANPOINT((0.25,0.));",
+    );
+    let placed = replace_line(
+        &placed,
+        "#10=IFCCARTESIANPOINT((0.,0.,0.));",
+        "#10=IFCCARTESIANPOINT((0.,0.5,0.));",
+    );
+    let placed = replace_line(
+        &placed,
+        "#36=IFCAXIS2PLACEMENT3D(#35,$,$);",
+        "#500=IFCDIRECTION((0.,1.,0.));\n#36=IFCAXIS2PLACEMENT3D(#35,$,#500);",
+    );
     let variants = [
         base.clone(),
         replace_line(&base,
@@ -43,13 +58,7 @@ fn rectangular_mapped_scaled_mirrored_and_large_occurrences_match() {
         replace_line(&base,
             "#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);",
             "#3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);"),
-        replace_line(&base,
-            "#6=IFCCARTESIANPOINT((0.,0.));",
-            "#6=IFCCARTESIANPOINT((0.25,0.));")
-            .replace("#10=IFCCARTESIANPOINT((0.,0.,0.));",
-                "#10=IFCCARTESIANPOINT((0.,0.5,0.));")
-            .replace("#36=IFCAXIS2PLACEMENT3D(#35,$,$);",
-                "#500=IFCDIRECTION((0.,1.,0.));\n#36=IFCAXIS2PLACEMENT3D(#35,$,#500);"),
+        placed,
     ];
     for (index, model) in variants.iter().enumerate() {
         let (source, instance, mesh) = compare_model(model.as_bytes(), 38)

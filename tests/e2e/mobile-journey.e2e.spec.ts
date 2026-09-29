@@ -9,6 +9,7 @@ import type { SceneFaceHitSnapshot } from '../../apps/viewer/src/lib/viewport-de
 import { WORKSPACE_PANELS } from '../../apps/viewer/src/lib/panels/registry';
 import { en } from '../../apps/viewer/src/i18n/en';
 import { checkAxeBaseline } from './axe-baseline';
+import { watchGpuDeviceLoss } from './gpu-device-loss';
 
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
@@ -130,20 +131,8 @@ test('the Panels sheet opens every available registry panel on a phone (#5865)',
 });
 
 test('one finger orbits, two fingers pinch, taps select and measure, and hold opens the entity menu (#5865)', async ({ page }, info) => {
-  let softwareDeviceLost = false;
-  page.on('console', (message) => {
-    if (/\[WebGPU\] Device lost:|\[Renderer\] GPU device lost/.test(message.text())) softwareDeviceLost = true;
-  });
-  const requireRenderer = async <T>(stage: string, run: () => Promise<T>): Promise<T> => {
-    try {
-      return await run();
-    } catch (error) {
-      if (softwareDeviceLost && process.env.E2E_GPU_STRICT === '0') {
-        test.skip(true, `Software WebGPU device lost during ${stage}; authored-model journey passed with a healthy GPU.`);
-      }
-      throw error;
-    }
-  };
+  const gpu = await watchGpuDeviceLoss(page);
+  const requireRenderer = gpu.requireLiveGpu;
   await loadAuthoredModel(page);
   const canvas = page.locator('canvas[data-viewport="main"]');
   const box = await canvas.boundingBox();

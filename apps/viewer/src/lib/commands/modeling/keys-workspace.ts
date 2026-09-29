@@ -53,6 +53,8 @@ export function bindModelWorkspaceKeys(): () => void {
     registerKeyboardCommand('model.paste', () => pasteShortcut(launchModelCommand, false), { active }),
     registerKeyboardCommand('model.pasteInPlace', () => pasteShortcut(launchModelCommand, true), { active }),
     registerKeyboardCommand('model.array', () => launchModelCommand('element.array'), { active }),
+    registerKeyboardCommand('model.move', () => launchModelCommand('element.move'), { active }),
+    registerKeyboardCommand('model.rotate', () => launchModelCommand('element.rotate'), { active }),
     registerKeyboardCommand('model.stair', () => launchModelCommand('stair.place'), { active }),
     registerKeyboardCommand('model.railing', () => launchModelCommand('railing.place'), { active }),
   ];

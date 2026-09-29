@@ -15,10 +15,9 @@
 import type { ReportPageSetup } from '@ifc-lite/charts';
 import { pageBox, REPORT_MARGIN } from '../export/report/compose.js';
 import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type BlockWidth, type PageBreakBlock, type TextBlock, type TextFont } from './types.js';
-import { layoutTable, type LayoutCursor, type TableColumnLayout, type TableLayoutBlock, type TextDrawnItem, type RectDrawnItem } from './compose-table.js';
+import { layoutTable, type LayoutCursor, type TableLayoutBlock, type TableDrawnItem } from './compose-table.js';
 import { layoutIdsReport, type IdsReportLayoutBlock } from './compose-ids-report.js';
 import { layoutManualReport, type ManualReportLayoutBlock, type RingDrawnItem } from './compose-manual-report.js';
-import type { TableRowOut } from './resolve-table.js';
 import { tabFill } from './text-tabs.js';
 import { splitDocumentSections } from './page-sections.js';
 
@@ -73,17 +72,14 @@ export type ResolvedBlock =
   | ({ kind: 'manual-report' } & ManualReportLayoutBlock);
 
 export type DrawnItem =
-  | TextDrawnItem
-  | RectDrawnItem
+  | TableDrawnItem
   | { kind: 'text-background'; x: number; y: number; w: number; h: number; color: string }
   /** A manual-validation ring chart (#6401), drawn from its counts. */
   | RingDrawnItem
   | { kind: 'image'; blockId: string; x: number; y: number; w: number; h: number }
   | { kind: 'chart'; blockId: string; x: number; y: number; w: number; h: number }
   | { kind: 'snapshot'; blockId: string; x: number; y: number; w: number; h: number }
-  | { kind: 'topic-snapshot'; blockId: string; x: number; y: number; w: number; h: number }
-  /** One page-sized chunk of a table block (#5142); every chunk carries the head. */
-  | { kind: 'table'; blockId: string; x: number; y: number; w: number; columns: TableColumnLayout[]; rows: TableRowOut[] };
+  | { kind: 'topic-snapshot'; blockId: string; x: number; y: number; w: number; h: number };
 
 export interface DocumentPage {
   index: number;

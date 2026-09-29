@@ -51,7 +51,6 @@ function annotationTextInk(theme: ThemeMode): Rgba {
   return isDarkBackdrop(theme) ? LIGHT_INK_ON_DARK : DARK_INK_ON_LIGHT_TEXT;
 }
 
-
 /**
  * The colour to draw a label in under `theme`: the theme ink when the file
  * sets none; the authored colour when it already clears the contrast floor;

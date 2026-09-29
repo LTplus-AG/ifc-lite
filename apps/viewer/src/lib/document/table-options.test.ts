@@ -14,6 +14,8 @@ import { tableHeaderStyle, DEFAULT_TABLE_HEADER_BACKGROUND } from '../table-head
 import { contrastRatio, isRgbColor } from '../color-contrast';
 import { DOCUMENT_VERSION, validateDocumentSpec } from './types';
 import { parseDocumentFile } from './persistence';
+import { legibleAnnotationTextColor } from '../annotation-ink';
+import { getThemeClearColor } from '@/utils/viewportUtils';
 
 const columns: ColumnDefinition[] = [
   { id: 'parent', source: 'attribute', propertyName: 'ObjectType' },
@@ -93,6 +95,19 @@ describe('Document table options (#6489)', () => {
       const style = tableHeaderStyle(color);
       const ink = style.textColor === '#000000' ? [0, 0, 0] : [1, 1, 1];
       assert.ok(contrastRatio([r / 255, g / 255, b / 255], ink) >= 4.5, `${color} meets AA body-text contrast`);
+    }
+  });
+
+  it('preserves authored annotation ink and alpha while improving dark labels after the shared contrast extraction', () => {
+    const white = [1, 1, 1, 0.6];
+    const black = [0, 0, 0, 0.4];
+    assert.deepEqual(legibleAnnotationTextColor(white, 'dark'), white);
+    assert.deepEqual(legibleAnnotationTextColor(black, 'light'), black);
+    for (const theme of ['dark', 'light', 'colorful'] as const) {
+      const backdrop = theme === 'colorful' ? [0xdd / 255, 0xe3 / 255, 0xf0 / 255] : getThemeClearColor(theme);
+      const adjusted = legibleAnnotationTextColor([0.1, 0.2, 0.3, 0.4], theme);
+      assert.equal(adjusted[3], 0.4, 'authored alpha survives contrast correction');
+      assert.ok(contrastRatio(adjusted, backdrop) >= 3, `${theme} labels remain readable`);
     }
   });
 

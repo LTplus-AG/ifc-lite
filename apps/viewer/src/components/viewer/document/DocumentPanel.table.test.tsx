@@ -174,7 +174,8 @@ describe('DocumentPanel table block (#5142)', () => {
     assert.equal(header.style.color, '#000000');
     const persisted = loadDocuments().find((d) => d.id === doc.id); assert.ok(persisted);
     const imported = parseDocumentFile(JSON.stringify(persisted));
-    const second = imported.blocks.find((b) => b.id === 't2'); assert.ok(second?.kind === 'table');
+    const second = imported.blocks[1]; assert.ok(second?.kind === 'table');
+    // File import allocates fresh block ids; presentation and order survive the copy.
     assert.equal(second.groupOrder, 'label'); assert.equal(second.headerBackground, '#ffee88');
     click(ui.querySelector('[data-document-export]')!);
     for (let i = 0; i < 20 && tables.length < 2; i++) await settle();

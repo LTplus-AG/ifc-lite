@@ -137,7 +137,7 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
     return { local: screenToLocal(fit, sx, sy), sx, sy };
   };
 
-  const feedCommand = (kind: 'move' | 'down', e: ReactPointerEvent): boolean => {
+  const feedCommand = (kind: 'move' | 'down' | 'up', e: ReactPointerEvent): boolean => {
     const at = localAt(e);
     if (!at || !fit) return false;
     return routePlanPointer(kind, {
@@ -184,6 +184,8 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
   };
 
   const onPointerUp = (e: ReactPointerEvent<SVGSVGElement>) => {
+    // A command's press never set `press`: its release is the command's (a dragged corner drops).
+    if (!press.current && e.button === 0 && commandRunsOnPlane()) { feedCommand('up', e); return; }
     const p = press.current;
     press.current = null;
     releasePointer(e.currentTarget, e.pointerId);

@@ -18,7 +18,7 @@ import { QuantityType } from '@ifc-lite/data';
 import { GENERATED_SPACE_OBJECTTYPE } from '@ifc-lite/create';
 import type { ViewerState } from '@/store';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
-import { resolveSplitTarget } from '@/lib/split-target';
+import { resolveSplitTarget, type SlabSplitChain } from '@/lib/split-target';
 import { effectiveStoreyId } from '@/lib/effective-storey';
 import { emitClippedProfile } from '@/store/slices/mutation-split-slab';
 import { reshapeSource } from '@/store/slices/mutation-split';
@@ -79,6 +79,62 @@ export function selectedRooms(s: ViewerState, modelId: string): number[] {
   return out;
 }
 
+export type RoomRewrite =
+  | { ok: true; storeyId: number; chain: RoomChain }
+  | { ok: false; reason: 'shape' | 'storey' };
+
+/** What a room's rewrite reads: its profile's placement and extrusion. */
+export type RoomChain = SlabSplitChain;
+
+/**
+ * Room `expressId`'s extrusion, when it is one the tool can rewrite: a plan
+ * profile extruded straight up, on a storey (the split predicate).
+ */
+export function roomChain(get: Get, modelId: string, expressId: number): RoomRewrite {
+  // Any read action creates the model's store editor on first use.
+  get().readSplitTarget(modelId, expressId);
+  const s = get();
+  const view = s.mutationViews.get(modelId);
+  const editor = s.storeEditors.get(modelId);
+  const dataStore = s.models.get(modelId)?.ifcDataStore;
+  if (!view || !editor || !dataStore) return { ok: false, reason: 'shape' };
+  const target = resolveSplitTarget(dataStore, view, editor, expressId, getModelLengthUnitScale(dataStore));
+  if (!target.ok) return { ok: false, reason: target.code === 'storey' || target.code === 'container' ? 'storey' : 'shape' };
+  if (target.kind !== 'slab' || target.chain.elementType !== 'IfcSpace') return { ok: false, reason: 'shape' };
+  const storeyId = effectiveStoreyId(dataStore, view, expressId);
+  if (storeyId === undefined) return { ok: false, reason: 'storey' };
+  return { ok: true, storeyId, chain: target.chain };
+}
+
+/**
+ * Rewrite room `expressId`'s profile in place to `outline` (storey-local),
+ * and its floor areas and volume to match. Same express id, GlobalId, name,
+ * psets and relations; the caller's transaction makes it one undo step.
+ */
+export function rewriteRoomOutline(
+  get: Get, modelId: string, expressId: number, chain: RoomChain, outline: readonly Pt[], areas: { grossArea: number; netArea: number },
+): void {
+  const editor = get().storeEditors.get(modelId);
+  const dataStore = get().models.get(modelId)?.ifcDataStore;
+  if (!editor || !dataStore) throw new Error('No editable model');
+  const origin = chain.placementOrigin;
+  const emitted = emitClippedProfile(editor, outline, origin, chain.baseElevation - origin[2], getModelLengthUnitScale(dataStore));
+  reshapeSource(get, modelId, [
+    { entityId: chain.extrudedSolidId, index: 0, value: `#${emitted.profile}` },
+    { entityId: chain.extrudedSolidId, index: 1, value: `#${emitted.solidPosition}` },
+    { entityId: chain.extrudedSolidId, index: 2, value: `#${emitted.up}` },
+  ]);
+  setRoomAreas(get, modelId, expressId, areas, chain.thickness);
+}
+
+/** The quantities describe the outline; a stale area would outlive the edit. */
+export function setRoomAreas(get: Get, modelId: string, expressId: number, areas: { grossArea: number; netArea: number }, height: number): void {
+  const qto = 'Qto_SpaceBaseQuantities';
+  get().setQuantity(modelId, expressId, qto, 'GrossFloorArea', areas.grossArea, QuantityType.Area);
+  get().setQuantity(modelId, expressId, qto, 'NetFloorArea', areas.netArea, QuantityType.Area);
+  get().setQuantity(modelId, expressId, qto, 'GrossVolume', areas.grossArea * height, QuantityType.Volume);
+}
+
 export type RoomUpdate =
   | { ok: true; outline: Pt[] }
   | { ok: false; reason: 'shape' | 'storey' | 'noRoom' };
@@ -97,35 +153,11 @@ export function updateRoomOutline(
   boundary: RoomBoundary,
   roomsOn: (storeyId: number) => readonly RoomCandidate[],
 ): RoomUpdate {
-  // Any read action creates the model's store editor on first use.
-  get().readSplitTarget(modelId, expressId);
-  const s = get();
-  const view = s.mutationViews.get(modelId);
-  const editor = s.storeEditors.get(modelId);
-  const dataStore = s.models.get(modelId)?.ifcDataStore;
-  if (!view || !editor || !dataStore) return { ok: false, reason: 'shape' };
-  const k = getModelLengthUnitScale(dataStore);
-  // The split predicate: a vertical extrusion of a plan profile, on a storey.
-  const target = resolveSplitTarget(dataStore, view, editor, expressId, k);
-  if (!target.ok) return { ok: false, reason: target.code === 'storey' || target.code === 'container' ? 'storey' : 'shape' };
-  if (target.kind !== 'slab' || target.chain.elementType !== 'IfcSpace') return { ok: false, reason: 'shape' };
-  const storeyId = effectiveStoreyId(dataStore, view, expressId);
-  if (storeyId === undefined) return { ok: false, reason: 'storey' };
-  const { chain } = target;
-  const room = roomAt(roomsOn(storeyId), interiorPoint(chain.footprint));
+  const target = roomChain(get, modelId, expressId);
+  if (!target.ok) return target;
+  const room = roomAt(roomsOn(target.storeyId), interiorPoint(target.chain.footprint as Pt[]));
   if (!room) return { ok: false, reason: 'noRoom' };
   const outline = roomOutline(room, boundary);
-  const origin = chain.placementOrigin;
-  const emitted = emitClippedProfile(editor, outline, origin, chain.baseElevation - origin[2], k);
-  reshapeSource(get, modelId, [
-    { entityId: chain.extrudedSolidId, index: 0, value: `#${emitted.profile}` },
-    { entityId: chain.extrudedSolidId, index: 1, value: `#${emitted.solidPosition}` },
-    { entityId: chain.extrudedSolidId, index: 2, value: `#${emitted.up}` },
-  ]);
-  // The quantities describe the outline; a stale area would outlive the edit.
-  const qto = 'Qto_SpaceBaseQuantities';
-  get().setQuantity(modelId, expressId, qto, 'GrossFloorArea', room.grossArea, QuantityType.Area);
-  get().setQuantity(modelId, expressId, qto, 'NetFloorArea', room.netArea, QuantityType.Area);
-  get().setQuantity(modelId, expressId, qto, 'GrossVolume', room.grossArea * chain.thickness, QuantityType.Volume);
+  rewriteRoomOutline(get, modelId, expressId, target.chain, outline, room);
   return { ok: true, outline };
 }

@@ -24,7 +24,8 @@ import {
   type GenerateSpacesResult,
   type BoundaryMode,
 } from './generate-spaces.js';
-import { existingSpaceFootprintsByStorey, type OverlayWallReader } from './extract-walls.js';
+import type { OverlayWallReader } from './extract-walls.js';
+import { existingSpaceFootprintsByStorey } from './space-footprints.js';
 import { authoredScalar, createOverlayLookup, effectiveStoreyIds } from './spatial-children.js';
 import { safeLengthUnitScale } from './length-unit-scale.js';
 

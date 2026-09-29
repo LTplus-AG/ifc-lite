@@ -18,7 +18,8 @@
 import { describe, it, expect } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { extractWallSegmentsForStorey, existingSpaceFootprintsByStorey } from './extract-walls.js';
+import { extractWallSegmentsForStorey } from './extract-walls.js';
+import { existingSpaceFootprintsByStorey } from './space-footprints.js';
 import { resolveDuplicateSource } from './resolve-source.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { addSpaceToStore } from './space.js';

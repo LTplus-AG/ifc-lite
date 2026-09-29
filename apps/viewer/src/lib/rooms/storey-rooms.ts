@@ -14,21 +14,23 @@
  *      render (pre-placement) → the model's workspace placement →
  *      `Workplane.renderToLocal`, which undoes placement, federation
  *      alignment and the storey chain in one place;
- *   3. the wasm DCEL (`SpacePlateHandle.fromWallRects`) finds the enclosed
- *      faces, read with all three boundaries and freed at once.
+ *   3. the storey's room layout (`room-layout.ts`): the wasm DCEL over those
+ *      rectangles, as the tool's Edit mode last left it at this undo step.
  *
  * A face whose interior point already lies in an IfcSpace on the storey is
  * `taken` (`room-occupancy.ts`): Auto skips it and a click on it is refused,
- * so running the tool twice never stacks two rooms.
+ * so running the tool twice never stacks two rooms. A taken face that IS a
+ * room (its outline, `linkFaces`) carries that room, which Edit mode reshapes.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import { existingSpaceFootprintsByStorey } from '@ifc-lite/create';
+import { existingSpaceFootprintEntriesByStorey, type SpaceFootprint } from '@ifc-lite/create';
 import type { ViewerState } from '@/store';
 import { roomFramePlanOffsets, wallRectsFromMeshes } from '@/lib/wall-rects-from-meshes';
-import { flattenWallRects, roomFacesFromRects, spaceWasmLoaded, type RoomFace } from '@/lib/space-plate-session';
+import { spaceWasmLoaded } from '@/lib/space-plate-session';
 import { pointInPoly, polyArea, type Pt } from '@/lib/space-sketch-geometry';
-import { occupancyTest, spaceMeshTriangles } from './room-occupancy';
+import { linkFaces, occupancyTest, spaceMeshTriangles, type RoomLink } from './room-occupancy';
+import { buildPlate, DEFAULT_WELD, layoutFaces, layoutVersion, readFaces, undoHead, type LayoutFace } from './room-layout';
 import { floorToFloorHeight } from '@/components/viewer/tools/space-sketch/space-bake';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
@@ -41,7 +43,7 @@ export type { Pt };
 /** Which wall face a room's outline follows: the room side, the axis, the far side. */
 export type RoomBoundary = 'inner' | 'center' | 'outer';
 
-export interface RoomCandidate extends RoomFace {
+export interface RoomCandidate extends LayoutFace {
   /** Centreline area: the gross floor area. */
   grossArea: number;
   /** Inner-face area: the net floor area. */
@@ -50,6 +52,15 @@ export interface RoomCandidate extends RoomFace {
   interior: Pt;
   /** An IfcSpace on the storey already covers this face. */
   taken: boolean;
+  /** The existing room this face is (its outline), which layout edits reshape. */
+  room: RoomLink | null;
+}
+
+/** A storey's wall, storey-local: its footprint rectangle, axis and thickness. */
+export interface LocalWall {
+  corners: Pt[];
+  centreline: [Pt, Pt];
+  thickness: number;
 }
 
 export type StoreyRooms =
@@ -62,7 +73,7 @@ const WALL_TYPES = new Set(['IfcWall', 'IfcWallStandardCase']);
 const BAND_MARGIN = 0.2;
 
 /** The outline a room is written with at `boundary`. */
-export function roomOutline(room: RoomFace, boundary: RoomBoundary): Pt[] {
+export function roomOutline(room: LayoutFace, boundary: RoomBoundary): Pt[] {
   return boundary === 'inner' ? room.inner : boundary === 'outer' ? room.outer : room.centre;
 }
 
@@ -100,19 +111,35 @@ export function roomAt<R extends RoomCandidate>(rooms: readonly R[], p: readonly
   return hit;
 }
 
-/** Wall rectangles (storey-local, 4 corners each) → candidate rooms, `taken` where `occupied`. */
-export function roomCandidatesFromRects(rects: readonly Pt[][], occupied: (p: Pt) => boolean = () => false): RoomCandidate[] {
-  if (rects.length === 0) return [];
-  return roomFacesFromRects(flattenWallRects(rects as Pt[][])).map((face) => {
-    const interior = interiorPoint(face.inner.length >= 3 ? face.inner : face.centre);
+/** Layout faces → candidate rooms, `taken` where `occupied`, linked to the `spaces` they are. */
+export function roomCandidatesFromFaces(
+  faces: readonly LayoutFace[],
+  occupied: (p: Pt) => boolean = () => false,
+  spaces: readonly SpaceFootprint[] = [],
+): RoomCandidate[] {
+  const withInterior = faces.map((face) => ({ ...face, interior: interiorPoint(face.inner.length >= 3 ? face.inner : face.centre) }));
+  const links = linkFaces(withInterior, spaces as { expressId: number; footprint: Pt[] }[]);
+  return withInterior.map((face) => {
+    const room = links.get(face.face) ?? null;
     return {
       ...face,
       grossArea: polyArea(face.centre),
       netArea: polyArea(face.inner),
-      interior,
-      taken: occupied(interior),
+      taken: room !== null || occupied(face.interior),
+      room,
     };
   });
+}
+
+/** Wall rectangles (storey-local, 4 corners each) → candidate rooms of a fresh layout, `taken` where `occupied`. */
+export function roomCandidatesFromRects(rects: readonly Pt[][], occupied: (p: Pt) => boolean = () => false): RoomCandidate[] {
+  if (rects.length === 0) return [];
+  const plate = buildPlate(rects, DEFAULT_WELD);
+  try {
+    return roomCandidatesFromFaces(readFaces(plate), occupied);
+  } finally {
+    plate.free();
+  }
 }
 
 /**
@@ -160,13 +187,35 @@ function storeyPlan(s: ViewerState, modelId: string, storeyId: number, plane: Wo
   };
 }
 
-/** The storey's wall rectangles in its storey-local frame. */
-export function storeyWallRects(s: ViewerState, modelId: string, storeyId: number, plane: Workplane): Pt[][] {
+let wallsCache: { meshes: unknown; count: number; version: number; plane: Workplane; storeyId: number; walls: LocalWall[] } | null = null;
+
+/** The storey's walls in its storey-local frame (the last storey's are kept: a layer asks every frame). */
+export function storeyWalls(s: ViewerState, modelId: string, storeyId: number, plane: Workplane): LocalWall[] {
+  const meshes = s.models.get(modelId)?.geometryResult?.meshes;
+  const c = wallsCache;
+  if (c && c.meshes === meshes && c.count === (meshes?.length ?? 0) && c.version === s.mutationVersion && c.plane === plane && c.storeyId === storeyId) {
+    return c.walls;
+  }
+  const walls = deriveStoreyWalls(s, modelId, storeyId, plane);
+  wallsCache = { meshes, count: meshes?.length ?? 0, version: s.mutationVersion, plane, storeyId, walls };
+  return walls;
+}
+
+function deriveStoreyWalls(s: ViewerState, modelId: string, storeyId: number, plane: Workplane): LocalWall[] {
   const at = storeyPlan(s, modelId, storeyId, plane);
   if (!at) return [];
   const live = liveMesh(s, modelId);
   const walls = at.meshes.filter((m) => m.ifcType !== undefined && WALL_TYPES.has(m.ifcType) && live(m));
-  return wallRectsFromMeshes(walls, at.coord, at.elevation, at.floorToFloor).map((rect) => rect.corners.map(at.toLocal));
+  return wallRectsFromMeshes(walls, at.coord, at.elevation, at.floorToFloor).map((rect) => ({
+    corners: rect.corners.map(at.toLocal),
+    centreline: [at.toLocal(rect.centreline[0]), at.toLocal(rect.centreline[1])],
+    thickness: rect.thickness,
+  }));
+}
+
+/** The storey's wall rectangles in its storey-local frame. */
+export function storeyWallRects(s: ViewerState, modelId: string, storeyId: number, plane: Workplane): Pt[][] {
+  return storeyWalls(s, modelId, storeyId, plane).map((w) => w.corners);
 }
 
 /** Whether a storey-local plan point already lies in a room of the storey. */
@@ -178,20 +227,33 @@ export function storeyOccupancy(s: ViewerState, modelId: string, storeyId: numbe
   return occupancyTest(storeySpaceFootprints(s, modelId, storeyId), triangles);
 }
 
-/** Existing IfcSpace footprints on the storey, storey-local. */
-export function storeySpaceFootprints(s: ViewerState, modelId: string, storeyId: number): Pt[][] {
+let footprintCache: { store: unknown; version: number; byStorey: Map<number, SpaceFootprint[]> } | null = null;
+
+/** Existing IfcSpaces on the storey with their footprint rings, storey-local. */
+export function storeySpaces(s: ViewerState, modelId: string, storeyId: number): SpaceFootprint[] {
   const store = s.models.get(modelId)?.ifcDataStore;
   if (!store) return [];
-  return (existingSpaceFootprintsByStorey(store, s.mutationViews.get(modelId) ?? undefined).get(storeyId) ?? []) as Pt[][];
+  if (footprintCache?.store !== store || footprintCache.version !== s.mutationVersion) {
+    footprintCache = { store, version: s.mutationVersion, byStorey: existingSpaceFootprintEntriesByStorey(store, s.mutationViews.get(modelId) ?? undefined) };
+  }
+  return footprintCache.byStorey.get(storeyId) ?? [];
+}
+
+/** Existing IfcSpace footprints on the storey, storey-local. */
+export function storeySpaceFootprints(s: ViewerState, modelId: string, storeyId: number): Pt[][] {
+  return storeySpaces(s, modelId, storeyId).map((e) => e.footprint as Pt[]);
 }
 
 interface CacheEntry {
   meshes: readonly MeshData[] | undefined;
   meshCount: number;
   mutationVersion: number;
+  head: string;
+  layouts: number;
   plane: Workplane;
   storeyId: number;
   modelId: string;
+  weld: number;
   result: StoreyRooms;
 }
 
@@ -200,32 +262,39 @@ let cached: CacheEntry | null = null;
 
 /**
  * The storey's candidate rooms, derived once per wall geometry / edit /
- * workplane and then served from cache. `loading` until the space wasm is
- * initialised (`ensureSpaceWasm`), which the tool starts on launch.
+ * workplane / weld and then served from cache. `loading` until the space
+ * wasm is initialised (`ensureSpaceWasm`), which the tool starts on launch.
  */
-export function storeyRooms(s: ViewerState, modelId: string, storeyId: number, plane: Workplane): StoreyRooms {
+export function storeyRooms(s: ViewerState, modelId: string, storeyId: number, plane: Workplane, weld = DEFAULT_WELD): StoreyRooms {
   if (!spaceWasmLoaded()) return { status: 'loading' };
   const meshes = s.models.get(modelId)?.geometryResult?.meshes;
+  const head = undoHead(s, modelId);
   const c = cached;
   if (c && c.meshes === meshes && c.meshCount === (meshes?.length ?? 0) && c.mutationVersion === s.mutationVersion
-    && c.plane === plane && c.storeyId === storeyId && c.modelId === modelId) {
+    && c.head === head && c.layouts === layoutVersion() && c.plane === plane && c.storeyId === storeyId && c.modelId === modelId && c.weld === weld) {
     return c.result;
   }
   const rects = storeyWallRects(s, modelId, storeyId, plane);
   const result: StoreyRooms = rects.length === 0
     ? { status: 'noWalls' }
-    : { status: 'ready', rooms: roomCandidatesFromRects(rects, storeyOccupancy(s, modelId, storeyId, plane)), walls: rects.length };
-  cached = { meshes, meshCount: meshes?.length ?? 0, mutationVersion: s.mutationVersion, plane, storeyId, modelId, result };
+    : {
+      status: 'ready',
+      rooms: roomCandidatesFromFaces(layoutFaces(s, modelId, storeyId, weld, rects), storeyOccupancy(s, modelId, storeyId, plane), storeySpaces(s, modelId, storeyId)),
+      walls: rects.length,
+    };
+  cached = { meshes, meshCount: meshes?.length ?? 0, mutationVersion: s.mutationVersion, head, layouts: layoutVersion(), plane, storeyId, modelId, weld, result };
   return result;
 }
 
 /** A command session's storey rooms, or null while it has no plane to derive them on. */
-export function sessionRooms(ctx: Pick<CommandContext, 'get' | 'modelId' | 'storeyId' | 'workplane'>): StoreyRooms | null {
+export function sessionRooms(ctx: Pick<CommandContext, 'get' | 'modelId' | 'storeyId' | 'workplane'>, weld = DEFAULT_WELD): StoreyRooms | null {
   if (!ctx.workplane || ctx.storeyId === null) return null;
-  return storeyRooms(ctx.get(), ctx.modelId, ctx.storeyId, ctx.workplane);
+  return storeyRooms(ctx.get(), ctx.modelId, ctx.storeyId, ctx.workplane, weld);
 }
 
 /** Forget the cached storey (tests; a closed tool need not keep it). */
 export function clearStoreyRoomsCache(): void {
   cached = null;
+  footprintCache = null;
+  wallsCache = null;
 }

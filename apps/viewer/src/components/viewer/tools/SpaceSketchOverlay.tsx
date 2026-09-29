@@ -43,7 +43,7 @@ import { SpaceSketchCanvas } from './space-sketch/SpaceSketchCanvas';
 import { SpaceSketchBar, SpaceSketchHint, SpaceSketchParkedChip, SpaceSketchPlanCard } from './space-sketch/SpaceSketchHud';
 import { useSpaceGhostPreview, type GhostSpec } from './space-sketch/useSpaceGhostPreview';
 import { useSpaceSceneFraming } from './space-sketch/useSpaceSceneFraming';
-import { exteriorPerimeter, perimeterWalls } from './space-sketch/storey-footprint';
+import { exteriorPerimeter, perimeterWalls } from '@/lib/rooms/storey-footprint';
 import { useSpacePlateSessions } from './space-sketch/useSpacePlateSessions';
 import { useSpaceViewport } from './space-sketch/useSpaceViewport';
 import { useSpaceSketchKeys } from './space-sketch/useSpaceSketchKeys';

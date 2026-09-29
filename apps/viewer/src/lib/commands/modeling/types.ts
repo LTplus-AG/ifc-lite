@@ -134,6 +134,11 @@ export interface ModelingCommand<G = unknown> {
   pointerMove(g: G, s: SnapResult, ctx: CommandContext): G;
   pointerDown(g: G, s: SnapResult, ctx: CommandContext): G | CommandSignal;
   /**
+   * The button's release, where the pointer source reports one (the plan):
+   * e.g. drop a dragged corner. Absent = releases are ignored.
+   */
+  pointerUp?(g: G, s: SnapResult, ctx: CommandContext): G | CommandSignal;
+  /**
    * The second click of a double-click (`event.detail >= 2`), instead of
    * `pointerDown`: e.g. close a polygon. Absent = a plain `pointerDown`.
    */

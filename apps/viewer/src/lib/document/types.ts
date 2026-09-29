@@ -85,6 +85,8 @@ export interface IdsReportCheckSummary {
  * report omitted passing entities, so an exact per-rule count is unavailable. */
 export interface IdsReportRuleSummary {
   id: string;
+  /** Bare attribute / property name (#6470), for the compact layout. Absent in older documents. */
+  name?: string;
   shortDescription: string;
   longDescription?: string;
   checked: number;
@@ -101,9 +103,15 @@ export interface IdsReportRuleSummary {
  *
  * Each check carries a child row for its IDS requirements (#5125).
  */
+/** `compact`: one bar row per check / requirement. `long`: full requirement text, never truncated. */
+export type IdsReportVariant = 'compact' | 'long';
+export const IDS_REPORT_VARIANTS: readonly IdsReportVariant[] = ['compact', 'long'];
+
 export interface IdsReportBlock {
   kind: 'ids-report';
   id: string;
+  /** Layout (#6470). Absent in documents saved before it existed, which keep printing the original layout (long-ish rows, one line each, truncated) until the author picks one. */
+  variant?: IdsReportVariant;
   /** IDS document title, or rule-set name, printed as the block's heading. */
   sourceName: string;
   /** When the snapshotted run finished (`ValidationReport.timestamp`, ISO). */
@@ -357,6 +365,7 @@ function validateIdsReportBlock(block: Record<string, unknown>, at: string, erro
   const isRate = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100;
   if (!isString(block.sourceName)) errors.push({ path: `${at}.sourceName`, message: 'expected a string' });
   if (!isString(block.generatedAt)) errors.push({ path: `${at}.generatedAt`, message: 'expected a string' });
+  if (block.variant !== undefined && !IDS_REPORT_VARIANTS.includes(block.variant as IdsReportVariant)) errors.push({ path: `${at}.variant`, message: `expected ${IDS_REPORT_VARIANTS.join(' | ')}` });
   const summary = block.summary;
   if (!isRecord(summary) || !isCount(summary.checked) || !isCount(summary.passed) || !isCount(summary.failed) || !isRate(summary.passRate)) {
     errors.push({ path: `${at}.summary`, message: 'expected { checked, passed, failed: non-negative numbers; passRate: 0-100 }' });
@@ -382,6 +391,7 @@ function validateIdsReportBlock(block: Record<string, unknown>, at: string, erro
       if (!isRecord(rule)) { errors.push({ path: ruleAt, message: 'expected an object' }); return; }
       if (!isString(rule.id) || rule.id.length === 0) errors.push({ path: `${ruleAt}.id`, message: 'expected a non-empty string' });
       if (!isString(rule.shortDescription)) errors.push({ path: `${ruleAt}.shortDescription`, message: 'expected a string' });
+      if (rule.name !== undefined && !isString(rule.name)) errors.push({ path: `${ruleAt}.name`, message: 'expected a string' });
       if (rule.longDescription !== undefined && !isString(rule.longDescription)) errors.push({ path: `${ruleAt}.longDescription`, message: 'expected a string' });
       if (!isCount(rule.checked)) errors.push({ path: `${ruleAt}.checked`, message: 'expected a non-negative number' });
       const unavailable = rule.passed === null && rule.failed === null && rule.passRate === null;

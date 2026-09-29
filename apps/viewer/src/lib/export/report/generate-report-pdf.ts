@@ -25,6 +25,8 @@ export interface ReportDoc {
   text: (text: string, x: number, y: number) => void;
   /** Width of `text` in the current font and size, in points; a document wraps with it. */
   textWidth?: (text: string) => number;
+  /** Fill a rectangle with an RGB colour (0-255 per channel): the IDS report's percent bars (#6470). */
+  fillRect?: (x: number, y: number, w: number, h: number, rgb: readonly [number, number, number]) => void;
   addImage: (bytes: Uint8Array, format: 'PNG' | 'JPEG', x: number, y: number, w: number, h: number) => void;
   /** Draw an SVG string into the box (svg2pdf); a raster fallback is the caller's business. */
   svg: (svg: string, x: number, y: number, w: number, h: number) => Promise<void>;
@@ -101,6 +103,7 @@ export async function browserReportSeams(capture: SnapshotCapture | null, theme:
         setTextColor: (gray) => { doc.setTextColor(gray); },
         text: (t, x, y) => { doc.text(t, x, y); },
         textWidth: (t) => doc.getTextWidth(t),
+        fillRect: (x, y, w, h, [r, g, b]) => { doc.setFillColor(r, g, b); doc.rect(x, y, w, h, 'F'); },
         addImage: (bytes, format, x, y, w, h) => { doc.addImage(bytes, format, x, y, w, h); },
         svg: async (svg, x, y, w, h) => {
           const parsed = parser.parseFromString(svg, 'image/svg+xml');

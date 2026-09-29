@@ -15,7 +15,7 @@
 import type { ReportPageSetup } from '@ifc-lite/charts';
 import { pageBox, REPORT_MARGIN } from '../export/report/compose.js';
 import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type BlockWidth, type TextBlock, type TextFont } from './types.js';
-import { layoutTable, type LayoutCursor, type TableColumnLayout, type TableLayoutBlock, type TextDrawnItem } from './compose-table.js';
+import { layoutTable, type LayoutCursor, type TableColumnLayout, type TableLayoutBlock, type TextDrawnItem, type RectDrawnItem } from './compose-table.js';
 import { layoutIdsReport, type IdsReportLayoutBlock } from './compose-ids-report.js';
 import type { TableRowOut } from './resolve-table.js';
 import { tabFill } from './text-tabs.js';
@@ -70,6 +70,7 @@ export type ResolvedBlock =
 
 export type DrawnItem =
   | TextDrawnItem
+  | RectDrawnItem
   | { kind: 'image'; blockId: string; x: number; y: number; w: number; h: number }
   | { kind: 'chart'; blockId: string; x: number; y: number; w: number; h: number }
   | { kind: 'snapshot'; blockId: string; x: number; y: number; w: number; h: number }
@@ -334,7 +335,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
         break;
       }
       case 'ids-report': {
-        layoutIdsReport(block, cursor, contentW, BLOCK_GAP);
+        layoutIdsReport(block, cursor, contentW, BLOCK_GAP, (text, width, size, bold) => wrapText(text, width, size, bold, input.measure));
         break;
       }
       case 'topic': {

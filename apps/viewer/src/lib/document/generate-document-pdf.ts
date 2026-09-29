@@ -260,6 +260,9 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
           doc.text(item.text, item.x, item.y);
           doc.setTextColor(0);
           break;
+        case 'rect':
+          doc.fillRect?.(item.x, item.y, item.w, item.h, item.rgb);
+          break;
         case 'image': {
           const block = byId.get(item.blockId);
           if (block?.kind === 'image') placeImage(doc, block.dataUrl || null, block.caption || 'logo', item, result);

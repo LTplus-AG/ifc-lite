@@ -49,8 +49,12 @@ export interface TableLayoutBlock {
 /** A line of text on the page; `compose.ts` draws the same shape for every block. */
 export interface TextDrawnItem { kind: 'text'; x: number; y: number; size: number; bold: boolean; gray: number; text: string; font?: TextFont }
 
+/** A filled rectangle (the IDS report's compact pass bars, #6470); `rgb` is 0-255 per channel. */
+export interface RectDrawnItem { kind: 'rect'; x: number; y: number; w: number; h: number; rgb: readonly [number, number, number] }
+
 export type TableDrawnItem =
   | TextDrawnItem
+  | RectDrawnItem
   | { kind: 'table'; blockId: string; x: number; y: number; w: number; columns: TableColumnLayout[]; rows: TableRowOut[] };
 
 /** The page cursor `composeDocument` lays blocks out with; `y` is the running position. */

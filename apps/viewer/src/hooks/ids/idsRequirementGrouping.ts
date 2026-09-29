@@ -25,7 +25,7 @@
  * itself treats specification-level `applicableCount` / `passedCount` /
  * `failedCount` (`packages/ids/src/validation/validator.ts`): entities
  * are only ever tallied as passed or failed, never as a third bucket,
- * and the rate is `Math.floor(passed / total * 100)`.
+ * and the rate is `boundedPassRate(passed, total)` (floor, kept inside 1..99 unless all or none pass).
  *
  * This module is standalone and not shared with
  * `apps/viewer/src/hooks/ids/idsExportService.ts` (the HTML/JSON export,
@@ -38,6 +38,7 @@ import type {
   RequirementSummary,
   CheckKind,
 } from '@ifc-lite/ids';
+import { boundedPassRate } from '@ifc-lite/ids';
 
 /** One failing entity, flattened with the failure detail for a single requirement. */
 export interface RequirementFailingEntity {
@@ -128,7 +129,7 @@ export function groupRequirementResults(
 
   for (const group of groups.values()) {
     const applicable = group.passedCount + group.failedCount;
-    group.passRate = applicable > 0 ? Math.floor((group.passedCount / applicable) * 100) : 100;
+    group.passRate = applicable > 0 ? boundedPassRate(group.passedCount, applicable) : 100;
   }
 
   // Preserve first-seen order, which follows `spec.requirements` order
@@ -166,7 +167,7 @@ export function computeCheckStats(entityResults: readonly EntityResult[]): Check
   }
 
   const applicableChecks = passedChecks + failedChecks;
-  const checkPassRate = applicableChecks > 0 ? Math.floor((passedChecks / applicableChecks) * 100) : 100;
+  const checkPassRate = applicableChecks > 0 ? boundedPassRate(passedChecks, applicableChecks) : 100;
 
   return {
     totalChecks: passedChecks + failedChecks + notApplicableChecks,

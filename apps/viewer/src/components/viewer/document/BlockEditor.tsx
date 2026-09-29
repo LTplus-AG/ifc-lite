@@ -24,7 +24,7 @@ import { effectiveAttribute } from '@/lib/document/effective-binding-fields';
 import { spatialBindingNodes } from '@/lib/document/spatial-binding-nodes';
 import { idsReportBlockFromReport } from '@/lib/document/ids-report';
 import { TAB_SIZE, tabEdit } from '@/lib/document/text-tabs';
-import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, TEXT_SIZE_MAX, TEXT_SIZE_MIN, type DocumentBlock, type TextBlock, type TextFont } from '@/lib/document/types';
+import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, TEXT_SIZE_MAX, TEXT_SIZE_MIN, type DocumentBlock, type IdsReportVariant, type TextBlock, type TextFont } from '@/lib/document/types';
 import { ClampedNumberInput, WidthEditor, field } from './BlockEditor.parts';
 import { TableBlockEditor } from './TableBlockEditor';
 
@@ -257,6 +257,18 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
           <div className="flex items-center gap-1 text-muted-foreground">{t('document.block.idsReportSourceLabel')}
             <span className="min-w-0 truncate font-medium text-foreground" title={block.sourceName}>{block.sourceName}</span>
           </div>
+          <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.idsReportVariantLabel')}
+            <select
+              className={field}
+              value={block.variant ?? ''}
+              onChange={(e) => onChange({ ...block, variant: (e.target.value || undefined) as IdsReportVariant | undefined })}
+              aria-label={t('document.block.idsReportVariantAriaLabel')}
+            >
+              {block.variant === undefined && <option value="">{t('document.block.idsReportVariantClassic')}</option>}
+              <option value="compact">{t('document.block.idsReportVariantCompact')}</option>
+              <option value="long">{t('document.block.idsReportVariantLong')}</option>
+            </select>
+          </label>
           <Button
             variant="outline"
             size="sm"
@@ -265,7 +277,7 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
             title={idsValidationReport ? undefined : t('document.block.idsReportRefreshDisabledTitle')}
             onClick={() => {
               if (!idsValidationReport) return;
-              onChange(idsReportBlockFromReport(idsValidationReport, block.id));
+              onChange(idsReportBlockFromReport(idsValidationReport, block.id, block.variant));
               toast.success(t('document.block.idsReportRefreshed'));
             }}
           >

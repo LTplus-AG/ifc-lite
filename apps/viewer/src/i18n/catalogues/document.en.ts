@@ -187,6 +187,11 @@ export const documentEn = {
   'document.addBlock.idsReport': 'IDS validation report',
   'document.addBlock.idsReportDisabledTitle': 'Run an IDS validation first',
   'document.block.idsReportSourceLabel': 'Source',
+  'document.block.idsReportVariantLabel': 'Layout',
+  'document.block.idsReportVariantAriaLabel': 'IDS report layout',
+  'document.block.idsReportVariantClassic': 'Classic',
+  'document.block.idsReportVariantCompact': 'Compact (bars)',
+  'document.block.idsReportVariantLong': 'Long (full text)',
   'document.block.idsReportRefresh': 'Refresh from current validation report',
   'document.block.idsReportRefreshDisabledTitle': 'Run an IDS validation first',
   'document.block.idsReportRefreshed': 'Refreshed from the current validation report',
@@ -200,6 +205,7 @@ export const documentEn = {
     other: '{countDisplay} checks',
   },
   'document.preview.idsReportNoChecks': 'No checks in this report.',
+  'document.preview.idsReportCountsUnavailableShort': 'n/a',
   'document.preview.idsReportCountsUnavailable': 'Counts unavailable in this partial report',
 
   // Validation-results table source (#5138): ValidationSourceEditor in TableBlockEditor.tsx, and

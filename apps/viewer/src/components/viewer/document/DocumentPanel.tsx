@@ -96,7 +96,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
       : kind === 'image' ? { kind, id, dataUrl: '', height: 60, align: 'left' }
         : kind === 'chart' ? { kind, id, chart: charts[0]?.chart ? { ...charts[0].chart, id: freshBlockId() } : newChartSpec(), snapshot: false }
           : kind === 'spacer' ? { kind, id, height: 20 }
-            : kind === 'ids-report' ? (idsValidationReport ? idsReportBlockFromReport(idsValidationReport, id) : { kind, id, sourceName: '', generatedAt: new Date().toISOString(), summary: { checked: 0, passed: 0, failed: 0, passRate: 100 }, checks: [] })
+            : kind === 'ids-report' ? (idsValidationReport ? idsReportBlockFromReport(idsValidationReport, id, 'compact') : { kind, id, variant: 'compact', sourceName: '', generatedAt: new Date().toISOString(), summary: { checked: 0, passed: 0, failed: 0, passRate: 100 }, checks: [] })
               : { kind, id, guid: [...data.topics.keys()][0] ?? '', snapshot: true };
     setBlocks([...document.blocks, block]);
     setSelectedBlockId(id);

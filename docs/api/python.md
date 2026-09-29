@@ -365,6 +365,35 @@ For a skipped sweep, `comparisons` is `None`; an assessed sweep has a list of
 measured comparisons. Check `skipped_reason` before interpreting pass results.
 No result certifies a cutting length or fabrication-code compliance.
 
+`rebar_schedule_with_fabrication_precheck(ifc_bytes, ids=None, **policy)` accepts
+independently optional `min_inside_bend_radius_m`,
+`min_straight_segment_length_m`, `max_developed_centreline_length_m`,
+`max_nominal_geometric_diameter_delta_m`, and a paired `min_bend_angle_rad` /
+`max_bend_angle_rad`. Lengths are SI metres; angles are radians. Invalid or
+reversed ranges fail before IFC decoding. For example:
+
+```python
+schedule = ifclite_geom.rebar_schedule_with_fabrication_precheck(
+    ifc_bytes, min_inside_bend_radius_m=0.05,
+    max_nominal_geometric_diameter_delta_m=0.001,
+)
+for row in schedule["rows"].values():
+    for sweep in row["sweeps"]:
+        report = sweep["fabrication_precheck"]
+        print(report["outcome"], report["checks"], report["unchecked_factors"])
+```
+
+Each requested comparison is `pass`, `fail`, or `uncheckable` with source IDs,
+segment index where applicable, measurement, limit, units and reason. The
+diameter check requires positive authored `NominalDiameter` with occurrence or
+type provenance and a complete world-circular swept disk. Missing or conflicting
+authored values, modified CSG, unsupported transforms and incomplete paths are
+uncheckable. Bend angle is arc sweep magnitude, not a join angle. Every report
+is `precheck_only`: material, fabrication process, allowances, jurisdiction and
+physical bar count remain unchecked. Authored `BarLength` is not a verified
+cutting length. The real Revit Snowdon IFC used by tests demonstrates source
+measurements but does not independently verify its authored schedule.
+
 ### Tessellation quality
 
 Both geometry functions take an optional `quality` label:

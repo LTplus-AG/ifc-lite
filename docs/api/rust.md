@@ -746,6 +746,29 @@ without a swept-disk source receive `preflight_skipped_reason`. Missing line or
 arc segments are listed as unassessed. These comparisons do not certify a
 cutting length or fabrication-code compliance.
 
+`build_rebar_schedule_with_fabrication_precheck(ifc_bytes, ids, &options,
+&policy)` adds an opt-in `RebarFabricationPolicy` without changing the legacy
+preflight API. Start with `RebarFabricationPolicy::default()` and set any subset
+of finite nonnegative SI limits: minimum inside bend radius or straight segment
+length, maximum developed centreline length, maximum absolute difference
+between authored `NominalDiameter` and the geometric outer diameter, and an
+inclusive finite, nonnegative bend-angle range `[minimum, maximum]` in radians.
+The policy is validated before IFC decoding. Each requested check reports
+`pass`, `fail`, or `uncheckable`, a source bar/solid/directrix ID, segment index
+when applicable, measurement, threshold, units, and reason. The reason is
+`None` for a passing check and explains a failure or unavailable measurement
+otherwise. An absent arc,
+straight segment, or positive authored `NominalDiameter` is uncheckable;
+conflicting type assignments and occurrence/type diameter conflicts also make
+the diameter comparison uncheckable. Authored diameter retains occurrence or
+type provenance. Geometry comparisons require a complete world-circular
+source; modified CSG, unsupported transforms and incomplete paths are
+uncheckable. Bend angle is the magnitude of each directrix arc sweep, not a
+join discontinuity. The result is always `precheck_only`: material, bending
+process, allowances, jurisdiction and physical bar count remain unchecked.
+Authored `BarLength` is not a verified cutting length. A reinforcing-bar entity
+may represent more than one manufactured bar.
+
 ### Appearance authoring
 
 `ifc_lite_processing::appearance::calibrate_appearance_plane` establishes one

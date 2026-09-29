@@ -7,7 +7,8 @@
 use std::collections::HashSet;
 
 use ifc_lite_export::{
-    build_rebar_schedule, build_rebar_schedule_with_preflight, AuthoredRebarValue,
+    build_rebar_schedule, build_rebar_schedule_with_fabrication_precheck,
+    build_rebar_schedule_with_preflight, AuthoredRebarValue, RebarFabricationPolicy,
     RebarPreflightLimits, RebarSchedule,
 };
 use ifc_lite_processing::SweptDiskCheckOptions;
@@ -16,6 +17,12 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 use super::GEOMETRY_STACK_BYTES;
+
+enum ScheduleMode {
+    Basic,
+    Preflight(RebarPreflightLimits),
+    Fabrication(RebarFabricationPolicy),
+}
 
 /// Return authored rebar metadata and geometric source-sweep measurements.
 /// Values are not certified cutting lengths or physical bar counts.
@@ -30,7 +37,7 @@ pub(super) fn rebar_schedule(
     tangent_tolerance_rad: f64,
 ) -> PyResult<Py<PyAny>> {
     schedule_impl(py, ifc_bytes, ids, zero_length_tolerance_m,
-        gap_tolerance_m, tangent_tolerance_rad, None)
+        gap_tolerance_m, tangent_tolerance_rad, ScheduleMode::Basic)
 }
 
 /// Assess represented source sweeps against caller-provided project limits.
@@ -52,7 +59,46 @@ pub(super) fn rebar_schedule_with_preflight(
         min_straight_segment_length_m, max_developed_centreline_length_m)
         .map_err(|error| PyValueError::new_err(error.to_string()))?;
     schedule_impl(py, ifc_bytes, ids, zero_length_tolerance_m,
-        gap_tolerance_m, tangent_tolerance_rad, Some(limits))
+        gap_tolerance_m, tangent_tolerance_rad, ScheduleMode::Preflight(limits))
+}
+
+/// Return only the caller-requested SI comparisons, with source provenance.
+#[pyfunction]
+#[pyo3(signature = (ifc_bytes, ids = None, *, min_inside_bend_radius_m = None,
+    min_straight_segment_length_m = None, min_bend_angle_rad = None,
+    max_bend_angle_rad = None, max_nominal_geometric_diameter_delta_m = None,
+    max_developed_centreline_length_m = None, zero_length_tolerance_m = 1e-9,
+    gap_tolerance_m = 1e-6, tangent_tolerance_rad = 1e-6))]
+#[allow(clippy::too_many_arguments)]
+pub(super) fn rebar_schedule_with_fabrication_precheck(
+    py: Python<'_>,
+    ifc_bytes: Vec<u8>,
+    ids: Option<HashSet<u32>>,
+    min_inside_bend_radius_m: Option<f64>,
+    min_straight_segment_length_m: Option<f64>,
+    min_bend_angle_rad: Option<f64>,
+    max_bend_angle_rad: Option<f64>,
+    max_nominal_geometric_diameter_delta_m: Option<f64>,
+    max_developed_centreline_length_m: Option<f64>,
+    zero_length_tolerance_m: f64,
+    gap_tolerance_m: f64,
+    tangent_tolerance_rad: f64,
+) -> PyResult<Py<PyAny>> {
+    let allowed_bend_angle_rad = match (min_bend_angle_rad, max_bend_angle_rad) {
+        (None, None) => None,
+        (Some(minimum), Some(maximum)) => Some([minimum, maximum]),
+        _ => return Err(PyValueError::new_err(
+            "min_bend_angle_rad and max_bend_angle_rad must be supplied together")),
+    };
+    let mut policy = RebarFabricationPolicy::default();
+    policy.min_inside_bend_radius_m = min_inside_bend_radius_m;
+    policy.min_straight_segment_length_m = min_straight_segment_length_m;
+    policy.allowed_bend_angle_rad = allowed_bend_angle_rad;
+    policy.max_nominal_geometric_diameter_delta_m = max_nominal_geometric_diameter_delta_m;
+    policy.max_developed_centreline_length_m = max_developed_centreline_length_m;
+    policy.validate().map_err(|error| PyValueError::new_err(error.to_string()))?;
+    schedule_impl(py, ifc_bytes, ids, zero_length_tolerance_m, gap_tolerance_m,
+        tangent_tolerance_rad, ScheduleMode::Fabrication(policy))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -63,7 +109,7 @@ fn schedule_impl(
     zero_length_tolerance_m: f64,
     gap_tolerance_m: f64,
     tangent_tolerance_rad: f64,
-    limits: Option<RebarPreflightLimits>,
+    mode: ScheduleMode,
 ) -> PyResult<Py<PyAny>> {
     let mut options = SweptDiskCheckOptions::default();
     options.zero_length_tolerance_m = zero_length_tolerance_m;
@@ -77,10 +123,13 @@ fn schedule_impl(
             std::thread::Builder::new()
                 .stack_size(GEOMETRY_STACK_BYTES)
                 .name("ifclite-rebar-schedule".into())
-                .spawn(move || match limits {
-                    Some(limits) => build_rebar_schedule_with_preflight(&ifc_bytes, ids.as_ref(), &options, &limits)
+                .spawn(move || match mode {
+                    ScheduleMode::Preflight(limits) => build_rebar_schedule_with_preflight(&ifc_bytes, ids.as_ref(), &options, &limits)
                         .map_err(|error| error.to_string()),
-                    None => build_rebar_schedule(&ifc_bytes, ids.as_ref(), &options)
+                    ScheduleMode::Fabrication(policy) => build_rebar_schedule_with_fabrication_precheck(
+                        &ifc_bytes, ids.as_ref(), &options, &policy)
+                        .map_err(|error| error.to_string()),
+                    ScheduleMode::Basic => build_rebar_schedule(&ifc_bytes, ids.as_ref(), &options)
                         .map_err(|error| error.to_string()),
                 })
                 .map_err(|error| format!("spawn failed: {error}"))?
@@ -152,6 +201,20 @@ fn validate_finite(schedule: &RebarSchedule) -> Result<(), String> {
                     finite(comparison.limit_m, &format!("{path} preflight.comparisons[{index}].limit_m"))?;
                 }
             }
+            if let Some(report) = &sweep.fabrication_precheck {
+                for (index, comparison) in report.checks.iter().enumerate() {
+                    let field = format!("{path} fabrication_precheck.checks[{index}]");
+                    for (name, value) in [
+                        ("measured", comparison.measured),
+                        ("minimum", comparison.minimum),
+                        ("maximum", comparison.maximum),
+                        ("nominal_diameter_m", comparison.nominal_diameter_m),
+                        ("geometric_diameter_m", comparison.geometric_diameter_m),
+                    ] {
+                        if let Some(value) = value { finite(value, &format!("{field}.{name}"))?; }
+                    }
+                }
+            }
         }
     }
     Ok(())
@@ -160,6 +223,20 @@ fn validate_finite(schedule: &RebarSchedule) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn issue_5797_fabrication_nested_measurements_cannot_become_json_null() {
+        let ifc = include_bytes!("../../geometry/tests/fixtures/swept_disk_composite_arc_ubar.ifc");
+        let mut policy = RebarFabricationPolicy::default();
+        policy.min_inside_bend_radius_m = Some(0.01);
+        let mut schedule = build_rebar_schedule_with_fabrication_precheck(
+            ifc, None, &SweptDiskCheckOptions::default(), &policy,
+        ).unwrap();
+        let check = &mut schedule.rows.get_mut(&125).unwrap().sweeps[0]
+            .fabrication_precheck.as_mut().unwrap().checks[0];
+        check.measured = Some(f64::NAN);
+        assert!(validate_finite(&schedule).unwrap_err().contains("fabrication_precheck.checks[0].measured"));
+    }
 
     #[test]
     fn issue_5801_nested_metrics_cannot_be_serialized_as_null() {

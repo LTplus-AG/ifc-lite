@@ -107,9 +107,14 @@ pub use ifc5::{export_ifc5, Ifc5Options};
 // models them as separate entities that are not products.
 pub use relationships::{relationships, Relationships};
 mod rebar_preflight;
+mod rebar_fabrication;
+pub use rebar_fabrication::{RebarFabricationCheck, RebarFabricationCheckStatus,
+    RebarFabricationPolicy, RebarFabricationPolicyError, RebarFabricationReport,
+    RebarScheduleFabricationError};
 pub use rebar_preflight::{RebarPreflightComparison, RebarPreflightError, RebarPreflightLimits,
     RebarPreflightReport, RebarSchedulePreflightError};
-pub use rebar_schedule::{build_rebar_schedule, build_rebar_schedule_with_preflight, AuthoredRebarAttribute, AuthoredRebarValue,
+pub use rebar_schedule::{build_rebar_schedule, build_rebar_schedule_with_preflight,
+    build_rebar_schedule_with_fabrication_precheck, AuthoredRebarAttribute, AuthoredRebarValue,
     RebarSchedule, RebarScheduleRow, RebarSource, RebarSweep};
 pub use json::{export_json, JsonOptions};
 pub use jsonld::{export_jsonld, export_jsonld_with_filter, JsonLdOptions};

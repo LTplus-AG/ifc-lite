@@ -155,7 +155,9 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
       if (bar.rate !== null && bar.rate > 0) {
         cursor.push({ kind: 'rect', x: barX, y: cursor.y + 4, w: (barW * bar.rate) / 100, h: BAR_HEIGHT, color: BAND_COLOR[passRateBand(bar.rate)] });
       }
-      const label = bar.rate === null ? 'n/a' : `${bar.passed ?? 0}/${bar.checked} · ${pct(bar.rate)}`;
+      // Large counts would run past the right margin: keep the percent (the part that matters) and drop the counts.
+      const counts = bar.rate === null ? 'n/a' : `${bar.passed ?? 0}/${bar.checked} · ${pct(bar.rate)}`;
+      const label = bar.rate !== null && cursor.truncate(counts, labelW, 8, false) !== counts ? pct(bar.rate) : counts;
       cursor.push({ kind: 'text', x: x + w - labelW, y: cursor.y + 10, size: 8, bold: false, gray: 60, text: label });
     } else if (detail) {
       cursor.push({ kind: 'text', x: barX, y: cursor.y + 10, size: 8, bold: false, gray: 60, text: cursor.truncate(detail, w - nameW - 6, 8, false) });

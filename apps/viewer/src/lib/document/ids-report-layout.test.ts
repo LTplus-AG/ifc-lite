@@ -137,4 +137,12 @@ describe('IDS report layout edge cases (review of #6494)', () => {
     ids.checks[0].severity = 'warning';
     assert.ok(compose(ids).texts.some((t) => t.text === '(Warning) Walls'));
   });
+
+  it('compact keeps only the percent when the counts would overflow the label column', () => {
+    const ids = block('compact');
+    ids.checks[0] = { ...ids.checks[0], checked: 123456789, passed: 123456788, failed: 1, passRate: 99 };
+    const { texts } = compose(ids);
+    assert.ok(texts.some((t) => t.text === '99%'), 'percent only');
+    assert.ok(!texts.some((t) => t.text.includes('123456788/')), 'no overflowing counts');
+  });
 });

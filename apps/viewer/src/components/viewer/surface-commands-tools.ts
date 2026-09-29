@@ -142,4 +142,12 @@ export const TOOL_SURFACE_COMMANDS = [
       if (useViewerStore.getState().selectedEntity) launchModelCommand('element.split', { drawsOnWorkplane: false });
     },
   },
+  {
+    id: 'tool:split-multi', labelKey: 'commandPalette.tool.splitMulti.label',
+    searchLabel: 'Split by line',
+    keywords: 'split cut knife slice divide line plane multiple walls beams slabs everything storey model author modify',
+    category: 'Tools', icon: Scissors, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.splitMulti',
+    run: () => { launchModelCommand('split.multi'); },
+  },
 ] as const satisfies readonly SurfaceCommandDefinition[];

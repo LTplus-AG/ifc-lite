@@ -46,7 +46,7 @@ describe('Model tool rail (#6232 M2.1)', () => {
     assert.equal(ui.querySelector('[data-model-tool-rail]'), null, 'no rail while viewing');
     act(() => { useViewerStore.getState().enterModelWorkspace(); });
     const ids = [...ui.querySelectorAll('[data-rail-tool]')].map((b) => b.getAttribute('data-rail-tool'));
-    assert.deepEqual(ids, ['select', 'wall.place', 'slab.place', 'column.place', 'beam.place', 'room.place', 'opening.place', 'door.place', 'window.place', 'element.split', 'plan', 'leave']);
+    assert.deepEqual(ids, ['select', 'wall.place', 'slab.place', 'column.place', 'beam.place', 'room.place', 'opening.place', 'door.place', 'window.place', 'element.split', 'split.multi', 'plan', 'leave']);
     assert.equal(tool(ui, 'select')?.getAttribute('aria-pressed'), 'true');
   });
 
@@ -111,6 +111,8 @@ describe('Model tool rail (#6232 M2.1)', () => {
     ['opening.place', 'tool:opening', 'model.opening'],
     ['door.place', 'tool:door', 'model.door'],
     ['window.place', 'tool:window', 'model.window'],
+    // #6232 C5: one cut line through everything.
+    ['split.multi', 'tool:split-multi', 'model.splitMulti'],
   ] as const) {
     it(`${id}: the rail button and the palette row start it on the session storey`, () => {
       const ui = mount();

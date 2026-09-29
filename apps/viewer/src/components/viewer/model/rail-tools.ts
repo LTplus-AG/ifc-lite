@@ -11,7 +11,7 @@
  */
 
 import type { ComponentType } from 'react';
-import { LogOut, MousePointer2, Slice } from 'lucide-react';
+import { LogOut, MousePointer2, Scissors, Slice } from 'lucide-react';
 import { BeamIcon, ColumnIcon, DoorIcon, OpeningIcon, RoomIcon, SlabIcon, WallIcon, WindowIcon } from './model-icons';
 import type { TranslationKey } from '@/i18n';
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
@@ -98,6 +98,12 @@ export const RAIL_TOOLS: readonly RailTool[] = [
     isActive: commandActive('element.split'),
     blockedKey: (s) => (s.selectedEntityId === null ? 'modelWorkspace.blocked.split' : null),
     run: () => { launchModelCommand('element.split', { drawsOnWorkplane: false }); },
+  },
+  {
+    id: 'split.multi', group: 'edit', labelKey: 'multiSplit.tool', Icon: Scissors,
+    shortcut: 'model.splitMulti', drawsOnWorkplane: true,
+    isActive: commandActive('split.multi'),
+    run: () => { launchModelCommand('split.multi'); },
   },
 ];
 

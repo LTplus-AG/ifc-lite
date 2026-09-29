@@ -6,10 +6,10 @@ import type { TranslationValue } from '../types';
 
 export const extrusionInspectionEn = {
   'properties.extrusion.heading': 'Authored extrusion sources',
-  'properties.extrusion.sourceNote': 'Exact IFC profile and extrusion parameters. Lengths are displayed in metres or your selected unit; profiles are source geometry before placement, openings, and other cuts.',
+  'properties.extrusion.sourceNote': 'Exact IFC profile and extrusion parameters. Depth, radius and perimeter use metres or your selected unit; profile coordinates and frame translations stay in metres. Profiles are source geometry before placement, openings, and other cuts.',
   'properties.extrusion.loading': 'Reading selected extrusion sources…',
   'properties.extrusion.solid': 'IfcExtrudedAreaSolid #{id}',
-  'properties.extrusion.status': 'Description',
+  'properties.extrusion.status': 'Status',
   'properties.extrusion.complete': 'Complete',
   'properties.extrusion.unsupported': 'Unsupported',
   'properties.extrusion.missingSource': 'Source definition is unavailable for this occurrence.',

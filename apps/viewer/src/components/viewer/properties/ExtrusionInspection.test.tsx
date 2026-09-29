@@ -50,6 +50,7 @@ it('renders authored millimetre profile dimensions as metres and discloses CSG m
   const text = ui.textContent ?? '';
   assert.match(text, /IfcExtrudedAreaSolid #30/);
   assert.match(text, /IfcArbitraryClosedProfileDef #31/);
+  assert.match(text, /Status: Complete/);
   assert.match(text, /#11 → #12/);
   assert.match(text, /Depth: 2 m/);
   assert.match(text, /authored profile may differ from the visible result/);

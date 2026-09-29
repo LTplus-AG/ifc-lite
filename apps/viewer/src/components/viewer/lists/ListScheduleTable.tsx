@@ -23,6 +23,7 @@ import { ArrowUp, ArrowDown, FileSpreadsheet } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
 import type { ColumnDefinition } from '@ifc-lite/lists';
 import { cn } from '@/lib/utils';
+import type { SelectModifiers } from '@/hooks/useEntityListMultiSelect';
 import {
   formatCellValue, blankRepeatedPathValues,
   type Totals, type ScheduleRow,
@@ -57,11 +58,15 @@ interface ListScheduleTableProps {
   setWidthOverrides: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   onHeaderClick: (colIndex: number) => void;
   virtualizer: Virtualizer<HTMLDivElement, Element>;
+  /** Whether every member of schedule row `index` is selected. */
+  isRowSelected: (index: number) => boolean;
+  /** Select schedule row `index`'s members (Ctrl/Cmd toggles, Shift ranges; #6368). */
+  onRowActivate: (index: number, modifiers: SelectModifiers) => void;
 }
 
 export function ListScheduleTable({
   scheduleRows, groupChips, sumChips, columns, sortCol, sortDir, totals,
-  widthOverrides, setWidthOverrides, onHeaderClick, virtualizer,
+  widthOverrides, setWidthOverrides, onHeaderClick, virtualizer, isRowSelected, onRowActivate,
 }: ListScheduleTableProps) {
   const { t, locale } = useTranslation();
   const countLabel = t('lists.scheduleTable.count');
@@ -162,38 +167,47 @@ export function ListScheduleTable({
           if (!row) return null;
           const displayPath = scheduleDisplayPaths[vRow.index];
           const transform = `translateY(${vRow.start}px)`;
+          const selected = isRowSelected(vRow.index);
+          // A real button (#6368): selects the tuple's members, and Enter /
+          // Space keep their modifiers (a synthesized click may not carry them).
           return (
-            <div
+            <button
               key={vRow.key}
-              className="absolute left-0 top-0 flex w-full border-b border-border/30 hover:bg-muted/40"
+              type="button"
+              aria-pressed={selected}
+              className={cn('absolute left-0 top-0 flex w-full cursor-pointer select-none border-b border-border/30 text-left hover:bg-muted/40', selected && 'bg-primary/10')}
               style={{ transform }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onRowActivate(vRow.index, event); }
+              }}
+              onClick={(event) => onRowActivate(vRow.index, event)}
             >
               {groupChips.map((c, i) => (
-                <div
+                <span
                   key={`group:${c.id}`}
                   className="border-r border-border/20 px-2 py-1 text-xs truncate shrink-0"
                   style={{ width: scheduleColumnWidths[i] }}
                   title={row.path[i]}
                 >
                   {displayPath[i]}
-                </div>
+                </span>
               ))}
-              <div
+              <span
                 className="border-r border-border/20 px-2 py-1 text-xs text-right font-mono tabular-nums shrink-0"
                 style={{ width: scheduleColumnWidths[groupChips.length] }}
               >
                 {formatLocaleCount(row.count, locale)}
-              </div>
+              </span>
               {sumChips.map((s, i) => (
-                <div
+                <span
                   key={`sum:${s.id}`}
                   className="border-r border-border/20 px-2 py-1 text-xs text-right font-mono tabular-nums shrink-0"
                   style={{ width: scheduleColumnWidths[groupChips.length + 1 + i] }}
                 >
                   {formatCellValue(row.sums[s.id])}
-                </div>
+                </span>
               ))}
-            </div>
+            </button>
           );
         })}
       </div>

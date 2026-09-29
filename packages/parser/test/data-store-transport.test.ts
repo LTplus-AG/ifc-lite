@@ -408,3 +408,27 @@ it('worker hydration resolves spatial nodes and live authored space membership (
   expect(hydrated.getPath(5)).toEqual([]);
   expect(hydrated.getContainingSpace(5)).toBeNull();
 });
+
+// #6499: a source-less reconstructed store must retain its pre-extracted fact
+// across a second worker handoff, rather than reverting to a STEP-byte scan.
+describe('pre-extracted georeferencing transport (#6499)', () => {
+  it('preserves rotated CRS metadata and explicit absence through repeated structured-clone handoffs', async () => {
+    const sample = resolve(__dirname, '../../../apps/viewer/public/samples/building-architecture.ifc');
+    const bytes = readFileSync(sample);
+    const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+    const { extractGeoreferencingOnDemand } = await import('../src/on-demand-georeferencing.js');
+    const expected = extractGeoreferencingOnDemand(store);
+    expect(expected?.projectedCRS?.name).toBe('EPSG:32760');
+    store.georeferencing = expected;
+    let payload = structuredClone(toTransport(store).payload);
+    // No resource bytes are required when the immutable fact was transmitted.
+    const empty = contiguousSourceBytes(new Uint8Array());
+    const restored = fromTransport(payload, empty);
+    expect(extractGeoreferencingOnDemand(restored)).toEqual(expected);
+    expect(restored.lengthUnitScale).toBe(0.001);
+    payload = structuredClone(toTransport(restored).payload);
+    expect(extractGeoreferencingOnDemand(fromTransport(payload, empty))).toEqual(expected);
+    restored.georeferencing = null;
+    expect(extractGeoreferencingOnDemand(fromTransport(structuredClone(toTransport(restored).payload), store.source))).toBeNull();
+  });
+});

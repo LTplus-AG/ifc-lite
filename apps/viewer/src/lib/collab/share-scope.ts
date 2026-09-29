@@ -16,6 +16,8 @@
 
 import type { FederatedModel } from '@/store/types';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { createRoomSpatialContext } from './room-spatial-context';
+import type { GeorefMutationDataLike } from '@/lib/geo/effective-georef';
 import { IfcParser } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { prepareAppearanceSerialization } from '@/lib/appearance/serialization';
@@ -71,6 +73,7 @@ export function buildShareSeed(
   models: ReadonlyMap<string, FederatedModel>,
   activeModelId: string | null,
   scope: ShareScope,
+  georefMutations?: ReadonlyMap<string, GeorefMutationDataLike>,
 ): CollabSeedInput {
   const seedModels: CollabSeedModel[] = [];
   for (const m of modelsInShareScope(models, activeModelId, scope)) {
@@ -89,6 +92,7 @@ export function buildShareSeed(
       schemaVersion: m.schemaVersion,
       fileName: m.name,
       sourceFingerprint: m.sourceFingerprint,
+      spatialContext: createRoomSpatialContext(store, m.geometryResult?.coordinateInfo, georefMutations?.get(m.id)),
     });
   }
   return { models: seedModels };
@@ -106,8 +110,9 @@ export async function prepareShareSeed(
   mutationViews: ReadonlyMap<string, MutablePropertyView>,
   activeModelId: string | null,
   scope: ShareScope,
+  georefMutations?: ReadonlyMap<string, GeorefMutationDataLike>,
 ): Promise<CollabSeedInput> {
-  const seed = buildShareSeed(models, activeModelId, scope);
+  const seed = buildShareSeed(models, activeModelId, scope, georefMutations);
   for (const item of seed.models) {
     if (item.isIfcx) continue;
     const view = mutationViews.get(item.modelId);

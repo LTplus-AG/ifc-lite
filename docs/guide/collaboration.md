@@ -147,3 +147,17 @@ configured), so a link's holder can't escalate their own access.
 - **Multi-user across machines:** stand up the [collaboration server](collab-server.md)
   and point the viewer at it. That guide covers signed links, revoke/kick, and
   deployment.
+
+### Georeferencing in shared models
+
+A new shared room preserves each model's `IfcMapConversion`,
+`IfcProjectedCRS`, project length unit, and the coordinate frame used by its
+meshes. A recipient can use **View → Context → World** and inspect the same
+georeferencing values as the owner, including when several models are shared.
+Georeferencing edits made before creating the link are included.
+
+Rooms created before this support remain readable. If a room never stored
+its CRS and coordinate offsets, its owner must create a new share from the
+original model to restore World context. This metadata belongs to the room's
+model slots; exporting the root-only IFCX snapshot does not turn it into a
+complete portable IFC model.

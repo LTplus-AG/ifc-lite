@@ -26,8 +26,9 @@ import { PropertySetCard } from './PropertySetCard';
 import { GeoreferencingPanel } from './GeoreferencingPanel';
 import type { PropertySet } from './encodingUtils';
 import type { FederatedModel } from '@/store/types';
-import { extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import { extractGeoreferencingOnDemand, extractProjectUnits, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
+import { getIfcLengthUnitScale } from '@/lib/geo/effective-georef';
 import { computeModelStats } from './modelMetadataStats';
 import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { useTranslation } from '@/i18n';
@@ -137,7 +138,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
   // Extract length unit scale
   const unitInfo = useMemo(() => {
     if (!dataStore?.source?.length || !dataStore?.entityIndex) return null;
-    const scale = extractLengthUnitScale(dataStore.source, dataStore.entityIndex);
+    const scale = getIfcLengthUnitScale(dataStore);
     let unitName = t('properties.modelMetadata.unit.meters');
     if (Math.abs(scale - 0.001) < 0.0001) unitName = t('properties.modelMetadata.unit.millimeters');
     else if (Math.abs(scale - 0.01) < 0.001) unitName = t('properties.modelMetadata.unit.centimeters');

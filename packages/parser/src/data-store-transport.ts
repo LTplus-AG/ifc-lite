@@ -45,7 +45,6 @@ import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 import type { IfcDataStore, EntityByIdIndex } from './columnar-parser.js';
 import { attachDataStoreAccessors } from './data-store-accessors.js';
 import type { GeoreferenceInfo } from './georef-extractor.js';
-import { oncePerStore } from './on-demand-cache.js';
 
 export type { CompactEntityIndexColumns };
 
@@ -360,6 +359,7 @@ export function toTransport(
     entityCount: store.entityCount,
     parseTime: store.parseTime,
     lengthUnitScale: store.lengthUnitScale,
+    georeferencing: store.georeferencing,
 
     entityIndex: indexOverride ?? {
       byId: compactEntityIndexToColumns(compactById),
@@ -447,6 +447,7 @@ export function fromTransport(
     entityCount: payload.entityCount,
     parseTime: payload.parseTime,
     lengthUnitScale: payload.lengthUnitScale,
+    georeferencing: payload.georeferencing,
 
     source: asSourceBytes(source),
     entityIndex,
@@ -468,9 +469,6 @@ export function fromTransport(
       : undefined,
     onDemandDocumentMap: new Map(payload.onDemandDocumentMap.map(([k, v]) => [k, [...v]])),
   });
-  if (payload.georeferencing !== undefined) {
-    oncePerStore(store, 'georef', () => payload.georeferencing);
-  }
   return store;
 }
 

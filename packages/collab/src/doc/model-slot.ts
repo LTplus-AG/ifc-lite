@@ -67,6 +67,8 @@ export interface ModelSlotRecord {
   stepSourceBlobHash?: string;
   /** Encoding of `stepSourceBlobHash`; absent records are plain STEP. */
   stepSourceFormat?: 'step' | 'ifczip';
+  /** Optional immutable spatial metadata; interpreted by the model consumer. */
+  spatialContext?: Record<string, unknown>;
 }
 
 export interface ModelSlot extends ModelSlotRef, ModelSlotRecord {
@@ -141,6 +143,7 @@ export function createModelSlot(doc: Y.Doc, slotId: string, record: ModelSlotRec
   if (record.sourceFingerprint !== undefined) stored.sourceFingerprint = record.sourceFingerprint;
   if (record.stepSourceBlobHash !== undefined) stored.stepSourceBlobHash = record.stepSourceBlobHash;
   if (record.stepSourceFormat !== undefined) stored.stepSourceFormat = record.stepSourceFormat;
+  if (record.spatialContext !== undefined) stored.spatialContext = record.spatialContext;
   models.set(slotId, stored);
   return { ...ref, ...stored, legacy: false };
 }
@@ -187,6 +190,9 @@ function readRecord(raw: unknown): ModelSlotRecord | null {
   }
   if (r.stepSourceFormat === 'step' || r.stepSourceFormat === 'ifczip') {
     record.stepSourceFormat = r.stepSourceFormat;
+  }
+  if (r.spatialContext && typeof r.spatialContext === 'object' && !Array.isArray(r.spatialContext)) {
+    record.spatialContext = r.spatialContext as Record<string, unknown>;
   }
   return record;
 }

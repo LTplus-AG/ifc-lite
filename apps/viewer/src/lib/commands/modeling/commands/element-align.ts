@@ -21,12 +21,11 @@
 
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import type { SnapProfile } from '@/lib/snap/types';
-import { expandAffectedSet } from '@/lib/remesh/affected-set';
+import { commitElementTransform } from '@/lib/element-transform/commit';
 import { AlignBar } from '@/components/viewer/tools/command/AlignBar';
 import { AlignPlan, AlignScene } from '@/components/viewer/tools/command/AlignLayers';
 import { pickBox, shiftBox, storeyBoxes, type PlanBox } from '../align-boxes.js';
 import { alignMoves, type AlignGesture } from '../align-gesture.js';
-import { parentFrameShift } from '../element-shift.js';
 import { commandGhostId } from '../ghost.js';
 import { prismGhostMesh, rectOutline } from '../ghost-shapes.js';
 import type { CommandContext, ModelingCommand } from '../types.js';
@@ -90,17 +89,13 @@ export const ELEMENT_ALIGN: ModelingCommand<AlignGesture> = {
     const plane = tx.workplane;
     const moves = alignMoves(g);
     if (!plane || g.reference === null || moves.length === 0) throw new Error('Nothing to align');
-    const s = tx.store;
-    const dataStore = s.models.get(tx.modelId)?.ifcDataStore;
-    const view = s.mutationViews.get(tx.modelId) ?? null;
+    // Each target moves by its own shift: C2's move, one target at a time, in the session plane.
+    const origin = plane.localToRender([0, 0, 0]);
     const remesh = new Set<number>();
     for (const { id, shift } of moves) {
-      const delta = parentFrameShift(s, tx.modelId, id, plane, shift);
-      if (!delta) throw new Error(`#${id} can't be moved: it has no readable placement`);
-      const result = tx.store.translateEntity(tx.modelId, id, delta, tx.batchId);
-      if (!result.ok) throw new Error(result.reason);
-      // What an element hosts is placed relative to it: it follows, and re-meshes with it.
-      for (const affected of dataStore ? expandAffectedSet(dataStore, view, [id], 'hostsChanged') : [id]) remesh.add(affected);
+      const moved = commitElementTransform(tx, tx.modelId, [id], { kind: 'move', from: origin, to: plane.localToRender([shift[0], shift[1], 0]) });
+      // What an element hosts moves and re-meshes with it (the transform's plan carries it).
+      for (const affected of moved.remesh) remesh.add(affected);
     }
     return { created: [], deleted: [], remesh: [...remesh], select: [g.reference, ...moves.map((m) => m.id)] };
   },

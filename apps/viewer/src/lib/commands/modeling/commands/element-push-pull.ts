@@ -25,7 +25,8 @@
 import { PushPullBar } from '@/components/viewer/tools/command/PushPullBar';
 import { PushPullScene } from '@/components/viewer/tools/command/PushPullHandles';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
-import { setElementSize } from '@/store/slices/mutation-element-size';
+import { useViewerStore } from '@/store';
+import { commitElementSize } from '@/lib/element-size-commit';
 import { faceOf, sizeOf, type PushPullGesture } from '@/lib/push-pull/push-pull-gesture';
 import { readPushPullTarget } from '@/lib/push-pull/push-pull-target';
 import { PUSH_PULL_COMMAND_ID } from '@/lib/push-pull/push-pull-drag';
@@ -78,7 +79,7 @@ export const ELEMENT_PUSH_PULL: ModelingCommand<PushPullGesture> = {
     const size = sizeOf(g);
     if (!g.target || !face || size === null) throw new Error('No face to push or pull');
     const { modelId, expressId } = g.target;
-    const outcome = setElementSize(() => tx.store, modelId, expressId, face.patch(size));
+    const outcome = commitElementSize(useViewerStore, modelId, expressId, face.patch(size));
     if (!outcome.ok) throw new Error(outcome.reason);
     return { modelId, created: [], deleted: [], remesh: outcome.remesh, select: [expressId] };
   },

@@ -23,7 +23,8 @@ import { AUTHORED_KINDS, occurrencesOf } from '@/lib/commands/modeling/authored-
 import type { AuthoringTransaction, ModelingCommand } from '@/lib/commands/modeling/types';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import { detachFromType, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
-import { setElementSize, type ElementSizePatch } from '@/store/slices/mutation-element-size';
+import { commitElementSize } from '@/lib/element-size-commit';
+import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
 import { setWallSection, type WallSection } from '@/store/slices/mutation-wall-section';
 import { moveHostedFillIn, type HostedFillPosition } from '@/store/slices/mutation-hosted-fill';
 
@@ -90,7 +91,7 @@ export function createElementType(modelId: string, kind: AuthoredElementKind, na
  */
 export function setElementDimensions(modelId: string, expressId: number, patch: ElementSizePatch): boolean {
   return runInspectorEdit(modelId, (tx) => {
-    const outcome = setElementSize(() => tx.store, tx.modelId, expressId, patch);
+    const outcome = commitElementSize(useViewerStore, tx.modelId, expressId, patch);
     if (!outcome.ok) throw new Error(outcome.reason);
     return outcome.remesh;
   });

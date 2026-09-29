@@ -73,6 +73,7 @@ describe('slab-edit', () => {
     assert.strictEqual(chain.elementType, 'IfcSlab');
     assert.strictEqual(chain.thickness, 0.3);
     assert.strictEqual(chain.profileKind, 'rectangle');
+    assert.strictEqual(chain.extrusionUp, true, 'the depth grows upward from the profile plane (#6232 C4)');
     // Profile centered at (2, 1.5) with XDim=4, YDim=3 means it
     // spans [0..4] x [0..3] in profile-local. Plus placement origin
     // (1, 2) gives [1..5] x [2..5] in storey-local.

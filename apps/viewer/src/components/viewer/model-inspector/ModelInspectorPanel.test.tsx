@@ -18,7 +18,8 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { blur, cleanup, render, type } from '@/test/render.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
-import { entityName } from '@/lib/commands/modeling/authored-kinds';
+import { applyMaterialLayers } from './inspector-edits.js';
+import { entityName, layerSetOf } from '@/lib/commands/modeling/authored-kinds';
 import { ModelInspectorPanel } from './ModelInspectorPanel.js';
 
 const s = () => useViewerStore.getState();
@@ -114,6 +115,20 @@ describe('ModelInspectorPanel dimensions of slabs, columns and beams (#6232 C4)'
     assert.equal(input(root, 'Thickness in metres').value, '0.35');
     act(() => s().undo(MODEL_ID));
     assert.equal(input(root, 'Thickness in metres').value, '0.20', 'one undo');
+  });
+
+  it('a slab with layers keeps them consistent when its thickness is typed (#6232 C4)', () => {
+    const slab = made(s().addSlab(MODEL_ID, STOREY, { Position: [0, 0, 0], Width: 4, Depth: 3, Thickness: 0.2 }));
+    assert.notEqual(applyMaterialLayers(MODEL_ID, { kind: 'slab', target: 'element', elementId: slab, typeId: null, layers: [{ thickness: 0.1, material: { name: 'Screed' } }, { thickness: 0.1, material: { name: 'Concrete' } }] }), null);
+    select(slab);
+    const root = render(<ModelInspectorPanel />);
+    const depth = undoDepth();
+    commitField(root, 'Thickness in metres', '0.35');
+    assert.equal(undoDepth() - depth >= 1, true);
+    const live = { dataStore: s().models.get(MODEL_ID)!.ifcDataStore!, view: s().mutationViews.get(MODEL_ID) };
+    assert.deepEqual(layerSetOf(live, slab)!.layers.map((l) => +l.thickness.toFixed(6)), [0.1, 0.25], 'the last layer took the change: 0.10 + 0.25 = 0.35');
+    const tags = new Set(s().undoStacks.get(MODEL_ID)!.slice(depth).map((m) => s().mutationBatchTags.get(m.id)));
+    assert.equal(tags.size, 1, 'size and layers are one undo step');
   });
 
   it('a column edits Width, Depth and Height; a beam Length, Width and Height, each one undo step', () => {

@@ -35,7 +35,7 @@ const WASM_AVAILABLE = existsSync(WASM_PATH);
 
 type Vec3 = [number, number, number];
 interface Box { min: Vec3; max: Vec3 }
-interface Meshed { ifcType: string; box: Box; volume: number; triangles: number }
+interface Meshed { ifcType: string; box: Box; volume: number }
 
 /** Mesh a file; per expressId: IFC type, bounding box in IFC axes (Z up), volume. */
 function mesh(api: IfcAPI, content: string): Map<number, Meshed> {
@@ -56,7 +56,6 @@ function mesh(api: IfcAPI, content: string): Map<number, Meshed> {
           ifcType: m.ifcType,
           box: { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] } as Box,
           volume: 0,
-          triangles: 0,
         };
         // Meshes are WebGL Y-up, relative to a per-mesh origin:
         // IFC (x, y, z) -> (x, z, -y).
@@ -71,7 +70,6 @@ function mesh(api: IfcAPI, content: string): Map<number, Meshed> {
         }
         // Enclosed volume by the divergence theorem (closed, outward-wound mesh).
         const t = m.indices;
-        entry.triangles += t.length / 3;
         for (let k = 0; k < t.length; k += 3) {
           const [a, b, c] = [t[k] * 3, t[k + 1] * 3, t[k + 2] * 3];
           entry.volume += (
@@ -247,8 +245,26 @@ describe.skipIf(!WASM_AVAILABLE)('in-store curtain wall and grid round trip (#62
     expect(record(out, column.columnId)).toContain(`,#${place.placementId},`);
 
     const meshed = mesh(api, out);
-    // The grid is lines, not a body.
-    expect(meshed.get(grid.gridId)?.triangles ?? 0).toBe(0);
+    // The grid is lines, not a body: no mesh, but the viewer's grid-axis
+    // extraction resolves all five tagged axes through the grid's placement.
+    expect(meshed.has(grid.gridId)).toBe(false);
+    const axes = api.parseGridAxes(out);
+    try {
+      const byTag = new Map<string, { gridId: number; start: number[]; end: number[] }>();
+      for (let i = 0; i < axes.length; i++) {
+        const axis = axes.getAxis(i)!;
+        byTag.set(axis.tag, { gridId: axis.gridId, start: Array.from(axis.start), end: Array.from(axis.end) });
+        axis.free();
+      }
+      expect([...byTag.keys()].sort()).toEqual(['1', '2', 'A', 'B', 'C']);
+      // Axis 2 runs grid (6, -1) -> (6, 9), i.e. storey (3, 9) -> (-7, 9); renderer Y-up is (x, z, -y).
+      const two = byTag.get('2')!;
+      expect(two.gridId).toBe(grid.gridId);
+      two.start.forEach((v, k) => expect(v).toBeCloseTo([3, 0, -9][k], 4));
+      two.end.forEach((v, k) => expect(v).toBeCloseTo([-7, 0, -9][k], 4));
+    } finally {
+      axes.free();
+    }
     // Grid (6, 8) -> storey (2 - 8, 3 + 6) = (-6, 9); the section's X (0.4) turns onto storey Y.
     const col = meshed.get(column.columnId)!;
     expect(col.ifcType).toBe('IfcColumn');

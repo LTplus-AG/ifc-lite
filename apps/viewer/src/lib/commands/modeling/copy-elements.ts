@@ -12,7 +12,7 @@
  * publishes it.
  */
 
-import { copyProductInStore, copyRefusal, createCopyContext, type CopyContext, type CopyTransform } from '@ifc-lite/create';
+import { copyProductInStore, copyRefusal, createCopyContext, productStoreyOrigin, type CopyContext, type CopyTransform } from '@ifc-lite/create';
 import type { ViewerState } from '@/store';
 import { modelEditTarget, recordModellingEdit, type ModellingStore } from '@/store/slices/mutation-modelling-records';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy';
@@ -55,10 +55,24 @@ export function copySources(state: ViewerState, modelId: string, ids: readonly n
   };
     const kept = ids.filter((id) => !carried(id));
   for (const id of kept) {
-    const refusal = copyRefusal(ctx, id);
+    const refusal = copyRefusal(ctx, id) ?? placementRefusal(ctx, id);
     if (refusal) return { refusal };
   }
   return kept.length > 0 ? { ids: kept } : { refusal: 'Nothing to copy' };
+}
+
+/**
+ * Why `id`'s placement cannot be copied (it does not read, or its chain is not
+ * tied to its storey), or null. The commit refuses the same elements, so the
+ * previews (array, paste) and Ctrl+C turn it into a message up front, never a
+ * ghost the commit would then decline and never an exception.
+ */
+function placementRefusal(ctx: CopyContext, id: number): string | null {
+  try {
+    return productStoreyOrigin(ctx, id) ? null : `#${id} has no placement to copy from`;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
 }
 
 /** `ids`, the doors and windows in their openings and their assemblies' parts, at any depth: what a preview of their copies shows. */

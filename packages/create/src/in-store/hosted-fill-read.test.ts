@@ -13,7 +13,7 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { resolveHostAnchor } from './resolve-host.js';
+import { placedBodyExtent, resolveHostAnchor } from './resolve-host.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { addOpeningToStore } from './opening.js';
 import { addHostedWindowToStore } from './hosted-fill.js';
@@ -81,5 +81,22 @@ describe('readHostedFill', () => {
     const opening = addOpeningToStore(editor, resolveHostAnchor(store, WALL, view), { Offset: 2, Width: 1, Height: 1 });
     editor.removeEntity(opening.openingId);
     expect(readHostedFill(store, opening.openingId, view)).toBeNull();
+  });
+});
+
+describe('placedBodyExtent', () => {
+  it("measures an opening's cut in its host's frame, through the opening's turned placement", async () => {
+    const { store, view, editor } = await session();
+    const opening = addOpeningToStore(editor, resolveHostAnchor(store, WALL, view), { Offset: 4, Sill: 0.9, Width: 1.2, Height: 1.5 });
+    const extent = placedBodyExtent(store, opening.openingId, view)!;
+    const r = (v: number[]) => v.map((x) => +x.toFixed(9));
+    // Along the wall and up it: exactly the Width x Height it was cut with.
+    expect([r(extent.min)[0], r(extent.max)[0]]).toEqual([3.4, 4.6]);
+    expect([r(extent.min)[2], r(extent.max)[2]]).toEqual([0.9, 2.4]);
+  });
+
+  it('is null for an entity with no body', async () => {
+    const { store, view } = await session();
+    expect(placedBodyExtent(store, STOREY, view)).toBeNull();
   });
 });

@@ -61,6 +61,36 @@ export function resolveHostAnchor(
   return { ...anchor, hostId: hostExpressId, hostKind, hostPlacementId, hostBounds };
 }
 
+/**
+ * The extent of `productId`'s Body geometry in its PARENT placement's frame
+ * (native units): the body bounds taken through the product's own
+ * RelativePlacement. For an opening placed relative to its host, that is the
+ * cut's extent in the host's frame, whatever profile or orientation the
+ * authoring tool gave it. Null when the product has no readable body.
+ */
+export function placedBodyExtent(
+  store: IfcDataStore,
+  productId: number,
+  view?: MutablePropertyView | null,
+): HostBounds | null {
+  const reader = new AnchorEntityReader(store, view);
+  const product = reader.entity(productId);
+  if (!product) return null;
+  const shapeId = refId(named(product, 'Representation', 6));
+  const local = shapeId === null ? null : bodyBounds(reader, shapeId);
+  const placementId = refId(named(product, 'ObjectPlacement', 5));
+  const placement = placementId === null ? null : reader.entity(placementId);
+  if (!local || !placement) return null;
+  const frame = axis3d(reader, placement.attributes[1]);
+  const min: Vec3 = [Infinity, Infinity, Infinity];
+  const max: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (const x of [local.min[0], local.max[0]]) for (const y of [local.min[1], local.max[1]]) for (const z of [local.min[2], local.max[2]]) {
+    const p = applyFrame(frame, [x, y, z]);
+    for (let i = 0; i < 3; i++) { min[i] = Math.min(min[i], p[i]); max[i] = Math.max(max[i], p[i]); }
+  }
+  return { min, max };
+}
+
 function named(record: { names: string[]; attributes: unknown[] }, name: string, fallback: number): unknown {
   const index = record.names.indexOf(name);
   return record.attributes[index >= 0 ? index : fallback];

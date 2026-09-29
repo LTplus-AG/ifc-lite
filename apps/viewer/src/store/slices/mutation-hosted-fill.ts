@@ -22,6 +22,7 @@
  */
 
 import {
+  placedBodyExtent,
   readHostedFill,
   resolveHostAnchor,
   toNativeLength,
@@ -29,7 +30,7 @@ import {
   type HostedWindowInStoreParams,
   type OpeningInStoreParams,
 } from '@ifc-lite/create';
-import type { IfcAttributeValue, MutablePropertyView } from '@ifc-lite/mutations';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ViewerState } from '../index.js';
 import { mutationDenial } from '../mutation-permission.js';
@@ -143,71 +144,35 @@ export function moveHostedFillIn(get: () => ViewerState, modelId: string, expres
     position.sill === undefined ? z : toNativeLength(unit, position.sill),
   ];
   // The same fit rule the placing commands apply before a commit.
-  if (!fitsHost(target.dataStore, target.view, read.hostId, read.openingId, next)) {
-    return { ok: false, reason: "It doesn't fit in this wall: change its offset or sill" };
-  }
+  const misfit = hostMisfit(target.dataStore, target.view, read.hostId, read.openingId, read.location, next);
+  if (misfit) return { ok: false, reason: misfit };
   if (next[0] !== x || next[2] !== z) get().setPositionalAttributesBatch(modelId, [{ entityId: read.locationPointId, index: 0, value: next }]);
   return { ok: true, remesh: [read.openingId, ...(read.fillingId === null ? [] : [read.fillingId]), read.hostId] };
 }
 
-/** Tolerance on the fit check (native units are at most millimetres): a value exactly at the wall's edge fits. */
+/** Tolerance on the fit check: a value exactly at the wall's edge fits. */
 const FIT_EPS = 1e-6;
 
-/** A live record's attributes with the overlay's positional edits applied. */
-function liveAttributes(dataStore: IfcDataStore, view: MutablePropertyView, id: number): IfcAttributeValue[] | null {
-  if (view.isDeleted(id)) return null;
-  const entity = view.getNewEntity(id) ?? dataStore.getEntity(id);
-  if (!entity) return null;
-  const attrs = [...entity.attributes] as IfcAttributeValue[];
-  for (const [index, value] of view.getPositionalMutationsForEntity(id) ?? []) attrs[index] = value;
-  return attrs;
-}
-
-function ref(value: IfcAttributeValue | undefined): number | null {
-  if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
-  const match = typeof value === 'string' ? /^#(\d+)$/.exec(value) : null;
-  return match ? Number(match[1]) : null;
-}
-
 /**
- * The opening's Width x Height, native units, when its body is the shape
- * `addOpeningToStore` writes: an extruded IfcRectangleProfileDef centred on
- * the Location in x and standing on it in y. Null for any other shape.
+ * Why the opening, moved so its Location is `location` (native units, the
+ * host's frame), stays inside the host's body along the wall and up it. The
+ * opening's own body is measured in the host's frame (`placedBodyExtent`), so
+ * an opening of any profile or orientation, authored here or by another tool,
+ * is held to its real extent. An opening or host whose body cannot be read is
+ * refused rather than moved unchecked. Null when it fits.
  */
-function authoredOpeningSize(dataStore: IfcDataStore, view: MutablePropertyView, openingId: number): [number, number] | null {
-  const follow = (id: number | null, index: number, list = false): number | null => {
-    const attrs = id === null ? null : liveAttributes(dataStore, view, id);
-    const value = attrs?.[index];
-    return ref(list ? (Array.isArray(value) ? value[0] as IfcAttributeValue : undefined) : value);
-  };
-  const shape = follow(openingId, 6);
-  const rep = follow(shape, 2, true);
-  const solid = follow(rep, 3, true);
-  const profileId = follow(solid, 0);
-  const profile = profileId === null ? null : liveAttributes(dataStore, view, profileId);
-  const origin = liveAttributes(dataStore, view, follow(follow(profileId, 2), 0) ?? 0)?.[0];
-  const [w, h] = [profile?.[3], profile?.[4]];
-  if (typeof w !== 'number' || typeof h !== 'number' || !Array.isArray(origin)) return null;
-  const [ox, oy] = origin as number[];
-  return Math.abs(ox) < FIT_EPS && Math.abs(oy - h / 2) < FIT_EPS * Math.max(1, h) ? [w, h] : null;
-}
-
-/**
- * Whether an opening with its Location at `location` (native units, the host's
- * frame) stays inside the host's body: along the wall and up it. An opening of
- * another shape is held to its Location alone.
- */
-function fitsHost(dataStore: IfcDataStore, view: MutablePropertyView, hostId: number, openingId: number, location: readonly number[]): boolean {
-  let bounds;
+function hostMisfit(dataStore: IfcDataStore, view: MutablePropertyView, hostId: number, openingId: number, from: readonly number[], location: readonly number[]): string | null {
+  let host;
   try {
-    bounds = resolveHostAnchor(dataStore, hostId, view).hostBounds;
+    host = resolveHostAnchor(dataStore, hostId, view).hostBounds;
   } catch (error) {
     console.warn(`[modeling] host #${hostId} of opening #${openingId} is unreadable; its move is refused`, error);
-    return false;
+    return `The host #${hostId} can't be read, so the move is refused`;
   }
-  if (!bounds) return true;
-  const [w, h] = authoredOpeningSize(dataStore, view, openingId) ?? [0, 0];
-  const [x, , z] = location;
-  return x - w / 2 >= bounds.min[0] - FIT_EPS && x + w / 2 <= bounds.max[0] + FIT_EPS
-    && z >= bounds.min[2] - FIT_EPS && z + h <= bounds.max[2] + FIT_EPS;
+  const cut = placedBodyExtent(dataStore, openingId, view);
+  if (!host || !cut) return `The size of opening #${openingId} or its host #${hostId} can't be read, so the move is refused`;
+  const dx = location[0] - from[0], dz = location[2] - from[2];
+  const fits = cut.min[0] + dx >= host.min[0] - FIT_EPS && cut.max[0] + dx <= host.max[0] + FIT_EPS
+    && cut.min[2] + dz >= host.min[2] - FIT_EPS && cut.max[2] + dz <= host.max[2] + FIT_EPS;
+  return fits ? null : "It doesn't fit in this wall: change its offset or sill";
 }

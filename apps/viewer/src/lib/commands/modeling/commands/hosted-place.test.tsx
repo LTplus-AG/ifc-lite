@@ -28,6 +28,7 @@ import { commandPointerDown, commandPointerMove, getCommandRuntime, writeCommand
 import { setRequestRemesh, type RemeshRequest } from '../transaction.js';
 import type { CommandContext } from '../types.js';
 import { OPENING_PLACE, WINDOW_PLACE, type HostedPlaceGesture } from './hosted-place.js';
+import { readHost } from './hosted-host.js';
 import { typeOf } from '../authored-kinds.js';
 import { createElementType } from '@/components/viewer/model-inspector/inspector-edits';
 
@@ -230,5 +231,19 @@ describe('the host keeps its fill (#6232 A1)', () => {
     const read = readHostedFill(live().dataStore, window, live().view)!;
     assert.deepEqual([read.hostId, round(read.offset)], [wall, 3]);
     assert.equal(created('IFCRELVOIDSELEMENT').length, 1);
+  });
+});
+
+// Review of #6476: the host reads were cached by model id and edit count only, so a new model under the same id read the old one's walls.
+describe('host reads follow the loaded model (#6232 A1)', () => {
+  it('a model reloaded under the same id, at the same edit count, reads its own wall', async () => {
+    const version = useViewerStore.getState().mutationVersion;
+    assert.deepEqual(readHost(useViewerStore.getState(), MODEL_ID, wall)?.origin.map(round), [0, 0, 0]);
+    await seedModelingSession();
+    const added = useViewerStore.getState().addWall(MODEL_ID, STOREY, { Start: [0, 2, 0], End: [6, 2, 0], Thickness: 0.2, Height: 3 });
+    assert.ok('expressId' in added);
+    assert.equal(added.expressId, wall, 'the same express id');
+    assert.equal(useViewerStore.getState().mutationVersion, version, 'at the same edit count');
+    assert.deepEqual(readHost(useViewerStore.getState(), MODEL_ID, wall)?.origin.map(round), [0, 2, 0]);
   });
 });

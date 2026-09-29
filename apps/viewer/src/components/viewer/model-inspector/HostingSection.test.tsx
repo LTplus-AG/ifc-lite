@@ -125,6 +125,29 @@ describe('Hosting section (#6232 A1)', () => {
     assert.deepEqual(hosted(window), { host: wall, offset: 5.4, sill: 0.9 }, 'flush with the wall end still fits');
   });
 
+  // Review of #6476: an opening of another shape than the builder's (a file's, another tool's) was held to its Location alone.
+  it('holds an opening of any profile to its real extent, not just its Location', () => {
+    const view = s().mutationViews.get(MODEL_ID)!;
+    const read = readHostedFill(s().models.get(MODEL_ID)!.ifcDataStore!, window, view)!;
+    // Shift the cut's profile 0.3 m along the wall off its Location, as a file opening may be drawn.
+    const deref = (v: unknown) => Number(String(v).slice(1));
+    const at = (id: number) => view.getNewEntity(id)!.attributes;
+    const shape = deref(at(read.openingId)[6]);
+    const solid = deref((at(deref((at(shape)[2] as unknown[])[0]))[3] as unknown[])[0]);
+    const profile = deref(at(solid)[0]);
+    const origin = deref(at(deref(at(profile)[2]))[0]);
+    s().setPositionalAttributesBatch(MODEL_ID, [{ entityId: origin, index: 0, value: [0.3, 0.75] }]);
+    const root = render(<ModelInspectorPanel />);
+    const offset = input(root, 'Offset');
+    type(offset, '5.3');
+    blur(offset);
+    assert.deepEqual(hosted(window), { host: wall, offset: 2, sill: 0.9 }, 'its cut would end at 5.3 + 0.3 + 0.6 = 6.2 m, past the 6 m wall');
+    const fits = input(root, 'Offset');
+    type(fits, '5.1');
+    blur(fits);
+    assert.deepEqual(hosted(window), { host: wall, offset: 5.1, sill: 0.9 }, 'ending at 6.0 m it fits');
+  });
+
   it('D2: in an IFC2X3 model a window offers no type (IFC2X3 has no IfcWindowType)', () => {
     const dataStore = s().models.get(MODEL_ID)!.ifcDataStore!;
     const schema = dataStore.schemaVersion;

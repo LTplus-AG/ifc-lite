@@ -14,10 +14,11 @@
  *
  * A host is read in its own frame, like the builders write it: `x` runs along
  * the wall from its placement origin, `y` across it, `z` up. Reads are cached
- * per host and edit (`mutationVersion`), not per pointer move.
+ * per loaded model, host and edit (`mutationVersion`), not per pointer move.
  */
 
 import { hostPlanFrame, resolveHostAnchor } from '@ifc-lite/create';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import type { SnapResult, Vec2 } from '@/lib/snap/types';
 import { storeyWallAxes } from '@/lib/snap/sources/semantic-walls';
 import type { WallAxis } from '@/lib/snap/sources/semantic';
@@ -40,26 +41,42 @@ export interface HostHit {
 /** How far off a wall's axis a cursor may be and still pick it, beyond half its thickness. */
 const REACH = 0.05;
 
-let axesCache: { key: string; axes: readonly WallAxis[] } | null = null;
-const hostCache = new Map<string, HostHit | null>();
+/**
+ * Per loaded model: its parsed store is the cache key, so a model that is
+ * unloaded or replaced (even under the same id, at the same
+ * `mutationVersion`) never reads another's walls; entries die with the store.
+ */
+interface ModelCache { axes: { key: string; axes: readonly WallAxis[] } | null; hosts: Map<string, HostHit | null> }
+const caches = new WeakMap<IfcDataStore, ModelCache>();
+
+function cacheFor(store: IfcDataStore): ModelCache {
+  let cache = caches.get(store);
+  if (!cache) caches.set(store, cache = { axes: null, hosts: new Map() });
+  return cache;
+}
 
 function storeyAxes(s: ViewerState, modelId: string, storeyId: number): readonly WallAxis[] {
-  const key = `${modelId}:${storeyId}:${s.mutationVersion}`;
-  if (axesCache?.key === key) return axesCache.axes;
   const store = s.models.get(modelId)?.ifcDataStore;
   const view = s.mutationViews.get(modelId);
-  const axes = store && view ? storeyWallAxes(store, view, storeyId) : [];
-  axesCache = { key, axes };
+  if (!store || !view) return [];
+  const cache = cacheFor(store);
+  const key = `${storeyId}:${s.mutationVersion}`;
+  if (cache.axes?.key === key) return cache.axes.axes;
+  const axes = storeyWallAxes(store, view, storeyId);
+  cache.axes = { key, axes };
   return axes;
 }
 
 /** The wall `expressId` as a host, or null when it cannot take one (no placement or readable body). */
 export function readHost(s: ViewerState, modelId: string, expressId: number): HostHit | null {
-  const key = `${modelId}:${expressId}:${s.mutationVersion}`;
-  if (hostCache.has(key)) return hostCache.get(key)!;
-  if (hostCache.size > 64) hostCache.clear();
+  const store = s.models.get(modelId)?.ifcDataStore;
+  if (!store) return null;
+  const hosts = cacheFor(store).hosts;
+  const key = `${expressId}:${s.mutationVersion}`;
+  if (hosts.has(key)) return hosts.get(key)!;
+  if (hosts.size > 64) hosts.clear();
   const host = readHostUncached(s, modelId, expressId);
-  hostCache.set(key, host);
+  hosts.set(key, host);
   return host;
 }
 

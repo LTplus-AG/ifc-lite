@@ -47,7 +47,7 @@ export interface TableLayoutBlock {
 }
 
 /** A line of text on the page; `compose.ts` draws the same shape for every block. */
-export interface TextDrawnItem { kind: 'text'; x: number; y: number; size: number; bold: boolean; gray: number; text: string; font?: TextFont }
+export interface TextDrawnItem { kind: 'text'; x: number; y: number; size: number; bold: boolean; gray: number; text: string; font?: TextFont; color?: string }
 
 export type TableDrawnItem =
   | TextDrawnItem

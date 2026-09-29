@@ -4,10 +4,12 @@
 
 import { GizmoOverlay } from './GizmoOverlay';
 import { WallEndpointOverlay } from './WallEndpointOverlay';
+import { TransformHandles } from './TransformHandles';
 
 /**
  * The Select tool's scene layer (`TOOL_HUD.select.Scene`): the move gizmo
- * plus wall-endpoint handles while edit mode is on. Both overlays self-gate
+ * (outside the Model workspace; the Move / Rotate handles inside it, #6232
+ * C2) plus wall-endpoint handles while edit mode is on. Both overlays self-gate
  * (return null when their conditions aren't met), so always rendering them
  * here is safe. Wall handles render on top of the gizmo so a wall selection
  * gets both axis arrows for translate AND endpoint drag handles for resize;
@@ -17,6 +19,7 @@ export function SelectEditScene() {
   return (
     <>
       <GizmoOverlay />
+      <TransformHandles />
       <WallEndpointOverlay />
     </>
   );

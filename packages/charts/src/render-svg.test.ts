@@ -42,13 +42,14 @@ describe('buildEChartsOption', () => {
     const plain = (buildEChartsOption({ aggregation: agg }).series as Array<{ data: Array<{ itemStyle: { opacity?: number } }> }>)[0].data;
     expect(plain.map((d) => d.itemStyle.opacity)).toEqual([undefined, undefined]);
     expect((option.xAxis as { data: string[] }).data).toEqual(['IfcWall', 'IfcDoor']);
-    // Labels share the width and truncate rather than being dropped; they only tilt past eight buckets.
-    const axisLabel = (buildEChartsOption({ aggregation: agg, width: 400 }).xAxis as { axisLabel: { width: number; overflow: string; rotate: number } }).axisLabel;
-    expect(axisLabel).toMatchObject({ width: 194, overflow: 'truncate', rotate: 0 });
-    // Past eight buckets the labels tilt and may run past their (now narrow) share.
+    // Short labels that fit their share stay upright and untouched.
+    const axisLabel = (buildEChartsOption({ aggregation: agg, width: 400 }).xAxis as { axisLabel: { rotate: number; formatter: (n: string) => string } }).axisLabel;
+    expect(axisLabel.rotate).toBe(0);
+    expect(agg.categories.map((c) => axisLabel.formatter(c.label))).toEqual(['IfcWall', 'IfcDoor']);
+    // Past eight buckets the labels tilt, as before, even when short.
     const twelve: ChartDataset = { ...ds, rows: Array.from({ length: 12 }, (_, i) => ({ ids: [100 + i], values: [`Type ${i}`, 'L1'] })) };
-    const tilted = (buildEChartsOption({ aggregation: aggregate(bar, twelve), width: 300 }).xAxis as { axisLabel: { width: number; rotate: number } }).axisLabel;
-    expect(tilted).toMatchObject({ width: 60, rotate: 30 });
+    const tilted = (buildEChartsOption({ aggregation: aggregate(bar, twelve), width: 600 }).xAxis as { axisLabel: { rotate: number } }).axisLabel;
+    expect(tilted.rotate).toBe(30);
     // No key for a component the bundle does not register (ECharts reports `title: undefined` as missing).
     expect('title' in option).toBe(false);
     expect('brush' in option).toBe(false);
@@ -148,6 +149,50 @@ describe('buildEChartsOption', () => {
     const formatter = (option.xAxis as { axisLabel: { formatter: (name: string) => string } }).axisLabel.formatter;
     const rendered = agg.categories.map((c) => formatter(c.label));
     expect(new Set(rendered).size).toBe(3); // no two distinct IFC classes render the same truncated string
+  });
+
+  it('measures long labels and tilts or shortens them instead of clipping (#6480)', () => {
+    const long = ['IfcBuildingElementProxy', 'IfcCableCarrierSegment', 'IfcCommunicationsAppliance', 'IfcDistributionControlElement', 'IfcElectricDistributionBoard', 'IfcFlowMeter'];
+    const rows = long.map((name, i) => ({ ids: [i + 1], values: [name, 'L1'] }));
+    const agg = aggregate(bar, { ...ds, rows });
+    const axis = (width: number, height?: number) => buildEChartsOption({ aggregation: agg, width, height }).xAxis as { axisLabel: { rotate: number; width: number; formatter: (n: string) => string }; triggerEvent: boolean; tooltip: { show: boolean } };
+    // Roomy chart: tilted just enough, nothing shortened.
+    const roomy = axis(900, 400);
+    expect(roomy.axisLabel.rotate).toBeGreaterThan(0);
+    expect(long.map(roomy.axisLabel.formatter)).toEqual(long);
+    // Narrow chart: steeper tilt, labels shortened to the bounded room, still distinct, full name on hover.
+    const narrow = axis(300, 200);
+    expect(narrow.axisLabel.rotate).toBeGreaterThanOrEqual(roomy.axisLabel.rotate);
+    const shortened = long.map(narrow.axisLabel.formatter);
+    expect(shortened.some((label, i) => label !== long[i])).toBe(true);
+    expect(new Set(shortened).size).toBe(long.length);
+    expect(narrow.triggerEvent).toBe(true);
+    expect(narrow.tooltip.show).toBe(true);
+  });
+
+  it('shows the original category name, HTML-encoded, in the axis tooltip (#6480 review)', () => {
+    const agg = aggregate(bar, { ...ds, rows: [{ ids: [1], values: ['IfcBuildingElementProxy<b>', 'L1'] }] });
+    const xAxis = buildEChartsOption({ aggregation: agg, width: 120, height: 200 }).xAxis as { axisLabel: { formatter: (n: string) => string }; tooltip: { formatter: (p: { value: string; formattedLabel: string }) => string } };
+    const short = xAxis.axisLabel.formatter('IfcBuildingElementProxy<b>');
+    expect(short).not.toBe('IfcBuildingElementProxy<b>');
+    expect(xAxis.tooltip.formatter({ value: 'IfcBuildingElementProxy<b>', formattedLabel: short })).toBe('IfcBuildingElementProxy&lt;b&gt;');
+  });
+
+  it('keeps every long category when six long labels share a small chart (#6480 review)', () => {
+    const names = ['IfcBuildingElementProxy', 'IfcCableCarrierSegment', 'IfcCommunicationsAppliance', 'IfcDistributionControlElement', 'IfcElectricDistributionBoard', 'IfcFlowMeter'];
+    const agg = aggregate(bar, { ...ds, rows: names.map((name, i) => ({ ids: [i + 1], values: [name, 'L1'] })) });
+    const svg = renderChartSvg({ aggregation: agg, width: 300, height: 200, print: true });
+    // Every category is drawn as its own (tilted) axis label and none is re-truncated by ECharts ("...").
+    const axisTexts = [...svg.matchAll(/<text[^>]*transform="matrix\([^"]*"[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]);
+    expect(axisTexts).toHaveLength(names.length);
+    expect(axisTexts.some((text) => text.endsWith('...'))).toBe(false);
+  });
+
+  it('draws long category labels in the SVG, in full where the room allows (#6480, document page)', () => {
+    const agg = aggregate(bar, { ...ds, rows: [{ ids: [1], values: ['IfcBuildingElementProxy', 'L1'] }, { ids: [2], values: ['IfcCableCarrierFitting', 'L1'] }] });
+    const svg = renderChartSvg({ aggregation: agg, width: 500, height: 250, print: true });
+    expect(svg).toContain('IfcBuildingElementProxy');
+    expect(svg).toContain('IfcCableCarrierFitting');
   });
 });
 

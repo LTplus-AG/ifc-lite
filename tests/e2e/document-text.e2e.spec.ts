@@ -626,5 +626,5 @@ test('#6507 real IFC discipline checklists remain independent and print their ch
   expect(text).toContain('Architecture survey approved');
   expect(text).toContain('Confirm coordinates with the surveyor');
   expect(text).not.toContain('Structure survey pending');
-  expect(text).toContain('Warning');
+  expect(text).toContain('WARNING');
 });

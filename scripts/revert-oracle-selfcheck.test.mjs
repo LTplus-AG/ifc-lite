@@ -13,7 +13,7 @@ import { EXPECTED_PROBES, validateAdapterManifest, validateSelfcheckResult } fro
 test('#4109: adapter IDs are the executable supported-runner manifest', () => {
   validateAdapterManifest();
   assert.deepEqual(REVERT_ORACLE_ADAPTERS.map((adapter) => adapter.id), [
-    'cargo', 'python-pytest', 'root-node-test', 'vitest', 'node-test', 'typescript',
+    'cargo', 'python-pytest', 'root-node-test', 'vitest', 'node-test', 'playwright', 'typescript',
   ]);
 });
 

@@ -8,7 +8,7 @@
  * under the same id. Anything the tree does read still passes through.
  */
 
-import { describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { FederatedModel } from '@/store/types';
@@ -51,10 +51,51 @@ describe('hierarchy models selector (#6232)', () => {
     assert.equal(select(bumped), bumped.models, 'a content-version bump');
   });
 
-  it('passes every streamed batch through without comparing ids', () => {
-    const select = createHierarchyModelsSelector();
-    select(state(model({ geometryResult: geometry(1), loadState: 'streaming-geometry' })));
-    const batch = state(model({ geometryResult: geometry(1), loadState: 'streaming-geometry' }));
-    assert.equal(select(batch), batch.models);
+  // #6411: every streamed batch is a new model with more meshes, and the tree
+  // rebuilt for each one twice a second on a large load. A streaming model is
+  // held until the refresh is due; anything else still passes at once.
+  describe('while geometry streams (#6411)', () => {
+    let clock = 0;
+    beforeEach(() => { clock = 0; mock.method(performance, 'now', () => clock); });
+    afterEach(() => mock.restoreAll());
+    const streaming = (fields: Partial<FederatedModel> = {}) =>
+      state(model({ loadState: 'streaming-geometry', ...fields }));
+
+    it('holds the growing geometry until the refresh is due, then passes it without comparing ids', () => {
+      const select = createHierarchyModelsSelector();
+      const first = streaming({ geometryResult: geometry(1) });
+      assert.equal(select(first), first.models);
+      clock = 1;
+      assert.equal(select(streaming({ geometryResult: geometry(1, 2) })), first.models, 'held');
+      clock = 60_000;
+      const due = streaming({ geometryResult: geometry(1, 2, 3) });
+      assert.equal(select(due), due.models, 'refreshed');
+    });
+
+    it('holds a batch whose frame object is new, as every streamed batch is', () => {
+      const select = createHierarchyModelsSelector();
+      const first = streaming({ geometryResult: geometry(1) });
+      select(first);
+      clock = 1;
+      const reframed = { ...geometry(1, 2), coordinateInfo: { originShift: { x: 0, y: 0, z: 0 } } } as unknown as GeometryResult;
+      assert.equal(select(streaming({ geometryResult: reframed })), first.models);
+    });
+
+    it('passes a non-geometry change through at once, e.g. metadata arriving', () => {
+      const select = createHierarchyModelsSelector();
+      select(streaming({ geometryResult: geometry(1) }));
+      clock = 1;
+      const store = { entityCount: 1 } as unknown as FederatedModel['ifcDataStore'];
+      const withMetadata = streaming({ geometryResult: geometry(1, 2), ifcDataStore: store });
+      assert.equal(select(withMetadata), withMetadata.models);
+    });
+
+    it('passes the end of the stream through at once', () => {
+      const select = createHierarchyModelsSelector();
+      select(streaming({ geometryResult: geometry(1) }));
+      clock = 1;
+      const done = state(model({ geometryResult: geometry(1, 2), loadState: 'complete' }));
+      assert.equal(select(done), done.models);
+    });
   });
 });

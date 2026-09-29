@@ -6,6 +6,14 @@ use super::*;
 use ifc_lite_core::EntityDecoder;
 
 #[test]
+fn malformed_line_has_no_analytic_directrix_6402() {
+    let data = "#1=IFCCARTESIANPOINT((5.,6.,7.));\n#2=IFCDIRECTION((1.,0.,0.));\n#3=IFCVECTOR(#2,$);\n#4=IFCLINE(#1,#3);\n#5=IFCTRIMMEDCURVE(#4,(IFCPARAMETERVALUE(2.)),(IFCPARAMETERVALUE(4.)),.T.,.PARAMETER.);\n#6=IFCSWEPTDISKSOLID(#5,0.1,$,$,$);";
+    let mut decoder = EntityDecoder::new(data);
+    let disk = decoder.decode_by_id(6).unwrap();
+    assert!(extract_swept_disk(&disk, &mut decoder).is_err());
+}
+
+#[test]
 fn indexed_arc_stays_in_its_authored_plane() {
     let data = "#1=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(10.,0.,10.),(20.,0.,0.)));\n#2=IFCINDEXEDPOLYCURVE(#1,(IFCARCINDEX((1,2,3))),.F.);\n#3=IFCSWEPTDISKSOLID(#2,1.,$,$,$);";
     let mut decoder = EntityDecoder::new(data);
@@ -147,6 +155,75 @@ fn reversed_trimmed_line_keeps_authored_trim_order() {
             end: [2.0, 0.0, 0.0]
         }]
     );
+    // IFC4.3 defines Trim1 as the first point even with false sense. Check the
+    // mesh directrix against those authored endpoints independently of analytic.
+    let curve = decoder.decode_by_id(5).unwrap();
+    let points = crate::ProfileProcessor::new(ifc_lite_core::IfcSchema::new())
+        .get_curve_points(&curve, &mut decoder, crate::TessellationQuality::Medium)
+        .unwrap();
+    assert_eq!(points, vec![crate::Point3::new(10.0, 0.0, 0.0), crate::Point3::new(2.0, 0.0, 0.0)]);
+}
+
+#[test]
+fn cyclic_equal_circle_trims_keep_analytic_full_turn_and_mesh_spans_6402() {
+    // IFC4.3 forbids cyclically equal trims on a closed basis, but the old
+    // analytic API recovered them as full turns. Preserve that compatibility.
+    // The mesh keeps its historical raw span: 0→2π is a full turn, 0→0 is zero.
+    let data = "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#2=IFCAXIS2PLACEMENT3D(#1,$,$);\n#3=IFCCIRCLE(#2,2.);\n#4=IFCTRIMMEDCURVE(#3,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(6.283185307179586)),.T.,.PARAMETER.);\n#5=IFCSWEPTDISKSOLID(#4,0.2,$,$,$);\n#6=IFCTRIMMEDCURVE(#3,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(0.)),.T.,.PARAMETER.);\n#7=IFCSWEPTDISKSOLID(#6,0.2,$,$,$);\n#8=IFCTRIMMEDCURVE(#3,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(0.)),.F.,.PARAMETER.);\n#9=IFCSWEPTDISKSOLID(#8,0.2,$,$,$);";
+    let mut decoder = EntityDecoder::new(data);
+    let processor = crate::ProfileProcessor::new(ifc_lite_core::IfcSchema::new());
+    for (solid_id, curve_id, full_turn, expected_sweep) in [
+        (5, 4, true, std::f64::consts::TAU),
+        (7, 6, false, std::f64::consts::TAU),
+        (9, 8, false, -std::f64::consts::TAU),
+    ] {
+        let entity = decoder.decode_by_id(solid_id).unwrap();
+        let disk = extract_swept_disk(&entity, &mut decoder).unwrap();
+        assert_eq!(disk.status, AnalyticStatus::Complete);
+        let AnalyticCurveSegment::Arc { sweep_angle, .. } = disk.segments[0] else {
+            panic!("expected full-circle analytic arc");
+        };
+        assert!((sweep_angle - expected_sweep).abs() < 1e-9);
+        let curve = decoder.decode_by_id(curve_id).unwrap();
+        let points = processor
+            .get_curve_points(&curve, &mut decoder, crate::TessellationQuality::Medium)
+            .unwrap();
+        assert!((*points.last().unwrap() - points[0]).norm() < 1e-9);
+        assert_eq!(points.iter().any(|point| (*point - points[0]).norm() > 1.0), full_turn);
+    }
+}
+
+#[test]
+fn trimmed_circle_source_and_mesh_share_rotated_clockwise_endpoints_6402() {
+    let data = "#1=IFCCARTESIANPOINT((1.,2.,3.));\n#2=IFCDIRECTION((0.,0.,1.));\n#3=IFCDIRECTION((0.,1.,0.));\n#4=IFCAXIS2PLACEMENT3D(#1,#2,#3);\n#5=IFCCIRCLE(#4,2.);\n#6=IFCTRIMMEDCURVE(#5,(IFCPARAMETERVALUE(1.5707963267948966)),(IFCPARAMETERVALUE(0.)),.F.,.PARAMETER.);\n#7=IFCSWEPTDISKSOLID(#6,0.2,$,$,$);";
+    let mut decoder = EntityDecoder::new(data);
+    let solid = decoder.decode_by_id(7).unwrap();
+    let disk = extract_swept_disk(&solid, &mut decoder).unwrap();
+    assert_eq!(disk.status, AnalyticStatus::Complete);
+    let AnalyticCurveSegment::Arc { start_angle, sweep_angle, .. } = disk.segments[0] else {
+        panic!("expected analytic circle arc");
+    };
+    assert!((start_angle - std::f64::consts::FRAC_PI_2).abs() < 1e-9);
+    assert!((sweep_angle + std::f64::consts::FRAC_PI_2).abs() < 1e-9);
+    let curve = decoder.decode_by_id(6).unwrap();
+    let points = crate::ProfileProcessor::new(ifc_lite_core::IfcSchema::new())
+        .get_curve_points(&curve, &mut decoder, crate::TessellationQuality::Medium)
+        .unwrap();
+    assert!((points[0] - crate::Point3::new(-1.0, 2.0, 3.0)).norm() < 1e-9);
+    assert!((*points.last().unwrap() - crate::Point3::new(1.0, 4.0, 3.0)).norm() < 1e-9);
+}
+
+#[test]
+fn wrong_trim_select_entity_is_rejected_by_source_and_ignored_by_mesh_6402() {
+    let data = "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#2=IFCDIRECTION((1.,0.,0.));\n#3=IFCVECTOR(#2,1.);\n#4=IFCLINE(#1,#3);\n#5=IFCDIRECTION((42.,0.,0.));\n#6=IFCTRIMMEDCURVE(#4,(#5,IFCPARAMETERVALUE(2.)),(IFCPARAMETERVALUE(5.)),.T.,.CARTESIAN.);\n#7=IFCSWEPTDISKSOLID(#6,0.2,$,$,$);";
+    let mut decoder = EntityDecoder::new(data);
+    let solid = decoder.decode_by_id(7).unwrap();
+    assert!(extract_swept_disk(&solid, &mut decoder).is_err());
+    let curve = decoder.decode_by_id(6).unwrap();
+    let points = crate::ProfileProcessor::new(ifc_lite_core::IfcSchema::new())
+        .get_curve_points(&curve, &mut decoder, crate::TessellationQuality::Medium)
+        .unwrap();
+    assert_eq!(points, vec![crate::Point3::new(2.0, 0.0, 0.0), crate::Point3::new(5.0, 0.0, 0.0)]);
 }
 
 #[test]

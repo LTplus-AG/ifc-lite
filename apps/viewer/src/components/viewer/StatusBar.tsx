@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useMemo, useRef, useState, useEffect } from 'react';
+import { useStreamingThrottled } from '@/hooks/useStreamingThrottled';
+import { sameModelsExceptGeometry } from '@/lib/streaming-refresh';
 import { Boxes, CheckCircle2, AlertCircle, Layers } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Separator } from '@/components/ui/separator';
@@ -70,7 +72,15 @@ export function StatusBar() {
   // Every model whose objects this bar speaks for, paired with its own
   // geometry. Federated models each carry their own store and meshes; legacy
   // single-model mode has one pair on the top-level hook.
+  // Held while geometry streams (#6411): every publish is a new `models` Map
+  // and the count below walks every mesh, twice a second on a large load.
+  // Only geometry is held; metadata or a model change passes at once.
+  const countSource = useStreamingThrottled(useMemo(
+    () => ({ models, ifcDataStore, geometryResult }),
+    [models, ifcDataStore, geometryResult],
+  ), (held, next) => held.ifcDataStore === next.ifcDataStore && sameModelsExceptGeometry(held.models, next.models));
   const countedModels = useMemo<CountedModel[]>(() => {
+    const { models, ifcDataStore, geometryResult } = countSource;
     if (models.size > 0) {
       const out: CountedModel[] = [];
       const resolveInModel = useViewerStore.getState().resolveGlobalIdInModel;
@@ -95,7 +105,7 @@ export function StatusBar() {
       meshedIds: collectMeshedIds(geometryResult),
       geometryReady: geometryResult != null,
     }] : [];
-  }, [models, ifcDataStore, geometryResult]);
+  }, [countSource]);
 
   // PERF: `state.models` is a NEW Map on every streaming batch commit
   // (`appendGeometryBatch` in dataSlice.ts rebuilds it to swap one model's

@@ -27,6 +27,45 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Streaming-time panel refresh (#6411)
+
+On a 127K-element, ~1 GB MEP model, the geometry workers were ~100% busy and
+then went idle up to ~10 s before stream completion, while the main thread was
+0-3% idle for the whole stream. Cause: the hierarchy tree, the status-bar count
+and the model statistics each re-derived whole-model data on every streaming
+geometry publish (every 500 ms for files over 300 MB). The hierarchy alone took
+45-58% of the main thread for over a minute. Holding their geometry-derived
+inputs to a 4 s cadence while streaming (exact at stream end) cut readiness to
+0.53-0.62x in interleaved cold-load pairs on a loaded machine. A small-to-
+large corpus showed no regression. Lessons:
+
+- Check whether the MAIN thread is the drain before touching workers. Here
+  `?geomWorkers=2` beat the default 4 and 8, because more workers only
+  queued more batches behind a saturated main thread.
+- Main-thread waste costs most when the machine is busy: the same build
+  varied 42-116 s with host load, and the gain grew with it.
+## Post-stream upload drain slice (#6436)
+
+After a large stream completes, the renderer cannot finalize until the upload
+queue drains. The queue drained in the 12 ms per-frame slice that exists for
+the worker pump during streaming. Allowing 32 ms once the stream has ended and
+nobody navigates cut the drain on a 1 GB MEP model from 5.2-6.3 s to 3.2-4.5 s
+in interleaved pairs. The streaming phase is unchanged by construction: the
+budget is the default whenever geometry streams. Lesson: a time slice sized
+for one phase silently carries into the next. Timestamp phase boundaries
+(`Stream complete`, `Streaming ended`, `finalizeStreamingAsync complete`)
+before assuming the tail is finalize work.
+## Placement identity from memory (#6431)
+
+Before parsing, the loader awaited a full-content SHA-256 identity (1 MiB chunks)
+that it computed by re-reading the file through `Blob.slice().arrayBuffer()`,
+although the file was already in memory. Hashing the in-memory bytes with the
+same chunking gives an identical identity. On a 1 GB file, file-read to
+parse-start went from 3.9-5.1 s to 0.9-1.1 s, and the gap shrank on every
+corpus model. Lesson: look at the gap BEFORE `loadFile` too. Whole-file work
+that runs before parsing delays everything behind it, and a profile window that
+starts at "first geometry" never shows it.
+
 ## Instanced RTE deltas: one upload per template (#6393, PR #6399)
 
 On a large MEP model with ~45K GPU-instanced occurrences, a browser run
@@ -144,6 +183,22 @@ Verdict: no supported default-load speed change or mesh-output difference.
 The lesson is that a native load probe cannot establish the opt-in join's
 latency; measure that through its caller on representative authored-quantity
 models if it becomes material.
+
+## Opt-in reinforcing-bar schedule inputs (#5759)
+
+The schedule reuses bounded analytic source views only when a Rust or Python
+caller requests it; ordinary mesh loading does not enter this path. A
+[GitHub-hosted current-lock control](https://github.com/LTplus-AG/ifc-lite/actions/runs/36475446893)
+compared a synthetic parent containing the reviewed quantity join and mapped
+source cache with a patch-identical #5801 child on AC20-FZK-Haus. Five balanced,
+interleaved fresh-process pairs used five iterations each. Entity, mesh, vertex,
+and triangle counts and every ordered mesh fingerprint were identical, while
+paired parse, geometry, and total timings varied within noise. Verdict: no
+supported default-load timing or mesh-output change. The native source closure
+must still be checked against the eventual parent squashes before treating this
+as the exact final-base control. The ordinary load probe cannot measure the
+opt-in schedule call; measure that on representative authored bars if needed.
+The PR carries the paired numbers and fixture/source provenance.
 
 ## Opt-in nominal source quantities (#5787)
 
@@ -2503,3 +2558,22 @@ they establish no browser worker-pool speedup or analytic-call memory win.
 The lesson is to cache only immutable source facts and to measure opt-in
 analytic extraction separately: far fewer source validations need not shorten
 the full call.
+
+## Shared trimmed line and circle decoding (#6402)
+
+The final decoder was measured against its parent in alternating,
+fresh-process native pairs on AC20 and the real Snowdon structural IFC.
+Every ordered mesh fingerprint and mesh, vertex, and triangle count matched;
+separate source-verified builds had distinct binary hashes. The timing shifts
+overlap normal run-to-run noise, so this change has no measured native pipeline
+regression or speedup on these fixtures. This does not measure browser
+worker-pool cost. The final-head timings and paired deltas are in the PR.
+
+An [earlier hosted run](https://github.com/LTplus-AG/ifc-lite/actions/runs/36485574030)
+recorded raw phase timings and passed native mesh-determinism and quick
+committed-reference IfcOpenShell parity checks. Later review fixes changed the
+decoder, so its timing result is not the final-head measurement above.
+
+The lesson is that sharing trim-select decoding need not perturb common mesh
+output: keep strict IFC validation for analytic curves separate from the mesh
+recovery policy, and test malformed circular spans as well as valid trims.

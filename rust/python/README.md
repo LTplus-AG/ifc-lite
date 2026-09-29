@@ -30,6 +30,7 @@ reads attributes and property sets instead, without tessellating.
 `extrusion_definitions` returns exact source profiles and placed extrusion occurrences.
 `authored_quantity_analysis` reads IFC-authored quantity observations, while
 `quantity_analysis` joins them with nominal analytic source estimates.
+`rebar_schedule` combines authored bar metadata with derived source geometry.
 
 ```python
 import ifclite_geom
@@ -322,6 +323,46 @@ retain explicit status; extraction failures appear in `diagnostics`.
 When a complete swept-disk occurrence has no defensible nominal section or
 volume estimate, `status_reason` explains the omission even if its centreline
 length remains available. Joined diagnostics have one bounded output budget.
+
+### Reinforcing-bar schedule inputs
+
+`rebar_schedule(ifc_bytes, ids=None)` returns one row per selected
+`IfcReinforcingBar`, including bars with no supported swept-disk geometry.
+Each row exposes the occurrence's `GlobalId` and `Name` under their exact
+EXPRESS names.
+Authored attributes use exact EXPRESS names and record whether they came from
+the occurrence or its `IfcReinforcingBarType`. Numeric attributes retain their
+raw IFC value and an SI conversion. An authored `CrossSectionArea` of zero
+remains in the record, with a row diagnostic stating that it does not establish
+a physical section area. Each source sweep separately carries
+radius, centreline length and bend angles, geometric checks, and reusable
+`source` identity. For complete paths, radii are effective world values in
+metres; an unsupported transform retains source radii in metres and does not
+establish a world circular radius. If a file's unit conversion makes a radius
+non-finite, the binding raises `ValueError` instead of returning JSON `null`.
+Mapped repetitions remain separate, while repeated
+uses of one representation map share a source key. If the independent definition
+output budget is exhausted, `source` is `None` with a row diagnostic; the
+world-space schedule sweep remains available. An authored `BarLength`
+can differ from the derived centreline length; neither value is a certified
+cutting length. IFC bar entities and represented sweeps do not imply a physical
+bar count.
+
+```python
+schedule = ifclite_geom.rebar_schedule(ifc_bytes)
+for step_id, row in schedule["rows"].items():
+    print(step_id, row["GlobalId"], row["Name"], row["authored"].get("BarLength"), row["sweeps"])
+```
+
+For project-specific comparisons, call
+`rebar_schedule_with_preflight(ifc_bytes, min_inside_bend_radius_m,
+min_straight_segment_length_m, max_developed_centreline_length_m=None)`.
+The measured comparisons identify their source segments; equality passes.
+Inside bend radius is arc centreline radius minus swept outer radius. Modified
+or unsupported sources and rows without sweeps carry explicit skip reasons.
+For a skipped sweep, `comparisons` is `None`; an assessed sweep has a list of
+measured comparisons. Check `skipped_reason` before interpreting pass results.
+No result certifies a cutting length or fabrication-code compliance.
 
 ### Tessellation quality
 

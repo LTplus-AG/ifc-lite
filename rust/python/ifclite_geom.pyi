@@ -269,6 +269,71 @@ class QuantityAnalysis(TypedDict):
     unique_source_count: int
     products: Dict[int, ProductQuantityAnalysis]
     diagnostics: List[str]
+
+class AuthoredRebarText(TypedDict):
+    kind: Literal["text"]
+    value: str
+
+class AuthoredRebarMeasure(TypedDict):
+    kind: Literal["measure"]
+    value_file_units: float
+    value_si: float
+    si_unit: Literal["m", "m2"]
+
+class AuthoredRebarAttribute(TypedDict):
+    source: Literal["occurrence", "type"]
+    source_id: int
+    value: Union[AuthoredRebarText, AuthoredRebarMeasure]
+
+class RebarSweepPreflightFields(TypedDict, total=False):
+    preflight: RebarPreflightReport
+
+class RebarSweep(RebarSweepPreflightFields):
+    occurrence_index: int
+    source: Optional[SweptDiskSourceKey]  # None when definition output budget was exhausted
+    solid_id: int
+    directrix_id: int
+    mapping_path: List[int]
+    source_modified: bool
+    status: DirectrixStatus
+    radius_m: float
+    inner_radius_m: Optional[float]
+    directrix_metrics: Optional[DirectrixMetrics]
+    checks: SweptDiskCheckReport
+
+class RebarPreflightComparison(TypedDict):
+    kind: Literal["inside_bend_radius", "straight_segment_length", "developed_centreline_length"]
+    segment_index: Optional[int]
+    measured_m: float
+    limit_m: float
+    passed: bool
+
+class RebarPreflightReport(TypedDict):
+    skipped_reason: Optional[str]
+    comparisons: Optional[List[RebarPreflightComparison]]
+    unassessed_reasons: List[str]
+
+class RebarRowPreflightFields(TypedDict, total=False):
+    preflight_skipped_reason: str
+
+class RebarScheduleRow(RebarRowPreflightFields):
+    GlobalId: Optional[str]
+    Name: Optional[str]
+    type_id: Optional[int]
+    authored: Dict[str, AuthoredRebarAttribute]  # exact EXPRESS names
+    sweeps: List[RebarSweep]
+    geometry_unavailable_reason: Optional[str]
+    diagnostics: List[str]
+
+class RebarSchedule(TypedDict):
+    units: Literal["m"]
+    coordinate_space: Literal["absolute_ifc_world"]
+    length_unit_scale: float
+    bar_entity_count: int
+    represented_sweep_count: int
+    rows: Dict[int, RebarScheduleRow]
+    diagnostics: List[str]
+
 class PropValue(TypedDict):
     name: str
     value: str  # always a string, in the file's OWN units
@@ -460,6 +525,27 @@ def authored_quantity_analysis(
     This view has no derived estimate, physical bar count or material takeoff.
     """
     ...
+
+def rebar_schedule(
+    ifc_bytes: bytes,
+    ids: Optional[Set[int]] = None,
+    *,
+    zero_length_tolerance_m: float = 1e-9,
+    gap_tolerance_m: float = 1e-6,
+    tangent_tolerance_rad: float = 1e-6,
+) -> RebarSchedule: ...
+
+def rebar_schedule_with_preflight(
+    ifc_bytes: bytes,
+    min_inside_bend_radius_m: float,
+    min_straight_segment_length_m: float,
+    ids: Optional[Set[int]] = None,
+    *,
+    max_developed_centreline_length_m: Optional[float] = None,
+    zero_length_tolerance_m: float = 1e-9,
+    gap_tolerance_m: float = 1e-6,
+    tangent_tolerance_rad: float = 1e-6,
+) -> RebarSchedule: ...
 
 def entity_data(
     ifc_bytes: bytes,

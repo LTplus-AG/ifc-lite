@@ -428,15 +428,14 @@ test('classifyPath: a test-support module that only registers assertions for a t
   // The allowlist is exact: its siblings are real tooling and stay production.
   assert.equal(classifyPath('scripts/lib/revert-oracle.mjs'), 'production');
 });
-test('classifyPath: Playwright e2e specs and helpers are ignored, not runner-less test files (#4553)', () => {
-  // The root package runs `turbo test`; the oracle cannot derive a runner for
-  // tests/e2e/** and used to ABORT the lane instead of judging the unit tests.
-  assert.equal(classifyPath('tests/e2e/collab-share-seed.e2e.spec.ts'), 'ignored');
-  assert.equal(classifyPath('tests/e2e/collab/relay.ts'), 'ignored');
+test('classifyPath: Playwright e2e specs and helpers are test files, not ignored (#4553, #6267)', () => {
+  // #4553 ignored tests/e2e/** because the oracle had no runner for it and
+  // ABORTed the lane. #6267 gave it one: the spec is a test the browser
+  // observer runs, and its helpers are support files.
+  assert.equal(classifyPath('tests/e2e/collab-share-seed.e2e.spec.ts'), 'test');
+  assert.equal(classifyPath('tests/e2e/collab/relay.ts'), 'test');
   // The Playwright config is read by that same runner and nothing else (#5147).
   assert.equal(classifyPath('playwright.config.ts'), 'ignored');
-  // Everything else under tests/ keeps its scaffolding classification, so a
-  // branch whose only observer is an e2e spec still fails as UNOBSERVED.
   assert.equal(classifyPath('tests/integration.test.ts'), 'test');
   assert.equal(classifyPath('tests/api/handlers.ts'), 'test');
 });

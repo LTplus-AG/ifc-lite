@@ -38,14 +38,14 @@ import { parsePython, PYTEST_MISSING_PATTERN } from './revert-oracle-python.mjs'
 import { ALL_SKIPPED, classifyExecuted, severityCandidates } from './revert-oracle-all-skipped.mjs';
 import { passVerdict } from './revert-oracle-pass-verdict.mjs';
 import { processResultGap } from './revert-oracle-process-result.mjs';
-import { isInertPath, isTestSupportPath, withoutBrowserSpecs } from './revert-oracle-inert.mjs';
+import { isInertPath, isTestSupportPath } from './revert-oracle-inert.mjs';
 export { cargoRunner } from './revert-oracle-cargo.mjs';
 // ---------------------------------------------------------------------------
 // Diff classification
 // ---------------------------------------------------------------------------
 
-/** Paths no test can observe: release/CI/docs, and Playwright e2e specs (`tests/e2e/**`, root `turbo test` has no runner; the viewer-e2e lanes own them -- see revert-oracle.test.mjs). */
-const IGNORED_PREFIXES = ['.changeset/', '.github/', 'docs/', '.vscode/', 'tests/e2e/'];
+/** Paths no test can observe: release/CI/docs. `tests/e2e/**` is test scaffolding; its Playwright specs run in a browser (#6267). */
+const IGNORED_PREFIXES = ['.changeset/', '.github/', 'docs/', '.vscode/'];
 const IGNORED_EXACT = new Set(['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'Cargo.lock', 'rust/python/Cargo.lock', 'CHANGELOG.md', 'playwright.config.ts']);
 const IGNORED_SUFFIXES = ['.md', '.mdx', '.txt', '.snap.orig'];
 
@@ -193,7 +193,7 @@ export const LOAD_FAILURE = 'load-failure';
 export const NO_TESTS = 'no-tests';
 export const RUNNER_MISSING = 'runner-missing';
 export const UNPARSEABLE = 'unparseable';
-export { ALL_SKIPPED, withoutBrowserSpecs };
+export { ALL_SKIPPED };
 
 /**
  * Errors that mean the module never loaded, so no assertion was ever evaluated.

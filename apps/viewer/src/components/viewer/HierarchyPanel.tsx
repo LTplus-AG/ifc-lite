@@ -44,6 +44,7 @@ import type { HierarchyRowAction } from './hierarchy/HierarchyRowActions';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { createHierarchyModelsSelector, selectLegacyHierarchyGeometry } from './hierarchy/hierarchy-models-selector';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
+import { useStreamingThrottled } from '@/hooks/useStreamingThrottled';
 
 export function HierarchyPanel() {
   const { t } = useTranslation();
@@ -51,8 +52,14 @@ export function HierarchyPanel() {
   // every row on each geometry update, a re-meshed element included.
   const [selectHierarchyModels] = useState(createHierarchyModelsSelector);
   const models = useViewerStore(selectHierarchyModels);
-  const geometryResult = useViewerStore(selectLegacyHierarchyGeometry);
   const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
+  // Legacy single-model geometry is held while streaming like the models above,
+  // but never across a data-store swap (a different model) (#6411).
+  const legacyGeometry = useViewerStore(selectLegacyHierarchyGeometry);
+  const geometryResult = useStreamingThrottled(
+    useMemo(() => ({ store: ifcDataStore, geometry: legacyGeometry }), [ifcDataStore, legacyGeometry]),
+    (held, next) => held.store === next.store,
+  ).geometry;
   const setActiveModel = useViewerStore((s) => s.setActiveModel);
   const setModelVisibility = useViewerStore((s) => s.setModelVisibility);
   const { addModel, removeModel } = useIfcFederation(useIfcLoader().loadFile);

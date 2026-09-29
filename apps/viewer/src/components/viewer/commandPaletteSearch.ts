@@ -55,9 +55,14 @@ interface CommandBase {
   immediate?: boolean;
 }
 
-/** A static command has a registry id/name; runtime content declares its owner. */
+/**
+ * A static command has a registry id/name; runtime content declares its owner.
+ * A registered row renders only its registry label (`RegisteredPaletteOption`),
+ * so it cannot carry label parameters or a detail it would silently drop.
+ */
 export type Command = CommandBase & (
-  | { registryOwned: true; labelKey: TranslationKey; labelKeyParams?: TranslationParameters; runtimeSource?: never }
+  | { registryOwned: true; labelKey: TranslationKey; runtimeSource?: never;
+      labelKeyParams?: never; detail?: never; detailKey?: never; detailKeyParams?: never }
   | { registryOwned?: never; runtimeSource: 'recent-file' | 'script-template' | 'tour' | 'extension-command' | 'extension-export';
       labelKey?: TranslationKey; labelKeyParams?: TranslationParameters }
 );

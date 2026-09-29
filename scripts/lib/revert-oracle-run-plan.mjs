@@ -26,7 +26,7 @@ export function realRoot(root) {
 }
 
 /** Resolve a runner binary the way the owning package would. */
-function resolveCommand(bin, pkgDir, root) {
+export function resolveCommand(bin, pkgDir, root) {
   if (bin === 'node') return { bin: process.execPath, prefix: [] };
   if (bin === 'python3' && process.platform === 'win32') return { bin: 'py', prefix: ['-3'] };
   if (bin === 'cargo' || bin === 'python3') return { bin, prefix: [] };

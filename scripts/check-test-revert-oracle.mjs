@@ -86,8 +86,10 @@ import {
   aggregate,
   OBSERVED,
   UNOBSERVED,
-  withoutBrowserSpecs,
 } from './lib/revert-oracle.mjs';
+import { partitionBrowserSpecs } from './lib/revert-oracle-inert.mjs';
+import { planBrowserSpecs } from './lib/revert-oracle-browser-run.mjs';
+import { measure } from './lib/revert-oracle-measure.mjs';
 import { isDependabotDependencyOnly } from './lib/revert-oracle-dependabot.mjs';
 import { isVersionOnlyManifestDiff } from './lib/revert-oracle-version-bump.mjs';
 import { isCommentOnlyDiff } from './lib/revert-oracle-comment-only.mjs';
@@ -100,7 +102,7 @@ import {
 } from './lib/revert-oracle-result.mjs';
 import { planRuns } from './lib/revert-oracle-plan-runs.mjs';
 import { loadTypeScript, typeOnlyProduction, typecheckPlans, gitShow } from './lib/revert-oracle-type-only.mjs';
-import { realRoot, runPlan } from './lib/revert-oracle-run-plan.mjs';
+import { realRoot } from './lib/revert-oracle-run-plan.mjs';
 import { printHumanReport } from './lib/revert-oracle-human-report.mjs';
 import { buildExecutionLedger, ledgerVerdict, partitionRunnablePlans } from './lib/revert-oracle-ledger.mjs';
 
@@ -202,21 +204,9 @@ function gitOrDie(args) {
   return r.stdout;
 }
 
-// ---------------------------------------------------------------------------
-// Args
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Package / runner resolution
-// ---------------------------------------------------------------------------
-
-// findUp() and planRuns() live in ./lib/revert-oracle-plan-runs.mjs (#4090):
-// this file sits at its exact module-size budget with zero headroom, so the
-// grouping/runner-selection logic moved to that already-uncapped sibling
-// instead of growing this one. planRuns() is invoked below through
-// requiredFeaturePlanOrDie(), which also converts an UnhandledCfgShapeError
-// raised from inside it (via requiredFeatureCombos()) into a structured
-// failure instead of an unhandled crash.
+// planRuns() (./lib/revert-oracle-plan-runs.mjs, #4090), the browser planner
+// and the measurement sequence (#6267) live in siblings: this file sits at its
+// module-size budget with zero headroom.
 
 // ---------------------------------------------------------------------------
 // Main
@@ -327,12 +317,13 @@ if (partialCargoSelection) {
   );
 }
 
-let testPaths = withoutBrowserSpecs(testEntries.map((e) => e.path).filter((p) => existsSync(join(ROOT, p))), (p) => readFileSync(join(ROOT, p), 'utf8'), console.log);
+// #6267: Playwright specs run in a browser, and only when no cheaper test observes the revert.
+let { runnable: testPaths, browser: browserSpecs } = partitionBrowserSpecs(testEntries.map((e) => e.path).filter((p) => existsSync(join(ROOT, p))), (p) => readFileSync(join(ROOT, p), 'utf8'));
 if (opts.tests.length > 0) {
-  testPaths = testPaths.filter((p) => opts.tests.includes(p));
-  if (testPaths.length === 0) die(EXIT_NOTHING_CHECKED, '--test matched none of the branch\'s changed test files.');
+  [testPaths, browserSpecs] = [testPaths, browserSpecs].map((paths) => paths.filter((p) => opts.tests.includes(p)));
+  if (testPaths.length + browserSpecs.length === 0) die(EXIT_NOTHING_CHECKED, '--test matched none of the branch\'s changed test files.');
 }
-resultContext = { ...resultContext, production: prodPaths, tests: testPaths };
+resultContext = { ...resultContext, production: prodPaths, tests: [...testPaths, ...browserSpecs] };
 
 console.log(
   `  files: ${production.length} production, ${testEntries.length} test, ${ignored.length} ignored, ${inert.length} inert`,
@@ -343,7 +334,7 @@ if (prodPaths.length === 0) {
   if (opts.ci) notApplicable(message);
   die(EXIT_NOTHING_CHECKED, message);
 }
-if (testPaths.length === 0) {
+if (testPaths.length + browserSpecs.length === 0) {
   die(
     opts.ci ? EXIT_UNOBSERVED : EXIT_NOTHING_CHECKED,
     'this branch changes production code and adds/changes NO test file. That is itself the finding: nothing can observe the change.',
@@ -374,8 +365,12 @@ if (observer === 'typecheck') {
   }
   ({ plans, unassigned } = t);
   support = t.skipped;
+  for (const s of browserSpecs) console.log(`  set aside: ${s} is a Playwright spec; a browser cannot observe a type-only change`);
 } else {
   ({ plans, unassigned, support } = planRuns(testPaths, ROOT));
+  const browser = planBrowserSpecs(browserSpecs, ROOT, { prodPaths });
+  plans.push(...browser.plans);
+  unassigned.push(...browser.gaps);
 }
 const partitioned = partitionRunnablePlans(plans, unassigned);
 plans = partitioned.runnable;
@@ -449,32 +444,35 @@ let exitCode = EXIT_INCONCLUSIVE;
 let result = null;
 
 try {
-  console.log('\n[1/3] baseline: running the branch\'s own tests, unmodified');
-  const baselineResults = plans.map((p) => runPlan(p, ROOT, 'baseline'));
+  const measured = measure({
+    plans,
+    root: ROOT,
+    revert: () => {
+      const applyR = git(['-c', 'core.autocrlf=false', 'apply', '-R', '--verbose', patchPath]);
+      if (applyR.status !== 0) {
+        die(EXIT_REVERT_FAILED, 'the production patch would not reverse-apply — nothing was checked.', [
+          ...(applyR.stderr || '').trim().split('\n'),
+          'The tree is untouched (git apply is all-or-nothing).',
+        ]);
+      }
+      restoration = 'required';
+      for (const p of prodPaths) console.log(`  reverted: ${p}`);
+    },
+    restore: () => restore('before the browser baseline') || die(EXIT_RESTORE_FAILED, 'could not restore production before the browser baseline.'),
+    assertClean: () => gitOrDie(['status', '--porcelain']).trim() === '' || die(EXIT_RESTORE_FAILED, 'the browser baseline build left the working tree dirty.', [], { verdict: 'RESTORE-FAILED' }),
+  });
+  plans = measured.plans;
+  const { baselineResults, revertedResults } = measured;
   const baseline = aggregate(baselineResults);
-
-  console.log(`\n[2/3] reverting ${prodPaths.length} production file(s)`);
-  const applyR = git(['-c', 'core.autocrlf=false', 'apply', '-R', '--verbose', patchPath]);
-  if (applyR.status !== 0) {
-    die(EXIT_REVERT_FAILED, 'the production patch would not reverse-apply — nothing was checked.', [
-      ...(applyR.stderr || '').trim().split('\n'),
-      'The tree is untouched (git apply is all-or-nothing).',
-    ]);
-  }
-  restoration = 'required';
-  for (const p of prodPaths) console.log(`  reverted: ${p}`);
-
-  console.log('\n[3/3] re-running the same tests with production reverted');
-  const revertedResults = plans.map((p) => runPlan(p, ROOT, 'reverted'));
   const revertedAgg = aggregate(revertedResults);
 
-  const ledger = buildExecutionLedger({ plans, gaps, support, baselineResults, revertedResults });
+  const ledger = buildExecutionLedger({ plans, gaps, support, deferred: measured.deferred, baselineResults, revertedResults });
   result = ledgerVerdict(ledger);
   result.baseline = baseline;
   result.revertedRun = revertedAgg;
   result.ledger = ledger;
   result.prodPaths = prodPaths;
-  result.testPaths = testPaths;
+  result.testPaths = [...testPaths, ...browserSpecs];
   exitCode = opts.ci
     ? ciExitCode(result.verdict)
     : result.exitCode === 0 ? EXIT_OBSERVED : result.verdict === UNOBSERVED ? EXIT_UNOBSERVED : EXIT_INCONCLUSIVE;

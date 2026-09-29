@@ -3,13 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import { createElement } from 'react';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import * as collab from '@ifc-lite/collab';
-import { IfcParser, extractGeoreferencingOnDemand } from '@ifc-lite/parser';
+import { IfcParser, EMPTY_SOURCE_BYTES, extractGeoreferencingOnDemand } from '@ifc-lite/parser';
 import type { CoordinateInfo, MeshData } from '@ifc-lite/geometry';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef.js';
 import { totalYupOffset } from '@/lib/geo/coordinate-frame.js';
@@ -29,6 +30,9 @@ import { createCollabSlice } from '@/store/slices/collabSlice.js';
 import { StepExporter } from '@ifc-lite/export';
 import type { Mutation } from '@ifc-lite/mutations';
 import { attachRoomSpatialContextMirror } from './room-spatial-context-mirror.js';
+import { ModelMetadataPanel } from '@/components/viewer/properties/ModelMetadataPanel.js';
+import { render, cleanup } from '@/test/render.js';
+import { fixtureModels } from '@/test/store-fixture.js';
 
 // Use collab's exact ESM Yjs runtime, as the existing room peer tests do.
 const collabResolve = createRequire(import.meta.resolve('@ifc-lite/collab'));
@@ -90,10 +94,12 @@ describe('room spatial context (#6499)', () => {
     const doc = collab.createCollabDoc();
     Y.applyUpdate(doc, Y.encodeStateAsUpdate(ownerDoc));
     const guest = joiner(doc, blobs, 'geo-test');
+    const previousViewerState = useViewerStore.getState();
     try {
       await guest.reconstructor.reconstruct();
       assert.equal(guest.store.state().models.size, count);
       const received = [...guest.store.state().models.values()];
+      useViewerStore.setState(fixtureModels(...received));
       for (let i = 0; i < count; i++) {
         const original = [...models.values()][i], shared = received[i];
         assert.deepEqual(projectedPoint(shared), projectedPoint(original));
@@ -104,6 +110,18 @@ describe('room spatial context (#6499)', () => {
         assert.equal(georef?.mapConversion?.id, 0, 'source STEP resource ids are not recipient entity refs');
         assert.deepEqual(shared.geometryResult?.coordinateInfo, original.geometryResult?.coordinateInfo);
         assert.equal(shared.geometryResult?.meshes.length, 1);
+        // The same transported facts remain usable without the original bytes
+        // (the parser worker handoff contract), even though this room's source
+        // field normally holds its reconstructed IFCX document.
+        const sourceLess = { ...shared, ifcDataStore: { ...shared.ifcDataStore!, source: EMPTY_SOURCE_BYTES } };
+        const panel = render(createElement(ModelMetadataPanel, { model: sourceLess }));
+        assert.match(panel.textContent ?? '', /Length Unit.*Millimeters \(0\.001\)/,
+          '#6499: source-less single and federated guests display the transported project units');
+        cleanup();
+        const unknownUnit = { ...sourceLess, ifcDataStore: { ...sourceLess.ifcDataStore, lengthUnitScale: undefined } };
+        assert.doesNotMatch(render(createElement(ModelMetadataPanel, { model: unknownUnit })).textContent ?? '', /Length Unit/,
+          'missing source and unit facts must not invent a declared metre unit');
+        cleanup();
       }
       // A renderer may change its local frame; it must not mutate persisted room facts.
       received[0].geometryResult!.coordinateInfo.originShift.x = -999;
@@ -114,7 +132,11 @@ describe('room spatial context (#6499)', () => {
       await guest.reconstructor.reconstruct();
       assert.deepEqual(projectedPoint([...guest.store.state().models.values()][0]), projectedPoint(a));
       assert.deepEqual(guest.notices, []);
-    } finally { guest.reconstructor.teardown(); doc.destroy(); ownerDoc.destroy(); }
+    } finally {
+      cleanup();
+      useViewerStore.setState(previousViewerState);
+      guest.reconstructor.teardown(); doc.destroy(); ownerDoc.destroy();
+    }
   });
 
   it('captures georeference edits and copies the live coordinate frame before seeding', async () => {

@@ -137,7 +137,8 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
 
   // Extract length unit scale
   const unitInfo = useMemo(() => {
-    if (!dataStore?.source?.length || !dataStore?.entityIndex) return null;
+    if (!dataStore) return null;
+    if (dataStore.lengthUnitScale === undefined && (!dataStore.source?.length || !dataStore.entityIndex)) return null;
     const scale = getIfcLengthUnitScale(dataStore);
     let unitName = t('properties.modelMetadata.unit.meters');
     if (Math.abs(scale - 0.001) < 0.0001) unitName = t('properties.modelMetadata.unit.millimeters');

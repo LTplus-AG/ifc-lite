@@ -13,8 +13,10 @@
  */
 
 import type { ComponentType } from 'react';
+import type { StoreApi } from 'zustand';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { TranslationKey } from '@/i18n';
+import type { RemeshCause } from '@/lib/remesh/affected-set';
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
 import type { SnapProfile, SnapQuery, SnapResult, Vec2 } from '@/lib/snap/types';
 import type { ViewerState } from '@/store';
@@ -93,6 +95,12 @@ export interface CommitResult {
   deleted: number[];
   /** Express ids whose mesh must be rebuilt (WP1 `requestRemesh`). */
   remesh: number[];
+  /**
+   * Why they are rebuilt. Default: `created` when the commit created elements,
+   * else `shape` (the elements' own bodies). `hostsChanged` also rebuilds what
+   * they host: a wall that moved carries its openings, doors and windows.
+   */
+  remeshCause?: RemeshCause;
   /** Express ids to select after the commit. */
   select?: number[];
   /**
@@ -165,4 +173,6 @@ export interface AuthoringTransaction {
   readonly batchId: string;
   /** Live store state; re-read after each action, it changes as you write. */
   readonly store: ViewerState;
+  /** The store itself, for writers that record their own undo history (`recordModellingEdit`). */
+  readonly api: Pick<StoreApi<ViewerState>, 'getState' | 'setState' | 'subscribe'>;
 }

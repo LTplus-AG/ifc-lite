@@ -23,6 +23,7 @@ import {
   resolvePlacementChain,
   resolveRotationState,
 } from './placement-core.js';
+import { moveWallAxis } from './wall-axis-edit.js';
 
 /** Only these classes are walls; a beam or member built by the in-store
  * builders carries the same rectangle-profile + explicit-RefDirection shape,
@@ -329,6 +330,11 @@ export type WallResizeResult =
  *   - RefDirection (IfcDirection)  → new normalised (end-start)
  *   - profile XDim (IfcRectangleProfileDef)  → new length
  *   - profile origin (IfcCartesianPoint)  → [newLength/2, 0]
+ *   - the `Axis` polyline's two points, when the wall has one → [0, 0] and
+ *     [newLength, 0], so the centreline readers prefer stays with the body
+ *
+ * A wall with joins or cut ends is not a rectangle wall: it is re-shaped
+ * (and its joins recomputed) by `reshapeWallsIn` / `@ifc-lite/create`.
  */
 export function resizeRectangleWall(
   dataStore: IfcDataStore,
@@ -364,6 +370,7 @@ export function resizeRectangleWall(
   editor.setPositionalAttribute(chain.refDirectionId, 0, dir);
   editor.setPositionalAttribute(chain.profileId, 3, length);
   editor.setPositionalAttribute(chain.profileOriginPointId, 0, [length / 2, 0]);
+  moveWallAxis(dataStore, view, editor, expressId, length);
 
   return { ok: true, newStart, newEnd, newLength: length };
 }

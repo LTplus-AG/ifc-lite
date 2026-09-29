@@ -12,6 +12,8 @@ import { dist } from '@/lib/snap/constraints';
 import type { Vec2 } from '@/lib/snap/types';
 
 export const MIN_WALL_LENGTH = 0.01;
+/** A wall ending within this of the chain's first point (metres) closes the loop. */
+export const CLOSE_TOLERANCE = 0.05;
 
 /** Unit direction at `deg` (0 = +x, CCW), exact at multiples of 90° like the solver's angle lock. */
 function unitAt(deg: number): Vec2 {
@@ -28,6 +30,11 @@ export interface WallPlaceGesture {
   /** Typed locks for the next segment: metres, degrees (0 = +x, CCW). */
   length: number | null;
   angle: number | null;
+  /**
+   * The walls this chain has placed, oldest first: wall `i` runs from point
+   * `i` to point `i + 1`, so the last one ends at the anchor. Joins name them.
+   */
+  walls: number[];
 }
 
 export const anchorOf = (g: WallPlaceGesture): Vec2 | null => g.chain[g.chain.length - 1] ?? null;
@@ -79,4 +86,15 @@ export function currentAngle(g: WallPlaceGesture): number | null {
   if (g.angle !== null) return g.angle;
   if (!anchor || !end || dist(anchor, end) < 1e-9) return null;
   return ((Math.atan2(end[1] - anchor[1], end[0] - anchor[0]) * 180) / Math.PI + 360) % 360;
+}
+
+/**
+ * The walls the next one is joined to: the one before it in the chain, and the
+ * chain's first wall when the new wall ends on the chain's first point.
+ */
+export function chainPartners(g: WallPlaceGesture): { partners: number[]; closes: boolean } {
+  const last = g.walls.length === g.chain.length - 1 ? g.walls[g.walls.length - 1] : undefined;
+  const end = endPoint(g);
+  const closes = g.walls.length >= 2 && end !== null && dist(end, g.chain[0]) <= CLOSE_TOLERANCE;
+  return { partners: [...(last === undefined ? [] : [last]), ...(closes ? [g.walls[0]] : [])], closes };
 }

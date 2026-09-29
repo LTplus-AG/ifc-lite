@@ -14,13 +14,17 @@
  * Values cross this module in metres and are written in the model's length
  * unit. The positional writes land on the undo stack; the caller's
  * transaction tags them as one step and re-meshes the wall.
+ *
+ * A wall with joins, cut ends or an offset body gets its new thickness through
+ * `reshapeWallsIn`: its body is rewritten and every join it is part of is cut
+ * again for the new thickness, so the corners stay clean.
  */
 
-import { toNativeLength } from '@ifc-lite/create';
-import type { ViewerState } from '../index.js';
+import { readWallJoinRels, toNativeLength } from '@ifc-lite/create';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import { readWallMetres } from './mutation-wall-resize.js';
-import { modelEditTarget } from './mutation-modelling-records.js';
+import { modelEditTarget, type ModellingStore } from './mutation-modelling-records.js';
+import { reshapeWallsIn } from './mutation-wall-joins.js';
 
 export interface WallSection {
   /** Metres across the wall. */
@@ -35,7 +39,8 @@ export type WallSectionOutcome = { ok: true } | { ok: false; reason: string };
 const PROFILE_YDIM = 4;
 const EXTRUSION_DEPTH = 3;
 
-export function setWallSection(get: () => ViewerState, modelId: string, expressId: number, section: WallSection): WallSectionOutcome {
+export function setWallSection(store: ModellingStore, modelId: string, expressId: number, section: WallSection): WallSectionOutcome {
+  const get = store.getState;
   for (const value of [section.thickness, section.height]) {
     if (value !== undefined && !(Number.isFinite(value) && value > 0)) return { ok: false, reason: 'Wall thickness and height must be greater than zero' };
   }
@@ -47,10 +52,17 @@ export function setWallSection(get: () => ViewerState, modelId: string, expressI
   const unit = { lengthUnitScale: getModelLengthUnitScale(target.dataStore) };
   const updates = [];
   if (section.thickness !== undefined && section.thickness !== wall.thickness) {
-    updates.push({ entityId: wall.chain.profileId, index: PROFILE_YDIM, value: toNativeLength(unit, section.thickness) });
+    const joined = wall.read !== null && readWallJoinRels(target.dataStore, target.view, new Set([expressId])).length > 0;
+    if (wall.chain && (wall.read === null || (wall.read.plain && !joined))) {
+      updates.push({ entityId: wall.chain.profileId, index: PROFILE_YDIM, value: toNativeLength(unit, section.thickness) });
+    } else {
+      const reshaped = reshapeWallsIn(store, modelId, [{ wallId: expressId, thickness: section.thickness }], {});
+      if (!reshaped.ok) return reshaped;
+    }
   }
-  if (section.height !== undefined && section.height !== wall.height) {
-    updates.push({ entityId: wall.chain.extrudedSolidId, index: EXTRUSION_DEPTH, value: toNativeLength(unit, section.height) });
+  const solidId = wall.read?.solidId ?? wall.chain?.extrudedSolidId;
+  if (section.height !== undefined && section.height !== wall.height && solidId !== undefined) {
+    updates.push({ entityId: solidId, index: EXTRUSION_DEPTH, value: toNativeLength(unit, section.height) });
   }
   get().setPositionalAttributesBatch(modelId, updates);
   return { ok: true };

@@ -19,6 +19,8 @@ import { authoringDim } from '@/store/slices/authoringDefaultsSlice';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { dist } from '@/lib/snap/constraints';
 import type { Vec2 } from '@/lib/snap/types';
+import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
+import { resizeWallMetres } from '@/store/slices/mutation-wall-resize';
 import { commandGhostId, wallGhostMesh } from '../ghost.js';
 import { commitCommand, getCommandRuntime, updateCommandGesture } from '../runtime.js';
 import { buildStoreyWorkplane, elementStoreyId, isWorkplane } from '../workplane.js';
@@ -96,15 +98,14 @@ export const WALL_MOVE_ENDPOINT: ModelingCommand<WallEndpointGesture> = {
     const next = ends(g);
     if (!g.target || !next) throw new Error('No wall end to move');
     const { modelId, expressId } = g.target;
-    // The transaction's batch id: undo / redo rebuild the mesh by it.
-    const result = tx.store.resizeWall(modelId, expressId, next.start, next.end, tx.batchId);
+    const model = modelEditTarget(tx.store, modelId);
+    if (!model) throw new Error(`No model loaded for id "${modelId}"`);
+    // A dragged corner takes the walls joined to it along, and every join that touches a moved
+    // wall is cut again. The transaction's batch id: undo / redo rebuild the meshes by it.
+    const result = resizeWallMetres(tx.api, model, modelId, expressId, next.start, next.end, tx.batchId, { moveJoinedEnds: true });
     if (!result.ok) throw new Error(`Couldn't resize the wall: ${result.reason}`);
-    tx.store.refreshWallMesh(modelId, expressId);
-    // `resizeWall` remembered this batch for undo / redo re-meshing as
-    // 'hostsChanged' (its openings and fillings move with it) and
-    // `refreshWallMesh` re-meshed it so; a second request here would replace
-    // both with a 'shape' re-mesh of the wall alone.
-    return { modelId, created: [], deleted: [], remesh: [], select: [expressId] };
+    // 'hostsChanged': the openings and fillings of every moved wall move with it.
+    return { modelId, created: [], deleted: [], remesh: result.walls, remeshCause: 'hostsChanged', select: [expressId] };
   },
   afterCommit: () => ({ exit: true }),
   cancel: () => 'exit',

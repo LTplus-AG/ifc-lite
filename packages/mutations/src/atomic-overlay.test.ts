@@ -222,4 +222,17 @@ describe('atomic overlay editing #4243', () => {
     expect(published[0]).toBe(9);
   });
 
+
+  it('tells a created-then-removed entity from an id that was never created (#6232)', () => {
+    const { view, editor, item } = fixture();
+    const other = editor.addEntity('IfcColourRgb', [null, 1, 0, 0]).expressId;
+    // Removed inside an atomic edit, which is how a join rewrites a wall's profile.
+    view.runAtomic(draft => { draft.deleteEntity(item); });
+    expect(view.isForgottenCreatedEntity(item)).toBe(true);
+    expect(view.isForgottenCreatedEntity(other)).toBe(false);
+    expect(view.isForgottenCreatedEntity(other + 1000)).toBe(false);
+    // Restoring it (undo) makes it live again.
+    view.restoreNewEntity({ expressId: item, type: 'IfcTriangulatedFaceSet', attributes: [] });
+    expect(view.isForgottenCreatedEntity(item)).toBe(false);
+  });
 });

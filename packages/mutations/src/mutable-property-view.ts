@@ -1257,6 +1257,16 @@ export class MutablePropertyView extends MutableOverlayState {
     return true;
   }
 
+  /**
+   * Whether `expressId` was created in this overlay and then removed again
+   * (created-then-deleted this session). Its id was allocated and stays spent:
+   * a reader that walks the overlay's contiguous id range, as federation
+   * publication does, counts it as owned rather than as a gap.
+   */
+  isForgottenCreatedEntity(expressId: number): boolean {
+    return this.forgottenCreatedEntities.has(expressId);
+  }
+
   /** Returns all overlay-created entities in insertion order. */
   getNewEntities(): NewEntity[] {
     return Array.from(this.newEntities.values());

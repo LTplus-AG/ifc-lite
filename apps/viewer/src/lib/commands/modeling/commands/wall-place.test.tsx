@@ -177,7 +177,8 @@ describe('wall.place Align and Chain (#6232 M2.2)', () => {
     click(4, 0);
     click(4, 3);
     assert.deepEqual(gesture().chain.at(-1), [4, 3], 'the chain follows the clicks');
-    assert.deepEqual(walls(), [[[0, 0.1], [4, 0.1]], [[3.9, 0], [3.9, 3]]]);
+    // The two walls are joined at the corner, so their axes meet at the crossing of the drawn faces.
+    assert.deepEqual(walls(), [[[0, 0.1], [3.9, 0.1]], [[3.9, 0.1], [3.9, 3]]]);
   });
 
   it('Chain off: each wall is its own two clicks', () => {

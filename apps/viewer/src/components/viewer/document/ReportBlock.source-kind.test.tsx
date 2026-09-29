@@ -22,6 +22,8 @@ import { BlockEditor } from './BlockEditor.js';
 import { DocumentPanel } from './DocumentPanel.js';
 import { IdsReportPreview } from './IdsReportPreview.js';
 
+// Assertions compare booleans/strings, never DOM nodes: a failing assert on an
+// element makes node inspect the whole happy-dom graph (tens of GB).
 const BINDINGS: BindingContext = { models: [], activeModelId: null, today: new Date(0) };
 const noop = (): void => {};
 
@@ -79,7 +81,7 @@ describe('report block preview (#6372)', () => {
     assert.equal(text.includes('IDS report'), false);
     assert.ok(text.includes('Warnings3'), 'a separate Warnings stat');
     assert.ok(ui.querySelector('[data-ids-report-check="c"] [data-ids-report-warning]'), 'the warning rule is tagged');
-    assert.equal(ui.querySelector('[data-ids-report-check="u"] [data-ids-report-warning]'), null, 'an error rule is not');
+    assert.equal(ui.querySelector('[data-ids-report-check="u"] [data-ids-report-warning]') !== null, false, 'an error rule is not');
     const setRows = [...ui.querySelectorAll('[data-ids-report-check="u"] [data-ids-report-set]')].map((row) => row.textContent);
     assert.deepEqual(setRows, ['OfficeOffice (2×) · expected unique · Failed', 'count() · (blank)2 · expected >= 3 · Failed'], 'a blank group is named, not dropped (#6372 review)');
     assert.equal(ui.querySelector('[data-ids-report-check="c"] [data-ids-report-cardinality]')?.textContent, 'Applicable elementsFound 3 · expected at least 4 · Not met');
@@ -179,7 +181,7 @@ describe('report block add menu (#6372)', () => {
     const ui = render(<DocumentPanel />);
     await settle();
     openMenu(ui);
-    assert.equal(menuItem('IDS validation report'), undefined);
+    assert.equal(menuItem('IDS validation report') !== undefined, false, 'no IDS item for a rule-set run');
     const item = menuItem('Information validation report');
     assert.ok(item, 'the menu names the rule-set report');
     click(item!);
@@ -195,7 +197,7 @@ describe('report block add menu (#6372)', () => {
     await settle();
     openMenu(ui);
     assert.ok(menuItem('IDS validation report'));
-    assert.equal(menuItem('Information validation report'), undefined);
+    assert.equal(menuItem('Information validation report') !== undefined, false, 'no rule-set item for an IDS run');
     cleanup();
 
     useViewerStore.setState({ idsValidationReport: null, validationSource: null });

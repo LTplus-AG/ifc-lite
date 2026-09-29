@@ -205,7 +205,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
   );
 
   // Downloads are aborted when the panel unmounts (close / navigate away).
-  const { downloading, downloadStates, handleDownload, clearDownloadStates } = useSourceDownloadBatch({
+  const { downloading, downloadStates, handleDownload, clearFinishedDownloadStates } = useSourceDownloadBatch({
     provider: activeProvider,
     providerId: browsing,
     sourceHost,
@@ -238,7 +238,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
         onDownload={(selection) => void handleDownload(selection)}
         onBack={() => {
           closeBrowser();
-          clearDownloadStates();
+          clearFinishedDownloadStates();
         }}
         busy={downloading}
         downloadStates={downloadStates}

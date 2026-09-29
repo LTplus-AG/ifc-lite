@@ -101,8 +101,8 @@ function row(name: string): HTMLElement {
   return item as HTMLElement;
 }
 
-/** Browse the provider, open its only project and file area, tick both files, press Load. */
-async function startBatch(): Promise<void> {
+/** Browse the provider down to its only file area's listing. */
+async function openListing(): Promise<void> {
   await pump();
   click(byAria('Browse Acme Document Store'));
   await pump();
@@ -110,6 +110,20 @@ async function startBatch(): Promise<void> {
   await pump();
   click(buttonWithText('Documents'));
   await pump();
+}
+
+/** Back out of the browser to the provider list, one wizard step at a time. */
+async function leaveBrowser(): Promise<void> {
+  for (let i = 0; i < 3; i++) {
+    click(byAria('Back'));
+    await pump();
+  }
+  assert.ok(byAria('Browse Acme Document Store'), 'back on the provider list');
+}
+
+/** Open the listing, tick both files, press Load. */
+async function startBatch(): Promise<void> {
+  await openListing();
   click(byAria('Select Tower.ifc'));
   click(byAria('Select Podium.ifc'));
   click(buttonWithText('Load 2 files as federated model'));
@@ -207,5 +221,31 @@ describe('SourcesPanel per-file download progress (#6375)', () => {
     await settle(() => pending[1].resolve(new ArrayBuffer(50)));
     assert.equal(document.body.querySelector('[aria-label="Deselect Podium.ifc"]'), null, 'the browser closed');
     assert.ok(byAria('Browse Acme Document Store'), 'back on the provider list');
+  });
+
+  // Back does not cancel a running batch, so a browser reopened mid-batch
+  // must show it as it is, while a finished batch's failures are forgotten.
+  it('shows a still-running batch truthfully after Back, and forgets a finished one\'s failures', async () => {
+    const { provider, pending } = heldProvider();
+    render(
+      <SourceHostProvider additionalProviders={[() => provider]}>
+        <SourcesPanel onClose={() => {}} />
+      </SourceHostProvider>,
+    );
+    await startBatch();
+    progress(pending[0], 30, 100);
+
+    await leaveBrowser();
+    await openListing();
+    assert.equal(row('Tower.ifc').querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'), '30');
+    assert.ok(row('Podium.ifc').textContent?.includes('Queued'), 'the file still waiting reads queued');
+
+    await settle(() => pending[0].reject(new Error('upstream exploded')));
+    await settle(() => pending[1].resolve(new ArrayBuffer(50)));
+    assert.ok(row('Tower.ifc').textContent?.includes('Download failed'));
+
+    await leaveBrowser();
+    await openListing();
+    assert.equal(row('Tower.ifc').textContent?.includes('Download failed'), false, 'a closed batch leaves no failure behind');
   });
 });

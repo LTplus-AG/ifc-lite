@@ -126,8 +126,17 @@ export function useSourceDownloadBatch({
     [onBatchSucceeded, provider, providerId, sourceHost, t],
   );
 
-  /** Forgets finished rows' states (a failed row's), e.g. when the browser closes. */
-  const clearDownloadStates = useCallback(() => setDownloadStates(NO_DOWNLOADS), []);
+  /**
+   * Forgets finished rows (failed ones) when the browser closes. Rows of a
+   * batch still running stay: Back does not cancel the batch, so a browser
+   * reopened mid-batch shows it truthfully instead of half-cleared.
+   */
+  const clearFinishedDownloadStates = useCallback(() => {
+    setDownloadStates((previous) => {
+      const next = new Map([...previous].filter(([, state]) => state.phase !== 'failed'));
+      return next.size === previous.size ? previous : next;
+    });
+  }, []);
 
-  return { downloading, downloadStates, handleDownload, clearDownloadStates };
+  return { downloading, downloadStates, handleDownload, clearFinishedDownloadStates };
 }

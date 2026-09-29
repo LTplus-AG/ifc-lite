@@ -61,6 +61,7 @@ test('GLB imports preserve valid triangles that a bounding-box frame would colla
   const owner = await page.evaluate(() => globalThis.__ifc_lite_scene_owner__(19));
   expect(owner.corners).toHaveLength(18);
   expect(owner.corners[3] - owner.corners[0], 'the uploaded owner retains its 1 µm edge').toBeCloseTo(Math.fround(0.000001), 9);
+  expect(consoleLines.filter(line => /topology-safe GPU frame|GPU upload failed/.test(line))).toEqual([]);
   await info.attach('GLB precision invariant scene', { body: JSON.stringify(owner, null, 2), contentType: 'application/json' });
   await gpu.requireLiveGpu('GLB precision viewport pick and color readback', async () => {
     // The normal load fits with a 300 ms animation; let it finish before
@@ -80,7 +81,6 @@ test('GLB imports preserve valid triangles that a bounding-box frame would colla
     await page.mouse.click(canvas!.x + farTriangle!.x, canvas!.y + farTriangle!.y);
     await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId)).toBe(19);
     expect(errors).toEqual([]);
-    expect(consoleLines.filter(line => /topology-safe GPU frame|GPU upload failed/.test(line))).toEqual([]);
     // SwiftShader may discard compositor canvas pixels; the production renderer
     // readback is the color witness (the DOM screenshot records UI only).
     const colorFrame = await page.evaluate(() => globalThis.__ifc_lite_capture_color_frame__?.());

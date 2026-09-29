@@ -115,15 +115,17 @@ describe('complete saved-report provenance (#6500)', () => {
     });
   }
 
-  it('the production composer retains complete scope beyond a nearly-full page', async () => {
-    const { snapshot, names } = await scopedReport(80);
-    const page = { size: 'A4', orientation: 'portrait' } as const;
-    const size = pageBox(page);
-    const top = REPORT_MARGIN + 30;
-    const bottom = size.h - REPORT_MARGIN - 24;
-    const layout = composeDocument({ name: 'Scope evidence', page, generatedAt: '', measure: estimateTextWidth, blocks: [{ kind: 'spacer', id: 'bottom', height: bottom - top - 25 }, snapshot] });
-    const drawn = layout.pages.flatMap((p) => p.items.flatMap((item): Recorded[] => item.kind === 'text' || item.kind === 'ring' ? [{ page: p.index, item }] : []));
-    assertComplete(drawn, names, size.w - 2 * REPORT_MARGIN, { x: REPORT_MARGIN, top, bottom });
-    assert.ok(layout.pages.length >= 3);
-  });
+  for (const variant of [undefined, 'long', 'compact'] as const) {
+    it(`the production ${variant ?? 'original'} composer retains complete scope beyond a nearly-full page`, async () => {
+      const { snapshot, names } = await scopedReport(80);
+      const page = { size: 'A4', orientation: 'portrait' } as const;
+      const size = pageBox(page);
+      const top = REPORT_MARGIN + 30;
+      const bottom = size.h - REPORT_MARGIN - 24;
+      const layout = composeDocument({ name: 'Scope evidence', page, generatedAt: '', measure: estimateTextWidth, blocks: [{ kind: 'spacer', id: 'bottom', height: bottom - top - 25 }, { ...snapshot, ...(variant ? { variant } : {}) }] });
+      const drawn = layout.pages.flatMap((p) => p.items.flatMap((item): Recorded[] => item.kind === 'text' || item.kind === 'ring' ? [{ page: p.index, item }] : []));
+      assertComplete(drawn, names, size.w - 2 * REPORT_MARGIN, { x: REPORT_MARGIN, top, bottom });
+      assert.ok(layout.pages.length >= 3);
+    });
+  }
 });

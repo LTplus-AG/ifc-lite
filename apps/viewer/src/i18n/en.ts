@@ -87,6 +87,7 @@ import { modelingCommandEn } from './catalogues/modeling-command.en';
 import { modelWorkspaceEn } from './catalogues/model-workspace.en';
 import { roomToolEn } from './catalogues/room-tool.en';
 import { modelInspectorEn } from './catalogues/model-inspector.en';
+import { hostedPlaceEn } from './catalogues/hosted-place.en';
 import { remeshEn } from './catalogues/remesh.en';
 import { storeyContextEn } from './catalogues/storey-context.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
@@ -137,6 +138,7 @@ export const en = {
   ...modelWorkspaceEn,
   ...roomToolEn,
   ...modelInspectorEn,
+  ...hostedPlaceEn,
   ...remeshEn,
   ...storeyContextEn,
   ...documentEn,

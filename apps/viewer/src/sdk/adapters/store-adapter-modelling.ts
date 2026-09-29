@@ -7,24 +7,25 @@
  * `bim.store` modelling surface: openings, hosted doors/windows, type objects
  * and materials.
  *
- * An opening or hosted filling writes a compound graph — opening, IfcRelVoidsElement, and for a
- * hosted door/window the filling, IfcRelFillsElement and containment — that a
- * single `CREATE_ENTITY` undo entry cannot invert: undoing only the door would
- * leave IfcRelFillsElement pointing at a deleted record. Until the authoring
- * session records one undo batch per command (#6232 M1), these take the same
- * blunt-but-safe path as the cost relationship writes: mark the model dirty
- * and clear its undo history so `Ctrl+Z` can never cross the untracked write.
+ * An opening or hosted filling is written by the store's `addHostedFill`
+ * action, the same one the Model workspace's placing commands commit through
+ * (`mutation-hosted-fill.ts`): the compound graph (opening,
+ * IfcRelVoidsElement, and for a door or window the filling,
+ * IfcRelFillsElement and containment) lands on the undo stack as ONE batch,
+ * so `Ctrl+Z` removes all of it, it reaches a shared room, and the host is
+ * re-meshed with its void.
  *
- * An opening or hosted filling then re-meshes the host with the new element
- * (#6232): the host comes back cut, the door or window gets its real mesh, and
- * both reach the room.
+ * Relationship writes (type and material assignments, layer sets) still take
+ * the blunt-but-safe path of the cost relationship writes: mark the model
+ * dirty and clear its undo history so `Ctrl+Z` can never cross them.
  */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { createModellingStoreBackend, EntityRef } from '@ifc-lite/sdk';
 import { createStoreMutationTracker } from './store-adapter-cost.js';
-import { requestRemesh } from '@/lib/remesh/remesh-service';
+import { normalizeMutationModelId } from './mutation-view.js';
+import type { HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
 import type { StoreApi } from './types.js';
 
 type ModellingMethods = ReturnType<typeof createModellingStoreBackend>;
@@ -41,17 +42,18 @@ export function withModellingMutationTracking(
       store.getState().markCostRelationshipMutation(ref.modelId);
       return ref;
     });
-  // The host is re-meshed with the new element: it is what the opening cuts.
-  const hosted = <P>(fn: (modelId: string, hostExpressId: number, params: P) => EntityRef) =>
-    compound((modelId: string, hostExpressId: number, params: P): EntityRef => {
-      const ref = fn(modelId, hostExpressId, params);
-      void requestRemesh(store.getState, ref.modelId, [ref.expressId, hostExpressId], 'created');
-      return ref;
-    });
+  const hosted = <K extends HostedFillSpec['kind']>(kind: K, op: string) =>
+    (modelId: string, hostExpressId: number, params: Extract<HostedFillSpec, { kind: K }>['params']): EntityRef => {
+      const state = store.getState();
+      const normalized = normalizeMutationModelId(state, modelId);
+      const outcome = state.addHostedFill(normalized, hostExpressId, { kind, params } as HostedFillSpec);
+      if ('error' in outcome) throw new Error(`bim.store.${op}: ${outcome.error}`);
+      return { modelId: normalized, expressId: outcome.expressId };
+    };
   return {
-    addOpening: hosted(methods.addOpening),
-    addHostedDoor: hosted(methods.addHostedDoor),
-    addHostedWindow: hosted(methods.addHostedWindow),
+    addOpening: hosted('opening', 'addOpening'),
+    addHostedDoor: hosted('door', 'addHostedDoor'),
+    addHostedWindow: hosted('window', 'addHostedWindow'),
     // Single records with no relationship: one CREATE_ENTITY entry inverts them.
     addElementType: relationship((modelId: string, params: Parameters<ModellingMethods['addElementType']>[1]) => {
       const ref = methods.addElementType(modelId, params);

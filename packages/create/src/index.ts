@@ -59,44 +59,36 @@ export type * from './landxml/result-types.js';
 
 // In-store builders — emit elements into an existing parsed IfcDataStore
 // via a `StoreEditor` overlay (closes the merge-roundtrip gap from #592).
-export { addColumnToStore, type ColumnInStoreParams, type ColumnBuildResult } from './in-store/column.js';
 export {
-  addWallToStore,
-  emitWallAxisRepresentation,
-  emitWallBodyProfile,
-  wallJoinWallFromParams,
-  type WallInStoreParams,
-  type WallBuildResult,
-} from './in-store/wall.js';
-export {
-  computeWallJoin,
-  wallBodyLateralRange,
-  wallBodyOutline,
-  type PlanPoint,
-  type WallAlignment,
-  type WallBodyOutline,
-  type WallConnectionType,
-  type WallEndCut,
-  type WallJoin,
-  type WallJoinKind,
-  type WallJoinOptions,
-  type WallJoinSide,
-  type WallJoinWall,
-} from './in-store/wall-join.js';
-export {
-  applyWallJoinToStore,
-  wallJoinTargetFromBuild,
-  type WallJoinApplyOptions,
-  type WallJoinApplyResult,
-  type WallJoinTarget,
-} from './in-store/wall-join-apply.js';
-export {
-  addRelConnectsPathElementsToStore,
-  type RelConnectsAnchor,
-  type RelConnectsPathElementsParams,
-} from './in-store/rel-connects-path.js';
+  addColumnToStore,
+  type ColumnInStoreParams,
+  type ProfiledColumnInStoreParams,
+  type ColumnBuildResult,
+} from './in-store/column.js';
+export { addWallToStore, emitWallAxisRepresentation, emitWallBodyProfile, wallJoinWallFromParams, type WallInStoreParams, type WallBuildResult } from './in-store/wall.js';
+// Wall joins (L / T / butt) and the IfcRelConnectsPathElements they write.
+export { computeWallJoin, wallBodyLateralRange, wallBodyOutline } from './in-store/wall-join.js';
+export type * from './in-store/wall-join.js';
+export { applyWallJoinToStore, wallJoinTargetFromBuild, type WallJoinApplyOptions, type WallJoinApplyResult, type WallJoinTarget } from './in-store/wall-join-apply.js';
+export { addRelConnectsPathElementsToStore, type RelConnectsAnchor, type RelConnectsPathElementsParams } from './in-store/rel-connects-path.js';
 export { addSlabToStore, type SlabInStoreParams, type SlabRectangleParams, type SlabPolygonParams, type SlabBuildResult } from './in-store/slab.js';
-export { addBeamToStore, type BeamInStoreParams, type BeamBuildResult } from './in-store/beam.js';
+export { addBeamToStore, type BeamInStoreParams, type ProfiledBeamInStoreParams, type BeamBuildResult } from './in-store/beam.js';
+export {
+  emitProfileSection,
+  validateProfileSection,
+  profileSectionIfcClass,
+  type ProfileSection,
+  type ProfileSectionType,
+  type RectangleSection,
+  type ISection,
+  type LSection,
+  type TSection,
+  type USection,
+  type CSection,
+  type CircleSection,
+  type RectangleHollowSection,
+  type CircleHollowSection,
+} from './in-store/profile.js';
 export { addDoorToStore, type DoorInStoreParams, type DoorBuildResult } from './in-store/door.js';
 export { addWindowToStore, type WindowInStoreParams, type WindowBuildResult } from './in-store/window.js';
 export {
@@ -152,7 +144,7 @@ export {
 } from './in-store/apply-style.js';
 export { addRoofToStore, type RoofInStoreParams, type RoofRectangleParams, type RoofPolygonParams, type RoofBuildResult } from './in-store/roof.js';
 export { addPlateToStore, type PlateInStoreParams, type PlateRectangleParams, type PlatePolygonParams, type PlateBuildResult } from './in-store/plate.js';
-export { addMemberToStore, type MemberInStoreParams, type MemberBuildResult } from './in-store/member.js';
+export { addMemberToStore, type MemberInStoreParams, type ProfiledMemberInStoreParams, type MemberBuildResult } from './in-store/member.js';
 export {
   addCostScheduleToStore, addCostItemToStore, addCostValueToStore, addCostQuantityToStore,
   nestCostItemsInStore, assignCostItemsToScheduleInStore, assignObjectsToCostItemInStore,

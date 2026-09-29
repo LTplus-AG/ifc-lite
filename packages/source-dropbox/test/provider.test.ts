@@ -354,6 +354,30 @@ describe('DropboxProvider', () => {
       expect(new TextDecoder().decode(buf)).toBe('MODEL-BYTES-1-OLD');
     });
 
+    // #6375: with no Content-Length on the streamed body, the ring's total
+    // comes from the `size` Dropbox sends back in `Dropbox-API-Result`.
+    it('reports streamed progress with the Dropbox-API-Result size as the total when Content-Length is missing', async () => {
+      const content = 'IFC-BYTES-STREAMED-IN-CHUNKS';
+      const sizedWorld: DropboxMockWorld = {
+        ...WORLD,
+        items: [
+          ...WORLD.items,
+          { id: 'id:file-sized', name: 'big.ifc', parentId: 'id:f-alpha', kind: 'file', size: content.length, content },
+        ],
+      };
+      const ctx = createDropboxMockContext(sizedWorld);
+      const calls: Array<readonly [number, number | undefined]> = [];
+      const buf = await provider.download(
+        ctx,
+        { projectId: 'me', containerId: 'id:f-alpha', fileId: 'id:file-sized' },
+        { onProgress: (received, total) => calls.push([received, total]) },
+      );
+
+      expect(new TextDecoder().decode(buf)).toBe(content);
+      expect(calls[0]).toEqual([0, content.length]);
+      expect(calls.at(-1)).toEqual([content.length, content.length]);
+    });
+
     it('throws (via DropboxHttpError) for an unknown file', async () => {
       const ctx = createDropboxMockContext(WORLD);
       await expect(

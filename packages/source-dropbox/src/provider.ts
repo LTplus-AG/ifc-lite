@@ -262,7 +262,7 @@ export class DropboxProvider implements FileSourceProvider {
   async download(ctx: PluginContext, ref: SourceFileRef, options?: DownloadOptions): Promise<ArrayBuffer> {
     const client = await this.createClient(ctx);
     const path = ref.revisionId ? `rev:${ref.revisionId}` : pathArgFor(ref.fileId);
-    return client.downloadContent(path, options?.signal);
+    return client.downloadContent(path, options);
   }
 
   /**

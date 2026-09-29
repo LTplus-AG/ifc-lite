@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { PluginContext } from '@ifc-lite/plugin-api';
+import { readWithProgress } from '@ifc-lite/plugin-api';
+import type { DownloadOptions, PluginContext } from '@ifc-lite/plugin-api';
 
 const API_BASE_URL = 'https://api.dropboxapi.com/2';
 const CONTENT_BASE_URL = 'https://content.dropboxapi.com/2';
@@ -100,8 +101,15 @@ export class BrowserDropboxApiClient {
    * genuinely answers the authenticated request directly with no redirect, so
    * there is no pre-signed-URL indirection to build here and no need for
    * `ctx.fetchPublic`/`publicNetwork` at all.
+   *
+   * The body is streamed through `readWithProgress` so `onProgress` sees the
+   * bytes arrive. When `Content-Length` is missing, the total falls back to
+   * the `size` in the `Dropbox-API-Result` header: the same `FileMetadata`
+   * a listing reports as `sizeBytes`, delivered with the download itself, so
+   * no extra metadata round trip is needed.
    */
-  async downloadContent(path: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+  async downloadContent(path: string, options?: DownloadOptions): Promise<ArrayBuffer> {
+    const signal = options?.signal;
     const url = `${CONTENT_BASE_URL}/files/download`;
     this.debug('content download request', { url, path });
     const response = await this.ctx.fetch(url, {
@@ -120,6 +128,25 @@ export class BrowserDropboxApiClient {
       throw new DropboxHttpError(`Dropbox download ${response.status}: ${response.statusText} — ${truncate(body)}`, response.status);
     }
 
-    return response.arrayBuffer();
+    return readWithProgress(response, options?.onProgress, apiResultSize(response, this.ctx));
+  }
+}
+
+/** `size` from the `Dropbox-API-Result` header content-download endpoints
+ * return (JSON `FileMetadata`), or `undefined` when it is absent or not
+ * exposed to the page. It is only a progress total, so a malformed header
+ * costs the ring its percentage, never the download. */
+function apiResultSize(response: Response, ctx: PluginContext): number | undefined {
+  const raw = response.headers.get('dropbox-api-result');
+  if (!raw) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    const size = typeof parsed === 'object' && parsed !== null ? (parsed as { size?: unknown }).size : undefined;
+    return typeof size === 'number' ? size : undefined;
+  } catch (error) {
+    ctx.log.warn('Dropbox: unreadable Dropbox-API-Result header; download progress has no total', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
   }
 }

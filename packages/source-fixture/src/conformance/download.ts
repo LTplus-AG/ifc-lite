@@ -47,6 +47,44 @@ export function describeDownloadConformance(
       },
     );
 
+    // #6375: the host draws a per-file progress ring from these calls, so a
+    // ring that runs backwards, overshoots, or stops short of 100% is a
+    // provider bug, not a UI one.
+    it('reports progress that only increases and ends at the byte length', async () => {
+      const ctx = createContext();
+      const page = await provider.listFiles(ctx, fixtures.projectId, fixtures.containerWithFilesId, undefined, {
+        limit: 1,
+      });
+      expect(page.items.length, 'fixture must supply a containerWithFilesId that actually has files').toBeGreaterThan(0);
+      const file = page.items[0];
+
+      const ref = { projectId: fixtures.projectId, containerId: file.containerId, fileId: file.id };
+      const calls: Array<readonly [number, number | undefined]> = [];
+      const buffer = await provider.download(ctx, ref, {
+        onProgress: (received, total) => calls.push([received, total]),
+      });
+      // The byte length to end at comes from a download WITHOUT a progress
+      // callback, so it is independent of the counter under test: a reader
+      // that miscounts could otherwise size its own buffer to match itself.
+      const reference = await provider.download(ctx, ref);
+      expect(
+        bytesEqual(new Uint8Array(buffer), new Uint8Array(reference)),
+        'download() with onProgress returned different bytes than without it',
+      ).toBe(true);
+
+      expect(calls.length, 'download() never called onProgress').toBeGreaterThan(0);
+      for (let i = 0; i < calls.length; i++) {
+        const [received, total] = calls[i];
+        if (i > 0) {
+          expect(received, `onProgress call ${i} went backwards`).toBeGreaterThanOrEqual(calls[i - 1][0]);
+        }
+        if (total !== undefined) {
+          expect(received, `onProgress call ${i} reported more bytes than its total`).toBeLessThanOrEqual(total);
+        }
+      }
+      expect(calls.at(-1)?.[0], 'the last onProgress call must report every byte of the file').toBe(reference.byteLength);
+    });
+
     it('rejects promptly on an already-aborted signal', async () => {
       const ctx = createContext();
       const page = await provider.listFiles(ctx, fixtures.projectId, fixtures.containerWithFilesId, undefined, {

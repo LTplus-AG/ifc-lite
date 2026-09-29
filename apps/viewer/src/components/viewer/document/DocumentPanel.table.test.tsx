@@ -185,7 +185,7 @@ describe('DocumentPanel table block (#5142)', () => {
     const texts: string[] = [];
     const seams = async (): Promise<DocumentPdfSeams> => ({
       createDoc: async () => ({
-        addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {},
+        addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {}, fillRect: () => {},
         text: (t) => { texts.push(t); },
         addImage: () => {},
         svg: async () => {},

@@ -261,7 +261,7 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
           doc.setTextColor(0);
           break;
         case 'rect':
-          doc.fillRect?.(item.x, item.y, item.w, item.h, item.rgb);
+          doc.fillRect(item.x, item.y, item.w, item.h, item.rgb);
           break;
         case 'image': {
           const block = byId.get(item.blockId);

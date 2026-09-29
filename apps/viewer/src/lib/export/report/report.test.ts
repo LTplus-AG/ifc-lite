@@ -145,6 +145,7 @@ function recordingSeams(capture: ReportPdfSeams['capture']): { seams: ReportPdfS
     setFont: () => {},
     setFontSize: () => {},
     setTextColor: () => {},
+    fillRect: () => {},
     text: (t, x, y) => calls.push({ op: 'text', args: [t, x, y] }),
     addImage: (bytes, fmt, x, y, w, h) => calls.push({ op: 'image', args: [bytes.length, fmt, x, y, w, h] }),
     svg: async (svg, x, y, w, h) => { calls.push({ op: 'svg', args: [svg, x, y, w, h] }); },

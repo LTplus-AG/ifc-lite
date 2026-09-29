@@ -26,7 +26,7 @@ export interface ReportDoc {
   /** Width of `text` in the current font and size, in points; a document wraps with it. */
   textWidth?: (text: string) => number;
   /** Fill a rectangle with an RGB colour (0-255 per channel): the IDS report's percent bars (#6470). */
-  fillRect?: (x: number, y: number, w: number, h: number, rgb: readonly [number, number, number]) => void;
+  fillRect: (x: number, y: number, w: number, h: number, rgb: readonly [number, number, number]) => void;
   addImage: (bytes: Uint8Array, format: 'PNG' | 'JPEG', x: number, y: number, w: number, h: number) => void;
   /** Draw an SVG string into the box (svg2pdf); a raster fallback is the caller's business. */
   svg: (svg: string, x: number, y: number, w: number, h: number) => Promise<void>;

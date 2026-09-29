@@ -18,8 +18,8 @@ interface OverlayPublicationModel {
 
 interface OverlayPublicationView {
   getNewEntity(expressId: number): unknown;
-  /** Created and removed again this session: a spent id, not a gap in the range. */
-  isForgottenCreatedEntity?(expressId: number): boolean;
+  /** Removed this session; for an id inside the overlay range that means created and removed again: a spent id, not a gap. */
+  isDeleted?(expressId: number): boolean;
 }
 
 interface OverlayPublicationState {
@@ -67,7 +67,7 @@ export function toPublishedGlobalId(
     if (nextLocalId <= model.maxExpressId || expressId < nextLocalId) throw error;
     for (let localId = nextLocalId; localId <= expressId; localId++) {
       // An entity a session created and then removed (a join rewrites a wall's profile) keeps its id.
-      if (view.getNewEntity(localId) === null && view.isForgottenCreatedEntity?.(localId) !== true) throw error;
+      if (view.getNewEntity(localId) === null && view.isDeleted?.(localId) !== true) throw error;
     }
     registry.publishOverlayRange(modelId, nextLocalId, expressId);
     return registry.toGlobalId(modelId, expressId);

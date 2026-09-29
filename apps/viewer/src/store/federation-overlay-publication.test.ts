@@ -57,7 +57,7 @@ describe('mutation overlay federation publication', () => {
     const forgotten = new Set([102]);
     const views = new Map([['editable', {
       getNewEntity: (id: number) => live.has(id) ? { expressId: id } : null,
-      isForgottenCreatedEntity: (id: number) => forgotten.has(id),
+      isDeleted: (id: number) => forgotten.has(id),
     }]]);
 
     assert.equal(toPublishedGlobalId(registry, models, views, 'editable', 103), 103);

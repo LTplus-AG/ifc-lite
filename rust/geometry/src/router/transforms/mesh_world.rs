@@ -120,6 +120,17 @@ impl GeometryRouter {
         );
     }
 
+    /// The RTC offset still to be subtracted from `mesh`: zero when it is
+    /// already RTC-relative (`rtc_applied`) or the model has no offset.
+    #[inline]
+    fn pending_rtc_offset(&self, mesh: &Mesh) -> (f64, f64, f64) {
+        if self.has_rtc_offset() && !mesh.rtc_applied {
+            self.rtc_offset
+        } else {
+            (0.0, 0.0, 0.0)
+        }
+    }
+
     #[inline]
     pub(crate) fn mapped_origin_needs_local_frame(
         &self,
@@ -130,11 +141,7 @@ impl GeometryRouter {
             let o = transform.transform_point(&Point3::new(
                 mesh.origin[0], mesh.origin[1], mesh.origin[2],
             ));
-            let rtc = if self.has_rtc_offset() && !mesh.rtc_applied {
-                self.rtc_offset
-            } else {
-                (0.0, 0.0, 0.0)
-            };
+            let rtc = self.pending_rtc_offset(mesh);
             [o.x - rtc.0, o.y - rtc.1, o.z - rtc.2]
                 .iter()
                 .any(|v| v.abs() >= LARGE_MAPPED_ORIGIN_M)
@@ -152,7 +159,7 @@ impl GeometryRouter {
         if self.mapped_origin_needs_local_frame(mesh, transform) {
             return true;
         }
-        if !self.has_rtc_offset() || mesh.rtc_applied || mesh.is_empty() {
+        if !self.has_rtc_offset() || mesh.is_empty() {
             return false;
         }
         let (min, max) = mesh.bounds();
@@ -161,7 +168,7 @@ impl GeometryRouter {
             mesh.origin[1] + (min.y as f64 + max.y as f64) / 2.0,
             mesh.origin[2] + (min.z as f64 + max.z as f64) / 2.0,
         ));
-        let rtc = self.rtc_offset;
+        let rtc = self.pending_rtc_offset(mesh);
         [centre.x - rtc.0, centre.y - rtc.1, centre.z - rtc.2]
             .iter()
             .any(|v| v.abs() >= FAR_RTC_FRAME_M)

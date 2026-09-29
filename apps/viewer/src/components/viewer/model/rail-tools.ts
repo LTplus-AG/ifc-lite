@@ -12,7 +12,7 @@
 
 import type { ComponentType } from 'react';
 import { LogOut, MousePointer2, Slice } from 'lucide-react';
-import { BeamIcon, ColumnIcon, SlabIcon, WallIcon } from './model-icons';
+import { BeamIcon, ColumnIcon, RoomIcon, SlabIcon, WallIcon } from './model-icons';
 import type { TranslationKey } from '@/i18n';
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
@@ -67,6 +67,12 @@ export const RAIL_TOOLS: readonly RailTool[] = [
     shortcut: 'model.beam', drawsOnWorkplane: true,
     isActive: commandActive('beam.place'),
     run: () => { launchModelCommand('beam.place'); },
+  },
+  {
+    id: 'room.place', group: 'build', labelKey: 'roomTool.label', Icon: RoomIcon,
+    shortcut: 'model.room', drawsOnWorkplane: true,
+    isActive: commandActive('room.place'),
+    run: () => { launchModelCommand('room.place'); },
   },
   {
     id: 'element.split', group: 'edit', labelKey: 'modelWorkspace.tool.split', Icon: Slice,

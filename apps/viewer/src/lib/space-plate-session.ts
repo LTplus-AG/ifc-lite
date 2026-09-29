@@ -40,10 +40,15 @@ export interface Boundary {
 export const MAX_UNDO = 40;
 
 let wasmReady: Promise<void> | null = null;
+let wasmLoaded = false;
 /** Initialise the wasm module once (idempotent). */
 export function ensureSpaceWasm(): Promise<void> {
-  if (!wasmReady) wasmReady = init().then(() => undefined);
+  if (!wasmReady) wasmReady = init().then(() => { wasmLoaded = true; });
   return wasmReady;
+}
+/** Whether `ensureSpaceWasm` has resolved, for a synchronous caller (a pointer move). */
+export function spaceWasmLoaded(): boolean {
+  return wasmLoaded;
 }
 
 /** Half-thickness (m) per wall segment, parallel to the coords/sources arrays;
@@ -121,25 +126,35 @@ export function snapshotRooms(
   return out;
 }
 
-/** Face-based whole-building bake: build a throwaway plate from wall RECTANGLES.
- *  `fromWallRects` returns a centreline plate whose room outline IS the wall axis
- *  (the gross-area basis), so the boundary at the chosen mode is the axis itself
- *  (`center`) or `net_outline` inset/outset to the inner (net) / outer (gross)
- *  face. Frees the plate. */
-export function snapshotRoomsFromRects(
+/** One room of a storey, read off a throwaway plate built from wall RECTANGLES
+ *  (the Room tool, charter #6232 M4). `centre` is the face outline — the wall
+ *  axis, the gross-area basis; `inner` / `outer` are `net_outline` inset to the
+ *  room-side wall faces / outset to the far faces. */
+export interface RoomFace {
+  face: number;
+  centre: [number, number][];
+  inner: [number, number][];
+  outer: [number, number][];
+}
+
+/** Every room the wall rectangles (`flattenWallRects`) enclose, with all three
+ *  boundaries, from one throwaway plate that is freed before returning. */
+export function roomFacesFromRects(
   rectCoords: Float64Array,
-  boundary: 'center' | 'inner' | 'outer',
   snapTolerance = 0.05,
   minArea = 0.3,
-): RoomWithBoundary[] {
+): RoomFace[] {
   const handle = SpacePlateHandle.fromWallRects(rectCoords, snapTolerance, minArea);
-  const rooms = handle.snapshot() as Room[];
-  const out = rooms.map((r) => ({
-    outline: r.outline, // the wall axis (centreline) — gross-area basis
-    boundary: boundary === 'center' ? r.outline : flatToPts(handle.netOutline(r.face, boundary === 'inner')),
-  }));
-  handle.free();
-  return out;
+  try {
+    return (handle.snapshot() as Room[]).map((r) => ({
+      face: r.face,
+      centre: r.outline,
+      inner: flatToPts(handle.netOutline(r.face, true)),
+      outer: flatToPts(handle.netOutline(r.face, false)),
+    }));
+  } finally {
+    handle.free();
+  }
 }
 
 export class SpacePlateSession {

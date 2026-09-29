@@ -90,6 +90,10 @@ export function HudValueField({
   // its face, #5480's inset) is zero to the user.
   const shown = Math.abs(value) < 0.5 * 10 ** -precision ? 0 : value;
   const [draft, setDraft] = useState('');
+  // Whether the user typed into this edit session. Only a typed draft
+  // commits: a field opened by Tab (or a click) and left untouched keeps its
+  // value, so blurring it — say, by clicking in the viewport — writes nothing.
+  const typed = useRef(false);
   const dragRef = useRef<{ pointerId: number; startX: number; startValue: number; moved: boolean } | null>(
     null,
   );
@@ -110,17 +114,21 @@ export function HudValueField({
 
   function startEdit(initial?: string): void {
     setDraft(initial ?? value.toFixed(precision));
+    // A caller-supplied draft is a digit the user typed elsewhere.
+    typed.current = initial !== undefined;
     setEditing(true);
   }
 
   useImperativeHandle(ref, () => ({ beginEdit: startEdit }));
 
-  /** The typed value, clamped; null when the draft is not a number. */
+  /** The typed value, clamped; null when the draft is not a number or was never typed. */
   function commitDraft(): number | null {
+    setEditing(false);
+    if (!typed.current) return null;
+    typed.current = false;
     const parsed = Number.parseFloat(draft);
     const next = Number.isFinite(parsed) ? clamp(parsed) : null;
     if (next !== null) onChange(next);
-    setEditing(false);
     return next;
   }
 
@@ -172,14 +180,17 @@ export function HudValueField({
   function handleInputKeyDown(e: KeyboardEvent<HTMLInputElement>): void {
     if (e.key === 'Enter') {
       e.preventDefault();
+      const wasTyped = typed.current;
       const next = commitDraft();
-      if (next !== null) onSubmit?.(next);
+      // Enter on an untouched field still submits, with the value as shown.
+      if (next !== null || !wasTyped) onSubmit?.(next ?? value);
     } else if (e.key === 'Tab' && onTab) {
       e.preventDefault();
       commitDraft();
       onTab(e.shiftKey);
     } else if (e.key === 'Escape') {
       e.preventDefault();
+      typed.current = false;
       setEditing(false);
     }
   }
@@ -191,7 +202,7 @@ export function HudValueField({
         inputMode="decimal"
         autoFocus
         value={draft}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => { typed.current = true; setDraft(e.target.value); }}
         onKeyDown={handleInputKeyDown}
         onBlur={commitDraft}
         aria-label={aria['aria-label']}

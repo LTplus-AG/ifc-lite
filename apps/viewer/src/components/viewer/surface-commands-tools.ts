@@ -5,11 +5,11 @@
 /** Static Tools palette family. The key-command table remains the chord source. */
 import {
   Box, Crosshair, MousePointer2, PenLine, PersonStanding, Ruler, Scissors,
-  Slice, SquareDashed, StickyNote,
+  Slice, StickyNote,
 } from 'lucide-react';
 import { openRepositionModels } from '@/lib/model-placement/commands';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
-import { BeamIcon, ColumnIcon, SlabIcon, WallIcon } from './model/model-icons';
+import { BeamIcon, ColumnIcon, RoomIcon, SlabIcon, WallIcon } from './model/model-icons';
 import { useViewerStore } from '@/store';
 import type { SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
 
@@ -98,11 +98,11 @@ export const TOOL_SURFACE_COMMANDS = [
     run: () => { launchModelCommand('beam.place'); },
   },
   {
-    // Interim until the M4 Room tool supersedes it (#6232).
-    id: 'tool:space', labelKey: 'kindVariants.space.palette',
-    searchLabel: 'Draw spaces', keywords: 'space room area zone rectangle polygon draw model author build create',
-    category: 'Tools', icon: SquareDashed, surfaces: paletteOnly, enabled: editable,
-    run: () => { launchModelCommand('space.place'); },
+    id: 'tool:room', labelKey: 'roomTool.palette',
+    searchLabel: 'Make rooms', keywords: 'room space area zone auto rectangle polygon draw walls model author build create',
+    category: 'Tools', icon: RoomIcon, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.room',
+    run: () => { launchModelCommand('room.place'); },
   },
   {
     id: 'tool:edit-mode', labelKey: 'commandPalette.tool.editMode.label', ribbonLabelKey: 'ribbon.author.editMode',

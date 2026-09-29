@@ -55,6 +55,10 @@ export function effectiveStoreyId(
     const sourceParents = store.relationships.inverse.getEdges(id, RelationshipType.Aggregates)
       .filter((edge) => edgeSurvives(edge, superseded)).map((edge) => edge.target);
     for (const parent of [...sourceParents, ...(aggregateParents.get(id) ?? [])]) {
+      // A spatial child a storey aggregates (IfcSpace, IfcSpatialZone) is on
+      // that storey — the rule `elementToStorey` applies to the parsed model
+      // (#1075), which this edited-model path must agree with.
+      if (isStorey(parent) && !isStorey(id)) return parent;
       if (!context.isDeleted(parent) && !visited.has(parent)) {
         visited.add(parent);
         queue.push(parent);

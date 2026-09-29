@@ -37,18 +37,18 @@ export interface UseValidationIsolationParams {
   isolationScope: IDSIsolationScope;
   activeSpecificationId: string | null;
   buildColors: (specId?: string, bothHighlights?: boolean) => Map<number, ColorTuple>;
+  paintColors: (colors: Map<number, ColorTuple>) => void;
   setSpecColors: (specId: string) => void;
   restoreReportColors: () => void;
 }
 
 export function useValidationIsolation(params: UseValidationIsolationParams): ValidationIsolationApi {
-  const { isolationScope, activeSpecificationId, buildColors, setSpecColors, restoreReportColors } = params;
+  const { isolationScope, activeSpecificationId, buildColors, paintColors, setSpecColors, restoreReportColors } = params;
 
   const setIdsActiveSpecification = useViewerStore((s) => s.setIdsActiveSpecification);
   const setIdsIsolationScope = useViewerStore((s) => s.setIdsIsolationScope);
   const setIdsIsolateMode = useViewerStore((s) => s.setIdsIsolateMode);
   const setIsolatedEntities = useViewerStore((s) => s.setIsolatedEntities);
-  const setPendingColorUpdates = useViewerStore((s) => s.setPendingColorUpdates);
   const idsFailedEntityIds = useViewerStore((s) => s.idsFailedEntityIds);
   const idsPassedEntityIds = useViewerStore((s) => s.idsPassedEntityIds);
   const getFailedEntitiesForSpec = useViewerStore((s) => s.getFailedEntitiesForSpec);
@@ -148,10 +148,10 @@ export function useValidationIsolation(params: UseValidationIsolationParams): Va
     for (const globalId of keySetToGlobalIds(idsPassedEntityIds)) ids.add(globalId);
     if (ids.size > 0) {
       installSetIsolation(ids);
-      setPendingColorUpdates(buildColors(undefined, true));
+      paintColors(buildColors(undefined, true));
       setIdsIsolateMode('involved');
     }
-  }, [isolationScope, activeSpecificationId, getFailedEntitiesForSpec, getPassedEntitiesForSpec, refsToGlobalIds, keySetToGlobalIds, idsFailedEntityIds, idsPassedEntityIds, installSetIsolation, setSpecColors, restoreReportColors, setPendingColorUpdates, setIdsIsolateMode, buildColors]);
+  }, [isolationScope, activeSpecificationId, getFailedEntitiesForSpec, getPassedEntitiesForSpec, refsToGlobalIds, keySetToGlobalIds, idsFailedEntityIds, idsPassedEntityIds, installSetIsolation, setSpecColors, restoreReportColors, paintColors, setIdsIsolateMode, buildColors]);
 
   /** A `SetResultRow` click (#5138 plan §6) — isolates the group's members
    *  through the SAME shared channel `isolateFailed`/`Passed`/`Involved` use.

@@ -41,6 +41,7 @@ import { hierarchyEn } from './catalogues/hierarchy.en';
 import { idsPanelEn } from './catalogues/ids-panel.en';
 import { validationEditorEn } from './catalogues/validation-editor.en';
 import { validationPanelEn } from './catalogues/validation-panel.en';
+import { manualValidationEn } from './catalogues/manual-validation.en';
 import { flowPanelEn } from './catalogues/flow-panel.en';
 import { keyboardShortcutsEn } from './catalogues/keyboard-shortcuts.en';
 import { settingsEn } from './catalogues/settings.en';
@@ -84,8 +85,8 @@ import { spaceSketchEn } from './catalogues/space-sketch.en';
 import { splitToolEn } from './catalogues/split-tool.en';
 import { modelingCommandEn } from './catalogues/modeling-command.en';
 import { modelWorkspaceEn } from './catalogues/model-workspace.en';
+import { roomToolEn } from './catalogues/room-tool.en';
 import { modelInspectorEn } from './catalogues/model-inspector.en';
-import { kindVariantsEn } from './catalogues/kind-variants.en';
 import { remeshEn } from './catalogues/remesh.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
 import { webgpuTroubleshootingEn } from './catalogues/webgpu-troubleshooting.en';
@@ -133,8 +134,8 @@ export const en = {
   ...splitToolEn,
   ...modelingCommandEn,
   ...modelWorkspaceEn,
+  ...roomToolEn,
   ...modelInspectorEn,
-  ...kindVariantsEn,
   ...remeshEn,
   ...documentEn,
   ...documentMenuEn,
@@ -161,6 +162,7 @@ export const en = {
   ...idsPanelEn,
   ...validationEditorEn,
   ...validationPanelEn,
+  ...manualValidationEn,
   ...flowPanelEn,
   ...chatEn,
   ...chatByokEn,

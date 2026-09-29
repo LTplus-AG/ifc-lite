@@ -5,12 +5,11 @@
 /**
  * IDS Color System
  *
- * Pure functions that apply and clear validation result color overrides
- * on renderer meshes. No React dependencies.
+ * Pure functions that build validation result colour overrides. No React
+ * dependencies.
  */
 
 import type { ValidationReport } from '@ifc-lite/ids';
-import type { GeometryResult } from '@ifc-lite/geometry';
 import { toGlobalIdFromModels } from '../../store/globalId.js';
 
 /** RGBA color tuple in 0-1 range */
@@ -62,18 +61,18 @@ export interface ColorScopeOptions {
 /**
  * Build a map of color overrides from validation results.
  *
- * Also captures original colors from geometry (only if originalColors is empty)
- * so they can be restored later via `buildRestoreColorUpdates`.
+ * The result is an OVERLAY for the colour-override channel
+ * (`pendingColorUpdates`): it never touches the model's own colours, so
+ * dropping the overlay is all "restore original colours" needs (#6373, see
+ * `lib/ids/color-ownership.ts`).
  *
  * @param report - The validation report (IDS or rule-set)
  * @param models - Map of model ID to model info (for ID offset resolution)
  * @param displayOptions - Controls which highlights are active and their colors
  * @param defaultFailedColor - Fallback failed color
  * @param defaultPassedColor - Fallback passed color
- * @param geometryResult - Current geometry for capturing original colors (may be null)
- * @param originalColors - Mutable map to store original colors into (only populated if empty)
  * @param scope - Optional scoping (e.g. restrict to a single specification)
- * @returns Map of globalId to color tuple for updateMeshColors
+ * @returns Map of globalId to color tuple
  */
 export function buildValidationColorUpdates(
   report: ValidationReport,
@@ -81,8 +80,6 @@ export function buildValidationColorUpdates(
   displayOptions: ColorDisplayOptions,
   defaultFailedColor: ColorTuple,
   defaultPassedColor: ColorTuple,
-  geometryResult: GeometryResult | null | undefined,
-  originalColors: Map<number, ColorTuple>,
   scope?: ColorScopeOptions
 ): Map<number, ColorTuple> {
   const colorUpdates = new Map<number, ColorTuple>();
@@ -96,25 +93,6 @@ export function buildValidationColorUpdates(
     ? report.specificationResults.filter((s) => s.specification.id === scope.specId)
     : report.specificationResults;
 
-  // Build a set of globalIds we'll be updating
-  const globalIdsToUpdate = new Set<number>();
-  for (const specResult of specResults) {
-    for (const entityResult of specResult.entityResults) {
-      const globalId = toGlobalIdFromModels(models, entityResult.modelId, entityResult.expressId);
-      globalIdsToUpdate.add(globalId);
-    }
-  }
-
-  // Capture original colors before applying overrides (only if not already captured)
-  if (geometryResult?.meshes && originalColors.size === 0) {
-    for (const mesh of geometryResult.meshes) {
-      if (globalIdsToUpdate.has(mesh.expressId)) {
-        originalColors.set(mesh.expressId, [...mesh.color] as ColorTuple);
-      }
-    }
-  }
-
-  // Process all entity results (within scope)
   for (const specResult of specResults) {
     for (const entityResult of specResult.entityResults) {
       const globalId = toGlobalIdFromModels(models, entityResult.modelId, entityResult.expressId);
@@ -126,28 +104,6 @@ export function buildValidationColorUpdates(
       }
     }
   }
-
-  return colorUpdates;
-}
-
-/**
- * Build a map of color updates to restore original colors.
- *
- * @param originalColors - Map of globalId to original color (will be cleared after building)
- * @returns Map of globalId to original color tuple for updateMeshColors, or null if nothing to restore
- */
-export function buildRestoreColorUpdates(
-  originalColors: Map<number, ColorTuple>
-): Map<number, ColorTuple> | null {
-  if (originalColors.size === 0) {
-    return null;
-  }
-
-  // Create a new map with the original colors to restore
-  const colorUpdates = new Map<number, ColorTuple>(originalColors);
-
-  // Clear the stored original colors after building restore map
-  originalColors.clear();
 
   return colorUpdates;
 }

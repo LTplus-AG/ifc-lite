@@ -470,9 +470,10 @@ test('#6489 real IFC document tables retain independent ordering and coloured re
     state.upsertDocument({ version: 9, id: 'table-options-6489', name: 'IFC table options', page: { size: 'A4', orientation: 'portrait' },
       blocks: [{ kind: 'table', id: 'largest', source: { kind: 'list', list }, title: 'Largest first', maxRows: 500 },
         { kind: 'table', id: 'labels', source: { kind: 'list', list: { ...list, id: 'copy-6489' } }, title: 'By label', maxRows: 500 }] });
-    state.setActiveDocumentId('table-options-6489'); state.showWorkspacePanel('document'); state.setSidebarActivePanel('document');
+    state.setActiveDocumentId('table-options-6489'); state.showWorkspacePanel('document');
   }, [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcBuildingElementProxy, IfcTypeEnum.IfcFurniture, IfcTypeEnum.IfcBeam]);
-  const panel = page.locator('[data-document-panel]');
+  const panel = page.locator('[data-document-panel]:visible');
+  await expect(panel).toHaveCount(1);
   await expect(panel.locator('[data-block-table] table')).toHaveCount(2);
   await page.getByRole('button', { name: 'Maximize', exact: true }).click();
   const editor = panel.locator('[data-block-editor="labels"]');
@@ -492,7 +493,7 @@ test('#6489 real IFC document tables retain independent ordering and coloured re
   await color.fill('#ffee88');
   await expect(preview.locator('th').first()).toHaveCSS('background-color', 'rgb(255, 238, 136)');
   await expect(preview.locator('th').first()).toHaveCSS('color', 'rgb(0, 0, 0)');
-  await editor.scrollIntoViewIfNeeded();
+  await preview.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath('document-table-options.png') });
   const downloadPromise = page.waitForEvent('download'); await panel.locator('[data-document-export]').click();
   const pdfPath = testInfo.outputPath('document-table-options.pdf');

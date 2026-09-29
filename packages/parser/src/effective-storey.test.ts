@@ -37,4 +37,14 @@ describe('effectiveStoreyId', () => {
     expect(effectiveStoreyId(store, 5, edited)).toBe(3);
     expect(effectiveStoreyId(store, 3, edited), 'a storey is on no storey').toBeUndefined();
   });
+
+  it('never puts a space on a storey that is deleted in the same edit', async () => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer as ArrayBuffer);
+    const storeyDeleted: EffectiveSpatialContext = {
+      relationships: { relationships: [], supersededSourceIds: new Set() },
+      isDeleted: (id) => id === 3,
+      typeName: (id) => store.entities.getTypeName(id),
+    };
+    expect(effectiveStoreyId(store, 4, storeyDeleted)).toBeUndefined();
+  });
 });

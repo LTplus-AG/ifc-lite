@@ -24,6 +24,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import type { ColumnDefinition } from '@ifc-lite/lists';
 import { cn } from '@/lib/utils';
 import type { SelectModifiers } from '@/hooks/useEntityListMultiSelect';
+import type { VisibilityChannel } from '@/lib/visibility/ownership';
+import { ListRowVisibilityActions } from './ListRowVisibilityActions';
 import {
   formatCellValue, blankRepeatedPathValues,
   type Totals, type ScheduleRow,
@@ -62,11 +64,16 @@ interface ListScheduleTableProps {
   isRowSelected: (index: number) => boolean;
   /** Select schedule row `index`'s members (Ctrl/Cmd toggles, Shift ranges; #6368). */
   onRowActivate: (index: number, modifiers: SelectModifiers) => void;
+  /** The presentation the list is showing for schedule row `index`, if any. */
+  rowVisibility: (index: number) => VisibilityChannel | null;
+  /** Isolate / X-ray schedule row `index`'s members (#6368). */
+  onRowVisibilityAction: (index: number, channel: VisibilityChannel) => void;
 }
 
 export function ListScheduleTable({
   scheduleRows, groupChips, sumChips, columns, sortCol, sortDir, totals,
   widthOverrides, setWidthOverrides, onHeaderClick, virtualizer, isRowSelected, onRowActivate,
+  rowVisibility, onRowVisibilityAction,
 }: ListScheduleTableProps) {
   const { t, locale } = useTranslation();
   const countLabel = t('lists.scheduleTable.count');
@@ -171,43 +178,49 @@ export function ListScheduleTable({
           // A real button (#6368): selects the tuple's members, and Enter /
           // Space keep their modifiers (a synthesized click may not carry them).
           return (
-            <button
-              key={vRow.key}
-              type="button"
-              aria-pressed={selected}
-              className={cn('absolute left-0 top-0 flex w-full cursor-pointer select-none border-b border-border/30 text-left hover:bg-muted/40', selected && 'bg-primary/10')}
-              style={{ transform }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onRowActivate(vRow.index, event); }
-              }}
-              onClick={(event) => onRowActivate(vRow.index, event)}
-            >
-              {groupChips.map((c, i) => (
-                <span
-                  key={`group:${c.id}`}
-                  className="border-r border-border/20 px-2 py-1 text-xs truncate shrink-0"
-                  style={{ width: scheduleColumnWidths[i] }}
-                  title={row.path[i]}
-                >
-                  {displayPath[i]}
-                </span>
-              ))}
-              <span
-                className="border-r border-border/20 px-2 py-1 text-xs text-right font-mono tabular-nums shrink-0"
-                style={{ width: scheduleColumnWidths[groupChips.length] }}
+            <div key={vRow.key} className="group absolute left-0 top-0 flex w-full" style={{ transform }}>
+              <button
+                type="button"
+                aria-pressed={selected}
+                className={cn('flex w-full cursor-pointer select-none border-b border-border/30 text-left hover:bg-muted/40', selected && 'bg-primary/10')}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onRowActivate(vRow.index, event); }
+                }}
+                onClick={(event) => onRowActivate(vRow.index, event)}
               >
-                {formatLocaleCount(row.count, locale)}
-              </span>
-              {sumChips.map((s, i) => (
+                {groupChips.map((c, i) => (
+                  <span
+                    key={`group:${c.id}`}
+                    className="border-r border-border/20 px-2 py-1 text-xs truncate shrink-0"
+                    style={{ width: scheduleColumnWidths[i] }}
+                    title={row.path[i]}
+                  >
+                    {displayPath[i]}
+                  </span>
+                ))}
                 <span
-                  key={`sum:${s.id}`}
                   className="border-r border-border/20 px-2 py-1 text-xs text-right font-mono tabular-nums shrink-0"
-                  style={{ width: scheduleColumnWidths[groupChips.length + 1 + i] }}
+                  style={{ width: scheduleColumnWidths[groupChips.length] }}
                 >
-                  {formatCellValue(row.sums[s.id])}
+                  {formatLocaleCount(row.count, locale)}
                 </span>
-              ))}
-            </button>
+                {sumChips.map((s, i) => (
+                  <span
+                    key={`sum:${s.id}`}
+                    className="border-r border-border/20 px-2 py-1 text-xs text-right font-mono tabular-nums shrink-0"
+                    style={{ width: scheduleColumnWidths[groupChips.length + 1 + i] }}
+                  >
+                    {formatCellValue(row.sums[s.id])}
+                  </span>
+                ))}
+              </button>
+              <ListRowVisibilityActions
+                name={row.path.join(' / ')}
+                active={rowVisibility(vRow.index)}
+                onAction={(channel) => onRowVisibilityAction(vRow.index, channel)}
+                firstColumnWidth={scheduleColumnWidths[0] ?? 0}
+              />
+            </div>
           );
         })}
       </div>

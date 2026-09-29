@@ -218,7 +218,7 @@ export class DaluxBuildProvider implements FileSourceProvider {
       return client.getBinary(
         `${client.baseUrl}/2.0/projects/${enc(ref.projectId)}/file_areas/${enc(fileAreaId)}` +
           `/files/${enc(ref.fileId)}/revisions/${enc(revisionId)}/content`,
-        options?.signal,
+        options,
       );
     }
 
@@ -233,7 +233,7 @@ export class DaluxBuildProvider implements FileSourceProvider {
       throw new Error(`Dalux file ${ref.fileId} does not expose a download link`);
     }
 
-    return client.getBinary(downloadLink, options?.signal);
+    return client.getBinary(downloadLink, options, metadata.data.fileSize);
   }
 
   /**

@@ -47,3 +47,31 @@ built-ins use:
 
 This is build-time composition only. The viewer loads no provider code at
 runtime, and `.iflx` extensions get no new capabilities from it.
+
+## Reporting download progress
+
+The host draws a per-file progress ring from `DownloadOptions.onProgress`.
+`readWithProgress` does the streaming for you: it reads a successful
+`Response` body, reports `(received, total)` about ten times a second, starts
+at `(0, total)` and ends at `(byteLength, byteLength)`. The total is the
+response's `Content-Length`, else the fallback you pass (the file's listed
+size), else `undefined`, which the host shows as a spinner.
+
+```ts
+import { readWithProgress } from '@ifc-lite/plugin-api';
+import type { DownloadOptions, PluginContext } from '@ifc-lite/plugin-api';
+
+async function downloadBytes(
+  ctx: PluginContext,
+  url: string,
+  sizeBytes: number | undefined,
+  options?: DownloadOptions,
+): Promise<ArrayBuffer> {
+  const response = await ctx.fetch(url, { signal: options?.signal });
+  if (!response.ok) throw new Error(`download failed: ${response.status}`);
+  return readWithProgress(response, options?.onProgress, sizeBytes);
+}
+```
+
+The `@ifc-lite/source-fixture` conformance suite checks that progress only
+increases and that its last call reports every byte returned.

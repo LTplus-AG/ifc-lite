@@ -20,7 +20,6 @@ import { IconButton } from '@/components/ui/icon-button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { useViewerStore } from '@/store';
-import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
 import { groupingColumnIds, type ListResult, type ListRow, type ColumnDefinition, type ListGrouping } from '@ifc-lite/lists';
 import type { ProjectUnits } from '@ifc-lite/parser';
 import { exportList, buildExportModel, EXPORT_LABELS, type ExportFormat } from '@/lib/lists/export';
@@ -34,6 +33,8 @@ import { ListGroupingBar } from './ListGroupingBar';
 import { ListScheduleTable } from './ListScheduleTable';
 import { ListGroupHeaderRow } from './ListGroupHeaderRow';
 import { useListRowSelection } from './useListRowSelection';
+import { useListVisibilityActions } from './useListVisibilityActions';
+import { useVisibleListRows } from './useVisibleListRows';
 import { ColumnResizeHandle } from './ColumnResizeHandle';
 import { formatCellValue, compareCells, detectNumericColumns, autoColumnWidth,
   buildGroupedView, flatTotals, buildScheduleRows, rebuildGrouping,
@@ -68,16 +69,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
   const activateAutoColorFromColumn = useViewerStore((s) => s.activateAutoColorFromColumn);
   const activeLensId = useViewerStore((s) => s.activeLensId);
 
-  // Visibility state — re-filter when 3D visibility changes.
-  const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
-  const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
-  const classFilter = useViewerStore((s) => s.classFilter);
-  const lensHiddenIds = useViewerStore((s) => s.lensHiddenIds);
-  const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
-  const typeVisibility = useViewerStore((s) => s.typeVisibility);
-  const models = useViewerStore((s) => s.models);
-  const activeBasketViewId = useViewerStore((s) => s.activeBasketViewId);
-  const geometryResult = useViewerStore((s) => s.geometryResult);
+  const visibilityActions = useListVisibilityActions();
 
   const columns = result.columns;
   const numericCols = useMemo(() => detectNumericColumns(columns, result.rows), [columns, result.rows]);
@@ -89,19 +81,8 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
     [columns, modelUnits, unitDisplayOverrides],
   );
 
-  const visibilityFilteredRows = useMemo(() => {
-    if (!filterByVisibility) return result.rows;
-    const visibleSet = new Set<string>();
-    for (const ref of getVisibleBasketEntityRefsFromStore()) visibleSet.add(`${ref.modelId}:${ref.expressId}`);
-    return result.rows.filter((row) => {
-      const modelId = row.modelId === 'default' ? 'legacy' : row.modelId;
-      return visibleSet.has(`${modelId}:${row.entityId}`);
-    });
-  }, [
-    result.rows, filterByVisibility, hiddenEntities, isolatedEntities, classFilter, lensHiddenIds,
-    selectedStoreys, typeVisibility, models,
-    activeBasketViewId, geometryResult,
-  ]);
+  // "Visible only" — ignoring the list's own isolation (#6368).
+  const visibilityFilteredRows = useVisibleListRows(result.rows, filterByVisibility);
 
   const filteredRows = useMemo(() => {
     if (!searchQuery) return visibilityFilteredRows;
@@ -352,6 +333,8 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
           virtualizer={virtualizer}
           isRowSelected={selection.isSelected}
           onRowActivate={selection.activate}
+          rowVisibility={(i) => visibilityActions.activeChannel(scheduleRows[i]?.key ?? '')}
+          onRowVisibilityAction={(i, channel) => { const r = scheduleRows[i]; if (r) visibilityActions.run(r.key, r.rows, channel); }}
         />
       ) : (
         <div style={{ minWidth: totalWidth }}>
@@ -428,6 +411,8 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
                     transform={transform}
                     onToggleExpand={toggleGroupExpand}
                     onSelect={(modifiers) => selection.activate(vRow.index, modifiers)}
+                    visibility={visibilityActions.activeChannel(item.key)}
+                    onVisibilityAction={(channel) => visibilityActions.run(item.key, item.rows, channel)}
                   />
                 );
               }

@@ -15,6 +15,7 @@ import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { cleanup, click as clickEl, press, render, type } from '@/test/render.js';
 import { MODEL_ID, seedModelingSession } from '@/test/modeling-session-fixture';
+import { authoredBodies } from '@/test/authored-body';
 import { CommandFieldsBar } from '@/components/viewer/tools/command/CommandFieldsBar';
 import { BeamPlaceBar } from '@/components/viewer/tools/command/PlacementBars';
 import type { SnapResult } from '@/lib/snap/types';
@@ -106,6 +107,25 @@ describe('beam.place (#6232 M2.2)', () => {
     click(0, 2);
     assert.deepEqual(beams(), [{ cls: 'IFCMEMBER', start: [0, 0, 0.05], length: 2, section: [0.1, 0.1] }]);
   });
+
+  // Lane A2 (#6232): each class writes its own IFC class with an extruded
+  // rectangle-profile body along the drawn axis, as one undo step.
+  for (const [cls, entity] of [['beam', 'IFCBEAM'], ['member', 'IFCMEMBER']] as const) {
+    it(`a ${cls} is one ${entity} with a swept-solid rectangle body, one undo step`, () => {
+      useViewerStore.getState().setAuthoringDefaults({ beamClass: cls, chain: false });
+      const before = undoDepth();
+      click(1, 1);
+      click(1, 4);
+      assert.deepEqual(authoredBodies(MODEL_ID, ['IFCBEAM', 'IFCMEMBER']).map(({ expressId: _id, ...b }) => b), [{
+        cls: entity, identifier: 'Body', representationType: 'SweptSolid',
+        solid: 'IFCEXTRUDEDAREASOLID', profile: 'IFCRECTANGLEPROFILEDEF', depth: 3,
+      }]);
+      assert.equal(undoDepth(), before + 1, 'one transaction');
+      useViewerStore.getState().undo(MODEL_ID);
+      assert.deepEqual(beams(), [], `one undo removes the ${cls}`);
+      assert.equal(undoDepth(), before);
+    });
+  }
 
   it('Chain off starts afresh after each beam', () => {
     useViewerStore.getState().setAuthoringDefaults({ chain: false });

@@ -25,7 +25,11 @@ import { initSync } from '@ifc-lite/wasm';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { cleanup } from '@/test/render.js';
+import { cleanup, click as clickEl, press, render } from '@/test/render.js';
+import { authoredBodies } from '@/test/authored-body';
+import { RoomPlaceBar } from '@/components/viewer/tools/command/RoomPlaceBar';
+import { commandKind } from '../authored-kinds.js';
+import { ROOM_PLACE } from './room-place.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import type { SnapResult, Vec2 } from '@/lib/snap/types';
 import { ensureSpaceWasm } from '@/lib/space-plate-session';
@@ -175,14 +179,80 @@ describe('room.place: pick a face (#6232 M4)', () => {
     assert.deepEqual(corners(spaces()[0].footprint), corners([[4, 0], [8, 0], [8, 5], [4, 5]]));
   });
 
-  it('draw mode makes a free room from the clicked corners', async (t) => {
-    if (!(await startRooms(t))) return;
+});
+
+// Draw mode supersedes lane A2's interim `space.place` (#6471); these are its cases.
+describe('room.place: Draw, a free room (#6232 M4, supersedes A2 space.place)', () => {
+  const bodies = () => authoredBodies(MODEL_ID, ['IFCSPACE']).map(({ expressId: _id, ...b }) => b);
+  const BODY = { cls: 'IFCSPACE', identifier: 'Body', representationType: 'SweptSolid', solid: 'IFCEXTRUDEDAREASOLID', depth: 2.8 };
+  const startDraw = (drawMode: 'rectangle' | 'polygon') => {
+    const s = useViewerStore.getState();
+    s.setAuthoringDefaults({ spaceMode: drawMode });
+    s.setAuthoringDims('space', { Height: 2.8 });
+    if (s.typeVisibility.spaces) s.toggleTypeVisibility('spaces');
+    s.startCommand('room.place');
     act(() => { updateCommandGesture((g) => ({ ...(g as RoomPlaceGesture), mode: 'draw' })); });
-    click(10, 0);
-    click(13, 0);
-    click(13, 2);
-    act(() => { commandDoubleClick(at(13, 2)); });
-    assert.deepEqual(corners(spaces()[0].footprint), corners([[10, 0], [13, 0], [13, 2]]));
+  };
+
+  it('two corners make one IfcSpace with a rectangle body the space Height tall, aggregated under the storey, one undo step', () => {
+    startDraw('rectangle');
+    const before = undoDepth();
+    click(1, 1);
+    assert.deepEqual(bodies(), [], 'the first click only sets a corner');
+    click(5, 4);
+    assert.deepEqual(bodies(), [{ ...BODY, profile: 'IFCRECTANGLEPROFILEDEF' }]);
+    assert.equal(undoDepth(), before + 1, 'one transaction');
+    assert.equal(remeshed.length, 1, 'the commit asks the wasm re-mesh service for true geometry');
+    const [space] = authoredBodies(MODEL_ID, ['IFCSPACE']);
+    assert.deepEqual(useViewerStore.getState().readEntityPosition(MODEL_ID, space.expressId), [1, 1, 0], 'the min corner, storey-local');
+    const aggregates = useViewerStore.getState().mutationViews.get(MODEL_ID)!.getNewEntities()
+      .filter((e) => e.type.toUpperCase() === 'IFCRELAGGREGATES')
+      .map((e) => [e.attributes[4], e.attributes[5]]);
+    assert.deepEqual(aggregates, [[`#${STOREY}`, [`#${space.expressId}`]]], 'aggregated under the storey, not contained in it');
+    assert.equal(useViewerStore.getState().typeVisibility.spaces, true, 'spaces show once one is drawn');
+    useViewerStore.getState().undo(MODEL_ID);
+    assert.deepEqual(bodies(), [], 'one undo removes the whole room');
+    assert.equal(undoDepth(), before);
+  });
+
+  it('the bar switches to a polygon, which closes on Enter; the choice sticks for the next room', () => {
+    startDraw('rectangle');
+    const ui = render(<RoomPlaceBar gesture={gesture()} ctx={ctx()} />);
+    clickEl([...ui.querySelectorAll('button')].find((b) => b.textContent === 'Polygon')!);
+    assert.equal(gesture().draw.mode, 'polygon');
+    assert.equal(useViewerStore.getState().authoringDefaults.spaceMode, 'polygon');
+    const before = undoDepth();
+    for (const [x, y] of [[0, 0], [4, 0], [4, 2], [2, 2], [2, 4], [0, 4]] as const) click(x, y);
+    assert.deepEqual(bodies(), []);
+    press(document.body, 'Enter');
+    assert.deepEqual(bodies(), [{ ...BODY, profile: 'IFCARBITRARYCLOSEDPROFILEDEF' }]);
+    assert.deepEqual(corners(spaces()[0].footprint), corners([[0, 0], [4, 0], [4, 2], [2, 2], [2, 4], [0, 4]]));
+    assert.equal(undoDepth(), before + 1);
+  });
+
+  it('a double-click closes the polygon; two corners are refused', () => {
+    startDraw('polygon');
+    click(0, 0);
+    click(3, 0);
+    press(document.body, 'Enter');
+    assert.deepEqual(bodies(), [], 'two corners are refused');
+    click(3, 3);
+    act(() => { commandDoubleClick(at(3, 3)); });
+    assert.equal(bodies().length, 1);
+  });
+
+  it('previews a prism of the space Height, and the inspector shows the space defaults', () => {
+    startDraw('rectangle');
+    assert.equal(commandKind('room.place', useViewerStore.getState().authoringDefaults), 'space');
+    click(1, 1);
+    act(() => { commandPointerMove(at(4, 3)); });
+    const [ghost] = ROOM_PLACE.ghost!(gesture(), ctx());
+    const plane = ctx().workplane!;
+    const zs: number[] = [];
+    for (let i = 0; i < ghost.positions.length; i += 3) {
+      zs.push(plane.renderToLocal([ghost.positions[i], ghost.positions[i + 1], ghost.positions[i + 2]])[2]);
+    }
+    assert.deepEqual([Math.min(...zs), Math.max(...zs)].map((v) => +v.toFixed(6)), [0, 2.8]);
   });
 });
 

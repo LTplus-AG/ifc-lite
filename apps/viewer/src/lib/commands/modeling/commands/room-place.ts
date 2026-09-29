@@ -20,7 +20,6 @@ import { RoomPlaceBar } from '@/components/viewer/tools/command/RoomPlaceBar';
 import { RoomPlacePlan, RoomPlaceScene } from '@/components/viewer/tools/command/RoomPlaceLayers';
 import { resolve as translate } from '@/i18n/registry';
 import { ensureSpaceWasm } from '@/lib/space-plate-session';
-import { polyArea, type Pt } from '@/lib/space-sketch-geometry';
 import { roomAt, roomOutline, sessionRooms, storeyRooms, storeySpaceFootprints, type RoomCandidate } from '@/lib/rooms/storey-rooms';
 import { addRoom, candidateRoom, selectedRooms, updateRoomOutline } from '@/lib/rooms/room-writes';
 import type { ViewerState } from '@/store';
@@ -30,9 +29,26 @@ import { notifyCommandRefusal } from '../runtime.js';
 import type { CommandContext, CommandField, ModelingCommand, Workplane } from '../types.js';
 import { buildStoreyWorkplane, isWorkplane } from '../workplane.js';
 import { defaultsField, dimOf, planeZ } from './placement-shared.js';
-import { closesRoom, drawnOutline, initRoomGesture, type RoomPlaceGesture } from './room-place-gesture.js';
+import { closesPolygon, rectangleCorner, rectangleExtent, type SlabPlaceGesture } from './slab-place-geometry.js';
+import { drawnOutline, initRoomGesture, spaceParams, type RoomPlaceGesture } from './room-place-gesture.js';
+
+const drawRect = (g: RoomPlaceGesture) => g.mode !== 'draw' || g.draw.mode !== 'rectangle';
+const withDraw = (g: RoomPlaceGesture, draw: Partial<SlabPlaceGesture>): RoomPlaceGesture => ({ ...g, draw: { ...g.draw, ...draw } });
+const rectSide = (axis: 0 | 1) => ({ draw }: RoomPlaceGesture): number | null => {
+  const first = draw.points[0];
+  const corner = rectangleCorner(draw);
+  return first && corner ? Math.abs(corner[axis] - first[axis]) : (axis === 0 ? draw.width : draw.depth);
+};
 
 const FIELDS: readonly CommandField<RoomPlaceGesture>[] = [
+  {
+    id: 'width', labelKey: 'modelingCommand.field.width', unit: 'm', group: 'rect',
+    hidden: drawRect, read: rectSide(0), write: (g, v) => withDraw(g, { width: Math.abs(v) }),
+  },
+  {
+    id: 'depth', labelKey: 'modelingCommand.field.depth', unit: 'm', group: 'rect',
+    hidden: drawRect, read: rectSide(1), write: (g, v) => withDraw(g, { depth: Math.abs(v) }),
+  },
   defaultsField('height', 'space', 'Height', 'modelingCommand.field.height'),
 ];
 
@@ -61,41 +77,45 @@ export const ROOM_PLACE: ModelingCommand<RoomPlaceGesture> = {
     Scene: RoomPlaceScene,
     Plan: RoomPlacePlan,
     hint: (g) => {
-      if (g.mode === 'draw') return g.points.length < 3 ? 'roomTool.hint.drawCorner' : 'roomTool.hint.drawClose';
+      if (g.mode === 'draw' && g.draw.mode === 'rectangle') {
+        return g.draw.points.length === 0 ? 'modelingCommand.slab.hintCorner' : 'modelingCommand.slab.hintOpposite';
+      }
+      if (g.mode === 'draw') return g.draw.points.length < 3 ? 'roomTool.hint.drawCorner' : 'roomTool.hint.drawClose';
       if (g.hover?.taken) return 'roomTool.hint.taken';
       return 'roomTool.hint.pick';
     },
   },
   fields: FIELDS,
   snap: 'modeling',
-  init: () => {
+  init: (ctx) => {
     // The DCEL lives in the space wasm; start it now so the first hover finds rooms.
     ensureSpaceWasm().catch((error: unknown) => console.error('[room.place] space wasm failed to load', error));
-    return initRoomGesture('pick', 'inner');
+    return initRoomGesture('pick', 'inner', ctx.get().authoringDefaults.spaceMode);
   },
-  snapQuery: (g) => (g.mode === 'draw'
-    ? { anchor: g.points.at(-1) ?? null, chain: g.points, locks: {} }
+  snapQuery: (g) => (g.mode === 'draw' && g.draw.mode === 'polygon'
+    ? { anchor: g.draw.points.at(-1) ?? null, chain: g.draw.points, locks: {} }
     : { anchor: null, chain: [], locks: {} }),
-  pointerMove: (g, s, ctx) => ({
-    ...g,
-    cursor: s.local,
-    hover: g.mode === 'pick' ? hoverAt(ctx, s.local) : null,
-    action: 'place',
-  }),
+  pointerMove: (g, s, ctx) => (g.mode === 'draw'
+    ? { ...withDraw(g, { cursor: s.local, square: s.modifiers?.shift ?? false }), action: 'place' }
+    : { ...g, cursor: s.local, hover: hoverAt(ctx, s.local), action: 'place' }),
   pointerDown(g, s) {
     if (g.mode === 'pick') return { commit: true };
-    if (closesRoom(g, s.local)) return { commit: true };
-    return { ...g, points: [...g.points, s.local] };
+    const { draw } = g;
+    if (draw.mode === 'rectangle') return draw.points.length === 0 ? withDraw(g, { points: [s.local], cursor: s.local }) : { commit: true };
+    if (closesPolygon(draw, s.local)) return { commit: true };
+    return withDraw(g, { points: [...draw.points, s.local] });
   },
-  doubleClick: (g) => (g.mode === 'draw' && g.points.length >= 3 ? { commit: true } : g),
-  undoPoint: (g) => ({ ...g, points: g.points.slice(0, -1) }),
+  doubleClick: (g) => (g.mode === 'draw' && g.draw.mode === 'polygon' && g.draw.points.length >= 3 ? { commit: true } : g),
+  undoPoint: (g) => withDraw(g, { points: g.draw.points.slice(0, -1), ...(g.draw.mode === 'rectangle' ? { width: null, depth: null } : {}) }),
   validate(g, ctx) {
     if (!ctx.workplane || ctx.storeyId === null) return { ok: false, reasonKey: 'modelingCommand.noPlane' };
     if (g.action === 'update') {
       return selectedRooms(ctx.get(), ctx.modelId).length > 0 ? { ok: true } : { ok: false, reasonKey: 'roomTool.update.noSelection' };
     }
     if (g.action === 'place' && g.mode === 'draw') {
-      return g.points.length >= 3 ? { ok: true } : { ok: false, reasonKey: 'roomTool.draw.needThree' };
+      if (g.draw.mode === 'polygon') return g.draw.points.length >= 3 ? { ok: true } : { ok: false, reasonKey: 'roomTool.draw.needThree' };
+      if (g.draw.points.length === 0) return { ok: false, reasonKey: 'modelingCommand.slab.hintCorner' };
+      return rectangleExtent(g.draw) ? { ok: true } : { ok: false, reasonKey: 'modelingCommand.slab.noArea' };
     }
     const rooms = sessionRooms(ctx);
     if (!rooms || rooms.status === 'loading') return { ok: false, reasonKey: 'roomTool.loading' };
@@ -142,9 +162,9 @@ export const ROOM_PLACE: ModelingCommand<RoomPlaceGesture> = {
     const name = roomNamer(get(), modelId, storeyId)(0);
     let id: number;
     if (g.mode === 'draw') {
-      const outline = g.points.map((p): Pt => [p[0], p[1]]);
-      const area = polyArea(outline);
-      id = addRoom(get, modelId, storeyId, { outline, height, z, name, grossArea: area, netArea: area, derived: false });
+      const made = get().addSpace(modelId, storeyId, { ...spaceParams(g.draw, z, height), Name: name });
+      if ('error' in made) throw new Error(`Couldn't add the room: ${made.error}`);
+      id = made.expressId;
     } else {
       const room = g.hover;
       if (!room || room.taken) throw new Error(translate(room ? 'roomTool.pick.taken' : 'roomTool.pick.none'));
@@ -156,7 +176,7 @@ export const ROOM_PLACE: ModelingCommand<RoomPlaceGesture> = {
     // IfcSpace is class-hidden by default: show the rooms the tool just wrote.
     const s = ctx.get();
     if (!s.typeVisibility.spaces) s.toggleTypeVisibility('spaces');
-    return initRoomGesture(g.mode, g.boundary);
+    return initRoomGesture(g.mode, g.boundary, g.draw.mode);
   },
   ghost(g, ctx) {
     if (!ctx.workplane || g.action !== 'place') return [];

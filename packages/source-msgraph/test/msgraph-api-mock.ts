@@ -72,6 +72,35 @@ function mockResponse({ status = 200, json, body }: MockResponseInit): Response 
   } as unknown as Response;
 }
 
+/** Serves file bytes the way a real download does: a streamed body, split
+ *  into a few chunks and with no `Content-Length`, so a download exercises
+ *  `readWithProgress`'s stream path and its listing-size fallback (#6375). */
+function binaryResponse(content: string, headers: Record<string, string> = {}): Response {
+  const bytes = new TextEncoder().encode(content);
+  const chunkSize = Math.max(1, Math.ceil(bytes.byteLength / 3));
+  let offset = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (offset >= bytes.byteLength) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(bytes.slice(offset, offset + chunkSize));
+      offset += chunkSize;
+    },
+  });
+  return new Response(body, { status: 200, headers: { 'Content-Type': 'application/octet-stream', ...headers } });
+}
+
+/** Honours `$select` the way Graph does: only the named properties come
+ *  back. Without this, a field the provider forgot to select (the `size` a
+ *  download's progress total falls back to, #6375) would still reach it. */
+function selectFields(row: Record<string, unknown>, select: string | null): Record<string, unknown> {
+  if (!select) return row;
+  const wanted = new Set(select.split(',').map((field) => field.trim()));
+  return Object.fromEntries(Object.entries(row).filter(([key]) => wanted.has(key)));
+}
+
 function itemJson(item: GraphMockItem): Record<string, unknown> {
   return {
     id: item.id,
@@ -225,7 +254,7 @@ export function createGraphApiMock(world: GraphMockWorld, options: GraphMockOpti
       const id = decodeURIComponent(itemMatch[1]);
       const item = findItem(world, id);
       if (!item) return Promise.resolve(mockResponse({ status: 404, body: 'no such item' }));
-      return Promise.resolve(mockResponse({ json: itemJson(item) }));
+      return Promise.resolve(mockResponse({ json: selectFields(itemJson(item), url.searchParams.get('$select')) }));
     }
 
     return Promise.resolve(mockResponse({ status: 404, body: `unrouted: ${url.pathname}` }));
@@ -245,7 +274,7 @@ export function createGraphPublicMock(world: GraphMockWorld): typeof fetch {
     const fileId = decodeURIComponent(url.pathname.slice(1));
     const item = world.items.find((i) => i.id === fileId && i.kind === 'file');
     if (!item || item.content === undefined) return Promise.resolve(mockResponse({ status: 404, body: 'no such file' }));
-    return Promise.resolve(mockResponse({ body: item.content }));
+    return Promise.resolve(binaryResponse(item.content));
   }) as typeof fetch;
 }
 

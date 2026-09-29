@@ -17,6 +17,7 @@ import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { cleanup, click as clickEl, press, render, type } from '@/test/render.js';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
+import { authoredBodies } from '@/test/authored-body';
 import { CommandFieldsBar } from '@/components/viewer/tools/command/CommandFieldsBar';
 import { SlabPlaceBar } from '@/components/viewer/tools/command/PlacementBars';
 import type { SnapResult, Vec2 } from '@/lib/snap/types';
@@ -257,6 +258,39 @@ describe('slab.place: class (#6232 M2.2)', () => {
     click(1, 1);
     assert.equal(slabs()[0].thickness, 0.45);
   });
+});
+
+// Lane A2 (#6232): every class the bar offers, in both outline modes, writes
+// its own IFC class with an extruded body, as one undo step.
+describe('slab.place: every class in both outline modes (#6232 A2)', () => {
+  const OUTLINES = {
+    rectangle: { clicks: [[0, 0], [2, 3]] as Vec2[], profile: 'IFCRECTANGLEPROFILEDEF' },
+    polygon: { clicks: [[0, 0], [4, 0], [4, 2], [2, 2], [2, 4], [0, 4]] as Vec2[], profile: 'IFCARBITRARYCLOSEDPROFILEDEF' },
+  } as const;
+  const CLASSES = [['slab', 'IFCSLAB', 0.3], ['roof', 'IFCROOF', 0.3], ['plate', 'IFCPLATE', 0.02]] as const;
+
+  for (const [mode, { clicks, profile }] of Object.entries(OUTLINES) as [keyof typeof OUTLINES, (typeof OUTLINES)[keyof typeof OUTLINES]][]) {
+    for (const [cls, entity, thickness] of CLASSES) {
+      it(`a ${mode} ${cls} is one ${entity} with a swept-solid ${profile} body, one undo step`, () => {
+        useViewerStore.getState().setAuthoringDefaults({ slabMode: mode, slabClass: cls });
+        // Dimensions outlive a test (the slice is session state): pin this class's.
+        useViewerStore.getState().setAuthoringDims(cls, { Thickness: thickness });
+        useViewerStore.getState().startCommand('slab.place');
+        const before = undoDepth();
+        for (const [x, y] of clicks) click(x, y);
+        if (mode === 'polygon') press(document.body, 'Enter');
+        const bodies = authoredBodies(MODEL_ID, [...SLAB_LIKE]);
+        assert.deepEqual(bodies.map(({ expressId: _id, ...b }) => b), [{
+          cls: entity, identifier: 'Body', representationType: 'SweptSolid',
+          solid: 'IFCEXTRUDEDAREASOLID', profile, depth: thickness,
+        }]);
+        assert.equal(undoDepth(), before + 1, 'one transaction');
+        useViewerStore.getState().undo(MODEL_ID);
+        assert.deepEqual(authoredBodies(MODEL_ID, [...SLAB_LIKE]), [], `one undo removes the ${cls}`);
+        assert.equal(undoDepth(), before);
+      });
+    }
+  }
 });
 
 describe('slab.place ghost (#6232 M2.2)', () => {

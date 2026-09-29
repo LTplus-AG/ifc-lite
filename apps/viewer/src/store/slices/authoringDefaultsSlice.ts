@@ -53,6 +53,8 @@ export interface AuthoringDefaults {
   /** Keep drawing from the last end after a commit. */
   readonly chain: boolean;
   readonly slabMode: SlabDrawMode;
+  /** How the Room tool's Draw mode outlines a free room. */
+  readonly spaceMode: SlabDrawMode;
   readonly slabClass: SlabClass;
   readonly beamClass: BeamClass;
   readonly typeIds: Readonly<Partial<Record<AuthoredElementKind, ModelScopedPick>>>;
@@ -88,6 +90,7 @@ const INITIAL: AuthoringDefaults = {
   wallAlign: 'centre',
   chain: true,
   slabMode: 'rectangle',
+  spaceMode: 'rectangle',
   slabClass: 'slab',
   beamClass: 'beam',
   typeIds: {},

@@ -112,6 +112,11 @@ export const listsEn = {
   'lists.resultsTable.groupingLevelAriaLabel': 'grouping level {level}',
   'lists.resultsTable.expandGroupAriaLabel': 'Expand {name}',
   'lists.resultsTable.collapseGroupAriaLabel': 'Collapse {name}',
+
+  // Group / schedule row actions (#6368)
+  'lists.rowActions.isolate': 'Isolate',
+  'lists.rowActions.xray': 'X-ray context',
+  'lists.rowActions.actionAriaLabel': '{action}: {name}',
   'lists.resultsTable.dragToResizeTitle': 'Drag to resize · arrow keys to adjust · Home or double-click to reset',
   'lists.resultsTable.totalCount': 'Total · {count}',
   'lists.resultsTable.sumIcon': 'Σ',

@@ -34,6 +34,8 @@ export const roomToolEn = {
     one: '{countDisplay} selected room was left as it was: it is not a plan extrusion on a storey, or no walls enclose it',
     other: '{countDisplay} selected rooms were left as they were: they are not plan extrusions on a storey, or no walls enclose them',
   },
+  'roomTool.wasmFailed': "The room engine didn't load, so rooms can't be derived: reload the page and try again",
+  'roomTool.palette': 'Make rooms',
   'roomTool.loading': 'Reading the walls… try again in a moment',
   'roomTool.noWalls': 'No walls on this storey enclose a room: draw the walls, or switch to Draw',
   'roomTool.pick.none': 'No walls enclose this point: click inside a room, or switch to Draw',

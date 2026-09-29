@@ -15,10 +15,13 @@ import type { ReactNode } from 'react';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { useViewerStore } from '@/store';
-import { commitCommand, updateCommandGesture } from '@/lib/commands/modeling/runtime';
+import { commitCommand, notifyCommandRefusal, updateCommandGesture } from '@/lib/commands/modeling/runtime';
+import { resolve as translate } from '@/i18n/registry';
 import type { CommandHudProps } from '@/lib/commands/modeling/types';
 import { ensureSpaceWasm } from '@/lib/space-plate-session';
 import type { RoomBoundary } from '@/lib/rooms/storey-rooms';
+import type { SlabDrawMode } from '@/store/slices/authoringDefaultsSlice';
+import { initSlabGesture } from '@/lib/commands/modeling/commands/slab-place-geometry';
 import { selectedRooms } from '@/lib/rooms/room-writes';
 import { initRoomGesture, type RoomAction, type RoomMode, type RoomPlaceGesture } from '@/lib/commands/modeling/commands/room-place-gesture';
 import { HudDivider, HudSegmented } from '../../../viewport-ui/hud';
@@ -27,6 +30,10 @@ import { useSessionRooms } from './RoomPlaceLayers';
 const MODE_KEYS: Record<RoomMode, TranslationKey> = {
   pick: 'roomTool.mode.pick',
   draw: 'roomTool.mode.draw',
+};
+const DRAW_KEYS: Record<SlabDrawMode, TranslationKey> = {
+  rectangle: 'modelingCommand.slab.rectangle',
+  polygon: 'modelingCommand.slab.polygon',
 };
 const BOUNDARY_KEYS: Record<RoomBoundary, TranslationKey> = {
   inner: 'roomTool.boundary.inner',
@@ -40,6 +47,7 @@ export async function runRoomAction(action: Exclude<RoomAction, 'place'>): Promi
     await ensureSpaceWasm();
   } catch (error) {
     console.error('[room.place] space wasm failed to load', error);
+    notifyCommandRefusal(translate('roomTool.wasmFailed'));
     return;
   }
   updateCommandGesture((g) => ({ ...(g as RoomPlaceGesture), action }));
@@ -69,6 +77,7 @@ export function RoomPlaceBar({ gesture, ctx }: CommandHudProps<RoomPlaceGesture>
   const { t, locale } = useTranslation();
   const rooms = useSessionRooms(ctx);
   const selected = useViewerStore((s) => selectedRooms(s, ctx.modelId).length);
+  const setDefaults = useViewerStore((s) => s.setAuthoringDefaults);
   const free = rooms.filter((r) => !r.taken).length;
   const options = <T extends string>(values: readonly T[], keys: Record<T, TranslationKey>) =>
     values.map((value) => ({ value, label: t(keys[value]) }));
@@ -79,8 +88,20 @@ export function RoomPlaceBar({ gesture, ctx }: CommandHudProps<RoomPlaceGesture>
         aria-label={t('roomTool.mode.label')}
         options={options(['pick', 'draw'] as const, MODE_KEYS)}
         value={gesture.mode}
-        onChange={(mode) => updateCommandGesture(() => initRoomGesture(mode, gesture.boundary))}
+        onChange={(mode) => updateCommandGesture(() => initRoomGesture(mode, gesture.boundary, gesture.draw.mode))}
       />
+      {gesture.mode === 'draw' && (
+        <HudSegmented
+          aria-label={t('modelingCommand.slab.mode')}
+          options={options(['rectangle', 'polygon'] as const, DRAW_KEYS)}
+          value={gesture.draw.mode}
+          onChange={(drawMode) => {
+            setDefaults({ spaceMode: drawMode });
+            // A half-drawn outline of the other kind means nothing in this one.
+            updateCommandGesture((g) => ({ ...(g as RoomPlaceGesture), draw: initSlabGesture(drawMode) }));
+          }}
+        />
+      )}
       <HudDivider />
       <HudSegmented
         aria-label={t('roomTool.boundary.label')}

@@ -50,9 +50,10 @@ function RoomShapes({ gesture, rooms, toScreen }: { gesture: RoomPlaceGesture; r
     return out.some((p) => p === null) ? null : (out as (readonly [number, number])[]);
   };
   if (gesture.mode === 'draw') {
-    const outline = drawnOutline(gesture) ?? [...gesture.points, ...(gesture.cursor ? [gesture.cursor] : [])];
+    const { draw } = gesture;
+    const outline = drawnOutline(gesture) ?? [...draw.points, ...(draw.cursor ? [draw.cursor] : [])];
     const screen = project(outline);
-    const corners = project(gesture.points);
+    const corners = project(draw.points);
     if (!screen || !corners || screen.length === 0) return null;
     const closed = screen.length >= 3;
     const label = closed ? toScreen(interiorPoint(outline as Pt[])) : null;

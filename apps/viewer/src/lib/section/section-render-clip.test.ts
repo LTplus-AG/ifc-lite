@@ -24,11 +24,11 @@ const plane = (over: Partial<SectionPlane> = {}): SectionPlane => ({
 
 describe('sectionRenderClip', () => {
   it('hidden by the visibility toggle, nothing clips, whatever the store holds', () => {
-    assert.deepEqual(sectionRenderClip(false, plane({ box: { min: [0, 0, 0], max: [1, 1, 1] } }), { min: 0, max: 8 }), {});
+    assert.deepEqual(sectionRenderClip(false, plane({ box: { min: [0, 0, 0], max: [1, 1, 1] } }), { min: 0, max: 8 }, 'section'), {});
   });
 
   it('visible, a plane cut passes the plane through with its range and cap settings, and no clip box — even outside the Section tool (#5893)', () => {
-    const out = sectionRenderClip(true, plane(), { min: -1, max: 3 });
+    const out = sectionRenderClip(true, plane(), { min: -1, max: 3 }, 'measure');
     assert.equal(out.clipBox, undefined);
     assert.deepEqual(out.sectionPlane, {
       axis: 'down', position: 40, enabled: true, flipped: false, showCap: true, showOutlines: false, capStyle,
@@ -38,18 +38,25 @@ describe('sectionRenderClip', () => {
 
   it('a face-picked plane hands the shader its normal and distance', () => {
     const custom = { normal: [1, 0, 0] as [number, number, number], distance: 2.5, pickedAt: [2.5, 0, 0] as [number, number, number], tangent: [0, 1, 0] as [number, number, number], bitangent: [0, 0, 1] as [number, number, number] };
-    const out = sectionRenderClip(true, plane({ custom }), null);
+    const out = sectionRenderClip(true, plane({ custom }), null, 'section');
     assert.deepEqual(out.sectionPlane?.normal, [1, 0, 0]);
     assert.equal(out.sectionPlane?.distance, 2.5);
   });
 
   it('box mode clips to the box and hands the renderer NO plane, so no preview quad haunts the box', () => {
-    const out = sectionRenderClip(true, plane({ box: { min: [0, -1, 0], max: [10, 3, 8] } }), { min: -1, max: 3 });
+    const out = sectionRenderClip(true, plane({ box: { min: [0, -1, 0], max: [10, 3, 8] } }), { min: -1, max: 3 }, 'select');
     assert.deepEqual(out, { clipBox: { min: [0, -1, 0], max: [10, 3, 8], enabled: true } });
   });
 
   it('Cut off in box mode disables the box and still passes no plane', () => {
-    const out = sectionRenderClip(true, plane({ enabled: false, box: { min: [0, 0, 0], max: [1, 1, 1] } }), null);
+    const out = sectionRenderClip(true, plane({ enabled: false, box: { min: [0, 0, 0], max: [1, 1, 1] } }), null, 'select');
     assert.deepEqual(out, { clipBox: { min: [0, 0, 0], max: [1, 1, 1], enabled: false } });
+  });
+
+  it('a plane that is not cutting is a preview: handed over inside the Section tool only (#6374)', () => {
+    const off = plane({ enabled: false });
+    assert.equal(sectionRenderClip(true, off, null, 'section').sectionPlane?.enabled, false);
+    assert.deepEqual(sectionRenderClip(true, off, null, 'select'), {});
+    assert.deepEqual(sectionRenderClip(true, off, null, 'measure'), {});
   });
 });

@@ -7,14 +7,18 @@
  * scene and the plan layer read it without importing the command.
  *
  * Pick: hover a region bounded by walls, click to make it a room.
- * Draw: a click per corner of a free room (Enter, a double-click or a click
- * back on the first corner closes it; Backspace drops the last).
+ * Draw: a free room outlined with the slab gesture — a rectangle from two
+ * corners, or a polygon (Enter, a double-click or a click back on the first
+ * corner closes it; Backspace drops the last).
  * The bar's Auto and Update actions commit through the same command with
  * `action` set, so each is one transaction and one undo step.
  */
 
 import type { Vec2 } from '@/lib/snap/types';
+import type { ViewerState } from '@/store';
+import type { SlabDrawMode } from '@/store/slices/authoringDefaultsSlice';
 import type { RoomBoundary, RoomCandidate } from '@/lib/rooms/storey-rooms';
+import { initSlabGesture, previewOutline, rectangleExtent, type SlabPlaceGesture } from './slab-place-geometry.js';
 
 export type RoomMode = 'pick' | 'draw';
 export type RoomAction = 'place' | 'auto' | 'update';
@@ -23,29 +27,40 @@ export interface RoomPlaceGesture {
   readonly mode: RoomMode;
   /** Which wall face derived rooms follow. */
   readonly boundary: RoomBoundary;
-  /** Draw: the corners placed so far. */
-  readonly points: readonly Vec2[];
+  /** Draw: the outline, drawn with the slab gesture (a rectangle, or a polygon). */
+  readonly draw: SlabPlaceGesture;
+  /** Pick: the cursor, and the room under it. */
   readonly cursor: Vec2 | null;
-  /** Pick: the room under the cursor. */
   readonly hover: RoomCandidate | null;
   /** What the next commit does. */
   readonly action: RoomAction;
 }
 
-export const initRoomGesture = (mode: RoomMode = 'pick', boundary: RoomBoundary = 'inner'): RoomPlaceGesture => ({
-  mode, boundary, points: [], cursor: null, hover: null, action: 'place',
+export const initRoomGesture = (
+  mode: RoomMode = 'pick',
+  boundary: RoomBoundary = 'inner',
+  drawMode: SlabDrawMode = 'rectangle',
+): RoomPlaceGesture => ({
+  mode, boundary, draw: initSlabGesture(drawMode), cursor: null, hover: null, action: 'place',
 });
 
-/** A click this close to the first corner closes the drawn room. */
-const CLOSE_TOLERANCE = 1e-6;
-
-export function closesRoom(g: RoomPlaceGesture, p: Vec2): boolean {
-  const first = g.points[0];
-  return g.points.length >= 3 && first !== undefined && Math.hypot(p[0] - first[0], p[1] - first[1]) < CLOSE_TOLERANCE;
+/** Draw: the outline the preview shows (the rectangle, or the polygon so far plus the cursor). */
+export function drawnOutline(g: RoomPlaceGesture): Vec2[] | null {
+  return previewOutline(g.draw);
 }
 
-/** Draw: the corners so far plus the cursor, once that makes an area. */
-export function drawnOutline(g: RoomPlaceGesture): Vec2[] | null {
-  const outline = [...g.points, ...(g.cursor ? [g.cursor] : [])];
-  return outline.length >= 3 ? outline : null;
+type SpaceParams = Parameters<ViewerState['addSpace']>[2];
+
+/**
+ * The `addSpace` params for a drawn outline at storey-local height `z`,
+ * `height` tall (lane A2's `space.place` core, which the Room tool's Draw
+ * mode supersedes).
+ */
+export function spaceParams(g: SlabPlaceGesture, z: number, height: number): SpaceParams {
+  if (g.mode === 'polygon') {
+    return { Profile: 'polygon', OuterCurve: g.points.map((p) => [p[0], p[1]]), Position: [0, 0, z], Height: height };
+  }
+  const rect = rectangleExtent(g);
+  if (!rect) throw new Error('The rectangle has no area');
+  return { Position: [rect.min[0], rect.min[1], z], Width: rect.width, Depth: rect.depth, Height: height };
 }

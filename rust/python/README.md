@@ -373,6 +373,18 @@ Options are `min_inside_bend_radius_m`, `min_straight_segment_length_m`,
 reports `pass`, `fail` or `uncheckable`, with source IDs, measured value,
 threshold, units and reason. Missing/conflicting authored `NominalDiameter`,
 modified CSG, unsupported transforms and incomplete directrices cannot pass.
+
+```python
+schedule = ifclite_geom.rebar_schedule_with_fabrication_precheck(
+    ifc_bytes, min_inside_bend_radius_m=0.05,
+    max_nominal_geometric_diameter_delta_m=0.001,
+)
+for row in schedule["rows"].values():
+    for sweep in row["sweeps"]:
+        report = sweep["fabrication_precheck"]
+        print(report["outcome"], report["checks"], report["unchecked_factors"])
+```
+
 Every outcome is `precheck_only`; material, fabrication process, allowances,
 jurisdiction and physical bar count are unchecked. Authored `BarLength` is not
 a verified cutting length. The Revit Snowdon fixture validates source geometry

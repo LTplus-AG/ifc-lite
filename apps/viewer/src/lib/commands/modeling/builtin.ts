@@ -22,6 +22,8 @@ import { WALL_MOVE_ENDPOINT } from './commands/wall-move-endpoint.js';
 import { WALL_PLACE } from './commands/wall-place.js';
 import { HOSTED_SLIDE } from './commands/hosted-slide.js';
 import { PLAN_MOVE } from './commands/plan-move.js';
+import { ELEMENT_ARRAY } from './commands/element-array.js';
+import { ELEMENT_PASTE } from './commands/element-paste.js';
 import type { ModelingCommand } from './types.js';
 
 /** A re-evaluated module (dev HMR) finds its commands already registered. */
@@ -41,6 +43,8 @@ registerOnce(DOOR_PLACE);
 registerOnce(WINDOW_PLACE);
 registerOnce(HOSTED_SLIDE);
 registerOnce(PLAN_MOVE);
+registerOnce(ELEMENT_PASTE);
+registerOnce(ELEMENT_ARRAY);
 registerOnce(ELEMENT_MOVE);
 registerOnce(ELEMENT_ROTATE);
 

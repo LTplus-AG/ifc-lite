@@ -13,6 +13,7 @@ import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { useViewerStore } from '@/store';
 import type { CommandId } from './types.js';
 import { sessionWorkplaneBlock, stepSessionStorey } from './workspace-storeys.js';
+import { copyShortcut, pasteShortcut } from './copy-keys.js';
 
 /**
  * Start a modeling command from the workspace (rail, key, palette, welcome
@@ -48,6 +49,10 @@ export function bindModelWorkspaceKeys(): () => void {
     registerKeyboardCommand('model.window', () => launchModelCommand('window.place'), { active }),
     registerKeyboardCommand('model.storeyUp', () => stepSessionStorey(useViewerStore.getState(), 1), { active }),
     registerKeyboardCommand('model.storeyDown', () => stepSessionStorey(useViewerStore.getState(), -1), { active }),
+    registerKeyboardCommand('model.copy', () => copyShortcut(), { active }),
+    registerKeyboardCommand('model.paste', () => pasteShortcut(launchModelCommand, false), { active }),
+    registerKeyboardCommand('model.pasteInPlace', () => pasteShortcut(launchModelCommand, true), { active }),
+    registerKeyboardCommand('model.array', () => launchModelCommand('element.array'), { active }),
     registerKeyboardCommand('model.move', () => launchModelCommand('element.move'), { active }),
     registerKeyboardCommand('model.rotate', () => launchModelCommand('element.rotate'), { active }),
   ];

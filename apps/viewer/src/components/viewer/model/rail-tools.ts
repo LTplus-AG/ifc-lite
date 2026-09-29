@@ -11,7 +11,7 @@
  */
 
 import type { ComponentType } from 'react';
-import { LogOut, MousePointer2, Move, RotateCw, Slice } from 'lucide-react';
+import { CopyPlus, LogOut, MousePointer2, Move, RotateCw, Slice } from 'lucide-react';
 import { BeamIcon, ColumnIcon, DoorIcon, OpeningIcon, RoomIcon, SlabIcon, WallIcon, WindowIcon } from './model-icons';
 import type { TranslationKey } from '@/i18n';
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
@@ -98,6 +98,13 @@ export const RAIL_TOOLS: readonly RailTool[] = [
     isActive: commandActive('element.split'),
     blockedKey: (s) => (s.selectedEntityId === null ? 'modelWorkspace.blocked.split' : null),
     run: () => { launchModelCommand('element.split', { drawsOnWorkplane: false }); },
+  },
+  {
+    id: 'element.array', group: 'edit', labelKey: 'copyArray.tool.array', Icon: CopyPlus,
+    shortcut: 'model.array', drawsOnWorkplane: true,
+    isActive: commandActive('element.array'),
+    blockedKey: (s) => (s.selectedEntityId === null && s.selectedEntityIds.size === 0 ? 'copyArray.blocked.array' : null),
+    run: () => { launchModelCommand('element.array'); },
   },
   {
     id: 'element.move', group: 'edit', labelKey: 'moveRotate.tool.move', Icon: Move,

@@ -275,7 +275,6 @@ describe('copy and paste (#6232 C3)', () => {
     ctrl('c');
     assert.equal(readCopyClipboard(), null, 'a part alone is refused');
     select(assembly.expressId);
-    const before = undoDepth();
     ctrl('c');
     assert.deepEqual(readCopyClipboard()?.ids, [assembly.expressId]);
     ctrl('v');

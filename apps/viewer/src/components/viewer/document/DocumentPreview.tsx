@@ -19,6 +19,7 @@ import { pageBox, REPORT_MARGIN } from '@/lib/export/report/compose';
 import { BLOCK_GAP, documentChartSizing, halfTextFitsPage, TEXT_STYLES } from '@/lib/document/compose';
 import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type DocumentBlock, type DocumentSpec, type TextBlock } from '@/lib/document/types';
 import type { TableState } from '@/lib/document/resolve-table';
+import { TAB_SIZE } from '@/lib/document/text-tabs';
 import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS, DOCUMENT_PREVIEW_PAPER_CLASS } from './preview-theme';
 import { TablePreview } from './TablePreview';
 import { IdsReportPreview } from './IdsReportPreview';
@@ -41,9 +42,9 @@ const TEXT_CLASS: Record<TextBlock['style'], string> = {
   title: 'text-2xl font-semibold leading-tight',
   heading: 'text-base font-semibold mt-2',
   subheading: 'text-sm font-semibold mt-1',
-  body: 'text-sm leading-relaxed whitespace-pre-wrap',
-  small: 'text-2xs leading-relaxed whitespace-pre-wrap',
-  caption: 'text-2xs text-neutral-500 whitespace-pre-wrap',
+  body: 'text-sm leading-relaxed',
+  small: 'text-2xs leading-relaxed',
+  caption: 'text-2xs text-neutral-500',
 };
 
 /** Consecutive text/chart/image blocks both at `width: 'half'` render two-up (#4940). */
@@ -118,7 +119,10 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
   const { t } = useTranslation();
   switch (block.kind) {
     case 'text':
-      return <div className={TEXT_CLASS[block.style]} style={{ fontSize: (block.fontSize ?? TEXT_STYLES[block.style].size) * scale, fontFamily: block.font === 'times' ? 'Times New Roman, serif' : block.font === 'courier' ? 'Courier New, monospace' : 'Helvetica, Arial, sans-serif' }} data-block-text>{block.text.trim() ? <ResolvedText text={block.text} bindings={bindings} /> : <span className={DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}>{t('document.preview.textEmpty')}</span>}</div>;
+      // Every style keeps the text as typed, like the PDF's `wrapText` (#6370): line breaks,
+      // tab indents (same tab stop as the PDF) and runs of spaces. Title, heading and subheading
+      // once collapsed a typed line break into a space.
+      return <div className={TEXT_CLASS[block.style]} style={{ whiteSpace: 'pre-wrap', tabSize: TAB_SIZE, fontSize: (block.fontSize ?? TEXT_STYLES[block.style].size) * scale, fontFamily: block.font === 'times' ? 'Times New Roman, serif' : block.font === 'courier' ? 'Courier New, monospace' : 'Helvetica, Arial, sans-serif' }} data-block-text>{block.text.trim() ? <ResolvedText text={block.text} bindings={bindings} /> : <span className={DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}>{t('document.preview.textEmpty')}</span>}</div>;
     case 'image': {
       const justify = block.align === 'left' ? 'justify-start' : block.align === 'right' ? 'justify-end' : 'justify-center';
       return (

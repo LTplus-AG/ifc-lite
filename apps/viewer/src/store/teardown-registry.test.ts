@@ -62,7 +62,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'lensAppliedColors',
   'lensAppliedHiddenIds', 'lensAutoColorLegend', 'lensColorMap',
   'lensHiddenIds', 'lensPanelVisible', 'lensRuleCounts', 'lensRuleEntityIds',
-  'lensRuleIsolation', 'listExecuting', 'listPanelVisible', 'listResult', 'loading',
+  'lensRuleIsolation', 'listExecuting', 'listPanelVisible', 'listResult', 'listVisibilityOwned', 'loading',
   'loadingFileName', // #5849 the loading card's file name: dies with the load it names
   'lastLoadRetry', // #5851 the retry closure captures the outgoing File or URL
   'measure2DCurrent', 'measure2DLockedAxis', 'measure2DMode', 'measure2DResults',
@@ -98,6 +98,7 @@ const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
   'workspaceMode', 'session', // #6232 authoring session: it names one model and storey
   'flowLastRun', 'flowLastError', 'flowLastRunWindow', // #5167 flow: the last run's outputs hold handles into the cleared models
   'chartSelectionRevision', 'chartSlice', 'chartSliceSource', 'chartSliceBuckets', 'chartVisibilityOwned', 'chartVisibilityRevision', // #3944 charts
+  'listVisibilityOwned', // #6368 lists: the group-row isolate / X-ray claim names the cleared models' ids
   'modelTagAssignments', 'modelTagView', // #4215 model tags: assignments and the Models-section view die with the federation, definitions survive
   'modelPlacement', 'repositionNudge', 'repositionOpen', 'placementStaleMeasurements', // #4226 workspace placement lifecycle
   'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'basketVisibilityOwned', 'classFilter',
@@ -251,7 +252,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'lensAppliedColors',
   'lensAppliedHiddenIds', 'lensAutoColorLegend',
   'lensColorMap', 'lensHiddenIds', 'lensPanelVisible', 'lensRuleCounts', 'lensRuleEntityIds',
-  'lensRuleIsolation', 'listExecuting', 'listPanelVisible', 'listResult', 'loading',
+  'lensRuleIsolation', 'listExecuting', 'listPanelVisible', 'listResult', 'listVisibilityOwned', 'loading',
   'loadingFileName', // #5849
   'lastLoadRetry', // #5851
   'measure2DCurrent', 'measure2DLockedAxis', 'measure2DMode', 'measure2DResults',

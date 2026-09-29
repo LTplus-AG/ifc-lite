@@ -76,7 +76,12 @@ export function autoColumnWidth(label: string, rows: ListRow[], colIdx: number):
 }
 
 export type DisplayItem =
-  | { kind: 'group'; key: string; label: string; count: number; sums: Record<string, number>; level: number }
+  | {
+      kind: 'group'; key: string; label: string; count: number; sums: Record<string, number>; level: number;
+      /** Every member row under this group, descendants of nested sub-groups
+       *  included, so clicking a parent selects its whole subtree (#6368). */
+      rows: ListRow[];
+    }
   | { kind: 'row'; row: ListRow };
 
 export interface Totals { count: number; sums: Record<string, number> }
@@ -145,7 +150,7 @@ export function buildGroupedView(
     groupKeys.push(g.key);
     const parentVisible = g.level === 0 || branchOpen[g.level - 1] === true;
     if (parentVisible) {
-      items.push({ kind: 'group', key: g.key, label: g.label, count: g.count, sums: g.sums, level: g.level });
+      items.push({ kind: 'group', key: g.key, label: g.label, count: g.count, sums: g.sums, level: g.level, rows: g.rows });
     }
     const open = parentVisible && expanded.has(g.key);
     branchOpen[g.level] = open;
@@ -168,6 +173,8 @@ export interface ScheduleRow {
   path: string[];
   count: number;
   sums: Record<string, number>;
+  /** The member rows this tuple counts — what clicking the row selects (#6368). */
+  rows: ListRow[];
 }
 
 /**
@@ -195,7 +202,7 @@ export function buildScheduleRows(
   const leafLevel = levelIndices.length - 1;
   return nested
     .filter((g) => g.level === leafLevel)
-    .map((g) => ({ key: g.key, path: g.path, count: g.count, sums: g.sums }));
+    .map((g) => ({ key: g.key, path: g.path, count: g.count, sums: g.sums, rows: g.rows }));
 }
 
 /**

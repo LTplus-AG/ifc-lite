@@ -15,6 +15,7 @@ export function installIdsFocusVisibility(channel: VisibilityChannel, ids: Set<n
     clashVisibilityOwned: null,
     basketVisibilityOwned: null,
     chartVisibilityOwned: null,
+    listVisibilityOwned: null,
     idsFocusVisibilityOwned: { channel, ids },
   });
 }

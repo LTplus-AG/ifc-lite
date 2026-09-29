@@ -262,7 +262,7 @@ export function useClash() {
     useViewerStore.setState({
       isolatedEntities: ids, ghostExceptEntities: null,
       hiddenEntities: new Set<number>(),
-      idsFocusVisibilityOwned: null, basketVisibilityOwned: null, chartVisibilityOwned: null,
+      idsFocusVisibilityOwned: null, basketVisibilityOwned: null, chartVisibilityOwned: null, listVisibilityOwned: null,
       clashVisibilityOwned: { channel: 'isolate', ids },
     });
   }, []);
@@ -272,7 +272,7 @@ export function useClash() {
   const installClashGhost = useCallback((ids: Set<number>): void => {
     useViewerStore.setState({
       isolatedEntities: null, ghostExceptEntities: ids,
-      idsFocusVisibilityOwned: null, basketVisibilityOwned: null, chartVisibilityOwned: null,
+      idsFocusVisibilityOwned: null, basketVisibilityOwned: null, chartVisibilityOwned: null, listVisibilityOwned: null,
       clashVisibilityOwned: { channel: 'ghost', ids },
     });
   }, []);

@@ -260,6 +260,22 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.deepEqual([...useViewerStore.getState().selectedEntityIds].sort(), [GID(41), GID(42)]);
   });
 
+  it('duplicates a chart next to the original, persists it, and opens the copy in the editor (#6474)', async () => {
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    const before = useViewerStore.getState().dashboards[0].charts;
+    click(ui.querySelector<HTMLButtonElement>(`button[aria-label="Duplicate ${before[0].title}"]`)!);
+    await settle();
+    const after = useViewerStore.getState().dashboards[0];
+    assert.equal(after.charts.length, before.length + 1);
+    assert.equal(after.charts[1].title, `${before[0].title} (copy)`);
+    assert.notEqual(after.charts[1].id, before[0].id);
+    assert.equal(after.layout.length, after.charts.length);
+    assert.ok(ui.querySelector('select[aria-label="Chart type"]'), 'the copy opens in the editor');
+    assert.equal(ui.querySelectorAll('[data-chart-id]').length, before.length + 1);
+  });
+
   it('enables IFC field discovery when an existing non-element chart switches to Elements (#4833)', async () => {
     const dashboard = modelOverviewDashboard();
     // `dashboard.charts[0]` is typed as the `ChartSpec` union; spreading it

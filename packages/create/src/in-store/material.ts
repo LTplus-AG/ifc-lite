@@ -19,7 +19,7 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { toNativeLength } from './anchor.js';
 import { assertPositiveFinite, ownerHistoryRef } from './_emit-helpers.js';
-import { schemaAttributes, schemaRegistry } from './schema-attributes.js';
+import { conformsTo, schemaAttributes, schemaRegistry } from './schema-attributes.js';
 import { relateOneToManyInStore, type OneToManyResult } from './relate.js';
 import type { AuthoringAnchor } from './element-type.js';
 import type { ExistingRelatedList } from './cost.js';
@@ -93,10 +93,20 @@ export function addMaterialLayerSetToStore(
     throw new Error(`${op}: MaterialLayers needs at least one layer`);
   }
   const registry = schemaRegistry(anchor.schema, op);
-  const layerIds = params.MaterialLayers.map((layer, index) => {
+  // Validate every layer before writing any, so a bad layer leaves nothing behind.
+  params.MaterialLayers.forEach((layer, index) => {
     if (!Number.isFinite(layer.LayerThickness) || layer.LayerThickness < 0) {
       throw new Error(`${op}: MaterialLayers[${index}].LayerThickness must be a finite number >= 0`);
     }
+    if (layer.Material === undefined) return;
+    // IfcMaterialLayer.Material is an IfcMaterial, not any IfcMaterialSelect:
+    // a layer set or an element here writes a file other tools reject.
+    const type = editor.getEntityType(layer.Material);
+    if (!type || !conformsTo(registry, type, 'IfcMaterial')) {
+      throw new Error(`${op}: MaterialLayers[${index}].Material #${layer.Material} is ${type ? `an ${type}` : 'not a live entity'}, not an IfcMaterial`);
+    }
+  });
+  const layerIds = params.MaterialLayers.map((layer) => {
     const { Material, ...rest } = layer;
     return add(editor, 'IfcMaterialLayer', schemaAttributes(registry, 'IfcMaterialLayer', {
       ...rest,

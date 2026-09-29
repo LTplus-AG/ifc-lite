@@ -103,7 +103,7 @@ export const SLAB_PLACE: ModelingCommand<SlabPlaceGesture> = {
     const thickness = dimOf({ get: () => tx.store }, cls, 'Thickness');
     const made = BUILDERS[cls](tx.store)(tx.modelId, tx.storeyId, slabParams(g, planeZ(tx.workplane), thickness));
     if ('error' in made) throw new Error(`Couldn't add the ${cls}: ${made.error}`);
-    return { created: [made.expressId], deleted: [], remesh: [made.expressId], select: [made.expressId] };
+    return { created: [made.expressId], authored: [made.expressId], deleted: [], remesh: [made.expressId], select: [made.expressId] };
   },
   afterCommit: (g) => initSlabGesture(g.mode),
   ghost(g, ctx) {

@@ -66,7 +66,7 @@ export const COLUMN_PLACE: ModelingCommand<ColumnPlaceGesture> = {
       RefDirection: [Math.cos(turn), Math.sin(turn), 0],
     });
     if ('error' in column) throw new Error(`Couldn't add column: ${column.error}`);
-    return { created: [column.expressId], deleted: [], remesh: [column.expressId], select: [column.expressId] };
+    return { created: [column.expressId], authored: [column.expressId], deleted: [], remesh: [column.expressId], select: [column.expressId] };
   },
   // The next column keeps the rotation.
   afterCommit: (g) => ({ cursor: g.cursor, rotation: g.rotation }),

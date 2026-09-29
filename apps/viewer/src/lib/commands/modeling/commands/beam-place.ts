@@ -83,7 +83,7 @@ export const BEAM_PLACE: ModelingCommand<BeamPlaceGesture> = {
     const params = { Start: [seg[0][0], seg[0][1], z] as [number, number, number], End: [seg[1][0], seg[1][1], z] as [number, number, number], Width, Height };
     const made = cls === 'member' ? tx.store.addMember(tx.modelId, tx.storeyId, params) : tx.store.addBeam(tx.modelId, tx.storeyId, params);
     if ('error' in made) throw new Error(`Couldn't add the ${cls}: ${made.error}`);
-    return { created: [made.expressId], deleted: [], remesh: [made.expressId], select: [made.expressId] };
+    return { created: [made.expressId], authored: [made.expressId], deleted: [], remesh: [made.expressId], select: [made.expressId] };
   },
   afterCommit: (g, _result, ctx) => {
     if (!chainOn(ctx)) return init();

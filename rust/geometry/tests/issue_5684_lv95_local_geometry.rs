@@ -402,6 +402,20 @@ fn issue_5684_mixed_item_rtc_frames_merge_after_placement() {
             "#1001=IFCPRODUCTDEFINITIONSHAPE($,$,(#1000,#3000));",
         ) + &shifted_source;
         for framed in [false, true] {
+            if framed && points[0][0] < 1_000_000.0 {
+                // #6349: in the local frame this direct item's placed frame lies
+                // ~2,600 km from the raw item's. One f32 mesh cannot keep both,
+                // so the single-mesh API reports the span instead of rounding.
+                let mut decoder = EntityDecoder::new(&mixed);
+                let element = decoder.decode_by_id(1002).unwrap();
+                let mut router = GeometryRouter::with_scale_and_local_frame(1.0, true);
+                router.set_rtc_offset((SITE[0], SITE[1], SITE[2]));
+                let error = router
+                    .process_element(&element, &mut decoder)
+                    .expect_err("a 2,600 km single-mesh span must be reported, not rounded");
+                assert!(error.to_string().contains("#6349"), "{error}");
+                continue;
+            }
             let mesh = process(&mixed, SITE, framed, false);
             let local_mesh = process(&local_source, SITE, framed, false);
             let raw_mesh = process(&raw_source, SITE, framed, false);

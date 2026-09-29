@@ -39,7 +39,7 @@ use crate::types::mesh::{MeshData, MeshTextureData, RawInstanceOccurrence};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use ifc_lite_geometry::{
     calculate_normals, compose_instance_world_row_major, orient_mesh_outward_verdict, BoolFailure,
-    GeometryHasher, GeometryRouter, ResolvedTextureMap, SubMeshCollection,
+    GeometryHasher, GeometryRouter, Mesh, ResolvedTextureMap, SubMeshCollection,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeMap;
@@ -418,29 +418,41 @@ fn produce_inner(
     // cut that leaves the host uncut IS the diagnostic.)
     let _ = router.take_csg_failures();
 
-    let mut mesh_candidate = router
-        .process_element_with_voids(job.entity, decoder, ctx.void_index)
+    // #6349: frame parts, not one Mesh. A product whose items lie in frames
+    // >= 1 km apart keeps each part at full precision; an ordinary one has one.
+    let mut parts_candidate = router
+        .process_element_with_voids_parts(job.entity, decoder, ctx.void_index)
         .ok();
-    let needs_fallback = match mesh_candidate.as_ref() {
+    let needs_fallback = match parts_candidate.as_ref() {
         // An empty void-cut result normally means the cut FAILED and emptied
         // the host, so we re-render it un-cut. But when a containing void
         // genuinely CONSUMED the host (`host_consumed_by_void`), the empty
         // result is correct — keep it, or the un-cut host re-appears as a
         // spurious solid.
-        Some(mesh) => mesh.is_empty() && !router.host_consumed_by_void(job.id),
+        Some(parts) => parts.iter().all(|mesh| mesh.is_empty()) && !router.host_consumed_by_void(job.id),
         None => true,
     };
     if needs_fallback {
-        mesh_candidate = router.process_element(job.entity, decoder).ok();
+        parts_candidate = router.process_element_parts(job.entity, decoder).ok();
     }
 
-    let Some(mut mesh) = mesh_candidate else {
-        return (Vec::new(), Vec::new());
-    };
-    if mesh.is_empty() {
-        return (Vec::new(), Vec::new());
+    let mut out = Vec::new();
+    for mesh in parts_candidate.into_iter().flatten().filter(|mesh| !mesh.is_empty()) {
+        out.extend(emit_fallback_mesh(job, mesh, element_color, ctx, decoder, hasher));
     }
+    (out, Vec::new())
+}
 
+/// Emit one assembled fallback body (a single frame part): outward winding,
+/// the #858 indexed-colour split when it still applies, else one mesh.
+fn emit_fallback_mesh(
+    job: &ElementMeshJob<'_>,
+    mut mesh: Mesh,
+    element_color: [f32; 4],
+    ctx: &MeshProductionContext<'_>,
+    decoder: &mut EntityDecoder,
+    hasher: &mut Option<GeometryHasher>,
+) -> Vec<MeshData> {
     // Make the assembled body consistently outward-wound. A faceted brep (IFC
     // face loops are not reliably outward) or a merged multi-item body (extrusion
     // unioned with a boolean cut) can carry MIXED winding that corrupts signed
@@ -491,7 +503,7 @@ fn produce_inner(
                     ));
                 }
                 if !out.is_empty() {
-                    return (out, Vec::new());
+                    return out;
                 }
             }
         }
@@ -503,10 +515,7 @@ fn produce_inner(
     if let Some(h) = hasher.as_mut() {
         h.add_oriented_mesh(&mesh.positions, &mesh.indices, mesh.origin, verdict);
     }
-    (
-        vec![build_mesh_data(job, mesh, element_color, None, None, false, 0, ctx, None)],
-        Vec::new(),
-    )
+    vec![build_mesh_data(job, mesh, element_color, None, None, false, 0, ctx, None)]
 }
 
 /// Emit a sub-mesh collection: per-item colour resolution through the

@@ -15,6 +15,7 @@ mod rep_filter;
 mod content_hash;
 mod diagnostics;
 mod diagnostics_recording;
+mod frame_parts;
 mod instancing;
 mod item_dedup_cache;
 mod layers;

@@ -97,10 +97,16 @@ impl GeometryRouter {
             // detail stays precise even far from the global origin and the AABB-overlap
             // guard sees the cutter at the host (#1297, refined per #1310 review). The
             // bounds derived below are folded to WORLD so the same relativization applies.
-            let opening_mesh = match self.process_element_with_hygiene(&opening_entity, decoder, SourceHygiene::IndexOnly) {
-                Ok(m) if !m.is_empty() => m,
-                _ => continue,
+            // #6349: an opening whose items lie in frames >= 1 km apart comes back as
+            // several frame parts; each stays its own cutter instead of being rounded
+            // into one f32 mesh. An ordinary opening has exactly one part.
+            let opening_parts: Vec<Mesh> = match self.process_element_parts_with_hygiene(&opening_entity, decoder, SourceHygiene::IndexOnly) {
+                Ok(parts) => parts.into_iter().filter(|m| !m.is_empty()).collect(),
+                Err(_) => continue,
             };
+            if opening_parts.is_empty() {
+                continue;
+            }
 
             // Triangle count, not raw position-buffer length: the buffer's
             // element count also includes per-`IfcFace` vertex duplication the
@@ -111,8 +117,8 @@ impl GeometryRouter {
             // of the threshold below for the same geometry (issue #4119: 7 of
             // 618 fixture openings moved branch purely from welding, with no
             // triangle changed). Triangle count is invariant to that.
-            let triangle_count = opening_mesh.triangle_count();
-            let vertex_count = opening_mesh.vertex_count();
+            let triangle_count: usize = opening_parts.iter().map(Mesh::triangle_count).sum();
+            let vertex_count: usize = opening_parts.iter().map(Mesh::vertex_count).sum();
 
             // Local helper: bump the aggregate counter and push a per-host
             // diagnostic line together. QUIET mode (`record_diag == false`) is a
@@ -161,19 +167,21 @@ impl GeometryRouter {
                 // position-buffer length, so authoring/weld-time vertex
                 // duplication can't move an opening across the threshold for
                 // unchanged geometry (issue #4119).
-                let (fallback_min, fallback_max, fallback_dir) =
-                    self.fallback_aabb_for_opening(&opening_entity, &opening_mesh, decoder);
-                bump(
-                    self,
-                    ClassificationKind::NonRectangular,
-                    OpeningKindDiag::NonRectangular,
-                );
-                openings.push(OpeningType::NonRectangular(
-                    opening_mesh,
-                    fallback_min,
-                    fallback_max,
-                    fallback_dir,
-                ));
+                for opening_mesh in opening_parts {
+                    let (fallback_min, fallback_max, fallback_dir) =
+                        self.fallback_aabb_for_opening(&opening_entity, &opening_mesh, decoder);
+                    bump(
+                        self,
+                        ClassificationKind::NonRectangular,
+                        OpeningKindDiag::NonRectangular,
+                    );
+                    openings.push(OpeningType::NonRectangular(
+                        opening_mesh,
+                        fallback_min,
+                        fallback_max,
+                        fallback_dir,
+                    ));
+                }
             } else if !item_bounds_with_dir.is_empty() {
                     // Per-item geometry-driven classification (origin/main).
                     // The earlier "is_floor_opening" host-aware heuristic
@@ -271,27 +279,29 @@ impl GeometryRouter {
                         }
                     }
                 } else {
-                    // WORLD bounds (fold the opening's per-element origin); see
-                    // `fallback_aabb_for_opening` (#1310 review).
-                    let o = opening_mesh.origin;
-                    let (open_min, open_max) = opening_mesh.bounds();
-                    let min_f64 = Point3::new(
-                        open_min.x as f64 + o[0],
-                        open_min.y as f64 + o[1],
-                        open_min.z as f64 + o[2],
-                    );
-                    let max_f64 = Point3::new(
-                        open_max.x as f64 + o[0],
-                        open_max.y as f64 + o[1],
-                        open_max.z as f64 + o[2],
-                    );
+                    for opening_mesh in &opening_parts {
+                        // WORLD bounds (fold the opening's per-element origin); see
+                        // `fallback_aabb_for_opening` (#1310 review).
+                        let o = opening_mesh.origin;
+                        let (open_min, open_max) = opening_mesh.bounds();
+                        let min_f64 = Point3::new(
+                            open_min.x as f64 + o[0],
+                            open_min.y as f64 + o[1],
+                            open_min.z as f64 + o[2],
+                        );
+                        let max_f64 = Point3::new(
+                            open_max.x as f64 + o[0],
+                            open_max.y as f64 + o[1],
+                            open_max.z as f64 + o[2],
+                        );
 
-                    bump(
-                        self,
-                        ClassificationKind::Rectangular,
-                        OpeningKindDiag::Rectangular,
-                    );
-                    openings.push(OpeningType::Rectangular(min_f64, max_f64, None));
+                        bump(
+                            self,
+                            ClassificationKind::Rectangular,
+                            OpeningKindDiag::Rectangular,
+                        );
+                        openings.push(OpeningType::Rectangular(min_f64, max_f64, None));
+                    }
                 }
         }
 

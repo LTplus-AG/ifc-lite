@@ -76,6 +76,32 @@ corpus model. Lesson: look at the gap BEFORE `loadFile` too. Whole-file work
 that runs before parsing delays everything behind it, and a profile window that
 starts at "first geometry" never shows it.
 
+## Mixed near/far items keep separate frame parts (#6349)
+
+The single-mesh router path (`process_element`, the void host, opening
+cutters, and the `produce_element_meshes` fallback chain) now keeps body
+items whose f64 frames lie at least 1 km apart as separate meshes instead of
+rounding one of them into a shared f32 buffer. Ordinary products never take
+the new branch: over the 120-file fixture corpus, 0 of 138,381 geometric
+products or openings produced a second frame part, with the local frame off
+and on. `perf_probe --iters 1 --fingerprint` over the same corpus matched
+base `67efe572b` byte for byte on every file (261,623 meshes, ordered FNV
+per file) in both frame modes.
+
+An interleaved native A/B (`ab.sh`, seven rounds) on AC20, ISSUE_129 and
+Holter reported only deltas inside the host's own noise; the shared host was
+too noisy for a verdict below that noise. A browser worker-pool comparison
+of the stream-complete time on fresh Chromium processes (SwiftShader, so the
+harness canvas check fails and the worker-pool time comes from the console
+log) gave AC20 medians of 596 ms (base) and 496 ms (branch) over seven pairs.
+For ISSUE_129, eleven pairs gave 3,110 ms (base) and 3,053 ms (branch). Mesh
+counts were identical. Verdict: no measurable cost and no speedup claim.
+
+The lesson: a guard that only diverges on rare input can be shown to be
+output-neutral by counting how often the new branch fires across the corpus
+and fingerprinting every file on both sides. The guard itself is one origin
+comparison per item, which does not show up in timing.
+
 ## Instanced RTE deltas: one upload per template (#6393, PR #6399)
 
 On a large MEP model with ~45K GPU-instanced occurrences, a browser run

@@ -324,6 +324,9 @@ impl GeometryRouter {
     /// post-clipping step for rectangular and diagonal openings.  For diagonal
     /// walls the geometry is computed in a rotated axis-aligned frame and
     /// rotated back, giving correct results for any wall orientation.
+    ///
+    /// Errors when the element's body items cannot share one f64 frame
+    /// (#6349); [`Self::process_element_with_voids_parts`] keeps them.
     #[inline]
     pub fn process_element_with_voids(
         &self,
@@ -331,47 +334,45 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
         void_index: &FxHashMap<u32, Vec<u32>>,
     ) -> Result<Mesh> {
+        let parts = self.process_element_with_voids_parts(element, decoder, void_index)?;
+        super::frame_parts::single_frame(element.id, parts)
+    }
+
+    /// [`Self::process_element_with_voids`] over the element's frame parts
+    /// ([`Self::process_element_parts`]): each part is cut by the same openings,
+    /// classified once. An ordinary element has exactly one part (#6349).
+    pub fn process_element_with_voids_parts(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        void_index: &FxHashMap<u32, Vec<u32>>,
+    ) -> Result<Vec<Mesh>> {
         let opening_ids = match void_index.get(&element.id) {
             Some(ids) if !ids.is_empty() => ids,
             _ => {
-                return self.process_element(element, decoder);
+                return self.process_element_parts(element, decoder);
             }
         };
 
-        let wall_mesh = self.process_element_with_hygiene(element, decoder, SourceHygiene::IndexOnly)?;
-
-        let mut voided = self.apply_voids_to_mesh(wall_mesh, element, opening_ids, decoder);
-        // Clean slivers the CSG cut can introduce at opening seams — same
-        // hygiene as the tessellation chokepoints (Mesh::clean_degenerate).
-        voided.clean_degenerate();
-        // Instancing: a void-cut mesh no longer reproduces its representation's
-        // canonical geometry, so it can never be shared. Drop any metadata that
-        // rode along from the (pre-cut) mapped item.
-        voided.instance_meta = None;
-        Ok(voided)
-    }
-
-    /// Apply opening subtraction and clipping planes to an already-built mesh.
-    ///
-    /// Shared entry point used by both the single-mesh path
-    /// ([`process_element_with_voids`]) and the per-sub-mesh path
-    /// ([`process_element_with_submeshes_and_voids`]). The incoming mesh is
-    /// expected to be in the same (world) coordinate space as the element —
-    /// i.e. placement already applied — because opening and clip geometry are
-    /// resolved in world coordinates.
-    ///
-    /// Returns the input mesh unchanged when it is invalid or when no
-    /// openings/clips apply, so callers never lose their input on a
-    /// degenerate opening set.
-    pub(super) fn apply_voids_to_mesh(
-        &self,
-        mesh: Mesh,
-        element: &DecodedEntity,
-        opening_ids: &[u32],
-        decoder: &mut EntityDecoder,
-    ) -> Mesh {
+        let parts =
+            self.process_element_parts_with_hygiene(element, decoder, SourceHygiene::IndexOnly)?;
+        // Opening and clip geometry are resolved in world coordinates, the
+        // frame every part is in once placement has been applied.
         let ctx = self.build_void_context(element, opening_ids, decoder);
-        self.apply_void_context(mesh, &ctx, element.id)
+        Ok(parts
+            .into_iter()
+            .map(|part| {
+                let mut voided = self.apply_void_context(part, &ctx, element.id);
+                // Clean slivers the CSG cut can introduce at opening seams — same
+                // hygiene as the tessellation chokepoints (Mesh::clean_degenerate).
+                voided.clean_degenerate();
+                // Instancing: a void-cut mesh no longer reproduces its representation's
+                // canonical geometry, so it can never be shared. Drop any metadata that
+                // rode along from the (pre-cut) mapped item.
+                voided.instance_meta = None;
+                voided
+            })
+            .collect())
     }
 
     /// Classify openings and extract clipping planes for an element.

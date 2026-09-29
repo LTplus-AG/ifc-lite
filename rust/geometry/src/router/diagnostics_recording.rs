@@ -211,7 +211,7 @@ impl GeometryRouter {
     /// Two kinds of record come out, distinguished by their key:
     ///
     ///  * Keyed by IFC product express id — the void-subtraction path
-    ///    (multi-layer wall sub-meshes, single-mesh `apply_voids_to_mesh`),
+    ///    (multi-layer wall sub-meshes, single-mesh `process_element_with_voids_parts`),
     ///    which knows the host element whose opening / clip tripped a fallback.
     ///  * Keyed by [`UNATTRIBUTED_PRODUCT_ID`] — the registered processors' own
     ///    logs (swept by [`Self::drain_processor_failures`], #3821, including

@@ -10,7 +10,7 @@ use nalgebra::Matrix4;
 
 // At 1 km an f32 coordinate has ~0.06 mm spacing; beyond this, folding a
 // mapped translation into vertices can visibly perturb small IFC features.
-const LARGE_MAPPED_ORIGIN_M: f64 = 1_000.0;
+pub(crate) const LARGE_MAPPED_ORIGIN_M: f64 = 1_000.0;
 
 #[inline]
 fn source_point<const HAS_ORIGIN: bool>(chunk: &[f32], origin: [f64; 3]) -> Point3<f64> {

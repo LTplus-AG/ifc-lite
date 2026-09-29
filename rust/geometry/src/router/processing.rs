@@ -4,6 +4,7 @@
 
 //! Core element processing: resolving representations, processing items, and caching.
 
+use super::frame_parts::{frames_mergeable, mesh_bounds, single_frame, union_bounds, FrameParts};
 use super::transforms::{instancing_enabled, mat4_to_row_major};
 use super::{GeometryProcessor, GeometryRouter};
 use crate::{Error, InstanceMeta, Mesh, Result, SubMeshCollection};
@@ -71,35 +72,6 @@ fn publish_object_frame_bounds(mesh: &mut Mesh, offset: (f64, f64, f64)) {
     mesh.local_bounds = Some(bounds);
 }
 
-fn mesh_bounds(mesh: &Mesh) -> [f32; 6] {
-    let mut bounds = [
-        f32::INFINITY,
-        f32::INFINITY,
-        f32::INFINITY,
-        f32::NEG_INFINITY,
-        f32::NEG_INFINITY,
-        f32::NEG_INFINITY,
-    ];
-    for point in mesh.positions.chunks_exact(3) {
-        for axis in 0..3 {
-            bounds[axis] = bounds[axis].min(point[axis]);
-            bounds[axis + 3] = bounds[axis + 3].max(point[axis]);
-        }
-    }
-    bounds
-}
-
-fn union_bounds(accumulator: &mut Option<[f32; 6]>, incoming: [f32; 6]) {
-    if let Some(bounds) = accumulator {
-        for axis in 0..3 {
-            bounds[axis] = bounds[axis].min(incoming[axis]);
-            bounds[axis + 3] = bounds[axis + 3].max(incoming[axis + 3]);
-        }
-    } else {
-        *accumulator = Some(incoming);
-    }
-}
-
 /// Which source hygiene an element's meshes get before placement (#5313).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum SourceHygiene {
@@ -116,11 +88,11 @@ pub(super) enum SourceHygiene {
 impl SourceHygiene {
     /// `self`, downgraded to `IndexOnly` while the router is told to keep
     /// triangle order (see `GeometryRouter::set_preserve_triangle_order`).
-    fn for_router(self, router: &GeometryRouter) -> Self {
+    pub(super) fn for_router(self, router: &GeometryRouter) -> Self {
         if router.preserve_triangle_order.get() { Self::IndexOnly } else { self }
     }
 
-    fn apply(self, mesh: &mut Mesh) {
+    pub(super) fn apply(self, mesh: &mut Mesh) {
         match self {
             Self::Watertight => mesh.clean_degenerate_watertight(),
             Self::IndexOnly => mesh.clean_degenerate(),
@@ -132,23 +104,36 @@ impl GeometryRouter {
     /// Process building element (IfcWall, IfcBeam, etc.) into mesh
     /// Follows the representation chain:
     /// Element → Representation → ShapeRepresentation → Items
+    ///
+    /// Errors when the items cannot share one f64 frame (#6349); use
+    /// [`Self::process_element_parts`] to keep such products at full precision.
     #[inline]
     pub fn process_element(
         &self,
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Mesh> {
-        self.process_element_with_hygiene(element, decoder, SourceHygiene::Watertight)
+        single_frame(element.id, self.process_element_parts(element, decoder)?)
     }
 
-    /// [`Self::process_element`] with an explicit [`SourceHygiene`]; the void
-    /// path passes `IndexOnly` for hosts and cutters.
-    pub(super) fn process_element_with_hygiene(
+    /// [`Self::process_element`] as frame parts: one mesh, unless body items lie
+    /// in frames at least 1 km apart, which stay separate meshes (#6349).
+    pub fn process_element_parts(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Vec<Mesh>> {
+        self.process_element_parts_with_hygiene(element, decoder, SourceHygiene::Watertight)
+    }
+
+    /// [`Self::process_element_parts`] with an explicit [`SourceHygiene`]; the
+    /// void path passes `IndexOnly` for hosts and cutters.
+    pub(super) fn process_element_parts_with_hygiene(
         &self,
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
         hygiene: SourceHygiene,
-    ) -> Result<Mesh> {
+    ) -> Result<Vec<Mesh>> {
         // IfcAlignment carries its directrix curve in a dedicated `Axis`
         // attribute (IFC4X1) instead of (or in addition to) a normal
         // IfcShapeRepresentation. Route those through the alignment
@@ -156,7 +141,7 @@ impl GeometryRouter {
         // Representation is often `$` in practice.
         if element.ifc_type == IfcType::IfcAlignment {
             if let Some(mesh) = self.try_alignment_mesh(element, decoder)? {
-                return Ok(mesh);
+                return Ok(vec![mesh]);
             }
         }
 
@@ -170,7 +155,7 @@ impl GeometryRouter {
         })?;
 
         if representation_attr.is_null() {
-            return Ok(Mesh::new()); // No geometry
+            return Ok(vec![Mesh::new()]); // No geometry
         }
 
         let representation = decoder
@@ -196,6 +181,8 @@ impl GeometryRouter {
         let mut combined_mesh = Mesh::new();
         let mut rebased_mesh = Mesh::new();
         let mut captured_local_bounds: Option<[f32; 6]> = None;
+        // #6349: items too far from `combined_mesh`'s frame, and the RTC-frame items' own bounds.
+        let (mut far_parts, mut rebased_bounds) = (FrameParts::default(), None);
 
         // Instancing: an element is cleanly shareable only when its whole body is
         // exactly ONE representation item that itself carried instance metadata
@@ -231,11 +218,11 @@ impl GeometryRouter {
                 } else {
                     self.process_representation_item(&item, decoder)?
                 };
-                if !mesh.positions.is_empty() {
-                    let bounds = mesh.local_bounds.unwrap_or_else(|| mesh_bounds(&mesh));
-                    union_bounds(&mut captured_local_bounds, bounds);
+                if mesh.positions.is_empty() {
+                    continue; // Mesh::merge would ignore it too
                 }
-                if instancing_enabled() && !mesh.positions.is_empty() {
+                let bounds = mesh.local_bounds.unwrap_or_else(|| mesh_bounds(&mesh));
+                if instancing_enabled() {
                     instanceable_item_count += 1;
                     single_instance_meta = if instanceable_item_count == 1 {
                         mesh.instance_meta.clone()
@@ -248,13 +235,22 @@ impl GeometryRouter {
                 // placement has brought both into the world/RTC frame.
                 if mesh.rtc_applied {
                     rebased_mesh.merge(&mesh);
-                } else {
+                    union_bounds(&mut rebased_bounds, bounds);
+                    continue;
+                } else if combined_mesh.positions.is_empty()
+                    || frames_mergeable(combined_mesh.origin, mesh.origin)
+                {
                     combined_mesh.merge(&mesh);
+                } else {
+                    far_parts.merge(&mesh, bounds);
+                    continue;
                 }
+                union_bounds(&mut captured_local_bounds, bounds);
             }
         }
         if combined_mesh.positions.is_empty() {
             std::mem::swap(&mut combined_mesh, &mut rebased_mesh);
+            captured_local_bounds = rebased_bounds.take();
         }
 
         // Re-attach single-item instance metadata so apply_placement can fold the
@@ -275,15 +271,8 @@ impl GeometryRouter {
 
         // Apply placement transformation
         self.apply_placement(element, decoder, &mut combined_mesh)?;
-        if !rebased_mesh.positions.is_empty() {
-            hygiene.for_router(self).apply(&mut rebased_mesh);
-            self.apply_placement(element, decoder, &mut rebased_mesh)?;
-            // Mesh::merge accounts for each mesh's f64 origin. Keep the local
-            // bucket's origin so a distant raw item cannot quantize it early.
-            combined_mesh.merge(&rebased_mesh);
-        }
-
-        Ok(combined_mesh)
+        let rebased = (rebased_mesh, rebased_bounds);
+        self.place_frame_parts(element, decoder, hygiene, combined_mesh, far_parts, rebased)
     }
 
     /// Process element and return sub-meshes with their geometry item IDs.

@@ -437,19 +437,28 @@ fn issue_5698_mixed_raw_and_local_items_keep_their_frames() {
         .collect::<String>();
     let mixed = raw.replace("(#900));#1001", "(#900,#5900));#1001") + &local_item;
     let local_world = FEATURE.map(|p| [p[0] - SITE[0], p[1] - SITE[1], p[2] - SITE[2]]);
-    for framed in [false, true] {
+    // #6349: in the local frame the two items' placed frames lie 2,600 km
+    // apart. One f64 origin plus one f32 buffer cannot keep sub-ULP detail for
+    // both, so the single-mesh API reports the span instead of rounding one
+    // item; `process_element_parts` keeps them as separate full-precision parts.
+    let mut decoder = EntityDecoder::new(&mixed);
+    let element = decoder.decode_by_id(1002).unwrap();
+    let mut router = GeometryRouter::with_scale_and_local_frame(1.0, true);
+    router.set_rtc_offset((SITE[0], SITE[1], SITE[2]));
+    let error = router
+        .process_element(&element, &mut decoder)
+        .expect_err("a 2,600 km single-mesh span must be reported, not rounded");
+    assert!(error.to_string().contains("#6349"), "{error}");
+    // The absolute (native) frame stores every mesh as origin-zero f32, so the
+    // two items share it and still merge.
+    {
+        let framed = false;
         let merged = process(&mixed, metres(SITE), SITE, framed, false);
         assert_eq!(merged.indices.len(), 2 * 36, "both items survive the merge");
         // The local item sits at the file origin, i.e. -SITE in the RTC frame,
         // where one f32 ULP is 0.25 m. A double rebase would put it at -2*SITE;
         // a missed one would leave the raw item at +SITE.
-        let tolerance = if framed {
-            // One merged local frame spans both items, 2,600 km apart, so
-            // neither can keep sub-ULP detail; frames must still be right.
-            0.25
-        } else {
-            1e-6
-        };
+        let tolerance = 1e-6;
         for (expected, bound) in [(&FEATURE, tolerance), (&local_world, 0.25)] {
             for p in expected {
                 assert!(

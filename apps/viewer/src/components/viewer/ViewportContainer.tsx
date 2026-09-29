@@ -37,7 +37,8 @@ import { useSolarSweep } from '@/hooks/useSolarSweep';
 import { getViewerStoreApi, useViewerStore } from '@/store';
 import { isTypeVisible } from '@/store/typeVisibilityFilter';
 import { hasInstancedShards } from '@/store/instancedShardModels';
-import { computeVisibilityIsolation, isVisibleResultEmpty } from '@/lib/visibility/effective-empty';
+import { isVisibleResultEmpty } from '@/lib/visibility/effective-empty';
+import { useVisibilityIsolation } from '@/hooks/useVisibilityIsolation';
 import { EmptyVisibilityNotice } from './EmptyVisibilityNotice';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGpuOpenGuard } from '@/hooks/useWebGpuOpenGuard';
@@ -78,14 +79,10 @@ export function ViewportContainer() {
   // SourceHostProvider tree (tests), in which case the machine name is shown.
   const sourceHost = useOptionalSourceHost();
   const releaseGeometryMemory = useViewerStore((s) => s.releaseGeometryMemory);
-  const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
   const typeViewMode = useViewerStore((s) => s.typeViewMode);
   const setHasTypeGeometry = useViewerStore((s) => s.setHasTypeGeometry);
-  const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
-  const classFilter = useViewerStore((s) => s.classFilter);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
-  const resolveGlobalIdFromModels = useViewerStore((s) => s.resolveGlobalIdFromModels);
   const resetViewerState = useViewerStore((s) => s.resetViewerState);
   const bcfOverlayVisible = useViewerStore((s) => s.bcfOverlayVisible);
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
@@ -781,12 +778,7 @@ export function ViewportContainer() {
   }, [mergedGeometryResult, filteredGeometry, geometryVersion]);
 
   // Shared pure intersection for the renderer and the empty-result notice.
-  const computedIsolatedIds = useMemo(() => {
-    return computeVisibilityIsolation({
-      models: storeModels, ifcDataStore, selectedStoreys, isolatedEntities,
-      classFilter, resolveGlobalIdFromModels,
-    });
-  }, [storeModels, ifcDataStore, selectedStoreys, isolatedEntities, classFilter, resolveGlobalIdFromModels]);
+  const computedIsolatedIds = useVisibilityIsolation();
 
   const visibleResultEmpty = useMemo(() => isVisibleResultEmpty({
     models: storeModels, geometryResult, hiddenEntities,

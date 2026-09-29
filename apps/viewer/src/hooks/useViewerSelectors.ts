@@ -11,6 +11,7 @@
 import { useMemo } from 'react';
 import { modelHiddenEntities } from '../lib/visibility/model-hidden-entities.js';
 import { useViewerStore } from '../store/index.js';
+import { useStoreyContextVisibility } from './useStoreyContext.js';
 
 /**
  * Selection-related store state and actions
@@ -34,7 +35,8 @@ export function useSelectionState() {
 }
 
 /**
- * Visibility-related store state (hidden/isolated entities)
+ * Visibility-related store state (hidden/isolated entities), as the 3D
+ * viewport draws it: model visibility and the workspace storey context folded in.
  */
 export function useVisibilityState() {
   const userHiddenEntities = useViewerStore((state) => state.hiddenEntities);
@@ -46,12 +48,15 @@ export function useVisibilityState() {
     [models, userHiddenEntities, toGlobalId, geometryContentVersion],
   );
   const isolatedEntities = useViewerStore((state) => state.isolatedEntities);
-  const ghostExceptEntities = useViewerStore((state) => state.ghostExceptEntities);
+  const userGhostExcept = useViewerStore((state) => state.ghostExceptEntities);
+  // The Model workspace hides (or ghosts) the storeys above the one being
+  // drawn on, on top of the user's own sets (#6232 D9).
+  const { hidden, ghostExcept } = useStoreyContextVisibility({ hidden: hiddenEntities, ghostExcept: userGhostExcept });
 
   return {
-    hiddenEntities,
+    hiddenEntities: hidden,
     isolatedEntities,
-    ghostExceptEntities,
+    ghostExceptEntities: ghostExcept,
   };
 }
 

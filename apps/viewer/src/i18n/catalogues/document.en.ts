@@ -185,7 +185,7 @@ export const documentEn = {
   // the table block's structure, with per-rule rows under each check.
   'document.block.kindIdsReport': 'IDS report',
   'document.addBlock.idsReport': 'IDS validation report',
-  'document.addBlock.idsReportDisabledTitle': 'Run an IDS validation first',
+  'document.addBlock.idsReportDisabledTitle': 'Run an IDS or information validation first',
   'document.block.idsReportSourceLabel': 'Source',
   'document.block.idsReportRefresh': 'Refresh from current validation report',
   'document.block.idsReportRefreshDisabledTitle': 'Run an IDS validation first',
@@ -201,6 +201,29 @@ export const documentEn = {
   },
   'document.preview.idsReportNoChecks': 'No checks in this report.',
   'document.preview.idsReportCountsUnavailable': 'Counts unavailable in this partial report',
+
+  // Information-validation report (#6372): the same block over a rule-set run. The block's
+  // `sourceKind` picks the label, refresh only accepts a report of the same kind, and the
+  // rule engine's extra detail (severity, set rows, cardinality, errors) is shown.
+  'document.block.kindRulesReport': 'Information validation report',
+  'document.addBlock.rulesReport': 'Information validation report',
+  'document.block.rulesReportRefreshDisabledTitle': 'Run an information validation first',
+  'document.preview.idsReportHeading': 'IDS report: {name}',
+  'document.preview.rulesReportHeading': 'Information validation report: {name}',
+  'document.preview.idsReportWarnings': 'Warnings',
+  'document.preview.idsReportWarningTag': 'Warning',
+  'document.preview.idsReportError': 'Could not be evaluated: {error}',
+  'document.preview.idsReportCardinality': 'Applicable elements',
+  'document.preview.idsReportCardinalityFound': 'Found {actual}',
+  'document.preview.idsReportCardinalityExactly': 'expected exactly {min}',
+  'document.preview.idsReportCardinalityRange': 'expected {min} to {max}',
+  'document.preview.idsReportCardinalityAtLeast': 'expected at least {min}',
+  'document.preview.idsReportCardinalityAtMost': 'expected at most {max}',
+  'document.preview.idsReportCardinalityMet': 'Met',
+  'document.preview.idsReportCardinalityNotMet': 'Not met',
+  'document.preview.idsReportSetCounts': '{actual} · expected {expected}',
+  'document.preview.idsReportBlankGroup': '(blank)',
+  'document.preview.idsReportSetsTruncated': 'More sets exist than the validation run kept.',
 
   // Validation-results table source (#5138): ValidationSourceEditor in TableBlockEditor.tsx, and
   // the placeholder states TablePreview.tsx shows in place of rows.

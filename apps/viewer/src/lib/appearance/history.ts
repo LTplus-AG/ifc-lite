@@ -9,6 +9,7 @@ import type { Mutation, MutablePropertyView } from '@ifc-lite/mutations';
 import type { StoreApi } from 'zustand';
 import type { ViewerState } from '@/store/index.js';
 import { hasCoordinatedAppearanceMarker, replayCoordinatedAppearanceHistory } from './coordinated-history.js';
+import { moveChangeSetEntries, recordHistory } from '@/store/slices/mutation-history-record.js';
 
 export interface AppearanceHistoryCommand {
   readonly mutations: readonly Mutation[];
@@ -110,13 +111,7 @@ export function prepareAppearanceHistory(
       registries.set(store.getState, registry);
     }
     registry.entries.set(finalMutation.id, { modelId, view, command });
-    store.setState(current => ({
-      ...publication,
-      undoStacks: new Map(current.undoStacks).set(modelId, [...(current.undoStacks.get(modelId) ?? []), finalMutation]),
-      redoStacks: new Map(current.redoStacks).set(modelId, []),
-      dirtyModels: new Set(current.dirtyModels).add(modelId),
-      mutationVersion: current.mutationVersion + 1,
-    }));
+    store.setState(current => ({ ...publication, ...recordHistory(current, modelId, [finalMutation]) }));
     return finalMutation;
   };
 }
@@ -152,6 +147,7 @@ export function replayAppearanceHistory(
     [source]: new Map(state[source]).set(modelId, state[source].get(modelId)!.slice(0, -1)),
     [destination]: new Map(state[destination]).set(modelId, [...(state[destination].get(modelId) ?? []), mutation]),
     mutationVersion: state.mutationVersion + 1,
+    ...moveChangeSetEntries(state, [mutation], direction),
   }));
   return true;
 }

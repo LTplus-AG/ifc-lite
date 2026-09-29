@@ -24,6 +24,7 @@ import { applyRedoToView, applyUndoToView } from './mutation-history-apply.js';
 import { inverseMutationTargets, pruneInverseMutationTargets, revertedMutationIds } from './mutation-inverse-registry.js';
 import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags.js';
 import { remeshForBatch } from '@/lib/remesh/remesh-registry.js';
+import { moveChangeSetEntries, recordHistory } from './mutation-history-record.js';
 
 type Get = () => ViewerState;
 type Set = (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void;
@@ -40,14 +41,14 @@ function isGeorefMutation(mutation: Mutation): boolean {
   return mutation.type === 'UPDATE_ATTRIBUTE' && (mutation.attributeName?.startsWith('georef.') ?? false);
 }
 
-/** Move `moved` (popped top-first) from the source stack to the destination stack. */
+/** Move `moved` (popped top-first) from the source stack to the destination stack, and out of / back into its change set. */
 function moveTop(s: ViewerState, direction: Direction, modelId: string, moved: readonly Mutation[]): Partial<ViewerState> {
   const { source, destination } = stackKeys(direction);
   const from = new Map(s[source]);
   from.set(modelId, (from.get(modelId) ?? []).slice(0, -moved.length));
   const to = new Map(s[destination]);
   to.set(modelId, [...(to.get(modelId) ?? []), ...moved]);
-  return { [source]: from, [destination]: to, mutationVersion: s.mutationVersion + 1 };
+  return { [source]: from, [destination]: to, mutationVersion: s.mutationVersion + 1, ...moveChangeSetEntries(s, moved, direction) };
 }
 
 /** Georeference edits live in `georefMutations`, not in the view. */
@@ -152,23 +153,13 @@ export function recordMutationBatch(
   if (mutations.length === 0) return null;
   const batchId = continuing ?? newMutationBatchId();
   set((s) => {
-    // The stack is always copied: `withPlacementHistory` tells a new operation
-    // from a replayed one by comparing the new top against the PREVIOUS
-    // stack, so appending in place would hide this chunk from it.
-    const undoStacks = new Map(s.undoStacks);
-    undoStacks.set(modelId, [...(undoStacks.get(modelId) ?? []), ...mutations]);
-    const redoStacks = new Map(s.redoStacks);
-    redoStacks.set(modelId, []);
+    // `recordHistory` always copies the stack: `withPlacementHistory` tells a
+    // new operation from a replayed one by comparing the new top against the
+    // PREVIOUS stack, so appending in place would hide this chunk from it.
     let tags = s.mutationBatchTags;
     if (continuing !== undefined && batchOwned.get(tags) === batchId) for (const m of mutations) tags.set(m.id, batchId);
     else batchOwned.set(tags = withMutationBatchTags(tags, mutations.map((m) => m.id), batchId), batchId);
-    return {
-      undoStacks,
-      redoStacks,
-      dirtyModels: new Set(s.dirtyModels).add(modelId),
-      mutationBatchTags: tags,
-      mutationVersion: s.mutationVersion + 1,
-    };
+    return { ...recordHistory(s, modelId, mutations), mutationBatchTags: tags };
   });
   return batchId;
 }

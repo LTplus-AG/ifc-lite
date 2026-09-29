@@ -10,7 +10,7 @@ import { hasWorkspaceHistory } from '@/lib/model-placement/history';
  * toolbar (viewer/commenter roles cannot unlock authoring).
  */
 
-import { Extension, SpaceSketch, AddElement, EditElement, EditProperty, ImportData, Undo, Redo, Appearance } from '@/icons';
+import { Extension, SpaceSketch, AddElement, EditElement, EditProperty, ImportData, Undo, Redo, Appearance, Layer } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
@@ -74,6 +74,13 @@ export function AuthorTab() {
             commandId="author:redo"
             icon={Redo}
             disabled={!canRedo}
+          />
+          {/* Change sets (#6232 D4): which named set new edits land in. */}
+          <RibbonCommandSmallButton
+            commandId="panel:changeSets"
+            icon={Layer}
+            active={activeWorkspacePanels.has('changeSets')}
+            commandContext={{ activateRightPanel: () => useViewerStore.getState().toggleWorkspacePanel('changeSets', 'ribbon') }}
           />
         </RibbonSmallStack>
       </RibbonGroup>

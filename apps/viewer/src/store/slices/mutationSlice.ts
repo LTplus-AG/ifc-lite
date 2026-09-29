@@ -84,6 +84,7 @@ import { withMutationBatchTags } from './mutation-batch-tags.js';
 import { canMutate, mutationDenial, mutationDenialKey, mutationPermission } from '../mutation-permission.js';
 import { syncTypeOverride } from './mutation-history-apply.js';
 import { recordMutationBatch, replayHistory } from './mutation-history-replay.js';
+import { newChangeSet, parseChangeSetFile, recordHistory } from './mutation-history-record.js';
 import { positionalMutations } from './mutation-positional-batch.js';
 import { addHostedFillIn, type HostedFillOutcome, type HostedFillSpec } from './mutation-hosted-fill.js';
 
@@ -740,12 +741,16 @@ export interface MutationSlice extends CostUndoMethods {
   createChangeSet: (name: string) => string;
   /** Get active change set */
   getActiveChangeSet: () => ChangeSet | null;
-  /** Set active change set */
+  /** Set the change set new edits land in (null: the next edit starts "Unsaved changes"). */
   setActiveChangeSet: (id: string | null) => void;
   /** Export change set as JSON */
   exportChangeSet: (id: string) => string | null;
-  /** Import change set from JSON */
-  importChangeSet: (json: string) => void;
+  /** Rename a change set. */
+  renameChangeSet: (id: string, name: string) => void;
+  /** Drop a change set (the edits stay in the model); clears it as the active set. */
+  deleteChangeSet: (id: string) => void;
+  /** Add a change set from an exported file. Returns its id, or null when the text is not a change set. */
+  importChangeSet: (json: string) => string | null;
 
   // Actions - Query
   /** Check if a model has unsaved changes */
@@ -774,10 +779,6 @@ export interface MutationSlice extends CostUndoMethods {
    * overlay holds thousands of them.
    */
   markModelsDirty: (modelIds: readonly string[]) => void;
-}
-
-function generateChangeSetId(): string {
-  return `cs_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
 function getOrCreateStoreEditor(
@@ -924,32 +925,15 @@ function recordAuthoredElementIn(
     registerAuthoredElement(dataStore.spatialHierarchy, storeyExpressId, entityId, ifcType, name);
   }
 
-  set((s) => {
-    const newUndoStacks = new Map(s.undoStacks);
-    const stack = newUndoStacks.get(modelId) || [];
-    const mutation: Mutation = {
-      id: `mut_${ifcType.toLowerCase()}_${entityId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-      type: 'CREATE_ENTITY',
-      timestamp: Date.now(),
-      modelId,
-      entityId,
-      attributeName: ifcType,
-    };
-    newUndoStacks.set(modelId, [...stack, mutation]);
-
-    const newRedoStacks = new Map(s.redoStacks);
-    newRedoStacks.set(modelId, []);
-
-    const newDirty = new Set(s.dirtyModels);
-    newDirty.add(modelId);
-
-    return {
-      undoStacks: newUndoStacks,
-      redoStacks: newRedoStacks,
-      dirtyModels: newDirty,
-      mutationVersion: s.mutationVersion + 1,
-    };
-  });
+  const mutation: Mutation = {
+    id: `mut_${ifcType.toLowerCase()}_${entityId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+    type: 'CREATE_ENTITY',
+    timestamp: Date.now(),
+    modelId,
+    entityId,
+    attributeName: ifcType,
+  };
+  set((s) => recordHistory(s, modelId, [mutation]));
 
   // Real geometry for the new element, from the IFC it was written as; drawn
   // from its parameters where the re-mesh can't mesh it (authoredFallbackMesh.ts).
@@ -986,8 +970,6 @@ function recordEntityRemovalIn(
       newRemoved.set(`${modelId}:${expressId}`, overlayRecord);
     }
 
-    const newUndoStacks = new Map(state.undoStacks);
-    const stack = newUndoStacks.get(modelId) || [];
     const mutation: Mutation = {
       id: `mut_del_${expressId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
       type: 'DELETE_ENTITY',
@@ -995,21 +977,7 @@ function recordEntityRemovalIn(
       modelId,
       entityId: expressId,
     };
-    newUndoStacks.set(modelId, [...stack, mutation]);
-
-    const newRedoStacks = new Map(state.redoStacks);
-    newRedoStacks.set(modelId, []);
-
-    const newDirty = new Set(state.dirtyModels);
-    newDirty.add(modelId);
-
-    return {
-      removedNewEntities: newRemoved,
-      undoStacks: newUndoStacks,
-      redoStacks: newRedoStacks,
-      dirtyModels: newDirty,
-      mutationVersion: state.mutationVersion + 1,
-    };
+    return { removedNewEntities: newRemoved, ...recordHistory(state, modelId, [mutation]) };
   });
 }
 
@@ -1060,8 +1028,6 @@ export const createMutationSlice: StateCreator<
       newGeorefMuts.set(modelId, { ...modelMuts, [entity]: entityMuts });
 
       // Track undo
-      const newUndoStacks = new Map(state.undoStacks);
-      const stack = newUndoStacks.get(modelId) || [];
       const nextMutations: Mutation[] = fields.map(entry => ({
         id: `mut_georef_${entity}_${entry.field}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
         type: 'UPDATE_ATTRIBUTE',
@@ -1074,21 +1040,7 @@ export const createMutationSlice: StateCreator<
         propName: entry.field,
         psetName: entity,
       }));
-      newUndoStacks.set(modelId, [...stack, ...nextMutations]);
-
-      const newRedoStacks = new Map(state.redoStacks);
-      newRedoStacks.set(modelId, []);
-
-      const newDirty = new Set(state.dirtyModels);
-      newDirty.add(modelId);
-
-      return {
-        georefMutations: newGeorefMuts,
-        undoStacks: newUndoStacks,
-        redoStacks: newRedoStacks,
-        dirtyModels: newDirty,
-        mutationVersion: state.mutationVersion + 1,
-      };
+      return { georefMutations: newGeorefMuts, ...recordHistory(state, modelId, nextMutations) };
     });
   },
 
@@ -1147,27 +1099,7 @@ export const createMutationSlice: StateCreator<
 
     const mutation = view.setProperty(entityId, psetName, propName, value, valueType, undefined, false, dataType);
 
-    set((state) => {
-      // Add to undo stack
-      const newUndoStacks = new Map(state.undoStacks);
-      const stack = newUndoStacks.get(modelId) || [];
-      newUndoStacks.set(modelId, [...stack, mutation]);
-
-      // Clear redo stack on new mutation
-      const newRedoStacks = new Map(state.redoStacks);
-      newRedoStacks.set(modelId, []);
-
-      // Mark model as dirty
-      const newDirty = new Set(state.dirtyModels);
-      newDirty.add(modelId);
-
-      return {
-        undoStacks: newUndoStacks,
-        redoStacks: newRedoStacks,
-        dirtyModels: newDirty,
-        mutationVersion: state.mutationVersion + 1,
-      };
-    });
+    set((state) => recordHistory(state, modelId, [mutation]));
 
     // Mirror into the collab CRDT (no-op without a session, and no-op unless
     // `modelId` is the ROOM's model — the mirror gates itself on the modelId it
@@ -1187,24 +1119,7 @@ export const createMutationSlice: StateCreator<
     const mutation = view.deleteProperty(entityId, psetName, propName);
     if (!mutation) return null;
 
-    set((state) => {
-      const newUndoStacks = new Map(state.undoStacks);
-      const stack = newUndoStacks.get(modelId) || [];
-      newUndoStacks.set(modelId, [...stack, mutation]);
-
-      const newRedoStacks = new Map(state.redoStacks);
-      newRedoStacks.set(modelId, []);
-
-      const newDirty = new Set(state.dirtyModels);
-      newDirty.add(modelId);
-
-      return {
-        undoStacks: newUndoStacks,
-        redoStacks: newRedoStacks,
-        dirtyModels: newDirty,
-        mutationVersion: state.mutationVersion + 1,
-      };
-    });
+    set((state) => recordHistory(state, modelId, [mutation]));
 
     // Mirror into the collab CRDT — room model only, gated in the callee. See
     // the note in `setProperty`.
@@ -1223,24 +1138,7 @@ export const createMutationSlice: StateCreator<
 
     const mutation = view.createPropertySet(entityId, psetName, properties);
 
-    set((state) => {
-      const newUndoStacks = new Map(state.undoStacks);
-      const stack = newUndoStacks.get(modelId) || [];
-      newUndoStacks.set(modelId, [...stack, mutation]);
-
-      const newRedoStacks = new Map(state.redoStacks);
-      newRedoStacks.set(modelId, []);
-
-      const newDirty = new Set(state.dirtyModels);
-      newDirty.add(modelId);
-
-      return {
-        undoStacks: newUndoStacks,
-        redoStacks: newRedoStacks,
-        dirtyModels: newDirty,
-        mutationVersion: state.mutationVersion + 1,
-      };
-    });
+    set((state) => recordHistory(state, modelId, [mutation]));
 
     return mutation;
   },
@@ -1256,24 +1154,7 @@ export const createMutationSlice: StateCreator<
 
     const mutation = view.deletePropertySet(entityId, psetName);
 
-    set((state) => {
-      const newUndoStacks = new Map(state.undoStacks);
-      const stack = newUndoStacks.get(modelId) || [];
-      newUndoStacks.set(modelId, [...stack, mutation]);
-
-      const newRedoStacks = new Map(state.redoStacks);
-      newRedoStacks.set(modelId, []);
-
-      const newDirty = new Set(state.dirtyModels);
-      newDirty.add(modelId);
-
-      return {
-        undoStacks: newUndoStacks,
-        redoStacks: newRedoStacks,
-        dirtyModels: newDirty,
-        mutationVersion: state.mutationVersion + 1,
-      };
-    });
+    set((state) => recordHistory(state, modelId, [mutation]));
 
     return mutation;
   },
@@ -1298,24 +1179,7 @@ export const createMutationSlice: StateCreator<
 
     const mutation = view.setQuantity(entityId, qsetName, quantName, value, quantityType, unit);
 
-    set((state) => {
-      const newUndoStacks = new Map(state.undoStacks);
-      const stack = newUndoStacks.get(modelId) || [];
-      newUndoStacks.set(modelId, [...stack, mutation]);
-
-      const newRedoStacks = new Map(state.redoStacks);
-      newRedoStacks.set(modelId, []);
-
-      const newDirty = new Set(state.dirtyModels);
-      newDirty.add(modelId);
-
-      return {
-        undoStacks: newUndoStacks,
-        redoStacks: newRedoStacks,
-        dirtyModels: newDirty,
-        mutationVersion: state.mutationVersion + 1,
-      };
-    });
+    set((state) => recordHistory(state, modelId, [mutation]));
 
     return mutation;
   },
@@ -1328,24 +1192,7 @@ export const createMutationSlice: StateCreator<
 
     const mutation = view.createQuantitySet(entityId, qsetName, quantities);
 
-    set((state) => {
-      const newUndoStacks = new Map(state.undoStacks);
-      const stack = newUndoStacks.get(modelId) || [];
-      newUndoStacks.set(modelId, [...stack, mutation]);
-
-      const newRedoStacks = new Map(state.redoStacks);
-      newRedoStacks.set(modelId, []);
-
-      const newDirty = new Set(state.dirtyModels);
-      newDirty.add(modelId);
-
-      return {
-        undoStacks: newUndoStacks,
-        redoStacks: newRedoStacks,
-        dirtyModels: newDirty,
-        mutationVersion: state.mutationVersion + 1,
-      };
-    });
+    set((state) => recordHistory(state, modelId, [mutation]));
 
     return mutation;
   },
@@ -1359,24 +1206,7 @@ export const createMutationSlice: StateCreator<
 
     const mutation = view.setAttribute(entityId, attrName, value, oldValue);
 
-    set((state) => {
-      const newUndoStacks = new Map(state.undoStacks);
-      const stack = newUndoStacks.get(modelId) || [];
-      newUndoStacks.set(modelId, [...stack, mutation]);
-
-      const newRedoStacks = new Map(state.redoStacks);
-      newRedoStacks.set(modelId, []);
-
-      const newDirty = new Set(state.dirtyModels);
-      newDirty.add(modelId);
-
-      return {
-        undoStacks: newUndoStacks,
-        redoStacks: newRedoStacks,
-        dirtyModels: newDirty,
-        mutationVersion: state.mutationVersion + 1,
-      };
-    });
+    set((state) => recordHistory(state, modelId, [mutation]));
 
     // Mirror into the collab CRDT — room model only, gated in the callee. See
     // the note in `setProperty`.
@@ -1407,24 +1237,7 @@ export const createMutationSlice: StateCreator<
     // Reflect the new class live (inspector, hover, tree on rebuild).
     syncTypeOverride(get, modelId, entityId);
 
-    set((state) => {
-      const newUndoStacks = new Map(state.undoStacks);
-      const stack = newUndoStacks.get(modelId) || [];
-      newUndoStacks.set(modelId, [...stack, mutation!]);
-
-      const newRedoStacks = new Map(state.redoStacks);
-      newRedoStacks.set(modelId, []);
-
-      const newDirty = new Set(state.dirtyModels);
-      newDirty.add(modelId);
-
-      return {
-        undoStacks: newUndoStacks,
-        redoStacks: newRedoStacks,
-        dirtyModels: newDirty,
-        mutationVersion: state.mutationVersion + 1,
-      };
-    });
+    set((state) => recordHistory(state, modelId, [mutation!]));
 
     return mutation;
   },
@@ -1448,38 +1261,18 @@ export const createMutationSlice: StateCreator<
     const prior = view.getPositionalMutationsForEntity(entityId)?.get(index);
     editor.setPositionalAttribute(entityId, index, value);
 
-    set((state) => {
-      const newUndoStacks = new Map(state.undoStacks);
-      const stack = newUndoStacks.get(modelId) || [];
-      const mutation: Mutation = {
-        id: `mut_pos_${entityId}_${index}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-        type: 'UPDATE_POSITIONAL_ATTRIBUTE',
-        timestamp: Date.now(),
-        modelId,
-        entityId,
-        attributeName: `@${index}`,
-        oldValue: (prior ?? null) as PropertyValue,
-        newValue: value as PropertyValue,
-      };
-      newUndoStacks.set(modelId, [...stack, mutation]);
-
-      const newRedoStacks = new Map(state.redoStacks);
-      newRedoStacks.set(modelId, []);
-
-      const newDirty = new Set(state.dirtyModels);
-      newDirty.add(modelId);
-
-      return {
-        undoStacks: newUndoStacks,
-        redoStacks: newRedoStacks,
-        dirtyModels: newDirty,
-        mutationVersion: state.mutationVersion + 1,
-      };
-    });
-
-    // Return the mutation we just pushed onto the undo stack.
-    const stack = get().undoStacks.get(modelId);
-    return stack ? stack[stack.length - 1] : null;
+    const mutation: Mutation = {
+      id: `mut_pos_${entityId}_${index}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      type: 'UPDATE_POSITIONAL_ATTRIBUTE',
+      timestamp: Date.now(),
+      modelId,
+      entityId,
+      attributeName: `@${index}`,
+      oldValue: (prior ?? null) as PropertyValue,
+      newValue: value as PropertyValue,
+    };
+    set((state) => recordHistory(state, modelId, [mutation]));
+    return mutation;
   },
 
   setPositionalAttributesBatch: (modelId, updates, continuing) => {
@@ -1930,35 +1723,16 @@ export const createMutationSlice: StateCreator<
     // dryRun → nothing emitted; skip undo / dirty bookkeeping.
     if (!result.emitted.length) return result;
 
-    set((s) => {
-      const newUndoStacks = new Map(s.undoStacks);
-      const stack = [...(newUndoStacks.get(modelId) ?? [])];
-      const ts = Date.now();
-      for (const e of result.emitted) {
-        stack.push({
-          id: `mut_ifcspace_${e.result.spaceId}_${ts}_${Math.random().toString(36).substring(2, 9)}`,
-          type: 'CREATE_ENTITY',
-          timestamp: ts,
-          modelId,
-          entityId: e.result.spaceId,
-          attributeName: 'IFCSPACE',
-        });
-      }
-      newUndoStacks.set(modelId, stack);
-
-      const newRedoStacks = new Map(s.redoStacks);
-      newRedoStacks.set(modelId, []);
-
-      const newDirty = new Set(s.dirtyModels);
-      newDirty.add(modelId);
-
-      return {
-        undoStacks: newUndoStacks,
-        redoStacks: newRedoStacks,
-        dirtyModels: newDirty,
-        mutationVersion: s.mutationVersion + 1,
-      };
-    });
+    const ts = Date.now();
+    const spaces: Mutation[] = result.emitted.map((e) => ({
+      id: `mut_ifcspace_${e.result.spaceId}_${ts}_${Math.random().toString(36).substring(2, 9)}`,
+      type: 'CREATE_ENTITY',
+      timestamp: ts,
+      modelId,
+      entityId: e.result.spaceId,
+      attributeName: 'IFCSPACE',
+    }));
+    set((s) => recordHistory(s, modelId, spaces));
 
     return result;
   },
@@ -2020,32 +1794,15 @@ export const createMutationSlice: StateCreator<
     // but invisible — and the user can't tell anything happened.
     const clonedMeshes = cloneMeshesWithOffset(meshes, sourceGlobalId, newGlobalId, viewerDelta);
 
-    set((s) => {
-      const newUndoStacks = new Map(s.undoStacks);
-      const stack = newUndoStacks.get(modelId) || [];
-      const mutation: Mutation = {
-        id: `mut_dup_${newId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-        type: 'CREATE_ENTITY',
-        timestamp: Date.now(),
-        modelId,
-        entityId: newId,
-        attributeName: 'DUPLICATE',
-      };
-      newUndoStacks.set(modelId, [...stack, mutation]);
-
-      const newRedoStacks = new Map(s.redoStacks);
-      newRedoStacks.set(modelId, []);
-
-      const newDirty = new Set(s.dirtyModels);
-      newDirty.add(modelId);
-
-      return {
-        undoStacks: newUndoStacks,
-        redoStacks: newRedoStacks,
-        dirtyModels: newDirty,
-        mutationVersion: s.mutationVersion + 1,
-      };
-    });
+    const duplicate: Mutation = {
+      id: `mut_dup_${newId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      type: 'CREATE_ENTITY',
+      timestamp: Date.now(),
+      modelId,
+      entityId: newId,
+      attributeName: 'DUPLICATE',
+    };
+    set((s) => recordHistory(s, modelId, [duplicate]));
 
     // Append cloned meshes via the existing data slice action so the
     // renderer picks them up via its standard tick.
@@ -2078,24 +1835,11 @@ export const createMutationSlice: StateCreator<
   },
 
   invalidateHistoryForEntity: (modelId, entityId) => set((s) => invalidateHistoryPatch(s.undoStacks, s.redoStacks, s.mutationBatchTags, s.mutationMeshTranslations, modelId, entityId)),
-  // Change Sets
+  // Change Sets (#6232 D4). Edits are filed by `recordHistory`.
   createChangeSet: (name) => {
-    const id = generateChangeSetId();
-    const changeSet: ChangeSet = {
-      id,
-      name,
-      createdAt: Date.now(),
-      mutations: [],
-      applied: false,
-    };
-
-    set((state) => {
-      const newChangeSets = new Map(state.changeSets);
-      newChangeSets.set(id, changeSet);
-      return { changeSets: newChangeSets, activeChangeSetId: id };
-    });
-
-    return id;
+    const changeSet = newChangeSet(name);
+    set((state) => ({ changeSets: new Map(state.changeSets).set(changeSet.id, changeSet), activeChangeSetId: changeSet.id }));
+    return changeSet.id;
   },
 
   getActiveChangeSet: () => {
@@ -2105,8 +1849,21 @@ export const createMutationSlice: StateCreator<
   },
 
   setActiveChangeSet: (id) => {
+    if (id !== null && !get().changeSets.has(id)) return;
     set({ activeChangeSetId: id });
   },
+
+  renameChangeSet: (id, name) => set((state) => {
+    const changeSet = state.changeSets.get(id);
+    return changeSet ? { changeSets: new Map(state.changeSets).set(id, { ...changeSet, name }) } : {};
+  }),
+
+  deleteChangeSet: (id) => set((state) => {
+    if (!state.changeSets.has(id)) return {};
+    const changeSets = new Map(state.changeSets);
+    changeSets.delete(id);
+    return { changeSets, activeChangeSetId: state.activeChangeSetId === id ? null : state.activeChangeSetId };
+  }),
 
   exportChangeSet: (id) => {
     const changeSet = get().changeSets.get(id);
@@ -2120,24 +1877,10 @@ export const createMutationSlice: StateCreator<
   },
 
   importChangeSet: (json) => {
-    try {
-      const data = JSON.parse(json);
-      if (!data.changeSet) return;
-
-      const changeSet: ChangeSet = {
-        ...data.changeSet,
-        id: generateChangeSetId(),
-        applied: false,
-      };
-
-      set((state) => {
-        const newChangeSets = new Map(state.changeSets);
-        newChangeSets.set(changeSet.id, changeSet);
-        return { changeSets: newChangeSets };
-      });
-    } catch {
-      console.error('Failed to import change set');
-    }
+    const changeSet = parseChangeSetFile(json);
+    if (!changeSet) return null;
+    set((state) => ({ changeSets: new Map(state.changeSets).set(changeSet.id, changeSet) }));
+    return changeSet.id;
   },
 
   // Query

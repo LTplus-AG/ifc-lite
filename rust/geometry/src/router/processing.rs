@@ -204,48 +204,51 @@ impl GeometryRouter {
             let fill_only = super::annotation::is_fill_only_representation(element, shape_rep);
 
             // Process each representation item
+            // A mapped item whose source mixes frames yields one mesh per frame (#6446).
             for item in items {
-                let mesh = if element.ifc_type == IfcType::IfcAnnotation
+                let item_parts = if element.ifc_type == IfcType::IfcAnnotation
                     && item.ifc_type == IfcType::IfcAnnotationFillArea
                 {
-                    self.process_annotation_fill(&item, decoder)?
+                    vec![self.process_annotation_fill(&item, decoder)?]
                 } else if fill_only {
                     continue; // symbolic annotation item, never meshed (#5389)
                 } else if let Some(mesh) =
                     self.process_raw_item_for_element(&item, element, decoder)?
                 {
-                    mesh
+                    vec![mesh]
                 } else {
-                    self.process_representation_item(&item, decoder)?
+                    self.process_representation_item_parts(&item, decoder)?
                 };
-                if mesh.positions.is_empty() {
-                    continue; // Mesh::merge would ignore it too
-                }
-                let bounds = mesh.local_bounds.unwrap_or_else(|| mesh_bounds(&mesh));
-                if instancing_enabled() {
-                    instanceable_item_count += 1;
-                    single_instance_meta = if instanceable_item_count == 1 {
-                        mesh.instance_meta.clone()
+                for mesh in item_parts {
+                    if mesh.positions.is_empty() {
+                        continue; // Mesh::merge would ignore it too
+                    }
+                    let bounds = mesh.local_bounds.unwrap_or_else(|| mesh_bounds(&mesh));
+                    if instancing_enabled() {
+                        instanceable_item_count += 1;
+                        single_instance_meta = if instanceable_item_count == 1 {
+                            mesh.instance_meta.clone()
+                        } else {
+                            None
+                        };
+                    }
+                    // #5684: early f64 processors and ordinary f32 processors can
+                    // return different RTC frames. Merge only like frames until
+                    // placement has brought both into the world/RTC frame.
+                    if mesh.rtc_applied {
+                        rebased_mesh.merge(&mesh);
+                        union_bounds(&mut rebased_bounds, bounds);
+                        continue;
+                    } else if combined_mesh.positions.is_empty()
+                        || frames_mergeable(combined_mesh.origin, mesh.origin)
+                    {
+                        combined_mesh.merge(&mesh);
                     } else {
-                        None
-                    };
+                        far_parts.merge(&mesh, bounds);
+                        continue;
+                    }
+                    union_bounds(&mut captured_local_bounds, bounds);
                 }
-                // #5684: early f64 processors and ordinary f32 processors can
-                // return different RTC frames. Merge only like frames until
-                // placement has brought both into the world/RTC frame.
-                if mesh.rtc_applied {
-                    rebased_mesh.merge(&mesh);
-                    union_bounds(&mut rebased_bounds, bounds);
-                    continue;
-                } else if combined_mesh.positions.is_empty()
-                    || frames_mergeable(combined_mesh.origin, mesh.origin)
-                {
-                    combined_mesh.merge(&mesh);
-                } else {
-                    far_parts.merge(&mesh, bounds);
-                    continue;
-                }
-                union_bounds(&mut captured_local_bounds, bounds);
             }
         }
         if combined_mesh.positions.is_empty() {

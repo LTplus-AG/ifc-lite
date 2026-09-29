@@ -19,6 +19,7 @@ import {
 } from '@ifc-lite/data';
 import { SpatialHierarchyBuilder } from '@ifc-lite/parser';
 import { MATERIAL_DEF_TYPES } from './materialDefinitionTypes';
+import { findSpatialNode } from './spatialNode';
 
 /**
  * Rebuild the spatial hierarchy from cache data (entities + relationships only,
@@ -38,15 +39,6 @@ export function rebuildSpatialHierarchy(
   return new SpatialHierarchyBuilder().buildFromCache(entities, relationships);
 }
 
-/** Depth-first search for a spatial node by express id. */
-function findSpatialNode(node: SpatialNode, expressId: number): SpatialNode | null {
-  if (node.expressId === expressId) return node;
-  for (const child of node.children) {
-    const hit = findSpatialNode(child, expressId);
-    if (hit) return hit;
-  }
-  return null;
-}
 
 /**
  * Classify a spatial node into the federation-identity container level it
@@ -269,6 +261,14 @@ export function registerAuthoredElement(
     if (!existing.includes(entityId)) existing.push(entityId);
   } else {
     hierarchy.byStorey.set(storeyExpressId, [entityId]);
+  }
+  // The storey NODE's `elements` is what the tree walkers read (storey Solo /
+  // isolation, the basket, exports). The parser builds it as the same array as
+  // `byStorey`, but a hierarchy that crossed a worker or the cache is a copy,
+  // so the element has to be listed there too, or Solo hides it (#6232).
+  const storeyNode = findSpatialNode(hierarchy.project, storeyExpressId);
+  if (storeyNode && storeyNode.elements !== hierarchy.byStorey.get(storeyExpressId) && !storeyNode.elements.includes(entityId)) {
+    storeyNode.elements.push(entityId);
   }
 }
 

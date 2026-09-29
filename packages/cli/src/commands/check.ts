@@ -98,21 +98,20 @@ export async function checkCommand(args: string[]): Promise<void> {
     printHumanTable(report, rulesPath);
   }
 
-  const severityById = new Map(parsed.file.rules.map((r) => [r.id, r.severity ?? 'error'] as const));
-  process.exitCode = exitCodeFor(report, severityById, failOn);
+  process.exitCode = exitCodeFor(report, failOn);
 }
 
 /** Never `0`/`1` when any rule was unevaluable — see the module doc. */
 function exitCodeFor(
   report: ValidationReport,
-  severityById: ReadonlyMap<string, 'error' | 'warning'>,
   failOn: FailOn,
 ): 0 | 1 | 2 {
   if (report.specificationResults.some((r) => r.error !== undefined)) return 2;
 
   const hardFail = report.specificationResults.some((r) => {
     if (r.status !== 'fail') return false;
-    const severity = severityById.get(r.specification.id) ?? 'error';
+    // The engine carries each rule's severity on its result (#6372).
+    const severity = r.specification.severity ?? 'error';
     return severity === 'warning' ? failOn === 'warning' : true;
   });
   return hardFail ? 1 : 0;

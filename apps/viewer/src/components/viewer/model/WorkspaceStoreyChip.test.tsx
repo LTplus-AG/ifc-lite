@@ -70,7 +70,7 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
 
   it('the eye isolates the storey, follows a storey change, and shows all again', () => {
     act(() => { useViewerStore.getState().enterModelWorkspace({ storeyId: STOREY }); });
-    const eye = () => topLeft()!.querySelector('button[aria-label]:not([data-workspace-storey-chip])') as HTMLButtonElement;
+    const eye = () => topLeft()!.querySelector('button[aria-label]:not([data-workspace-storey-chip]):not([data-storey-context])') as HTMLButtonElement;
     const soloOn = (storeyId: number) => {
       const s = useViewerStore.getState();
       return s.levelDisplayMode === 'solo' && s.selectedStoreys.has(toGlobalIdFromModels(s.models, MODEL_ID, storeyId));
@@ -86,6 +86,27 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
     act(() => click(eye()));
     assert.equal(useViewerStore.getState().levelDisplayMode, 'stacked');
     assert.equal(useViewerStore.getState().selectedStoreys.size, 0);
+  });
+
+  it('the context control picks hide / ghost / show for the storeys above, remembered for the session (#6232 D9)', () => {
+    act(() => { useViewerStore.getState().setStoreyContextMode('hide'); });
+    act(() => { useViewerStore.getState().enterModelWorkspace({ storeyId: STOREY }); });
+    const control = () => topLeft()!.querySelector('[data-storey-context]') as HTMLButtonElement;
+    assert.equal(control().getAttribute('aria-label'), 'Storeys above: hidden', 'hidden by default');
+    act(() => {
+      control().dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+      click(control());
+    });
+    const options = [...document.body.querySelectorAll('[role="radiogroup"] [role="radio"]')] as HTMLButtonElement[];
+    assert.deepEqual(options.map((o) => o.textContent), ['Hide above', 'Ghost above', 'Show all']);
+    assert.equal(options[0].getAttribute('aria-checked'), 'true');
+    act(() => click(options[1]));
+    assert.equal(useViewerStore.getState().storeyContextMode, 'ghost');
+    assert.equal(control().getAttribute('aria-label'), 'Storeys above: ghosted');
+    assert.equal(window.sessionStorage.getItem('ifc-lite:model-workspace:storey-context'), 'ghost', 'kept for the browser session');
+    act(() => click(options[2]));
+    assert.equal(useViewerStore.getState().storeyContextMode, 'all');
+    act(() => { useViewerStore.getState().setStoreyContextMode('hide'); });
   });
 
   it('a model without a storey reads "No storey" and raises a notice', () => {

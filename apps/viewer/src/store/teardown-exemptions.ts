@@ -100,6 +100,11 @@ export const TEARDOWN_EXEMPTIONS: Readonly<Record<string, string>> = {
     'or remove and rebuilds the map from the CURRENT model set — a removed model\'s entry is ' +
     'dropped by the next render, not left to a teardown.',
 
+  storeyContextSlice:
+    'One user preference, the Model workspace storey context mode (hide / ghost / all), ' +
+    'persisted to sessionStorage. It names no modelId or expressId; the ids it applies to ' +
+    'are derived from the live session storey on every render, never stored.',
+
   unitDisplaySlice:
     'Display-unit overrides are keyed by unit-TYPE token (e.g. "LENGTHUNIT"), not by model ' +
     'or expressId, and persist to localStorage workspace-wide. It names no modelId or ' +

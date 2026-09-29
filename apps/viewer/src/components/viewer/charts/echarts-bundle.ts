@@ -11,10 +11,11 @@
  */
 import { init, use, type EChartsType } from 'echarts/core';
 import { BarChart, PieChart, TreemapChart } from 'echarts/charts';
-import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
+import { GraphicComponent, GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 
-use([BarChart, PieChart, TreemapChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer]);
+// GraphicComponent draws the `elementCount` number (#6464); without it ECharts drops `graphic`.
+use([BarChart, PieChart, TreemapChart, GraphicComponent, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer]);
 
 export function createChart(el: HTMLElement): EChartsType {
   return init(el, undefined, { renderer: 'canvas' });

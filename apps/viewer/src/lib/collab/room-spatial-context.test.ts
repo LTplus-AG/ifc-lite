@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
-import { createElement } from 'react';
+import { act, createElement } from 'react';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -136,6 +136,42 @@ describe('room spatial context (#6499)', () => {
       cleanup();
       useViewerStore.setState(previousViewerState);
       guest.reconstructor.teardown(); doc.destroy(); ownerDoc.destroy();
+    }
+  });
+
+  for (const field of ['georeferencing', 'lengthUnitScale'] as const) it(`metadata card refreshes an in-place received ${field} fact`, async () => {
+    const a = await model('A');
+    const doc = collab.createCollabDoc(), blobs = new collab.MemoryBlobStore();
+    const seed = buildShareSeed(new Map([[a.id, a]]), a.id, 'all');
+    await ownerShare(doc, blobs, seed.models, new Map([[a.id, roomSlotRef(0)]]));
+    const session = await collab.createCollabSession({ roomId: 'metadata-refresh', provider: 'memory', doc,
+      user: { id: 'reader', name: 'Reader', color: '#123456' } });
+    const previous = useViewerStore.getState();
+    useViewerStore.setState({ ...fixtureModels(a), ifcDataStore: a.ifcDataStore, editEnabled: true,
+      collabSession: session, collabRoomId: 'metadata-refresh', collabRole: 'admin',
+      collabRoomModels: new Map([[a.id, roomSlotRef(0)]]), georefMutations: new Map(),
+      mutationViews: new Map(), undoStacks: new Map(), redoStacks: new Map() });
+    const detach = attachRoomSpatialContextMirror(useViewerStore, session);
+    try {
+      const panel = render(createElement(ModelMetadataPanel, { model: a }));
+      assert.match(panel.textContent ?? '', /EPSG:32760/);
+      assert.match(panel.textContent ?? '', /Length Unit.*Millimeters \(0\.001\)/);
+      const originalStore = a.ifcDataStore;
+      const entities = JSON.stringify(doc.getMap('entities').toJSON());
+      const slot = collab.getModelSlot(doc, 'm0')!;
+      act(() => {
+        doc.getMap('models').set('m0', { ...slot,
+          spatialContext: { ...slot.spatialContext, [field]: field === 'georeferencing' ? null : 0.0254 } });
+      });
+      assert.equal(useViewerStore.getState().models.get(a.id)!.ifcDataStore, originalStore,
+        'the canonical metadata mirror retains store identity');
+      assert.equal(JSON.stringify(doc.getMap('entities').toJSON()), entities);
+      if (field === 'georeferencing') assert.doesNotMatch(panel.textContent ?? '', /EPSG:32760/,
+        '#6499: a cleared received fact removes the old CRS card');
+      else assert.match(panel.textContent ?? '', /Length Unit.*Inches \(0\.0254\)/,
+        '#6499: received declared units refresh without rebuilding the store');
+    } finally {
+      cleanup(); detach(); session.dispose(); doc.destroy(); useViewerStore.setState(previous, true);
     }
   });
 

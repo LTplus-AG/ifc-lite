@@ -133,7 +133,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
     if (!dataStore) return null;
     const info = extractGeoreferencingOnDemand(dataStore as IfcDataStore);
     return info?.hasGeoreference ? info : null;
-  }, [dataStore]);
+  }, [dataStore, dataStore?.georeferencing]);
 
   // Extract length unit scale
   const unitInfo = useMemo(() => {
@@ -146,7 +146,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
     else if (Math.abs(scale - 0.0254) < 0.001) unitName = t('properties.modelMetadata.unit.inches');
     else if (Math.abs(scale - 0.3048) < 0.01) unitName = t('properties.modelMetadata.unit.feet');
     return { scale, unitName };
-  }, [dataStore, t, revision]);
+  }, [dataStore, dataStore?.lengthUnitScale, t, revision]);
 
   // The file's declared units, for rendering unit suffixes on project
   // property values (issue #1573).

@@ -20,6 +20,8 @@ import { DOOR_PLACE, OPENING_PLACE, WINDOW_PLACE } from './commands/hosted-place
 import { SLAB_PLACE } from './commands/slab-place.js';
 import { WALL_MOVE_ENDPOINT } from './commands/wall-move-endpoint.js';
 import { WALL_PLACE } from './commands/wall-place.js';
+import { HOSTED_SLIDE } from './commands/hosted-slide.js';
+import { PLAN_MOVE } from './commands/plan-move.js';
 import type { ModelingCommand } from './types.js';
 
 /** A re-evaluated module (dev HMR) finds its commands already registered. */
@@ -37,6 +39,8 @@ registerOnce(ROOM_PLACE);
 registerOnce(OPENING_PLACE);
 registerOnce(DOOR_PLACE);
 registerOnce(WINDOW_PLACE);
+registerOnce(HOSTED_SLIDE);
+registerOnce(PLAN_MOVE);
 registerOnce(ELEMENT_MOVE);
 registerOnce(ELEMENT_ROTATE);
 

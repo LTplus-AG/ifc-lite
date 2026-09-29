@@ -12,6 +12,7 @@ import type {
 } from '@ifc-lite/plugin-api';
 import { loadDownloadedSourceFileRecords } from '@/lib/sources/persistence';
 import type { SourceFavourite } from '@/lib/sources/favourites';
+import type { SourceDownloadState } from '@/lib/sources/downloadProgress';
 import { useSourceFavourites } from './useSourceFavourites';
 import { useSourceFavouriteJump } from './useSourceFavouriteJump';
 import { useSourceCatalogSync } from './useSourceCatalogSync';
@@ -31,6 +32,8 @@ interface SourceBrowserProps {
   onBack: () => void;
   /** True while a previously submitted selection is downloading — disables the load button. */
   busy?: boolean;
+  /** Per-file state of the running Load batch, by file id (#6375). */
+  downloadStates?: ReadonlyMap<string, SourceDownloadState>;
   /** A favourite to jump straight to, consumed once on mount. */
   openTarget?: SourceFavourite | null;
   /** Fires when a star is pressed here, so the panel's favourites list re-reads storage. */
@@ -38,6 +41,7 @@ interface SourceBrowserProps {
 }
 
 type Step = 'projects' | 'file-areas' | 'folders';
+const NO_DOWNLOADS: ReadonlyMap<string, SourceDownloadState> = new Map();
 
 export function SourceBrowser({
   provider,
@@ -45,6 +49,7 @@ export function SourceBrowser({
   onDownload,
   onBack,
   busy = false,
+  downloadStates = NO_DOWNLOADS,
   openTarget = null,
   onFavouritesChanged,
 }: SourceBrowserProps) {
@@ -356,7 +361,9 @@ export function SourceBrowser({
           downloadedRecords={downloadedRecords}
           loadedModelNamesByFileId={loadedModels.loadedModelNamesByFileId}
           syncingFileIds={loadedModels.syncingFileIds}
+          syncStatesByFileId={loadedModels.syncStatesByFileId}
           onSyncLoadedFile={(file) => void loadedModels.syncLoadedFile(file)}
+          downloadStates={downloadStates}
           busy={busy}
           onLoad={handleLoad}
           foldersHaveMore={catalog.hasMoreFolders(selectedContainerId)}

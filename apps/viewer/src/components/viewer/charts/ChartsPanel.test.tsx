@@ -260,6 +260,22 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.deepEqual([...useViewerStore.getState().selectedEntityIds].sort(), [GID(41), GID(42)]);
   });
 
+  it('duplicates a chart next to the original, persists it, and opens the copy in the editor (#6474)', async () => {
+    const { renderer } = recordingRenderer();
+    const ui = render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    const before = useViewerStore.getState().dashboards[0].charts;
+    click(ui.querySelector<HTMLButtonElement>(`button[aria-label="Duplicate ${before[0].title}"]`)!);
+    await settle();
+    const after = useViewerStore.getState().dashboards[0];
+    assert.equal(after.charts.length, before.length + 1);
+    assert.equal(after.charts[1].title, `${before[0].title} (copy)`);
+    assert.notEqual(after.charts[1].id, before[0].id);
+    assert.equal(after.layout.length, after.charts.length);
+    assert.ok(ui.querySelector('select[aria-label="Chart type"]'), 'the copy opens in the editor');
+    assert.equal(ui.querySelectorAll('[data-chart-id]').length, before.length + 1);
+  });
+
   it('enables IFC field discovery when an existing non-element chart switches to Elements (#4833)', async () => {
     const dashboard = modelOverviewDashboard();
     // `dashboard.charts[0]` is typed as the `ChartSpec` union; spreading it
@@ -1942,6 +1958,69 @@ describe('overlapping chart bucket paint (#4832)', () => {
     assert.deepEqual(multi.get(1), expectedLast, 'the later selected bucket deterministically wins a shared id');
     assert.deepEqual(multi.get(2), expected);
     assert.deepEqual(multi.get(3), expectedLast);
+  });
+});
+
+describe('ChartsPanel "Visible elements" scope under Isolate focus (#6473)', () => {
+  const TYPES: Record<number, string> = { 41: 'IfcWall', 42: 'IfcWall', 43: 'IfcWall', 44: 'IfcDoor', 45: 'IfcDoor' };
+
+  beforeEach(async () => {
+    const parsed = await parsedModel();
+    // `visible` scope needs mesh candidates: one mesh per element, in global-id space.
+    const model = {
+      ...parsed,
+      geometryResult: { meshes: Object.entries(TYPES).map(([id, ifcType]) => ({ expressId: GID(Number(id)), ifcType })) },
+    } as unknown as FederatedModel;
+    const dashboard = modelOverviewDashboard();
+    dashboard.scope = { kind: 'visible' };
+    useViewerStore.setState({
+      models: new Map([[model.id, model]]),
+      activeModelId: model.id,
+      dashboards: [dashboard],
+      activeDashboardId: dashboard.id,
+      chartFocusMode: 'isolate',
+      chartColorIn3D: false,
+      chartSlice: null,
+      chartSliceSource: null,
+      chartSliceBuckets: null,
+      chartSelectionRevision: null,
+      selectionRevision: 0,
+      chartVisibilityOwned: null,
+      chartVisibilityRevision: null,
+      selectedEntityIds: new Set(),
+      selectedEntityId: null,
+      selectedEntitiesSet: new Set(),
+      selectedEntities: [],
+      isolatedEntities: null,
+      ghostExceptEntities: null,
+      hiddenEntities: new Set(),
+      cameraCallbacks: {},
+    });
+  });
+  afterEach(() => cleanup());
+
+  it('a bucket click isolates the bucket without collapsing the chart to it', async () => {
+    const { renderer, charts } = recordingRenderer();
+    render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    assert.deepEqual(barData(charts[0].options.at(-1)!).map(([n, v]) => [n, v]), [['IfcWall', 3], ['IfcDoor', 2]]);
+
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
+    await settle();
+    const s = useViewerStore.getState();
+    assert.deepEqual([...(s.isolatedEntities ?? [])].sort(), [GID(41), GID(42), GID(43)], 'the walls are isolated in 3D');
+    assert.equal(s.chartVisibilityOwned?.channel, 'isolate');
+    // The chart still aggregates every bucket, with the clicked one selected.
+    assert.deepEqual(barData(charts[0].options.at(-1)!), [['IfcWall', 3, true], ['IfcDoor', 2, false]]);
+  });
+
+  it('an isolation another feature installed still narrows the chart', async () => {
+    const { renderer, charts } = recordingRenderer();
+    render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    await act(async () => { useViewerStore.setState({ isolatedEntities: new Set([GID(44), GID(45)]) }); });
+    await settle();
+    assert.deepEqual(barData(charts[0].options.at(-1)!).map(([n, v]) => [n, v]), [['IfcDoor', 2]]);
   });
 });
 

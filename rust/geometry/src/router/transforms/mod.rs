@@ -5,6 +5,7 @@
 //! Placement and transformation: axis placement parsing, coordinate transforms, RTC offset.
 
 mod grid;
+mod grid_frame;
 mod linear;
 pub(crate) mod mapped;
 mod mesh_world;

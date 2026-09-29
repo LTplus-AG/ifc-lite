@@ -88,7 +88,7 @@ mod schema_registry_tests;
 
 pub use columnar_index::{ColumnLengthMismatch, ColumnarEntityIndex};
 pub use compatibility::{is_exporter_stratum_alias, EXPORTER_STRATUM_ALIASES};
-pub use decoder::{build_entity_index, EntityDecoder, EntityIndex};
+pub use decoder::{build_entity_index, EntityDecoder, EntityIndex, GridAxisIndex};
 pub use dense_index::DenseEntityIndex;
 pub use error::{Error, Result};
 pub use fast_parse::{

@@ -17,7 +17,35 @@
  */
 export const STREAMING_PANEL_REFRESH_MS = 4000;
 
+import type { FederatedModel } from '@/store/types';
+
 /** Whether streaming-derived data last taken at `takenAt` is due for a refresh at `now` (ms, same clock). */
 export function streamingRefreshDue(takenAt: number, now: number): boolean {
   return now - takenAt >= STREAMING_PANEL_REFRESH_MS;
+}
+
+/** Every model field except its geometry is the same: only geometry may be held. */
+export function sameModelExceptGeometry(prev: FederatedModel, next: FederatedModel): boolean {
+  const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
+  for (const key of keys) {
+    if (key === 'geometryResult' || key === 'preAlignment') continue;
+    if (prev[key as keyof FederatedModel] !== next[key as keyof FederatedModel]) return false;
+  }
+  return true;
+}
+
+/** The same models, in the same order, differing at most in their geometry. */
+export function sameModelsExceptGeometry(
+  prev: ReadonlyMap<string, FederatedModel>,
+  next: ReadonlyMap<string, FederatedModel>,
+): boolean {
+  if (prev === next) return true;
+  if (prev.size !== next.size) return false;
+  const nextEntries = next.entries();
+  for (const [id, model] of prev) {
+    const step = nextEntries.next();
+    if (step.done || step.value[0] !== id) return false;
+    if (step.value[1] !== model && !sameModelExceptGeometry(model, step.value[1])) return false;
+  }
+  return true;
 }

@@ -44,6 +44,7 @@ import type { HierarchyRowAction } from './hierarchy/HierarchyRowActions';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { createHierarchyModelsSelector, selectLegacyHierarchyGeometry } from './hierarchy/hierarchy-models-selector';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
+import { useStreamingThrottled } from '@/hooks/useStreamingThrottled';
 
 export function HierarchyPanel() {
   const { t } = useTranslation();
@@ -51,7 +52,8 @@ export function HierarchyPanel() {
   // every row on each geometry update, a re-meshed element included.
   const [selectHierarchyModels] = useState(createHierarchyModelsSelector);
   const models = useViewerStore(selectHierarchyModels);
-  const geometryResult = useViewerStore(selectLegacyHierarchyGeometry);
+  // Legacy single-model geometry is held while streaming like the models above (#6411).
+  const geometryResult = useStreamingThrottled(useViewerStore(selectLegacyHierarchyGeometry));
   const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
   const setActiveModel = useViewerStore((s) => s.setActiveModel);
   const setModelVisibility = useViewerStore((s) => s.setModelVisibility);

@@ -4,6 +4,7 @@
 
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { useStreamingThrottled } from '@/hooks/useStreamingThrottled';
+import { sameModelsExceptGeometry } from '@/lib/streaming-refresh';
 import { Boxes, CheckCircle2, AlertCircle, Layers } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Separator } from '@/components/ui/separator';
@@ -73,10 +74,11 @@ export function StatusBar() {
   // single-model mode has one pair on the top-level hook.
   // Held while geometry streams (#6411): every publish is a new `models` Map
   // and the count below walks every mesh, twice a second on a large load.
+  // Only geometry is held; metadata or a model change passes at once.
   const countSource = useStreamingThrottled(useMemo(
     () => ({ models, ifcDataStore, geometryResult }),
     [models, ifcDataStore, geometryResult],
-  ));
+  ), (held, next) => held.ifcDataStore === next.ifcDataStore && sameModelsExceptGeometry(held.models, next.models));
   const countedModels = useMemo<CountedModel[]>(() => {
     const { models, ifcDataStore, geometryResult } = countSource;
     if (models.size > 0) {

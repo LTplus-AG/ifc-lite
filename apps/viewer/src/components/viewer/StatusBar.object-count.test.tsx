@@ -355,6 +355,27 @@ describe('StatusBar — object count while geometry streams (#6411)', () => {
     }
   });
 
+  it('passes a non-geometry change through at once, even while streaming', async () => {
+    let clock = 0;
+    mock.method(performance, 'now', () => clock);
+    try {
+      useViewerStore.setState({
+        geometryStreamingActive: true,
+        geometryResult: geometry(MESHED_IDS.filter((id) => id !== 56)),
+      });
+      const container = render();
+      assert.equal(elementsText(container), '2 elements');
+      // Metadata arriving is a new data store, not progress: it must not wait
+      // for the geometry refresh even though geometry changed with it.
+      const reparsed = await parseFixture();
+      clock = 1;
+      act(() => useViewerStore.setState({ ifcDataStore: reparsed, geometryResult: geometry(MESHED_IDS) }));
+      assert.equal(elementsText(container), '4 elements');
+    } finally {
+      mock.restoreAll();
+    }
+  });
+
   it('refreshes a long stream once the refresh is due', () => {
     let clock = 0;
     mock.method(performance, 'now', () => clock);

@@ -5,7 +5,7 @@
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import type { FederatedModel } from '@/store/types';
 import { collectMeshedIds } from '@/lib/object-count';
-import { streamingRefreshDue } from '@/lib/streaming-refresh';
+import { sameModelExceptGeometry, streamingRefreshDue } from '@/lib/streaming-refresh';
 
 type Models = Map<string, FederatedModel>;
 
@@ -28,16 +28,6 @@ function sameIds(a: Set<number> | null, b: Set<number> | null): boolean {
 /** A model whose geometry is still streaming in: every batch changes which ids have geometry. */
 function isStreaming(model: FederatedModel): boolean {
   return model.loadState === 'pending' || model.loadState === 'streaming-geometry';
-}
-
-/** Every model field except its geometry is the same. */
-function sameExceptGeometry(prev: FederatedModel, next: FederatedModel): boolean {
-  const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
-  for (const key of keys) {
-    if (key === 'geometryResult' || key === 'preAlignment') continue;
-    if (prev[key as keyof FederatedModel] !== next[key as keyof FederatedModel]) return false;
-  }
-  return true;
 }
 
 /**
@@ -67,13 +57,13 @@ function sameForHierarchy(
     if (prevModel !== model && (isStreaming(model) || isStreaming(prevModel))) {
       // Every batch carries a fresh `coordinateInfo`, so the frame is held with
       // the rest of the streaming geometry.
-      if (holdStreaming && isStreaming(model) && isStreaming(prevModel) && sameExceptGeometry(prevModel, model)) continue;
+      if (holdStreaming && isStreaming(model) && isStreaming(prevModel) && sameModelExceptGeometry(prevModel, model)) continue;
       // Not worth an id scan per streamed batch: the answer is always "changed".
       return false;
     }
     if (frames.get(id) !== model.geometryResult?.coordinateInfo) return false;
     if (prevModel === model) continue;
-    if (!sameExceptGeometry(prevModel, model)) return false;
+    if (!sameModelExceptGeometry(prevModel, model)) return false;
     if (!sameIds(meshedIds(prevModel.geometryResult), meshedIds(model.geometryResult))) return false;
   }
   return true;

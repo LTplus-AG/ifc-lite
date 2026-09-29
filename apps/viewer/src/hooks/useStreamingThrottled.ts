@@ -18,12 +18,17 @@ import { streamingRefreshDue } from '@/lib/streaming-refresh';
  *
  * Hold only data that is progress while streaming (counts, trees). Pass values
  * that must track the store exactly, like selection or visibility, directly.
+ * When `value` bundles geometry with other data, `canHold(held, next)` says
+ * whether the change is geometry alone; any other change passes at once.
  */
-export function useStreamingThrottled<T>(value: T): T {
+export function useStreamingThrottled<T>(value: T, canHold: (held: T, next: T) => boolean = () => true): T {
   const streaming = useViewerStore((s) => s.geometryStreamingActive);
   const held = useRef<{ value: T; takenAt: number } | null>(null);
   let current = held.current;
-  if (current === null || !streaming || (current.value !== value && streamingRefreshDue(current.takenAt, performance.now()))) {
+  if (
+    current === null || !streaming ||
+    (current.value !== value && (!canHold(current.value, value) || streamingRefreshDue(current.takenAt, performance.now())))
+  ) {
     current = { value, takenAt: performance.now() };
     held.current = current;
   }

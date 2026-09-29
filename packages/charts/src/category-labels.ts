@@ -21,6 +21,10 @@ import { format } from 'echarts/core';
 export const CATEGORY_LABEL_FONT_SIZE = 12;
 /** Tilt used for a crowded axis (more buckets than this) even when the labels are short, as before #6480. */
 const CROWDED_CATEGORY_COUNT = 8;
+/** Width the plot loses to the grid margins and the value axis' tick labels; the categories share the rest. */
+const PLOT_INSET = 56;
+/** Px shaved off the fit so ECharts' own `overflow: truncate` backstop never re-truncates a label the formatter already fitted. */
+const FIT_SLACK = 4;
 /** Gap kept between the width share of one label and its neighbour. */
 const LABEL_GAP = 6;
 /** Tilts tried in order; the first that keeps neighbours apart wins, the last is the fallback. */
@@ -73,17 +77,20 @@ function fitMiddle(text: string, maxPx: number, font: string): string {
 
 export function layoutCategoryLabels({ labels, width, height, font }: { labels: readonly string[]; width: number; height: number; font: string }): CategoryLabelLayout {
   const count = Math.max(1, labels.length);
-  const share = Math.floor(width / count) - LABEL_GAP;
+  const spacing = Math.max(1, (width - PLOT_INSET) / count);
+  const share = Math.floor(spacing) - LABEL_GAP;
   const lineHeight = format.getTextRect('M', font).height;
   const widest = labels.reduce((max, label) => Math.max(max, format.getTextRect(label, font).width), 0);
   const budget = Math.min(LABEL_HEIGHT_MAX, Math.max(LABEL_HEIGHT_MIN, height * LABEL_HEIGHT_SHARE));
 
-  // Upright only when every label fits its share whole; otherwise the smallest tilt whose
-  // footprint (a line's height over sin) fits between neighbours, else the steepest.
+  // Upright only when every label fits its share whole; otherwise the smallest tilt at which
+  // parallel neighbours clear each other: labels `spacing` apart along the axis are
+  // `spacing * sin` apart perpendicular to their baseline, which must exceed a line's height
+  // (else `hideOverlap` drops categories). The steepest tilt is the fallback.
   const candidates = count > CROWDED_CATEGORY_COUNT ? TILTS.filter((t) => t > 0) : TILTS;
-  const rotate = candidates.find((tilt) => (tilt === 0 ? widest <= share : lineHeight / Math.sin((tilt * Math.PI) / 180) <= share + LABEL_GAP)) ?? 90;
+  const rotate = candidates.find((tilt) => (tilt === 0 ? widest <= share : lineHeight / Math.sin((tilt * Math.PI) / 180) <= spacing)) ?? 90;
   const radians = (rotate * Math.PI) / 180;
   const room = rotate === 0 ? share : (budget - lineHeight * Math.cos(radians)) / Math.sin(radians);
   const labelWidth = Math.max(36, Math.floor(room));
-  return { rotate, width: labelWidth, formatter: (name) => fitMiddle(name, labelWidth, font) };
+  return { rotate, width: labelWidth, formatter: (name) => fitMiddle(name, labelWidth - FIT_SLACK, font) };
 }

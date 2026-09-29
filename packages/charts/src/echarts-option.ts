@@ -326,7 +326,8 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
       // as a backstop. `triggerEvent` + `tooltip` show the full name on hover.
       axisLabel: { color: theme.mutedText, fontSize: CATEGORY_LABEL_FONT_SIZE, interval: 0, rotate: label.rotate, width: label.width, overflow: 'truncate', hideOverlap: true, formatter: label.formatter },
       triggerEvent: true,
-      tooltip: { show: true },
+      // ECharts' default axis tooltip shows the already-shortened label; `value` is the category name.
+      tooltip: { show: true, formatter: (params: { value?: unknown }) => format.encodeHTML(String(params.value ?? '')) },
     },
     yAxis: {
       type: 'value',

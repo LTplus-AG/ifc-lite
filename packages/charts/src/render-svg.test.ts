@@ -170,6 +170,24 @@ describe('buildEChartsOption', () => {
     expect(narrow.tooltip.show).toBe(true);
   });
 
+  it('shows the original category name, HTML-encoded, in the axis tooltip (#6480 review)', () => {
+    const agg = aggregate(bar, { ...ds, rows: [{ ids: [1], values: ['IfcBuildingElementProxy<b>', 'L1'] }] });
+    const xAxis = buildEChartsOption({ aggregation: agg, width: 120, height: 200 }).xAxis as { axisLabel: { formatter: (n: string) => string }; tooltip: { formatter: (p: { value: string; formattedLabel: string }) => string } };
+    const short = xAxis.axisLabel.formatter('IfcBuildingElementProxy<b>');
+    expect(short).not.toBe('IfcBuildingElementProxy<b>');
+    expect(xAxis.tooltip.formatter({ value: 'IfcBuildingElementProxy<b>', formattedLabel: short })).toBe('IfcBuildingElementProxy&lt;b&gt;');
+  });
+
+  it('keeps every long category when six long labels share a small chart (#6480 review)', () => {
+    const names = ['IfcBuildingElementProxy', 'IfcCableCarrierSegment', 'IfcCommunicationsAppliance', 'IfcDistributionControlElement', 'IfcElectricDistributionBoard', 'IfcFlowMeter'];
+    const agg = aggregate(bar, { ...ds, rows: names.map((name, i) => ({ ids: [i + 1], values: [name, 'L1'] })) });
+    const svg = renderChartSvg({ aggregation: agg, width: 300, height: 200, print: true });
+    // Every category is drawn as its own (tilted) axis label and none is re-truncated by ECharts ("...").
+    const axisTexts = [...svg.matchAll(/<text[^>]*transform="matrix\([^"]*"[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]);
+    expect(axisTexts).toHaveLength(names.length);
+    expect(axisTexts.some((text) => text.endsWith('...'))).toBe(false);
+  });
+
   it('draws long category labels in the SVG, in full where the room allows (#6480, document page)', () => {
     const agg = aggregate(bar, { ...ds, rows: [{ ids: [1], values: ['IfcBuildingElementProxy', 'L1'] }, { ids: [2], values: ['IfcCableCarrierFitting', 'L1'] }] });
     const svg = renderChartSvg({ aggregation: agg, width: 500, height: 250, print: true });

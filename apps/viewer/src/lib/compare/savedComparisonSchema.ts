@@ -32,7 +32,7 @@ export function isSavedComparison(v: unknown): v is SavedComparison {
   if (typeof v.geometryUnavailable !== 'boolean' || typeof v.placementOnlyGeometry !== 'boolean') return false;
   if (v.keyProperty !== undefined && typeof v.keyProperty !== 'string') return false;
   const r = v.report;
-  if (!record(r) || !strings(r, ['baseModel', 'headModel', 'scope']) || !['data', 'geometry', 'both'].includes(String(r.scope)) || !timestamp(r.generatedAt)) return false;
+  if (!record(r) || !strings(r, ['baseModel', 'headModel', 'scope']) || !String(r.baseModel).trim() || !String(r.headModel).trim() || !['data', 'geometry', 'both'].includes(String(r.scope)) || !timestamp(r.generatedAt)) return false;
   if (!Array.isArray(r.excludedTypes) || !r.excludedTypes.every((t: unknown) => typeof t === 'string')) return false;
   const counts = r.counts;
   if (!record(counts) || !['added', 'deleted', 'modified', 'matched', 'needsReview'].every((k) => count(counts[k])) || !tally(counts.products) || !tally(counts.typeObjects)) return false;

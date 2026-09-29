@@ -41,6 +41,25 @@ describe('Saved comparison invariants (#6506)', () => {
     assert.deepEqual(flat.rows.slice(0, 2).map((r) => r.cells[0]), ['new', 'third']);
   });
 
+  it('captures blank model names with stable pair identities and rejects blank imported provenance', () => {
+    const result = { ...comparisonResult('A', 'B'), baseName: '  ', headName: '' };
+    const saved = snapshotComparison(result, comparisonModels(), '');
+    assert.equal(saved.name, 'A → B');
+    assert.equal(saved.report.baseModel, 'A');
+    assert.equal(saved.report.headModel, 'B');
+    assert.deepEqual(new Set(saved.report.rows.map((row) => row.model)), new Set(['A', 'B']));
+    assert.ok(comparisonSummary(saved).includes('Base: A; Head: B'));
+    assert.ok(isSavedComparison(saved));
+    for (const key of ['baseModel', 'headModel'] as const) {
+      const invalid = { ...saved, report: { ...saved.report, [key]: '  ' } };
+      assert.equal(isSavedComparison(invalid), false);
+      const document = { version: DOCUMENT_VERSION, id: 'scope', name: 'Scope', page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'table', id: 'table', source: { kind: 'comparison', comparison: invalid } }] };
+      assert.ok(validateDocumentSpec(document).length > 0);
+    }
+    const named = snapshotComparison({ ...result, baseName: '  exact authored name  ' }, comparisonModels(), 'Named');
+    assert.equal(named.report.baseModel, '  exact authored name  ', 'nonblank authored names retain their exact evidence');
+  });
+
   it('retains a completed no-change pair and reports it explicitly without loaded models', () => {
     const result = comparisonResult('A', 'B');
     const base = result.diff.entries.flatMap((e) => e.base ? [e.base] : []);

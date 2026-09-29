@@ -311,3 +311,103 @@ test('#6500 real IFC checks survive reload and remain independently selectable i
   expect(text).toContain('Architecture coordination review');
   expect(text).toContain('Confirm survey origin');
 });
+
+test('#6506 three real model pairs survive reload and export the selected saved comparison', async ({ page }, testInfo) => {
+  test.setTimeout(180000);
+  await page.setViewportSize({ width: 1680, height: 1050 });
+  const settle = async (count: number) => page.waitForFunction((n) => {
+    const state = globalThis.__ifc_lite_viewer_store__?.getState();
+    return state && state.models.size === n && !state.loading && !state.geometryStreamingActive;
+  }, count, { timeout: 120000 });
+  const openCompare = async () => {
+    await page.getByRole('tab', { name: 'Analyze', exact: true }).click();
+    await page.getByRole('button', { name: /^Compare/ }).first().click();
+    await expect(page.locator('[data-saved-comparisons]')).toBeVisible();
+  };
+  await page.goto(`${viewerUrl}?model=/samples/building-architecture.ifc`);
+  await settle(1);
+  // The revision is derived from the actual SketchUp-exported architecture;
+  // the independent bridge exercises retaining more than one model pair.
+  for (const filename of ['building-architecture-rev-b.ifc', 'infra-bridge.ifc']) {
+    await page.evaluate(async (filename) => {
+      const previous = globalThis.__ifc_lite_viewer_store__.getState().models.size;
+      const response = await fetch(`/samples/${filename}`);
+      if (!response.ok) throw new Error(`Sample fetch failed: ${filename}`);
+      window.dispatchEvent(new CustomEvent('ifc-lite:add-model', {
+        detail: new File([await response.blob()], filename, { type: 'application/x-step' }),
+      }));
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => { unsubscribe(); reject(new Error('Model load did not settle')); }, 120000);
+        const unsubscribe = globalThis.__ifc_lite_viewer_store__.subscribe((state) => {
+          if (state.models.size === previous + 1 && !state.loading && !state.geometryStreamingActive) {
+            clearTimeout(timeout); unsubscribe(); resolve();
+          }
+        });
+      });
+    }, filename);
+  }
+  await settle(3);
+  const models = await page.evaluate(() => [...globalThis.__ifc_lite_viewer_store__.getState().models.values()].map(({ id, name }) => ({ id, name })));
+  await openCompare();
+  for (const [base, head, name] of [[0, 1, 'Architecture A/B'], [0, 2, 'Architecture A / Bridge C'], [1, 2, 'Architecture B / Bridge C']] as const) {
+    await page.getByRole('combobox', { name: 'A', exact: true }).selectOption(models[base].id);
+    await page.getByRole('combobox', { name: 'B', exact: true }).selectOption(models[head].id);
+    await page.getByRole('button', { name: 'Data', exact: true }).click();
+    const previous = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().compareRunSeq);
+    await page.getByRole('button', { name: 'Run comparison', exact: true }).click();
+    await page.waitForFunction((sequence) => {
+      const state = globalThis.__ifc_lite_viewer_store__.getState();
+      return !state.compareRunning && state.compareResult && state.compareRunSeq > sequence;
+    }, previous);
+    await page.getByRole('textbox', { name: 'Comparison name', exact: true }).fill(name);
+    await page.getByRole('button', { name: 'Save comparison', exact: true }).click();
+  }
+  const history = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().savedComparisons);
+  expect(history).toHaveLength(3);
+  expect(history.map(({ pair }) => [pair.baseModelId, pair.headModelId])).toEqual([
+    [models[0].id, models[1].id], [models[0].id, models[2].id], [models[1].id, models[2].id],
+  ]);
+  expect(history[0].report.counts).toMatchObject({ added: 1, deleted: 1, modified: 1 });
+  expect(history.map(({ report }) => report.rows.length)).toEqual([3, 95, 95]);
+  await page.getByRole('combobox', { name: 'Saved comparison', exact: true }).selectOption(history[0].id);
+  await page.locator('[data-saved-comparisons]').screenshot({ path: testInfo.outputPath('saved-model-comparison-history.png') });
+  // Only A is loaded after a fresh page; historical B/C results remain portable.
+  await page.reload(); await settle(1); await openCompare();
+  await page.getByRole('combobox', { name: 'Saved comparison', exact: true }).selectOption(history[1].id);
+  expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().savedComparisons)).toEqual(history);
+  await page.getByRole('button', { name: /^Document/ }).first().click();
+  const panel = page.locator('[data-document-panel]');
+  await expect(panel).toBeVisible();
+  await panel.getByRole('button', { name: 'Add block', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Saved comparison', exact: true }).click();
+  await panel.getByRole('combobox', { name: 'Choose saved comparison for document' }).selectOption(history[0].id);
+  const embedded = await page.evaluate(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    return state.documents.find(({ id }) => id === state.activeDocumentId)?.blocks.find((block) => block.kind === 'table' && block.source.kind === 'comparison');
+  });
+  expect(embedded?.kind === 'table' && embedded.source.kind === 'comparison' ? embedded.source.comparison : undefined).toEqual(history[0]);
+  await page.getByRole('button', { name: 'Maximize', exact: true }).click();
+  await panel.getByRole('combobox', { name: 'Choose saved comparison for document' }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('saved-model-comparison-document.png') });
+  const downloadPromise = page.waitForEvent('download');
+  await panel.locator('[data-document-export]').click();
+  const pdfPath = testInfo.outputPath('saved-model-comparison-document.pdf');
+  await (await downloadPromise).saveAs(pdfPath);
+  const { readFile } = await import('node:fs/promises');
+  const bytes = Array.from(await readFile(pdfPath));
+  const text = await page.evaluate(async (bytes) => {
+    const moduleUrl = '/src/lib/llm/document-text.ts';
+    const documentText: typeof import('../../apps/viewer/src/lib/llm/document-text') = await import(moduleUrl);
+    return documentText.extractPdfText(new Blob([new Uint8Array(bytes)]));
+  }, bytes);
+  expect(text).toContain('Architecture A/B');
+  expect(text).toContain(models[0].name);
+  expect(text).toContain(models[1].name);
+  // Existing table layout ellipsizes narrow cells; the portable snapshot above
+  // retains complete identifiers while the real PDF must contain every row.
+  for (const row of history[0].report.rows) {
+    expect(text).toContain(row.globalId.slice(0, 10));
+    expect(text).toContain(row.name.slice(0, 10));
+  }
+  expect(text).not.toContain('Architecture B / Bridge C');
+});

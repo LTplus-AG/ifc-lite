@@ -17,7 +17,7 @@ export function ComparisonSourceEditor({ block, source, onChange }: { block: Tab
         const comparison = saved.find((c) => c.id === e.target.value);
         if (comparison) onChange({ ...block, source: { kind: 'comparison', comparison: structuredClone(comparison) } });
       }}>
-        <option value="">{source.comparison.name}</option>
+        <option value="" disabled>{source.comparison.name}</option>
         {saved.map((c) => <option key={c.id} value={c.id}>{c.name} — {c.report.baseModel} → {c.report.headModel}</option>)}
       </select>
     </label>

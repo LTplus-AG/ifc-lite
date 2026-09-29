@@ -93,6 +93,7 @@ describe('Multiple saved pairs in mounted UI and documentation (#6506)', () => {
     const previewBlock = ui.querySelector('[data-preview-block="table"]'); assert.ok(previewBlock); click(previewBlock);
     await settle();
     const source = ui.querySelector<HTMLSelectElement>('select[aria-label="Choose saved comparison for document"]'); assert.ok(source);
+    assert.equal(source.options[0].disabled, true, 'embedded snapshot label is not a selectable no-op');
     select(source, history[1].id); await settle();
     assert.ok(ui.querySelector('[data-block-table]')?.textContent?.includes('Base: A; Head: C'));
     const doc = useViewerStore.getState().documents[0];

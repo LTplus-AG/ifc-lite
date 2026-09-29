@@ -4,7 +4,7 @@
 
 import { entityRefToString, stringToEntityRef, type EntityRef, type ViewerState } from '@/store';
 import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
-import { sourceIdentity } from './swept-disk-cache';
+import { sourceIdentity } from './analytic-product-cache';
 
 export interface SelectedSourceProducts {
   grouped: Map<string, number[]>;

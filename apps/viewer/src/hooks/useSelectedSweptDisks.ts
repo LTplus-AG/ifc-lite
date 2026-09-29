@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { SweptDiskDescriptions } from '@ifc-lite/geometry';
 import { useViewerStore, type EntityRef } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
-import { selectedSweptDiskCache, sourceIdentity, type AnalyticSourceModel } from '@/lib/analytic/swept-disk-cache';
+import { sourceIdentity, type AnalyticSourceModel } from '@/lib/analytic/analytic-product-cache';
+import { selectedSweptDiskCache } from '@/lib/analytic/swept-disk-cache';
 import { loadSelectedSourceGroups, selectedSourceProducts } from '@/lib/analytic/selected-source-products';
 
 type Occurrences = SweptDiskDescriptions['elements'][string];

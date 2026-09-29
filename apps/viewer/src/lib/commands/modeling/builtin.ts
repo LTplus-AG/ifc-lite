@@ -20,6 +20,8 @@ import { WALL_MOVE_ENDPOINT } from './commands/wall-move-endpoint.js';
 import { WALL_PLACE } from './commands/wall-place.js';
 import { HOSTED_SLIDE } from './commands/hosted-slide.js';
 import { PLAN_MOVE } from './commands/plan-move.js';
+import { ELEMENT_ARRAY } from './commands/element-array.js';
+import { ELEMENT_PASTE } from './commands/element-paste.js';
 import { CURTAINWALL_PLACE } from './commands/curtainwall-place.js';
 import { GRID_PLACE } from './commands/grid-place.js';
 import type { ModelingCommand } from './types.js';
@@ -41,6 +43,8 @@ registerOnce(DOOR_PLACE);
 registerOnce(WINDOW_PLACE);
 registerOnce(HOSTED_SLIDE);
 registerOnce(PLAN_MOVE);
+registerOnce(ELEMENT_PASTE);
+registerOnce(ELEMENT_ARRAY);
 registerOnce(CURTAINWALL_PLACE);
 registerOnce(GRID_PLACE);
 

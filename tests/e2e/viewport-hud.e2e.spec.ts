@@ -113,6 +113,8 @@ const STATES: ReadonlyArray<{ name: string; settleMs?: number; mayBeEmpty?: bool
   // #6232 D3: the curtain wall bar is the widest command bar (eight typed fields); the grid bar adds a tag scheme.
   { name: 'curtainwall' },
   { name: 'grid' },
+  // #6232 C3: the Array bar (count, spacing, linear / polar, spacing / fit).
+  { name: 'array' },
   { name: 'spaceSketch', settleMs: 4000 },
   { name: 'addElement' },
   { name: 'measure' },
@@ -189,6 +191,7 @@ for (const width of [1280, 1600, 1920]) {
             window: (s) => s.startCommand('window.place'),
             curtainwall: (s) => s.startCommand('curtainwall.place'),
             grid: (s) => s.startCommand('grid.place'),
+            array: (s) => s.startCommand('element.array'),
             spaceSketch: (s) => { s.endCommand(); s.setActiveTool('spaceSketch'); },
             addElement: (s) => s.setActiveTool('addElement'),
             measure: (s) => s.setActiveTool('measure'),
@@ -204,8 +207,8 @@ for (const width of [1280, 1600, 1920]) {
           };
           enter[name](api.getState());
         }, [STORE, state.name] as const);
-        if (state.name === 'split' || state.name === 'slab' || state.name === 'beam' || state.name === 'room' || state.name === 'window' || state.name === 'curtainwall' || state.name === 'grid') {
-          const id = { split: 'element.split', slab: 'slab.place', beam: 'beam.place', room: 'room.place', window: 'window.place', curtainwall: 'curtainwall.place', grid: 'grid.place' }[state.name];
+        if (state.name === 'split' || state.name === 'slab' || state.name === 'beam' || state.name === 'room' || state.name === 'window' || state.name === 'array' || state.name === 'curtainwall' || state.name === 'grid') {
+          const id = { split: 'element.split', slab: 'slab.place', beam: 'beam.place', room: 'room.place', window: 'window.place', array: 'element.array', curtainwall: 'curtainwall.place', grid: 'grid.place' }[state.name];
           await expect(page.locator(`[data-hud-region] [data-command-id="${id}"]`)).toBeVisible();
         }
         if (state.name === 'spaceSketch') {

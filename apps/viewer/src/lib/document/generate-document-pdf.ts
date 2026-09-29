@@ -152,6 +152,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         blocks.push({ kind: 'chart', id: block.id, title: block.chart.title, subtitle, hasData: !!agg && agg.categories.length > 0, snapshot: block.snapshot, height: block.height, width: block.width });
         break;
       }
+      case 'page-break': blocks.push(block); break;
       case 'spacer': {
         blocks.push({ kind: 'spacer', id: block.id, height: block.height });
         break;

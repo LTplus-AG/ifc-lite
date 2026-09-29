@@ -94,6 +94,14 @@ export const documentEn = {
   'document.addBlock.button': 'Add block',
   'document.addBlock.buttonTitle': 'Add a block to the page',
   'document.addBlock.spacer': 'Spacer',
+  'document.addBlock.pageBreak': 'Page break',
+  'document.block.kindPageBreak': 'Page break',
+  'document.block.fieldSourceLabel': 'Source',
+  'document.block.fieldSourceAriaLabel': 'Field source model',
+  'document.block.fieldSourceDefault': 'Default source',
+  'document.block.fieldSourceDuplicate': 'duplicate name',
+  'document.block.fieldSourceDuplicateTitle': 'Use distinct model names to bind a field to one model.',
+  'document.preview.sectionLabel': 'Document section {section}',
 
   // DocumentPanel.tsx (#4918 doc slice): the panel's own header controls,
   // export action, empty state, and the toasts its export/save flow raises.

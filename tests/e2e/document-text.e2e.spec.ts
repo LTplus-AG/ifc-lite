@@ -117,3 +117,76 @@ test('#6488 a popped-out document remains usable after rename, cancel and Escape
   await popup.screenshot({ path: testInfo.outputPath('document-usable-after-rename.png') });
   await popup.close();
 });
+
+test('#6485 named model fields retain their source and authored page breaks export real PDF pages', async ({ page }, testInfo) => {
+  const duplicateKeys: string[] = [];
+  page.on('console', (message) => { if (message.type() === 'error' && message.text().includes('Encountered two children with the same key')) duplicateKeys.push(message.text()); });
+  await page.setViewportSize({ width: 1600, height: 1800 });
+  const loaded = page.waitForEvent('console', { predicate: (message) => message.text().includes('[ifc-lite] Added model building-architecture.ifc'), timeout: 120000 });
+  await page.goto(`${viewerUrl}?model=/samples/building-architecture.ifc`);
+  await loaded;
+  const bridgeLoaded = page.waitForEvent('console', { predicate: (message) => message.text().includes('[ifc-lite] Added model infra-bridge.ifc'), timeout: 120000 });
+  await page.locator('#file-input-add').setInputFiles(join(ROOT, 'apps/viewer/public/samples/infra-bridge.ifc'));
+  await bridgeLoaded;
+  await page.evaluate(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    state.upsertDocument({ version: 8, id: 'sources-6485', name: 'Model sources and page breaks', page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'text', id: 'bridge', style: 'heading', text: '' }] });
+    state.setActiveDocumentId('sources-6485');
+    state.showWorkspacePanel('document');
+    state.setSidebarActivePanel('document');
+  });
+  const panel = page.locator('[data-document-panel]').first();
+  await expect(panel).toBeVisible();
+  const bridge = panel.locator('[data-block-editor="bridge"]');
+  await bridge.getByRole('combobox', { name: 'Field source model' }).selectOption({ label: 'infra-bridge.ifc' });
+  await bridge.getByRole('combobox', { name: 'Insert field', exact: true }).selectOption('Model["infra-bridge.ifc"].Name');
+  await expect(panel.locator('[data-preview-block="bridge"] [data-block-text]')).toHaveText('infra-bridge.ifc');
+  await panel.getByRole('button', { name: 'Add block', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Page break', exact: true }).click();
+  await panel.getByRole('button', { name: 'Add block', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Text with fields', exact: true }).click();
+  const architecture = panel.locator('[data-block-editor][data-block-kind="text"]').last();
+  await architecture.getByRole('combobox', { name: 'Field source model' }).selectOption({ label: 'building-architecture.ifc' });
+  await architecture.getByRole('combobox', { name: 'Insert field', exact: true }).selectOption('Model["building-architecture.ifc"].Name');
+  await expect(panel.locator('[data-preview-section]')).toHaveCount(2);
+  await expect(panel.locator('[data-preview-section]').nth(1).locator('[data-block-text]')).toHaveText('building-architecture.ifc');
+  await page.evaluate(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    const architecture = [...state.models.values()].find((model) => model.name === 'building-architecture.ifc');
+    if (!architecture) throw new Error('Architecture model was not loaded');
+    state.setActiveModel(architecture.id);
+  });
+  await expect(panel.locator('[data-preview-block="bridge"] [data-block-text]')).toHaveText('infra-bridge.ifc');
+  await panel.screenshot({ path: testInfo.outputPath('model-sources-page-breaks.png') });
+  // The desktop sidebar is narrower than the editor + paper; show both authored
+  // sections in the supported document pop-out for reviewable visual evidence.
+  await page.evaluate(() => Object.defineProperty(window, 'documentPictureInPicture', { value: undefined, configurable: true }));
+  await page.getByRole('button', { name: 'Sidebar options', exact: true }).click();
+  const popupPromise = page.waitForEvent('popup');
+  await page.getByRole('menuitem', { name: 'Pop out to another screen', exact: true }).click();
+  const popup = await popupPromise;
+  await popup.setViewportSize({ width: 1100, height: 1800 });
+  const popupPanel = popup.locator('[data-document-panel]');
+  await expect(popupPanel.locator('[data-preview-section]')).toHaveCount(2);
+  await expect(popupPanel.locator('[data-preview-block="bridge"] [data-block-text]')).toBeVisible();
+  await popupPanel.screenshot({ path: testInfo.outputPath('model-sources-page-breaks-preview.png') });
+  await popup.close();
+  const downloadPromise = page.waitForEvent('download');
+  await panel.locator('[data-document-export]').click();
+  const download = await downloadPromise;
+  const pdfPath = testInfo.outputPath('model-sources-page-breaks.pdf');
+  await download.saveAs(pdfPath);
+  const { readFile } = await import('node:fs/promises');
+  const bytes = Array.from(await readFile(pdfPath));
+  const text = await page.evaluate(async (bytes) => {
+    const moduleUrl = '/src/lib/llm/document-text.ts';
+    const documentText: typeof import('../../apps/viewer/src/lib/llm/document-text') = await import(moduleUrl);
+    return documentText.extractPdfText(new Blob([new Uint8Array(bytes)]));
+  }, bytes);
+  expect(text).toContain('infra-bridge.ifc');
+  expect(text).toContain('building-architecture.ifc');
+  expect(text).toContain('[Page 2]');
+  expect(text).not.toContain('[Page 3]');
+  expect(text).not.toContain('not loaded');
+  expect(duplicateKeys).toEqual([]);
+});

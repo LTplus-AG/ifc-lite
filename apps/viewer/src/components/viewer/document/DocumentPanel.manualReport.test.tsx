@@ -149,7 +149,10 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.deepEqual(stored().groups[0].items.map((i) => i.status), ['fail', 'pass']);
 
     // An explicit pick re-binds the block to that model.
-    const select = [...ui.querySelectorAll('select')].find((el) => el.querySelector('option[value="m1"]'))!;
+    // #6485 also offers m1 in text-field sources. Pick the labelled answers
+    // control, as a user does, rather than the first select sharing that option.
+    const select = [...ui.querySelectorAll('select')].find((el) => el.closest('label')?.textContent?.trim().startsWith('Answers from'));
+    assert.ok(select, 'the manual report offers its own answers-model picker');
     act(() => {
       // Through the prototype setter, so React's value tracker sees the change.
       Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')?.set?.call(select, 'm1');

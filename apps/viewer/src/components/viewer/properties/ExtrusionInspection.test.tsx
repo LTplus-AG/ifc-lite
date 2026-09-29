@@ -53,7 +53,7 @@ it('renders authored millimetre profile dimensions as metres and discloses CSG m
   assert.match(text, /#11 → #12/);
   assert.match(text, /Depth: 2 m/);
   assert.match(text, /authored profile may differ from the visible result/);
-  const loop = ui.querySelector('details');
+  const loop = [...ui.querySelectorAll('details')].find((detail) => detail.textContent?.includes('Loop 1'));
   assert.ok(loop);
   assert.match(loop.textContent ?? '', /Perimeter: 6 m/);
   assert.match(loop.textContent ?? '', /Signed area: 2 m²/);

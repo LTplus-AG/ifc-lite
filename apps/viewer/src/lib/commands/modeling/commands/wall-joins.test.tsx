@@ -28,6 +28,10 @@ import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { joinPlacedWallIn } from '@/store/slices/mutation-wall-joins';
 import { press } from '@/test/render.js';
+import { commitElementTransform, type ElementTransformOp } from '@/lib/element-transform/commit';
+import { buildStoreyWorkplane, isWorkplane } from '../workplane.js';
+import { runTransaction } from '../transaction.js';
+import type { ModelingCommand } from '../types.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import type { SnapResult, Vec2 } from '@/lib/snap/types';
 import '../builtin.js';
@@ -316,5 +320,77 @@ describe('the exported model keeps the joins and meshes clean (#6232 B2)', () =>
     assert.equal(reparsed.entityIndex.byType.get('IFCRELCONNECTSPATHELEMENTS')?.length, 4, 'the joins survive export and re-parse');
     assert.equal(readWallJoinRels(reparsed, null).length, 4);
     assert.equal(text.match(/'Axis','Curve2D'/g)?.length, 4, 'and every wall keeps its Axis');
+  });
+});
+
+describe('a moved or turned wall takes its joined walls along (#6232 B2)', () => {
+  /** Move / turn `selected` in storey-local metres, as `element.move` / `element.rotate` write it: one transaction. */
+  function transform(selected: number[], op: (local: (x: number, y: number) => readonly [number, number, number]) => ElementTransformOp): boolean {
+    const plane = buildStoreyWorkplane(state(), MODEL_ID, STOREY, 0);
+    assert.ok(isWorkplane(plane));
+    const command: ModelingCommand = {
+      id: 'test.transform', labelKey: 'modelInspector.edit', hud: {}, snap: 'modeling', init: () => null,
+      pointerMove: (g) => g, pointerDown: (g) => g,
+      commit: (_g, tx) => commitElementTransform(tx, MODEL_ID, selected, op((x, y) => plane.localToRender([x, y, 0]))),
+    };
+    const get = useViewerStore.getState;
+    return runTransaction(useViewerStore, command, null, { get, modelId: MODEL_ID, storeyId: STOREY, workplane: plane }).ok;
+  }
+  const move = (dx: number, dy: number) => (l: (x: number, y: number) => readonly [number, number, number]): ElementTransformOp =>
+    ({ kind: 'move', from: l(0, 0), to: l(dx, dy) });
+
+  it('the walls joined at a moved wall end follow its corners, in one undo step', () => {
+    drawRoom();
+    const [first, second, third, fourth] = wallIds();
+    const before = batches();
+    assert.ok(transform([first], move(0, 1)));
+    assert.equal(batches(), before + 1);
+    assert.ok(near(shape(first).wall.start, [0, 1]) && near(shape(first).wall.end, [6, 1]), 'the wall moved');
+    assert.ok(near(shape(second).wall.start, [6, 1]) && near(shape(second).wall.end, [6, 4]), 'the next wall stretched to the new corner');
+    assert.ok(near(shape(fourth).wall.end, [0, 1]) && near(shape(fourth).wall.start, [0, 4]), 'so did the previous one');
+    assert.ok(near(shape(third).wall.start, [6, 4]) && near(shape(third).wall.end, [0, 4]), 'the far wall stayed');
+    assert.equal(rels().length, 4, 'all four joins stay');
+    for (const id of wallIds()) assert.notEqual(shape(id).axisRepId, null);
+    undo();
+    assert.ok(near(shape(first).wall.start, [0, 0]) && near(shape(second).wall.start, [6, 0]) && near(shape(fourth).wall.end, [0, 0]));
+    assert.equal(rels().length, 4);
+  });
+
+  it('a wall that ends on the moved wall keeps its place along it, also through a turn', () => {
+    click(0, 0);
+    click(8, 0);
+    press(document.body, 'Escape');
+    click(4, 5);
+    click(4, 0);
+    const [through, ending] = wallIds();
+    assert.ok(transform([through], move(0, -1)));
+    assert.ok(near(shape(ending).wall.end, [4, -1]), 'the T end went with the wall');
+    assert.equal(rels().length, 1);
+    assert.equal(rels()[0].relatingId, through);
+    // Turn it a quarter turn about its start: the ending wall's end swings to the same point of the wall.
+    assert.ok(transform([through], (l) => ({ kind: 'rotate', pivot: l(0, -1), angle: Math.PI / 2 })));
+    assert.ok(near(shape(through).wall.end, [0, 7]), `through ${JSON.stringify(shape(through).wall)}`);
+    assert.ok(near(shape(ending).wall.end, [0, 3]), `ending ${JSON.stringify(shape(ending).wall)}`);
+    assert.equal(rels().length, 1);
+  });
+
+  it('walls that move together keep their joins untouched', () => {
+    drawRoom();
+    const before = rels().map((r) => r.relId).sort();
+    assert.ok(transform(wallIds(), move(2, 3)));
+    assert.deepEqual(rels().map((r) => r.relId).sort(), before, 'no join was rewritten');
+    assert.ok(near(shape(wallIds()[0]).wall.start, [2, 3]));
+  });
+
+  it('moving a wall that ends on another off it drops the join and squares the end', () => {
+    click(0, 0);
+    click(8, 0);
+    press(document.body, 'Escape');
+    click(4, 5);
+    click(4, 0);
+    const [, ending] = wallIds();
+    assert.ok(transform([ending], move(0, 3)));
+    assert.equal(rels().length, 0, 'the ending wall no longer reaches the path');
+    assert.equal(shape(ending).wall.endCut, undefined, 'and stops square');
   });
 });

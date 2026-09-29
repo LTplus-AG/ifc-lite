@@ -82,9 +82,19 @@ function select(expressId: number): void {
 }
 
 /** What a mutation writes, without its identity (id, time). */
-function effect(m: Mutation): unknown {
-  const { id: _id, timestamp: _t, ...rest } = m as Mutation & { timestamp?: unknown };
-  return rest;
+/**
+ * The mutations of one edit without what differs between two runs of it: ids and
+ * times, and the express ids of the entities the edit created (a resize re-authors
+ * the wall's body, so each run creates its own), which other writes refer to as `#id`.
+ */
+function effects(mutations: readonly Mutation[]): unknown[] {
+  const created = new Set(mutations.filter((m) => m.type === 'CREATE_ENTITY').map((m) => m.entityId));
+  return mutations.map((m) => {
+    const { id: _id, timestamp: _t, ...rest } = m as Mutation & { timestamp?: unknown };
+    const text = JSON.stringify(rest).replace(/#(\d+)/g, (ref, n) => (created.has(Number(n)) ? '#new' : ref));
+    const canonical = JSON.parse(text) as Record<string, unknown>;
+    return rest.type === 'CREATE_ENTITY' ? { ...canonical, entityId: 'new' } : canonical;
+  });
 }
 
 async function mountPlan() {
@@ -146,7 +156,7 @@ describe('plan wall end handles (#6232 B3)', () => {
     act(() => commandPointerMove({ local: [6, 1], render: solved!.render, winner: null, guides: [], locked: false }));
     act(() => { window.dispatchEvent(new window.PointerEvent('pointerup')); });
     const viewport = undoStack().slice(before);
-    assert.deepEqual(viewport.map(effect), plan.map(effect), 'identical mutations from the plan and from 3D');
+    assert.deepEqual(effects(viewport), effects(plan), 'identical mutations from the plan and from 3D');
   });
 
   it('keep their screen size at any zoom and are still grabbed there', async () => {

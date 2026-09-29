@@ -179,6 +179,36 @@ describe('reshapeWallsInStore', () => {
     expect(read.plain).toBe(true);
   });
 
+  it('keeps the placement of a wall whose start holds, so what it hosts keeps its place', async () => {
+    const s = await joinedRoom();
+    const before = readWallJoinTarget(s.store, s.editor.getMutationView(), s.ids[1], 1)!;
+    // Wall 1 runs (6,0) -> (6,4); drag its FAR end while the corner at its start holds.
+    reshapeWallsInStore(s.editor, s.store, s.joinAnchor, [{ wallId: s.ids[1], end: [6, 5] }]);
+    const after = readWallJoinTarget(s.store, s.editor.getMutationView(), s.ids[1], 1)!;
+    expect(after.locationPointId).toBe(before.locationPointId);
+    expect(after.location).toEqual(before.location);
+    expect(after.wall.end).toEqual([6, 5]);
+    // The start of a wall that moves takes the placement along, as a resize always did.
+    reshapeWallsInStore(s.editor, s.store, s.joinAnchor, [{ wallId: s.ids[2], start: [6, 5.5] }]);
+    expect(readWallJoinTarget(s.store, s.editor.getMutationView(), s.ids[2], 1)!.location.slice(0, 2)).toEqual([6, 5.5]);
+  });
+
+  it('recomputes the joins of walls that were moved as a whole (refresh) without rewriting them', async () => {
+    const s = await joinedRoom();
+    const before = readWallJoinTarget(s.store, s.editor.getMutationView(), s.ids[0], 1)!;
+    // Move wall 0 up by 1 by its placement alone, the way a rigid move does, then bring its neighbours to it.
+    s.editor.setPositionalAttribute(before.locationPointId, 0, [before.location[0], 1, before.location[2]]);
+    const result = reshapeWallsInStore(s.editor, s.store, s.joinAnchor, [
+      { wallId: s.ids[1], start: [6, 1] },
+      { wallId: s.ids[3], end: [0, 1] },
+    ], { refresh: [s.ids[0]] });
+    expect(new Set(result.walls)).toEqual(new Set(s.ids));
+    expect(readWall(s, s.ids[0]).start).toEqual([0, 1]);
+    expect(readWallJoinRels(s.store, s.editor.getMutationView())).toHaveLength(4);
+    // The moved wall's own body was not rewritten (same profile), only re-cut where its joins are.
+    expect(readWallJoinTarget(s.store, s.editor.getMutationView(), s.ids[0], 1)!.locationPointId).toBe(before.locationPointId);
+  });
+
   it('refuses a zero-length wall before writing anything', async () => {
     const s = await joinedRoom();
     const before = s.editor.getNewEntities().length;

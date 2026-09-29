@@ -98,6 +98,12 @@ export interface WallReshapeOptions {
   moveJoinedEnds?: boolean;
   /** Tolerance of the recomputed joins, see `computeWallJoin`. */
   tolerance?: number;
+  /**
+   * Walls that were moved as a whole (a rigid move or turn) and are NOT
+   * rewritten here: the joins they are part of are recomputed against the
+   * walls that are.
+   */
+  refresh?: readonly number[];
 }
 
 export interface WallReshapeResult {
@@ -170,7 +176,7 @@ export function reshapeWallsInStore(
   // Everything that can refuse has run: write. Each moved wall gets a fresh
   // placement point and direction (the old ones may be shared with other
   // walls) and a square body on its new axis.
-  const rels = readWallJoinRels(store, view(), new Set(axes.keys()));
+  const rels = readWallJoinRels(store, view(), new Set([...axes.keys(), ...(options.refresh ?? [])]));
   const touched = new Set<number>(axes.keys());
   for (const [id, { start, end, thickness }] of axes) targets.set(id, writeAxis(editor, anchor, load(id), start, end, thickness));
 
@@ -225,15 +231,32 @@ function joinOptionsOf(rel: WallJoinRel, tolerance: number | undefined): WallJoi
   };
 }
 
-/** Move `read` onto the axis `start`..`end`: new placement point and direction, square body and Axis on it. */
+/**
+ * Move `read` onto the axis `start`..`end` with a square body. The placement
+ * stays where it is when the start does not move and the direction holds (a
+ * far-end drag: the openings hosted in the wall keep their place); otherwise it
+ * gets a fresh point and direction at the new start (the old ones may be
+ * shared with other walls).
+ */
 function writeAxis(editor: StoreEditor, anchor: JoinAnchor, read: WallJoinRead, start: PlanPoint, end: PlanPoint, thickness = read.wall.thickness): WallJoinRead {
   const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
   const native = (v: number) => toNativeLength(anchor, v);
+  const square: WallJoinWall = { start, end, thickness, ...(read.wall.offset === undefined ? {} : { offset: read.wall.offset }) };
+  const old = read.wall;
+  const oldLength = Math.hypot(old.end[0] - old.start[0], old.end[1] - old.start[1]);
+  const ux = (end[0] - start[0]) / length;
+  const uy = (end[1] - start[1]) / length;
+  const ox = (old.end[0] - old.start[0]) / oldLength;
+  const oy = (old.end[1] - old.start[1]) / oldLength;
+  const startHeld = Math.hypot(start[0] - old.start[0], start[1] - old.start[1]) <= MOVE_EPS;
+  const directionHeld = ux * ox + uy * oy > 1 - 1e-12;
+  if (startHeld && directionHeld) {
+    return { ...read, ...rewriteWall(editor, anchor, { ...read, wall: square }, square), wall: square, plain: false };
+  }
   const point = editor.addEntity('IfcCartesianPoint', [[native(start[0]), native(start[1]), read.location[2]]]).expressId;
-  const direction = editor.addEntity('IfcDirection', [[(end[0] - start[0]) / length, (end[1] - start[1]) / length, 0]]).expressId;
+  const direction = editor.addEntity('IfcDirection', [[ux, uy, 0]]).expressId;
   editor.setPositionalAttribute(read.axisPlacementId, 0, `#${point}`);
   editor.setPositionalAttribute(read.axisPlacementId, 2, `#${direction}`);
-  const square: WallJoinWall = { start, end, thickness, ...(read.wall.offset === undefined ? {} : { offset: read.wall.offset }) };
   const moved = rewriteWall(editor, anchor, { ...read, origin: start, wall: square }, square);
   return {
     ...read, ...moved, locationPointId: point, refDirectionId: direction,

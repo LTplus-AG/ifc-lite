@@ -11,7 +11,7 @@
  */
 
 import type { ComponentType } from 'react';
-import { CopyPlus, LogOut, MousePointer2, Slice } from 'lucide-react';
+import { CopyPlus, LogOut, MousePointer2, Move, RotateCw, Slice } from 'lucide-react';
 import { BeamIcon, ColumnIcon, CurtainWallIcon, DoorIcon, GridIcon, OpeningIcon, RoomIcon, SlabIcon, WallIcon, WindowIcon } from './model-icons';
 import type { TranslationKey } from '@/i18n';
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
@@ -117,6 +117,20 @@ export const RAIL_TOOLS: readonly RailTool[] = [
     isActive: commandActive('element.array'),
     blockedKey: (s) => (s.selectedEntityId === null && s.selectedEntityIds.size === 0 ? 'copyArray.blocked.array' : null),
     run: () => { launchModelCommand('element.array'); },
+  },
+  {
+    id: 'element.move', group: 'edit', labelKey: 'moveRotate.tool.move', Icon: Move,
+    shortcut: 'model.move', drawsOnWorkplane: true,
+    isActive: commandActive('element.move'),
+    blockedKey: (s) => (s.selectedEntityId === null ? 'moveRotate.noSelection' : null),
+    run: () => { launchModelCommand('element.move'); },
+  },
+  {
+    id: 'element.rotate', group: 'edit', labelKey: 'moveRotate.tool.rotate', Icon: RotateCw,
+    shortcut: 'model.rotate', drawsOnWorkplane: true,
+    isActive: commandActive('element.rotate'),
+    blockedKey: (s) => (s.selectedEntityId === null ? 'moveRotate.noSelection' : null),
+    run: () => { launchModelCommand('element.rotate'); },
   },
 ];
 

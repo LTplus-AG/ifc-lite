@@ -88,6 +88,7 @@ import { modelWorkspaceEn } from './catalogues/model-workspace.en';
 import { roomToolEn } from './catalogues/room-tool.en';
 import { curtainGridEn } from './catalogues/curtain-grid.en';
 import { copyArrayEn } from './catalogues/copy-array.en';
+import { moveRotateEn } from './catalogues/move-rotate.en';
 import { modelInspectorEn } from './catalogues/model-inspector.en';
 import { hostedPlaceEn } from './catalogues/hosted-place.en';
 import { planHandlesEn } from './catalogues/plan-handles.en';
@@ -142,6 +143,7 @@ export const en = {
   ...roomToolEn,
   ...curtainGridEn,
   ...copyArrayEn,
+  ...moveRotateEn,
   ...modelInspectorEn,
   ...hostedPlaceEn,
   ...planHandlesEn,

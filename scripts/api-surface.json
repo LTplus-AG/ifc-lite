@@ -6283,6 +6283,7 @@
     "MaterialInfo: interface",
     "ParentInfo: interface",
     "PartOfRelation: type",
+    "PassRateBand: type",
     "PropertySetInfo: interface",
     "PropertyValueResult: interface",
     "RequirementOptionality: type",
@@ -6301,6 +6302,7 @@
     "ValidatorOptions: interface",
     "auditIDSDocument: function",
     "auditIDSStructure: function",
+    "boundedPassRate: function",
     "calculateSummary: function",
     "checkAttributeFacet: function",
     "checkClassificationFacet: function",
@@ -6321,6 +6323,7 @@
     "isIDSValidationReport: function",
     "matchConstraint: function",
     "parseIDS: function",
+    "passRateBand: function",
     "translateXsdRegex: function",
     "validateIDS: function"
   ],

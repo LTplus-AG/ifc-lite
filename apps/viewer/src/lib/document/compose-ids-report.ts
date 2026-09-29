@@ -96,7 +96,6 @@ function childRows(check: IdsReportCheckSummary): ChildRow[] {
   return rows;
 }
 
-const rowHeightOf = (row: { description?: string } | undefined): number => (row?.description ? DESCRIBED_CHECK_ROW_HEIGHT : CHECK_ROW_HEIGHT);
 
 type Line = { text: string; size: number; bold: boolean; gray: number };
 

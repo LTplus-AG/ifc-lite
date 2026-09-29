@@ -175,7 +175,7 @@ export function usePlanCutDrawing(request: PlanCutRequest | null): PlanCutResult
             { includeProjection: true, includeEdges: false, includeHiddenLines: false, mergeLines: true, useGPU: false },
           );
           if (cancelled) return;
-          setResult({ ...mapPlanDrawing(drawing, req.map), loading: false, simplified: false, ms: performance.now() - started, key: req.key, scope: req.scope });
+          setResult({ ...mapPlanDrawing(drawing, req.map), loading: false, simplified: false, failed: false, ms: performance.now() - started, key: req.key, scope: req.scope });
         } catch (err) {
           // An empty cut reads exactly like a storey with nothing at the cut,
           // so a failure is its own state (the plan says "Cut failed").

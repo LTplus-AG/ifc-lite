@@ -19,6 +19,11 @@
  * keeps its own document/report in the store regardless of which side is on
  * screen, and `useInformationValidation`'s rule-set/report state is equally
  * unaffected by which side is displayed.
+ *
+ * The third tab, "Manual validation" (#6401), is a checklist of verdicts
+ * recorded by eye (`ManualValidationTab`). Its state lives in
+ * `manualValidationSlice`, never in the shared `ValidationReport`, so it
+ * neither replaces nor is replaced by an IDS or information run.
  */
 
 import { X } from 'lucide-react';
@@ -35,6 +40,8 @@ import { ValidationPanelEmpty, InformationValidationEntry } from './ValidationPa
 import { IdsSummary } from './ValidationPanel.idsSummary';
 import { useInformationValidation } from '@/hooks/validation/useInformationValidation';
 import { useValidationResults } from '@/hooks/validation/useValidationResults';
+import { useManualValidation } from '@/hooks/validation/useManualValidation';
+import { ManualValidationTab } from './ManualValidationTab';
 import type { RecentRuleSet } from '@/lib/validation/recent-rule-sets';
 import {
   setValidationSourceChoice as setActiveSource,
@@ -53,6 +60,7 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
   const { t } = useTranslation();
   const info = useInformationValidation();
   const results = useValidationResults();
+  const manual = useManualValidation();
   const idsDocument = useViewerStore((s) => s.idsDocument);
   const validationSource = useViewerStore((s) => s.validationSource);
   const storeModels = useViewerStore((s) => s.models);
@@ -60,10 +68,12 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
   // Shared with the IDS tour (#5608), which puts the panel on its IDS side.
   const activeSource = useValidationSourceChoice((s) => s.choice);
   // Default, before any explicit pick: whichever side already has content,
-  // IDS first. Both IDS and Information validation drafts survive remounts.
-  // Once the user picks a source, the toggle drives it explicitly.
+  // IDS first, then Information, then Manual validation (#6401). All three
+  // survive remounts. Once the user picks a source, the toggle drives it.
   const effectiveSource: Source | null =
-    activeSource ?? (idsDocument ? 'ids' : (info.file || validationSource === 'rules') ? 'rules' : null);
+    activeSource ?? (idsDocument ? 'ids'
+      : (info.file || validationSource === 'rules') ? 'rules'
+        : manual.checklist ? 'manual' : null);
 
   const modelsForPicker: RuleModelPickerModel[] = [...storeModels.values()].map((m) => ({
     id: m.id, name: m.name, sourceFingerprint: m.sourceFingerprint,
@@ -93,6 +103,11 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
     setActiveSource('rules');
   };
 
+  const handleNewChecklist = () => {
+    manual.newChecklist();
+    setActiveSource('manual');
+  };
+
   const handleClose = onClose ? () => {
     useViewerStore.getState().clearValidationRuleSetDraft();
     onClose();
@@ -110,6 +125,13 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
           onLoadRecent={handleLoadRecent}
           recentRuleSets={info.recentRuleSets}
           error={info.error}
+          manual={{
+            onNew: handleNewChecklist,
+            onOpenFile: async (file) => { if ((await manual.openFromFile(file)).ok) setActiveSource('manual'); },
+            onLoadRecent: (entry) => { manual.loadFromRecent(entry); setActiveSource('manual'); },
+            recent: manual.recent,
+            error: manual.error,
+          }}
         />
       </div>
     );
@@ -119,7 +141,7 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
   const hasResults = validationSource === 'rules' && results.report !== null && !info.editing && !info.running;
 
   return (
-    <Tabs value={effectiveSource} onValueChange={(value) => setActiveSource(value === 'ids' ? 'ids' : 'rules')} className="h-full flex flex-col bg-background">
+    <Tabs value={effectiveSource} onValueChange={(value) => setActiveSource(value === 'ids' || value === 'manual' ? value : 'rules')} className="h-full flex flex-col bg-background">
       <PanelHeader title={t('validationPanel.title')} onClose={handleClose} />
       <SourceToggle />
       <TabsContent value="ids" className="mt-0 flex-1 min-h-0 flex flex-col">
@@ -157,6 +179,9 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
         </div>
       )}
       </TabsContent>
+      <TabsContent value="manual" className="mt-0 flex-1 min-h-0 flex flex-col">
+        <ManualValidationTab manual={manual} />
+      </TabsContent>
     </Tabs>
   );
 }
@@ -182,6 +207,7 @@ function SourceToggle() {
   const options: [Source, TranslationKey][] = [
     ['ids', 'validationPanel.toggle.ids'],
     ['rules', 'validationPanel.toggle.rules'],
+    ['manual', 'validationPanel.toggle.manual'],
   ];
   return (
     <TabsList className="flex h-auto justify-start gap-1 rounded-none border-b bg-transparent px-3 py-1.5">

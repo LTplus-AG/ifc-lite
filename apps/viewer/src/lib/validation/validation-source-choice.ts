@@ -4,7 +4,7 @@
 
 /**
  * Which side of the Data validation panel (#5138) is on screen: IDS
- * validation or Information validation. `null` means no pick yet, so the
+ * validation, Information validation, or Manual validation (#6401). `null` means no pick yet, so the
  * panel falls back to whichever side already has content, else the entry
  * cards.
  *
@@ -18,7 +18,7 @@
 
 import { create } from 'zustand';
 
-export type ValidationSourceChoice = 'ids' | 'rules';
+export type ValidationSourceChoice = 'ids' | 'rules' | 'manual';
 
 export const useValidationSourceChoice = create<{ choice: ValidationSourceChoice | null }>()(() => ({
   choice: null,

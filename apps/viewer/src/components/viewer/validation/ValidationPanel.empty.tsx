@@ -3,10 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `ValidationPanel`'s `empty` state (#5138 plan §6): two entry cards — IDS
+ * `ValidationPanel`'s `empty` state (#5138 plan §6): three entry cards — IDS
  * validation (mounts the existing `IDSPanel` body) and Information
  * validation (new rule set / open `.rules.json` / import an IDS as rules /
- * a "Recent rule sets" list). Split out of `ValidationPanel.tsx` to keep the orchestrator under
+ * a "Recent rule sets" list), and Manual validation checklists (#6401). Split out of `ValidationPanel.tsx` to keep the orchestrator under
  * its line budget.
  *
  * `InformationValidationEntry` (the rules card's body) is exported
@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useTranslation } from '@/i18n';
 import type { RecentRuleSet } from '@/lib/validation/recent-rule-sets';
+import { ManualValidationEntry, type ManualValidationEntryProps } from './ManualValidationEntry';
 
 interface EntryCardProps {
   icon: React.ReactNode;
@@ -150,10 +151,12 @@ interface ValidationPanelEmptyProps {
   onLoadRecent: (entry: RecentRuleSet) => void;
   recentRuleSets: readonly RecentRuleSet[];
   error?: string | null;
+  /** The third card: Manual validation checklists (#6401). */
+  manual: ManualValidationEntryProps;
 }
 
 export function ValidationPanelEmpty({
-  onSelectIds, onOpenRuleSetFile, onImportIds, onNewRuleSet, onLoadRecent, recentRuleSets, error,
+  onSelectIds, onOpenRuleSetFile, onImportIds, onNewRuleSet, onLoadRecent, recentRuleSets, error, manual,
 }: ValidationPanelEmptyProps) {
   const { t } = useTranslation();
 
@@ -175,6 +178,9 @@ export function ValidationPanelEmpty({
           recentRuleSets={recentRuleSets}
           error={error}
         />
+      </div>
+      <div className="rounded-lg border border-border p-4" data-testid="validation-entry-manual">
+        <ManualValidationEntry {...manual} />
       </div>
     </div>
   );

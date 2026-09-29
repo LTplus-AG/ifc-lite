@@ -8,7 +8,7 @@
  * selected element's attributes and properties — and the bindings resolve
  * live in the preview. Image, chart and topic blocks pick their source.
  */
-import { useMemo, useRef, useState } from 'react';
+import { useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowDown, ArrowUp, X } from 'lucide-react';
 import type { ChartSpec } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
@@ -23,6 +23,7 @@ import { elementPropertyPaths, type BindingContext } from '@/lib/document/bindin
 import { effectiveAttribute } from '@/lib/document/effective-binding-fields';
 import { spatialBindingNodes } from '@/lib/document/spatial-binding-nodes';
 import { idsReportBlockFromReport } from '@/lib/document/ids-report';
+import { TAB_SIZE, tabEdit } from '@/lib/document/text-tabs';
 import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, TEXT_SIZE_MAX, TEXT_SIZE_MIN, type DocumentBlock, type TextBlock, type TextFont } from '@/lib/document/types';
 import { ClampedNumberInput, WidthEditor, field } from './BlockEditor.parts';
 import { TableBlockEditor } from './TableBlockEditor';
@@ -74,6 +75,8 @@ function useFieldOptions(bindings: BindingContext): Array<{ path: string; label:
   }, [bindings, selected]);
 }
 
+const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'AltGraph', 'CapsLock']);
+
 function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings: BindingContext; onChange: (b: TextBlock) => void }) {
   const { t } = useTranslation();
   const textarea = useRef<HTMLTextAreaElement | null>(null);
@@ -85,6 +88,31 @@ function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings:
     const text = `${block.text.slice(0, start)}{${path}}${block.text.slice(end)}`;
     onChange({ ...block, text });
     requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(start + path.length + 2, start + path.length + 2); });
+  };
+  // Tab indents like a word processor (#6370). So the keyboard is never trapped in the box,
+  // Escape arms an exit: the next Tab (or Shift+Tab) moves focus as usual. The hint under the
+  // box says so, and any other key disarms it.
+  const hintId = useId();
+  const tabExitArmed = useRef(false);
+  const pendingSelection = useRef<[number, number] | null>(null);
+  useLayoutEffect(() => {
+    const selection = pendingSelection.current;
+    pendingSelection.current = null;
+    if (selection) textarea.current?.setSelectionRange(selection[0], selection[1]);
+  }, [block.text]);
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+    // A modifier on its own (the Shift of Esc, Shift+Tab) neither arms nor disarms the exit.
+    if (MODIFIER_KEYS.has(event.key)) return;
+    const armed = tabExitArmed.current;
+    tabExitArmed.current = event.key === 'Escape';
+    if (event.key !== 'Tab' || armed || event.ctrlKey || event.altKey || event.metaKey || event.nativeEvent.isComposing) return;
+    const el = event.currentTarget;
+    const edit = tabEdit(el.value, el.selectionStart, el.selectionEnd, event.shiftKey);
+    // Shift+Tab with nothing left to outdent still stays in the box: one key, one meaning.
+    event.preventDefault();
+    if (!edit) return;
+    pendingSelection.current = [edit.selectionStart, edit.selectionEnd];
+    onChange({ ...block, text: edit.text });
   };
   return (
     <>
@@ -114,12 +142,17 @@ function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings:
       <textarea
         ref={textarea}
         className={`${field} min-h-[56px] w-full font-mono`}
+        style={{ tabSize: TAB_SIZE }}
         value={block.text}
         rows={block.style === 'body' ? 4 : 2}
         onChange={(e) => onChange({ ...block, text: e.target.value })}
+        onKeyDown={onKeyDown}
+        onBlur={() => { tabExitArmed.current = false; }}
         aria-label={t('document.block.textAriaLabel')}
+        aria-describedby={hintId}
         placeholder={t('document.block.textPlaceholder')}
       />
+      <p id={hintId} className="text-2xs text-muted-foreground">{t('document.block.textKeysHint')}</p>
     </>
   );
 }

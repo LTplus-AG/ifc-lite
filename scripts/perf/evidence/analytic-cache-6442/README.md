@@ -47,3 +47,9 @@ with Rust nightly `1.93.0-nightly (b6d7ff3aa 2025-11-14)`; its SHA-256 is
 The run used Linux WSL2 x86_64 after the other local Rust, viewer and browser
 benchmark processes exited. The `git_head`, fixture digest, binary digest and
 each raw measurement are also in `results.json`.
+
+After measurement, the four PR commits replayed patch-identically onto
+`origin/main` at `913926ad5` (`git range-diff`: four `=`). The `rust/processing`,
+`rust/core` and `rust/geometry` source trees and `Cargo.lock` have the same Git
+object IDs before and after that restack. The new main commit changes only the
+viewer command palette, so the binary's benchmarked Rust inputs remain exact.

@@ -55,18 +55,20 @@ describe('TransformHandles (#6232 C2)', () => {
   it('outside the Model workspace the move gizmo shows and the handles do not', () => {
     const host = render(<SelectEditScene />);
     assert.ok(host.querySelector('#gizmo-arrow-x'), 'the gizmo is unchanged');
-    assert.equal(host.querySelector('[data-transform-handles]'), null);
+    assert.equal(host.querySelector('[data-transform-handles]') === null, true, 'no handles outside the workspace');
   });
 
   it('in the workspace the handles replace the gizmo and start Move / Rotate on the selection', () => {
     assert.ok(useViewerStore.getState().enterModelWorkspace());
     useViewerStore.getState().setActiveTool('select');
     const host = render(<SelectEditScene />);
-    assert.equal(host.querySelector('#gizmo-arrow-x'), null, 'no free-drag gizmo in the workspace');
+    // Compare booleans: a failing assert.equal would try to print the whole SVG element.
+    assert.equal(host.querySelector('#gizmo-arrow-x') === null, true, 'no free-drag gizmo in the workspace');
     const move = host.querySelector('[data-transform-handle="element.move"]');
     const rotate = host.querySelector('[data-transform-handle="element.rotate"]');
-    assert.ok(move && rotate, 'both handles show');
+    assert.equal(move !== null && rotate !== null, true, 'both handles show');
 
+    assert.ok(rotate, 'the rotate handle shows');
     click(rotate);
     assert.equal(useViewerStore.getState().session?.activeCommandId, 'element.rotate');
   });

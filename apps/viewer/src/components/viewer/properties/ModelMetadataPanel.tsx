@@ -38,6 +38,7 @@ import { TerrainImageryCard } from './TerrainImageryCard';
 import { effectiveClassificationSystems } from './effective-classification-systems';
 import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
 import { useStreamingThrottled } from '@/hooks/useStreamingThrottled';
+import { isModelStreaming } from '@/lib/streaming-refresh';
 
 /** Model metadata panel - displays file info, schema version, entity counts, etc. */
 export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
@@ -97,9 +98,14 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
 
   // Count storeys and elements — see `modelMetadataStats.ts` for what
   // "Elements with Geometry" means and why raw `byStorey` membership isn't it.
-  // The count walks every mesh, so while geometry streams it follows the
-  // held geometry rather than every publish (#6411).
-  const statsGeometry = useStreamingThrottled(model.geometryResult);
+  // The count walks every mesh, so while this model's geometry streams it
+  // follows the held geometry rather than every publish (#6411). Only this
+  // model's own streaming geometry is held: another model, or this one
+  // finishing, passes at once.
+  const statsGeometry = useStreamingThrottled(
+    { modelId: model.id, geometry: model.geometryResult, streaming: isModelStreaming(model) },
+    (held, next) => held.modelId === next.modelId && held.streaming && next.streaming,
+  ).geometry;
   const stats = useMemo(
     () => computeModelStats(dataStore, statsGeometry, {
       mutationView,

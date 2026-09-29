@@ -24,6 +24,11 @@ export function streamingRefreshDue(takenAt: number, now: number): boolean {
   return now - takenAt >= STREAMING_PANEL_REFRESH_MS;
 }
 
+/** A model whose geometry is still streaming in: every batch changes which ids have geometry. */
+export function isModelStreaming(model: FederatedModel): boolean {
+  return model.loadState === 'pending' || model.loadState === 'streaming-geometry';
+}
+
 /** Every model field except its geometry is the same: only geometry may be held. */
 export function sameModelExceptGeometry(prev: FederatedModel, next: FederatedModel): boolean {
   const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);

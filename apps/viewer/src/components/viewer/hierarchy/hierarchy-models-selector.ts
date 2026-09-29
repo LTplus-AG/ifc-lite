@@ -5,7 +5,7 @@
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import type { FederatedModel } from '@/store/types';
 import { collectMeshedIds } from '@/lib/object-count';
-import { sameModelExceptGeometry, streamingRefreshDue } from '@/lib/streaming-refresh';
+import { isModelStreaming, sameModelExceptGeometry, streamingRefreshDue } from '@/lib/streaming-refresh';
 
 type Models = Map<string, FederatedModel>;
 
@@ -23,11 +23,6 @@ function sameIds(a: Set<number> | null, b: Set<number> | null): boolean {
   if (!a || !b || a.size !== b.size) return false;
   for (const id of a) if (!b.has(id)) return false;
   return true;
-}
-
-/** A model whose geometry is still streaming in: every batch changes which ids have geometry. */
-function isStreaming(model: FederatedModel): boolean {
-  return model.loadState === 'pending' || model.loadState === 'streaming-geometry';
 }
 
 /**
@@ -54,10 +49,10 @@ function sameForHierarchy(
   for (const [id, model] of next) {
     const [prevId, prevModel] = prevEntries[i++];
     if (prevId !== id) return false;
-    if (prevModel !== model && (isStreaming(model) || isStreaming(prevModel))) {
+    if (prevModel !== model && (isModelStreaming(model) || isModelStreaming(prevModel))) {
       // Every batch carries a fresh `coordinateInfo`, so the frame is held with
       // the rest of the streaming geometry.
-      if (holdStreaming && isStreaming(model) && isStreaming(prevModel) && sameModelExceptGeometry(prevModel, model)) continue;
+      if (holdStreaming && isModelStreaming(model) && isModelStreaming(prevModel) && sameModelExceptGeometry(prevModel, model)) continue;
       // Not worth an id scan per streamed batch: the answer is always "changed".
       return false;
     }

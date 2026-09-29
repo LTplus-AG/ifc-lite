@@ -74,3 +74,29 @@ it('holds the legacy class tree while streaming and shows every element with geo
   assert.match(text(), /IfcWall2/, 'streaming ended: both walls have geometry');
   assert.doesNotMatch(text(), /Other/);
 });
+
+it('never holds the legacy geometry across a data-store swap (#6411)', () => {
+  let clock = 0;
+  mock.method(performance, 'now', () => clock);
+  const walls = (names: string[]) => fixtureModel('legacy', {
+    entities: names.map((name, i) => ({ expressId: i + 1, type: 'IfcWall', name })),
+  }).ifcDataStore;
+  useViewerStore.setState({
+    models: new Map(),
+    ifcDataStore: walls(['A', 'B']),
+    geometryResult: geometry([1]),
+    geometryStreamingActive: true,
+    hierarchyMode: 'type',
+    mutationViews: new Map(),
+    mutationVersion: 0,
+    georefMutations: new Map(),
+  });
+  const panel = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
+  assert.match(panel.textContent ?? '', /IfcWall1\D*Other1/);
+
+  // A different file's store arrives with its own geometry: not progress of the
+  // old one, so it must not wait for the refresh.
+  clock = 1;
+  act(() => useViewerStore.setState({ ifcDataStore: walls(['C', 'D', 'E']), geometryResult: geometry([1, 2, 3]) }));
+  assert.match(panel.textContent ?? '', /IfcWall3/);
+});

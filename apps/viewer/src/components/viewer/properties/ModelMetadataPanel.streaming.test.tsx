@@ -95,3 +95,31 @@ it('holds "Elements with Geometry" while streaming and shows the exact count whe
   act(() => useViewerStore.setState({ geometryStreamingActive: false }));
   assert.equal(elementsWithGeometry(panel), '3', 'streaming ended: the exact count');
 });
+
+it('holds only this model\'s own streaming geometry: another model or this one finishing passes at once (#6411)', async () => {
+  let clock = 0;
+  mock.method(performance, 'now', () => clock);
+  const dataStore = await parse();
+  const model = (id: string, ids: number[], loadState: FederatedModel['loadState']) => ({
+    id, name: id, ifcDataStore: dataStore, geometryResult: geometry(ids), loadState, fileSize: 1, loadedAt: 0,
+  }) as FederatedModel;
+  // The global flag stays on throughout: another federated model is still streaming.
+  useViewerStore.setState({ geometryStreamingActive: true, mutationViews: new Map(), mutationVersion: 0 });
+
+  let setModel: (m: FederatedModel) => void = () => {};
+  function Host() {
+    const [current, set] = useState(model('legacy', [10], 'streaming-geometry'));
+    setModel = set;
+    return <ModelMetadataPanel model={current} />;
+  }
+  const panel = render(<Host />);
+  assert.equal(elementsWithGeometry(panel), '1');
+
+  clock = 1;
+  act(() => setModel(model('legacy', [10, 11], 'complete')));
+  assert.equal(elementsWithGeometry(panel), '2', 'this model finished: its exact count, although another model still streams');
+
+  clock = 2;
+  act(() => setModel(model('default', [10, 11, 12], 'streaming-geometry')));
+  assert.equal(elementsWithGeometry(panel), '3', 'a different model never shows the previous model\'s held geometry');
+});

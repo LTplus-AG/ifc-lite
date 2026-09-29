@@ -6,7 +6,8 @@
  * One group header of the nested results tree (#6368). Two controls, as in the
  * Hierarchy panel: the chevron expands and collapses, and the rest of the row
  * is a button that selects every member of the group (sub-group descendants
- * included). A plain click never isolates or X-rays anything.
+ * included). A plain click never isolates or X-rays anything; that is what the
+ * row's explicit Isolate / X-ray context actions are for.
  *
  * The chevron sits over the row's leading padding instead of inside the select
  * button, because a button may not contain another interactive element.
@@ -17,7 +18,9 @@ import type { ColumnDefinition } from '@ifc-lite/lists';
 import type { SelectModifiers } from '@/hooks/useEntityListMultiSelect';
 import { useTranslation } from '@/i18n/useTranslation';
 import { cn } from '@/lib/utils';
+import type { VisibilityChannel } from '@/lib/visibility/ownership';
 import { formatLocaleCount } from './formatLocaleCount';
+import { ListRowVisibilityActions } from './ListRowVisibilityActions';
 import { formatCellValue, type DisplayItem } from './list-table-utils';
 
 type GroupItem = Extract<DisplayItem, { kind: 'group' }>;
@@ -37,15 +40,19 @@ interface ListGroupHeaderRowProps {
   transform: string;
   onToggleExpand: (key: string) => void;
   onSelect: (modifiers: SelectModifiers) => void;
+  /** The presentation the list is showing for this group, if any. */
+  visibility: VisibilityChannel | null;
+  onVisibilityAction: (channel: VisibilityChannel) => void;
 }
 
 export function ListGroupHeaderRow({
   item, expanded, selected, columns, columnWidths, sumColumnIds, transform, onToggleExpand, onSelect,
+  visibility, onVisibilityAction,
 }: ListGroupHeaderRowProps) {
   const { t, locale } = useTranslation();
   const indent = 2 + item.level * LEVEL_INDENT_PX;
   return (
-    <div className="absolute left-0 top-0 flex w-full" style={{ transform }}>
+    <div className="group absolute left-0 top-0 flex w-full" style={{ transform }}>
       <button
         type="button"
         aria-expanded={expanded}
@@ -87,6 +94,7 @@ export function ListGroupHeaderRow({
           </span>
         ))}
       </button>
+      <ListRowVisibilityActions name={item.label} active={visibility} onAction={onVisibilityAction} firstColumnWidth={columnWidths[0] ?? 0} />
     </div>
   );
 }

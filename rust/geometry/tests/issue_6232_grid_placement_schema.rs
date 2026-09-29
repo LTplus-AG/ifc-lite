@@ -2,117 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! IfcGridPlacement resolution tests (#883, #6232 F2).
+//! #6232 F2: an element on an `IfcGridPlacement` lands on the grid
+//! intersection, with the grid's rotation, in IFC2X3, IFC4 and IFC4X3.
+//! IFC2X3/IFC4 used to be read with the IFC4X3 attribute slots, which put
+//! every such element at the world origin.
 
-use super::*;
-use ifc_lite_core::build_entity_index;
-
-// Grid axes: P = horizontal line y=0, Q = vertical line x=0 (intersect at
-// origin). S = horizontal line y=5. Two ref-direction flavours plus an
-// offset case exercise the full IfcGridPlacementDirectionSelect coverage.
-const CONTENT: &str = r#"ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION((''),'2;1');
-FILE_NAME('','',(''),(''),'','','');
-FILE_SCHEMA(('IFC4X3_ADD2'));
-ENDSEC;
-DATA;
-#1=IFCCARTESIANPOINT((0.,0.));
-#2=IFCCARTESIANPOINT((10.,0.));
-#3=IFCPOLYLINE((#1,#2));
-#4=IFCGRIDAXIS('P',#3,.T.);
-#5=IFCCARTESIANPOINT((0.,10.));
-#6=IFCPOLYLINE((#1,#5));
-#7=IFCGRIDAXIS('Q',#6,.T.);
-#8=IFCVIRTUALGRIDINTERSECTION((#4,#7),(0.,0.,0.));
-#9=IFCCARTESIANPOINT((0.,5.));
-#10=IFCCARTESIANPOINT((10.,5.));
-#11=IFCPOLYLINE((#9,#10));
-#12=IFCGRIDAXIS('S',#11,.T.);
-#13=IFCVIRTUALGRIDINTERSECTION((#7,#12),(0.,0.,0.));
-#20=IFCGRIDPLACEMENT($,#8,#13);
-#21=IFCDIRECTION((0.,1.,0.));
-#22=IFCGRIDPLACEMENT($,#8,#21);
-#23=IFCGRIDPLACEMENT($,#8,$);
-#30=IFCVIRTUALGRIDINTERSECTION((#4,#7),(2.,3.,4.));
-#31=IFCGRIDPLACEMENT($,#30,$);
-#40=IFCDIRECTION((0.,0.,1.));
-#41=IFCDIRECTION((1.,0.,0.));
-#42=IFCCARTESIANPOINT((100.,200.,300.));
-#43=IFCAXIS2PLACEMENT3D(#42,#40,#41);
-#44=IFCLOCALPLACEMENT($,#43);
-#45=IFCGRIDPLACEMENT(#44,#8,$);
-ENDSEC;
-END-ISO-10303-21;
-"#;
-
-fn transform_of(id: u32) -> Matrix4<f64> {
-    let content = CONTENT.to_string();
-    let ei = build_entity_index(&content);
-    let mut decoder = EntityDecoder::with_index(&content, ei);
-    let router = GeometryRouter::new();
-    let placement = decoder
-        .decode_by_id(id)
-        .unwrap_or_else(|e| panic!("decode #{id}: {e:?}"));
-    router
-        .get_placement_transform(&placement, &mut decoder)
-        .unwrap_or_else(|e| panic!("transform #{id}: {e:?}"))
-}
-
-fn x_axis(m: &Matrix4<f64>) -> Vector3<f64> {
-    Vector3::new(m[(0, 0)], m[(1, 0)], m[(2, 0)])
-}
-fn origin(m: &Matrix4<f64>) -> Point3<f64> {
-    Point3::new(m[(0, 3)], m[(1, 3)], m[(2, 3)])
-}
-
-#[test]
-fn ref_direction_as_ifc_direction_sets_local_x() {
-    let m = transform_of(22);
-    assert!((x_axis(&m) - Vector3::new(0.0, 1.0, 0.0)).norm() < 1e-9);
-    assert!((origin(&m) - Point3::new(0.0, 0.0, 0.0)).norm() < 1e-9);
-}
-
-#[test]
-fn ref_direction_as_virtual_intersection_points_x_toward_it() {
-    // Location is (0,0); ref intersection #13 is (0,5) → +X must be +Y.
-    let m = transform_of(20);
-    assert!((x_axis(&m) - Vector3::new(0.0, 1.0, 0.0)).norm() < 1e-9);
-    assert!((origin(&m) - Point3::new(0.0, 0.0, 0.0)).norm() < 1e-9);
-}
-
-#[test]
-fn null_ref_direction_stays_axis_aligned() {
-    let m = transform_of(23);
-    assert!((x_axis(&m) - Vector3::new(1.0, 0.0, 0.0)).norm() < 1e-9);
-    assert!((origin(&m) - Point3::new(0.0, 0.0, 0.0)).norm() < 1e-9);
-}
-
-#[test]
-fn offset_distances_shift_the_intersection() {
-    // off_u=2 (perp to P → +Y), off_v=3 (perp to Q → -X), elevation=4.
-    let m = transform_of(31);
-    assert!(
-        (origin(&m) - Point3::new(-3.0, 2.0, 4.0)).norm() < 1e-9,
-        "origin={:?}",
-        origin(&m)
-    );
-}
-
-#[test]
-fn placement_rel_to_composes_with_the_grid_placement() {
-    // PlacementRelTo #44 sits at (100,200,300); the intersection is local
-    // (0,0). The composed transform must land at the grid's world offset —
-    // this is the parent ∘ local path that positions a real grid relative
-    // to its storey/site (and the reporter's grid at (-17000,16000,0)).
-    let m = transform_of(45);
-    assert!(
-        (origin(&m) - Point3::new(100.0, 200.0, 300.0)).norm() < 1e-9,
-        "origin={:?}",
-        origin(&m)
-    );
-    assert!((x_axis(&m) - Vector3::new(1.0, 0.0, 0.0)).norm() < 1e-9);
-}
+use ifc_lite_core::{build_entity_index, EntityDecoder};
+use ifc_lite_geometry::{GeometryRouter, Point3};
 
 // ---------------------------------------------------------------------------
 // #6232 F2: a column on a grid intersection, in each schema's own layout.
@@ -207,10 +103,14 @@ fn column_bounds(content: &str) -> (Point3<f64>, Point3<f64>) {
     let mesh = router
         .process_element(&column, &mut decoder)
         .expect("mesh column");
-    assert!(!mesh.positions.is_empty(), "column produced no geometry");
+    bounds(&mesh.positions)
+}
+
+fn bounds(positions: &[f32]) -> (Point3<f64>, Point3<f64>) {
+    assert!(!positions.is_empty(), "column produced no geometry");
     let mut min = Point3::new(f64::MAX, f64::MAX, f64::MAX);
     let mut max = Point3::new(f64::MIN, f64::MIN, f64::MIN);
-    for p in mesh.positions.chunks_exact(3) {
+    for p in positions.chunks_exact(3) {
         for axis in 0..3 {
             min[axis] = min[axis].min(p[axis] as f64);
             max[axis] = max[axis].max(p[axis] as f64);
@@ -272,30 +172,31 @@ fn ifc4x3_ref_direction_orients_the_column_either_way() {
     assert_column_at("IFC4X3_ADD2", RefDir::Intersection, hx, hy);
 }
 
-/// The owning-grid frame is memoised under the axis id, so a second element on
-/// the same grid must read the same world transform from a warm decoder.
+/// A second element on the same IFC4 grid lands on its own intersection, and
+/// the owning grid's frame is memoised under the axis id for it (#33 is axis
+/// '1', which both locations share).
 #[test]
-fn ifc4_grid_frame_memo_serves_a_second_placement() {
+fn ifc4_second_element_on_the_grid_reuses_the_grid_frame() {
     let content = column_on_grid("IFC4", RefDir::Null).replace(
         "ENDSEC;\nEND-ISO",
-        "#71=IFCGRIDPLACEMENT(#62,$);\nENDSEC;\nEND-ISO",
+        "#71=IFCGRIDPLACEMENT(#62,$);\n\
+#91=IFCCOLUMN('2kTvXnbbzCWw8lcMd1dR4o',$,'C2',$,$,#71,#87,$);\nENDSEC;\nEND-ISO",
     );
     let mut decoder = EntityDecoder::with_index(&content, build_entity_index(&content));
     let router = GeometryRouter::new();
-    for (id, want) in [
-        (70, Point3::new(97.0, 204.0, 0.0)),
-        (71, Point3::new(92.0, 204.0, 0.0)),
-    ] {
-        let placement = decoder.decode_by_id(id).expect("decode placement");
-        let m = router
-            .get_placement_transform(&placement, &mut decoder)
-            .expect("transform");
+    for (id, y) in [(90, 204.0), (91, 204.0)] {
+        let column = decoder.decode_by_id(id).expect("decode column");
+        let mesh = router
+            .process_element(&column, &mut decoder)
+            .expect("mesh column");
+        let (min, max) = bounds(&mesh.positions);
+        // '1'/'B' is grid-local (4, 8): world (100 - 8, 200 + 4) = (92, 204).
+        let x = if id == 90 { 97.0 } else { 92.0 };
+        let centre = Point3::new((min.x + max.x) / 2.0, (min.y + max.y) / 2.0, 0.0);
         assert!(
-            (origin(&m) - want).norm() < 1e-9,
-            "#{id} origin={:?}",
-            origin(&m)
+            (centre - Point3::new(x, y, 0.0)).norm() < 1e-4,
+            "#{id} centre={centre:?}"
         );
-        assert!((x_axis(&m) - Vector3::new(0.0, 1.0, 0.0)).norm() < 1e-9);
     }
     assert!(
         decoder.get_placement_transform_cached(33).is_some(),

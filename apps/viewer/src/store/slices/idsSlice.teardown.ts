@@ -47,6 +47,7 @@ export const idsTeardown = defineSliceTeardown(
     'idsActiveSpecificationId',
     'idsActiveEntityId',
     'idsFocusVisibilityOwned',
+    'idsColorRevision',
   ],
   {
     'session-reset': () => ({
@@ -65,6 +66,10 @@ export const idsTeardown = defineSliceTeardown(
       // and the next release destroys that owner's presentation (#2654
       // fourth review).
       idsFocusVisibilityOwned: null,
+      // The report colours' claim on the paint channel (#6373). The dataSlice
+      // teardown already bumps `colorPresentationRevision`, which lapses it,
+      // but the record goes with the session like the visibility one above.
+      idsColorRevision: null,
     }),
     'model-removed': notApplicable,
     'all-models-cleared': notApplicable,

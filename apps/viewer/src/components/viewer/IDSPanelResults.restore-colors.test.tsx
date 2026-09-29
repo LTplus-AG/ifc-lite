@@ -29,6 +29,7 @@ import { act, type ReactElement } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { installLayout } from '@/test/dom-layout.js';
 import { useViewerStore } from '@/store';
+import { federationRegistry } from '@ifc-lite/renderer';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import type { IDSDocument, ValidationReport } from '@ifc-lite/ids';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
@@ -91,6 +92,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  federationRegistry.clear();
   unsubscribe?.();
   unsubscribe = null;
   setValidationSourceChoice(null);
@@ -133,12 +135,18 @@ const HOSTS: Host[] = [
   { name: 'Information validation', kind: 'rules', mount: () => <ValidationPanel /> },
 ];
 
-/** One model at offset 0, or two with the report on the offset one. */
+/** One model, or two with the report on the second (offset) one. Registered
+ *  in the real federation registry, as a load does: the report colours resolve
+ *  through the models' `idOffset`, the row focus through the registry, and the
+ *  two must land on the same element. */
 function seed(host: Host, modelCount: 1 | 2): { failed: number; passed: number } {
+  federationRegistry.clear();
+  if (modelCount === 2) federationRegistry.registerModel('m0', 999);
+  const offset = federationRegistry.registerModel('m1', 100);
+  if (modelCount === 2) assert.ok(offset > 0, 'the second model must be offset');
   const models = modelCount === 1
-    ? fixtureModels(fixtureModel('m1'))
-    : fixtureModels(fixtureModel('m0'), fixtureModel('m1', { idOffset: 1000 }));
-  const offset = modelCount === 1 ? 0 : 1000;
+    ? fixtureModels(fixtureModel('m1', { idOffset: offset }))
+    : fixtureModels(fixtureModel('m0'), fixtureModel('m1', { idOffset: offset }));
   if (host.kind === 'rules') setValidationSourceChoice('rules');
   useViewerStore.setState({
     ...models,
@@ -188,11 +196,7 @@ for (const host of HOSTS) {
         const ui = render(<>{host.mount()}<Probe /></>);
         click(button(ui, 'Restore original colors'));
         act(() => results!.focusEntity('m1', 1, 'highlight', false));
-        // The row focus resolves through the store's `toGlobalId` (the
-        // federation registry, which this fixture does not populate), so ask
-        // it rather than assuming the report's offset arithmetic.
-        const focused = useViewerStore.getState().toGlobalId('m1', 1);
-        const expected: Array<[number, RGBA]> = [[focused, IDS_FOCUS_COLOR], [ids.passed, lens], [77, lens]];
+        const expected: Array<[number, RGBA]> = [[ids.failed, IDS_FOCUS_COLOR], [ids.passed, lens], [77, lens]];
         assert.deepEqual(painted(), expected.sort(([x], [y]) => x - y));
       });
 

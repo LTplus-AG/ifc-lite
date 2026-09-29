@@ -54,7 +54,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'expandedTaskGlobalIds', 'ganttPanelVisible', 'generateScheduleDialogOpen',
   'colorPresentationRevision', 'geometryProgress', 'geometryStreamingActive', 'geometryUpdateTick', 'ghostExceptEntities',
   'hiddenEntities', 'hierarchyBasketSelection', 'hoverState',
-  'hoveredTaskGlobalId', 'idsActiveEntityId', 'idsActiveSpecificationId', 'idsError',
+  'hoveredTaskGlobalId', 'idsActiveEntityId', 'idsActiveSpecificationId', 'idsColorRevision', 'idsError',
   'idsFocusVisibilityOwned', 'idsLoading', 'idsPanelVisible', 'idsProgress',
   'interactionMode', 'isolatedEntities',
   'landXmlUnitsRefusal', // #5175 LandXML units-refusal retry prompt: dies with the load it belongs to
@@ -244,6 +244,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'colorPresentationRevision', 'geometryProgress', 'geometryResult', 'geometryStreamingActive', 'geometryUpdateTick',
   'ghostExceptEntities', 'hiddenEntities', 'hierarchyBasketSelection',
   'hoverState', 'hoveredTaskGlobalId', 'idsActiveEntityId', 'idsActiveSpecificationId',
+  'idsColorRevision', // #6373 report colours' paint-channel claim
   'idsError', 'idsFocusVisibilityOwned', 'idsLoading', 'idsPanelVisible', 'idsProgress',
   'ifcDataStore', 'interactionMode', 'isolatedEntities',
   'landXmlUnitsRefusal', // #5175

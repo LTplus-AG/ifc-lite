@@ -17,6 +17,7 @@
  * report agree.
  */
 import { format } from 'echarts/core';
+import { CATEGORY_LABEL_FONT_SIZE, layoutCategoryLabels } from './category-labels.js';
 import { elementFieldLabel } from './element-field.js';
 import type { Aggregation, Bucket, ChartItem } from './types.js';
 
@@ -38,6 +39,8 @@ export const DEFAULT_THEME: ChartTheme = {
   background: 'transparent',
   fontFamily: 'system-ui, sans-serif',
 };
+
+export { truncateMiddle } from './category-labels.js';
 
 export interface BuildOptionArgs {
   aggregation: Aggregation;
@@ -69,6 +72,11 @@ const PRINT_LEGEND_MAX_ROWS = 4;
 /** A plain-object ECharts option; typed loosely so this module needs no ECharts import. */
 export type EChartsOptionObject = Record<string, unknown>;
 
+/** A host measurement usable as a size; anything else (unset, 0, NaN, Infinity) falls back. */
+function positiveOr(value: number | undefined, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
 function formatValue(value: number, unit?: string): string {
   const text = Number.isInteger(value) ? String(value) : value.toFixed(2);
   return unit ? `${text} ${unit}` : text;
@@ -81,24 +89,6 @@ const truncateLegendLabel = (name: string): string => (name.length > LEGEND_LABE
 const PRINT_LEGEND_SYMBOL_WIDTH = 10;
 const PRINT_LEGEND_SYMBOL_TEXT_GAP = 5;
 const PRINT_LEGEND_ITEM_GAP = 6;
-
-/**
- * Middle-ellipsis truncation for axis labels (#4940 review): `IfcSlab`, `IfcSpace` and
- * `IfcSpatialZone` share the "Ifc" + a capital prefix, so tail-only truncation (ECharts'
- * `overflow: 'truncate'`, and the legend's own `truncateLegendLabel`) collapses all three to
- * "IfcS…" — indistinguishable on the axis, where there is no tooltip to recover the full name.
- * Keeping a short head and a short tail instead survives the common-prefix case far more often.
- */
-export function truncateMiddle(text: string, maxChars: number): string {
-  if (maxChars <= 0) return '';
-  if (text.length <= maxChars) return text;
-  if (maxChars === 1) return '…';
-  if (maxChars < 4) return `${text.slice(0, maxChars - 1)}…`;
-  const keep = maxChars - 1;
-  const head = Math.ceil(keep * 0.6);
-  const tail = keep - head;
-  return `${text.slice(0, head)}…${text.slice(text.length - tail)}`;
-}
 
 /**
  * Pack the fixed print legend using the same public ECharts text metrics as
@@ -311,15 +301,15 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
   // bar / stackedBar / histogram / timeline: category x, measure y
   const stacked = spec.type === 'stackedBar';
   const labels = categories.map((c) => c.label);
-  // Long IFC class names ("IfcBuildingElementProxy") would collide upright
-  // and `hideOverlap` would then drop a neighbour outright. Each label gets
-  // its share of the width and is truncated with an ellipsis instead — the
-  // full name is in the tooltip and the legend. Past eight buckets the
-  // shares are too narrow to read, so the labels tilt.
-  const share = Math.floor((args.width ?? DEFAULT_WIDTH) / Math.max(1, categories.length)) - 6;
-  const rotate = categories.length > 8 ? 30 : 0;
-  // Tilted labels overlap far less, so they may run past their share.
-  const labelWidth = rotate ? Math.max(60, share * 2) : Math.max(36, share);
+  // Long IFC class names ("IfcBuildingElementProxy") would collide upright and `hideOverlap`
+  // would then drop a neighbour outright, so the labels are measured and tilted / shortened to
+  // fit (#6480); the full name is in the tooltip. The grid reserves the room they take.
+  const label = layoutCategoryLabels({
+    labels,
+    width: positiveOr(args.width, DEFAULT_WIDTH),
+    height: positiveOr(args.height, DEFAULT_HEIGHT),
+    font: `${CATEGORY_LABEL_FONT_SIZE}px ${theme.fontFamily}`,
+  });
   // A count needs no axis title; a sum says what it sums, and gets room for it.
   const yName = spec.measure.agg === 'sum' ? measureLabel(aggregation) : '';
   return {
@@ -332,12 +322,11 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
       type: 'category',
       data: labels,
       axisLine: { lineStyle: { color: theme.axis } },
-      // A character-count estimate (no DOM/canvas measure available here), same order as the
-      // other size-based heuristics in this module; `overflow: 'truncate'` stays as a backstop if
-      // the estimate runs long. Middle-ellipsis, not ECharts' own tail truncation (#4940 review,
-      // headed-Chrome finding): `IfcSlab`/`IfcSpace`/`IfcSpatialZone` share a prefix and all
-      // truncated to the same "IfcS…" on a narrow half-width chart.
-      axisLabel: { color: theme.mutedText, interval: 0, rotate, width: labelWidth, overflow: 'truncate', hideOverlap: true, formatter: (name: string) => truncateMiddle(name, Math.max(4, Math.floor(labelWidth / 6.5))) },
+      // `formatter` shortens from the middle (see `truncateMiddle`); `overflow: 'truncate'` stays
+      // as a backstop. `triggerEvent` + `tooltip` show the full name on hover.
+      axisLabel: { color: theme.mutedText, fontSize: CATEGORY_LABEL_FONT_SIZE, interval: 0, rotate: label.rotate, width: label.width, overflow: 'truncate', hideOverlap: true, formatter: label.formatter },
+      triggerEvent: true,
+      tooltip: { show: true },
     },
     yAxis: {
       type: 'value',

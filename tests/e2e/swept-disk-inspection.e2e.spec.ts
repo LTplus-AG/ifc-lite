@@ -5,7 +5,7 @@
 /** Browser witness for #5783 against authored swept-disk geometry. */
 import { test, expect } from '@playwright/test';
 import { existsSync, writeFileSync } from 'node:fs';
-import { sweptDiskFixture } from './swept-disk-fixture.js';
+import { sweptDiskFixture, sweptDiskIsolationPath } from './swept-disk-fixture.js';
 import { skipForGpuDeviceLoss, watchGpuDeviceLoss } from './gpu-device-loss.js';
 
 type BrowserState = {
@@ -25,12 +25,12 @@ type BrowserState = {
 type BrowserStore = { getState(): BrowserState };
 
 test('selected swept-disk bar shows exact source geometry and measurement readout (#5783)', async ({ page }, testInfo) => {
-  test.skip(!existsSync(sweptDiskFixture.path), `Swept-disk IFC missing at ${sweptDiskFixture.path}; run pnpm fixtures or provide REBAR_IFC`);
+  test.skip(!existsSync(sweptDiskIsolationPath), `Swept-disk IFC missing at ${sweptDiskIsolationPath}; run pnpm fixtures or provide REBAR_IFC`);
   test.setTimeout(600_000);
   const gpu = await watchGpuDeviceLoss(page);
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/');
-  await page.locator('#file-input-open').setInputFiles(sweptDiskFixture.path);
+  await page.locator('#file-input-open').setInputFiles(sweptDiskIsolationPath);
   await page.waitForFunction(() => {
     const store = (globalThis as unknown as { __ifc_lite_viewer_store__?: BrowserStore }).__ifc_lite_viewer_store__;
     const state = store?.getState();
@@ -117,6 +117,14 @@ test('selected swept-disk bar shows exact source geometry and measurement readou
 
   // Keep the source/measurement checks above in the full model. Isolate only
   // for the visual witness so surrounding concrete cannot occlude this bar.
+  // The pixel change below is only meaningful when something else is in the
+  // model for isolation to remove (see sweptDiskIsolationPath); a lone bar
+  // re-frames to the identical image, on any GPU.
+  expect(
+    await page.evaluate(() => (globalThis as unknown as { __ifc_lite_viewer_store__: BrowserStore })
+      .__ifc_lite_viewer_store__.getState().geometryResult?.meshes.length ?? 0),
+    'isolation witness needs an occluder besides the bar',
+  ).toBeGreaterThan(1);
   await page.evaluate((expressId) => {
     const state = (globalThis as unknown as { __ifc_lite_viewer_store__: BrowserStore }).__ifc_lite_viewer_store__.getState();
     const model = [...state.models.values()][0];

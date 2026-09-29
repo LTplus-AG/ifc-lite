@@ -26,6 +26,12 @@ export function attachRoomSpatialContextMirror(api: StoreApi<ViewerState>, sessi
         try {
           const record = models.get(slot.slotId);
           if (!record || typeof record !== 'object' || Array.isArray(record)) continue;
+          const previous = event.changes.keys.get(slot.slotId)?.oldValue as unknown;
+          // Slot names/source metadata can change independently. Reapplying
+          // identical immutable JSON facts must not invalidate pending geo undo.
+          if (previous && typeof previous === 'object' && !Array.isArray(previous)
+            && JSON.stringify((previous as Record<string, unknown>).spatialContext)
+              === JSON.stringify((record as Record<string, unknown>).spatialContext)) continue;
           const decoded = decodeRoomSpatialContext((record as Record<string, unknown>).spatialContext);
           const store = roomStoreFor(api.getState(), modelId);
           if (!decoded || !store) continue;

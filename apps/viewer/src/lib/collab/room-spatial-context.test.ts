@@ -226,6 +226,14 @@ describe('room spatial context (#6499)', () => {
         redoStacks: new Map([[b.id, [unrelatedRedo, geoRedo]]]),
         mutationBatchTags: new Map([[unrelated.id, 'local'], [unrelatedRedo.id, 'local-redo'],
           [geoUndo.id, 'geo'], [geoRedo.id, 'geo-redo']]) });
+      const writerHistory = writer.getState().undoStacks;
+      const writerRedo = writer.getState().redoStacks;
+      const writerOverlay = writer.getState().georefMutations;
+      const record = doc.getMap<Record<string, unknown>>('models').get('m0')!;
+      doc.getMap('models').set('m0', { ...record, name: 'Renamed without spatial changes' });
+      assert.equal(writer.getState().undoStacks, writerHistory, 'a slot rename preserves pending geo and entity undo');
+      assert.equal(writer.getState().redoStacks, writerRedo, 'a slot rename preserves pending geo and entity redo');
+      assert.equal(writer.getState().georefMutations, writerOverlay, 'unrelated metadata does not replace the geo overlay');
       owner.getState().setGeorefField(a.id, 'mapConversion', 'eastings', original + 5000, original + 2500);
       const current = writer.getState().models.get(b.id)!;
       assert.equal(getEffectiveGeoreference(current.ifcDataStore, current.geometryResult?.coordinateInfo,
@@ -234,7 +242,7 @@ describe('room spatial context (#6499)', () => {
       assert.deepEqual(writer.getState().undoStacks.get(b.id), [unrelated]);
       assert.deepEqual(writer.getState().redoStacks.get(b.id), [unrelatedRedo]);
       assert.deepEqual([...writer.getState().mutationBatchTags], [[unrelated.id, 'local'], [unrelatedRedo.id, 'local-redo']]);
-      assert.equal(ownerUpdates, 2); assert.equal(writerUpdates, 2);
+      assert.equal(ownerUpdates, 3); assert.equal(writerUpdates, 3);
       assert.equal(JSON.stringify(doc.getMap('entities').toJSON()), entities);
       assert.equal(JSON.stringify(writerDoc.getMap('entities').toJSON()), entities);
     } finally {

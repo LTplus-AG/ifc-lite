@@ -1,5 +1,21 @@
 # @ifc-lite/server-bin
 
+## 2.0.0
+
+### Major Changes
+
+- [#5791](https://github.com/LTplus-AG/ifc-lite/pull/5791) [`013b43c`](https://github.com/LTplus-AG/ifc-lite/commit/013b43cea4d7bff58c803b7774666d8b0d122026) Thanks [@louistrue](https://github.com/louistrue)! - **Migration: `DELETE /api/v1/cache/{key}` no longer accepts the bare SHA-256 file hash. Pass the `cache_key` a parse returned (`result.cache_key`, e.g. `{sha256}-default`), the same key `GET /api/v1/cache/{key}` takes. A bare hash now answers `400 BAD_REQUEST`. Error bodies that were `text/plain` or empty are now JSON (`{"error","code"}`); status codes are unchanged.**
+  
+  `GET` and `DELETE /api/v1/cache/{key}` now take the same key, the `cache_key` a parse returned, resolved through one function: a key one accepts the other accepts, and anything else is a `400` from both. Before, passing `result.cache_key` to both got a hit from `GET` and a `400` from `DELETE`. `DELETE` still removes every cached variant of that source file, and its response `key` field is now the `cache_key` it was given rather than the bare hash. A malformed key on `GET` is now a `400` rather than a `404`. A cache `GET` hit now holds a parse admission slot while it decodes the stored model, so concurrent reads of a large model are bounded like parses and can answer `503 OVERLOADED` with `Retry-After`; a miss needs no slot.
+  
+  Every error response now uses the same `{"error", "code"}` JSON body. Extractor rejections (a bad query value, a non-multipart upload), `/api/v1/metrics` while disabled, the bearer-token `401` (now with `WWW-Authenticate: Bearer`), the `/api/v1/cache/check/{hash}` miss, unknown routes, wrong methods, the request timeout and caught panics used to answer with `text/plain` or an empty body.
+
+### Minor Changes
+
+- [#6198](https://github.com/LTplus-AG/ifc-lite/pull/6198) [`f05d031`](https://github.com/LTplus-AG/ifc-lite/commit/f05d0319c271fb7f73958695199274f5543206c3) Thanks [@louistrue](https://github.com/louistrue)! - The data model can now leave out the STEP instances no client looks up ([#6034](https://github.com/LTplus-AG/ifc-lite/issues/6034)). With `?data_model_entities=rooted` on `POST /api/v1/parse/parquet`, `/parse/parquet/optimized` or `/parse/parquet-stream`, the data model's entities table carries only the rooted entities (the ones with a GlobalId), plus every non-rooted instance another data-model table references by id, such as the materials and material sets the materials table names. Every id in the relationship, property, quantity, material, classification, document and spatial tables still resolves, those tables are byte-identical to the default payload, and `entity_id`s are unchanged. Fetch it with `GET /api/v1/parse/data-model/{key}?data_model_entities=rooted`, and pass the same parameter to `/api/v1/cache/check/{hash}`.
+  
+  The rooted table is cached under its own key (`-datamodel-rooted-v8`), so a warm cache never serves one variant to a request for the other. Without the parameter, output and cache keys are unchanged.
+
 ## 1.22.1
 
 ### Patch Changes

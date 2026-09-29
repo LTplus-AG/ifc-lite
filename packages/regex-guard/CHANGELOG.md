@@ -1,5 +1,11 @@
 # @ifc-lite/regex-guard
 
+## 0.3.0
+
+### Minor Changes
+
+- [#6166](https://github.com/LTplus-AG/ifc-lite/pull/6166) [`36fcb46`](https://github.com/LTplus-AG/ifc-lite/commit/36fcb4614d66a4d2fc57ae0efdcb7c8edba4d3d1) Thanks [@louistrue](https://github.com/louistrue)! - Share the guarded IFC name matcher between Lists and Rules to prepare unified list filters.
+
 ## 0.2.0
 
 ### Minor Changes

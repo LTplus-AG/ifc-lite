@@ -1,5 +1,28 @@
 # @ifc-lite/ids
 
+## 3.1.0
+
+### Minor Changes
+
+- [#6153](https://github.com/LTplus-AG/ifc-lite/pull/6153) [`333e3fe`](https://github.com/LTplus-AG/ifc-lite/commit/333e3fe665ab284c7bcd8219916156f3d57d16c5) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Property facet checking now matches upstream ifctester (IfcOpenShell) in three cases ([#6117](https://github.com/LTplus-AG/ifc-lite/issues/6117)):
+  
+  - A string-typed value (`IfcLabel`/`IfcText`/`IfcIdentifier`, or a plain-string accessor value under a string-typed `dataType` facet) now compares as an exact string instead of falling back to numeric tolerance: a value of `IFCLABEL('1.0000001')` now correctly **fails** a requirement value of `1` (previously passed). This is decided by the value's EXPRESS base (`IfcDate`/`IfcDateTime`/`IfcDuration` are EXPRESS STRING and are now correctly exact-string too, even in an `<enumeration>` requirement, which had no cast-gate protection); an unrecognised `dataType` name also falls to exact-string rather than to coercion.
+  - A property `baseName`/`propertySet` `<simpleValue>` with leading/trailing whitespace is kept verbatim instead of trimmed, so a property named `' Spaced'` is now found (previously reported "not found"). The same fix applies to a bare `<xs:restriction>` value with no `<pattern>`/`<enumeration>`/bounds child (e.g. `<xs:restriction base="xs:string"> Foo </xs:restriction>`).
+  - A property whose value is empty (`''`), null/undefined, or the `IfcLogical` `UNKNOWN` state is now treated as absent under `optional` cardinality, so it **passes** (previously failed with "must have a value, got (empty)"). `prohibited` already passed; the default `required` cardinality still fails, unchanged.
+
+### Patch Changes
+
+- [#6069](https://github.com/LTplus-AG/ifc-lite/pull/6069) [`d0d79ed`](https://github.com/LTplus-AG/ifc-lite/commit/d0d79ed15415c7391640ad0660ad17f8d5ebbb5b) Thanks [@louistrue](https://github.com/louistrue)! - Preserve IFC material associations forwarded by the server, including their names, categories, and definition identities, so models parsed by the server can evaluate material values without mistaking partial legacy payloads for verified mismatches.
+
+- [#6419](https://github.com/LTplus-AG/ifc-lite/pull/6419) [`71b74cf`](https://github.com/LTplus-AG/ifc-lite/commit/71b74cfdbe9f60a8df3ebb728b264dbac2416fd5) Thanks [@louistrue](https://github.com/louistrue)! - Document the IDS bridge's source-snapshot entity-index reads for the live-entity census.
+
+- [#6054](https://github.com/LTplus-AG/ifc-lite/pull/6054) [`05a2221`](https://github.com/LTplus-AG/ifc-lite/commit/05a222113355eea2e89d81acab74c62a5e77aa3f) Thanks [@louistrue](https://github.com/louistrue)! - An `IfcPropertyReferenceValue` now reads as the `Name` of the object it references (a material, person, document, classification reference, …). If the object has no `Name`, it reads as its `Identification`, and failing that as `#<id>`. The parser used to take the `UsageName` slot for the reference, so every reference property read as empty. That was a bug, and rules and the property panel now see the referenced name. It also applies to references nested inside a complex property. IDS property checks on a reference property now compare against that name as well. The server's data model (`apps/server`) had the same slot bug and now reads references the same way, and so does the Rust mutation-log STEP writer's property base.
+- Updated dependencies [[`8901816`](https://github.com/LTplus-AG/ifc-lite/commit/8901816fa9171b1af0a9af5036105db0fa72cb24), [`f8303f2`](https://github.com/LTplus-AG/ifc-lite/commit/f8303f2ef22706718b616a20b4c04d22c86d5e4d), [`05a2221`](https://github.com/LTplus-AG/ifc-lite/commit/05a222113355eea2e89d81acab74c62a5e77aa3f), [`64fc00a`](https://github.com/LTplus-AG/ifc-lite/commit/64fc00a700124a9a2ee73a778110704fe49ca36a), [`d0d79ed`](https://github.com/LTplus-AG/ifc-lite/commit/d0d79ed15415c7391640ad0660ad17f8d5ebbb5b), [`17bbdf2`](https://github.com/LTplus-AG/ifc-lite/commit/17bbdf29a624072119c22cc1a50538f9edef5ad5), [`05a2221`](https://github.com/LTplus-AG/ifc-lite/commit/05a222113355eea2e89d81acab74c62a5e77aa3f), [`eb09636`](https://github.com/LTplus-AG/ifc-lite/commit/eb096369e13edcbb933c989ab87372d5062e975b), [`9828849`](https://github.com/LTplus-AG/ifc-lite/commit/9828849515862f0649f31a6433a5870e77249709), [`36fcb46`](https://github.com/LTplus-AG/ifc-lite/commit/36fcb4614d66a4d2fc57ae0efdcb7c8edba4d3d1), [`59b0668`](https://github.com/LTplus-AG/ifc-lite/commit/59b06685f2a0604c0ff305b63d831a81ecaff199)]:
+  - @ifc-lite/data@6.1.0
+  - @ifc-lite/parser@9.1.0
+  - @ifc-lite/encoding@2.3.0
+  - @ifc-lite/regex-guard@0.3.0
+
 ## 3.0.3
 
 ### Patch Changes

@@ -1,5 +1,39 @@
 # @ifc-lite/cache
 
+## 3.7.0
+
+### Minor Changes
+
+- [#6381](https://github.com/LTplus-AG/ifc-lite/pull/6381) [`888a9a7`](https://github.com/LTplus-AG/ifc-lite/commit/888a9a72e1b1f59a0692942b15612a62c87033cb) Thanks [@louistrue](https://github.com/louistrue)! - The IFC-authored specular finish ([#5582](https://github.com/LTplus-AG/ifc-lite/issues/5582)) now reaches instanced and textured meshes, and finishes authored at type level ([#5984](https://github.com/LTplus-AG/ifc-lite/issues/5984)).
+  
+  - **Instanced (IFNS) shard.** Trailing field 2, `[metallic, roughness]` (f32, NaN = unauthored), written as shard v3 (stride 100) only when an occurrence in the shard authors a finish. Every other shard stays byte-identical. Older decoders already skip unknown trailing fields, and `@ifc-lite/geometry`'s decoder exposes the new field as `DecodedInstance.metallic` / `.roughness` (plus `carriesFinishes`). The renderer packs each occurrence's finish into spare bits of its instance flags lane, so the instanced record, vertex layout, picker and shadow passes are unchanged. On `AC20-FZK-Haus.ifc` this covers the 42 instanced `IfcMember` 'Kiefer' pieces (roughness 0.9).
+  - **Textured meshes** take `MeshData.material` as `TexturedMesh.finish`, which the textured draw prefers.
+  - **Type-level finishes.** The wasm batch now joins finishes through `ifc_lite_processing::style::MeshFinishJoin`, so a mesh takes the finish of the style its colour came from. That includes [#957](https://github.com/LTplus-AG/ifc-lite/issues/957) type geometry and occurrences styled on their `IfcMappedItem`.
+  - `@ifc-lite/cache` `FORMAT_VERSION` 22 → 23, so entries cached without these finishes re-parse once.
+
+- [#5665](https://github.com/LTplus-AG/ifc-lite/pull/5665) [`c1bff6c`](https://github.com/LTplus-AG/ifc-lite/commit/c1bff6c774cc6fbc51d0600d337ad516f3e60a21) Thanks [@louistrue](https://github.com/louistrue)! - Extract IFC-authored specular finish and carry it through to the viewer ([#5582](https://github.com/LTplus-AG/ifc-lite/issues/5582)). `ifc_lite_processing::style::extract_surface_style_specular` reads `IfcSurfaceStyleRendering`'s `SpecularColour` / `SpecularHighlight` / `ReflectanceMethod` and maps them to a metallic/roughness pair:
+  
+  - `ReflectanceMethod` of `METAL`/`MIRROR`, or a chromatic (tinted) `SpecularColour` `IfcColourRgb` (a conductor's Fresnel is wavelength-dependent; a dielectric's is not), sets `metallic = 1.0`.
+  - `SpecularHighlight`, when authored, sets roughness directly: an `IfcSpecularRoughness` factor (already 0..1) is used as-is; an `IfcSpecularExponent` (Phong) converts via the standard Karis Phong-to-GGX approximation `roughness = sqrt(2 / (n + 2))`.
+  - Otherwise a `SpecularColour` factor (or the luminance of a `SpecularColour` `IfcColourRgb`) sets `roughness = 1 - factor` — the common case for BIM exporters, which populate this factor and nothing else.
+  - A non-finite authored value (malformed or overflowed STEP real) is treated as unauthored.
+  
+  Verified against `AC20-FZK-Haus.ifc`: 'Glas' (`SpecularColour` 1.0) carries an authored roughness of exactly 0.0 with no metal evidence (the shader's `MIN_SPECULAR_ROUGHNESS` guard, not the extractor, keeps its highlight finite); 'Kiefer, glänzend' (glossy pine, 0.75) maps to roughness 0.25, and the plain 'Kiefer' style (factor 0.1) to 0.9.
+  
+  **How it reaches the viewer, additively.** `ifc-lite-processing`'s public structs are unchanged. `prepass::resolve_geometry_finishes` builds a per-geometry-item finish index over the same styled items (and the same first-wins, same-style choice) as the colour index. Every browser prepass result carries a `styleFinishes` array beside `styleColors`. `@ifc-lite/wasm`'s new `setStyleFinishes` hands it to each instance, and the batch stamps each mesh's `metallic`/`roughness` by its `geometry_item_id`. `@ifc-lite/geometry` exposes it as `MeshData.material`, and the renderer feeds it to `packMeshMaterial` ([#5386](https://github.com/LTplus-AG/ifc-lite/issues/5386)) through the new optional `Mesh.finish` / `BatchedMesh.finish` (`MeshFinish`). `Mesh.material` keeps its `Material` type, and `packMeshMaterial` prefers `finish` over a caller-supplied `Mesh.material`.
+  
+  The renderer's batch colour key folds the finish in (`chunk-grid.ts`'s `colorKey`, 1/1000 resolution), so two pieces sharing a colour but authoring visibly different finishes never merge into one batch. A batch draws with a single material row.
+  
+  `@ifc-lite/cache` format v22 stores each mesh's finish (NaN = absent), so a cache-restored mesh keeps its authored gloss and lands in the same batch-key bucket it was evicted from. The viewer's cache key includes the format version, so v21 entries re-parse once.
+  
+  Not covered yet, tracked in [#5984](https://github.com/LTplus-AG/ifc-lite/issues/5984): server REST and Parquet transports, finishes authored only on a type's `IfcRepresentationMap`, and textured meshes.
+
+### Patch Changes
+
+- Updated dependencies [[`8901816`](https://github.com/LTplus-AG/ifc-lite/commit/8901816fa9171b1af0a9af5036105db0fa72cb24), [`cd11f20`](https://github.com/LTplus-AG/ifc-lite/commit/cd11f203e11701ce8a9d0364baa4255b71a2fd0e), [`888a9a7`](https://github.com/LTplus-AG/ifc-lite/commit/888a9a72e1b1f59a0692942b15612a62c87033cb), [`c1bff6c`](https://github.com/LTplus-AG/ifc-lite/commit/c1bff6c774cc6fbc51d0600d337ad516f3e60a21), [`72b6b77`](https://github.com/LTplus-AG/ifc-lite/commit/72b6b77e3ef810c5ea9d22b9e9df178e749094c3), [`3f38367`](https://github.com/LTplus-AG/ifc-lite/commit/3f383676a094ad28724b4fd789e240740a865d64), [`10b3a44`](https://github.com/LTplus-AG/ifc-lite/commit/10b3a44ea325740562be7cafab14e28beebd3180)]:
+  - @ifc-lite/data@6.1.0
+  - @ifc-lite/geometry@7.6.0
+
 ## 3.6.1
 
 ### Patch Changes

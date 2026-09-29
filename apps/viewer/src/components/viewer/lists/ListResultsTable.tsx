@@ -14,15 +14,13 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowUp, ArrowDown, Search, Eye, EyeOff, Download, ChevronRight, ChevronDown, FileText, FileSpreadsheet, FileType } from 'lucide-react';
+import { ArrowUp, ArrowDown, Search, Eye, EyeOff, Download, ChevronDown, FileText, FileSpreadsheet, FileType } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { IconButton } from '@/components/ui/icon-button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { useViewerStore } from '@/store';
 import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
-import { toGlobalIdFromModels } from '@/store/globalId';
-import { useEntityListMultiSelect, type MultiSelectItem, type SelectModifiers } from '@/hooks/useEntityListMultiSelect';
 import { groupingColumnIds, type ListResult, type ListRow, type ColumnDefinition, type ListGrouping } from '@ifc-lite/lists';
 import type { ProjectUnits } from '@ifc-lite/parser';
 import { exportList, buildExportModel, EXPORT_LABELS, type ExportFormat } from '@/lib/lists/export';
@@ -34,6 +32,8 @@ import { AUTO_COLOR_FROM_LIST_ID } from '@/store/slices/lensSlice';
 import { useTranslation } from '@/i18n/useTranslation'; import { ColumnHeaderMenu } from './ColumnHeaderMenu'; import { formatLocaleCount } from './formatLocaleCount';
 import { ListGroupingBar } from './ListGroupingBar';
 import { ListScheduleTable } from './ListScheduleTable';
+import { ListGroupHeaderRow } from './ListGroupHeaderRow';
+import { useListRowSelection } from './useListRowSelection';
 import { ColumnResizeHandle } from './ColumnResizeHandle';
 import { formatCellValue, compareCells, detectNumericColumns, autoColumnWidth,
   buildGroupedView, flatTotals, buildScheduleRows, rebuildGrouping,
@@ -65,11 +65,8 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
   const [widthOverrides, setWidthOverrides] = useState<Record<string, number>>({});
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
-  const selectedEntityIds = useViewerStore((s) => s.selectedEntityIds);
   const activateAutoColorFromColumn = useViewerStore((s) => s.activateAutoColorFromColumn);
   const activeLensId = useViewerStore((s) => s.activeLensId);
-  const { select: onMultiSelect } = useEntityListMultiSelect();
 
   // Visibility state — re-filter when 3D visibility changes.
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
@@ -273,32 +270,12 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
       toast.error(t('lists.resultsTable.exportFailed', { message: error instanceof Error ? error.message : 'Unknown error' }));
     });
   }, [listName, columns, sortedRows, grouping, sortCol, sortDir, numericCols, columnWidths, modelUnits, unitDisplayOverrides, t]);
-  // Flat, ordered list of the selectable rows (group headers excluded) and a
-  // lookup from a row to its position, so Shift+click range-select works over
-  // the on-screen order. (#1463)
-  const selectableItems = useMemo<MultiSelectItem[]>(() => {
-    const out: MultiSelectItem[] = [];
-    for (const it of items) {
-      if (it.kind !== 'row') continue;
-      const r = (it as { row: ListRow }).row;
-      out.push({
-        globalId: toGlobalIdFromModels(models, r.modelId, r.entityId),
-        modelId: r.modelId,
-        expressId: r.entityId,
-      });
-    }
-    return out;
-  }, [items, models]);
-  const rowIndexByKey = useMemo(() => {
-    const m = new Map<string, number>();
-    selectableItems.forEach((it, idx) => m.set(`${it.modelId}:${it.expressId}`, idx));
-    return m;
-  }, [selectableItems]);
-  const handleRowClick = useCallback((row: ListRow, e: SelectModifiers) => {
-    const idx = rowIndexByKey.get(`${row.modelId}:${row.entityId}`);
-    if (idx === undefined) return;
-    onMultiSelect(selectableItems, idx, e);
-  }, [rowIndexByKey, selectableItems, onMultiSelect]);
+  // Every rendered line's member rows, in the virtualizer's index space: a
+  // group header selects its whole subtree, a schedule row its tuple (#6368).
+  const selectionLines = useMemo<ListRow[][]>(
+    () => (scheduleMode ? scheduleRows.map((r) => r.rows) : items.map((it) => (it.kind === 'group' ? it.rows : [it.row]))),
+    [scheduleMode, scheduleRows, items]);
+  const selection = useListRowSelection(selectionLines, scheduleMode ? 'schedule' : 'nested');
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Search / actions */}
@@ -373,6 +350,8 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
           setWidthOverrides={setWidthOverrides}
           onHeaderClick={handleHeaderClick}
           virtualizer={virtualizer}
+          isRowSelected={selection.isSelected}
+          onRowActivate={selection.activate}
         />
       ) : (
         <div style={{ minWidth: totalWidth }}>
@@ -437,42 +416,24 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
               const transform = `translateY(${vRow.start}px)`;
 
               if (item.kind === 'group') {
-                const expanded = expandedGroups.has(item.key);
                 return (
-                  <button
+                  <ListGroupHeaderRow
                     key={vRow.key}
-                    type="button"
-                    aria-expanded={expanded}
-                    className="absolute left-0 top-0 flex w-full cursor-pointer border-b border-border/40 bg-muted/50 text-left hover:bg-muted/70"
-                    style={{ transform }}
-                    onClick={() => toggleGroupExpand(item.key)}
-                  >
-                    {columns.map((col, colIdx) => (
-                      <span
-                        key={col.id}
-                        className="flex items-center gap-1 border-r border-border/20 px-2 py-1 text-xs font-medium shrink-0"
-                        // Sub-groups indent one step per nesting level (#1790).
-                        style={{ width: columnWidths[colIdx], ...(colIdx === 0 && item.level > 0 ? { paddingLeft: 8 + item.level * 14 } : undefined) }}
-                      >
-                        {colIdx === 0 && (
-                          <>
-                            {expanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-                            <span className="truncate" title={item.label}>{item.label}</span>
-                            <span className="ml-1 shrink-0 rounded-full bg-foreground/10 px-1.5 text-2xs tabular-nums text-muted-foreground">{formatLocaleCount(item.count, locale)}</span>
-                          </>
-                        )}
-                        {sumColumnIds.includes(col.id) && (
-                          <span className="ml-auto font-mono tabular-nums">{formatCellValue(item.sums[col.id])}</span>
-                        )}
-                      </span>
-                    ))}
-                  </button>
+                    item={item}
+                    expanded={expandedGroups.has(item.key)}
+                    selected={selection.isSelected(vRow.index)}
+                    columns={columns}
+                    columnWidths={columnWidths}
+                    sumColumnIds={sumColumnIds}
+                    transform={transform}
+                    onToggleExpand={toggleGroupExpand}
+                    onSelect={(modifiers) => selection.activate(vRow.index, modifiers)}
+                  />
                 );
               }
 
               const row = item.row;
-              const globalId = toGlobalIdFromModels(models, row.modelId, row.entityId);
-              const isSelected = selectedEntityIds.has(globalId) || globalId === selectedEntityId;
+              const isSelected = selection.isSelected(vRow.index);
               return (
                 <button
                   key={vRow.key}
@@ -481,9 +442,9 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
                   className={cn('absolute left-0 top-0 flex w-full cursor-pointer select-none border-b border-border/30 text-left hover:bg-muted/40', isSelected && 'bg-primary/10')}
                   style={{ transform }}
                   onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); handleRowClick(row, event); }
+                    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selection.activate(vRow.index, event); }
                   }}
-                  onClick={(e) => handleRowClick(row, e)}
+                  onClick={(e) => selection.activate(vRow.index, e)}
                 >
                   {row.values.map((value, colIdx) => (
                     <span

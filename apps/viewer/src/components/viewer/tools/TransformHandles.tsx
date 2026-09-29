@@ -67,7 +67,7 @@ export function TransformHandles() {
   );
 
   return (
-    <div className="absolute inset-0 pointer-events-none z-30" data-transform-handles>
+    <div className="absolute inset-0 pointer-events-none z-(--z-scene)" data-transform-handles>
       {handle('element.move', Move, t('moveRotate.handle.move', { key: shortcutLabel('model.move') }), 0)}
       {handle('element.rotate', RotateCw, t('moveRotate.handle.rotate', { key: shortcutLabel('model.rotate') }), 32)}
     </div>

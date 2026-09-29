@@ -27,6 +27,7 @@ import { createModelSlice } from '@/store/slices/modelSlice.js';
 import { createMutationSlice } from '@/store/slices/mutationSlice.js';
 import { createCollabSlice } from '@/store/slices/collabSlice.js';
 import { StepExporter } from '@ifc-lite/export';
+import type { Mutation } from '@ifc-lite/mutations';
 import { attachRoomSpatialContextMirror } from './room-spatial-context-mirror.js';
 
 // Use collab's exact ESM Yjs runtime, as the existing room peer tests do.
@@ -214,11 +215,25 @@ describe('room spatial context (#6499)', () => {
       assert.equal(extractGeoreferencingOnDemand(reparsed)?.mapConversion?.eastings, original + 2500);
       assert.equal(reparsed.entityIndex.byType.get('IFCMAPCONVERSION')?.length, 1, 'no duplicate conversion on native export');
       assert.equal(reparsed.entityIndex.byType.get('IFCPROJECTEDCRS')?.length, 1);
+      // Dense IFCX id 0 is a real element, while geo history also uses 0.
+      // An incoming metadata update may prune only the georef namespace.
+      const unrelated: Mutation = { id: 'entity-zero-undo', type: 'UPDATE_ATTRIBUTE', timestamp: 0,
+        modelId: b.id, entityId: 0, attributeName: 'Name', oldValue: 'original', newValue: 'local name' };
+      const unrelatedRedo: Mutation = { ...unrelated, id: 'entity-zero-redo', attributeName: 'Description' };
+      const geoUndo = writer.getState().undoStacks.get(b.id)![0];
+      const geoRedo: Mutation = { ...geoUndo, id: 'geo-redo' };
+      writer.setState({ undoStacks: new Map([[b.id, [unrelated, geoUndo]]]),
+        redoStacks: new Map([[b.id, [unrelatedRedo, geoRedo]]]),
+        mutationBatchTags: new Map([[unrelated.id, 'local'], [unrelatedRedo.id, 'local-redo'],
+          [geoUndo.id, 'geo'], [geoRedo.id, 'geo-redo']]) });
       owner.getState().setGeorefField(a.id, 'mapConversion', 'eastings', original + 5000, original + 2500);
       const current = writer.getState().models.get(b.id)!;
       assert.equal(getEffectiveGeoreference(current.ifcDataStore, current.geometryResult?.coordinateInfo,
         writer.getState().georefMutations.get(b.id))?.mapConversion?.eastings, original + 5000, 'old writer overlay cannot mask the owner update');
       assert.equal(extractGeoreferencingOnDemand(current.ifcDataStore!)?.mapConversion?.id, 0, 'dense IFCX recipient has no source resource ids');
+      assert.deepEqual(writer.getState().undoStacks.get(b.id), [unrelated]);
+      assert.deepEqual(writer.getState().redoStacks.get(b.id), [unrelatedRedo]);
+      assert.deepEqual([...writer.getState().mutationBatchTags], [[unrelated.id, 'local'], [unrelatedRedo.id, 'local-redo']]);
       assert.equal(ownerUpdates, 2); assert.equal(writerUpdates, 2);
       assert.equal(JSON.stringify(doc.getMap('entities').toJSON()), entities);
       assert.equal(JSON.stringify(writerDoc.getMap('entities').toJSON()), entities);

@@ -9,6 +9,8 @@ import { canMutate } from '@/store/mutation-permission';
 import { roomSlotFor, roomStoreFor } from './room-model-target';
 import { createRoomSpatialContext, decodeRoomSpatialContext, restoreRoomSpatialFacts } from './room-spatial-context';
 import { applyRoomModelData } from './room-model-apply';
+import { invalidateHistoryPatch } from '@/store/slices/mutation-redo-remote-guard';
+import { isGeorefMutation } from '@/store/slices/mutation-history-prune';
 
 /** #6499: edit, undo and redo all publish through the same slot metadata. */
 export function attachRoomSpatialContextMirror(api: StoreApi<ViewerState>, session: CollabSession): () => void {
@@ -38,7 +40,10 @@ export function attachRoomSpatialContextMirror(api: StoreApi<ViewerState>, sessi
           });
           else georefMutations.delete(modelId);
           api.setState({ georefMutations, mutationVersion: api.getState().mutationVersion + 1 });
-          api.getState().invalidateHistoryForEntity(modelId, 0);
+          const current = api.getState();
+          api.setState(invalidateHistoryPatch(current.undoStacks, current.redoStacks, current.mutationBatchTags,
+            current.mutationMeshTranslations, modelId, isGeorefMutation,
+            'A collaborator changed georeferencing. Conflicting local undo and redo history was cleared.'));
           applyRoomModelData(api.getState(), modelId, { ifcDataStore: store });
         } catch (error) { notice(error); }
       }

@@ -98,6 +98,19 @@ export function sourceIdentity(model: AnalyticSourceModel): object | null {
   return store?.source?.byteLength ? store.source : model.sourceFile ?? null;
 }
 
+/** Route source diagnostics by the product ID printed by the decoder. */
+export function diagnosticsByProductId(messages: readonly string[]): Map<string, string[]> {
+  const grouped = new Map<string, string[]>();
+  for (const message of messages) {
+    const id = /^product #(\d+)[:,]/.exec(message)?.[1];
+    if (id === undefined) continue;
+    const productMessages = grouped.get(id) ?? [];
+    productMessages.push(message);
+    grouped.set(id, productMessages);
+  }
+  return grouped;
+}
+
 /** Read the source retained by the canonical model load path, including spill storage. */
 export async function withAnalyticSource<T>(
   model: AnalyticSourceModel, extract: (bytes: Uint8Array) => T | Promise<T>,

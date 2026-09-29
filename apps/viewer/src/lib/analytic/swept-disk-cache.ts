@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { type SweptDiskDescriptions } from '@ifc-lite/geometry';
-import { AnalyticProductCache, withAnalyticSource, type AnalyticSourceModel } from './analytic-product-cache';
+import { AnalyticProductCache, diagnosticsByProductId, withAnalyticSource, type AnalyticSourceModel } from './analytic-product-cache';
 
 export { sourceIdentity, withAnalyticSource, type AnalyticSourceModel } from './analytic-product-cache';
 
@@ -25,14 +25,7 @@ export class SweptDiskCache extends AnalyticProductCache<SweptDiskDescriptions, 
   }
 
   protected override products(result: SweptDiskDescriptions, ids: readonly number[]): Map<number, ProductSweptDisks> {
-    const diagnosticsById = new Map<string, string[]>();
-    for (const message of result.diagnostics) {
-      const product = /^product #(\d+)[:,]/.exec(message)?.[1];
-      if (!product) continue;
-      const diagnostics = diagnosticsById.get(product) ?? [];
-      diagnostics.push(message);
-      diagnosticsById.set(product, diagnostics);
-    }
+    const diagnosticsById = diagnosticsByProductId(result.diagnostics);
     return new Map(ids.map((id) => [id, {
       occurrences: result.elements[String(id)] ?? [],
       diagnostics: diagnosticsById.get(String(id)) ?? [],

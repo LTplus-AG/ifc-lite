@@ -7,6 +7,7 @@ import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ExtrusionDefinitions } from '@ifc-lite/geometry';
 import { ExtrusionCache } from './extrusion-cache.js';
+import { diagnosticsByProductId } from './analytic-product-cache.js';
 import type { AnalyticSourceModel } from './swept-disk-cache.js';
 
 const direct = { model_sha256: 'sha', schema: 'IFC4', length_unit_scale_bits: 'bits',
@@ -19,6 +20,16 @@ const instance = (key: typeof direct | typeof mapped, ordinal: number) => ({
   ordinal, source: key, product_id: 7, solid_id: 5, mapping_path: ordinal ? [30, 31] : [],
   source_modified: ordinal > 0, world_from_source: null,
   status: { type: 'unsupported' as const, reason: 'source transform unavailable' },
+});
+
+it('routes source diagnostics for product #0 and #7 without dropping or mixing either ID (#6432)', () => {
+  const zero = 'product #0: unsupported source';
+  const seven = 'product #7, solid #5: unsupported profile';
+  const groups = diagnosticsByProductId([zero, seven, 'source-wide warning',
+    'product #7: another unsupported detail']);
+  assert.deepEqual(groups.get('0'), [zero]);
+  assert.deepEqual(groups.get('7'), [seven, 'product #7: another unsupported detail']);
+  assert.equal(groups.size, 2);
 });
 
 class ControlledCache extends ExtrusionCache {

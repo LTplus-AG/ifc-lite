@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { type ExtrusionDefinitions } from '@ifc-lite/geometry';
-import { AnalyticProductCache, withAnalyticSource, type AnalyticSourceModel } from './analytic-product-cache';
+import { AnalyticProductCache, diagnosticsByProductId, withAnalyticSource, type AnalyticSourceModel } from './analytic-product-cache';
 
 type Instance = ExtrusionDefinitions['instances'][number][number];
 type Definition = ExtrusionDefinitions['sources'][number];
@@ -27,19 +27,12 @@ export class ExtrusionCache extends AnalyticProductCache<ExtrusionDefinitions, P
   protected override products(result: ExtrusionDefinitions, ids: readonly number[]): Map<number, ProductExtrusions> {
     // The source key includes representation context, not just a solid ID.
     const sources = new Map(result.sources.map((definition) => [JSON.stringify(definition.key), definition]));
-    const diagnosticsById = new Map<number, string[]>();
-    for (const message of result.diagnostics) {
-      const id = Number(/^product #(\d+)[:,]/.exec(message)?.[1]);
-      if (!id) continue;
-      const messages = diagnosticsById.get(id) ?? [];
-      messages.push(message);
-      diagnosticsById.set(id, messages);
-    }
+    const diagnosticsById = diagnosticsByProductId(result.diagnostics);
     return new Map(ids.map((id) => [id, {
       occurrences: (result.instances[id] ?? []).map((instance) => ({
         instance, definition: sources.get(JSON.stringify(instance.source)) ?? null,
       })),
-      diagnostics: diagnosticsById.get(id) ?? [],
+      diagnostics: diagnosticsById.get(String(id)) ?? [],
       lengthUnitScale: result.length_unit_scale,
     }]));
   }

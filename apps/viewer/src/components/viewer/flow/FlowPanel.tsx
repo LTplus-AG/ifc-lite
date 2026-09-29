@@ -15,7 +15,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { Play } from 'lucide-react';
 import { parseFlowDocument, type FlowDocument, type NodeReport } from '@ifc-lite/flow';
 import { useTranslation } from '@/i18n/useTranslation';
-import { confirmDialog, promptDialog } from '@/components/ui/confirm-dialog';
+import { useDialogs } from '@/components/ui/confirm-dialog';
 import { useViewerStore } from '@/store';
 import { addNode } from '@/lib/flow/editor-ops';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
@@ -48,6 +48,7 @@ function PaletteWithDrop({ onAdd }: { onAdd: (type: string, pos: [number, number
 
 export function FlowPanel() {
   const { t } = useTranslation();
+  const { confirmDialog, promptDialog } = useDialogs();
   const savedFlows = useViewerStore((s) => s.savedFlows);
   const activeFlowId = useViewerStore((s) => s.activeFlowId);
   const flowDoc = useViewerStore((s) => s.flowDoc);

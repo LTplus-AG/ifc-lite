@@ -28,6 +28,7 @@ import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, TEXT_SIZE_MAX, TEXT_SIZ
 import { ClampedNumberInput, WidthEditor, field } from './BlockEditor.parts';
 import { TableBlockEditor } from './TableBlockEditor';
 import { ManualReportBlockEditor } from './ManualReportBlockEditor';
+import { TextColorEditor } from './TextColorEditor';
 
 export interface BlockEditorProps {
   block: DocumentBlock;
@@ -175,6 +176,7 @@ function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings:
           </select>
         </label>
       </div>
+      <TextColorEditor block={block} onChange={onChange} />
       <textarea
         ref={textarea}
         className={`${field} min-h-[56px] w-full font-mono`}

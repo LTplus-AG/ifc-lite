@@ -27,6 +27,7 @@ import { TAB_SIZE, tabEdit } from '@/lib/document/text-tabs';
 import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, TEXT_SIZE_MAX, TEXT_SIZE_MIN, type DocumentBlock, type TextBlock, type TextFont } from '@/lib/document/types';
 import { ClampedNumberInput, WidthEditor, field } from './BlockEditor.parts';
 import { TableBlockEditor } from './TableBlockEditor';
+import { ManualReportBlockEditor } from './ManualReportBlockEditor';
 
 export interface BlockEditorProps {
   block: DocumentBlock;
@@ -51,6 +52,7 @@ const KIND_LABEL_KEY = {
   spacer: 'document.block.kindSpacer',
   table: 'document.block.kindTable',
   'ids-report': 'document.block.kindIdsReport',
+  'manual-report': 'manualValidation.report.kind',
 } as const satisfies Record<DocumentBlock['kind'], TranslationKey>;
 /** The fields offered for insertion: the fixed suggestions, the model's storeys, and the selected element. */
 function useFieldOptions(bindings: BindingContext): Array<{ path: string; label: string }> {
@@ -273,6 +275,8 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
           </Button>
         </div>
       )}
+
+      {block.kind === 'manual-report' && <ManualReportBlockEditor block={block} onChange={onChange} />}
 
       {block.kind === 'topic' && (
         <div className="flex flex-wrap items-center gap-2">

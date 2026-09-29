@@ -119,6 +119,7 @@ import {
   type WeightBasis,
   type WeightOutcome,
 } from './measure-modes/weight';
+import { SourceQuantityInspection } from './SourceQuantityInspection';
 
 const QUANTITY_TYPE_LABEL_KEY: Record<number, TranslationKey> = {
   0: 'measure.qty.length',
@@ -527,6 +528,7 @@ export function MeasureQuantities() {
         </div>
       ) : (
         <div className="space-y-0.5 overflow-x-auto">
+          {declared.length > 0 && <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">{t('measure.quantities.authoredHeading')}</div>}
           {declared.map((r) => (
             <div
               key={`${r.quantityType}-${r.basis}`}
@@ -545,6 +547,9 @@ export function MeasureQuantities() {
               )}
             </div>
           ))}
+
+          {(geometry.proved > 0 || meshArea.withMesh > 0 || derivedWeights.length > 0) &&
+            <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">{t('measure.quantities.computedHeading')}</div>}
 
           {geometry.proved > 0 && (
             <div
@@ -672,6 +677,7 @@ export function MeasureQuantities() {
           {t('measure.quantities.unresolvedElements', { count: withoutStore })}
         </div>
       )}
+      <SourceQuantityInspection />
     </div>
   );
 }

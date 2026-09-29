@@ -214,6 +214,15 @@ coordinates to absolute IFC Z-up metres. For a profile point, apply
 identity for an absent position. The `status` field reports unsupported or
 invalid sources explicitly; a missing `nominal_quantities` value is not zero.
 
+In the viewer, the Measure panel's **Qty** tab shows authored IFC Qto,
+measurements computed from the mesh, and nominal IFC source geometry as separate
+sections. The source section lists each selected swept disk or extrusion
+occurrence with its STEP solid ID. Extrusion profile area, projected height and
+nominal volume describe the unplaced source before occurrence transforms;
+swept-disk centreline length reflects the placed occurrence. Neither is added
+into a product total, since openings, voids, CSG cuts and overlaps can change
+the product. A CSG operand is marked as such.
+
 ### Drilling from a Mesh Back to its Source Item
 
 An element's `expressId` names the wall; it does not name the piece of the wall

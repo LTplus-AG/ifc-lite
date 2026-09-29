@@ -66,6 +66,10 @@ describe('Multiple saved pairs in mounted UI and documentation (#6506)', () => {
     });
     assert.equal(useViewerStore.getState().models.size, 0);
     assert.equal(useViewerStore.getState().savedComparisons.length, 3, 'canonical model teardown preserves saved reports');
+    act(() => { useViewerStore.getState().resetViewerState(); useViewerStore.getState().clearAllModels(); });
+    assert.deepEqual(useViewerStore.getState().savedComparisons.map((saved) => saved.report.rows.map((row) => row.globalId)),
+      [['new', 'wall', 'removed'], ['new', 'third', 'wall', 'removed'], ['third', 'new']],
+      'session reset and full federation clear preserve historical report rows');
     act(() => useViewerStore.setState({ savedComparisons: history }));
     ui = render(<Library />);
     const picker = ui.querySelector('select'); assert.ok(picker); select(picker, history[2].id);

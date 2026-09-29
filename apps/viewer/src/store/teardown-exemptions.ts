@@ -149,6 +149,12 @@ export const TEARDOWN_EXEMPTIONS: Readonly<Record<string, string>> = {
     'Scope contains display names and source fingerprints, never runtime model/entity ids or live stores; ' +
     'saved snapshots can only be previewed/copied into documents, never applied to the current 3D scene.',
 
+  savedComparisonsSlice:
+    'Saved comparisons (#6506) contain immutable canonical report rows and source-pair ' +
+    'provenance only. They never drive renderer selection or overlays, so runtime model ids ' +
+    'are historical metadata rather than live references. Browser-persisted history must ' +
+    'survive model removal, federation clearing and session reset, like document templates.',
+
   manualValidationSlice:
     'Manual validation (#6401) holds a checklist template (no model reference at all) and ' +
     'answers keyed by a model\'s `sourceFingerprint`, the durable content identity, never a ' +

@@ -6,6 +6,7 @@
 import { test, expect } from '@playwright/test';
 import { existsSync, writeFileSync } from 'node:fs';
 import { sweptDiskFixture } from './swept-disk-fixture.js';
+import { skipForGpuDeviceLoss, watchGpuDeviceLoss } from './gpu-device-loss.js';
 
 type BrowserState = {
   models: Map<string, { id: string; ifcDataStore?: { entityCount: number } | null }>;
@@ -26,10 +27,7 @@ type BrowserStore = { getState(): BrowserState };
 test('selected swept-disk bar shows exact source geometry and measurement readout (#5783)', async ({ page }, testInfo) => {
   test.skip(!existsSync(sweptDiskFixture.path), `Swept-disk IFC missing at ${sweptDiskFixture.path}; run pnpm fixtures or provide REBAR_IFC`);
   test.setTimeout(600_000);
-  let deviceLostBeforeHighlight: string | null = null;
-  page.on('console', (message) => {
-    if (message.text().includes('[WebGPU] Device lost:')) deviceLostBeforeHighlight = message.text();
-  });
+  const gpu = await watchGpuDeviceLoss(page);
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/');
   await page.locator('#file-input-open').setInputFiles(sweptDiskFixture.path);
@@ -94,11 +92,7 @@ test('selected swept-disk bar shows exact source geometry and measurement readou
     }, { timeout: 30_000, message: 'renderer produces a baseline color frame before segment highlighting' })
       .toMatch(/^data:image\/png;base64,/);
   } catch (error) {
-    if (!captureThrew && baseline === null && deviceLostBeforeHighlight && process.env.E2E_GPU_STRICT === '0') {
-      const reason = `Hosted software WebGPU device was lost before segment highlighting: ${deviceLostBeforeHighlight}`;
-      console.warn(`[e2e] ${reason}`);
-      test.skip(true, reason);
-    }
+    if (!captureThrew && baseline === null && gpu.evidence) skipForGpuDeviceLoss('segment highlighting', gpu.evidence);
     throw error;
   }
   expect(baseline, 'renderer produced a baseline color frame').toMatch(/^data:image\/png;base64,/);

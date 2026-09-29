@@ -1,0 +1,15 @@
+--- a/rust/python/src/rebar_schedule.rs
++++ b/rust/python/src/rebar_schedule.rs
+@@ -146,6 +146,12 @@
+                 finite(finding.measured, &format!("{path} checks.findings[{index}].measured"))?;
+                 finite(finding.threshold, &format!("{path} checks.findings[{index}].threshold"))?;
+             }
++            if let Some(comparisons) = sweep.preflight.as_ref().and_then(|report| report.comparisons.as_ref()) {
++                for (index, comparison) in comparisons.iter().enumerate() {
++                    finite(comparison.measured_m, &format!("{path} preflight.comparisons[{index}].measured_m"))?;
++                    finite(comparison.limit_m, &format!("{path} preflight.comparisons[{index}].limit_m"))?;
++                }
++            }
+         }
+     }
+     Ok(())

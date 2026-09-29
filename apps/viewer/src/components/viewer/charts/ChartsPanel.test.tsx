@@ -1961,6 +1961,69 @@ describe('overlapping chart bucket paint (#4832)', () => {
   });
 });
 
+describe('ChartsPanel "Visible elements" scope under Isolate focus (#6473)', () => {
+  const TYPES: Record<number, string> = { 41: 'IfcWall', 42: 'IfcWall', 43: 'IfcWall', 44: 'IfcDoor', 45: 'IfcDoor' };
+
+  beforeEach(async () => {
+    const parsed = await parsedModel();
+    // `visible` scope needs mesh candidates: one mesh per element, in global-id space.
+    const model = {
+      ...parsed,
+      geometryResult: { meshes: Object.entries(TYPES).map(([id, ifcType]) => ({ expressId: GID(Number(id)), ifcType })) },
+    } as unknown as FederatedModel;
+    const dashboard = modelOverviewDashboard();
+    dashboard.scope = { kind: 'visible' };
+    useViewerStore.setState({
+      models: new Map([[model.id, model]]),
+      activeModelId: model.id,
+      dashboards: [dashboard],
+      activeDashboardId: dashboard.id,
+      chartFocusMode: 'isolate',
+      chartColorIn3D: false,
+      chartSlice: null,
+      chartSliceSource: null,
+      chartSliceBuckets: null,
+      chartSelectionRevision: null,
+      selectionRevision: 0,
+      chartVisibilityOwned: null,
+      chartVisibilityRevision: null,
+      selectedEntityIds: new Set(),
+      selectedEntityId: null,
+      selectedEntitiesSet: new Set(),
+      selectedEntities: [],
+      isolatedEntities: null,
+      ghostExceptEntities: null,
+      hiddenEntities: new Set(),
+      cameraCallbacks: {},
+    });
+  });
+  afterEach(() => cleanup());
+
+  it('a bucket click isolates the bucket without collapsing the chart to it', async () => {
+    const { renderer, charts } = recordingRenderer();
+    render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    assert.deepEqual(barData(charts[0].options.at(-1)!).map(([n, v]) => [n, v]), [['IfcWall', 3], ['IfcDoor', 2]]);
+
+    await act(async () => { charts[0].events.onSelect({ items: [{ seriesIndex: 0, dataIndex: 0 }] }); });
+    await settle();
+    const s = useViewerStore.getState();
+    assert.deepEqual([...(s.isolatedEntities ?? [])].sort(), [GID(41), GID(42), GID(43)], 'the walls are isolated in 3D');
+    assert.equal(s.chartVisibilityOwned?.channel, 'isolate');
+    // The chart still aggregates every bucket, with the clicked one selected.
+    assert.deepEqual(barData(charts[0].options.at(-1)!), [['IfcWall', 3, true], ['IfcDoor', 2, false]]);
+  });
+
+  it('an isolation another feature installed still narrows the chart', async () => {
+    const { renderer, charts } = recordingRenderer();
+    render(<ChartsPanel renderer={renderer} />);
+    await settle();
+    await act(async () => { useViewerStore.setState({ isolatedEntities: new Set([GID(44), GID(45)]) }); });
+    await settle();
+    assert.deepEqual(barData(charts[0].options.at(-1)!).map(([n, v]) => [n, v]), [['IfcDoor', 2]]);
+  });
+});
+
 describe('report export from the panel (#3944)', () => {
   beforeEach(async () => {
     const model = await parsedModel();

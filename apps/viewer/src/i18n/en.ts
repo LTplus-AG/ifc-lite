@@ -86,6 +86,7 @@ import { splitToolEn } from './catalogues/split-tool.en';
 import { modelingCommandEn } from './catalogues/modeling-command.en';
 import { modelWorkspaceEn } from './catalogues/model-workspace.en';
 import { roomToolEn } from './catalogues/room-tool.en';
+import { copyArrayEn } from './catalogues/copy-array.en';
 import { modelInspectorEn } from './catalogues/model-inspector.en';
 import { hostedPlaceEn } from './catalogues/hosted-place.en';
 import { stairRailingEn } from './catalogues/stair-railing.en';
@@ -139,6 +140,7 @@ export const en = {
   ...modelingCommandEn,
   ...modelWorkspaceEn,
   ...roomToolEn,
+  ...copyArrayEn,
   ...modelInspectorEn,
   ...hostedPlaceEn,
   ...stairRailingEn,

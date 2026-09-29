@@ -80,12 +80,15 @@ describe('addStairToStore', () => {
     expect(stairFlightOutline(2, 0.2, 0.3)).toEqual([
       [0.6, 0], [0.6, 0.4], [0.3, 0.4], [0.3, 0.2], [0, 0.2], [0, 0],
     ]);
-    const waisted = stairFlightOutline(2, 0.2, 0.3, 0.1);
-    const drop = 0.1 * Math.hypot(0.2, 0.3) / 0.3;
-    expect(waisted[0][0]).toBeCloseTo(drop * 0.3 / 0.2, 12);
-    expect(waisted[0][1]).toBe(0);
-    expect(waisted[1][0]).toBe(0.6);
-    expect(waisted[1][1]).toBeCloseTo(0.4 - drop, 12);
+    // R = 0.2, T = 0.3, waist 0.1: the underside meets the floor at
+    // x = 0.1 * sqrt(0.13) / 0.2 = 0.18028 and the back at y = 0.4 - 0.12019.
+    const [foot, back] = stairFlightOutline(2, 0.2, 0.3, 0.1);
+    expect(foot[0]).toBeCloseTo(0.180278, 6);
+    expect(foot[1]).toBe(0);
+    expect(back[0]).toBe(0.6);
+    expect(back[1]).toBeCloseTo(0.279815, 6);
+    // Both lie exactly `waist` from the pitch line 0.2x - 0.3y = 0 (perpendicular).
+    for (const [x, y] of [foot, back]) expect((0.2 * x - 0.3 * y) / Math.hypot(0.2, 0.3)).toBeCloseTo(0.1, 12);
   });
 
   it('lays out IFC2X3 (ShapeType, NumberOfRiser, no flight PredefinedType) and IFC4X3', () => {

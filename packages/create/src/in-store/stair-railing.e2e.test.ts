@@ -25,7 +25,7 @@ import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import { IfcCreator } from '../ifc-creator.js';
 import type { SpatialAnchor } from './anchor.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
-import { addStairToStore, stairFlightOutline } from './stair.js';
+import { addStairToStore } from './stair.js';
 import { addRailingToStore } from './railing.js';
 
 const WASM_PATH = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
@@ -217,15 +217,15 @@ describe.skipIf(!WASM_AVAILABLE)('in-store stair / railing vs IfcCreator (#6232 
     addStairToStore(editor, resolveSpatialAnchor(store, storeyId, view), { ...STAIR, WaistThickness: 0.15, Name: 'Waisted' });
     const text = new TextDecoder().decode(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content);
     const flight = mesh(api, text).get(idByName(text, 'IFCSTAIRFLIGHT', 'Waisted Flight'))!;
-    const outline = stairFlightOutline(6, 0.175, 0.28, 0.15);
-    let twiceArea = 0;
-    for (let i = 0; i < outline.length; i++) {
-      const [x0, y0] = outline[i];
-      const [x1, y1] = outline[(i + 1) % outline.length];
-      twiceArea += x0 * y1 - x1 * y0;
-    }
-    expect(twiceArea).toBeGreaterThan(0); // counter-clockwise
-    expect(flight.volume).toBeCloseTo((twiceArea / 2) * 1.2, 4);
+    // Side area, computed from the geometry rather than the builder's outline:
+    // six step triangles above the pitch line, plus the strip between the
+    // pitch line and the underside, which runs `waist` below it.
+    const [R, T, N, w] = [0.175, 0.28, 6, 0.15];
+    const drop = w * Math.hypot(R, T) / T; // vertical depth of the strip
+    const foot = drop * T / R; // where the underside meets the floor
+    const area = N * (T * R) / 2 + (foot * foot * R) / (2 * T) + (N * T - foot) * drop;
+    expect(area).toBeCloseTo(0.419138, 5);
+    expect(flight.volume).toBeCloseTo(area * 1.2, 4);
     expect(flight.volume).toBeLessThan(21 * 0.175 * 0.28 * 1.2);
   });
 });

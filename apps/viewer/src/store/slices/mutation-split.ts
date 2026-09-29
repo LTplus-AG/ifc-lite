@@ -150,7 +150,9 @@ export function splitWall(
   const rightPlacement = resolvePlacementChain(env.dataStore, env.view, env.editor, rightId)?.localPlacementId;
   let openings = { toLeft: 0, toRight: 0, skipped: 0 };
   if (leftPlacement !== undefined && rightPlacement !== undefined) {
-    const s = reassignWallOpenings(env.dataStore, env.view, env.editor, expressId, leftId, rightId, native(distance, k), leftPlacement, rightPlacement);
+    // Through the undoable action, so one Ctrl+Z also puts the openings back in the whole wall.
+    const s = reassignWallOpenings(env.dataStore, env.view, env.editor, expressId, leftId, rightId, native(distance, k), leftPlacement, rightPlacement,
+      (entityId, index, value) => get().setPositionalAttribute(modelId, entityId, index, value));
     openings = { toLeft: s.toLeft, toRight: s.toRight, skipped: s.skipped };
   }
   closeSplit(get, modelId, env, expressId, added.expressId);

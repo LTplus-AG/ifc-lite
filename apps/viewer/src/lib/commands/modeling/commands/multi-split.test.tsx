@@ -192,6 +192,10 @@ describe('split.multi: one line, several elements, one undo (#6232 C5)', () => {
     const hosted = readHostedFill(live().dataStore, window, live().view)!;
     assert.deepEqual([hosted.hostId, round(hosted.offset)], [piece, 1], 'the window went to the piece it stands in, 1 m from its start');
     assert.equal(authored('IFCRELFILLSELEMENT').length, 1, 'still filling its opening');
+
+    useViewerStore.getState().undo(MODEL_ID);
+    const back = readHostedFill(live().dataStore, window, live().view)!;
+    assert.deepEqual([back.hostId, round(back.offset)], [b, 3], 'one undo puts the window back in the whole wall');
   });
 
   it('a window on the kept piece stays, shifted to the piece it is now measured from', () => {

@@ -110,6 +110,8 @@ const STATES: ReadonlyArray<{ name: string; settleMs?: number; mayBeEmpty?: bool
   { name: 'room', settleMs: 1500 },
   // #6232 A1: the hosted placing commands' bar (offset, sill, width, height).
   { name: 'window' },
+  // #6232 C5: the multi-split bar (scope, what splits, what is refused) beside its storey sweep.
+  { name: 'splitMulti' },
   { name: 'spaceSketch', settleMs: 4000 },
   { name: 'addElement' },
   { name: 'measure' },
@@ -184,6 +186,7 @@ for (const width of [1280, 1600, 1920]) {
             beam: (s) => s.startCommand('beam.place'),
             room: (s) => s.startCommand('room.place'),
             window: (s) => s.startCommand('window.place'),
+            splitMulti: (s) => { s.setSelectedEntityId(null); s.startCommand('split.multi'); },
             spaceSketch: (s) => { s.endCommand(); s.setActiveTool('spaceSketch'); },
             addElement: (s) => s.setActiveTool('addElement'),
             measure: (s) => s.setActiveTool('measure'),
@@ -199,8 +202,8 @@ for (const width of [1280, 1600, 1920]) {
           };
           enter[name](api.getState());
         }, [STORE, state.name] as const);
-        if (state.name === 'split' || state.name === 'slab' || state.name === 'beam' || state.name === 'room' || state.name === 'window') {
-          const id = { split: 'element.split', slab: 'slab.place', beam: 'beam.place', room: 'room.place', window: 'window.place' }[state.name];
+        if (state.name === 'split' || state.name === 'slab' || state.name === 'beam' || state.name === 'room' || state.name === 'window' || state.name === 'splitMulti') {
+          const id = { split: 'element.split', slab: 'slab.place', beam: 'beam.place', room: 'room.place', window: 'window.place', splitMulti: 'split.multi' }[state.name];
           await expect(page.locator(`[data-hud-region] [data-command-id="${id}"]`)).toBeVisible();
         }
         if (state.name === 'spaceSketch') {

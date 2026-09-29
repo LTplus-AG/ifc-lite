@@ -23,6 +23,8 @@ export interface ReportDoc {
   setFontSize: (size: number) => void;
   setTextColor: (grayOrRgb: number | string) => void;
   text: (text: string, x: number, y: number) => void;
+  /** Paint a solid RGB rectangle directly, without DOM/SVG conversion (#6492). */
+  fillRect: (x: number, y: number, w: number, h: number, color: string) => void;
   /** Width of `text` in the current font and size, in points; a document wraps with it. */
   textWidth?: (text: string) => number;
   addImage: (bytes: Uint8Array, format: 'PNG' | 'JPEG', x: number, y: number, w: number, h: number) => void;
@@ -103,6 +105,7 @@ export async function browserReportSeams(capture: SnapshotCapture | null, theme:
           else doc.setTextColor(grayOrRgb);
         },
         text: (t, x, y) => { doc.text(t, x, y); },
+        fillRect: (x, y, w, h, color) => { doc.setFillColor(color); doc.rect(x, y, w, h, 'F'); },
         textWidth: (t) => doc.getTextWidth(t),
         addImage: (bytes, format, x, y, w, h) => { doc.addImage(bytes, format, x, y, w, h); },
         svg: async (svg, x, y, w, h) => {

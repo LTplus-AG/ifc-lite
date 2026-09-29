@@ -267,7 +267,7 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
           doc.setTextColor(0);
           break;
         case 'text-background':
-          await doc.svg(`<svg xmlns="http://www.w3.org/2000/svg" width="${item.w}" height="${item.h}" viewBox="0 0 ${item.w} ${item.h}"><rect width="${item.w}" height="${item.h}" fill="${item.color}" /></svg>`, item.x, item.y, item.w, item.h);
+          doc.fillRect(item.x, item.y, item.w, item.h, item.color);
           break;
         case 'image': {
           const block = byId.get(item.blockId);

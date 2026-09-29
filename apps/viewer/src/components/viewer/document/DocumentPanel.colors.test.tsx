@@ -28,7 +28,7 @@ describe('Document text colours (#6492)', () => {
         version: DOCUMENT_VERSION, id: 'doc-6492', name: 'Colour report',
         page: { size: 'A4', orientation: 'portrait' },
         blocks: [
-          { kind: 'text', id: 'colour', style: 'caption', text: 'Authored ink', width },
+          { kind: 'text', id: 'colour', style: 'caption', text: width === 'full' ? ['Authored ink', ...Array.from({ length: 199 }, (_, i) => `Line ${i}`)].join('\n') : 'Authored ink', width },
           { kind: 'text', id: 'default', style: 'body', text: 'Default ink', width },
         ],
       };
@@ -36,12 +36,13 @@ describe('Document text colours (#6492)', () => {
         models: new Map(), activeModelId: null, documents: [spec], activeDocumentId: spec.id,
         dashboards: [], bcfProject: null, selectedEntityIds: new Set(), mutationViews: new Map(), mutationVersion: 0,
       });
-      const operations: Array<{ text?: string; ink?: number | string; svg?: string; width?: number }> = [];
+      const operations: Array<{ text?: string; ink?: number | string; svg?: string; rectColor?: string; width?: number }> = [];
       let ink: number | string = 0;
       const seams = async (): Promise<DocumentPdfSeams> => ({
         createDoc: async () => ({
           addPage: () => {}, setFont: () => {}, setFontSize: () => {},
           setTextColor: (color) => { ink = color; }, text: (text) => { operations.push({ text, ink }); },
+          fillRect: (_x, _y, width, _height, rectColor) => { operations.push({ rectColor, width }); },
           addImage: () => {}, svg: async (svg, _x, _y, width) => { operations.push({ svg, width }); }, table: () => {},
           pageCount: () => 1, output: () => new Blob(['pdf']),
         }),
@@ -82,8 +83,11 @@ describe('Document text colours (#6492)', () => {
       } finally { window.removeEventListener(EVENT_FILE_DOWNLOADED, onDownload); }
       assert.deepEqual(operations.find((operation) => operation.text === 'Authored ink'), { text: 'Authored ink', ink: '#1264c8' });
       assert.deepEqual(operations.find((operation) => operation.text === 'Default ink'), { text: 'Default ink', ink: 0 }, 'authored colour does not leak into a following block');
-      const fill = operations.find((operation) => operation.svg);
-      assert.ok(fill?.svg?.includes('fill="#f1c35a"'), 'the background reaches the PDF vector renderer');
+      const fills = operations.filter((operation) => operation.rectColor);
+      assert.equal(fills.length, width === 'full' ? 200 : 1, 'all text lines get a direct vector rectangle');
+      assert.equal(operations.filter((operation) => operation.svg).length, 0, 'text backgrounds never invoke SVG conversion');
+      const fill = fills[0];
+      assert.equal(fill?.rectColor, '#f1c35a', 'the background reaches the direct PDF vector renderer');
       assert.ok((fill?.width ?? 0) > (width === 'full' ? 400 : 200));
       if (width === 'half') assert.ok((fill?.width ?? 0) < 300, 'half background stops at the column edge');
       const fillIndex = operations.indexOf(fill!);

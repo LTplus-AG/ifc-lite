@@ -161,7 +161,7 @@ describe('Document Text block line breaks and indentation (#6370)', () => {
     const drawn: string[] = [];
     const seams = async (): Promise<DocumentPdfSeams> => ({
       createDoc: async () => ({
-        addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {},
+        addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {}, fillRect: () => {},
         text: (t) => { drawn.push(t); },
         addImage: () => {}, svg: async () => {}, table: () => {},
         pageCount: () => 1,

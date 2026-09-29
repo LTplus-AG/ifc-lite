@@ -2041,7 +2041,7 @@ describe('report export from the panel (#3944)', () => {
         let pages = 1;
         return {
           addPage: () => { pages += 1; },
-          setFont: () => {}, setFontSize: () => {}, setTextColor: () => {},
+          setFont: () => {}, setFontSize: () => {}, setTextColor: () => {}, fillRect: () => {},
           text: (t) => { drawn.push(`text:${t}`); },
           addImage: () => { drawn.push('image'); },
           svg: async (svg) => { drawn.push(`svg:${svg.length > 100 ? 'ok' : 'short'}`); },

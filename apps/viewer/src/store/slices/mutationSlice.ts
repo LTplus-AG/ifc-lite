@@ -85,6 +85,7 @@ import { canMutate, mutationDenial, mutationDenialKey, mutationPermission } from
 import { syncTypeOverride } from './mutation-history-apply.js';
 import { recordMutationBatch, replayHistory } from './mutation-history-replay.js';
 import { positionalMutations } from './mutation-positional-batch.js';
+import { addHostedFillIn, type HostedFillOutcome, type HostedFillSpec } from './mutation-hosted-fill.js';
 
 /**
  * IFC-space directions for {@link MutationSlice.duplicateEntity}.
@@ -662,6 +663,19 @@ export interface MutationSlice extends CostUndoMethods {
     storeyExpressId: number,
     params: WindowInStoreParams
   ) => { expressId: number } | { error: string };
+  /**
+   * Cut an opening into a host wall (or slab), or place a door or window in
+   * one: the whole graph as one undo batch, the host re-meshed with its void
+   * (`mutation-hosted-fill.ts`). The one write path of the placing commands
+   * and of `bim.store.addOpening` / `addHostedDoor` / `addHostedWindow`.
+   * `batchId`: the running modeling transaction, which then re-meshes.
+   */
+  addHostedFill: (
+    modelId: string,
+    hostExpressId: number,
+    spec: HostedFillSpec,
+    batchId?: string,
+  ) => HostedFillOutcome;
   /** Add an IfcSpace (room) — rectangle or polygon footprint. */
   addSpace: (
     modelId: string,
@@ -1845,6 +1859,8 @@ export const createMutationSlice: StateCreator<
     get, set, modelId, storeyExpressId, { kind: 'window', params },
     (editor, anchor) => addWindowToStore(editor, anchor, params).windowId,
   ),
+
+  addHostedFill: (modelId, hostExpressId, spec, batchId) => addHostedFillIn(api, modelId, hostExpressId, spec, { batchId }),
 
   addSpace: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, { kind: 'space', params },

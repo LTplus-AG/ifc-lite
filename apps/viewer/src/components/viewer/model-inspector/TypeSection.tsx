@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
-import { AUTHORED_KINDS, typeOf, typesOfKind, type LiveModel } from '@/lib/commands/modeling/authored-kinds';
+import { AUTHORED_KINDS, typeClassInSchema, typeOf, typesOfKind, type LiveModel } from '@/lib/commands/modeling/authored-kinds';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import { InspectorCaption, InspectorRow, InspectorSection } from './InspectorControls';
 import { createElementType, setElementType } from './inspector-edits';
@@ -34,7 +34,23 @@ export interface TypeSectionProps {
   elementId?: number;
 }
 
-export function TypeSection({ modelId, live, kind, elementId }: TypeSectionProps) {
+export function TypeSection(props: TypeSectionProps) {
+  const { t } = useTranslation();
+  const { live, kind } = props;
+  // D2: a schema without the kind's type class (IFC2X3 has no IfcDoorType) offers no type to pick or create.
+  if (!typeClassInSchema(live, kind)) {
+    return (
+      <InspectorSection title={t('modelInspector.type.title')}>
+        <InspectorCaption>
+          {t('modelInspector.type.noClass', { schema: String(live.dataStore.schemaVersion ?? ''), typeClass: AUTHORED_KINDS[kind].type })}
+        </InspectorCaption>
+      </InspectorSection>
+    );
+  }
+  return <TypePicker {...props} />;
+}
+
+function TypePicker({ modelId, live, kind, elementId }: TypeSectionProps) {
   const { t } = useTranslation();
   const id = useId();
   const mutationVersion = useViewerStore((s) => s.mutationVersion);

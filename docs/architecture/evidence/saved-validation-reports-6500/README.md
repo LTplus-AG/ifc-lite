@@ -1,6 +1,6 @@
 # Saved validation reports (#6500)
 
-The Chromium witness loads the committed [building-architecture.ifc](../../../../apps/viewer/public/samples/building-architecture.ifc) sample exported by IFC-manager for SketchUp and SketchUp 2024. It runs the associated IDS twice through the actual validation UI, renames the first saved report, and records a manual coordination warning and comment against that loaded model through the canonical checklist actions and the real **Save report** button.
+The Chromium witness loads the committed [building-architecture.ifc](https://github.com/LTplus-AG/ifc-lite/blob/326e124cf894bbaec7e56dc5126b16b07d123566/apps/viewer/public/samples/building-architecture.ifc) sample exported by IFC-manager for SketchUp and SketchUp 2024. It runs the associated IDS twice through the actual validation UI, renames the first saved report, and records a manual coordination warning and comment against that loaded model through the canonical checklist actions and the real **Save report** button.
 
 After navigating to a fresh viewer with no loaded model or working checklist, Documentation inserts all three independently selected reports. The latest history entry is manual; selecting each earlier IDS result exercises changing report kind through the same picker. The exported PDF retains the original model name, manual checklist name and comment.
 

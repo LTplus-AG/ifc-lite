@@ -13,7 +13,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
-import { cleanup, click as clickEl, press, render, type } from '@/test/render.js';
+import { blur, cleanup, click as clickEl, press, render, type } from '@/test/render.js';
 import { MODEL_ID, seedModelingSession } from '@/test/modeling-session-fixture';
 import { act } from 'react';
 import { CommandFieldsBar } from '@/components/viewer/tools/command/CommandFieldsBar';
@@ -99,6 +99,22 @@ describe('wall.place (#6232 WP2)', () => {
     type(angle, '90');
     press(angle, 'Enter');
     assert.deepEqual(walls(), [[[0, 0], [0, 2]]]);
+  });
+
+  it('a value typed then Tabbed past leaves the untouched Length unlocked when the plan is clicked (#6232 F1)', () => {
+    const ui = render(<CommandFieldsBar />);
+    press(document.body, 'Tab');
+    press(ui.querySelector('input') as HTMLInputElement, 'Tab', { shiftKey: true }); // wraps to Height
+    type(ui.querySelector('input') as HTMLInputElement, '3');
+    press(ui.querySelector('input') as HTMLInputElement, 'Tab'); // wraps to Length, showing 0
+    const length = ui.querySelector('input') as HTMLInputElement;
+    assert.equal(length.getAttribute('aria-label'), 'Length');
+    // A click in the plan: the pointer-down lands first, then the open field blurs.
+    act(() => click(0, 0)); // re-render, as a real pointer-down does, before the blur
+    blur(length);
+    assert.equal(gesture().length, null, 'the untouched Length did not lock its 0');
+    act(() => click(4, 0));
+    assert.deepEqual(walls(), [[[0, 0], [4, 0]]]);
   });
 
   it('Backspace drops the last point; Escape stops chaining, a second Escape leaves', () => {

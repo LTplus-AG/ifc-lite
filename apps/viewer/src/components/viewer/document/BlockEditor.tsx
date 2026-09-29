@@ -24,7 +24,7 @@ import { effectiveAttribute } from '@/lib/document/effective-binding-fields';
 import { spatialBindingNodes } from '@/lib/document/spatial-binding-nodes';
 import { idsReportBlockFromReport } from '@/lib/document/ids-report';
 import { TAB_SIZE, tabEdit } from '@/lib/document/text-tabs';
-import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, TEXT_SIZE_MAX, TEXT_SIZE_MIN, type DocumentBlock, type IdsReportVariant, type TextBlock, type TextFont } from '@/lib/document/types';
+import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, TEXT_SIZE_MAX, TEXT_SIZE_MIN, reportBlockSourceKind, type DocumentBlock, type IdsReportBlock, type IdsReportVariant, type TextBlock, type TextFont } from '@/lib/document/types';
 import { ClampedNumberInput, WidthEditor, field } from './BlockEditor.parts';
 import { TableBlockEditor } from './TableBlockEditor';
 
@@ -52,6 +52,52 @@ const KIND_LABEL_KEY = {
   table: 'document.block.kindTable',
   'ids-report': 'document.block.kindIdsReport',
 } as const satisfies Record<DocumentBlock['kind'], TranslationKey>;
+
+/**
+ * A report block's source line and refresh button (#5125). IDS and information
+ * validation share one report slot in the store, so refresh only takes a report
+ * of the kind the block already holds (#6372): an IDS block never silently
+ * turns into a rule-set block, or back.
+ */
+function ReportBlockSource({ block, report, onChange }: { block: IdsReportBlock; report: ValidationReport | null; onChange: (block: DocumentBlock) => void }) {
+  const { t } = useTranslation();
+  const kind = reportBlockSourceKind(block);
+  const refreshable = report !== null && report.source.kind === kind;
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1 text-muted-foreground">{t('document.block.idsReportSourceLabel')}
+        <span className="min-w-0 truncate font-medium text-foreground" title={block.sourceName}>{block.sourceName}</span>
+      </div>
+      <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.idsReportVariantLabel')}
+        <select
+          className={field}
+          value={block.variant ?? ''}
+          onChange={(e) => onChange({ ...block, variant: (e.target.value || undefined) as IdsReportVariant | undefined })}
+          aria-label={t('document.block.idsReportVariantAriaLabel')}
+        >
+          {block.variant === undefined && <option value="">{t('document.block.idsReportVariantClassic')}</option>}
+          <option value="compact">{t('document.block.idsReportVariantCompact')}</option>
+          <option value="long">{t('document.block.idsReportVariantLong')}</option>
+        </select>
+      </label>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-6 w-fit px-2 text-xs"
+        disabled={!refreshable}
+        title={refreshable ? undefined : t(kind === 'rules' ? 'document.block.rulesReportRefreshDisabledTitle' : 'document.block.idsReportRefreshDisabledTitle')}
+        onClick={() => {
+          if (!report || report.source.kind !== kind) return;
+          onChange(idsReportBlockFromReport(report, block.id, block.variant));
+          toast.success(t('document.block.idsReportRefreshed'));
+        }}
+      >
+        {t('document.block.idsReportRefresh')}
+      </Button>
+    </div>
+  );
+}
+
 /** The fields offered for insertion: the fixed suggestions, the model's storeys, and the selected element. */
 function useFieldOptions(bindings: BindingContext): Array<{ path: string; label: string }> {
   const selected = useViewerStore((s) => s.selectedEntityIds);
@@ -175,7 +221,7 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
   return (
     <div className="flex flex-col gap-1.5 rounded-md border border-border bg-card p-2 text-xs" data-block-editor={block.id} data-block-kind={block.kind}>
       <div className="flex items-center gap-1">
-        <span className="font-medium">{t(KIND_LABEL_KEY[block.kind])}</span>
+        <span className="font-medium">{t(block.kind === 'ids-report' && reportBlockSourceKind(block) === 'rules' ? 'document.block.kindRulesReport' : KIND_LABEL_KEY[block.kind])}</span>
         <span className="text-muted-foreground">#{index + 1}</span>
         <span className="flex-1" />
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={index === 0} onClick={() => onMove(-1)} aria-label={t('document.block.moveUpAriaLabel')}><ArrowUp className="h-3.5 w-3.5" /></Button>
@@ -252,39 +298,7 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
 
       {block.kind === 'table' && <TableBlockEditor block={block} onChange={onChange} />}
 
-      {block.kind === 'ids-report' && (
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-1 text-muted-foreground">{t('document.block.idsReportSourceLabel')}
-            <span className="min-w-0 truncate font-medium text-foreground" title={block.sourceName}>{block.sourceName}</span>
-          </div>
-          <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.idsReportVariantLabel')}
-            <select
-              className={field}
-              value={block.variant ?? ''}
-              onChange={(e) => onChange({ ...block, variant: (e.target.value || undefined) as IdsReportVariant | undefined })}
-              aria-label={t('document.block.idsReportVariantAriaLabel')}
-            >
-              {block.variant === undefined && <option value="">{t('document.block.idsReportVariantClassic')}</option>}
-              <option value="compact">{t('document.block.idsReportVariantCompact')}</option>
-              <option value="long">{t('document.block.idsReportVariantLong')}</option>
-            </select>
-          </label>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-6 w-fit px-2 text-xs"
-            disabled={!idsValidationReport}
-            title={idsValidationReport ? undefined : t('document.block.idsReportRefreshDisabledTitle')}
-            onClick={() => {
-              if (!idsValidationReport) return;
-              onChange(idsReportBlockFromReport(idsValidationReport, block.id, block.variant));
-              toast.success(t('document.block.idsReportRefreshed'));
-            }}
-          >
-            {t('document.block.idsReportRefresh')}
-          </Button>
-        </div>
-      )}
+      {block.kind === 'ids-report' && <ReportBlockSource block={block} report={idsValidationReport} onChange={onChange} />}
 
       {block.kind === 'topic' && (
         <div className="flex flex-wrap items-center gap-2">

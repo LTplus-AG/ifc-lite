@@ -192,7 +192,8 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
             <DropdownMenuItem onSelect={() => addBlock('topic')} disabled={data.topics.size === 0} title={data.topics.size === 0 ? t('document.addBlock.topicDisabledTitle') : undefined}>{t('document.addBlock.topic')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('spacer')}>{t('document.addBlock.spacer')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('table')}>{t('document.addBlock.table')}</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => addBlock('ids-report')} disabled={!idsValidationReport} title={idsValidationReport ? undefined : t('document.addBlock.idsReportDisabledTitle')}>{t('document.addBlock.idsReport')}</DropdownMenuItem>
+            {/* One report slot serves IDS and information validation; the item is named for what it would add (#6372). */}
+            <DropdownMenuItem onSelect={() => addBlock('ids-report')} disabled={!idsValidationReport} title={idsValidationReport ? undefined : t('document.addBlock.idsReportDisabledTitle')}>{t(idsValidationReport?.source.kind === 'rules' ? 'document.addBlock.rulesReport' : 'document.addBlock.idsReport')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={busy || tablesResolving || !document || document.blocks.length === 0} aria-busy={tablesResolving || undefined} onClick={() => void exportPdf()} title={t('document.panel.exportTitle')} data-document-export>

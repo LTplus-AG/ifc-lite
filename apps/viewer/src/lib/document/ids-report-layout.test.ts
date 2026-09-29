@@ -100,7 +100,7 @@ describe('IDS report snapshot (#6470)', () => {
       requirementResults: [{ requirement: req, status: i < 70 ? 'pass' : 'fail', facetType: 'property', checkedDescription: 'x' }],
     }));
     const report = {
-      source: { kind: 'rules', ruleSet: { name: 'Rules' } }, modelInfo: [], timestamp: new Date(0),
+      source: { kind: 'ids', document: { info: { title: 'Rules' }, specifications: [] } }, modelInfo: [], timestamp: new Date(0),
       summary: {}, specificationResults: [{ specification: spec, status: 'fail', applicableCount: 7972, passedCount: 70, failedCount: 7902, passRate: 1, entityResults }],
     } as unknown as ValidationReport;
     const out = idsReportBlockFromReport(report, 'b');

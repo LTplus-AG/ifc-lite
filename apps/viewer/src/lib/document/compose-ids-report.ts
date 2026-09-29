@@ -3,19 +3,21 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Laying out an IDS report block (#5125) on the document's page model:
- * title, a one-line summary, then one row per check — each row moves to
- * the next page with its own lines rather than splitting mid-check.
+ * Laying out an IDS / information-validation report block (#5125, #6372) on
+ * the document's page model: title, a one-line summary, then one row per
+ * check with its indented child rows (IDS requirements, or a rule's
+ * cardinality and set results) — each row moves to the next page with its
+ * own lines rather than splitting mid-row.
  * Pure like `compose-table.ts`, and reuses its `LayoutCursor`/text item
  * shape, since every line printed here is plain text (no grid columns).
  *
  * Three layouts (#6470): no `variant` is the original one-line-per-field
  * layout (truncated), `long` is the same rows with every line wrapped
- * rather than cut, `compact` is one row per check/requirement with a
+ * rather than cut, `compact` is one row per check / requirement with a
  * coloured percent bar.
  */
 import { passRateBand } from '@ifc-lite/ids';
-import type { IdsReportBlock } from './types.js';
+import { reportBlockSourceKind, type IdsReportBlock, type IdsReportCardinality, type IdsReportCheckSummary } from './ids-report-types.js';
 import type { LayoutCursor } from './compose-table.js';
 
 export const IDS_REPORT_TITLE_HEIGHT = 18;
@@ -29,14 +31,72 @@ const BAR_HEIGHT = 5;
 const BAR_TRACK_RGB = [225, 225, 225] as const;
 const BAND_RGB = { good: [34, 197, 94], warn: [234, 179, 8], bad: [239, 68, 68] } as const;
 
-/** What the composer needs of a resolved IDS report block. */
-export type IdsReportLayoutBlock = IdsReportBlock;
-
 /** Wraps `text` to `width`; supplied by the composer so the long layout never cuts text (#6470). */
 export type IdsReportWrap = (text: string, width: number, size: number, bold: boolean) => string[];
 
+/** What the composer needs of a resolved IDS report block. */
+export type IdsReportLayoutBlock = IdsReportBlock;
+
 /** `n%` for a pass rate that is always an integer 0-100 (matches `SpecificationSummary.passRate`'s own rounding). */
 const pct = (n: number): string => `${n}%`;
+
+/**
+ * The block heading (#6372): the report's own kind, never "IDS" for an
+ * information-validation run. PDF text is plain English, like every other
+ * line the document composer prints (see `TABLE_PDF_LABELS`).
+ */
+function idsReportTitle(block: Pick<IdsReportBlock, 'sourceKind' | 'sourceName'>): string {
+  return `${reportBlockSourceKind(block) === 'rules' ? 'Information validation report' : 'IDS report'}: ${block.sourceName}`;
+}
+
+function summaryLine({ checked, passed, failed, passRate, warnings }: IdsReportBlock['summary']): string {
+  const warned = warnings === undefined ? '' : ` · Warnings ${warnings}`;
+  return `Checked ${checked} · Passed ${passed} · Failed ${failed}${warned} · ${pct(passRate)} passed`;
+}
+
+function checkCountsLine(check: IdsReportCheckSummary): string {
+  if (check.error !== undefined) return `Could not be evaluated: ${check.error}`;
+  if (check.severity === 'warning') return `Warning · Checked ${check.checked} · Passed ${check.passed} · Warnings ${check.failed} · ${pct(check.passRate)}`;
+  return `Checked ${check.checked} · Passed ${check.passed} · Failed ${check.failed} · ${pct(check.passRate)}`;
+}
+
+function cardinalityExpected({ min, max }: IdsReportCardinality): string {
+  if (min !== undefined && max !== undefined) return min === max ? `exactly ${min}` : `${min} to ${max}`;
+  if (min !== undefined) return `at least ${min}`;
+  return max !== undefined ? `at most ${max}` : '';
+}
+
+/** `compactName` and `bar` feed the compact layout (#6470); rows without a `bar` (cardinality, sets) print text only. */
+interface ChildRow { name: string; compactName?: string; description?: string; detail: string; bar?: { passed: number | null; checked: number; rate: number | null } }
+
+/** Everything printed indented under a check: IDS requirements, then a rule's cardinality and set rows (#6372). */
+function childRows(check: IdsReportCheckSummary): ChildRow[] {
+  const rows: ChildRow[] = check.rules.map((rule) => ({
+    name: rule.shortDescription || rule.id,
+    compactName: rule.name ?? (rule.shortDescription || rule.id),
+    bar: { passed: rule.passed, checked: rule.checked, rate: rule.passRate },
+    description: rule.longDescription,
+    detail: rule.passRate === null
+      ? `Checked ${rule.checked} · Passed/failed unavailable (partial report)`
+      : `Checked ${rule.checked} · Passed ${rule.passed} · Failed ${rule.failed} · ${pct(rule.passRate)}`,
+  }));
+  const { cardinality } = check;
+  if (cardinality) {
+    const expected = cardinalityExpected(cardinality);
+    rows.push({ name: 'Applicable elements', detail: `Found ${cardinality.actual}${expected ? ` · Expected ${expected}` : ''} · ${cardinality.passed ? 'Met' : 'Not met'}` });
+  }
+  const failedWord = check.severity === 'warning' ? 'Warning' : 'Failed';
+  for (const set of check.sets ?? []) {
+    rows.push({
+      name: set.groupKey === undefined ? set.label : `${set.label} · ${set.groupKey || '(blank)'}`,
+      detail: `Actual ${set.actual} · Expected ${set.expected} · ${set.passed ? 'Passed' : failedWord}`,
+    });
+  }
+  if (check.setsTruncated) rows.push({ name: 'More sets not shown', detail: 'The validation run capped its set results' });
+  return rows;
+}
+
+const rowHeightOf = (row: { description?: string } | undefined): number => (row?.description ? DESCRIBED_CHECK_ROW_HEIGHT : CHECK_ROW_HEIGHT);
 
 type Line = { text: string; size: number; bold: boolean; gray: number };
 
@@ -57,70 +117,71 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   /** A field's lines: cut to one line (original layout) or wrapped (long). */
   const fit = (text: string, width: number, size: number, bold: boolean, gray: number): Line[] =>
     (wrapLines ? wrap(text, width, size, bold) : [cursor.truncate(text, width, size, bold)]).map((line) => ({ text: line, size, bold, gray }));
+  const classicHeight = (described: string | undefined): number => (described ? DESCRIBED_CHECK_ROW_HEIGHT : CHECK_ROW_HEIGHT);
 
-  const title = `IDS report: ${block.sourceName}`;
+  const title = idsReportTitle(block);
   const first = block.checks[0];
-  const firstRule = first?.rules[0];
-  const classicRowHeight = (described: boolean | string | undefined): number => (described ? DESCRIBED_CHECK_ROW_HEIGHT : CHECK_ROW_HEIGHT);
-  const firstRowHeight = compact ? COMPACT_ROW_HEIGHT : classicRowHeight(first?.longDescription);
-  const firstRuleHeight = firstRule ? (compact ? COMPACT_ROW_HEIGHT : classicRowHeight(firstRule.longDescription)) : 0;
-  const lead = IDS_REPORT_TITLE_HEIGHT + SUMMARY_HEIGHT + DATE_HEIGHT + firstRowHeight + firstRuleHeight;
+  const firstChild = first ? childRows(first)[0] : undefined;
+  const firstRowHeight = compact ? COMPACT_ROW_HEIGHT : classicHeight(first?.longDescription);
+  const firstChildHeight = firstChild ? (compact ? COMPACT_ROW_HEIGHT : classicHeight(firstChild.description)) : 0;
+  const lead = IDS_REPORT_TITLE_HEIGHT + SUMMARY_HEIGHT + DATE_HEIGHT + firstRowHeight + firstChildHeight;
   cursor.ensure(lead);
   cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 11, size: 11, bold: true, gray: 0, text: cursor.truncate(title, contentW, 11, true) });
   cursor.y += IDS_REPORT_TITLE_HEIGHT;
 
-  const { checked, passed, failed, passRate } = block.summary;
   cursor.push({
     kind: 'text', x: cursor.x, y: cursor.y + 10, size: 9, bold: false, gray: 60,
-    text: cursor.truncate(`Checked ${checked} · Passed ${passed} · Failed ${failed} · ${pct(passRate)} passed`, contentW, 9, false),
+    text: cursor.truncate(summaryLine(block.summary), contentW, 9, false),
   });
   cursor.y += SUMMARY_HEIGHT;
   cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 8, bold: false, gray: 130,
     text: cursor.truncate(`Validation run: ${block.generatedAt}`, contentW, 8, false) });
   cursor.y += DATE_HEIGHT;
 
-  /** Compact row: name on the left, then the bar and `passed/checked · n%`. */
-  const compactRow = (x: number, w: number, name: string, size: number, bold: boolean, gray: number, passedCount: number | null, checkedCount: number, rate: number | null): void => {
+  /** Compact row: name on the left, then the bar and `passed/checked · n%` (or plain detail text when there is no bar). */
+  const compactRow = (x: number, w: number, name: string, size: number, bold: boolean, gray: number, bar: ChildRow['bar'] | undefined, detail?: string): void => {
     cursor.ensure(COMPACT_ROW_HEIGHT);
     const labelW = 78;
     const nameW = Math.floor(w * 0.4);
     const barX = x + nameW + 6;
     const barW = Math.max(20, w - nameW - labelW - 12);
     cursor.push({ kind: 'text', x, y: cursor.y + 10, size, bold, gray, text: cursor.truncate(name, nameW, size, bold) });
-    cursor.push({ kind: 'rect', x: barX, y: cursor.y + 4, w: barW, h: BAR_HEIGHT, rgb: BAR_TRACK_RGB });
-    if (rate !== null && rate > 0) {
-      cursor.push({ kind: 'rect', x: barX, y: cursor.y + 4, w: (barW * rate) / 100, h: BAR_HEIGHT, rgb: BAND_RGB[passRateBand(rate)] });
+    if (bar) {
+      cursor.push({ kind: 'rect', x: barX, y: cursor.y + 4, w: barW, h: BAR_HEIGHT, rgb: BAR_TRACK_RGB });
+      if (bar.rate !== null && bar.rate > 0) {
+        cursor.push({ kind: 'rect', x: barX, y: cursor.y + 4, w: (barW * bar.rate) / 100, h: BAR_HEIGHT, rgb: BAND_RGB[passRateBand(bar.rate)] });
+      }
+      const label = bar.rate === null ? 'n/a' : `${bar.passed ?? 0}/${bar.checked} · ${pct(bar.rate)}`;
+      cursor.push({ kind: 'text', x: x + w - labelW, y: cursor.y + 10, size: 8, bold: false, gray: 60, text: label });
+    } else if (detail) {
+      cursor.push({ kind: 'text', x: barX, y: cursor.y + 10, size: 8, bold: false, gray: 60, text: cursor.truncate(detail, w - nameW - 6, 8, false) });
     }
-    const label = rate === null ? 'n/a' : `${passedCount ?? 0}/${checkedCount} · ${pct(rate)}`;
-    cursor.push({ kind: 'text', x: x + w - labelW, y: cursor.y + 10, size: 8, bold: false, gray: 60, text: label });
     cursor.y += COMPACT_ROW_HEIGHT;
   };
 
   for (const check of block.checks) {
+    const children = childRows(check);
     if (compact) {
-      compactRow(cursor.x, contentW, check.shortDescription || check.id, 9, true, 0, check.passed, check.checked, check.passRate);
-      for (const rule of check.rules) {
-        compactRow(cursor.x + 10, contentW - 10, rule.name ?? (rule.shortDescription || rule.id), 8, false, 45, rule.passed, rule.checked, rule.passRate);
-      }
+      // A check that could not be evaluated has no meaningful rate: print its error instead of a bar.
+      const bar = check.error === undefined ? { passed: check.passed, checked: check.checked, rate: check.passRate } : undefined;
+      compactRow(cursor.x, contentW, check.shortDescription || check.id, 9, true, 0, bar, check.error === undefined ? undefined : checkCountsLine(check));
+      for (const row of children) compactRow(cursor.x + 10, contentW - 10, row.compactName ?? row.name, 8, false, 45, row.bar, row.detail);
       continue;
     }
     const lines = fit(check.shortDescription || check.id, contentW, 9.5, true, 0);
     if (check.longDescription) lines.push(...fit(check.longDescription, contentW, 8, false, 130));
     // Counts occupy their own line so a long description cannot print over them.
-    lines.push({ text: cursor.truncate(`Checked ${check.checked} · Passed ${check.passed} · Failed ${check.failed} · ${pct(check.passRate)}`, contentW, 8, false), size: 8, bold: false, gray: 60 });
-    cursor.ensure(rowHeight(lines.length) + (check.rules.length > 0 ? classicRowHeight(check.rules[0].longDescription) : 0));
+    lines.push(...fit(checkCountsLine(check), contentW, 8, false, 60));
+    cursor.ensure(rowHeight(lines.length) + (children.length > 0 ? classicHeight(children[0].description) : 0));
     emitLines(cursor, cursor.x, lines);
 
-    for (const rule of check.rules) {
-      const ruleW = contentW - 10;
-      const ruleLines = fit(rule.shortDescription || rule.id, ruleW, 8.5, true, 45);
-      if (rule.longDescription) ruleLines.push(...fit(rule.longDescription, ruleW, 8, false, 130));
-      const counts = rule.passRate === null
-        ? `Checked ${rule.checked} · Passed/failed unavailable (partial report)`
-        : `Checked ${rule.checked} · Passed ${rule.passed} · Failed ${rule.failed} · ${pct(rule.passRate)}`;
-      ruleLines.push({ text: cursor.truncate(counts, ruleW, 8, false), size: 8, bold: false, gray: 60 });
-      cursor.ensure(rowHeight(ruleLines.length));
-      emitLines(cursor, cursor.x + 10, ruleLines);
+    for (const row of children) {
+      const childW = contentW - 10;
+      const childLines = fit(row.name, childW, 8.5, true, 45);
+      if (row.description) childLines.push(...fit(row.description, childW, 8, false, 130));
+      childLines.push(...fit(row.detail, childW, 8, false, 60));
+      cursor.ensure(rowHeight(childLines.length));
+      emitLines(cursor, cursor.x + 10, childLines);
     }
   }
 

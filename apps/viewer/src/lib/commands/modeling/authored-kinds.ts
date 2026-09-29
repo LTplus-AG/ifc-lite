@@ -59,7 +59,7 @@ export function commandKind(
     case 'slab.place': return defaults.slabClass;
     case 'column.place': return 'column';
     case 'beam.place': return defaults.beamClass;
-    case 'space.place': return 'space';
+    case 'room.place': return 'space';
     case 'door.place': return 'door';
     case 'window.place': return 'window';
     default: return null;

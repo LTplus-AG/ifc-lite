@@ -135,6 +135,8 @@ export interface OwnedVisibilityRecords {
   basketVisibilityOwned?: VisibilityOwnership;
   /** The charts panel's claim on the isolate / ghost channel for a bucket selection (`store/slices/chartSlice.ts`, #3944). */
   chartVisibilityOwned?: VisibilityOwnership;
+  /** The Lists panel's claim on the isolate / ghost channel for a group row's Isolate / X-ray context action (`lib/lists/list-visibility.ts`, #6368). */
+  listVisibilityOwned?: VisibilityOwnership;
 }
 
 const OWNERSHIP_RECORD_FIELDS = [
@@ -142,6 +144,7 @@ const OWNERSHIP_RECORD_FIELDS = [
   'clashVisibilityOwned',
   'basketVisibilityOwned',
   'chartVisibilityOwned',
+  'listVisibilityOwned',
 ] as const satisfies readonly (keyof OwnedVisibilityRecords)[];
 
 /**

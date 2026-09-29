@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // A4 room tool (#6232 M4) on AC20-FZK-Haus: E → Shift+O; candidates with areas in plan + 3D;
 // Auto (N rooms) → one Ctrl+Z removes them all; click a room in the plan → one room.
 import { readFileSync } from 'node:fs';

@@ -36,6 +36,11 @@ export const documentEn = {
   'document.block.fontSizeLabel': 'Size (pt)',
   'document.block.fontSizeAriaLabel': 'Text size',
   'document.block.fontSizeDefault': 'Style default',
+  'document.block.textColorLabel': 'Text colour',
+  'document.block.backgroundColorLabel': 'Background colour',
+  'document.block.textColorReset': 'Reset text colour',
+  'document.block.backgroundColorReset': 'Clear background colour',
+  'document.block.colorReset': 'Reset',
 
   // BlockEditor.tsx (#4918 doc slice): the block-kind badge, and every
   // field/control each block kind renders.

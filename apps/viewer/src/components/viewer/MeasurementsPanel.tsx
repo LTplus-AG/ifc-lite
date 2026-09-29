@@ -18,7 +18,7 @@
 import { useState } from 'react';
 import { Boxes, Crosshair, List, Ruler, Trash2, X } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
-import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { useDialogs } from '@/components/ui/confirm-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n/useTranslation';
@@ -39,6 +39,7 @@ const TABS: ReadonlyArray<{ id: PanelTab; labelKey: TranslationKey; titleKey: Tr
 
 export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation();
+  const { confirmDialog } = useDialogs();
   const [tab, setTab] = useState<PanelTab>('list');
   const clearMeasurements = useViewerStore((s) => s.clearMeasurements);
   const count = useViewerStore(

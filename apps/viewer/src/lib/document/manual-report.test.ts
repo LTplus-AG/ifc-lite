@@ -190,3 +190,29 @@ describe('which model a manual report block refreshes from (#6401)', () => {
     assert.deepEqual(resolveReportModel([], undefined, null, null), { kind: 'model', model: null });
   });
 });
+
+
+describe('manual checklist document presentation (#6507)', () => {
+  for (const variant of ['long', 'compact'] as const) for (const benchmarks of [true, false]) {
+    it(`${variant} with benchmark scores ${benchmarks ? 'shown' : 'hidden'} retains verdicts through import and PDF composition`, () => {
+      const original = { ...block(), checklistId: 'independent-review', variant, benchmarks };
+      const reopened = parseDocumentFile(JSON.stringify(docWith([original])));
+      assert.notEqual(reopened.blocks[0].id, original.id, 'document import allocates fresh block identities');
+      assert.deepEqual(reopened.blocks[0], { ...original, id: reopened.blocks[0].id });
+      const layout = composeDocument({ name: reopened.name, page: reopened.page, blocks: reopened.blocks, generatedAt: '', measure: estimateTextWidth });
+      const items = layout.pages.flatMap((page) => page.items);
+      const text = items.flatMap((item) => item.kind === 'text' ? [item.text] : []).join(' ');
+      assert.equal(items.filter((item) => item.kind === 'ring').length, benchmarks ? 3 : 0);
+      assert.equal(text.includes('% passed'), benchmarks);
+      assert.equal(text.includes('See the BEP, section 4'), variant === 'long');
+      assert.equal(text.includes('Comment: Two files use the old prefix'), variant === 'long');
+      for (const verdict of ['PASS', 'WARNING', 'FAIL', 'NOT CHECKED']) assert.ok(text.includes(verdict));
+      for (const page of layout.pages) for (const item of page.items) assert.ok(item.y <= layout.size.h - REPORT_MARGIN - 24);
+    });
+  }
+
+  it('rejects malformed live-source and presentation fields with their exact document paths', () => {
+    const malformed = { ...block(), checklistId: '  ', variant: 'wide', benchmarks: 'yes' };
+    assert.deepEqual(validateDocumentSpec({ ...docWith([]), blocks: [malformed] }).map((error) => error.path), ['blocks[0].checklistId', 'blocks[0].variant', 'blocks[0].benchmarks']);
+  });
+});

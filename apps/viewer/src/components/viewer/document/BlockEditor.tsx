@@ -24,7 +24,7 @@ import { TAB_SIZE, tabEdit } from '@/lib/document/text-tabs';
 import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, TEXT_SIZE_MAX, TEXT_SIZE_MIN, reportBlockSourceKind, type DocumentBlock, type IdsReportBlock, type IdsReportVariant, type TextBlock, type TextFont } from '@/lib/document/types';
 import { ClampedNumberInput, WidthEditor, field } from './BlockEditor.parts';
 import { TableBlockEditor } from './TableBlockEditor';
-import { ManualReportBlockEditor } from './ManualReportBlockEditor';
+import { ManualReportBlockEditor, ManualReportPresentation } from './ManualReportBlockEditor';
 import { TextColorEditor } from './TextColorEditor';
 import { FieldPicker } from './FieldPicker';
 
@@ -283,6 +283,7 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
       {block.kind === 'ids-report' && <ReportBlockPresentation block={block} onChange={onChange} />}
       {block.kind === 'ids-report' && !block.savedReportId && <ReportBlockSource block={block} report={idsValidationReport} onChange={onChange} />}
 
+      {block.kind === 'manual-report' && <ManualReportPresentation block={block} onChange={onChange} />}
       {block.kind === 'manual-report' && !block.savedReportId && <ManualReportBlockEditor block={block} onChange={onChange} />}
 
       {block.kind === 'topic' && (

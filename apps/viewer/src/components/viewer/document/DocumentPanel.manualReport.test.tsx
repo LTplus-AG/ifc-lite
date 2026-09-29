@@ -64,13 +64,14 @@ beforeEach(async () => {
     activeDocumentId: null,
     dashboards: [],
     bcfProject: null,
-    manualChecklist: {
+  });
+  useViewerStore.getState().setManualChecklist({
       version: CHECKLIST_VERSION,
       name: 'Coordination round 3',
       groups: [{ id: 'g', name: 'Delivery', items: [{ id: 'a', text: 'Uploaded on time' }, { id: 'b', text: 'Naming convention' }] }],
-    },
-    manualAnswers: { 'fp-tower': { a: { status: 'pass', updatedAt: 1 }, b: { status: 'warning', comment: 'Old prefix', updatedAt: 1 } } },
   });
+  useViewerStore.getState().setManualAnswer('fp-tower', 'a', { status: 'pass' });
+  useViewerStore.getState().setManualAnswer('fp-tower', 'b', { status: 'warning', comment: 'Old prefix' });
 });
 
 afterEach(() => {
@@ -116,8 +117,8 @@ describe('Document panel manual validation report (#6401)', () => {
     useViewerStore.setState({
       models: new Map([['m1', tower], ['m2', annex]]),
       activeModelId: 'm2',
-      manualAnswers: { ...useViewerStore.getState().manualAnswers, 'fp-annex': { a: { status: 'fail', updatedAt: 1 } } },
     });
+    useViewerStore.getState().setManualAnswer('fp-annex', 'a', { status: 'fail' });
     const ui = render(<DocumentPanel />);
     await settle();
     openMenu([...ui.querySelectorAll('button')].find((b) => b.title === 'Add a block to the page')!);
@@ -167,11 +168,81 @@ describe('Document panel manual validation report (#6401)', () => {
   });
 
   it('is unavailable until a checklist exists', async () => {
-    useViewerStore.setState({ manualChecklist: null });
+    const state = useViewerStore.getState();
+    state.removeManualChecklist(state.manualLibrary.activeId!);
     const ui = render(<DocumentPanel />);
     await settle();
     openMenu([...ui.querySelectorAll('button')].find((b) => b.title === 'Add a block to the page')!);
     const item = menuItem('Manual validation report');
     assert.equal(item?.getAttribute('aria-disabled'), 'true');
   });
+
+  for (const modelsCount of [1, 2]) it(`selects an independent checklist without switching Validation, preserves its layout, and retains a deleted-source snapshot at ${modelsCount} model(s) (#6507)`, async () => {
+    const architectureId = useViewerStore.getState().manualLibrary.activeId!;
+    useViewerStore.getState().renameManualChecklist('Architecture');
+    useViewerStore.getState().duplicateManualChecklist(architectureId, 'Structure');
+    const structureId = useViewerStore.getState().manualLibrary.activeId!;
+    let fingerprint = 'fp-tower';
+    if (modelsCount === 2) {
+      const tower = useViewerStore.getState().models.get('m1')!;
+      const annex = await parsedModel('m2', 'annex.ifc', 'fp-annex');
+      useViewerStore.setState({ models: new Map([['m1', tower], ['m2', annex]]), activeModelId: 'm2' });
+      fingerprint = 'fp-annex';
+    }
+    useViewerStore.getState().setManualAnswer(fingerprint, 'a', { status: 'fail' });
+    useViewerStore.getState().setManualAnswer(fingerprint, 'b', { status: 'warning', comment: 'Structure-only observation' });
+    useViewerStore.getState().selectManualChecklist(architectureId);
+    const ui = render(<DocumentPanel />);
+    await settle();
+    openMenu([...ui.querySelectorAll('button')].find((button) => button.title === 'Add a block to the page')!);
+    click(menuItem('Manual validation report')!);
+    await settle();
+    const stored = (): ManualReportBlock => useViewerStore.getState().documents[0].blocks.find((block): block is ManualReportBlock => block.kind === 'manual-report')!;
+    const blockId = stored().id;
+    const choose = async (label: string, value: string) => {
+      const select = ui.querySelector<HTMLSelectElement>(`select[aria-label="${label}"]`)!;
+      assert.ok(select);
+      act(() => { select.value = value; select.dispatchEvent(new window.Event('change', { bubbles: true })); });
+      await settle();
+    };
+    await choose('Checklist', structureId);
+    assert.equal(useViewerStore.getState().manualLibrary.activeId, architectureId, 'Documentation choice never switches the active Validation editor');
+    assert.equal(stored().id, blockId);
+    assert.equal(stored().checklistId, structureId);
+    assert.equal(stored().modelFingerprint, fingerprint);
+    assert.deepEqual(stored().groups[0].items.map((item) => item.status), ['fail', 'warning']);
+    assert.match(ui.querySelector('[data-block-manual-report]')?.textContent ?? '', /Structure-only observation/);
+    await choose('Checklist layout', 'compact');
+    const checkbox = [...ui.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find((input) => input.closest('label')?.textContent?.includes('Show benchmark scores'))!;
+    assert.ok(checkbox);
+    click(checkbox);
+    await settle();
+    const preview = ui.querySelector('[data-block-manual-report]')!;
+    assert.equal(stored().benchmarks, false);
+    assert.equal(preview.querySelector('[data-manual-report-benchmarks]'), null);
+    assert.ok(!preview.textContent?.includes('Structure-only observation'), 'short layout keeps verdicts while omitting review detail');
+    assert.deepEqual([...preview.querySelectorAll('li[data-status]')].map((item) => item.getAttribute('data-status')), ['fail', 'warning']);
+    act(() => {
+      useViewerStore.getState().selectManualChecklist(structureId);
+      useViewerStore.getState().setManualAnswer(fingerprint, 'b', { status: 'pass' });
+      useViewerStore.getState().selectManualChecklist(architectureId);
+    });
+    const refresh = (): HTMLButtonElement => [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Refresh from current checklist')!;
+    click(refresh());
+    await settle();
+    assert.equal(stored().id, blockId);
+    assert.equal(stored().checklistId, structureId);
+    assert.equal(stored().variant, 'compact');
+    assert.equal(stored().benchmarks, false);
+    assert.deepEqual(stored().groups[0].items.map((item) => item.status), ['fail', 'pass']);
+    assert.equal(useViewerStore.getState().manualLibrary.activeId, architectureId);
+    const frozen = structuredClone(stored());
+    act(() => useViewerStore.getState().removeManualChecklist(structureId));
+    await settle();
+    assert.equal(refresh().disabled, true);
+    assert.ok(ui.querySelector('[data-manual-report-checklist-missing]'));
+    assert.deepEqual(stored(), frozen);
+    assert.match(preview.textContent ?? '', /Manual validation: Structure/);
+  });
+
 });

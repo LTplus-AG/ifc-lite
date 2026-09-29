@@ -49,6 +49,12 @@ export interface ManualReportBlock extends ReportProvenance {
   id: string;
   /** The checklist's name, printed in the block's heading. */
   checklistName: string;
+  /** Live instance used by explicit Refresh; embedded answers stay immutable. */
+  checklistId?: string;
+  /** Missing on older documents: their existing detailed layout. */
+  variant?: 'long' | 'compact';
+  /** Missing on older documents: display their existing rings and scores. */
+  benchmarks?: boolean;
   /** The model the answers were recorded against, when there was one (display only). */
   modelName?: string;
   /**
@@ -80,6 +86,9 @@ const COUNTS_MESSAGE = 'expected { total, pass, fail, warning, unanswered: non-n
 export function validateManualReportBlock(block: Record<string, unknown>, at: string, errors: DocumentValidationError[]): void {
   validateReportProvenance(block, at, errors);
   if (!isString(block.checklistName)) errors.push({ path: `${at}.checklistName`, message: 'expected a string' });
+  if (block.checklistId !== undefined && !(isString(block.checklistId) && block.checklistId.trim())) errors.push({ path: `${at}.checklistId`, message: 'expected a nonblank string' });
+  if (block.variant !== undefined && block.variant !== 'long' && block.variant !== 'compact') errors.push({ path: `${at}.variant`, message: 'expected long or compact' });
+  if (block.benchmarks !== undefined && typeof block.benchmarks !== 'boolean') errors.push({ path: `${at}.benchmarks`, message: 'expected a boolean' });
   if (block.modelName !== undefined && !isString(block.modelName)) errors.push({ path: `${at}.modelName`, message: 'expected a string' });
   if (block.modelFingerprint !== undefined && !(isString(block.modelFingerprint) && block.modelFingerprint.length > 0)) {
     errors.push({ path: `${at}.modelFingerprint`, message: 'expected a non-empty string' });

@@ -16,6 +16,7 @@ import type { ManualReportBlock, ManualReportItem } from './manual-report-types.
 
 export interface ManualReportSource {
   checklist: ChecklistTemplate;
+  checklistId?: string;
   answers: ManualAnswerMap;
   /** The model the answers belong to, for the heading. */
   modelName?: string;
@@ -31,6 +32,7 @@ export function manualReportBlockFromChecklist(source: ManualReportSource, id: s
     kind: 'manual-report',
     id,
     checklistName: checklist.name,
+    ...(source.checklistId ? { checklistId: source.checklistId } : {}),
     ...(source.modelName ? { modelName: source.modelName } : {}),
     ...(source.modelFingerprint ? { modelFingerprint: source.modelFingerprint } : {}),
     generatedAt: (source.now ?? new Date()).toISOString(),

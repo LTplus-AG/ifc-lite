@@ -15,6 +15,14 @@
  * Rule descriptions come from the IDS source document when available.
  * Per-rule counts use entity results only when the report includes every
  * applicable entity; otherwise they are explicitly unavailable.
+ *
+ * An information-validation (rule set) report (#6372) records its source
+ * kind, and each rule additionally carries what only the rule engine
+ * reports: its severity (warning failures are summed apart from failures),
+ * its unevaluable `error`, its uniqueness/aggregate set rows and its
+ * cardinality. A rule is one requirement, so it gets no child row repeating
+ * itself; its own counts are exact even for `unique`/`aggregate`, whose
+ * entity rows list failures only. An IDS snapshot is built exactly as before.
  */
 import type { SpecificationResult, ValidationReport } from '@ifc-lite/ids';
 import { calculateSummary } from '@ifc-lite/ids';
@@ -61,9 +69,65 @@ function rulesForCheck(report: ValidationReport, result: SpecificationResult): I
   });
 }
 
+/** One rule-set rule as a check (#6372): the IDS mapping plus the fields only the rule engine fills. */
+function ruleCheck(report: ValidationReport, result: SpecificationResult): IdsReportCheckSummary {
+  const rules = rulesForCheck(report, result);
+  const check: IdsReportCheckSummary = {
+    id: result.specification.id,
+    shortDescription: result.specification.name,
+    longDescription: result.specification.description,
+    checked: result.applicableCount,
+    passed: result.passedCount,
+    failed: result.failedCount,
+    passRate: result.passRate,
+    // One requirement per rule: a single child row would only repeat the rule.
+    rules: rules.length > 1 ? rules : [],
+  };
+  if (result.specification.severity === 'warning') check.severity = 'warning';
+  if (result.error !== undefined) check.error = result.error;
+  if (result.setResults && result.setResults.length > 0) {
+    check.sets = result.setResults.map((set) => ({
+      label: set.label,
+      ...(set.groupKey ? { groupKey: set.groupKey } : {}),
+      actual: set.actual,
+      expected: set.expected,
+      passed: set.passed,
+    }));
+  }
+  if (result.setResultsTruncated) check.setsTruncated = true;
+  const cardinality = result.cardinalityResult;
+  if (cardinality) {
+    check.cardinality = {
+      passed: cardinality.passed,
+      actual: cardinality.actualCount,
+      ...(cardinality.minExpected !== undefined ? { min: cardinality.minExpected } : {}),
+      // `'unbounded'` is IDS vocabulary for "no maximum"; the block stores that as an absent `max`.
+      ...(typeof cardinality.maxExpected === 'number' ? { max: cardinality.maxExpected } : {}),
+    };
+  }
+  return check;
+}
+
 /** A frozen snapshot of `report`, as `types.ts`'s `IdsReportBlock` stores it. */
 export function idsReportBlockFromReport(report: ValidationReport, id: string): IdsReportBlock {
   const summary = calculateSummary(report.specificationResults);
+  const generatedAt = report.timestamp.toISOString();
+  const totals = {
+    checked: summary.totalEntitiesChecked,
+    passed: summary.totalEntitiesPassed,
+    failed: summary.totalEntitiesFailed,
+    passRate: summary.overallPassRate,
+  };
+  if (report.source.kind === 'rules') {
+    const checks = report.specificationResults.map((result) => ruleCheck(report, result));
+    // A warning rule's failing elements are warnings, not failures (#6372).
+    const warnings = checks.reduce((sum, check) => sum + (check.severity === 'warning' ? check.failed : 0), 0);
+    return {
+      kind: 'ids-report', id, sourceKind: 'rules', sourceName: report.source.ruleSet.name, generatedAt,
+      summary: { ...totals, failed: totals.failed - warnings, warnings },
+      checks,
+    };
+  }
   const checks: IdsReportCheckSummary[] = report.specificationResults.map((result) => ({
     id: result.specification.id,
     shortDescription: result.specification.name,
@@ -74,18 +138,5 @@ export function idsReportBlockFromReport(report: ValidationReport, id: string): 
     passRate: result.passRate,
     rules: rulesForCheck(report, result),
   }));
-  const sourceName = report.source.kind === 'ids' ? report.source.document.info.title : report.source.ruleSet.name;
-  return {
-    kind: 'ids-report',
-    id,
-    sourceName,
-    generatedAt: report.timestamp.toISOString(),
-    summary: {
-      checked: summary.totalEntitiesChecked,
-      passed: summary.totalEntitiesPassed,
-      failed: summary.totalEntitiesFailed,
-      passRate: summary.overallPassRate,
-    },
-    checks,
-  };
+  return { kind: 'ids-report', id, sourceKind: 'ids', sourceName: report.source.document.info.title, generatedAt, summary: totals, checks };
 }

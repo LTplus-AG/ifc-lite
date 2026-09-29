@@ -27,6 +27,17 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Post-stream upload drain slice (#6436)
+
+After a large stream completes, the renderer cannot finalize until the upload
+queue drains. The queue drained in the 12 ms per-frame slice that exists for
+the worker pump during streaming. Allowing 32 ms once the stream has ended and
+nobody navigates cut the drain on a 1 GB MEP model from 5.2-6.3 s to 3.2-4.5 s
+in interleaved pairs. The streaming phase is unchanged by construction: the
+budget is the default whenever geometry streams. Lesson: a time slice sized
+for one phase silently carries into the next. Timestamp phase boundaries
+(`Stream complete`, `Streaming ended`, `finalizeStreamingAsync complete`)
+before assuming the tail is finalize work.
 ## Placement identity from memory (#6431)
 
 Before parsing, the loader awaited a full-content SHA-256 identity (1 MiB chunks)

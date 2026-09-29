@@ -1901,9 +1901,12 @@ export class Scene {
    * Processes queued meshes through appendToBatches in streaming mode
    * (creates lightweight fragment batches for immediate rendering).
    *
+   * @param budgetMs Time slice per call. The 12 ms default keeps the main
+   *   thread returning to the worker-message pump while geometry streams; a
+   *   host with nothing else to serve may drain faster (#6436).
    * @returns true if any meshes were processed (caller should render)
    */
-  flushPending(device: GPUDevice, pipeline: RenderPipeline): boolean {
+  flushPending(device: GPUDevice, pipeline: RenderPipeline, budgetMs = 12): boolean {
     if (!this.hasQueuedMeshes()) return false;
 
     // Drain the queue in chunks bounded by BOTH mesh count AND triangle volume,
@@ -1916,14 +1919,13 @@ export class Scene {
     const MAX_MESHES_PER_FLUSH = 4096;
     const MESHES_PER_APPEND = 512;
     const MAX_INDICES_PER_APPEND = Scene.STREAMING_FRAGMENT_MAX_INDICES;
-    const FLUSH_BUDGET_MS = 12;
     const start = performance.now();
     let processed = 0;
 
     while (this.meshQueueReadIndex < this.meshQueue.length && processed < MAX_MESHES_PER_FLUSH) {
       // Yield once the budget is spent (after at least one append) so the main
       // thread returns to the worker-message pump and the watchdog never trips.
-      if (processed > 0 && performance.now() - start >= FLUSH_BUDGET_MS) {
+      if (processed > 0 && performance.now() - start >= budgetMs) {
         break;
       }
 

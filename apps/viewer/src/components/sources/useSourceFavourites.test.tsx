@@ -67,7 +67,9 @@ function Harness() {
       downloadedRecords={new Map()}
       loadedModelNamesByFileId={new Map()}
       syncingFileIds={new Set()}
+      syncStatesByFileId={new Map()}
       onSyncLoadedFile={() => {}}
+      downloadStates={new Map()}
       busy={false}
       onLoad={() => {}}
       foldersHaveMore={false}

@@ -549,7 +549,7 @@ test('#6507 real IFC discipline checklists remain independent and print their ch
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     state.showWorkspacePanel('validation');
     state.setManualChecklist({ version: 1, name: 'Architecture review', groups: [{ id: 'coordination', name: 'Coordination', items: [{ id: 'origin', text: 'Survey origin checked', description: 'Confirm coordinates with the surveyor' }] }] });
-    return state.manualLibrary.activeId!;
+    return globalThis.__ifc_lite_viewer_store__.getState().manualLibrary.activeId!;
   });
   const row = page.getByTestId('manual-check');
   await row.getByRole('button', { name: 'Pass', exact: true }).click();

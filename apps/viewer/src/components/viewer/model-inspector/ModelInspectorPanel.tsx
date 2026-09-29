@@ -194,7 +194,7 @@ function SelectionBody({ selection }: { selection: InspectorSelection }) {
           defaultThickness={thickness}
         />
       )}
-      {kind !== null && HOSTED.has(kind) && <HostingSection />}
+      {kind !== null && HOSTED.has(kind) && <HostingSection selection={selection} />}
     </>
   );
 }

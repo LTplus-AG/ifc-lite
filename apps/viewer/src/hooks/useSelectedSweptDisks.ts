@@ -4,10 +4,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { SweptDiskDescriptions } from '@ifc-lite/geometry';
-import { useViewerStore, stringToEntityRef, entityRefToString, type EntityRef } from '@/store';
-import { resolveEntityRef } from '@/store/resolveEntityRef';
-import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
+import { useViewerStore, type EntityRef } from '@/store';
 import { selectedSweptDiskCache, sourceIdentity, type AnalyticSourceModel } from '@/lib/analytic/swept-disk-cache';
+import { selectedSourceProducts } from '@/lib/analytic/selected-source-products';
 
 type Occurrences = SweptDiskDescriptions['elements'][string];
 
@@ -24,7 +23,6 @@ export interface SelectedSweptDisksState {
 }
 
 const EMPTY: SelectedSweptDisksState = { items: [], loading: false, error: null };
-const MAX_SELECTED_PRODUCTS = 256;
 
 /** One selection query shared by drawing and the later source-geometry inspector. */
 export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState {
@@ -64,71 +62,13 @@ export function useSelectedSweptDisks(enabled: boolean): SelectedSweptDisksState
     if (!enabled) { setResult(EMPTY); return; }
     let active = true;
     const state = useViewerStore.getState();
-    const refs = new Map<string, EntityRef>();
-    // Keep the active product inside the extraction cap even for select-all.
-    if (primaryRef) refs.set(entityRefToString(primaryRef), primaryRef);
-    if (primaryId !== null) {
-      const ref = resolveEntityRef(primaryId);
-      refs.set(entityRefToString(ref), ref);
-    }
-    for (const id of selectedIds) {
-      const ref = resolveEntityRef(id);
-      refs.set(entityRefToString(ref), ref);
-    }
-    for (const key of selectedRefs) {
-      const ref = stringToEntityRef(key);
-      if (ref.expressId > 0) refs.set(entityRefToString(ref), ref);
-    }
-    const highlightedKey = highlightedSegment
-      ? entityRefToString({ modelId: highlightedSegment.modelId, expressId: highlightedSegment.expressId }) : null;
-    if (highlightedKey && !refs.has(highlightedKey)) {
-      state.setSelectedDirectrixSegment(null);
-    }
-    // A highlighted source stays eligible under the selected-product cap.
-    const orderedRefs = new Map<string, EntityRef>();
-    if (highlightedKey) {
-      const ref = refs.get(highlightedKey);
-      if (ref) orderedRefs.set(highlightedKey, ref);
-    }
-    for (const [key, ref] of refs) orderedRefs.set(key, ref);
-    const grouped = new Map<string, number[]>();
-    const createdInOverlay: SelectedSweptDisk[] = [];
-    const diagnostics: string[] = [];
-    let selectedProducts = 0;
-    let omittedProducts = 0;
-    for (const ref of orderedRefs.values()) {
-      const model = ref.modelId === 'legacy' && models.size === 0
-        ? { visible: true, schemaVersion: legacyStore?.schemaVersion, ifcDataStore: legacyStore }
-        : models.get(ref.modelId);
-      if (!model?.visible || !model.ifcDataStore || model.schemaVersion === 'IFC5') continue;
-      let globalId: number;
-      try { globalId = ref.modelId === 'legacy' && models.size === 0
-        ? ref.expressId : state.toGlobalId(ref.modelId, ref.expressId); }
-      catch (error) {
-        diagnostics.push(`selected ${entityRefToString(ref)}: ${String(error)}`);
-        continue;
-      }
-      if (hidden.has(globalId) || lensHidden.has(globalId)
-        || (isolated !== null && !isolated.has(globalId))
-        || (classFilter !== null && !classFilter.ids.has(globalId))) continue;
-      if (selectedProducts >= MAX_SELECTED_PRODUCTS) {
-        omittedProducts++;
-        continue;
-      }
-      selectedProducts++;
-      if (state.mutationViews.get(normalizeMutationModelId(state, ref.modelId))?.getNewEntity(ref.expressId)) {
-        createdInOverlay.push({ ref, occurrences: [], diagnostics: [
-          `product #${ref.expressId}: created in the overlay; no authored swept-disk source is available`,
-        ] });
-        continue;
-      }
-      const ids = grouped.get(ref.modelId) ?? [];
-      ids.push(ref.expressId);
-      grouped.set(ref.modelId, ids);
-    }
-    if (omittedProducts > 0) diagnostics.push(
-      `Selected centreline limited to ${MAX_SELECTED_PRODUCTS} products; ${omittedProducts} selected products were omitted`,
-    );
+    const priority = highlightedSegment
+      ? { modelId: highlightedSegment.modelId, expressId: highlightedSegment.expressId } : null;
+    const { grouped, overlayRefs, diagnostics, priorityMissing } = selectedSourceProducts(state, 'centreline', priority);
+    if (priorityMissing) state.setSelectedDirectrixSegment(null);
+    const createdInOverlay: SelectedSweptDisk[] = overlayRefs.map((ref) => ({ ref, occurrences: [], diagnostics: [
+      `product #${ref.expressId}: created in the overlay; no authored swept-disk source is available`,
+    ] }));
     if (grouped.size === 0) {
       setResult({ items: createdInOverlay, loading: false, error: diagnostics.join('; ') || null });
       return () => { active = false; };

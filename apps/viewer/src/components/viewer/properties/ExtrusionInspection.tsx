@@ -20,6 +20,19 @@ function vector(values: readonly number[] | null): string {
   return values ? `[${values.map(number).join(', ')}]` : '—';
 }
 
+function TransformDetail({ label, matrix, translationScale, units }: {
+  label: string; matrix: readonly number[] | null; translationScale: number; units: string;
+}) {
+  if (!matrix || matrix.length !== 16) return null;
+  return <details className="border-t border-zinc-200 dark:border-zinc-800 pt-1">
+    <summary className="cursor-pointer">{label}</summary>
+    <div>Translation: {vector(matrix.slice(12, 15).map((value) => value * translationScale))} {units}</div>
+    <div>X axis: {vector(matrix.slice(0, 3))}</div>
+    <div>Y axis: {vector(matrix.slice(4, 7))}</div>
+    <div>Z axis: {vector(matrix.slice(8, 11))}</div>
+  </details>;
+}
+
 function segmentDescription(segment: Segment, scale: number, overrides: Record<string, string>): string {
   if (segment.type === 'line') {
     return `${vector(segment.start.map((v) => v * scale))} → ${vector(segment.end.map((v) => v * scale))} m`;
@@ -57,6 +70,16 @@ export function ExtrusionRecord({ instance, definition, lengthUnitScale }: {
       <div>{t('properties.extrusion.position')}: {source.Position === null ? t('properties.extrusion.none') : `#${source.Position}`}</div>
       <div>{t('properties.extrusion.profile')}: {profile
         ? `${profile.ifc_type_name} #${profile.profile_id}` : t('properties.extrusion.none')}</div>
+      <details className="border-t border-zinc-200 dark:border-zinc-800 pt-1">
+        <summary className="cursor-pointer">{t('properties.extrusion.placement')}</summary>
+        <p className="text-zinc-500">{t('properties.extrusion.placementNote')}</p>
+        <TransformDetail label={t('properties.extrusion.profileFrame')}
+          matrix={profile?.profile_position ?? null} translationScale={lengthUnitScale} units="m" />
+        <TransformDetail label={t('properties.extrusion.solidFrame')}
+          matrix={source.position_matrix} translationScale={lengthUnitScale} units="m" />
+        <TransformDetail label={t('properties.extrusion.worldFrame')}
+          matrix={instance.world_from_source} translationScale={1} units="m" />
+      </details>
     </>}
     {profile && <>
       <div>{t('properties.extrusion.profileType')}: {profile.ProfileType ?? t('properties.extrusion.none')}</div>
@@ -81,12 +104,12 @@ export function ExtrusionInspection({ enabled }: { enabled: boolean }) {
   const { items, loading, error } = useSelectedExtrusions(enabled);
   if (!enabled) return null;
   const withRecords = items.filter((item) => item.product.occurrences.length || item.product.diagnostics.length);
+  if (!loading && !error && withRecords.length === 0) return null;
   return <section className="space-y-2" aria-label={t('properties.extrusion.heading')}>
     <h3 className="text-xs font-semibold uppercase tracking-wide">{t('properties.extrusion.heading')}</h3>
     <p className="text-2xs text-zinc-500">{t('properties.extrusion.sourceNote')}</p>
     {loading && <output className="block">{t('properties.extrusion.loading')}</output>}
     {error && <p role="alert">{error}</p>}
-    {!loading && !error && withRecords.length === 0 && <p className="text-xs text-zinc-500">{t('properties.extrusion.empty')}</p>}
     {withRecords.map((item) => <div key={`${item.ref.modelId}:${item.ref.expressId}`} className="space-y-2">
       <div className="font-mono text-2xs">{item.ref.modelId} · #{item.ref.expressId}</div>
       {item.product.occurrences.map(({ instance, definition }, index) => <ExtrusionRecord

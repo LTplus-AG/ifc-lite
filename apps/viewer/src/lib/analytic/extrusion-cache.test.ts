@@ -71,6 +71,7 @@ it('discards cached products after the model source changes (#6432)', async () =
 
 const authoredFixture = new URL('../../../../../tests/models/buildingsmart/annex_e/basic-geometric-shape/extruded-solid.ifc', import.meta.url);
 const wasmBinary = new URL('../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
+const mappedFixture = new URL('../../../../../rust/geometry/tests/fixtures/mapped_instances_synthetic.ifc', import.meta.url);
 
 it('reads the exact authored extrusion from a buildingSMART IFC fixture (#6432)', {
   skip: !existsSync(authoredFixture) || !existsSync(wasmBinary)
@@ -93,5 +94,26 @@ it('reads the exact authored extrusion from a buildingSMART IFC fixture (#6432)'
     assert.equal(definition.source.Depth, 2000);
     assert.equal(definition.source.profile?.profile_id, 1022);
     assert.ok(definition.source.profile?.loops.length);
+  } finally { release(); }
+});
+
+it('retains distinct world placements for two products using one mapped profile (#6432)', {
+  skip: !existsSync(wasmBinary) ? 'Run pnpm build:wasm for the mapped extrusion fixture' : false,
+}, async () => {
+  const cache = new ExtrusionCache();
+  const release = cache.retain();
+  try {
+    const model: AnalyticSourceModel = { id: 'mapped', ifcDataStore: null,
+      sourceFile: new File([new Uint8Array(readFileSync(mappedFixture))], 'mapped.ifc') };
+    const products = await cache.get(model, [31, 38]);
+    const first = products.get(31)?.occurrences[0];
+    const second = products.get(38)?.occurrences[0];
+    assert.ok(first?.definition);
+    assert.ok(second?.definition);
+    assert.deepEqual(first.definition.key, second.definition.key);
+    assert.deepEqual(first.instance.mapping_path, [25]);
+    assert.deepEqual(second.instance.mapping_path, [32]);
+    assert.ok(Math.abs((first.instance.world_from_source?.[12] ?? NaN)) < 1e-12);
+    assert.ok(Math.abs((second.instance.world_from_source?.[12] ?? NaN) - 3) < 1e-12);
   } finally { release(); }
 });

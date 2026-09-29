@@ -109,12 +109,18 @@ describe('applyWallJoinToStore', () => {
     const { editor, anchor, entity, attr, build } = setup();
     const r = build({ Start: [-4, 0, 0], End: [4, 0, 0], Thickness: 0.3, Height: 3 });
     const w = build({ Start: [1, 0, 0], End: [3, 3, 0], Thickness: 0.2, Height: 3 });
-    const before = attr(r.productShapeId, 2);
     const result = applyWallJoinToStore(editor, anchor, w, r);
     expect(result.join.kind).toBe('T');
-    expect(result.b).toEqual(r);
-    expect(attr(r.productShapeId, 2)).toEqual(before);
+    // The through wall keeps its body and gains an Axis over its own length.
     expect(attr(r.solidId, 0)).toBe(`#${r.profileId}`);
+    expect(result.b).toMatchObject({ profileId: r.profileId, wall: r.wall });
+    expect(result.b.axisRepId).not.toBeNull();
+    expect(attr(r.productShapeId, 2)).toEqual([`#${r.representationIds[0]}`, `#${result.b.axisRepId}`]);
+    const polyline = entity((entity(result.b.axisRepId!)?.attributes[3] as string[])[0]);
+    expect((polyline?.attributes[0] as string[]).map((ref) => entity(ref)?.attributes[0])).toEqual([[0, 0], [8, 0]]);
+    // A through wall that already has an Axis is left alone.
+    const again = applyWallJoinToStore(editor, anchor, build({ Start: [-2, 0, 0], End: [-2, 3, 0], Thickness: 0.2, Height: 3 }), result.b);
+    expect(again.b.axisRepId).toBe(result.b.axisRepId);
     expect(entity(result.a.profileId)?.type).toBe('IfcArbitraryClosedProfileDef');
     expect(entity(result.relId)?.attributes.slice(5)).toEqual([`#${r.wallId}`, `#${w.wallId}`, [], [], '.ATSTART.', '.ATPATH.']);
   });

@@ -120,8 +120,10 @@ export function applyWallJoinToStore(
     Name: options.Name,
   }, op);
 
-  const nextA = join.a.connection === 'ATPATH' ? { ...a } : rewriteWall(editor, anchor, a, join.a.wall);
-  const nextB = join.b.connection === 'ATPATH' ? { ...b } : rewriteWall(editor, anchor, b, join.b.wall);
+  // The through wall of a T keeps its body; it only gains an Axis if it has none,
+  // so every joined wall carries one.
+  const nextA = join.a.connection === 'ATPATH' ? ensureAxis(editor, anchor, a) : rewriteWall(editor, anchor, a, join.a.wall);
+  const nextB = join.b.connection === 'ATPATH' ? ensureAxis(editor, anchor, b) : rewriteWall(editor, anchor, b, join.b.wall);
   const relId = editor.addEntity('IfcRelConnectsPathElements', relAttributes as Parameters<StoreEditor['addEntity']>[1]).expressId;
   return { join, relId, a: nextA, b: nextB };
 }
@@ -140,14 +142,24 @@ function rewriteWall(editor: StoreEditor, anchor: JoinAnchor, target: WallJoinTa
   editor.setPositionalAttribute(target.solidId, 0, `#${profileId}`);
   removeOverlayProfile(editor, target.profileId);
 
+  return { ...writeAxis(editor, anchor, target, startX, endX), profileId, wall };
+}
+
+/** Replace the wall's Axis representation (or append one) with `startX..endX` in its frame. */
+function writeAxis(editor: StoreEditor, anchor: JoinAnchor, target: WallJoinTarget, startX: number, endX: number): WallJoinTarget {
   const axisRepId = emitWallAxisRepresentation(editor, anchor, startX, endX);
   const representationIds = target.axisRepId !== null && target.representationIds.includes(target.axisRepId)
     ? target.representationIds.map((id) => (id === target.axisRepId ? axisRepId : id))
     : [...target.representationIds, axisRepId];
   editor.setPositionalAttribute(target.productShapeId, 2, representationIds.map((id) => `#${id}`));
   if (target.axisRepId !== null) removeOverlayAxis(editor, target.axisRepId);
+  return { ...target, representationIds, axisRepId };
+}
 
-  return { ...target, profileId, representationIds, axisRepId, wall };
+/** A wall the join leaves as it is: give it an Axis when it has none. */
+function ensureAxis(editor: StoreEditor, anchor: JoinAnchor, target: WallJoinTarget): WallJoinTarget {
+  if (target.axisRepId !== null) return { ...target };
+  return writeAxis(editor, anchor, target, alongFrame(target, target.wall.start), alongFrame(target, target.wall.end));
 }
 
 function refId(value: unknown): number | null {

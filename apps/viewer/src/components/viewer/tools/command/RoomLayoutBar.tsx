@@ -13,6 +13,7 @@
  *     leak diagnostics toggle.
  */
 
+import { useState } from 'react';
 import { Building2, ChevronDown, Eraser, RotateCcw, SquareDashed } from 'lucide-react';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
@@ -61,6 +62,8 @@ const clampWeld = (v: number) => Math.min(WELD_MAX, Math.max(WELD_MIN, Math.roun
 export function RoomMoreMenu({ gesture, ctx, rooms }: CommandHudProps<RoomPlaceGesture> & { rooms: number }) {
   const { t, locale } = useTranslation();
   const weld = gesture.weld ?? DEFAULT_WELD;
+  // What is being typed: "0" and "0." are not welds yet, so the field keeps the text until blur / Enter.
+  const [draft, setDraft] = useState<string | null>(null);
   const setWeld = (value: number | null) => setRoomGesture(ctx, (g) => ({ ...g, weld: value, hover: null, edit: initRoomEdit(g.edit.tool) }));
   return (
     <HudPopover>
@@ -97,10 +100,17 @@ export function RoomMoreMenu({ gesture, ctx, rooms }: CommandHudProps<RoomPlaceG
               onChange={(e) => setWeld(clampWeld(Number(e.target.value)))}
             />
             <input
-              type="number" min={WELD_MIN} max={WELD_MAX} step={0.05} value={weld}
+              type="number" min={WELD_MIN} max={WELD_MAX} step={0.05}
+              value={draft ?? String(weld)}
               aria-label={t('roomLayout.weld.aria')}
               className="w-14 rounded-sm border border-border bg-background px-1 text-right tabular-nums"
-              onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && v > 0) setWeld(clampWeld(v)); }}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={() => {
+                const v = Number(draft);
+                if (draft !== null && draft !== '' && Number.isFinite(v) && v > 0) setWeld(clampWeld(v));
+                setDraft(null);
+              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
             />
             <button
               type="button"

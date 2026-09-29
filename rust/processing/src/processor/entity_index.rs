@@ -6,17 +6,36 @@
 //! avoiding hash bucket padding for large sources with 32-bit byte offsets.
 
 use std::sync::Arc;
-use ifc_lite_core::{ColumnarEntityIndex, DenseEntityIndex, EntityDecoder, EntityIndex};
+use ifc_lite_core::{ColumnarEntityIndex, DenseEntityIndex, EntityDecoder, EntityIndex, GridAxisIndex};
 use rustc_hash::FxHashMap;
 
 #[derive(Clone)]
 pub(super) enum ProcessingIndex {
-    Hash(Arc<EntityIndex>),
+    Hash(HashIndex),
     Columnar(Arc<ColumnarEntityIndex>),
     Dense(Arc<DenseEntityIndex>),
 }
 
+/// A bare hash map has nowhere to keep source-scoped lookups, so it travels
+/// with its own; the compact indexes carry theirs (#6232 F2).
+#[derive(Clone)]
+pub(super) struct HashIndex {
+    spans: Arc<EntityIndex>,
+    grid_axes: Arc<GridAxisIndex>,
+}
+
+impl std::ops::Deref for HashIndex {
+    type Target = EntityIndex;
+    fn deref(&self) -> &EntityIndex {
+        &self.spans
+    }
+}
+
 impl ProcessingIndex {
+    pub(super) fn hash(spans: Arc<EntityIndex>) -> Self {
+        Self::Hash(HashIndex { spans, grid_axes: Arc::default() })
+    }
+
     pub(super) fn decoder<'a>(&self, content: &'a [u8]) -> EntityDecoder<'a> {
         let mut decoder = EntityDecoder::new(content);
         self.install(&mut decoder);
@@ -25,7 +44,10 @@ impl ProcessingIndex {
 
     pub(super) fn install(&self, decoder: &mut EntityDecoder<'_>) {
         match self {
-            Self::Hash(index) => decoder.set_entity_index(index.clone()),
+            Self::Hash(index) => {
+                decoder.set_entity_index(index.spans.clone());
+                decoder.set_grid_axis_index(index.grid_axes.clone());
+            }
             Self::Columnar(index) => decoder.set_columnar_index(index.clone()),
             Self::Dense(index) => decoder.set_dense_index(index.clone()),
         }
@@ -86,7 +108,7 @@ impl IndexBuilder {
 
     pub(super) fn finish(self) -> ProcessingIndex {
         match self {
-            Self::Hash(index) => ProcessingIndex::Hash(Arc::new(index)),
+            Self::Hash(index) => ProcessingIndex::hash(Arc::new(index)),
             Self::Compact { pages, len, .. } => {
                 // Fixed pages avoid geometric Vec over-allocation. At most
                 // two 12-byte representations overlap; release each consumed

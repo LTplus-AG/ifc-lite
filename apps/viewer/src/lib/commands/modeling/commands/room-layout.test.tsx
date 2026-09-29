@@ -25,7 +25,7 @@ import { afterEach, beforeEach, describe, it, type TestContext } from 'node:test
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
-import { cleanup, render } from '@/test/render.js';
+import { blur, cleanup, render, type as typeInto } from '@/test/render.js';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { BOX, authoredSpaces, corners, ensureRoomWasm, r3, setWallMeshes, spaceQuantity, type Wall } from '@/test/room-walls-fixture';
 import type { SnapResult } from '@/lib/snap/types';
@@ -33,6 +33,8 @@ import { ensureSpaceWasm } from '@/lib/space-plate-session';
 import { clearStoreyRoomsCache, sessionRooms } from '@/lib/rooms/storey-rooms';
 import { runRoomAction } from '@/components/viewer/tools/command/RoomPlaceBar';
 import { RoomPlacePlan } from '@/components/viewer/tools/command/RoomPlaceLayers';
+import { RoomMoreMenu } from '@/components/viewer/tools/command/RoomLayoutBar';
+import { clearModelLayouts } from '@/lib/rooms/room-layout';
 import '../builtin.js';
 import * as runtime from '../runtime.js';
 import { commandPointerDown, commandPointerMove, getCommandRuntime, updateCommandGesture } from '../runtime.js';
@@ -276,5 +278,33 @@ describe('room.place in a millimetre model (#6232 A4b, footprint helper scale)',
     click(5, 0);
     const [left] = byLeft();
     assert.equal(r3(spaceQuantity(left.id, 'GrossFloorArea')!), 22.5);
+  });
+});
+
+describe('room.place review fixes (#6232 A4b)', () => {
+  it('the weld field keeps "0" and "0." while typing and commits 0.3 on blur', async (t) => {
+    if (!(await start(t))) return;
+    const ui = render(<RoomMoreMenu gesture={gesture()} ctx={ctx()} rooms={2} />);
+    act(() => { (ui.querySelector('[data-room-more]') as HTMLElement).click(); });
+    const field = document.querySelector('input[type=number]') as HTMLInputElement;
+    assert.ok(field, 'the weld field is in the More menu');
+    act(() => { typeInto(field, '0'); });
+    assert.equal(field.value, '0', 'a lone 0 stays typed');
+    act(() => { typeInto(field, '0.'); });
+    assert.equal(field.value, '0.', 'and so does "0."');
+    act(() => { typeInto(field, '0.3'); });
+    assert.equal(gesture().weld, null, 'nothing is committed while typing');
+    act(() => { blur(field); });
+    assert.equal(gesture().weld, 0.3, 'blur commits it');
+  });
+
+  it("a removed model's filed layouts are freed: the next read builds from the walls again", async (t) => {
+    if (!(await start(t))) return;
+    editWith('shape');
+    click(2, 0);
+    click(2, 5);
+    assert.equal(layoutFaces().length, 3, 'the cut is in the filed layout');
+    clearModelLayouts(MODEL_ID);
+    assert.equal(layoutFaces().length, 2, 'freed: rebuilt from the walls');
   });
 });

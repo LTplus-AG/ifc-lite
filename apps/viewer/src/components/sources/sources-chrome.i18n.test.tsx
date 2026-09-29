@@ -415,6 +415,62 @@ describe('SourceFileRow localization', () => {
       ['sources.sourceFileRow.addFavouriteAria', { name: 'Tower.ifc' }],
     ]);
   });
+
+  // #6375: each download phase a row can show, one row per phase.
+  it('translates the queued, failed, downloading and unknown-size download states', () => {
+    const rowFor = (name: string, downloadState: Parameters<typeof SourceFileRow>[0]['downloadState']) => (
+      <SourceFileRow
+        file={{ ...file, id: name, name }}
+        selected={false}
+        onToggle={() => {}}
+        loadedModelNames={[]}
+        syncingFile={false}
+        onSyncLoadedFile={() => {}}
+        downloadState={downloadState}
+        downloadedStatus="never-loaded"
+        favourited={false}
+        onToggleFavourite={() => {}}
+      />
+    );
+    render(
+      <ul>
+        {rowFor('Queued.ifc', { phase: 'queued' })}
+        {rowFor('Failed.ifc', { phase: 'failed' })}
+        {rowFor('Ring.ifc', { phase: 'downloading', received: 25, total: 100 })}
+        {rowFor('Spinner.ifc', { phase: 'downloading', received: 25 })}
+      </ul>,
+    );
+
+    assertLocalized([
+      ['sources.downloadStatus.queued'],
+      ['sources.downloadStatus.failed'],
+      ['sources.downloadStatus.downloadingAria', { name: 'Ring.ifc' }],
+      ['sources.downloadStatus.downloadingAria', { name: 'Spinner.ifc' }],
+    ]);
+  });
+
+  it('translates the Sync progress ring while a loaded model downloads its update', () => {
+    render(
+      <ul>
+        <SourceFileRow
+          file={file}
+          selected={false}
+          onToggle={() => {}}
+          loadedModelNames={['Tower.ifc']}
+          syncingFile={true}
+          syncState={{ phase: 'downloading', received: 30, total: 60 }}
+          onSyncLoadedFile={() => {}}
+          downloadedStatus="never-loaded"
+          favourited={false}
+          onToggleFavourite={() => {}}
+        />
+      </ul>,
+    );
+
+    const ring = document.body.querySelector('[role="progressbar"]');
+    assert.equal(ring?.getAttribute('aria-valuenow'), '50', 'the Sync button shows the download as a ring');
+    assertLocalized([['sources.downloadStatus.syncingAria', { name: 'Tower.ifc' }]]);
+  });
 });
 
 // ── SourceFolderTree ──
@@ -482,7 +538,9 @@ describe('SourceFolderStep localization', () => {
       downloadedRecords: new Map(),
       loadedModelNamesByFileId: new Map(),
       syncingFileIds: new Set<string>(),
+      syncStatesByFileId: new Map(),
       onSyncLoadedFile: () => {},
+      downloadStates: new Map(),
       onLoad: () => {},
       foldersHaveMore: true,
       onLoadMoreFolders: () => {},

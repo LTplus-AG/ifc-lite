@@ -15,6 +15,7 @@ pub struct DenseEntityIndex {
     starts: Vec<u32>,
     lengths: Vec<u32>,
     present: Vec<u64>,
+    grid_axis_index: Arc<crate::decoder::GridAxisIndex>,
 }
 
 impl DenseEntityIndex {
@@ -34,6 +35,7 @@ impl DenseEntityIndex {
         let mut index = Self {
             starts: vec![0; slots], lengths: vec![0; slots],
             present: vec![0; usize::try_from(words).ok()?],
+            grid_axis_index: Arc::default(),
         };
         for (i, &id) in ids.iter().enumerate() {
             let slot = id as usize;
@@ -58,6 +60,7 @@ impl EntityDecoder<'_> {
     /// Install an immutable direct-address index for this decoder's source.
     /// Like `set_columnar_index`, source bytes and indexed spans must agree.
     pub fn set_dense_index(&mut self, index: Arc<DenseEntityIndex>) {
+        self.set_grid_axis_index(index.grid_axis_index.clone());
         self.entity_index = Some(EntityIndexStore::Dense(index));
     }
 }

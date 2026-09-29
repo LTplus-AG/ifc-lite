@@ -106,3 +106,21 @@ export const DASHBOARD_PRESETS: ReadonlyArray<{ name: string; create: () => Dash
   { name: 'Delivery', create: deliveryDashboard },
   { name: 'Schedule', create: scheduleDashboard },
 ];
+
+/**
+ * Copy one chart within a dashboard (#6474): a deep copy of the definition
+ * under a fresh id and `title`, inserted right after the original in
+ * `charts`, laid out at the bottom of the grid at the original's size.
+ * `null` when `chartId` is not on the dashboard.
+ */
+export function duplicateChart(dashboard: DashboardSpec, chartId: string, title: string): { dashboard: DashboardSpec; chart: ChartSpec } | null {
+  const index = dashboard.charts.findIndex((c) => c.id === chartId);
+  if (index === -1) return null;
+  const chart: ChartSpec = { ...structuredClone(dashboard.charts[index]), id: freshId('chart'), title };
+  const source = dashboard.layout.find((l) => l.chartId === chartId);
+  const bottom = dashboard.layout.reduce((max, l) => Math.max(max, l.y + l.h), 0);
+  const charts = [...dashboard.charts];
+  charts.splice(index + 1, 0, chart);
+  const layout = [...dashboard.layout, { chartId: chart.id, x: 0, y: bottom, w: source?.w ?? 6, h: source?.h ?? 4 }];
+  return { dashboard: { ...dashboard, charts, layout }, chart };
+}

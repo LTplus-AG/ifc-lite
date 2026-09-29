@@ -194,3 +194,11 @@ describe('materials', () => {
     expect(() => assignMaterialInStore(editor, anchor, 5, [], [])).toThrow(/at least one object/);
   });
 });
+
+describe('authoring schema gate', () => {
+  it.each(['IFC5', 'IFCX'])('refuses %s by name before writing', (schema) => {
+    const { view, editor, anchor } = synthetic(schema as AuthoringAnchor['schema']);
+    expect(() => addMaterialToStore(editor, anchor, { Name: 'Concrete' })).toThrow(`authoring ${schema} models is not supported`);
+    expect(view.getNewEntities()).toHaveLength(0);
+  });
+});

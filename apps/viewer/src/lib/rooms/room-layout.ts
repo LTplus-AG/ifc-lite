@@ -185,6 +185,16 @@ export function fileLayout(s: ViewerState, modelId: string, storeyId: number, we
   file(scopeOf(modelId, storeyId, weld), undoHead(s, modelId), { walls, plate, faces: null });
 }
 
+/** Free the layouts of one model (removed, or reloaded under the same id: its walls and undo head start over). */
+export function clearModelLayouts(modelId: string): void {
+  for (const [key, scope] of scopes) {
+    if (!key.startsWith(`${modelId}|`)) continue;
+    for (const entry of scope.entries.values()) freeEntry(entry);
+    scopes.delete(key);
+  }
+  version++;
+}
+
 /** Free every layout (tests; a reloaded model). */
 export function clearRoomLayouts(): void {
   for (const scope of scopes.values()) for (const entry of scope.entries.values()) freeEntry(entry);

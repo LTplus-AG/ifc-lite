@@ -41,12 +41,12 @@ afterEach(() => {
 });
 
 describe('Model tool rail (#6232 M2.1)', () => {
-  it('shows only while the workspace is open, with Select, the build tools, Split, the plan toggle (M2.4) and Leave', () => {
+  it('shows only while the workspace is open, with Select, the build tools, Split, Move, Rotate, the plan toggle (M2.4) and Leave', () => {
     const ui = mount();
     assert.equal(ui.querySelector('[data-model-tool-rail]'), null, 'no rail while viewing');
     act(() => { useViewerStore.getState().enterModelWorkspace(); });
     const ids = [...ui.querySelectorAll('[data-rail-tool]')].map((b) => b.getAttribute('data-rail-tool'));
-    assert.deepEqual(ids, ['select', 'wall.place', 'slab.place', 'column.place', 'beam.place', 'room.place', 'opening.place', 'door.place', 'window.place', 'element.split', 'split.multi', 'plan', 'leave']);
+    assert.deepEqual(ids, ['select', 'wall.place', 'slab.place', 'column.place', 'beam.place', 'room.place', 'opening.place', 'door.place', 'window.place', 'element.split', 'element.array', 'element.move', 'element.rotate', 'split.multi', 'plan', 'leave']);
     assert.equal(tool(ui, 'select')?.getAttribute('aria-pressed'), 'true');
   });
 
@@ -65,16 +65,34 @@ describe('Model tool rail (#6232 M2.1)', () => {
     assert.equal(useViewerStore.getState().session?.activeCommandId ?? null, null, 'Select ends the command');
   });
 
-  it('Split is disabled with its reason until something is selected', () => {
+  it('Split and Array are disabled with their reason until something is selected', () => {
     const ui = mount();
     act(() => { useViewerStore.getState().enterModelWorkspace(); });
-    assert.equal(tool(ui, 'element.split')?.disabled, true);
-    assert.ok(ui.querySelector('[data-rail-disabled="element.split"]'), 'a live tooltip trigger wraps the disabled button');
+    for (const id of ['element.split', 'element.array']) {
+      assert.equal(tool(ui, id)?.disabled, true, id);
+      assert.ok(ui.querySelector(`[data-rail-disabled="${id}"]`), `${id}: a live tooltip trigger wraps the disabled button`);
+    }
     act(() => {
       const s = useViewerStore.getState();
       s.setSelectedEntityId(toGlobalIdFromModels(s.models, MODEL_ID, STOREY));
     });
     assert.equal(tool(ui, 'element.split')?.disabled, false);
+    assert.equal(tool(ui, 'element.array')?.disabled, false);
+  });
+
+  it('Move and Rotate are disabled until something is selected, then start on it (#6232 C2)', () => {
+    const ui = mount();
+    act(() => { useViewerStore.getState().enterModelWorkspace(); });
+    for (const id of ['element.move', 'element.rotate']) assert.equal(tool(ui, id)?.disabled, true, id);
+    act(() => {
+      const s = useViewerStore.getState();
+      s.setSelectedEntityId(toGlobalIdFromModels(s.models, MODEL_ID, STOREY));
+    });
+    for (const id of ['element.move', 'element.rotate']) {
+      assert.equal(tool(ui, id)?.disabled, false, id);
+      act(() => click(tool(ui, id)!));
+      assert.equal(useViewerStore.getState().session?.activeCommandId, id);
+    }
   });
 
   it('with no storey to draw on, every build tool is disabled and refuses to start', () => {

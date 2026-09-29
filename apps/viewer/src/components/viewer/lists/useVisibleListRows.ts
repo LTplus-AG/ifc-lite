@@ -16,7 +16,7 @@ import { useMemo } from 'react';
 import type { ListRow } from '@ifc-lite/lists';
 import { useViewerStore } from '@/store';
 import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
-import { ownsCurrentVisibility } from '@/lib/visibility/ownership';
+import { ownsCurrentIsolation } from '@/lib/visibility/ownership';
 
 export function useVisibleListRows(rows: ListRow[], filterByVisibility: boolean): ListRow[] {
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
@@ -32,8 +32,7 @@ export function useVisibleListRows(rows: ListRow[], filterByVisibility: boolean)
 
   return useMemo(() => {
     if (!filterByVisibility) return rows;
-    const ownIsolation = listVisibilityOwned?.channel === 'isolate'
-      && ownsCurrentVisibility({ isolatedEntities }, listVisibilityOwned);
+    const ownIsolation = ownsCurrentIsolation({ isolatedEntities }, listVisibilityOwned);
     const visibleSet = new Set<string>();
     for (const ref of getVisibleBasketEntityRefsFromStore(ownIsolation)) {
       visibleSet.add(`${ref.modelId}:${ref.expressId}`);

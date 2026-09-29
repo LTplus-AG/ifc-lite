@@ -57,6 +57,12 @@ export const sourcesEn = {
   'sources.sourceFileRow.loadedBadge': { one: 'Loaded', other: '{count} loaded' },
   'sources.sourceFileRow.syncAria': 'Sync {name} from source',
 
+  // ── SourceDownloadStatus: per-file download and Sync progress (#6375) ──
+  'sources.downloadStatus.queued': 'Queued',
+  'sources.downloadStatus.failed': 'Download failed',
+  'sources.downloadStatus.downloadingAria': 'Downloading {name}',
+  'sources.downloadStatus.syncingAria': 'Downloading the latest revision of {name}',
+
   // ── SourceFolderStep ──
   'sources.sourceFolderStep.fileAreaRemoveFavouriteAria': 'Remove favourite: {name}',
   'sources.sourceFolderStep.fileAreaAddFavouriteAria': 'Add favourite: {name}',

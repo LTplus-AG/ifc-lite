@@ -259,6 +259,12 @@ In the IFClite viewer, IDS validation is integrated through the Data validation 
 
 No `.ids` file to hand? With no model of your own open, the empty panel's **Try with demo data** loads the demo project and the IDS written for it.
 
+### Manual validation
+
+Some checks are done by eye rather than by a rule: the model was uploaded to the CDE on time, objects sit on the right storey. The Data validation panel's third tab, **Manual validation**, holds a checklist of groups of such checks. Each check takes **Pass**, **Fail** or **Warning** and an optional comment; a check with no verdict shows as **Not checked**. Each group has a ring chart and there is an overall ring; a warning is counted on its own and never as a pass.
+
+**Edit checklist** adds, renames, reorders and deletes groups and checks. **Save .checklist.json** downloads the structure only (never the answers), so one file can be reused on every model; **Open .checklist.json** and **Recent checklists** load one back. Answers are stored in the browser per model, keyed by the model file's identity, so they come back when the same file is loaded again; with several models loaded, a picker chooses which one is being checked. Manual results are kept apart from IDS and information-validation reports and never replace them. To put them in a report, add a **Manual validation report** block to a [document](documents.md).
+
 Validation runs in a Web Worker so the UI stays responsive during large runs, with an automatic fallback to in-process validation if the worker is unavailable.
 
 ### Display Options

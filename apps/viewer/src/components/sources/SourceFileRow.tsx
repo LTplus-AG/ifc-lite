@@ -4,8 +4,10 @@
 
 import type { SourceFile } from '@ifc-lite/plugin-api';
 import type { DownloadedSourceFileStatus } from '@/lib/sources/persistence';
-import { FileBox, RefreshCw, Star } from 'lucide-react';
+import type { SourceDownloadState } from '@/lib/sources/downloadProgress';
+import { FileBox, Star } from 'lucide-react';
 import { useTranslation } from '@/i18n';
+import { SourceDownloadStatus, SourceSyncIcon } from './SourceDownloadStatus';
 
 interface SourceFileRowProps {
   file: SourceFile;
@@ -13,7 +15,11 @@ interface SourceFileRowProps {
   onToggle: () => void;
   loadedModelNames: readonly string[];
   syncingFile: boolean;
+  /** Download progress of the running Sync, once it has reached the download. */
+  syncState?: SourceDownloadState;
   onSyncLoadedFile: () => void;
+  /** This file's place in the running Load batch; absent when it is not in one. */
+  downloadState?: SourceDownloadState;
   downloadedStatus: DownloadedSourceFileStatus;
   favourited: boolean;
   onToggleFavourite: () => void;
@@ -25,7 +31,9 @@ export function SourceFileRow({
   onToggle,
   loadedModelNames,
   syncingFile,
+  syncState,
   onSyncLoadedFile,
+  downloadState,
   downloadedStatus,
   favourited,
   onToggleFavourite,
@@ -80,6 +88,7 @@ export function SourceFileRow({
             </span>
           </span>
         </button>
+        {downloadState && <SourceDownloadStatus name={file.name} state={downloadState} />}
         <button
           type="button"
           className={`mt-0.5 shrink-0 rounded p-0.5 hover:bg-accent hover:text-foreground ${
@@ -114,7 +123,7 @@ export function SourceFileRow({
               disabled={syncingFile}
               onClick={onSyncLoadedFile}
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${syncingFile ? 'animate-spin' : ''}`} />
+              <SourceSyncIcon name={file.name} syncing={syncingFile} state={syncState} />
             </button>
           </span>
         )}

@@ -24,9 +24,18 @@ import type { SpatialAnchorSchema } from './anchor.js';
 
 type Schema = Exclude<SpatialAnchorSchema, 'IFC5'>;
 
+const AUTHORING_SCHEMAS: readonly string[] = ['IFC2X3', 'IFC4', 'IFC4X3'];
+
+/**
+ * The registry for an authoring schema (default IFC4). Refuses IFC5 / IFCX and
+ * anything else that is not IFC2X3, IFC4 or IFC4X3: the in-store builders write
+ * STEP entities, which those models do not have.
+ */
 export function schemaRegistry(schema: SpatialAnchorSchema | undefined, op: string): SchemaRegistry {
-  const version = schema ?? 'IFC4';
-  if (version === 'IFC5') throw new Error(`${op}: authoring IFC5 models is not supported; use IFC2X3, IFC4 or IFC4X3`);
+  const version: string = schema ?? 'IFC4';
+  if (!AUTHORING_SCHEMAS.includes(version)) {
+    throw new Error(`${op}: authoring ${version} models is not supported; use IFC2X3, IFC4 or IFC4X3`);
+  }
   return getSchemaRegistryForVersion(version as Schema);
 }
 

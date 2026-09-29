@@ -11,14 +11,21 @@
  * gesture, ghost and undo step as one drawn in 3D.
  *
  * With no command running a click selects instead (`viewport-selection.ts`,
- * the 3D click's own path): Shift toggles, an empty click clears.
+ * the 3D click's own path): Shift toggles, an empty click clears. A press on
+ * one of the selected element's handles (`plan-handles.ts`) starts the
+ * command behind it, the same command its 3D handle starts, and the drag then
+ * feeds it like any running command.
  */
 
 import { commandDoubleClick, commandPointerDown, commandPointerMove, getCommandRuntime } from '@/lib/commands/modeling/runtime';
 import { profileOf, semanticSource, solveCommandSnap, type PointerModifiers } from '@/lib/commands/modeling/snap-solve';
 import type { SnapProfile, SnapResult, SnapSource, Vec2 } from '@/lib/snap/types';
 import { selectPickedGlobalId, toggleGlobalIdInSelection } from '../viewport-selection';
+import { beginWallEndpointDrag } from '@/lib/commands/modeling/commands/wall-move-endpoint';
+import { beginHostedSlide } from '@/lib/commands/modeling/commands/hosted-slide';
+import { beginPlanMove } from '@/lib/commands/modeling/commands/plan-move';
 import { PLAN_CUT_SOURCE_ID } from './plan-cut-source';
+import type { PlanHandle } from './plan-handles';
 
 export interface PlanPointerInput {
   /** The cursor, workplane-local metres. */
@@ -69,4 +76,16 @@ export function selectFromPlan(globalId: number | null, toggle: boolean): void {
     return;
   }
   selectPickedGlobalId(globalId);
+}
+
+/**
+ * A plan handle was grabbed: start its command. The command runs until the
+ * pointer is released anywhere (a window `pointerup`), writing one undo step.
+ * True when the command started.
+ */
+export function beginPlanHandleDrag(handle: PlanHandle): boolean {
+  if (handle.kind === 'wallEnd') beginWallEndpointDrag(handle.which);
+  else if (handle.kind === 'slide') beginHostedSlide();
+  else beginPlanMove(handle.at);
+  return getCommandRuntime().command !== null;
 }

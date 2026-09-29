@@ -2,14 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import type { ConnectionTestResult, SourceFile as PluginSourceFile } from '@ifc-lite/plugin-api';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import type { ConnectionTestResult } from '@ifc-lite/plugin-api';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
-import { dispatchSourceDownload } from '@/services/sources/source-host';
 import { SourceSettingsDialog } from './SourceSettingsDialog';
 import { SourceBrowser } from './SourceBrowser';
 import { SourceProviderRow } from './SourceProviderRow';
 import { SourceFavouritesList } from './SourceFavouritesList';
+import { useSourceDownloadBatch } from './useSourceDownloadBatch';
 import type { SourceFavourite } from '@/lib/sources/favourites';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
@@ -20,7 +20,6 @@ import type { TranslationKey } from '@/i18n';
 import { getLocale, hasActiveTranslation, resolveEnglish, selectPluralCategory } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
 import { loadResolvedSourcePrefs, saveSourcePrefs } from '@/lib/sources/preferences';
-import { sanitizeFilename } from '@/lib/export/download';
 import { clearAllSourceData } from '@/lib/sources/persistence';
 import {
   claimRevisionWatchSlot,
@@ -95,11 +94,6 @@ export function RegistrationFailureMessage({ provider, reason }: { provider: str
     : [segment, <span key={index} className="font-medium">{provider}</span>]);
 }
 
-interface SourceDownloadSelection {
-  readonly projectId: string;
-  readonly files: readonly PluginSourceFile[];
-}
-
 export function SourcesPanel({ onClose }: SourcesPanelProps) {
   const { t } = useTranslation();
   const sourceHost = useSourceHost();
@@ -110,7 +104,6 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
   );
   const [browsing, setBrowsing] = useState<string | null>(null);
   const [settingsFor, setSettingsFor] = useState<string | null>(null);
-  const [downloading, setDownloading] = useState(false);
   // Bumped when saved prefs change so rows/contexts re-derive configured state.
   const [prefsVersion, setPrefsVersion] = useState(0);
   // Same counter pattern for the favourites the list reads from storage. Its
@@ -143,10 +136,6 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
     setBrowsing(null);
     setBrowseTarget(null);
   }, []);
-
-  // Cancels in-flight downloads when the panel unmounts (close / navigate away).
-  const downloadAbortRef = useRef<AbortController | null>(null);
-  useEffect(() => () => downloadAbortRef.current?.abort(), []);
 
   const activeProvider = browsing ? sourceHost.get(browsing) : undefined;
   const settingsProvider = settingsFor ? sourceHost.get(settingsFor) : undefined;
@@ -215,68 +204,13 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
     [settingsProvider, sourceHost, t],
   );
 
-  // Downloads run one file at a time and each finished file is dispatched
-  // (and its buffer reference dropped) before the next download starts, so
-  // whole batches of large IFCs are never held in memory simultaneously.
-  // The viewport listener serializes the resulting loads.
-  const handleDownload = useCallback(
-    async ({ projectId, files }: SourceDownloadSelection) => {
-      if (!activeProvider || !browsing) return;
-      const prefs = loadResolvedSourcePrefs(activeProvider.manifest);
-      const ctx = sourceHost.createContext(activeProvider.manifest, prefs);
-      const providerId = browsing;
-      const providerTitle = activeProvider.manifest.title;
-
-      downloadAbortRef.current?.abort();
-      const controller = new AbortController();
-      downloadAbortRef.current = controller;
-
-      setDownloading(true);
-      try {
-        let queued = 0;
-        for (const f of files) {
-          if (controller.signal.aborted) break;
-          try {
-            const buffer = await activeProvider.download(
-              ctx,
-              { projectId, containerId: f.containerId, fileId: f.id },
-              { signal: controller.signal },
-            );
-            dispatchSourceDownload([
-              {
-                // `f.name` is provider-supplied and reaches `new File(...)` and
-                // `addModel`, so it is untrusted input to a filename position.
-                // Sanitize at the boundary rather than trusting every provider
-                // to have done it — the same contract the export paths use.
-                name: sanitizeFilename(f.name, { fallback: 'model.ifc' }),
-                buffer,
-                sourceFile: f,
-                tag: sourceHost.createSourceTag(
-                  providerId,
-                  projectId,
-                  f.containerId,
-                  f.id,
-                  f.currentRevisionId,
-                ),
-              },
-            ]);
-            queued += 1;
-          } catch (err) {
-            if (controller.signal.aborted) break;
-            toast.error(
-              err instanceof Error
-                ? t('sources.sourcesPanel.downloadFailedWithMessage', { name: f.name, message: err.message })
-                : t('sources.sourcesPanel.downloadFailedGeneric', { name: f.name, title: providerTitle }),
-            );
-          }
-        }
-        if (queued > 0) closeBrowser();
-      } finally {
-        setDownloading(false);
-      }
-    },
-    [activeProvider, browsing, closeBrowser, sourceHost, t],
-  );
+  // Downloads are aborted when the panel unmounts (close / navigate away).
+  const { downloading, downloadStates, handleDownload, clearFinishedDownloadStates } = useSourceDownloadBatch({
+    provider: activeProvider,
+    providerId: browsing,
+    sourceHost,
+    onBatchSucceeded: closeBrowser,
+  });
 
   const browsingCtx = useMemo(() => {
     if (!activeProvider || !browsing) return null;
@@ -302,8 +236,12 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
         provider={activeProvider}
         ctx={browsingCtx}
         onDownload={(selection) => void handleDownload(selection)}
-        onBack={closeBrowser}
+        onBack={() => {
+          closeBrowser();
+          clearFinishedDownloadStates();
+        }}
         busy={downloading}
+        downloadStates={downloadStates}
         openTarget={browseTarget}
         onFavouritesChanged={bumpFavourites}
       />

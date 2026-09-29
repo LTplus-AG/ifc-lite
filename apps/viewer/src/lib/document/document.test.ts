@@ -766,7 +766,7 @@ describe('table block (#5142)', () => {
     assert.deepEqual(bad({ ...tableBlock(), source: { kind: 'list', list: { ...listOf(), groups: undefined, conditions: [] } } }), ['blocks[0].source.list']);
     assert.deepEqual(bad({ ...tableBlock(), source: { kind: 'list', list: { ...listOf(), expressIdsByModel: { m: [1] } } } }), ['blocks[0].source.list.expressIdsByModel']);
     assert.deepEqual(bad({ kind: 'table', id: 'x' }), ['blocks[0].source']);
-    assert.deepEqual(validateDocumentSpec(docWith([{ kind: 'rows' } as unknown as TableBlock])).map((e) => e.message), ['expected a non-empty string', 'expected text | image | chart | topic | spacer | table | ids-report']);
+    assert.deepEqual(validateDocumentSpec(docWith([{ kind: 'rows' } as unknown as TableBlock])).map((e) => e.message), ['expected a non-empty string', 'expected text | image | chart | topic | spacer | table | ids-report | manual-report']);
 
     const imported = parseDocumentFile(JSON.stringify(docWith([tableBlock()])));
     const block = imported.blocks[0] as TableBlock;

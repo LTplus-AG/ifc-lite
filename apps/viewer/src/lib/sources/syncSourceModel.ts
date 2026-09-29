@@ -9,6 +9,7 @@ import { modelRemovedScope } from '@/store/teardown-scope';
 import type { SourceHost } from '@/services/sources/source-host';
 import { recordDownloadedSourceFile } from './persistence';
 import { enqueueSourceLoad } from './loadQueue';
+import { setSourceSyncProgress } from './downloadProgress';
 import { loadResolvedSourcePrefs } from './preferences';
 import { sanitizeFilename } from '@/lib/export/download';
 import { captureModelTags, restoreModelTags } from '../model-tags/carry-over.js';
@@ -129,11 +130,22 @@ async function doSyncSourceModel({
   }
 
   // Download the latest revision (no revisionId in the ref means "latest").
-  const buffer = await provider.download(ctx, {
-    projectId: tag.projectId,
-    containerId: latestFile.containerId,
-    fileId: latestFile.id,
-  }, { signal });
+  // Its progress feeds the Sync ring on every row showing this model
+  // (#6375); the entry is dropped once the bytes are in, so the parse that
+  // follows reads as the Sync icon's plain busy state again.
+  let buffer: ArrayBuffer;
+  try {
+    buffer = await provider.download(ctx, {
+      projectId: tag.projectId,
+      containerId: latestFile.containerId,
+      fileId: latestFile.id,
+    }, {
+      signal,
+      onProgress: (received, total) => setSourceSyncProgress(modelId, { phase: 'downloading', received, total }),
+    });
+  } finally {
+    setSourceSyncProgress(modelId, undefined);
+  }
 
   // The listing and download above can take a long time; the user may have
   // removed the model (X in the model list) while they ran. Loading the

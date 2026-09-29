@@ -22,8 +22,11 @@ mod caches;
 mod fast_buffers;
 #[path = "decoder/precision.rs"]
 mod precision;
+#[path = "decoder/schema_layout.rs"]
+mod schema_layout;
 #[path = "decoder/styled_items.rs"]
 mod styled_items;
+pub use schema_layout::GridAxisIndex;
 pub(crate) type StyledItemIndexResult = std::result::Result<FxHashMap<u32, Vec<u32>>, String>;
 
 /// Pre-built entity index type
@@ -100,6 +103,9 @@ pub struct EntityDecoder<'a> {
     /// [`Self::take_placement_transform_cache`].
     placement_transform_cache: FxHashMap<u32, [f64; 16]>,
     styled_item_index: std::sync::OnceLock<StyledItemIndexResult>,
+    /// Declared `FILE_SCHEMA`, resolved on first use (see `schema_layout`).
+    schema_version_cache: Option<Option<crate::generated::schema_registry::SchemaVersion>>,
+    grid_axis_index: Arc<GridAxisIndex>,
 }
 
 impl<'a> EntityDecoder<'a> {
@@ -121,6 +127,8 @@ impl<'a> EntityDecoder<'a> {
             geometric_precision_cache: None,
             placement_transform_cache: FxHashMap::default(),
             styled_item_index: std::sync::OnceLock::new(),
+            schema_version_cache: None,
+            grid_axis_index: Arc::default(),
         }
     }
 
@@ -142,6 +150,8 @@ impl<'a> EntityDecoder<'a> {
             geometric_precision_cache: None,
             placement_transform_cache: FxHashMap::default(),
             styled_item_index: std::sync::OnceLock::new(),
+            schema_version_cache: None,
+            grid_axis_index: Arc::default(),
         }
     }
 
@@ -163,6 +173,8 @@ impl<'a> EntityDecoder<'a> {
             geometric_precision_cache: None,
             placement_transform_cache: FxHashMap::default(),
             styled_item_index: std::sync::OnceLock::new(),
+            schema_version_cache: None,
+            grid_axis_index: Arc::default(),
         }
     }
 

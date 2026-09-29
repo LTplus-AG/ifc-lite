@@ -42,20 +42,10 @@
  *   alignment, it is NOT invalidated by federation re-baking. It is the sum of
  *   EVERY meshed face, not one side, so it is never comparable to a
  *   `NetSideArea`/`GrossSideArea` and is labelled its own "mesh" row.
- *   GPU-instanced-only elements have no flat mesh to sum and are reported as
- *   "no mesh" here too — there is no per-entity area side channel analogous
- *   to `instancedGeometryVolumes`. A mesh record that IS present but never
- *   triangulated anything (`indices.length < 3`, including the empty-array
- *   case) is likewise "no mesh", not "measured 0 m²" — those are different
- *   claims, and only the second one is true of a record with no triangles to
- *   have summed (`measure-modes/mesh-area.ts`'s `collectMeshAreas`). A mesh
- *   whose triangles genuinely sum to zero (e.g. every triangle degenerate)
- *   IS "measured" — that zero is a real answer, not an absence.
- *   Mesh area needs no `IfcDataStore`, so its collection never depends on
- *   one: `collectMeshAreas` takes mesh data alone (see its own doc comment)
- *   specifically so a future store-related early return elsewhere in this
- *   component cannot end up gating it, structurally rather than by
- *   convention.
+ *   GPU-instanced-only elements and mesh records with fewer than three indices
+ *   have no measurable mesh area; a triangulated mesh with degenerate faces
+ *   instead has a measured zero. `collectMeshAreas` takes mesh data without an
+ *   `IfcDataStore`, so missing store data cannot suppress a mesh measurement.
  *
  * - **Mass derived** — geometry volume x the material density the file declares
  *   in `Pset_MaterialCommon.MassDensity` (#2736). This is the ONLY number on

@@ -54,6 +54,7 @@ export const documentEn = {
   'document.block.insertFieldTitle': 'Insert a {path} that reads the model',
   'document.block.textAriaLabel': 'Block text',
   'document.block.textPlaceholder': 'Text; {IfcProject.Name} reads the model',
+  'document.block.textKeysHint': 'Enter: new line · Tab: indent (Shift+Tab: outdent) · Esc, then Tab: leave the text box',
   'document.block.moveUpAriaLabel': 'Move block up',
   'document.block.moveDownAriaLabel': 'Move block down',
   'document.block.removeAriaLabel': 'Remove block',

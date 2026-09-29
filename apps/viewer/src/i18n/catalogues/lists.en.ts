@@ -110,6 +110,8 @@ export const listsEn = {
   'lists.resultsTable.exportFailed': 'Export failed: {message}',
   'lists.resultsTable.groupedAriaLabel': 'grouped',
   'lists.resultsTable.groupingLevelAriaLabel': 'grouping level {level}',
+  'lists.resultsTable.expandGroupAriaLabel': 'Expand {name}',
+  'lists.resultsTable.collapseGroupAriaLabel': 'Collapse {name}',
   'lists.resultsTable.dragToResizeTitle': 'Drag to resize · arrow keys to adjust · Home or double-click to reset',
   'lists.resultsTable.totalCount': 'Total · {count}',
   'lists.resultsTable.sumIcon': 'Σ',

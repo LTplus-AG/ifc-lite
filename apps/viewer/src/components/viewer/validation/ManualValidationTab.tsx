@@ -65,29 +65,29 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      <div className="flex flex-wrap items-center gap-1.5 border-b p-2">
+      <div className="flex items-center gap-1.5 border-b p-2">
         <Input
           aria-label={t('manualValidation.name.label')}
           placeholder={t('manualValidation.name.placeholder')}
           value={checklist.name}
           onChange={(e) => renameChecklist(e.target.value)}
-          className="h-7 min-w-[8rem] flex-1 px-2 text-xs font-medium"
+          className="h-7 min-w-0 flex-1 px-2 text-xs font-medium"
         />
         <Button
           type="button"
           size="sm"
           variant={editing ? 'default' : 'outline'}
-          className="h-7 gap-1 text-xs"
+          className="h-7 shrink-0 gap-1 text-xs"
           aria-pressed={editing}
           onClick={() => setEditing(!editing)}
         >
           <Pencil className="h-3.5 w-3.5" />
           {editing ? t('manualValidation.doneEditing') : t('manualValidation.edit')}
         </Button>
-        <IconButton label={t('manualValidation.save')} className="h-7 w-7" onClick={manual.save}>
+        <IconButton label={t('manualValidation.save')} className="h-7 w-7 shrink-0" onClick={manual.save}>
           <Save className="h-3.5 w-3.5" />
         </IconButton>
-        <IconButton label={t('manualValidation.close')} className="h-7 w-7" onClick={manual.close}>
+        <IconButton label={t('manualValidation.close')} className="h-7 w-7 shrink-0" onClick={manual.close}>
           <X className="h-3.5 w-3.5" />
         </IconButton>
       </div>

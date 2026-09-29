@@ -210,7 +210,7 @@ function SourceToggle() {
     ['manual', 'validationPanel.toggle.manual'],
   ];
   return (
-    <TabsList className="flex h-auto justify-start gap-1 rounded-none border-b bg-transparent px-3 py-1.5">
+    <TabsList className="flex h-auto flex-wrap justify-start gap-1 rounded-none border-b bg-transparent px-3 py-1.5">
       {options.map(([source, labelKey]) => (
         <TabsTrigger
           key={source}

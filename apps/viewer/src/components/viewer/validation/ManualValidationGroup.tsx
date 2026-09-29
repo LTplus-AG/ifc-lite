@@ -48,14 +48,16 @@ export function ManualValidationGroup({ group, counts, answers, editing, isFirst
             aria-label={t('manualValidation.group.nameLabel')}
             value={group.name}
             onChange={(e) => renameGroup(group.id, e.target.value)}
-            className="h-7 flex-1 px-2 text-xs font-medium"
+            className="h-7 min-w-0 flex-1 px-2 text-xs font-medium"
           />
         ) : (
           <h3 className="flex-1 truncate text-xs font-semibold">{displayName}</h3>
         )}
-        <span className="text-2xs text-muted-foreground tabular-nums">
-          {t('manualValidation.group.progress', { answered: counts.total - counts.unanswered, total: counts.total })}
-        </span>
+        {!editing && (
+          <span className="shrink-0 text-2xs text-muted-foreground tabular-nums">
+            {t('manualValidation.group.progress', { answered: counts.total - counts.unanswered, total: counts.total })}
+          </span>
+        )}
         {editing && (
           <>
             <IconButton label={t('manualValidation.group.moveUp')} className="h-7 w-7" disabled={isFirst} onClick={() => moveGroup(group.id, -1)}>

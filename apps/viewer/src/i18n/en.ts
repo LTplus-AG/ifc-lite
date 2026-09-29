@@ -84,6 +84,7 @@ import { spaceSketchEn } from './catalogues/space-sketch.en';
 import { splitToolEn } from './catalogues/split-tool.en';
 import { modelingCommandEn } from './catalogues/modeling-command.en';
 import { modelWorkspaceEn } from './catalogues/model-workspace.en';
+import { roomToolEn } from './catalogues/room-tool.en';
 import { modelInspectorEn } from './catalogues/model-inspector.en';
 import { remeshEn } from './catalogues/remesh.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
@@ -132,6 +133,7 @@ export const en = {
   ...splitToolEn,
   ...modelingCommandEn,
   ...modelWorkspaceEn,
+  ...roomToolEn,
   ...modelInspectorEn,
   ...remeshEn,
   ...documentEn,

@@ -21,4 +21,3 @@ export function snapshotComparison(result: CompareResult, models: ReadonlyMap<st
     report: buildCompareReport(result, modelsAsCompared(models, result.comparedStores)),
   };
 }
-

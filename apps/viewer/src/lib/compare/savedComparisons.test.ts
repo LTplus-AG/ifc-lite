@@ -63,11 +63,42 @@ describe('Saved comparison invariants (#6506)', () => {
     const doc = { version: DOCUMENT_VERSION, id: 'doc', name: 'Report', page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'table', id: 't', source: { kind: 'comparison', comparison: valid } }] };
     assert.deepEqual(validateDocumentSpec(doc), []);
     for (let version = 1; version <= 8; version++) assert.deepEqual(validateDocumentSpec(migrateDocumentSpec({ ...doc, version, blocks: [] })), []);
+    const version8 = parseDocumentFile(JSON.stringify({ ...doc, version: 8, blocks: [
+      { kind: 'text', id: 'before', text: 'Before', style: 'body' },
+      { kind: 'page-break', id: 'break' }, { kind: 'text', id: 'after', text: 'After', style: 'body' },
+    ] }));
+    assert.equal(version8.version, DOCUMENT_VERSION);
+    assert.deepEqual(version8.blocks.map((block) => block.kind), ['text', 'page-break', 'text'], 'format8 page-break semantics survive comparison-source migration');
     assert.throws(() => parseDocumentFile(JSON.stringify({ ...doc, blocks: [{ ...doc.blocks[0], source: { kind: 'comparison', comparison: corrupt } }] })), /source.comparison/);
     const copy = parseDocumentFile(JSON.stringify(doc));
     assert.equal(copy.blocks[0].kind, 'table');
     if (copy.blocks[0].kind !== 'table' || copy.blocks[0].source.kind !== 'comparison') throw new Error('expected comparison');
     assert.deepEqual(copy.blocks[0].source.comparison.report.rows, valid.report.rows);
+  });
+
+  it('keeps complete multi-page comparison provenance with its first table row at the boundary', () => {
+    const saved = snapshotComparison(comparisonResult('A', 'B'), comparisonModels(), 'Report');
+    const names = Array.from({ length: 160 }, (_, i) => `model-${String(i).padStart(3, '0')}-long-authoring-source.ifc`);
+    saved.report.baseModel = names.join('; ');
+    const state = resolveComparisonTableState(saved);
+    assert.ok(state.status === 'ok' && state.kind === 'comparison');
+    const summary = comparisonSummary(saved);
+    const layout = composeDocument({ name: saved.name, page: { size: 'A4', orientation: 'portrait' }, generatedAt: '', measure: estimateTextWidth,
+      blocks: [{ kind: 'spacer', id: 'preceding-space', height: 600 },
+        { kind: 'table', id: 'saved', title: saved.name, summary, columns: state.model.columns, rows: state.model.rows }],
+    });
+    assert.ok(layout.pages.length >= 3, 'the complete provenance spans pages after the preceding content');
+    const text = layout.pages.flatMap((page) => page.items.flatMap((item) => item.kind === 'text' ? [item.text] : [])).join(' ');
+    for (const name of names) assert.ok(text.includes(name), `${name} is retained without ellipsis`);
+    const finalLine = summary.at(-1)!;
+    const finalProvenancePage = layout.pages.find((page) => page.items.some((item) => item.kind === 'text' && item.text === finalLine));
+    assert.ok(finalProvenancePage);
+    assert.ok(finalProvenancePage.items.some((item) => item.kind === 'table' && item.rows[0]?.cells[0] === 'new'),
+      'the last provenance line is never orphaned from the first table row');
+    for (const page of layout.pages) for (const item of page.items) {
+      assert.ok(item.y >= REPORT_MARGIN + 30 && item.y <= layout.size.h - REPORT_MARGIN - 24);
+      if (item.kind === 'table') assert.ok(item.y + (item.rows.length + 1) * TABLE_ROW_HEIGHT <= layout.size.h - REPORT_MARGIN - 24 + 0.01);
+    }
   });
 
   it('wraps long provenance/caveats and paginates all saved rows inside page bounds', () => {

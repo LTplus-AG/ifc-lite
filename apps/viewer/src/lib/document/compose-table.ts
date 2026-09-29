@@ -15,6 +15,7 @@
 import { AUTOTABLE_ROW_HEIGHT } from '../export/report/generate-report-pdf.js';
 import type { TableColumnOut, TableRowOut } from './resolve-table.js';
 import type { TextFont } from './types.js';
+import { layoutReportProvenance, wrappedReportProvenance, REPORT_PROVENANCE_LINE_HEIGHT, type WrapLines } from './compose-report-provenance.js';
 
 /** 11pt bold title at `y + 11`, the same strip a chart block gets. */
 export const TABLE_TITLE_HEIGHT = 18;
@@ -99,7 +100,7 @@ export function tableColumnWidths(columns: readonly TableColumnOut[], rows: read
   return widths;
 }
 
-export function layoutTable(block: TableLayoutBlock, cursor: LayoutCursor, contentW: number, measure: Measure, blockGap: number, wrap: (text: string) => string[] = (text) => [text]): void {
+export function layoutTable(block: TableLayoutBlock, cursor: LayoutCursor, contentW: number, measure: Measure, blockGap: number, wrap: WrapLines = (text) => [text]): void {
   const head = TABLE_ROW_HEIGHT;
   const row = TABLE_ROW_HEIGHT;
   const rows = block.rows;
@@ -107,17 +108,13 @@ export function layoutTable(block: TableLayoutBlock, cursor: LayoutCursor, conte
   // Title, head and the first rows move together (a heading keeps its next line the same way).
   // `message` decides by presence, not truthiness: an empty error message still prints as a message line (review finding).
   const hasMessage = block.message !== undefined;
-  const summary = (block.summary ?? []).flatMap(wrap);
-  const lead = Math.min(cursor.bottom - cursor.top, TABLE_TITLE_HEIGHT + summary.length * MESSAGE_HEIGHT + (hasMessage ? MESSAGE_HEIGHT : head + Math.min(3, rows.length) * row));
+  const summary = (block.summary ?? []).flatMap((text) => wrappedReportProvenance(text, contentW, wrap));
+  const lead = Math.min(cursor.bottom - cursor.top, TABLE_TITLE_HEIGHT + summary.length * REPORT_PROVENANCE_LINE_HEIGHT + (hasMessage ? MESSAGE_HEIGHT : head + Math.min(3, rows.length) * row));
   cursor.ensure(lead);
   cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 11, size: 11, bold: true, gray: 0, text: cursor.truncate(block.title, contentW, 11, true) });
   cursor.y += TABLE_TITLE_HEIGHT;
 
-  for (const line of summary) {
-    cursor.ensure(MESSAGE_HEIGHT);
-    cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 8, bold: false, gray: 130, text: line });
-    cursor.y += MESSAGE_HEIGHT;
-  }
+  layoutReportProvenance(summary, cursor, hasMessage ? MESSAGE_HEIGHT : head + Math.min(1, rows.length) * row);
 
   if (hasMessage) {
     cursor.ensure(MESSAGE_HEIGHT);

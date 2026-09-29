@@ -35,7 +35,7 @@ describe('Multiple saved pairs in mounted UI and documentation (#6506)', () => {
     const save = Array.from(ui.querySelectorAll('button')).find((b) => b.textContent === 'Save comparison');
     assert.ok(save); assert.ok(save.disabled, 'old bounds must not be projected into a new saved report');
     act(() => useViewerStore.setState({ compareResult: comparisonResult('A', 'B') }));
-    const original = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(localStorage), 'setItem');
+    const original = localStorage.setItem;
     Object.defineProperty(localStorage, 'setItem', { configurable: true, value: () => { throw new Error('quota'); } });
     try {
       click(save);
@@ -43,8 +43,7 @@ describe('Multiple saved pairs in mounted UI and documentation (#6506)', () => {
       assert.ok(ui.querySelector('tbody')?.textContent?.includes('wall'));
       assert.equal(ui.querySelector('select')?.options.length, 2, 'unsaved report remains selectable in memory');
     } finally {
-      Reflect.deleteProperty(localStorage, 'setItem');
-      if (original) Object.defineProperty(Object.getPrototypeOf(localStorage), 'setItem', original);
+      Object.defineProperty(localStorage, 'setItem', { configurable: true, value: original });
     }
   });
 

@@ -345,7 +345,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           break;
         }
         case 'table': {
-          layoutTable(block, cursor, contentW, input.measure, BLOCK_GAP, (text) => wrapText(text, contentW, 8, false, input.measure));
+          layoutTable(block, cursor, contentW, input.measure, BLOCK_GAP, (text, width, size, bold) => wrapText(text, width, size, bold, input.measure));
           break;
         }
         case 'ids-report': {

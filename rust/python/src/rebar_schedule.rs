@@ -224,18 +224,8 @@ mod tests {
         assert_eq!(validate_finite(&schedule).unwrap_err(), "rebar #125 sweep 0 checks.findings[0].threshold is non-finite");
     }
 
-    #[test]
-    fn issue_6305_preflight_comparisons_cannot_become_null() {
-        let ifc = include_bytes!("../../geometry/tests/fixtures/swept_disk_composite_arc_ubar.ifc");
-        let limits = RebarPreflightLimits::new(0.0, 0.0, None).unwrap();
-        let mut schedule = build_rebar_schedule_with_preflight(
-            ifc, None, &SweptDiskCheckOptions::default(), &limits,
-        ).unwrap();
-        assert!(validate_finite(&schedule).is_ok());
-        let comparison = &mut schedule.rows.get_mut(&125).unwrap().sweeps[0]
-            .preflight.as_mut().unwrap().comparisons.as_mut().unwrap()[0];
-        comparison.measured_m = f64::INFINITY;
-        assert_eq!(validate_finite(&schedule).unwrap_err(),
-            "rebar #125 sweep 0 preflight.comparisons[0].measured_m is non-finite");
-    }
 }
+
+#[cfg(test)]
+#[path = "rebar_schedule_tests.rs"]
+mod preflight_tests;

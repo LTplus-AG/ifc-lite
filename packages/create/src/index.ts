@@ -72,7 +72,6 @@ export {
   emitProfileSection,
   validateProfileSection,
   profileSectionIfcClass,
-  profileSectionExtent,
   type ProfileSection,
   type ProfileSectionType,
   type RectangleSection,

@@ -2,6 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/**
+ * The shared profile factory (`profile.ts`), exercised through the builders
+ * that use it: `addBeamToStore`, `addColumnToStore`, `addMemberToStore`.
+ */
+
 import { describe, expect, it } from 'vitest';
 import {
   MutablePropertyView,
@@ -10,7 +15,7 @@ import {
   type MutationStoreShape,
 } from '@ifc-lite/mutations';
 import type { SpatialAnchor, SpatialAnchorSchema } from './anchor.js';
-import { emitProfileSection, profileSectionExtent, type ProfileSection } from './profile.js';
+import type { ProfileSection } from './profile.js';
 import { addBeamToStore } from './beam.js';
 import { addColumnToStore } from './column.js';
 import { addMemberToStore } from './member.js';
@@ -28,6 +33,14 @@ function setup(schema?: SpatialAnchorSchema, lengthUnitScale?: number) {
   };
   const entity = (id: number) => view.getNewEntities().find((e) => e.expressId === id)!;
   return { editor, view, anchor, entity };
+}
+
+/** The profile entity a beam with `section` is extruded from. */
+function beamProfile(schema: SpatialAnchorSchema | undefined, section: ProfileSection, lengthUnitScale?: number) {
+  const { editor, anchor, entity } = setup(schema, lengthUnitScale);
+  const beam = addBeamToStore(editor, anchor, { Start: [0, 0, 3], End: [4, 0, 3], Profile: section });
+  expect(entity(beam.solidId).attributes[0]).toBe(`#${beam.profileId}`);
+  return { profile: entity(beam.profileId), entity };
 }
 
 const real = (v: number) => ({ real: v });
@@ -49,11 +62,9 @@ const SECTIONS: Array<[ProfileSection, string, unknown[]]> = [
   [{ Type: 'CircleHollow', Radius: 0.1, WallThickness: 0.008 }, 'IfcCircleHollowProfileDef', [real(0.1), real(0.008)]],
 ];
 
-describe('emitProfileSection', () => {
+describe('profile factory', () => {
   it.each(SECTIONS)('writes %j as %s, centred, laid out for IFC4', (section, cls, tail) => {
-    const { editor, anchor, entity } = setup('IFC4');
-    const id = emitProfileSection(editor, anchor, section);
-    const profile = entity(id);
+    const { profile, entity } = beamProfile('IFC4', section);
     expect(profile.type).toBe(cls);
     expect(profile.attributes.slice(0, 2)).toEqual(['.AREA.', null]);
     expect(profile.attributes.slice(3)).toEqual(tail);
@@ -62,28 +73,18 @@ describe('emitProfileSection', () => {
     expect(entity(Number(String(position.attributes[0]).slice(1))).attributes[0]).toEqual([0, 0]);
   });
 
-  it('lays each schema out from its own registry (D2): IFC2X3 T/L/U carry CentreOfGravity, IFC4 does not', () => {
+  it('lays each schema out from its own registry (D2): IFC2X3 T carries CentreOfGravityInY, IFC4 I its edge radius and slope', () => {
     const t: ProfileSection = { Type: 'T', Depth: 0.12, FlangeWidth: 0.12, WebThickness: 0.01, FlangeThickness: 0.012 };
     const i: ProfileSection = { Type: 'I', OverallWidth: 0.2, OverallDepth: 0.4, WebThickness: 0.01, FlangeThickness: 0.016 };
-    const lengths = (schema: SpatialAnchorSchema) => {
-      const { editor, anchor, entity } = setup(schema);
-      return [t, i].map((s) => entity(emitProfileSection(editor, anchor, s)).attributes.length);
-    };
+    const lengths = (schema: SpatialAnchorSchema) => [t, i].map((s) => beamProfile(schema, s).profile.attributes.length);
     expect(lengths('IFC2X3')).toEqual([13, 8]);
     expect(lengths('IFC4')).toEqual([12, 10]);
     expect(lengths('IFC4X3')).toEqual([12, 10]);
   });
 
-  it('refuses IFC5', () => {
-    const { editor, anchor, view } = setup('IFC5');
-    expect(() => emitProfileSection(editor, anchor, { Type: 'Circle', Radius: 0.1 })).toThrow(/IFC5/);
-    expect(view.getNewEntities()).toHaveLength(0);
-  });
-
   it('converts to the native length unit', () => {
-    const { editor, anchor, entity } = setup('IFC4', 0.001);
-    const id = emitProfileSection(editor, anchor, { Type: 'CircleHollow', Radius: 0.1, WallThickness: 0.008 });
-    expect(entity(id).attributes.slice(3)).toEqual([real(100), real(8)]);
+    const { profile } = beamProfile('IFC4', { Type: 'CircleHollow', Radius: 0.1, WallThickness: 0.008 }, 0.001);
+    expect(profile.attributes.slice(3)).toEqual([real(100), real(8)]);
   });
 
   it.each([
@@ -91,20 +92,15 @@ describe('emitProfileSection', () => {
     [{ Type: 'I', OverallWidth: 0.2, OverallDepth: 0.4, WebThickness: 0.01, FlangeThickness: 0.2 }, /FlangeThickness/],
     [{ Type: 'CircleHollow', Radius: 0.1, WallThickness: 0.1 }, /WallThickness/],
     [{ Type: 'RectangleHollow', XDim: 0.1, YDim: 0.2, WallThickness: 0.05 }, /WallThickness/],
-    [{ Type: 'Circle', Radius: 0 }, /Radius/],
-    [{ Type: 'Circle', Radius: Number.NaN }, /Radius/],
+    [{ Type: 'C', Depth: 0.2, Width: 0.07, WallThickness: 0.003, Girth: 0.15 }, /Girth/],
+    [{ Type: 'Circle', Radius: 0 }, /IfcCircleProfileDef\.Radius/],
+    [{ Type: 'Circle', Radius: Number.NaN }, /IfcCircleProfileDef\.Radius/],
     [{ Type: 'L', Depth: 0.1, Width: 0.08, Thickness: 0.01, FilletRadius: -1 }, /FilletRadius/],
     [{ Type: 'Hexagon', Radius: 1 }, /unknown section Type/],
   ] as Array<[ProfileSection, RegExp]>)('refuses %j before emitting anything', (section, message) => {
     const { editor, anchor, view } = setup('IFC4');
-    expect(() => emitProfileSection(editor, anchor, section)).toThrow(message);
+    expect(() => addBeamToStore(editor, anchor, { Start: [0, 0, 0], End: [1, 0, 0], Profile: section })).toThrow(message);
     expect(view.getNewEntities()).toHaveLength(0);
-  });
-
-  it('reports each section\'s extent', () => {
-    expect(SECTIONS.map(([s]) => profileSectionExtent(s))).toEqual([
-      [0.3, 0.5], [0.2, 0.4], [0.08, 0.1], [0.12, 0.12], [0.075, 0.2], [0.07, 0.2], [0.3, 0.3], [0.1, 0.2], [0.2, 0.2],
-    ]);
   });
 });
 
@@ -115,33 +111,33 @@ describe('profiled beam / column / member', () => {
     const { editor, anchor, entity } = setup();
     const beam = addBeamToStore(editor, anchor, { Start: [0, 0, 3], End: [4, 0, 3], Profile: I });
     expect(entity(beam.profileId).type).toBe('IfcIShapeProfileDef');
-    expect(entity(beam.solidId).attributes[0]).toBe(`#${beam.profileId}`);
     expect(entity(beam.solidId).attributes[3]).toBe(4);
     expect(entity(beam.beamId).attributes[8]).toBe('.BEAM.');
 
     const member = addMemberToStore(editor, anchor, { Start: [0, 0, 0], End: [0, 3, 0], Profile: { Type: 'L', Depth: 0.1, Width: 0.1, Thickness: 0.01 } });
     expect(entity(member.profileId).type).toBe('IfcLShapeProfileDef');
+    expect(entity(member.solidId).attributes[0]).toBe(`#${member.profileId}`);
 
     const column = addColumnToStore(editor, anchor, { Position: [1, 1, 0], Height: 3, Profile: { Type: 'CircleHollow', Radius: 0.1, WallThickness: 0.01 } });
     expect(entity(column.profileId).type).toBe('IfcCircleHollowProfileDef');
+    expect(entity(column.solidId).attributes[0]).toBe(`#${column.profileId}`);
     expect(entity(column.solidId).attributes[3]).toBe(3);
   });
 
   it('keeps the Width x Height rectangle as the default; a Rectangle Profile builds the same graph', () => {
     const a = setup();
     const b = setup();
-    const rect = addBeamToStore(a.editor, a.anchor, { Start: [0, 0, 3], End: [4, 0, 3], Width: 0.3, Height: 0.5, GlobalId: '0123456789abcdefghijkl' });
+    const rect = addBeamToStore(a.editor, a.anchor, { Start: [0, 0, 3], End: [4, 0, 3], Width: 0.3, Height: 0.5 });
     const viaProfile = addBeamToStore(b.editor, b.anchor, {
-      Start: [0, 0, 3], End: [4, 0, 3], Profile: { Type: 'Rectangle', XDim: 0.3, YDim: 0.5 }, GlobalId: '0123456789abcdefghijkl',
+      Start: [0, 0, 3], End: [4, 0, 3], Profile: { Type: 'Rectangle', XDim: 0.3, YDim: 0.5 },
     });
     expect(a.entity(rect.profileId).attributes).toEqual(['.AREA.', null, expect.any(String), 0.3, 0.5]);
-    // Same graph apart from the profile's REAL wrapping.
-    const shape = (s: ReturnType<typeof setup>) => s.view.getNewEntities().map((e) => e.type);
-    expect(shape(a)).toEqual(shape(b));
-    expect(viaProfile.beamId).toBe(rect.beamId);
+    expect(b.entity(viaProfile.profileId).attributes.slice(3)).toEqual([real(0.3), real(0.5)]);
+    const types = (s: ReturnType<typeof setup>) => s.view.getNewEntities().map((e) => e.type);
+    expect(types(a)).toEqual(types(b));
   });
 
-  it('refuses a rectangle and a Profile together, and an invalid Profile, before emitting', () => {
+  it('refuses a rectangle and a Profile together, a bad Profile or Height, and IFC5, before emitting', () => {
     const { editor, anchor, view } = setup();
     expect(() => addBeamToStore(editor, anchor, {
       Start: [0, 0, 0], End: [1, 0, 0], Profile: I, Width: 0.3,
@@ -151,8 +147,8 @@ describe('profiled beam / column / member', () => {
     } as unknown as Parameters<typeof addColumnToStore>[2])).toThrow(/either Width and Depth or a Profile/);
     expect(() => addMemberToStore(editor, anchor, {
       Start: [0, 0, 0], End: [1, 0, 0], Profile: { Type: 'Circle', Radius: -1 },
-    })).toThrow(/Radius/);
-    expect(() => addColumnToStore(editor, anchor, { Position: [0, 0, 0], Height: 0, Profile: I })).toThrow(/Height/);
+    })).toThrow(/IfcCircleProfileDef\.Radius/);
+    expect(() => addColumnToStore(editor, anchor, { Position: [0, 0, 0], Height: 0, Profile: I })).toThrow(/Height must be a finite positive number/);
     expect(() => addBeamToStore(editor, { ...anchor, schema: 'IFC5' }, { Start: [0, 0, 0], End: [1, 0, 0], Profile: I })).toThrow(/IFC5/);
     expect(view.getNewEntities()).toHaveLength(0);
   });

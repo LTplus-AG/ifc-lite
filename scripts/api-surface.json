@@ -4866,7 +4866,6 @@
     "mapAlignments: function",
     "nestCostItemsInStore: function",
     "offsetRoomFootprint: function",
-    "profileSectionExtent: function",
     "profileSectionIfcClass: function",
     "railingPostPoints: function",
     "readRelatedLists: function",

@@ -40,3 +40,10 @@ observed noise, not a single ratio.
 `results.json` contains every raw run and paired summary. It is scoped to the
 opt-in analytic call. Existing ordinary mesh-output fingerprints and browser
 worker-pool performance are separate questions.
+
+The measured test binary was built from source head `44a1344e0cdba7f604eeef6e0827b0cc2d06d475`
+with Rust nightly `1.93.0-nightly (b6d7ff3aa 2025-11-14)`; its SHA-256 is
+`b9d7677dbaf6dbccba0466167dc8a03b5bde29b98e68edd7444007a00739dcd4`.
+The run used Linux WSL2 x86_64 after the other local Rust, viewer and browser
+benchmark processes exited. The `git_head`, fixture digest, binary digest and
+each raw measurement are also in `results.json`.

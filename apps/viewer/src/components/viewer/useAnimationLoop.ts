@@ -279,9 +279,10 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             contributionCull,
             lod,
             buildingRotation: coordinateInfoRef.current?.buildingRotation,
-            // The cut: a plane or, in box mode, the clip box (#5513), gated on the visibility toggle (#5893).
+            // The cut: a plane or, in box mode, the clip box (#5513), gated on the visibility toggle (#5893);
+            // an uncut plane preview only while the Section tool is open (#6374).
             // Add Element moves the uncut plane preview to its workplane (#6233).
-            ...withAddElementWorkplane(useViewerStore.getState(), sectionRenderClip(useViewerStore.getState().sceneState.section.visible, sectionPlaneRef.current, sectionRangeRef.current)), ...hoverOutlineTarget(),
+            ...withAddElementWorkplane(useViewerStore.getState(), sectionRenderClip(useViewerStore.getState().sceneState.section.visible, sectionPlaneRef.current, sectionRangeRef.current, activeToolRef.current)), ...hoverOutlineTarget(),
             terrainClipY: terrainClipYRef.current ?? undefined,
           });
         } catch (err) {

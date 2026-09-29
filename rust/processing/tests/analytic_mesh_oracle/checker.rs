@@ -19,13 +19,13 @@ use ifc_lite_processing::{
 
 type Point = [f64; 3];
 
-fn add(a: Point, b: Point) -> Point {
+pub(super) fn add(a: Point, b: Point) -> Point {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
 fn sub(a: Point, b: Point) -> Point {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
-fn scale(a: Point, k: f64) -> Point {
+pub(super) fn scale(a: Point, k: f64) -> Point {
     [a[0] * k, a[1] * k, a[2] * k]
 }
 fn dot(a: Point, b: Point) -> f64 {
@@ -131,7 +131,7 @@ fn triangle_distance_squared(p: Point, a: Point, b: Point, c: Point) -> f64 {
     dot(sub(p, q), sub(p, q))
 }
 
-fn nearest_mesh_distance(point: Point, mesh: &ExportedElement) -> f64 {
+pub(super) fn nearest_mesh_distance(point: Point, mesh: &ExportedElement) -> f64 {
     mesh.faces
         .iter()
         .map(|face| {
@@ -146,7 +146,7 @@ fn nearest_mesh_distance(point: Point, mesh: &ExportedElement) -> f64 {
         .sqrt()
 }
 
-fn bounds(points: impl Iterator<Item = Point>) -> (Point, Point) {
+pub(super) fn bounds(points: impl Iterator<Item = Point>) -> (Point, Point) {
     let mut low = [f64::INFINITY; 3];
     let mut high = [f64::NEG_INFINITY; 3];
     for point in points {
@@ -158,10 +158,10 @@ fn bounds(points: impl Iterator<Item = Point>) -> (Point, Point) {
     (low, high)
 }
 
-/// A complete, unmodified IfcSweptDiskSolid is a closed volume. A nearby
+/// A complete, unmodified swept solid is a closed volume. A nearby
 /// surface sample cannot detect a missing cap triangle or flipped winding, so
 /// assert that every welded triangle edge has exactly two opposite uses.
-fn check_closed_oriented_edges(identity: &str, mesh: &ExportedElement) -> Result<(), String> {
+pub(super) fn check_closed_oriented_edges(identity: &str, mesh: &ExportedElement) -> Result<(), String> {
     for (vertex_index, vertex) in mesh.vertices.iter().enumerate() {
         if vertex.iter().any(|coordinate| !coordinate.is_finite()) {
             return Err(format!(
@@ -312,6 +312,13 @@ pub(super) fn compare_model(
         .ok_or_else(|| format!("product #{expected_id}: no analytic swept disk"))?;
     let disk = eligibility(disks)
         .map_err(|reason| format!("product #{expected_id}: skipped: {reason}"))?;
+    let mesh = mesh_for_product(source, expected_id)?;
+    compare_surface(expected_id, disk, &mesh)?;
+    Ok((disk.clone(), mesh))
+}
+
+pub(super) fn mesh_for_product(source: &[u8], expected_id: u32) -> Result<ExportedElement, String> {
+    let ids = HashSet::from([expected_id]);
     let result = process_geometry_filtered_with_quality_and_ids(
         source,
         OpeningFilterMode::Default,
@@ -328,10 +335,9 @@ pub(super) fn compare_model(
         result.metadata.coordinate_info.origin_shift,
         site_rotation,
     );
-    let mesh = exported
+    exported
         .elements
         .get(&expected_id)
-        .ok_or_else(|| format!("product #{expected_id}: mesh path produced no occurrence"))?;
-    compare_surface(expected_id, disk, mesh)?;
-    Ok((disk.clone(), mesh.clone()))
+        .cloned()
+        .ok_or_else(|| format!("product #{expected_id}: mesh path produced no occurrence"))
 }

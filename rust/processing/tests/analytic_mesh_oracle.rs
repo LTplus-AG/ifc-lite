@@ -6,6 +6,10 @@
 
 #[path = "analytic_mesh_oracle/checker.rs"]
 mod checker;
+#[path = "analytic_mesh_oracle/extrusion.rs"]
+mod extrusion;
+#[path = "analytic_mesh_oracle/extrusion_tests.rs"]
+mod extrusion_tests;
 
 use std::fs;
 use std::path::PathBuf;

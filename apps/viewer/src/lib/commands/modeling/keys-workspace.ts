@@ -45,6 +45,8 @@ export function bindModelWorkspaceKeys(): () => void {
     registerKeyboardCommand('model.room', () => launchModelCommand('room.place'), { active }),
     registerKeyboardCommand('model.storeyUp', () => stepSessionStorey(useViewerStore.getState(), 1), { active }),
     registerKeyboardCommand('model.storeyDown', () => stepSessionStorey(useViewerStore.getState(), -1), { active }),
+    registerKeyboardCommand('model.move', () => launchModelCommand('element.move'), { active }),
+    registerKeyboardCommand('model.rotate', () => launchModelCommand('element.rotate'), { active }),
   ];
   return () => { for (const dispose of disposers) dispose(); };
 }

@@ -30,6 +30,7 @@ import {
   type ListTableSource, type TableBlock, type TableColumnId, type TableSource, type ValidationRowsMode, type ValidationTableSource,
 } from '@/lib/document/types';
 import { ClampedNumberInput, field } from './BlockEditor.parts';
+import { ComparisonSourceEditor } from './ComparisonSourceEditor';
 import { TABLE_COLUMN_LABEL_KEY } from './table-column-labels';
 
 /** Above this many columns a portrait page ellipsizes most cells. */
@@ -186,10 +187,12 @@ export function TableBlockEditor({ block, onChange }: TableBlockEditorProps) {
   const { t } = useTranslation();
   const listDefinitions = useViewerStore((s) => s.listDefinitions);
   const source = block.source;
+  const savedComparisons = useViewerStore((s) => s.savedComparisons);
 
   const switchSourceKind = (kind: TableSource['kind']): void => {
     if (kind === source.kind) return;
-    const nextSource: TableSource = kind === 'list'
+    if (kind === 'comparison' && savedComparisons.length === 0) return;
+    const nextSource: TableSource = kind === 'comparison' ? { kind, comparison: structuredClone(savedComparisons[0]) } : kind === 'list'
       ? { kind: 'list', list: listCopyForDocument(listDefinitions[0] ?? LIST_PRESETS[0], freshListCopyId()), fromListId: (listDefinitions[0] ?? LIST_PRESETS[0]).id }
       : blankValidationSource();
     onChange({ ...block, source: nextSource });
@@ -200,12 +203,13 @@ export function TableBlockEditor({ block, onChange }: TableBlockEditorProps) {
       <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.tableSourceLabel')}
         <select className={field} value={source.kind} onChange={(e) => switchSourceKind(e.target.value as TableSource['kind'])} aria-label={t('document.block.tableSourceAriaLabel')}>
           <option value="list">{t('document.block.tableSourceList')}</option>
+          <option value="comparison" disabled={savedComparisons.length === 0}>{t('document.block.tableSourceComparison')}</option>
           <option value="validation">{t('document.block.tableSourceValidation')}</option>
         </select>
       </label>
-      {source.kind === 'list' ? <ListSourceEditor block={block} source={source} onChange={onChange} /> : <ValidationSourceEditor block={block} source={source} onChange={onChange} />}
+      {source.kind === 'list' ? <ListSourceEditor block={block} source={source} onChange={onChange} /> : source.kind === 'comparison' ? <ComparisonSourceEditor block={block} source={source} onChange={onChange} /> : <ValidationSourceEditor block={block} source={source} onChange={onChange} />}
       <div className="flex flex-wrap items-center gap-2">
-        <input className={`${field} min-w-0 flex-1`} value={block.title ?? ''} placeholder={source.kind === 'list' ? source.list.name : t('document.block.tableSourceValidation')} onChange={(e) => onChange({ ...block, title: e.target.value || undefined })} aria-label={t('document.block.tableTitleAriaLabel')} />
+        <input className={`${field} min-w-0 flex-1`} value={block.title ?? ''} placeholder={source.kind === 'list' ? source.list.name : source.kind === 'comparison' ? source.comparison.name : t('document.block.tableSourceValidation')} onChange={(e) => onChange({ ...block, title: e.target.value || undefined })} aria-label={t('document.block.tableTitleAriaLabel')} />
         <input className={`${field} min-w-0 flex-1`} value={block.caption ?? ''} placeholder={t('document.block.captionPlaceholder')} onChange={(e) => onChange({ ...block, caption: e.target.value || undefined })} aria-label={t('document.block.tableCaptionAriaLabel')} />
         <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.tableRowsLabel')}
           <ClampedNumberInput value={block.maxRows} min={1} max={TABLE_ROWS_MAX} placeholder={String(TABLE_ROWS_DEFAULT)} allowUndefined ariaLabel={t('document.block.tableRowsAriaLabel')} onCommit={(maxRows) => onChange({ ...block, maxRows })} />

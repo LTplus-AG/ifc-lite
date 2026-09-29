@@ -47,10 +47,33 @@ A binding the model cannot answer is never printed as an empty string: the previ
 
 Documents persist in the browser like dashboards. The **⋯** menu renames, duplicates, deletes, exports the document as an `.ifclite-document.json` file or imports one; an imported document gets fresh ids and keeps its bindings — that is the template. *New from preset* adds a **Blank page** (a title reading `{IfcProject.Name}`) or a **Cover sheet** (project, site, building, storey and element counts, an elements-by-type chart, the date). Page size and orientation are part of the document.
 
-The file is `version: 8`; versions 1–7 open and re-save as version 8 automatically (version 8 adds page breaks). Older viewers refuse a newer file with a clear version error. A table block embeds its list (lists otherwise live only in the browser), so a shared document brings its tables along; the copy never carries a selection snapshot (`expressIdsByModel`), which is bound to one load of one model. More than two columns per row, arbitrary font files, a per-chart legend position, page margins, and drag-resize are not currently available.
+The file is `version: 9`; versions 1–8 open and re-save as version 9 automatically (version 8 added page breaks, and version 9 adds saved comparison table sources). Older viewers refuse a newer file with a clear version error. A table block embeds its list (lists otherwise live only in the browser), so a shared document brings its tables along; the copy never carries a selection snapshot (`expressIdsByModel`), which is bound to one load of one model. More than two columns per row, arbitrary font files, a per-chart legend position, page margins, and drag-resize are not currently available.
 
 ### Saved validation reports
 
 Completed IDS and information validation checks are retained separately in **Data validation → Saved reports**, including the names and source fingerprints of the models evaluated. In Manual validation, **Save report** records the currently selected model's checklist answers. Rename or remove saved reports from the history. Reports are stored in this browser; a storage failure displays a warning before you reload. Unreadable history has a separate notice: the original data is preserved before valid reports are recovered, or saving stays blocked if a backup is unavailable. **Retry save** keeps your current in-memory reports. A successful retry also restores reports discovered after a temporarily unavailable read; reports you explicitly removed stay removed.
 
 Use **Add block → Saved validation report** in Documentation, then choose the specific report in **Saved report source**. Each block embeds a copy of that result with its original model scope. Later checks, model removal, or deleting a report from history do not alter an existing document. Saved evidence does not apply historical entity identifiers to the current 3D scene. Live checklist editing remains separate from saved report snapshots.
+
+### Saved model comparisons
+
+In **Compare models**, run a model pair and select **Save comparison**. Each save
+creates a separate named report: compare A/B, then A/C, then B/C without losing
+previous results. Saved comparisons retain all canonical change rows, model-pair
+provenance, product/type counts, excluded IFC classes and geometry limitations.
+They persist in this browser after model unloading or reloading. Renaming affects
+only the library name. Historical report rows never select elements in a newly
+loaded model; rerun the pair for current 3D review.
+
+In Documentation, **Add block → Saved comparison** embeds the first saved report.
+Select the block and choose another saved comparison in its source picker. The
+preview and PDF show the selected pair's provenance, summary and change table.
+The table's **Rows** setting limits printed rows with an explicit omitted-row
+count; CSV and JSON downloads from Compare retain the complete saved report.
+A no-change comparison prints its summary and an explicit no-changes message.
+
+Documents embed a copy of the report, so deleting or renaming its library entry
+does not alter an issued document. Export the document JSON to share that copy.
+Saved comparison history is local to this browser; storage failures show a warning
+and leave the report available in memory for download before closing the tab.
+Document format 9 adds comparison table sources; older documents remain readable.

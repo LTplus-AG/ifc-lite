@@ -67,6 +67,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const idsValidationReport = useViewerStore((s) => s.idsValidationReport);
   const manualSource = useManualReportSource();
   const savedReports = useViewerStore((s) => s.savedValidationReports);
+  const savedComparisons = useViewerStore((s) => s.savedComparisons);
 
   useEffect(() => { ensureActiveDocument(); }, [documents, activeDocumentId]);
 
@@ -106,6 +107,13 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
               : kind === 'manual-report' ? (manualSource.snapshot(id) ?? emptyManualReportBlock(id))
               : { kind, id, guid: [...data.topics.keys()][0] ?? '', snapshot: true };
     setBlocks([...document.blocks, block]);
+    setSelectedBlockId(id);
+  };
+
+  const addComparison = (): void => {
+    if (!document || !savedComparisons[0]) return;
+    const id = freshBlockId();
+    setBlocks([...document.blocks, { kind: 'table', id, source: { kind: 'comparison', comparison: structuredClone(savedComparisons[0]) }, maxRows: TABLE_ROWS_DEFAULT }]);
     setSelectedBlockId(id);
   };
 
@@ -199,6 +207,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
             <DropdownMenuItem onSelect={() => addBlock('topic')} disabled={data.topics.size === 0} title={data.topics.size === 0 ? t('document.addBlock.topicDisabledTitle') : undefined}>{t('document.addBlock.topic')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('page-break')}>{t('document.addBlock.pageBreak')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('spacer')}>{t('document.addBlock.spacer')}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={addComparison} disabled={savedComparisons.length === 0}>{t('document.block.tableSourceComparison')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('table')}>{t('document.addBlock.table')}</DropdownMenuItem>
             {/* One report slot serves IDS and information validation; the item is named for what it would add (#6372). */}
             <DropdownMenuItem onSelect={() => addBlock('ids-report')} disabled={!idsValidationReport} title={idsValidationReport ? undefined : t('document.addBlock.idsReportDisabledTitle')}>{t(idsValidationReport?.source.kind === 'rules' ? 'document.addBlock.rulesReport' : 'document.addBlock.idsReport')}</DropdownMenuItem>

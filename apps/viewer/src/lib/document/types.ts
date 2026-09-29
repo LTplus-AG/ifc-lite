@@ -11,6 +11,7 @@
  *
  * The shape is plain JSON: it is what `.ifclite-document.json` carries.
  */
+import { isSavedComparison, type SavedComparison } from '../compare/savedComparisonSchema';
 import { validateChartSpec, type ChartSpec, type ReportPageSetup } from '@ifc-lite/charts';
 import { isSavedListShape, type ListDefinition } from '@ifc-lite/lists';
 import { isFilterGroup } from '@ifc-lite/rules';
@@ -21,7 +22,7 @@ import { validateIdsReportBlock, type IdsReportBlock } from './ids-report-types.
 export { reportBlockSourceKind } from './ids-report-types.js';
 export type { IdsReportBlock, IdsReportCardinality, IdsReportCheckSummary, IdsReportRuleSummary, IdsReportSetRow, IdsReportVariant, ReportSourceKind } from './ids-report-types.js';
 
-export const DOCUMENT_VERSION = 8;
+export const DOCUMENT_VERSION = 9;
 
 /** A block that can sit two-up in a row (#4940); an unpaired half block prints full width. */
 export type BlockWidth = 'full' | 'half';
@@ -101,7 +102,13 @@ export const TABLE_ROWS_MAX = 500;
  * store's live validation report (#5138) — the discriminator #5142 left
  * room for.
  */
-export type TableSource = ListTableSource | ValidationTableSource;
+export type TableSource = ListTableSource | ValidationTableSource | ComparisonTableSource;
+
+/** Portable immutable report copy: deleting the library entry never breaks a document. */
+export interface ComparisonTableSource {
+  kind: 'comparison';
+  comparison: SavedComparison;
+}
 
 export interface ListTableSource {
   kind: 'list';
@@ -192,7 +199,7 @@ export function isHalfPairable<T extends { kind: string }>(block: T): block is T
  */
 export function migrateDocumentSpec(raw: unknown): unknown {
   if (!isRecord(raw)) return raw;
-  const version = raw.version === 1 || raw.version === 2 || raw.version === 3 || raw.version === 4 || raw.version === 5 || raw.version === 6 || raw.version === 7
+  const version = raw.version === 1 || raw.version === 2 || raw.version === 3 || raw.version === 4 || raw.version === 5 || raw.version === 6 || raw.version === 7 || raw.version === 8
     ? DOCUMENT_VERSION : raw.version;
   return { ...raw, version, blocks: migrateDocumentListBlocks(raw.blocks) };
 }
@@ -296,8 +303,8 @@ const VALIDATION_ROWS_MODES = ['failed', 'passed', 'all', 'sets'];
 /** Structural check of a table block (#5142, #5138); the list engine / validation report reading validates the definition's meaning at run time. */
 function validateTableBlock(block: Record<string, unknown>, at: string, errors: DocumentValidationError[]): void {
   const source = block.source;
-  if (!isRecord(source) || (source.kind !== 'list' && source.kind !== 'validation')) {
-    errors.push({ path: `${at}.source`, message: 'expected source.kind list | validation' });
+  if (!isRecord(source) || (source.kind !== 'list' && source.kind !== 'validation' && source.kind !== 'comparison')) {
+    errors.push({ path: `${at}.source`, message: 'expected source.kind list | validation | comparison' });
   } else if (source.kind === 'list') {
     const list = source.list;
     if (!isSavedListShape(list) || !Array.isArray(list.groups) || !list.groups.every(isFilterGroup)) {
@@ -306,6 +313,8 @@ function validateTableBlock(block: Record<string, unknown>, at: string, errors: 
       errors.push({ path: `${at}.source.list.expressIdsByModel`, message: 'not allowed in a document' });
     }
     if (source.fromListId !== undefined && !isString(source.fromListId)) errors.push({ path: `${at}.source.fromListId`, message: 'expected a string' });
+  } else if (source.kind === 'comparison') {
+    if (!isSavedComparison(source.comparison)) errors.push({ path: `${at}.source.comparison`, message: 'expected a saved comparison report' });
   } else {
     if (source.ruleId !== undefined && !isString(source.ruleId)) errors.push({ path: `${at}.source.ruleId`, message: 'expected a string' });
     if (!VALIDATION_ROWS_MODES.includes(source.rows as string)) errors.push({ path: `${at}.source.rows`, message: `expected ${VALIDATION_ROWS_MODES.join(' | ')}` });

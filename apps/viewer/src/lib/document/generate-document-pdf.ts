@@ -8,6 +8,7 @@
  * the same jsPDF + svg2pdf + snapshot path the coordination report uses,
  * so a chart block prints exactly as it does in a report.
  */
+import { comparisonSummary } from '../compare/savedComparisonSchema';
 import type { Aggregation } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { REPORT_MARGIN } from '../export/report/compose.js';
@@ -76,12 +77,12 @@ export function tableMessage(state: TableState | undefined): string | null {
   // An engine error with an empty message (review finding) still has to read as an error, not as an empty grid.
   if (kind === 'error') return (state?.status === 'error' && state.message.trim()) || 'The list could not be run.';
   // "No rows" reads differently per source: a list matched nothing, a validation table's rule/rows filter did.
-  if (kind === 'no-rows') return state?.status === 'ok' && state.kind === 'validation' ? 'No rows match this rule.' : 'No rows match this list.';
+  if (kind === 'no-rows') return state?.status === 'ok' && state.kind === 'comparison' ? 'No changes in this saved comparison.' : state?.status === 'ok' && state.kind === 'validation' ? 'No rows match this rule.' : 'No rows match this list.';
   return TABLE_MESSAGES[kind];
 }
 
 /** The title a table block prints: its own, the list's name, or "Validation results". */
-export const tableTitle = (block: TableBlock): string => block.title?.trim() || (block.source.kind === 'list' ? block.source.list.name : 'Validation results');
+export const tableTitle = (block: TableBlock): string => block.title?.trim() || (block.source.kind === 'list' ? block.source.list.name : block.source.kind === 'comparison' ? block.source.comparison.name : 'Validation results');
 
 /** The browser's image measure: decode the data URL. */
 export function browserImageSize(dataUrl: string): Promise<{ w: number; h: number }> {
@@ -161,15 +162,15 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         const state = input.tables.get(block.id);
         const message = tableMessage(state);
         if (state?.status === 'ok' && message === null) {
-          const flat = state.kind === 'validation'
+          const flat = state.kind === 'validation' || state.kind === 'comparison'
             ? flattenRawModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS)
             : flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS);
-          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, columns: flat.columns, rows: flat.rows });
+          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, columns: flat.columns, rows: flat.rows });
           break;
         }
         if (state?.status !== 'ok') result.tableFailures.push(block.id);
         // `tableMessage` is non-null for every non-ok state; the fallback only satisfies the types.
-        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, message: message ?? 'No rows to print.', columns: [], rows: [] });
+        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, message: message ?? 'No rows to print.', columns: [], rows: [] });
         break;
       }
       case 'ids-report': {

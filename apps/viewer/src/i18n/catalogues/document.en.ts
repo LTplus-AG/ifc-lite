@@ -17,6 +17,11 @@
 import type { TranslationValue } from '../types';
 
 export const documentEn = {
+  'document.block.tableSourceComparison': 'Saved comparison',
+  'document.block.comparisonPicker': 'Choose saved comparison for document',
+  'document.block.comparisonSnapshotHint': 'This document embeds a copy of the completed report. Renaming or deleting its saved comparison does not change this copy.',
+  'document.table.comparisonNoRows': 'No changes in this saved comparison.',
+
   'document.block.widthLabel': 'Width',
   'document.block.widthAriaLabel': 'Block width',
   'document.block.widthTitle': 'Half pairs with the next half text, chart, or image into one row',

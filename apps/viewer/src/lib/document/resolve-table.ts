@@ -53,7 +53,7 @@ export function flattenRawModel(model: RawTableModel, maxRows: number, labels: T
 export type TableState =
   | { status: 'resolving' }
   | { status: 'ok'; kind?: 'list'; model: ExportModel }
-  | { status: 'ok'; kind: 'validation'; model: RawTableModel }
+  | { status: 'ok'; kind: 'validation' | 'comparison'; model: RawTableModel }
   | { status: 'error'; message: string }
   | { status: 'no-model' }
   | { status: 'no-report' }
@@ -65,7 +65,7 @@ export type TableMessageKind = 'resolving' | 'no-model' | 'error' | 'no-rows' | 
 export function tableMessageKind(state: TableState | undefined): TableMessageKind | null {
   if (!state || state.status === 'resolving') return 'resolving';
   if (state.status !== 'ok') return state.status;
-  const count = state.kind === 'validation' ? state.model.totalRows : state.model.totals.count;
+  const count = state.kind === 'validation' || state.kind === 'comparison' ? state.model.totalRows : state.model.totals.count;
   return count === 0 ? 'no-rows' : null;
 }
 

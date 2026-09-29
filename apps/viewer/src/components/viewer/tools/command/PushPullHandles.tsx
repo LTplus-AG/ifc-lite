@@ -70,7 +70,7 @@ function HandleLayer({ target, faces, armedId, readout }: {
   if (!project) return null;
   const placed = place(target, faces, project);
   return (
-    <svg className="absolute inset-0 pointer-events-none z-30" style={{ overflow: 'visible' }}>
+    <svg className="absolute inset-0 pointer-events-none z-(--z-hud-popover)" style={{ overflow: 'visible' }}>
       {placed.map(({ face, x, y, dx, dy }) => {
         const armed = face.id === armedId;
         const tipX = x + dx * ARROW_LENGTH, tipY = y + dy * ARROW_LENGTH;

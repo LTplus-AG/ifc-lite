@@ -17,6 +17,7 @@ import { manualReportBlockFromChecklist } from '@/lib/document/manual-report';
 import { useMemo, useState } from 'react';
 import { Pencil, Plus, Save, X } from 'lucide-react';
 import { useTranslation } from '@/i18n';
+import { reportModelScope } from '@/lib/document/report-provenance';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -110,9 +111,10 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
         {saveError && <p role="alert" className="text-xs text-red-600">{t('manualValidation.error.notSaved')}</p>}
 
         <Button type="button" variant="outline" size="sm" className="h-7 w-fit text-xs" onClick={() => {
+          const scope = activeModel ? reportModelScope(activeModel.name, activeModel.id, fingerprint) : null;
           useViewerStore.getState().saveValidationReport({
-            ...manualReportBlockFromChecklist({ checklist, answers, modelName: activeModel?.name, modelFingerprint: fingerprint }, 'run'),
-            reportModels: activeModel ? [{ name: activeModel.name, ...(fingerprint ? { fingerprint } : {}) }] : [],
+            ...manualReportBlockFromChecklist({ checklist, answers, modelName: scope?.name, modelFingerprint: fingerprint }, 'run'),
+            reportModels: scope ? [scope] : [],
           });
         }}>{t('validationPanel.history.saveManual')}</Button>
 

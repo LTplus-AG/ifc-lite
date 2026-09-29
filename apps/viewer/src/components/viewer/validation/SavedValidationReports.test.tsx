@@ -15,6 +15,7 @@ import { cleanup, click, render, waitFor } from '@/test/render';
 import { useIDS } from '@/hooks/useIDS';
 import { CHECKLIST_VERSION, type ChecklistTemplate } from '@/lib/validation/manual/checklist';
 import { manualReportBlockFromChecklist } from '@/lib/document/manual-report';
+import { parseDocumentFile } from '@/lib/document/persistence';
 import { blankDocument } from '@/lib/document/presets';
 import type { DocumentSpec } from '@/lib/document/types';
 import { generateDocumentPdf, type DocumentPdfSeams } from '@/lib/document/generate-document-pdf';
@@ -114,6 +115,35 @@ describe('saved validation evidence (#6500)', () => {
     assert.equal(history.length, 2);
     assert.notEqual(history[0].id, history[1].id);
     assert.deepEqual(history.map((entry) => entry.snapshot.reportModels), Array.from({ length: 2 }, () => [{ name: 'tower.ifc', fingerprint: 'fp-tower' }]));
+  });
+
+  it('captures meaningful scope for unnamed actual IDS models and refuses blank stored scope (#6500 review)', async () => {
+    const report = await checkedWall('tower', 'Name boundary');
+    for (const name of ['', '   ']) {
+      const snapshot = validationReportSnapshot(report, new Map([['tower', { name, sourceFingerprint: '' }]]), 'run');
+      assert.deepEqual(snapshot.reportModels, [{ name: 'tower' }]);
+      useViewerStore.getState().saveValidationReport(snapshot);
+      const document = { ...blankDocument(), blocks: [savedReportBlock(loadValidationReports().at(-1)!, 'b')] };
+      assert.ok((await printedPdf(document)).includes('Models: tower'));
+    }
+    const exact = validationReportSnapshot(report, new Map([['tower', { name: '  original model.ifc  ', sourceFingerprint: 'fp-tower' }]]), 'run');
+    assert.deepEqual(exact.reportModels, [{ name: '  original model.ifc  ', fingerprint: 'fp-tower' }]);
+    const valid = newSavedReport(exact);
+    for (const name of ['', '   ']) {
+      const invalid = newSavedReport({ ...exact, reportModels: [{ name }] });
+      localStorage.setItem(VALIDATION_REPORTS_STORAGE_KEY, JSON.stringify([invalid, valid]));
+      assert.deepEqual(loadValidationReports().map((entry) => entry.id), [valid.id]);
+      assert.throws(() => parseDocumentFile(JSON.stringify({ ...blankDocument(), blocks: [invalid.snapshot] })), /expected non-empty model names/);
+    }
+    useViewerStore.setState({ models: new Map([['tower', { ...fixtureModel('tower'), name: '   ', sourceFingerprint: 'fp-tower' }]]), activeModelId: 'tower', manualChecklist: { version: CHECKLIST_VERSION, name: 'Unnamed source review', groups: [] } });
+    const ui = render(<ManualValidationTab manual={{ checklist: useViewerStore.getState().manualChecklist, recent: [], error: null, newChecklist: () => {}, save: () => {}, close: () => {}, loadFromRecent: () => {}, openFromFile: async () => ({ ok: true }) }} />);
+    const save = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save report'); assert.ok(save);
+    click(save);
+    const manual = loadValidationReports().at(-1)!;
+    assert.deepEqual(manual.snapshot.reportModels, [{ name: 'tower', fingerprint: 'fp-tower' }]);
+    assert.equal(manual.snapshot.kind, 'manual-report');
+    if (manual.snapshot.kind !== 'manual-report') assert.fail();
+    assert.equal(manual.snapshot.modelName, 'tower');
   });
 
   it('persists distinct real IFC runs and their exact evaluated scope, independent of later live runs', async () => {

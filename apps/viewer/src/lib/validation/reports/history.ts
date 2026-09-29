@@ -9,7 +9,7 @@ import { idsReportBlockFromReport } from '../../document/ids-report.js';
 import { validateIdsReportBlock, type IdsReportBlock } from '../../document/ids-report-types.js';
 import { validateManualReportBlock, type ManualReportBlock } from '../../document/manual-report-types.js';
 import type { DocumentValidationError } from '../../document/types.js';
-import type { ReportModelScope } from '../../document/report-provenance.js';
+import { reportModelScope, type ReportModelScope } from '../../document/report-provenance.js';
 
 export type ValidationReportSnapshot = IdsReportBlock | ManualReportBlock;
 export interface SavedValidationReport {
@@ -29,7 +29,7 @@ export type ReportScopeModel = { name: string; sourceFingerprint?: string | null
 export function validationReportSnapshot(report: ValidationReport, models: ReadonlyMap<string, ReportScopeModel>, id: string): IdsReportBlock {
   const reportModels: ReportModelScope[] = report.modelInfo.map(({ modelId }) => {
     const model = models.get(modelId);
-    return { name: model?.name ?? modelId, ...(model?.sourceFingerprint ? { fingerprint: model.sourceFingerprint } : {}) };
+    return reportModelScope(model?.name, modelId, model?.sourceFingerprint);
   });
   return { ...idsReportBlockFromReport(report, id), reportModels };
 }

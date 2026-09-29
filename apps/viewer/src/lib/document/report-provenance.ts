@@ -18,10 +18,16 @@ export function validateReportProvenance(block: Record<string, unknown>, at: str
   if (block.reportModels !== undefined && (!Array.isArray(block.reportModels) || !block.reportModels.every((model: unknown) => {
     if (typeof model !== 'object' || model === null || Array.isArray(model)) return false;
     const m = model as Record<string, unknown>;
-    return typeof m.name === 'string' && (m.fingerprint === undefined || (typeof m.fingerprint === 'string' && m.fingerprint.length > 0));
-  }))) errors.push({ path: `${at}.reportModels`, message: 'expected model names and optional non-empty fingerprints' });
+    return typeof m.name === 'string' && m.name.trim().length > 0 && (m.fingerprint === undefined || (typeof m.fingerprint === 'string' && m.fingerprint.length > 0));
+  }))) errors.push({ path: `${at}.reportModels`, message: 'expected non-empty model names and optional non-empty fingerprints' });
 }
 
 export function reportScopeText(block: ReportProvenance): string {
   return block.reportModels?.map((model) => model.name).join(', ') ?? '';
+}
+
+/** Keep exact nonblank model names; unnamed sources use their captured
+ * identity so a saved scope can never claim an invisible model (#6500). */
+export function reportModelScope(name: string | undefined, fallback: string, fingerprint?: string | null): ReportModelScope {
+  return { name: name?.trim() ? name : fallback, ...(fingerprint ? { fingerprint } : {}) };
 }

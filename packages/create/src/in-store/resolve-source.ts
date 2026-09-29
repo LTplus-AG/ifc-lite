@@ -37,21 +37,10 @@ const ASSOCIATION_REL_TYPES = [
   'IFCRELASSOCIATESDOCUMENT',
 ] as const;
 
-function asString(v: IfcAttributeValue | undefined): string {
-  if (v === null || v === undefined) return '$';
-  if (typeof v === 'number') return `#${v}`;
-  if (typeof v === 'string') return v;
-  return '$';
-}
-
-/**
- * Like asString but maps the omitted-token sentinel (`$`) to `null`.
- * The editor serialises plain strings as quoted STEP literals, so the
- * verbatim `'$'` would land as `'$'` in output instead of the bare token.
- */
-function asRefOrNull(v: IfcAttributeValue | undefined): string | null {
-  const s = asString(v);
-  return s === '$' ? null : s;
+/** A reference slot as the verbatim `#N` token the editor writes back, or null when omitted. */
+function refToken(v: unknown): string | null {
+  const id = asRef(v);
+  return id === null ? null : `#${id}`;
 }
 
 function asNumber(v: IfcAttributeValue | undefined): number | null {
@@ -75,77 +64,69 @@ export function resolveDuplicateSource(
   if (editor?.getMutationView().isDeleted(sourceExpressId)) {
     throw new Error(`resolveDuplicateSource: entity #${sourceExpressId} was deleted`);
   }
-  // @raw-entity-enumeration-ok point read of the duplicated source product's own placement chain; a deleted source was refused above and a created one has no bytes to duplicate from
-  const sourceRef = store.entityIndex.byId.get(sourceExpressId);
-  if (!sourceRef) {
+  const extractor = new EntityExtractor(store.source);
+  // With a session editor, every record is read as the next export writes it:
+  // an element created this session (it has no source bytes) and a moved one
+  // (its placement point edited) are duplicated as they are now (#6232 C3).
+  const read = editor ? createStyleEntityReader(store, editor) : (id: number) => {
+    // @raw-entity-enumeration-ok point read of the duplicated source product's own placement chain when no session editor was supplied
+    const ref = store.entityIndex.byId.get(id);
+    return ref ? extractor.extractEntity(ref) : null;
+  };
+  const sourceEntity = read(sourceExpressId);
+  if (!sourceEntity) {
     throw new Error(`resolveDuplicateSource: entity #${sourceExpressId} not found`);
   }
 
-  const extractor = new EntityExtractor(store.source);
-  const sourceEntity = extractor.extractEntity(sourceRef);
-  if (!sourceEntity) {
-    throw new Error(`resolveDuplicateSource: could not parse #${sourceExpressId}`);
-  }
-
-  const attrs = sourceEntity.attributes;
+  const attrs = [...sourceEntity.attributes] as IfcAttributeValue[];
   // OwnerHistory is optional in IFC4, so null is a valid round-trip
   // value here. The duplicate flow re-emits null on the new entity.
-  const ownerHistoryId = asNumber(attrs[1]);
-  const placementId = asNumber(attrs[5]);
-  const representationId = asNumber(attrs[6]);
+  const ownerHistoryId = asRef(attrs[1]);
+  const placementId = asRef(attrs[5]);
+  const representationId = asRef(attrs[6]);
+  // A parsed `#N` is a bare number, which the editor would write back as an
+  // INTEGER, not a reference: carry the product's reference slots as `#N`.
+  attrs[1] = ownerHistoryId === null ? null : `#${ownerHistoryId}`;
+  attrs[6] = representationId === null ? null : `#${representationId}`;
 
   if (placementId === null) {
     throw new Error(
       `resolveDuplicateSource: #${sourceExpressId} has no ObjectPlacement — only IfcProduct can be duplicated`,
     );
   }
+  attrs[5] = `#${placementId}`;
 
-  // @raw-entity-enumeration-ok point read of the duplicated source product's own placement chain; a deleted source was refused above and a created one has no bytes to duplicate from
-  const placementRef = store.entityIndex.byId.get(placementId);
-  if (!placementRef) {
-    throw new Error(`resolveDuplicateSource: placement #${placementId} missing from index`);
-  }
-  const placementEntity = extractor.extractEntity(placementRef);
+  const placementEntity = read(placementId);
   if (!placementEntity) {
-    throw new Error(`resolveDuplicateSource: could not parse placement #${placementId}`);
+    throw new Error(`resolveDuplicateSource: could not read placement #${placementId}`);
   }
 
-  const parentPlacementId = asNumber(placementEntity.attributes[0]);   // PlacementRelTo
-  const axisPlacementId = asNumber(placementEntity.attributes[1]);     // RelativePlacement
+  const parentPlacementId = asRef(placementEntity.attributes[0]);   // PlacementRelTo
+  const axisPlacementId = asRef(placementEntity.attributes[1]);     // RelativePlacement
   if (axisPlacementId === null) {
     throw new Error(
       `resolveDuplicateSource: placement #${placementId} has no RelativePlacement`,
     );
   }
 
-  // @raw-entity-enumeration-ok point read of the duplicated source product's own placement chain; a deleted source was refused above and a created one has no bytes to duplicate from
-  const axisPlacementRef = store.entityIndex.byId.get(axisPlacementId);
-  if (!axisPlacementRef) {
-    throw new Error(`resolveDuplicateSource: axis placement #${axisPlacementId} missing`);
-  }
-  const axisEntity = extractor.extractEntity(axisPlacementRef);
+  const axisEntity = read(axisPlacementId);
   if (!axisEntity) {
-    throw new Error(`resolveDuplicateSource: could not parse axis #${axisPlacementId}`);
+    throw new Error(`resolveDuplicateSource: could not read axis #${axisPlacementId}`);
   }
 
-  const locationId = asNumber(axisEntity.attributes[0]);  // Location → IfcCartesianPoint
-  const axisRef = asRefOrNull(axisEntity.attributes[1]);     // Axis (optional)
-  const refDirectionRef = asRefOrNull(axisEntity.attributes[2]); // RefDirection (optional)
+  const locationId = asRef(axisEntity.attributes[0]);  // Location → IfcCartesianPoint
+  const axisRef = refToken(axisEntity.attributes[1]);     // Axis (optional)
+  const refDirectionRef = refToken(axisEntity.attributes[2]); // RefDirection (optional)
 
   let sourceLocation: Vec3 = [0, 0, 0];
   if (locationId !== null) {
-    // @raw-entity-enumeration-ok point read of the duplicated source product's own placement chain; a deleted source was refused above and a created one has no bytes to duplicate from
-    const pointRef = store.entityIndex.byId.get(locationId);
-    if (pointRef) {
-      const pointEntity = extractor.extractEntity(pointRef);
-      const coords = pointEntity?.attributes[0];
-      if (Array.isArray(coords)) {
-        sourceLocation = [
-          asNumber(coords[0]) ?? 0,
-          asNumber(coords[1]) ?? 0,
-          asNumber(coords[2]) ?? 0,
-        ];
-      }
+    const coords = read(locationId)?.attributes[0];
+    if (Array.isArray(coords)) {
+      sourceLocation = [
+        asNumber(coords[0] as IfcAttributeValue) ?? 0,
+        asNumber(coords[1] as IfcAttributeValue) ?? 0,
+        asNumber(coords[2] as IfcAttributeValue) ?? 0,
+      ];
     }
   }
 

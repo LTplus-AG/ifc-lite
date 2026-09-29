@@ -73,3 +73,26 @@ fn issue_4550_router_local_frame_policy_is_explicit_per_instance() {
         .transform_mesh_world(&mut absolute, &transform);
     assert_eq!(absolute.origin, [0.0; 3]);
 }
+
+/// #6478: an RTC-relative (`rtc_applied`) mesh is measured as it is, while a
+/// raw-world mesh has the RTC offset subtracted first. Both are framed only
+/// once they are at least `FAR_RTC_FRAME_M` from the RTC origin, and never
+/// without an RTC offset.
+#[test]
+fn needs_local_frame_measures_the_rtc_relative_distance() {
+    let at = |x: f64| Translation3::new(x, 0.0, 0.0).to_homogeneous();
+    let mut router = GeometryRouter::new();
+    assert!(!router.needs_local_frame(&unit_box(), &at(5_000_000.0)), "no RTC offset");
+    router.set_rtc_offset((5_000_000.0, 0.0, 0.0));
+
+    // Raw world: 5,000 km placement minus the offset is at the RTC origin.
+    assert!(!router.needs_local_frame(&unit_box(), &at(5_000_000.0)));
+    assert!(router.needs_local_frame(&unit_box(), &at(0.0)), "-5,000 km from the RTC origin");
+
+    // Already RTC-relative: the offset is not subtracted again.
+    let mut rebased = unit_box();
+    rebased.rtc_applied = true;
+    assert!(!router.needs_local_frame(&rebased, &at(0.0)));
+    assert!(router.needs_local_frame(&rebased, &at(5_000_000.0)), "still 5,000 km away");
+    assert!(router.needs_local_frame(&rebased, &at(-1_000_001.0)));
+}

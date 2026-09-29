@@ -27,6 +27,16 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Caller-supplied rebar precheck (#5797)
+
+On the Revit Snowdon fixture, interleaved base/branch Python schedule calls
+produced byte-identical default reports and no measurable runtime change within
+local run spread. Interleaved calls on the branch likewise showed no measurable
+added cost for the opt-in policy. The policy reuses schedule decoding and exact
+directrix metrics, so a worker-pool geometry probe would not exercise it.
+Lesson: time the export API that owns an opt-in check and verify default output
+identity; a general geometry load number cannot establish its overhead.
+
 ## Streaming-time panel refresh (#6411)
 
 On a 127K-element, ~1 GB MEP model, the geometry workers were ~100% busy and

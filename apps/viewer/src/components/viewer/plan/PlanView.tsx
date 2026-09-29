@@ -15,6 +15,11 @@
  *   clears, double-click frames the selection in 3D, right-click opens the
  *   entity menu. A 3D selection highlights here from the same global ids
  *   the renderer highlights (`selectedEntityIds` plus `selectedEntityId`).
+ * - In Select, the selected element shows its direct-edit handles
+ *   (`plan-handles.ts`): a wall's ends (the command its 3D end handle
+ *   starts), a door's, window's or opening's slide along its wall, a move. A
+ *   press on one starts its command; the drag feeds it through the shared
+ *   solver, release commits one undo step.
  * - Wheel zooms, a middle or Ctrl drag pans (a plain drag too in Select).
  * Other tools do nothing here.
  */
@@ -35,7 +40,9 @@ import { usePlanCut } from './usePlanCut';
 import { fitPlan, pickPlanEntity, planGrid, screenToLocal } from './plan-fit';
 import { createPlanCutSource, planCutLinework } from './plan-cut-source';
 import { ghostFootprints } from './plan-ghost';
-import { routePlanPointer, selectFromPlan } from './PlanPointer';
+import { beginPlanHandleDrag, routePlanPointer, selectFromPlan } from './PlanPointer';
+import { pickPlanHandle, type PlanHandle } from './plan-handles';
+import { HandleLayer, usePlanHandles } from './PlanHandles';
 import { usePlanViewport } from './usePlanViewport';
 import { PlanHeader } from './PlanHeader';
 import { CutLayer, GhostLayer, GridLayer, HighlightLayer, SnapLayer, toScreen } from './PlanLayers';
@@ -46,7 +53,8 @@ const CLICK_SLOP_PX = 4;
 const DOUBLE_CLICK_MS = 300;
 const DOUBLE_CLICK_PX = 5;
 
-interface Press { x: number; y: number; pan: boolean; moved: boolean }
+/** A press in Select; `handle`: the selected element's handle it landed on (a drag grabs it, a click still selects). */
+interface Press { x: number; y: number; pan: boolean; moved: boolean; handle: PlanHandle | null }
 
 /** Read live in handlers: a command can start between a render and the next event. */
 function commandRunsOnPlane(): boolean {
@@ -91,8 +99,10 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
   const runtime = useCommandRuntime();
   const { plane, axes } = usePlanFrame();
   const cut = usePlanCut(session?.modelId ?? null, session?.storeyId ?? null, plane);
+  const handles = usePlanHandles(plane, cut.polygons);
   const [grid, setGrid] = useState(true);
   const [hovered, setHovered] = useState<number | null>(null);
+  const [hoveredHandle, setHoveredHandle] = useState<PlanHandle | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const press = useRef<Press | null>(null);
@@ -149,6 +159,12 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
     });
   };
 
+  /** The handle under the pointer, decided in plan space. */
+  const handleAt = (e: { clientX: number; clientY: number }): PlanHandle | null => {
+    const at = localAt(e);
+    return at && fit ? pickPlanHandle(handles, at.local, 1 / fit.scale) : null;
+  };
+
   const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
     const pan = e.button === 1 || (e.button === 0 && (e.ctrlKey || e.metaKey));
     if (e.button !== 0 && !pan) return;
@@ -156,7 +172,9 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
       feedCommand('down', e);
       return;
     }
-    press.current = { x: e.clientX, y: e.clientY, pan, moved: false };
+    // Shift-click toggles the selection, even on a handle.
+    const handle = !pan && !e.shiftKey && selecting() ? handleAt(e) : null;
+    press.current = { x: e.clientX, y: e.clientY, pan, moved: false, handle };
     capturePointer(e.currentTarget, e.pointerId);
   };
 
@@ -168,6 +186,14 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
     if (p) {
       const dx = e.clientX - p.x, dy = e.clientY - p.y;
       if (!p.moved && Math.hypot(dx, dy) < CLICK_SLOP_PX) return;
+      if (p.handle) {
+        // A drag off a handle runs its command; the drag's moves feed it (below)
+        // and a window pointerup ends it. The pointer stays captured.
+        press.current = null;
+        setHoveredHandle(null);
+        if (beginPlanHandleDrag(p.handle)) feedCommand('move', e);
+        return;
+      }
       // Select: a plain drag pans too; a command's drag never reaches here.
       p.moved = true;
       panBy(dx, dy);
@@ -180,6 +206,7 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
     }
     if (!selecting()) return;
     const at = localAt(e);
+    setHoveredHandle(handleAt(e));
     setHovered(at ? pickPlanEntity(cut.polygons, at.local) : null);
   };
 
@@ -216,12 +243,12 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
           data-plan-canvas
           width={size.width}
           height={size.height}
-          className={commandOnPlane ? 'absolute inset-0 cursor-crosshair touch-none select-none' : 'absolute inset-0 cursor-default touch-none select-none'}
+          className={`absolute inset-0 touch-none select-none ${commandOnPlane ? 'cursor-crosshair' : hoveredHandle ? 'cursor-grab' : 'cursor-default'}`}
           onDragStart={(e) => e.preventDefault()}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onPointerLeave={() => setHovered(null)}
+          onPointerLeave={() => { setHovered(null); setHoveredHandle(null); }}
           onPointerCancel={(e) => { press.current = null; releasePointer(e.currentTarget, e.pointerId); }}
           onLostPointerCapture={() => { press.current = null; }}
           onDoubleClick={onDoubleClick}
@@ -232,6 +259,7 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
               <GridLayer grid={gridLines} width={size.width} height={size.height} />
               <CutLayer fit={fit} polygons={cut.polygons} lines={cut.lines} axes={axes} />
               <HighlightLayer fit={fit} polygons={cut.polygons} selected={selected} hovered={hovered} />
+              {!commandOnPlane && <HandleLayer fit={fit} handles={handles} active={hoveredHandle} />}
               {commandOnPlane && <GhostLayer fit={fit} footprints={footprints} />}
               {commandOnPlane && Plan && ctx && <Plan gesture={gesture} ctx={ctx} toScreen={project} />}
               {commandOnPlane && <SnapLayer fit={fit} snap={runtime.snap} />}

@@ -519,16 +519,12 @@ impl GeometryRouter {
                 let Ok(item_parts) = item_parts else { continue };
                 for mut mesh in item_parts.into_iter().filter(|mesh| !mesh.is_empty()) {
                     // Keep ordinary opening cutters in the world/RTC frame. A large
-                    // mapped origin would lose its fractional translation when the
-                    // world point is cast to f32; the void context folds each cutter's
-                    // origin into the host frame before cutting.
-                    let frame_mapped_origin =
-                        self.mapped_origin_needs_local_frame(&mesh, &placement_transform);
-                    self.transform_mesh_world_framed(
-                        &mut mesh,
-                        &placement_transform,
-                        frame_mapped_origin,
-                    );
+                    // mapped origin, or a cutter far from the RTC origin (#6478),
+                    // would lose its fractional translation when the world point is
+                    // cast to f32; the void context folds each cutter's origin into
+                    // the host frame before cutting.
+                    let frame_cutter = self.needs_local_frame(&mesh, &placement_transform);
+                    self.transform_mesh_world_framed(&mut mesh, &placement_transform, frame_cutter);
 
                     item_meshes.push(mesh);
                 }

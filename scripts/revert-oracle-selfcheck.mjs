@@ -40,6 +40,10 @@ function resolveBinary(adapter) {
     }
     return null;
   }
+  if (adapter.binary === 'playwright') {
+    const bin = join(ROOT, 'node_modules', '.bin', process.platform === 'win32' ? 'playwright.cmd' : 'playwright');
+    return existsSync(bin) ? { bin, prefix: [] } : null;
+  }
   const probe = spawnSync(adapter.binary, ['--version'], { encoding: 'utf8' });
   return probe.error || probe.status !== 0 ? null : { bin: adapter.binary, prefix: [] };
 }
@@ -81,6 +85,16 @@ function buildFixture(adapter, mode, dir) {
     writeFileSync(join(dir, 'Cargo.toml'), '[package]\nname="revert-oracle-selfcheck"\nversion="0.0.0"\nedition="2021"\n');
     production = 'src/lib.rs'; testFile = 'tests/probe.rs';
     writeFileSync(join(dir, testFile), rustSource(mode));
+  } else if (adapter.id === 'playwright') {
+    // A real browser measures what production renders (#6267).
+    mkdirSync(join(dir, 'src')); mkdirSync(join(dir, 'tests/e2e'), { recursive: true });
+    symlinkSync(join(ROOT, 'node_modules'), join(dir, 'node_modules'), 'junction');
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module', scripts: { test: 'turbo test', 'test:e2e:ci': 'playwright test --project=probe-ci' } }));
+    writeFileSync(join(dir, 'playwright.config.mjs'), "export default { testDir: './tests', projects: [{ name: 'probe-ci', testMatch: /\\.e2e\\.spec\\.mjs$/, use: { headless: true, channel: 'chrome' } }] };\n");
+    production = 'src/value.mjs'; testFile = 'tests/e2e/probe.e2e.spec.mjs';
+    const body = mode === 'notExecuting' ? "test.skip(true, 'intentional');"
+      : `await page.setContent(\`<b>\${${mode === 'observed' ? 'value' : '1'}}</b>\`); await expect(page.locator('b')).toHaveText('1');`;
+    writeFileSync(join(dir, testFile), `import { test, expect } from '@playwright/test';\nimport { value } from '../../src/value.mjs';\ntest('probe', async ({ page }) => { void value; ${body} });\n`);
   } else if (adapter.id === 'typescript') {
     mkdirSync(join(dir, 'scripts/lib'), { recursive: true }); mkdirSync(join(dir, 'pkg/src'), { recursive: true });
     for (const file of ['scripts/typecheck-tests.mjs', 'scripts/lib/is-main-entry.mjs']) copyFileSync(join(ROOT, file), join(dir, file));
@@ -135,7 +149,7 @@ function runProbe(adapter, mode) {
   try {
     const fixture = buildFixture(adapter, mode, dir);
     const testSource = readFileSync(join(dir, fixture.testFile), 'utf8');
-    writeFileSync(join(dir, '.gitignore'), 'node_modules\ntarget\n.pytest_cache\ntsconfig.tests.json\n');
+    writeFileSync(join(dir, '.gitignore'), 'node_modules\ntarget\n.pytest_cache\ntsconfig.tests.json\ntest-results\n');
     writeFileSync(join(dir, fixture.production), fixture.reverted);
     rmSync(join(dir, fixture.testFile));
     run('git', ['init', '-q']);

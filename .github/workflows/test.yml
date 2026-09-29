@@ -631,7 +631,10 @@ jobs:
       !contains(github.event.pull_request.labels.*.name, 'revert-oracle-exempt')
     runs-on: ${{ (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted')))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     # Python extension tests build separate wheels before and after the revert.
-    timeout-minutes: ${{ needs.changes.outputs.python == 'true' && 90 || 20 }}
+    # A changed Playwright spec may add two viewer builds and two scoped
+    # browser runs (#6267); the oracle step's own timeout below is the bound
+    # that applies to each case, this is the ceiling over all of them.
+    timeout-minutes: ${{ needs.changes.outputs.python == 'true' && 90 || 45 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -673,14 +676,30 @@ jobs:
       # `unittest.skipUnless(HAVE_IFCOPENSHELL, ...)` — bare pytest would run
       # them as silent skips instead of the real assertions the oracle needs
       # to revert against.
+      # #6267: a changed Playwright spec can be the witness, measured in a real
+      # browser. Only then are fixtures provisioned; the oracle itself decides
+      # whether the browser runs at all (not when a cheaper test observes).
+      - name: Detect changed Playwright specs
+        id: browser
+        run: |
+          if git diff --name-only --diff-filter=d origin/main...HEAD -- 'tests/e2e/*.spec.ts' 'tests/e2e/**/*.spec.ts' | grep -q .; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Provision optional revert-oracle runner toolchains
         uses: ./.github/actions/setup-revert-oracle
         with:
           python: ${{ needs.changes.outputs.python == 'true' && 'full' || 'none' }}
           rust: ${{ needs.changes.outputs.rust }}
+          browser: ${{ steps.browser.outputs.needed }}
       - name: Prove the changed tests observe the production change
+        timeout-minutes: ${{ steps.browser.outputs.needed == 'true' && 40 || needs.changes.outputs.python == 'true' && 85 || 18 }}
         env:
           PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
+          # Same as the viewer-e2e lane: GPU-dependent assertions skip on the
+          # runner's SwiftShader device, and a skip never counts as observation.
+          E2E_GPU_STRICT: '0'
         run: node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json
 
   typecheck:
@@ -1859,8 +1878,10 @@ jobs:
       # too. It lives in the build script rather than here because the #2243
       # white screen reached users through Vercel, and a CI-only gate does not
       # run there: vercel-build.sh -> turbo build --filter -> this same script.
+      # `build:e2e` is also what the revert oracle runs before each side of a
+      # Playwright-spec measurement (#6267), so the two lanes build the same way.
       - name: Build viewer app (also runs the __tla chunk-await guard)
-        run: pnpm turbo build --filter=@ifc-lite/viewer
+        run: pnpm build:e2e
       # No browser download: the CI project uses channel:'chrome' (the
       # runner's preinstalled Chrome) because Playwright's headless
       # shell has a broken WebGPU device under software rendering.

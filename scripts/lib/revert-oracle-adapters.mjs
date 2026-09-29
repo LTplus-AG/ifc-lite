@@ -5,6 +5,7 @@
 import { cargoRunner } from './revert-oracle-cargo.mjs';
 import { pythonRunner } from './revert-oracle-python.mjs';
 import { detectRunner, rootScriptsRunner } from './revert-oracle.mjs';
+import { browserRunner } from './revert-oracle-browser.mjs';
 
 /**
  * Executable manifest of the runtime families the oracle supports. Adding a
@@ -43,6 +44,14 @@ export const REVERT_ORACLE_ADAPTERS = Object.freeze([
     claim: (context) => context.kind === 'javascript' && !context.rootPackage && /--test\b/.test(context.script ?? ''),
     runner: (context) => detectRunner(context.script, [context.relFile]),
     probeRunner: (context) => detectRunner('node --test', [context.file]),
+  },
+  {
+    // #6267: a changed Playwright spec, run through the root `test:e2e:ci`
+    // script against a viewer rebuilt by `build:e2e` on each side.
+    id: 'playwright', family: 'playwright', binary: 'playwright',
+    claim: (context) => context.kind === 'playwright',
+    runner: (context) => browserRunner(context.scripts),
+    probeRunner: (context) => browserRunner({ 'test:e2e:ci': `playwright test ${context.file}` }),
   },
   {
     id: 'typescript', family: 'typecheck', binary: 'node',

@@ -8,8 +8,9 @@
  * `tests/e2e/*.e2e.spec.ts` belongs to the root package (`scripts.test` =
  * `turbo test`), so a branch with production code plus such a spec ABORTed
  * with "no runner could be derived" even though its node tests observed the
- * change (#4340 merged over that red). The spec is set aside, reported, and
- * the remaining tests still have to observe the change by themselves.
+ * change (#4340 merged over that red). The spec is partitioned out of the
+ * node/cargo/pytest planning and handed to the browser observer (#6267, see
+ * revert-oracle-browser-observer.test.mjs).
  */
 
 import { test } from 'node:test';
@@ -18,8 +19,7 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { isBrowserSpecSource, partitionBrowserSpecs, withoutBrowserSpecs } from './revert-oracle-inert.mjs';
-import { withoutBrowserSpecs as reexported } from './revert-oracle.mjs';
+import { isBrowserSpecSource, partitionBrowserSpecs } from './revert-oracle-inert.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -40,7 +40,7 @@ test('the repo\'s own Playwright specs are recognised from their real source', (
   assert.equal(isBrowserSpecSource(smoke), true);
 });
 
-test('partition sets Playwright specs aside and reads only *.spec.* files', () => {
+test('partition separates Playwright specs from runner tests and reads only *.spec.* files', () => {
   const reads = [];
   const read = (p) => { reads.push(p); return p.startsWith('tests/e2e/') ? PLAYWRIGHT : NODE_SPEC; };
   const { runnable, browser } = partitionBrowserSpecs(
@@ -48,15 +48,4 @@ test('partition sets Playwright specs aside and reads only *.spec.* files', () =
   assert.deepEqual(browser, ['tests/e2e/face.e2e.spec.ts']);
   assert.deepEqual(runnable, ['apps/viewer/src/a.test.ts', 'packages/x/src/b.spec.ts', 'scripts/lib/c.test.mjs']);
   assert.deepEqual(reads, ['tests/e2e/face.e2e.spec.ts', 'packages/x/src/b.spec.ts'], '*.test.* files are never read');
-});
-
-test('the dispatcher hook logs each set-aside spec and returns the runnable rest; an e2e-only branch keeps nothing', () => {
-  const logged = [];
-  const read = (p) => (p.endsWith('.e2e.spec.ts') ? PLAYWRIGHT : NODE_SPEC);
-  const rest = withoutBrowserSpecs(['tests/e2e/x.e2e.spec.ts', 'apps/viewer/src/y.test.tsx'], read, (line) => logged.push(line));
-  assert.deepEqual(rest, ['apps/viewer/src/y.test.tsx']);
-  assert.equal(logged.length, 1);
-  assert.match(logged[0], /set aside: tests\/e2e\/x\.e2e\.spec\.ts is a Playwright spec/);
-  assert.deepEqual(withoutBrowserSpecs(['tests/e2e/x.e2e.spec.ts'], read, () => {}), [], 'nothing runnable remains: the dispatcher then reports UNOBSERVED as before');
-  assert.equal(reexported, withoutBrowserSpecs, 'the dispatcher imports it through revert-oracle.mjs, which is at its frozen budget');
 });

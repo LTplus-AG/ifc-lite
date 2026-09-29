@@ -38,7 +38,7 @@ export function partitionRunnablePlans(plans, unassigned = []) {
 }
 
 /** Join the baseline and reverted measurements to the exact changed file/run. */
-export function buildExecutionLedger({ plans, gaps = [], support = [], baselineResults, revertedResults }) {
+export function buildExecutionLedger({ plans, gaps = [], support = [], deferred = [], baselineResults, revertedResults }) {
   const measurement = (run, plan) => run ? {
     kind: run.kind,
     passed: run.passed ?? null,
@@ -62,12 +62,14 @@ export function buildExecutionLedger({ plans, gaps = [], support = [], baselineR
       command: [plan.runner.bin, ...plan.runner.args],
     } : null,
     features: plan.features ?? [],
-    attribution: plan.typecheck ? 'compiler-program-membership' : plan.moduleFilter ? 'cargo-module-filter' : plan.crate ? 'cargo-integration-target' : plan.runner?.family === 'python' ? 'pytest-exact-file' : 'runtime-v8-file',
+    attribution: plan.typecheck ? 'compiler-program-membership' : plan.browser ? 'playwright-report-file' : plan.moduleFilter ? 'cargo-module-filter' : plan.crate ? 'cargo-integration-target' : plan.runner?.family === 'python' ? 'pytest-exact-file' : 'runtime-v8-file',
     baseline: measurement(baselineResults[index], plan),
     reverted: measurement(revertedResults[index], plan),
   }));
   for (const gap of gaps) entries.push({ file: gap.file, role: 'capability-gap', reason: gap.reason });
   for (const file of support) entries.push({ file, role: 'support', reason: 'test support/fixture; executed through an entrypoint, not independently attributable' });
+  // #6267: a browser spec not run because a cheaper changed test already observed the revert.
+  for (const plan of deferred) entries.push({ file: plan.file, role: 'deferred', reason: 'Playwright spec not run: another changed test already observed the revert' });
   return entries;
 }
 

@@ -23,7 +23,7 @@ import type { Flavor, UnpackedFlavor } from '@ifc-lite/extensions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
-import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { useDialogs } from '@/components/ui/confirm-dialog';
 import { downloadFile } from '@/lib/export/download';
 import { FlavorMergeDialog } from './FlavorMergeDialog';
 import { FlavorListView } from './FlavorListView';
@@ -43,14 +43,13 @@ interface FlavorDialogProps {
 
 export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
   const { t, locale } = useTranslation();
+  const { confirmDialog } = useDialogs();
   const host = useExtensionHost();
   const [flavors, setFlavors] = useState<Flavor[]>([]);
   const [activeId, setActiveId] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<{ bytes: Uint8Array; unpacked: UnpackedFlavor } | null>(null);
   const [mergeTarget, setMergeTarget] = useState<Flavor | null>(null);
-  /** Live lens count from the viewer store — drives the "N new lenses
-   *  not yet in active flavor" banner. */
   const liveLensCount = useViewerStore((s) => s.savedLenses.length);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const failure = (operation: string, err: unknown) => flavorFailure(t, operation, err);

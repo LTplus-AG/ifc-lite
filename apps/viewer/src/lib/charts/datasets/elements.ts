@@ -16,6 +16,7 @@
 import { elementFieldColumnId, elementsDataset, type ChartDataset, type ChartScope, type ElementFieldBinding, type ElementsDatasetModel } from '@ifc-lite/charts';
 import { useViewerStore, type ViewerState } from '@/store';
 import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
+import { ownsCurrentIsolation } from '@/lib/visibility/ownership';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { stringToEntityRef, type EntityRef } from '@/store/types';
 import { createElementFieldReader } from '@/lib/charts/element-field-reader';
@@ -36,7 +37,12 @@ function isFieldList(value: readonly ElementFieldBinding[] | ModelsState): value
 /** Per-model include sets for a scope, or `null` for "every element". */
 function includeSets(scope: ChartScope, state: ModelsState): Map<string, Set<number>> | null {
   let refs: EntityRef[];
-  if (scope.kind === 'visible') refs = getVisibleBasketEntityRefsFromStore();
+  if (scope.kind === 'visible') {
+    // A bucket click in Isolate focus writes `isolatedEntities` itself; counting
+    // that would collapse the chart to the bucket it just isolated (#6473).
+    const live = useViewerStore.getState();
+    refs = getVisibleBasketEntityRefsFromStore(ownsCurrentIsolation(live, live.chartVisibilityOwned));
+  }
   else if (scope.kind === 'basket') refs = [...state.pinboardEntities].map(stringToEntityRef);
   else return null; // 'all' — no include set; a per-chart source filter (#4946) narrows rows separately
   const sets = new Map<string, Set<number>>();

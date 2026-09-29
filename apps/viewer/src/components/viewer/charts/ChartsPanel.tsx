@@ -20,7 +20,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
 import { chartElementFields } from '@/lib/charts/chart-fields';
 import type { ChartFocusMode } from '@/store/slices/chartSlice';
-import { DASHBOARD_PRESETS, modelOverviewDashboard, newChartSpec } from '@/lib/charts/presets';
+import { DASHBOARD_PRESETS, duplicateChart, modelOverviewDashboard, newChartSpec } from '@/lib/charts/presets';
 import { ChartCard } from './ChartCard';
 import { ChartEditor, type ClashRuleOption } from './ChartEditor';
 import { DashboardGrid } from './DashboardGrid';
@@ -157,6 +157,16 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
     if (!dashboard) return;
     update({ ...dashboard, charts: dashboard.charts.filter((c) => c.id !== id), layout: dashboard.layout.filter((l) => l.chartId !== id) });
   }, [dashboard, update]);
+  // Copy, save, and open the copy in the editor — the point is to tweak it.
+  const duplicateChartById = useCallback((id: string) => {
+    if (!dashboard) return;
+    const source = dashboard.charts.find((c) => c.id === id);
+    if (!source) return;
+    const result = duplicateChart(dashboard, id, t('chartCard.copyName', { name: source.title }));
+    if (!result) return;
+    update(result.dashboard);
+    setEditing(result.chart);
+  }, [dashboard, t, update]);
   const setScope = useCallback((kind: ChartScope['kind']) => {
     if (!dashboard) return;
     update({ ...dashboard, scope: { kind } });
@@ -177,11 +187,12 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
         link={link}
         renderer={renderer}
         onEdit={() => setEditing(spec)}
+        onDuplicate={() => duplicateChartById(spec.id)}
         onRemove={() => removeChart(spec.id)}
         onAggregation={onAggregation}
       />
     );
-  }, [dashboard, datasets, sourceFilters, link, renderer, removeChart, onAggregation]);
+  }, [dashboard, datasets, sourceFilters, link, renderer, duplicateChartById, removeChart, onAggregation]);
 
   const select = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5';
 
@@ -244,6 +255,7 @@ export function ChartsPanel({ renderer, reportSeams }: ChartsPanelProps) {
       {editing && (
         <div className="border-b border-border bg-muted/20">
           <ChartEditor
+            key={editing.id}
             spec={editing}
             datasets={datasets}
             elementFieldCatalog={fieldCatalog.catalog}

@@ -5,6 +5,7 @@
 import { useMemo } from 'react';
 import type { SourceContainer, SourceFile, SourceProject } from '@ifc-lite/plugin-api';
 import type { DownloadedSourceFileRecord } from '@/lib/sources/persistence';
+import type { SourceDownloadState } from '@/lib/sources/downloadProgress';
 import { getDownloadedSourceFileRecord, getDownloadedSourceFileStatus } from '@/lib/sources/persistence';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,7 +36,11 @@ interface SourceFolderStepProps {
   downloadedRecords: ReadonlyMap<string, DownloadedSourceFileRecord>;
   loadedModelNamesByFileId: ReadonlyMap<string, readonly string[]>;
   syncingFileIds: ReadonlySet<string>;
+  /** Sync download progress by file id, for the rows' Sync ring. */
+  syncStatesByFileId: ReadonlyMap<string, SourceDownloadState>;
   onSyncLoadedFile: (file: SourceFile) => void;
+  /** Per-file state of the running Load batch, by file id. */
+  downloadStates: ReadonlyMap<string, SourceDownloadState>;
   busy: boolean;
   onLoad: () => void;
   foldersHaveMore: boolean;
@@ -74,7 +79,9 @@ export function SourceFolderStep({
   downloadedRecords,
   loadedModelNamesByFileId,
   syncingFileIds,
+  syncStatesByFileId,
   onSyncLoadedFile,
+  downloadStates,
   busy,
   onLoad,
   foldersHaveMore,
@@ -318,7 +325,9 @@ export function SourceFolderStep({
                         onToggle={() => onToggleFile(f)}
                         loadedModelNames={loadedModelNamesByFileId.get(f.id) ?? []}
                         syncingFile={syncingFileIds.has(f.id)}
+                        syncState={syncStatesByFileId.get(f.id)}
                         onSyncLoadedFile={() => onSyncLoadedFile(f)}
+                        downloadState={downloadStates.get(f.id)}
                         downloadedStatus={getDownloadedSourceFileStatus(f, downloadedRecord)}
                         favourited={isFileFavourite(f)}
                         onToggleFavourite={() => onToggleFileFavourite(f)}

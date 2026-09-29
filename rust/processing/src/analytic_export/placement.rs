@@ -35,9 +35,28 @@ pub(super) fn validate_placement_chain(
                 validate_axis2_placement_3d(&relative, decoder)?;
             }
             IfcType::IfcGridPlacement => {
-                let location = resolve_required(&node, 1, "PlacementLocation", decoder)?;
+                // Positions follow the declared schema: IFC2X3/IFC4 have no
+                // PlacementRelTo, so PlacementLocation is attribute 0 and the
+                // parent frame is the placement of the grid owning the axes.
+                let slot = decoder
+                    .attribute_index("IfcGridPlacement", "PlacementLocation")
+                    .ok_or_else(|| {
+                        format!(
+                            "IfcGridPlacement #{current} has no PlacementLocation in this schema"
+                        )
+                    })?;
+                let location = resolve_required(&node, slot, "PlacementLocation", decoder)?;
                 if location.ifc_type != IfcType::IfcVirtualGridIntersection {
                     return Err(format!("IfcGridPlacement #{current} has invalid PlacementLocation #{}", location.id));
+                }
+                if decoder.attribute_index("IfcGridPlacement", "PlacementRelTo").is_none() {
+                    match owning_grid_placement(&location, decoder) {
+                        Some(parent) => {
+                            current = parent;
+                            continue;
+                        }
+                        None => return Ok(()),
+                    }
                 }
             }
             IfcType::IfcLinearPlacement => {
@@ -66,6 +85,18 @@ pub(super) fn validate_placement_chain(
         current = parent.as_entity_ref()
             .ok_or_else(|| format!("placement #{current} has invalid PlacementRelTo"))?;
     }
+}
+
+/// IFC2X3/IFC4 grid placements sit in the frame of the `IfcGrid` that owns
+/// their axes: that grid's ObjectPlacement id, when it has one.
+fn owning_grid_placement(
+    intersection: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> Option<u32> {
+    let axis = intersection.get_refs(0)?.first().copied()?;
+    let grid = decoder.grid_of_axis(axis)?;
+    let slot = decoder.attribute_index("IfcGrid", "ObjectPlacement")?;
+    decoder.decode_by_id(grid).ok()?.get_ref(slot)
 }
 
 pub(super) fn resolve_required(
@@ -117,4 +148,52 @@ pub(super) fn validate_optional_direction(
         return Err(format!("entity #{} has invalid {name} #{} of type {}", entity.id, direction.id, direction.ifc_type.name()));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod grid_layout_tests {
+    use super::validate_placement_chain;
+    use ifc_lite_core::EntityDecoder;
+
+    /// #6232 F2: an IFC2X3/IFC4 grid placement is (PlacementLocation,
+    /// PlacementRefDirection); reading it with the IFC4X3 slots refused a
+    /// valid chain. The grid's own placement (#20) is then validated too.
+    fn source(schema: &str, grid_placement: &str) -> String {
+        format!(
+            "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('{schema}'));\nENDSEC;\nDATA;\n\
+#20=IFCLOCALPLACEMENT($,#23);\n#21=IFCCARTESIANPOINT((100.,200.,0.));\n\
+#23=IFCAXIS2PLACEMENT3D(#21,$,$);\n\
+#30=IFCCARTESIANPOINT((4.,-1.));\n#31=IFCCARTESIANPOINT((4.,10.));\n\
+#32=IFCPOLYLINE((#30,#31));\n#33=IFCGRIDAXIS('1',#32,.T.);\n\
+#34=IFCCARTESIANPOINT((-1.,3.));\n#35=IFCCARTESIANPOINT((10.,3.));\n\
+#36=IFCPOLYLINE((#34,#35));\n#37=IFCGRIDAXIS('A',#36,.T.);\n\
+#50=IFCGRID('0M7tQ9Jbj1BAeHd7rqnDmP',$,'Grid',$,$,#20,$,(#33),(#37),$,$);\n\
+#60=IFCVIRTUALGRIDINTERSECTION((#33,#37),(0.,0.));\n\
+#70={grid_placement};\n\
+#90=IFCCOLUMN('1kTvXnbbzCWw8lcMd1dR4o',$,'C1',$,$,#70,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+        )
+    }
+
+    fn validate(content: &str) -> Result<(), String> {
+        let mut decoder = EntityDecoder::new(content);
+        let column = decoder.decode_by_id(90).expect("column");
+        validate_placement_chain(&column, &mut decoder)
+    }
+
+    #[test]
+    fn grid_placement_chain_validates_in_each_schema_layout() {
+        assert_eq!(validate(&source("IFC2X3", "IFCGRIDPLACEMENT(#60,$)")), Ok(()));
+        assert_eq!(validate(&source("IFC4", "IFCGRIDPLACEMENT(#60,$)")), Ok(()));
+        assert_eq!(validate(&source("IFC4X3_ADD2", "IFCGRIDPLACEMENT(#20,#60,$)")), Ok(()));
+    }
+
+    #[test]
+    fn ifc4_grid_placement_follows_the_owning_grid_placement() {
+        // Break the grid's own placement: the walk must reach and refuse it.
+        let broken = source("IFC4", "IFCGRIDPLACEMENT(#60,$)")
+            .replace("#20=IFCLOCALPLACEMENT($,#23);", "#20=IFCLOCALPLACEMENT($,#21);");
+        let err = validate(&broken).expect_err("grid placement chain reaches #20");
+        assert!(err.contains("#20"), "{err}");
+    }
 }

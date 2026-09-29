@@ -866,7 +866,7 @@ fn process_geometry_streaming_filtered_with_options_and_ids(
     // downstream phases resolve refs against it, and expose it (as before) to the
     // geometry workers further down.
     let entity_index = match provided_index {
-        Some(idx) => ProcessingIndex::Hash(idx),
+        Some(idx) => ProcessingIndex::hash(idx),
         None => inline_index.finish(),
     };
     entity_index.install(&mut decoder);

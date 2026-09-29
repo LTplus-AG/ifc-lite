@@ -9,6 +9,8 @@ import { toast } from '@/components/ui/toast';
 import { syncSourceModel } from '@/lib/sources/syncSourceModel';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
 import { useViewerStore } from '@/store';
+import type { SourceDownloadState } from '@/lib/sources/downloadProgress';
+import { useSourceSyncProgress } from './SourceDownloadStatus';
 
 interface UseLoadedSourceModelsOptions {
   /** Manifest name of the provider being browsed. */
@@ -64,6 +66,19 @@ export function useLoadedSourceModels({ providerName, projectId, onSynced }: Use
     return next;
   }, [loadedModelIdsByFileId, models]);
 
+  // A file loaded as several models syncs them one after another, so at
+  // most one of them is downloading at a time: that one is the row's ring.
+  const syncProgress = useSourceSyncProgress();
+  const syncStatesByFileId = useMemo(() => {
+    const next = new Map<string, SourceDownloadState>();
+    if (syncProgress.size === 0) return next;
+    for (const [fileId, modelIds] of loadedModelIdsByFileId) {
+      const state = modelIds.map((modelId) => syncProgress.get(modelId)).find((s) => s !== undefined);
+      if (state) next.set(fileId, state);
+    }
+    return next;
+  }, [loadedModelIdsByFileId, syncProgress]);
+
   const syncLoadedFile = useCallback(async (file: SourceFile) => {
     const loadedModelIds = loadedModelIdsByFileId.get(file.id);
     if (!loadedModelIds || loadedModelIds.length === 0) return;
@@ -114,5 +129,5 @@ export function useLoadedSourceModels({ providerName, projectId, onSynced }: Use
     sourceTags,
   ]);
 
-  return { loadedModelNamesByFileId, syncingFileIds, syncLoadedFile };
+  return { loadedModelNamesByFileId, syncingFileIds, syncStatesByFileId, syncLoadedFile };
 }

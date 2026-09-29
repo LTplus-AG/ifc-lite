@@ -131,6 +131,10 @@ impl EntityDecoder<'_> {
 
     /// Memoize a placement world transform under its placement id.
     ///
+    /// The router also files the world frame of the `IfcGrid` owning an
+    /// IFC2X3/IFC4 grid placement under that grid's `IfcGridAxis` id; entity
+    /// ids are unique, so the two key sets never collide.
+    ///
     /// This is an unconditional insert, and last write wins. It does not
     /// validate `transform`, does not compare it against any entry already held
     /// for `id`, and has no way to tell a complete world transform from a

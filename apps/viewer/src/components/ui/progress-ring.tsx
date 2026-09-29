@@ -16,7 +16,7 @@ const RADIUS = 7;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 export interface ProgressRingProps {
-  /** Percent complete, 0-100. Out-of-range values are clamped. */
+  /** Percent complete, 0-100. Out-of-range values are clamped; fractions are floored. */
   value: number;
   /** Accessible name: what is progressing. The value is announced separately. */
   label: string;
@@ -30,7 +30,8 @@ export interface ProgressRingProps {
  * the total is unknown; a ring that cannot fill is a promise it cannot keep.
  */
 export function ProgressRing({ value, label, size = 'sm', className }: ProgressRingProps) {
-  const percent = Math.round(Math.min(100, Math.max(0, Number.isFinite(value) ? value : 0)));
+  // Floored, not rounded: a ring must not read full (or 100) before it is.
+  const percent = Math.floor(Math.min(100, Math.max(0, Number.isFinite(value) ? value : 0)));
   return (
     <svg
       // A native <progress> renders as a bar and cannot be drawn as a ring;

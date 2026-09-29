@@ -151,6 +151,11 @@ describe('SourcesPanel per-file download progress (#6375)', () => {
     progress(pending[0], 90, 100);
     assert.equal(row('Tower.ifc').querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'), '90');
 
+    // 99.5% is not done: the ring and its text both read 99, never a full ring beside "99%".
+    progress(pending[0], 995, 1000);
+    assert.equal(row('Tower.ifc').querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow'), '99');
+    assert.ok(row('Tower.ifc').textContent?.includes('99%'));
+
     await settle(() => pending[0].resolve(new ArrayBuffer(100)));
     assert.equal(row('Tower.ifc').querySelector('[role="progressbar"]'), null, 'a downloaded file drops its ring');
     assert.equal(pending.length, 2, 'the next file starts once the first is in');

@@ -175,6 +175,9 @@ describe('addRailingToStore', () => {
     expect(railingPostPoints([[0, 0, 0], [3, 0, 0]], 1)).toEqual([[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0]]);
     expect(railingPostPoints([[0, 0, 0], [2.5, 0, 0]], 1).length).toBe(4);
     expect(railingPostPoints([[0, 0, 0], [1, 0, 0], [1, 1, 0]])).toHaveLength(3);
+    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => railingPostPoints([[0, 0, 0], [3, 0, 0]], bad)).toThrow(/spacing must be a finite positive number/);
+    }
   });
 
   it('writes the polyline range as StartParam/EndParam on IFC2X3, where they are mandatory', () => {

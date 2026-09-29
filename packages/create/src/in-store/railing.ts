@@ -78,8 +78,13 @@ export interface RailingBuildResult {
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const lerp = (a: Vec3, b: Vec3, t: number): Vec3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 
-/** Post base points along `path` (vertices, plus intermediates at `spacing`). */
+/**
+ * Post base points along `path` (vertices, plus intermediates at `spacing`).
+ * `spacing`, when given, must be finite and positive: a zero spacing would
+ * need infinitely many posts, and NaN would silently drop segment ends.
+ */
 export function railingPostPoints(path: ReadonlyArray<Vec3>, spacing?: number): Vec3[] {
+  if (spacing !== undefined) assertPositiveFinite([spacing], 'railingPostPoints: spacing must be a finite positive number');
   const posts: Vec3[] = [path[0]];
   for (let i = 1; i < path.length; i++) {
     const a = path[i - 1];

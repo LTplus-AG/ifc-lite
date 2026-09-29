@@ -35,6 +35,14 @@ it('uses the exact model-aware basket and skips a federated GLB compatibility st
   assert.deepEqual([...selectedSourceProducts(state, 'extrusion inspection', () => {
     throw new Error('stale renderer ID must stay ignored');
   }).grouped], [['ifc', [1]]]);
+
+  const missingSource = fixtureModel('no-source', { idOffset: 3_000_000 });
+  const withoutBytes = { ...state, models: new Map([[missingSource.id, missingSource]]),
+    selectedEntity: { modelId: 'no-source', expressId: 1 },
+    selectedEntitiesSet: new Set(['no-source:1']) };
+  assert.equal(selectedSourceProducts(withoutBytes, 'extrusion inspection', () => {
+    throw new Error('model-aware selection must not invoke legacy resolution');
+  }).grouped.size, 0);
 });
 
 it('keeps the single-model legacy globalId equals expressId fallback (#6432)', () => {

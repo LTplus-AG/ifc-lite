@@ -66,7 +66,7 @@ export function selectedSourceProducts(
     if (model.loadFormat && model.loadFormat !== 'ifc') continue;
     const retainedFileIsIfc = !!model.sourceFile && (model.loadFormat === 'ifc'
       || /\.ifc(?:zip)?$/i.test(model.sourceFile.name));
-    if (!sourceIdentity(model) || (model.ifcDataStore.source.byteLength === 0 && !retainedFileIsIfc)) continue;
+    if (!sourceIdentity(model) || (!model.ifcDataStore.source?.byteLength && !retainedFileIsIfc)) continue;
     let globalId: number;
     try { globalId = ref.modelId === 'legacy' && state.models.size === 0
       ? ref.expressId : state.toGlobalId(ref.modelId, ref.expressId); }

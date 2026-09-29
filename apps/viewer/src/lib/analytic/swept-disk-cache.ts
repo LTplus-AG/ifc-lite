@@ -121,7 +121,7 @@ export class SweptDiskCache {
 
 export function sourceIdentity(model: AnalyticSourceModel): object | null {
   const store = model.ifcDataStore;
-  return store?.source.byteLength ? store.source : model.sourceFile ?? null;
+  return store?.source?.byteLength ? store.source : model.sourceFile ?? null;
 }
 
 /** Read the source retained by the canonical model load path, including spill storage. */

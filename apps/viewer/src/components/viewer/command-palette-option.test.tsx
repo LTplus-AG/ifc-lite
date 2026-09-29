@@ -12,10 +12,14 @@ import { shortcutLabel } from '@/lib/commands/shortcut-label.js';
 import { surfaceCommand } from './surface-commands.js';
 import { EXPORT_SURFACE_COMMANDS } from './commandPaletteExports.js';
 import type { Command } from './commandPaletteSearch.js';
-import {
-  DynamicPaletteOption, RegisteredPaletteOption, registeredPaletteId,
-  type DynamicPaletteOptionProps, type RegisteredPaletteOptionProps,
-} from './command-palette-option.js';
+import type { DynamicPaletteOptionProps, RegisteredPaletteOptionProps } from './command-palette-option.js';
+
+/** Loaded dynamically so a missing primitive fails an assertion, not the module graph. */
+async function loadOptions() {
+  const options = await import('./command-palette-option.js').catch(() => null);
+  assert.ok(options, 'the typed palette option primitive exists');
+  return options;
+}
 
 const placement = { index: 0, selected: true, onActivate: () => {}, onHover: () => {} };
 
@@ -46,7 +50,8 @@ function registeredRow(id: string): Extract<Command, { registryOwned: true }> {
     icon: FolderOpen, registryOwned: true, action: () => {} };
 }
 
-it('renders a registered palette action by id and keeps runtime rows separate (#5878)', () => {
+it('renders a registered palette action by id and keeps runtime rows separate (#5878)', async () => {
+  const { RegisteredPaletteOption, DynamicPaletteOption } = await loadOptions();
   const command = surfaceCommand('view:frame', 'palette');
   let registeredClicks = 0;
   let runtimeClicks = 0;
@@ -82,20 +87,23 @@ it('renders a registered palette action by id and keeps runtime rows separate (#
     resolveEnglish(exportDefinition.labelKey));
 });
 
-it('resolves the Model workspace rail commands through the registry (#5878, #6232)', () => {
+it('resolves the Model workspace rail commands through the registry (#5878, #6232)', async () => {
+  const { RegisteredPaletteOption } = await loadOptions();
   for (const id of ['tool:wall', 'tool:slab', 'tool:column', 'tool:beam'] as const) {
     const definition = surfaceCommand(id, 'palette');
-    assert.ok(definition.shortcut?.startsWith('model.'), `${id} shows its workspace key`);
+    const shortcut = definition.shortcut;
+    assert.ok(shortcut && shortcut.startsWith('model.'), `${id} shows its workspace key`);
     render(<RegisteredPaletteOption commandId={id} {...placement} />);
     const row = document.querySelector<HTMLButtonElement>(`[data-command-id="${id}"]`);
     assert.ok(row, id);
     assert.equal(row.getAttribute('aria-label'), resolveEnglish(definition.labelKey), id);
-    assert.equal(row.querySelector('kbd')?.textContent, shortcutLabel(definition.shortcut), id);
+    assert.equal(row.querySelector('kbd')?.textContent, shortcutLabel(shortcut), id);
     cleanup();
   }
 });
 
-it('rejects fabricated and unowned palette ids (#5878)', () => {
+it('rejects fabricated and unowned palette ids (#5878)', async () => {
+  const { DynamicPaletteOption, registeredPaletteId } = await loadOptions();
   assert.equal(registeredPaletteId(registeredRow('view:frame')), 'view:frame');
   assert.equal(registeredPaletteId(registeredRow('tool:wall')), 'tool:wall');
   assert.equal(registeredPaletteId(registeredRow('export:ifc')), 'export:ifc');

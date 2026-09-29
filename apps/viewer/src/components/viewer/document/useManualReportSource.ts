@@ -20,6 +20,9 @@ export interface ManualReportSourceHandle {
   /** False until a checklist exists in the Manual validation tab. */
   available: boolean;
   checklists: Array<{ id: string; name: string }>;
+  /** Add chooses an explicit source even when the editor is closed. */
+  defaultChecklistId: string | null;
+  activeChecklistId: string | null;
   models: ManualModelOption[];
   /** The model a snapshot reads when none is picked. */
   defaultModelId: string | null;
@@ -40,7 +43,7 @@ export function useManualReportSource(): ManualReportSourceHandle {
   const checklists = useMemo(() => library.checklists.map((entry) => ({ id: entry.id, name: entry.template.name })), [library.checklists]);
 
   const snapshot = useCallback((id: string, modelId: string | null = null, checklistId?: string) => {
-    const entry = library.checklists.find((candidate) => candidate.id === (checklistId ?? defaultChecklistId));
+    const entry = library.checklists.find((candidate) => candidate.id === (checklistId ?? library.activeId));
     if (!entry) return null;
     const model = modelId === null ? pickManualModel(models, null, activeModelId) : models.find((m) => m.id === modelId);
     if (model === undefined) return null;
@@ -51,7 +54,7 @@ export function useManualReportSource(): ManualReportSourceHandle {
       }, id),
       ...(scope ? { reportModels: [scope] } : {}),
     };
-  }, [library.checklists, defaultChecklistId, models, activeModelId]);
+  }, [library.checklists, library.activeId, models, activeModelId]);
 
-  return { available: checklists.length > 0, checklists, models, defaultModelId, snapshot };
+  return { available: checklists.length > 0, checklists, defaultChecklistId, activeChecklistId: library.activeId, models, defaultModelId, snapshot };
 }

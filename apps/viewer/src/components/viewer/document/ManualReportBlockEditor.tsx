@@ -24,6 +24,7 @@ export function ManualReportBlockEditor({ block, onChange }: { block: ManualRepo
   const missing = resolved.kind === 'missing';
   const chosen = resolved.kind === 'model' ? resolved.model?.id ?? null : null;
   const missingChecklist = block.checklistId !== undefined && !source.checklists.some((entry) => entry.id === block.checklistId);
+  const available = block.checklistId !== undefined ? !missingChecklist : source.activeChecklistId !== null;
   const replaceSnapshot = (checklistId?: string) => {
     if (missing) return false;
     const next = source.snapshot(block.id, chosen, checklistId);
@@ -66,8 +67,8 @@ export function ManualReportBlockEditor({ block, onChange }: { block: ManualRepo
         variant="outline"
         size="sm"
         className="h-6 w-fit px-2 text-xs"
-        disabled={!source.available || missing || missingChecklist}
-        title={missingChecklist ? t('manualValidation.report.checklistMissing') : !source.available ? t('manualValidation.report.unavailableTitle') : missing ? t('manualValidation.report.pickModel') : undefined}
+        disabled={!available || missing}
+        title={missingChecklist ? t('manualValidation.report.checklistMissing') : !available ? t('manualValidation.report.unavailableTitle') : missing ? t('manualValidation.report.pickModel') : undefined}
         onClick={() => {
           if (!replaceSnapshot(block.checklistId)) return;
           toast.success(t('manualValidation.report.refreshed'));

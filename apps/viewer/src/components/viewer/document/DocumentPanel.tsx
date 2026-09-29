@@ -104,7 +104,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
           : kind === 'page-break' ? { kind, id }
           : kind === 'spacer' ? { kind, id, height: 20 }
             : kind === 'ids-report' ? (idsValidationReport ? idsReportBlockFromReport(idsValidationReport, id, 'compact') : { kind, id, variant: 'compact', sourceName: '', generatedAt: new Date().toISOString(), summary: { checked: 0, passed: 0, failed: 0, passRate: 100 }, checks: [] })
-              : kind === 'manual-report' ? (manualSource.snapshot(id) ?? emptyManualReportBlock(id))
+              : kind === 'manual-report' ? (manualSource.snapshot(id, null, manualSource.defaultChecklistId ?? undefined) ?? emptyManualReportBlock(id))
               : { kind, id, guid: [...data.topics.keys()][0] ?? '', snapshot: true };
     setBlocks([...document.blocks, block]);
     setSelectedBlockId(id);

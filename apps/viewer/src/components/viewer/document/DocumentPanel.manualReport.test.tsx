@@ -18,6 +18,7 @@ import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { cleanup, click, render } from '@/test/render.js';
 import { CHECKLIST_VERSION } from '@/lib/validation/manual/checklist';
+import { parseDocumentFile } from '@/lib/document/persistence';
 import type { ManualReportBlock } from '@/lib/document/manual-report-types';
 import { DocumentPanel } from './DocumentPanel.js';
 
@@ -243,6 +244,51 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.ok(ui.querySelector('[data-manual-report-checklist-missing]'));
     assert.deepEqual(stored(), frozen);
     assert.match(preview.textContent ?? '', /Manual validation: Structure/);
+  });
+
+
+  it('a reopened legacy block cannot refresh from an arbitrary stored checklist after the active editor closes (#6507)', async () => {
+    const architectureId = useViewerStore.getState().manualLibrary.activeId!;
+    useViewerStore.getState().renameManualChecklist('Architecture');
+    useViewerStore.getState().duplicateManualChecklist(architectureId, 'Legacy structure');
+    useViewerStore.getState().setManualAnswer('fp-tower', 'a', { status: 'fail' });
+    const ui = render(<DocumentPanel />);
+    await settle();
+    const addManual = async () => {
+      openMenu([...ui.querySelectorAll('button')].find((button) => button.title === 'Add a block to the page')!);
+      click(menuItem('Manual validation report')!);
+      await settle();
+    };
+    await addManual();
+    const originalDocument = useViewerStore.getState().documents[0];
+    const legacyBlock = structuredClone(originalDocument.blocks.find((block): block is ManualReportBlock => block.kind === 'manual-report')!);
+    delete legacyBlock.checklistId;
+    const reopened = parseDocumentFile(JSON.stringify({ ...originalDocument, version: 7, blocks: [legacyBlock] }));
+    act(() => {
+      useViewerStore.getState().setManualChecklist(null);
+      useViewerStore.setState({ documents: [reopened], activeDocumentId: reopened.id });
+    });
+    await settle();
+    const stored = (): ManualReportBlock => useViewerStore.getState().documents[0].blocks.find((block): block is ManualReportBlock => block.kind === 'manual-report')!;
+    const refresh = (): HTMLButtonElement => [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Refresh from current checklist')!;
+    assert.equal(stored().checklistId, undefined);
+    assert.equal(stored().groups[0].items[0].status, 'fail');
+    const frozen = structuredClone(stored());
+    assert.equal(refresh().disabled, true, 'closing the editor preserves the unavailable legacy source');
+    click(refresh());
+    await settle();
+    assert.deepEqual(stored(), frozen);
+    const picker = ui.querySelector<HTMLSelectElement>('select[aria-label="Checklist"]')!;
+    act(() => { picker.value = architectureId; picker.dispatchEvent(new window.Event('change', { bubbles: true })); });
+    await settle();
+    assert.equal(stored().checklistId, architectureId);
+    assert.equal(stored().groups[0].items[0].status, 'pass');
+    assert.equal(refresh().disabled, false);
+    assert.equal(useViewerStore.getState().manualLibrary.activeId, null, 'explicit Documentation binding does not reopen the Validation editor');
+    await addManual();
+    const added = useViewerStore.getState().documents[0].blocks.at(-1)!;
+    assert.equal(added.kind === 'manual-report' ? added.checklistId : null, architectureId, 'new blocks choose an explicit source while the editor remains closed');
+    assert.equal(useViewerStore.getState().manualLibrary.activeId, null);
   });
 
 });

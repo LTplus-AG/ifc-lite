@@ -29,6 +29,8 @@ function paletteOptionTypeContract(runtime: Extract<Command, { runtimeSource: st
   const manualLabel: RegisteredPaletteOptionProps = { commandId: 'view:frame', label: 'Foo', ...placement };
   // @ts-expect-error Unknown commands cannot be rendered as registered rows.
   const unknownId: RegisteredPaletteOptionProps = { commandId: 'palette:made-up', ...placement };
+  // @ts-expect-error A registered id whose definition does not declare the palette surface.
+  const contextOnly: RegisteredPaletteOptionProps = { commandId: 'context:select-all-type', ...placement };
   // The Model workspace rail commands (#6232) are registered palette ids too.
   const railIds: RegisteredPaletteOptionProps['commandId'][] = ['tool:wall', 'tool:slab', 'tool:column', 'tool:beam'];
   // @ts-expect-error A runtime row cannot be rendered without its runtime owner.
@@ -39,7 +41,7 @@ function paletteOptionTypeContract(runtime: Extract<Command, { runtimeSource: st
   const withParams: Command = { ...registered, labelKeyParams: { count: 1 } };
   // @ts-expect-error A registered row has no runtime detail to drop.
   const withDetail: Command = { ...registered, detail: '1.4 MB' };
-  void manualLabel; void unknownId; void railIds; void unowned; void withParams; void withDetail;
+  void manualLabel; void unknownId; void contextOnly; void railIds; void unowned; void withParams; void withDetail;
 }
 void paletteOptionTypeContract;
 

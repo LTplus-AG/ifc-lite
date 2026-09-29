@@ -6,17 +6,22 @@
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label';
-import { SURFACE_COMMANDS, type SurfaceCommandDefinition, type SurfaceCommandId } from './surface-commands';
+import { SURFACE_COMMANDS, type SurfaceCommandDefinition, type SurfaceCommandIdFor } from './surface-commands';
 import { EXPORT_SURFACE_COMMANDS } from './commandPaletteExports';
 import type { Command } from './commandPaletteSearch';
 import type { CsvExportType, ExportCommandId } from './toolbar/export-commands';
 
 type ExportPaletteId = `export:${Exclude<ExportCommandId, 'csv'>}` | `export:csv-${CsvExportType}`;
-export type RegisteredPaletteId = SurfaceCommandId | ExportPaletteId;
+type PaletteSurfaceId = SurfaceCommandIdFor<'palette'>;
+/** Only ids whose definition declares the palette surface: a context-only id is a type error. */
+export type RegisteredPaletteId = PaletteSurfaceId | ExportPaletteId;
 type RuntimeCommand = Extract<Command, { runtimeSource: string }>;
 
-const declaresPalette = (command: SurfaceCommandDefinition): boolean =>
-  command.surfaces.some((surface) => surface === 'palette');
+function declaresPalette<Definition extends SurfaceCommandDefinition>(
+  command: Definition,
+): command is Definition & { id: PaletteSurfaceId } {
+  return command.surfaces.some((surface) => surface === 'palette');
+}
 
 function isExportPaletteId(id: string): id is ExportPaletteId {
   return EXPORT_SURFACE_COMMANDS.some((command) => command.id === id);

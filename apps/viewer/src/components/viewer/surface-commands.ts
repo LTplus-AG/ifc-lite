@@ -183,18 +183,24 @@ const FILE_AND_VIEW_SURFACE_COMMANDS = [
     run: () => { openSettings('display'); },
   },
 ] as const satisfies readonly SurfaceCommandDefinition[];
-export type SurfaceCommandId =
-  | (typeof FILE_AND_VIEW_SURFACE_COMMANDS)[number]['id']
-  | (typeof TOOL_SURFACE_COMMANDS)[number]['id']
-  | (typeof PANEL_SURFACE_COMMANDS)[number]['id']
-  | (typeof WORKSPACE_SURFACE_COMMANDS)[number]['id']
-  | (typeof RIBBON_VIEW_SURFACE_COMMANDS)[number]['id']
-  | (typeof RIBBON_FILE_SURFACE_COMMANDS)[number]['id']
-  | (typeof RIBBON_ELEMENTS_SURFACE_COMMANDS)[number]['id']
-  | (typeof RIBBON_AUTHOR_SURFACE_COMMANDS)[number]['id']
-  | (typeof MOBILE_SURFACE_COMMANDS)[number]['id']
-  | (typeof CONTEXT_SURFACE_COMMANDS)[number]['id']
-  | (typeof VISIBILITY_SURFACE_COMMANDS)[number]['id'];
+type SurfaceCommandEntry =
+  | (typeof FILE_AND_VIEW_SURFACE_COMMANDS)[number]
+  | (typeof TOOL_SURFACE_COMMANDS)[number]
+  | (typeof PANEL_SURFACE_COMMANDS)[number]
+  | (typeof WORKSPACE_SURFACE_COMMANDS)[number]
+  | (typeof RIBBON_VIEW_SURFACE_COMMANDS)[number]
+  | (typeof RIBBON_FILE_SURFACE_COMMANDS)[number]
+  | (typeof RIBBON_ELEMENTS_SURFACE_COMMANDS)[number]
+  | (typeof RIBBON_AUTHOR_SURFACE_COMMANDS)[number]
+  | (typeof MOBILE_SURFACE_COMMANDS)[number]
+  | (typeof CONTEXT_SURFACE_COMMANDS)[number]
+  | (typeof VISIBILITY_SURFACE_COMMANDS)[number];
+export type SurfaceCommandId = SurfaceCommandEntry['id'];
+/** The ids whose definition declares `surface`, resolved at compile time (#5878). */
+export type SurfaceCommandIdFor<Surface extends CommandSurface> = SurfaceCommandEntry extends infer Entry
+  ? Entry extends { readonly id: infer Id; readonly surfaces: readonly (infer Declared)[] }
+    ? (Surface extends Declared ? Id : never) : never
+  : never;
 export const SURFACE_COMMANDS: readonly (SurfaceCommandDefinition & { id: SurfaceCommandId })[] = [
   ...FILE_AND_VIEW_SURFACE_COMMANDS,
   ...TOOL_SURFACE_COMMANDS,

@@ -16,7 +16,8 @@
 import { describe, it, expect } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { existingSpaceFootprintsByStorey, existingSpaceFootprintEntriesByStorey, facetedFootprint } from './space-footprints.js';
+// Through the path callers have always used, so the file still loads with this change reverted.
+import { existingSpaceFootprintsByStorey } from './extract-walls.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { addSpaceToStore } from './space.js';
 
@@ -118,9 +119,8 @@ function inside(ring: readonly P2[], [x, y]: P2): boolean {
 describe('existing space footprints are rings (#6232 M4)', () => {
   it('outlines a faceted space: the L itself, CCW, not its vertex cloud', async () => {
     const store = await parse(ifc('$', facetedSpace()));
-    const [entry] = existingSpaceFootprintEntriesByStorey(store).get(4)!;
-    expect(entry.expressId).toBe(6);
-    const ring = entry.footprint as P2[];
+    const [footprint] = existingSpaceFootprintsByStorey(store).get(4)!;
+    const ring = footprint as P2[];
     expect(ring).toHaveLength(6);
     expect(signedArea(ring)).toBeCloseTo(12, 9);
     // The placement puts the L at (10, 20).
@@ -130,16 +130,36 @@ describe('existing space footprints are rings (#6232 M4)', () => {
     expect(inside(ring, [13, 23]), 'a point in the cut-out corner').toBe(false);
   });
 
-  it('outlines a faceted brep box and falls back to the hull for an open shell', () => {
-    const quad = (z: number, up: boolean): [number, number, number][] => {
-      const q: [number, number, number][] = [[0, 0, z], [5, 0, z], [5, 2, z], [0, 2, z]];
-      return up ? q : q.reverse();
+  it('outlines a faceted brep box, and falls back to its hull when nothing faces up', async () => {
+    const pt = (id: number, [x, y, z]: number[]) => `#${id}=IFCCARTESIANPOINT((${x}.,${y}.,${z}.));`;
+    // Face loops over points #101–#108: a 5 × 2 box, 0–3 m. Floor (down), ceiling (up), one side.
+    const corners = [[0, 0, 0], [5, 0, 0], [5, 2, 0], [0, 2, 0], [0, 0, 3], [5, 0, 3], [5, 2, 3], [0, 2, 3]];
+    const brep = (faces: number[][]) => {
+      const lines = corners.map((c, i) => pt(101 + i, c));
+      const faceIds = faces.map((loop, i) => {
+        lines.push(`#${120 + i}=IFCPOLYLOOP((${loop.map((k) => `#${101 + k}`).join(',')}));`);
+        lines.push(`#${140 + i}=IFCFACEOUTERBOUND(#${120 + i},.T.);`);
+        lines.push(`#${160 + i}=IFCFACE((#${140 + i}));`);
+        return `#${160 + i}`;
+      });
+      return `#6=IFCSPACE('0SPACE000000000000000',$,'Room',$,$,#26,#66,$,.ELEMENT.,.INTERNAL.,$);
+#26=IFCLOCALPLACEMENT(#10,#27);
+#27=IFCAXIS2PLACEMENT3D(#96,$,$);
+#96=IFCCARTESIANPOINT((0.,0.,0.));
+#66=IFCPRODUCTDEFINITIONSHAPE($,$,(#67));
+#67=IFCSHAPEREPRESENTATION(#7,'Body','Brep',(#68));
+#68=IFCFACETEDBREP(#69);
+#69=IFCCLOSEDSHELL((${faceIds.join(',')}));
+${lines.join('\n')}
+#80=IFCRELAGGREGATES('0RELAGG0000000000002',$,$,$,#4,(#6));`;
     };
-    const box = facetedFootprint([quad(0, false), quad(3, true), [[0, 0, 0], [5, 0, 0], [5, 0, 3], [0, 0, 3]]]);
-    expect(signedArea(box as P2[])).toBeCloseTo(10, 9);
-    // Only walls, no floor or ceiling: nothing faces up, the hull stands in.
-    const walls = facetedFootprint([[[0, 0, 0], [5, 0, 0], [5, 0, 3], [0, 0, 3]], [[5, 0, 0], [5, 2, 0], [5, 2, 3], [5, 0, 3]], [[0, 2, 0], [0, 0, 0], [0, 0, 3], [0, 2, 3]]]);
-    expect(signedArea(walls as P2[])).toBeCloseTo(10, 9);
+    const box = existingSpaceFootprintsByStorey(await parse(ifc('$', brep([[3, 2, 1, 0], [4, 5, 6, 7], [0, 1, 5, 4]])))).get(4)![0] as P2[];
+    expect(box).toHaveLength(4);
+    expect(signedArea(box)).toBeCloseTo(10, 9);
+    // Only side faces: nothing faces up, the hull stands in (a polygon, not the 8-point cloud).
+    const hull = existingSpaceFootprintsByStorey(await parse(ifc('$', brep([[0, 1, 5, 4], [1, 2, 6, 5], [3, 0, 4, 7]])))).get(4)![0] as P2[];
+    expect(hull).toHaveLength(4);
+    expect(signedArea(hull)).toBeCloseTo(10, 9);
   });
 
   it('scales a space authored this session in a millimetre model to metres, like a parsed one', async () => {

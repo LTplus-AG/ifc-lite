@@ -25,8 +25,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
-import { extractWallSegmentsForStorey } from './extract-walls.js';
-import { existingSpaceFootprintsByStorey } from './space-footprints.js';
+import { extractWallSegmentsForStorey, existingSpaceFootprintsByStorey } from './extract-walls.js';
 
 const ifc = `ISO-10303-21;
 HEADER;

@@ -30,7 +30,7 @@ import { roomFramePlanOffsets, wallRectsFromMeshes } from '@/lib/wall-rects-from
 import { spaceWasmLoaded } from '@/lib/space-plate-session';
 import { pointInPoly, polyArea, type Pt } from '@/lib/space-sketch-geometry';
 import { linkFaces, occupancyTest, spaceMeshTriangles, type RoomLink } from './room-occupancy';
-import { buildPlate, DEFAULT_WELD, layoutFaces, layoutVersion, readFaces, undoHead, type LayoutFace } from './room-layout';
+import { buildPlate, clearRoomLayouts, DEFAULT_WELD, layoutFaces, layoutVersion, readFaces, undoHead, type LayoutFace } from './room-layout';
 import { floorToFloorHeight } from '@/components/viewer/tools/space-sketch/space-bake';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
@@ -292,8 +292,9 @@ export function sessionRooms(ctx: Pick<CommandContext, 'get' | 'modelId' | 'stor
   return storeyRooms(ctx.get(), ctx.modelId, ctx.storeyId, ctx.workplane, weld);
 }
 
-/** Forget the cached storey (tests; a closed tool need not keep it). */
+/** Forget the cached storey and every filed room layout (tests; a reloaded model). */
 export function clearStoreyRoomsCache(): void {
+  clearRoomLayouts();
   cached = null;
   footprintCache = null;
   wallsCache = null;

@@ -56,6 +56,8 @@ import {
 } from './spatial-children.js';
 
 export type { OverlayWallReader };
+// Moved to `space-footprints.ts` (rings, #6232 A4b); kept here for its callers.
+export { existingSpaceFootprintsByStorey } from './space-footprints.js';
 
 export type WallSkipReason =
   | 'no-source-bytes'

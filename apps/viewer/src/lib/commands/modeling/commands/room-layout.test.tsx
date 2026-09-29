@@ -31,11 +31,11 @@ import { BOX, authoredSpaces, corners, ensureRoomWasm, r3, setWallMeshes, spaceQ
 import type { SnapResult } from '@/lib/snap/types';
 import { ensureSpaceWasm } from '@/lib/space-plate-session';
 import { clearStoreyRoomsCache, sessionRooms } from '@/lib/rooms/storey-rooms';
-import { clearRoomLayouts } from '@/lib/rooms/room-layout';
 import { runRoomAction } from '@/components/viewer/tools/command/RoomPlaceBar';
 import { RoomPlacePlan } from '@/components/viewer/tools/command/RoomPlaceLayers';
 import '../builtin.js';
-import { commandPointerDown, commandPointerMove, commandPointerUp, getCommandRuntime, updateCommandGesture } from '../runtime.js';
+import * as runtime from '../runtime.js';
+import { commandPointerDown, commandPointerMove, getCommandRuntime, updateCommandGesture } from '../runtime.js';
 import { setRequestRemesh } from '../transaction.js';
 import type { CommandContext } from '../types.js';
 import type { RoomEditTool, RoomPlaceGesture } from './room-place-gesture.js';
@@ -62,7 +62,6 @@ const PARTITIONED: Wall[] = [...BOX, [[4, 0], [4, 5]]];
 beforeEach(async () => {
   await seedModelingSession();
   clearStoreyRoomsCache();
-  clearRoomLayouts();
 });
 let restoreRemesh: () => void = () => {};
 beforeEach(() => { restoreRemesh = setRequestRemesh(() => {}); });
@@ -118,7 +117,8 @@ describe('room.place Edit: drag a room corner (#6232 A4b)', () => {
     editWith('shape');
     click(4, 5);
     move(3, 5);
-    act(() => { commandPointerUp(at(3, 5)); });
+    // Namespace access: the oracle's revert of this branch must still load the file.
+    act(() => { (runtime as { commandPointerUp?: (s: SnapResult) => void }).commandPointerUp?.(at(3, 5)); });
     assert.equal(gesture().edit.drag, null, 'the release dropped it');
     const [left] = byLeft();
     assert.equal(r3(spaceQuantity(left.id, 'GrossFloorArea')!), 17.5);

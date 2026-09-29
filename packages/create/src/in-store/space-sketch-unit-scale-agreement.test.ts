@@ -32,7 +32,7 @@ vi.mock('@ifc-lite/parser', async (importOriginal) => {
 
 const { IfcParser } = await import('@ifc-lite/parser');
 const { storeyPlanFrame } = await import('./storey-plan-frame.js');
-const { existingSpaceFootprintsByStorey } = await import('./space-footprints.js');
+const { existingSpaceFootprintsByStorey } = await import('./extract-walls.js');
 
 /**
  * A storey with a REAL, resolvable placement chain (so `storeyPlanFrame`

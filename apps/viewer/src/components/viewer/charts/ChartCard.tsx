@@ -16,7 +16,7 @@ import { useTranslation } from '@/i18n/useTranslation';
 import { useViewerStore } from '@/store';
 import { applyChartFilter, applyClashRuleFilter, chartElementFilterKey } from '@/lib/charts/source-filter';
 import { countRows } from '@/lib/charts/row-noun';
-import { readChartTheme, useEChart, type ChartRenderer, type ChartSelectEvent } from './useEChart';
+import { readChartTheme, useEChart, type ChartRenderer, type ChartSize, type ChartSelectEvent } from './useEChart';
 import { GRID_DRAG_HANDLE_CLASS } from './DashboardGrid';
 import { chartBucketIdentity, chartSelectionIsLive, sameChartBucketIdentity, type Chart3DLink } from './useChart3DLink';
 import type { ChartSourceFilterState } from './useChartSourceFilters';
@@ -138,11 +138,11 @@ export function ChartCard({ spec, dataset, filterState, link, renderer, onEdit, 
 
   const selection = useMemo(() => (aggregation ? link.selectionFor(aggregation) : { full: [], partial: [] }), [aggregation, link]);
 
-  const option = useCallback((width: number) => {
+  const option = useCallback(({ width, height }: ChartSize) => {
     if (!aggregation) return null;
     // `theme` in the deps re-reads the stylesheet tokens on a light/dark switch.
     void theme;
-    return buildEChartsOption({ aggregation, theme: readChartTheme(), selected: selection.full, width: width || undefined });
+    return buildEChartsOption({ aggregation, theme: readChartTheme(), selected: selection.full, width: width || undefined, height: height || undefined });
   }, [aggregation, selection.full, theme]);
 
   const onSelect = useCallback((event: ChartSelectEvent) => {

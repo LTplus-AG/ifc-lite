@@ -14,7 +14,7 @@
 
 import { ChevronDown, Pencil, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { promptDialog } from '@/components/ui/confirm-dialog';
+import { useDialogs } from '@/components/ui/confirm-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,6 +39,7 @@ export interface DrawingSectionCutMenuProps {
 
 export function DrawingSectionCutMenu({ cutLabel }: DrawingSectionCutMenuProps) {
   const { t } = useTranslation();
+  const { promptDialog } = useDialogs();
   const cuts = useSavedSectionCuts((s) => s.cuts);
   const activeCutId = useSavedSectionCuts((s) => s.activeCutId);
 

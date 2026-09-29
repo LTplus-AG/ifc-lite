@@ -5,6 +5,8 @@ import { test, expect } from '@playwright/test';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 interface DevServer {
@@ -14,6 +16,7 @@ interface DevServer {
 }
 let vite: DevServer;
 let viewerUrl: string;
+let viteCache: string;
 
 function mixedFontPdf(): number[] {
   const objects = [
@@ -42,13 +45,14 @@ function mixedFontPdf(): number[] {
 test.beforeAll(async () => {
   const requireFromViewer = createRequire(join(ROOT, 'apps/viewer/package.json'));
   const { createServer } = await import(pathToFileURL(requireFromViewer.resolve('vite')).href);
-  vite = await createServer({ root: join(ROOT, 'apps/viewer'), logLevel: 'error', server: { host: '127.0.0.1', port: 0 } });
+  viteCache = await mkdtemp(join(tmpdir(), 'ifc-document-browser-'));
+  vite = await createServer({ root: join(ROOT, 'apps/viewer'), cacheDir: viteCache, logLevel: 'error', server: { host: '127.0.0.1', port: 0 } });
   await vite.listen();
   viewerUrl = vite.resolvedUrls?.local[0] ?? '';
   if (!viewerUrl) throw new Error('Vite did not expose its browser test URL');
 });
 
-test.afterAll(async () => { await vite.close(); });
+test.afterAll(async () => { await vite.close(); await rm(viteCache, { recursive: true, force: true }); });
 
 test('#4177 production browser resources preserve mixed Latin and CMap text', async ({ page }) => {
   await page.goto(viewerUrl);
@@ -58,4 +62,58 @@ test('#4177 production browser resources preserve mixed Latin and CMap text', as
   }, { bytes: mixedFontPdf(), moduleUrl: '/src/lib/llm/document-text.ts' });
   expect(text).toContain('Fire rating EI60');
   expect(text).toContain('日本');
+});
+
+test('#6488 a popped-out document remains usable after rename, cancel and Escape', async ({ page }, testInfo) => {
+  const loaded = page.waitForEvent('console', {
+    predicate: (message) => message.text().includes('[ifc-lite] Added model building-architecture.ifc'),
+    timeout: 120000,
+  });
+  await page.goto(`${viewerUrl}?model=/samples/building-architecture.ifc`);
+  await loaded;
+  await page.evaluate(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    state.upsertDocument({ version: 1, id: 'popout-6488', name: 'Report', page: { size: 'A4', orientation: 'portrait' }, blocks: [] });
+    state.setActiveDocumentId('popout-6488');
+    state.showWorkspacePanel('document');
+    state.setSidebarActivePanel('document');
+    // Exercise the supported window.open path consistently on desktop/headless.
+    Object.defineProperty(window, 'documentPictureInPicture', { value: undefined, configurable: true });
+  });
+  await expect(page.locator('[data-document-panel]').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Sidebar options', exact: true }).click();
+  const popupPromise = page.waitForEvent('popup');
+  await page.getByRole('menuitem', { name: 'Pop out to another screen', exact: true }).click();
+  const popup = await popupPromise;
+  const panel = popup.locator('[data-document-panel]');
+  await expect(panel).toBeVisible();
+  for (const action of ['save', 'cancel', 'escape'] as const) {
+    await panel.getByRole('button', { name: 'Document actions' }).click();
+    await popup.getByRole('menuitem', { name: 'Rename', exact: true }).click();
+    const dialog = popup.getByRole('alertdialog');
+    await expect(dialog).toBeVisible();
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    const input = dialog.getByRole('textbox');
+    await expect(input).toBeFocused();
+    await input.press('Shift+Tab');
+    await expect(dialog.getByRole('button', { name: 'Confirm', exact: true })).toBeFocused();
+    await dialog.getByRole('button', { name: 'Confirm', exact: true }).press('Tab');
+    await expect(input).toBeFocused();
+    await input.fill(action === 'save' ? 'Renamed report' : 'Discard this');
+    if (action === 'save') {
+      await popup.screenshot({ path: testInfo.outputPath('document-rename-in-popup.png') });
+      await dialog.getByRole('button', { name: 'Confirm', exact: true }).click();
+    } else if (action === 'cancel') await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    else await input.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: 'Document actions' })).toBeFocused();
+    await expect(panel.getByRole('combobox', { name: 'Document', exact: true })).toHaveValue('popout-6488');
+    expect(await popup.evaluate(() => document.body.style.pointerEvents)).not.toBe('none');
+    expect(await page.evaluate(() => document.body.style.pointerEvents)).not.toBe('none');
+  }
+  await panel.getByRole('button', { name: 'Document actions' }).click();
+  await popup.getByRole('menuitem', { name: 'Duplicate', exact: true }).click();
+  await expect(panel.getByRole('combobox', { name: 'Document', exact: true }).locator('option:checked')).toHaveText('Renamed report (copy)');
+  await popup.screenshot({ path: testInfo.outputPath('document-usable-after-rename.png') });
+  await popup.close();
 });

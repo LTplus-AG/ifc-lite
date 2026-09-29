@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
-import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { useDialogs } from '@/components/ui/confirm-dialog';
 import { drawingExportOmissions, DRAWING_OMISSION_LABEL_KEYS, type DrawingExportContent } from '@/lib/export/drawing-export-omissions';
 import { SaveMarkupToModelMenuItem } from '../SaveMarkupToModelButton';
 import { DrawingPdfExportDialog } from './DrawingPdfExportDialog';
@@ -41,6 +41,7 @@ export function DrawingExportMenu({
   displayedScale, sheetEnabled, activeSheet, markupCounts, visibleUnderlayCount,
 }: DrawingExportMenuProps) {
   const { t } = useTranslation();
+  const { confirmDialog } = useDialogs();
   const label = t('section2d.export.menu');
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const content: DrawingExportContent = {

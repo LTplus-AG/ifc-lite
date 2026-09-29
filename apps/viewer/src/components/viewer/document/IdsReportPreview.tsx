@@ -50,7 +50,7 @@ function RuleDetailRows({ check }: { check: IdsReportCheckSummary }) {
         </li>
       )}
       {check.sets?.map((set, i) => {
-        const name = set.groupKey ? `${set.label} · ${set.groupKey}` : set.label;
+        const name = set.groupKey === undefined ? set.label : `${set.label} · ${set.groupKey || t('document.preview.idsReportBlankGroup')}`;
         return (
           <li key={i} className="text-2xs" data-ids-report-set>
             <div className="flex items-baseline justify-between gap-2">

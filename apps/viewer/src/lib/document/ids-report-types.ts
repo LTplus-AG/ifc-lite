@@ -66,7 +66,7 @@ export interface IdsReportRuleSummary {
 export interface IdsReportSetRow {
   /** unique: the shared value; aggregate: fn + subject, e.g. `sum(Qto_….NetFloorArea)`. */
   label: string;
-  /** The rendered groupBy key (parent name, storey name…), when the rule groups. */
+  /** The rendered groupBy key (parent name, storey name…), when the rule groups; `''` is a blank grouping value, not "ungrouped". */
   groupKey?: string;
   actual: string;
   expected: string;

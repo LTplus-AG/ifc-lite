@@ -88,7 +88,8 @@ function ruleCheck(report: ValidationReport, result: SpecificationResult): IdsRe
   if (result.setResults && result.setResults.length > 0) {
     check.sets = result.setResults.map((set) => ({
       label: set.label,
-      ...(set.groupKey ? { groupKey: set.groupKey } : {}),
+      // `''` is a real group (a blank grouping value); only `undefined` means the rule does not group.
+      ...(set.groupKey !== undefined ? { groupKey: set.groupKey } : {}),
       actual: set.actual,
       expected: set.expected,
       passed: set.passed,

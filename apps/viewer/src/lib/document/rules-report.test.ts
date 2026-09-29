@@ -131,7 +131,7 @@ describe('information validation report block (#6372)', () => {
     const count = checkOf(block, 'count');
     const engineSets = report.specificationResults.find((r) => r.specification.id === 'count')!.setResults ?? [];
     assert.equal(engineSets.length, 2, 'one set per space name');
-    assert.deepEqual(count.sets, engineSets.map((s) => ({ label: s.label, ...(s.groupKey ? { groupKey: s.groupKey } : {}), actual: s.actual, expected: s.expected, passed: s.passed })));
+    assert.deepEqual(count.sets, engineSets.map((s) => ({ label: s.label, groupKey: s.groupKey, actual: s.actual, expected: s.expected, passed: s.passed })));
     assert.deepEqual(count.cardinality, { passed: false, actual: 3, min: 4 });
 
     const lines = pdfLines(block);
@@ -163,5 +163,29 @@ describe('information validation report block (#6372)', () => {
     const at = lines.indexOf('Walls are rated 2HR');
     assert.equal(lines[at + 1], 'Checked 2 · Passed 1 · Failed 1 · 50%');
     assert.equal(lines[at + 2], 'Unevaluable rule', 'the next line is the next rule, not a child row');
+  });
+});
+
+describe('information validation set rows keep a blank group (#6372 review)', () => {
+  it('snapshots an empty groupKey as a group, and prints it as "(blank)" rather than dropping the grouping', async () => {
+    // Walls contained in a storey with no Name, counted per parent: the engine
+    // reports that group with groupKey '' (an unnamed parent), not undefined.
+    const contained = IFC.replace('ENDSEC;\nEND-ISO-10303-21;', [
+      "#100= IFCBUILDINGSTOREY('0Storey0000000000000100',$,$,$,$,#40,$,$,.ELEMENT.,0.);",
+      "#101= IFCRELCONTAINEDINSPATIALSTRUCTURE('0Rel00000000000000101A',$,$,$,(#401,#402),#100);",
+      'ENDSEC;', 'END-ISO-10303-21;',
+    ].join('\n'));
+    const bytes = new TextEncoder().encode(contained);
+    const store: IfcDataStore = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    const perParent: InformationRule = {
+      id: 'per-parent', name: 'Three walls per storey', applicability: walls,
+      requirement: { kind: 'aggregate', fn: 'count', groupBy: { subject: { kind: 'parent' } }, op: 'gte', value: 3 },
+    };
+    const report = await runRuleSet({ ruleSet: { version: 1, name: 'Blank', rules: [perParent] }, models: [{ id: 'm1', store }] });
+    const blank = report.specificationResults[0].setResults?.find((s) => s.groupKey === '');
+    assert.ok(blank, 'the engine reports a set for the unnamed storey');
+    const block = idsReportBlockFromReport(report, 'b');
+    assert.ok(block.checks[0].sets?.some((s) => s.groupKey === ''), 'the snapshot keeps groupKey "" instead of dropping it');
+    assert.ok(pdfLines(block).includes(`${blank.label} · (blank)`), 'the PDF names the blank group');
   });
 });

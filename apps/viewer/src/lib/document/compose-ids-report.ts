@@ -71,7 +71,7 @@ function childRows(check: IdsReportCheckSummary): ChildRow[] {
   const failedWord = check.severity === 'warning' ? 'Warning' : 'Failed';
   for (const set of check.sets ?? []) {
     rows.push({
-      name: set.groupKey ? `${set.label} · ${set.groupKey}` : set.label,
+      name: set.groupKey === undefined ? set.label : `${set.label} · ${set.groupKey || '(blank)'}`,
       detail: `Actual ${set.actual} · Expected ${set.expected} · ${set.passed ? 'Passed' : failedWord}`,
     });
   }

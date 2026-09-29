@@ -221,6 +221,7 @@ export const documentEn = {
   'document.preview.idsReportCardinalityMet': 'Met',
   'document.preview.idsReportCardinalityNotMet': 'Not met',
   'document.preview.idsReportSetCounts': '{actual} · expected {expected}',
+  'document.preview.idsReportBlankGroup': '(blank)',
   'document.preview.idsReportSetsTruncated': 'More sets exist than the validation run kept.',
 
   // Validation-results table source (#5138): ValidationSourceEditor in TableBlockEditor.tsx, and

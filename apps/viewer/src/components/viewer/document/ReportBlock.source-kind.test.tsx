@@ -46,7 +46,7 @@ const rulesBlock: IdsReportBlock = {
   summary: { checked: 9, passed: 4, failed: 2, passRate: 44, warnings: 3 },
   checks: [
     { id: 'u', shortDescription: 'Unique names', checked: 3, passed: 1, failed: 2, passRate: 33, rules: [],
-      sets: [{ label: 'Office', actual: 'Office (2×)', expected: 'unique', passed: false }] },
+      sets: [{ label: 'Office', actual: 'Office (2×)', expected: 'unique', passed: false }, { label: 'count()', groupKey: '', actual: '2', expected: '>= 3', passed: false }] },
     { id: 'c', shortDescription: 'Enough spaces', checked: 3, passed: 0, failed: 3, passRate: 0, rules: [], severity: 'warning',
       cardinality: { passed: false, actual: 3, min: 4 } },
     { id: 'x', shortDescription: 'Broken rule', checked: 0, passed: 0, failed: 0, passRate: 0, rules: [], error: 'unsafe regular expression' },
@@ -80,7 +80,8 @@ describe('report block preview (#6372)', () => {
     assert.ok(text.includes('Warnings3'), 'a separate Warnings stat');
     assert.ok(ui.querySelector('[data-ids-report-check="c"] [data-ids-report-warning]'), 'the warning rule is tagged');
     assert.equal(ui.querySelector('[data-ids-report-check="u"] [data-ids-report-warning]'), null, 'an error rule is not');
-    assert.equal(ui.querySelector('[data-ids-report-check="u"] [data-ids-report-set]')?.textContent, 'OfficeOffice (2×) · expected unique · Failed');
+    const setRows = [...ui.querySelectorAll('[data-ids-report-check="u"] [data-ids-report-set]')].map((row) => row.textContent);
+    assert.deepEqual(setRows, ['OfficeOffice (2×) · expected unique · Failed', 'count() · (blank)2 · expected >= 3 · Failed'], 'a blank group is named, not dropped (#6372 review)');
     assert.equal(ui.querySelector('[data-ids-report-check="c"] [data-ids-report-cardinality]')?.textContent, 'Applicable elementsFound 3 · expected at least 4 · Not met');
     const broken = ui.querySelector('[data-ids-report-check="x"]');
     assert.equal(broken?.querySelector('[data-ids-report-error]')?.textContent, 'Could not be evaluated: unsafe regular expression');

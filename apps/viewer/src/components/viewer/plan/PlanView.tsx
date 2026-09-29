@@ -187,6 +187,8 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
     // A release outside the plan (capture refused, or lost) never reaches
     // onPointerUp: a move with no button held ends the press, so hover never pans.
     if (press.current && e.buttons === 0) press.current = null;
+    // Same for a command's press: a move with no button held means its release was lost.
+    if (commandPress.current && e.buttons === 0) endCommandPress();
     const p = press.current;
     if (p) {
       const dx = e.clientX - p.x, dy = e.clientY - p.y;

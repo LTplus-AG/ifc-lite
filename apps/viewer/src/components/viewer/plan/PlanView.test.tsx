@@ -244,6 +244,15 @@ describe('PlanView: a grabbed room corner (#6232 A4b review)', () => {
     assert.equal(g.drag(), null, 'the grab is dropped');
   });
 
+  it('a move with no button held after a lost release drops the grab instead of following the cursor', async (t) => {
+    const g = await grab(t);
+    if (!g) return;
+    pointer(g.svg, 'pointermove', g.x + 40, g.y, { buttons: 1 });
+    assert.ok(g.drag(), 'still grabbed while the button is down');
+    pointer(g.svg, 'pointermove', g.x + 80, g.y, { buttons: 0 });
+    assert.equal(g.drag(), null, 'the lost release ended the grab');
+  });
+
   it('a release ends the press without cancelling it: a corner grabbed by a click stays grabbed', async (t) => {
     const g = await grab(t);
     if (!g) return;

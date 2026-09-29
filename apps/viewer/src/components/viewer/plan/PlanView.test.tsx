@@ -25,6 +25,7 @@ import { sX, sY, type Fit } from '@/lib/space-sketch-geometry';
 import type { Vec2 } from '@/lib/snap/types';
 import { fitPlan, screenToLocal } from './plan-fit';
 import { PLAN_CUT_DEBOUNCE_MS } from './usePlanCut';
+import { Drawing2DGenerator } from '@ifc-lite/drawing-2d';
 import { PlanView } from './PlanView';
 import { ModelWorkspaceSplit } from '../model/ModelWorkspaceSplit';
 import { ModelToolRail } from '../model/ModelToolRail';
@@ -121,6 +122,51 @@ describe('PlanView (#6232 M2.4)', () => {
     assert.equal(undoDepth(), before, 'three vertices, nothing committed yet');
     planClick(svg, [3, 2]); // the second press of a double-click on the last vertex
     assert.equal(undoDepth(), before + 1, 'the double-click committed the slab as one undo step');
+  });
+
+  it('a cut that throws says "Cut failed" instead of reading as an empty storey, and Retry re-runs it (#6394 review)', async () => {
+    const real = Drawing2DGenerator.prototype.generate;
+    let fail = true;
+    Drawing2DGenerator.prototype.generate = function (...args: Parameters<typeof real>) {
+      if (fail) return Promise.reject(new Error('cutter exploded'));
+      return real.apply(this, args);
+    };
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      const ui = render(<PlanView layout="split" />);
+      await settle();
+      const svg = ui.querySelector('[data-plan-canvas]')!;
+      act(() => useViewerStore.getState().startCommand('wall.place'));
+      planClick(svg, [-2, 1]);
+      planClick(svg, [3, 1]);
+      await settle();
+      const status = ui.querySelector('[data-plan-status="failed"]');
+      assert.ok(status, 'the failure is shown');
+      assert.equal(ui.querySelectorAll('[data-plan-entity]').length, 0);
+
+      fail = false;
+      act(() => (status!.querySelector('button') as HTMLButtonElement).click());
+      await settle();
+      assert.equal(ui.querySelector('[data-plan-status="failed"]'), null, 'retry cleared it');
+      assert.ok(ui.querySelectorAll('[data-plan-entity]').length > 0, 'and the cut is drawn');
+    } finally {
+      Drawing2DGenerator.prototype.generate = real;
+      console.warn = warn;
+    }
+  });
+
+  it('a press released outside the plan never turns hover into a pan (#6394 review)', async () => {
+    const ui = render(<PlanView layout="split" />);
+    await settle();
+    const svg = ui.querySelector('[data-plan-canvas]')!;
+    const gridX = () => ui.querySelector('[data-plan-layer="grid"] line')?.getAttribute('x1');
+    const before = gridX();
+    pointer(svg, 'pointerdown', 100, 100, { buttons: 1 });
+    // The button came up outside the plan: no pointerup here, the next move has no button held.
+    pointer(svg, 'pointermove', 400, 300, { buttons: 0 });
+    pointer(svg, 'pointermove', 500, 350, { buttons: 0 });
+    assert.equal(gridX(), before, 'the plan did not move');
   });
 
   it('selection syncs both ways: plan click → both channels, 3D selection → plan highlight', async () => {

@@ -36,6 +36,8 @@ export const modelWorkspaceEn = {
   'modelWorkspace.plan.noRoom': 'No room for the plan beside 3D: widen the window or close a side panel',
   'modelWorkspace.plan.noPlane': 'This storey has no plane to draw a plan on.',
   'modelWorkspace.plan.cutting': 'Cutting…',
+  'modelWorkspace.plan.cutFailed': 'Cut failed',
+  'modelWorkspace.plan.retry': 'Retry',
   'modelWorkspace.plan.simplified': 'Plan simplified',
   'modelWorkspace.plan.simplifiedTitle': 'This model is too large to cut on every edit, so the plan shows wall axes only',
   'modelWorkspace.plan.grid': 'Grid',

@@ -161,6 +161,9 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
   };
 
   const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
+    // A release outside the plan (capture refused, or lost) never reaches
+    // onPointerUp: a move with no button held ends the press, so hover never pans.
+    if (press.current && e.buttons === 0) press.current = null;
     const p = press.current;
     if (p) {
       const dx = e.clientX - p.x, dy = e.clientY - p.y;
@@ -206,7 +209,7 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
 
   return (
     <section data-plan-view data-plan-cut-ms={cut.ms === null ? undefined : Math.round(cut.ms)} aria-label={t('modelWorkspace.plan.title')} className="flex h-full w-full flex-col bg-background">
-      <PlanHeader layout={layout} grid={grid} onToggleGrid={() => setGrid((g) => !g)} onFit={refit} loading={cut.loading} simplified={cut.simplified} />
+      <PlanHeader layout={layout} grid={grid} onToggleGrid={() => setGrid((g) => !g)} onFit={refit} loading={cut.loading} simplified={cut.simplified} failed={cut.failed} onRetry={cut.retry} />
       <div ref={hostRef} className="relative min-h-0 flex-1 overflow-hidden">
         <svg
           ref={svgRef}
@@ -219,6 +222,8 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerLeave={() => setHovered(null)}
+          onPointerCancel={(e) => { press.current = null; releasePointer(e.currentTarget, e.pointerId); }}
+          onLostPointerCapture={() => { press.current = null; }}
           onDoubleClick={onDoubleClick}
           onContextMenu={onContextMenu}
         >

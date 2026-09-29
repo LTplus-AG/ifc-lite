@@ -26,13 +26,16 @@ export interface PlanHeaderProps {
   loading: boolean;
   /** The model is over the cut's mesh limit: only wall axes are drawn. */
   simplified: boolean;
+  /** The cut threw: say so (an empty plan would read as an empty storey) and offer a retry. */
+  failed: boolean;
+  onRetry: () => void;
   /** The layout on screen (the user's pick, as `model-layout.ts` resolves it). */
   layout: ModelLayout;
 }
 
 const iconButton = 'inline-flex h-5 w-5 items-center justify-center rounded-sm transition-colors';
 
-export function PlanHeader({ grid, onToggleGrid, onFit, loading, simplified, layout }: PlanHeaderProps) {
+export function PlanHeader({ grid, onToggleGrid, onFit, loading, simplified, failed, onRetry, layout }: PlanHeaderProps) {
   const { t } = useTranslation();
   const session = useViewerStore((s) => s.session);
   const setModelLayout = useViewerStore((s) => s.setModelLayout);
@@ -71,6 +74,14 @@ export function PlanHeader({ grid, onToggleGrid, onFit, loading, simplified, lay
       {simplified && (
         <span data-plan-status="simplified" title={t('modelWorkspace.plan.simplifiedTitle')} className="shrink-0 rounded-sm bg-muted px-1 text-2xs text-muted-foreground">
           {t('modelWorkspace.plan.simplified')}
+        </span>
+      )}
+      {failed && (
+        <span data-plan-status="failed" className="flex shrink-0 items-center gap-1 text-2xs text-status-danger">
+          {t('modelWorkspace.plan.cutFailed')}
+          <button type="button" onClick={onRetry} className="rounded-sm px-1 underline hover:bg-accent">
+            {t('modelWorkspace.plan.retry')}
+          </button>
         </span>
       )}
       <span className="flex-1" />

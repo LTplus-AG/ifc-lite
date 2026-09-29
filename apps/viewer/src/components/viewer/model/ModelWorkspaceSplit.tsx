@@ -54,13 +54,16 @@ export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
   // for Panel"): the group has not registered it yet, and the throw blanked
   // the whole viewer (#6315). So a fresh mount resizes a frame later (the
   // group would otherwise restore the pane's last size, not this layout's),
-  // and a plan <-> split switch on a mounted pane resizes at once.
+  // and a plan <-> split switch (or a resize in Plan) on a mounted pane
+  // resizes at once.
   const shown = useRef<'plan' | 'split' | null>(null);
   useEffect(() => {
     const next = showPlan ? layout : null;
     const prev = shown.current;
     shown.current = next;
-    if (!next || prev === next) return;
+    // Plan is "the plan as large as the 3D minimum allows": it follows the
+    // width. Split keeps whatever the user dragged it to.
+    if (!next || (prev === next && next !== 'plan')) return;
     const size = `${planPaneWidth(next, width)}px`;
     if (prev) {
       planRef.current?.resize(size);

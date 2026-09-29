@@ -233,6 +233,28 @@ test('#6500 real IFC checks survive reload and remain independently selectable i
   await expect(history.getByText('Models: building-architecture.ifc', { exact: true }).first()).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('saved-real-ifc-check-history.png') });
 
+  // A live report remembers evaluated scope even if its current model is
+  // renamed after validation. Both Add and Refresh use that captured evidence.
+  await page.evaluate(async () => {
+    const moduleUrl = '/src/lib/document/presets.ts';
+    const { blankDocument }: typeof import('../../apps/viewer/src/lib/document/presets') = await import(moduleUrl);
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    const model = [...state.models.values()].find(entry => entry.name === 'building-architecture.ifc');
+    if (!model) throw new Error('Real validated model missing');
+    state.setModelName(model.id, 'Renamed after evaluation.ifc');
+    const document = { ...blankDocument(), name: 'Live evaluated scope', blocks: [] };
+    state.upsertDocument(document);
+    state.setActiveDocumentId(document.id);
+    state.openPanelInHome('document');
+  });
+  const livePanel = page.locator('[data-document-panel]').first();
+  await livePanel.getByRole('button', { name: 'Add block', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'IDS validation report', exact: true }).click();
+  await expect(livePanel.locator('[data-report-model-scope]')).toHaveText('Models: building-architecture.ifc');
+  await livePanel.getByRole('button', { name: 'Refresh from current validation report', exact: true }).click();
+  await expect(livePanel.locator('[data-report-model-scope]')).toHaveText('Models: building-architecture.ifc');
+  await page.screenshot({ path: testInfo.outputPath('live-evaluated-scope-after-model-rename.png') });
+
   // A fresh page has neither the live model nor its latest result. Frozen
   // evidence still loads and can be copied to independent document blocks.
   await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setManualChecklist(null));
@@ -251,6 +273,16 @@ test('#6500 real IFC checks survive reload and remain independently selectable i
     await page.getByRole('menuitem', { name: 'Saved validation report', exact: true }).click();
     await panel.getByRole('combobox', { name: 'Saved report source', exact: true }).last().selectOption(report.id);
   }
+  const layouts = panel.getByRole('combobox', { name: 'IDS report layout', exact: true });
+  await expect(layouts).toHaveCount(2);
+  await expect(layouts.first()).toHaveValue('');
+  await layouts.first().selectOption('compact');
+  await layouts.last().selectOption('long');
+  await panel.getByRole('combobox', { name: 'Saved report source', exact: true }).first().selectOption(reports[1].id);
+  await expect(layouts.first()).toHaveValue('compact');
+  await panel.getByRole('combobox', { name: 'Saved report source', exact: true }).first().selectOption(reports[0].id);
+  await expect(panel.locator('[data-ids-report-variant="compact"]')).toHaveCount(1);
+  await expect(panel.getByRole('button', { name: 'Refresh from current validation report', exact: true })).toHaveCount(0);
   const embedded = await page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     return { models: state.models.size, reports: state.savedValidationReports.length, blocks: state.documents.find((document) => document.id === 'history-6500')?.blocks };

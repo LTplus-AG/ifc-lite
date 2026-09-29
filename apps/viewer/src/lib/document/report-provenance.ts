@@ -31,3 +31,14 @@ export function reportScopeText(block: ReportProvenance): string {
 export function reportModelScope(name: string | undefined, fallback: string, fingerprint?: string | null): ReportModelScope {
   return { name: name?.trim() ? name : fallback, ...(fingerprint ? { fingerprint } : {}) };
 }
+
+// Runtime reports outlive their original loaded model. Capture names once at
+// completed evaluation, just like analysis staleness stamps; every document
+// conversion gets an independent copy rather than looking at today's models.
+const evaluatedScopes = new WeakMap<object, ReportModelScope[]>();
+export function rememberReportModelScope(report: object, scope: readonly ReportModelScope[]): void {
+  if (!evaluatedScopes.has(report)) evaluatedScopes.set(report, scope.map((model) => ({ ...model })));
+}
+export function capturedReportModelScope(report: object): ReportModelScope[] | undefined {
+  return evaluatedScopes.get(report)?.map((model) => ({ ...model }));
+}

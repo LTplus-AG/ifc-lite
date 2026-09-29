@@ -18,7 +18,10 @@ export function SavedReportSource({ block, onChange }: { block: ValidationReport
       <select className="min-w-0 rounded border border-input bg-background px-1.5 py-1 text-foreground" aria-label={t('validationPanel.history.documentSource')} value={choices.some((entry) => entry.id === block.savedReportId) ? block.savedReportId : ''}
         onChange={(e) => {
           const entry = choices.find((candidate) => candidate.id === e.target.value);
-          if (entry) onChange(savedReportBlock(entry, block.id));
+          if (entry) {
+            const next = savedReportBlock(entry, block.id);
+            onChange(block.kind === 'ids-report' && next.kind === 'ids-report' ? { ...next, variant: block.variant } : next);
+          }
         }}>
         <option value="" disabled>{t('validationPanel.history.embedded')}</option>
         {choices.map((entry) => <option key={entry.id} value={entry.id}>{savedReportLabel(entry)}</option>)}

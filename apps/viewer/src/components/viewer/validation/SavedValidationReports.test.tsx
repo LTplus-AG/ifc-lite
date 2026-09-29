@@ -126,7 +126,7 @@ describe('saved validation evidence (#6500)', () => {
       const document = { ...blankDocument(), blocks: [savedReportBlock(loadValidationReports().at(-1)!, 'b')] };
       assert.ok((await printedPdf(document)).includes('Models: tower'));
     }
-    const exact = validationReportSnapshot(report, new Map([['tower', { name: '  original model.ifc  ', sourceFingerprint: 'fp-tower' }]]), 'run');
+    const exact = validationReportSnapshot(await checkedWall('tower', 'Exact original name'), new Map([['tower', { name: '  original model.ifc  ', sourceFingerprint: 'fp-tower' }]]), 'run');
     assert.deepEqual(exact.reportModels, [{ name: '  original model.ifc  ', fingerprint: 'fp-tower' }]);
     const valid = newSavedReport(exact);
     for (const name of ['', '   ']) {
@@ -204,6 +204,41 @@ describe('saved validation evidence (#6500)', () => {
     assert.equal(loadValidationReports().length, 0);
   });
 
+  it('keeps compact/long presentation editable for frozen IDS sources without live refresh (#6500)', async () => {
+    for (const name of ['First issued check', 'Second issued check']) {
+      const report = await checkedWall('tower', name);
+      report.specificationResults[0].specification.description = 'Authored long guidance';
+      useViewerStore.getState().saveValidationReport(validationReportSnapshot(report, new Map([['tower', { name: 'tower.ifc' }]]), 'run'));
+    }
+    const reports = useViewerStore.getState().savedValidationReports;
+    const document = { ...blankDocument(), blocks: [] };
+    useViewerStore.getState().upsertDocument(document);
+    useViewerStore.getState().setActiveDocumentId(document.id);
+    const ui = render(<DocumentPanel />); await settle();
+    addSavedBlock(ui); await settle();
+    const picker = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]'); assert.ok(picker);
+    const layout = ui.querySelector<HTMLSelectElement>('select[aria-label="IDS report layout"]'); assert.ok(layout);
+    assert.equal([...ui.querySelectorAll('button')].some((button) => button.textContent?.includes('Refresh from current validation report')), false, 'frozen evidence has no live refresh');
+    const originalId = useViewerStore.getState().documents[0].blocks[0].id;
+    assert.equal(layout.value, '', 'existing snapshots retain the original layout');
+    assert.ok((await printedPdf(useViewerStore.getState().documents[0])).includes('Authored long guidance'));
+    select(layout, 'compact'); await settle();
+    assert.ok(ui.querySelector('[data-ids-report-variant="compact"]'));
+    select(picker, reports[0].id); await settle();
+    assert.equal(layout.value, 'compact', 'changing frozen IDS source retains presentation');
+    assert.ok(ui.querySelector('[data-ids-report-variant="compact"]'));
+    select(layout, 'long'); await settle();
+    assert.match(ui.querySelector('[data-block-ids-report]')?.textContent ?? '', /Authored long guidance/);
+    act(() => { for (const entry of reports) useViewerStore.getState().removeValidationReport(entry.id); });
+    const retained = useViewerStore.getState().documents[0];
+    assert.equal(retained.blocks[0].id, originalId);
+    assert.ok((await printedPdf(retained)).includes('Authored long guidance'));
+    select(layout, 'compact'); await settle();
+    const compactPrinted = await printedPdf(useViewerStore.getState().documents[0]);
+    assert.ok(compactPrinted.includes('Wall name present'));
+    assert.equal(compactPrinted.includes('Authored long guidance'), false);
+  });
+
   for (const latestKind of ['ids-report', 'manual-report'] as const) {
     it(`selects an older saved report of another kind when latest is ${latestKind}, with no live source (#6500)`, async () => {
       const ids = validationReportSnapshot(await checkedWall('tower', 'Archived IDS'), new Map([['tower', { name: 'tower.ifc' }]]), 'ids');
@@ -252,6 +287,52 @@ describe('saved validation evidence (#6500)', () => {
     if (first.snapshot.kind === 'manual-report') first.snapshot.groups[0].items[0].status = 'fail';
     assert.equal(firstBlock.groups[0].items[0].status, 'warning');
     assert.equal(firstBlock.groups[0].items[0].comment, 'Review origin');
+  });
+
+  for (const loaded of [false, true]) {
+    it(`saves valid manual evidence when a ${loaded ? 'loaded model has no source fingerprint' : 'checklist has no loaded model'} (#6500 review)`, () => {
+      const checklist: ChecklistTemplate = { version: CHECKLIST_VERSION, name: 'Unanswered review', groups: [{ id: 'g', name: 'Delivery', items: [{ id: 'i', text: 'Origin approved' }] }] };
+      const model = { ...fixtureModel('unnamed'), name: 'unidentified.ifc', sourceFingerprint: null };
+      useViewerStore.setState({ models: loaded ? new Map([[model.id, model]]) : new Map(), activeModelId: loaded ? model.id : null, manualChecklist: checklist, manualAnswers: {} });
+      const ui = render(<ManualValidationTab manual={{ checklist, recent: [], error: null, newChecklist: () => {}, save: () => {}, close: () => {}, loadFromRecent: () => {}, openFromFile: async () => ({ ok: true }) }} />);
+      const save = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save report'); assert.ok(save);
+      click(save);
+      const saved = loadValidationReports();
+      assert.equal(saved.length, 1, 'actual Save persists a validator-accepted snapshot');
+      assert.equal(saved[0].snapshot.kind, 'manual-report');
+      if (saved[0].snapshot.kind !== 'manual-report') assert.fail();
+      assert.equal('modelFingerprint' in saved[0].snapshot, false, 'null source identity is omitted, never serialized');
+      assert.deepEqual(saved[0].snapshot.reportModels, loaded ? [{ name: 'unidentified.ifc' }] : []);
+      assert.equal(saved[0].snapshot.summary.unanswered, 1);
+    });
+  }
+
+  it('live IDS Add and Refresh retain evaluated scope after current models change (#6500)', async () => {
+    const first = await checkedWall('tower', 'Evaluated first');
+    const ifcDataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(WALL_IFC).buffer);
+    const scope = new Map([['tower', { name: 'original-tower.ifc', sourceFingerprint: 'original-source' }]]);
+    const firstSnapshot = validationReportSnapshot(first, scope, 'run');
+    scope.get('tower')!.name = 'renamed-later.ifc';
+    firstSnapshot.reportModels![0].name = 'edited history copy';
+    useViewerStore.setState({ idsValidationReport: first, models: new Map([['tower', { ...fixtureModel('tower'), ifcDataStore, name: 'replacement.ifc', sourceFingerprint: 'replacement-source' }]]) });
+    const document = { ...blankDocument(), blocks: [] };
+    useViewerStore.getState().upsertDocument(document);
+    useViewerStore.getState().setActiveDocumentId(document.id);
+    const ui = render(<DocumentPanel />); await settle();
+    openAddMenu(ui);
+    const add = [...globalThis.document.querySelectorAll('[role="menuitem"]')].find((element) => element.textContent === 'IDS validation report'); assert.ok(add);
+    click(add); await settle();
+    assert.match(ui.querySelector('[data-report-model-scope]')?.textContent ?? '', /original-tower.ifc/);
+    assert.doesNotMatch(ui.querySelector('[data-report-model-scope]')?.textContent ?? '', /replacement|renamed|edited/);
+    const second = await checkedWall('tower', 'Evaluated second');
+    validationReportSnapshot(second, new Map([['tower', { name: 'second-tower.ifc', sourceFingerprint: 'second-source' }]]), 'run');
+    act(() => useViewerStore.setState({ idsValidationReport: second, models: new Map() }));
+    const refresh = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Refresh from current validation report'); assert.ok(refresh);
+    click(refresh); await settle();
+    assert.match(ui.querySelector('[data-report-model-scope]')?.textContent ?? '', /second-tower.ifc/);
+    const current = useViewerStore.getState().documents[0];
+    assert.deepEqual(current.blocks[0].kind === 'ids-report' && current.blocks[0].reportModels, [{ name: 'second-tower.ifc', fingerprint: 'second-source' }]);
+    assert.ok((await printedPdf(current)).includes('Models: second-tower.ifc'));
   });
 
   it('the manual save button snapshots the explicitly picked model in a federation (#6500)', () => {

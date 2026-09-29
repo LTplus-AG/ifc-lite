@@ -9,7 +9,7 @@ import { idsReportBlockFromReport } from '../../document/ids-report.js';
 import { validateIdsReportBlock, type IdsReportBlock } from '../../document/ids-report-types.js';
 import { validateManualReportBlock, type ManualReportBlock } from '../../document/manual-report-types.js';
 import type { DocumentValidationError } from '../../document/types.js';
-import { reportModelScope, type ReportModelScope } from '../../document/report-provenance.js';
+import { rememberReportModelScope, reportModelScope, type ReportModelScope } from '../../document/report-provenance.js';
 
 export type ValidationReportSnapshot = IdsReportBlock | ManualReportBlock;
 export interface SavedValidationReport {
@@ -31,7 +31,8 @@ export function validationReportSnapshot(report: ValidationReport, models: Reado
     const model = models.get(modelId);
     return reportModelScope(model?.name, modelId, model?.sourceFingerprint);
   });
-  return { ...idsReportBlockFromReport(report, id), reportModels };
+  rememberReportModelScope(report, reportModels);
+  return idsReportBlockFromReport(report, id);
 }
 
 /** Copy the evidence into a document. Later runs, history edits and deletion

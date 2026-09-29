@@ -70,18 +70,6 @@ function ReportBlockSource({ block, report, onChange }: { block: IdsReportBlock;
       <div className="flex items-center gap-1 text-muted-foreground">{t('document.block.idsReportSourceLabel')}
         <span className="min-w-0 truncate font-medium text-foreground" title={block.sourceName}>{block.sourceName}</span>
       </div>
-      <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.idsReportVariantLabel')}
-        <select
-          className={field}
-          value={block.variant ?? ''}
-          onChange={(e) => onChange({ ...block, variant: (e.target.value || undefined) as IdsReportVariant | undefined })}
-          aria-label={t('document.block.idsReportVariantAriaLabel')}
-        >
-          {block.variant === undefined && <option value="">{t('document.block.idsReportVariantClassic')}</option>}
-          <option value="compact">{t('document.block.idsReportVariantCompact')}</option>
-          <option value="long">{t('document.block.idsReportVariantLong')}</option>
-        </select>
-      </label>
       <Button
         variant="outline"
         size="sm"
@@ -97,6 +85,25 @@ function ReportBlockSource({ block, report, onChange }: { block: IdsReportBlock;
         {t('document.block.idsReportRefresh')}
       </Button>
     </div>
+  );
+}
+
+/** Presentation belongs to the embedded result, independently of live refresh (#6500). */
+function ReportBlockPresentation({ block, onChange }: { block: IdsReportBlock; onChange: (block: DocumentBlock) => void }) {
+  const { t } = useTranslation();
+  return (
+    <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.idsReportVariantLabel')}
+      <select
+        className={field}
+        value={block.variant ?? ''}
+        onChange={(e) => onChange({ ...block, variant: (e.target.value || undefined) as IdsReportVariant | undefined })}
+        aria-label={t('document.block.idsReportVariantAriaLabel')}
+      >
+        {block.variant === undefined && <option value="">{t('document.block.idsReportVariantClassic')}</option>}
+        <option value="compact">{t('document.block.idsReportVariantCompact')}</option>
+        <option value="long">{t('document.block.idsReportVariantLong')}</option>
+      </select>
+    </label>
   );
 }
 
@@ -273,6 +280,7 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
       {block.kind === 'table' && <TableBlockEditor block={block} onChange={onChange} />}
 
       {(block.kind === 'ids-report' || block.kind === 'manual-report') && <SavedReportSource block={block} onChange={onChange} />}
+      {block.kind === 'ids-report' && <ReportBlockPresentation block={block} onChange={onChange} />}
       {block.kind === 'ids-report' && !block.savedReportId && <ReportBlockSource block={block} report={idsValidationReport} onChange={onChange} />}
 
       {block.kind === 'manual-report' && !block.savedReportId && <ManualReportBlockEditor block={block} onChange={onChange} />}

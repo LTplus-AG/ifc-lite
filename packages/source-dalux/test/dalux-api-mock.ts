@@ -119,6 +119,26 @@ function mockResponse({ status = 200, json, body }: MockResponseInit): Response 
   } as unknown as Response;
 }
 
+/** Serves file bytes the way a real download does: a streamed body, split
+ *  into a few chunks and with no `Content-Length`, so a download exercises
+ *  `readWithProgress`'s stream path and its listing-size fallback (#6375). */
+function binaryResponse(content: string, headers: Record<string, string> = {}): Response {
+  const bytes = new TextEncoder().encode(content);
+  const chunkSize = Math.max(1, Math.ceil(bytes.byteLength / 3));
+  let offset = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (offset >= bytes.byteLength) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(bytes.slice(offset, offset + chunkSize));
+      offset += chunkSize;
+    },
+  });
+  return new Response(body, { status: 200, headers: { 'Content-Type': 'application/octet-stream', ...headers } });
+}
+
 /**
  * Slices one bookmark-paginated page out of `items`, ignoring any `limit`
  * the caller passed — see the note at the top of this file.
@@ -170,6 +190,7 @@ function fileRow(area: DaluxMockFileArea, file: DaluxMockFile): Record<string, u
     fileRevisionId: file.fileRevisionId ?? null,
     contentHash: file.contentHash ?? null,
     fileType: file.fileType ?? null,
+    fileSize: new TextEncoder().encode(file.content).byteLength,
     deleted: file.deleted ?? false,
     lastModified: '2026-08-06T10:00:00Z',
     lastModifiedByUserId: 'user-1',
@@ -297,7 +318,7 @@ export function createDaluxApiMock(world: DaluxMockWorld, options: DaluxMockOpti
       const bytesArea = findArea(findProject(world, segments[1]), segments[2]);
       const file = bytesArea?.files.find((candidate) => candidate.fileId === segments[3]);
       if (!file) return Promise.resolve(mockResponse({ status: 404, body: 'no such file' }));
-      return Promise.resolve(mockResponse({ body: file.content }));
+      return Promise.resolve(binaryResponse(file.content));
     }
 
     return Promise.resolve(mockResponse({ status: 404, body: `unrouted: ${url.pathname}` }));

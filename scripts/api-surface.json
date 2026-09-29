@@ -8156,6 +8156,7 @@
     "SourceRevision: interface",
     "SourceTag: interface",
     "matchesGlob: function",
+    "readWithProgress: function",
     "satisfiesCaretRange: function"
   ],
   "@ifc-lite/pointcloud": [

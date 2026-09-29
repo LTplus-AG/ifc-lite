@@ -30,7 +30,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { downloadFile } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
-import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { useDialogs } from '@/components/ui/confirm-dialog';
 import { useTranslation, type TranslationKey, type UseTranslationResult } from '@/i18n';
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
 import { HelpHint } from './HelpHint';
@@ -81,6 +81,7 @@ interface AuditLogPanelProps {
 
 export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
   const { t, locale } = useTranslation();
+  const { confirmDialog } = useDialogs();
   const host = useExtensionHost();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [filter, setFilter] = useState<AuditEventKind | 'all'>('all');

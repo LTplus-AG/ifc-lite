@@ -20,6 +20,7 @@
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
+import { GPU_STRICT, noteSoftwareGpuSkip, watchGpuDeviceLoss } from './gpu-device-loss';
 import type { ViewerState } from '../../apps/viewer/src/store';
 import {
   assertCanonicalCorrespondences,
@@ -50,7 +51,6 @@ const LANDXML = `${CONTROL_DIR}/terrain.xml`;
 const XYZ = `${CONTROL_DIR}/survey.xyz`;
 const FIXTURES = [CONTROL, IFC, LANDXML, XYZ] as const;
 const LOAD_TIMEOUT_MS = 120_000;
-const GPU_STRICT = process.env.E2E_GPU_STRICT !== '0';
 
 interface PlacementSnapshot {
   modelId: string;
@@ -267,10 +267,11 @@ test('canonical IFC + LandXML + XYZ federation keeps five independent bonsai-top
 
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(String(error)));
+  const deviceLoss = await watchGpuDeviceLoss(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/');
   const primary = await loadControlTriplet(page, testInfo, {
-    ifc: IFC, landxml: LANDXML, xyz: XYZ, timeout: LOAD_TIMEOUT_MS, strictGpu: GPU_STRICT,
+    ifc: IFC, landxml: LANDXML, xyz: XYZ, timeout: LOAD_TIMEOUT_MS, strictGpu: GPU_STRICT, deviceLoss,
   }, pageErrors);
   if (!primary) {
     test.skip(true, `E2E_GPU_STRICT=0: software WebGPU failed before model load; evidence attached.`);
@@ -400,7 +401,7 @@ test('canonical IFC + LandXML + XYZ federation keeps five independent bonsai-top
       type: 'gpu-skip',
       description: 'E2E_GPU_STRICT=0: renderer-dependent Reposition picks require the strict hardware witness',
     });
-    console.log('[e2e] E2E_GPU_STRICT=0 — skipping renderer-dependent Reposition picks (software WebGPU)');
+    noteSoftwareGpuSkip('renderer-dependent Reposition picks');
   }
   await page.keyboard.press('Escape');
   const placementState = await page.evaluate(() => {

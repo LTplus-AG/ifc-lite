@@ -13,7 +13,7 @@
 import { useCallback } from 'react';
 import { Globe, List, Magnet, Ruler, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { useDialogs } from '@/components/ui/confirm-dialog';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n/useTranslation';
 import { useAnchorGeoreference } from '@/lib/geo/useAnchorGeoreference';
@@ -37,6 +37,7 @@ function selectMeasurementsPanelOpen(s: {
 
 export function MeasureToolbar() {
   const { t } = useTranslation();
+  const { confirmDialog } = useDialogs();
   const measureMode = useViewerStore((s) => s.measureMode);
   const setMeasureMode = useViewerStore((s) => s.setMeasureMode);
   const angleKind = useViewerStore((s) => s.angleKind);

@@ -64,7 +64,7 @@ describe('IDS report layouts in the PDF composer (#6470)', () => {
     assert.ok(texts.some((t) => t.text === 'n/a'), 'partial report rows have no percent');
     // check and named rule each get a track and a fill, the unavailable rule only a track
     assert.equal(rects.length, 5);
-    const fills = rects.filter((r) => r.rgb[0] === 239);
+    const fills = rects.filter((r) => r.color === '#ef4444');
     assert.equal(fills.length, 2, 'a 1% pass rate is in the red band');
   });
 });

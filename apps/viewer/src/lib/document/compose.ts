@@ -61,7 +61,7 @@ export const TEXT_STYLES: Record<TextBlock['style'], { size: number; bold: boole
 
 /** A block after its bindings were resolved and its assets measured — what layout needs. */
 export type ResolvedBlock =
-  | { kind: 'text'; id: string; style: TextBlock['style']; text: string; font?: TextFont; fontSize?: number; width?: BlockWidth }
+  | TextBlock
   | { kind: 'image'; id: string; height: number; align: 'left' | 'center' | 'right'; caption?: string; /** natural width / height */ aspect: number; width?: BlockWidth }
   | { kind: 'chart'; id: string; title: string; subtitle: string; hasData: boolean; snapshot: boolean; height?: number; width?: BlockWidth }
   | { kind: 'topic'; id: string; title: string; lines: string[]; /** null when there is no snapshot to print */ snapshotAspect: number | null }
@@ -73,6 +73,7 @@ export type ResolvedBlock =
 export type DrawnItem =
   | TextDrawnItem
   | RectDrawnItem
+  | { kind: 'text-background'; x: number; y: number; w: number; h: number; color: string }
   /** A manual-validation ring chart (#6401), drawn from its counts. */
   | RingDrawnItem
   | { kind: 'image'; blockId: string; x: number; y: number; w: number; h: number }
@@ -266,13 +267,16 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     };
   };
 
+  const textBackground = (block: TextBlock, x: number, y: number, w: number, h: number): DrawnItem[] =>
+    block.backgroundColor ? [{ kind: 'text-background', x, y, w, h, color: block.backgroundColor }] : [];
+
   const layoutText = (block: Extract<ResolvedBlock, { kind: 'text' }>, boxX: number, boxW: number) => {
     const style = TEXT_STYLES[block.style];
     const size = block.fontSize ?? style.size;
     const lineH = size * style.lineHeight;
     const lines = wrapText(block.text, boxW, size, style.bold, input.measure, block.font);
     return { style, size, lineH, lines, height: style.gapBefore + lines.length * lineH,
-      draw: (atY: number): DrawnItem[] => lines.map((line, index) => ({ kind: 'text', x: boxX, y: atY + style.gapBefore + index * lineH + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font })),
+      draw: (atY: number): DrawnItem[] => [...textBackground(block, boxX, atY + style.gapBefore, boxW, lines.length * lineH), ...lines.map<DrawnItem>((line, index) => ({ kind: 'text', x: boxX, y: atY + style.gapBefore + index * lineH + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font, color: block.textColor }))],
     };
   };
   const layoutPairable = (block: Extract<ResolvedBlock, { kind: 'text' | 'image' | 'chart' }>, boxX: number, boxW: number) =>
@@ -303,7 +307,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     switch (block.kind) {
       case 'text': {
         const { style, size, lineH, lines } = layoutText(block, REPORT_MARGIN, contentW);
-        if (lines.every((l) => l.length === 0)) {
+        if (!block.backgroundColor && lines.every((l) => l.length === 0)) {
           y += lineH;
           break;
         }
@@ -312,7 +316,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
         ensure(lineH * Math.min(lines.length, 2));
         for (const line of lines) {
           if (y + lineH > bottom) newPage();
-          page.items.push({ kind: 'text', x: REPORT_MARGIN, y: y + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font });
+          page.items.push(...textBackground(block, REPORT_MARGIN, y, contentW, lineH), { kind: 'text', x: REPORT_MARGIN, y: y + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font, color: block.textColor });
           y += lineH;
         }
         y += BLOCK_GAP;

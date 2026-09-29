@@ -35,7 +35,7 @@ import { downloadFile } from '@/lib/export/download';
 import { Button } from '@/components/ui/button';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
-import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { useDialogs } from '@/components/ui/confirm-dialog';
 import { useTranslation } from '@/i18n';
 import { HelpHint } from './HelpHint';
 import { localizedFlavorName } from './localized-flavor-metadata';
@@ -45,6 +45,7 @@ import { AnalyticsConsentSection } from '@/components/viewer/settings/AnalyticsC
 
 export function PrivacyPanel() {
   const { t, locale } = useTranslation();
+  const { confirmDialog } = useDialogs();
   const host = useExtensionHost();
   const [logSize, setLogSize] = useState({ events: 0, bytes: 0 });
   const [activeFlavor, setActiveFlavor] = useState<Flavor | undefined>();

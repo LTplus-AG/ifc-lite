@@ -47,10 +47,10 @@ export interface TableLayoutBlock {
 }
 
 /** A line of text on the page; `compose.ts` draws the same shape for every block. */
-export interface TextDrawnItem { kind: 'text'; x: number; y: number; size: number; bold: boolean; gray: number; text: string; font?: TextFont }
+export interface TextDrawnItem { kind: 'text'; x: number; y: number; size: number; bold: boolean; gray: number; text: string; font?: TextFont; color?: string }
 
-/** A filled rectangle (the IDS report's compact pass bars, #6470); `rgb` is 0-255 per channel. */
-export interface RectDrawnItem { kind: 'rect'; x: number; y: number; w: number; h: number; rgb: readonly [number, number, number] }
+/** A filled rectangle (the IDS report's compact pass bars, #6470); `color` is `#rrggbb`, drawn by the same `fillRect` as a text background. */
+export interface RectDrawnItem { kind: 'rect'; x: number; y: number; w: number; h: number; color: string }
 
 export type TableDrawnItem =
   | TextDrawnItem

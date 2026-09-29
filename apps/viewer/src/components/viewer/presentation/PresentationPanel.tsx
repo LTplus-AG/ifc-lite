@@ -34,7 +34,7 @@ import {
   Square,
 } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
-import { promptDialog } from '@/components/ui/confirm-dialog';
+import { useDialogs } from '@/components/ui/confirm-dialog';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import {
@@ -49,6 +49,7 @@ import { PresentationViewCard } from './PresentationViewCard';
 
 export function PresentationPanel() {
   const { t } = useTranslation();
+  const { promptDialog } = useDialogs();
   const [savingThumbnail, setSavingThumbnail] = useState(false);
   const [editingViewId, setEditingViewId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
@@ -201,7 +202,7 @@ export function PresentationPanel() {
     const seconds = Number(trimmed);
     if (!Number.isFinite(seconds) || seconds <= 0) return;
     setBasketViewTransitionMs(viewId, Math.round(seconds * 1000));
-  }, [setBasketViewTransitionMs, t]);
+  }, [setBasketViewTransitionMs, t, promptDialog]);
 
   return (
     <div className="h-full w-full flex flex-col overflow-hidden">

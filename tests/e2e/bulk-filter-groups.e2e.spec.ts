@@ -4,6 +4,7 @@
 
 /** #5898: authored IFC, shared group editor, union result, and actual Bulk writes. */
 import { test, expect } from '@playwright/test';
+import { DEVICE_LOST_TOAST, GPU_STRICT } from './gpu-device-loss';
 
 const STORE = '__ifc_lite_viewer_store__';
 
@@ -53,11 +54,11 @@ test('Bulk Query unions two filter groups before applying to an authored IFC (#5
   // healthy. Dismiss only that specific unrelated notice in software-GPU mode;
   // a DOM click avoids Radix treating the toast's pointerdown as a dialog exit.
   const dismissSoftwareGpuLoss = async () => {
-    if (process.env.E2E_GPU_STRICT !== '0') return false;
+    if (GPU_STRICT) return false;
     // Radix hides the background alert from the accessibility tree while the
     // Bulk dialog is modal, but its visible toast still intercepts Apply.
     const notice = page.locator('[role="alert"] [data-toast-seq]')
-      .filter({ hasText: 'The graphics device was lost, so the 3D view has stopped drawing.' });
+      .filter({ hasText: DEVICE_LOST_TOAST });
     if (!(await notice.isVisible())) return false;
     await notice.locator('button[aria-label="Dismiss notification"]').evaluate((button: HTMLButtonElement) => button.click());
     return true;

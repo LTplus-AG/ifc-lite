@@ -38,6 +38,9 @@ export interface TextBlock {
   /** Optional overrides of the chosen style; PDF standard fonts need no embedded asset. */
   font?: TextFont;
   fontSize?: number;
+  /** Optional sRGB colours in #RRGGBB form; absent means style ink / transparent paper. */
+  textColor?: string;
+  backgroundColor?: string;
   width?: BlockWidth;
 }
 
@@ -237,6 +240,9 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
         if (!TEXT_STYLE_NAMES.includes(block.style as string)) errors.push({ path: `${at}.style`, message: `expected ${TEXT_STYLE_NAMES.join(' | ')}` });
         if (block.font !== undefined && block.font !== 'helvetica' && block.font !== 'times' && block.font !== 'courier') errors.push({ path: `${at}.font`, message: 'expected helvetica | times | courier' });
         if (block.fontSize !== undefined && (typeof block.fontSize !== 'number' || !Number.isFinite(block.fontSize) || block.fontSize < TEXT_SIZE_MIN || block.fontSize > TEXT_SIZE_MAX)) errors.push({ path: `${at}.fontSize`, message: `expected a number between ${TEXT_SIZE_MIN} and ${TEXT_SIZE_MAX}` });
+        for (const key of ['textColor', 'backgroundColor']) {
+          if (block[key] !== undefined && (typeof block[key] !== 'string' || !/^#[0-9a-f]{6}$/i.test(block[key]))) errors.push({ path: `${at}.${key}`, message: 'expected an RGB colour in #RRGGBB form' });
+        }
         checkWidth(block, at);
         break;
       case 'image':

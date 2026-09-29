@@ -28,8 +28,8 @@ const DESCRIBED_CHECK_ROW_HEIGHT = 38;
 const LINE_PITCH = 11;
 const COMPACT_ROW_HEIGHT = 20;
 const BAR_HEIGHT = 5;
-const BAR_TRACK_RGB = [225, 225, 225] as const;
-const BAND_RGB = { good: [34, 197, 94], warn: [234, 179, 8], bad: [239, 68, 68] } as const;
+const BAR_TRACK_COLOR = '#e1e1e1';
+const BAND_COLOR = { good: '#22c55e', warn: '#eab308', bad: '#ef4444' } as const;
 
 /** Wraps `text` to `width`; supplied by the composer so the long layout never cuts text (#6470). */
 export type IdsReportWrap = (text: string, width: number, size: number, bold: boolean) => string[];
@@ -151,9 +151,9 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
     const barW = Math.max(20, w - nameW - labelW - 12);
     cursor.push({ kind: 'text', x, y: cursor.y + 10, size, bold, gray, text: cursor.truncate(name, nameW, size, bold) });
     if (bar) {
-      cursor.push({ kind: 'rect', x: barX, y: cursor.y + 4, w: barW, h: BAR_HEIGHT, rgb: BAR_TRACK_RGB });
+      cursor.push({ kind: 'rect', x: barX, y: cursor.y + 4, w: barW, h: BAR_HEIGHT, color: BAR_TRACK_COLOR });
       if (bar.rate !== null && bar.rate > 0) {
-        cursor.push({ kind: 'rect', x: barX, y: cursor.y + 4, w: (barW * bar.rate) / 100, h: BAR_HEIGHT, rgb: BAND_RGB[passRateBand(bar.rate)] });
+        cursor.push({ kind: 'rect', x: barX, y: cursor.y + 4, w: (barW * bar.rate) / 100, h: BAR_HEIGHT, color: BAND_COLOR[passRateBand(bar.rate)] });
       }
       const label = bar.rate === null ? 'n/a' : `${bar.passed ?? 0}/${bar.checked} · ${pct(bar.rate)}`;
       cursor.push({ kind: 'text', x: x + w - labelW, y: cursor.y + 10, size: 8, bold: false, gray: 60, text: label });

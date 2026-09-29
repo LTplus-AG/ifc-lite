@@ -20,6 +20,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { ViewerBenchmarkPage } from '../benchmark/viewer-benchmark-page';
 import { checkAxeBaseline } from './axe-baseline';
+import { GPU_STRICT } from './gpu-device-loss';
 
 const FIXTURE = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
 // Keep in sync with tests/benchmark/viewer-benchmark.spec.ts expectedMeshCounts.
@@ -41,7 +42,6 @@ const STORE_KEY = '__ifc_lite_viewer_store__';
 // density, and zero-GPU-error strictness. Locally (real GPU) everything
 // runs. Flip the env in .github/workflows/test.yml if runner WebGPU
 // ever stabilizes.
-const GPU_STRICT = process.env.E2E_GPU_STRICT !== '0';
 
 /** Read a snapshot of viewer state through the app's store singleton. */
 async function storeState<T>(page: Page, pick: string): Promise<T> {

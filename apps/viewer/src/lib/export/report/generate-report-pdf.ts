@@ -21,12 +21,12 @@ export interface ReportDoc {
   addPage: (format: 'a4' | 'a3', orientation: 'portrait' | 'landscape') => void;
   setFont: (family: string, style: 'normal' | 'bold') => void;
   setFontSize: (size: number) => void;
-  setTextColor: (gray: number) => void;
+  setTextColor: (grayOrRgb: number | string) => void;
   text: (text: string, x: number, y: number) => void;
+  /** Paint a solid RGB rectangle directly, without DOM/SVG conversion (#6492). */
+  fillRect: (x: number, y: number, w: number, h: number, color: string) => void;
   /** Width of `text` in the current font and size, in points; a document wraps with it. */
   textWidth?: (text: string) => number;
-  /** Fill a rectangle with an RGB colour (0-255 per channel): the IDS report's percent bars (#6470). */
-  fillRect: (x: number, y: number, w: number, h: number, rgb: readonly [number, number, number]) => void;
   addImage: (bytes: Uint8Array, format: 'PNG' | 'JPEG', x: number, y: number, w: number, h: number) => void;
   /** Draw an SVG string into the box (svg2pdf); a raster fallback is the caller's business. */
   svg: (svg: string, x: number, y: number, w: number, h: number) => Promise<void>;
@@ -100,10 +100,13 @@ export async function browserReportSeams(capture: SnapshotCapture | null, theme:
         addPage: (f, o) => { doc.addPage(f, o); },
         setFont: (family, style) => { doc.setFont(family, style); },
         setFontSize: (size) => { doc.setFontSize(size); },
-        setTextColor: (gray) => { doc.setTextColor(gray); },
+        setTextColor: (grayOrRgb) => {
+          if (typeof grayOrRgb === 'string') doc.setTextColor(grayOrRgb);
+          else doc.setTextColor(grayOrRgb);
+        },
         text: (t, x, y) => { doc.text(t, x, y); },
+        fillRect: (x, y, w, h, color) => { doc.setFillColor(color); doc.rect(x, y, w, h, 'F'); },
         textWidth: (t) => doc.getTextWidth(t),
-        fillRect: (x, y, w, h, [r, g, b]) => { doc.setFillColor(r, g, b); doc.rect(x, y, w, h, 'F'); },
         addImage: (bytes, format, x, y, w, h) => { doc.addImage(bytes, format, x, y, w, h); },
         svg: async (svg, x, y, w, h) => {
           const parsed = parser.parseFromString(svg, 'image/svg+xml');

@@ -41,7 +41,7 @@ function holds(polygon: Point2D[], p: Point2D): boolean {
  * extrusion started (`baseElevation`: the split predicate only accepts
  * vertical extrusions, which may start below their placement, #6233).
  */
-function emitClippedProfile(editor: StoreEditor, outline: readonly Point2D[], origin: readonly number[], rise: number, k: number) {
+export function emitClippedProfile(editor: StoreEditor, outline: readonly Point2D[], origin: readonly number[], rise: number, k: number) {
   const n = (v: number) => toNativeLength({ lengthUnitScale: k }, v);
   const ids = [...outline, outline[0]].map(([x, y]) =>
     editor.addEntity('IfcCartesianPoint', [[n(x - origin[0]), n(y - origin[1])]]).expressId);

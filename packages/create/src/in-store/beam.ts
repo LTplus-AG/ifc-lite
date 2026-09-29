@@ -12,7 +12,8 @@
  *   - local X = a stable perpendicular to the beam axis (chosen via
  *     cross product against world up, falling back to world X for
  *     near-vertical beams to avoid degenerate placements)
- *   - cross-section = rectangle(Width × Height) centred on the axis
+ *   - cross-section = rectangle(Width × Height) centred on the axis, or a
+ *     parameterised `Profile` (I, L, T, U, C, circle, hollow; see profile.ts)
  *   - extruded along local Z by the beam length
  *
  * Pure: no I/O, no parser access — operates entirely through the editor.
@@ -23,7 +24,8 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 import { vecCross, vecNorm, assertFinitePoint3 } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
-import { assertPositiveFinite, ownerHistoryRef, productGuid } from './_emit-helpers.js';
+import { emitRectangleProfile, ownerHistoryRef, productGuid } from './_emit-helpers.js';
+import { emitProfileSection, linearSection, type ProfileSection } from './profile.js';
 
 export interface BeamInStoreParams {
   Start: [number, number, number];
@@ -38,6 +40,15 @@ export interface BeamInStoreParams {
   Tag?: string;
   /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
   GlobalId?: string;
+}
+
+/**
+ * A beam with a parameterised cross-section (I, L, T, U, C, circle, hollow;
+ * see `ProfileSection`) in place of the `Width` x `Height` rectangle. The
+ * profile is centred on the axis; its Y is the beam's local Y.
+ */
+export interface ProfiledBeamInStoreParams extends Omit<BeamInStoreParams, 'Width' | 'Height'> {
+  Profile: ProfileSection;
 }
 
 export interface BeamBuildResult {
@@ -61,7 +72,7 @@ function computeRefDirection(axis: Point3D): Point3D {
 export function addBeamToStore(
   editor: StoreEditor,
   anchor: SpatialAnchor,
-  params: BeamInStoreParams,
+  params: BeamInStoreParams | ProfiledBeamInStoreParams,
 ): BeamBuildResult {
   const { ownerHistoryId, bodyContextId, storeyId, storeyPlacementId } = anchor;
 
@@ -70,28 +81,21 @@ export function addBeamToStore(
   // Validate the source coordinates instead of trusting the derived value.
   assertFinitePoint3({ Start: params.Start, End: params.End }, 'addBeamToStore');
 
-  // Params are metres; convert dimensioned fields to the file's native
-  // length unit before emit (see SpatialAnchor.lengthUnitScale).
-  params = {
-    ...params,
-    Start: toNativePoint3(anchor, params.Start),
-    End: toNativePoint3(anchor, params.End),
-    Width: toNativeLength(anchor, params.Width),
-    Height: toNativeLength(anchor, params.Height),
-  };
-  const dx = params.End[0] - params.Start[0];
-  const dy = params.End[1] - params.Start[1];
-  const dz = params.End[2] - params.Start[2];
+  const start = toNativePoint3(anchor, params.Start);
+  const end = toNativePoint3(anchor, params.End);
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const dz = end[2] - start[2];
   const beamLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
   if (beamLen <= 0) {
     throw new Error('addBeamToStore: Start and End must be distinct points');
   }
-  assertPositiveFinite([params.Width, params.Height], 'addBeamToStore: Width and Height must be positive');
+  const section = linearSection(anchor, params, 'addBeamToStore');
   const dir: Point3D = vecNorm([dx, dy, dz]);
   const refDir = computeRefDirection(dir);
 
   // Placement at Start with local Z along the beam axis.
-  const beamOriginPt = editor.addEntity('IfcCartesianPoint', [params.Start]).expressId;
+  const beamOriginPt = editor.addEntity('IfcCartesianPoint', [start]).expressId;
   const axisVec = editor.addEntity('IfcDirection', [dir]).expressId;
   const refDirVec = editor.addEntity('IfcDirection', [refDir]).expressId;
   const beamAxis = editor.addEntity('IfcAxis2Placement3D', [
@@ -105,15 +109,9 @@ export function addBeamToStore(
   ]).expressId;
 
   // Cross-section centred on the axis.
-  const profileOriginPt = editor.addEntity('IfcCartesianPoint', [[0, 0]]).expressId;
-  const profilePos = editor.addEntity('IfcAxis2Placement2D', [`#${profileOriginPt}`, null]).expressId;
-  const profileId = editor.addEntity('IfcRectangleProfileDef', [
-    '.AREA.',
-    null,
-    `#${profilePos}`,
-    params.Width,
-    params.Height,
-  ]).expressId;
+  const profileId = section.Profile
+    ? emitProfileSection(editor, anchor, section.Profile, 'addBeamToStore')
+    : emitRectangleProfile(editor, toNativeLength(anchor, section.Width), toNativeLength(anchor, section.Height));
 
   // Extrude along local Z (= beam direction) for the beam length.
   const solidOriginPt = editor.addEntity('IfcCartesianPoint', [[0, 0, 0]]).expressId;

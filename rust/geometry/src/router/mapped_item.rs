@@ -3,9 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! `IfcMappedItem` source resolution: caching, cyclic/depth-bounded recursion,
-//! and merging an `IfcRepresentationMap`'s items into one source-coords mesh.
+//! and merging an `IfcRepresentationMap`'s items into one source-coords mesh
+//! per f64 frame (#6446).
 //! Split out of `processing.rs` to stay within its module-size budget (#3691).
 
+use super::frame_parts::{single_frame_source, SourceParts};
 use super::processing::IDENTITY_ROW_MAJOR;
 use super::transforms::{instancing_enabled, mat4_to_row_major};
 use super::GeometryRouter;
@@ -20,16 +22,47 @@ use std::sync::Arc;
 use ifc_lite_core::MAX_MAPPED_ITEM_DEPTH;
 
 impl GeometryRouter {
-    /// Process MappedItem with caching for repeated geometry
+    /// Process MappedItem with caching for repeated geometry.
+    ///
+    /// Errors when the source's items cannot share one f64 frame (#6446); use
+    /// [`Self::process_mapped_item_parts`] to keep such a source at full precision.
     #[inline]
     pub(super) fn process_mapped_item_cached(
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Mesh> {
+        single_frame_source("IfcMappedItem", item.id, self.process_mapped_item_parts(item, decoder)?)
+    }
+
+    /// [`Self::process_mapped_item_cached`] as frame parts: one mesh, unless the
+    /// source's items lie in frames at least 1 km apart (#6446).
+    pub(super) fn process_mapped_item_parts(
+        &self,
+        item: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Vec<Mesh>> {
         let mut visited = FxHashSet::default();
         let mut truncated = false;
         self.process_mapped_item_cached_inner(item, decoder, 0, &mut visited, &mut truncated)
+    }
+
+    /// [`Self::process_representation_item`] as frame parts (#6446): only a
+    /// mapped item can yield more than one. Drains the curve-capped flag once,
+    /// like the single-mesh wrapper.
+    pub(in crate::router) fn process_representation_item_parts(
+        &self,
+        item: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Vec<Mesh>> {
+        if item.ifc_type != IfcType::IfcMappedItem {
+            return self.process_representation_item(item, decoder).map(|mesh| vec![mesh]);
+        }
+        let parts = self.process_mapped_item_parts(item, decoder);
+        if crate::processors::take_curve_capped() {
+            self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
+        }
+        parts
     }
 
     /// Recursion body of [`Self::process_mapped_item_cached`]. `depth`/`visited`
@@ -48,7 +81,7 @@ impl GeometryRouter {
         depth: usize,
         visited: &mut FxHashSet<u32>,
         truncated: &mut bool,
-    ) -> Result<Mesh> {
+    ) -> Result<Vec<Mesh>> {
         if depth >= MAX_MAPPED_ITEM_DEPTH as usize {
             return Err(Error::geometry(format!(
                 "MappedItem nesting exceeded maximum depth of {} at #{}",
@@ -73,7 +106,7 @@ impl GeometryRouter {
         depth: usize,
         visited: &mut FxHashSet<u32>,
         truncated: &mut bool,
-    ) -> Result<Mesh> {
+    ) -> Result<Vec<Mesh>> {
         // IfcMappedItem attributes:
         // 0: MappingSource (IfcRepresentationMap)
         // 1: MappingTarget (IfcCartesianTransformationOperator)
@@ -131,7 +164,7 @@ impl GeometryRouter {
                     instanceable: true,
                 });
             }
-            return Ok(mesh);
+            return Ok(vec![mesh]);
         }
 
         // Cache miss - process the geometry
@@ -167,7 +200,8 @@ impl GeometryRouter {
         // already-scaled mesh with its own MappingTarget baked in, so composing
         // this level's (scaled) transform over the merge below is the same
         // algebra `collect_submeshes_from_item_inner` applies per sub-mesh.
-        let mut mesh = Mesh::new();
+        // Items in frames >= 1 km apart stay separate parts (#6446).
+        let mut source = SourceParts::default();
         // Set when a bound cut this level's mesh short (see the shared-cache guard
         // below); ORed into the caller's flag on the way out.
         let mut level_truncated = false;
@@ -180,7 +214,7 @@ impl GeometryRouter {
                     visited,
                     &mut level_truncated,
                 ) {
-                    Ok(sub_mesh) => mesh.merge(&sub_mesh),
+                    Ok(sub_parts) => sub_parts.iter().for_each(|part| source.merge(part)),
                     Err(_e) => {
                         level_truncated = true;
                         // Same drop, same counter as the non-nested arms below: the
@@ -226,7 +260,7 @@ impl GeometryRouter {
                     Ok(mut sub_mesh) => {
                         sub_mesh.validate_indices();
                         self.scale_mesh(&mut sub_mesh);
-                        mesh.merge(&sub_mesh);
+                        source.merge(&sub_mesh);
                     }
                     Err(_e) => {
                         self.record_unsupported_item(sub_item.ifc_type.clone());
@@ -262,14 +296,18 @@ impl GeometryRouter {
         }
         // The merge above is short, so every enclosing level's is too.
         *truncated |= level_truncated;
+        let mut parts = source.into_parts();
+        // A multi-frame source is never cached or instanced: both assume one
+        // source-coords mesh per map (#6446). No fixture-corpus map is one.
+        let single_frame = parts.len() == 1;
 
         // Store in cache (before transformation, so cached mesh is in source
         // coordinates). Shared model-wide cache first (#1623), else the per-router
         // RefCell. A concurrent miss on the same source by another router rebuilds
         // an identical source-coords mesh, so an overwrite here is byte-identical.
         // Brief lock only — the source build above ran outside it (no join held).
-        let source_arc = Arc::new(mesh.clone());
         match &self.shared_mapped_item_cache {
+            _ if !single_frame => {}
             Some(shared) => {
                 // Mirror the item-dedup #1257 guard: a mapped source can contain
                 // IfcBooleanResult/IfcCsgSolid, and on a per-element CSG-budget trip
@@ -288,10 +326,11 @@ impl GeometryRouter {
                 // and caching that model-wide would serve the short mesh to a later
                 // occurrence reached at depth 0, which would otherwise walk the
                 // whole chain. Non-empty and budget-clean, so only this catches it.
-                if !mesh.positions.is_empty()
+                if !parts[0].positions.is_empty()
                     && !crate::kernel::budget::tripped()
                     && !level_truncated
                 {
+                    let source_arc = Arc::new(parts[0].clone());
                     shared
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
@@ -299,6 +338,7 @@ impl GeometryRouter {
                 }
             }
             None => {
+                let source_arc = Arc::new(parts[0].clone());
                 self.mapped_item_cache.borrow_mut().insert(source_id, source_arc);
             }
         }
@@ -310,10 +350,12 @@ impl GeometryRouter {
             if instancing_enabled() {
                 local_rm = Some(mat4_to_row_major(&transform));
             }
-            self.transform_mesh_local(&mut mesh, &transform);
+            for part in &mut parts {
+                self.transform_mesh_local(part, &transform);
+            }
         }
-        if instancing_enabled() {
-            mesh.instance_meta = Some(InstanceMeta {
+        if instancing_enabled() && single_frame {
+            parts[0].instance_meta = Some(InstanceMeta {
                 transform: IDENTITY_ROW_MAJOR,
                 local_transform: local_rm,
                         canonical_transform: None,
@@ -322,6 +364,6 @@ impl GeometryRouter {
             });
         }
 
-        Ok(mesh)
+        Ok(parts)
     }
 }

@@ -53,7 +53,7 @@ export interface AuthoringDefaults {
   /** Keep drawing from the last end after a commit. */
   readonly chain: boolean;
   readonly slabMode: SlabDrawMode;
-  /** How `space.place` draws its outline (interim until the Room tool). */
+  /** How the Room tool's Draw mode outlines a free room. */
   readonly spaceMode: SlabDrawMode;
   readonly slabClass: SlabClass;
   readonly beamClass: BeamClass;

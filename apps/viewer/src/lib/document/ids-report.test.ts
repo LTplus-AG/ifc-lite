@@ -21,6 +21,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { SpecificationResult, ValidationReport } from '@ifc-lite/ids';
 import { idsReportBlockFromReport } from './ids-report.js';
+import { composeDocument, estimateTextWidth } from './compose.js';
+import { validateDocumentSpec, DOCUMENT_VERSION, type IdsReportBlock } from './types.js';
 
 /** A `SpecificationResult` with deliberately distinct passed/failed counts, so a passed/failed swap is detectable. */
 function spec(overrides: Partial<SpecificationResult> & { id: string; name: string; description?: string }): SpecificationResult {
@@ -92,7 +94,10 @@ describe('idsReportBlockFromReport', () => {
         { requirement: { id: 'r1', label: 'Fire rating', optionality: 'required' }, status: 'fail', facetType: 'property', checkedDescription: 'Check fire rating' },
       ] },
     ];
-    const rules = idsReportBlockFromReport(report([spec({ id: 's1', name: 'Walls', applicableCount: 2, passedCount: 1, failedCount: 1, entityResults })]), 'partial').checks[0].rules;
+    // An IDS report: a rule-set rule is its own single requirement and gets no child row at all (#6372).
+    const partial = report([spec({ id: 's1', name: 'Walls', applicableCount: 2, passedCount: 1, failedCount: 1, entityResults })]);
+    partial.source = { kind: 'ids', document: { info: { title: 'Design IDS' }, specifications: [] } };
+    const rules = idsReportBlockFromReport(partial, 'partial').checks[0].rules;
     assert.deepEqual(rules.map((rule) => [rule.checked, rule.passed, rule.failed, rule.passRate]), [[2, null, null, null]]);
   });
 
@@ -204,5 +209,75 @@ describe('idsReportBlockFromReport', () => {
     assert.equal(block.summary.passed, 8);
     assert.equal(block.summary.failed, 7);
     assert.equal(block.summary.passRate, 53);
+  });
+});
+
+/**
+ * #6372 gave the block a second source kind. The IDS side must print exactly
+ * what it printed before: these pin the whole IDS snapshot and every PDF line
+ * it lays out, including a single-requirement specification (which, unlike a
+ * rule-set rule, keeps its requirement child row) and a failures-only report.
+ */
+describe('IDS report output is unchanged by the information-validation kind (#6372)', () => {
+  function idsFixture(): ValidationReport {
+    const requirementResult = (id: string, label: string, status: 'pass' | 'fail') => ({
+      requirement: { id, label, optionality: 'required' as const }, status, facetType: 'property' as const, checkedDescription: `Check ${label}`,
+    });
+    const walls = spec({ id: 's1', name: 'Walls', description: 'Every wall', applicableCount: 2, passedCount: 1, failedCount: 1, passRate: 50, entityResults: [
+      { expressId: 1, modelId: 'm', entityType: 'IfcWall', passed: true, requirementResults: [requirementResult('r1', 'Fire rating', 'pass')] },
+      { expressId: 2, modelId: 'm', entityType: 'IfcWall', passed: false, requirementResults: [requirementResult('r1', 'Fire rating', 'fail')] },
+    ] });
+    const slabs = spec({ id: 's2', name: 'Slabs', applicableCount: 3, passedCount: 2, failedCount: 1, passRate: 66, entityResults: [
+      { expressId: 3, modelId: 'm', entityType: 'IfcSlab', passed: false, requirementResults: [requirementResult('r2', 'Load bearing', 'fail')] },
+    ] });
+    const fixture = report([walls, slabs]);
+    fixture.source = { kind: 'ids', document: { info: { title: 'Design IDS' }, specifications: [] } };
+    return fixture;
+  }
+
+  it('snapshots an IDS report with the same fields as before, labelled ids', () => {
+    const block = idsReportBlockFromReport(idsFixture(), 'b');
+    assert.deepEqual(block, {
+      kind: 'ids-report', id: 'b', sourceKind: 'ids', sourceName: 'Design IDS', generatedAt: '2026-01-15T10:00:00.000Z',
+      summary: { checked: 5, passed: 3, failed: 2, passRate: 60 },
+      checks: [
+        { id: 's1', shortDescription: 'Walls', longDescription: 'Every wall', checked: 2, passed: 1, failed: 1, passRate: 50,
+          rules: [{ id: 'r1', shortDescription: 'Fire rating', longDescription: 'Check Fire rating', checked: 2, passed: 1, failed: 1, passRate: 50 }] },
+        { id: 's2', shortDescription: 'Slabs', longDescription: undefined, checked: 3, passed: 2, failed: 1, passRate: 66,
+          rules: [{ id: 'r2', shortDescription: 'Load bearing', longDescription: 'Check Load bearing', checked: 3, passed: null, failed: null, passRate: null }] },
+      ],
+    });
+  });
+
+  it('prints the same PDF lines for a new IDS snapshot and for a block saved before sourceKind existed', () => {
+    const block = idsReportBlockFromReport(idsFixture(), 'b');
+    const { sourceKind: _dropped, ...legacy } = block;
+    void _dropped;
+    const expected = [
+      'IDS report: Design IDS',
+      'Checked 5 · Passed 3 · Failed 2 · 60% passed',
+      'Validation run: 2026-01-15T10:00:00.000Z',
+      'Walls', 'Every wall', 'Checked 2 · Passed 1 · Failed 1 · 50%',
+      'Fire rating', 'Check Fire rating', 'Checked 2 · Passed 1 · Failed 1 · 50%',
+      'Slabs', 'Checked 3 · Passed 2 · Failed 1 · 66%',
+      'Load bearing', 'Check Load bearing', 'Checked 3 · Passed/failed unavailable (partial report)',
+    ];
+    for (const printed of [block, legacy as IdsReportBlock]) {
+      const layout = composeDocument({ name: 'Doc', page: { size: 'A4', orientation: 'portrait' }, generatedAt: 'now', measure: estimateTextWidth, blocks: [printed] });
+      const lines = layout.pages.flatMap((page) => page.items.flatMap((item) => (item.kind === 'text' ? [item.text] : [])));
+      // The page footer is the document's, not the block's.
+      assert.deepEqual(lines.slice(0, expected.length), expected);
+    }
+  });
+
+  it('accepts a saved block with or without sourceKind at the same document version, and rejects an unknown kind', () => {
+    const block = idsReportBlockFromReport(idsFixture(), 'b');
+    const doc = (b: unknown) => ({ version: DOCUMENT_VERSION, id: 'd', name: 'D', page: { size: 'A4', orientation: 'portrait' }, blocks: [b] });
+    const { sourceKind: _dropped, ...legacy } = block;
+    void _dropped;
+    assert.deepEqual(validateDocumentSpec(doc(block)), []);
+    assert.deepEqual(validateDocumentSpec(doc(legacy)), []);
+    assert.deepEqual(validateDocumentSpec(doc({ ...block, sourceKind: 'bcf' })).map((e) => e.path), ['blocks[0].sourceKind']);
+    assert.deepEqual(validateDocumentSpec(doc({ ...block, checks: [{ ...block.checks[0], severity: 'info' }] })).map((e) => e.path), ['blocks[0].checks[0].severity']);
   });
 });

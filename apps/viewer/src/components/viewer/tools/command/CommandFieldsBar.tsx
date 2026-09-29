@@ -63,9 +63,10 @@ export function CommandFieldsBar({ measuring = false }: { measuring?: boolean } 
       {fields.map((field, index) => {
         if (field.hidden?.(gesture)) return null;
         const format = UNIT_FORMAT[field.unit];
-        // A field with no value yet shows 0; tabbing through it commits that
-        // placeholder, which must not become a lock (a Slab Width of 0 before
-        // the first corner). A value typed once the field has one still counts.
+        // A field with no value yet shows 0. An untouched field never commits
+        // (HudValueField, #6232 F1); a typed 0 there still must not become a
+        // lock (a Slab Width of 0 before the first corner). A value typed once
+        // the field has one still counts.
         const current = field.read(gesture, ctx);
         const label = t(field.labelKey);
         return (

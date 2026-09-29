@@ -1,0 +1,11 @@
+AC20-FZK-Haus, Windows Chrome (real GPU) over CDP, 1920x1080, storey Erdgeschoss. ok=True console errors=0
+started       undo=0   faces=4 taken=4 labels=['12.5 m²', '13.0 m²', '53.8 m²', '24.7 m²'] new IfcSpace=[]
+afterRemove   undo=7   faces=4 taken=0 labels=['12.5 m²', '13.0 m²', '53.8 m²', '24.7 m²'] new IfcSpace=[]
+auto          undo=11  faces=4 taken=4 labels=['12.5 m²', '13.0 m²', '53.8 m²', '24.7 m²'] new IfcSpace=['Room 1', 'Room 2', 'Room 3', 'Room 4']
+undone        undo=7   faces=4 taken=0 labels=['12.5 m²', '13.0 m²', '53.8 m²', '24.7 m²'] new IfcSpace=[]
+picked        undo=8   faces=4 taken=1 labels=['12.5 m²', '13.0 m²', '53.8 m²', '24.7 m²'] new IfcSpace=['Room 1']
+beforeUpdate  undo=12  faces=5 taken=5 labels=['12.5 m²', '13.0 m²', '33.2 m²', '24.7 m²', '18.3 m²'] new IfcSpace=['Room 1', 'Room 2', 'Room 3', 'Room 4']
+updated       undo=18  faces=5 taken=4 labels=['12.5 m²', '13.0 m²', '33.2 m²', '24.7 m²', '18.3 m²'] new IfcSpace=['Room 1', 'Room 2', 'Room 3', 'Room 4']
+removed file IfcSpaces (setup): 7
+Auto: 4 undo entries, one batch (one Ctrl+Z: undo 11 -> 7)
+Update rooms: Room 3 area 53.83 -> 33.21 m2 (same express id 79253), 6 mutations tagged as one transaction batch (one undo restores it: room-place.test.tsx)

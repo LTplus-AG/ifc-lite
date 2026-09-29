@@ -13,8 +13,9 @@ import { buildStoreyWorkplane } from './workplane.js';
 import { BEAM_PLACE } from './commands/beam-place.js';
 import { COLUMN_PLACE } from './commands/column-place.js';
 import { ELEMENT_SPLIT } from './commands/element-split.js';
+import { ROOM_PLACE } from './commands/room-place.js';
+import { DOOR_PLACE, OPENING_PLACE, WINDOW_PLACE } from './commands/hosted-place.js';
 import { SLAB_PLACE } from './commands/slab-place.js';
-import { SPACE_PLACE } from './commands/space-place.js';
 import { WALL_MOVE_ENDPOINT } from './commands/wall-move-endpoint.js';
 import { WALL_PLACE } from './commands/wall-place.js';
 import type { ModelingCommand } from './types.js';
@@ -30,7 +31,10 @@ registerOnce(WALL_MOVE_ENDPOINT);
 registerOnce(SLAB_PLACE);
 registerOnce(COLUMN_PLACE);
 registerOnce(BEAM_PLACE);
-registerOnce(SPACE_PLACE);
+registerOnce(ROOM_PLACE);
+registerOnce(OPENING_PLACE);
+registerOnce(DOOR_PLACE);
+registerOnce(WINDOW_PLACE);
 
 setWorkplaneResolver((s, modelId, spec) => (spec.kind === 'storey'
   ? buildStoreyWorkplane(s, modelId, spec.storeyId, spec.offset)

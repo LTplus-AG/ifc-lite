@@ -156,6 +156,27 @@ describe('ifc-lite check — tri-state exit code (#5138)', () => {
     expect(process.exitCode).toBe(1);
   });
 
+  it('a warning-severity failure exits 0 by default and 1 under --fail-on warning, read off the report (#6372)', async () => {
+    // Wall C fails the FireRating rule, made a warning here. The unique-name rule
+    // stays an error and passes; the width-sum rule, which Wall C would fail, is dropped.
+    const base = ruleSet();
+    const warningOnly: RuleSetFile = { ...base, rules: [{ ...base.rules[0], severity: 'warning' }, base.rules[1]] };
+    const { modelPath, rulesPath } = writeFixtures(tmpDir(), THREE_WALLS, warningOnly);
+    let write = silenceOutput();
+    await checkCommand([modelPath, '--rules', rulesPath, '--format', 'json']);
+    const report = jsonWritten(write);
+    const fireRatingSpec = report.specificationResults.find(r => r.specification.id === 'fire-rating-set');
+    expect(fireRatingSpec?.status).toBe('fail');
+    expect(fireRatingSpec?.specification.severity).toBe('warning');
+    expect(report.specificationResults.find(r => r.specification.id === 'unique-name')?.specification.severity).toBe('error');
+    expect(process.exitCode).toBe(0);
+
+    write.mockRestore();
+    write = silenceOutput();
+    await checkCommand([modelPath, '--rules', rulesPath, '--format', 'json', '--fail-on', 'warning']);
+    expect(process.exitCode).toBe(1);
+  });
+
   it('exit 2: an unevaluable rule (ReDoS-rejected regex) always wins over a would-be pass', async () => {
     const { modelPath, rulesPath } = writeFixtures(tmpDir(), TWO_WALLS, ruleSet(true));
     const write = silenceOutput();

@@ -52,6 +52,7 @@ function widePrecisionGlb(): Buffer {
 }
 
 test('GLB imports preserve valid triangles that a bounding-box frame would collapse (#6515)', async ({ page }, info) => {
+  const gpu = await watchGpuDeviceLoss(page);
   const errors: string[] = [];
   captureDiagnostics(page, errors);
   await page.goto('/');
@@ -60,33 +61,35 @@ test('GLB imports preserve valid triangles that a bounding-box frame would colla
   const owner = await page.evaluate(() => globalThis.__ifc_lite_scene_owner__(19));
   expect(owner.corners).toHaveLength(18);
   expect(owner.corners[3] - owner.corners[0], 'the uploaded owner retains its 1 µm edge').toBeCloseTo(Math.fround(0.000001), 9);
-  // The normal load fits with a 300 ms animation; let it finish before
-  // installing an immediate diagnostic viewpoint.
-  await page.waitForTimeout(400);
-  // Look squarely at the distant triangle. The automatic long-model camera
-  // is edge-on to this intentionally flat numerical diagnostic.
-  await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.applyViewpoint!({
-    position: { x: 156_003, y: 3, z: 5_500_030 }, target: { x: 156_003, y: 3, z: 5_500_000 },
-    up: { x: 0, y: 1, z: 0 }, fov: Math.PI / 4, projectionMode: 'perspective',
-  }, false));
-  await page.waitForTimeout(300);
-  const farTriangle = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.projectToScreen!({ x: 156_003, y: 3, z: 5_500_000 }));
-  expect(farTriangle).not.toBeNull();
-  const canvas = await page.locator('canvas').first().boundingBox();
-  expect(canvas).not.toBeNull();
-  await page.mouse.click(canvas!.x + farTriangle!.x, canvas!.y + farTriangle!.y);
-  await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId)).toBe(19);
-  expect(errors).toEqual([]);
-  expect(consoleLines.filter(line => /topology-safe GPU frame|GPU upload failed/.test(line))).toEqual([]);
   await info.attach('GLB precision invariant scene', { body: JSON.stringify(owner, null, 2), contentType: 'application/json' });
-  // SwiftShader may discard compositor canvas pixels; the production renderer
-  // readback is the color witness (the DOM screenshot records UI only).
-  const colorFrame = await page.evaluate(() => globalThis.__ifc_lite_capture_color_frame__?.());
-  expect(colorFrame).toMatch(/^data:image\/png;base64,/);
-  const colorPath = info.outputPath('glb-precision-invariant-6515-rendered.png');
-  writeFileSync(colorPath, Buffer.from(colorFrame!.split(',')[1]!, 'base64'));
-  await info.attach('GLB precision invariant rendered color', { path: colorPath, contentType: 'image/png' });
-  await page.screenshot({ path: info.outputPath('glb-precision-invariant-6515.png') });
+  await gpu.requireLiveGpu('GLB precision viewport pick and color readback', async () => {
+    // The normal load fits with a 300 ms animation; let it finish before
+    // installing an immediate diagnostic viewpoint.
+    await page.waitForTimeout(400);
+    // Look squarely at the distant triangle. The automatic long-model camera
+    // is edge-on to this intentionally flat numerical diagnostic.
+    await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.applyViewpoint!({
+      position: { x: 156_003, y: 3, z: 5_500_030 }, target: { x: 156_003, y: 3, z: 5_500_000 },
+      up: { x: 0, y: 1, z: 0 }, fov: Math.PI / 4, projectionMode: 'perspective',
+    }, false));
+    await page.waitForTimeout(300);
+    const farTriangle = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.projectToScreen!({ x: 156_003, y: 3, z: 5_500_000 }));
+    expect(farTriangle).not.toBeNull();
+    const canvas = await page.locator('canvas').first().boundingBox();
+    expect(canvas).not.toBeNull();
+    await page.mouse.click(canvas!.x + farTriangle!.x, canvas!.y + farTriangle!.y);
+    await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId)).toBe(19);
+    expect(errors).toEqual([]);
+    expect(consoleLines.filter(line => /topology-safe GPU frame|GPU upload failed/.test(line))).toEqual([]);
+    // SwiftShader may discard compositor canvas pixels; the production renderer
+    // readback is the color witness (the DOM screenshot records UI only).
+    const colorFrame = await page.evaluate(() => globalThis.__ifc_lite_capture_color_frame__?.());
+    expect(colorFrame).toMatch(/^data:image\/png;base64,/);
+    const colorPath = info.outputPath('glb-precision-invariant-6515-rendered.png');
+    writeFileSync(colorPath, Buffer.from(colorFrame!.split(',')[1]!, 'base64'));
+    await info.attach('GLB precision invariant rendered color', { path: colorPath, contentType: 'image/png' });
+    await page.screenshot({ path: info.outputPath('glb-precision-invariant-6515.png') });
+  });
 });
 
 /** The viewer's own point-cloud error when the GPU device died mid-load

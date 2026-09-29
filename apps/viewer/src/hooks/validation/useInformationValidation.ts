@@ -13,6 +13,7 @@
  * publish a stale or partial report.
  */
 
+import { validationReportSnapshot } from '@/lib/validation/reports/history';
 import { useCallback, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -223,6 +224,7 @@ export function useInformationValidation(): UseInformationValidationResult {
       // `useIDS.runValidation`'s `stillWantedValidation` guard (#2802).
       if (!stillWanted(myEpoch)) return;
       setIdsValidationReport(report);
+      useViewerStore.getState().saveValidationReport(validationReportSnapshot(report, state.models, 'run'));
       setEditing(false);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;

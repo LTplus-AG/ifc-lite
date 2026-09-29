@@ -13,6 +13,7 @@
  * several models loaded a picker chooses which one is being checked.
  */
 
+import { manualReportBlockFromChecklist } from '@/lib/document/manual-report';
 import { useMemo, useState } from 'react';
 import { Pencil, Plus, Save, X } from 'lucide-react';
 import { useTranslation } from '@/i18n';
@@ -107,6 +108,13 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
         {!editing && !activeModel && <p className="text-xs text-muted-foreground">{t('manualValidation.model.none')}</p>}
         {!editing && activeModel && !fingerprint && <p className="text-xs text-muted-foreground">{t('manualValidation.model.noIdentity')}</p>}
         {saveError && <p role="alert" className="text-xs text-red-600">{t('manualValidation.error.notSaved')}</p>}
+
+        <Button type="button" variant="outline" size="sm" className="h-7 w-fit text-xs" onClick={() => {
+          useViewerStore.getState().saveValidationReport({
+            ...manualReportBlockFromChecklist({ checklist, answers, modelName: activeModel?.name, modelFingerprint: fingerprint }, 'run'),
+            reportModels: activeModel ? [{ name: activeModel.name, ...(fingerprint ? { fingerprint } : {}) }] : [],
+          });
+        }}>{t('validationPanel.history.saveManual')}</Button>
 
         {checklist.groups.length > 0 && (
           <div className="flex items-center gap-4 rounded-md border border-border p-3" data-testid="manual-overall">

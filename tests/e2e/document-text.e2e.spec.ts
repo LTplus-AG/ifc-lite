@@ -190,3 +190,56 @@ test('#6485 named model fields retain their source and authored page breaks expo
   expect(text).not.toContain('not loaded');
   expect(duplicateKeys).toEqual([]);
 });
+
+test('#6500 real IFC checks survive reload and remain independently selectable in documentation', async ({ page }, testInfo) => {
+  const loaded = page.waitForEvent('console', {
+    predicate: (message) => message.text().includes('[ifc-lite] Added model building-architecture.ifc'),
+    timeout: 120000,
+  });
+  await page.goto(`${viewerUrl}?model=/samples/building-architecture.ifc`);
+  await loaded;
+  await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().showWorkspacePanel('validation'));
+  await page.getByTestId('validation-entry-ids').click();
+  await page.locator('input[type="file"][accept=".ids,.xml"]').last().setInputFiles(join(ROOT, 'apps/viewer/public/samples/building-architecture.ids'));
+  await page.getByRole('button', { name: 'Run Validation', exact: true }).click();
+  const history = page.locator('[data-saved-validation-reports]');
+  await expect(history.locator('summary')).toHaveText('Saved reports (1)', { timeout: 60000 });
+  await history.locator('summary').click();
+  await history.getByRole('textbox', { name: 'Report name', exact: true }).fill('Architecture check one');
+  await history.getByRole('textbox', { name: 'Report name', exact: true }).blur();
+  await page.getByRole('button', { name: 'Re-run validation', exact: true }).click();
+  await expect(history.locator('summary')).toHaveText('Saved reports (2)', { timeout: 60000 });
+  const reports = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().savedValidationReports.map((entry) => ({ id: entry.id, name: entry.name })));
+  expect(reports[0].id).not.toBe(reports[1].id);
+  await history.getByRole('combobox', { name: 'Select saved validation report', exact: true }).selectOption(reports[0].id);
+  await expect(history.getByRole('textbox', { name: 'Report name', exact: true })).toHaveValue('Architecture check one');
+  await expect(history.getByText('Models: building-architecture.ifc', { exact: true }).first()).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('saved-real-ifc-check-history.png') });
+
+  // A fresh page has neither the live model nor its latest result. Frozen
+  // evidence still loads and can be copied to independent document blocks.
+  await page.goto(viewerUrl);
+  await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__ !== undefined);
+  await page.evaluate(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    state.upsertDocument({ version: 1, id: 'history-6500', name: 'Saved checks', page: { size: 'A4', orientation: 'portrait' }, blocks: [] });
+    state.setActiveDocumentId('history-6500');
+    state.openPanelInHome('document');
+  });
+  const panel = page.locator('[data-document-panel]').first();
+  await expect(panel).toBeVisible();
+  for (const report of reports) {
+    await panel.getByRole('button', { name: 'Add block', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Saved validation report', exact: true }).click();
+    await panel.getByRole('combobox', { name: 'Saved report source', exact: true }).last().selectOption(report.id);
+  }
+  const embedded = await page.evaluate(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    return { models: state.models.size, reports: state.savedValidationReports.length, blocks: state.documents.find((document) => document.id === 'history-6500')?.blocks };
+  });
+  expect(embedded.models).toBe(0);
+  expect(embedded.reports).toBe(2);
+  expect(embedded.blocks).toHaveLength(2);
+  expect(embedded.blocks?.map((block) => 'savedReportId' in block ? block.savedReportId : undefined)).toEqual(reports.map((report) => report.id));
+  await page.screenshot({ path: testInfo.outputPath('saved-checks-document-no-live-model.png') });
+});

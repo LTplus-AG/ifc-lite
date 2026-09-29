@@ -9,6 +9,7 @@
  * component, so the preview, the panel and the PDF share one geometry.
  */
 
+import { reportScopeText } from '@/lib/document/report-provenance';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { ManualReportBlock } from '@/lib/document/manual-report-types';
 import { ManualValidationLegend, ManualValidationRing, VerdictIcon } from '../validation/ManualValidationRing';
@@ -35,6 +36,7 @@ export function ManualReportPreview({ block }: { block: ManualReportBlock }) {
           ? t('manualValidation.report.recordedAtModel', { model: block.modelName, timestamp: block.generatedAt })
           : t('manualValidation.report.recordedAt', { timestamp: block.generatedAt })}
       </div>
+      {reportScopeText(block) && <div className="text-2xs text-neutral-600" data-report-model-scope>{t('validationPanel.history.models', { models: reportScopeText(block) })}</div>}
       <div className="mt-1 flex items-center gap-3 rounded border border-neutral-200 bg-neutral-50 px-2 py-1.5">
         <ManualValidationRing counts={block.summary} name={t('manualValidation.overall')} size={56} textClassName={ink} />
         <div className="min-w-0 flex-1">

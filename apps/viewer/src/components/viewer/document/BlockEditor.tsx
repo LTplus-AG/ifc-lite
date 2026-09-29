@@ -8,6 +8,7 @@
  * selected element's attributes and properties — and the bindings resolve
  * live in the preview. Image, chart and topic blocks pick their source.
  */
+import { SavedReportSource } from './SavedReportSource';
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowDown, ArrowUp, X } from 'lucide-react';
 import type { ChartSpec } from '@ifc-lite/charts';
@@ -271,9 +272,10 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
 
       {block.kind === 'table' && <TableBlockEditor block={block} onChange={onChange} />}
 
-      {block.kind === 'ids-report' && <ReportBlockSource block={block} report={idsValidationReport} onChange={onChange} />}
+      {(block.kind === 'ids-report' || block.kind === 'manual-report') && <SavedReportSource block={block} onChange={onChange} />}
+      {block.kind === 'ids-report' && !block.savedReportId && <ReportBlockSource block={block} report={idsValidationReport} onChange={onChange} />}
 
-      {block.kind === 'manual-report' && <ManualReportBlockEditor block={block} onChange={onChange} />}
+      {block.kind === 'manual-report' && !block.savedReportId && <ManualReportBlockEditor block={block} onChange={onChange} />}
 
       {block.kind === 'topic' && (
         <div className="flex flex-wrap items-center gap-2">

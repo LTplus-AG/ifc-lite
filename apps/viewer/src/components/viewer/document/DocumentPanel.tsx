@@ -9,6 +9,7 @@
  * the report's jsPDF path; the document itself is a template saved as
  * `.ifclite-document.json` and re-opened on the next model revision.
  */
+import { savedReportBlock } from '@/lib/validation/reports/history';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileText, Plus } from 'lucide-react';
 import type { ReportPageSetup } from '@ifc-lite/charts';
@@ -65,6 +66,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const listDefinitions = useViewerStore((s) => s.listDefinitions);
   const idsValidationReport = useViewerStore((s) => s.idsValidationReport);
   const manualSource = useManualReportSource();
+  const savedReports = useViewerStore((s) => s.savedValidationReports);
 
   useEffect(() => { ensureActiveDocument(); }, [documents, activeDocumentId]);
 
@@ -200,6 +202,13 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
             <DropdownMenuItem onSelect={() => addBlock('table')}>{t('document.addBlock.table')}</DropdownMenuItem>
             {/* One report slot serves IDS and information validation; the item is named for what it would add (#6372). */}
             <DropdownMenuItem onSelect={() => addBlock('ids-report')} disabled={!idsValidationReport} title={idsValidationReport ? undefined : t('document.addBlock.idsReportDisabledTitle')}>{t(idsValidationReport?.source.kind === 'rules' ? 'document.addBlock.rulesReport' : 'document.addBlock.idsReport')}</DropdownMenuItem>
+            <DropdownMenuItem disabled={savedReports.length === 0} onSelect={() => {
+              const entry = savedReports.at(-1);
+              if (!document || !entry) return;
+              const block = savedReportBlock(entry, freshBlockId());
+              setBlocks([...document.blocks, block]);
+              setSelectedBlockId(block.id);
+            }}>{t('validationPanel.history.addDocument')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('manual-report')} disabled={!manualSource.available} title={manualSource.available ? undefined : t('manualValidation.report.unavailableTitle')}>{t('manualValidation.report.add')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

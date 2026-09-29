@@ -15,6 +15,7 @@
  */
 
 import type { DocumentValidationError } from './types.js';
+import { validateReportProvenance, type ReportProvenance } from './report-provenance.js';
 
 export type ManualReportVerdict = 'pass' | 'fail' | 'warning';
 
@@ -43,7 +44,7 @@ export interface ManualReportGroup {
   items: ManualReportItem[];
 }
 
-export interface ManualReportBlock {
+export interface ManualReportBlock extends ReportProvenance {
   kind: 'manual-report';
   id: string;
   /** The checklist's name, printed in the block's heading. */
@@ -77,6 +78,7 @@ const COUNTS_MESSAGE = 'expected { total, pass, fail, warning, unanswered: non-n
 
 /** Structural check of a manual report block (#6401), every problem with its JSON path. */
 export function validateManualReportBlock(block: Record<string, unknown>, at: string, errors: DocumentValidationError[]): void {
+  validateReportProvenance(block, at, errors);
   if (!isString(block.checklistName)) errors.push({ path: `${at}.checklistName`, message: 'expected a string' });
   if (block.modelName !== undefined && !isString(block.modelName)) errors.push({ path: `${at}.modelName`, message: 'expected a string' });
   if (block.modelFingerprint !== undefined && !(isString(block.modelFingerprint) && block.modelFingerprint.length > 0)) {

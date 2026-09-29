@@ -16,6 +16,7 @@ import { useIDS } from '@/hooks/useIDS';
 import { CHECKLIST_VERSION, type ChecklistTemplate } from '@/lib/validation/manual/checklist';
 import { manualReportBlockFromChecklist } from '@/lib/document/manual-report';
 import { blankDocument } from '@/lib/document/presets';
+import type { DocumentSpec } from '@/lib/document/types';
 import { generateDocumentPdf, type DocumentPdfSeams } from '@/lib/document/generate-document-pdf';
 import { savedReportBlock, validationReportSnapshot, newSavedReport } from '@/lib/validation/reports/history';
 import { loadValidationReports, VALIDATION_REPORTS_STORAGE_KEY } from '@/lib/validation/reports/persistence';
@@ -75,6 +76,16 @@ function addSavedBlock(ui: HTMLElement) {
   const item = [...document.body.querySelectorAll('[role="menuitem"]')].find((element) => element.textContent === 'Saved validation report');
   assert.ok(item);
   click(item);
+}
+
+async function printedPdf(document: DocumentSpec): Promise<string[]> {
+  const printed: string[] = [];
+  const seams: DocumentPdfSeams = {
+    createDoc: async () => ({ addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {}, fillRect: () => {}, text: (text) => { printed.push(text); }, addImage: () => {}, svg: async () => {}, table: () => {}, pageCount: () => 1, output: () => new Blob(['pdf']) }),
+    renderSvg: () => '', capture: null, theme: DEFAULT_THEME, now: () => new Date(0), imageSize: async () => ({ w: 1, h: 1 }),
+  };
+  await generateDocumentPdf({ document: document, bindings: { models: [], activeModelId: null, today: new Date(0) }, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map() }, seams);
+  return printed;
 }
 
 describe('saved validation evidence (#6500)', () => {
@@ -148,24 +159,56 @@ describe('saved validation evidence (#6500)', () => {
     const ui = render(<DocumentPanel />); await settle();
     addSavedBlock(ui); await settle();
     const picker = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]'); assert.ok(picker);
+    assert.ok(picker.querySelector<HTMLOptionElement>('option[value=""]')?.disabled, 'retained snapshot placeholder cannot trigger a no-op selection');
     select(picker, reports[0].id); await settle();
     assert.match(ui.querySelector('[data-block-ids-report]')?.textContent ?? '', /First check/);
     addSavedBlock(ui); await settle();
     const doc = useViewerStore.getState().documents[0];
     assert.equal(doc.blocks.length, 2);
     act(() => { for (const entry of reports) useViewerStore.getState().removeValidationReport(entry.id); });
-    const printed: string[] = [];
-    const seams: DocumentPdfSeams = {
-      createDoc: async () => ({ addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {}, fillRect: () => {}, text: (text) => { printed.push(text); }, addImage: () => {}, svg: async () => {}, table: () => {}, pageCount: () => 1, output: () => new Blob(['pdf']) }),
-      renderSvg: () => '', capture: null, theme: DEFAULT_THEME, now: () => new Date(0), imageSize: async () => ({ w: 1, h: 1 }),
-    };
-    await generateDocumentPdf({ document: doc, bindings: { models: [], activeModelId: null, today: new Date(0) }, aggregations: new Map(), chartMessages: new Map(), snapshotIds: () => [], topics: new Map(), tables: new Map() }, seams);
+    const printed = await printedPdf(doc);
     assert.ok(printed.includes('IDS report: First check'));
     assert.ok(printed.includes('IDS report: Second check'));
     assert.ok(printed.includes('Models: tower.ifc'));
     assert.ok(printed.includes('Models: structure.ifc'));
     assert.equal(loadValidationReports().length, 0);
   });
+
+  for (const latestKind of ['ids-report', 'manual-report'] as const) {
+    it(`selects an older saved report of another kind when latest is ${latestKind}, with no live source (#6500)`, async () => {
+      const ids = validationReportSnapshot(await checkedWall('tower', 'Archived IDS'), new Map([['tower', { name: 'tower.ifc' }]]), 'ids');
+      const manual = {
+        ...manualReportBlockFromChecklist({
+          checklist: { version: CHECKLIST_VERSION, name: 'Mechanical review', groups: [{ id: 'g', name: 'Delivery', items: [{ id: 'i', text: 'Fire stop reviewed' }] }] },
+          answers: { i: { status: 'warning', comment: 'Confirm fire stop', updatedAt: 1 } }, modelName: 'structure.ifc',
+        }, 'manual'),
+        reportModels: [{ name: 'structure.ifc' }],
+      };
+      const order = latestKind === 'ids-report' ? [manual, ids] : [ids, manual];
+      for (const snapshot of order) useViewerStore.getState().saveValidationReport(snapshot);
+      const reports = useViewerStore.getState().savedValidationReports;
+      const document = { ...blankDocument(), blocks: [] };
+      useViewerStore.getState().upsertDocument(document);
+      useViewerStore.getState().setActiveDocumentId(document.id);
+      assert.equal(useViewerStore.getState().models.size, 0);
+      assert.equal(useViewerStore.getState().idsValidationReport, null);
+      assert.equal(useViewerStore.getState().manualChecklist, null);
+      const ui = render(<DocumentPanel />); await settle();
+      addSavedBlock(ui); await settle();
+      const blockId = useViewerStore.getState().documents[0].blocks[0].id;
+      const picker = ui.querySelector<HTMLSelectElement>('select[aria-label="Saved report source"]'); assert.ok(picker);
+      select(picker, reports[0].id); await settle();
+      const chosen = useViewerStore.getState().documents[0].blocks[0];
+      assert.equal(chosen.id, blockId, 'changing report kind preserves document block identity');
+      assert.equal(chosen.kind, order[0].kind);
+      addSavedBlock(ui); await settle();
+      assert.ok(ui.querySelector('[data-block-ids-report]'));
+      assert.ok(ui.querySelector('[data-block-manual-report]'));
+      act(() => { for (const entry of reports) useViewerStore.getState().removeValidationReport(entry.id); });
+      const printed = await printedPdf(useViewerStore.getState().documents[0]);
+      for (const evidence of ['IDS report: Archived IDS', 'Manual validation: Mechanical review', 'Models: tower.ifc', 'Models: structure.ifc', 'WARNING', 'Comment: Confirm fire stop']) assert.ok(printed.includes(evidence), `embedded PDF retains ${evidence}`);
+    });
+  }
 
   it('keeps manual round verdicts and comments frozen when a later round changes answers', () => {
     const checklist: ChecklistTemplate = { version: CHECKLIST_VERSION, name: 'Discipline check', groups: [{ id: 'g', name: 'Delivery', items: [{ id: 'i', text: 'Placed correctly' }] }] };

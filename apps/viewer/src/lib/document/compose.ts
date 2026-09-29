@@ -286,6 +286,8 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       : block.kind === 'chart' ? layoutChart(block, boxX, boxW)
       : layoutImage(block, boxX, boxW);
 
+  const wrap = (text: string, width: number, size: number, bold: boolean) => wrapText(text, width, size, bold, input.measure);
+
   for (const [sectionIndex, blocks] of splitDocumentSections(input.blocks).entries()) {
     if (sectionIndex > 0 && (page.items.length > 0 || y > top)) newPage();
     for (let i = 0; i < blocks.length; i++) {
@@ -347,11 +349,10 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           break;
         }
         case 'ids-report': {
-          layoutIdsReport(block, cursor, contentW, BLOCK_GAP, (text, width, size, bold) => wrapText(text, width, size, bold, input.measure));
+          layoutIdsReport(block, cursor, contentW, BLOCK_GAP, wrap);
           break;
         }
         case 'manual-report': {
-          const wrap = (text: string, width: number, size: number, bold: boolean) => wrapText(text, width, size, bold, input.measure);
           layoutManualReport(block, cursor, contentW, BLOCK_GAP, wrap, (ring) => { page.items.push(ring); });
           break;
         }

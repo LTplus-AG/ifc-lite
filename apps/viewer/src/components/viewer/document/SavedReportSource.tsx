@@ -11,7 +11,7 @@ import { savedReportBlock, savedReportLabel, type ValidationReportSnapshot } fro
 export function SavedReportSource({ block, onChange }: { block: ValidationReportSnapshot; onChange: (block: ValidationReportSnapshot) => void }) {
   const { t } = useTranslation();
   const reports = useViewerStore((s) => s.savedValidationReports);
-  const choices = reports.filter((entry) => entry.snapshot.kind === block.kind);
+  const choices = reports;
   return (
     <label className="flex flex-col gap-1 text-muted-foreground">
       {t('validationPanel.history.documentSource')}
@@ -20,7 +20,7 @@ export function SavedReportSource({ block, onChange }: { block: ValidationReport
           const entry = choices.find((candidate) => candidate.id === e.target.value);
           if (entry) onChange(savedReportBlock(entry, block.id));
         }}>
-        <option value="">{t('validationPanel.history.embedded')}</option>
+        <option value="" disabled>{t('validationPanel.history.embedded')}</option>
         {choices.map((entry) => <option key={entry.id} value={entry.id}>{savedReportLabel(entry)}</option>)}
       </select>
     </label>

@@ -15,6 +15,7 @@
  */
 
 import { reportScopeText } from './report-provenance.js';
+import { layoutReportProvenance, REPORT_PROVENANCE_LINE_HEIGHT, wrappedReportProvenance, type WrapLines } from './compose-report-provenance.js';
 import type { LayoutCursor, TextDrawnItem } from './compose-table.js';
 import type { ManualReportBlock, ManualReportCounts, ManualReportItem } from './manual-report-types.js';
 
@@ -22,9 +23,6 @@ import type { ManualReportBlock, ManualReportCounts, ManualReportItem } from './
 export interface RingDrawnItem { kind: 'ring'; x: number; y: number; size: number; counts: ManualReportCounts }
 
 export type ManualReportLayoutBlock = ManualReportBlock;
-
-/** Wrap `text` into lines no wider than `width` (compose.ts's `wrapText`, injected to avoid an import cycle). */
-export type WrapLines = (text: string, width: number, size: number, bold: boolean) => string[];
 
 const TITLE_HEIGHT = 18;
 const META_HEIGHT = 14;
@@ -69,19 +67,17 @@ export function layoutManualReport(
   const itemW = contentW - VERDICT_COLUMN;
 
   // Heading, meta line and the overall ring move together.
-  cursor.ensure(TITLE_HEIGHT + META_HEIGHT + (reportScopeText(block) ? META_HEIGHT : 0) + OVERALL_RING + 10);
+  const scope = reportScopeText(block);
+  const scopeLines = wrappedReportProvenance(scope ? `Models: ${scope}` : '', contentW, wrap);
+  const keepAfter = OVERALL_RING + 10 + (block.groups.length === 0 ? META_HEIGHT : 0);
+  cursor.ensure(Math.min(TITLE_HEIGHT + META_HEIGHT + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter, cursor.bottom - cursor.top));
   const title = `Manual validation: ${block.checklistName.trim() || 'Untitled checklist'}`;
   text({ x: cursor.x, y: cursor.y + 11, size: 11, bold: true, gray: 0, text: cursor.truncate(title, contentW, 11, true) });
   cursor.y += TITLE_HEIGHT;
   const meta = block.modelName ? `Model: ${block.modelName} · Recorded: ${block.generatedAt}` : `Recorded: ${block.generatedAt}`;
   text({ x: cursor.x, y: cursor.y + 10, size: 8, bold: false, gray: 130, text: cursor.truncate(meta, contentW, 8, false) });
   cursor.y += META_HEIGHT;
-  const scope = reportScopeText(block);
-  if (scope) {
-    cursor.ensure(META_HEIGHT);
-    text({ x: cursor.x, y: cursor.y + 9, size: 8, bold: false, gray: 60, text: cursor.truncate(`Models: ${scope}`, contentW, 8, false) });
-    cursor.y += META_HEIGHT;
-  }
+  layoutReportProvenance(scopeLines, cursor, keepAfter);
 
   cursor.y += 4;
   pushRing({ kind: 'ring', x: cursor.x, y: cursor.y, size: OVERALL_RING, counts: block.summary });

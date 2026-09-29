@@ -18,6 +18,7 @@
  */
 import { passRateBand } from '@ifc-lite/ids';
 import { reportScopeText } from './report-provenance.js';
+import { layoutReportProvenance, REPORT_PROVENANCE_LINE_HEIGHT, wrappedReportProvenance } from './compose-report-provenance.js';
 import { reportBlockSourceKind, type IdsReportBlock, type IdsReportCardinality, type IdsReportCheckSummary } from './ids-report-types.js';
 import type { LayoutCursor } from './compose-table.js';
 
@@ -129,8 +130,11 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   const firstChild = first ? childRows(first)[0] : undefined;
   const firstRowHeight = compact ? COMPACT_ROW_HEIGHT : classicHeight(first?.longDescription);
   const firstChildHeight = firstChild ? (compact ? COMPACT_ROW_HEIGHT : classicHeight(firstChild.description)) : 0;
-  const lead = IDS_REPORT_TITLE_HEIGHT + SUMMARY_HEIGHT + DATE_HEIGHT + (reportScopeText(block) ? DATE_HEIGHT : 0) + firstRowHeight + firstChildHeight;
-  cursor.ensure(lead);
+  const scope = reportScopeText(block);
+  const scopeLines = wrappedReportProvenance(scope ? `Models: ${scope}` : '', contentW, wrap ?? ((text) => [text]));
+  const keepAfter = firstRowHeight + firstChildHeight;
+  const lead = IDS_REPORT_TITLE_HEIGHT + SUMMARY_HEIGHT + DATE_HEIGHT + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter;
+  cursor.ensure(Math.min(lead, cursor.bottom - cursor.top));
   cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 11, size: 11, bold: true, gray: 0, text: cursor.truncate(title, contentW, 11, true) });
   cursor.y += IDS_REPORT_TITLE_HEIGHT;
 
@@ -142,12 +146,7 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 8, bold: false, gray: 130,
     text: cursor.truncate(`Validation run: ${block.generatedAt}`, contentW, 8, false) });
   cursor.y += DATE_HEIGHT;
-  const scope = reportScopeText(block);
-  if (scope) {
-    cursor.ensure(DATE_HEIGHT);
-    cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 9, size: 8, bold: false, gray: 60, text: cursor.truncate(`Models: ${scope}`, contentW, 8, false) });
-    cursor.y += DATE_HEIGHT;
-  }
+  layoutReportProvenance(scopeLines, cursor, keepAfter);
 
   /** Compact row: name on the left, then the bar and `passed/checked · n%` (or plain detail text when there is no bar). */
   const compactRow = (x: number, w: number, name: string, size: number, bold: boolean, gray: number, bar: ChildRow['bar'] | undefined, detail?: string): void => {

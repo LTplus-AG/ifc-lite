@@ -16,9 +16,9 @@ it('uses the exact model-aware basket and skips a federated GLB compatibility st
   glb.loadFormat = 'glb';
   glb.sourceFile = new File(['glTF'], 'geometry.glb');
   const state = { ...useViewerStore.getState(), models: new Map([[ifc.id, ifc], [glb.id, glb]]),
-    selectedEntity: { modelId: 'ifc', expressId: 1 },
+    selectedEntity: { modelId: 'ifc', expressId: 2 },
     selectedEntitiesSet: new Set(['ifc:1', 'glb:1']),
-    // This renderer ID is stale after removing a product from a multi-model basket.
+    // Both primary and renderer ID are stale after removing a product from a multi-model basket.
     selectedEntityId: 1_000_002, selectedEntityIds: new Set([1_000_002]),
     toGlobalId: (modelId: string, expressId: number) =>
       (modelId === 'ifc' ? 1_000_000 : 2_000_000) + expressId,

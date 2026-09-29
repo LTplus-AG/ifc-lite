@@ -23,7 +23,10 @@ export function selectedSourceProducts(
   const refs = new Map<string, EntityRef>();
   // Model-aware selection is authoritative when its basket is populated.
   // removeEntityFromSelection can retain an older renderer selectedEntityId.
-  if (state.selectedEntity) refs.set(entityRefToString(state.selectedEntity), state.selectedEntity);
+  if (state.selectedEntity && (state.selectedEntitiesSet.size === 0
+    || state.selectedEntitiesSet.has(entityRefToString(state.selectedEntity)))) {
+    refs.set(entityRefToString(state.selectedEntity), state.selectedEntity);
+  }
   if (state.selectedEntitiesSet.size === 0) {
     if (state.selectedEntityId !== null) {
       const ref = resolve(state.selectedEntityId);

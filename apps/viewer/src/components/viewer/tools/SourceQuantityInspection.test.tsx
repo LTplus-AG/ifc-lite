@@ -51,9 +51,8 @@ describe('nominal source quantity readout (#6433)', () => {
   it('shows source provenance from a real buildingSMART extrusion without making a product total', async (context) => {
     useViewerStore.setState({ unitDisplayOverrides: {} });
     const wasm = join(root, 'packages/wasm/pkg/ifc-lite_bg.wasm');
-    const wasmJs = join(root, 'packages/wasm/pkg/ifc-lite.js');
     const fixture = join(root, 'tests/models/buildingsmart/annex_e/basic-geometric-shape/extruded-solid.ifc');
-    if (!existsSync(wasm) || !existsSync(wasmJs) || !existsSync(fixture)) {
+    if (!existsSync(wasm) || !existsSync(fixture)) {
       context.skip('Run pnpm fixtures and build:wasm to test the real IFC source readout');
       return;
     }

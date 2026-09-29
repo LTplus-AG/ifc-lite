@@ -4860,7 +4860,6 @@
     "mapAlignments: function",
     "nestCostItemsInStore: function",
     "offsetRoomFootprint: function",
-    "profileSectionExtent: function",
     "profileSectionIfcClass: function",
     "readRelatedLists: function",
     "refusalReason: function",

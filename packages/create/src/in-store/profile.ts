@@ -192,30 +192,6 @@ function isNonNegativeFinite(value: unknown): boolean {
 }
 
 /**
- * The section's axis-aligned extent in its own frame (metres): `[xDim, yDim]`.
- * Useful for callers that need a bounding size (snap, HUD) without meshing.
- */
-export function profileSectionExtent(section: ProfileSection): [number, number] {
-  switch (section.Type) {
-    case 'Rectangle':
-    case 'RectangleHollow':
-      return [section.XDim, section.YDim];
-    case 'I':
-      return [section.OverallWidth, section.OverallDepth];
-    case 'L':
-      return [section.Width, section.Depth];
-    case 'T':
-    case 'U':
-      return [section.FlangeWidth, section.Depth];
-    case 'C':
-      return [section.Width, section.Depth];
-    case 'Circle':
-    case 'CircleHollow':
-      return [2 * section.Radius, 2 * section.Radius];
-  }
-}
-
-/**
  * Everything `emitProfileSection` would refuse, checked without emitting, so a
  * builder can validate its whole input before it writes its first entity.
  */

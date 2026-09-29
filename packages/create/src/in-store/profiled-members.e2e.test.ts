@@ -197,21 +197,22 @@ function profileClass(text: string, elementId: number): string {
 
 describe.skipIf(!WASM_AVAILABLE)('in-store profiled beams / columns / members vs IfcCreator (#6232 A5)', () => {
   let api: IfcAPI;
-  let creator: string;
-  let inStore: string;
-  let creatorMeshes: Map<number, Meshed>;
-  let inStoreMeshes: Map<number, Meshed>;
+  // Built on first use inside a test, not in beforeAll, so a builder that
+  // throws fails each test that needs it instead of aborting the suite.
+  let built: Promise<{ creator: string; inStore: string; creatorMeshes: Map<number, Meshed>; inStoreMeshes: Map<number, Meshed> }> | undefined;
+  const files = () => (built ??= (async () => {
+    const creator = creatorFile();
+    const inStore = await inStoreFile();
+    return { creator, inStore, creatorMeshes: mesh(api, creator), inStoreMeshes: mesh(api, inStore) };
+  })());
 
-  beforeAll(async () => {
+  beforeAll(() => {
     initSync({ module: readFileSync(WASM_PATH) });
     api = new IfcAPI();
-    creator = creatorFile();
-    inStore = await inStoreFile();
-    creatorMeshes = mesh(api, creator);
-    inStoreMeshes = mesh(api, inStore);
   });
 
   it('re-parses the exported file with every element in its storey', async () => {
+    const { inStore } = await files();
     const store = await new IfcParser().parseColumnar(
       new TextEncoder().encode(inStore).buffer as ArrayBuffer,
       { disableWorkerScan: true },
@@ -222,7 +223,8 @@ describe.skipIf(!WASM_AVAILABLE)('in-store profiled beams / columns / members vs
     expect(count('IFCCOLUMN')).toBe(2);
   });
 
-  it.each(MEMBERS)('%s %s: same class, profile, bounding box and volume as IfcCreator', (type, name, cls) => {
+  it.each(MEMBERS)('%s %s: same class, profile, bounding box and volume as IfcCreator', async (type, name, cls) => {
+    const { creator, inStore, creatorMeshes, inStoreMeshes } = await files();
     const ourId = idByName(inStore, type, name);
     const theirId = idByName(creator, type, name);
     expect(profileClass(inStore, ourId)).toBe(cls);

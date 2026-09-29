@@ -85,6 +85,8 @@ export {
   type RectangleHollowSection,
   type CircleHollowSection,
 } from './in-store/profile.js';
+export { addStairToStore, stairFlightOutline, type StairInStoreParams, type StairBuildResult } from './in-store/stair.js';
+export { addRailingToStore, railingPostPoints, type RailingInStoreParams, type RailingBuildResult } from './in-store/railing.js';
 export { addDoorToStore, type DoorInStoreParams, type DoorBuildResult } from './in-store/door.js';
 export { addWindowToStore, type WindowInStoreParams, type WindowBuildResult } from './in-store/window.js';
 export {

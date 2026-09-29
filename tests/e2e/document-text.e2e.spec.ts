@@ -192,6 +192,7 @@ test('#6485 named model fields retain their source and authored page breaks expo
 });
 
 test('#6500 real IFC checks survive reload and remain independently selectable in documentation', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
   const loaded = page.waitForEvent('console', {
     predicate: (message) => message.text().includes('[ifc-lite] Added model building-architecture.ifc'),
     timeout: 120000,
@@ -209,6 +210,22 @@ test('#6500 real IFC checks survive reload and remain independently selectable i
   await history.getByRole('textbox', { name: 'Report name', exact: true }).blur();
   await page.getByRole('button', { name: 'Re-run validation', exact: true }).click();
   await expect(history.locator('summary')).toHaveText('Saved reports (2)', { timeout: 60000 });
+  // Record a manual review against the same genuinely loaded IFC through the
+  // canonical checklist actions and the real Save report button.
+  await page.evaluate(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    const model = [...state.models.values()].find((entry) => entry.name === 'building-architecture.ifc');
+    if (!model?.sourceFingerprint) throw new Error('Loaded IFC has no source identity');
+    state.newManualChecklist();
+    state.renameManualChecklist('Architecture coordination review');
+    const group = state.addManualGroup('Delivery');
+    const item = group && state.addManualItem(group, 'Confirm model origin');
+    if (!item) throw new Error('Checklist item could not be created');
+    state.setManualAnswer(model.sourceFingerprint, item, { status: 'warning', comment: 'Confirm survey origin' });
+  });
+  await page.getByRole('tab', { name: 'Manual validation', exact: true }).click();
+  await page.getByRole('button', { name: 'Save report', exact: true }).click();
+  await expect(history.locator('summary')).toHaveText('Saved reports (3)');
   const reports = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().savedValidationReports.map((entry) => ({ id: entry.id, name: entry.name })));
   expect(reports[0].id).not.toBe(reports[1].id);
   await history.getByRole('combobox', { name: 'Select saved validation report', exact: true }).selectOption(reports[0].id);
@@ -218,11 +235,12 @@ test('#6500 real IFC checks survive reload and remain independently selectable i
 
   // A fresh page has neither the live model nor its latest result. Frozen
   // evidence still loads and can be copied to independent document blocks.
+  await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setManualChecklist(null));
   await page.goto(viewerUrl);
   await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__ !== undefined);
   await page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
-    state.upsertDocument({ version: 1, id: 'history-6500', name: 'Saved checks', page: { size: 'A4', orientation: 'portrait' }, blocks: [] });
+    state.upsertDocument({ version: 8, id: 'history-6500', name: 'Saved checks', page: { size: 'A4', orientation: 'portrait' }, blocks: [] });
     state.setActiveDocumentId('history-6500');
     state.openPanelInHome('document');
   });
@@ -238,8 +256,26 @@ test('#6500 real IFC checks survive reload and remain independently selectable i
     return { models: state.models.size, reports: state.savedValidationReports.length, blocks: state.documents.find((document) => document.id === 'history-6500')?.blocks };
   });
   expect(embedded.models).toBe(0);
-  expect(embedded.reports).toBe(2);
-  expect(embedded.blocks).toHaveLength(2);
+  expect(embedded.reports).toBe(3);
+  expect(embedded.blocks).toHaveLength(3);
   expect(embedded.blocks?.map((block) => 'savedReportId' in block ? block.savedReportId : undefined)).toEqual(reports.map((report) => report.id));
+  expect(embedded.blocks?.map((block) => block.kind)).toEqual(['ids-report', 'ids-report', 'manual-report']);
   await page.screenshot({ path: testInfo.outputPath('saved-checks-document-no-live-model.png') });
+  await page.getByRole('button', { name: 'Maximize', exact: true }).click();
+  await expect(panel.getByRole('combobox', { name: 'Saved report source', exact: true })).toHaveCount(3);
+  await page.screenshot({ path: testInfo.outputPath('saved-checks-document-maximized.png') });
+  const downloadPromise = page.waitForEvent('download');
+  await panel.locator('[data-document-export]').click();
+  const download = await downloadPromise;
+  await download.saveAs(testInfo.outputPath('saved-checks-document.pdf'));
+  const { readFile } = await import('node:fs/promises');
+  const bytes = Array.from(await readFile(testInfo.outputPath('saved-checks-document.pdf')));
+  const text = await page.evaluate(async (bytes) => {
+    const moduleUrl = '/src/lib/llm/document-text.ts';
+    const documentText: typeof import('../../apps/viewer/src/lib/llm/document-text') = await import(moduleUrl);
+    return documentText.extractPdfText(new Blob([new Uint8Array(bytes)]));
+  }, bytes);
+  expect(text).toContain('building-architecture.ifc');
+  expect(text).toContain('Architecture coordination review');
+  expect(text).toContain('Confirm survey origin');
 });

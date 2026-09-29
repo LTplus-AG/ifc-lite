@@ -171,6 +171,17 @@ describe('Manual validation tab (#6401)', () => {
     assert.equal(useViewerStore.getState().idsValidationReport, null);
   });
 
+  it('disables verdicts for a model with no usable identity, including an empty fingerprint (review finding)', async () => {
+    useViewerStore.setState(fixtureModels(model('m1', '')));
+    setValidationSourceChoice('manual');
+    const ui = render(<ValidationPanel />);
+    await selectFile(ui.querySelector<HTMLInputElement>('[data-testid="manual-checklist-input"]')!, new File([CHECKLIST_JSON], 'c.checklist.json'));
+    assert.match(ui.textContent ?? '', /no stable identity/);
+    const pass = buttonByText(checkRow(ui, 'Uploaded to the CDE on time'), 'Pass');
+    assert.equal(pass.disabled, true);
+    assert.deepEqual(useViewerStore.getState().manualAnswers, {});
+  });
+
   it('reorders and deletes groups and checks in editing mode', async () => {
     setValidationSourceChoice('manual');
     const ui = render(<ValidationPanel />);

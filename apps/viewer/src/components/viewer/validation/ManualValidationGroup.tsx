@@ -23,7 +23,7 @@ interface ManualValidationGroupProps {
   editing: boolean;
   isFirst: boolean;
   isLast: boolean;
-  /** The selected model's fingerprint; null disables the verdict controls. */
+  /** The selected model's fingerprint (never empty); null disables the verdict controls. */
   fingerprint: string | null;
 }
 
@@ -93,8 +93,8 @@ export function ManualValidationGroup({ group, counts, answers, editing, isFirst
               item={item}
               answer={answers[item.id]}
               canAnswer={fingerprint !== null}
-              onVerdict={(status) => { if (fingerprint) setAnswer(fingerprint, item.id, { status }); }}
-              onComment={(comment) => { if (fingerprint) setAnswer(fingerprint, item.id, { comment }); }}
+              onVerdict={(status) => { if (fingerprint !== null) setAnswer(fingerprint, item.id, { status }); }}
+              onComment={(comment) => { if (fingerprint !== null) setAnswer(fingerprint, item.id, { comment }); }}
             />
           )))}
         </ul>

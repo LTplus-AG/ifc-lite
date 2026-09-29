@@ -41,7 +41,7 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
   const [editing, setEditing] = useState(() => checklist !== null && checklist.groups.length === 0);
   const [pickedModelId, setPickedModelId] = useState<string | null>(null);
 
-  const models = useMemo(() => [...storeModels.values()].map((m) => ({ id: m.id, name: m.name, fingerprint: m.sourceFingerprint ?? null })), [storeModels]);
+  const models = useMemo(() => [...storeModels.values()].map((m) => ({ id: m.id, name: m.name, fingerprint: m.sourceFingerprint || null })), [storeModels]);
   const activeModel = models.find((m) => m.id === pickedModelId) ?? models[0] ?? null;
   const fingerprint = activeModel?.fingerprint ?? null;
   const answers = (fingerprint && allAnswers[fingerprint]) || NO_ANSWERS;

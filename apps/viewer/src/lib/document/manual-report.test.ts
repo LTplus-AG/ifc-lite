@@ -20,6 +20,8 @@ import { manualReportBlockFromChecklist } from './manual-report.js';
 import type { ManualReportBlock } from './manual-report-types.js';
 import { parseDocumentFile } from './persistence.js';
 import { DOCUMENT_VERSION, migrateDocumentSpec, validateDocumentSpec, type DocumentSpec } from './types.js';
+import { comparisonModels, comparisonResult } from '@/test/saved-comparison-fixture';
+import { snapshotComparison } from '../compare/savedComparisons';
 
 const CHECKLIST: ChecklistTemplate = {
   version: CHECKLIST_VERSION,
@@ -58,6 +60,22 @@ describe('manual report snapshot (#6401)', () => {
     ]);
     assert.deepEqual(b.groups[0].items[1], { id: 'naming', text: 'File naming follows the convention', description: 'See the BEP, section 4', status: 'warning', comment: 'Two files use the old prefix' });
     assert.deepEqual(b.groups[1].items[1], { id: 'dupes', text: 'No duplicate elements', status: null });
+  });
+
+  it('upgrades v8/v9 documents without binding old manual snapshots or losing comparison/page-break evidence (#6507)', () => {
+    const manual = block();
+    const comparison = snapshotComparison(comparisonResult('A', 'B'), comparisonModels(), 'Issued comparison');
+    for (const version of [8, 9]) {
+      const blocks: DocumentSpec['blocks'] = [manual, { kind: 'page-break', id: 'page' }];
+      if (version === 9) blocks.push({ kind: 'table', id: 'comparison', source: { kind: 'comparison', comparison } });
+      const imported = parseDocumentFile(JSON.stringify({ ...docWith(blocks), version }));
+      assert.equal(imported.version, 10);
+      assert.deepEqual(imported.blocks.map(({ id: _id, ...payload }) => payload), blocks.map(({ id: _id, ...payload }) => payload));
+      const reopened = imported.blocks[0] as ManualReportBlock;
+      assert.equal(reopened.checklistId, undefined, 'older snapshots keep active-source semantics until explicit choice');
+      assert.equal(reopened.variant, undefined);
+      assert.equal(reopened.benchmarks, undefined);
+    }
   });
 
   it('is frozen: later answers do not reach a block already taken', () => {

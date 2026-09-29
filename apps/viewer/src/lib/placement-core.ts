@@ -59,7 +59,8 @@ type EntityAttrs = unknown[];
 export function readAttributes(
   dataStore: IfcDataStore,
   view: MutablePropertyView,
-  editor: StoreEditor,
+  /** Only its overlay lookup is read, so the view itself will do. */
+  editor: Pick<StoreEditor, 'getNewEntity'>,
   expressId: number,
 ): EntityAttrs | null {
   const overlay = editor.getNewEntity(expressId);

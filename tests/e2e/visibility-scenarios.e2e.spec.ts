@@ -15,6 +15,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ViewerState } from '../../apps/viewer/src/store';
 import type { RenderVisibilitySnapshot, SceneOwnerSnapshot } from '../../apps/viewer/src/lib/viewport-debug-hooks';
+import { watchGpuDeviceLoss } from './gpu-device-loss';
 
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
@@ -265,25 +266,15 @@ for (const federated of [false, true]) {
 }
 
 test('#5895 Site visibility removes single-model IfcGeographicElement terrain', async ({ page }) => {
-  let softwareDeviceLost = false;
-  page.on('console', (message) => {
-    if (/\[WebGPU\] Device lost:|\[Renderer\] GPU device lost/.test(message.text())) softwareDeviceLost = true;
-  });
+  const gpu = await watchGpuDeviceLoss(page);
   await openViewer(page);
   await load(page, TERRAIN, 1);
   const terrain = await modelIds(page, 0, 'IFCGEOGRAPHICELEMENT');
   expect(terrain.length).toBeGreaterThan(0);
-  await expect.poll(() => sceneOwners(page, terrain)).toHaveLength(terrain.length);
-  if (softwareDeviceLost && process.env.E2E_GPU_STRICT === '0') {
-    test.skip(true, 'Hosted software WebGPU device was lost before the Site visibility reshape');
-  }
+  await gpu.requireLiveGpu('the terrain upload', () =>
+    expect.poll(() => sceneOwners(page, terrain)).toHaveLength(terrain.length));
+  await gpu.skipIfLost('the Site visibility reshape');
   await setTypeVisibility(page, 'site', false);
-  try {
-    await expect.poll(() => sceneOwners(page, terrain), { timeout: 30_000 }).toEqual([]);
-  } catch (error) {
-    if (softwareDeviceLost && process.env.E2E_GPU_STRICT === '0') {
-      test.skip(true, 'Hosted software WebGPU device was lost during the Site visibility reshape');
-    }
-    throw error;
-  }
+  await gpu.requireLiveGpu('the Site visibility reshape', () =>
+    expect.poll(() => sceneOwners(page, terrain), { timeout: 30_000 }).toEqual([]));
 });

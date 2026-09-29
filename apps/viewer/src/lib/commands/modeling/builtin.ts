@@ -13,6 +13,8 @@ import { buildStoreyWorkplane } from './workplane.js';
 import { BEAM_PLACE } from './commands/beam-place.js';
 import { COLUMN_PLACE } from './commands/column-place.js';
 import { ELEMENT_SPLIT } from './commands/element-split.js';
+import { ELEMENT_MOVE } from './commands/element-move.js';
+import { ELEMENT_ROTATE } from './commands/element-rotate.js';
 import { ROOM_PLACE } from './commands/room-place.js';
 import { DOOR_PLACE, OPENING_PLACE, WINDOW_PLACE } from './commands/hosted-place.js';
 import { SLAB_PLACE } from './commands/slab-place.js';
@@ -45,6 +47,8 @@ registerOnce(HOSTED_SLIDE);
 registerOnce(PLAN_MOVE);
 registerOnce(ELEMENT_PASTE);
 registerOnce(ELEMENT_ARRAY);
+registerOnce(ELEMENT_MOVE);
+registerOnce(ELEMENT_ROTATE);
 registerOnce(ELEMENT_PUSH_PULL);
 registerOnce(ELEMENT_ALIGN);
 

@@ -15,23 +15,31 @@
  * mobile-long-press) flaked unrelated PRs.
  *
  * The signal is the viewer's own fault path, not a guess:
- * - `[WebGPU] Device lost: … (reason: <not destroyed>)` from
- *   packages/renderer/src/device.ts,
+ * - `[WebGPU] Device lost: … (reason: …)` from packages/renderer/src/device.ts,
+ *   with ANY reason. CI's traces show Dawn reporting an instance drop either
+ *   as `unknown` ("A valid external Instance reference no longer exists.") or
+ *   as `destroyed` ("Device was destroyed."), and in the second shape that is
+ *   the ONLY loss line the page logs (run 36602083993: mobile-long-press and
+ *   the swept-disk specs). The renderer treats `destroyed` as a teardown and
+ *   does not recover, so the view stays dead either way. Skips happen only
+ *   after a step that needs rendering has already failed, so a benign
+ *   teardown line cannot mask a healthy-path failure into a skip,
  * - `[Renderer] GPU device lost` from the renderer's `handleDeviceLost`,
  * - `[Viewport] GPU device lost:` and its toast from
- *   apps/viewer/src/components/viewer/device-loss-report.ts.
- * `reason: destroyed` alone is NOT a loss: the renderer tears its own device
- * down that way (re-init, recovery, page close) and ignores it, so a spec must
- * not skip on it.
+ *   apps/viewer/src/components/viewer/device-loss-report.ts,
+ * - the follow-on Dawn errors the loss produces (`popErrorScope rejected
+ *   (device likely lost)`, `A valid external Instance reference no longer
+ *   exists`).
  *
  * Skips happen only when `E2E_GPU_STRICT=0` and the device really was lost; a
  * strict run (a real GPU) still fails, with the loss evidence annotated.
  *
- * `E2E_FORCE_DEVICE_LOSS=1` reproduces the CI fault in any spec that calls
- * {@link watchGpuDeviceLoss}: the first WebGPU device reports an `unknown`-
- * reason loss right after the viewer gets it, and every later `requestDevice`
- * rejects, so the viewer's recovery fails the way it does after Dawn drops the
- * instance.
+ * `E2E_FORCE_DEVICE_LOSS=1|destroyed` reproduces the CI fault in any spec that
+ * calls {@link watchGpuDeviceLoss}: the first WebGPU device is destroyed right
+ * after the viewer gets it and reports a loss with reason `unknown` (`1`) or
+ * `destroyed` (`destroyed`, the shape that broke the first version of this
+ * helper), and every later `requestDevice` rejects, so recovery fails the way
+ * it does after Dawn drops the instance.
  */
 import { test, type Page } from '@playwright/test';
 
@@ -40,7 +48,7 @@ export const GPU_STRICT = process.env.E2E_GPU_STRICT !== '0';
 
 /** Console lines the viewer and renderer log on a real (non-teardown) device loss. */
 export const DEVICE_LOST_SIGNAL =
-  /\[WebGPU\] Device lost:(?!.*\(reason: destroyed\))|\[Renderer\] GPU device lost|\[Viewport\] GPU device lost:/;
+  /\[WebGPU\] Device lost:|\[Renderer\] GPU device lost|\[Viewport\] GPU device lost:|popErrorScope rejected \(device likely lost\)|A valid external Instance reference no longer exists/;
 
 /** The toast `reportDeviceLost` shows (device-loss-report.ts). */
 export const DEVICE_LOST_TOAST = 'The graphics device was lost, so the 3D view has stopped drawing.';
@@ -56,6 +64,11 @@ export function skipForGpuDeviceLoss(stage: string, evidence: string): void {
   const reason = `Hosted software WebGPU device was lost before/during ${stage}: ${evidence}`;
   console.warn(`[e2e] E2E_GPU_STRICT=0 - skipping: ${reason}`);
   test.skip(true, reason);
+}
+
+/** Log (and return) the standard note for a GPU-only assertion a non-strict run leaves to the strict witness. */
+export function noteSoftwareGpuSkip(what: string): void {
+  console.log(`[e2e] E2E_GPU_STRICT=0 - skipping ${what} (software WebGPU)`);
 }
 
 export interface GpuDeviceLossWatch {
@@ -86,7 +99,10 @@ export async function watchGpuDeviceLoss(page: Page): Promise<GpuDeviceLossWatch
     const text = message.text();
     if (evidence === null && DEVICE_LOST_SIGNAL.test(text)) evidence = text.slice(0, 300);
   });
-  if (process.env.E2E_FORCE_DEVICE_LOSS === '1') await page.addInitScript(forceDeviceLoss, FORCED_LOSS_MESSAGE);
+  const forced = process.env.E2E_FORCE_DEVICE_LOSS;
+  if (forced === '1' || forced === 'destroyed') {
+    await page.addInitScript(forceDeviceLoss, { message: FORCED_LOSS_MESSAGE, reason: forced === 'destroyed' ? 'destroyed' : 'unknown' });
+  }
 
   const lost = async (graceMs = 0): Promise<string | null> => {
     const deadline = Date.now() + graceMs;
@@ -125,7 +141,7 @@ export async function watchGpuDeviceLoss(page: Page): Promise<GpuDeviceLossWatch
  * Browser-side fault injection (runs as an init script). Serialised by
  * Playwright, so it must be self-contained.
  */
-function forceDeviceLoss(message: string): void {
+function forceDeviceLoss({ message, reason }: { message: string; reason: string }): void {
   const adapter = (globalThis as { GPUAdapter?: { prototype: { requestDevice(...args: unknown[]): Promise<{ destroy(): void }> } } }).GPUAdapter;
   if (!adapter) return;
   const requestDevice = adapter.prototype.requestDevice;
@@ -140,7 +156,7 @@ function forceDeviceLoss(message: string): void {
     Object.defineProperty(device, 'lost', { configurable: true, get: () => lost });
     setTimeout(() => {
       device.destroy();
-      settle({ reason: 'unknown', message });
+      settle({ reason, message });
     }, 0);
     return device;
   };

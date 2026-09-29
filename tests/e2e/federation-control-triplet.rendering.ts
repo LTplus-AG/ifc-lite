@@ -6,6 +6,7 @@
 import { expect, type Page } from '@playwright/test';
 import { inflateSync } from 'node:zlib';
 import type { ViewerState } from '../../apps/viewer/src/store';
+import { noteSoftwareGpuSkip } from './gpu-device-loss';
 
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
@@ -142,7 +143,7 @@ async function rendererColorFrame(page: Page): Promise<Buffer> {
 export async function assertIsolatedRenderedContent(page: Page, modelId: string, gpuStrict: boolean): Promise<RenderedModelEvidence> {
   await showOnlyModelAndFrame(page, modelId);
   if (!gpuStrict) {
-    console.log(`[e2e] E2E_GPU_STRICT=0 — skipping ${modelId} isolated pixel assertion (software WebGPU)`);
+    noteSoftwareGpuSkip(`${modelId} isolated pixel assertion`);
     return { modelId, regionPixels: null, changedPixels: null, backgroundChangedPixels: null, evidence: 'skipped' };
   }
   await expect(page.locator('canvas[data-viewport="main"]'), 'viewer canvas').toBeVisible();
@@ -170,7 +171,7 @@ export async function ordinaryGpuSelectControl(
 ): Promise<OrdinarySelection> {
   await showOnlyModelAndFrame(page, modelId);
   if (!gpuStrict) {
-    console.log(`[e2e] E2E_GPU_STRICT=0 — skipping ${modelId} ordinary GPU selection assertion (software WebGPU)`);
+    noteSoftwareGpuSkip(`${modelId} ordinary GPU selection assertion`);
     return page.evaluate(selectionSnapshot);
   }
   const projected = await page.evaluate((point) => globalThis.__ifc_lite_viewer_store__.getState()

@@ -177,6 +177,13 @@ export function commandPointerUp(snap: SnapResult): void {
   applyStep(command.pointerUp(moved, snap, ctx));
 }
 
+/** A press that ended without a release (cancelled, or its pointer capture was lost). */
+export function commandPointerCancel(): void {
+  const { command, ctx } = state;
+  if (!command?.pointerCancel || !ctx) return;
+  publish({ gesture: command.pointerCancel(state.gesture, ctx) });
+}
+
 /**
  * The second click of a double-click: the command's `doubleClick` (close a
  * polygon), else a plain down. The pointer sources (3D, plan) call this for

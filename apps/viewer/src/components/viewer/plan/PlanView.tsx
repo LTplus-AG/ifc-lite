@@ -29,7 +29,7 @@ import { useViewerStore } from '@/store';
 import type { ModelLayout } from '@/store/slices/authoringSessionSidebar';
 import { useTranslation } from '@/i18n';
 import { resolveWorkplane } from '@/lib/commands/modeling/registry';
-import { getCommandRuntime, useCommandRuntime } from '@/lib/commands/modeling/runtime';
+import { commandPointerCancel, getCommandRuntime, useCommandRuntime } from '@/lib/commands/modeling/runtime';
 import type { Workplane } from '@/lib/commands/modeling/types';
 import { storeyWallAxes } from '@/lib/snap/sources/semantic-walls';
 import type { WallAxis } from '@/lib/snap/sources/semantic';
@@ -106,6 +106,8 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const press = useRef<Press | null>(null);
+  /** A command's press is down: its release, or its loss, belongs to the command. */
+  const commandPress = useRef(false);
   const lastDown = useRef<{ t: number; x: number; y: number } | null>(null);
   /**
    * The click count of a press: `pointerdown.detail` is 0 in Chrome (Pointer
@@ -169,6 +171,9 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
     const pan = e.button === 1 || (e.button === 0 && (e.ctrlKey || e.metaKey));
     if (e.button !== 0 && !pan) return;
     if (!pan && commandRunsOnPlane()) {
+      // Captured, so a release outside the plan (a dragged corner) still reaches `onPointerUp`.
+      capturePointer(e.currentTarget, e.pointerId);
+      commandPress.current = true;
       feedCommand('down', e);
       return;
     }
@@ -210,9 +215,21 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
     setHovered(at ? pickPlanEntity(cut.polygons, at.local) : null);
   };
 
+  /** A command press that ends without a release (cancelled, or its capture taken away) drops what it started. */
+  const endCommandPress = () => {
+    if (!commandPress.current) return;
+    commandPress.current = false;
+    commandPointerCancel();
+  };
+
   const onPointerUp = (e: ReactPointerEvent<SVGSVGElement>) => {
     // A command's press never set `press`: its release is the command's (a dragged corner drops).
-    if (!press.current && e.button === 0 && commandRunsOnPlane()) { feedCommand('up', e); return; }
+    if (!press.current && e.button === 0 && commandRunsOnPlane()) {
+      commandPress.current = false;
+      releasePointer(e.currentTarget, e.pointerId);
+      feedCommand('up', e);
+      return;
+    }
     const p = press.current;
     press.current = null;
     releasePointer(e.currentTarget, e.pointerId);
@@ -251,8 +268,8 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerLeave={() => { setHovered(null); setHoveredHandle(null); }}
-          onPointerCancel={(e) => { press.current = null; releasePointer(e.currentTarget, e.pointerId); }}
-          onLostPointerCapture={() => { press.current = null; }}
+          onPointerCancel={(e) => { press.current = null; endCommandPress(); releasePointer(e.currentTarget, e.pointerId); }}
+          onLostPointerCapture={() => { press.current = null; endCommandPress(); }}
           onDoubleClick={onDoubleClick}
           onContextMenu={onContextMenu}
         >

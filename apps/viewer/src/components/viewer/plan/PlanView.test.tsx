@@ -27,6 +27,10 @@ import { fitPlan, screenToLocal } from './plan-fit';
 import { PLAN_CUT_DEBOUNCE_MS } from './usePlanCut';
 import { Drawing2DGenerator } from '@ifc-lite/drawing-2d';
 import { PlanView } from './PlanView';
+import { ensureSpaceWasm } from '@/lib/space-plate-session';
+import { ensureRoomWasm, setWallMeshes, BOX } from '@/test/room-walls-fixture';
+import { getCommandRuntime, updateCommandGesture } from '@/lib/commands/modeling/runtime';
+import type { RoomPlaceGesture } from '@/lib/commands/modeling/commands/room-place-gesture';
 import { ModelWorkspaceSplit } from '../model/ModelWorkspaceSplit';
 import { ModelToolRail } from '../model/ModelToolRail';
 
@@ -197,6 +201,55 @@ describe('PlanView (#6232 M2.4)', () => {
 
     planClick(svg, [0.5, 1], { shiftKey: true });
     assert.equal(useViewerStore.getState().selectedEntityIds.has(global), false, 'Shift toggles it off');
+  });
+});
+
+describe('PlanView: a grabbed room corner (#6232 A4b review)', () => {
+  async function grab(t: import('node:test').TestContext) {
+    if (!ensureRoomWasm(t)) return null;
+    await ensureSpaceWasm();
+    setWallMeshes([...BOX, [[4, 0], [4, 5]]]);
+    useViewerStore.getState().startCommand('room.place');
+    act(() => { updateCommandGesture((g) => ({ ...(g as RoomPlaceGesture), mode: 'edit' })); });
+    const ui = render(<PlanView layout="split" />);
+    await settle();
+    const svg = ui.querySelector('[data-plan-canvas]')! as SVGSVGElement;
+    const [x, y] = [sX(FIT, 4), sY(FIT, 0)];
+    pointer(svg, 'pointermove', x, y);
+    pointer(svg, 'pointerdown', x, y, { buttons: 1 });
+    const drag = () => (getCommandRuntime().gesture as RoomPlaceGesture).edit.drag;
+    return { svg, drag, x, y };
+  }
+
+  it('the press captures the pointer, so a release outside the plan still reaches the command', async (t) => {
+    let captured = 0;
+    const proto = window.SVGElement.prototype as unknown as { setPointerCapture?: (id: number) => void };
+    const original = proto.setPointerCapture;
+    proto.setPointerCapture = () => { captured++; };
+    try {
+      const g = await grab(t);
+      if (!g) return;
+      assert.ok(g.drag(), 'the corner is grabbed');
+      assert.equal(captured, 1, 'the command press captured the pointer');
+    } finally {
+      proto.setPointerCapture = original;
+    }
+  });
+
+  it('a cancelled press drops the grabbed corner instead of leaving it grabbed', async (t) => {
+    const g = await grab(t);
+    if (!g) return;
+    assert.ok(g.drag(), 'the corner is grabbed');
+    pointer(g.svg, 'pointercancel', g.x, g.y);
+    assert.equal(g.drag(), null, 'the grab is dropped');
+  });
+
+  it('a release ends the press without cancelling it: a corner grabbed by a click stays grabbed', async (t) => {
+    const g = await grab(t);
+    if (!g) return;
+    pointer(g.svg, 'pointerup', g.x, g.y);
+    pointer(g.svg, 'lostpointercapture', g.x, g.y);
+    assert.ok(g.drag(), 'click, move, click: the corner waits for its second click');
   });
 });
 

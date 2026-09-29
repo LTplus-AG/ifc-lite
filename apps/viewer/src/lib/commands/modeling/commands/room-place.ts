@@ -185,6 +185,7 @@ export const ROOM_PLACE: ModelingCommand<RoomPlaceGesture> = {
     return withDraw(g, { points: [...draw.points, s.local] });
   },
   pointerUp: (g) => (g.mode === 'edit' ? editPointerUp(g) : g),
+  pointerCancel: (g) => (g.edit.drag ? { ...g, edit: { ...g.edit, drag: null } } : g),
   doubleClick: (g) => (g.mode === 'draw' && g.draw.mode === 'polygon' && g.draw.points.length >= 3 ? { commit: true } : g),
   undoPoint: (g) => withDraw(g, { points: g.draw.points.slice(0, -1), ...(g.draw.mode === 'rectangle' ? { width: null, depth: null } : {}) }),
   validate(g, ctx) {

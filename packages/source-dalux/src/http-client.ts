@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { readWithProgress } from '@ifc-lite/plugin-api';
-import type { DownloadOptions, PluginContext } from '@ifc-lite/plugin-api';
+import { readWithProgress, type DownloadOptions, type PluginContext } from '@ifc-lite/plugin-api';
 import { canonicalFieldNodeUrl } from './node-url.js';
 
 export interface DaluxCredentials {
@@ -167,13 +166,7 @@ export class BrowserDaluxApiClient {
     return response.json() as Promise<unknown>;
   }
 
-  /**
-   * Streams a binary body through `readWithProgress`. `sizeBytes` (the
-   * file's `fileSize`, as a listing reports it) is the progress total when
-   * the response, or the relay in front of it, drops `Content-Length`.
-   */
   async getBinary(rawUrl: string, options?: DownloadOptions, sizeBytes?: number): Promise<ArrayBuffer> {
-    const signal = options?.signal;
     // Binary downloads take a fully-built URL (revision content, and any
     // `nextPage` link Dalux hands back), so they need the node selector too.
     // Missing it here would send file downloads to the default node while
@@ -191,7 +184,7 @@ export class BrowserDaluxApiClient {
         'X-API-KEY': this.credentials.apiKey,
         Accept: '*/*',
       },
-      signal,
+      signal: options?.signal,
     });
     this.debug('binary GET response', {
       url,

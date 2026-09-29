@@ -69,7 +69,7 @@ export function SavedComparisonLibrary({ result, running }: { result: CompareRes
         </div>
         <p className="text-muted-foreground">{t('comparePanel.saved.hint', { count: selected.report.rows.length })}</p>
         <div className="max-h-48 overflow-auto">
-          <table className="w-full text-left"><thead><tr><th>GlobalId</th><th>Name</th><th>IfcType</th><th>{t('comparePanel.saved.change')}</th></tr></thead>
+          <table className="w-full text-left"><thead><tr><th>{t('document.table.column.globalId')}</th><th>{t('document.table.column.name')}</th><th>IfcType</th><th>{t('comparePanel.saved.change')}</th></tr></thead>
             <tbody>{selected.report.rows.slice(0, 100).map((row, i) => <tr key={i}><td>{row.globalId}</td><td>{row.name}</td><td>{row.ifcType}</td><td>{row.change}</td></tr>)}</tbody>
           </table>
         </div>

@@ -22,7 +22,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
 import type { ViewerState } from '../index.js';
 import { normalizeMutationModelId } from '../../sdk/adapters/mutation-view.js';
-import { recordHistory } from './mutation-history-record.js';
+import { clearModelHistory, recordHistory } from './mutation-history-record.js';
 
 type SetState = (partial: Partial<ViewerState> | ((state: ViewerState) => Partial<ViewerState>)) => void;
 const costEntityRoomKeys = new WeakMap<NewEntity, string>();
@@ -131,16 +131,9 @@ export function pushCreateEntityUndo(
 export function markCostRelationshipMutation(set: SetState, modelId: string): void {
   set((s) => {
     const normalizedModelId = normalizeMutationModelId(s, modelId);
-    const newUndoStacks = new Map(s.undoStacks);
-    newUndoStacks.set(normalizedModelId, []);
-    const newRedoStacks = new Map(s.redoStacks);
-    newRedoStacks.set(normalizedModelId, []);
-    const newDirty = new Set(s.dirtyModels);
-    newDirty.add(normalizedModelId);
     return {
-      undoStacks: newUndoStacks,
-      redoStacks: newRedoStacks,
-      dirtyModels: newDirty,
+      ...clearModelHistory(s, normalizedModelId),
+      dirtyModels: new Set(s.dirtyModels).add(normalizedModelId),
       mutationVersion: s.mutationVersion + 1,
     };
   });

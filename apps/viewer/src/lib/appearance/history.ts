@@ -9,7 +9,7 @@ import type { Mutation, MutablePropertyView } from '@ifc-lite/mutations';
 import type { StoreApi } from 'zustand';
 import type { ViewerState } from '@/store/index.js';
 import { hasCoordinatedAppearanceMarker, replayCoordinatedAppearanceHistory } from './coordinated-history.js';
-import { moveChangeSetEntries, recordHistory } from '@/store/slices/mutation-history-record.js';
+import { dropFromChangeSets, moveChangeSetEntries, recordHistory } from '@/store/slices/mutation-history-record.js';
 
 export interface AppearanceHistoryCommand {
   readonly mutations: readonly Mutation[];
@@ -61,7 +61,7 @@ function prune(store: StoreApi<ViewerState>, registry: Registry): void {
     // replacement view that happens to reuse the same model/entity identifiers.
     const withoutStale = (stacks: Map<string, Mutation[]>) => new Map([...stacks]
       .map(([modelId, mutations]) => [modelId, mutations.filter(mutation => !staleIds.has(mutation.id))]));
-    store.setState(current => ({ undoStacks: withoutStale(current.undoStacks), redoStacks: withoutStale(current.redoStacks) }));
+    store.setState(current => ({ undoStacks: withoutStale(current.undoStacks), redoStacks: withoutStale(current.redoStacks), ...dropFromChangeSets(current, staleIds) }));
   }
 }
 

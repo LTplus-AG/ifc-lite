@@ -84,7 +84,7 @@ import { withMutationBatchTags } from './mutation-batch-tags.js';
 import { canMutate, mutationDenial, mutationDenialKey, mutationPermission } from '../mutation-permission.js';
 import { syncTypeOverride } from './mutation-history-apply.js';
 import { recordMutationBatch, replayHistory } from './mutation-history-replay.js';
-import { newChangeSet, parseChangeSetFile, recordHistory } from './mutation-history-record.js';
+import { dropFromChangeSets, newChangeSet, parseChangeSetFile, recordHistory } from './mutation-history-record.js';
 import { positionalMutations } from './mutation-positional-batch.js';
 import { addHostedFillIn, type HostedFillOutcome, type HostedFillSpec } from './mutation-hosted-fill.js';
 
@@ -1079,6 +1079,7 @@ export const createMutationSlice: StateCreator<
         state.mutationMeshTranslations,
       );
       return {
+        ...dropFromChangeSets(state, state.undoStacks.get(modelId) ?? []),
         mutationViews: newViews,
         storeEditors: newEditors,
         dirtyModels: newDirty,
@@ -1834,7 +1835,13 @@ export const createMutationSlice: StateCreator<
     return stack ? stack.length > 0 : false;
   },
 
-  invalidateHistoryForEntity: (modelId, entityId) => set((s) => invalidateHistoryPatch(s.undoStacks, s.redoStacks, s.mutationBatchTags, s.mutationMeshTranslations, modelId, entityId)),
+  invalidateHistoryForEntity: (modelId, entityId) => set((s) => {
+    const patch = invalidateHistoryPatch(s.undoStacks, s.redoStacks, s.mutationBatchTags, s.mutationMeshTranslations, modelId, entityId);
+    // A peer's edit clears this entity's local history; its edits leave their change sets too.
+    return patch.undoStacks
+      ? { ...patch, ...dropFromChangeSets(s, (s.undoStacks.get(modelId) ?? []).filter((m) => m.entityId === entityId)) }
+      : patch;
+  }),
   // Change Sets (#6232 D4). Edits are filed by `recordHistory`.
   createChangeSet: (name) => {
     const changeSet = newChangeSet(name);
@@ -1993,6 +2000,7 @@ export const createMutationSlice: StateCreator<
         removedMeshes: newRemovedMeshes,
         storeEditors: newEditors,
         mutationVersion: state.mutationVersion + 1,
+        ...dropFromChangeSets(state, state.undoStacks.get(modelId) ?? []),
       };
     });
   },
@@ -2007,6 +2015,7 @@ export const createMutationSlice: StateCreator<
     cross.clearGeneratedSchedule?.();
 
     set((state) => ({
+      ...dropFromChangeSets(state, [...state.undoStacks.values()].flat()),
       undoStacks: new Map(),
       redoStacks: new Map(),
       dirtyModels: new Set(),

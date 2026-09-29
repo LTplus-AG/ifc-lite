@@ -15,7 +15,7 @@ import { PropertyValueType } from '@ifc-lite/data';
 import { MutablePropertyView, type Mutation } from '@ifc-lite/mutations';
 import { useViewerStore, type ViewerState } from '@/store/index.js';
 import { fixtureModel } from '@/test/store-fixture';
-import { pushCreateEntityUndo } from './mutation-cost-undo.js';
+import { markCostRelationshipMutation, pushCreateEntityUndo } from './mutation-cost-undo.js';
 
 const UNSAVED_CHANGE_SET_NAME = 'Unsaved changes';
 const initial = useViewerStore.getState();
@@ -174,5 +174,59 @@ describe('change set actions (#6232 D4)', () => {
       assert.equal(store().importChangeSet(text), null, text);
     }
     assert.equal(store().changeSets.size, 0);
+  });
+});
+
+describe('history removals also leave the change sets (#6232 D4 review)', () => {
+  beforeEach(install);
+  afterEach(() => useViewerStore.setState(initial));
+
+  /** A set holding edits on A (entities 1, 2) and B (entity 3), and one imported set that history knows nothing of. */
+  function seed() {
+    useViewerStore.setState({
+      models: new Map([['A', fixtureModel('A')], ['B', fixtureModel('B', { idOffset: 1000 })]]),
+      mutationViews: new Map([['A', new MutablePropertyView(null, 'A')], ['B', new MutablePropertyView(null, 'B')]]),
+    });
+    const id = store().createChangeSet('Work');
+    const a1 = edit(1, 'a');
+    const a2 = edit(2, 'b');
+    const b1 = store().setProperty('B', 3, 'Pset_Test', 'Code', 'c', PropertyValueType.Label);
+    assert.ok(b1);
+    const foreign = store().importChangeSet(store().exportChangeSet(id)!);
+    assert.ok(foreign);
+    return { id, a1, a2, b1, foreign };
+  }
+
+  it('a cost-relationship rewrite (which wipes the model\'s history) empties its edits from the set, leaving other models\'', () => {
+    const { id, b1 } = seed();
+    markCostRelationshipMutation(useViewerStore.setState, 'A');
+    assert.deepEqual(store().undoStacks.get('A'), []);
+    assert.deepEqual(ids(id), [b1.id], 'nothing listed that can no longer be undone');
+  });
+
+  it('clearMutations drops that model\'s edits from every set, imported ones included only by matching id', () => {
+    const { id, b1, foreign } = seed();
+    store().clearMutations('A');
+    assert.deepEqual(ids(id), [b1.id]);
+    assert.deepEqual(ids(foreign), [b1.id], 'the imported copy holds the same edits, so it drops the same ones');
+  });
+
+  it('clearAllMutations empties the sets but keeps the sets', () => {
+    const { id } = seed();
+    store().clearAllMutations();
+    assert.deepEqual(ids(id), []);
+    assert.equal(store().changeSets.has(id), true);
+  });
+
+  it('a peer edit that clears an entity\'s local history takes it out of the set', () => {
+    const { id, a2, b1 } = seed();
+    store().invalidateHistoryForEntity('A', 1);
+    assert.deepEqual(ids(id), [a2.id, b1.id]);
+  });
+
+  it('removing a model prunes its edits from the sets', () => {
+    const { id, b1 } = seed();
+    store().clearMutationView('A');
+    assert.deepEqual(ids(id), [b1.id]);
   });
 });

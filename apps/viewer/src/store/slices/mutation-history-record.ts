@@ -65,6 +65,34 @@ function fileInChangeSet(s: ChangeSetState, mutations: readonly Mutation[], targ
   return { changeSets, activeChangeSetId };
 }
 
+/**
+ * Forget edits that history no longer holds (cleared, pruned with a removed
+ * model, invalidated by a peer, released with an appearance command): they
+ * leave every change set, so a set never lists an edit that cannot be undone
+ * or redone. Every site that removes entries from the stacks other than by
+ * undo / redo calls this (undo / redo use `moveChangeSetEntries`).
+ */
+export function dropFromChangeSets(s: ChangeSetState, gone: Iterable<Mutation> | ReadonlySet<string>): ChangeSetPatch {
+  const ids = gone instanceof Set ? gone : new Set([...(gone as Iterable<Mutation>)].map((mutation) => mutation.id));
+  if (ids.size === 0) return {};
+  let changeSets: Map<string, ChangeSet> | null = null;
+  for (const set of s.changeSets.values()) {
+    if (!set.mutations.some((mutation) => ids.has(mutation.id))) continue;
+    changeSets ??= new Map(s.changeSets);
+    changeSets.set(set.id, { ...set, mutations: set.mutations.filter((mutation) => !ids.has(mutation.id)) });
+  }
+  return changeSets ? { changeSets } : {};
+}
+
+/** The stacks of `modelId` emptied (its undo entries also leave their change sets). */
+export function clearModelHistory(s: HistoryState, modelId: string): Pick<HistoryState, 'undoStacks' | 'redoStacks'> & ChangeSetPatch {
+  return {
+    undoStacks: new Map(s.undoStacks).set(modelId, []),
+    redoStacks: new Map(s.redoStacks).set(modelId, []),
+    ...dropFromChangeSets(s, s.undoStacks.get(modelId) ?? []),
+  };
+}
+
 /** Undo takes `moved` out of their change sets; redo files them back where they were. */
 export function moveChangeSetEntries(s: ChangeSetState, moved: readonly Mutation[], direction: 'undo' | 'redo'): ChangeSetPatch {
   if (direction === 'undo') {

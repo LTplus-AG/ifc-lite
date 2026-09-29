@@ -5,7 +5,7 @@ import type { Mutation, MutablePropertyView } from '@ifc-lite/mutations';
 import type { StoreApi } from 'zustand';
 import type { ViewerState } from '@/store/index.js';
 import type { AppearanceHistoryPublication } from './history.js';
-import { moveChangeSetEntries, recordHistory } from '@/store/slices/mutation-history-record.js';
+import { dropFromChangeSets, moveChangeSetEntries, recordHistory } from '@/store/slices/mutation-history-record.js';
 
 export interface AppearanceHistoryParticipant {
   modelId: string;
@@ -37,7 +37,7 @@ function prune(store: StoreApi<ViewerState>, registry: Registry): void {
   if (stale.size) {
     const omit = (stacks: Map<string, Mutation[]>) => new Map([...stacks]
       .map(([id, values]) => [id, values.filter(value => !stale.has(value.id))]));
-    store.setState(current => ({ undoStacks: omit(current.undoStacks), redoStacks: omit(current.redoStacks) }));
+    store.setState(current => ({ undoStacks: omit(current.undoStacks), redoStacks: omit(current.redoStacks), ...dropFromChangeSets(current, stale) }));
   }
 }
 

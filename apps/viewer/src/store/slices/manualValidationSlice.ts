@@ -149,13 +149,13 @@ export const createManualValidationSlice: StateCreator<ManualValidationSlice, []
       const library = get().manualLibrary;
       if (!library.activeId) return { ok: true };
       const all = get().manualAnswers;
-      const forModel = { ...all[fingerprint] };
+      let forModel = { ...all[fingerprint] };
       const prev = forModel[itemId];
       const status = patch.status !== undefined ? patch.status : (prev?.status ?? null);
       const comment = (patch.comment ?? prev?.comment ?? '').slice(0, MAX_ANSWER_COMMENT);
       const answer: ManualAnswer = { status, updatedAt: Date.now() };
       if (comment.trim().length > 0) answer.comment = comment;
-      if (isMeaningfulAnswer(answer)) forModel[itemId] = answer;
+      if (isMeaningfulAnswer(answer)) forModel = { ...forModel, [itemId]: answer };
       else delete forModel[itemId];
       const next = { ...all, [fingerprint]: forModel };
       // Reflect the edit even if storage refuses it, while keeping the same

@@ -294,4 +294,27 @@ describe('Manual validation tab (#6401)', () => {
     assert.equal(loadManualLibrary().library.pendingLegacyAnswers, undefined);
   });
 
+  it('a file-supplied __proto__ check identifier remains an independent, persistent decision (#6507)', async () => {
+    useViewerStore.setState(fixtureModels(model('m1', 'fp-1')));
+    setValidationSourceChoice('manual');
+    let ui = render(<ValidationPanel />);
+    const template = { version: 1, name: 'Imported coordination', groups: [{ id: 'g', name: 'Delivery', items: [{ id: '__proto__', text: 'Survey reviewed' }] }] };
+    await selectFile(ui.querySelector<HTMLInputElement>('[data-testid="manual-checklist-input"]')!, new File([JSON.stringify(template)], 'survey.checklist.json'));
+    click(buttonByText(checkRow(ui, 'Survey reviewed'), 'Pass'));
+    typeInput(byLabel<HTMLTextAreaElement>(ui, 'Comment on Survey reviewed'), 'Survey accepted');
+    assert.equal(checkRow(ui, 'Survey reviewed').getAttribute('data-status'), 'pass');
+    click(buttonByText(ui, 'New from this checklist'));
+    assert.equal(checkRow(ui, 'Survey reviewed').getAttribute('data-status'), 'unanswered');
+    click(buttonByText(checkRow(ui, 'Survey reviewed'), 'Warning'));
+    cleanup();
+    const restored = loadManualLibrary().library;
+    useViewerStore.setState({ manualLibrary: restored, ...manualLibraryProjection(restored) });
+    ui = render(<ValidationPanel />);
+    assert.equal(checkRow(ui, 'Survey reviewed').getAttribute('data-status'), 'warning');
+    const picker = byLabel<HTMLSelectElement>(ui, 'Select checklist');
+    act(() => { picker.value = restored.checklists[0].id; picker.dispatchEvent(new Event('change', { bubbles: true })); });
+    assert.equal(checkRow(ui, 'Survey reviewed').getAttribute('data-status'), 'pass');
+    assert.equal(byLabel<HTMLTextAreaElement>(ui, 'Comment on Survey reviewed').value, 'Survey accepted');
+  });
+
 });

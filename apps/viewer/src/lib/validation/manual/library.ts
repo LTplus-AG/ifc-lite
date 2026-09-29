@@ -20,7 +20,8 @@ export interface ManualChecklistLibrary {
   checklists: ManualChecklistInstance[];
   /** One-time migration of old answers left behind when its template was
    * closed. Imported templates claim matching item ids; unmatched evidence
-   * remains until its template is reopened. Never populated by editing. */
+   * remains until a matching template is opened. The old record carries
+   * no discipline/template identity. Never populated by editing. */
   pendingLegacyAnswers?: ManualAnswersByModel;
 }
 
@@ -36,7 +37,8 @@ export function manualLibraryProjection(library: ManualChecklistLibrary) {
 }
 
 /** A closed legacy template is unknown. Claim only questions actually in
- * the reopened file, so opening an unrelated file cannot strand its answers. */
+ * the imported file; preserve unmatched answers for another template.
+ * Matching item ids cannot recover the missing discipline identity. */
 export function claimLegacyManualAnswers(template: ChecklistTemplate, pending: ManualAnswersByModel) {
   const itemIds = new Set(template.groups.flatMap((group) => group.items.map((item) => item.id)));
   const partition = (matching: boolean): ManualAnswersByModel => Object.fromEntries(

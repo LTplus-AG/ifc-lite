@@ -24,6 +24,7 @@ export const validationPanelEn = {
 
   'validationPanel.toggle.ids': 'IDS validation',
   'validationPanel.toggle.rules': 'Information validation',
+  'validationPanel.toggle.manual': 'Manual validation',
 
   'validationPanel.editRules': 'Edit rules',
   'validationPanel.save': 'Save',

@@ -20,7 +20,8 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { assertFinitePoint3 } from '../ifc-creator-math.js';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
-import { assertPositiveFinite, emitLocalPlacement, ownerHistoryRef, productGuid } from './_emit-helpers.js';
+import { assertPositiveFinite, emitLocalPlacement, emitRectangleProfile, ownerHistoryRef, productGuid } from './_emit-helpers.js';
+import { assertProfileSectionAuthorable, emitProfileSection, type ProfileSection } from './profile.js';
 
 /** A column's RefDirection: horizontal and unit length (it must be orthogonal to Axis +Z). */
 function columnRefDirection(ref: [number, number, number] | undefined): [number, number, number] {
@@ -60,6 +61,15 @@ export interface ColumnInStoreParams {
 }
 
 /**
+ * A column with a parameterised cross-section (I, L, T, U, C, circle, hollow;
+ * see `ProfileSection`) in place of the `Width` x `Depth` rectangle, centred
+ * on `Position`; the profile's X runs along `RefDirection`.
+ */
+export interface ProfiledColumnInStoreParams extends Omit<ColumnInStoreParams, 'Width' | 'Depth'> {
+  Profile: ProfileSection;
+}
+
+/**
  * Result of `addColumnToStore` — the new column's expressId plus a
  * tap into the dependent entities for callers that want to e.g. apply
  * a colour or further mutations to the geometry.
@@ -86,48 +96,47 @@ export interface ColumnBuildResult {
 export function addColumnToStore(
   editor: StoreEditor,
   anchor: SpatialAnchor,
-  params: ColumnInStoreParams,
+  params: ColumnInStoreParams | ProfiledColumnInStoreParams,
 ): ColumnBuildResult {
   const { ownerHistoryId, bodyContextId, storeyId, storeyPlacementId } = anchor;
 
   assertFinitePoint3({ Position: params.Position }, 'addColumnToStore');
-  assertPositiveFinite(
-    [params.Width, params.Depth, params.Height],
-    'addColumnToStore: Width, Depth, and Height must be finite positive numbers',
-  );
+  const section = params as { Width?: number; Depth?: number; Profile?: ProfileSection };
+  if (section.Profile !== undefined) {
+    if (section.Width !== undefined || section.Depth !== undefined) {
+      throw new Error('addColumnToStore: give either Width and Depth or a Profile, not both');
+    }
+    assertPositiveFinite([params.Height], 'addColumnToStore: Height must be a finite positive number');
+    assertProfileSectionAuthorable(anchor, section.Profile, 'addColumnToStore');
+  } else {
+    assertPositiveFinite(
+      [section.Width as number, section.Depth as number, params.Height],
+      'addColumnToStore: Width, Depth, and Height must be finite positive numbers',
+    );
+  }
   const refDirection = columnRefDirection(params.RefDirection);
 
   // Params are metres; convert dimensioned fields to the file's native
   // length unit before emit (see SpatialAnchor.lengthUnitScale).
-  params = {
-    ...params,
-    Position: toNativePoint3(anchor, params.Position),
-    Width: toNativeLength(anchor, params.Width),
-    Depth: toNativeLength(anchor, params.Depth),
-    Height: toNativeLength(anchor, params.Height),
-  };
+  const position = toNativePoint3(anchor, params.Position);
+  const height = toNativeLength(anchor, params.Height);
 
   // Local placement chain: IfcCartesianPoint → IfcAxis2Placement3D (explicit
   // Axis + RefDirection) → IfcLocalPlacement (parent = storey placement).
   const placementId = emitLocalPlacement(
     editor,
     storeyPlacementId,
-    params.Position,
+    position,
     [0, 0, 1],
     refDirection,
   );
 
-  // Rectangle profile centred at origin: IfcCartesianPoint(0,0) →
-  // IfcAxis2Placement2D → IfcRectangleProfileDef.
-  const profileOriginPt = editor.addEntity('IfcCartesianPoint', [[0, 0]]).expressId;
-  const profilePos = editor.addEntity('IfcAxis2Placement2D', [`#${profileOriginPt}`, null]).expressId;
-  const profileId = editor.addEntity('IfcRectangleProfileDef', [
-    '.AREA.',
-    null,
-    `#${profilePos}`,
-    params.Width,
-    params.Depth,
-  ]).expressId;
+  // Cross-section centred at the origin: the Width x Depth rectangle
+  // (IfcCartesianPoint(0,0) → IfcAxis2Placement2D → IfcRectangleProfileDef)
+  // or the parameterised profile.
+  const profileId = section.Profile !== undefined
+    ? emitProfileSection(editor, anchor, section.Profile, 'addColumnToStore')
+    : emitRectangleProfile(editor, toNativeLength(anchor, section.Width as number), toNativeLength(anchor, section.Depth as number));
 
   // Extruded solid: another local origin point, axis placement, +Z direction,
   // then IfcExtrudedAreaSolid(Profile, Position, ExtrudedDirection, Depth).
@@ -138,7 +147,7 @@ export function addColumnToStore(
     `#${profileId}`,
     `#${solidAxis}`,
     `#${extrudeDirection}`,
-    params.Height,
+    height,
   ]).expressId;
 
   // Shape representation in the Body context, then product shape.

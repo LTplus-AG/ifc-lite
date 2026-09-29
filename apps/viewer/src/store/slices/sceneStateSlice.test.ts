@@ -45,12 +45,12 @@ describe('sceneState.section.visible (#5893)', () => {
     state().setSectionPlaneAxis('front');
     state().setSectionPlanePosition(30);
     assert.ok(activeSectionPlane(state()), 'on screen inside the Section tool');
-    const insideClip = sectionRenderClip(state().sceneState.section.visible, state().sectionPlane, null);
+    const insideClip = sectionRenderClip(state().sceneState.section.visible, state().sectionPlane, null, state().activeTool);
     assert.ok(insideClip.sectionPlane, 'the renderer receives the plane inside the tool');
 
     state().setActiveTool('measure');
     assert.ok(activeSectionPlane(state()), 'BUG on main: the cut vanished the moment Measure opened');
-    const afterSwitchClip = sectionRenderClip(state().sceneState.section.visible, state().sectionPlane, null);
+    const afterSwitchClip = sectionRenderClip(state().sceneState.section.visible, state().sectionPlane, null, state().activeTool);
     assert.ok(afterSwitchClip.sectionPlane, 'the renderer keeps receiving the plane after switching to Measure');
     assert.equal(afterSwitchClip.sectionPlane?.enabled, true);
   });
@@ -63,11 +63,11 @@ describe('sceneState.section.visible (#5893)', () => {
 
     state().setSectionVisible(false);
     assert.equal(activeSectionPlane(state()), null, 'hidden by the toggle');
-    assert.equal(sectionRenderClip(state().sceneState.section.visible, state().sectionPlane, null).sectionPlane, undefined);
+    assert.equal(sectionRenderClip(state().sceneState.section.visible, state().sectionPlane, null, state().activeTool).sectionPlane, undefined);
 
     state().setSectionVisible(true);
     assert.ok(activeSectionPlane(state()), 'shown again');
-    assert.ok(sectionRenderClip(state().sceneState.section.visible, state().sectionPlane, null).sectionPlane);
+    assert.ok(sectionRenderClip(state().sceneState.section.visible, state().sectionPlane, null, state().activeTool).sectionPlane);
   });
 
   it('toggleSectionVisible flips the current value', () => {

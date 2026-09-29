@@ -35,4 +35,5 @@ export type {
   SourceTag,
 } from './types.js';
 
+export { readWithProgress } from './progress.js';
 export { PLUGIN_API_VERSION, matchesGlob, satisfiesCaretRange } from './version.js';

@@ -6,7 +6,8 @@
  * Anchored builder for IfcMember — a generic structural member
  * (brace, strut, post). Geometry shape mirrors `addBeamToStore`:
  *   - placement origin at `Start`, local Z = member axis
- *   - cross-section centred on the axis, extruded by member length
+ *   - cross-section (Width x Height rectangle, or a `Profile`) centred on
+ *     the axis, extruded by member length
  * The distinction is the IFC type and the `.NOTDEFINED.` PredefinedType
  * default — IfcBeam carries `.BEAM.`.
  */
@@ -16,7 +17,6 @@ import { vecCross, vecNorm, assertFinitePoint3 } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import {
-  assertPositiveFinite,
   emitBodyRepresentation,
   emitExtrudedSolid,
   emitLocalPlacement,
@@ -24,6 +24,7 @@ import {
   emitRelContainedInSpatialStructure,
   ifcElementHeader,
 } from './_emit-helpers.js';
+import { emitProfileSection, linearSection, type ProfileSection } from './profile.js';
 
 export interface MemberInStoreParams {
   Start: [number, number, number];
@@ -40,6 +41,11 @@ export interface MemberInStoreParams {
   Tag?: string;
   /** Explicit GlobalId (22-char IFC GUID); generated when omitted. */
   GlobalId?: string;
+}
+
+/** A member with a parameterised cross-section in place of the `Width` x `Height` rectangle. */
+export interface ProfiledMemberInStoreParams extends Omit<MemberInStoreParams, 'Width' | 'Height'> {
+  Profile: ProfileSection;
 }
 
 export interface MemberBuildResult {
@@ -60,7 +66,7 @@ function computeRefDirection(axis: Point3D): Point3D {
 export function addMemberToStore(
   editor: StoreEditor,
   anchor: SpatialAnchor,
-  params: MemberInStoreParams,
+  params: MemberInStoreParams | ProfiledMemberInStoreParams,
 ): MemberBuildResult {
   // A non-finite Start/End coordinate makes the derived memberLen NaN, and
   // `NaN <= 0` is false, so the distinct-points check below never fires.
@@ -69,26 +75,23 @@ export function addMemberToStore(
 
   // Params are metres; convert dimensioned fields to the file's native
   // length unit before emit (see SpatialAnchor.lengthUnitScale).
-  params = {
-    ...params,
-    Start: toNativePoint3(anchor, params.Start),
-    End: toNativePoint3(anchor, params.End),
-    Width: toNativeLength(anchor, params.Width),
-    Height: toNativeLength(anchor, params.Height),
-  };
-  const dx = params.End[0] - params.Start[0];
-  const dy = params.End[1] - params.Start[1];
-  const dz = params.End[2] - params.Start[2];
+  const start = toNativePoint3(anchor, params.Start);
+  const end = toNativePoint3(anchor, params.End);
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const dz = end[2] - start[2];
   const memberLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
   if (memberLen <= 0) {
     throw new Error('addMemberToStore: Start and End must be distinct points');
   }
-  assertPositiveFinite([params.Width, params.Height], 'addMemberToStore: Width and Height must be positive');
+  const section = linearSection(anchor, params, 'addMemberToStore');
   const dir: Point3D = vecNorm([dx, dy, dz]);
   const refDir = computeRefDirection(dir);
 
-  const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, params.Start, dir, refDir);
-  const profileId = emitRectangleProfile(editor, params.Width, params.Height);
+  const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, start, dir, refDir);
+  const profileId = section.Profile
+    ? emitProfileSection(editor, anchor, section.Profile, 'addMemberToStore')
+    : emitRectangleProfile(editor, toNativeLength(anchor, section.Width), toNativeLength(anchor, section.Height));
   const solidId = emitExtrudedSolid(editor, profileId, memberLen);
   const { shapeRepId, productShapeId } = emitBodyRepresentation(editor, anchor.bodyContextId, solidId);
 

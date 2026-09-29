@@ -42,6 +42,7 @@ export function bindModelWorkspaceKeys(): () => void {
     registerKeyboardCommand('model.slab', () => launchModelCommand('slab.place'), { active }),
     registerKeyboardCommand('model.column', () => launchModelCommand('column.place'), { active }),
     registerKeyboardCommand('model.beam', () => launchModelCommand('beam.place'), { active }),
+    registerKeyboardCommand('model.room', () => launchModelCommand('room.place'), { active }),
     registerKeyboardCommand('model.opening', () => launchModelCommand('opening.place'), { active }),
     registerKeyboardCommand('model.door', () => launchModelCommand('door.place'), { active }),
     registerKeyboardCommand('model.window', () => launchModelCommand('window.place'), { active }),

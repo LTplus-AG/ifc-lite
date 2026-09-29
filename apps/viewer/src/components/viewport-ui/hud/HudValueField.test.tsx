@@ -6,8 +6,8 @@ import '@/test/setup-dom.js';
 import { act } from 'react';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { render, cleanup, press, type } from '@/test/render.js';
-import { HudValueField } from './HudValueField.js';
+import { render, cleanup, blur, press, type } from '@/test/render.js';
+import { HudValueField, type HudValueFieldHandle } from './HudValueField.js';
 
 afterEach(() => {
   cleanup();
@@ -105,6 +105,28 @@ describe('HudValueField (#5485)', () => {
 
     assert.deepEqual(values, []);
     assert.ok(ui.querySelector('[role="spinbutton"]'));
+  });
+
+  it('an edit left untouched commits nothing on blur or Tab; a typed one still does (#6232 F1)', () => {
+    const values: number[] = [];
+    const tabs: boolean[] = [];
+    let handle: HudValueFieldHandle | null = null;
+    const ui = render(
+      <HudValueField ref={(h) => { handle = h; }} value={0} aria-label="Length" onChange={(v) => values.push(v)} onTab={(s) => tabs.push(s)} />,
+    );
+    act(() => handle!.beginEdit());
+    blur(ui.querySelector('input')!);
+    act(() => handle!.beginEdit());
+    press(ui.querySelector('input')!, 'Tab');
+    assert.deepEqual(values, [], 'an opened-but-untouched field writes nothing');
+    assert.deepEqual(tabs, [false], 'Tab still moves on');
+
+    act(() => handle!.beginEdit());
+    type(ui.querySelector('input')!, '4');
+    blur(ui.querySelector('input')!);
+    act(() => handle!.beginEdit('7'));
+    press(ui.querySelector('input')!, 'Tab');
+    assert.deepEqual(values, [4, 7], 'typed drafts (incl. a digit typed elsewhere) commit');
   });
 
   it('arrow keys step the value, and Shift steps by the shift multiplier', () => {

@@ -13,8 +13,9 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
-import { cleanup, click as clickEl, press, render, type } from '@/test/render.js';
+import { blur, cleanup, click as clickEl, press, render, type } from '@/test/render.js';
 import { MODEL_ID, seedModelingSession } from '@/test/modeling-session-fixture';
+import { authoredBodies } from '@/test/authored-body';
 import { CommandFieldsBar } from '@/components/viewer/tools/command/CommandFieldsBar';
 import { BeamPlaceBar } from '@/components/viewer/tools/command/PlacementBars';
 import type { SnapResult } from '@/lib/snap/types';
@@ -99,6 +100,25 @@ describe('beam.place (#6232 M2.2)', () => {
     assert.deepEqual(beams()[0].start, [0, 0, 2.75]);
   });
 
+  for (const cls of ['beam', 'member'] as const) {
+    it(`a ${cls}: a value typed then Tabbed past leaves the untouched Length unlocked when the plan is clicked (#6232 F1)`, () => {
+      useViewerStore.getState().setAuthoringDefaults({ beamClass: cls });
+      const ui = render(<CommandFieldsBar />);
+      press(document.body, 'Tab');
+      press(ui.querySelector('input') as HTMLInputElement, 'Tab', { shiftKey: true }); // wraps to Bottom at
+      type(ui.querySelector('input') as HTMLInputElement, '0');
+      press(ui.querySelector('input') as HTMLInputElement, 'Tab'); // wraps to Length, showing 0
+      const length = ui.querySelector('input') as HTMLInputElement;
+      assert.equal(length.getAttribute('aria-label'), 'Length');
+      // A click in the plan: the pointer-down lands first, then the open field blurs.
+      click(0, 0);
+      blur(length);
+      assert.equal(gesture().length, null, 'the untouched Length did not lock its 0');
+      click(5, 0);
+      assert.deepEqual(beams().map((b) => [b.cls, b.length]), [[cls === 'beam' ? 'IFCBEAM' : 'IFCMEMBER', 5]]);
+    });
+  }
+
   it('the Member segment writes an IfcMember with the member section', () => {
     const ui = render(<BeamPlaceBar />);
     clickEl([...ui.querySelectorAll('button')].find((b) => b.textContent === 'Member')!);
@@ -106,6 +126,25 @@ describe('beam.place (#6232 M2.2)', () => {
     click(0, 2);
     assert.deepEqual(beams(), [{ cls: 'IFCMEMBER', start: [0, 0, 0.05], length: 2, section: [0.1, 0.1] }]);
   });
+
+  // Lane A2 (#6232): each class writes its own IFC class with an extruded
+  // rectangle-profile body along the drawn axis, as one undo step.
+  for (const [cls, entity] of [['beam', 'IFCBEAM'], ['member', 'IFCMEMBER']] as const) {
+    it(`a ${cls} is one ${entity} with a swept-solid rectangle body, one undo step`, () => {
+      useViewerStore.getState().setAuthoringDefaults({ beamClass: cls, chain: false });
+      const before = undoDepth();
+      click(1, 1);
+      click(1, 4);
+      assert.deepEqual(authoredBodies(MODEL_ID, ['IFCBEAM', 'IFCMEMBER']).map(({ expressId: _id, ...b }) => b), [{
+        cls: entity, identifier: 'Body', representationType: 'SweptSolid',
+        solid: 'IFCEXTRUDEDAREASOLID', profile: 'IFCRECTANGLEPROFILEDEF', depth: 3,
+      }]);
+      assert.equal(undoDepth(), before + 1, 'one transaction');
+      useViewerStore.getState().undo(MODEL_ID);
+      assert.deepEqual(beams(), [], `one undo removes the ${cls}`);
+      assert.equal(undoDepth(), before);
+    });
+  }
 
   it('Chain off starts afresh after each beam', () => {
     useViewerStore.getState().setAuthoringDefaults({ chain: false });

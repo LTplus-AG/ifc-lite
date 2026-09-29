@@ -34,6 +34,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { handleSelectionClick } from './selectionHandlers.js';
 import { commitAddElementSlabPolygon, handleAddElementHover } from './add-element-handlers.js';
 import { withAddElementWorkplane } from './add-element-workplane.js';
+import { sectionRenderClip } from '@/lib/section/section-render-clip';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 
 const MODEL = 'demo-like';
@@ -288,6 +289,16 @@ describe('Add Element workplane: the drawing plane is shown at the storey (#6233
   it("moves the uncut plane preview to the target storey's floor while the tool is active", () => {
     useViewerStore.setState({ addElementStoreyId: STOREY_B });
     const clip = withAddElementWorkplane(useViewerStore.getState(), { sectionPlane: { axis: 'down', position: 50, enabled: false } });
+    assert.deepEqual(clip.sectionPlane && { y: clip.sectionPlane.min, max: clip.sectionPlane.max, enabled: clip.sectionPlane.enabled },
+      { y: 3, max: 3, enabled: false });
+  });
+
+  it('still shows the workplane when no uncut preview reaches it outside the Section tool (#6374)', () => {
+    useViewerStore.setState({ addElementStoreyId: STOREY_B });
+    const s = useViewerStore.getState();
+    const base = sectionRenderClip(true, { ...s.sectionPlane, enabled: false, box: undefined }, null, s.activeTool);
+    assert.deepEqual(base, {}, 'no cut, Section tool closed: the section itself hands over nothing');
+    const clip = withAddElementWorkplane(s, base);
     assert.deepEqual(clip.sectionPlane && { y: clip.sectionPlane.min, max: clip.sectionPlane.max, enabled: clip.sectionPlane.enabled },
       { y: 3, max: 3, enabled: false });
   });

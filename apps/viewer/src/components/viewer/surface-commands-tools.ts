@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { openRepositionModels } from '@/lib/model-placement/commands';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
-import { BeamIcon, ColumnIcon, DoorIcon, OpeningIcon, SlabIcon, WallIcon, WindowIcon } from './model/model-icons';
+import { BeamIcon, ColumnIcon, DoorIcon, OpeningIcon, RoomIcon, SlabIcon, WallIcon, WindowIcon } from './model/model-icons';
 import { useViewerStore } from '@/store';
 import type { SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
 
@@ -96,6 +96,13 @@ export const TOOL_SURFACE_COMMANDS = [
     category: 'Tools', icon: BeamIcon, surfaces: paletteOnly, enabled: editable,
     shortcut: 'model.beam',
     run: () => { launchModelCommand('beam.place'); },
+  },
+  {
+    id: 'tool:room', labelKey: 'roomTool.palette',
+    searchLabel: 'Make rooms', keywords: 'room space area zone auto rectangle polygon draw walls model author build create',
+    category: 'Tools', icon: RoomIcon, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.room',
+    run: () => { launchModelCommand('room.place'); },
   },
   {
     id: 'tool:opening', labelKey: 'commandPalette.tool.opening.label',

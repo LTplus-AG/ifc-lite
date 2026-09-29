@@ -43,6 +43,13 @@ export const BeamIcon = createLucideIcon('model-beam', [
   ['path', { d: 'M22 7v5l-5 5', key: 'end' }],
 ]);
 
+/** A room in plan: four walls with a door opening and its leaf swinging in. */
+export const RoomIcon = createLucideIcon('model-room', [
+  ['path', { d: 'M14 21h7V3H3v18h5', key: 'walls' }],
+  ['path', { d: 'M14 21v-6', key: 'leaf' }],
+  ['path', { d: 'M8 21a6 6 0 0 1 6-6', key: 'swing' }],
+]);
+
 /** A wall's face with a rectangular hole cut through it. */
 export const OpeningIcon = createLucideIcon('model-opening', [
   ['path', { d: 'M2 4h20v16H2z', key: 'wall' }],

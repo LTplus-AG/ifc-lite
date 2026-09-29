@@ -353,3 +353,24 @@ END-ISO-10303-21;
     assert.equal(entityByName(byCode.specificationResults[0], 'Classified Wall').passed, true, 'code match');
   });
 });
+
+describe('runRuleSet — severity travels on the result (#6372)', () => {
+  it('copies a warning rule\'s severity onto its specification, and defaults an unset one to error', async () => {
+    const store = await parseWalls();
+    const warning = await run(store, elementRuleSet(Rule.property('Pset_WallCommon', 'FireRating', 'eq', '2HR'), { severity: 'warning' }));
+    assert.equal(warning.specificationResults[0].status, 'fail', 'Wall B and Wall C fail the rule');
+    assert.equal(warning.specificationResults[0].specification.severity, 'warning');
+
+    const unset = await run(store, elementRuleSet(Rule.property('Pset_WallCommon', 'FireRating', 'eq', '2HR')));
+    assert.equal(unset.specificationResults[0].specification.severity, 'error');
+  });
+
+  it('keeps the severity on a rule the engine could not evaluate', async () => {
+    const store = await parseWalls();
+    const ruleSet = elementRuleSet(Rule.property('Pset_WallCommon', 'FireRating', 'eq', '2HR'), { severity: 'warning' });
+    ruleSet.targets = { modelFingerprints: ['no-such-model'] };
+    const report = await run(store, ruleSet);
+    assert.ok(report.specificationResults[0].error);
+    assert.equal(report.specificationResults[0].specification.severity, 'warning');
+  });
+});

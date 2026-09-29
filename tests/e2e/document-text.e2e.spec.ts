@@ -493,6 +493,10 @@ test('#6489 real IFC document tables retain independent ordering and coloured re
   await color.fill('#ffee88');
   await expect(preview.locator('th').first()).toHaveCSS('background-color', 'rgb(255, 238, 136)');
   await expect(preview.locator('th').first()).toHaveCSS('color', 'rgb(0, 0, 0)');
+  await panel.locator('[data-block-editor="largest"] input[aria-label="Header background"]').fill('#332244');
+  await expect(firstPreview.locator('th').first()).toHaveCSS('color', 'rgb(255, 255, 255)');
+  const dismiss = page.getByRole('button', { name: 'Dismiss notification', exact: true });
+  while (await dismiss.count()) await dismiss.first().click();
   await preview.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath('document-table-options.png') });
   const downloadPromise = page.waitForEvent('download'); await panel.locator('[data-document-export]').click();

@@ -86,6 +86,9 @@ export function SourceQuantityContent({ disks, extrusions }: SourceQuantityData)
       const nominal = definition?.nominal_quantities;
       const scale = product.lengthUnitScale;
       const hasNominal = validNominal(nominal, scale);
+      const unsupportedReasons = [...new Set([
+        instance.status, definition?.source.status, definition?.source.profile?.status,
+      ].flatMap((status) => status?.type === 'unsupported' ? [status.reason] : []))];
       return <div key={`extrusion:${ref.modelId}:${ref.expressId}:${index}`} className="space-y-0.5 text-2xs">
         <div className="font-mono text-muted-foreground">{t('measure.source.extrusionSolid', {
           modelId: ref.modelId, productId: ref.expressId, solidId: instance.solid_id,
@@ -96,7 +99,7 @@ export function SourceQuantityContent({ disks, extrusions }: SourceQuantityData)
           <div>{t('measure.source.nominalVolume')}: <SourceValue value={nominal.nominal_volume * scale ** 3} type={QuantityType.Volume} /></div>
         </> : <div>{t('measure.source.nominalVolume')}: {t('measure.source.unavailable')}</div>}
         {instance.source_modified && <p className="text-amber-600 dark:text-amber-500">{t('measure.source.modified')}</p>}
-        {instance.status.type === 'unsupported' && <p className="text-amber-600 dark:text-amber-500">{instance.status.reason}</p>}
+        {unsupportedReasons.map((reason) => <p key={reason} className="text-amber-600 dark:text-amber-500">{reason}</p>)}
         <p className="text-muted-foreground">{t('measure.source.unplaced')}</p>
       </div>;
     }))}

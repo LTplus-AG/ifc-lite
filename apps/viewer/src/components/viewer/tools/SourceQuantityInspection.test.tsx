@@ -178,4 +178,36 @@ describe('nominal source quantity readout (#6433)', () => {
     assert.match(ui.textContent ?? '', /model-a · #31: Directrix is not a supported curve/);
     assert.match(ui.textContent ?? '', /model-b · #42: SweptArea has no supported profile/);
   });
+
+  it('explains unavailable nominal values from unsupported extrusion source and profile statuses (#6433)', () => {
+    const profile: NonNullable<ExtrusionDefinitions['sources'][number]['source']['profile']> = {
+      profile_id: 71, ifc_type_name: 'IfcArbitraryClosedProfileDef', ProfileType: 'AREA',
+      Position: null, profile_position: null, loops: [],
+      status: { type: 'unsupported', reason: 'Source curve is unsupported' },
+    };
+    const ui = render(<SourceQuantityContent
+      disks={{ loading: false, error: null, items: [] }}
+      extrusions={{ loading: false, error: null, items: [{
+        ref: { modelId: 'm', expressId: 31 }, product: {
+          lengthUnitScale: 1, diagnostics: [], occurrences: [
+            { instance: { ...instance, status: { type: 'complete' } },
+              definition: { ...definition, nominal_quantities: null, source: {
+                ...definition.source, profile,
+                status: { type: 'unsupported', reason: 'Source curve is unsupported' },
+              } } },
+            { instance: { ...instance, solid_id: 81, status: { type: 'complete' } },
+              definition: { ...definition, nominal_quantities: null, source: {
+                ...definition.source, profile: { ...profile, status: {
+                  type: 'unsupported', reason: 'Profile loop is open',
+                } },
+              } } },
+          ],
+        },
+      }] }}
+    />);
+    const text = ui.textContent ?? '';
+    assert.equal(text.match(/Nominal source volume: unavailable from this source/g)?.length, 2);
+    assert.equal(text.match(/Source curve is unsupported/g)?.length, 1);
+    assert.equal(text.match(/Profile loop is open/g)?.length, 1);
+  });
 });

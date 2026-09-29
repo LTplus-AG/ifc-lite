@@ -458,7 +458,7 @@ describe('the shipped panel hosts each #2199 section', () => {
     );
   });
 
-  it('Qty says why it has no answer rather than rendering an empty box', () => {
+  it('Qty says why it has no answer rather than rendering an empty box (#6452)', () => {
     useViewerStore.setState({
       // Selected, but no store resolves for the ref: nothing is declared and
       // nothing is proved.
@@ -467,7 +467,7 @@ describe('the shipped panel hosts each #2199 section', () => {
     const container = render();
     openSection(container, 'Qty');
     const text = container.textContent ?? '';
-    assert.match(text, /declares no quantities/, text);
+    assert.match(text, /No authored Qto, proved enclosed mesh volume, or triangulated mesh area is available/, text);
     assert.match(text, /could not\s+be resolved to a loaded model/, text);
   });
 });

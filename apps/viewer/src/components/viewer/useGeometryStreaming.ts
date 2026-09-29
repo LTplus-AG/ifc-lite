@@ -260,7 +260,9 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       const pipeline = renderer.getPipeline();
       const scene = renderer.getScene();
       if (!device || !pipeline || !scene.hasQueuedMeshes()) return;
-      const flushed = runGpuUpload('flushPending:pump', () => flushPlacementGeometry(scene, device, pipeline)) ?? false;
+      // Hidden tab: nobody can be navigating. If the tab turned visible before this
+      // timer fired, keep the short slice as if the user were (#6436).
+      const flushed = runGpuUpload('flushPending:pump', () => flushPlacementGeometry(scene, device, pipeline, !globalThis.document?.hidden)) ?? false;
       if (flushed) {
         renderer.clearCaches();
         renderer.requestRender();

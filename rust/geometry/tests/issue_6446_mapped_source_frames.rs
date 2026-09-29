@@ -182,8 +182,8 @@ fn issue_6446_opening_cut_through_a_mixed_map_keeps_both_holes() {
     // `get_opening_item_bounds_with_direction` for its bounds; a lost part in
     // either degrades the hole to an axis-aligned box. No model RTC here: with
     // the RTC origin at the far box, a host part 5,000 km from it stays uncut on
-    // main for plain direct items too (#6445's product-level void path), which is
-    // not this map-level defect.
+    // main for plain direct items too (#6478, the product-level void path), which
+    // is not this map-level defect.
     let r = 0.2;
     let h = r * 3f64.sqrt() / 2.0;
     let hexagon = [[r, 0.0], [r / 2.0, h], [-r / 2.0, h], [-r, 0.0], [-r / 2.0, -h], [r / 2.0, -h]];

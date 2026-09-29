@@ -2,8 +2,22 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
-import { profileSummary } from './stream-diagnostic.mjs';
+
+// Exercise the isolated Node runtime used by reporters. A missing diagnostic
+// must fail an assertion here, rather than prevent this test file from loading.
+function profileSummary(profile) {
+  const run = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import { readFileSync } from 'node:fs';
+    import { profileSummary } from ${JSON.stringify(new URL('./stream-diagnostic.mjs', import.meta.url).href)};
+    console.log(JSON.stringify(profileSummary(JSON.parse(readFileSync(0, 'utf8')))));
+  `], { input: JSON.stringify(profile), encoding: 'utf8', timeout: 10_000 });
+  assert.ifError(run.error);
+  assert.equal(run.status, 0, 'CPU diagnostic must finish successfully in a fresh Node process');
+  assert.equal(run.stderr, '', 'CPU summary must not leak diagnostics to stderr');
+  return JSON.parse(run.stdout);
+}
 
 test('#6516 CPU self-time conserves sampled time without double-counting parents', () => {
   // A real inspector-shaped numeric oracle: parent/root is never sampled,

@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { openRepositionModels } from '@/lib/model-placement/commands';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
-import { BeamIcon, ColumnIcon, SlabIcon, WallIcon } from './model/model-icons';
+import { BeamIcon, ColumnIcon, DoorIcon, OpeningIcon, SlabIcon, WallIcon, WindowIcon } from './model/model-icons';
 import { useViewerStore } from '@/store';
 import type { SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
 
@@ -96,6 +96,27 @@ export const TOOL_SURFACE_COMMANDS = [
     category: 'Tools', icon: BeamIcon, surfaces: paletteOnly, enabled: editable,
     shortcut: 'model.beam',
     run: () => { launchModelCommand('beam.place'); },
+  },
+  {
+    id: 'tool:opening', labelKey: 'commandPalette.tool.opening.label',
+    searchLabel: 'Cut openings', keywords: 'opening void hole cut wall recess model author build create',
+    category: 'Tools', icon: OpeningIcon, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.opening',
+    run: () => { launchModelCommand('opening.place'); },
+  },
+  {
+    id: 'tool:door', labelKey: 'commandPalette.tool.door.label',
+    searchLabel: 'Place doors', keywords: 'door entrance opening wall hosted place model author build create',
+    category: 'Tools', icon: DoorIcon, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.door',
+    run: () => { launchModelCommand('door.place'); },
+  },
+  {
+    id: 'tool:window', labelKey: 'commandPalette.tool.window.label',
+    searchLabel: 'Place windows', keywords: 'window glazing opening wall hosted sill place model author build create',
+    category: 'Tools', icon: WindowIcon, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.window',
+    run: () => { launchModelCommand('window.place'); },
   },
   {
     id: 'tool:edit-mode', labelKey: 'commandPalette.tool.editMode.label', ribbonLabelKey: 'ribbon.author.editMode',

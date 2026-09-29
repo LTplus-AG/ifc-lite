@@ -85,6 +85,7 @@ import { splitToolEn } from './catalogues/split-tool.en';
 import { modelingCommandEn } from './catalogues/modeling-command.en';
 import { modelWorkspaceEn } from './catalogues/model-workspace.en';
 import { modelInspectorEn } from './catalogues/model-inspector.en';
+import { hostedPlaceEn } from './catalogues/hosted-place.en';
 import { remeshEn } from './catalogues/remesh.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
 import { webgpuTroubleshootingEn } from './catalogues/webgpu-troubleshooting.en';
@@ -133,6 +134,7 @@ export const en = {
   ...modelingCommandEn,
   ...modelWorkspaceEn,
   ...modelInspectorEn,
+  ...hostedPlaceEn,
   ...remeshEn,
   ...documentEn,
   ...documentMenuEn,

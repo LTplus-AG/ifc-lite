@@ -79,6 +79,7 @@ export {
   type HostedWindowInStoreParams,
   type HostedFillBuildResult,
 } from './in-store/hosted-fill.js';
+export { hostPlanFrame, readHostedFill, type HostPlanFrame, type HostedFillRead } from './in-store/hosted-fill-read.js';
 export {
   addElementTypeToStore,
   assignTypeInStore,

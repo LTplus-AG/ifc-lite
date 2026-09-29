@@ -42,3 +42,25 @@ export const BeamIcon = createLucideIcon('model-beam', [
   ['path', { d: 'm2 12 5-5h15l-5 5', key: 'top' }],
   ['path', { d: 'M22 7v5l-5 5', key: 'end' }],
 ]);
+
+/** A wall's face with a rectangular hole cut through it. */
+export const OpeningIcon = createLucideIcon('model-opening', [
+  ['path', { d: 'M2 4h20v16H2z', key: 'wall' }],
+  ['path', { d: 'M8 8h8v8H8z', key: 'hole' }],
+  ['path', { d: 'm8 8 2 2h6', key: 'reveal' }],
+]);
+
+/** A wall's face with a door standing on the floor, handle on the right. */
+export const DoorIcon = createLucideIcon('model-door', [
+  ['path', { d: 'M2 4h20v16H2', key: 'wall' }],
+  ['path', { d: 'M8 20V8h8v12', key: 'leaf' }],
+  ['path', { d: 'M13.5 14h.01', key: 'handle' }],
+]);
+
+/** A wall's face with a window: a frame and its cross bars. */
+export const WindowIcon = createLucideIcon('model-window', [
+  ['path', { d: 'M2 4h20v16H2z', key: 'wall' }],
+  ['path', { d: 'M7 8h10v8H7z', key: 'frame' }],
+  ['path', { d: 'M12 8v8', key: 'mullion' }],
+  ['path', { d: 'M7 12h10', key: 'transom' }],
+]);

@@ -15,7 +15,7 @@
 
 import { liveEntityConforms, readRelatedLists, fromNativeLength } from '@ifc-lite/create';
 import { iterateEffectiveEntityIds, type IfcAttributeValue, type MutablePropertyView } from '@ifc-lite/mutations';
-import { getAttributeNamesForSchema, type IfcDataStore } from '@ifc-lite/parser';
+import { getAttributeNamesForSchema, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
 import { effectiveListStringAttribute } from '@/lib/lists/effective-provider-entities';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import type { AuthoredElementKind, AuthoringDefaults } from '@/store/slices/authoringDefaultsSlice';
@@ -105,6 +105,21 @@ function liveIdsOf(model: LiveModel, ifcClass: string): number[] {
   const { dataStore, view } = model;
   return Array.from(iterateEffectiveEntityIds(dataStore, view, [ifcClass.toUpperCase()]), (e) => e.expressId)
     .filter((id) => liveEntityConforms(dataStore, id, ifcClass, view));
+}
+
+const REGISTRY_VERSIONS = new Set(['IFC2X3', 'IFC4', 'IFC4X3']);
+
+/**
+ * Whether the model's schema has the kind's type class at all (decision D2:
+ * IFC2X3 has no IfcDoorType or IfcWindowType, only the older styles, so a
+ * door or window there keeps no type; an IFC5 model takes none).
+ */
+export function typeClassInSchema({ dataStore }: LiveModel, kind: AuthoredElementKind): boolean {
+  const version = String(dataStore.schemaVersion ?? 'IFC4').toUpperCase();
+  if (!REGISTRY_VERSIONS.has(version)) return false;
+  const registry = getSchemaRegistryForVersion(version as Parameters<typeof getSchemaRegistryForVersion>[0]);
+  const wanted = AUTHORED_KINDS[kind].type.toUpperCase();
+  return Object.keys(registry.entities).some((name) => name.toUpperCase() === wanted);
 }
 
 /** The kind's type objects in the model, by name. Empty when the schema has no such class. */

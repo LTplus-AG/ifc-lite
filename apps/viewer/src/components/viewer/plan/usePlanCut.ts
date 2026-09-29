@@ -43,7 +43,7 @@ export const PLAN_CUT_DEBOUNCE_MS = 150;
  * the whole model's triangles and runs again after every edit, so the limit
  * sits well below the tens of thousands of meshes of the heavy fixtures.
  */
-const PLAN_CUT_MESH_LIMIT = 8000;
+export const PLAN_CUT_MESH_LIMIT = 8000;
 
 const SECTION_DEPTHS = { projectionDepth: 1.5, projectionBelowDepth: 1.4, projectionAboveDepth: 0.8 } as const;
 

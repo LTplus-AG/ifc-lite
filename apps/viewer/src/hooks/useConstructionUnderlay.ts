@@ -28,7 +28,7 @@ import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { selectModelMeshes } from '@/lib/type-view-visibility';
 import { roomFramePlanOffsets } from '@/lib/wall-rects-from-meshes';
-import { PLAN_CUT_HEIGHT, identityKey, usePlanCutDrawing, type PlanCutRequest } from '@/components/viewer/plan/usePlanCut';
+import { PLAN_CUT_HEIGHT, PLAN_CUT_MESH_LIMIT, identityKey, usePlanCutDrawing, type PlanCutRequest } from '@/components/viewer/plan/usePlanCut';
 
 export interface UnderlayLine {
   a: [number, number];
@@ -45,7 +45,7 @@ export interface UnderlayLine {
 export function useConstructionUnderlay(
   enabled: boolean,
   floorElevation: number | null,
-): { lines: UnderlayLine[]; loading: boolean } {
+): { lines: UnderlayLine[]; loading: boolean; simplified: boolean } {
   const geometryResult = useViewerStore((s) => s.geometryResult);
   // An edit can change meshes in place, without a new geometryResult: key on the versions too, like the plan's cut.
   const contentVersion = useViewerStore((s) => s.geometryContentVersion);
@@ -69,6 +69,9 @@ export function useConstructionUnderlay(
       key: `underlay:${identityKey(geometryResult)}:${contentVersion}:${mutationVersion}:${meshes.length}:${cutY}`,
       meshes,
       cutY,
+      // Same guard as the plan pane: above this the CPU cut would re-run on
+      // every edit of a heavy model, so the underlay reports `simplified`.
+      meshLimit: PLAN_CUT_MESH_LIMIT,
       map: (x, z) => [x + cx, cy - z],
     };
   }, [enabled, floorElevation, geometryResult, contentVersion, mutationVersion]);
@@ -78,5 +81,5 @@ export function useConstructionUnderlay(
     () => cut.lines.map((l) => ({ a: [l.a[0], l.a[1]], b: [l.b[0], l.b[1]], hidden: l.hidden })),
     [cut.lines],
   );
-  return { lines, loading: cut.loading };
+  return { lines, loading: cut.loading, simplified: cut.simplified };
 }

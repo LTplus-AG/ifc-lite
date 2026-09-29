@@ -22,7 +22,7 @@ import '@/lib/commands/modeling/builtin';
 import { resolveWorkplane } from '@/lib/commands/modeling/registry';
 import type { Workplane } from '@/lib/commands/modeling/types';
 import { useConstructionUnderlay, type UnderlayLine } from '@/hooks/useConstructionUnderlay';
-import { PLAN_CUT_DEBOUNCE_MS, PLAN_CUT_HEIGHT, mapPlanDrawing, modelPlacementOf, planCutFrame } from './usePlanCut';
+import { PLAN_CUT_DEBOUNCE_MS, PLAN_CUT_HEIGHT, PLAN_CUT_MESH_LIMIT, mapPlanDrawing, modelPlacementOf, planCutFrame } from './usePlanCut';
 
 const settle = () => act(() => new Promise<void>((r) => setTimeout(r, PLAN_CUT_DEBOUNCE_MS + 250)));
 
@@ -83,6 +83,21 @@ describe('useConstructionUnderlay on the shared cut', () => {
     for (const l of seen) {
       for (const [x, y] of [l.a, l.b]) assert.ok(x > -1e-6 && x < 4 + 1e-6 && y > -1e-6 && y < 0.2 + 1e-6, `(${x}, ${y}) inside the wall's plan`);
     }
+  });
+
+  it('above the plan mesh limit it does not cut and reports simplified (#6394 review: same guard as the plan)', async () => {
+    const meshes = Array.from({ length: PLAN_CUT_MESH_LIMIT + 1 }, (_, i) => box(1000 + i, [i * 0.01, 0, -0.2], [i * 0.01 + 0.005, 3, 0]));
+    useViewerStore.setState({ geometryResult: { ...useViewerStore.getState().geometryResult, meshes } as GeometryResult });
+    const seen: { current: ReturnType<typeof useConstructionUnderlay> | null } = { current: null };
+    function Probe() {
+      seen.current = useConstructionUnderlay(true, 0);
+      return null;
+    }
+    render(<Probe />);
+    await settle();
+    assert.ok(seen.current, 'the hook rendered');
+    assert.equal(seen.current.simplified, true, 'the underlay reports the simplified fallback');
+    assert.equal(seen.current.lines.length, 0, 'no CPU cut ran above the limit');
   });
 
   it('re-cuts when an edit changes the meshes in place (#6394 review: the key carries the versions)', async () => {

@@ -95,11 +95,18 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | Validation | `ids_validate`, `ids_explain`, `model_audit`, `gherkin_check` |
 | Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
+| Wall joins | `join_walls` |
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff` (`by_content` for content-keyed matching), `quantity_diff` |
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_pdf_report` |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
+
+`join_walls` joins two straight walls in the same placement frame through the
+viewer/SDK core. It writes `IfcRelConnectsPathElements` and rewrites bodies and
+axes atomically. Hosted openings must fit both joined end faces; unreadable cuts
+refuse the operation. One `mutation_undo` restores the complete earlier graph,
+including replaced profiles, axes and relationships.
 
 `place_opening`, `place_door` and `place_window` use the viewer/SDK's shared
 hosted creation core. Pass `host_express_id`, optional `model_id` (required

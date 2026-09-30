@@ -27,6 +27,9 @@ import { createStoreMutationTracker } from './store-adapter-cost.js';
 import { normalizeMutationModelId } from './mutation-view.js';
 import type { HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
 import type { StoreApi } from './types.js';
+import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
+import { mutationDenial } from '@/store/mutation-permission';
+import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
 
 type ModellingMethods = ReturnType<typeof createModellingStoreBackend>;
 
@@ -51,6 +54,20 @@ export function withModellingMutationTracking(
       return { modelId: normalized, expressId: outcome.expressId };
     };
   return {
+    joinWalls(modelId, aExpressId, bExpressId, options) {
+      const normalized = normalizeMutationModelId(store.getState(), modelId);
+      const denial = mutationDenial(store.getState(), normalized);
+      if (denial) throw new Error(`bim.store.joinWalls: ${denial}`);
+      const setState = store.setState;
+      if (!setState) throw new Error('bim.store.joinWalls: the adapter requires a writable store');
+      const undoBefore = store.getState().undoStacks.get(normalized)?.length ?? 0;
+      const result = recordModellingEdit({ ...store, setState }, normalized, methods => methods.joinWalls(normalized, aExpressId, bExpressId, options));
+      const state = store.getState();
+      const stack = state.undoStacks.get(normalized) ?? [];
+      const last = stack.length > undoBefore ? stack.at(-1) : undefined;
+      remeshAfterCommit(store.getState, normalized, last ? state.mutationBatchTags.get(last.id) ?? null : null, [aExpressId, bExpressId], 'shape');
+      return result;
+    },
     addOpening: hosted('opening', 'addOpening'),
     addHostedDoor: hosted('door', 'addHostedDoor'),
     addHostedWindow: hosted('window', 'addHostedWindow'),

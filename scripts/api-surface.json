@@ -6884,8 +6884,10 @@
     "parseValue: function",
     "propertyKey: function",
     "quantityKey: function",
+    "recordCompoundMutation: function",
     "setEntityTypeNormalizer: function",
-    "storeHasSourceEntity: function"
+    "storeHasSourceEntity: function",
+    "undoRecordedMutationOperations: function"
   ],
   "@ifc-lite/oauth-pkce": [
     "AuthorizationCallbackResult: interface",

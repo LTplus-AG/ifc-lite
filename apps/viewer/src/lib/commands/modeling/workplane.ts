@@ -20,7 +20,7 @@
  *      translation), which the renderer applies on top of the vertices.
  * A reprojected (proj4) model has no affine inverse and is refused: a wall
  * written through a guessed frame lands turned or offset, and nobody sees it
- * until export. The Add Element tool (`add-element-workplane.ts`) converts
+ * until export. Every Model workspace command converts
  * through this same map.
  */
 
@@ -28,7 +28,7 @@ import { fromStoreyLocal, toStoreyLocal, type StoreyPlanFrame } from '@ifc-lite/
 import { storeyAuthoringFrame } from '@/lib/authoring/storey-authoring-frame';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { ViewerState } from '@/store';
-import { effectiveStoreyElevation } from '@/components/viewer/add-element-storeys';
+import { effectiveStoreyElevation } from '@/lib/commands/modeling/effective-storeys';
 import { totalYupOffset } from '@/lib/geo/coordinate-frame';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import { modelPointToWorkspacePoint, workspacePointToModelFrame, type PointPlacement } from '@/lib/model-placement/rotation';

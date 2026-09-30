@@ -30,7 +30,7 @@ import { HUD_REGIONS, setHudLaneRulerNode, setHudRegionNode, type HudRegionName 
  * cannot outgrow it). The RIGHT one is only the ViewCube's reach plus the
  * 1rem edge gap. It used to mirror the left one, which kept ~124px clear of
  * a cube that was never there; with the Model workspace's tool rail in the
- * viewport, those pixels were what the Space Sketch bar's one-row form
+ * viewport, those pixels were what the room bar's one-row form
  * needed at 1280px (#6315). So the lane is centred in the space BETWEEN the
  * reserves, not on the viewport. Below `left + right` (phones) the offset
  * fades to zero, and the lane collapses to a centred zero-width column just

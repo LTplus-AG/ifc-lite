@@ -20,8 +20,12 @@ import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { cleanup, click, render } from '@/test/render.js';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { fixtureModels } from '@/test/store-fixture';
+import type { SnapResult } from '@/lib/snap/types';
 import '@/lib/commands/modeling/builtin';
-import { getCommandRuntime } from '@/lib/commands/modeling/runtime';
+import { commandPointerDown, commandPointerMove, getCommandRuntime } from '@/lib/commands/modeling/runtime';
+import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { ViewportHud } from '../../viewport-ui/hud';
 import { WorkspaceStoreyChip } from './WorkspaceStoreyChip';
 
@@ -66,6 +70,46 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
     assert.equal(s.session?.storeyId, UPPER_STOREY);
     assert.equal(getCommandRuntime().command?.id, 'wall.place', 'the command keeps running');
     assert.equal(getCommandRuntime().ctx?.storeyId, UPPER_STOREY, '…on the new storey');
+  });
+
+  it('picking another parsed model targets new writes there, retaining the command and isolation (#6531)', async () => {
+    const first = useViewerStore.getState().models.get(MODEL_ID)!;
+    const firstView = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+    await seedModelingSession({ unit: 'millimetre', storeyOffset: [3, 3] });
+    const parsedSecond = useViewerStore.getState().models.get(MODEL_ID)!;
+    const second = { ...parsedSecond, id: 'structural', name: 'Structural', idOffset: 1_000_000 };
+    const secondView = new MutablePropertyView(second.ifcDataStore!.properties, second.id);
+    act(() => {
+      useViewerStore.setState({
+        ...fixtureModels(first, second),
+        mutationViews: new Map([[first.id, firstView], [second.id, secondView]]),
+      });
+      useViewerStore.getState().enterModelWorkspace({ modelId: first.id, storeyId: STOREY, command: 'wall.place' });
+    });
+    const eye = topLeft()!.querySelector('button[aria-label="Show only this storey"]')!;
+    act(() => click(eye));
+    openList();
+    const pick = document.querySelector('[data-storey-picker] ul[aria-label="Structural"] button')!;
+    assert.ok(pick, 'both editable model groups are exposed by the existing picker');
+    act(() => click(pick));
+    assert.equal(getCommandRuntime().command?.id, 'wall.place');
+    assert.equal(getCommandRuntime().ctx?.modelId, second.id);
+    assert.equal(getCommandRuntime().ctx?.storeyId, UPPER_STOREY);
+    assert.deepEqual(useViewerStore.getState().selectedStoreys, new Set([toGlobalIdFromModels(useViewerStore.getState().models, second.id, UPPER_STOREY)]));
+    const at = (x: number, y: number): SnapResult => ({ local: [x, y], winner: null, guides: [], locked: false, metresPerPixel: 0.02 });
+    const restore = setRequestRemesh(() => {});
+    try {
+      act(() => { commandPointerMove(at(0, 0)); commandPointerDown(at(0, 0)); });
+      act(() => { commandPointerMove(at(4, 0)); commandPointerDown(at(4, 0)); });
+      const written = secondView.getNewEntities().filter((entity) => entity.type === 'IfcWall');
+      assert.equal(written.length, 1, 'the real command writes a wall only to the chosen model');
+      assert.equal(firstView.getNewEntities().length, 0, 'the first model stays untouched');
+      assert.equal(useViewerStore.getState().undoStacks.get(second.id)?.length, 1);
+      act(() => { useViewerStore.getState().undo(second.id); });
+      assert.equal(secondView.getNewEntities().filter((entity) => entity.type === 'IfcWall').length, 0);
+    } finally {
+      restore();
+    }
   });
 
   it('the eye isolates the storey, follows a storey change, and shows all again', () => {

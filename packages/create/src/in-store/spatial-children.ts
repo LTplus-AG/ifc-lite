@@ -10,7 +10,7 @@
  * `IfcRelAggregates` / `IfcRelContainedInSpatialStructure` by their relating
  * element. That index was built from the parsed type buckets only. So:
  *   - a wall deleted this session was still a room divider;
- *   - a space baked in an earlier Space Sketch run (overlay-created, together
+ *   - a space written by an earlier Room tool run (overlay-created, together
  *     with its containment relationship) was not an "existing space", so
  *     baking again produced a duplicate room on top of it.
  *

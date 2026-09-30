@@ -161,17 +161,19 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
       }
       case 'table': {
         const state = input.tables.get(block.id);
+        const headerStyle = block.headerBackground || block.headerTextColor
+          ? tableHeaderStyle(block.headerBackground, block.headerTextColor) : undefined;
         const message = tableMessage(state);
         if (state?.status === 'ok' && message === null) {
           const flat = state.kind === 'validation' || state.kind === 'comparison'
             ? flattenRawModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS)
             : flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS, block.groupOrder);
-          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, headerStyle: block.headerBackground ? tableHeaderStyle(block.headerBackground) : undefined, summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, columns: flat.columns, rows: flat.rows });
+          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, headerStyle, summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, columns: flat.columns, rows: flat.rows });
           break;
         }
         if (state?.status !== 'ok') result.tableFailures.push(block.id);
         // `tableMessage` is non-null for every non-ok state; the fallback only satisfies the types.
-        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, headerStyle: block.headerBackground ? tableHeaderStyle(block.headerBackground) : undefined, summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, message: message ?? 'No rows to print.', columns: [], rows: [] });
+        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, headerStyle, summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, message: message ?? 'No rows to print.', columns: [], rows: [] });
         break;
       }
       case 'ids-report': {

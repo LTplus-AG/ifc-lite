@@ -1,0 +1,18 @@
+{
+  "coverage": "Observed metadata/geometry/renderer logs plus canvas allocation (100ms polling); search, cache-tail memory, properties, picking and Firefox unqualified.",
+  "base": "base",
+  "branch": "branch",
+  "failures": 0,
+  "fixtures": [
+    {"fixture": "AC20", "fingerprint": {"totalMeshes": {"base": [317], "branch": [317]}}, "metrics": [
+      {"metric":"first-batch (geom submitted)","baseMedianMs":141,"branchMedianMs":134,"deltaPct":-4.964539007092199,"noisePct":35.46099290780142,"real":false},
+      {"metric":"first-visible (actual paint)","baseMedianMs":414,"branchMedianMs":466,"deltaPct":12.560386473429952,"noisePct":29.951690821256037,"real":false},
+      {"metric":"stream-complete","baseMedianMs":486,"branchMedianMs":500,"deltaPct":2.880658436213992,"noisePct":48.35390946502058,"real":false},
+      {"metric":"spatial-ready","baseMedianMs":554,"branchMedianMs":599,"deltaPct":8.12274368231047,"noisePct":42.057761732851986,"real":false},
+      {"metric":"metadata-complete","baseMedianMs":609,"branchMedianMs":657,"deltaPct":7.8817733990147785,"noisePct":37.60262725779967,"real":false},
+      {"metric":"METADATA + RENDER (observed)","baseMedianMs":692,"branchMedianMs":721,"deltaPct":4.190751445086705,"noisePct":32.65895953757225,"real":false},
+      {"metric":"app total (legacy CI metric)","baseMedianMs":500,"branchMedianMs":500,"deltaPct":0,"noisePct":40,"real":false}
+    ]}
+  ],
+  "verdict": {"noSuccessfulSamples": false, "fingerprintDrift": false, "tooNoisy": true, "realChange": false, "insufficientPairedSamples": false, "incomparableFixture": false}
+}

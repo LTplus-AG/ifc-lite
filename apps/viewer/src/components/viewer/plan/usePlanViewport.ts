@@ -5,8 +5,8 @@
 /**
  * The plan's viewport (charter #6232, M2 §1.5): its measured size, the
  * `Fit` (screen ↔ workplane-local), wheel zoom about the cursor and drag
- * pan. Zoom goes through Space Sketch's `zoomStep`, so the plan refuses the
- * same out-of-range zoom the sketch does instead of drifting.
+ * pan. Zoom goes through `zoomStep`, so the plan refuses an out-of-range zoom
+ * instead of drifting.
  *
  * The plan frames itself once per storey, as soon as its cut has settled
  * (it arrives after a debounce), and keeps the frame fitted while the pane
@@ -15,8 +15,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
-import type { Fit } from '@/lib/space-sketch-geometry';
-import { zoomStep } from '../tools/space-sketch/space-viewport';
+import type { Fit } from '@/lib/rooms/plate-geometry';
+import { zoomStep } from './plan-zoom';
 
 export interface PlanViewport {
   size: { width: number; height: number };

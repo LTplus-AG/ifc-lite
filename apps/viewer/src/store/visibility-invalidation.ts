@@ -9,7 +9,7 @@
  * ## Why this is a middleware and not a helper
  *
  * These two channels are shared by clash, IDS, "Isolate in 3D", assembly
- * isolation, `LayerDiffView`, Space Sketch, BCF, the basket and
+ * isolation, `LayerDiffView`, BCF, the basket and
  * `syncSourceModel`. Each feature records what it installed so its teardown
  * can release only that, and ownership is tested by VALUE — so a record left
  * behind after ANOTHER owner replaced the channel is not inert: it goes
@@ -33,7 +33,7 @@
  * Invalidation is by CONTENT, not by "somebody wrote": `staleOwnershipReset`
  * is given the channel state the write is about to commit, and a record still
  * content-matching it survives. That is what keeps the content-preserving
- * replays alive — Space Sketch's open/close view capture and
+ * replays alive — a view snapshot's open/close capture and
  * `syncSourceModel`'s rebuild both push an unchanged channel back through
  * `set`, and under a blanket "any write invalidates" rule they would silently
  * convert a feature-owned focus into "user" state, which is #2662 P2 again.

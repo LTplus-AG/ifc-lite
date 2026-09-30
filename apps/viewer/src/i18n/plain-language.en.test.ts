@@ -39,7 +39,6 @@ describe('plain-language English labels (#5875)', () => {
         : [],
     );
     assert.deepEqual(offenders, []);
-    assert.equal(en['spaceSketch.panel.roomCount'].one, '{count} room');
     assert.equal(en['classVisibility.spaces.description'], 'Room volumes (IfcSpace)');
   });
 

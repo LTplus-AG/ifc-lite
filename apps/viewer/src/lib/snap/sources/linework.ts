@@ -4,7 +4,7 @@
 
 /**
  * Linework snap source: explicit 2D points and segments already in the
- * workplane-local frame (Space Sketch room vertices and building lines, the
+ * workplane-local frame (room vertices and building lines, the
  * 2D plan). Candidate order is part of the contract, because the solver's
  * final tie-break is collection order: vertices, then each segment's two
  * endpoints, then optional midpoints, then the segment bodies.
@@ -19,7 +19,7 @@ import type { CollectHint, SnapCandidate, SnapQuery, SnapSource, Vec2 } from '..
 export interface Linework {
   vertices?: readonly Vec2[];
   segments?: readonly (readonly [Vec2, Vec2])[];
-  /** Also offer segment midpoints (off for Space Sketch parity). */
+  /** Also offer segment midpoints (off for room-layout snapping). */
   midpoints?: boolean;
   /**
    * Offer EVERY edge, however far, so extension / parallel / intersection

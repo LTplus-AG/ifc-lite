@@ -5,13 +5,13 @@
 /**
  * Pure view maths for the Model workspace's plan (charter #6232, M2 §1.5):
  * framing, the construction grid and the click pick. The screen transform is
- * Space Sketch's `Fit` (`lib/space-sketch-geometry.ts`, y flipped), so the
- * plan and the sketch zoom, pan and clamp by the same rules; the plan's own
+ * the room layout's `Fit` (`lib/rooms/plate-geometry.ts`, y flipped), so the
+ * plan zooms, pans and clamps by one set of rules; the plan's own
  * frame is workplane-local metres, the frame a command's `SnapResult.local`
  * is in.
  */
 
-import { pointInPoly, polyArea, wX, wY, type Fit, type Pt } from '@/lib/space-sketch-geometry';
+import { pointInPoly, polyArea, wX, wY, type Fit, type Pt } from '@/lib/rooms/plate-geometry';
 import type { Vec2 } from '@/lib/snap/types';
 import type { WallAxis } from '@/lib/snap/sources/semantic';
 import type { PlanCutPolygon, PlanCutLine } from './usePlanCut';
@@ -35,7 +35,7 @@ export function screenToLocal(fit: Fit, sx: number, sy: number): Vec2 {
 
 /**
  * Frame everything the plan draws in a `w`×`h` canvas: centred, as large as
- * fits with a small margin (Space Sketch's fixed 36 px pad left a narrow
+ * fits with a small margin (a fixed 36 px pad left a narrow
  * plan pane a quarter empty).
  */
 export function fitPlan(polygons: readonly PlanCutPolygon[], lines: readonly PlanCutLine[], axes: readonly WallAxis[], w: number, h: number): Fit {

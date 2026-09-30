@@ -21,12 +21,12 @@
  *      Matches the convention emitted by `addWallToStore` /
  *      `IfcCreator.addIfcWall`: placement origin = wall Start,
  *      RefDirection = wall axis, profile XDim = wall length. Used for
- *      walls authored by the Add Element tool or anything else that
+ *      walls authored in the Model workspace or anything else that
  *      mirrors that shape.
  *
  * Walls that match neither shape are skipped with a recorded reason —
  * `WallExtractionResult.skipped[]` carries `{ wallId, reason }` so
- * callers (and the viewer's Auto Spaces UI) can surface why a wall
+ * callers (and the viewer's Room tool) can surface why a wall
  * didn't contribute to the planar graph.
  */
 
@@ -101,7 +101,7 @@ export interface ExtractWallSegmentsOptions {
   /**
    * When true, the extractor emits `console.debug` messages for the
    * containment scan + per-wall extraction step. Useful for diagnosing
-   * "no enclosed regions detected" in the Auto Spaces flow.
+   * "no enclosed regions detected" in the Room tool's Auto.
    */
   debug?: boolean;
   /**

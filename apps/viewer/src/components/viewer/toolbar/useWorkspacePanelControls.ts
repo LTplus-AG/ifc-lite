@@ -27,13 +27,11 @@ import { trackPanelOpened, type UiSurface } from '@/store/uiTelemetry';
  *  branch below could not simply hand the click to the store, so it re-derived
  *  the flag flips and lost the float / pop-out cleanup along the way. */
 export type BottomPanel = BottomPanelId;
-export type RightPanel = 'bcf' | 'validation' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions' | 'sources' | 'appearance';
+export type RightPanel = 'bcf' | 'validation' | 'lens' | 'clash' | 'compare' | 'extensions' | 'sources' | 'appearance';
 export type WorkspacePanel = BottomPanel | RightPanel | string;
 
 /** `surface`: the chrome these controls sit in, reported with each open (#5618). */
 export function useWorkspacePanelControls(surface?: UiSurface) {
-  const activeTool = useViewerStore((state) => state.activeTool);
-  const setActiveTool = useViewerStore((state) => state.setActiveTool);
   const bcfPanelVisible = useViewerStore((state) => state.bcfPanelVisible);
   const setBcfPanelVisible = useViewerStore((state) => state.setBcfPanelVisible);
   const idsPanelVisible = useViewerStore((state) => state.idsPanelVisible);
@@ -111,9 +109,7 @@ export function useWorkspacePanelControls(surface?: UiSurface) {
     // "close" and the detach cleanup below then tore the panel down entirely —
     // where the rail, asking this question properly, brings it home. Toggling a
     // detached panel must re-dock it, never close it out from under its window.
-    // `addElement` is a TOOL, not a registry panel, so it has no detach channel.
-    const detached = panel !== 'addElement'
-      && (floatingPanels.some((p) => p.id === panel) || poppedOutIds.includes(panel));
+    const detached = floatingPanels.some((p) => p.id === panel) || poppedOutIds.includes(panel);
     const docked = (visible: boolean) => visible && !detached;
 
     const nextBcfVisible = panel === 'bcf' ? !docked(bcfPanelVisible) : false;
@@ -123,11 +119,9 @@ export function useWorkspacePanelControls(surface?: UiSurface) {
     const nextCompareVisible = panel === 'compare' ? !docked(comparePanelVisible) : false;
     const nextExtensionsVisible = panel === 'extensions' ? !docked(extensionsPanelVisible) : false;
     const nextSourcesVisible = panel === 'sources' ? !docked(sourcesPanelVisible) : false;
-    const isAddElementActive = activeTool === 'addElement';
-    const nextAddElementActive = panel === 'addElement' ? !isAddElementActive : false;
     // These flags bypass the store's panel actions, so report the open here,
     // with the side slot's occupant as the store's own actions do.
-    if (panel !== 'addElement' && (nextBcfVisible || nextIdsVisible || nextLensVisible || nextClashVisible || nextCompareVisible || nextExtensionsVisible || nextSourcesVisible)) {
+    if (nextBcfVisible || nextIdsVisible || nextLensVisible || nextClashVisible || nextCompareVisible || nextExtensionsVisible || nextSourcesVisible) {
       const { sidebarMode, sidebarActivePanel } = useViewerStore.getState();
       trackPanelOpened(panel, surface, sidebarMode === 'expanded' ? sidebarActivePanel : undefined);
     }
@@ -142,30 +136,20 @@ export function useWorkspacePanelControls(surface?: UiSurface) {
     // Keep the float + window channels in sync (#1200/#1201/#1208): toggling a
     // workspace panel from the toolbar re-docks it if it was floating or popped
     // out, instead of leaving an orphaned floating panel or OS window.
-    if (panel !== 'addElement') {
-      useViewerStore.getState().closeFloatingPanel(panel);
-      closePanelWindow(panel);
-    }
+    useViewerStore.getState().closeFloatingPanel(panel);
+    closePanelWindow(panel);
 
-    if (panel === 'addElement') {
-      setActiveTool(nextAddElementActive ? 'addElement' : 'select');
-    } else if (isAddElementActive) {
-      setActiveTool('select');
-    }
-
-    if (nextBcfVisible || nextIdsVisible || nextLensVisible || nextClashVisible || nextCompareVisible || nextExtensionsVisible || nextSourcesVisible || nextAddElementActive) {
+    if (nextBcfVisible || nextIdsVisible || nextLensVisible || nextClashVisible || nextCompareVisible || nextExtensionsVisible || nextSourcesVisible) {
       setRightPanelCollapsed(false);
     }
   }, [
     activeAnalysisExtension?.placement,
-    activeTool,
     bcfPanelVisible,
     clashPanelVisible,
     comparePanelVisible,
     extensionsPanelVisible,
     idsPanelVisible,
     lensPanelVisible,
-    setActiveTool,
     setBcfPanelVisible,
     setClashPanelVisible,
     setComparePanelVisible,
@@ -211,18 +195,10 @@ export function useWorkspacePanelControls(surface?: UiSurface) {
     setComparePanelVisible(false);
     setExtensionsPanelVisible(false);
     setSourcesPanelVisible(false);
-    // The right slot is single-tenant: when an analysis extension takes
-    // it over, the AddElement tool must release it too, otherwise its 3D
-    // click handler keeps placing elements behind the extension panel.
-    if (activeTool === 'addElement') {
-      setActiveTool('select');
-    }
     setRightPanelCollapsed(false);
   }, [
-    activeTool,
     analysisExtensionState.activeId,
     analysisExtensionState.extensions,
-    setActiveTool,
     setBcfPanelVisible,
     setClashPanelVisible,
     setComparePanelVisible,
@@ -253,7 +229,6 @@ export function useWorkspacePanelControls(surface?: UiSurface) {
     if (comparePanelVisible) panels.add('compare');
     if (extensionsPanelVisible) panels.add('extensions');
     if (sourcesPanelVisible) panels.add('sources');
-    if (activeTool === 'addElement') panels.add('addElement');
     if (layersPanelVisible) panels.add('layers');
     if (collabPanelVisible) panels.add('collab');
     if (sidebarActivePanel === 'zones') panels.add('zones');
@@ -265,7 +240,6 @@ export function useWorkspacePanelControls(surface?: UiSurface) {
     if (analysisExtensionState.activeId) panels.add(analysisExtensionState.activeId);
     return panels;
   }, [
-    activeTool,
     analysisExtensionState.activeId,
     bcfPanelVisible,
     collabPanelVisible,

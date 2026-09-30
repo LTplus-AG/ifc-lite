@@ -18,7 +18,7 @@ import { access, readFile } from 'node:fs/promises';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { GeometryProcessor, type MeshData, type CoordinateInfo } from '@ifc-lite/geometry';
 import { extractWallSegmentsForStorey, storeyPlanFrame } from '@ifc-lite/create';
-import { effectiveStoreyElevation } from '@/components/viewer/add-element-storeys';
+import { effectiveStoreyElevation } from '@/lib/commands/modeling/effective-storeys';
 import { ZERO_ROTATION } from '@/lib/model-placement/rotation';
 import { ZERO_TRANSLATION } from '@/lib/model-placement/translation';
 import type { Vec3 } from './types.js';

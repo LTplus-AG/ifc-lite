@@ -5,7 +5,7 @@
 import type { TranslationValue } from '../types';
 
 /**
- * The Room tool's layout editing and Space Sketch parity (charter #6232 M4,
+ * The Room tool's layout editing (charter #6232 M4,
  * lane A4b): Edit mode, Footprint, Auto on every storey, the corner weld and
  * leak diagnostics. IFC class names and unit symbols stay untranslated.
  */

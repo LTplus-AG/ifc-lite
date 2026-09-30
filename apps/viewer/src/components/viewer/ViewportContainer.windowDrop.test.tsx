@@ -157,7 +157,7 @@ describe('window-level file drop (#5845)', () => {
     stubWebGpu();
     render(<ViewportContainer />);
     await advance(0);
-    // SpaceSketch cancels its own dragstart on every vertex drag; no dragend follows.
+    // A tool that cancels its own dragstart on every vertex drag: no dragend follows.
     const handle = document.createElement('div');
     chrome.appendChild(handle);
     handle.addEventListener('dragstart', (e) => e.preventDefault());

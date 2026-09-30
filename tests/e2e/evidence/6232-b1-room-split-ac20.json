@@ -1,0 +1,85 @@
+{
+  "sourceHead": "16a9dbd5fd1fbc905d6f8bb65a65c44d151999bf",
+  "wasmSha256": "91b587a48a4fc1e9911a6d279e83a3ec6513f5b29f0325d4b0445e35c33a171f",
+  "model": "ArchiCAD AC20-FZK-Haus.ifc",
+  "excluded": "0 new rooms · 0 m² total\n\n14 walls · 21 layout vertices · 25 layout edges\n\n1 open wall ends · 0 walls enclose no room",
+  "summary": "2 new rooms · 36.48 m² total\n\n14 walls · 21 layout vertices · 25 layout edges\n\n1 open wall ends · 0 walls enclose no room",
+  "before": {
+    "modelId": "49904054-e7d8-4756-9dd1-e84e5cf649a3",
+    "undo": 5,
+    "entities": 100
+  },
+  "written": {
+    "modelId": "49904054-e7d8-4756-9dd1-e84e5cf649a3",
+    "undo": 7,
+    "spaces": [
+      {
+        "Name": "Suite 7",
+        "PredefinedType": ".EXTERNAL.",
+        "IsExternal": true
+      },
+      {
+        "Name": "Suite 8",
+        "PredefinedType": ".EXTERNAL.",
+        "IsExternal": true
+      }
+    ]
+  },
+  "split": {
+    "modelId": "49904054-e7d8-4756-9dd1-e84e5cf649a3",
+    "cutPoints": [
+      [
+        -5,
+        -10
+      ],
+      [
+        -5,
+        -5
+      ]
+    ],
+    "layoutCentre": [
+      [
+        -8,
+        -10
+      ],
+      [
+        -2,
+        -10
+      ],
+      [
+        -2,
+        -5
+      ],
+      [
+        -8,
+        -5
+      ]
+    ],
+    "spaces": [
+      {
+        "expressId": 79224,
+        "Name": "Suite 7",
+        "PredefinedType": ".EXTERNAL.",
+        "ObjectType": "IfcLite:GeneratedSpace",
+        "IsExternal": true
+      },
+      {
+        "expressId": 79242,
+        "Name": "Suite 8",
+        "PredefinedType": ".EXTERNAL.",
+        "ObjectType": "IfcLite:GeneratedSpace",
+        "IsExternal": true
+      },
+      {
+        "expressId": 79260,
+        "Name": "Suite 7",
+        "PredefinedType": ".EXTERNAL.",
+        "ObjectType": "IfcLite:GeneratedSpace",
+        "IsExternal": true
+      }
+    ]
+  },
+  "splitUndone": 2,
+  "undone": 0,
+  "errors": []
+}

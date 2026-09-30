@@ -9,7 +9,7 @@
  */
 
 import type { ViewerState } from '@/store';
-import { effectiveStoreyElevation, effectiveStoreyIds } from '@/components/viewer/add-element-storeys';
+import { effectiveStoreyElevation, effectiveStoreyIds } from '@/lib/commands/modeling/effective-storeys';
 import { resolveWorkplane } from './registry.js';
 
 export interface WorkspaceStorey {

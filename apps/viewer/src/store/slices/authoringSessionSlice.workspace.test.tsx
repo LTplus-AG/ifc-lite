@@ -6,7 +6,7 @@
  * Model workspace entry / exit (charter #6232, WP2): edit mode is the
  * workspace — E, the ribbon's Model button and the status-bar chip all go
  * through `setEditEnabled`, which enters / leaves it. Entry honours the
- * collab gate and picks the storey (selection → Add Element panel → first);
+ * collab gate and picks the storey (selection → first);
  * exit cancels the gesture in progress and drops authoring state.
  */
 
@@ -72,12 +72,12 @@ describe('Model workspace entry / exit (#6232 WP2)', () => {
     s.setEditEnabled(true);
     s = useViewerStore.getState();
     assert.equal(s.editEnabled, false, 'no editable model: no workspace, no edit mode');
-    s.setActiveTool('addElement');
+    s.setActiveTool('command');
     assert.equal(useViewerStore.getState().activeTool, 'select', 'nor an authoring tool');
   });
 
   it('an authoring tool enters the workspace', () => {
-    useViewerStore.getState().setActiveTool('addElement');
+    useViewerStore.getState().setActiveTool('command');
     assert.equal(useViewerStore.getState().workspaceMode, 'model');
   });
 

@@ -47,7 +47,7 @@ export const selectionTeardown = defineSliceTeardown(
       selectionRevision: (state.selectionRevision ?? 0) + 1,
       selectedStoreys: new Set<number>(),
       // Drop the shared active storey — it references the outgoing model, so
-      // a new file must not inherit a stale storey for Solo / Space Sketch.
+      // a new file must not inherit a stale storey for Solo / the plan.
       activeStorey: null,
 
       // Selection (multi-model)

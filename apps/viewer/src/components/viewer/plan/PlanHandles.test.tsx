@@ -27,7 +27,7 @@ import '@/lib/commands/modeling/builtin';
 import { commandPointerMove, getCommandRuntime } from '@/lib/commands/modeling/runtime';
 import { beginWallEndpointDrag } from '@/lib/commands/modeling/commands/wall-move-endpoint';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
-import { sX, sY, type Fit } from '@/lib/space-sketch-geometry';
+import { sX, sY, type Fit } from '@/lib/rooms/plate-geometry';
 import type { SnapResult, Vec2 } from '@/lib/snap/types';
 import { PLAN_CUT_DEBOUNCE_MS } from './usePlanCut';
 import { PlanView } from './PlanView';

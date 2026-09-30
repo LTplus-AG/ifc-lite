@@ -41,9 +41,9 @@ export function ensureRoomWasm(t: TestContext): boolean {
 export const r3 = (v: number) => Math.round(v * 1000) / 1000;
 
 /** A wall's box mesh from `a` to `b` (storey-local plan, metres), 0.2 m thick, from `z0` to `z1`. */
-export function wallMesh(expressId: number, a: Vec2, b: Vec2, z0 = 0, z1 = 3): MeshData {
+export function wallMesh(expressId: number, a: Vec2, b: Vec2, z0 = 0, z1 = 3, thickness = 0.2): MeshData {
   const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-  const nx = -(b[1] - a[1]) / len * 0.1, ny = (b[0] - a[0]) / len * 0.1;
+  const nx = -(b[1] - a[1]) / len * thickness / 2, ny = (b[0] - a[0]) / len * thickness / 2;
   const plan: Vec2[] = [[a[0] + nx, a[1] + ny], [b[0] + nx, b[1] + ny], [b[0] - nx, b[1] - ny], [a[0] - nx, a[1] - ny]];
   const positions = new Float32Array([z0, z1].flatMap((h) => plan.flatMap(([x, y]) => [x, h, -y])));
   return {
@@ -56,10 +56,10 @@ export function wallMesh(expressId: number, a: Vec2, b: Vec2, z0 = 0, z1 = 3): M
 export const BOX: Wall[] = [[[0, 0], [8, 0]], [[8, 0], [8, 5]], [[8, 5], [0, 5]], [[0, 5], [0, 0]]];
 
 /** Put these walls (storey L0, 0–3 m; `upper`: L1, 3–6 m) in the model's rendered geometry, as a re-mesh would. */
-export function setWallMeshes(walls: readonly Wall[], upper: readonly Wall[] = []): void {
+export function setWallMeshes(walls: readonly Wall[], upper: readonly Wall[] = [], thickness = 0.2): void {
   const meshes = [
-    ...walls.map(([a, b], i) => wallMesh(9000 + i, a, b)),
-    ...upper.map(([a, b], i) => wallMesh(9500 + i, a, b, 3, 6)),
+    ...walls.map(([a, b], i) => wallMesh(9000 + i, a, b, 0, 3, thickness)),
+    ...upper.map(([a, b], i) => wallMesh(9500 + i, a, b, 3, 6, thickness)),
   ];
   const s = useViewerStore.getState();
   const model = s.models.get(MODEL_ID)!;

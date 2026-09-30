@@ -487,7 +487,7 @@ export function Viewport({
   const selectedEntityIdRef = useLatestRef(selectedEntityId);
   const selectedEntityIdsRef = useLatestRef(selectedEntityIds);
   const ifcDataStoreRef = useLatestRef(ifcDataStore);
-  const authoringOverlay = useAuthoringOverlay(rendererRef); // Space Sketch + command ghosts (#6232)
+  const authoringOverlay = useAuthoringOverlay(rendererRef); // command ghosts (#6232)
 
   const selectedModelIndexRef = useLatestRef(selectedModelIndex);
   // Per-element clash A/B highlight tints (#1277/#1339) — kept in a ref so the
@@ -645,22 +645,12 @@ export function Viewport({
 
     // Set cursor based on active tool. Section + pick-armed gets a
     // crosshair to telegraph "click a face".
-    if (activeTool === 'measure' || activeTool === 'annotate' || activeTool === 'addElement') {
+    if (activeTool === 'measure' || activeTool === 'annotate') {
       canvas.style.cursor = 'crosshair';
     } else if (activeTool === 'section' && sectionPickMode) {
       canvas.style.cursor = 'crosshair';
     } else {
       canvas.style.cursor = 'default';
-    }
-
-    // Clear add-element pending state + hover point when leaving the
-    // tool so the SVG overlay doesn't paint stale geometry from a
-    // previous session.
-    if (activeTool !== 'addElement') {
-      const state = useViewerStore.getState();
-      if (state.addElementPendingPoints.length > 0 || state.addElementHoverPoint !== null) {
-        state.clearAddElementPending();
-      }
     }
   }, [activeTool, activeMeasurement, cancelMeasurement, sectionPickMode, setSectionPickMode]);
 

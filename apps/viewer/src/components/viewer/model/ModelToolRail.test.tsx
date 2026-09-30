@@ -4,7 +4,7 @@
 
 /**
  * The Model tool rail (charter #6232, M2.1): only in the workspace; Wall
- * starts `wall.place` without reopening the Add Element panel; a tool that
+ * starts `wall.place`; a tool that
  * cannot start is disabled with its reason; Leave leaves.
  */
 
@@ -19,7 +19,6 @@ import { cleanup, click, render } from '@/test/render.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import '@/lib/commands/modeling/builtin';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
-import { selectAddElementPanelOpen } from '../add-element-wall-command';
 import { TOOL_SURFACE_COMMANDS } from '../surface-commands-tools';
 import { ModelToolRail } from './ModelToolRail';
 
@@ -33,7 +32,7 @@ function mount(): HTMLElement {
 
 beforeEach(async () => {
   await seedModelingSession();
-  useViewerStore.setState({ editEnabled: false, selectedEntityId: null, addElementDrawsWall: false });
+  useViewerStore.setState({ editEnabled: false, selectedEntityId: null });
 });
 afterEach(() => {
   cleanup();
@@ -60,16 +59,13 @@ describe('Model tool rail (#6232 M2.1)', () => {
     assert.notEqual(useViewerStore.getState().sidebarActivePanel, 'changeSets');
   });
 
-  it('Wall starts wall.place on the session storey, and the Add Element panel stays shut', () => {
-    // A stale panel launch must not make the rail's wall reopen the panel.
-    useViewerStore.setState({ addElementDrawsWall: true });
+  it('Wall starts wall.place on the session storey', () => {
     const ui = mount();
     act(() => { useViewerStore.getState().enterModelWorkspace(); });
     act(() => click(tool(ui, 'wall.place')!));
     const s = useViewerStore.getState();
     assert.equal(s.session?.activeCommandId, 'wall.place');
     assert.equal(s.session?.storeyId, STOREY);
-    assert.equal(selectAddElementPanelOpen(s), false);
     assert.equal(tool(ui, 'wall.place')?.getAttribute('aria-pressed'), 'true');
     act(() => click(tool(ui, 'select')!));
     assert.equal(useViewerStore.getState().session?.activeCommandId ?? null, null, 'Select ends the command');

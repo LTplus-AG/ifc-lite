@@ -20,10 +20,11 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { ListDefinition } from '@ifc-lite/lists';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
+import { jsPDF } from 'jspdf';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { render, click, cleanup, type as typeInput } from '@/test/render.js';
 import type { DocumentPdfSeams } from '@/lib/document/generate-document-pdf.js';
-import type { ReportTableArgs } from '@/lib/export/report/generate-report-pdf.js';
+import { browserReportSeams, type ReportTableArgs } from '@/lib/export/report/generate-report-pdf.js';
 import { DOCUMENT_VERSION, type DocumentSpec, type ListTableSource, type TableBlock } from '@/lib/document/types.js';
 import type { TableState } from '@/lib/document/resolve-table.js';
 import { loadDocuments, parseDocumentFile } from '@/lib/document/persistence';
@@ -112,6 +113,31 @@ const wallList = (extra: Partial<ListDefinition> = {}): ListDefinition => ({
 const tableDoc = (blocks: TableBlock[]): DocumentSpec => ({ version: DOCUMENT_VERSION, id: 'doc-t', name: 'Tables', page: { size: 'A4', orientation: 'portrait' }, blocks });
 const tableBlock = (id: string, list: ListDefinition, extra: Partial<TableBlock> = {}): TableBlock => ({ kind: 'table', id, source: { kind: 'list', list, fromListId: list.id }, ...extra });
 
+function recordingBrowserSeams(tables: ReportTableArgs[], outputs: Blob[]): () => Promise<DocumentPdfSeams> {
+  return async () => {
+    const browser = await browserReportSeams(null, DEFAULT_THEME);
+    return {
+      ...browser,
+      createDoc: async (format, orientation) => {
+        const pdfWindow = window as Window & { jspdf?: { jsPDF: typeof jsPDF } };
+        const priorJsPdf = pdfWindow.jspdf;
+        pdfWindow.jspdf = { jsPDF };
+        try {
+          const doc = await browser.createDoc(format, orientation);
+          return {
+            ...doc,
+            table: (args) => { tables.push(args); doc.table(args); },
+            output: () => { const output = doc.output(); outputs.push(output); return output; },
+          };
+        } finally {
+          pdfWindow.jspdf = priorJsPdf;
+        }
+      },
+      imageSize: async () => ({ w: 2, h: 1 }),
+    };
+  };
+}
+
 function recordingSeams(tables: ReportTableArgs[], texts: string[] = []): () => Promise<DocumentPdfSeams> {
   return async () => ({
     createDoc: async () => ({
@@ -149,14 +175,15 @@ describe('DocumentPanel table block (#5142)', () => {
   });
   afterEach(() => cleanup());
 
-  it('edits independent group order and readable header colour, persists them and prints both parsed IFC tables (#6489)', async () => {
+  it('edits group order and header colours, persists them and prints parsed IFC tables (#6543)', async () => {
     const list = wallList({ name: 'Products by class', entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcDoor],
       columns: [{ id: 'class', source: 'attribute', propertyName: 'Class' }, { id: 'name', source: 'attribute', propertyName: 'Name' }],
       grouping: { columnId: 'class', sumColumnIds: [] } });
     const doc = tableDoc([tableBlock('t1', list), tableBlock('t2', list)]);
     useViewerStore.setState({ documents: [doc], activeDocumentId: doc.id, listDefinitions: [list] });
     const tables: ReportTableArgs[] = [];
-    const ui = render(<DocumentPanel pdfSeams={recordingSeams(tables)} />);
+    const pdfOutputs: Blob[] = [];
+    const ui = render(<DocumentPanel pdfSeams={recordingBrowserSeams(tables, pdfOutputs)} />);
     await settle(); await runLists();
     const groupLabels = (id: string): string[] => [...ui.querySelectorAll(`[data-preview-block="${id}"] tr[data-role="group"]`)].map((r) => r.firstElementChild?.textContent ?? '');
     assert.deepEqual(groupLabels('t1'), ['IfcWall  (2)', 'IfcDoor  (1)']);
@@ -172,21 +199,29 @@ describe('DocumentPanel table block (#5142)', () => {
     const header = ui.querySelector<HTMLElement>('[data-preview-block="t2"] th'); assert.ok(header);
     assert.equal(header.style.backgroundColor, '#ffee88');
     assert.equal(header.style.color, '#000000');
+    const headerTextColor = editor.querySelector<HTMLInputElement>('input[aria-label="Header text"]'); assert.ok(headerTextColor);
+    typeInput(headerTextColor, '#6b21a8'); await settle();
+    assert.equal(header.style.color, '#6b21a8', 'the preview renders the authored header ink');
     const persisted = loadDocuments().find((d) => d.id === doc.id); assert.ok(persisted);
     const imported = parseDocumentFile(JSON.stringify(persisted));
     const second = imported.blocks[1]; assert.ok(second?.kind === 'table');
     // File import allocates fresh block ids; presentation and order survive the copy.
-    assert.equal(second.groupOrder, 'label'); assert.equal(second.headerBackground, '#ffee88');
+    assert.equal(second.groupOrder, 'label'); assert.equal(second.headerBackground, '#ffee88'); assert.equal(second.headerTextColor, '#6b21a8');
     click(ui.querySelector('[data-document-export]')!);
     for (let i = 0; i < 20 && tables.length < 2; i++) await settle();
     assert.equal(tables.length, 2);
     assert.deepEqual(tables[0].body.filter((_, i) => tables[0].rowRoles?.[i] === 'group').map((r) => r[0]), groupLabels('t1'));
     assert.deepEqual(tables[1].body.filter((_, i) => tables[1].rowRoles?.[i] === 'group').map((r) => r[0]), groupLabels('t2'));
-    assert.deepEqual(tables[1].headerStyle, { backgroundColor: '#ffee88', textColor: '#000000' });
+    assert.deepEqual(tables[1].headerStyle, { backgroundColor: '#ffee88', textColor: '#6b21a8' }, 'the generated PDF layout carries the authored text colour');
+    assert.equal(pdfOutputs.length, 1);
+    assert.equal(pdfOutputs[0]?.type, 'application/pdf');
+    assert.ok((pdfOutputs[0]?.size ?? 0) > 0, 'the configured table is included in a real generated PDF');
+    click(editor.querySelector('button[aria-label="Reset table header text color"]')!); await settle();
+    assert.equal(header.style.backgroundColor, '#ffee88'); assert.equal(header.style.color, '#000000', 'reset returns to automatic contrast');
     click(editor.querySelector('button[aria-label="Reset table header background"]')!); await settle();
     assert.equal(header.style.backgroundColor, '#334155'); assert.equal(header.style.color, '#ffffff');
     const reset = loadDocuments().find((d) => d.id === doc.id)?.blocks.find((b) => b.id === 't2');
-    assert.ok(reset?.kind === 'table'); assert.equal(reset.headerBackground, undefined);
+    assert.ok(reset?.kind === 'table'); assert.equal(reset.headerBackground, undefined); assert.equal(reset.headerTextColor, undefined);
     assert.equal(reset.groupOrder, 'label', 'resetting the palette preserves group ordering');
   });
 

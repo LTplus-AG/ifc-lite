@@ -6,7 +6,7 @@
  * Energy Model export dialog. Builds a Ladybug Tools model analytically from IFC bytes
  * (rooms from IfcSpace volumes). When the model's mutation overlay carries actual edits,
  * the bytes are the CURRENT model re-serialized through `StepExporter` — NOT the retained
- * source bytes — so spaces created in-app (e.g. by the Space Sketch tool) are included
+ * source bytes — so spaces created in-app (e.g. by the Room tool) are included
  * (#1908). An unedited model falls straight through to its source bytes; see
  * `energy-export-source.ts` for why the gate is `hasPendingChanges()` and not merely
  * "a mutation view exists". Two targets, and BOTH go through that same gate — DFJSON
@@ -119,7 +119,7 @@ export function EnergyModelExportDialog({ surface, trigger }: EnergyModelExportD
         throw new Error(t('geometryExport.energy.modelDataUnavailableError'));
       }
       // Serialize the CURRENT model (with mutations applied) to IFC bytes so
-      // in-app edits — e.g. spaces created by the Space Sketch tool — are in
+      // in-app edits — e.g. spaces created by the Room tool — are in
       // the export; reading the retained source bytes alone would miss them.
       // Only when the overlay actually carries edits, though: a registered but
       // untouched view is the common case (the Properties panel,

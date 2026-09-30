@@ -3,8 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Authoring ghost meshes (charter #6232, WP2): Space Sketch's draft rooms and
- * a modeling command's preview go straight into the renderer scene, NOT
+ * Authoring ghost meshes (charter #6232, WP2): a modeling command's preview (including the Room tool's draft rooms) go straight into the renderer scene, NOT
  * through `geometryResult`, so per-frame updates cannot trip the streaming
  * reclassifier. One channel per producer: replacing one channel's meshes never
  * touches another's. Uploads run through `runGpuUpload` (#4885) with device

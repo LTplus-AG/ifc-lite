@@ -64,7 +64,7 @@ export interface GenerateSpacesOptions {
   /**
    * When true, every stage of the pipeline (wall extraction →
    * detection) emits `console.debug` messages so the viewer's
-   * Auto Spaces "no regions detected" failure mode can be diagnosed
+   * Room tool Auto "no regions detected" failure mode can be diagnosed
    * from devtools without touching the algorithm. The result also
    * carries detection stats unconditionally.
    */

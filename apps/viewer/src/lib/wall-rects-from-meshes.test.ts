@@ -204,7 +204,7 @@ describe('wallRectsFromMeshes', () => {
   });
 
   it('room frame + roomFrameToModelWorld IS the model\'s own world frame', () => {
-    // The contract the Space Sketch bake rests on (#4500). It folds the outline
+    // The contract the Room tool's derive rests on (#4500). It folds the outline
     // through the storey's placement chain, which it reads out of the STEP
     // file, so the outline has to be in the frame those placements resolve in.
     // `roomFrameToModelWorld` is what states the room frame's relation to that

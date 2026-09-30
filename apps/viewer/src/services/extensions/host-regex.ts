@@ -61,8 +61,7 @@ export class HostRegexEvaluator {
    * Un-poison the worker client (#4505 finding C): React StrictMode's
    * mount/cleanup/mount re-invokes `ExtensionHostService.init()` on the SAME
    * service instance after `dispose()`'s cleanup latched the client — mirrors
-   * `useSpacePlateSessions.ts`'s `disposedRef` reset on its own (re)mount
-   * effect. No-op if never disposed.
+   * the remount reset other long-lived hooks do. No-op if never disposed.
    */
   reset(): void {
     this.client.reset();

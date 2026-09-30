@@ -13,7 +13,7 @@ import { useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import type { Workplane } from '@/lib/commands/modeling/types';
-import type { Fit } from '@/lib/space-sketch-geometry';
+import type { Fit } from '@/lib/rooms/plate-geometry';
 import type { Vec2 } from '@/lib/snap/types';
 import type { PlanCutPolygon } from './usePlanCut';
 import { toScreen } from './PlanLayers';

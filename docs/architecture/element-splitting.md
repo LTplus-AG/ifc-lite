@@ -392,8 +392,8 @@ interface SplitToolSlice {
 }
 ```
 
-Goes in a new `splitToolSlice.ts`, same shape as the existing
-`addElementSlice` (mode + anchor + hover + parameters).
+Goes in a new `splitToolSlice.ts`, same shape as the other tool slices
+(mode + anchor + hover + parameters).
 
 ## Store actions
 
@@ -459,7 +459,7 @@ Module limits respected: each stays under 400 LOC.
 ## Visual feedback layer
 
 New overlay `SplitOverlay.tsx` in `tools/`, sibling to
-`AddElementOverlay` / `GizmoOverlay` / `WallEndpointOverlay`.
+`GizmoOverlay` / `WallEndpointOverlay`.
 Mounted by `ToolOverlays` when `activeTool === 'split'`. Renders:
 
 - Cursor knife glyph (CSS cursor on the canvas)
@@ -467,7 +467,7 @@ Mounted by `ToolOverlays` when `activeTool === 'split'`. Renders:
   override pipeline — set a transient `pendingColorUpdates` entry,
   clear on hover-out)
 - Guide line — SVG anchored to projected world positions
-- Snap markers — reused from `AddElementOverlay`'s snap glyphs
+- Snap markers — reused from the snap engine's glyphs
 - Distance / percent readout — HTML over canvas, positioned at
   the cut point
 - Numeric input panel — same shape as the existing measure-tool

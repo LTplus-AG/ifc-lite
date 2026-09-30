@@ -15,7 +15,7 @@ const gesture = (overrides: Partial<PointerGestureInput> = {}) =>
   resolvePointerGesture({ ...base, ...overrides });
 
 describe('pointer gesture mapping (#5887)', () => {
-  const tools = ['select', 'measure', 'pan', 'walk', 'section', 'addElement', 'command', 'appearance-face'];
+  const tools = ['select', 'measure', 'pan', 'walk', 'section', 'command', 'appearance-face'];
 
   for (const tool of tools) {
     it(`${tool}: Shift+left always pans, including with Ctrl, Meta, or Alt`, () => {
@@ -51,7 +51,7 @@ describe('pointer gesture mapping (#5887)', () => {
 
   it('Pan claims plain left; other tools leave plain left for orbit', () => {
     assert.equal(gesture({ tool: 'pan' }), 'pan');
-    for (const tool of ['walk', 'section', 'addElement', 'command', 'appearance-face']) {
+    for (const tool of ['walk', 'section', 'command', 'appearance-face']) {
       assert.equal(gesture({ tool }), 'orbit');
     }
   });

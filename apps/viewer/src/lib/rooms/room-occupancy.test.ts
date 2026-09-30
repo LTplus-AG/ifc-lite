@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { isSimpleRing, occupancyTest } from './room-occupancy.js';
-import type { Pt } from '@/lib/space-sketch-geometry';
+import type { Pt } from '@/lib/rooms/plate-geometry';
 
 describe('room occupancy (#6232 M4)', () => {
   it('tells a footprint ring from the vertex cloud a faceted IfcSpace footprint reads back as', () => {

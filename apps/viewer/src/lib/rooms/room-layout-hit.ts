@@ -3,13 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * What the cursor is over in the Room tool's Edit mode (charter #6232 M4,
- * Space Sketch's pick rules): a layout corner, else a layout edge (with the
+ * What the cursor is over in the Room tool's Edit mode (charter #6232 M4): a layout corner, else a layout edge (with the
  * rooms on either side), within a screen-sized tolerance. Pure geometry on
  * the faces' wall-axis outlines, so a hover never calls into wasm.
  */
 
-import { distToSeg, projectOnSeg, type Pt } from '@/lib/space-sketch-geometry';
+import { distToSeg, projectOnSeg, type Pt } from '@/lib/rooms/plate-geometry';
 import type { LayoutFace } from './room-layout';
 
 export type LayoutHit =

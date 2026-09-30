@@ -32,6 +32,8 @@ export interface NewRoom {
   /** Storey-local height of the floor it stands on (the workplane offset). */
   z: number;
   name: string;
+  PredefinedType?: string;
+  ObjectType?: string;
   grossArea: number;
   netArea: number;
   /** Derived from walls (Auto, a picked face) rather than drawn freehand. */
@@ -46,7 +48,8 @@ export function addRoom(get: Get, modelId: string, storeyId: number, room: NewRo
     Position: [0, 0, room.z],
     Height: room.height,
     Name: room.name,
-    ...(room.derived ? { ObjectType: GENERATED_SPACE_OBJECTTYPE } : {}),
+    ...(room.PredefinedType !== undefined ? { PredefinedType: room.PredefinedType } : {}),
+    ...(room.ObjectType ? { ObjectType: room.ObjectType } : room.derived ? { ObjectType: GENERATED_SPACE_OBJECTTYPE } : {}),
     grossFloorArea: room.grossArea,
     netFloorArea: room.netArea,
   });

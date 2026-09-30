@@ -49,7 +49,7 @@ export interface ViewportWelcomeCardProps {
   webgpu: Pick<WebGPUStatus, 'supported' | 'checking'>;
   /** Open the file picker (File System Access API or the hidden input). */
   onOpenClick: () => void;
-  /** Create an empty IFC and drop the user into the add-element tool. */
+  /** Create an empty IFC and drop the user into the Model workspace's wall tool. */
   onStartBlank: () => void;
   recentFiles: RecentFileEntry[];
   /** The canonical load path (`useIfcLoader.loadFile`) for a cached recent file. */

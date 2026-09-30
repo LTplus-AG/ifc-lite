@@ -34,8 +34,6 @@ const DISPATCHER_CONTEXTS = {
   overlay: true,
   'tool.walk': true,
   'tool.measure': true,
-  'tool.addElement': true,
-  'tool.spaceSketch': true,
   command: true,
   'command.wall.place': true, // Representative command-specific context.
   'workspace.model': true,
@@ -61,7 +59,7 @@ describe('keyboard command table (#5836)', () => {
     assert.equal(collisions([undo, clash]).length, 1);
     // The same chord in another context is not a clash: a tool context wins
     // over `global` while the tool is active.
-    assert.deepEqual(collisions([undo, { ...clash, when: 'tool.spaceSketch' }]), []);
+    assert.deepEqual(collisions([undo, { ...clash, when: 'tool.measure' }]), []);
   });
 
   it('rejects a duplicated chord in every dispatcher when context (#5878)', () => {

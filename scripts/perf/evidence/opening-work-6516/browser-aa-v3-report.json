@@ -1,0 +1,26 @@
+{
+  "coverage": "Observed metadata/geometry/renderer logs plus canvas allocation (100ms polling); search, cache-tail memory, properties, picking and Firefox unqualified.",
+  "base": "A",
+  "branch": "B",
+  "failures": 0,
+  "fixtures": [
+    {"fixture": "public455", "fingerprint": {"totalMeshes": {"A": [3], "B": [3]}}, "metrics": [
+      {"metric":"first-visible (actual paint)","baseMedianMs":1214,"branchMedianMs":1252,"deltaPct":3.130148270181219,"noisePct":5.0247116968698515,"real":false},
+      {"metric":"stream-complete","baseMedianMs":1196,"branchMedianMs":1230,"deltaPct":2.842809364548495,"noisePct":4.849498327759197,"real":false},
+      {"metric":"spatial-ready","baseMedianMs":1518,"branchMedianMs":1546,"deltaPct":1.844532279314888,"noisePct":4.808959156785244,"real":false},
+      {"metric":"metadata-complete","baseMedianMs":1572,"branchMedianMs":1605,"deltaPct":2.099236641221374,"noisePct":4.071246819338422,"real":false},
+      {"metric":"METADATA + RENDER (observed)","baseMedianMs":1687,"branchMedianMs":1702,"deltaPct":0.8891523414344991,"noisePct":6.342620035566093,"real":false},
+      {"metric":"app total (legacy CI metric)","baseMedianMs":1200,"branchMedianMs":1300,"deltaPct":8.333333333333332,"noisePct":8.333333333333332,"real":false}
+    ]},
+    {"fixture": "AC20", "fingerprint": {"totalMeshes": {"A": [317], "B": [317]}}, "metrics": [
+      {"metric":"first-batch (geom submitted)","baseMedianMs":131,"branchMedianMs":153,"deltaPct":16.793893129770993,"noisePct":12.213740458015266,"real":true},
+      {"metric":"first-visible (actual paint)","baseMedianMs":418,"branchMedianMs":436,"deltaPct":4.30622009569378,"noisePct":23.444976076555022,"real":false},
+      {"metric":"stream-complete","baseMedianMs":489,"branchMedianMs":596,"deltaPct":21.881390593047033,"noisePct":14.723926380368098,"real":true},
+      {"metric":"spatial-ready","baseMedianMs":573,"branchMedianMs":685,"deltaPct":19.546247818499126,"noisePct":10.645724258289704,"real":true},
+      {"metric":"metadata-complete","baseMedianMs":643,"branchMedianMs":744,"deltaPct":15.707620528771384,"noisePct":10.10886469673406,"real":true},
+      {"metric":"METADATA + RENDER (observed)","baseMedianMs":703,"branchMedianMs":823,"deltaPct":17.069701280227594,"noisePct":7.681365576102419,"real":true},
+      {"metric":"app total (legacy CI metric)","baseMedianMs":500,"branchMedianMs":600,"deltaPct":20,"noisePct":20,"real":false}
+    ]}
+  ],
+  "verdict": {"noSuccessfulSamples": false, "fingerprintDrift": false, "tooNoisy": false, "realChange": true, "insufficientPairedSamples": false, "incomparableFixture": false}
+}

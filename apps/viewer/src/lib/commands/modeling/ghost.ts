@@ -17,7 +17,7 @@ import type { Workplane } from './types.js';
 import { prismGhostMesh, segmentOutline } from './ghost-shapes.js';
 
 /**
- * Command ghosts live above Space Sketch's band (0x70000000): one channel's
+ * Command ghosts live in their own band, above every real federated id: one channel's
  * removal must never take the other's meshes, and both stay above every
  * real federated id.
  */

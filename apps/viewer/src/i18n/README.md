@@ -88,9 +88,7 @@ allowlist — except the bare "m" JSX text node next to the live geo readout,
 which trips the gate despite the symbol allowlist (a single ASCII letter with
 no modifier glyph isn't a recognized cluster) and was keyed as
 `measure.geo.unitMeters` by the #4918 grab-bag slice, filling in a key this
-slice had reserved with a comment but left unadded. The Space Sketch tool catalogue (`space-sketch.en.ts`) covers
-`SpaceSketchOverlay.tsx` and its `space-sketch/` popovers, canvas, and
-reopen pill. The wall-split tool catalogue (`split-tool.en.ts`) covers
+slice had reserved with a comment but left unadded. The wall-split tool catalogue (`split-tool.en.ts`) covers
 `SplitNumericInput.tsx` and `SplitOverlay.tsx`. `SectionPanel.tsx`'s one
 remaining literal was added to the existing `section-tool.en.ts` catalogue
 rather than a new file.
@@ -160,12 +158,6 @@ flow), the mesh/point capture previews and face-mask picker, and the scan
 capture/alignment/transfer workflows. It is a sibling to
 `appearance-assignment-list.en.ts` / `appearance-assignment-members.en.ts`,
 which cover `AppearanceAssignmentList`/`AppearanceAssignmentMembers`.
-
-The Add Element authoring catalogue (#4918 editor-workflow slice) covers
-`AddElementPanel.tsx`: element and dimension controls, complete placement
-guidance messages, accessibility labels, and the Auto Spaces preview and
-generation states (`add-element.en.ts`). IFC enum values remain exact EXPRESS
-identifiers and are rendered from a typed data table rather than translated.
 
 The property-editor catalogue (#4918 editor-workflow slice) covers
 `PropertyEditor.tsx`: inline value and type editing, scope confirmation,

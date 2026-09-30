@@ -6,9 +6,9 @@
  * In-store authoring walks read the session's effective model (#5249): real
  * parsed IFC, real `MutablePropertyView` + `StoreEditor`.
  *
- *  - Auto Spaces: a wall deleted this session is no longer a room divider,
+ *  - Room Auto: a wall deleted this session is no longer a room divider,
  *    and a retype into a non-divider class takes it out too.
- *  - Space Sketch dedup: a space deleted this session is not "existing", and
+ *  - Room-tool dedup: a space deleted this session is not "existing", and
  *    a space created this session (baked earlier) is, so baking again does
  *    not stack a duplicate room on it.
  *  - Duplicate: an association relationship deleted this session is not
@@ -100,7 +100,7 @@ const dividers = (store: IfcDataStore, view: MutablePropertyView | undefined) =>
   extractWallSegmentsForStorey(store, 4, view).contributingWallIds.slice().sort((a, b) => a - b);
 
 describe('in-store authoring over the edited model (#5249)', () => {
-  it('Auto Spaces: a deleted or retyped-away wall is no longer a divider', async () => {
+  it('Room Auto: a deleted or retyped-away wall is no longer a divider', async () => {
     const { store, view, editor } = await session();
     expect(dividers(store, view)).toEqual([50, 51]);
     editor.removeEntity(51);
@@ -109,7 +109,7 @@ describe('in-store authoring over the edited model (#5249)', () => {
     expect(dividers(store, view)).toEqual([]);
   });
 
-  it('Space Sketch dedup: a deleted space is not existing, a baked one is', async () => {
+  it('Room-tool dedup: a deleted space is not existing, a baked one is', async () => {
     const { store, view, editor } = await session();
     expect(existingSpaceFootprintsByStorey(store, view).get(4)).toHaveLength(1);
 
@@ -167,7 +167,7 @@ describe('in-store authoring over the edited model (#5249)', () => {
 });
 
 describe('in-store authoring review follow-up (#5249)', () => {
-  it('Auto Spaces: a created wall retyped away is not a divider; a created one is counted once', async () => {
+  it('Room Auto: a created wall retyped away is not a divider; a created one is counted once', async () => {
     const { store, view, editor } = await session();
     const anchor = resolveSpatialAnchor(store, 4, view)!;
     const created = addWallToStore(editor, anchor, { Start: [0, 5, 0], End: [5, 5, 0], Thickness: 0.2, Height: 3 }).wallId;
@@ -177,7 +177,7 @@ describe('in-store authoring review follow-up (#5249)', () => {
     expect(extractWallSegmentsForStorey(store, 4, view).contributingWallIds).not.toContain(created);
   });
 
-  it('Auto Spaces: a positional edit that moves a wall out of the containment removes it', async () => {
+  it('Room Auto: a positional edit that moves a wall out of the containment removes it', async () => {
     const { store, view } = await session();
     view.setPositionalAttribute(79, 4, ['#50']);
     expect(dividers(store, view)).toEqual([50]);
@@ -203,7 +203,7 @@ describe('in-store authoring review follow-up (#5249)', () => {
     expect(storeys[1]).toMatchObject({ name: 'Level 2', elevation: 3 });
   });
 
-  it('Space Sketch dedup on a millimetre model: parsed spaces are scaled to metres, baked ones are not', async () => {
+  it('Room-tool dedup on a millimetre model: parsed spaces are scaled to metres, baked ones are not', async () => {
     const mm = IFC.replace("IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)", "IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)");
     const store: IfcDataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(mm).buffer);
     const view = new MutablePropertyView(store.properties ?? null, 'm');

@@ -6,8 +6,8 @@
  * The one plan-cut path (charter #6232 M2.4): the storey plan's frame maps a
  * cut point to the same workplane-local point the workplane itself does
  * (whatever the plane offset), the cut runs through the real
- * `Drawing2DGenerator`, and Space Sketch's construction underlay, now a thin
- * frame over the same hook, still lands in the room frame (ifcX, ifcY).
+ * `Drawing2DGenerator`, and the cut hook keeps its guards (mesh limit, re-cut
+ * on an in-place edit, no stale storey).
  */
 
 import '@/test/setup-dom.js';
@@ -21,8 +21,10 @@ import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-f
 import '@/lib/commands/modeling/builtin';
 import { resolveWorkplane } from '@/lib/commands/modeling/registry';
 import type { Workplane } from '@/lib/commands/modeling/types';
-import { useConstructionUnderlay, type UnderlayLine } from '@/hooks/useConstructionUnderlay';
-import { PLAN_CUT_DEBOUNCE_MS, PLAN_CUT_HEIGHT, PLAN_CUT_MESH_LIMIT, mapPlanDrawing, modelPlacementOf, planCutFrame } from './usePlanCut';
+import {
+  PLAN_CUT_DEBOUNCE_MS, PLAN_CUT_HEIGHT, PLAN_CUT_MESH_LIMIT, identityKey, mapPlanDrawing, modelPlacementOf, planCutFrame, usePlanCutDrawing,
+  type PlanCutRequest, type PlanCutResult,
+} from './usePlanCut';
 
 const settle = () => act(() => new Promise<void>((r) => setTimeout(r, PLAN_CUT_DEBOUNCE_MS + 250)));
 
@@ -67,14 +69,26 @@ describe('planCutFrame', () => {
   });
 });
 
-describe('useConstructionUnderlay on the shared cut', () => {
-  it('draws a wall cut at floor + 1.2 m in the room frame (ifcX, ifcY)', async () => {
-    // A 4 m × 0.2 m wall, 3 m tall, at ifc (0..4, 0..0.2): render z = −ifcY.
-    const geometry = { ...useViewerStore.getState().geometryResult, meshes: [box(90, [0, 0, -0.2], [4, 3, 0])] } as GeometryResult;
-    useViewerStore.setState({ geometryResult: geometry });
-    let seen: UnderlayLine[] = [];
+/** A plan-cut request in a frame of (renderX, −renderZ), keyed like the plan's own (geometry identity + versions). */
+function request(floor: number, meshes: MeshData[], geometry: object, mutationVersion: number): PlanCutRequest {
+  return {
+    scope: `test:${floor}`,
+    key: `test:${floor}:${identityKey(geometry)}:${mutationVersion}:${meshes.length}`,
+    meshes,
+    cutY: floor + PLAN_CUT_HEIGHT,
+    meshLimit: PLAN_CUT_MESH_LIMIT,
+    map: (x, z) => [x, -z],
+  };
+}
+
+describe('usePlanCutDrawing', () => {
+  it('draws a wall cut at floor + 1.2 m in the mapped frame', async () => {
+    // A 4 m × 0.2 m wall, 3 m tall, at (0..4, 0..0.2): render z = −y.
+    const meshes = [box(90, [0, 0, -0.2], [4, 3, 0])];
+    const geometry = { meshes } as unknown as GeometryResult;
+    let seen: PlanCutResult['lines'] = [];
     function Probe() {
-      seen = useConstructionUnderlay(true, 0).lines;
+      seen = usePlanCutDrawing(request(0, meshes, geometry, 0)).lines;
       return null;
     }
     render(<Probe />);
@@ -85,58 +99,57 @@ describe('useConstructionUnderlay on the shared cut', () => {
     }
   });
 
-  it('above the plan mesh limit it does not cut and reports simplified (#6394 review: same guard as the plan)', async () => {
+  it('above the plan mesh limit it does not cut and reports simplified (#6394 review)', async () => {
     const meshes = Array.from({ length: PLAN_CUT_MESH_LIMIT + 1 }, (_, i) => box(1000 + i, [i * 0.01, 0, -0.2], [i * 0.01 + 0.005, 3, 0]));
-    useViewerStore.setState({ geometryResult: { ...useViewerStore.getState().geometryResult, meshes } as GeometryResult });
-    const seen: { current: ReturnType<typeof useConstructionUnderlay> | null } = { current: null };
+    const geometry = { meshes } as unknown as GeometryResult;
+    const seen: { current: PlanCutResult | null } = { current: null };
     function Probe() {
-      seen.current = useConstructionUnderlay(true, 0);
+      seen.current = usePlanCutDrawing(request(0, meshes, geometry, 0));
       return null;
     }
     render(<Probe />);
     await settle();
     assert.ok(seen.current, 'the hook rendered');
-    assert.equal(seen.current.simplified, true, 'the underlay reports the simplified fallback');
+    assert.equal(seen.current.simplified, true, 'the cut reports the simplified fallback');
     assert.equal(seen.current.lines.length, 0, 'no CPU cut ran above the limit');
   });
 
   it('re-cuts when an edit changes the meshes in place (#6394 review: the key carries the versions)', async () => {
     const meshes = [box(90, [0, 0, -0.2], [4, 3, 0])];
-    const geometry = { ...useViewerStore.getState().geometryResult, meshes } as GeometryResult;
-    useViewerStore.setState({ geometryResult: geometry });
-    let seen: UnderlayLine[] = [];
+    const geometry = { meshes } as unknown as GeometryResult;
+    let seen: PlanCutResult['lines'] = [];
     function Probe() {
-      seen = useConstructionUnderlay(true, 0).lines;
+      const version = useViewerStore((s) => s.mutationVersion);
+      seen = usePlanCutDrawing(request(0, meshes, geometry, version)).lines;
       return null;
     }
     render(<Probe />);
     await settle();
     const maxX = () => Math.max(...seen.flatMap((l) => [l.a[0], l.b[0]]));
     assert.ok(Math.abs(maxX() - 4) < 1e-6);
-    // The same geometryResult object, its mesh swapped in place, then the version bump an edit makes.
+    // The same geometry object, its mesh swapped in place, then the version bump an edit makes.
     meshes[0] = box(90, [0, 0, -0.2], [6, 3, 0]);
     act(() => useViewerStore.setState((s) => ({ mutationVersion: s.mutationVersion + 1 })));
     await settle();
-    assert.ok(Math.abs(maxX() - 6) < 1e-6, `the underlay follows the edit (max x ${maxX()})`);
+    assert.ok(Math.abs(maxX() - 6) < 1e-6, `the cut follows the edit (max x ${maxX()})`);
   });
 
   it("never shows another storey's cut while the new one is pending (#6394 review)", async () => {
-    const geometry = { ...useViewerStore.getState().geometryResult, meshes: [box(90, [0, 0, -0.2], [4, 3, 0])] } as GeometryResult;
-    useViewerStore.setState({ geometryResult: geometry });
-    let seen: UnderlayLine[] = [];
+    const meshes = [box(90, [0, 0, -0.2], [4, 3, 0])];
+    const geometry = { meshes } as unknown as GeometryResult;
+    let seen: PlanCutResult['lines'] = [];
     let floor = 0;
     function Probe() {
-      seen = useConstructionUnderlay(true, floor).lines;
+      const version = useViewerStore((s) => s.mutationVersion);
+      seen = usePlanCutDrawing(request(floor, meshes, geometry, version)).lines;
       return null;
     }
-    const ui = render(<Probe />);
+    render(<Probe />);
     await settle();
     assert.ok(seen.length > 0);
     // Another floor: the old cut must go at once, not after the debounce.
     floor = 10;
     act(() => useViewerStore.setState((s) => ({ mutationVersion: s.mutationVersion + 1 })));
     assert.equal(seen.length, 0, 'the previous floor is not drawn under the new one');
-    void ui;
   });
 });
-

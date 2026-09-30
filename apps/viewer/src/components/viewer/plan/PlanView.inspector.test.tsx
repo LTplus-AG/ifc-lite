@@ -19,7 +19,7 @@ import { cleanup, render } from '@/test/render.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { storeyWallAxes } from '@/lib/snap/sources/semantic-walls';
 import '@/lib/commands/modeling/builtin';
-import { sX, sY } from '@/lib/space-sketch-geometry';
+import { sX, sY } from '@/lib/rooms/plate-geometry';
 import type { Vec2 } from '@/lib/snap/types';
 import { fitPlan } from './plan-fit';
 import { PLAN_CUT_DEBOUNCE_MS } from './usePlanCut';

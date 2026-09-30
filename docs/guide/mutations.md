@@ -478,7 +478,7 @@ image, network or application undo resources are implicitly published by this AP
 
 ### High-Level Builders — `addColumnToStore` / `addWallToStore` / …
 
-For full element-with-geometry inserts, `@ifc-lite/create` provides anchored builders that emit a complete sub-graph (placement, profile, extruded solid, representation, product shape, rel-contained-in-spatial-structure) into the overlay. The same builder backs every Add Element panel chip in the viewer — and the SDK / sandbox `bim.store.*` namespace.
+For full element-with-geometry inserts, `@ifc-lite/create` provides anchored builders that emit a complete sub-graph (placement, profile, extruded solid, representation, product shape, rel-contained-in-spatial-structure) into the overlay. The same builders back the viewer's Model workspace commands for these builder-supported elements and their corresponding SDK / sandbox `bim.store.*` methods.
 
 | Builder | Signature highlights | Profile modes |
 |---|---|---|
@@ -580,7 +580,7 @@ assignMaterialInStore(editor, anchor, usageId, [wallExpressId], associations());
 
 Layer thicknesses and offsets are metres, converted to the file's length unit. Through the SDK these are `bim.store.addElementType`, `assignType`, `addMaterial`, `addMaterialLayerSet`, `addMaterialLayerSetUsage` and `assignMaterial`. The two `assign*` methods read the model's existing relationships themselves.
 
-#### Auto Spaces — generate IfcSpace from a storey's walls
+#### Generate spaces — IfcSpace from a storey's walls
 
 For room generation, `@ifc-lite/create` ships a planar-graph face finder that turns a storey's wall axes into a CCW polygon per enclosed region:
 
@@ -598,7 +598,9 @@ const result = generateSpacesFromWalls(editor, dataStore, storeyExpressId, {
 // → { wallsConsidered, wallsContributing, detected: DetectedSpace[], emitted: [...] }
 ```
 
-The detector also picks up overlay walls (placed via `addWallToStore` since the model was parsed) when you pass an `OverlayWallReader` — the viewer wires this in automatically so the Auto Spaces button works on freshly-drawn walls without a re-parse. `detectEnclosedAreas(segments, options)` is exported as the pure pipeline step if you want detection without IFC emission.
+The detector also picks up overlay walls (placed via `addWallToStore` since the model was parsed) when you pass an `OverlayWallReader` — the viewer's Room tool (**Auto**) does the same for freshly-drawn walls without a re-parse. `detectEnclosedAreas(segments, options)` is exported as the pure pipeline step if you want detection without IFC emission.
+
+In the viewer, **Room → More** keeps the minimum area, name pattern, and schema-specific space classification alongside read-only candidate totals. `addSpaceToStore` validates the classification before writing: IFC2X3 uses `InteriorOrExteriorSpace`, IFC4 and IFC4X3 use `PredefinedType`, and `USERDEFINED` needs an `ObjectType`. An `EXTERNAL` space sets `Pset_SpaceCommon.IsExternal` to true.
 
 ### `bim.store.*` — Scripting & SDK
 
@@ -635,7 +637,7 @@ The viewer surfaces store-level edits through the following controls — see [Vi
   - **Raw STEP tab** in the properties panel — inline pen-icon editor on every positional argument. Edited rows show a purple dot; the editor parses the same STEP literal conventions as `setPositionalAttribute`. The tab also opens for overlay-only entities (freshly added or duplicated) so newly-created walls / columns / spaces are immediately inspectable, even before export.
   - **Right-click → Delete entity** — calls `removeEntity`, surfaces a toast with undo support.
   - **Right-click on a storey → Add Column here…** — opens the Add Column dialog, calls `addColumn` on submit, and selects the new column in the 3D scene.
-  - **Add Element panel** (command palette → `Add element` or shortcut). Right-side panel with chips for every supported type, per-type form, click-to-place flow, and a 3D ghost preview that updates live as you adjust dimensions. Snap-to-vertex/edge/face is on by default (toggle with `S`); placements off-surface fall back to the storey floor plane so you can drop columns / walls into empty rooms. Picking the `Space` chip reveals an **Auto Spaces** sub-panel that runs the wall-graph face finder with adjustable snap tolerance / min area / height / naming pattern and a Preview button before commit.
+  - **Model workspace** (Author ribbon → Model, or `E`). A tool rail with one command per kind: Wall, Slab (also roof and plate), Column, Beam (also member), Room, Opening, Door, Window, Stair, Railing, Curtain wall, Grid; plus Split, Move, Rotate, Copy / Array and the inspector's type, material and size fields. Storey-workplane placement tools use snapping, a live ghost and typed bar values. Hosted Door/Window tools are wall-relative. Split, Move, Rotate, Copy / Array and inspector edits use their own interaction flows. The **Room** command's **Auto** runs the wall-graph face finder on the storey (or every storey), and its Edit, Footprint and leak-check modes reshape the rooms.
 
 All paths route through the same `mutationSlice` actions that wrap `StoreEditor`, so undo/redo (`Ctrl+Z` / `Ctrl+Shift+Z`) covers store-level edits identically to property edits. Each commit also injects a renderer-frame mesh into the geometry pipeline so the new element appears in 3D the moment the action fires — no export+reparse round-trip required.
 
@@ -649,7 +651,7 @@ All paths route through the same `mutationSlice` actions that wrap `StoreEditor`
 | Drop a fully-formed building element with geometry | `addColumnToStore` / `addWallToStore` / `addSlabToStore` / `addBeamToStore` / `addDoorToStore` / `addWindowToStore` / `addSpaceToStore` / `addRoofToStore` / `addPlateToStore` / `addMemberToStore` (or `bim.store.add{Column,Wall,Slab,…}`) |
 | Cut an opening, or put a door / window into an existing wall | `addOpeningToStore` / `addHostedDoorToStore` / `addHostedWindowToStore` (or `bim.store.addOpening` / `addHostedDoor` / `addHostedWindow`) |
 | Add a type object, or a material / layer set / layer set usage, and assign it | `addElementTypeToStore` + `assignTypeInStore`, `addMaterial*ToStore` + `assignMaterialInStore` (or `bim.store.addElementType` / `assignType` / `addMaterial*` / `assignMaterial`) |
-| Generate IfcSpace volumes from a storey's existing walls | `generateSpacesFromWalls` (or **Add Element → Space → Auto Spaces** in the viewer) |
+| Generate IfcSpace volumes from a storey's existing walls | `generateSpacesFromWalls` (or **Model → Room → Auto** in the viewer) |
 | Duplicate an element with its hosted openings, fillings and assembly parts | right-click → Duplicate / Ctrl+D (the same `copyProductInStore` write as Paste and Array) |
 | Copy an element turned, moved or onto another storey, with fresh GlobalIds and the openings, doors, windows and assembly parts in it | `createCopyContext` + `copyProductInStore` / Model workspace → Copy, Paste, Array |
 | Remove an entity from an existing model | `removeEntity` / `bim.store.removeEntity` |

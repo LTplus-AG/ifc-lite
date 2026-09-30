@@ -71,8 +71,6 @@ export function buildCollabTestState(hooks: CollabTestHooks = {}) {
       setEditEnabled: () => {},
       mutationViews: new Map(),
       annotations: new Map(),
-      addElementModelId: null,
-      addElementStoreyId: null,
       selectedEntityId: null,
       selectedEntityIds: new Set(),
       selectedStoreys: new Set(),

@@ -54,7 +54,6 @@ export const commandPaletteEn = {
   'commandPalette.tool.measure.label': 'Measure',
   'commandPalette.tool.section.label': 'Section',
   'commandPalette.tool.annotate.label': 'Annotate',
-  'commandPalette.tool.addElement.label': 'Add Element',
   'commandPalette.tool.wall.label': 'Draw walls',
   'commandPalette.tool.slab.label': 'Draw slabs',
   'commandPalette.tool.column.label': 'Place columns',

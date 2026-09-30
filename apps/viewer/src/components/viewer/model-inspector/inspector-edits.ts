@@ -23,6 +23,8 @@ import { AUTHORED_KINDS, occurrencesOf } from '@/lib/commands/modeling/authored-
 import type { AuthoringTransaction, ModelingCommand } from '@/lib/commands/modeling/types';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import { detachFromType, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
+import { commitElementSize } from '@/lib/element-size-commit';
+import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
 import { setWallSection, type WallSection } from '@/store/slices/mutation-wall-section';
 import { moveHostedFillIn, type HostedFillPosition } from '@/store/slices/mutation-hosted-fill';
 import { setElementProfile } from '@/store/slices/mutation-element-profile';
@@ -84,13 +86,22 @@ export function createElementType(modelId: string, kind: AuthoredElementKind, na
   return ok ? typeId : null;
 }
 
+/**
+ * A wall's, slab's, column's or beam's size, in metres: the one write the
+ * push / pull handles make too (`setElementSize`), so the two cannot differ.
+ * A wall's openings follow it in the same step.
+ */
+export function setElementDimensions(modelId: string, expressId: number, patch: ElementSizePatch): boolean {
+  return runInspectorEdit(modelId, (tx) => {
+    const outcome = commitElementSize(useViewerStore, tx.modelId, expressId, patch);
+    if (!outcome.ok) throw new Error(outcome.reason);
+    return outcome.remesh;
+  });
+}
+
 /** A wall's thickness and/or height, in metres. */
 export function setWallDimensions(modelId: string, expressId: number, section: WallSection): boolean {
-  return runInspectorEdit(modelId, (tx) => {
-    const outcome = setWallSection(tx.api, tx.modelId, expressId, section);
-    if (!outcome.ok) throw new Error(outcome.reason);
-    return [expressId];
-  });
+  return setElementDimensions(modelId, expressId, { kind: 'wall', ...section });
 }
 
 /**
@@ -176,6 +187,7 @@ export function applyMaterialLayers(modelId: string, spec: ApplyLayersSpec): num
     if (kind === 'wall') {
       const section = setWallSection(tx.api, tx.modelId, elementId, { thickness: total });
       if (!section.ok) throw new Error(section.reason);
+      return section.remesh;
     }
     return [elementId];
   });

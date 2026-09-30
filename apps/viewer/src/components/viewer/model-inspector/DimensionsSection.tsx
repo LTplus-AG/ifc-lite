@@ -6,21 +6,22 @@
  * The Model inspector's Dimensions section (charter #6232, M2 §1.7.2).
  *
  * Defaults mode edits what the next element is built with (the defaults
- * slice the command bars read too). Selection mode edits a wall's thickness
- * and height (`setWallSection`, one undo step, re-meshed through the
- * transaction); a slab's thickness and a column's or beam's length are shown
- * read-only for now.
+ * slice the command bars read too). Selection mode edits the element's own
+ * size, one undo step each, re-meshed through the transaction: a wall's
+ * thickness and height, a slab's thickness, a column's or beam's length and
+ * section. It is the write the push / pull handles make (`setElementSize`),
+ * so a handle and a typed value cannot disagree.
  */
 
 import { useId, useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
-import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import { authoringDim, type AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import { CommitField, InspectorCaption, InspectorRow, InspectorSection } from './InspectorControls';
 import { DEFAULT_DIMS, DIM_LABEL, METRE_SYMBOL, formatMetres, parseMetres, type DimParam } from './inspector-fields';
-import { setWallDimensions } from './inspector-edits';
+import { readElementSize } from '@/store/slices/mutation-element-size';
+import { setElementDimensions } from './inspector-edits';
 import type { InspectorSelection } from './useInspectorTarget';
 
 function MetreRow({ param, value, onCommit }: { param: DimParam; value: number | null; onCommit?: (metres: number) => boolean }) {
@@ -71,7 +72,8 @@ export function DefaultDimensions({ kind }: { kind: AuthoredElementKind }) {
 
 type Measured =
   | { kind: 'wall'; length: number; thickness: number; height: number }
-  | { kind: 'readOnly'; rows: Array<[DimParam, number]> }
+  | { kind: 'slab'; thickness: number }
+  | { kind: 'linear'; column: boolean; length: number; width: number; cross: number }
   | { kind: 'none'; reason: 'modelInspector.dims.notRectangular' | 'modelInspector.dims.unknown' };
 
 function measure(selection: InspectorSelection): Measured {
@@ -83,15 +85,9 @@ function measure(selection: InspectorSelection): Measured {
     const length = Math.hypot(wall.end[0] - wall.start[0], wall.end[1] - wall.start[1]);
     return { kind: 'wall', length, thickness: wall.thickness, height: wall.height };
   }
-  if (kind === 'slab' || kind === 'roof' || kind === 'plate') {
-    const slab = s.readSlabFootprint(modelId, expressId);
-    if (slab) return { kind: 'readOnly', rows: [['Thickness', slab.thickness]] };
-  }
-  if (kind === 'column' || kind === 'beam' || kind === 'member') {
-    const linear = s.readLinearElementSplitProjection(modelId, expressId, [0, 0, 0]);
-    const scale = getModelLengthUnitScale(selection.live.dataStore);
-    if (linear) return { kind: 'readOnly', rows: [[kind === 'column' ? 'Height' : 'Length', linear.length * scale]] };
-  }
+  const size = readElementSize(s, modelId, expressId);
+  if (size?.kind === 'slab' && (kind === 'slab' || kind === 'roof' || kind === 'plate')) return size;
+  if (size?.kind === 'linear' && (kind === 'column' || kind === 'beam' || kind === 'member')) return { ...size, column: kind === 'column' };
   return { kind: 'none', reason: 'modelInspector.dims.unknown' };
 }
 
@@ -106,14 +102,22 @@ export function SelectionDimensions({ selection }: { selection: InspectorSelecti
       {measured.kind === 'wall' && (
         <>
           <MetreRow param="Length" value={measured.length} />
-          <MetreRow param="Thickness" value={measured.thickness} onCommit={(thickness) => setWallDimensions(modelId, expressId, { thickness })} />
-          <MetreRow param="Height" value={measured.height} onCommit={(height) => setWallDimensions(modelId, expressId, { height })} />
+          <MetreRow param="Thickness" value={measured.thickness} onCommit={(thickness) => setElementDimensions(modelId, expressId, { kind: 'wall', thickness })} />
+          <MetreRow param="Height" value={measured.height} onCommit={(height) => setElementDimensions(modelId, expressId, { kind: 'wall', height })} />
         </>
       )}
-      {measured.kind === 'readOnly' && (
+      {measured.kind === 'slab' && (
+        <MetreRow param="Thickness" value={measured.thickness} onCommit={(thickness) => setElementDimensions(modelId, expressId, { kind: 'slab', thickness })} />
+      )}
+      {measured.kind === 'linear' && (
         <>
-          {measured.rows.map(([param, value]) => <MetreRow key={param} param={param} value={value} />)}
-          <InspectorCaption>{t('modelInspector.dims.readOnly')}</InspectorCaption>
+          {/* A column runs up (Height) with a Width x Depth section; a beam or member runs along (Length) with Width x Height. */}
+          <MetreRow param={measured.column ? 'Width' : 'Length'} value={measured.column ? measured.width : measured.length}
+            onCommit={(metres) => setElementDimensions(modelId, expressId, { kind: 'linear', ...(measured.column ? { width: metres } : { length: metres }) })} />
+          <MetreRow param={measured.column ? 'Depth' : 'Width'} value={measured.column ? measured.cross : measured.width}
+            onCommit={(metres) => setElementDimensions(modelId, expressId, { kind: 'linear', ...(measured.column ? { cross: metres } : { width: metres }) })} />
+          <MetreRow param="Height" value={measured.column ? measured.length : measured.cross}
+            onCommit={(metres) => setElementDimensions(modelId, expressId, { kind: 'linear', ...(measured.column ? { length: metres } : { cross: metres }) })} />
         </>
       )}
       {measured.kind === 'none' && <InspectorCaption>{t(measured.reason)}</InspectorCaption>}

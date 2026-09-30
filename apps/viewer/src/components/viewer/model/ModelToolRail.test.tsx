@@ -46,7 +46,7 @@ describe('Model tool rail (#6232 M2.1)', () => {
     assert.equal(ui.querySelector('[data-model-tool-rail]'), null, 'no rail while viewing');
     act(() => { useViewerStore.getState().enterModelWorkspace(); });
     const ids = [...ui.querySelectorAll('[data-rail-tool]')].map((b) => b.getAttribute('data-rail-tool'));
-    assert.deepEqual(ids, ['select', 'wall.place', 'slab.place', 'column.place', 'beam.place', 'room.place', 'opening.place', 'door.place', 'window.place', 'element.split', 'element.array', 'element.move', 'element.rotate', 'split.multi', 'stair.place', 'railing.place', 'change-sets', 'plan', 'leave']);
+    assert.deepEqual(ids, ['select', 'wall.place', 'slab.place', 'column.place', 'beam.place', 'room.place', 'opening.place', 'door.place', 'window.place', 'element.split', 'element.array', 'element.move', 'element.rotate', 'split.multi', 'stair.place', 'railing.place', 'element.pushPull', 'element.align', 'change-sets', 'plan', 'leave']);
     assert.equal(tool(ui, 'select')?.getAttribute('aria-pressed'), 'true');
   });
 
@@ -141,6 +141,8 @@ describe('Model tool rail (#6232 M2.1)', () => {
     ['window.place', 'tool:window', 'model.window'],
     // #6232 C5: one cut line through everything.
     ['split.multi', 'tool:split-multi', 'model.splitMulti'],
+    // #6232 C4: Align picks its own reference and targets, so it needs only a plane.
+    ['element.align', 'tool:align', 'model.align'],
   ] as const) {
     it(`${id}: the rail button and the palette row start it on the session storey`, () => {
       const ui = mount();
@@ -159,6 +161,27 @@ describe('Model tool rail (#6232 M2.1)', () => {
       assert.equal(useViewerStore.getState().session?.activeCommandId, id);
     });
   }
+
+  it('Push / Pull is disabled with its reason until something is selected, then the rail button, key and palette row start it (#6232 C4)', () => {
+    const ui = mount();
+    act(() => { useViewerStore.getState().enterModelWorkspace(); });
+    assert.equal(tool(ui, 'element.pushPull')?.disabled, true);
+    assert.ok(ui.querySelector('[data-rail-disabled="element.pushPull"]'), 'a live tooltip trigger wraps the disabled button');
+    act(() => {
+      const s = useViewerStore.getState();
+      s.setSelectedEntityId(toGlobalIdFromModels(s.models, MODEL_ID, STOREY));
+    });
+    assert.equal(tool(ui, 'element.pushPull')?.disabled, false);
+    act(() => click(tool(ui, 'element.pushPull')!));
+    assert.equal(useViewerStore.getState().session?.activeCommandId, 'element.pushPull');
+    act(() => { useViewerStore.getState().endCommand('cancel'); });
+
+    const row = TOOL_SURFACE_COMMANDS.find((command) => command.id === 'tool:push-pull') as { shortcut?: string; run: () => void } | undefined;
+    assert.equal(row?.shortcut, 'model.pushPull', 'the palette names the rail key');
+    useViewerStore.setState({ selectedEntity: { modelId: MODEL_ID, expressId: STOREY } });
+    act(() => { row!.run(); });
+    assert.equal(useViewerStore.getState().session?.activeCommandId, 'element.pushPull');
+  });
 
   it('Leave closes the workspace, and the rail with it', () => {
     const ui = mount();

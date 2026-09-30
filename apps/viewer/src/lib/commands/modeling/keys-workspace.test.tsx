@@ -56,6 +56,23 @@ describe('Model workspace keys (#6232 M2.1)', () => {
     assert.equal(getCommandRuntime().command?.id, 'beam.place', 'plain S is the running command\'s snap toggle, not Slab');
   });
 
+  // #6232 C4: Shift+P (Push / Pull, needs a selection) and Shift+J (Align); plain P stays Annotate.
+  it('Shift+J starts Align, and Shift+P Push / Pull once an element is selected, in the workspace only', () => {
+    press(document.body, 'J', { shiftKey: true });
+    assert.equal(getCommandRuntime().command, null, 'nothing outside the workspace');
+    useViewerStore.getState().enterModelWorkspace();
+    press(document.body, 'J', { shiftKey: true });
+    assert.equal(getCommandRuntime().command?.id, 'element.align');
+    press(document.body, 'Escape');
+    assert.equal(getCommandRuntime().command, null);
+
+    press(document.body, 'P', { shiftKey: true });
+    assert.equal(getCommandRuntime().command?.id, 'element.pushPull', 'the command runs and says what to select');
+    press(document.body, 'Escape');
+    press(document.body, 'p');
+    assert.notEqual(getCommandRuntime().command?.id, 'element.pushPull', 'plain P is not Push / Pull');
+  });
+
   it('walking keeps W for moving forward', () => {
     useViewerStore.getState().enterModelWorkspace();
     useViewerStore.getState().setActiveTool('walk');

@@ -11,6 +11,7 @@
 
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { placedBodyExtent, resolveHostAnchor } from '@ifc-lite/create';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
@@ -100,6 +101,47 @@ describe('Model inspector edits (#6232 M2.5)', () => {
     assertOneUndoStep(() => round(height()), () => {
       assert.equal(setWallDimensions(MODEL_ID, wall, { height: 2.7 }), true);
     }, (h) => assert.equal(h, 2.7));
+  });
+
+  it('a wall thickened past its window keeps the cut through it, in the one undo step; a height below the window is refused (#6232 C4)', () => {
+    const placed = s().addHostedFill(MODEL_ID, wall, { kind: 'window', params: { Offset: 2, Sill: 0.9, Width: 1, Height: 1.2 } });
+    assert.ok('expressId' in placed);
+    const { dataStore } = live();
+    const across = () => {
+      const body = resolveHostAnchor(dataStore, wall, view).hostBounds!;
+      const cut = placedBodyExtent(dataStore, placed.openingId, view)!;
+      return { body: [body.min[1], body.max[1]], cut: [cut.min[1], cut.max[1]] };
+    };
+    assertOneUndoStep(() => round(across().cut[1] - across().cut[0]), () => {
+      assert.equal(setWallDimensions(MODEL_ID, wall, { thickness: 0.6 }), true);
+      const { body, cut } = across();
+      assert.ok(cut[0] <= body[0] + 1e-9 && cut[1] >= body[1] - 1e-9, `the cut ${cut} spans the new body ${body}`);
+    }, (depth) => assert.ok(depth !== undefined && depth > 0.3, `the cut is longer than the 0.2 m wall plus clearance, got ${depth}`));
+    assert.deepEqual([...remeshes.at(-1)!.expressIds].sort(), [wall, placed.openingId].sort(), 'the re-cut opening re-meshes with the wall');
+
+    const depth = undoDepth();
+    assert.equal(setWallDimensions(MODEL_ID, wall, { height: 1.5 }), false, 'the window top (2.1 m) would stand above the wall');
+    assert.equal(undoDepth(), depth);
+    assert.equal(round(height()), 3);
+  });
+
+  it('a new wall thickness keeps its layers consistent: the wall gets its own set whose last layer takes the change (#6232 C4)', () => {
+    const type = createElementType(MODEL_ID, 'wall', 'WT', wall)!;
+    applyMaterialLayers(MODEL_ID, { kind: 'wall', target: 'type', elementId: wall, typeId: type, layers: [{ thickness: 0.1, material: { name: 'Brick' } }, { thickness: 0.1, material: { name: 'Plaster' } }] });
+    assert.equal(layerSetOf(live(), wall)?.via, 'type');
+    const typeSet = layerSetOf(live(), wall)!.layerSetId;
+    const total = () => layerSetOf(live(), wall)!.layers.reduce((sum, l) => sum + l.thickness, 0);
+    assertOneUndoStep(() => [layerSetOf(live(), wall)!.via, round(total())], () => {
+      assert.equal(setWallDimensions(MODEL_ID, wall, { thickness: 0.3 }), true);
+    }, ([via, sum]) => {
+      assert.equal(via, 'element');
+      assert.equal(sum, 0.3, 'the layers total the new thickness');
+      assert.deepEqual(layerSetOf(live(), wall)!.layers.map((l) => round(l.thickness)), [0.1, 0.2], 'the last layer took the change');
+    });
+    assert.equal(layerSetOf(live(), wall)!.layerSetId, typeSet, 'undone: the type\'s set again');
+    // Thinner than the first layers allow: the set scales instead, keeping its proportions.
+    assert.equal(setWallDimensions(MODEL_ID, wall, { thickness: 0.05 }), true);
+    assert.deepEqual(layerSetOf(live(), wall)!.layers.map((l) => round(l.thickness)), [0.025, 0.025]);
   });
 
   it('material layers on the wall (new materials, set, usage, association, thickness) are one undo step', () => {

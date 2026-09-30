@@ -103,6 +103,7 @@ describe('linear-element-edit', () => {
     assert.strictEqual(chain.depth, 4);
     assert.strictEqual(chain.profileWidth, 0.3);
     assert.strictEqual(chain.profileHeight, 0.5);
+    assert.strictEqual(chain.profileId, 92, 'the section profile a size edit writes (#6232 C4)');
     assert.deepStrictEqual(chain.axisDirection, [1, 0, 0]);
     assert.deepStrictEqual(chain.startCoordinates, [1, 0, 0]);
   });

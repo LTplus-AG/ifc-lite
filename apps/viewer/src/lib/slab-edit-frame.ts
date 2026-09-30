@@ -53,6 +53,25 @@ export function slabExtrusionBase(
   solidAttrs: readonly unknown[],
   depth: number,
 ): number | null {
+  return slabExtrusionFrame(dataStore, view, editor, elementAxisPlacementId, solidAttrs, depth)?.base ?? null;
+}
+
+/**
+ * {@link slabExtrusionBase} plus the direction the depth runs: `up` is true
+ * when the extrusion grows upward from the solid's profile plane (the layout
+ * the builders write and AC20's `Bodenplatte` has), false when the solid or
+ * its extrusion direction is flipped so it grows downward from it. Push /
+ * pull needs it: a bigger depth moves the top face in the first case and the
+ * underside in the second (#6232 C4).
+ */
+export function slabExtrusionFrame(
+  dataStore: IfcDataStore,
+  view: MutablePropertyView,
+  editor: StoreEditor,
+  elementAxisPlacementId: number,
+  solidAttrs: readonly unknown[],
+  depth: number,
+): { base: number; up: boolean } | null {
   const read: Read = (id) => (id === null ? null : readAttributes(dataStore, view, editor, id));
   const placement = read(elementAxisPlacementId);
   if (!placement) return null;
@@ -72,7 +91,7 @@ export function slabExtrusionBase(
   if (!location) return null;
   // Upward (+1) or downward (-1) in the element frame.
   const up = Math.sign(solidZ[2] * extrusion[2]);
-  return location[2] + Math.min(0, up * depth);
+  return { base: location[2] + Math.min(0, up * depth), up: up > 0 };
 }
 
 /**

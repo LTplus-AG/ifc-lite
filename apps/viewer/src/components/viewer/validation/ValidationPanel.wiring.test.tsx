@@ -31,6 +31,7 @@ import { useViewerStore, type FederatedModel } from '@/store';
 import { addRecentRuleSet } from '@/lib/validation/recent-rule-sets';
 import { setValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { ValidationPanel } from './ValidationPanel.js';
+import { loadValidationReports, VALIDATION_REPORTS_STORAGE_KEY } from '@/lib/validation/reports/persistence';
 
 const WALLS_IFC = `ISO-10303-21;
 HEADER;
@@ -222,8 +223,9 @@ describe('ValidationPanel wiring (#5138)', () => {
   });
 
   it('opening and running a real two-rule rule set lands a source.kind: "rules" report the panel renders', async () => {
+    localStorage.removeItem(VALIDATION_REPORTS_STORAGE_KEY);
     const store = await parseWalls();
-    useViewerStore.setState({ models: new Map([['m1', federatedModel('m1', store)]]) });
+    useViewerStore.setState({ models: new Map([['m1', federatedModel('m1', store)]]), savedValidationReports: [], currentValidationReport: null });
 
     const ui = render(<ValidationPanel />);
     const fileInput = ui.querySelector('input[type="file"]');
@@ -245,8 +247,15 @@ describe('ValidationPanel wiring (#5138)', () => {
     assert.ok(report);
     assert.strictEqual(report!.source.kind, 'rules');
     assert.strictEqual(report!.specificationResults.length, 2);
-    // #6500: a completed real run is retained separately from the live slot.
-    const saved = useViewerStore.getState().savedValidationReports.at(-1);
+    // #6568: running a check creates no history; its toolbar saves explicitly.
+    assert.equal(useViewerStore.getState().savedValidationReports.length, 0);
+    assert.equal(localStorage.getItem(VALIDATION_REPORTS_STORAGE_KEY), null);
+    const save = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save report');
+    assert.ok(save);
+    click(save);
+    click(save);
+    assert.equal(loadValidationReports().length, 1);
+    const saved = loadValidationReports().at(-1);
     assert.ok(saved);
     assert.equal(saved.snapshot.kind, 'ids-report');
     assert.deepEqual(saved.snapshot.reportModels, [{ name: 'm1.ifc' }]);
@@ -267,6 +276,22 @@ describe('ValidationPanel wiring (#5138)', () => {
     assert.ok(rule2);
     assert.strictEqual(rule2!.setResults?.length, 1);
     assert.strictEqual(rule2!.setResults?.[0]?.passed, false);
+
+    // Rechecking information keeps the saved result and requires another
+    // explicit save, just like IDS. This runs the actual two-rule engine.
+    const editForRerun = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Edit rules');
+    assert.ok(editForRerun);
+    click(editForRerun);
+    const runAgain = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Run');
+    assert.ok(runAgain);
+    click(runAgain);
+    await waitFor(() => useViewerStore.getState().idsValidationReport !== report);
+    assert.equal(loadValidationReports().length, 1);
+    const saveAgain = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save report');
+    assert.ok(saveAgain);
+    click(saveAgain);
+    assert.equal(loadValidationReports().length, 2);
+    assert.notEqual(loadValidationReports()[0].id, loadValidationReports()[1].id);
 
     // "Edit rules" is offered from the results state, keeping the report.
     assert.match(text, /Edit rules/);

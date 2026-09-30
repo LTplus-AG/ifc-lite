@@ -1,0 +1,12 @@
+{
+  "baseCommit": "1b1ea389250d7f0437ae522f0bad893b2c362eed",
+  "runtimeSourceSha256": {
+    "apps/viewer/src/hooks/useIDS.ts": "6abcfc9cd52f24fe93193fb360983402090927ede6bc2647d8e42a1646644c75",
+    "apps/viewer/src/hooks/validation/useInformationValidation.ts": "03be21b18a7d146ac66307785e18a96d117c64b0981c29dc10a82b8bc6b58cfe",
+    "apps/viewer/src/components/viewer/IDSPanelResults.tsx": "0669a98c2aa53d3ac59b28de0cdc87ef0fe77ef7d940244a0b7a64a6fc205bfe",
+    "apps/viewer/src/components/viewer/validation/SaveValidationReportButton.tsx": "714b54d6f143ef9909da3d78f648d13dd3d0af130bded12c793b305623d6041e",
+    "apps/viewer/src/store/slices/idsSlice.ts": "7bdb3e16e8c6322f714f3c0fdbb7254f34333b0cc5c0de29346fae0a0cdd944f",
+    "apps/viewer/src/store/slices/idsSlice.validation-report.ts": "24d9f4af56e79ef4b3d112f376e1b369312a7977f8e60ca21f012d35e22786f4",
+    "apps/viewer/src/i18n/catalogues/validation-panel.en.ts": "7399196704614dc3429d648e364750cf7e071a8877c65c68da52ac19c6bfcff7"
+  }
+}

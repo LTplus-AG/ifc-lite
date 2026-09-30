@@ -132,6 +132,7 @@ function createMockBackend() {
     // #6232: openings, hosted doors/windows, types and materials.
     addOpening: vi.fn((modelId: string) => ({ modelId, expressId: 400 })),
     addHostedDoor: vi.fn((modelId: string) => ({ modelId, expressId: 401 })),
+    joinWalls: vi.fn((modelId: string) => ({ modelId, expressId: 403 })),
     addHostedWindow: vi.fn((modelId: string) => ({ modelId, expressId: 402 })),
     addElementType: vi.fn((modelId: string) => ({ modelId, expressId: 403 })),
     assignType: vi.fn((modelId: string) => ({ modelId, expressId: 404 })),

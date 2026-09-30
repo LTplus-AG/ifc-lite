@@ -35,6 +35,9 @@ import { parseIDS } from '@ifc-lite/ids';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { useIDS } from './useIDS.js';
+import { SaveValidationReportButton } from '@/components/viewer/validation/SaveValidationReportButton';
+import { click } from '@/test/render';
+import { loadValidationReports } from '@/lib/validation/reports/persistence';
 
 // ─── Fixture ──────────────────────────────────────────────────────────────
 
@@ -117,9 +120,9 @@ function model(id: string, store: IfcDataStore): FederatedModel {
 type IdsApi = ReturnType<typeof useIDS>;
 let api: IdsApi | null = null;
 
-function Probe(): null {
+function Probe() {
   api = useIDS();
-  return null;
+  return api.report ? <SaveValidationReportButton report={api.report} /> : null;
 }
 
 let root: Root | null = null;
@@ -139,6 +142,10 @@ async function seed(): Promise<void> {
     activeModelId: 'Slow',
     idsDocument: idsDoc,
     idsValidationReport: null,
+    currentValidationReport: null,
+    savedValidationReports: [],
+    validationReportsSaveFailed: false,
+    validationReportsLoadIssue: null,
     idsError: null,
     idsLoading: false,
     idsProgress: null,
@@ -154,6 +161,7 @@ async function seed(): Promise<void> {
 
 beforeEach(() => {
   api = null;
+  localStorage.clear();
 });
 
 afterEach(async () => {
@@ -193,5 +201,18 @@ describe('useIDS - concurrent-run supersession (#2802)', () => {
         'finished FIRST - it is the one the user is waiting on. The earlier, slower Slow validation finishing ' +
         'later must not overwrite it just because it lands last.',
     );
+    // #6568: neither run autosaves, and the explicit control can save only
+    // the actual latest report, with the model scope it evaluated.
+    assert.equal(loadValidationReports().length, 0);
+    const save = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Save report');
+    assert.ok(save);
+    click(save);
+    const saved = loadValidationReports();
+    assert.equal(saved.length, 1);
+    assert.deepEqual(saved[0].snapshot.reportModels, [{ name: 'Fast.ifc' }]);
+    const snapshot = saved[0].snapshot;
+    assert.equal(snapshot.kind, 'ids-report');
+    if (snapshot.kind !== 'ids-report') assert.fail();
+    assert.equal(snapshot.summary.checked, FAST_COUNT);
   });
 });

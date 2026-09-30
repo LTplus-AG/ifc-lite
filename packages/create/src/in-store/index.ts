@@ -228,3 +228,6 @@ export {
   type DrawingMarkupBatchInput,
   type DrawingMarkupBatchResult,
 } from './drawing-markup.js';
+
+export { reanchorHostedOpeningsInStore } from './hosted-placement-edit.js';
+export { reassignHostedOpeningsInStore, type HostedOpeningReassignment } from './hosted-placement-edit.js';

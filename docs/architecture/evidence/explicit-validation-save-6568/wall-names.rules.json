@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "name": "Wall name uniqueness",
+  "rules": [
+    {
+      "id": "wall-names",
+      "name": "Wall names are unique",
+      "applicability": {
+        "groups": [
+          {
+            "rules": [
+              {
+                "kind": "ifcType",
+                "values": [
+                  "IfcWall"
+                ],
+                "op": "in"
+              }
+            ],
+            "combinator": "AND"
+          }
+        ],
+        "authoredAs": "chips"
+      },
+      "requirement": {
+        "kind": "unique",
+        "subject": {
+          "kind": "attribute",
+          "name": "Name"
+        }
+      }
+    }
+  ]
+}

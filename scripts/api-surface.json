@@ -4630,6 +4630,7 @@
     "HostedFillBuildResult: interface",
     "HostedFillRead: interface",
     "HostedOpeningExtent: interface",
+    "HostedOpeningReassignment: interface",
     "HostedWindowInStoreParams: interface",
     "ISection: interface",
     "IShapeProfile: interface",
@@ -4938,6 +4939,8 @@
     "readRelatedLists: function",
     "readWallJoinRels: function",
     "readWallJoinTarget: function",
+    "reanchorHostedOpeningsInStore: function",
+    "reassignHostedOpeningsInStore: function",
     "rectangularGridAxes: function",
     "refusalReason: function",
     "removeCostEntityInStore: function",
@@ -6890,8 +6893,10 @@
     "parseValue: function",
     "propertyKey: function",
     "quantityKey: function",
+    "recordCompoundMutation: function",
     "setEntityTypeNormalizer: function",
-    "storeHasSourceEntity: function"
+    "storeHasSourceEntity: function",
+    "undoRecordedMutationOperations: function"
   ],
   "@ifc-lite/oauth-pkce": [
     "AuthorizationCallbackResult: interface",

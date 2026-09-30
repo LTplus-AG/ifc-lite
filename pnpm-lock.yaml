@@ -1718,6 +1718,12 @@ importers:
         specifier: ^0.32.0
         version: 0.32.0
     devDependencies:
+      '@ifc-lite/create':
+        specifier: workspace:^
+        version: link:../create
+      '@ifc-lite/mutations':
+        specifier: workspace:^
+        version: link:../mutations
       '@ifc-lite/parser':
         specifier: workspace:^
         version: link:../parser

@@ -15,6 +15,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import { effectiveSpatialMembers } from '@/lib/effective-spatial-members';
 import { toGlobalIdFromModels } from '@/store/globalId';
+import { meshesForOwningModel, type OwningModelMeshSource } from '@/store/owningModelMeshes';
 import type { ViewerState } from '@/store';
 import type { Vec2 } from '@/lib/snap/types';
 import type { Workplane } from './types.js';
@@ -55,9 +56,13 @@ export function planBoxOf(meshes: readonly MeshData[], globalId: number, plane: 
   return Number.isFinite(u0) ? { min: [u0, v0], max: [u1, v1], z0, z1 } : null;
 }
 
-/** The meshes `modelId` renders: its own, else the federation's. */
-export function modelMeshes(s: ViewerState, modelId: string): readonly MeshData[] {
-  return s.models.get(modelId)?.geometryResult?.meshes ?? s.geometryResult?.meshes ?? [];
+/**
+ * The meshes `modelId` renders: its own, or the top-level mirror only when it
+ * IS the active model. Mesh ids are global ids (`idOffset + express id`), so
+ * another model's meshes must never stand in (#4929, `owningModelMeshes.ts`).
+ */
+export function modelMeshes(s: OwningModelMeshSource, modelId: string): readonly MeshData[] {
+  return meshesForOwningModel(s, modelId) ?? [];
 }
 
 /** Every element contained in `storeyId` that has geometry to line up, by express id. */

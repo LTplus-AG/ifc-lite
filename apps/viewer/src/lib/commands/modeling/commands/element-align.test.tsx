@@ -24,7 +24,7 @@ import { solveSnap } from '@/lib/snap/solve';
 import { AlignBar } from '@/components/viewer/tools/command/AlignBar';
 import { AlignPlan, AlignScene } from '@/components/viewer/tools/command/AlignLayers';
 import type { AlignGesture } from '../align-gesture.js';
-import { planBoxOf } from '../align-boxes.js';
+import { modelMeshes, planBoxOf } from '../align-boxes.js';
 import { ELEMENT_ALIGN } from './element-align.js';
 import { MODELING_SNAP_PROFILE } from '@/lib/snap/rank';
 import { setRequestRemesh, type RemeshRequest } from '../transaction.js';
@@ -222,6 +222,19 @@ describe('element.align (#6232 C4)', () => {
     commit();
     assert.equal(undoStack().length, before);
     assert.equal(getCommandRuntime().command?.id, 'element.align', 'the command keeps running');
+  });
+
+  it('reads a model\'s meshes from that model only: another model\'s geometry never stands in (multi-model)', () => {
+    const meshA = boxMesh(cols[0].id, ...cols[0].box);
+    const meshB = { ...boxMesh(cols[1].id, ...cols[1].box), expressId: meshA.expressId };
+    const model = s().models.get(MODEL_ID)!;
+    const own = { ...model, idOffset: 0, geometryResult: { ...model.geometryResult, meshes: [meshA] } as GeometryResult };
+    const other = { ...model, idOffset: 1000, geometryResult: null };
+    const models = new Map<string, typeof model>([['a', own], ['b', other]]);
+    const state = { models, activeModelId: 'a', geometryResult: { meshes: [meshB] } as unknown as GeometryResult };
+    assert.deepEqual(modelMeshes(state, 'a'), [meshA], 'a model with its own geometry uses it, not the mirror');
+    assert.deepEqual(modelMeshes(state, 'b'), [], 'the active model\'s mirror is not model b\'s geometry, even where the global ids collide');
+    assert.deepEqual(modelMeshes({ ...state, activeModelId: 'b' }, 'b'), [meshB], 'the mirror serves the model it mirrors');
   });
 
   it('a click near another element\'s vertex picks what is under the cursor: Align does not snap points', () => {

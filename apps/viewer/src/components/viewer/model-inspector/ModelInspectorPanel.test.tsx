@@ -151,6 +151,32 @@ describe('ModelInspectorPanel dimensions of slabs, columns and beams (#6232 C4)'
     assert.equal(input(root, 'Length in metres').readOnly, false);
   });
 
+  it('each column and beam field writes exactly its own dimension and leaves the others alone', () => {
+    const column = made(s().addColumn(MODEL_ID, STOREY, { Position: [2, 2, 0], Width: 0.3, Depth: 0.4, Height: 3 }));
+    select(column);
+    const root = render(<ModelInspectorPanel />);
+    const read = (labels: string[]) => labels.map((l) => input(root, `${l} in metres`).value);
+    // [Width, Depth, Height] before -> after committing one field: only that one moves.
+    for (const [label, text, expected] of [
+      ['Width', '0.55', ['0.55', '0.40', '3.00']],
+      ['Depth', '0.65', ['0.55', '0.65', '3.00']],
+      ['Height', '4.5', ['0.55', '0.65', '4.50']],
+    ] as const) {
+      commitField(root, `${label} in metres`, text);
+      assert.deepEqual(read(['Width', 'Depth', 'Height']), expected, `column ${label}`);
+    }
+    const beam = made(s().addBeam(MODEL_ID, STOREY, { Start: [0, 0, 3], End: [4, 0, 3], Width: 0.2, Height: 0.3 }));
+    select(beam);
+    for (const [label, text, expected] of [
+      ['Length', '5', ['5.00', '0.20', '0.30']],
+      ['Width', '0.25', ['5.00', '0.25', '0.30']],
+      ['Height', '0.45', ['5.00', '0.25', '0.45']],
+    ] as const) {
+      commitField(root, `${label} in metres`, text);
+      assert.deepEqual(read(['Length', 'Width', 'Height']), expected, `beam ${label}`);
+    }
+  });
+
   it('a wall thickened from the inspector keeps its window cut through, in the same undo step', () => {
     const placed = s().addHostedFill(MODEL_ID, wall, { kind: 'window', params: { Offset: 2, Sill: 0.9, Width: 1, Height: 1.2 } });
     assert.ok('expressId' in placed);

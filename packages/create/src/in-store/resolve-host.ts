@@ -142,8 +142,8 @@ function bodyBounds(reader: AnchorEntityReader, productShapeId: number): HostBou
 /**
  * Points bounding one representation item. A boolean result is bounded by its
  * FirstOperand (a clipping only removes material, so the operand's bounds are
- * conservative). Mapped items compose their target with the inverse mapping
- * origin. An iterative path set preserves two real instances of one map,
+ * conservative). Mapped items compose MappingTarget · MappingOrigin, matching the
+ * canonical Rust renderer. An iterative path set preserves two real instances of one map,
  * while a work/point budget also bounds acyclic fan-out (#6232 D5).
  */
 function collectItemPoints(reader: AnchorEntityReader, itemId: number, out: Vec3[]): boolean {
@@ -244,13 +244,9 @@ function mappedItemFrame(reader: AnchorEntityReader, attrs: unknown[]): { items:
   const [x, y, z] = [xAxis, yAxis, zAxis].map((v, i) => v.map(n => n * scales[i]!) as Vec3);
   const source = axis3d(reader, originId);
   if (!source) return null;
-  const inverse: Frame3 = {
-    o: [source.x, source.y, source.z].map(v => -(v[0] * source.o[0] + v[1] * source.o[1] + v[2] * source.o[2])) as Vec3,
-    x: [source.x[0], source.y[0], source.z[0]], y: [source.x[1], source.y[1], source.z[1]], z: [source.x[2], source.y[2], source.z[2]],
-  };
   const items = rep.attributes[3].map(refId);
   if (items.some(id => id === null) || items.length === 0) return null;
-  return { items: items as number[], frame: composeFrame({ o, x, y, z }, inverse) };
+  return { items: items as number[], frame: composeFrame({ o, x, y, z }, source) };
 }
 
 /** IfcExtrudedAreaSolid: SweptArea(0), Position(1), ExtrudedDirection(2), Depth(3). */

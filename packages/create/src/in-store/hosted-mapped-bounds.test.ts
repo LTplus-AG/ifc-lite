@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** #6232 D5: source openings in the Bonsai sample are mapped swept solids.
- * Bounds must follow the map, including its inverse origin and every instance. */
+ * Bounds must follow the map, including its authored origin and every instance. */
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
@@ -34,9 +34,8 @@ describe('#6232 D5 mapped opening bounds', () => {
     expect(cut.bounds).toEqual(bounds);
   });
 
-  it('applies inverse mapping origin, rotation, translation and nonuniform scale', async () => {
+  it('applies MappingTarget · MappingOrigin, rotation, translation and nonuniform scale', async () => {
     const { store, view, editor } = await session();
-    const before = placedBodyExtent(store, 1299, view)!;
     editor.setPositionalAttribute(1315, 0, [2, 0, 0]); // MappingOrigin Location
     editor.setPositionalAttribute(1320, 0, [1, 2, 3]); // MappingTarget LocalOrigin
     editor.setPositionalAttribute(1321, 0, [0, 1, 1]); // Axis1 projected off Z by IfcBaseAxis
@@ -44,12 +43,13 @@ describe('#6232 D5 mapped opening bounds', () => {
     const target = editor.addEntity('IfcCartesianTransformationOperator3DnonUniform', ['#1321', '#1322', '#1320', 2, '#1323', 3, 4]);
     editor.setPositionalAttribute(1325, 1, `#${target.expressId}`);
     const after = placedBodyExtent(store, 1299, view)!;
-    // Baseline X starts at the opening Location. Profile width is 0.9,
-    // height 1.2 and the mapped extrusion spans Y = [-0.6, 0.6].
-    expect(after.min[0]).toBeCloseTo(before.min[0] + 1 - 3 * 0.6, 5);
-    expect(after.max[0]).toBeCloseTo(before.min[0] + 1 + 3 * 0.6, 5);
-    expect(after.min[1]).toBeCloseTo(-2, 5);
-    expect(after.max[1]).toBeCloseTo(-0.2, 5);
+    // Authored source bounds are X=[0,.9], Y=[-.6,.6], Z=[0,1.2].
+    // Origin adds (2,0,0), then target yields (1-3y,6+2x,3+4z).
+    // Product #1340 finally adds (1.76767492294312,0,1).
+    expect(after.min[0]).toBeCloseTo(1.76767492294312 + 1 - 3 * 0.6, 5);
+    expect(after.max[0]).toBeCloseTo(1.76767492294312 + 1 + 3 * 0.6, 5);
+    expect(after.min[1]).toBeCloseTo(6, 5);
+    expect(after.max[1]).toBeCloseTo(7.8, 5);
     expect(after.min[2]).toBeCloseTo(4, 5);
     expect(after.max[2]).toBeCloseTo(8.8, 5);
   });

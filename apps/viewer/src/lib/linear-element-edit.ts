@@ -77,6 +77,8 @@ export interface LinearElementEditChain {
   axisDirection: [number, number, number];
   /** IfcExtrudedAreaSolid id; holds the length on attribute 3 (`Depth`). */
   extrudedSolidId: number;
+  /** IfcRectangleProfileDef id: XDim (attr 3) is the width, YDim (attr 4) the other side. */
+  profileId: number;
   /** Current extrusion length (metres). */
   depth: number;
   /** Profile cross-section width (X dimension, metres). */
@@ -240,6 +242,7 @@ export function resolveLinearElementChain(
     startCoordinates: [m(sx), m(sy), m(sz)],
     axisDirection,
     extrudedSolidId: solidId,
+    profileId,
     depth: m(depthRaw),
     profileWidth: m(profileWidth),
     profileHeight: m(profileHeight),

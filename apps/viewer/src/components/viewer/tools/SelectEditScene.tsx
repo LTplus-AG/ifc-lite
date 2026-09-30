@@ -4,6 +4,7 @@
 
 import { GizmoOverlay } from './GizmoOverlay';
 import { WallEndpointOverlay } from './WallEndpointOverlay';
+import { PushPullHandles } from './command/PushPullHandles';
 import { TransformHandles } from './TransformHandles';
 
 /**
@@ -21,6 +22,7 @@ export function SelectEditScene() {
       <GizmoOverlay />
       <TransformHandles />
       <WallEndpointOverlay />
+      <PushPullHandles />
     </>
   );
 }

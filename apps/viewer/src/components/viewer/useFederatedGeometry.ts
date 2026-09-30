@@ -5,6 +5,8 @@
 import { useMemo, useRef } from 'react';
 import type { MeshData, CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import type { FederatedModel } from '@/store';
+import { cpuMeshReleaseVersion, releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
+import { carryReleasedMesh } from '@/lib/released-mesh-provenance';
 
 const ZERO_VEC3 = { x: 0, y: 0, z: 0 };
 const DEFAULT_COORDINATE_INFO: CoordinateInfo = {
@@ -45,9 +47,20 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
   const mergedSourcesRef = useRef(new Map<string, MeshData[] | undefined>());
   const mergedIndicesRef = useRef(new Map<string, number>());
   const mergedResultsRef = useRef(new Map<string, GeometryResult | null>());
+  const mergedReleaseVersionsRef = useRef(new Map<string, number>());
+  const mergedWrappersRef = useRef(new Map<string, MeshData[]>());
 
   // Stamp one stable owner index per mesh, incrementally for any model count.
   return useMemo(() => {
+    const releasedModels = new Set<string>();
+    // Check the previously cached sources before replacement or teardown can
+    // discard them. A release batched with recolor, peer replacement or clear
+    // must also empty wrappers still held by filtered consumers (#6537).
+    for (const [modelId, source] of mergedSourcesRef.current) {
+      if (!source || (mergedReleaseVersionsRef.current.get(modelId) ?? 0) === cpuMeshReleaseVersion(source)) continue;
+      releaseCpuMeshBuffers(mergedWrappersRef.current.get(modelId)!);
+      releasedModels.add(modelId);
+    }
     if (storeModels.size > 0) {
       const singleModel = storeModels.size === 1 ? storeModels.values().next().value : undefined;
       const geometryFor = (model: FederatedModel) => model.geometryResult ?? (singleModel ? geometryResult : null);
@@ -93,11 +106,10 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
 
         if (
           mergedSourcesRef.current.get(modelId) !== modelGeometry?.meshes ||
-          // A same-length result publish can replace fields in existing source
-          // meshes (notably bounded-mode CPU buffer release). Refresh wrappers
-          // without asking the renderer to reupload emptied buffers (#6537).
+          // Rebuild for other same-length result replacements. CPU-only
+          // release refreshes retained wrappers in place below (#6537).
           (mergedResultsRef.current.get(modelId) !== modelGeometry
-            && mergedLengthsRef.current.get(modelId) === meshCount) ||
+            && mergedLengthsRef.current.get(modelId) === meshCount && !releasedModels.has(modelId)) ||
           mergedIndicesRef.current.get(modelId) !== (modelIdToIndex.get(modelId) ?? 0) ||
           mergedVisibilityRef.current.get(modelId) !== model.visible ||
           (mergedLengthsRef.current.get(modelId) ?? 0) > meshCount
@@ -113,19 +125,26 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
         mergedSourcesRef.current = new Map();
         mergedIndicesRef.current = new Map();
         mergedResultsRef.current = new Map();
+        mergedReleaseVersionsRef.current = new Map();
+        mergedWrappersRef.current = new Map();
         for (const [modelId, model] of storeModels) {
           const modelGeometry = geometryFor(model);
           mergedVisibilityRef.current.set(modelId, model.visible);
           mergedSourcesRef.current.set(modelId, modelGeometry?.meshes);
           mergedResultsRef.current.set(modelId, modelGeometry);
+          mergedReleaseVersionsRef.current.set(modelId, cpuMeshReleaseVersion(modelGeometry?.meshes));
           const modelIndex = modelIdToIndex.get(modelId) ?? 0;
           mergedIndicesRef.current.set(modelId, modelIndex);
+          const wrappers: MeshData[] = [];
+          mergedWrappersRef.current.set(modelId, wrappers);
           if (!model.visible || !modelGeometry?.meshes) {
             mergedLengthsRef.current.set(modelId, 0);
             continue;
           }
           for (const mesh of modelGeometry.meshes) {
-            rebuilt.push({ ...mesh, modelIndex });
+            const wrapper = carryReleasedMesh(mesh, { ...mesh, modelIndex });
+            wrappers.push(wrapper);
+            rebuilt.push(wrapper);
           }
           mergedLengthsRef.current.set(modelId, modelGeometry.meshes.length);
         }
@@ -136,14 +155,18 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
           const modelIndex = modelIdToIndex.get(modelId) ?? 0;
           const previousLength = mergedLengthsRef.current.get(modelId) ?? 0;
           const nextMeshes = model.visible ? (modelGeometry?.meshes ?? []) : [];
+          const wrappers = mergedWrappersRef.current.get(modelId)!;
           for (let i = previousLength; i < nextMeshes.length; i++) {
             const mesh = nextMeshes[i];
-            mergedCacheRef.current.push({ ...mesh, modelIndex });
+            const wrapper = carryReleasedMesh(mesh, { ...mesh, modelIndex });
+            wrappers.push(wrapper);
+            mergedCacheRef.current.push(wrapper);
           }
           mergedLengthsRef.current.set(modelId, nextMeshes.length);
           mergedVisibilityRef.current.set(modelId, model.visible);
           mergedSourcesRef.current.set(modelId, modelGeometry?.meshes);
           mergedResultsRef.current.set(modelId, modelGeometry);
+          mergedReleaseVersionsRef.current.set(modelId, cpuMeshReleaseVersion(modelGeometry?.meshes));
         }
       }
 
@@ -180,6 +203,8 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
     mergedSourcesRef.current.clear();
     mergedIndicesRef.current.clear();
     mergedResultsRef.current.clear();
+    mergedReleaseVersionsRef.current.clear();
+    mergedWrappersRef.current.clear();
     mergedContentVersionRef.current = geometryContentVersion;
     // Legacy mode (no federation): use original geometryResult
     return geometryResult;

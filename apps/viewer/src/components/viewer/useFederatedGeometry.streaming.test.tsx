@@ -10,6 +10,7 @@ import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
+import { meshGeometryCounts, hasMeshGeometryProvenance } from '@/lib/released-mesh-provenance';
 import { useFederatedGeometry } from './useFederatedGeometry.js';
 
 const mesh = (id: number): MeshData => ({ expressId: id, geometryItemId: id, color: [1, 0, 0, 1],
@@ -121,4 +122,86 @@ for (const count of [1, 2]) it(`drops released CPU buffers from cached wrappers 
   assert.equal(current!.meshes[0].normals.length, 0); assert.equal(current!.meshes[0].indices.length, 0);
   assert.equal(useViewerStore.getState().geometryContentVersion, 0, 'release does not request a GPU reupload from emptied CPU buffers');
   assert.equal(node.textContent, count === 1 ? '1:0' : '1:0,2:9');
+});
+
+// Independent review #6584: React can observe release plus append as one publish.
+// Repeated releases also cover a previously empty first mesh and fresh suffix.
+for (const count of [1, 2]) it(`refreshes released prefixes when release and append are batched for ${count} models (#6537)`, () => {
+  const a = model('a', [mesh(1)]), b = model('b', [mesh(2)]);
+  useViewerStore.setState({ ...fixtureModels(...(count === 1 ? [a] : [a, b])), geometryResult: a.geometryResult!,
+    boundedGeometryMode: true, geometryContentVersion: 0 });
+  let current: GeometryResult | null = null;
+  const indices = new Map([['a', 0], ['b', 1]]);
+  const node = document.createElement('div'); document.body.appendChild(node); const root = createRoot(node);
+  function Probe() {
+    const state = useViewerStore();
+    current = useFederatedGeometry(state.models, state.geometryResult, indices, state.geometryContentVersion);
+    return <output>{current?.meshes.map(m => `${m.expressId}:${m.positions.length}`).join(',')}</output>;
+  }
+  cleanups.push(() => { act(() => root.unmount()); node.remove(); });
+  act(() => root.render(<Probe />));
+  for (const suffixId of [100, 200]) {
+    const source = useViewerStore.getState().models.get('a')!.geometryResult!.meshes;
+    const prefixIds = source.map(m => m.expressId);
+    const retained = current!.meshes.slice();
+    const order = retained.map(m => `${m.modelIndex}:${m.expressId}`);
+    act(() => {
+      useViewerStore.getState().releaseGeometryMemory();
+      useViewerStore.getState().appendGeometryBatch('a', [mesh(suffixId)]);
+    });
+    assert.equal(useViewerStore.getState().models.get('a')!.geometryResult!.meshes, source, 'the canonical actions preserve source-array identity');
+    assert.deepEqual(current!.meshes.slice(0, retained.length).map(m => `${m.modelIndex}:${m.expressId}`), order,
+      'the GPU upload cursor requires an unchanged global prefix and a new tail');
+    for (let i = 0; i < retained.length; i++) {
+      assert.equal(current!.meshes[i], retained[i], 'filtered consumers retain the same cached wrapper');
+      if (retained[i].modelIndex === 0) assert.equal(retained[i].positions.length, 0, 'retained consumers release CPU buffers too');
+    }
+    for (const id of prefixIds) {
+      const cached: MeshData = current!.meshes.find(m => m.expressId === id && m.modelIndex === 0)!;
+      assert.equal(cached.positions.length, 0, `released prefix ${id} cannot retain its previous positions`);
+      assert.equal(hasMeshGeometryProvenance(cached), true, 'retained appearance consumers can resolve released identities');
+      assert.deepEqual(meshGeometryCounts(cached), { triangles: 1, vertices: 3 }, 'release preserves the contribution to geometry totals');
+      assert.equal(cached.normals.length, 0); assert.equal(cached.indices.length, 0);
+    }
+    assert.equal(current!.meshes.find(m => m.expressId === suffixId)!.positions.length, 9, 'the fresh suffix remains uploadable');
+    if (count === 2) assert.equal(current!.meshes.find(m => m.expressId === 2 && m.modelIndex === 1)!.positions.length, 9, 'the peer model remains intact');
+    assert.equal(useViewerStore.getState().geometryContentVersion, 0, 'CPU release never requests GPU reupload of emptied prefixes');
+  }
+});
+
+for (const replacement of ['colors', 'peer', 'clear'] as const) it(`empties retained released wrappers before ${replacement} replacement rebuild (#6537)`, () => {
+  const a = model('a', [mesh(1)]), b = model('b', [mesh(2)]);
+  useViewerStore.setState({ ...fixtureModels(a, b), geometryResult: a.geometryResult!,
+    boundedGeometryMode: true, geometryContentVersion: 0 });
+  let current: GeometryResult | null = null;
+  const indices = new Map([['a', 0], ['b', 1]]);
+  const node = document.createElement('div'); document.body.appendChild(node); const root = createRoot(node);
+  function Probe() {
+    const state = useViewerStore();
+    current = useFederatedGeometry(state.models, state.geometryResult, indices, state.geometryContentVersion);
+    return null;
+  }
+  cleanups.push(() => { act(() => root.unmount()); node.remove(); });
+  act(() => root.render(<Probe />));
+  const retained = current!.meshes.slice();
+  act(() => {
+    useViewerStore.getState().releaseGeometryMemory();
+    if (replacement === 'clear') useViewerStore.getState().clearAllModels();
+    else if (replacement === 'peer') {
+      const state = useViewerStore.getState();
+      const peer = state.models.get('b')!;
+      useViewerStore.setState({ models: new Map(state.models).set('b', { ...peer, geometryResult: geometry([mesh(3)]) }) });
+    } else useViewerStore.getState().updateMeshColors(new Map([[1, [0, 1, 0, 1]]]));
+  });
+  assert.equal(retained[0].positions.length, 0, 'a replacement cannot strand already released buffers in retained aliases');
+  assert.equal(retained[0].normals.length, 0); assert.equal(retained[0].indices.length, 0);
+  assert.equal(hasMeshGeometryProvenance(retained[0]), true);
+  assert.deepEqual(meshGeometryCounts(retained[0]), { triangles: 1, vertices: 3 });
+  assert.equal(retained[1].positions.length, 9, 'the unreleased peer alias is untouched');
+  if (replacement === 'clear') assert.equal(current, null);
+  else {
+    assert.equal(current!.meshes.find(m => m.modelIndex === 0)!.positions.length, 0);
+    assert.equal(current!.meshes.find(m => m.modelIndex === 1)!.expressId, replacement === 'peer' ? 3 : 2);
+  }
+  assert.equal(useViewerStore.getState().geometryContentVersion, 0);
 });

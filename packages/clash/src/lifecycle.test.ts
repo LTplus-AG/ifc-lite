@@ -351,6 +351,9 @@ describe('compareClashRuns × the real engine (engine-ts/orchestrator.ts)', () =
 // #6575: one review key can represent arbitrarily many renderer occurrences.
 describe('large clash revision buckets', () => {
   const count = 250_000;
+  // These test argument-limit safety, not throughput. Shared CI runners can
+  // spend over five seconds building and comparing 750,000 occurrences.
+  const timeoutMs = 30_000;
   function occurrences(prefix: string, model = 'm'): Clash[] {
     const base = makeClash('shared');
     return Array.from({ length: count }, (_, index) => ({
@@ -374,13 +377,13 @@ describe('large clash revision buckets', () => {
     expect(diff.summary).toEqual({ added: count, persistent: 0, resolved: count });
     retained(diff.added, next);
     retained(diff.resolved, previous);
-  });
+  }, timeoutMs);
   it('retains a large resolved group absent from the next run', () => {
     const previous = occurrences('previous');
     const diff = compareClashRuns(makeResult(previous), makeResult([]));
     expect(diff.summary).toEqual({ added: 0, persistent: 0, resolved: count });
     retained(diff.resolved, previous);
-  });
+  }, timeoutMs);
   it('pairs every occurrence across a reload and retains large surplus additions', () => {
     const previous = occurrences('previous', 'old');
     const next = occurrences('next', 'new');
@@ -389,7 +392,7 @@ describe('large clash revision buckets', () => {
     expect(diff.summary).toEqual({ added: count, persistent: count, resolved: 0 });
     retained(diff.persistent, next);
     retained(diff.added, extra);
-  });
+  }, timeoutMs);
   it('retains large surplus resolutions across a reload', () => {
     const previous = occurrences('previous', 'old');
     const extra = occurrences('surplus', 'old');
@@ -398,5 +401,5 @@ describe('large clash revision buckets', () => {
     expect(diff.summary).toEqual({ added: 0, persistent: count, resolved: count });
     retained(diff.persistent, next);
     retained(diff.resolved, extra);
-  });
+  }, timeoutMs);
 });

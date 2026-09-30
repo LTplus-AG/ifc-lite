@@ -28,6 +28,7 @@ import { DocumentPanel } from '../document/DocumentPanel';
 import { ManualValidationTab } from './ManualValidationTab';
 import { fixtureModel } from '@/test/store-fixture';
 import { SavedValidationReports } from './SavedValidationReports';
+import { IDSPanelResults } from '../IDSPanelResults';
 
 const WALL_IFC = `ISO-10303-21;
 HEADER;
@@ -58,7 +59,7 @@ async function checkedWall(modelId: string, title: string) {
 const initial = useViewerStore.getState();
 beforeEach(() => {
   localStorage.clear();
-  useViewerStore.setState({ savedValidationReports: [], validationReportsSaveFailed: false, validationReportsLoadIssue: null, documents: [], activeDocumentId: null, models: new Map(), dashboards: [], listDefinitions: [], bcfProject: null, idsValidationReport: null, manualChecklist: null });
+  useViewerStore.setState({ savedValidationReports: [], validationReportsSaveFailed: false, validationReportsLoadIssue: null, documents: [], activeDocumentId: null, models: new Map(), dashboards: [], listDefinitions: [], bcfProject: null, idsValidationReport: null, currentValidationReport: null, idsLoading: false, manualChecklist: null });
 });
 afterEach(() => { cleanup(); useViewerStore.setState(initial); });
 
@@ -92,32 +93,80 @@ async function printedPdf(document: DocumentSpec): Promise<string[]> {
   return printed;
 }
 
+function RunCheck() {
+  const ids = useIDS({ autoApplyColors: false });
+  return <>
+    <button onClick={() => { void ids.runValidation('tower'); }}>Run IDS</button>
+    <IDSPanelResults results={ids} runValidation={ids.runValidation} validating={ids.loading} onEntityClick={() => {}} />
+  </>;
+}
+
+const reportButton = (ui: HTMLElement, name: string) => {
+  const button = [...ui.querySelectorAll('button')].find((candidate) => candidate.textContent === name);
+  assert.ok(button, `expected ${name}`);
+  return button;
+};
+
+async function seedRun() {
+  const first = await checkedWall('tower', 'Explicit IDS save');
+  assert.equal(first.source.kind, 'ids');
+  if (first.source.kind !== 'ids') assert.fail();
+  const bytes = new TextEncoder().encode(WALL_IFC);
+  const store = await new IfcParser().parseColumnar(bytes.buffer);
+  useViewerStore.setState({ idsDocument: first.source.document,
+    models: new Map([['tower', { ...fixtureModel('tower'), name: 'tower.ifc', sourceFingerprint: 'fp-tower', ifcDataStore: store }]]), activeModelId: 'tower' });
+}
+
 describe('saved validation evidence (#6500)', () => {
-  it('completed IDS checks automatically retain each real run before the next one replaces the live result', async () => {
-    const first = await checkedWall('tower', 'IDS autosave');
-    assert.equal(first.source.kind, 'ids');
-    if (first.source.kind !== 'ids') assert.fail();
-    const bytes = new TextEncoder().encode(WALL_IFC);
-    const store = await new IfcParser().parseColumnar(bytes.buffer);
-    useViewerStore.setState({
-      idsDocument: first.source.document,
-      models: new Map([['tower', { ...fixtureModel('tower'), name: 'tower.ifc', sourceFingerprint: 'fp-tower', ifcDataStore: store }]]),
-      activeModelId: 'tower',
-    });
-    function RunCheck() {
-      const ids = useIDS({ autoApplyColors: false });
-      return <button onClick={() => { void ids.runValidation('tower'); }}>Run IDS</button>;
-    }
-    const ui = render(<RunCheck />);
-    const button = ui.querySelector('button'); assert.ok(button);
-    click(button);
-    await waitFor(() => useViewerStore.getState().savedValidationReports.length === 1, 'first IDS run should enter history');
-    click(button);
-    await waitFor(() => useViewerStore.getState().savedValidationReports.length === 2, 'a second IDS run should preserve the first');
+  it('only explicitly saves a completed real IDS run, once, with its completion-time provenance (#6568)', async () => {
+    await seedRun();
+    let ui = render(<RunCheck />);
+    click(reportButton(ui, 'Run IDS'));
+    await waitFor(() => useViewerStore.getState().idsValidationReport !== null, 'first IDS run should show results');
+    assert.equal(useViewerStore.getState().savedValidationReports.length, 0);
+    assert.equal(localStorage.getItem(VALIDATION_REPORTS_STORAGE_KEY), null, 'checking alone writes no report history');
+    const first = useViewerStore.getState().idsValidationReport!;
+    // Closing/reopening the panel and renaming a model must not lose or alter
+    // the evidence captured when the check finished.
+    cleanup();
+    act(() => useViewerStore.setState({ models: new Map([['tower', { ...useViewerStore.getState().models.get('tower')!, name: 'renamed.ifc', sourceFingerprint: 'fp-later' }]]) }));
+    first.specificationResults[0].passedCount = 0;
+    ui = render(<RunCheck />);
+    const save = reportButton(ui, 'Save report');
+    click(save);
+    click(save);
+    assert.equal(reportButton(ui, 'Report saved').disabled, true);
+    assert.equal(loadValidationReports().length, 1, 'rapid repeat clicks keep one saved entry');
+    assert.equal(loadValidationReports()[0].snapshot.summary.passed, 1, 'saved evidence retains the original result');
+    click(reportButton(ui, 'Run IDS'));
+    await waitFor(() => useViewerStore.getState().idsValidationReport !== first, 'second IDS run replaces the live result');
+    assert.equal(loadValidationReports().length, 1, 'a later check does not automatically add another report');
+    click(reportButton(ui, 'Save report'));
     const history = loadValidationReports();
     assert.equal(history.length, 2);
     assert.notEqual(history[0].id, history[1].id);
-    assert.deepEqual(history.map((entry) => entry.snapshot.reportModels), Array.from({ length: 2 }, () => [{ name: 'tower.ifc', fingerprint: 'fp-tower' }]));
+    assert.deepEqual(history.map((entry) => entry.snapshot.reportModels), [
+      [{ name: 'tower.ifc', fingerprint: 'fp-tower' }], [{ name: 'renamed.ifc', fingerprint: 'fp-later' }],
+    ]);
+  });
+
+  it('an explicit save reports a real storage refusal and retries the same evidence without a duplicate (#6568)', async () => {
+    await seedRun();
+    const ui = render(<RunCheck />);
+    click(reportButton(ui, 'Run IDS'));
+    await waitFor(() => useViewerStore.getState().idsValidationReport !== null, 'IDS run should finish');
+    const write = mock.method(localStorage, 'setItem', () => { throw new DOMException('Storage full', 'QuotaExceededError'); });
+    try {
+      click(reportButton(ui, 'Save report'));
+      assert.equal(reportButton(ui, 'Save pending').disabled, true);
+      assert.equal(useViewerStore.getState().savedValidationReports.length, 1);
+      assert.equal(loadValidationReports().length, 0);
+      assert.ok([...ui.querySelectorAll('[role="alert"]')].some((alert) => /storage|lost on reload/.test(alert.textContent ?? '')));
+    } finally { write.mock.restore(); }
+    click(reportButton(ui, 'Retry save'));
+    assert.equal(reportButton(ui, 'Report saved').disabled, true);
+    assert.equal(loadValidationReports().length, 1);
+    assert.deepEqual(loadValidationReports()[0].snapshot.reportModels, [{ name: 'tower.ifc', fingerprint: 'fp-tower' }]);
   });
 
   it('captures meaningful scope for unnamed actual IDS models and refuses blank stored scope (#6500 review)', async () => {

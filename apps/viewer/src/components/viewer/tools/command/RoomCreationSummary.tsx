@@ -33,7 +33,7 @@ export function RoomCreationSummary({ gesture, ctx, rooms }: CommandHudProps<Roo
   const number = (value: number) => formatLocaleNumber(locale, value, { maximumFractionDigits: 2 });
   return (
     <div className="flex flex-col gap-0.5 border-t border-border pt-1.5 text-2xs text-muted-foreground" data-room-preview-summary>
-      <p>{t('roomTool.preview.total', { countDisplay: number(free.length), area: number(area) })}</p>
+      <p>{t('roomTool.preview.total', { count: free.length, countDisplay: number(free.length), area: number(area) })}</p>
       <p>{t('roomTool.preview.graph', { walls: number(walls.length), vertices: number(vertices.size), edges: number(edges.size) })}</p>
       <p>{t('roomTool.preview.leaks', { openEnds: number(leaks.openEnds.length), unboundedWalls: number(leaks.walls.filter((wall) => !wall.bounding).length) })}</p>
     </div>

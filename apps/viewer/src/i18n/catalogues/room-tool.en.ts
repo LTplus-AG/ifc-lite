@@ -17,7 +17,10 @@ export const roomToolEn = {
   'roomTool.options.objectType': 'IfcSpace.ObjectType',
   'roomTool.options.invalid': 'Enter a positive minimum area and a non-empty room name pattern',
   'roomTool.options.objectTypeRequired': 'Enter IfcSpace.ObjectType for a USERDEFINED room',
-  'roomTool.preview.total': '{countDisplay} new rooms · {area} m² total',
+  'roomTool.preview.total': {
+    one: '{countDisplay} new room · {area} m² total',
+    other: '{countDisplay} new rooms · {area} m² total',
+  },
   'roomTool.preview.graph': '{walls} walls · {vertices} layout vertices · {edges} layout edges',
   'roomTool.preview.leaks': '{openEnds} open wall ends · {unboundedWalls} walls enclose no room',
   'roomTool.label': 'Room',

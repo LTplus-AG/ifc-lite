@@ -321,6 +321,22 @@ describe('room.place: Update rooms (#6232 M4, D5)', () => {
 
 
 describe('Room options retained when deleting the panel (#6232/#6531)', () => {
+  it('pluralizes the mounted summary for multiple free rooms (#6531)', async (t) => {
+    if (!(await startRooms(t))) return;
+    const before = undoDepth();
+    const ui = render(<RoomPlaceBar gesture={gesture()} ctx={ctx()} />);
+    const more = ui.querySelector('[data-room-more]')!;
+    act(() => {
+      more.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+      clickEl(more);
+    });
+    const summary = document.querySelector('[data-room-preview-summary]');
+    assert.ok(summary, 'read-only totals are reachable through More');
+    assert.match(summary.textContent ?? '', /^2 new rooms ·/);
+    assert.deepEqual(spaces(), [], 'the preview creates no spaces');
+    assert.equal(undoDepth(), before, 'preview writes no undo entry');
+  });
+
   it('previews count/area without writes, applies minimum area and names/types through Auto, and undoes one batch', async (t) => {
     if (!(await startRooms(t, 2))) return;
     act(() => { updateCommandGesture((g) => ({ ...(g as RoomPlaceGesture), minArea: 15, namePattern: 'Suite {n}', PredefinedType: 'EXTERNAL' })); });
@@ -333,7 +349,8 @@ describe('Room options retained when deleting the panel (#6232/#6531)', () => {
     });
     const summary = document.querySelector('[data-room-preview-summary]');
     assert.ok(summary, 'read-only totals are reachable through More');
-    assert.match(summary.textContent ?? '', /1 new rooms/);
+    assert.match(summary.textContent ?? '', /^1 new room ·/);
+    assert.doesNotMatch(summary.textContent ?? '', /1 new rooms/);
     assert.match(summary.textContent ?? '', /27[.,]84 m²/);
     assert.match(summary.textContent ?? '', /5 walls/);
     assert.match(summary.textContent ?? '', /layout vertices/);

@@ -60,8 +60,9 @@ screenshots, which SwiftShader can retain or discard. Native and restored hashes
 are compared within each run; no golden image or predetermined raster is pinned.
 
 Revit grid axes arrive asynchronously after model publication. The fixture uses
-the canonical class-visibility action to hide `IfcGrid` before load and verifies
-that it remains hidden after every model loads and in every captured frame.
+the canonical class-visibility action to hide `IfcGrid` before load and asserts
+that it remains hidden after all models load. Each capture records grid
+visibility; it was off in every frame of the documented run.
 This holds the unrelated grid overlay constant; the tested walls, columns and
 beams remain visible throughout.
 

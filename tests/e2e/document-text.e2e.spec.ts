@@ -5,8 +5,9 @@ import { test, expect } from '@playwright/test';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { contrastOfTextOnSurface, WCAG_AA_NORMAL_TEXT } from '../../apps/viewer/src/test/contrast/wcag';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 interface DevServer {
@@ -418,6 +419,24 @@ test('#6506 three real model pairs survive reload and export the selected saved 
   await page.reload(); await settle(1); await openCompare();
   const library = page.locator('[data-saved-comparisons]');
   await expect(library.getByRole('alert')).toContainText('The original data was preserved');
+  const noticeColors = await library.getByRole('alert').evaluate((notice) => {
+    let surface: Element | null = notice;
+    while (surface) {
+      const background = getComputedStyle(surface).backgroundColor;
+      if (background.startsWith('rgb(')) {
+        return { foreground: getComputedStyle(notice).color, background };
+      }
+      surface = surface.parentElement;
+    }
+    throw new Error('Recovered comparison notice has no opaque surface');
+  });
+  const noticeContrast = contrastOfTextOnSurface(noticeColors.foreground, noticeColors.background);
+  expect(noticeContrast).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
+  const contrastPath = testInfo.outputPath('saved-model-comparison-recovery-contrast.json');
+  await writeFile(contrastPath, JSON.stringify({ ...noticeColors, contrast: noticeContrast }, null, 2));
+  await testInfo.attach('recovered-history-contrast', {
+    path: contrastPath, contentType: 'application/json',
+  });
   expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().savedComparisons)).toEqual(history);
   expect(await page.evaluate(() => localStorage.getItem('ifc-lite-saved-comparisons:unreadable'))).toBe(damagedHistory);
   await page.getByRole('combobox', { name: 'Saved comparison', exact: true }).selectOption(history[0].id);

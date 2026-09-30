@@ -15,9 +15,9 @@
  *    no longer holds (the axes no longer meet) is removed and the wall that did
  *    not move stops square at its own end.
  *
- * Both write through the editor only, so a caller that wants one undo step and
- * all-or-nothing wraps them in `StoreEditor.runAtomic`. Every length in and out
- * is metres, storey-local.
+ * Both write through the editor only. Joining is atomic; reshaping runs inside
+ * the caller's transaction. Hosts record either as one undo step. Every length
+ * in and out is metres, storey-local.
  */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
@@ -28,6 +28,7 @@ import { AnchorEntityReader } from './resolve-anchor.js';
 import { applyWallJoinToStore, rewriteWall, type JoinAnchor, type WallJoinApplyOptions, type WallJoinApplyResult } from './wall-join-apply.js';
 import { readWallJoinRels, readWallJoinTarget, type WallJoinRead, type WallJoinRel } from './wall-join-read.js';
 import { computeWallJoin, reshapeWallAxis, type PlanPoint, type WallJoinWall } from './wall-join.js';
+import { assertWallOpeningsFit } from './wall-opening-fit.js';
 
 /** What a join write needs from the model: the authoring anchor plus the context an `Axis` representation lives in. */
 export function resolveWallJoinAnchor(store: IfcDataStore, view?: Parameters<typeof resolveAuthoringAnchor>[1]): JoinAnchor {
@@ -64,6 +65,12 @@ export function joinWallsInStore(
   bId: number,
   options: WallJoinApplyOptions = {},
 ): WallJoinInStoreResult {
+  return editor.runAtomic(draft => joinWalls(draft, store, anchor, aId, bId, options));
+}
+
+function joinWalls(
+  editor: StoreEditor, store: IfcDataStore, anchor: JoinAnchor, aId: number, bId: number, options: WallJoinApplyOptions,
+): WallJoinInStoreResult {
   const op = 'joinWallsInStore';
   const a = mustRead(store, editor, aId, anchor.lengthUnitScale ?? 1, op);
   const b = mustRead(store, editor, bId, anchor.lengthUnitScale ?? 1, op);
@@ -80,7 +87,9 @@ export function joinWallsInStore(
     : undefined);
   const joinOptions: WallJoinApplyOptions = { ...options, priority, priorities, Name: options.Name ?? first?.name ?? undefined };
   // Refuse before the old relationship is touched.
-  computeWallJoin(a.wall, b.wall, joinOptions);
+  const join = computeWallJoin(a.wall, b.wall, joinOptions);
+  assertWallOpeningsFit(store, editor.getMutationView(), a, join.a.wall, anchor.lengthUnitScale ?? 1);
+  assertWallOpeningsFit(store, editor.getMutationView(), b, join.b.wall, anchor.lengthUnitScale ?? 1);
   for (const rel of existing) editor.removeEntity(rel.relId);
   return { ...applyWallJoinToStore(editor, anchor, a, b, joinOptions), replacedRelIds: existing.map((rel) => rel.relId) };
 }

@@ -32,6 +32,9 @@ const { content } = creator.toIfc(); // IFC STEP text
   existing openings; unreadable bounds or placements are refused. Omitted
   optional axes use IFC defaults; explicit missing, zero or parallel axes and
   incomplete body/profile references are refused.
+- Loaded-model wall joins: `joinWallsInStore` atomically rewrites wall bodies,
+  axes and `IfcRelConnectsPathElements`. Hosted openings must remain inside
+  both joined end faces; unreadable cuts refuse the join.
 - Property sets, element quantities, materials, and colors
 - 4D scheduling entities: IfcWorkSchedule, IfcTask, IfcRelSequence
 - In-store builders (`addWallToStore`, `addSlabToStore`, ...) that emit elements into an existing parsed model

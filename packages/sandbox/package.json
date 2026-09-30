@@ -29,6 +29,8 @@
     "quickjs-emscripten": "^0.32.0"
   },
   "devDependencies": {
+    "@ifc-lite/create": "workspace:^",
+    "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
     "typescript": "^6.0.3",
     "vitest": "^5.0.2"

@@ -17,6 +17,7 @@ import type { ValidationReport } from '@ifc-lite/ids';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { useTranslation, type TranslationKey } from '@/i18n';
+import { CHART_FONT_SIZE } from '@ifc-lite/charts';
 import { readImageFile } from '@/lib/document/persistence';
 import type { BindingContext } from '@/lib/document/bindings';
 import { idsReportBlockFromReport } from '@/lib/document/ids-report';
@@ -267,6 +268,14 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
               onCommit={(height) => onChange({ ...block, height })}
             />
           </label>
+          <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.chartFontSizeLabel')}
+            <ClampedNumberInput value={block.fontSize} min={CHART_FONT_SIZE.min} max={CHART_FONT_SIZE.max}
+              placeholder={String(CHART_FONT_SIZE.default)} allowUndefined ariaLabel={t('document.block.chartFontSizeAriaLabel')}
+              onCommit={(fontSize) => onChange({ ...block, fontSize })} />
+          </label>
+          <Button size="sm" variant="ghost" disabled={block.fontSize === undefined} onClick={() => onChange({ ...block, fontSize: undefined })}>
+            {t('document.block.chartFontSizeReset')}
+          </Button>
           <WidthEditor width={block.width} onChange={(width) => onChange({ ...block, width })} />
         </div>
       )}

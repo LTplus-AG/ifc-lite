@@ -9,7 +9,7 @@
  * printed as an empty string.
  */
 import { useMemo, useState } from 'react';
-import { renderChartSvg, type Aggregation } from '@ifc-lite/charts';
+import { chartFontScale, renderChartSvg, type Aggregation } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { useTranslation } from '@/i18n';
 import { renderTemplate, type BindingContext } from '@/lib/document/bindings';
@@ -91,11 +91,14 @@ function ResolvedText({ text, bindings }: { text: string; bindings: BindingConte
   );
 }
 
-function ChartSvg({ aggregation, message, width, height }: { aggregation: Aggregation | null; message: string | undefined; width: number; height: number }) {
+function ChartSvg({ aggregation, message, width, height, fontSize, scale }: { aggregation: Aggregation | null; message: string | undefined; width: number; height: number; fontSize?: number; scale: number }) {
   const { t } = useTranslation();
+  // Custom typography uses the PDF's point-space layout, then scales the whole
+  // vector to the sheet. Keep the established default preview unchanged (#6546).
+  const renderScale = chartFontScale(fontSize) === 1 ? 1 : scale;
   const svg = useMemo(() => (aggregation && aggregation.categories.length > 0
-    ? renderChartSvg({ aggregation, width, height, theme: REPORT_THEME, showTitle: false, print: true })
-    : null), [aggregation, width, height]);
+    ? renderChartSvg({ aggregation, width: width / renderScale, height: height / renderScale, fontSize, theme: REPORT_THEME, showTitle: false, print: true })
+    : null), [aggregation, width, height, fontSize, renderScale]);
   if (!svg) {
     return (
       <div className="flex items-center justify-center rounded border border-dashed border-neutral-300 px-3 text-center text-xs text-neutral-500" style={{ height: Math.max(48, height) }} data-chart-empty>
@@ -104,7 +107,7 @@ function ChartSvg({ aggregation, message, width, height }: { aggregation: Aggreg
     );
   }
   // The SVG string is ECharts' own output over data we aggregated; nothing user-authored is in it.
-  return <div className="w-full overflow-hidden" dangerouslySetInnerHTML={{ __html: svg }} data-chart-svg />;
+  return <div className={`w-full overflow-hidden${renderScale === 1 ? '' : ' [&_svg]:h-auto [&_svg]:w-full'}`} dangerouslySetInnerHTML={{ __html: svg }} data-chart-svg />;
 }
 
 /** Mirrors PDF image sizing once the browser has measured the data URL's intrinsic ratio. */
@@ -139,12 +142,14 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
       );
     }
     case 'chart': {
+      const textScale = chartFontScale(block.fontSize);
       const { height: chartHeight } = documentChartSizing({
         requestedHeight: block.height ?? CHART_BLOCK_HEIGHT_DEFAULT,
         pageHeight,
         boxWidth: contentWidth / scale,
         snapshot: block.snapshot,
         hasData: Boolean(aggregation && aggregation.categories.length > 0),
+        fontSize: block.fontSize,
       });
       const height = chartHeight * scale;
       // Computed once, not repeated as a JSX-expression literal in both the visible text and its
@@ -154,10 +159,10 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
       return (
         <div>
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold" title={block.chart.title}>{block.chart.title}</div>
-            <div className="truncate text-2xs text-neutral-500" title={subtitle}>{subtitle}</div>
+            <div className="truncate text-sm font-semibold" title={block.chart.title} style={textScale === 1 ? undefined : { fontSize: 11 * textScale * scale, lineHeight: `${16 * textScale * scale}px` }}>{block.chart.title}</div>
+            <div className="truncate text-2xs text-neutral-500" title={subtitle} style={textScale === 1 ? undefined : { fontSize: 8 * textScale * scale, lineHeight: `${16 * textScale * scale}px` }}>{subtitle}</div>
           </div>
-          <ChartSvg aggregation={aggregation} message={chartMessage} width={contentWidth} height={height} />
+          <ChartSvg aggregation={aggregation} message={chartMessage} width={contentWidth} height={height} fontSize={block.fontSize} scale={scale} />
         </div>
       );
     }

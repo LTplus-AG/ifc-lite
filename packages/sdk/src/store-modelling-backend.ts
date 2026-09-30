@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Builds `bim.store`'s opening, hosted door/window, type and material methods
+ * Builds `bim.store`'s wall-join, hosted element, type and material methods
  * (#6232), for the
  * same reason `createStructuralStoreBackend` exists: every host implementing
  * `StoreBackendMethods` (CLI headless backend, viewer store adapter) spreads
@@ -21,6 +21,8 @@ import {
   addMaterialToStore,
   assignMaterialInStore,
   assignTypeInStore,
+  joinWallsInStore,
+  resolveWallJoinAnchor,
   liveEntityConforms,
   liveEntityType,
   readRelatedLists,
@@ -33,6 +35,7 @@ import {
   type HostedDoorInStoreParams,
   type HostedWindowInStoreParams,
   type OpeningInStoreParams,
+  type WallJoinApplyOptions,
 } from '@ifc-lite/create';
 import type { CostStoreModelResolution } from './cost-store-backend.js';
 import type { ModellingStoreBackendMethods } from './store-modelling-types.js';
@@ -63,6 +66,13 @@ export function createModellingStoreBackend(resolve: ModellingStoreModelResolver
   };
 
   return {
+    joinWalls(modelId: string, aExpressId: number, bExpressId: number, options: WallJoinApplyOptions = {}): EntityRef {
+      const model = resolve(modelId);
+      const joined = model.editor.runAtomic(draft => joinWallsInStore(
+        draft, model.store, resolveWallJoinAnchor(model.store, draft.getMutationView()), aExpressId, bExpressId, options,
+      ));
+      return ref(model.modelId, joined.relId);
+    },
     addOpening(modelId: string, hostExpressId: number, params: OpeningInStoreParams): EntityRef {
       const model = resolve(modelId);
       return ref(model.modelId, addHostedElementInStore(model.store, model.editor, hostExpressId, { kind: 'opening', params }).expressId);

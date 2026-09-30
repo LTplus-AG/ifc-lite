@@ -23,13 +23,13 @@
 import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import type { Vec2 } from './auto-space-detect.js';
 import { safeLengthUnitScale } from './length-unit-scale.js';
+import { num, pointOf } from './host-geometry-frame.js';
 import {
   AXIS_EPS,
   applyFrame,
   frameInStoreyFrame,
   numericAttr,
   readEntity,
-  readVec3,
   storeyPlacementChain,
   type OverlayWallReader,
 } from './placement-frame.js';
@@ -75,25 +75,27 @@ const refList = (value: unknown): number[] => (Array.isArray(value)
 function readTrim(read: Reader, value: unknown): { point: Vec2 } | { parameter: number } | null {
   const items = Array.isArray(value) ? value : [value];
   for (const item of items) {
-    if (Array.isArray(item) && typeof item[1] === 'number') return { parameter: item[1] };
+    if (Array.isArray(item)) {
+      const parameter = num(item[1]);
+      if (parameter !== null) return { parameter };
+    }
     if (item !== null && typeof item === 'object' && !Array.isArray(item)) {
       const scalar = authoredScalar(item as never);
-      if (typeof scalar === 'number') return { parameter: scalar };
+      const parameter = num(scalar);
+      if (parameter !== null) return { parameter };
     }
     const id = numericAttr(item as never);
-    const ent = id === null ? null : read(id);
-    if (ent?.type?.toUpperCase() === 'IFCCARTESIANPOINT') {
-      const p = readVec3(ent.attributes[0] as never);
-      if (p) return { point: [p[0], p[1]] };
-    }
+    const point = id === null ? null : pointAt(read, id);
+    if (point) return { point };
   }
   return null;
 }
 
-function pointAt(read: Reader, id: number): Vec2 | null {
-  const ent = read(id);
-  if (ent?.type?.toUpperCase() !== 'IFCCARTESIANPOINT') return null;
-  const p = readVec3(ent.attributes[0] as never);
+function pointAt(read: Reader, id: number, type = 'IFCCARTESIANPOINT'): Vec2 | null {
+  const p = pointOf({ entity: (entityId) => {
+    const entity = read(entityId);
+    return entity?.type ? { type: entity.type, attributes: entity.attributes } : null;
+  } }, id, type, 2);
   return p ? [p[0], p[1]] : null;
 }
 
@@ -130,24 +132,28 @@ function readAxisEnds(read: Reader, curveId: number): [Vec2, Vec2] | null {
   const basisId = numericAttr(curve.attributes[0] as never);
   const basis = basisId === null ? null : read(basisId);
   if (basis?.type?.toUpperCase() !== 'IFCLINE') return null;
-  const trims = [readTrim(read, curve.attributes[1]), readTrim(read, curve.attributes[2])];
-  if (trims.every((t) => t && 'point' in t)) return [(trims[0] as { point: Vec2 }).point, (trims[1] as { point: Vec2 }).point];
-  // Parameters run along the line's vector: Pnt + t * Orientation * Magnitude.
+  // Point trims still require a valid IfcLine basis; unreadable required
+  // attributes cannot turn an invalid curve into a straight snap target.
   const originId = numericAttr(basis.attributes[0] as never);
   const vectorId = numericAttr(basis.attributes[1] as never);
   const origin = originId === null ? null : pointAt(read, originId);
   const vector = vectorId === null ? null : read(vectorId);
-  const dirId = vector ? numericAttr(vector.attributes[0] as never) : null;
-  const dir = dirId === null ? null : read(dirId);
-  const d = dir ? readVec3(dir.attributes[0] as never) : null;
+  if (vector?.type?.toUpperCase() !== 'IFCVECTOR') return null;
+  const dirId = numericAttr(vector.attributes[0] as never);
+  const d = dirId === null ? null : pointAt(read, dirId, 'IFCDIRECTION');
   if (!origin || !d) return null;
-  const magnitude = vector ? authoredScalar(vector.attributes[1] as never) : undefined;
-  const len = Math.hypot(d[0], d[1]) || 1;
-  const step = (typeof magnitude === 'number' ? magnitude : 1) / len;
+  const magnitude = num(authoredScalar(vector.attributes[1] as never));
+  const len = Math.hypot(d[0], d[1]);
+  if (magnitude === null || magnitude <= 0 || !Number.isFinite(len) || len === 0) return null;
+  const trims = [readTrim(read, curve.attributes[1]), readTrim(read, curve.attributes[2])];
+  // Parameters use Pnt + t * normalized Orientation * Magnitude. Normalize
+  // before scaling so a tiny but nonzero direction remains readable.
   const at = (t: NonNullable<(typeof trims)[number]>): Vec2 => ('point' in t
     ? t.point
-    : [origin[0] + t.parameter * d[0] * step, origin[1] + t.parameter * d[1] * step]);
-  return trims[0] && trims[1] ? [at(trims[0]), at(trims[1])] : null;
+    : [origin[0] + t.parameter * (d[0] / len) * magnitude, origin[1] + t.parameter * (d[1] / len) * magnitude]);
+  if (!trims[0] || !trims[1]) return null;
+  const ends: [Vec2, Vec2] = [at(trims[0]), at(trims[1])];
+  return ends.every((point) => point.every(Number.isFinite)) ? ends : null;
 }
 
 /**

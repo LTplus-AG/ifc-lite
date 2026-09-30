@@ -123,6 +123,64 @@ describe('extractGridAxesForStorey: a file grid (#6232 D3)', () => {
   });
 });
 
+describe('trimmed grid lines require a readable typed basis (#6511 / #6232)', () => {
+  const malformed = [
+    ['missing magnitude', '#76=IFCVECTOR(#75,1.);', '#76=IFCVECTOR(#75,$);'],
+    ['nonfinite magnitude', '#76=IFCVECTOR(#75,1.);', '#76=IFCVECTOR(#75,1.E309);'],
+    ['zero magnitude', '#76=IFCVECTOR(#75,1.);', '#76=IFCVECTOR(#75,0.);'],
+    ['negative magnitude', '#76=IFCVECTOR(#75,1.);', '#76=IFCVECTOR(#75,-1.);'],
+    ['wrong vector class', '#76=IFCVECTOR(#75,1.);', '#76=IFCDIRECTION(#75,1.);'],
+    ['wrong orientation class', '#75=IFCDIRECTION((1.,0.));', '#75=IFCCARTESIANPOINT((1.,0.));'],
+    ['missing orientation', '#76=IFCVECTOR(#75,1.);', '#76=IFCVECTOR(#999999,1.);'],
+    ['zero orientation', '#75=IFCDIRECTION((1.,0.));', '#75=IFCDIRECTION((0.,0.));'],
+    ['nonfinite orientation', '#75=IFCDIRECTION((1.,0.));', '#75=IFCDIRECTION((1.E309,0.));'],
+    ['wrong orientation dimension', '#75=IFCDIRECTION((1.,0.));', '#75=IFCDIRECTION((1.,0.,1.));'],
+    ['wrong origin dimension', '#74=IFCCARTESIANPOINT((0.,3000.));', '#74=IFCCARTESIANPOINT((0.,3000.,1.));'],
+  ] as const;
+
+  function pointTrims(text: string): string {
+    return text.replace('#78=IFCTRIMMEDCURVE(#77,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(6000.)),.T.,.PARAMETER.);',
+      '#81=IFCCARTESIANPOINT((6000.,3000.));\n#78=IFCTRIMMEDCURVE(#77,(#74),(#81),.T.,.CARTESIAN.);');
+  }
+
+  for (const trims of ['parameter', 'point'] as const) {
+    it.each(malformed)(`${trims} trims refuse %s without dropping the valid U axis`, async (_label, before, after) => {
+      const text = (trims === 'point' ? pointTrims(FILE_GRID) : FILE_GRID).replace(before, after);
+      const { axes, skippedAxes } = extractGridAxesForStorey(await parse(text), 50);
+      expect(axes.map((axis) => axis.AxisTag)).toEqual(['1']);
+      expect(axes.map((axis) => [round(axis.a), round(axis.b)])).toEqual([[[0.5, 0], [-7.5, 0]]]);
+      expect(skippedAxes).toBe(1);
+    });
+  }
+
+  it.each(['4.', '1.E-310'])('parameter trims normalize legitimate 2D direction %s and apply vector magnitude once', async (ratio) => {
+    const text = FILE_GRID.replace('#75=IFCDIRECTION((1.,0.));', `#75=IFCDIRECTION((${ratio},0.));`)
+      .replace('#76=IFCVECTOR(#75,1.);', '#76=IFCVECTOR(#75,2.);');
+    const { axes, skippedAxes } = extractGridAxesForStorey(await parse(text), 50);
+    const axis = axes.find((item) => item.AxisTag === 'A');
+    expect(axis).toBeDefined();
+    expect([round(axis!.a), round(axis!.b)]).toEqual([[-2.5, 0], [-2.5, 12]]);
+    expect(skippedAxes).toBe(0);
+  });
+
+  it.each([
+    ['nonfinite trim parameter', FILE_GRID.replace('IFCPARAMETERVALUE(6000.)', 'IFCPARAMETERVALUE(1.E309)')],
+    ['overflowed endpoint', FILE_GRID.replace('#76=IFCVECTOR(#75,1.);', '#76=IFCVECTOR(#75,1.E308);')],
+  ])('refuses a %s instead of offering nonfinite snap coordinates', async (_label, text) => {
+    const { axes, skippedAxes } = extractGridAxesForStorey(await parse(text), 50);
+    expect(axes.map((axis) => axis.AxisTag)).toEqual(['1']);
+    expect(skippedAxes).toBe(1);
+  });
+
+  it('point trims retain their authored endpoints with a valid 2D basis', async () => {
+    const { axes, skippedAxes } = extractGridAxesForStorey(await parse(pointTrims(FILE_GRID)), 50);
+    const axis = axes.find((item) => item.AxisTag === 'A');
+    expect(axis).toBeDefined();
+    expect([round(axis!.a), round(axis!.b)]).toEqual([[-2.5, 0], [-2.5, 6]]);
+    expect(skippedAxes).toBe(0);
+  });
+});
+
 describe('extractGridAxesForStorey: an authored grid (#6232 D3)', () => {
   const SAMPLE = new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url);
 

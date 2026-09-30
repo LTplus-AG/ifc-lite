@@ -24,8 +24,10 @@
  */
 
 import type { ViewerState } from '@/store';
+import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { resolve as translate } from '@/i18n/registry';
 import { keepsFirstPiece } from '@/lib/split-guid';
+import { readAttributes } from '@/lib/placement-core';
 import { pointInPoly, polyArea, type Pt } from '@/lib/rooms/plate-geometry';
 import { closeSplit, openSplit } from '@/store/slices/mutation-split';
 import type { LayoutFace } from './room-layout';
@@ -72,15 +74,35 @@ function splitRoom(get: Get, modelId: string, link: RoomLink, a: LayoutFace, b: 
   const open = openSplit(get, (id) => get().storeEditors.get(id) ?? null, modelId, link.expressId, 'slab');
   if (!open.ok) throw new Error(open.reason);
   const { env } = open;
+  // Relationship cloning does not copy occurrence attributes. Author the
+  // sibling with the same classification so its new IsExternal also agrees.
+  const attrs = readAttributes(env.dataStore, env.view, env.editor, link.expressId);
+  if (!attrs) throw new Error(translate('roomLayout.refused.shape'));
+  const classification = attrs[9];
+  if (classification !== null && classification !== undefined && typeof classification !== 'string') {
+    throw new Error(translate('roomLayout.refused.shape'));
+  }
+  const schema = env.dataStore.schemaVersion;
+  const registry = getSchemaRegistryForVersion(schema === 'IFC2X3' || schema === 'IFC4X3' ? schema : 'IFC4');
+  if (classification == null && !registry.entities.IfcSpace.allAttributes![9].optional) {
+    throw new Error(translate('roomLayout.refused.shape'));
+  }
   const added = get().addSpace(modelId, env.storeyExpressId, {
     Profile: 'polygon',
     Position: [0, 0, chain.baseElevation],
     OuterCurve: outlineOf(cutFace, link).map(([x, y]) => [x, y]),
     Height: chain.thickness,
     ...(env.name !== undefined ? { Name: env.name } : {}),
+    ...(typeof classification === 'string' ? { PredefinedType: classification.replace(/^\.|\.$/g, '') } : {}),
+    ...(typeof attrs[4] === 'string' ? { ObjectType: attrs[4] } : {}),
     GlobalId: env.newGlobalId,
   });
   if ('error' in added) throw new Error(added.error);
+  // IFC4 allows an unset PredefinedType; keep it unset rather than supplying
+  // the creation default. IFC2X3's required enum is carried above instead.
+  if (classification === null || classification === undefined) {
+    get().setPositionalAttribute(modelId, added.expressId, 9, null);
+  }
   rewriteRoomOutline(get, modelId, link.expressId, chain, outlineOf(keptFace, link), areasOf(keptFace));
   closeSplit(get, modelId, env, link.expressId, added.expressId);
   // After the metadata clone, which copied the source's (now stale) quantities.

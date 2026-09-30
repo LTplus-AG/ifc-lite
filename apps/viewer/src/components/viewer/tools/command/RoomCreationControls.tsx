@@ -11,7 +11,7 @@ import { initRoomEdit, type RoomPlaceGesture } from '@/lib/commands/modeling/com
 import { setRoomGesture } from './RoomBarActions';
 
 /** The occurrence's actual classification attribute and values, from EXPRESS. */
-export function roomClassification(schema: string) {
+function roomClassification(schema: string) {
   const version = schema === 'IFC2X3' || schema === 'IFC4X3' ? schema : 'IFC4';
   const registry = getSchemaRegistryForVersion(version);
   const attribute = registry.entities.IfcSpace.allAttributes![9];

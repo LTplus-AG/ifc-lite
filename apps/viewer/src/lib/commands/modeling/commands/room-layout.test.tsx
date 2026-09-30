@@ -35,6 +35,7 @@ import { runRoomAction } from '@/components/viewer/tools/command/RoomPlaceBar';
 import { RoomPlacePlan } from '@/components/viewer/tools/command/RoomPlaceLayers';
 import { RoomMoreMenu } from '@/components/viewer/tools/command/RoomLayoutBar';
 import { clearModelLayouts } from '@/lib/rooms/room-layout';
+import { readAttributes } from '@/lib/placement-core';
 import '../builtin.js';
 import * as runtime from '../runtime.js';
 import { commandPointerDown, commandPointerMove, getCommandRuntime, updateCommandGesture } from '../runtime.js';
@@ -128,6 +129,52 @@ describe('room.place Edit: drag a room corner (#6232 A4b)', () => {
 });
 
 describe('room.place Edit: split and merge (#6232 A4b)', () => {
+  for (const PredefinedType of ['EXTERNAL', 'USERDEFINED']) {
+    it(`preserves ${PredefinedType} and ObjectType on both room split pieces (#6232 B1)`, async (t) => {
+      if (!(await start(t))) return;
+      set({ PredefinedType, ObjectType: 'Garden room' });
+      await auto();
+      const [left] = byLeft();
+      const before = undoDepth();
+      editWith('shape');
+      click(2, 0);
+      click(2, 5);
+      const pieces = byLeft().filter((r) => r.footprint.every(([x]) => x <= 4));
+      assert.equal(pieces.length, 2, 'the room was split');
+      const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+      for (const piece of pieces) {
+        const attrs = view.getNewEntity(piece.id)!.attributes;
+        assert.equal(attrs[9], `.${PredefinedType}.`, 'the split preserves the source IFC classification');
+        assert.equal(attrs[4], 'Garden room', 'the new piece keeps the source ObjectType');
+        const flags = view.getForEntity(piece.id)
+          .flatMap((pset) => pset.properties.filter((p) => p.name === 'IsExternal').map((p) => p.value));
+        assert.ok(flags.length > 0, 'the room has an IsExternal property');
+        assert.ok(flags.every((value) => value === (PredefinedType === 'EXTERNAL')), 'all cloned and authored flags agree');
+      }
+      undo();
+      assert.equal(undoDepth(), before, 'the classified split is one undo step');
+      assert.equal(authoredSpaces().length, 2);
+      assert.equal(view.getNewEntity(left.id)!.attributes[9], `.${PredefinedType}.`);
+    });
+  }
+
+  it('keeps an optional IFC4 classification unset when splitting a source room (#6232 B1)', async (t) => {
+    if (!(await start(t))) return;
+    await auto();
+    const [left] = byLeft();
+    act(() => { useViewerStore.getState().setPositionalAttribute(MODEL_ID, left.id, 9, null); });
+    editWith('shape');
+    click(2, 0);
+    click(2, 5);
+    const pieces = byLeft().filter((r) => r.footprint.every(([x]) => x <= 4));
+    assert.equal(pieces.length, 2);
+    const { models, mutationViews, storeEditors } = useViewerStore.getState();
+    for (const piece of pieces) {
+      const attrs = readAttributes(models.get(MODEL_ID)!.ifcDataStore!, mutationViews.get(MODEL_ID)!, storeEditors.get(MODEL_ID)!, piece.id);
+      assert.equal(attrs?.[9], null, 'an unset classification remains unset on both pieces');
+    }
+  });
+
   it('cuts a room between two points on its outline: the source keeps a piece, a new room takes the other, one undo step', async (t) => {
     if (!(await start(t))) return;
     await auto();

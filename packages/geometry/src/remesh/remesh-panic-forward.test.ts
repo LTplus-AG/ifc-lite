@@ -8,22 +8,27 @@ import { WASM_PANIC_STASH_KEY } from '../wasm-panic-forward.js';
 import type { RemeshConfig } from './remesh-core.js';
 import type { RemeshWorkerInbound, RemeshWorkerOutbound } from './remesh-protocol.js';
 
-const faults = vi.hoisted(() => ({ init: false, request: true, config: false, cleanup: false, clear: false, omitLocation: false, message: 'unreachable' }));
+const faults = vi.hoisted(() => ({ init: false, ordinary: false, instances: 0, request: true, config: false, cleanup: false, clear: false, omitLocation: false, message: 'unreachable' }));
 const LOCATION = 'rust/geometry/src/example.rs:42:9';
 vi.mock('@ifc-lite/wasm', () => ({
   default: async () => { if (faults.init) trap(); },
   initSync: () => { if (faults.init) trap(); },
   IfcAPI: class {
+    private poisoned = false;
+    constructor() { faults.instances++; }
     setMergeLayers() { if (faults.config) trap(); }
     setTessellationQuality() {}
     setSkipSmallCuts() {}
     setRectParamFastPath() {}
     buildPrePassOnce() {
+      if (this.poisoned) throw new WebAssembly.RuntimeError('poisoned API reused');
+      if (faults.ordinary) throw new Error('malformed buffer');
       if (faults.request) trap();
       return { jobs: new Uint32Array(), styleIds: new Uint32Array(), styleColors: new Uint8Array() };
     }
     clearPrePassCache() {
       if (!faults.clear) return;
+      this.poisoned = true;
       (self as unknown as Record<string, unknown>)[WASM_PANIC_STASH_KEY] = {
         location: 'clear-cache.rs:98:1', at: Date.now(),
       };
@@ -56,6 +61,8 @@ const mainRealm = globalThis as Record<string, unknown>;
 afterEach(() => {
   delete mainRealm[WASM_PANIC_STASH_KEY];
   faults.init = false;
+  faults.ordinary = false;
+  faults.instances = 0;
   faults.request = true;
   faults.config = false;
   faults.cleanup = false;
@@ -159,6 +166,35 @@ describe('remesh panic attribution (#6555)', () => {
       faults.omitLocation = true;
       await expect(client.styleWire(new Uint8Array(8))).rejects.toThrow('unreachable');
       expect(mainRealm[WASM_PANIC_STASH_KEY]).toBeUndefined();
+    } finally {
+      client.dispose();
+    }
+  });
+
+  it.each(['remesh', 'style-wire'] as const)('rebuilds after an ordinary %s failure whose cleanup trapped (#6555)', async (type) => {
+    const h = await harness();
+    const client = await h.start();
+    const send = () => type === 'style-wire'
+      ? client.styleWire(new Uint8Array(8))
+      : client.remesh({
+        buffer: new Uint8Array(8), targets: Uint32Array.of(1),
+        frame: { x: 0, y: 0, z: 0, needsShift: false },
+        styleIds: new Uint32Array(), styleColors: new Uint8Array(),
+      });
+    try {
+      faults.ordinary = true;
+      faults.clear = true;
+      await expect(send()).rejects.toThrow('Re-mesh failed: malformed buffer');
+      expect(mainRealm[WASM_PANIC_STASH_KEY]).toBeUndefined();
+      faults.ordinary = false;
+      faults.clear = false;
+      faults.request = false;
+      const result = await send();
+      expect(result).toMatchObject(type === 'style-wire'
+        ? { styleIds: new Uint32Array(), styleColors: new Uint8Array() }
+        : { meshes: [], csgFailures: 0 });
+      expect(faults.instances).toBe(2);
+      expect((h.workerRealm as Record<string, unknown>)[WASM_PANIC_STASH_KEY]).toBeUndefined();
     } finally {
       client.dispose();
     }

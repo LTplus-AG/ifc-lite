@@ -8,8 +8,8 @@
  * handled strictly in order, so a `config` posted between two requests
  * applies to the second and not the first.
  *
- * A wasm trap poisons only the `IfcAPI` that took it: that handle is dropped
- * and the next request gets a fresh one with the current config.
+ * A failed request drops its `IfcAPI`: cleanup may trap independently of
+ * the primary error. The next request gets a fresh handle with current config.
  */
 
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
@@ -101,10 +101,9 @@ async function handle(message: RemeshWorkerInbound): Promise<void> {
       } catch (error) {
         // Capture before freeing: cleanup of a poisoned handle can trap too.
         const details = errorDetails(error);
-        if (error instanceof WebAssembly.RuntimeError) {
-          freeFailedApi(api);
-          api = null;
-        }
+        // A non-trap primary error may hide a secondary cleanup trap.
+        freeFailedApi(api);
+        api = null;
         post({ type: 'error', requestId: message.requestId, ...details });
       }
       return;

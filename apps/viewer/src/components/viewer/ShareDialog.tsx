@@ -39,7 +39,7 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import type { CollabRole } from '@/store/slices/collabSlice';
 import { buildShareUrl, mintRoomId, mintRoomToken, parseRoleFromToken } from '@/lib/collab/share-link';
 import { describeSeedPhase, isCollabSeedInFlight } from '@/lib/collab/seed-phase';
-import { modelsInShareScope, prepareShareSeed, shareScopeIsChoice, type ShareScope } from '@/lib/collab/share-scope';
+import { buildShareSeed, modelsInShareScope, prepareShareSeed, shareScopeIsChoice, type ShareScope } from '@/lib/collab/share-scope';
 import { ShareScopeField } from './ShareScopeField';
 
 interface ShareDialogProps {
@@ -150,14 +150,12 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
     setNotice(null);
     roomAttemptRef.current = (async () => {
       try {
+        // Reject known-invalid metadata before claiming a room (#6565).
+        const preflight = useViewerStore.getState();
+        buildShareSeed(preflight.models, preflight.activeModelId, scope, preflight.georefMutations);
         const adminToken = await mintRoomToken({ roomId, role: 'admin' });
-        // Owner seeds the share scope so recipients hydrate from the room,
-        // one slot per model (#4444). IFC5/IFCX seeds natively from each
-        // model's own bytes; legacy STEP seeds an IFCX-shaped source (see
-        // owner-seed.ts). Read fresh off the store, not the render that ran
-        // this effect: `mintRoomToken` awaited above, and a model added or
-        // removed during that round-trip belongs to (or leaves) the share.
-        // Always a seed, even empty: `startCollab` keys owner/recipient on it.
+        // Models can change during minting. Read fresh and always pass a seed,
+        // even empty, so startCollab retains the owner path (#4444).
         const st = useViewerStore.getState();
         const seed = await prepareShareSeed(st.models, st.mutationViews, st.activeModelId, scope, st.georefMutations);
         await startCollab({

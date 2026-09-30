@@ -18,11 +18,13 @@ const indices = new WeakMap<IfcDataStore, SourceOwners>();
 
 function sourceOwners(store: IfcDataStore): Map<string, number[]> {
   const cached = indices.get(store);
+  // @raw-entity-enumeration-ok Cache identity compares the immutable source index; effective ownership is rechecked below.
   if (cached?.entities === store.entities && cached.byId === store.entityIndex.byId && cached.schema === store.schemaVersion) {
     return cached.owners;
   }
   // The display table's GlobalId index omits relationship GUIDs. Index ALL
   // schema-declared IfcRoot classes, never unrelated points/geometry records.
+  // @raw-entity-enumeration-ok Source class keys seed the immutable IfcRoot GUID index; live retypes and creations are checked separately.
   const rootTypes = [...store.entityIndex.byType.keys()].filter(type =>
     getAttributeNamesForSchema(type, store.schemaVersion)[0] === 'GlobalId');
   const reader = new AnchorEntityReader(store, null);
@@ -36,6 +38,7 @@ function sourceOwners(store: IfcDataStore): Map<string, number[]> {
     if (ids) ids.push(expressId);
     else owners.set(guid, [expressId]);
   }
+  // @raw-entity-enumeration-ok Retain source-index identity only for cache invalidation, never as live session membership.
   indices.set(store, { entities: store.entities, byId: store.entityIndex.byId, schema: store.schemaVersion, owners });
   return owners;
 }

@@ -121,7 +121,7 @@ describe('Multiple saved pairs in mounted UI and documentation (#6506)', () => {
       assert.equal(picker.options.length, 3, 'discovered old evidence is published even though saving was refused');
       assert.ok([...picker.options].some((option) => option.textContent?.includes('Stored A/B')));
       select(picker, old.id);
-      click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Delete')!);
+      click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Delete saved comparison')!);
       assert.equal(picker.options.length, 2, 'known user deletion stays in the memory projection');
       Object.defineProperty(localStorage, 'setItem', { configurable: true, value: originalSet });
       click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Retry save')!);

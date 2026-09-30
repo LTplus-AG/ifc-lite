@@ -410,4 +410,16 @@ test('#6506 three real model pairs survive reload and export the selected saved 
     expect(text).toContain(row.name.slice(0, 10));
   }
   expect(text).not.toContain('Architecture B / Bridge C');
+  // Real persisted reports plus damaged/duplicate neighbours must remain
+  // visible after the production store's next initial read, with an explicit
+  // recovery notice and the complete original bytes safely archived.
+  const damagedHistory = JSON.stringify([...history, null, history[0]]);
+  await page.evaluate((raw) => localStorage.setItem('ifc-lite-saved-comparisons', raw), damagedHistory);
+  await page.reload(); await settle(1); await openCompare();
+  const library = page.locator('[data-saved-comparisons]');
+  await expect(library.getByRole('alert')).toContainText('The original data was preserved');
+  expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().savedComparisons)).toEqual(history);
+  expect(await page.evaluate(() => localStorage.getItem('ifc-lite-saved-comparisons:unreadable'))).toBe(damagedHistory);
+  await page.getByRole('combobox', { name: 'Saved comparison', exact: true }).selectOption(history[0].id);
+  await library.screenshot({ path: testInfo.outputPath('saved-model-comparison-recovery.png') });
 });

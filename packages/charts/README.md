@@ -37,6 +37,7 @@ idsForCategories(agg, [0]);         // chart click → the element ids to select
 categoriesForIds(agg, selectedIds); // 3D selection → { full, partial } bucket indices to highlight in the chart
 
 const svg = renderChartSvg({ aggregation: agg, width: 640, height: 400 }); // vector, for a PDF report
+const compactSvg = renderChartSvg({ aggregation: agg, width: 640, height: 400, print: true, fontSize: 8 });
 ```
 
 ## Features
@@ -46,5 +47,12 @@ const svg = renderChartSvg({ aggregation: agg, width: 640, height: 400 }); // ve
 - `elementFieldColumnId` / `elementFieldLabel` / `normalizeElementFieldValue`: collision-free persisted field identities and scalar normalization for IFC attributes, properties, quantities, material, classification, defining type and spatial container (`ElementFieldBinding`)
 - `buildEChartsOption` / `renderChartSvg`: ECharts options with persistent multi-select and emphasis blur, and SSR SVG output
 - `validateDashboardSpec` / `isDashboardSpec` / `isReportSpec`: structural validation of saved dashboards and report templates (`DashboardSpec`, `ReportSpec`)
+
+Both rendering functions accept an optional `fontSize` (6–24, default 12).
+It scales axes, legends, data labels, titles and the count display, including
+the text measurements used to fit labels and pack static legends. Unset,
+default or invalid values retain the existing typography. `CHART_FONT_SIZE`
+exposes the bounds and default; `chartFontScale(fontSize)` gives the shared
+ratio for a host's chart headings and surrounding layout.
 
 Part of the [ifc-lite](https://github.com/LTplus-AG/ifc-lite) monorepo. Licensed under MPL-2.0.

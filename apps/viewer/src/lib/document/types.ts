@@ -14,7 +14,7 @@
 import { isRgbColor } from '../color-contrast';
 import type { GroupOrder } from '../lists/group-sort';
 import { isSavedComparison, type SavedComparison } from '../compare/savedComparisonSchema';
-import { validateChartSpec, type ChartSpec, type ReportPageSetup } from '@ifc-lite/charts';
+import { CHART_FONT_SIZE, validateChartSpec, type ChartSpec, type ReportPageSetup } from '@ifc-lite/charts';
 import { isSavedListShape, type ListDefinition } from '@ifc-lite/lists';
 import { isFilterGroup } from '@ifc-lite/rules';
 import { migrateDocumentListBlocks } from './document-list-migration.js';
@@ -69,6 +69,8 @@ export interface ChartBlock {
   snapshot: boolean;
   /** Printed height in points, 120-600 (#4940). Default 220. */
   height?: number;
+  /** Base chart text size, 6–24; absent preserves the renderer's default typography. */
+  fontSize?: number;
   /** `'half'` pairs this block with the next half text/chart/image into one row (#4940). Default `'full'`. */
   width?: BlockWidth;
 }
@@ -277,6 +279,9 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
       case 'chart':
         for (const error of validateChartSpec(block.chart)) errors.push({ path: `${at}.chart${error.path}`, message: error.message });
         if (typeof block.snapshot !== 'boolean') errors.push({ path: `${at}.snapshot`, message: 'expected a boolean' });
+        if (block.fontSize !== undefined && (typeof block.fontSize !== 'number' || !Number.isFinite(block.fontSize) || block.fontSize < CHART_FONT_SIZE.min || block.fontSize > CHART_FONT_SIZE.max)) {
+          errors.push({ path: `${at}.fontSize`, message: `expected a number between ${CHART_FONT_SIZE.min} and ${CHART_FONT_SIZE.max}` });
+        }
         if (block.height !== undefined && (typeof block.height !== 'number' || !Number.isFinite(block.height) || block.height < CHART_BLOCK_HEIGHT_MIN || block.height > CHART_BLOCK_HEIGHT_MAX)) {
           errors.push({ path: `${at}.height`, message: `expected a number between ${CHART_BLOCK_HEIGHT_MIN} and ${CHART_BLOCK_HEIGHT_MAX}` });
         }

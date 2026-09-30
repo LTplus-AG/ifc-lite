@@ -13,7 +13,7 @@
  *   - entity_set_attribute                         — direct IFC attributes
  *   - entity_create / entity_delete                — STEP-level entity ops
  *   - mutation_batch                               — apply N ops in order
- *   - mutation_undo                                — pop last N entries
+ *   - mutation_undo                                — revert last N operations
  *   - mutation_diff                                — pending changes summary
  *
  * The actual save lives in `tools/export.ts::export_ifc` (and the
@@ -40,6 +40,7 @@ import { validateInput } from '../validate.js';
 import { propertyValueTypeOf } from '@ifc-lite/sdk';
 import { undoPendingMutations } from './mutation-undo.js';
 import { hostedPlaceTools } from './hosted-place.js';
+import { joinWallsTool } from './wall-join.js';
 
 interface MutationContext {
   m: ReturnType<typeof resolveModel>;
@@ -294,7 +295,7 @@ const mutationDiff: Tool = {
 
 const mutationUndo: Tool = {
   name: 'mutation_undo',
-  description: 'Revert the last N pending operations on this session. A hosted placement is one operation including its complete IFC graph; other mutations count individually.',
+  description: 'Revert the last N pending operations on this session. A hosted placement or wall join is one operation including its complete IFC graph; other mutations count individually.',
   scope: 'mutate',
   inputSchema: {
     type: 'object',
@@ -346,6 +347,7 @@ const modelSave: Tool = {
 
 export const mutationTools: Tool[] = [
   ...hostedPlaceTools,
+  joinWallsTool,
   entitySetProperty,
   entityDeleteProperty,
   entitySetAttribute,

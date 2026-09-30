@@ -12,7 +12,7 @@
  * Units are PDF points; page sizes and margin come from the report's
  * `compose.ts` so a document and a report share a frame.
  */
-import type { ReportPageSetup } from '@ifc-lite/charts';
+import { chartFontScale, type ReportPageSetup } from '@ifc-lite/charts';
 import { pageBox, REPORT_MARGIN } from '../export/report/compose.js';
 import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type BlockWidth, type PageBreakBlock, type TextBlock, type TextFont } from './types.js';
 import { layoutTable, type LayoutCursor, type TableLayoutBlock, type TableDrawnItem } from './compose-table.js';
@@ -34,13 +34,14 @@ export interface DocumentChartSizingInput {
   boxWidth: number;
   snapshot: boolean;
   hasData: boolean;
+  fontSize?: number;
 }
 
 /** One chart-height rule shared by PDF composition and the browser preview (#4940). */
 export function documentChartSizing(input: DocumentChartSizingInput): { height: number; sideBySide: boolean; stacked: boolean } {
   const sideBySide = input.snapshot && input.hasData && input.boxWidth >= 640;
   const stacked = input.snapshot && input.hasData && !sideBySide;
-  const overhead = 32 + (stacked ? SNAPSHOT_HEIGHT + BLOCK_GAP : 0);
+  const overhead = 32 * chartFontScale(input.fontSize) + (stacked ? SNAPSHOT_HEIGHT + BLOCK_GAP : 0);
   const printableHeight = input.pageHeight - (REPORT_MARGIN + HEADER_HEIGHT) - (REPORT_MARGIN + FOOTER_HEIGHT);
   return {
     height: Math.max(40, Math.min(input.requestedHeight, printableHeight - overhead)),
@@ -64,7 +65,7 @@ export type ResolvedBlock =
   | TextBlock
   | PageBreakBlock
   | { kind: 'image'; id: string; height: number; align: 'left' | 'center' | 'right'; caption?: string; /** natural width / height */ aspect: number; width?: BlockWidth }
-  | { kind: 'chart'; id: string; title: string; subtitle: string; hasData: boolean; snapshot: boolean; height?: number; width?: BlockWidth }
+  | { kind: 'chart'; id: string; title: string; subtitle: string; hasData: boolean; snapshot: boolean; height?: number; width?: BlockWidth; fontSize?: number }
   | { kind: 'topic'; id: string; title: string; lines: string[]; /** null when there is no snapshot to print */ snapshotAspect: number | null }
   | { kind: 'spacer'; id: string; height: number }
   | ({ kind: 'table' } & TableLayoutBlock)
@@ -234,6 +235,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
   };
 
   const layoutChart = (block: Extract<ResolvedBlock, { kind: 'chart' }>, boxX: number, boxW: number): { height: number; draw: (y: number) => DrawnItem[] } => {
+    const textScale = chartFontScale(block.fontSize);
     // The configured height (up to CHART_BLOCK_HEIGHT_MAX, 600pt) must still fit a single page next to its
     // title strip and, when stacked, its snapshot — otherwise the SVG is clipped past the footer (review finding).
     const { height: chartHeight, sideBySide, stacked } = documentChartSizing({
@@ -242,21 +244,22 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       boxWidth: boxW,
       snapshot: block.snapshot,
       hasData: block.hasData,
+      fontSize: block.fontSize,
     });
     const chartW = sideBySide ? Math.round(boxW * 0.6) - BLOCK_GAP / 2 : boxW;
-    const totalH = 32 + (sideBySide ? Math.max(chartHeight, SNAPSHOT_HEIGHT) : chartHeight + (stacked ? SNAPSHOT_HEIGHT + BLOCK_GAP : 0));
+    const totalH = 32 * textScale + (sideBySide ? Math.max(chartHeight, SNAPSHOT_HEIGHT) : chartHeight + (stacked ? SNAPSHOT_HEIGHT + BLOCK_GAP : 0));
     return {
       height: totalH,
       draw: (y) => {
         // Give each line the column width. The old 80pt subtitle slot cut ordinary totals
         // such as "13 buckets · 12,623 elements" even on a full-width A4 chart (#4940).
-        const title = truncateToWidth(block.title, boxW - 4, 11, true, input.measure);
-        const subtitle = truncateToWidth(block.subtitle, boxW - 4, 8, false, input.measure);
+        const title = truncateToWidth(block.title, boxW - 4, 11 * textScale, true, input.measure);
+        const subtitle = truncateToWidth(block.subtitle, boxW - 4, 8 * textScale, false, input.measure);
         const items: DrawnItem[] = [
-          { kind: 'text', x: boxX, y: y + 11, size: 11, bold: true, gray: 0, text: title },
-          { kind: 'text', x: boxX, y: y + 24, size: 8, bold: false, gray: 130, text: subtitle },
+          { kind: 'text', x: boxX, y: y + 11 * textScale, size: 11 * textScale, bold: true, gray: 0, text: title },
+          { kind: 'text', x: boxX, y: y + 24 * textScale, size: 8 * textScale, bold: false, gray: 130, text: subtitle },
         ];
-        const chartY = y + 32;
+        const chartY = y + 32 * textScale;
         items.push({ kind: 'chart', blockId: block.id, x: boxX, y: chartY, w: chartW, h: chartHeight });
         if (sideBySide) items.push({ kind: 'snapshot', blockId: block.id, x: boxX + chartW + BLOCK_GAP, y: chartY, w: boxW - chartW - BLOCK_GAP, h: SNAPSHOT_HEIGHT });
         else if (stacked) items.push({ kind: 'snapshot', blockId: block.id, x: boxX, y: chartY + chartHeight + BLOCK_GAP, w: boxW, h: SNAPSHOT_HEIGHT });

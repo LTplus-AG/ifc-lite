@@ -126,6 +126,37 @@ interface BimFileAttachment {
   hasTextContent: boolean;
 }
 
+// ── Modelling operation types ─────────────────────────────────────────
+//
+// Extracted by the generator from the sources below — these declarations are
+// the engine's own text, not a copy maintained in the generator:
+//   packages/create/src/in-store/wall-join.ts
+//   packages/create/src/in-store/wall-join-apply.ts
+
+declare namespace BimCreate {
+  export interface WallJoinApplyOptions extends WallJoinOptions {
+    /** Layer priorities for the relationship, by wall. Default empty. */
+    priorities?: { a?: readonly number[]; b?: readonly number[] };
+    /** Name for the IfcRelConnectsPathElements. */
+    Name?: string;
+  }
+
+  export interface WallJoinOptions {
+    /**
+     * How far (metres, along each axis) an axis end may sit from the crossing and
+     * still count as joined there. Default twice the larger thickness, which
+     * covers a wall drawn to the other's face.
+     */
+    tolerance?: number;
+    /**
+     * Which wall runs through at an `L` corner, and is the relating wall of a
+     * `butt` join. Default: the thicker wall, `a` on a tie. Ignored for a `T`,
+     * where the path wall always runs through.
+     */
+    priority?: 'a' | 'b';
+  }
+}
+
 // ── Clash engine types ────────────────────────────────────────────────
 //
 // Extracted by the generator from the sources below — these declarations are
@@ -822,6 +853,8 @@ declare const bim: {
     addPlate(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add an IfcMember (generic structural — brace, post, strut) from Start to End with a rectangular cross-section. */
     addMember(modelId: string, storeyExpressId: number, params: { Start: [number, number, number]; End: [number, number, number]; Width: number; Height: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
+    /** Join two straight walls in the same placement frame through IfcRelConnectsPathElements. Uses the Model workspace core, preserving readable hosted openings and refusing a cut stranded by a joined end face. */
+    joinWalls(modelId: string, aExpressId: number, bExpressId: number, options?: BimCreate.WallJoinApplyOptions): { modelId: string; expressId: number };
     /** Cut an IfcOpeningElement (IfcRelVoidsElement) into an existing IfcWall or IfcSlab. Metres, in the host placement frame. */
     addOpening(modelId: string, hostExpressId: number, params: { Offset: number; Sill?: number; Width: number; Height: number; CutDepth?: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string; GlobalId?: string } | { Position: [number, number]; Width: number; Depth: number; CutDepth?: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string; GlobalId?: string }): { modelId: string; expressId: number };
     /** Add an IfcDoor filling a new opening in an existing IfcWall (IfcRelFillsElement). Offset is along the wall axis to the door centre. */

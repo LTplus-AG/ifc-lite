@@ -81,7 +81,11 @@ export function createMinimalGlbDataStore(buffer: ArrayBuffer, meshCount: number
   });
 }
 
-export function getMaxExpressId(dataStore: IfcDataStore | null, meshes: MeshData[]): number {
+export function getMaxExpressId(
+  dataStore: IfcDataStore | null,
+  meshes: MeshData[],
+  pointClouds: readonly Pick<PointCloudAsset, 'expressId'>[] = [],
+): number {
   const maxExpressIdFromMeshes = meshes.reduce((max, mesh) => Math.max(max, mesh.expressId), 0);
   let maxExpressIdFromEntities = 0;
   // @raw-entity-enumeration-ok load-time watermark scans parsed source ids before any live overlay is installed
@@ -95,7 +99,17 @@ export function getMaxExpressId(dataStore: IfcDataStore | null, meshes: MeshData
       }
     }
   }
-  return Math.max(maxExpressIdFromMeshes, maxExpressIdFromEntities);
+  // IFCX has no STEP byte-offset index. Its parsed entity table owns spatial
+  // and other unmeshed rows too; reserving only rendered IDs strands those
+  // rows outside the strict federation range (#6564).
+  if (dataStore?.schemaVersion === 'IFC5') {
+    // @raw-entity-enumeration-ok load-time IFCX ownership watermark precedes installation of live overlays
+    for (const id of dataStore.entities.expressId) {
+      maxExpressIdFromEntities = Math.max(maxExpressIdFromEntities, id);
+    }
+  }
+  const maxExpressIdFromPoints = pointClouds.reduce((max, asset) => Math.max(max, asset.expressId), 0);
+  return Math.max(maxExpressIdFromMeshes, maxExpressIdFromEntities, maxExpressIdFromPoints);
 }
 
 /**

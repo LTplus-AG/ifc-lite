@@ -10,7 +10,14 @@
 
 import { TOUR_ANCHORS, toolAnchor } from '../anchors';
 import { EVENT_CAMERA_INTERACTED } from '../events';
-import type { TourDefinition } from '../types';
+import type { TourDefinition, ViewerStoreApi } from '../types';
+
+function prepareHomeTools(store: ViewerStoreApi): void {
+  // Tool anchors live in the Home band. Preview it without persisting over
+  // the user's collapsed preference; the tour snapshot restores both fields.
+  store.setState({ ribbonCollapsed: false });
+  store.getState().setRibbonTab('home');
+}
 
 export const MEASURE_SECTION_TOUR: TourDefinition = {
   id: 'measure-section',
@@ -42,6 +49,7 @@ export const MEASURE_SECTION_TOUR: TourDefinition = {
       anchor: toolAnchor('measure'),
       title: 'Open the Measure tool',
       body: 'Click the ruler in the toolbar, or press M.',
+      prepare: prepareHomeTools,
       gate: { predicate: (s) => s.activeTool === 'measure' },
     },
     {
@@ -60,6 +68,7 @@ export const MEASURE_SECTION_TOUR: TourDefinition = {
       anchor: toolAnchor('section'),
       title: 'Open the Section tool',
       body: 'Click the scissors in the toolbar, or press X.',
+      prepare: prepareHomeTools,
       gate: { predicate: (s) => s.activeTool === 'section' },
     },
     {

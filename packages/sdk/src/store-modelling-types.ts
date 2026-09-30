@@ -17,10 +17,13 @@ import type {
   HostedDoorInStoreParams,
   HostedWindowInStoreParams,
   OpeningInStoreParams,
+  WallJoinApplyOptions,
 } from '@ifc-lite/create';
 import type { EntityRef } from './types.js';
 
 export interface ModellingStoreBackendMethods {
+  /** Join two straight walls through IfcRelConnectsPathElements, rewriting their bodies/axes atomically. Returns the relationship. */
+  joinWalls(modelId: string, aExpressId: number, bExpressId: number, options?: WallJoinApplyOptions): EntityRef;
   /** `IfcOpeningElement` + `IfcRelVoidsElement` cut into an existing IfcWall or IfcSlab. Returns the opening. */
   addOpening(modelId: string, hostExpressId: number, params: OpeningInStoreParams): EntityRef;
   /** `IfcDoor` in a new opening of an IfcWall, linked by `IfcRelFillsElement`. Returns the door. */

@@ -2,10 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** Revert compound hosted commits and raw mutation operations (#6232 D5). */
-import type { MutablePropertyView, Mutation } from '@ifc-lite/mutations';
+/** Revert recorded compound commits and raw mutation operations (#6232 D5). */
+import { undoRecordedMutationOperations, type MutablePropertyView, type Mutation } from '@ifc-lite/mutations';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
-import { undoMutationCount } from '../headless-backend-modelling.js';
 
 type MutationView = MutablePropertyView;
 
@@ -68,15 +67,5 @@ function revertMutation(view: MutationView, mutation: Mutation): void {
 }
 
 export function undoPendingMutations(view: MutationView, n: number): number {
-  const history = view.getMutations();
-  const undone = undoMutationCount(view, n);
-  const toUndo = history.slice(history.length - undone);
-  view.runAtomic(draft => {
-    for (let i = toUndo.length - 1; i >= 0; i--) revertMutation(draft, toUndo[i]);
-    // Deleting a created entity replaces the journal and writes an inverse
-    // DELETE_ENTITY entry. Restore the stable prefix after every inverse,
-    // rather than trimming a detached pre-delete array.
-    (draft as unknown as { mutationHistory: Mutation[] }).mutationHistory = history.slice(0, history.length - undone);
-  });
-  return undone;
+  return undoRecordedMutationOperations(view, n, revertMutation);
 }

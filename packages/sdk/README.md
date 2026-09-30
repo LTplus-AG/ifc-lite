@@ -33,6 +33,12 @@ bim.viewer.colorize(walls.map(w => w.ref), '#ff0000');
 
 - `bim.query()` - fluent entity queries by type, property, quantity
 - `bim.model` / `bim.mutate` / `bim.store` - model info, edits, raw store access
+- `bim.store.joinWalls(modelId, aExpressId, bExpressId, options?)` - join straight
+  walls through the same atomic core as the Model workspace and MCP. Returns
+  `IfcRelConnectsPathElements`; `Name`, `priority`, `tolerance` and per-wall
+  `priorities` use the existing `WallJoinApplyOptions` contract. Readable hosted
+  cuts must fit both joined end faces. The viewer records one undo and remeshes
+  both walls; headless export writes the new IFC graph.
 - `bim.viewer` - selection, visibility, colorization, camera, sections
 - `bim.export` - `csv`, `json`, `ifc` (STEP), `hbjson`, `dfjson`, `download`
 - `bim.ids` / `bim.bcf` / `bim.clash` - validation, collaboration, interference checks

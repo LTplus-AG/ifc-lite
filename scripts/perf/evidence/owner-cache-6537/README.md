@@ -136,3 +136,30 @@ attempt that kept tabs alive, with bounded idempotent preparation retries.
 Neither recovery completed another model load. There is no fresh-tab O-S1
 result or same-build noise verdict. The source and previous evidence archives
 are unchanged.
+
+
+## Fresh-process Chrome CPU controls
+
+`chrome-cpu-controls.json.gz`, its manifest and readable summary preserve forty
+user-authorized Chrome samples: five same-build AC20 pairs and five interleaved
+base/branch pairs for each of AC20, Holter and O-S1. Every sample starts its own
+browser process and loads the target IFC first through the actual viewer file
+input. The browser is Chrome 153 with Google SwiftShader. All retained flat-mesh
+positions, normals, indices and appearance hashes match across every pair.
+
+This observation stops at actual worker-stream completion and metadata publication.
+Those phases overlap and their durations must not be added. It does not wait for a
+rendered frame or establish renderer readiness, cache reopening, full-lifetime
+memory or a GPU speedup. The unchanged geometry worker and WASM hashes are pinned
+in the manifest. The same-build control exposes timing variability, and the
+base/branch results do not establish a consistent broad speedup. All three models
+are ARCHICAD exports (20/21), not three independent authoring tools.
+
+The captured runner and static server are retained beside the data. Their paths
+identify the original frozen worktrees and local fixture catalog; adapt those
+paths to reproduce on another host. Start the server over the two frozen viewer
+distributions, then run `node chrome-cpu-capture.cjs`. The runner refuses to
+overwrite existing results, closes each owned browser, and stops after retaining
+an invalid sample. The initial attempt had an optional-render-stats observer
+ReferenceError; it is not a model failure or a valid timing sample, and is
+excluded from this independent complete schedule. No CI baseline was changed.

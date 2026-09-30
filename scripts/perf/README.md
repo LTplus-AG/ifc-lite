@@ -2743,3 +2743,13 @@ empty previous wrappers before replacing cache references, and preserve the
 existing global prefix on append. These mounted regression invariants establish
 correctness; they do not establish an end-to-end speed improvement. The failing
 runs and corrected qualification remain with the owner-cache evidence above.
+
+
+The later user-authorized Chrome control uses a fresh process for every first-file
+load and retains identical flat-mesh output across the small, CSG-heavy and
+BRep-heavy public fixtures. Its same-build control exposes noise; it establishes
+no consistent broad worker-stream speedup. These are ARCHICAD model families, not
+independent exporters. CPU worker-stream and concurrent metadata observations
+must not be promoted to renderer readiness, full-lifetime memory or cache
+performance. The complete controls and capture scripts remain with the
+[owner-cache evidence](evidence/owner-cache-6537/README.md).

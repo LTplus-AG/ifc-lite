@@ -52,3 +52,16 @@ Original JSON whitespace is represented by its hash; the archive stores each
 parsed value losslessly. Source worktree paths are capture-time provenance,
 not required install paths. Performance ledger conclusions are narrative;
 these records contain the measured values and their qualifications.
+
+
+## Independent base reproduction of the memory defect
+
+The actual base hook and owner helper were restored together in an owned
+worktree while running the new mounted tests through root Turbo. Seven tests
+passed and two failed: single-model appends copied the prefix again, and a
+federation retained buffers after the canonical store release action. The
+base single-model release case passed, narrowing the pre-existing memory
+defect to the federated cache. Restoring both candidate files byte-for-byte
+makes all nine tests pass, without a geometry-content version bump that would
+request a GPU reupload of released arrays. Both real logs are archived. This
+is correctness evidence independent of the unqualified browser timings.

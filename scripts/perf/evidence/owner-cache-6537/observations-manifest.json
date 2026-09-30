@@ -218,5 +218,15 @@
     "name": "6537-prefix-frame-cadence-note.json",
     "sha256": "2eac238c25dfbc5a15f25077726f8c6aeb9ae975e317f0692a75865e62398553",
     "rawBytes": 874
+  },
+  {
+    "name": "6537-owner-review-base-release-red.log",
+    "sha256": "e48019d885e7e6aaec019fabf583e61f7c2e8b604298e2c45b14ee22e35c6894",
+    "rawBytes": 7828
+  },
+  {
+    "name": "6537-owner-review-final-green.log",
+    "sha256": "1a05c28f0c4d5a8d7296f2c88efc76ce6d71b60f47db4b2d526af89fb3fb7352",
+    "rawBytes": 2380
   }
 ]

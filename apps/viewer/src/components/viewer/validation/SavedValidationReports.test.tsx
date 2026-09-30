@@ -137,7 +137,10 @@ describe('saved validation evidence (#6500)', () => {
     click(save);
     assert.equal(reportButton(ui, 'Report saved').disabled, true);
     assert.equal(loadValidationReports().length, 1, 'rapid repeat clicks keep one saved entry');
-    assert.equal(loadValidationReports()[0].snapshot.summary.passed, 1, 'saved evidence retains the original result');
+    const original = loadValidationReports()[0].snapshot;
+    assert.equal(original.kind, 'ids-report');
+    if (original.kind !== 'ids-report') assert.fail();
+    assert.equal(original.summary.passed, 1, 'saved evidence retains the original result');
     click(reportButton(ui, 'Run IDS'));
     await waitFor(() => useViewerStore.getState().idsValidationReport !== first, 'second IDS run replaces the live result');
     assert.equal(loadValidationReports().length, 1, 'a later check does not automatically add another report');

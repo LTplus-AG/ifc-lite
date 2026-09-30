@@ -210,6 +210,9 @@ describe('useIDS - concurrent-run supersession (#2802)', () => {
     const saved = loadValidationReports();
     assert.equal(saved.length, 1);
     assert.deepEqual(saved[0].snapshot.reportModels, [{ name: 'Fast.ifc' }]);
-    assert.equal(saved[0].snapshot.summary.checked, FAST_COUNT);
+    const snapshot = saved[0].snapshot;
+    assert.equal(snapshot.kind, 'ids-report');
+    if (snapshot.kind !== 'ids-report') assert.fail();
+    assert.equal(snapshot.summary.checked, FAST_COUNT);
   });
 });

@@ -74,6 +74,32 @@ END-ISO-10303-21;
 const round = (p: readonly number[]) => p.map((v) => Math.round(v * 1e6) / 1e6);
 
 describe('extractGridAxesForStorey: a file grid (#6232 D3)', () => {
+  const unplacedGrid = FILE_GRID.replace("$,$,#60,$,(#73),(#79)", "$,$,$,$,(#73),(#79)");
+
+  it('refuses an unplaced grid on a translated storey instead of inventing local axes (#6511 review)', async () => {
+    const result = extractGridAxesForStorey(await parse(unplacedGrid), 50);
+    expect(result.gridIds).toEqual([80]);
+    expect(result.axes).toEqual([]);
+    expect(result.skippedAxes).toBe(2);
+  });
+
+  it('refuses an unplaced grid when the containing storey record cannot be read (#6511 review)', async () => {
+    const source = unplacedGrid.replace(/^#50=IFCBUILDINGSTOREY.*\n/m, '');
+    const result = extractGridAxesForStorey(await parse(source), 50);
+    expect(result.gridIds).toEqual([80]);
+    expect(result.axes).toEqual([]);
+    expect(result.skippedAxes).toBe(2);
+  });
+
+  it('keeps identity axes when both grid and readable storey omit ObjectPlacement (#6511 review)', async () => {
+    const source = unplacedGrid.replace("'L0',$,$,#51,$,$", "'L0',$,$,$,$,$");
+    const result = extractGridAxesForStorey(await parse(source), 50);
+    expect(result.skippedAxes).toBe(0);
+    expect(result.axes.map(axis => [axis.AxisTag, round(axis.a), round(axis.b)])).toEqual([
+      ['1', [0, 0], [0, 8]], ['A', [0, 3], [6, 3]],
+    ]);
+  });
+
   it("reads a building-level grid's axes in storey-local metres through its turned placement", async () => {
     const store = await parse(FILE_GRID);
     const { axes, gridIds, skippedAxes } = extractGridAxesForStorey(store, 50);

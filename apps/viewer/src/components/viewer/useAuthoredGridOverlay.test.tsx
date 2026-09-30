@@ -5,7 +5,8 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, StrictMode } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import type { MeshData } from '@ifc-lite/geometry';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { rectangularGridAxes } from '@ifc-lite/create';
@@ -16,6 +17,7 @@ import { addGridIn } from '@/store/slices/mutation-curtain-grid';
 import { toHostHiddenIfcTypes } from '@/lib/host-hidden-ifc-types';
 import { useOverlayChannelGate } from '@/hooks/useOverlayChannelGate';
 import { useAuthoredGridOverlay } from './useAuthoredGridOverlay';
+import { emptyPlacementState } from '@/lib/model-placement/state';
 
 function Probe() {
   useAuthoredGridOverlay();
@@ -24,8 +26,11 @@ function Probe() {
   return <span data-file-grid-visible={String(fileGate.grid)} />;
 }
 
-async function fixture(modelCount: 1 | 2) {
+let strictMount: { root: Root; container: HTMLElement } | null = null;
+
+async function fixture(modelCount: 1 | 2, strict = false) {
   await seedModelingSession();
+  useViewerStore.setState({ modelPlacement: emptyPlacementState() });
   if (modelCount === 2) {
     const first = useViewerStore.getState().models.get(MODEL_ID)!;
     await seedModelingSession(); // independently parsed stores, overlapping local express IDs
@@ -51,16 +56,30 @@ async function fixture(modelCount: 1 | 2) {
     typeVisibility: { ...state.typeVisibility, ifcGrid: true }, hostHiddenIfcTypes: null,
     cameraCallbacks: { ...state.cameraCallbacks, setAuthoringOverlayMeshes: (channel, next) => {
       if (channel === 'grids') { meshes = next; uploads++; }
-    } },
+    }, clearAuthoringOverlayMeshes: (channel) => { if (channel === 'grids') meshes = []; } },
   });
-  const ui = render(<Probe />);
+  let ui: HTMLElement;
+  if (strict) {
+    // React replays initial effects only when StrictMode is at the root;
+    // render()'s TooltipProvider wrapper would leave it below the root.
+    ui = document.createElement('div');
+    document.body.appendChild(ui);
+    const root = createRoot(ui);
+    strictMount = { root, container: ui };
+    act(() => root.render(<StrictMode><Probe /></StrictMode>));
+  } else ui = render(<Probe />);
   await advance(20);
   const triangles = () => meshes.reduce((sum, m) => sum + m.indices.length / 3, 0);
   assert.equal(triangles(), modelCount * 4 * 12, 'all authored axes reach the real upload seam');
-  return { ui, triangles, uploads: () => uploads };
+  return { ui, triangles, uploads: () => uploads, positions: () => Array.from(meshes[0]?.positions ?? []) };
 }
 
 afterEach(() => {
+  if (strictMount) {
+    act(() => strictMount!.root.unmount());
+    strictMount.container.remove();
+    strictMount = null;
+  }
   cleanup();
   useViewerStore.getState().exitModelWorkspace();
   useViewerStore.setState({ hostHiddenIfcTypes: null });
@@ -68,6 +87,52 @@ afterEach(() => {
 
 for (const models of [1, 2] as const) {
   describe(`#6511 authored grid visibility with ${models} parsed models`, () => {
+    it('redraws translated axes through preview, commit, undo and redo (#6511 review)', async () => {
+      const f = await fixture(models);
+      const before = f.positions();
+      const movedLength = before.length / models;
+      act(() => {
+        useViewerStore.getState().openReposition([MODEL_ID]);
+        useViewerStore.getState().previewModelTranslation([3, 4, 5]);
+      });
+      await advance(20);
+      const expected = before.map((value, index) => index < movedLength
+        ? value + [3, 5, -4][index % 3] : value);
+      const assertPositions = (positions: number[]) => {
+        assert.equal(f.positions().length, positions.length);
+        f.positions().forEach((value, index) => assert.ok(Math.abs(value - positions[index]) < 1e-5, `vertex coordinate ${index}`));
+      };
+      assertPositions(expected);
+      act(() => useViewerStore.getState().applyModelTranslation());
+      await advance(20);
+      assertPositions(expected);
+      act(() => useViewerStore.getState().undoModelTranslation());
+      await advance(20);
+      assertPositions(before);
+      act(() => useViewerStore.getState().redoModelTranslation());
+      await advance(20);
+      assertPositions(expected);
+    });
+
+    it('redraws a quarter-turn about the origin while other models stay fixed (#6511 review)', async () => {
+      const f = await fixture(models);
+      const before = f.positions();
+      const movedLength = before.length / models;
+      act(() => useViewerStore.getState().setModelRotation([MODEL_ID], { angle: Math.PI / 2, pivot: [0, 0, 0] }));
+      await advance(20);
+      const after = f.positions();
+      assert.equal(after.length, before.length);
+      for (let i = 0; i < before.length; i += 3) {
+        const expected = i < movedLength ? [before[i + 2], before[i + 1], -before[i]] : before.slice(i, i + 3);
+        expected.forEach((value, axis) => assert.ok(Math.abs(after[i + axis] - value) < 1e-5, `rotated vertex ${i / 3}, axis ${axis}`));
+      }
+    });
+
+    it('keeps existing axes visible after StrictMode setup/cleanup replay (#6511 review)', async () => {
+      const f = await fixture(models, true);
+      assert.equal(f.triangles(), models * 4 * 12);
+    });
+
     it('global hide clears authored strips and show restores them alongside the file-grid gate', async () => {
       const f = await fixture(models);
       act(() => useViewerStore.getState().toggleTypeVisibility('ifcGrid'));

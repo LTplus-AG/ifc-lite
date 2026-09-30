@@ -17,6 +17,7 @@ import { useOverlayChannelGate } from '@/hooks/useOverlayChannelGate';
 export function useAuthoredGridOverlay(): void {
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const models = useViewerStore((s) => s.models);
+  const modelPlacement = useViewerStore((s) => s.modelPlacement);
   const gridVisible = useViewerStore((s) => s.typeVisibility.ifcGrid);
   // File axes and authored strips obey the same global/embedding-host gate.
   const { grid } = useOverlayChannelGate(false, gridVisible);
@@ -33,6 +34,9 @@ export function useAuthoredGridOverlay(): void {
     if (drawn.current?.upload === setOverlay && drawn.current.key === key) return;
     drawn.current = { upload: setOverlay, key };
     setOverlay('grids', meshes);
-  }, [mutationVersion, models, setOverlay, grid]);
-  useEffect(() => () => useViewerStore.getState().cameraCallbacks.clearAuthoringOverlayMeshes?.('grids'), []);
+  }, [mutationVersion, models, modelPlacement, setOverlay, grid]);
+  useEffect(() => () => {
+    drawn.current = null;
+    useViewerStore.getState().cameraCallbacks.clearAuthoringOverlayMeshes?.('grids');
+  }, []);
 }

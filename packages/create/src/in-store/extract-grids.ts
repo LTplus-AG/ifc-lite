@@ -158,7 +158,9 @@ function readAxisEnds(read: Reader, curveId: number): [Vec2, Vec2] | null {
 
 /**
  * The grid axes that apply to `storeyId`, in storey-local metres. Empty (never
- * throwing) for a store without source bytes or a storey without a placement.
+ * throwing) for a store without source bytes. An unplaced grid uses identity
+ * only when the readable storey also explicitly omits ObjectPlacement;
+ * otherwise its axes are counted in skippedAxes.
  */
 export function extractGridAxesForStorey(
   store: IfcDataStore,
@@ -191,12 +193,18 @@ export function extractGridAxesForStorey(
   if (gridIds.size === 0) return out;
 
   const storeyChain = storeyPlacementChain(store, extractor, overlay, storeyId);
+  const storey = read(storeyId);
+  const storeyHasNoPlacement = storey?.type?.toUpperCase() === 'IFCBUILDINGSTOREY' && storey.attributes[5] === null;
   for (const gridId of gridIds) {
     const grid = read(gridId);
     if (!grid) continue;
     out.gridIds.push(gridId);
     const placementId = numericAttr(grid.attributes[5] as never);
-    const frame = placementId === null ? { origin: [0, 0] as Vec2, axisX: [1, 0] as Vec2 }
+    // An absent product placement is identity only in an explicitly unplaced
+    // storey; neither unreadable records nor placed storeys establish that.
+    const frame = placementId === null
+      ? (grid.attributes[5] === null && storeyHasNoPlacement
+        ? { origin: [0, 0] as Vec2, axisX: [1, 0] as Vec2 } : null)
       : frameInStoreyFrame(store, extractor, overlay, placementId, storeyChain);
     const families: Array<['U' | 'V' | 'W', unknown]> = [['U', grid.attributes[7]], ['V', grid.attributes[8]], ['W', grid.attributes[9]]];
     if (!frame) {

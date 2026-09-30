@@ -7,12 +7,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { IfcParser } from '@ifc-lite/parser';
-import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { StepExporter } from '@ifc-lite/export';
-import { editHostedElementInStore, readHostedElementSize } from './hosted-element-edit.js';
-import { readHostedFill } from './hosted-fill-read.js';
-import { resolveHostAnchor } from './resolve-host.js';
 
 const WASM = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
 const WASM_JS = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite.js', import.meta.url));
@@ -59,6 +53,13 @@ function bounds(parts: MeshWitness[]) {
 
 describe('hosted occurrence real WASM oracle (#6232)', () => {
   it.skipIf(!existsSync(WASM) || !existsSync(WASM_JS))('rescales only the selected mapped window and enlarges its real void (build WASM to run)', async () => {
+    // Parser/export/core imports can themselves reach the geometry bridge.
+    // Keep them behind eligibility so absent runtime artifacts really skip.
+    const [{ IfcParser }, { MutablePropertyView, StoreEditor }, { StepExporter },
+      { editHostedElementInStore, readHostedElementSize }, { readHostedFill }, { resolveHostAnchor }] = await Promise.all([
+      import('@ifc-lite/parser'), import('@ifc-lite/mutations'), import('@ifc-lite/export'),
+      import('./hosted-element-edit.js'), import('./hosted-fill-read.js'), import('./resolve-host.js'),
+    ]);
     const bytes = readFileSync(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
     const text = bytes.toString('utf8');
     const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, { disableWorkerScan: true });

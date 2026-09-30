@@ -24,7 +24,7 @@ import { setValidationSourceChoice } from '@/lib/validation/validation-source-ch
 import { RING_COLORS } from '@/lib/validation/manual/ring';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { render, cleanup, click, typeInput } from '@/test/render';
+import { render, cleanup, click, type as typeInput } from '@/test/render';
 import { ValidationPanel } from '../validation/ValidationPanel';
 import { DocumentPanel } from './DocumentPanel';
 

@@ -19,6 +19,21 @@ async function session() {
 }
 
 describe('#6232 D5 mapped opening bounds', () => {
+  it('matches independently calculated bounds of the actual Bonsai source opening', async () => {
+    const { store, view } = await session();
+    // Source geometry: #1305 spans X=[0,0.899999976158142],
+    // profile Y=[0,1.20000004768372]. #1311 turns that Y into Z,
+    // starts at Y=-0.600000023841858, and #1313 extrudes 1.2 along +Y.
+    // Identity mapping #1318/#1324, then #1340 adds [1.76767492294312,0,1].
+    // These constants come from the authored IFC, not another geometry reader.
+    const bounds = placedBodyExtent(store, 1299, view)!;
+    expect(bounds.min).toEqual([1.76767492294312, -0.600000023841858, 1]);
+    const expectedMax = [2.667674899101262, 0.599999976158142, 2.20000004768372];
+    bounds.max.forEach((value, i) => expect(value).toBeCloseTo(expectedMax[i], 12));
+    const cut = readHostOpeningExtents(store, 1222, view).cuts.find(c => c.openingId === 1299)!;
+    expect(cut.bounds).toEqual(bounds);
+  });
+
   it('applies inverse mapping origin, rotation, translation and nonuniform scale', async () => {
     const { store, view, editor } = await session();
     const before = placedBodyExtent(store, 1299, view)!;

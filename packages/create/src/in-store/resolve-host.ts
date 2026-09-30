@@ -299,13 +299,13 @@ function profileOutline(reader: AnchorEntityReader, profileId: number): Array<[n
     const curveType = curve.type.toUpperCase();
     let raw: unknown[] = [];
     if (curveType === 'IFCPOLYLINE' && Array.isArray(curve.attributes[0])) {
-      raw = curve.attributes[0].map(p => pointOf(reader, p));
+      raw = curve.attributes[0].map(p => pointOf(reader, p, 'IFCCARTESIANPOINT', 2)?.slice(0, 2));
     } else if (curveType === 'IFCINDEXEDPOLYCURVE') {
       const listId = refId(curve.attributes[0]);
       const list = listId === null ? null : reader.entity(listId)?.attributes[0];
       if (Array.isArray(list)) raw = list;
     }
-    const points = raw.map(vec3);
+    const points = raw.map(value => vec3(value, 2));
     if (points.some(p => p === null)) return null;
     const pts = points.map((p): [number, number] => [p![0], p![1]]);
     return pts.length >= 3 ? pts : null;

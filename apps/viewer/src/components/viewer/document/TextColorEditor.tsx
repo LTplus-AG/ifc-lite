@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useTranslation } from '@/i18n';
-import { Button } from '@/components/ui/button';
+import { OptionalColorPicker } from './OptionalColorPicker';
 import { TEXT_STYLES } from '@/lib/document/compose';
 import type { TextBlock } from '@/lib/document/types';
 
@@ -14,17 +14,10 @@ export function TextColorEditor({ block, onChange }: { block: TextBlock; onChang
   return <div className="flex flex-wrap items-center gap-2">
     {(['textColor', 'backgroundColor'] as const).map((key) => {
       const label = t(key === 'textColor' ? 'document.block.textColorLabel' : 'document.block.backgroundColorLabel');
-      return <div key={key} className="inline-flex items-center gap-1">
-        <label className="inline-flex items-center gap-1 text-muted-foreground">
-          {label}
-          <input type="color" className="h-6 w-8 cursor-pointer rounded border border-border bg-transparent p-0.5" aria-label={label}
-            value={block[key] ?? (key === 'textColor' ? `#${gray.repeat(3)}` : '#ffffff')}
-            onChange={(event) => onChange({ ...block, [key]: event.target.value })} />
-        </label>
-        <Button variant="ghost" size="sm" className="h-6 px-1" disabled={block[key] === undefined}
-          aria-label={t(key === 'textColor' ? 'document.block.textColorReset' : 'document.block.backgroundColorReset')}
-          onClick={() => onChange({ ...block, [key]: undefined })}>{t('document.block.colorReset')}</Button>
-      </div>;
+      return <OptionalColorPicker key={key} label={label}
+        resetLabel={t(key === 'textColor' ? 'document.block.textColorReset' : 'document.block.backgroundColorReset')}
+        value={block[key]} defaultValue={key === 'textColor' ? `#${gray.repeat(3)}` : '#ffffff'}
+        onChange={(value) => onChange({ ...block, [key]: value })} />;
     })}
   </div>;
 }

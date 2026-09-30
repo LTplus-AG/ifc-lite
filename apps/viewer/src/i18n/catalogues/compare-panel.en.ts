@@ -26,6 +26,18 @@ import type { TranslationValue } from '../types';
  * not UI copy.
  */
 export const comparePanelEn = {
+  'comparePanel.saved.title': 'Saved comparisons',
+  'comparePanel.saved.name': 'Comparison name',
+  'comparePanel.saved.save': 'Save comparison',
+  'comparePanel.saved.pick': 'Saved comparison',
+  'comparePanel.saved.placeholder': 'Choose a saved comparison ({count})',
+  'comparePanel.saved.renameName': 'Rename saved comparison',
+  'comparePanel.saved.rename': 'Rename',
+  'comparePanel.saved.delete': 'Delete saved comparison',
+  'comparePanel.saved.storageFailed': 'Comparison changes are in memory, but browser storage is unavailable or full. Download the report before closing this tab.',
+  'comparePanel.saved.hint': '{count} report rows saved. Preview shows the first 100; downloads and Documentation use the saved report. Historical rows do not select current 3D elements.',
+  'comparePanel.saved.change': 'Change',
+
   // ComparePanel
   'comparePanel.panel.title': 'Compare models',
   'comparePanel.panel.rerunTitle': 'Re-run the comparison',

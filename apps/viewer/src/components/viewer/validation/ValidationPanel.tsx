@@ -26,6 +26,7 @@
  * neither replaces nor is replaced by an IDS or information run.
  */
 
+import { SavedValidationReports } from './SavedValidationReports';
 import { X } from 'lucide-react';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -61,6 +62,7 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
   const info = useInformationValidation();
   const results = useValidationResults();
   const manual = useManualValidation();
+  const hasManualChecklists = useViewerStore((state) => state.manualLibrary.checklists.length > 0);
   const idsDocument = useViewerStore((s) => s.idsDocument);
   const validationSource = useViewerStore((s) => s.validationSource);
   const storeModels = useViewerStore((s) => s.models);
@@ -73,7 +75,7 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
   const effectiveSource: Source | null =
     activeSource ?? (idsDocument ? 'ids'
       : (info.file || validationSource === 'rules') ? 'rules'
-        : manual.checklist ? 'manual' : null);
+        : (manual.checklist || hasManualChecklists) ? 'manual' : null);
 
   const modelsForPicker: RuleModelPickerModel[] = [...storeModels.values()].map((m) => ({
     id: m.id, name: m.name, sourceFingerprint: m.sourceFingerprint,
@@ -117,6 +119,7 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
     return (
       <div className="h-full flex flex-col bg-background">
         <PanelHeader title={t('validationPanel.title')} onClose={handleClose} />
+        <SavedValidationReports />
         <ValidationPanelEmpty
           onSelectIds={() => setActiveSource('ids')}
           onOpenRuleSetFile={handleOpenRuleSetFile}
@@ -144,6 +147,7 @@ export function ValidationPanel({ onClose }: ValidationPanelProps) {
     <Tabs value={effectiveSource} onValueChange={(value) => setActiveSource(value === 'ids' || value === 'manual' ? value : 'rules')} className="h-full flex flex-col bg-background">
       <PanelHeader title={t('validationPanel.title')} onClose={handleClose} />
       <SourceToggle />
+      <SavedValidationReports />
       <TabsContent value="ids" className="mt-0 flex-1 min-h-0 flex flex-col">
         <IDSPanel embedded />
       </TabsContent>

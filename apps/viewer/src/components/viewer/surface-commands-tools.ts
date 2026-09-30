@@ -10,6 +10,7 @@ import {
 import { openRepositionModels } from '@/lib/model-placement/commands';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
 import { BeamIcon, ColumnIcon, CurtainWallIcon, DoorIcon, GridIcon, OpeningIcon, RoomIcon, SlabIcon, WallIcon, WindowIcon } from './model/model-icons';
+import { RailingIcon, StairIcon } from './model/stair-railing-icons';
 import { useViewerStore } from '@/store';
 import type { SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
 
@@ -155,5 +156,19 @@ export const TOOL_SURFACE_COMMANDS = [
     run: () => {
       if (useViewerStore.getState().selectedEntity) launchModelCommand('element.split', { drawsOnWorkplane: false });
     },
+  },
+  {
+    id: 'tool:stair', labelKey: 'commandPalette.tool.stair.label',
+    searchLabel: 'Draw stairs', keywords: 'stair stairs staircase flight steps riser tread run storey model author build create',
+    category: 'Tools', icon: StairIcon, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.stair',
+    run: () => { launchModelCommand('stair.place'); },
+  },
+  {
+    id: 'tool:railing', labelKey: 'commandPalette.tool.railing.label',
+    searchLabel: 'Draw railings', keywords: 'railing handrail balustrade guardrail posts barrier edge model author build create',
+    category: 'Tools', icon: RailingIcon, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.railing',
+    run: () => { launchModelCommand('railing.place'); },
   },
 ] as const satisfies readonly SurfaceCommandDefinition[];

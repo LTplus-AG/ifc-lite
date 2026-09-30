@@ -766,3 +766,13 @@ The numeric arrays are borrowed and must not be mutated. They remain valid until
 Parsed, worker-hydrated and server-loaded spatial hierarchies use the shared
 `spatialLookups` helper from `@ifc-lite/data`. `getPath` accepts both a spatial
 node and a contained object; containing-space queries follow live membership.
+
+Stores reconstructed without STEP resource rows can supply immutable
+`IfcDataStore.georeferencing` (`GeoreferenceInfo` or `null`) alongside
+`lengthUnitScale`. `extractGeoreferencingOnDemand` uses this pre-extracted
+fact before scanning STEP bytes. An absent field retains ordinary source
+extraction; `null` explicitly records that no georeference was supplied. The
+worker transport preserves these fields when reconstructing a store.
+
+`computeTransformMatrix(MapConversion)` derives the canonical 4×4 matrix
+from the current conversion, including its optional axis scale factors.

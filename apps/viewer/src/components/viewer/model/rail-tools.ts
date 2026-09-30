@@ -13,12 +13,13 @@
 import type { ComponentType } from 'react';
 import { CopyPlus, LogOut, MousePointer2, Move, RotateCw, Slice } from 'lucide-react';
 import { BeamIcon, ColumnIcon, CurtainWallIcon, DoorIcon, GridIcon, OpeningIcon, RoomIcon, SlabIcon, WallIcon, WindowIcon } from './model-icons';
+import { RailingIcon, StairIcon } from './stair-railing-icons';
 import type { TranslationKey } from '@/i18n';
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
 import { useViewerStore, type ViewerState } from '@/store';
 
-type RailGroup = 'select' | 'build' | 'host' | 'edit';
+type RailGroup = 'select' | 'build' | 'host' | 'edit' | 'circulation';
 
 export interface RailTool {
   /** The command id it starts, or `select`. Also its tour anchor. */
@@ -131,6 +132,18 @@ export const RAIL_TOOLS: readonly RailTool[] = [
     isActive: commandActive('element.rotate'),
     blockedKey: (s) => (s.selectedEntityId === null ? 'moveRotate.noSelection' : null),
     run: () => { launchModelCommand('element.rotate'); },
+  },
+  {
+    id: 'stair.place', group: 'circulation', labelKey: 'stairRailing.tool.stair', Icon: StairIcon,
+    shortcut: 'model.stair', drawsOnWorkplane: true,
+    isActive: commandActive('stair.place'),
+    run: () => { launchModelCommand('stair.place'); },
+  },
+  {
+    id: 'railing.place', group: 'circulation', labelKey: 'stairRailing.tool.railing', Icon: RailingIcon,
+    shortcut: 'model.railing', drawsOnWorkplane: true,
+    isActive: commandActive('railing.place'),
+    run: () => { launchModelCommand('railing.place'); },
   },
 ];
 

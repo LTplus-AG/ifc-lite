@@ -6,6 +6,7 @@ import { computeTransformMatrix } from './georef-transform.js';
 // The transform side lives in ./georef-transform.ts; re-exported here so
 // every existing `from './georef-extractor.js'` import keeps resolving.
 export {
+  computeTransformMatrix,
   transformToWorld,
   transformToLocal,
   getCoordinateSystemDescription,

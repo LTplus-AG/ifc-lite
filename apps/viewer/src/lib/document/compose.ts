@@ -14,12 +14,12 @@
  */
 import type { ReportPageSetup } from '@ifc-lite/charts';
 import { pageBox, REPORT_MARGIN } from '../export/report/compose.js';
-import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type BlockWidth, type TextBlock, type TextFont } from './types.js';
-import { layoutTable, type LayoutCursor, type TableColumnLayout, type TableLayoutBlock, type TextDrawnItem } from './compose-table.js';
+import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type BlockWidth, type PageBreakBlock, type TextBlock, type TextFont } from './types.js';
+import { layoutTable, type LayoutCursor, type TableLayoutBlock, type TableDrawnItem } from './compose-table.js';
 import { layoutIdsReport, type IdsReportLayoutBlock } from './compose-ids-report.js';
 import { layoutManualReport, type ManualReportLayoutBlock, type RingDrawnItem } from './compose-manual-report.js';
-import type { TableRowOut } from './resolve-table.js';
 import { tabFill } from './text-tabs.js';
+import { splitDocumentSections } from './page-sections.js';
 
 const HEADER_HEIGHT = 30;
 const FOOTER_HEIGHT = 24;
@@ -62,6 +62,7 @@ export const TEXT_STYLES: Record<TextBlock['style'], { size: number; bold: boole
 /** A block after its bindings were resolved and its assets measured — what layout needs. */
 export type ResolvedBlock =
   | TextBlock
+  | PageBreakBlock
   | { kind: 'image'; id: string; height: number; align: 'left' | 'center' | 'right'; caption?: string; /** natural width / height */ aspect: number; width?: BlockWidth }
   | { kind: 'chart'; id: string; title: string; subtitle: string; hasData: boolean; snapshot: boolean; height?: number; width?: BlockWidth }
   | { kind: 'topic'; id: string; title: string; lines: string[]; /** null when there is no snapshot to print */ snapshotAspect: number | null }
@@ -71,16 +72,14 @@ export type ResolvedBlock =
   | ({ kind: 'manual-report' } & ManualReportLayoutBlock);
 
 export type DrawnItem =
-  | TextDrawnItem
+  | TableDrawnItem
   | { kind: 'text-background'; x: number; y: number; w: number; h: number; color: string }
   /** A manual-validation ring chart (#6401), drawn from its counts. */
   | RingDrawnItem
   | { kind: 'image'; blockId: string; x: number; y: number; w: number; h: number }
   | { kind: 'chart'; blockId: string; x: number; y: number; w: number; h: number }
   | { kind: 'snapshot'; blockId: string; x: number; y: number; w: number; h: number }
-  | { kind: 'topic-snapshot'; blockId: string; x: number; y: number; w: number; h: number }
-  /** One page-sized chunk of a table block (#5142); every chunk carries the head. */
-  | { kind: 'table'; blockId: string; x: number; y: number; w: number; columns: TableColumnLayout[]; rows: TableRowOut[] };
+  | { kind: 'topic-snapshot'; blockId: string; x: number; y: number; w: number; h: number };
 
 export interface DocumentPage {
   index: number;
@@ -283,94 +282,98 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       : block.kind === 'chart' ? layoutChart(block, boxX, boxW)
       : layoutImage(block, boxX, boxW);
 
-  for (let i = 0; i < input.blocks.length; i++) {
-    const block = input.blocks[i];
-    const next = input.blocks[i + 1];
-    if (next && isHalfPairable(block) && isHalfPairable(next)) {
-      const colW = (contentW - BLOCK_GAP) / 2;
-      const textFits = (candidate: typeof block): boolean => candidate.kind !== 'text' || halfTextFitsPage(candidate, size.h, colW);
-      if (textFits(block) && textFits(next)) {
-        const a = layoutPairable(block, REPORT_MARGIN, colW);
-        const b = layoutPairable(next, REPORT_MARGIN + colW + BLOCK_GAP, colW);
-        const rowH = Math.max(a.height, b.height);
-        // An oversized text column falls back to the ordinary paginated text path.
-        if (rowH <= bottom - top) {
-          ensure(rowH + BLOCK_GAP);
-          page.items.push(...a.draw(y), ...b.draw(y));
-          y += rowH + BLOCK_GAP;
-          i += 1;
-          continue;
+  const wrap = (text: string, width: number, size: number, bold: boolean) => wrapText(text, width, size, bold, input.measure);
+
+  for (const [sectionIndex, blocks] of splitDocumentSections(input.blocks).entries()) {
+    if (sectionIndex > 0 && (page.items.length > 0 || y > top)) newPage();
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i];
+      const next = blocks[i + 1];
+      if (next && isHalfPairable(block) && isHalfPairable(next)) {
+        const colW = (contentW - BLOCK_GAP) / 2;
+        const textFits = (candidate: typeof block): boolean => candidate.kind !== 'text' || halfTextFitsPage(candidate, size.h, colW);
+        if (textFits(block) && textFits(next)) {
+          const a = layoutPairable(block, REPORT_MARGIN, colW);
+          const b = layoutPairable(next, REPORT_MARGIN + colW + BLOCK_GAP, colW);
+          const rowH = Math.max(a.height, b.height);
+          // An oversized text column falls back to the ordinary paginated text path.
+          if (rowH <= bottom - top) {
+            ensure(rowH + BLOCK_GAP);
+            page.items.push(...a.draw(y), ...b.draw(y));
+            y += rowH + BLOCK_GAP;
+            i += 1;
+            continue;
+          }
         }
       }
-    }
-    switch (block.kind) {
-      case 'text': {
-        const { style, size, lineH, lines } = layoutText(block, REPORT_MARGIN, contentW);
-        if (!block.backgroundColor && lines.every((l) => l.length === 0)) {
-          y += lineH;
+      switch (block.kind) {
+        case 'text': {
+          const { style, size, lineH, lines } = layoutText(block, REPORT_MARGIN, contentW);
+          if (!block.backgroundColor && lines.every((l) => l.length === 0)) {
+            y += lineH;
+            break;
+          }
+          y += style.gapBefore;
+          // A heading is not left alone at the bottom of a page: the first two lines move together.
+          ensure(lineH * Math.min(lines.length, 2));
+          for (const line of lines) {
+            if (y + lineH > bottom) newPage();
+            page.items.push(...textBackground(block, REPORT_MARGIN, y, contentW, lineH), { kind: 'text', x: REPORT_MARGIN, y: y + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font, color: block.textColor });
+            y += lineH;
+          }
+          y += BLOCK_GAP;
           break;
         }
-        y += style.gapBefore;
-        // A heading is not left alone at the bottom of a page: the first two lines move together.
-        ensure(lineH * Math.min(lines.length, 2));
-        for (const line of lines) {
-          if (y + lineH > bottom) newPage();
-          page.items.push(...textBackground(block, REPORT_MARGIN, y, contentW, lineH), { kind: 'text', x: REPORT_MARGIN, y: y + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font, color: block.textColor });
-          y += lineH;
+        case 'spacer': {
+          // A spacer taller than the printable page would otherwise push every following item past
+          // the footer, since `ensure` only starts one fresh page (review finding).
+          const height = Math.min(block.height, bottom - top);
+          ensure(height);
+          y += height;
+          break;
         }
-        y += BLOCK_GAP;
-        break;
-      }
-      case 'spacer': {
-        // A spacer taller than the printable page would otherwise push every following item past
-        // the footer, since `ensure` only starts one fresh page (review finding).
-        const height = Math.min(block.height, bottom - top);
-        ensure(height);
-        y += height;
-        break;
-      }
-      case 'image':
-      case 'chart': {
-        const single = block.kind === 'chart' ? layoutChart(block, REPORT_MARGIN, contentW) : layoutImage(block, REPORT_MARGIN, contentW);
-        ensure(single.height + BLOCK_GAP);
-        page.items.push(...single.draw(y));
-        y += single.height + BLOCK_GAP;
-        break;
-      }
-      case 'table': {
-        layoutTable(block, cursor, contentW, input.measure, BLOCK_GAP);
-        break;
-      }
-      case 'ids-report': {
-        layoutIdsReport(block, cursor, contentW, BLOCK_GAP);
-        break;
-      }
-      case 'manual-report': {
-        const wrap = (text: string, width: number, size: number, bold: boolean) => wrapText(text, width, size, bold, input.measure);
-        layoutManualReport(block, cursor, contentW, BLOCK_GAP, wrap, (ring) => { page.items.push(ring); });
-        break;
-      }
-      case 'topic': {
-        const lineH = 10 * 1.4;
-        const snapshotW = block.snapshotAspect ? Math.min(190, TOPIC_SNAPSHOT_HEIGHT * block.snapshotAspect) : 0;
-        const snapshotH = block.snapshotAspect ? snapshotW / block.snapshotAspect : 0;
-        const lines = block.lines.flatMap((l) => wrapText(l, contentW - (snapshotW ? snapshotW + BLOCK_GAP : 0), 10, false, input.measure));
-        // Title, snapshot and the first lines move together; a long description then continues page by page.
-        ensure(Math.max(16 + Math.min(lines.length, 3) * lineH, snapshotH) + BLOCK_GAP);
-        page.items.push({ kind: 'text', x: REPORT_MARGIN, y: y + 11, size: 11, bold: true, gray: 0, text: block.title });
-        if (block.snapshotAspect) page.items.push({ kind: 'topic-snapshot', blockId: block.id, x: size.w - REPORT_MARGIN - snapshotW, y, w: snapshotW, h: snapshotH });
-        const snapshotBottom = y + snapshotH;
-        let ty = y + 16;
-        for (const line of lines) {
-          if (ty + lineH > bottom) {
-            newPage();
-            ty = y;
+        case 'image':
+        case 'chart': {
+          const single = block.kind === 'chart' ? layoutChart(block, REPORT_MARGIN, contentW) : layoutImage(block, REPORT_MARGIN, contentW);
+          ensure(single.height + BLOCK_GAP);
+          page.items.push(...single.draw(y));
+          y += single.height + BLOCK_GAP;
+          break;
+        }
+        case 'table': {
+          layoutTable(block, cursor, contentW, input.measure, BLOCK_GAP, (text, width, size, bold) => wrapText(text, width, size, bold, input.measure));
+          break;
+        }
+        case 'ids-report': {
+          layoutIdsReport(block, cursor, contentW, BLOCK_GAP, wrap);
+          break;
+        }
+        case 'manual-report': {
+          layoutManualReport(block, cursor, contentW, BLOCK_GAP, wrap, (ring) => { page.items.push(ring); });
+          break;
+        }
+        case 'topic': {
+          const lineH = 10 * 1.4;
+          const snapshotW = block.snapshotAspect ? Math.min(190, TOPIC_SNAPSHOT_HEIGHT * block.snapshotAspect) : 0;
+          const snapshotH = block.snapshotAspect ? snapshotW / block.snapshotAspect : 0;
+          const lines = block.lines.flatMap((l) => wrapText(l, contentW - (snapshotW ? snapshotW + BLOCK_GAP : 0), 10, false, input.measure));
+          // Title, snapshot and the first lines move together; a long description then continues page by page.
+          ensure(Math.max(16 + Math.min(lines.length, 3) * lineH, snapshotH) + BLOCK_GAP);
+          page.items.push({ kind: 'text', x: REPORT_MARGIN, y: y + 11, size: 11, bold: true, gray: 0, text: block.title });
+          if (block.snapshotAspect) page.items.push({ kind: 'topic-snapshot', blockId: block.id, x: size.w - REPORT_MARGIN - snapshotW, y, w: snapshotW, h: snapshotH });
+          const snapshotBottom = y + snapshotH;
+          let ty = y + 16;
+          for (const line of lines) {
+            if (ty + lineH > bottom) {
+              newPage();
+              ty = y;
+            }
+            page.items.push({ kind: 'text', x: REPORT_MARGIN, y: ty + 10, size: 10, bold: false, gray: 60, text: line });
+            ty += lineH;
           }
-          page.items.push({ kind: 'text', x: REPORT_MARGIN, y: ty + 10, size: 10, bold: false, gray: 60, text: line });
-          ty += lineH;
+          y = Math.max(ty, page.items.some((i) => i.kind === 'topic-snapshot' && i.blockId === block.id) ? snapshotBottom : ty) + BLOCK_GAP;
+          break;
         }
-        y = Math.max(ty, page.items.some((i) => i.kind === 'topic-snapshot' && i.blockId === block.id) ? snapshotBottom : ty) + BLOCK_GAP;
-        break;
       }
     }
   }

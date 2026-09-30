@@ -28,6 +28,7 @@ import { Scene } from './scene.js';
 import { createSceneBatch } from './scene-batch-upload.js';
 import type { BatchedMesh } from './types.js';
 import { MAX_QUANT_EXTENT } from './quantize.js';
+import { originPreservesTriangleTopology, topologySafeBatchOrigin } from './scene-precision.js';
 
 (globalThis as Record<string, unknown>).GPUBufferUsage = {
   MAP_READ: 1, MAP_WRITE: 2, COPY_SRC: 4, COPY_DST: 8, INDEX: 16,
@@ -216,6 +217,41 @@ describe('derived batches stay depth-coincident with their base batches (#4832)'
 
     scene.appendToBatches([triangle(3, [5, 0, 0], RED)], device, fakePipeline);
     assert.strictEqual(scene.getBatchedMeshes().length, 2, 'a later safe append still succeeds');
+  });
+
+  it('uploads a wide mesh in its authored frame when recentering collapses a valid sliver (#6515)', () => {
+    for (const origin of [undefined, [155_000, 0, 5_500_000] as [number, number, number]]) {
+      const mesh: MeshData = {
+        expressId: 19,
+        // Both triangles use every vertex. The first has a 1 µm edge; the
+        // second is 1 km away. Their authored Float32 coordinates retain
+        // positive area, while the ~500 m bbox rebase erases the tiny edge.
+        positions: new Float32Array([0, 0, 0, 0.000001, 0, 0, 0, 1, 0, 1000, 0, 0, 1010, 0, 0, 1000, 10, 0]),
+        normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]),
+        indices: new Uint32Array([0, 1, 2, 3, 4, 5]),
+        color: GREY,
+        ...(origin ? { origin } : {}),
+      };
+      const frame: [number, number, number] = origin ?? [0, 0, 0];
+      const midpoint: [number, number, number] = [frame[0] + 505, frame[1] + 5, frame[2]];
+      assert.strictEqual(originPreservesTriangleTopology([mesh], midpoint), false, 'preferred rebase loses the source triangle');
+      assert.strictEqual(originPreservesTriangleTopology([mesh], frame), true, 'authored frame retains both source triangles');
+      assert.deepStrictEqual(topologySafeBatchOrigin([mesh], undefined, midpoint), frame);
+
+      const scene = new Scene();
+      const { device, bytes } = fakeDevice();
+      scene.appendToBatches([mesh], device, fakePipeline);
+      const batch = baseBatchFor(scene, mesh.expressId);
+      assert.deepStrictEqual(batch.origin, frame);
+      assert.strictEqual(batch.indexCount, 6, 'both triangles reach the drawable');
+      const actual = gpuPositionsByEntity(batch, bytes).get(mesh.expressId);
+      const expected: string[] = [];
+      for (let index = 0; index < mesh.positions.length; index += 3) expected.push(`${mesh.positions[index]},${mesh.positions[index + 1]},${mesh.positions[index + 2]}`);
+      assert.deepStrictEqual(actual, expected.sort(), 'GPU coordinates preserve every authored Float32 vertex');
+      const partial = scene.getOrCreatePartialBatch(`${batch.id}:${batch.colorKey}`, batch.colorKey, new Set([mesh.expressId]), device, fakePipeline);
+      assert.ok(partial);
+      assertCoincidentWithBase(scene, partial, bytes);
+    }
   });
 
   it('keeps a legacy representative while precise paths retain every framed piece (#5010)', () => {

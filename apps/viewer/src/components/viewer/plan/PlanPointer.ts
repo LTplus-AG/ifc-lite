@@ -17,7 +17,7 @@
  * feeds it like any running command.
  */
 
-import { commandDoubleClick, commandPointerDown, commandPointerMove, getCommandRuntime } from '@/lib/commands/modeling/runtime';
+import { commandDoubleClick, commandPointerDown, commandPointerMove, commandPointerUp, getCommandRuntime } from '@/lib/commands/modeling/runtime';
 import { modelSnapSources, profileOf, solveCommandSnap, type PointerModifiers } from '@/lib/commands/modeling/snap-solve';
 import type { SnapProfile, SnapResult, SnapSource, Vec2 } from '@/lib/snap/types';
 import { selectPickedGlobalId, toggleGlobalIdInSelection } from '../viewport-selection';
@@ -60,11 +60,12 @@ export function resolvePlanSnap(input: PlanPointerInput): SnapResult | null {
 }
 
 /** Feed a plan pointer event to the running command. False when no command took it. */
-export function routePlanPointer(kind: 'move' | 'down', input: PlanPointerInput): boolean {
+export function routePlanPointer(kind: 'move' | 'down' | 'up', input: PlanPointerInput): boolean {
   const snap = resolvePlanSnap(input);
   if (!snap) return false;
   // The second click of a double-click (detail 2) closes a polygon, as in 3D.
   if (kind === 'down') ((input.mods.detail ?? 1) >= 2 ? commandDoubleClick : commandPointerDown)(snap);
+  else if (kind === 'up') commandPointerUp(snap);
   else commandPointerMove(snap);
   return true;
 }

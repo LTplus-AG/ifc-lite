@@ -20,6 +20,8 @@ import { manualReportBlockFromChecklist } from './manual-report.js';
 import type { ManualReportBlock } from './manual-report-types.js';
 import { parseDocumentFile } from './persistence.js';
 import { DOCUMENT_VERSION, migrateDocumentSpec, validateDocumentSpec, type DocumentSpec } from './types.js';
+import { comparisonModels, comparisonResult } from '@/test/saved-comparison-fixture';
+import { snapshotComparison } from '../compare/savedComparisons';
 
 const CHECKLIST: ChecklistTemplate = {
   version: CHECKLIST_VERSION,
@@ -60,6 +62,22 @@ describe('manual report snapshot (#6401)', () => {
     assert.deepEqual(b.groups[1].items[1], { id: 'dupes', text: 'No duplicate elements', status: null });
   });
 
+  it('upgrades v8/v9 documents without binding old manual snapshots or losing comparison/page-break evidence (#6507)', () => {
+    const manual = block();
+    const comparison = snapshotComparison(comparisonResult('A', 'B'), comparisonModels(), 'Issued comparison');
+    for (const version of [8, 9]) {
+      const blocks: DocumentSpec['blocks'] = [manual, { kind: 'page-break', id: 'page' }];
+      if (version === 9) blocks.push({ kind: 'table', id: 'comparison', source: { kind: 'comparison', comparison } });
+      const imported = parseDocumentFile(JSON.stringify({ ...docWith(blocks), version }));
+      assert.equal(imported.version, 10);
+      assert.deepEqual(imported.blocks.map(({ id: _id, ...payload }) => payload), blocks.map(({ id: _id, ...payload }) => payload));
+      const reopened = imported.blocks[0] as ManualReportBlock;
+      assert.equal(reopened.checklistId, undefined, 'older snapshots keep active-source semantics until explicit choice');
+      assert.equal(reopened.variant, undefined);
+      assert.equal(reopened.benchmarks, undefined);
+    }
+  });
+
   it('is frozen: later answers do not reach a block already taken', () => {
     const answers = { ...ANSWERS };
     const b = manualReportBlockFromChecklist({ checklist: CHECKLIST, answers }, 'b1');
@@ -70,9 +88,10 @@ describe('manual report snapshot (#6401)', () => {
 
 describe('manual report in the document format (#6401)', () => {
   it('is a valid block of the current document version and survives a file round trip', () => {
-    assert.equal(DOCUMENT_VERSION, 7);
     assert.deepEqual(validateDocumentSpec(docWith([block()])), []);
-    const reopened = parseDocumentFile(JSON.stringify(docWith([block()])));
+    // A saved version-7 manual report must retain its verdicts after later format additions (#6485).
+    const reopened = parseDocumentFile(JSON.stringify({ ...docWith([block()]), version: 7 }));
+    assert.equal(reopened.version, DOCUMENT_VERSION);
     const b = reopened.blocks[0];
     assert.equal(b.kind, 'manual-report');
     assert.deepEqual(b.kind === 'manual-report' ? b.summary : null, block().summary);
@@ -187,5 +206,34 @@ describe('which model a manual report block refreshes from (#6401)', () => {
     assert.deepEqual(resolveReportModel([tower], 'fp-annex', 'm1', 'm1'), { kind: 'model', model: tower });
     assert.deepEqual(resolveReportModel([tower, annex], undefined, null, 'm2'), { kind: 'model', model: annex });
     assert.deepEqual(resolveReportModel([], undefined, null, null), { kind: 'model', model: null });
+  });
+});
+
+
+describe('manual checklist document presentation (#6507)', () => {
+  for (const variant of ['long', 'compact'] as const) for (const benchmarks of [true, false]) {
+    it(`${variant} with benchmark scores ${benchmarks ? 'shown' : 'hidden'} retains verdicts through import and PDF composition`, () => {
+      const original = { ...block(), checklistId: 'independent-review', variant, benchmarks };
+      const reopened = parseDocumentFile(JSON.stringify(docWith([original])));
+      assert.notEqual(reopened.blocks[0].id, original.id, 'document import allocates fresh block identities');
+      assert.deepEqual(reopened.blocks[0], { ...original, id: reopened.blocks[0].id });
+      const importedBlock = reopened.blocks[0];
+      assert.equal(importedBlock.kind, 'manual-report');
+      if (importedBlock.kind !== 'manual-report') assert.fail('import changed the report kind');
+      const layout = composeDocument({ name: reopened.name, page: reopened.page, blocks: [importedBlock], generatedAt: '', measure: estimateTextWidth });
+      const items = layout.pages.flatMap((page) => page.items);
+      const text = items.flatMap((item) => item.kind === 'text' ? [item.text] : []).join(' ');
+      assert.equal(items.filter((item) => item.kind === 'ring').length, benchmarks ? 3 : 0);
+      assert.equal(text.includes('% passed'), benchmarks);
+      assert.equal(text.includes('See the BEP, section 4'), variant === 'long');
+      assert.equal(text.includes('Comment: Two files use the old prefix'), variant === 'long');
+      for (const verdict of ['PASS', 'WARNING', 'FAIL', 'NOT CHECKED']) assert.ok(text.includes(verdict));
+      for (const page of layout.pages) for (const item of page.items) assert.ok(item.y <= layout.size.h - REPORT_MARGIN - 24);
+    });
+  }
+
+  it('rejects malformed live-source and presentation fields with their exact document paths', () => {
+    const malformed = { ...block(), checklistId: '  ', variant: 'wide', benchmarks: 'yes' };
+    assert.deepEqual(validateDocumentSpec({ ...docWith([]), blocks: [malformed] }).map((error) => error.path), ['blocks[0].checklistId', 'blocks[0].variant', 'blocks[0].benchmarks']);
   });
 });

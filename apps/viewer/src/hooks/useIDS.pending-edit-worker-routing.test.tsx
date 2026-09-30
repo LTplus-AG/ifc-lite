@@ -75,22 +75,6 @@ class FakeWorker {
   terminate(): void {}
 }
 
-/** Distinguishable from anything the in-process validator would produce. */
-const WORKER_REPORT = {
-  summary: {
-    totalSpecifications: 1,
-    passedSpecifications: 1,
-    failedSpecifications: 0,
-    totalEntitiesChecked: 1,
-    totalEntitiesPassed: 1,
-    overallPassRate: 100,
-  },
-  specificationResults: [],
-  source: { kind: 'ids', document: { specifications: [] } },
-  timestamp: new Date(0),
-  modelInfo: [{ modelId: 'from-the-worker', schemaVersion: 'IFC4', entityCount: 1 }],
-} as unknown as IDSValidationReport;
-
 // ─── Fixture ──────────────────────────────────────────────────────────────
 
 const WALL_ID = 1;
@@ -137,6 +121,23 @@ const IDS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     </ids:specification>
   </ids:specifications>
 </ids:ids>`;
+
+/** Distinguishable from anything the in-process validator would produce. */
+const WORKER_REPORT: IDSValidationReport = {
+  summary: {
+    totalSpecifications: 1,
+    passedSpecifications: 1,
+    failedSpecifications: 0,
+    totalEntitiesChecked: 1,
+    totalEntitiesPassed: 1,
+    totalEntitiesFailed: 0,
+    overallPassRate: 100,
+  },
+  specificationResults: [],
+  source: { kind: 'ids', document: parseIDS(IDS_XML) },
+  timestamp: new Date(0),
+  modelInfo: [{ modelId: 'from-the-worker', schemaVersion: 'IFC4', entityCount: 1 }],
+};
 
 function model(id: string, store: IfcDataStore): FederatedModel {
   return {

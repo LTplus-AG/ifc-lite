@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { buildCompactEntityIndex, createSyntheticDataStore, type EntityRef } from '@ifc-lite/parser';
 import { FederationRegistry } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
-import { getMaxExpressId } from './viewerModelIngest.js';
+import { getMaxExpressId, parseIfcxViewerModel } from './viewerModelIngest.js';
 
 function storeFor(ids: number[], compact: boolean) {
   const refs: EntityRef[] = ids.map((expressId) => ({
@@ -55,5 +55,61 @@ describe('maximum model ID after metadata hydration (#3985)', () => {
     assert.ok(secondId > 900);
     assert.deepEqual(registry.fromGlobalId(secondId), { modelId: 'second', expressId: 80 });
     assert.deepEqual(registry.fromGlobalId(900), { modelId: 'first', expressId: 900 });
+  });
+});
+
+/** Real IFCX JSON: source order puts an unmeshed project above rendered IDs. */
+function ifcxSource(kind: 'mesh' | 'points' | 'none'): ArrayBuffer {
+  const attributes: Record<string, unknown> = { 'bsi::ifc::class': { code: 'IfcWall' } };
+  if (kind === 'mesh') {
+    attributes['usd::usdgeom::mesh'] = {
+      points: [[0, 0, 0], [1, 0, 0], [0, 1, 0]], faceVertexIndices: [0, 1, 2],
+    };
+  } else if (kind === 'points') {
+    attributes['points::array'] = { positions: [[1, 2, 3], [4, 5, 6]] };
+  }
+  return new TextEncoder().encode(JSON.stringify({
+    header: { ifcxVersion: 'ifcx-alpha' }, imports: [], schemas: {},
+    data: [
+      { path: 'object', attributes },
+      ...Array.from({ length: 8 }, (_, i) => ({
+        path: `resource-${i}`, attributes: { 'bsi::ifc::class': { code: 'IfcPropertySet' } },
+      })),
+      { path: 'project', attributes: { 'bsi::ifc::class': { code: 'IfcProject' } }, children: { object: 'object' } },
+    ],
+  })).buffer as ArrayBuffer;
+}
+
+describe('IFCX federation ownership includes every source row (#6564)', () => {
+  for (const kind of ['mesh', 'points', 'none'] as const) {
+    it(`keeps the spatial project owned for ${kind} geometry in one and multiple models`, async () => {
+      const payload = await parseIfcxViewerModel(ifcxSource(kind), undefined, { allowEmptyGeometry: true });
+      const projectId = payload.dataStore.spatialHierarchy?.project?.expressId;
+      assert.equal(projectId, 10, 'fixture project follows every rendered entity in source order');
+      assert.equal(payload.geometryResult.meshes.length, kind === 'mesh' ? 1 : 0);
+      assert.equal(payload.geometryResult.pointClouds?.length, kind === 'points' ? 1 : 0);
+      const watermark = getMaxExpressId(payload.dataStore, payload.geometryResult.meshes, payload.geometryResult.pointClouds);
+      assert.equal(watermark, projectId);
+
+      const registry = new FederationRegistry();
+      for (const modelId of ['primary', 'federated']) {
+        registry.registerModel(modelId, watermark);
+        // Source-backed ownership round-trips, including the unmeshed project.
+        for (const localId of payload.pathToId!.values()) {
+          const globalId = registry.toGlobalId(modelId, localId);
+          assert.deepEqual(registry.fromGlobalId(globalId), { modelId, expressId: localId });
+        }
+        assert.throws(() => registry.toGlobalId(modelId, watermark + 1), /not published/);
+      }
+      assert.equal(registry.toGlobalId('primary', projectId!), projectId);
+      assert.ok(registry.toGlobalId('federated', projectId!) > watermark);
+    });
+  }
+
+  it('includes point-cloud asset IDs when the source entity index is unavailable', () => {
+    const registry = new FederationRegistry();
+    registry.registerModel('scan', getMaxExpressId(null, [mesh(2)], [{ expressId: 40 }]));
+    assert.deepEqual(registry.fromGlobalId(registry.toGlobalId('scan', 40)), { modelId: 'scan', expressId: 40 });
+    assert.throws(() => registry.toGlobalId('scan', 41), /not published/);
   });
 });

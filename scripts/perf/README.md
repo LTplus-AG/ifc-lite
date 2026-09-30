@@ -2713,3 +2713,22 @@ separate output increase at the small-hole retention policy; do not delete
 corrective geometry to recover a former triangle count. The private reporter's
 complete slowdown remains unresolved. [All samples, identities, limits and
 reproduction commands](evidence/opening-work-6516/README.md) are retained together.
+
+
+## Owner-cache and renderer-packing qualification (#6537)
+
+A direct final-packing prototype avoids temporary merged float storage for
+normal streaming fragments, but it remains unshipped: the shared-preview runs
+did not establish an end-to-end benefit. A single-model owner-cache prototype
+also removes repeated accumulated-prefix stamping and protects CPU-buffer
+release through the same cache used for federations. Mounted tests establish
+those invariants; they do not establish a foreground speedup.
+
+An identical frame-cadence diagnostic exposed approximately one animation
+frame per second in both candidate and control, including an empty viewer.
+Document visibility alone did not reveal this limitation. The apparent upload
+tail therefore cannot establish product CPU or GPU work. Preserve the failed
+qualification and first verify actual foreground frame cadence; do not tune a
+product queue to compensate for a hidden preview's frame scheduling. Raw
+records, source identities, negative results and output-identity limits are
+[retained together](evidence/owner-cache-6537/README.md).

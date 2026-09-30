@@ -119,3 +119,20 @@ Standalone Chrome was also tested: it has normal frame cadence on this Linux
 host but software graphics and no WebGPU adapter. The shared T3 browser has the
 real NVIDIA adapter and is used for rendering comparisons. Both diagnostic
 records are retained; they are different graphics environments.
+
+
+## Partial literal fresh-tab control
+
+`fresh-tab-observations.json.gz` retains one completed AC20 base/branch pair in
+two newly created browser tabs, with matching retained geometry and foreground
+cadence. The companion manifest marks this as an incomplete series: one pair
+cannot establish a speed difference or replace the five-pair document controls.
+
+Later attempts failed in native browser cache preparation before a model was
+loaded. Those automation connection errors are separate diagnostic records and
+are excluded from timing samples. The original successful pair closed its owned
+tabs after capture; the retained current protocol shows the subsequent recovery
+attempt that kept tabs alive, with bounded idempotent preparation retries.
+Neither recovery completed another model load. There is no fresh-tab O-S1
+result or same-build noise verdict. The source and previous evidence archives
+are unchanged.

@@ -41,13 +41,23 @@ afterEach(() => {
 });
 
 describe('Model tool rail (#6232 M2.1)', () => {
-  it('shows only while the workspace is open, with Select, the build tools, Split, Move, Rotate, the plan toggle (M2.4) and Leave', () => {
+  it('shows only while the workspace is open, with Select, the build tools, Split, Array, Move, Rotate, Change sets (D4), the plan toggle (M2.4) and Leave', () => {
     const ui = mount();
     assert.equal(ui.querySelector('[data-model-tool-rail]'), null, 'no rail while viewing');
     act(() => { useViewerStore.getState().enterModelWorkspace(); });
     const ids = [...ui.querySelectorAll('[data-rail-tool]')].map((b) => b.getAttribute('data-rail-tool'));
-    assert.deepEqual(ids, ['select', 'wall.place', 'slab.place', 'column.place', 'beam.place', 'room.place', 'opening.place', 'door.place', 'window.place', 'element.split', 'element.array', 'element.move', 'element.rotate', 'stair.place', 'railing.place', 'element.pushPull', 'element.align', 'plan', 'leave']);
+    assert.deepEqual(ids, ['select', 'wall.place', 'slab.place', 'column.place', 'beam.place', 'room.place', 'opening.place', 'door.place', 'window.place', 'element.split', 'element.array', 'element.move', 'element.rotate', 'stair.place', 'railing.place', 'element.pushPull', 'element.align', 'change-sets', 'plan', 'leave']);
     assert.equal(tool(ui, 'select')?.getAttribute('aria-pressed'), 'true');
+  });
+
+  it('#6232 D4 Change sets opens and closes the Change sets panel', () => {
+    const ui = mount();
+    act(() => { useViewerStore.getState().enterModelWorkspace(); });
+    act(() => click(tool(ui, 'change-sets')!));
+    assert.equal(useViewerStore.getState().sidebarActivePanel, 'changeSets');
+    assert.equal(tool(ui, 'change-sets')?.getAttribute('aria-pressed'), 'true');
+    act(() => click(tool(ui, 'change-sets')!));
+    assert.notEqual(useViewerStore.getState().sidebarActivePanel, 'changeSets');
   });
 
   it('Wall starts wall.place on the session storey, and the Add Element panel stays shut', () => {

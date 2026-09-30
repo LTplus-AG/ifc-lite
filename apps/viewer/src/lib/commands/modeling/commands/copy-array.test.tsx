@@ -259,4 +259,91 @@ describe('copy and paste (#6232 C3)', () => {
     ctrl('c');
     assert.equal(readCopyClipboard(), null);
   });
+
+  it('an assembly is copied with its parts and their aggregation, and a part alone is refused (C3 follow-up); one undo', () => {
+    const state = useViewerStore.getState();
+    const { editor } = modelEditTarget(state, MODEL_ID)!;
+    const point = editor.addEntity('IfcCartesianPoint', [[1, 1, 0]]);
+    const axis = editor.addEntity('IfcAxis2Placement3D', [`#${point.expressId}`, null, null]);
+    const placement = editor.addEntity('IfcLocalPlacement', ['#41', `#${axis.expressId}`]);
+    const assembly = editor.addEntity('IfcElementAssembly', ['0$abcdefghijklmnopqrstu', null, 'Assembly', null, null, `#${placement.expressId}`, null, null, null, null]);
+    editor.addEntity('IfcRelContainedInSpatialStructure', ['1$abcdefghijklmnopqrstu', null, null, null, [`#${assembly.expressId}`], `#${STOREY}`]);
+    const parts = [addColumn(1, 1), addColumn(2, 1)];
+    editor.addEntity('IfcRelAggregates', ['2$abcdefghijklmnopqrstu', null, null, null, `#${assembly.expressId}`, parts.map((id) => `#${id}`)]);
+
+    select(parts[0]);
+    ctrl('c');
+    assert.equal(readCopyClipboard(), null, 'a part alone is refused');
+    select(assembly.expressId);
+    ctrl('c');
+    assert.deepEqual(readCopyClipboard()?.ids, [assembly.expressId]);
+    ctrl('v');
+    click(6, 6);
+    assert.equal(live('IFCELEMENTASSEMBLY').length, 2);
+    assert.equal(live('IFCCOLUMN').length, 4, 'two parts, two part copies');
+    const rels = live('IFCRELAGGREGATES');
+    assert.equal(rels.length, 2, 'the aggregation is re-created');
+    const copyRel = rels.find((r) => !parts.map((id) => `#${id}`).includes((r.attributes[5] as string[])[0]))!;
+    assert.equal((copyRel.attributes[5] as string[]).length, 2);
+    assert.notEqual(copyRel.attributes[0], '2$abcdefghijklmnopqrstu');
+    const hierarchy = useViewerStore.getState().models.get(MODEL_ID)!.ifcDataStore!.spatialHierarchy!;
+    const partCopies = live('IFCCOLUMN').map((e) => e.expressId).filter((id) => !parts.includes(id));
+    assert.equal(partCopies.length, 2);
+    for (const id of partCopies) assert.equal(hierarchy.elementToStorey.get(id), STOREY, 'a part copy is listed under its storey, as the source parts are');
+    const lastRemesh = remeshes.at(-1)!;
+    assert.equal(lastRemesh.expressIds.length, 3, 'the assembly copy and its two parts are re-meshed');
+    useViewerStore.getState().undo(MODEL_ID);
+    assert.equal(live('IFCELEMENTASSEMBLY').length, 1);
+    assert.equal(live('IFCCOLUMN').length, 2);
+    assert.equal(live('IFCRELAGGREGATES').length, 1);
+  });
+
+  /** A column whose placement hangs off a turned placement that never reaches its storey's (#6232 C3 review). */
+  function detachedColumn(): number {
+    const column = addColumn(1, 1);
+    const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
+    const { editor } = target;
+    const turn = editor.addEntity('IfcDirection', [[0, 1, 0]]);
+    const point = editor.addEntity('IfcCartesianPoint', [[0, 0, 0]]);
+    const axis = editor.addEntity('IfcAxis2Placement3D', [`#${point.expressId}`, null, `#${turn.expressId}`]);
+    const detached = editor.addEntity('IfcLocalPlacement', [null, `#${axis.expressId}`]);
+    const placementId = Number(String(editor.getNewEntity(column)!.attributes[5]).slice(1));
+    editor.setPositionalAttribute(placementId, 0, `#${detached.expressId}`);
+    return column;
+  }
+
+  it('hovering the array preview over an element whose placement is not tied to its storey shows a refusal, not a ghost or an exception', () => {
+    select(detachedColumn());
+    useViewerStore.getState().startCommand('element.array');
+    const runtime = getCommandRuntime();
+    const g = runtime.gesture as ArrayGesture;
+    assert.equal(g.ids.length, 0);
+    assert.match(g.refusal ?? '', /not tied to its storey/);
+    click(1, 1);
+    act(() => { commandPointerMove(at(4, 1)); });
+    const now = getCommandRuntime();
+    assert.deepEqual(now.command!.ghost!(now.gesture, now.ctx!), []);
+    assert.equal(columns().length, 1, 'a click then commits nothing');
+    ctrl('c');
+    assert.equal(readCopyClipboard(), null, 'Ctrl+C refuses it too');
+  });
+
+  it('a paste whose copied element was detached since Ctrl+C says so in the hint and previews nothing', () => {
+    const column = addColumn(1, 1);
+    select(column);
+    ctrl('c');
+    assert.ok(readCopyClipboard());
+    const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!.editor;
+    const detached = target.addEntity('IfcLocalPlacement', [null, `#${target.addEntity('IfcAxis2Placement3D', [`#${target.addEntity('IfcCartesianPoint', [[0, 0, 0]]).expressId}`, null, `#${target.addEntity('IfcDirection', [[0, 1, 0]]).expressId}`]).expressId}`]);
+    const placementId = Number(String(target.getNewEntity(column)!.attributes[5]).slice(1));
+    target.setPositionalAttribute(placementId, 0, `#${detached.expressId}`);
+    ctrl('v');
+    const runtime = getCommandRuntime();
+    assert.equal((runtime.gesture as { refusal: string | null }).refusal, 'copyArray.paste.stale');
+    act(() => { commandPointerMove(at(5, 5)); });
+    const now = getCommandRuntime();
+    assert.deepEqual(now.command!.ghost!(now.gesture, now.ctx!), []);
+    click(5, 5);
+    assert.equal(columns().length, 1);
+  });
 });

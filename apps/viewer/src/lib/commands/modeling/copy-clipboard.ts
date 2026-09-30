@@ -66,7 +66,12 @@ export function copySelectionToClipboard(s: ViewerState, modelId: string): CopyV
   const sources = copySources(s, modelId, selected.ids);
   if ('refusal' in sources) return { ok: false, reason: sources.refusal };
   const target = modelEditTarget(s, modelId);
-  const origin = target ? productStoreyOrigin(createCopyContext(target.dataStore, target.editor), sources.ids[0]) : null;
+  let origin: ReturnType<typeof productStoreyOrigin> = null;
+  try {
+    origin = target ? productStoreyOrigin(createCopyContext(target.dataStore, target.editor), sources.ids[0]) : null;
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+  }
   if (!origin) return { ok: false, reason: 'The selected element has no placement to copy from' };
   clipboard = { modelId, ids: sources.ids, base: origin.origin };
   return { ok: true, count: sources.ids.length };

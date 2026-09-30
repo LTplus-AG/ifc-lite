@@ -21,18 +21,20 @@ export function num(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-export function vec3(value: unknown): Vec3 | null {
-  if (!Array.isArray(value) || value.length < 2) return null;
+/** A 3D frame needs exactly three coordinates. A profile opts into two,
+ * embedded in XY; missing 3D coordinates must never be synthesized. */
+export function vec3(value: unknown, dimension: 2 | 3 = 3): Vec3 | null {
+  if (!Array.isArray(value) || value.length !== dimension) return null;
   const x = num(value[0]);
   const y = num(value[1]);
-  const z = value.length >= 3 ? num(value[2]) : 0;
+  const z = dimension === 3 ? num(value[2]) : 0;
   return x === null || y === null || z === null ? null : [x, y, z];
 }
 
-export function pointOf(reader: AnchorEntityReader, ref: unknown, type = 'IFCCARTESIANPOINT'): Vec3 | null {
+export function pointOf(reader: AnchorEntityReader, ref: unknown, type = 'IFCCARTESIANPOINT', dimension: 2 | 3 = 3): Vec3 | null {
   const id = refId(ref);
   const entity = id === null ? null : reader.entity(id);
-  return entity?.type.toUpperCase() === type ? vec3(entity.attributes[0]) : null;
+  return entity?.type.toUpperCase() === type ? vec3(entity.attributes[0], dimension) : null;
 }
 
 export function unit(v: Vec3): Vec3 | null {
@@ -45,9 +47,9 @@ export function axis2d(reader: AnchorEntityReader, ref: unknown): { o: [number, 
   if (ref === null || ref === undefined) return { o: [0, 0], x: [1, 0] };
   const id = refId(ref), placement = id === null ? null : reader.entity(id);
   if (placement?.type.toUpperCase() !== 'IFCAXIS2PLACEMENT2D') return null;
-  const o = pointOf(reader, placement.attributes[0]);
+  const o = pointOf(reader, placement.attributes[0], 'IFCCARTESIANPOINT', 2);
   const refDirection = placement.attributes[1];
-  const dir = refDirection === null || refDirection === undefined ? [1, 0, 0] as Vec3 : pointOf(reader, refDirection, 'IFCDIRECTION');
+  const dir = refDirection === null || refDirection === undefined ? [1, 0, 0] as Vec3 : pointOf(reader, refDirection, 'IFCDIRECTION', 2);
   const x = dir ? unit([dir[0], dir[1], 0]) : null;
   return o && x ? { o: [o[0], o[1]], x: [x[0], x[1]] } : null;
 }

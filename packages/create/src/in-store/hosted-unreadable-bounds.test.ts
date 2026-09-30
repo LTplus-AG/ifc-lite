@@ -10,9 +10,11 @@ import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { readHostOpeningExtents, addHostedElementInStore } from './hosted-element.js';
 import { placedBodyExtent } from './resolve-host.js';
 
-async function session(brokenSource = false) {
+async function session(brokenSource: boolean | '2D direction' = false) {
   const source = await readFile(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url), 'utf8');
-  const content = brokenSource ? source.replace('#1343=IFCAXIS2PLACEMENT3D(#1340,#1341,#1342);', '#1343=IFCAXIS2PLACEMENT3D(#1340,#1341,#999999);') : source;
+  const content = brokenSource === '2D direction'
+    ? source.replace('#1342=IFCDIRECTION((1.,0.,0.));', '#1342=IFCDIRECTION((1.,0.));')
+    : brokenSource ? source.replace('#1343=IFCAXIS2PLACEMENT3D(#1340,#1341,#1342);', '#1343=IFCAXIS2PLACEMENT3D(#1340,#1341,#999999);') : source;
   const store = await new IfcParser().parseColumnar(new TextEncoder().encode(content).buffer, { disableWorkerScan: true });
   const view = new MutablePropertyView(null, 'm');
   return { store, view, editor: new StoreEditor(store, view) };
@@ -28,6 +30,31 @@ function refuses(s: Awaited<ReturnType<typeof session>>) {
 
 describe('#6232 / #6539 conservative hosted bounds', () => {
   it('refuses an explicit missing opening RefDirection from actual source IFC', async () => refuses(await session(true)));
+
+  it('refuses a source 2D direction used by IfcAxis2Placement3D instead of padding it', async () => refuses(await session('2D direction')));
+
+  for (const axisId of [1343, 1318, 1311]) {
+    for (const attribute of [0, 1, 2]) {
+      for (const dimension of [2, 4]) {
+        it(`refuses ${dimension} components at 3D placement #${axisId} attribute ${attribute}`, async () => {
+          const s = await session();
+          const values = attribute === 1 ? (dimension === 2 ? [0, 1] : [0, 0, 1, 1])
+            : dimension === 2 ? [1, 0] : [1, 0, 0, 1];
+          const record = s.editor.addEntity(attribute === 0 ? 'IfcCartesianPoint' : 'IfcDirection', [values]).expressId;
+          s.editor.setPositionalAttribute(axisId, attribute, `#${record}`);
+          refuses(s);
+        });
+      }
+    }
+  }
+
+  for (const id of [1320, 1321, 1322]) {
+    it(`refuses a 2D vector in the mapping target's 3D record #${id}`, async () => {
+      const s = await session();
+      s.editor.setPositionalAttribute(id, 0, id === 1322 ? [0, 1] : [1, 0]);
+      refuses(s);
+    });
+  }
 
   for (const axisId of [1343, 1318, 1311]) {
     for (const fault of ['missing Axis', 'missing RefDirection', 'zero Axis', 'zero RefDirection', 'parallel axes'] as const) {
@@ -85,5 +112,17 @@ describe('#6232 / #6539 conservative hosted bounds', () => {
     s.editor.setPositionalAttribute(1313, 0, `#${profile}`);
     expect(placedBodyExtent(s.store, 1299, s.view)).not.toBeNull();
     expect(readHostOpeningExtents(s.store, 1222, s.view).unreadable).toEqual([]);
+  });
+
+  it('keeps an explicit valid 2D rectangle Position and RefDirection readable', async () => {
+    const s = await session();
+    const point = s.editor.addEntity('IfcCartesianPoint', [[0.45, 0.6]]).expressId;
+    const direction = s.editor.addEntity('IfcDirection', [[1, 0]]).expressId;
+    const position = s.editor.addEntity('IfcAxis2Placement2D', [`#${point}`, `#${direction}`]).expressId;
+    const profile = s.editor.addEntity('IfcRectangleProfileDef', ['.AREA.', null, `#${position}`, 0.9, 1.2]).expressId;
+    s.editor.setPositionalAttribute(1313, 0, `#${profile}`);
+    expect(placedBodyExtent(s.store, 1299, s.view)).not.toBeNull();
+    expect(readHostOpeningExtents(s.store, 1222, s.view).unreadable).toEqual([]);
+    expect(addHostedElementInStore(s.store, s.editor, 1222, { kind: 'door', params: { Offset: 8, Width: 0.9, Height: 2.1 } }).openingId).toBeGreaterThan(0);
   });
 });

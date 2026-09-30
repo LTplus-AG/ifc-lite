@@ -1,0 +1,39 @@
+{
+  "base": "217b96b57693e771e54609d11098631d17a53311",
+  "sourceCommit": "718b3cb87e06aef3971cdb3e91ac67ffbf411218",
+  "capture": "T3 collaborative browser tab_6, http://localhost:52647; source hashes also match any later main integration only if verified byte-identical.",
+  "productionSHA256": {
+    "apps/viewer/src/components/viewer/document/BlockEditor.tsx": "d3a0d150cccd5fd2547ac5cd315375aa4093b35ddfab1719adb1e4bb557e08df",
+    "apps/viewer/src/components/viewer/document/BlockTitleEditor.tsx": "af1d722c365498ea645bef55dd7dcb0d041b709b5f6a88db4e49a76b01a009b7",
+    "apps/viewer/src/components/viewer/document/DocumentPreview.tsx": "4f81ef77e95fb8984c98c0afc8298249a2feec70976e4895c5e8f19ef73bc7f3",
+    "apps/viewer/src/components/viewer/document/IdsReportPreview.tsx": "f7e42aaabf1f7adfab70dbc1b5a483d891f94c2fce6758c97b8e0135cac4dbd9",
+    "apps/viewer/src/components/viewer/document/ManualReportBlockEditor.tsx": "99a550eec6516d5f0dddb839bddf87650e51987a92ba35bb3476e91342ff5c11",
+    "apps/viewer/src/components/viewer/document/ManualReportPreview.tsx": "d6e9681202ea69c4f9e7895e8c479cf005b0f7c19f5f513362e6479f4981f500",
+    "apps/viewer/src/components/viewer/document/SavedReportSource.tsx": "1f53b6ea42ada71338bd157380f041610487cd05c093b83895b181e83e7d1272",
+    "apps/viewer/src/components/viewer/document/TableBlockEditor.tsx": "f3a31baf11328dfbf928f551ff1385e81ca4aaeb7c5be6cd50a72dec6cf7f44c",
+    "apps/viewer/src/components/viewer/document/TablePreview.tsx": "43a935ecf6b3dda40fdb2606f56441be33015727056c1ae566e1803af453ae9c",
+    "apps/viewer/src/i18n/catalogues/document.en.ts": "59fe772660eeda3a4a23189160489edceea2274169f9f6379ddf7929403e6f45",
+    "apps/viewer/src/lib/document/block-title.ts": "765929d0a8fe53e0b2a09df36fc61fc2c6173da77f02bf32be0ba2df40904544",
+    "apps/viewer/src/lib/document/compose-ids-report.ts": "66cb035e06ce91818d7a9fbc8197e871f42aab3abcb5d7a4f54309f15bf33f99",
+    "apps/viewer/src/lib/document/compose-manual-report.ts": "73602cdcb32b63f2dd034878c0e6ab6cb93c6ac4ec546940531c48e070fc0a52",
+    "apps/viewer/src/lib/document/compose-text.ts": "4f85796c06243ad416ed6f86709c383cfde5826257d3621f2c691b55622d1179",
+    "apps/viewer/src/lib/document/compose.ts": "f444879e047d882ced4f067c42a729bd2ebd043d39d2e3b63828491a4085a4a4",
+    "apps/viewer/src/lib/document/generate-document-pdf.ts": "81f35479249a64fad335633e047d9ca1fb9ceceab5d470839f4ed307bac4aa05",
+    "apps/viewer/src/lib/document/ids-report-types.ts": "7c1a2fc38bc010a1ba723bd207eba387b94492141bc6ae8abb21df13cccbdb24",
+    "apps/viewer/src/lib/document/manual-report-types.ts": "4c8fa781f1b6b9ae239be7a7a067f45e4cdb1332b02c39af76458a5094679d35",
+    "apps/viewer/src/lib/document/types.ts": "641b9356cadbfd91d46e475bce9e9827ddf05cda26c06b76710f32832372d94c"
+  },
+  "inputSHA256": {
+    "apps/viewer/public/samples/building-architecture.ifc": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5",
+    "apps/viewer/public/favicon-16x16-cropped.png": "357b78950e66c51922b04c24470024f1befc464a3e24448099edf94293019a43"
+  },
+  "artifactSHA256": {
+    "pdf-page-1.png": "900ee49db44ddf1b0d2d767cd22fbfd6bd523badaffee2b2dbd6ba873e96309a",
+    "document.ifclite-document.json": "ea3e062f7b15c6c4930d08cfac35c5f57062b0faccd1053ed1c5592c85a46f23",
+    "browser-observations.json": "5424cc5f3c3eeb1cb8c8b41f87ff3b950ca804b4d9f3293574ef264acb940be9",
+    "source-inputs.json": "9a3f05c6e60aa9b4e2ecec84f86fcdc822bb1c4bd9eeb157f7787a9fef343263",
+    "pdf-page-2.png": "e79550a0f9c1aa781ff7fa058580b41f8a5bf5a41af825302883f35040d0ac97",
+    "document.pdf": "4746f3e36e7c906b10fe21f8fecb52c1d4c265ff2646f73d5113946383a80099",
+    "preview.png": "46f6d859cd5d06993818d433171c45fa63126457c79d317576db166a5b43d3e9"
+  }
+}

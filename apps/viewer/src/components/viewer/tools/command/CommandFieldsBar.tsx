@@ -22,7 +22,7 @@ import {
   useCommandRuntime,
   writeCommandField,
 } from '@/lib/commands/modeling/runtime';
-import type { CommandField } from '@/lib/commands/modeling/types';
+import type { CommandContext, CommandField } from '@/lib/commands/modeling/types';
 
 const UNIT_FORMAT: Record<CommandField<unknown>['unit'], { key: TranslationKey; step: number; precision: number }> = {
   m: { key: 'modelingCommand.unit.m', step: 0.1, precision: 2 },
@@ -31,10 +31,16 @@ const UNIT_FORMAT: Record<CommandField<unknown>['unit'], { key: TranslationKey; 
 };
 
 /** The shown field before `index`, wrapping (Shift+Tab). */
-function previousShown(fields: readonly CommandField<unknown>[], gesture: unknown, index: number): number {
+function previousShown(fields: readonly CommandField<unknown>[], gesture: unknown, ctx: CommandContext, index: number): number {
   let i = index;
-  do i = (i - 1 + fields.length) % fields.length; while (i !== index && fields[i].hidden?.(gesture));
+  do i = (i - 1 + fields.length) % fields.length; while (i !== index && fields[i].hidden?.(gesture, ctx));
   return i;
+}
+
+/** Whether a divider separates field `index` from the shown field before it (a different group). */
+function divides(fields: readonly CommandField<unknown>[], gesture: unknown, ctx: CommandContext, index: number): boolean {
+  for (let i = index - 1; i >= 0; i--) if (!fields[i].hidden?.(gesture, ctx)) return fields[i].group !== fields[index].group;
+  return false;
 }
 
 /**
@@ -45,7 +51,8 @@ function previousShown(fields: readonly CommandField<unknown>[], gesture: unknow
 export function CommandFieldsBar({ measuring = false }: { measuring?: boolean } = {}) {
   const { t } = useTranslation();
   const { command, ctx, gesture, fieldRequest } = useCommandRuntime();
-  // Dimension fields read the defaults slice; the inspector edits it too.
+  // Dimension fields read the defaults slice; the inspector edits it too. A field
+  // may also hide with it (a rectangle's Width once a section is picked).
   useViewerStore((s) => s.authoringDefaults);
   const handles = useRef<(HudValueFieldHandle | null)[]>([]);
   const fields = command?.fields ?? [];
@@ -61,7 +68,7 @@ export function CommandFieldsBar({ measuring = false }: { measuring?: boolean } 
   return (
     <>
       {fields.map((field, index) => {
-        if (field.hidden?.(gesture)) return null;
+        if (field.hidden?.(gesture, ctx)) return null;
         const format = UNIT_FORMAT[field.unit];
         // A field with no value yet shows 0. An untouched field never commits
         // (HudValueField, #6232 F1); a typed 0 there still must not become a
@@ -71,7 +78,7 @@ export function CommandFieldsBar({ measuring = false }: { measuring?: boolean } 
         const label = t(field.labelKey);
         return (
           <Fragment key={field.id}>
-            {index > 0 && fields[index - 1].group !== field.group && !fields[index - 1].hidden?.(gesture) && <HudDivider />}
+            {divides(fields, gesture, ctx, index) && <HudDivider />}
             <div className="flex items-center gap-1" onFocus={() => noteActiveField(index)}>
               <span className="text-2xs text-overlay-ink-muted">{label}</span>
               <HudValueField
@@ -79,7 +86,7 @@ export function CommandFieldsBar({ measuring = false }: { measuring?: boolean } 
                 value={current ?? 0}
                 onChange={(next) => { if (current !== null || next !== 0) writeCommandField(index, next); }}
                 onSubmit={() => { commitCommand(); }}
-                onTab={(shift) => { requestFieldEdit(shift ? previousShown(fields, gesture, index) : (index + 1) % fields.length); }}
+                onTab={(shift) => { requestFieldEdit(shift ? previousShown(fields, gesture, ctx, index) : (index + 1) % fields.length); }}
                 unit={t(format.key)}
                 step={format.step}
                 precision={format.precision}

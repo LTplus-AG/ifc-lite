@@ -50,9 +50,14 @@ export function DefaultDimensions({ kind }: { kind: AuthoredElementKind }) {
   const { t } = useTranslation();
   const defaults = useViewerStore((s) => s.authoringDefaults);
   const setDims = useViewerStore((s) => s.setAuthoringDims);
+  // A picked section replaces the rectangle's own sides (Width x Height, Width x Depth): they are the Profile section's.
+  const sectioned = (kind === 'beam' || kind === 'member' || kind === 'column') && defaults.profiles[kind].type !== 'Rectangle';
+  const rectangleSides: readonly DimParam[] = ['Width', 'Depth', ...(kind === 'column' ? [] : ['Height' as const])];
+  const params = DEFAULT_DIMS[kind].filter((param) => !sectioned || !rectangleSides.includes(param));
+  if (params.length === 0) return null;
   return (
     <InspectorSection title={t('modelInspector.dims.title')}>
-      {DEFAULT_DIMS[kind].map((param) => (
+      {params.map((param) => (
         <MetreRow
           key={param}
           param={param}

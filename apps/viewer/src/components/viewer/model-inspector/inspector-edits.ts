@@ -25,6 +25,8 @@ import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice'
 import { detachFromType, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { setWallSection, type WallSection } from '@/store/slices/mutation-wall-section';
 import { moveHostedFillIn, type HostedFillPosition } from '@/store/slices/mutation-hosted-fill';
+import { setElementProfile } from '@/store/slices/mutation-element-profile';
+import type { ProfileSection } from '@ifc-lite/create';
 
 /**
  * Run one inspector edit as one undo step. `edit` writes through
@@ -88,6 +90,19 @@ export function setWallDimensions(modelId: string, expressId: number, section: W
     const outcome = setWallSection(() => tx.store, tx.modelId, expressId, section);
     if (!outcome.ok) throw new Error(outcome.reason);
     return [expressId];
+  });
+}
+
+/**
+ * A beam's, column's or member's cross-section (`setElementProfile`): a new
+ * kind (I, L, T, U, C, circle, hollow) or new dimensions of the kind, in
+ * metres. One undo step; the element re-meshes with its new section.
+ */
+export function setElementProfileSection(modelId: string, expressId: number, section: ProfileSection): boolean {
+  return runInspectorEdit(modelId, (tx) => {
+    const outcome = setElementProfile(() => tx.store, tx.modelId, expressId, section);
+    if (!outcome.ok) throw new Error(outcome.reason);
+    return outcome.remesh;
   });
 }
 

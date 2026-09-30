@@ -27,6 +27,9 @@ import { meshWalls, sample } from '../../../../../../../packages/create/src/in-s
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { joinPlacedWallIn } from '@/store/slices/mutation-wall-joins';
+import { setWallSection } from '@/store/slices/mutation-wall-section';
+import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
+import { resizeRectangleWall } from '@/lib/wall-edit';
 import { press } from '@/test/render.js';
 import { commitElementTransform, type ElementTransformOp } from '@/lib/element-transform/commit';
 import { buildStoreyWorkplane, isWorkplane } from '../workplane.js';
@@ -392,5 +395,47 @@ describe('a moved or turned wall takes its joined walls along (#6232 B2)', () =>
     assert.ok(transform([ending], move(0, 3)));
     assert.equal(rels().length, 0, 'the ending wall no longer reaches the path');
     assert.equal(shape(ending).wall.endCut, undefined, 'and stops square');
+  });
+});
+
+describe('edits that cannot keep a wall\'s joins valid refuse, and edits that land say so (#6232 B2)', () => {
+  it('one edit of thickness AND height on a joined wall lands both on the wall and re-cuts its corners', () => {
+    drawRoom();
+    const [first, second] = wallIds();
+    const before = batches();
+    const outcome = setWallSection(useViewerStore, MODEL_ID, first, { thickness: 0.3, height: 2.5 });
+    assert.deepEqual(outcome, { ok: true });
+    const wall = shape(first);
+    assert.ok(Math.abs(wall.wall.thickness - 0.3) < 1e-9, `thickness ${wall.wall.thickness}`);
+    assert.ok(Math.abs(wall.height - 2.5) < 1e-9, `height ${wall.height}`);
+    assert.ok(near([shape(second).wall.startCut!.left], [-0.15]), 'the neighbour stops at the thicker wall face');
+    assert.equal(rels().length, 4);
+    assert.ok(batches() > before);
+  });
+
+  it('a wall whose body cannot be read refuses a size edit instead of reporting ok', () => {
+    drawRoom();
+    const [first] = wallIds();
+    const t = modelEditTarget(state(), MODEL_ID)!;
+    // The body loses its representations: there is nothing for a height to land on.
+    t.editor.setPositionalAttribute(shape(first).productShapeId, 2, []);
+    const outcome = setWallSection(useViewerStore, MODEL_ID, first, { height: 2 });
+    assert.equal(outcome.ok, false);
+  });
+
+  it('resizeRectangleWall refuses a joined wall and writes nothing', () => {
+    drawRoom();
+    const [first] = wallIds();
+    const t = modelEditTarget(state(), MODEL_ID)!;
+    const before = shape(first).wall;
+    const stack = state().undoStacks.get(MODEL_ID)?.length;
+    const mutations = t.view.getMutations().length;
+    const result = resizeRectangleWall(t.dataStore, t.view, t.editor, first, [0, 0, 0], [9, 0, 0]);
+    assert.equal(result.ok, false);
+    assert.match(result.ok ? '' : result.reason, /joins/);
+    assert.equal(t.view.getMutations().length, mutations, 'nothing was written');
+    assert.equal(state().undoStacks.get(MODEL_ID)?.length, stack);
+    assert.deepEqual(shape(first).wall, before);
+    assert.equal(rels().length, 4);
   });
 });

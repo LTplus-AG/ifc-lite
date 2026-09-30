@@ -131,7 +131,8 @@ export function resizeWallMetres(
       { entityId: chain.profileOriginPointId, index: 0, value: [nativeLength / 2, 0] },
     ], batchId);
     // Moving the start moves the wall's placement, so its openings and fillings follow.
-    if (tag) rememberRemesh(get, tag, modelId, [expressId], 'hostsChanged');
+    if (!tag) return { ok: false, reason: 'The wall could not be written' };
+    rememberRemesh(get, tag, modelId, [expressId], 'hostsChanged');
     return { ok: true, newLength: length, walls: [expressId] };
   }
 

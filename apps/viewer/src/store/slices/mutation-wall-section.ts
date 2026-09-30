@@ -60,10 +60,14 @@ export function setWallSection(store: ModellingStore, modelId: string, expressId
       if (!reshaped.ok) return reshaped;
     }
   }
-  const solidId = wall.read?.solidId ?? wall.chain?.extrudedSolidId;
-  if (section.height !== undefined && section.height !== wall.height && solidId !== undefined) {
+  if (section.height !== undefined && section.height !== wall.height) {
+    // Read the wall again: a reshape above rewrote its body, so the ids read at entry may be stale.
+    const solidId = readWallMetres(target, expressId)?.read?.solidId ?? wall.chain?.extrudedSolidId;
+    if (solidId === undefined) return { ok: false, reason: 'The wall has no body extrusion to take a new height' };
     updates.push({ entityId: solidId, index: EXTRUSION_DEPTH, value: toNativeLength(unit, section.height) });
   }
-  get().setPositionalAttributesBatch(modelId, updates);
+  if (updates.length > 0 && get().setPositionalAttributesBatch(modelId, updates) === null) {
+    return { ok: false, reason: 'The wall size could not be written' };
+  }
   return { ok: true };
 }

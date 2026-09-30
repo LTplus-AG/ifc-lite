@@ -26,6 +26,8 @@ import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import type { StartCollabOptions } from '@/store/slices/collabSlice.js';
 import { ShareDialog } from './ShareDialog.js';
+import { buildGeometryResultFromMeshes } from '@/lib/collab/geometry-sync.js';
+import { prepareShareSeed } from '@/lib/collab/share-scope.js';
 
 function makeModel(id: string, name: string, idOffset: number, opts: { store?: boolean } = {}): FederatedModel {
   return {
@@ -97,10 +99,75 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.removeItem('ifc-lite:collab:server-url');
   useViewerStore.setState({ startCollab: realStartCollab, models: new Map(), activeModelId: null });
 });
 
 describe('ShareDialog: explicit federation scope (#4444, #4620)', () => {
+  it('opens with invalid spatial metadata and reports failure only after consent (#6565)', async (t) => {
+    const invalid = makeModel('a', 'fixture.ifc', 0);
+    invalid.geometryResult = buildGeometryResultFromMeshes([], {
+      originShift: { x: 0, y: 0, z: 0 },
+      originalBounds: { min: { x: Infinity, y: Infinity, z: Infinity }, max: { x: -Infinity, y: -Infinity, z: -Infinity } },
+      shiftedBounds: { min: { x: Infinity, y: Infinity, z: Infinity }, max: { x: -Infinity, y: -Infinity, z: -Infinity } },
+      hasLargeCoordinates: false,
+    });
+    const models = new Map([['a', invalid], ['b', makeModel('b', 'valid.ifc', 1_000_000)]]);
+    useViewerStore.setState({ models, activeModelId: 'a', collabSeedPhase: 'none' });
+    // The action must still reject unsupported metadata; rendering its model
+    // count must not run that serialization or upload anything.
+    await assert.rejects(prepareShareSeed(models, new Map(), 'a', 'all'), /invalid or unsupported spatial metadata/);
+    render(<ShareDialog open onOpenChange={() => {}} />);
+    await settle();
+    assert.match(document.body.textContent ?? '', /Share 2 models/);
+    assert.equal(starts.length, 0);
+    const create = createLinkButton();
+    assert.ok(create, 'the dialog survives and offers the consent action');
+    const logged = t.mock.method(console, 'error', () => {});
+    window.localStorage.setItem('ifc-lite:collab:server-url', 'wss://relay.example');
+    const tokenRequests = t.mock.method(globalThis, 'fetch', async () => Response.json({ token: 'fixture-token' }));
+    click(create);
+    await settle();
+    assert.equal(tokenRequests.mock.calls.length, 0, 'known-invalid metadata never claims a room at the token endpoint');
+    assert.equal(starts.length, 0, 'invalid metadata never reaches room creation');
+    assert.equal(useViewerStore.getState().collabRoomId, null);
+    assert.match(document.body.textContent ?? '', /Link creation failed/);
+    assert.equal(logged.mock.calls.length, 1, 'the action reports the rejection');
+    assert.match(String(logged.mock.calls[0].arguments[1]), /invalid or unsupported spatial metadata/);
+    assert.doesNotMatch(linkField().value, /^https?:/);
+  });
+
+  it('seeds the fresh scope after models change during the token request (#6565)', async (t) => {
+    const original = makeModel('a', 'original.ifc', 0);
+    useViewerStore.setState({ models: new Map([['a', original]]), activeModelId: 'a' });
+    window.localStorage.setItem('ifc-lite:collab:server-url', 'wss://relay.example');
+    let finishToken: (response: Response) => void = () => assert.fail('admin request has not started');
+    const tokenRequests = t.mock.method(globalThis, 'fetch', async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { role: string };
+      if (body.role !== 'admin') return Response.json({ token: 'fixture-invite' });
+      return new Promise<Response>((resolve) => { finishToken = resolve; });
+    });
+    render(<ShareDialog open onOpenChange={() => {}} />);
+    const create = createLinkButton();
+    assert.ok(create);
+    click(create);
+    await settle();
+    assert.equal(tokenRequests.mock.calls.length, 1, 'the admin request is waiting on the relay');
+    assert.equal(starts.length, 0);
+    const added = makeModel('b', 'added.ifc', 1_000_000);
+    const active = makeModel('c', 'active.ifc', 2_000_000);
+    act(() => {
+      useViewerStore.setState({ models: new Map([['b', added], ['c', active]]), activeModelId: 'c' });
+    });
+    await act(async () => { finishToken(Response.json({ token: 'fixture-admin' })); });
+    await settle();
+    assert.equal(starts.length, 1);
+    assert.deepEqual(starts[0].seed?.models.map((model) => model.modelId), ['c', 'b'],
+      'removed models are excluded and new models use the current active-first scope');
+    assert.equal(starts[0].seed?.models[0].store, active.ifcDataStore);
+    assert.equal(starts[0].seed?.models[1].store, added.ifcDataStore);
+  });
+
   it('with one model, uploads nothing on open: no room until "Create link", which says it uploads (#5599)', async () => {
     useViewerStore.setState({ models: new Map([['a', makeModel('a', 'tower.ifc', 0)]]), activeModelId: 'a' });
     render(<ShareDialog open onOpenChange={() => {}} />);

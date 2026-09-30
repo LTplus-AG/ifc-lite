@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
-import { resolveEntityRef } from '@/store/resolveEntityRef';
+import { selectChangedEntity } from '@/lib/changes/select-changed-entity';
 import { inverseMutationTargets, pruneInverseMutationTargets } from '@/store/slices/mutation-inverse-registry';
 import { changeOperations, type ChangeOperation } from '@/lib/changes/change-operations';
 import { revertChangeOperation, type RevertRefusal } from '@/lib/changes/revert-change-operation';
@@ -27,21 +27,6 @@ function refusalKey(reason: RevertRefusal): TranslationKey {
     case 'shared-room': return 'changesPanel.revertSharedRoom';
     case 'missing-view':
     case 'unsupported': return 'changesPanel.revertUnsupported';
-  }
-}
-
-function jumpTo(modelId: string, entityId: number): void {
-  const state = useViewerStore.getState();
-  const globalId = state.toGlobalId(modelId, entityId);
-  const ref = resolveEntityRef(globalId);
-  // A removed or replaced model may reuse an old express id. Do not select
-  // an unrelated entity just because its renderer-space number now matches.
-  if (ref.modelId !== modelId || ref.expressId !== entityId) return;
-  state.setSelectedEntityIds([]);
-  state.setSelectedEntityId(globalId);
-  state.setSelectedEntity(ref);
-  if (state.cameraCallbacks.frameSelection) {
-    window.setTimeout(() => useViewerStore.getState().cameraCallbacks.frameSelection?.(), 50);
   }
 }
 
@@ -100,7 +85,7 @@ export function ChangesPanel({ onClose }: { onClose?: () => void }) {
             return <li key={`${modelId}:${entityId}`}>
               <button type="button" className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs hover:bg-accent"
                 aria-label={t('changesPanel.jump', { entity, model: model?.name ?? modelId })}
-                onClick={() => jumpTo(modelId, entityId)}>
+                onClick={() => selectChangedEntity(modelId, entityId)}>
                 <Focus className="h-3 w-3 shrink-0" aria-hidden="true" />
                 <span className="truncate">{entity}{name ? ` — ${name}` : ''}</span>
               </button>

@@ -29,6 +29,7 @@ import { RoomPanel } from '@/components/viewer/RoomPanel';
 import { ZonesPanel } from '@/components/viewer/ZonesPanel';
 import { LoadReportPanel } from '@/components/viewer/LoadReportPanel';
 import { ChangesPanel } from '@/components/viewer/ChangesPanel';
+import { ChangeSetPanel } from '@/components/viewer/change-sets/ChangeSetPanel';
 import { CostPanel } from '@/components/viewer/CostPanel';
 import { EnvironmentPanel } from '@/components/viewer/EnvironmentPanel';
 import { PointCloudPanel } from '@/components/viewer/PointCloudPanel';
@@ -159,5 +160,6 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'measurements': return <MeasurementsPanel onClose={onClose} />;
     case 'placement': return <PlacementPanel onClose={onClose} />;
     case 'model': return <ModelInspectorPanel onClose={onClose} />;
+    case 'changeSets': return <ChangeSetPanel onClose={onClose} />;
   }
 }

@@ -5,6 +5,7 @@ import type { Mutation, MutablePropertyView } from '@ifc-lite/mutations';
 import type { StoreApi } from 'zustand';
 import type { ViewerState } from '@/store/index.js';
 import type { AppearanceHistoryPublication } from './history.js';
+import { dropFromChangeSets, moveChangeSetEntries, recordHistory } from '@/store/slices/mutation-history-record.js';
 
 export interface AppearanceHistoryParticipant {
   modelId: string;
@@ -36,7 +37,7 @@ function prune(store: StoreApi<ViewerState>, registry: Registry): void {
   if (stale.size) {
     const omit = (stacks: Map<string, Mutation[]>) => new Map([...stacks]
       .map(([id, values]) => [id, values.filter(value => !stale.has(value.id))]));
-    store.setState(current => ({ undoStacks: omit(current.undoStacks), redoStacks: omit(current.redoStacks) }));
+    store.setState(current => ({ undoStacks: omit(current.undoStacks), redoStacks: omit(current.redoStacks), ...dropFromChangeSets(current, stale) }));
   }
 }
 
@@ -79,12 +80,10 @@ export function prepareCoordinatedAppearanceHistory(store: StoreApi<ViewerState>
     registry.groups.add(group);
     for (const member of members) registry.markers.set(member.marker.id, group);
     store.setState(current => {
-      const undoStacks = new Map(current.undoStacks), redoStacks = new Map(current.redoStacks), dirtyModels = new Set(current.dirtyModels);
-      for (const member of members) {
-        undoStacks.set(member.modelId, [...(undoStacks.get(member.modelId) ?? []), member.marker]);
-        redoStacks.set(member.modelId, []); dirtyModels.add(member.modelId);
-      }
-      return { ...publication, undoStacks, redoStacks, dirtyModels, mutationVersion: current.mutationVersion + 1 };
+      let next: ViewerState = current;
+      for (const member of members) next = { ...next, ...recordHistory(next, member.modelId, [member.marker]) };
+      const { undoStacks, redoStacks, dirtyModels, changeSets, activeChangeSetId } = next;
+      return { ...publication, undoStacks, redoStacks, dirtyModels, changeSets, activeChangeSetId, mutationVersion: current.mutationVersion + 1 };
     });
   };
 }
@@ -119,7 +118,8 @@ export function replayCoordinatedAppearanceHistory(store: StoreApi<ViewerState>,
       from.set(member.modelId, from.get(member.modelId)!.slice(0, -1));
       to.set(member.modelId, [...(to.get(member.modelId) ?? []), member.marker]);
     }
-    return { ...publication, [source]: from, [destination]: to, mutationVersion: current.mutationVersion + 1 };
+    const markers = group.members.map(member => member.marker);
+    return { ...publication, [source]: from, [destination]: to, mutationVersion: current.mutationVersion + 1, ...moveChangeSetEntries(current, markers, direction) };
   });
   return true;
 }

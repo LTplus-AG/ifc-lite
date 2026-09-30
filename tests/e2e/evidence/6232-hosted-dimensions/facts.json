@@ -226,5 +226,10 @@
       "instanceHash": "0b069958"
     }
   },
-  "url": "http://localhost:5193/"
+  "url": "http://localhost:5193/",
+  "uiObservations": {
+    "undoClicks": 2,
+    "undoDisabledAfterTwoClicks": true,
+    "source": "Observed through the actual browser Undo button; not inferred from history depth or scene data."
+  }
 }

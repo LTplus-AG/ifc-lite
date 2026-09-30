@@ -14,22 +14,27 @@ browser behavior, rather than a browser rerun of the later merge commit.
 The user-facing Width and Height inputs changed selected window #1262 from
 0.90 × 1.20 m to 1.20 × 1.40 m. The renderer retained the horizontal centre,
 1.00 m sill and 0.05 m depth, while the host wall #1222 was remeshed with its
-enlarged cut. Other window #1407 retained its bounds and geometry hashes.
+enlarged cut. Other window #1407 retained its bounds and world triangle positions.
 `edited-width-height.png` shows the edited inspector and actual GPU viewport.
 
 Clicking Undo twice restored the selected window, its host and the other window.
-The complete serialized scene-owner data matched the initial data exactly and
-Undo became disabled. `restored-after-two-undos.png` shows the restored
+The complete serialized scene-owner data, including world triangle positions,
+screen data and render flags, matched the initial data exactly. Undo becoming
+disabled after those two clicks was observed in the actual UI, independently of
+the saved scene data. `restored-after-two-undos.png` shows the restored
 0.90 × 1.20 m fields and viewport; it is a restored-state capture, not an
 initial-state screenshot.
 
-`facts.json` records the initial, edited, first-undo and restored bounds and
-geometry hashes, plus full scene-owner equality results. The browser renderer
-uses Y-up coordinates, so bounds index 1 is height and index 2 is depth.
-The corner hashes include transformed instance geometry; unchanged flat and
-instance hashes alone would not prove unchanged physical bounds.
+`facts.json` records the initial, edited, first-undo and restored bounds,
+world-triangle-position hashes and render-state flag hashes, plus full
+scene-owner equality results and the separately observed UI state. The browser
+renderer uses Y-up coordinates, so bounds index 1 is height and index 2 is depth.
+`cornersHash` hashes the actual world triangle positions. `flatHash` and
+`instanceHash` hash boolean flags; they do not measure GPU upload bytes.
+These browser captures do not assert normals or index-buffer byte identity.
 
 The automated regression tests separately exercise real WASM meshes of this
-export, 40 alternating dimension edits, wrapper styles, atomic refusals, and
+export, full vertex/index/style identity for the unaffected instance,
+40 alternating dimension edits, wrapper styles, atomic refusals, and
 mounted inspector edits in one- and multiple-model scenes with colliding local
 entity ids. Their integration-run results belong to the PR validation report.

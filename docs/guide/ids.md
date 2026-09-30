@@ -259,6 +259,8 @@ In the IFClite viewer, IDS validation is integrated through the Data validation 
 
 No `.ids` file to hand? With no model of your own open, the empty panel's **Try with demo data** loads the demo project and the IDS written for it.
 
+Checks do not automatically create saved reports. To keep a completed IDS or information-validation result, choose **Save report** in its results toolbar. **Saved reports** holds the evidence from that run, including its evaluated model names and fingerprints. The same result can be saved once; later runs can be saved separately. Unsaved results last only for the current session and are replaced by a later completed run or cleared with the results.
+
 ### Manual validation
 
 Some checks are done by eye rather than by a rule: the model was uploaded to the CDE on time, objects sit on the right storey. The Data validation panel's third tab, **Manual validation**, holds a checklist of groups of such checks. Each check takes **Pass**, **Fail** or **Warning** and an optional comment; a check with no verdict shows as **Not checked**. Each group has a ring chart and there is an overall ring; a warning is counted on its own and never as a pass.

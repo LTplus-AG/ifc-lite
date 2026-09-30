@@ -17,7 +17,7 @@
  * check below — a documented gap, not an oversight.
  */
 import '@/test/setup-dom.js';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import type { SetResult, SpecificationResult, ValidationReport } from '@ifc-lite/ids';
@@ -34,6 +34,10 @@ import { resetValidationPanelFixture } from './validation-test-fixture.js';
 import { emptyManualReportBlock } from '@/lib/document/manual-report';
 import { SavedReportSource } from '../document/SavedReportSource.js';
 import { DocumentPanel } from '../document/DocumentPanel.js';
+import { SaveValidationReportButton } from './SaveValidationReportButton.js';
+import { Toaster } from '@/components/ui/toast';
+import { validationReportSnapshot } from '@/lib/validation/reports/history';
+import { loadValidationReports } from '@/lib/validation/reports/persistence';
 
 installLayout();
 
@@ -148,6 +152,54 @@ function reportFixture(): ValidationReport {
   };
 }
 
+/** Rendering oracle: use the same stated report fixture, but exercise the
+ * canonical writer's accepted, storage-refused and invalid-evidence outcomes
+ * so every new Save label is actually rendered under each locale (#6568). */
+function mountSaveStates(collect: () => void): void {
+  const land = () => {
+    localStorage.clear();
+    const report = reportFixture();
+    const snapshot = validationReportSnapshot(report, new Map(), 'locale-report');
+    act(() => {
+      useViewerStore.setState({ savedValidationReports: [], validationReportsSaveFailed: false, validationReportsLoadIssue: null, idsLoading: false });
+      useViewerStore.getState().setIdsValidationReport(report, snapshot);
+    });
+    return { report, snapshot };
+  };
+  const completed = land();
+  const completedHost = render(<SaveValidationReportButton report={completed.report} />);
+  collect();
+  const save = completedHost.querySelector('button'); assert.ok(save);
+  click(save);
+  assert.equal(loadValidationReports().length, 1);
+  assert.equal(save.disabled, true);
+  collect();
+  cleanup();
+
+  const refused = land();
+  const refusedHost = render(<SaveValidationReportButton report={refused.report} />);
+  const write = mock.method(localStorage, 'setItem', () => { throw new DOMException('Storage full', 'QuotaExceededError'); });
+  try {
+    const pendingSave = refusedHost.querySelector('button'); assert.ok(pendingSave);
+    click(pendingSave);
+    assert.equal(useViewerStore.getState().validationReportsSaveFailed, true);
+    assert.equal(loadValidationReports().length, 0);
+    collect();
+  } finally { write.mock.restore(); }
+  cleanup();
+
+  const invalid = land();
+  // The real writer validates evidence rather than accepting corrupt dates.
+  invalid.snapshot.generatedAt = 'not-a-date';
+  const rejectedHost = render(<><SaveValidationReportButton report={invalid.report} /><Toaster /></>);
+  const rejectSave = rejectedHost.querySelector('button'); assert.ok(rejectSave);
+  click(rejectSave);
+  assert.equal(loadValidationReports().length, 0);
+  collect();
+  for (const dismiss of rejectedHost.querySelectorAll('button[aria-label="Dismiss notification"]')) click(dismiss);
+  cleanup();
+}
+
 /**
  * Mounts, in turn, every state reachable without a live engine run — the
  * empty state (with a seeded "Recent" entry), authoring (via a real
@@ -168,6 +220,8 @@ function reportFixture(): ValidationReport {
 async function mountAll(): Promise<Set<string>> {
   const found = new Set<string>();
   const collect = () => { for (const s of readableStrings(document.body)) found.add(s); };
+
+  mountSaveStates(collect);
 
   resetValidationPanelFixture();
   addRecentRuleSet('Recent fixture', JSON.stringify({ version: 1, name: 'Recent fixture', rules: [] }));
@@ -338,5 +392,25 @@ describe('ValidationPanel localization (#5138)', () => {
     assert.ok(runningText.includes(markPrefix('validationPanel.running.rule')), 'running.rule must retranslate');
     assert.ok(runningText.includes(markPrefix('validationPanel.running.requirements')), 'running.requirements must retranslate');
     assert.ok(runningText.includes(mark('validationPanel.cancel')), 'cancel must retranslate');
+
+    // #6568: the same mounted save control retranslates both before and
+    // after the real writer accepts its completion-time evidence.
+    cleanup();
+    setLocale('en');
+    localStorage.clear();
+    const report = reportFixture();
+    act(() => {
+      useViewerStore.setState({ savedValidationReports: [], validationReportsSaveFailed: false, validationReportsLoadIssue: null, idsLoading: false });
+      useViewerStore.getState().setIdsValidationReport(report, validationReportSnapshot(report, new Map(), 'live-locale'));
+    });
+    const saveHost = render(<SaveValidationReportButton report={report} />);
+    act(() => setLocale('validation-panel-pseudo-2'));
+    const save = saveHost.querySelector('button'); assert.ok(save);
+    assert.equal(save.textContent, mark('validationPanel.history.saveReport'));
+    click(save);
+    assert.equal(loadValidationReports().length, 1);
+    assert.equal(save.textContent, mark('validationPanel.history.saved'));
+    act(() => setLocale('en'));
+    assert.equal(save.textContent, validationPanelEn['validationPanel.history.saved']);
   });
 });

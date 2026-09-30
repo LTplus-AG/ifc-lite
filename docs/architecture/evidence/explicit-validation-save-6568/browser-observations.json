@@ -1,0 +1,42 @@
+{
+  "phases": [
+    {
+      "phase": "ids-completed-unsaved",
+      "historyCount": 0,
+      "historySummary": "Saved reports (0)",
+      "historyKeyAbsent": true,
+      "saveAvailable": true
+    },
+    {
+      "phase": "ids-saved",
+      "historyCount": 1,
+      "historySummary": "Saved reports (1)",
+      "savedButtonDisabled": true
+    },
+    {
+      "phase": "ids-rerun-unsaved",
+      "historyCount": 1,
+      "historySummary": "Saved reports (1)",
+      "saveAvailable": true
+    },
+    {
+      "phase": "ids-rerun-saved",
+      "historyCount": 2,
+      "historySummary": "Saved reports (2)",
+      "savedButtonDisabled": true
+    },
+    {
+      "phase": "information-completed-unsaved",
+      "historyCount": 2,
+      "historySummary": "Saved reports (2)",
+      "saveAvailable": true
+    },
+    {
+      "phase": "information-saved",
+      "historyCount": 3,
+      "historySummary": "Saved reports (3)",
+      "savedButtonDisabled": true
+    }
+  ],
+  "firstSnapshotUnchangedByRerun": true
+}

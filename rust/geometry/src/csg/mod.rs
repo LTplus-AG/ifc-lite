@@ -179,6 +179,13 @@ pub fn take_csg_census() -> Vec<CsgOpRecord> {
 
 #[inline]
 fn record_csg_op(op: u8, a_tris: usize, b_tris: usize) {
+    #[cfg(feature = "opening-perf-trace")]
+    crate::opening_perf_trace::record(|c| {
+        let index = usize::from(op).min(3);
+        c.csg_operations[index] = c.csg_operations[index].saturating_add(1);
+        c.csg_operand_triangles[index] = c.csg_operand_triangles[index]
+            .saturating_add(a_tris as u64).saturating_add(b_tris as u64);
+    });
     if let Ok(mut g) = CSG_CENSUS.lock() {
         g.push(CsgOpRecord {
             op,
@@ -244,6 +251,16 @@ impl ClippingProcessor {
     /// processor in `processors/boolean.rs` can record fallbacks that
     /// happen above the kernel layer.
     pub(crate) fn record_failure(&self, op: BoolOp, reason: BoolFailureReason) {
+        #[cfg(feature = "opening-perf-trace")]
+        crate::opening_perf_trace::record(|c| {
+            let index = match &reason {
+                BoolFailureReason::KernelError(_) => 0,
+                BoolFailureReason::KernelOutputInvalid => 1,
+                BoolFailureReason::OperandTooLarge { .. } => 2,
+                _ => 3,
+            };
+            c.csg_failures[index] = c.csg_failures[index].saturating_add(1);
+        });
         self.failures.borrow_mut().push(BoolFailure::new(op, reason));
     }
 
@@ -307,6 +324,8 @@ impl ClippingProcessor {
     /// `csg_topology_gate` feature (off by default; no downstream crate turns
     /// it on), rejects a torn result the same way `KernelOutputInvalid` does.
     pub fn subtract_mesh(&self, host_mesh: &Mesh, opening_mesh: &Mesh) -> GroupCut {
+        #[cfg(feature = "opening-perf-trace")]
+        crate::opening_perf_trace::record(|c| c.single_subtract_calls = c.single_subtract_calls.saturating_add(1));
         record_csg_op(0, host_mesh.triangle_count(), opening_mesh.triangle_count());
         if host_mesh.is_empty() {
             return GroupCut::Rejected(GroupReject::EmptyHost);
@@ -361,6 +380,8 @@ impl ClippingProcessor {
         }
         self.record_topology_tear(BoolOp::Difference, &result);
         if changed {
+            #[cfg(feature = "opening-perf-trace")]
+            crate::opening_perf_trace::record(|c| c.single_changed_results = c.single_changed_results.saturating_add(1));
             GroupCut::Cut(result)
         } else if !conforming && result.triangle_count() == host_mesh.triangle_count() {
             // A non-conforming "no change" is not proof the cutter misses the
@@ -371,6 +392,12 @@ impl ClippingProcessor {
             // fallback armed for it, as before #5362.
             GroupCut::Rejected(GroupReject::Nonconforming)
         } else {
+            #[cfg(feature = "opening-perf-trace")]
+            crate::opening_perf_trace::record(|c| {
+                c.single_retessellated_results = c.single_retessellated_results.saturating_add(1);
+                c.single_retessellated_input_triangles = c.single_retessellated_input_triangles.saturating_add(host_mesh.triangle_count() as u64);
+                c.single_retessellated_output_triangles = c.single_retessellated_output_triangles.saturating_add(result.triangle_count() as u64);
+            });
             GroupCut::Retessellated(result)
         }
     }

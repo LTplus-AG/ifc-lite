@@ -150,6 +150,8 @@ fn mixed_route_telemetry_is_atomic_4617() {
         let router = GeometryRouter::new();
         let before = take(&router);
         take_work();
+        #[cfg(feature = "opening-perf-trace")]
+        crate::opening_perf_trace::take();
         assert!(router
             .try_staged_bool2d(&host, context.bool2d.as_ref().unwrap(), 4617)
             .is_none());
@@ -163,6 +165,16 @@ fn mixed_route_telemetry_is_atomic_4617() {
             "rejected residual must undo all route diagnostics"
         );
         let spent = take_work();
+        // #6516: rejected work survives the route's atomic telemetry rollback.
+        #[cfg(feature = "opening-perf-trace")]
+        {
+            let attempted = crate::opening_perf_trace::take();
+            assert_eq!(attempted.staged_mixed_attempts, 1);
+            assert_eq!(attempted.staged_residual_calls, 1);
+            assert_eq!(attempted.staged_correction_refusals, 1);
+            assert_eq!(attempted.staged_commits, 0);
+            assert!(attempted.single_subtract_calls + attempted.group_subtract_calls > 0);
+        }
         assert!(
             !spent.csg.is_empty(),
             "rejected candidate must retain its actual CSG invocations"

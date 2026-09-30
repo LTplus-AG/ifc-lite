@@ -1,0 +1,19 @@
+{
+  "profile": "profiling (optimized, debuginfo, panic unwind)",
+  "features": "default",
+  "compiler": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)\nbinary: rustc\ncommit-hash: b6d7ff3aa71e48e2901b0900f8b5d98126b537ed\ncommit-date: 2025-11-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.93.0-nightly\nLLVM version: 21.1.5\n",
+  "baseSource": "003f4ff7fdc12ab92d601811792baa71b997a3ff",
+  "candidateRustDiffSha256": "0c20733de43aaff22a91056e09de25120969e56a0f126337c700c4b7930b0bbd",
+  "binaries": {
+    "base": {
+      "sha256": "1ae742e70c32e94c232f3b3b898403256afff39993378dd9410ea6640fe6f4b8",
+      "bytes": 23897280,
+      "buildLogSha256": "79be7a3582d73dbcaa8e46dd3264651a90c24a1339da90b86e6525339dd6f43d"
+    },
+    "branch": {
+      "sha256": "d81b4a080f2ba57f35dcc7f61ebad0d1be0d3dae3a264c3e6e9362b1fa0ececd",
+      "bytes": 23910416,
+      "buildLogSha256": "ae3d0e50890788ba5e36b60cce611a13eb69d7efc7294470b160f6e879813201"
+    }
+  }
+}

@@ -1,0 +1,106 @@
+{
+  "sourceBase": "003f4ff7fdc12ab92d601811792baa71b997a3ff",
+  "defaultBuilds": {
+    "base": {
+      "source": "003f4ff7fdc12ab92d601811792baa71b997a3ff",
+      "tracked_source_clean": true,
+      "build_command": "CI=1 pnpm build --filter=@ifc-lite/viewer --force",
+      "turbo_tasks": 49,
+      "turbo_cache_hits": 0,
+      "default_features": true,
+      "wasm_newer_than_rust_source": true,
+      "wasm_sha256": "9880bc600f1cd780f89dc1ea88f6a82b783a83e7d8181ca4a84d71bdc4859166",
+      "wasm_bytes": 9374788,
+      "served_wasm": "/home/louistrue/wt/6516-perf-base-session6503/apps/viewer/dist/assets/ifc-lite_bg-BpcWqo3r.wasm",
+      "served_wasm_sha256": "9880bc600f1cd780f89dc1ea88f6a82b783a83e7d8181ca4a84d71bdc4859166",
+      "glue_sha256": "27cff2a3870d71260ecdb0ecf2cbffcb2fd9e437c87ba6af1ea00378dbecc97d",
+      "cargo_lock_sha256": "c5b2b216b396267313d475076c4696ebeb822941c358a68c8490f961934127cb",
+      "pnpm_lock_sha256": "abdd283eb54330a51e0e880a3e1dcee28ca91112d81b45f0c9f863f21ca92b74",
+      "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)\nbinary: rustc\ncommit-hash: b6d7ff3aa71e48e2901b0900f8b5d98126b537ed\ncommit-date: 2025-11-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.93.0-nightly\nLLVM version: 21.1.5\n",
+      "node": "v24.21.0",
+      "pnpm": "10.8.1",
+      "build_log": "/tmp/6516-base-viewer-force-build.log",
+      "build_log_sha256": "f74b1c172fa7baa95909c5d9bb82e128be879e47b75d9c431807c9539a380f68",
+      "dist": "/home/louistrue/wt/6516-perf-base-session6503/apps/viewer/dist",
+      "rejected_previous_cached_runtime": {
+        "sha256": "3a17cb2d85afeaa725d4506706055f653a6b97494f8f5bb0b69eaad6ce720f97",
+        "bytes": 9374660
+      },
+      "fullArtifactManifestSha256": "940e76aa1e74b414e5bfbda20da73476a41abc039f1e38dfb095f5745816b817"
+    },
+    "branch": {
+      "source": "003f4ff7fdc12ab92d601811792baa71b997a3ff",
+      "trackedRustDiffSha256": "a11c71ae2d00c1c703687c0d812f25947bf378727ca7be2a69dc81ef153e8212",
+      "untrackedRustSources": {
+        "rust/geometry/src/opening_perf_trace.rs": "680a509760402b4cfb086cc32c15df07c1a59f668b27081477ad51e508c57c70",
+        "rust/geometry/src/router/voids/batch_cutter.rs": "72138bbf174725e6e6429c98f71d213bbffd9477f4ba002de37efa98ed03a963",
+        "rust/geometry/src/router/voids/batch_miss_tests.rs": "898f0a8c41dcc057f2bbd4e7555008b753aec5ceda316115fbfad06d4a9d23d4",
+        "rust/wasm-bindings/src/opening_perf_trace.rs": "8658245e0e20e812a03dc91037bd36fc4d9facdafbe5db47b1fc3e11ed65a427"
+      },
+      "builtAtUTC": "2026-09-30T07:07:51.831825+00:00",
+      "buildCommand": "CI=1 pnpm build --filter=@ifc-lite/viewer --force",
+      "successfulTasks": 49,
+      "cachedTasks": 0,
+      "features": "default",
+      "wasmSha256": "622516eef18326087ba351e3be462eb2311000fc2a0020c3e46d4f9972a647a4",
+      "wasmBytes": 9377172,
+      "wasmMtime": 1790751964.049041,
+      "newestRustMtime": 1790750892.3647723,
+      "servedWasmPaths": [
+        "apps/viewer/dist/assets/ifc-lite_bg-Byvied9r.wasm"
+      ],
+      "matchesPriorQualifiedDefaultBinary": true,
+      "fullArtifactManifestSha256": "7eb525bfa668623f224e00aed738faaf718105dedc50616e1e07373bc378044b"
+    }
+  },
+  "timingHarnessSha256": "892f9eadc20bb32adcef3ed177c14e4acb786b8bdae101506635237c72963a67",
+  "canonicalHarnessSha256": "4d28e1d5214008245180a93c83b2dc953828bdbd4d65e5ed9210a9834b802e48",
+  "untimedFingerprintHarnessSha256": "ec32098e55495f90714fc8d8606692b47f3f010e0866729964edec0a01716c57",
+  "untimedFingerprintObserverSha256": "3bc2dff1d1987905260cb28efd4c10fb02e0e3c07e97c216227850ef038272ab",
+  "loadObserverSha256": "d7ad1a6b3496f95583d7c59132601d6a9873f00e0dcd414ff9865ebd79fed68b",
+  "nativeRunnerSha256": "f45178e9ec81ceb1968f1bac5bfc7245351749bec00de2dab3d9d6cedb69f691",
+  "fixtureSha256": {
+    "public455": "684309f75c09c100b357f8a4d1ddf33c47d8b770b8c2187a77e68813297d6053",
+    "rvt01": "a83e9aacb43c7f82955ee3ba650ec66dc24af552924ec058e1b0c49a76180ee6",
+    "AC20": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+    "ISSUE129": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+    "Holter": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8"
+  },
+  "limits": [
+    "Software Vulkan/WebGPU; no hardware GPU claim.",
+    "Overall browser control/cold-load qualification inconclusive: observed spread exceeds reporter limit.",
+    "Public455 worker-stream movement is fixture-specific; full readiness remains within spread.",
+    "All original A/A, primary A/B, and bounded AC20 requalification samples retained separately.",
+    "Private reporter model unavailable; no claim to explain or fix its complete 2.5x slowdown."
+  ],
+  "evidenceFiles": {
+    "current-v3-independent-qualification.json": "898fe864e21283de21f320dab5cb1c0122684320b16d94937cc14355ef166bf6",
+    "browser-ab-v3-runs.jsonl": "334324f4d1feb7786ed2a414749c6df28a61ff51326e1cecf1b1ea5927759c8b",
+    "browser-aa-v3-runs.jsonl": "d9a171285c56e1516eb0aa5d65d95d828aa7b54d9ea900377989ef6dae4b0590",
+    "release-994-first-divergence.md": "3f2256729923577d81a66bd3a2a9462f731be5914034e086b52529cdced05e88",
+    "current-v3-455-work.json": "86f099c6c4e72dd116da427bc47d5160dd9a83e482a6f696c86fd283cbbd0790",
+    "native-five-pairs-summary.json": "3ca4d7fa23ae5dce828ec67a786638c226be991aa578406f08f126d27bdf925d",
+    "census-verdict.json": "9c15aee615f785aaf6112103fb258ada9f64bf3faec47e4c5b54feda456feb38",
+    "release-five-pairs.json": "22cff7afe14e0b79c877e3d53d6bd6abb7b57b866cfef99bd608f7dfa111b29a",
+    "browser-ac20-aa-held-runs.jsonl": "bddbd31b9f6926b3618f68799f3c645dc6e9fba8a4fdf65a3f89318a479d8dd9",
+    "browser-ac20-ab-held-host-load.jsonl": "56ccfd6de76d7b8eb5235ab03c0f1437078c514df867d1b7b5d8a6cf7167c6c6",
+    "browser-ab-v3-host-load.jsonl": "4f093a1f41a1e464cbbc7659f9e4d1a349b15528ffe085732854689da48a3464",
+    "browser-output-identities.json": "6c47dcc9832b50311e5c1763e78f716b74cf64de5250756d12ff4a24a79a1c53",
+    "browser-ac20-aa-held-report.json": "671e856c5a64c41f978db2db59e11fdac99d78e1b133740ddf9b20726242b870",
+    "native-five-pairs-runs.jsonl": "28fbe7c4379c8b2fb4abcd75590669f0fec1da39cd20608bcd49d8b5ffc8908b",
+    "browser-ac20-ab-held-report.json": "3ec3e69c909d1840c4603c5e0329bbde7090274793b4c392825abe8032b69f5b",
+    "browser-ac20-ab-held-runs.jsonl": "7b22d200560537df93474174a7e04420bd6ea0af70d00571d9bede25b39f32a4",
+    "native-parts-verdict.json": "4b1b8a202aa26a23f1a28a57940577c61802ac83f485d0b44abd090204384ad6",
+    "README.md": "f91274005700943c22a1a7911aaaaefc8bc0ca04fadbac07d3f28391cf236045",
+    "native-probe-provenance.json": "e42a014b9fc7aa1c035b8fe443da5133f8dc80d3c0cf8394977bb052ecffb4f8",
+    "browser-ac20-aa-held-host-load.jsonl": "3ec851dffdfa4d7c285c0ad4f2ba9827ff0d49a2dccfb836318c45673f214e98",
+    "browser-aa-v3-host-load.jsonl": "c085b4ae307ae48c7a660c4873ff36b9fa6eee2aa962a3ef32205dce1b6e9909",
+    "browser-ab-v3-report.json": "a9f8d63ddc4cd1e70b02ca330143fd4667d12a477403417dc32710397a252461",
+    "native-five-pairs-host-load.jsonl": "b9c75b23c07c1f3a6eba7fcc9e76e2ac0ea16ea83c130c845029db7d0c99bf67",
+    "portable-surface-method.md": "26445980c804398e8c233ceb62837f0b85145e5ed92622058c3b120ef75f4392",
+    "compare-surfaces-6516.py": "a61d8d45d7b4da44ae48fc5b1cca1e0a22589c5e383dd0f7c8c23d6f1cda611d",
+    "browser-aa-v3-report.json": "a5b0ab9c54b182e27b5a774e12d83ded2b988f86edfe47999d23bb344be2ebf0",
+    "native-parts-collector.rs": "1f369b88fda854e9f983b2b79ca3414005e4b18c0fb8d603a83e72ed2d4c8551",
+    "software-browser-harness.patch": "532935f6464ab03da3cb6690d5b2e106e98406ed148288c7df6adc905c20248d"
+  }
+}

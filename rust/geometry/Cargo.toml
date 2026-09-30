@@ -11,6 +11,8 @@ categories = ["graphics", "parsing"]
 readme = "../../README.md"
 
 [features]
+# Opt-in #6516 route-work diagnostic; absent from shipping builds.
+opening-perf-trace = []
 # CSG runs on the in-tree pure-Rust exact mesh-arrangement kernel
 # (`src/kernel/`) on every target — native and wasm32 alike. The former
 # Manifold C++ kernel (`manifold-csg` / `manifold-csg-wasm-uu`) and the

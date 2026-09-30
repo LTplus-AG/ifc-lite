@@ -114,6 +114,9 @@ pub mod mesh_weld;
 /// Structured-diagnostics macro shims for the `observability` feature
 /// (tracing when ON, the legacy eprintln fallback when OFF).
 pub(crate) mod diag;
+#[cfg(feature = "opening-perf-trace")]
+#[doc(hidden)]
+pub mod opening_perf_trace;
 pub(crate) mod diagnostics;
 pub(crate) mod error;
 pub(crate) mod geom_hash;

@@ -1,0 +1,53 @@
+{
+  "coverage": "Observed metadata/geometry/renderer logs plus canvas allocation (100ms polling); search, cache-tail memory, properties, picking and Firefox unqualified.",
+  "base": "base",
+  "branch": "branch",
+  "failures": 0,
+  "fixtures": [
+    {"fixture": "public455", "fingerprint": {"totalMeshes": {"base": [3], "branch": [3]}}, "metrics": [
+      {"metric":"first-visible (actual paint)","baseMedianMs":1197,"branchMedianMs":931,"deltaPct":-22.22222222222222,"noisePct":15.371762740183792,"real":true},
+      {"metric":"stream-complete","baseMedianMs":1171,"branchMedianMs":912,"deltaPct":-22.117847993168233,"noisePct":16.225448334756617,"real":true},
+      {"metric":"spatial-ready","baseMedianMs":1512,"branchMedianMs":1229,"deltaPct":-18.71693121693122,"noisePct":14.02116402116402,"real":true},
+      {"metric":"metadata-complete","baseMedianMs":1558,"branchMedianMs":1278,"deltaPct":-17.971758664955072,"noisePct":13.992297817715018,"real":true},
+      {"metric":"METADATA + RENDER (observed)","baseMedianMs":1621,"branchMedianMs":1390,"deltaPct":-14.250462677359653,"noisePct":14.743985194324491,"real":false},
+      {"metric":"app total (legacy CI metric)","baseMedianMs":1200,"branchMedianMs":900,"deltaPct":-25,"noisePct":8.333333333333332,"real":true}
+    ]},
+    {"fixture": "rvt01", "fingerprint": {"totalMeshes": {"base": [1702], "branch": [1702]}}, "metrics": [
+      {"metric":"first-batch (geom submitted)","baseMedianMs":378,"branchMedianMs":393,"deltaPct":3.968253968253968,"noisePct":28.04232804232804,"real":false},
+      {"metric":"first-visible (actual paint)","baseMedianMs":656,"branchMedianMs":656,"deltaPct":0,"noisePct":33.079268292682926,"real":false},
+      {"metric":"stream-complete","baseMedianMs":744,"branchMedianMs":690,"deltaPct":-7.258064516129033,"noisePct":29.03225806451613,"real":false},
+      {"metric":"spatial-ready","baseMedianMs":841,"branchMedianMs":792,"deltaPct":-5.826397146254459,"noisePct":25.089179548156952,"real":false},
+      {"metric":"metadata-complete","baseMedianMs":964,"branchMedianMs":883,"deltaPct":-8.402489626556017,"noisePct":28.112033195020746,"real":false},
+      {"metric":"METADATA + RENDER (observed)","baseMedianMs":1089,"branchMedianMs":993,"deltaPct":-8.81542699724518,"noisePct":78.51239669421489,"real":false},
+      {"metric":"app total (legacy CI metric)","baseMedianMs":800,"branchMedianMs":700,"deltaPct":-12.5,"noisePct":25,"real":false}
+    ]},
+    {"fixture": "AC20", "fingerprint": {"totalMeshes": {"base": [317], "branch": [317]}}, "metrics": [
+      {"metric":"first-batch (geom submitted)","baseMedianMs":138,"branchMedianMs":134,"deltaPct":-2.898550724637681,"noisePct":28.985507246376812,"real":false},
+      {"metric":"first-visible (actual paint)","baseMedianMs":452,"branchMedianMs":443,"deltaPct":-1.991150442477876,"noisePct":15.929203539823009,"real":false},
+      {"metric":"stream-complete","baseMedianMs":543,"branchMedianMs":532,"deltaPct":-2.0257826887661143,"noisePct":26.519337016574585,"real":false},
+      {"metric":"spatial-ready","baseMedianMs":627,"branchMedianMs":614,"deltaPct":-2.073365231259968,"noisePct":23.444976076555022,"real":false},
+      {"metric":"metadata-complete","baseMedianMs":695,"branchMedianMs":685,"deltaPct":-1.4388489208633095,"noisePct":21.007194244604317,"real":false},
+      {"metric":"METADATA + RENDER (observed)","baseMedianMs":799,"branchMedianMs":805,"deltaPct":0.7509386733416771,"noisePct":19.148936170212767,"real":false},
+      {"metric":"app total (legacy CI metric)","baseMedianMs":600,"branchMedianMs":600,"deltaPct":0,"noisePct":33.33333333333333,"real":false}
+    ]},
+    {"fixture": "ISSUE129", "fingerprint": {"totalMeshes": {"base": [1402], "branch": [1402]}}, "metrics": [
+      {"metric":"first-batch (geom submitted)","baseMedianMs":397,"branchMedianMs":403,"deltaPct":1.5113350125944585,"noisePct":11.586901763224182,"real":false},
+      {"metric":"first-visible (actual paint)","baseMedianMs":695,"branchMedianMs":723,"deltaPct":4.028776978417266,"noisePct":7.194244604316546,"real":false},
+      {"metric":"stream-complete","baseMedianMs":2386,"branchMedianMs":2436,"deltaPct":2.095557418273261,"noisePct":12.86672254819782,"real":false},
+      {"metric":"spatial-ready","baseMedianMs":935,"branchMedianMs":938,"deltaPct":0.32085561497326204,"noisePct":7.914438502673797,"real":false},
+      {"metric":"metadata-complete","baseMedianMs":1065,"branchMedianMs":1059,"deltaPct":-0.5633802816901409,"noisePct":8.262910798122066,"real":false},
+      {"metric":"METADATA + RENDER (observed)","baseMedianMs":3083,"branchMedianMs":3423,"deltaPct":11.028219266947778,"noisePct":16.185533571196885,"real":false},
+      {"metric":"app total (legacy CI metric)","baseMedianMs":2500,"branchMedianMs":2600,"deltaPct":4,"noisePct":12,"real":false}
+    ]},
+    {"fixture": "Holter", "fingerprint": {"totalMeshes": {"base": [110632], "branch": [110632]}}, "metrics": [
+      {"metric":"first-batch (geom submitted)","baseMedianMs":671,"branchMedianMs":612,"deltaPct":-8.79284649776453,"noisePct":15.201192250372578,"real":false},
+      {"metric":"first-visible (actual paint)","baseMedianMs":1577,"branchMedianMs":1465,"deltaPct":-7.102092580849714,"noisePct":16.423589093214964,"real":false},
+      {"metric":"stream-complete","baseMedianMs":4344,"branchMedianMs":4359,"deltaPct":0.3453038674033149,"noisePct":30.31767955801105,"real":false},
+      {"metric":"spatial-ready","baseMedianMs":4315,"branchMedianMs":4461,"deltaPct":3.383545770567787,"noisePct":14.484356894553882,"real":false},
+      {"metric":"metadata-complete","baseMedianMs":5255,"branchMedianMs":5303,"deltaPct":0.9134157944814463,"noisePct":17.373929590865842,"real":false},
+      {"metric":"METADATA + RENDER (observed)","baseMedianMs":30650,"branchMedianMs":32586,"deltaPct":6.3164763458401305,"noisePct":22.962479608482873,"real":false},
+      {"metric":"app total (legacy CI metric)","baseMedianMs":4500,"branchMedianMs":4500,"deltaPct":0,"noisePct":33.33333333333333,"real":false}
+    ]}
+  ],
+  "verdict": {"noSuccessfulSamples": false, "fingerprintDrift": false, "tooNoisy": true, "realChange": true, "insufficientPairedSamples": false, "incomparableFixture": false}
+}

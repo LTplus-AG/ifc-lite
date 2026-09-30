@@ -505,15 +505,24 @@ fn subtract_many_reports_unchanged_when_no_cutter_reaches_the_host() {
         )
     };
     let disjoint = tetra(0.0);
+    let (miss, conforming, _) = subtract_many_with_conformity(&host, &[&disjoint], false);
+    assert!(conforming, "#6516: only a conforming miss can suppress sequential fallback");
     assert!(
-        matches!(subtract_many(&host, &[&disjoint]), BatchSubtract::Unchanged),
+        matches!(miss, BatchSubtract::Unchanged),
         "a cutter that misses the host solid must read Unchanged, not Cut"
     );
+    assert!(matches!(subtract_many(&host, &[&disjoint]), BatchSubtract::Unchanged),
+        "the existing public entry keeps its unchanged-result contract");
+    let clipper = crate::csg::ClippingProcessor::new();
+    assert!(matches!(clipper.subtract_mesh_many(&host, &[&disjoint]),
+        crate::csg::GroupCut::Rejected(crate::csg::GroupReject::Unchanged)));
     // The same tetrahedron slid into the cube is a real cut: volume drops.
     let reaching = tetra(-0.6);
     let cut = expect_cut(subtract_many(&host, &[&reaching]), "reaching tetra");
     let v = mesh_volume(&cut).abs();
     assert!(v < 0.99 && v > 0.5, "reaching tetra must remove volume: {v}");
+    assert!(matches!(clipper.subtract_mesh_many(&host, &[&reaching]),
+        crate::csg::GroupCut::Cut(_)), "#6516: reaching cutters must still cut");
 }
 
 /// Issue #3353, the N-ary half.
@@ -750,6 +759,22 @@ fn lenient_gable_group() -> (Mesh, Mesh, Mesh) {
         ],
     );
     (wall, notch, window)
+}
+
+#[test]
+fn lenient_group_keeps_its_conformity_provenance_6516() {
+    let (wall, notch, window) = lenient_gable_group();
+    let (outcome, conforming, _) = subtract_many_with_conformity(&wall, &[&notch, &window], true);
+    assert!(!conforming, "real gable fixture must reach the volume-checked path");
+    let cut = expect_cut(outcome, "the validated lenient group remains a real cut");
+    // Re-cutting the already removed notch is nonconforming: having no
+    // intended volume left to remove does not make its classification proof.
+    let (retry, conforms, retained) = subtract_many_with_conformity(&cut, &[&notch], true);
+    assert!(!conforms);
+    assert!(retained.is_none(), "an uncertain miss cannot be retained as proof");
+    assert!(matches!(retry, BatchSubtract::Nonconforming));
+    let retry = crate::csg::ClippingProcessor::new().subtract_mesh_many(&cut, &[&notch]);
+    assert!(!retry.found_no_overlap(), "uncertain recut must keep its sequential fallback");
 }
 
 /// `subtract_many`'s volume oracle on an OPEN host (#4693).

@@ -77,7 +77,10 @@ function positiveOr(value: number | undefined, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-function formatValue(value: number, unit?: string): string {
+function formatValue(value: unknown, unit?: string): string {
+  // ECharts also formats missing values and category strings (#4945).
+  if (value == null || (typeof value === 'number' && !Number.isFinite(value))) return '—';
+  if (typeof value !== 'number') return typeof value === 'string' ? value : '—';
   const text = Number.isInteger(value) ? String(value) : value.toFixed(2);
   return unit ? `${text} ${unit}` : text;
 }
@@ -186,7 +189,7 @@ export function buildEChartsOption(args: BuildOptionArgs): EChartsOptionObject {
     // Only components that are actually used may appear as keys: ECharts
     // reports an `undefined` `title` as a missing TitleComponent.
     ...(args.showTitle ? { title: { text: spec.title, left: 'center', textStyle: { color: theme.text, fontSize: 13 } } } : {}),
-    tooltip: { trigger: 'item', valueFormatter: (v: number) => formatValue(v, unit) },
+    tooltip: { trigger: 'item', valueFormatter: (v: unknown) => formatValue(v, unit) },
     animation: false,
   };
 

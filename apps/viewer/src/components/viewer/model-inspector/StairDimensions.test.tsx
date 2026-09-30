@@ -21,6 +21,13 @@ import { commandPointerDown, commandPointerMove } from '@/lib/commands/modeling/
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction.js';
 import { ModelInspectorPanel } from './ModelInspectorPanel.js';
 
+// Keep revert-oracle collection intact and require a real canonical read.
+function dimensions(...args: Parameters<typeof create.readStairDimensions>) {
+  const read = create.readStairDimensions?.(...args);
+  assert.ok(read, 'the selected flight has readable canonical dimensions');
+  return read;
+}
+
 afterEach(() => { cleanup(); useViewerStore.getState().exitModelWorkspace(); });
 
 for (const unit of ['metre', 'millimetre'] as const) it(`the flight selected by stair.place edits dimensions with one physical Undo in ${unit} (#6232)`, { skip: !stairWasmAvailable && 'Build WASM to run this physical inspector proof' }, async () => {
@@ -58,7 +65,7 @@ for (const unit of ['metre', 'millimetre'] as const) it(`the flight selected by 
       const input = root.querySelector<HTMLInputElement>(`input[aria-label="${label} in metres"]`);
       assert.ok(input, `${label} is present`);
       type(input, String(value)); blur(input);
-      assert.ok(Math.abs(create.readStairDimensions?.(store, flight.expressId, view)![param]! - value) < 1e-8);
+      assert.ok(Math.abs(dimensions(store, flight.expressId, view)[param]! - value) < 1e-8);
       const after = await meshStairs(exportModel());
       const changed = stairMeshBounds(after.get(flight.expressId)!);
       assert.notDeepEqual(after.get(flight.expressId), before.get(flight.expressId), 'the physical triangles changed');
@@ -106,15 +113,15 @@ for (const modelCount of [1, 2]) it(`a selected stair resolves its overlay owner
   const restore = setRequestRemesh((_get, request) => remesh.push(request));
   try {
     type(field, '1.4'); blur(field);
-    assert.ok(Math.abs(create.readStairDimensions?.(owner.ifcDataStore!, flight, ownerView)!.Width - 1.4) < 1e-8);
+    assert.ok(Math.abs(dimensions(owner.ifcDataStore!, flight, ownerView).Width - 1.4) < 1e-8);
     assert.deepEqual(remesh.map(r => r.modelId), [MODEL_ID]);
     assert.equal(s().undoStacks.get('decoy')?.length ?? 0, decoyDepth);
     if (decoyView) {
       assert.equal(JSON.stringify({ entities: decoyView.getNewEntities(), records: decoyView.getMutations() }), decoySnapshot);
-      assert.ok(Math.abs(create.readStairDimensions?.(models.get('decoy')!.ifcDataStore!, flight, decoyView)!.Width - 1.2) < 1e-8);
+      assert.ok(Math.abs(dimensions(models.get('decoy')!.ifcDataStore!, flight, decoyView).Width - 1.2) < 1e-8);
     }
     act(() => s().undo(MODEL_ID));
     assert.equal(s().undoStacks.get(MODEL_ID)?.length ?? 0, ownerDepth);
-    assert.ok(Math.abs(create.readStairDimensions?.(owner.ifcDataStore!, flight, ownerView)!.Width - 1.2) < 1e-8);
+    assert.ok(Math.abs(dimensions(owner.ifcDataStore!, flight, ownerView).Width - 1.2) < 1e-8);
   } finally { restore(); }
 });

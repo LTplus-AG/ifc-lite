@@ -10,6 +10,9 @@ import { IfcParser } from '@ifc-lite/parser';
 import { validateIDS, type IDSDocument } from '@ifc-lite/ids';
 import { DEFAULT_THEME } from '@ifc-lite/charts';
 import { useViewerStore } from '@/store';
+import { createStore } from 'zustand/vanilla';
+import { createValidationReportsSlice, type ValidationReportsSlice } from '@/store/slices/validationReportsSlice';
+import { SavedReportSource } from '../document/SavedReportSource';
 import { createDataAccessor } from '@/hooks/ids/idsDataAccessor';
 import { cleanup, click, render, waitFor } from '@/test/render';
 import { useIDS } from '@/hooks/useIDS';
@@ -55,7 +58,7 @@ async function checkedWall(modelId: string, title: string) {
 const initial = useViewerStore.getState();
 beforeEach(() => {
   localStorage.clear();
-  useViewerStore.setState({ savedValidationReports: [], validationReportsSaveFailed: false, documents: [], activeDocumentId: null, models: new Map(), dashboards: [], listDefinitions: [], bcfProject: null, idsValidationReport: null, manualChecklist: null });
+  useViewerStore.setState({ savedValidationReports: [], validationReportsSaveFailed: false, validationReportsLoadIssue: null, documents: [], activeDocumentId: null, models: new Map(), dashboards: [], listDefinitions: [], bcfProject: null, idsValidationReport: null, manualChecklist: null });
 });
 afterEach(() => { cleanup(); useViewerStore.setState(initial); });
 
@@ -360,13 +363,125 @@ describe('saved validation evidence (#6500)', () => {
     assert.deepEqual(report.snapshot.reportModels, [{ name: 'structure.ifc', fingerprint: 'fp-structure' }]);
   });
 
+  for (const malformed of ['invalid JSON', 'non-array', 'partial and duplicate'] as const) {
+    it(`reports ${malformed} history in library and source chooser while preserving original bytes (#6500)`, async () => {
+      const valid = newSavedReport(validationReportSnapshot(await checkedWall('tower', 'Valid neighbor'), new Map(), 'run'));
+      const raw = malformed === 'invalid JSON' ? '{broken' : malformed === 'non-array' ? JSON.stringify({ report: valid }) : JSON.stringify([valid, { id: 'broken' }, valid]);
+      localStorage.setItem(VALIDATION_REPORTS_STORAGE_KEY, raw);
+      const loaded = createStore<ValidationReportsSlice>()(createValidationReportsSlice).getState();
+      useViewerStore.setState({ savedValidationReports: loaded.savedValidationReports, validationReportsLoadIssue: loaded.validationReportsLoadIssue });
+      const library = render(<SavedValidationReports />);
+      assert.match(library.querySelector('[role="alert"]')?.textContent ?? '', /some entries could not be read|Saving is blocked/);
+      assert.equal(loaded.savedValidationReports.length, malformed === 'partial and duplicate' ? 1 : 0);
+      cleanup();
+      const source = render(<SavedReportSource block={valid.snapshot} onChange={() => {}} />);
+      assert.match(source.querySelector('[role="alert"]')?.textContent ?? '', /original data was preserved/);
+      assert.equal(localStorage.getItem(`${VALIDATION_REPORTS_STORAGE_KEY}:unreadable`), raw, 'complete original survives byte-for-byte');
+      assert.deepEqual(loadValidationReports().map((entry) => entry.id), malformed === 'partial and duplicate' ? [valid.id] : []);
+      act(() => useViewerStore.getState().saveValidationReport(valid.snapshot, 'New check'));
+      assert.equal(localStorage.getItem(`${VALIDATION_REPORTS_STORAGE_KEY}:unreadable`), raw, 'later save never destroys preserved evidence');
+      assert.ok(loadValidationReports().some((entry) => entry.name === 'New check'));
+    });
+  }
+
+  it('publishes newly recovered external corruption through both live history consumers (#6500)', async () => {
+    const valid = newSavedReport(validationReportSnapshot(await checkedWall('tower', 'Original in-memory evidence'), new Map(), 'run'));
+    localStorage.setItem(VALIDATION_REPORTS_STORAGE_KEY, JSON.stringify([valid]));
+    const loaded = createStore<ValidationReportsSlice>()(createValidationReportsSlice).getState();
+    useViewerStore.setState({ savedValidationReports: loaded.savedValidationReports, validationReportsLoadIssue: loaded.validationReportsLoadIssue });
+    const ui = render(<><SavedValidationReports /><SavedReportSource block={valid.snapshot} onChange={() => {}} /></>);
+    assert.equal(ui.querySelectorAll('[role="alert"]').length, 0);
+    const damaged = '{external corruption';
+    localStorage.setItem(VALIDATION_REPORTS_STORAGE_KEY, damaged);
+    act(() => useViewerStore.getState().saveValidationReport(valid.snapshot, 'Later check'));
+    assert.equal(useViewerStore.getState().validationReportsLoadIssue, 'recovered');
+    assert.equal(ui.querySelectorAll('[data-saved-history-issue="recovered"]').length, 2);
+    assert.equal(localStorage.getItem(`${VALIDATION_REPORTS_STORAGE_KEY}:unreadable`), damaged);
+    assert.deepEqual(loadValidationReports().map((entry) => entry.name), ['Original in-memory evidence', 'Later check']);
+    act(() => useViewerStore.getState().retryValidationReportsSave());
+    assert.equal(ui.querySelectorAll('[role="alert"]').length, 0, 'healthy retry clears prior recovery notices');
+  });
+
+  for (const partial of [false, true]) {
+    it(`retains unknown stored neighbors after an unavailable read and respects later deletion during ${partial ? 'blocked backup' : 'write quota'} (#6500)`, async () => {
+      const valid = newSavedReport(validationReportSnapshot(await checkedWall('tower', 'Unknown stored neighbor'), new Map(), 'run'));
+      const raw = JSON.stringify(partial ? [valid, { id: 'damaged' }] : [valid]);
+      localStorage.setItem(VALIDATION_REPORTS_STORAGE_KEY, raw);
+      const actualGet = localStorage.getItem.bind(localStorage);
+      const inaccessible = mock.method(localStorage, 'getItem', (key: string) => {
+        if (key === VALIDATION_REPORTS_STORAGE_KEY) throw new DOMException('Read blocked', 'SecurityError');
+        return actualGet(key);
+      });
+      let library: HTMLElement;
+      try {
+        const loaded = createStore<ValidationReportsSlice>()(createValidationReportsSlice).getState();
+        useViewerStore.setState({ savedValidationReports: loaded.savedValidationReports, validationReportsLoadIssue: loaded.validationReportsLoadIssue });
+        library = render(<SavedValidationReports />);
+        assert.match(library.querySelector('[role="alert"]')?.textContent ?? '', /could not be read or updated/);
+        act(() => useViewerStore.getState().saveValidationReport(valid.snapshot, 'Pending in-memory check'));
+      } finally { inaccessible.mock.restore(); }
+      const actualSet = localStorage.setItem.bind(localStorage);
+      const quota = mock.method(localStorage, 'setItem', (key: string, value: string) => {
+        if (partial ? key.includes(':unreadable') : key === VALIDATION_REPORTS_STORAGE_KEY) throw new DOMException('Storage full', 'QuotaExceededError');
+        actualSet(key, value);
+      });
+      const retry = () => {
+        const button = [...library.querySelectorAll('button')].find((candidate) => candidate.textContent === 'Retry save'); assert.ok(button);
+        click(button);
+      };
+      try {
+        retry();
+        assert.deepEqual(useViewerStore.getState().savedValidationReports.map((entry) => entry.name), ['Unknown stored neighbor', 'Pending in-memory check'], 'failed write still publishes discovered neighbors');
+        const picker = library.querySelector<HTMLSelectElement>('select[aria-label="Select saved validation report"]'); assert.ok(picker);
+        select(picker, valid.id);
+        const remove = [...library.querySelectorAll('button')].find((button) => button.textContent === 'Remove report'); assert.ok(remove);
+        click(remove);
+        assert.deepEqual(useViewerStore.getState().savedValidationReports.map((entry) => entry.name), ['Pending in-memory check']);
+        assert.equal(localStorage.getItem(VALIDATION_REPORTS_STORAGE_KEY), raw, 'failed writes leave original bytes intact');
+      } finally { quota.mock.restore(); }
+      retry();
+      assert.deepEqual(loadValidationReports().map((entry) => entry.name), ['Pending in-memory check'], 'healthy retry never resurrects the explicitly removed known neighbor');
+      assert.equal(useViewerStore.getState().validationReportsSaveFailed, false);
+      if (partial) assert.equal(localStorage.getItem(`${VALIDATION_REPORTS_STORAGE_KEY}:unreadable`), raw);
+    });
+  }
+
+  it('refuses a later save when quota prevents archiving damaged validation history, then safely retries (#6500)', async () => {
+    const valid = newSavedReport(validationReportSnapshot(await checkedWall('tower', 'Quota neighbor'), new Map(), 'run'));
+    const raw = JSON.stringify([valid, { id: 'broken' }]);
+    localStorage.setItem(VALIDATION_REPORTS_STORAGE_KEY, raw);
+    const actualSet = localStorage.setItem.bind(localStorage);
+    const blocked = mock.method(localStorage, 'setItem', (key: string, value: string) => {
+      if (key.includes(':unreadable')) throw new DOMException('Storage full', 'QuotaExceededError');
+      actualSet(key, value);
+    });
+    try {
+      const loaded = createStore<ValidationReportsSlice>()(createValidationReportsSlice).getState();
+      useViewerStore.setState({ savedValidationReports: loaded.savedValidationReports, validationReportsLoadIssue: loaded.validationReportsLoadIssue });
+      const library = render(<SavedValidationReports />);
+      assert.match(library.querySelector('[role="alert"]')?.textContent ?? '', /some entries could not be read|Saving is blocked/);
+      act(() => useViewerStore.getState().saveValidationReport(valid.snapshot, 'Pending check'));
+      assert.equal(localStorage.getItem(VALIDATION_REPORTS_STORAGE_KEY), raw, 'unarchived original cannot be overwritten');
+      assert.ok(useViewerStore.getState().validationReportsSaveFailed);
+      assert.ok(library.textContent?.includes('storage refused the save'));
+    } finally { blocked.mock.restore(); }
+    const retry = [...document.body.querySelectorAll('button')].find((button) => button.textContent === 'Retry save'); assert.ok(retry);
+    click(retry);
+    assert.equal(useViewerStore.getState().validationReportsLoadIssue, 'recovered');
+    assert.equal(useViewerStore.getState().validationReportsSaveFailed, false);
+    act(() => useViewerStore.getState().renameValidationReport(useViewerStore.getState().savedValidationReports.at(-1)!.id, 'Recovered check'));
+    assert.equal(useViewerStore.getState().validationReportsLoadIssue, null, 'healthy write clears stale recovery status');
+    assert.equal(localStorage.getItem(`${VALIDATION_REPORTS_STORAGE_KEY}:unreadable`), raw);
+    assert.ok(loadValidationReports().some((entry) => entry.name === 'Recovered check'));
+  });
+
   it('a refused storage write keeps evidence visible and reports it before reload (#6500)', async () => {
     const snapshot = validationReportSnapshot(await checkedWall('tower', 'Quota check'), new Map(), 'run');
     const write = mock.method(localStorage, 'setItem', () => { throw new DOMException('Storage full', 'QuotaExceededError'); });
     try {
       useViewerStore.getState().saveValidationReport(snapshot);
       const ui = render(<SavedValidationReports />);
-      assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /lost on reload/);
+      assert.ok([...ui.querySelectorAll('[role="alert"]')].some((alert) => /lost on reload/.test(alert.textContent ?? '')), 'quota failure explicitly warns that unsaved evidence is lost on reload');
       assert.match(ui.textContent ?? '', /Quota check/);
       assert.equal(loadValidationReports().length, 0);
     } finally { write.mock.restore(); }

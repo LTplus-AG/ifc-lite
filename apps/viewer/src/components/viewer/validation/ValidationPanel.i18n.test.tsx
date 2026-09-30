@@ -227,6 +227,7 @@ async function mountAll(): Promise<Set<string>> {
   useViewerStore.getState().saveValidationReport(emptyManualReportBlock('i18n-report'), 'Saved fixture');
   useViewerStore.setState({
     validationReportsSaveFailed: true,
+    validationReportsLoadIssue: 'blocked',
     manualChecklist: { version: 1, name: 'Manual fixture', groups: [] },
     manualAnswers: {},
     documents: [],

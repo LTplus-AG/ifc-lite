@@ -3,25 +3,31 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { StateCreator } from 'zustand';
+import type { SavedHistoryIssue } from '@/lib/storage/saved-history';
 import { newSavedReport, validateSavedReport, type SavedValidationReport, type ValidationReportSnapshot } from '@/lib/validation/reports/history';
-import { loadValidationReports, persistValidationReports } from '@/lib/validation/reports/persistence';
+import { readValidationReports, persistValidationReports } from '@/lib/validation/reports/persistence';
 
 export interface ValidationReportsSlice {
   savedValidationReports: SavedValidationReport[];
   validationReportsSaveFailed: boolean;
+  validationReportsLoadIssue: SavedHistoryIssue | null;
+  retryValidationReportsSave: () => void;
   saveValidationReport: (snapshot: ValidationReportSnapshot, name?: string) => string | null;
   renameValidationReport: (id: string, name: string) => void;
   removeValidationReport: (id: string) => void;
 }
 
 export const createValidationReportsSlice: StateCreator<ValidationReportsSlice, [], [], ValidationReportsSlice> = (set, get) => {
+  const loaded = readValidationReports();
   const commit = (savedValidationReports: SavedValidationReport[]) => {
-    const validationReportsSaveFailed = !persistValidationReports(savedValidationReports);
-    set({ savedValidationReports, validationReportsSaveFailed });
+    const saved = persistValidationReports(savedValidationReports);
+    set({ savedValidationReports: saved.entries, validationReportsSaveFailed: !saved.ok, validationReportsLoadIssue: saved.issue });
   };
   return {
-    savedValidationReports: loadValidationReports(),
+    savedValidationReports: loaded.entries,
+    validationReportsLoadIssue: loaded.issue,
     validationReportsSaveFailed: false,
+    retryValidationReportsSave: () => commit(get().savedValidationReports),
     saveValidationReport: (snapshot, name) => {
       const entry = newSavedReport(snapshot, name);
       if (!validateSavedReport(entry)) { console.warn('[Validation reports] Refusing invalid report'); return null; }

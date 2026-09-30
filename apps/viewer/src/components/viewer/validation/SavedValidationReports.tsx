@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
+import { SavedHistoryNotice } from '../SavedHistoryNotice';
 import { IdsReportPreview } from '../document/IdsReportPreview';
 import { ManualReportPreview } from '../document/ManualReportPreview';
 import { reportScopeText } from '@/lib/document/report-provenance';
@@ -16,6 +17,7 @@ import { savedReportLabel } from '@/lib/validation/reports/history';
 export function SavedValidationReports() {
   const { t } = useTranslation();
   const reports = useViewerStore((s) => s.savedValidationReports);
+  const loadIssue = useViewerStore((s) => s.validationReportsLoadIssue);
   const failed = useViewerStore((s) => s.validationReportsSaveFailed);
   const remove = useViewerStore((s) => s.removeValidationReport);
   const rename = useViewerStore((s) => s.renameValidationReport);
@@ -24,6 +26,7 @@ export function SavedValidationReports() {
 
   return (
     <>
+      <SavedHistoryNotice issue={loadIssue} subject={t('validationPanel.history.title')} onRetry={() => useViewerStore.getState().retryValidationReportsSave()} />
       {failed && <p role="alert" className="shrink-0 px-2 py-1 text-xs text-destructive">{t('validationPanel.history.unsaved')}</p>}
       <details className="shrink-0 border-b p-2 text-xs" data-saved-validation-reports>
         <summary className="cursor-pointer font-medium">{t('validationPanel.history.title')} ({reports.length})</summary>

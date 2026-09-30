@@ -6,6 +6,7 @@
  * attributes, never to an explicit unreadable reference (#6232 / #6539). */
 import { firstProjAxis } from '@ifc-lite/data';
 import type { AnchorEntityReader } from './resolve-anchor.js';
+import type { HostBounds } from './anchor.js';
 
 export type Vec3 = [number, number, number];
 export type Frame3 = { o: Vec3; x: Vec3; y: Vec3; z: Vec3 };
@@ -79,4 +80,65 @@ export function applyFrame(f: Frame3, p: Vec3): Vec3 {
     f.o[1] + f.x[1] * p[0] + f.y[1] * p[1] + f.z[1] * p[2],
     f.o[2] + f.x[2] * p[0] + f.y[2] * p[1] + f.z[2] * p[2],
   ];
+}
+
+export const IDENTITY_FRAME3: Frame3 = { o: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
+
+export function transformBounds(bounds: HostBounds, frame: Frame3): HostBounds {
+  const min: Vec3 = [Infinity, Infinity, Infinity], max: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (const x of [bounds.min[0], bounds.max[0]]) for (const y of [bounds.min[1], bounds.max[1]]) for (const z of [bounds.min[2], bounds.max[2]]) {
+    const p = applyFrame(frame, [x, y, z]);
+    for (let i = 0; i < 3; i++) { min[i] = Math.min(min[i], p[i]); max[i] = Math.max(max[i], p[i]); }
+  }
+  return { min, max };
+}
+
+export function composeFrame(outer: Frame3, inner: Frame3): Frame3 {
+  const direction = (p: Vec3): Vec3 => [0, 1, 2].map(i => outer.x[i] * p[0] + outer.y[i] * p[1] + outer.z[i] * p[2]) as Vec3;
+  return { o: applyFrame(outer, inner.o), x: direction(inner.x), y: direction(inner.y), z: direction(inner.z) };
+}
+
+/** Rigid placement inverse; axis3d supplies orthonormal placement axes. */
+export function inverseFrame(f: Frame3): Frame3 {
+  return {
+    o: [f.x, f.y, f.z].map(v => -(v[0] * f.o[0] + v[1] * f.o[1] + v[2] * f.o[2])) as Vec3,
+    x: [f.x[0], f.y[0], f.z[0]], y: [f.x[1], f.y[1], f.z[1]], z: [f.x[2], f.y[2], f.z[2]],
+  };
+}
+
+/** Full 3D local-placement chain, including the opening's rotated frame.
+ * Missing references, cycles and excessive acyclic chains are unreadable. */
+export function placementInAncestor(reader: AnchorEntityReader, placementId: number, ancestorId: number): Frame3 | null {
+  let frame = IDENTITY_FRAME3;
+  let id: number | null = placementId;
+  const visited = new Set<number>();
+  while (id !== null && id !== ancestorId) {
+    if (visited.size >= 10_000 || visited.has(id)) return null;
+    visited.add(id);
+    const placement = reader.entity(id);
+    const axisId = placement ? refId(placement.attributes[1]) : null;
+    if (placement?.type.toUpperCase() !== 'IFCLOCALPLACEMENT' || axisId === null) return null;
+    const own = axis3d(reader, axisId);
+    if (!own) return null;
+    frame = composeFrame(own, frame);
+    id = refId(placement.attributes[0]);
+  }
+  return id === ancestorId ? frame : null;
+}
+
+/** Subcontexts inherit CoordinateSpaceDimension from ParentContext. */
+export function contextDimension(reader: AnchorEntityReader, contextId: number): 2 | 3 | null {
+  let id: number | null = contextId;
+  const visited = new Set<number>();
+  while (id !== null && visited.size < 10_000 && !visited.has(id)) {
+    visited.add(id);
+    const context = reader.entity(id);
+    if (context?.type.toUpperCase() === 'IFCGEOMETRICREPRESENTATIONCONTEXT') {
+      const dimension = context.attributes[2];
+      return dimension === 2 || dimension === 3 ? dimension : null;
+    }
+    if (context?.type.toUpperCase() !== 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT') return null;
+    id = refId(context.attributes[6]);
+  }
+  return null;
 }

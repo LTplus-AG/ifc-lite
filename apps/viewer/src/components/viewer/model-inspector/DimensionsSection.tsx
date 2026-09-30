@@ -14,6 +14,7 @@
  */
 
 import { useId, useMemo } from 'react';
+import { readHostedElementSize } from '@ifc-lite/create';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
@@ -21,7 +22,7 @@ import { authoringDim, type AuthoredElementKind } from '@/store/slices/authoring
 import { CommitField, InspectorCaption, InspectorRow, InspectorSection } from './InspectorControls';
 import { DEFAULT_DIMS, DIM_LABEL, METRE_SYMBOL, formatMetres, parseMetres, type DimParam } from './inspector-fields';
 import { readElementSize } from '@/store/slices/mutation-element-size';
-import { setElementDimensions } from './inspector-edits';
+import { setElementDimensions, setHostedElementDimensions } from './inspector-edits';
 import type { InspectorSelection } from './useInspectorTarget';
 
 function MetreRow({ param, value, onCommit }: { param: DimParam; value: number | null; onCommit?: (metres: number) => boolean }) {
@@ -69,11 +70,16 @@ type Measured =
   | { kind: 'wall'; length: number; thickness: number; height: number }
   | { kind: 'slab'; thickness: number }
   | { kind: 'linear'; column: boolean; length: number; width: number; cross: number }
+  | { kind: 'hosted'; width: number; height: number }
   | { kind: 'none'; reason: 'modelInspector.dims.notRectangular' | 'modelInspector.dims.unknown' };
 
 function measure(selection: InspectorSelection): Measured {
   const s = useViewerStore.getState();
   const { modelId, expressId, kind } = selection;
+  if (kind === 'door' || kind === 'window') {
+    const size = readHostedElementSize(selection.live.dataStore, expressId, s.mutationViews.get(modelId));
+    return size ? { kind: 'hosted', width: size.OverallWidth, height: size.OverallHeight } : { kind: 'none', reason: 'modelInspector.dims.unknown' };
+  }
   if (kind === 'wall') {
     const wall = s.readWallEndpoints(modelId, expressId);
     if (!wall) return { kind: 'none', reason: 'modelInspector.dims.notRectangular' };
@@ -113,6 +119,12 @@ export function SelectionDimensions({ selection }: { selection: InspectorSelecti
             onCommit={(metres) => setElementDimensions(modelId, expressId, { kind: 'linear', ...(measured.column ? { cross: metres } : { width: metres }) })} />
           <MetreRow param="Height" value={measured.column ? measured.length : measured.cross}
             onCommit={(metres) => setElementDimensions(modelId, expressId, { kind: 'linear', ...(measured.column ? { length: metres } : { cross: metres }) })} />
+        </>
+      )}
+      {measured.kind === 'hosted' && (
+        <>
+          <MetreRow param="Width" value={measured.width} onCommit={OverallWidth => setHostedElementDimensions(modelId, expressId, { OverallWidth })} />
+          <MetreRow param="Height" value={measured.height} onCommit={OverallHeight => setHostedElementDimensions(modelId, expressId, { OverallHeight })} />
         </>
       )}
       {measured.kind === 'none' && <InspectorCaption>{t(measured.reason)}</InspectorCaption>}

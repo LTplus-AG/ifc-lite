@@ -22,18 +22,14 @@
  */
 
 import {
-  placedBodyExtent,
+  editHostedElementInStore,
   readHostedFill,
-  resolveHostAnchor,
-  toNativeLength,
+  type HostedElementEdit,
   type HostedElementInStoreSpec,
 } from '@ifc-lite/create';
-import type { MutablePropertyView } from '@ifc-lite/mutations';
-import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ViewerState } from '../index.js';
 import { mutationDenial } from '../mutation-permission.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
-import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
 import { modelEditTarget, recordModellingEdit, type ModellingStore } from './mutation-modelling-records.js';
 
@@ -124,50 +120,21 @@ export type HostedFillMoveOutcome =
  * placed relative to. The positional write lands on the undo stack; the
  * caller's transaction tags it and re-meshes what it returns.
  */
-export function moveHostedFillIn(get: () => ViewerState, modelId: string, expressId: number, position: HostedFillPosition): HostedFillMoveOutcome {
-  for (const value of [position.offset, position.sill]) {
-    if (value !== undefined && !Number.isFinite(value)) return { ok: false, reason: 'Offset and sill must be numbers' };
-  }
-  const target = modelEditTarget(get(), modelId);
-  const read = target ? readHostedFill(target.dataStore, expressId, target.view) : null;
-  if (!target || !read) return { ok: false, reason: `#${expressId} is not an opening placed in its host` };
-  const unit = { lengthUnitScale: getModelLengthUnitScale(target.dataStore) };
-  const [x, y, z] = read.location;
-  const next: [number, number, number] = [
-    position.offset === undefined ? x : toNativeLength(unit, position.offset),
-    y,
-    position.sill === undefined ? z : toNativeLength(unit, position.sill),
-  ];
-  // The same fit rule the placing commands apply before a commit.
-  const misfit = hostMisfit(target.dataStore, target.view, read.hostId, read.openingId, read.location, next);
-  if (misfit) return { ok: false, reason: misfit };
-  if (next[0] !== x || next[2] !== z) get().setPositionalAttributesBatch(modelId, [{ entityId: read.locationPointId, index: 0, value: next }]);
-  return { ok: true, remesh: [read.openingId, ...(read.fillingId === null ? [] : [read.fillingId]), read.hostId] };
+export function moveHostedFillIn(store: ModellingStore, modelId: string, expressId: number, position: HostedFillPosition): HostedFillMoveOutcome {
+  return editHostedFillIn(store, modelId, expressId, { Offset: position.offset, Sill: position.sill });
 }
 
-/** Tolerance on the fit check: a value exactly at the wall's edge fits. */
-const FIT_EPS = 1e-6;
-
-/**
- * Why the opening, moved so its Location is `location` (native units, the
- * host's frame), stays inside the host's body along the wall and up it. The
- * opening's own body is measured in the host's frame (`placedBodyExtent`), so
- * an opening of any profile or orientation, authored here or by another tool,
- * is held to its real extent. An opening or host whose body cannot be read is
- * refused rather than moved unchecked. Null when it fits.
- */
-function hostMisfit(dataStore: IfcDataStore, view: MutablePropertyView, hostId: number, openingId: number, from: readonly number[], location: readonly number[]): string | null {
-  let host;
+/** Thin history adapter for the shared hosted params-to-commit core. The
+ * outer command transaction tags these records and re-meshes the real cut. */
+export function editHostedFillIn(store: ModellingStore, modelId: string, expressId: number, patch: HostedElementEdit): HostedFillMoveOutcome {
+  const refusal = mutationDenial(store.getState(), modelId) ?? hostedFillRefusal(store.getState(), modelId);
+  if (refusal) return { ok: false, reason: refusal };
+  const target = modelEditTarget(store.getState(), modelId);
+  if (!target) return { ok: false, reason: `No model loaded for id "${modelId}"` };
   try {
-    host = resolveHostAnchor(dataStore, hostId, view).hostBounds;
+    const read = recordModellingEdit(store, modelId, (_methods, draft) => editHostedElementInStore(target.dataStore, draft, expressId, patch));
+    return { ok: true, remesh: [read.openingId, ...(read.fillingId === null ? [] : [read.fillingId]), read.hostId] };
   } catch (error) {
-    console.warn(`[modeling] host #${hostId} of opening #${openingId} is unreadable; its move is refused`, error);
-    return `The host #${hostId} can't be read, so the move is refused`;
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
   }
-  const cut = placedBodyExtent(dataStore, openingId, view);
-  if (!host || !cut) return `The size of opening #${openingId} or its host #${hostId} can't be read, so the move is refused`;
-  const dx = location[0] - from[0], dz = location[2] - from[2];
-  const fits = cut.min[0] + dx >= host.min[0] - FIT_EPS && cut.max[0] + dx <= host.max[0] + FIT_EPS
-    && cut.min[2] + dz >= host.min[2] - FIT_EPS && cut.max[2] + dz <= host.max[2] + FIT_EPS;
-  return fits ? null : "It doesn't fit in this wall: change its offset or sill";
 }

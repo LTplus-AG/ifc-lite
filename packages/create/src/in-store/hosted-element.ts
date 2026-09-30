@@ -77,19 +77,40 @@ function validateWallCut(store: IfcDataStore, view: MutablePropertyView, host: H
   if (!bounds) throw new Error(`The body of host #${host.hostId} cannot be read, so hosted placement is refused`);
   const x = toNativeLength(host, params.Offset), w = toNativeLength(host, params.Width);
   const z = toNativeLength(host, sill), h = toNativeLength(host, params.Height);
+  validateWallOpeningBounds(store, view, host, {
+    min: [x - w / 2, bounds.min[1], z], max: [x + w / 2, bounds.max[1], z + h],
+  });
+}
+
+/** Package-private fit/overlap decision shared by placement and edits. The
+ * selected cut alone is excluded; every other unreadable cut still refuses. */
+export function validateWallOpeningBounds(
+  store: IfcDataStore,
+  view: MutablePropertyView,
+  host: HostAnchor,
+  proposed: HostBounds,
+  excludeOpeningId?: number,
+): void {
+  if (host.hostKind !== 'wall') return;
+  if ([...proposed.min, ...proposed.max].some(value => !Number.isFinite(value))
+    || proposed.min.some((value, axis) => value >= proposed.max[axis])) {
+    throw new Error('Hosted opening bounds must be finite with positive dimensions');
+  }
+  const bounds = host.hostBounds;
+  if (!bounds) throw new Error(`The body of host #${host.hostId} cannot be read, so hosted placement is refused`);
   const eps = toNativeLength(host, 1e-6);
-  if (x - w / 2 < bounds.min[0] - eps || x + w / 2 > bounds.max[0] + eps
-    || z < bounds.min[2] - eps || z + h > bounds.max[2] + eps) {
+  if (proposed.min[0] < bounds.min[0] - eps || proposed.max[0] > bounds.max[0] + eps
+    || proposed.min[2] < bounds.min[2] - eps || proposed.max[2] > bounds.max[2] + eps) {
     throw new Error("It doesn't fit in this wall: change its offset or sill");
   }
   const existing = readHostOpeningExtents(store, host.hostId, view);
   if (existing.unreadable.length) {
     throw new Error(`Opening geometry ${existing.unreadable.map(id => `#${id}`).join(', ')} cannot be read, so hosted placement is refused`);
   }
-  const overlap = existing.cuts.find(({ bounds: cut }) =>
-    Math.min(x + w / 2, cut.max[0]) - Math.max(x - w / 2, cut.min[0]) > eps
-    && Math.min(z + h, cut.max[2]) - Math.max(z, cut.min[2]) > eps
-    && Math.min(bounds.max[1], cut.max[1]) - Math.max(bounds.min[1], cut.min[1]) > eps);
+  const overlap = existing.cuts.find(({ openingId, bounds: cut }) => openingId !== excludeOpeningId
+    && Math.min(proposed.max[0], cut.max[0]) - Math.max(proposed.min[0], cut.min[0]) > eps
+    && Math.min(proposed.max[2], cut.max[2]) - Math.max(proposed.min[2], cut.min[2]) > eps
+    && Math.min(bounds.max[1], proposed.max[1], cut.max[1]) - Math.max(bounds.min[1], proposed.min[1], cut.min[1]) > eps);
   if (overlap) throw new Error(`The new opening overlaps opening #${overlap.openingId} in wall #${host.hostId}`);
 }
 

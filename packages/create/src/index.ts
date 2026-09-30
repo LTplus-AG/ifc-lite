@@ -116,6 +116,7 @@ export {
 } from './in-store/hosted-fill.js';
 export { hostPlanFrame, readHostedFill, type HostPlanFrame, type HostedFillRead } from './in-store/hosted-fill-read.js';
 export { addHostedElementInStore, readHostOpeningExtents, type HostedElementInStoreSpec, type HostedElementInStoreResult, type HostedOpeningExtent } from './in-store/hosted-element.js';
+export { editHostedElementInStore, readHostedElementSize, type HostedElementEdit, type HostedElementSize } from './in-store/hosted-element-edit.js';
 export {
   addElementTypeToStore,
   assignTypeInStore,

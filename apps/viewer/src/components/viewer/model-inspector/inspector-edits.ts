@@ -26,7 +26,8 @@ import { detachFromType, recordModellingEdit } from '@/store/slices/mutation-mod
 import { commitElementSize } from '@/lib/element-size-commit';
 import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
 import { setWallSection, type WallSection } from '@/store/slices/mutation-wall-section';
-import { moveHostedFillIn, type HostedFillPosition } from '@/store/slices/mutation-hosted-fill';
+import { editHostedFillIn, moveHostedFillIn, type HostedFillPosition } from '@/store/slices/mutation-hosted-fill';
+import type { HostedElementSize } from '@ifc-lite/create';
 
 /**
  * Run one inspector edit as one undo step. `edit` writes through
@@ -109,9 +110,19 @@ export function setWallDimensions(modelId: string, expressId: number, section: W
  */
 export function moveHostedElement(modelId: string, expressId: number, position: HostedFillPosition): boolean {
   return runInspectorEdit(modelId, (tx) => {
-    const moved = moveHostedFillIn(() => tx.store, tx.modelId, expressId, position);
+    const moved = moveHostedFillIn(useViewerStore, tx.modelId, expressId, position);
     if (!moved.ok) throw new Error(moved.reason);
     return moved.remesh;
+  });
+}
+
+/** Occurrence-only window/door size, using the same hosted fit and overlap
+ * core as placement, Offset/Sill and the plan slide handle. */
+export function setHostedElementDimensions(modelId: string, expressId: number, size: Partial<HostedElementSize>): boolean {
+  return runInspectorEdit(modelId, tx => {
+    const edited = editHostedFillIn(useViewerStore, tx.modelId, expressId, size);
+    if (!edited.ok) throw new Error(edited.reason);
+    return edited.remesh;
   });
 }
 

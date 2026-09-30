@@ -15,7 +15,7 @@
  */
 
 import { firstProjAxis } from '@ifc-lite/data';
-import { axis2d, axis3d, applyFrame, pointOf, refId, num, unit, vec3, type Vec3, type Frame3 } from './host-geometry-frame.js';
+import { axis2d, axis3d, applyFrame, composeFrame, contextDimension, pointOf, refId, num, transformBounds, unit, vec3, type Vec3, type Frame3 } from './host-geometry-frame.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { HostAnchor, HostBounds, HostKind } from './anchor.js';
@@ -81,13 +81,16 @@ export function placedBodyExtent(
   if (!local || placement?.type.toUpperCase() !== 'IFCLOCALPLACEMENT' || refId(placement.attributes[1]) === null) return null;
   const frame = axis3d(reader, placement.attributes[1]);
   if (!frame) return null;
-  const min: Vec3 = [Infinity, Infinity, Infinity];
-  const max: Vec3 = [-Infinity, -Infinity, -Infinity];
-  for (const x of [local.min[0], local.max[0]]) for (const y of [local.min[1], local.max[1]]) for (const z of [local.min[2], local.max[2]]) {
-    const p = applyFrame(frame, [x, y, z]);
-    for (let i = 0; i < 3; i++) { min[i] = Math.min(min[i], p[i]); max[i] = Math.max(max[i], p[i]); }
-  }
-  return { min, max };
+  return transformBounds(local, frame);
+}
+
+/** Package-private Model Body bounds before ObjectPlacement. Plan annotation
+ * representations are not physical volume; unreadable 3D parts still refuse. */
+export function localBodyExtent(store: IfcDataStore, productId: number, view?: MutablePropertyView | null): HostBounds | null {
+  const reader = new AnchorEntityReader(store, view);
+  const product = reader.entity(productId);
+  const shapeId = product ? refId(named(product, 'Representation', 6)) : null;
+  return shapeId === null ? null : bodyBounds(reader, shapeId);
 }
 
 function named(record: { names: string[]; attributes: unknown[] }, name: string, fallback: number): unknown {
@@ -120,6 +123,10 @@ function bodyBounds(reader: AnchorEntityReader, productShapeId: number): HostBou
     if (!rep) return null;
     const identifier = rep.attributes[1];
     if (typeof identifier === 'string' && identifier.toLowerCase() !== 'body') continue;
+    const contextId = refId(rep.attributes[0]);
+    const dimension = contextId === null ? null : contextDimension(reader, contextId);
+    if (dimension === null) return null;
+    if (dimension === 2) continue;
     const items = rep.attributes[3];
     if (!Array.isArray(items) || items.length === 0) return null;
     for (const item of items) {
@@ -198,11 +205,6 @@ function collectItemPoints(reader: AnchorEntityReader, itemId: number, out: Vec3
     }
   }
   return true;
-}
-
-function composeFrame(outer: Frame3, inner: Frame3): Frame3 {
-  const direction = (p: Vec3): Vec3 => [0, 1, 2].map(i => outer.x[i] * p[0] + outer.y[i] * p[1] + outer.z[i] * p[2]) as Vec3;
-  return { o: applyFrame(outer, inner.o), x: direction(inner.x), y: direction(inner.y), z: direction(inner.z) };
 }
 
 function mappedItemFrame(reader: AnchorEntityReader, attrs: unknown[]): { items: number[]; frame: Frame3 } | null {

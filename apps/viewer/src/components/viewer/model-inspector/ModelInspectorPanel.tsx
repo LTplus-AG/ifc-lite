@@ -179,7 +179,7 @@ function SelectionBody({ selection }: { selection: InspectorSelection }) {
       </div>
       {kind === null && <div className="px-3 py-3"><InspectorCaption>{t('modelInspector.noSections', { ifcClass: selection.ifcClass })}</InspectorCaption></div>}
       {kind !== null && <TypeSection modelId={modelId} live={live} kind={kind} elementId={expressId} />}
-      {kind !== null && !HOSTED.has(kind) && <SelectionDimensions selection={selection} />}
+      {kind !== null && <SelectionDimensions selection={selection} />}
       {kind !== null && AUTHORED_KINDS[kind].layers && (
         <LayersSection
           // Re-seed the draft when the applied layers change, or (with none) the wall's thickness does.

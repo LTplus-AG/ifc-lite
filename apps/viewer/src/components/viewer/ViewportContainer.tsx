@@ -163,8 +163,6 @@ export function ViewportContainer() {
   // Also computed while the solar study runs without Cesium — the WebGPU sun
   // needs the site's lat/lon + map rotation to track the studied instant.
   const georef = useMemo(() => {
-    if (!cesiumEnabled && !solarEnabled) return null;
-
     const applyPlacementDraft = <T extends { mapConversion?: MapConversion }>(
       modelId: string,
       effective: T,
@@ -249,8 +247,6 @@ export function ViewportContainer() {
 
     return null;
   }, [
-    cesiumEnabled,
-    solarEnabled,
     storeModels,
     ifcDataStore,
     georefMutations,
@@ -978,7 +974,7 @@ export function ViewportContainer() {
           storeyElevations={georef.storeyElevations}
         />
       )}
-      {cesiumEnabled && georef?.mapConversion && georef.baseMapConversion && (
+      {georef?.mapConversion && georef.baseMapConversion && (
         <CesiumPlacementGizmo
           modelId={georef.sourceModelId}
           mapConversion={georef.mapConversion}

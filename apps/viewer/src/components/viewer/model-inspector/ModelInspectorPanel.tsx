@@ -24,7 +24,7 @@ import { useTranslation } from '@/i18n';
 import { AUTHORED_KINDS, entityName, layerSetOf, readLayerSet, typeOf } from '@/lib/commands/modeling/authored-kinds';
 import { authoringDim, type AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import { CommitField, InspectorCaption, InspectorRow } from './InspectorControls';
-import { DefaultDimensions, SelectionDimensions } from './DimensionsSection';
+import { DefaultDimensions, SelectionDimensions, isStairSelection } from './DimensionsSection';
 import { HostingSection } from './HostingSection';
 import { DefaultProfile, SelectionProfile, isProfileOwner } from './ProfileInspectorSection';
 import { KIND_LABEL } from './inspector-fields';
@@ -179,9 +179,9 @@ function SelectionBody({ selection }: { selection: InspectorSelection }) {
           <CommitField id={id} value={name} onCommit={rename} placeholder={t('modelInspector.name.placeholder')} />
         </InspectorRow>
       </div>
-      {kind === null && <div className="px-3 py-3"><InspectorCaption>{t('modelInspector.noSections', { ifcClass: selection.ifcClass })}</InspectorCaption></div>}
+      {kind === null && !isStairSelection(selection) && <div className="px-3 py-3"><InspectorCaption>{t('modelInspector.noSections', { ifcClass: selection.ifcClass })}</InspectorCaption></div>}
       {kind !== null && <TypeSection modelId={modelId} live={live} kind={kind} elementId={expressId} />}
-      {kind !== null && <SelectionDimensions selection={selection} />}
+      {(kind !== null || isStairSelection(selection)) && <SelectionDimensions selection={selection} />}
       {isProfileOwner(kind) && <SelectionProfile selection={selection} owner={kind} />}
       {kind !== null && AUTHORED_KINDS[kind].layers && (
         <LayersSection

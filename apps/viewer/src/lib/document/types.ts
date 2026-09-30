@@ -166,8 +166,10 @@ export interface TableBlock {
   maxRows?: number;
   /** Group ordering at every nesting level; absent retains count-descending defaults. */
   groupOrder?: GroupOrder;
-  /** Optional opaque table-header background; ink is chosen for readable contrast. */
+  /** Optional opaque table-header background; absent uses the default slate. */
   headerBackground?: string;
+  /** Optional opaque header ink; absent chooses black or white for contrast. */
+  headerTextColor?: string;
 }
 
 export type DocumentBlock = TextBlock | ImageBlock | ChartBlock | TopicBlock | SpacerBlock | PageBreakBlock | TableBlock | IdsReportBlock | ManualReportBlock;
@@ -333,6 +335,7 @@ function validateTableBlock(block: Record<string, unknown>, at: string, errors: 
   if (block.caption !== undefined && !isString(block.caption)) errors.push({ path: `${at}.caption`, message: 'expected a string' });
   if (block.groupOrder !== undefined && block.groupOrder !== 'count' && block.groupOrder !== 'label') errors.push({ path: `${at}.groupOrder`, message: 'expected count | label' });
   if (block.headerBackground !== undefined && !isRgbColor(block.headerBackground)) errors.push({ path: `${at}.headerBackground`, message: 'expected an RGB colour in #RRGGBB form' });
+  if (block.headerTextColor !== undefined && !isRgbColor(block.headerTextColor)) errors.push({ path: `${at}.headerTextColor`, message: 'expected an RGB colour in #RRGGBB form' });
   if (block.maxRows !== undefined && (!Number.isInteger(block.maxRows) || (block.maxRows as number) < 1 || (block.maxRows as number) > TABLE_ROWS_MAX)) {
     errors.push({ path: `${at}.maxRows`, message: `expected an integer between 1 and ${TABLE_ROWS_MAX}` });
   }

@@ -75,8 +75,10 @@ describe('Document table options (#6489)', () => {
       assert.deepEqual(validateDocumentSpec(migrated), []);
       assert.equal('groupOrder' in migrated.blocks[0], false);
       assert.equal('headerBackground' in migrated.blocks[0], false);
+      assert.equal('headerTextColor' in migrated.blocks[0], false);
     }
-    for (const groupOrder of ['count', 'label']) assert.deepEqual(validateDocumentSpec({ ...document, blocks: [{ ...block, groupOrder, headerBackground: '#aB09Ef' }] }), []);
+    for (const groupOrder of ['count', 'label']) assert.deepEqual(validateDocumentSpec({ ...document, blocks: [{ ...block, groupOrder, headerBackground: '#aB09Ef', headerTextColor: '#6b21a8' }] }), []);
+    for (const value of ['red', '#abc', '#000000ff', '#12345g', '', null]) assert.ok(validateDocumentSpec({ ...document, blocks: [{ ...block, headerTextColor: value }] }).some((e) => e.path.endsWith('.headerTextColor')));
     for (const value of ['largest', '', 4, null]) assert.ok(validateDocumentSpec({ ...document, blocks: [{ ...block, groupOrder: value }] }).some((e) => e.path.endsWith('.groupOrder')));
     for (const value of ['red', '#abc', '#000000ff', '#12345g', '', null]) {
       assert.equal(isRgbColor(value), false);
@@ -84,11 +86,13 @@ describe('Document table options (#6489)', () => {
     }
   });
 
-  it('chooses readable black or white ink for opaque header colours and preserves the existing palette', () => {
+  it('chooses readable default ink, accepts authored RGB ink and preserves the existing palette', () => {
     assert.deepEqual(tableHeaderStyle(), { backgroundColor: DEFAULT_TABLE_HEADER_BACKGROUND, textColor: '#ffffff' });
     assert.equal(tableHeaderStyle('#ffffff').textColor, '#000000');
     assert.equal(tableHeaderStyle('#000000').textColor, '#ffffff');
     assert.equal(tableHeaderStyle('#767676').textColor, '#000000');
+    assert.equal(tableHeaderStyle('#ffee88', '#6b21a8').textColor, '#6b21a8');
+    assert.equal(tableHeaderStyle('#ffee88', 'violet').textColor, '#000000', 'invalid overrides retain automatic contrast');
     assert.equal(contrastRatio([0, 0, 0], [1, 1, 1]), 21);
     for (const r of [0, 51, 102, 153, 204, 255]) for (const g of [0, 51, 102, 153, 204, 255]) for (const b of [0, 51, 102, 153, 204, 255]) {
       const color = `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;

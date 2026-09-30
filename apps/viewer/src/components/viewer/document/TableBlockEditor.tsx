@@ -31,7 +31,7 @@ import {
 } from '@/lib/document/types';
 import { ClampedNumberInput, field } from './BlockEditor.parts';
 import { OptionalColorPicker } from './OptionalColorPicker';
-import { DEFAULT_TABLE_HEADER_BACKGROUND } from '@/lib/table-header-style';
+import { DEFAULT_TABLE_HEADER_BACKGROUND, tableHeaderStyle } from '@/lib/table-header-style';
 import { ComparisonSourceEditor } from './ComparisonSourceEditor';
 import { TABLE_COLUMN_LABEL_KEY } from './table-column-labels';
 
@@ -222,6 +222,9 @@ export function TableBlockEditor({ block, onChange }: TableBlockEditorProps) {
         <OptionalColorPicker label={t('document.block.tableHeaderBackground')} resetLabel={t('document.block.tableHeaderReset')}
           value={block.headerBackground} defaultValue={DEFAULT_TABLE_HEADER_BACKGROUND}
           onChange={(headerBackground) => onChange({ ...block, headerBackground })} />
+        <OptionalColorPicker label={t('document.block.tableHeaderTextColor')} resetLabel={t('document.block.tableHeaderTextReset')}
+          value={block.headerTextColor} defaultValue={tableHeaderStyle(block.headerBackground).textColor}
+          onChange={(headerTextColor) => onChange({ ...block, headerTextColor })} />
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <input className={`${field} min-w-0 flex-1`} value={block.title ?? ''} placeholder={source.kind === 'list' ? source.list.name : source.kind === 'comparison' ? source.comparison.name : t('document.block.tableSourceValidation')} onChange={(e) => onChange({ ...block, title: e.target.value || undefined })} aria-label={t('document.block.tableTitleAriaLabel')} />

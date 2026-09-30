@@ -183,6 +183,8 @@ export const documentEn = {
   'document.block.tableOrderLabel': 'Group order',
   'document.block.tableHeaderBackground': 'Header background',
   'document.block.tableHeaderReset': 'Reset table header background',
+  'document.block.tableHeaderTextColor': 'Header text',
+  'document.block.tableHeaderTextReset': 'Reset table header text color',
   'document.block.tableRowsLabel': 'Rows',
   'document.block.tableRowsAriaLabel': 'Rows to print before "… n more rows"',
   'document.block.tableSummary': '{columns} columns · {view}',

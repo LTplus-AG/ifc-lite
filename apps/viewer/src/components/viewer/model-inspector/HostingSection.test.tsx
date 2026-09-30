@@ -15,6 +15,8 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { placedBodyExtent, readHostedElementSize, readHostedFill } from '@ifc-lite/create';
+import { IfcParser } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { blur, cleanup, click, render, type } from '@/test/render.js';
@@ -58,6 +60,45 @@ afterEach(() => {
 });
 
 describe('Hosting section (#6232 A1)', () => {
+  for (const modelCount of [1, 2]) it(`hosted dimension inputs resolve overlay ownership with ${modelCount} model(s), independently of the active model (#6232)`, async () => {
+    const owner = { ...s().models.get(MODEL_ID)!, idOffset: 1_000_000, maxExpressId: 139 };
+    const models = new Map([[MODEL_ID, owner]]);
+    let decoyView: MutablePropertyView | undefined;
+    const ownerView = s().mutationViews.get(MODEL_ID)!;
+    if (modelCount === 2) {
+      const source = owner.ifcDataStore!.source;
+      const data = await source.withMaterializedAsync(bytes => new IfcParser().parseColumnar(Uint8Array.from(bytes).buffer, { disableWorkerScan: true }));
+      const decoy = { ...owner, id: 'decoy', name: 'decoy', idOffset: 0, ifcDataStore: data };
+      models.set('decoy', decoy);
+      decoyView = new MutablePropertyView(data.properties ?? null, 'decoy');
+      useViewerStore.setState({ models, mutationViews: new Map([[MODEL_ID, ownerView], ['decoy', decoyView]]) });
+      const decoyWall = s().addWall('decoy', STOREY, { Start: [0, 0, 0], End: [6, 0, 0], Thickness: 0.2, Height: 3, Name: 'Decoy wall' });
+      assert.ok('expressId' in decoyWall);
+      const decoyWindow = s().addHostedFill('decoy', decoyWall.expressId, { kind: 'window', params: { Offset: 2, Sill: 0.9, Width: 1.2, Height: 1.5 } });
+      assert.ok('expressId' in decoyWindow);
+      assert.equal(decoyWindow.expressId, window, 'independently authored models have colliding local overlay ids');
+      useViewerStore.setState({ activeModelId: 'decoy', ifcDataStore: data, session: { ...s().session!, modelId: 'decoy' } });
+    }
+    useViewerStore.setState({ models });
+    s().setSelectedEntityId(toGlobalIdFromModels(models, MODEL_ID, window));
+    const root = render(<ModelInspectorPanel />);
+    const originalDepth = s().undoStacks.get(MODEL_ID)?.length ?? 0;
+    const decoyDepth = s().undoStacks.get('decoy')?.length ?? 0;
+    const decoyShape = decoyView ? placedBodyExtent(models.get('decoy')!.ifcDataStore!, window, decoyView) : null;
+    remeshed = [];
+    type(input(root, 'Width in metres'), '1.6');
+    blur(input(root, 'Width in metres'));
+    assert.equal(readHostedElementSize(owner.ifcDataStore!, window, ownerView)?.OverallWidth, 1.6);
+    assert.ok((s().undoStacks.get(MODEL_ID)?.length ?? 0) > originalDepth);
+    assert.equal(s().undoStacks.get('decoy')?.length ?? 0, decoyDepth);
+    assert.equal(remeshed.length, 1);
+    assert.equal(remeshed[0].modelId, MODEL_ID, 'remeshing uses the selected entity owner');
+    if (decoyView) assert.deepEqual(placedBodyExtent(models.get('decoy')!.ifcDataStore!, window, decoyView), decoyShape);
+    act(() => s().undo(MODEL_ID));
+    assert.equal(readHostedElementSize(owner.ifcDataStore!, window, ownerView)?.OverallWidth, 1.2);
+    assert.equal(s().undoStacks.get(MODEL_ID)?.length, originalDepth, 'one undo restores the entire occurrence edit');
+  });
+
   it('shows the host wall, the offset along it and the sill', () => {
     const root = render(<ModelInspectorPanel />);
     const headings = [...root.querySelectorAll('h3')].map((h) => h.textContent);

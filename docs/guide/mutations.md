@@ -557,7 +557,7 @@ if (size) {
 }
 ```
 
-Size edits apply an affine mapping to the selected occurrence and its opening, holding the existing cut's centre and bottom while preserving its thickness. Source/type geometry, styles, metadata, relationships and other occurrences remain unchanged. Fresh placements prevent a move from altering shared source points. Unsupported geometry or placements are refused without writes. In the viewer, the Dimensions and Hosting fields and plan slide handle call this core; each successful edit is one undo step and re-meshes the filling and voided host through WASM.
+Size edits apply an affine mapping to the selected occurrence and its opening, holding the existing cut's centre and bottom while preserving its thickness. Repeated size edits combine compatible existing scales so mapping depth does not grow with every commit. Source/type geometry, styles, metadata, relationships and other occurrences remain unchanged. Fresh placements prevent a move from altering shared source points. Unsupported geometry or placements are refused without writes. In the viewer, the Dimensions and Hosting fields and plan slide handle call this core; each successful edit is one undo step and re-meshes the filling and voided host through WASM.
 
 #### Type objects and materials
 

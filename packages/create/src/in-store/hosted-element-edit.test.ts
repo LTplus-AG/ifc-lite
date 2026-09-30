@@ -82,6 +82,40 @@ describe('hosted occurrence edit (#6232)', () => {
     expect(actual.max[2]).toBeCloseTo(cut.max[2] + 0.1, 9);
   });
 
+  it('retains styled items and presentation layers on an existing scale wrapper during later size commits (#6232)', async () => {
+    const { store, view, editor, reader } = await session();
+    editHostedElementInStore(store, editor, 1262, { OverallWidth: 1.2 });
+    const shape = reader.entity(refId(reader.entity(1262)!.attributes[6])!)!;
+    const repId = refId((shape.attributes[2] as unknown[])[0])!;
+    const itemId = refId((reader.entity(repId)!.attributes[3] as unknown[])[0])!;
+    const styled = reader.entity(reader.firstId('IFCSTYLEDITEM')!)!;
+    const styleRefs = styled.attributes[1];
+    expect(Array.isArray(styleRefs)).toBe(true);
+    if (!Array.isArray(styleRefs) || styleRefs.some(value => refId(value) === null)) throw new Error('The source style list is unreadable');
+    const styleId = editor.addEntity('IfcStyledItem', [`#${itemId}`, styleRefs.map(value => `#${refId(value)!}`), 'Occurrence style']).expressId;
+    const layerId = editor.addEntity('IfcPresentationLayerAssignment', ['Occurrence layer', null, [`#${repId}`], null]).expressId;
+    const styleBefore = reader.entity(styleId), layerBefore = reader.entity(layerId);
+    for (const OverallWidth of [1.1, 1.3, 0.9]) editHostedElementInStore(store, editor, 1262, { OverallWidth });
+    const finalShape = reader.entity(refId(reader.entity(1262)!.attributes[6])!)!;
+    const stack = (finalShape.attributes[2] as unknown[]).map(value => refId(value)!);
+    const reachable = new Set<number>();
+    while (stack.length) {
+      const id = stack.pop()!;
+      if (reachable.has(id)) continue;
+      reachable.add(id);
+      expect(reachable.size).toBeLessThan(100);
+      const entity = reader.entity(id)!;
+      if (entity.type.toUpperCase() === 'IFCSHAPEREPRESENTATION') stack.push(...(entity.attributes[3] as unknown[]).map(value => refId(value)!));
+      else if (entity.type.toUpperCase() === 'IFCMAPPEDITEM') stack.push(refId(entity.attributes[0])!);
+      else if (entity.type.toUpperCase() === 'IFCREPRESENTATIONMAP') stack.push(refId(entity.attributes[1])!);
+    }
+    expect(reachable.has(repId)).toBe(true);
+    expect(reachable.has(itemId)).toBe(true);
+    expect(reader.entity(styleId)).toEqual(styleBefore);
+    expect(reader.entity(layerId)).toEqual(layerBefore);
+    expect(readHostedElementSize(store, 1262, view)?.OverallWidth).toBe(0.9);
+  });
+
   it('refuses moving or growing into another real source opening and leaves no writes', async () => {
     const { store, view, editor } = await session();
     const first = placedBodyExtent(store, 1299, view)!, second = placedBodyExtent(store, 1443, view)!;

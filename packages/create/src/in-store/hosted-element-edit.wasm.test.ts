@@ -52,6 +52,36 @@ function bounds(parts: MeshWitness[]) {
 }
 
 describe('hosted occurrence real WASM oracle (#6232)', () => {
+  it.skipIf(!existsSync(WASM) || !existsSync(WASM_JS))('repeated dimension commits retain imported mapped geometry (#6232)', async () => {
+    const [{ IfcParser }, { MutablePropertyView, StoreEditor }, { StepExporter }, { editHostedElementInStore }] = await Promise.all([
+      import('@ifc-lite/parser'), import('@ifc-lite/mutations'), import('@ifc-lite/export'), import('./hosted-element-edit.js'),
+    ]);
+    const bytes = readFileSync(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
+    const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
+    const before = await meshes(bytes.toString('utf8'));
+    for (let i = 0; i < 40; i++) editHostedElementInStore(store, editor, 1262, {
+      OverallWidth: i % 2 ? 0.9 : 1.2, OverallHeight: i % 2 ? 1.2 : 1.4,
+    });
+    const updated = new TextDecoder().decode(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content);
+    const result = await meshes(updated);
+    expect(result.shapes.get(1262)?.length ?? 0).toBeGreaterThan(0);
+    const box = bounds(result.shapes.get(1262)!);
+    expect(box.max[0] - box.min[0]).toBeCloseTo(0.9, 5);
+    expect(box.max[1] - box.min[1]).toBeCloseTo(1.2, 5);
+    expect(result.shapes.get(1407)).toEqual(before.shapes.get(1407));
+    const original = before.shapes.get(1262)!, repeated = result.shapes.get(1262)!;
+    expect(repeated.length).toBe(original.length);
+    for (let part = 0; part < original.length; part++) {
+      expect(repeated[part].indices).toEqual(original[part].indices);
+      expect(repeated[part].color).toEqual(original[part].color);
+      for (let i = 0; i < original[part].positions.length; i++) {
+        expect(repeated[part].positions[i] + repeated[part].origin[i % 3])
+          .toBeCloseTo(original[part].positions[i] + original[part].origin[i % 3], 5);
+      }
+    }
+  }, 30_000);
+
   it.skipIf(!existsSync(WASM) || !existsSync(WASM_JS))('rescales only the selected mapped window and enlarges its real void (build WASM to run)', async () => {
     // Parser/export/core imports can themselves reach the geometry bridge.
     // Keep them behind eligibility so absent runtime artifacts really skip.

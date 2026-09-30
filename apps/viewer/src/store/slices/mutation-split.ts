@@ -29,6 +29,8 @@ import { computeLinearElementSplitGeometry } from '@/lib/linear-element-edit.js'
 import { readAttributes, resolvePlacementChain } from '@/lib/placement-core.js';
 import { cloneElementMetadata } from '@/lib/metadata-clone.js';
 import { reassignWallOpenings } from '@/lib/wall-opening-reassign.js';
+import { joinAwareWall, splitJoinedWall } from './mutation-wall-split-joined.js';
+import type { ModellingStore } from './mutation-modelling-records.js';
 import { resolve as translate } from '@/i18n/registry';
 
 type Get = () => ViewerState;
@@ -120,32 +122,45 @@ export function splitWall(
   modelId: string,
   expressId: number,
   distance: number,
+  store: ModellingStore,
 ): { ok: true; left: Piece; right: Piece; openings: { toLeft: number; toRight: number; skipped: number } } | { ok: false; reason: string } {
   const open = openSplit(get, editorFor, modelId, expressId, 'wall');
   if (!open.ok) return open;
   const { env, chain } = open;
-  const geo = computeWallSplitGeometry(chain, distance, chain.height);
-  if (!geo.ok) return geo;
-  const keepLeft = keepsFirstPiece(distance, chain.wallLength - distance);
-  const kept = keepLeft ? geo.geometry.left : geo.geometry.right;
-  const cut = keepLeft ? geo.geometry.right : geo.geometry.left;
+  let addedId: number;
+  let keepLeft: boolean;
+  const joined = joinAwareWall(env, expressId);
+  if (joined) {
+    // Joins, cut ends or an Axis: the cut runs along the axis and the joins follow their piece.
+    const split = splitJoinedWall(store, env, modelId, expressId, distance, joined);
+    if (!split.ok) return split;
+    ({ addedId, keepLeft } = split);
+  } else {
+    const geo = computeWallSplitGeometry(chain, distance, chain.height);
+    if (!geo.ok) return geo;
+    keepLeft = keepsFirstPiece(distance, chain.wallLength - distance);
+    const kept = keepLeft ? geo.geometry.left : geo.geometry.right;
+    const cut = keepLeft ? geo.geometry.right : geo.geometry.left;
 
-  const added = get().addWall(modelId, env.storeyExpressId, { ...cut, Name: env.name, GlobalId: env.newGlobalId });
-  if ('error' in added) return { ok: false, reason: added.error };
+    const added = get().addWall(modelId, env.storeyExpressId, { ...cut, Name: env.name, GlobalId: env.newGlobalId });
+    if ('error' in added) return { ok: false, reason: added.error };
+    addedId = added.expressId;
 
-  const k = chain.lengthUnitScale;
-  const keptLength = Math.hypot(kept.End[0] - kept.Start[0], kept.End[1] - kept.Start[1]);
-  reshapeSource(get, modelId, [
-    { entityId: chain.startPointId, index: 0, value: scaled(kept.Start, k) },
-    { entityId: chain.profileId, index: 3, value: native(keptLength, k) },
-    { entityId: chain.profileOriginPointId, index: 0, value: [native(keptLength, k) / 2, 0] },
-  ]);
+    const k = chain.lengthUnitScale;
+    const keptLength = Math.hypot(kept.End[0] - kept.Start[0], kept.End[1] - kept.Start[1]);
+    reshapeSource(get, modelId, [
+      { entityId: chain.startPointId, index: 0, value: scaled(kept.Start, k) },
+      { entityId: chain.profileId, index: 3, value: native(keptLength, k) },
+      { entityId: chain.profileOriginPointId, index: 0, value: [native(keptLength, k) / 2, 0] },
+    ]);
+  }
 
   // Only openings in the new piece change host. An opening's local X is
   // native units; a kept RIGHT piece starts at the cut, so the openings it
   // keeps shift by the cut too.
-  const leftId = keepLeft ? expressId : added.expressId;
-  const rightId = keepLeft ? added.expressId : expressId;
+  const k = chain.lengthUnitScale;
+  const leftId = keepLeft ? expressId : addedId;
+  const rightId = keepLeft ? addedId : expressId;
   const leftPlacement = resolvePlacementChain(env.dataStore, env.view, env.editor, leftId)?.localPlacementId;
   const rightPlacement = resolvePlacementChain(env.dataStore, env.view, env.editor, rightId)?.localPlacementId;
   let openings = { toLeft: 0, toRight: 0, skipped: 0 };
@@ -155,7 +170,7 @@ export function splitWall(
       (entityId, index, value) => get().setPositionalAttribute(modelId, entityId, index, value));
     openings = { toLeft: s.toLeft, toRight: s.toRight, skipped: s.skipped };
   }
-  closeSplit(get, modelId, env, expressId, added.expressId);
+  closeSplit(get, modelId, env, expressId, addedId);
   return { ok: true, left: piece(get, modelId, leftId), right: piece(get, modelId, rightId), openings };
 }
 

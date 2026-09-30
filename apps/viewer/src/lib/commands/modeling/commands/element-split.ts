@@ -32,6 +32,7 @@ import { SplitScene } from '@/components/viewer/tools/SplitHud';
 import { pointInPolygon, type Point2D } from '@/lib/polygon-clip';
 import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import type { Vec2 } from '@/lib/snap/types';
+import { joinedPartnersOf } from '@/store/slices/mutation-wall-joins';
 import { buildStoreyWorkplane, elementStoreyId, isWorkplane } from '../workplane.js';
 import type { CommandContext, CommitResult, ModelingCommand, Vec3, Workplane } from '../types.js';
 
@@ -151,7 +152,10 @@ function commitLinear(g: SplitGesture & { target: NonNullable<SplitGesture['targ
     const wall = store().splitWallAtDistance(modelId, expressId, distance);
     if (!wall.ok) throw new Error(translate('splitTool.failed', { reason: wall.reason }));
     notifySplitCommitted(wall);
-    return splitCommit(modelId, expressId, wall, wall.right.expressId);
+    const result = splitCommit(modelId, expressId, wall, wall.right.expressId);
+    // The walls joined to either piece were cut again against it.
+    const recut = joinedPartnersOf(store(), modelId, [wall.left.expressId, wall.right.expressId]);
+    return { ...result, remesh: [...result.remesh, ...recut] };
   }
   const linear = store().splitLinearElementAtDistance(modelId, expressId, distance);
   if (!linear.ok) throw new Error(translate('splitTool.failed', { reason: linear.reason }));

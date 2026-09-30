@@ -26,8 +26,9 @@ import { PropertySetCard } from './PropertySetCard';
 import { GeoreferencingPanel } from './GeoreferencingPanel';
 import type { PropertySet } from './encodingUtils';
 import type { FederatedModel } from '@/store/types';
-import { extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import { extractGeoreferencingOnDemand, extractProjectUnits, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
+import { getIfcLengthUnitScale } from '@/lib/geo/effective-georef';
 import { computeModelStats } from './modelMetadataStats';
 import { collectEffectivePhysicalEntityIds } from '@/lib/physical-objects';
 import { useTranslation } from '@/i18n';
@@ -132,19 +133,20 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
     if (!dataStore) return null;
     const info = extractGeoreferencingOnDemand(dataStore as IfcDataStore);
     return info?.hasGeoreference ? info : null;
-  }, [dataStore]);
+  }, [dataStore, dataStore?.georeferencing]);
 
   // Extract length unit scale
   const unitInfo = useMemo(() => {
-    if (!dataStore?.source?.length || !dataStore?.entityIndex) return null;
-    const scale = extractLengthUnitScale(dataStore.source, dataStore.entityIndex);
+    if (!dataStore) return null;
+    if (dataStore.lengthUnitScale === undefined && (!dataStore.source?.length || !dataStore.entityIndex)) return null;
+    const scale = getIfcLengthUnitScale(dataStore);
     let unitName = t('properties.modelMetadata.unit.meters');
     if (Math.abs(scale - 0.001) < 0.0001) unitName = t('properties.modelMetadata.unit.millimeters');
     else if (Math.abs(scale - 0.01) < 0.001) unitName = t('properties.modelMetadata.unit.centimeters');
     else if (Math.abs(scale - 0.0254) < 0.001) unitName = t('properties.modelMetadata.unit.inches');
     else if (Math.abs(scale - 0.3048) < 0.01) unitName = t('properties.modelMetadata.unit.feet');
     return { scale, unitName };
-  }, [dataStore, t, revision]);
+  }, [dataStore, dataStore?.lengthUnitScale, t, revision]);
 
   // The file's declared units, for rendering unit suffixes on project
   // property values (issue #1573).

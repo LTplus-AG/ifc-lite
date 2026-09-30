@@ -158,7 +158,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
         // removed during that round-trip belongs to (or leaves) the share.
         // Always a seed, even empty: `startCollab` keys owner/recipient on it.
         const st = useViewerStore.getState();
-        const seed = await prepareShareSeed(st.models, st.mutationViews, st.activeModelId, scope);
+        const seed = await prepareShareSeed(st.models, st.mutationViews, st.activeModelId, scope, st.georefMutations);
         await startCollab({
           roomId,
           role: 'admin',

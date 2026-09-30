@@ -2,168 +2,158 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * localStorage persistence for manual validation (#6401), following the
- * clash-review pattern (`lib/clash/persistence.ts`, #1468):
- *
- * - ANSWERS are keyed by the model's source fingerprint, then by item id,
- *   so a verdict re-attaches when the same file is loaded again and never
- *   leaks onto a different model. Default-state answers (no verdict, no
- *   comment) are pruned on save so storage holds only real decisions.
- * - The WORKING CHECKLIST (the template being filled in or edited) is kept
- *   too, so a reload does not strand the answers without their questions.
- *   The `.checklist.json` file stays the shareable source of truth.
- *
- * A read that fails never licenses destroying what is stored: the value is
- * moved aside (`preserveUnreadableEntry`), or, if that fails too, writes to
- * the key are refused until a later clean read.
- */
-
+/** One canonical persistence record for live manual checklist instances
+ * (#6507). Old template/answer keys are migrated once, and removed only
+ * after the replacement record is saved. Failed reads preserve evidence
+ * before allowing writes, using the shared storage protection (#2085). */
 import {
-  MANUAL_VERDICTS,
-  MAX_ANSWER_COMMENT,
-  parseChecklistFile,
-  serializeChecklist,
-  type ChecklistTemplate,
-  type ManualAnswer,
-  type ManualAnswerMap,
-  type ManualVerdict,
+  MANUAL_VERDICTS, MAX_ANSWER_COMMENT, parseChecklistFile,
+  type ManualAnswer, type ManualAnswerMap, type ManualVerdict,
 } from './checklist.js';
+import { emptyManualLibrary, type ManualChecklistLibrary } from './library.js';
 import { optionalLocalStorage, preserveUnreadableEntry } from '../../storage/unreadable-entry.js';
 
-const ANSWERS_KEY = 'ifc-lite:validation:manual-answers';
-const CHECKLIST_KEY = 'ifc-lite:validation:manual-checklist';
-const SCHEMA_VERSION = 1;
-/** Cap on stored answers across every model, so the origin's quota survives. */
+const LIBRARY_KEY = 'ifc-lite:validation:manual-library';
+const LEGACY_ANSWERS_KEY = 'ifc-lite:validation:manual-answers';
+const LEGACY_CHECKLIST_KEY = 'ifc-lite:validation:manual-checklist';
 const MAX_ANSWERS = 20_000;
+let unwritable = false;
 
 export type ManualSaveResult =
   | { ok: true }
-  | { ok: false; reason: 'quota' | 'serialize' | 'too_many' | 'unreadable' };
-
-/** fingerprint → itemId → answer. */
+  | { ok: false; reason: 'quota' | 'serialize' | 'too_many' | 'unreadable' | 'no_checklist' };
 export type ManualAnswersByModel = Readonly<Record<string, ManualAnswerMap>>;
-
-const unwritableKeys = new Set<string>();
-
-function onReadFailure(key: string, cause: unknown): void {
-  if (preserveUnreadableEntry(optionalLocalStorage(), key, cause)) unwritableKeys.delete(key);
-  else unwritableKeys.add(key);
+export interface ManualLibraryRead {
+  library: ManualChecklistLibrary;
+  error: ManualSaveResult | null;
 }
 
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
-function isVerdict(v: unknown): v is ManualVerdict {
-  return typeof v === 'string' && (MANUAL_VERDICTS as readonly string[]).includes(v);
-}
-
-/** An answer worth keeping: a verdict or a non-empty comment. */
+/** A comment-only answer remains unanswered in the canonical summary,
+ * but is meaningful evidence and must still be retained. */
 export function isMeaningfulAnswer(answer: ManualAnswer): boolean {
   return answer.status !== null || (answer.comment ?? '').trim().length > 0;
 }
 
-/** Normalize one stored answer; null when it is malformed or carries nothing. */
-export function normalizeAnswer(raw: unknown): ManualAnswer | null {
-  if (!isRecord(raw)) return null;
-  if (raw.status !== null && !isVerdict(raw.status)) return null;
-  const comment = typeof raw.comment === 'string' ? raw.comment.slice(0, MAX_ANSWER_COMMENT) : '';
-  const answer: ManualAnswer = {
-    status: raw.status,
-    updatedAt: typeof raw.updatedAt === 'number' && Number.isFinite(raw.updatedAt) ? raw.updatedAt : 0,
-  };
-  if (comment.trim().length > 0) answer.comment = comment;
-  return isMeaningfulAnswer(answer) ? answer : null;
-}
-
-export function loadManualAnswers(): ManualAnswersByModel {
-  const storage = optionalLocalStorage();
-  if (!storage) return {};
-  try {
-    unwritableKeys.delete(ANSWERS_KEY);
-    const raw = storage.getItem(ANSWERS_KEY);
-    if (raw === null) return {};
-    const parsed: unknown = JSON.parse(raw);
-    const models = isRecord(parsed) && isRecord(parsed.models) ? parsed.models : null;
-    if (!models) throw new Error('expected { schemaVersion, models }');
-    const out: Record<string, Record<string, ManualAnswer>> = {};
-    for (const [fingerprint, entries] of Object.entries(models)) {
-      if (!fingerprint || !isRecord(entries)) continue;
-      const map: Record<string, ManualAnswer> = {};
-      for (const [itemId, value] of Object.entries(entries)) {
-        const answer = normalizeAnswer(value);
-        if (itemId && answer) map[itemId] = answer;
-      }
-      if (Object.keys(map).length > 0) out[fingerprint] = map;
+function normalizeAnswers(raw: unknown): ManualAnswersByModel {
+  if (!isRecord(raw)) throw new Error('expected model fingerprint to answer maps');
+  const out: Record<string, Record<string, ManualAnswer>> = {};
+  for (const [fingerprint, entries] of Object.entries(raw)) {
+    if (!fingerprint || !isRecord(entries)) continue;
+    const answers: Record<string, ManualAnswer> = {};
+    for (const [itemId, value] of Object.entries(entries)) {
+      if (!itemId || !isRecord(value)) continue;
+      if (value.status !== null && !(typeof value.status === 'string' && (MANUAL_VERDICTS as readonly string[]).includes(value.status))) continue;
+      const answer: ManualAnswer = {
+        status: value.status as ManualVerdict | null,
+        updatedAt: typeof value.updatedAt === 'number' && Number.isFinite(value.updatedAt) ? value.updatedAt : 0,
+      };
+      if (typeof value.comment === 'string' && value.comment.trim()) answer.comment = value.comment.slice(0, MAX_ANSWER_COMMENT);
+      if (isMeaningfulAnswer(answer)) Object.defineProperty(answers, itemId, { value: answer, enumerable: true, configurable: true, writable: true });
     }
-    return out;
-  } catch (err) {
-    // A half-built map is as destructive as an empty one on the next save. (#2085)
-    onReadFailure(ANSWERS_KEY, err);
-    return {};
+    if (Object.keys(answers).length) Object.defineProperty(out, fingerprint, { value: answers, enumerable: true, configurable: true, writable: true });
   }
+  return out;
 }
 
-export function saveManualAnswers(answers: ManualAnswersByModel): ManualSaveResult {
-  if (unwritableKeys.has(ANSWERS_KEY)) return { ok: false, reason: 'unreadable' };
+function parseLibrary(raw: unknown): ManualChecklistLibrary {
+  if (!isRecord(raw) || raw.version !== 1 || !Array.isArray(raw.checklists) || !(raw.activeId === null || typeof raw.activeId === 'string')) throw new Error('expected version 1 checklist library');
+  const seen = new Set<string>();
+  const checklists = raw.checklists.map((entry: unknown) => {
+    if (!isRecord(entry) || typeof entry.id !== 'string' || !entry.id || seen.has(entry.id)) throw new Error('expected distinct checklist identities');
+    seen.add(entry.id);
+    const parsed = parseChecklistFile(entry.template);
+    if (!parsed.ok) throw new Error(parsed.error);
+    return { id: entry.id, template: parsed.template, answers: normalizeAnswers(entry.answers) };
+  });
+  if (raw.activeId !== null && !seen.has(raw.activeId)) throw new Error('active checklist identity is not in the library');
+  return {
+    version: 1, activeId: raw.activeId, checklists,
+    ...(raw.pendingLegacyAnswers !== undefined ? { pendingLegacyAnswers: normalizeAnswers(raw.pendingLegacyAnswers) } : {}),
+  };
+}
+
+function preserveReadFailure(key: string, cause: unknown): void {
+  if (!preserveUnreadableEntry(optionalLocalStorage(), key, cause)) unwritable = true;
+}
+
+function readLegacy(): ManualChecklistLibrary {
+  const storage = optionalLocalStorage();
+  const library = emptyManualLibrary();
+  if (!storage) return library;
+  let answers: ManualAnswersByModel = {};
+  try {
+    const text = storage.getItem(LEGACY_ANSWERS_KEY);
+    if (text !== null) {
+      const raw: unknown = JSON.parse(text);
+      if (!isRecord(raw) || raw.schemaVersion !== 1) throw new Error('expected version 1 legacy answers');
+      answers = normalizeAnswers(raw.models);
+    }
+  } catch (error) { preserveReadFailure(LEGACY_ANSWERS_KEY, error); }
+  try {
+    const text = storage.getItem(LEGACY_CHECKLIST_KEY);
+    if (text !== null) {
+      const result = parseChecklistFile(JSON.parse(text));
+      if (!result.ok) throw new Error(result.error);
+      const id = 'manual-checklist-migrated';
+      return { version: 1, activeId: id, checklists: [{ id, template: result.template, answers }] };
+    }
+  } catch (error) { preserveReadFailure(LEGACY_CHECKLIST_KEY, error); }
+  if (Object.keys(answers).length) library.pendingLegacyAnswers = answers;
+  return library;
+}
+
+export function loadManualLibrary(): ManualLibraryRead {
+  const storage = optionalLocalStorage();
+  unwritable = false;
+  if (!storage) return { library: emptyManualLibrary(), error: null };
+  try {
+    const text = storage.getItem(LIBRARY_KEY);
+    if (text !== null) return { library: parseLibrary(JSON.parse(text)), error: null };
+  } catch (error) {
+    preserveReadFailure(LIBRARY_KEY, error);
+    return { library: emptyManualLibrary(), error: unwritable ? { ok: false, reason: 'unreadable' } : null };
+  }
+  const library = readLegacy();
+  const saved = saveManualLibrary(library);
+  if (saved.ok) {
+    try {
+      storage.removeItem(LEGACY_ANSWERS_KEY);
+      storage.removeItem(LEGACY_CHECKLIST_KEY);
+    } catch (error) {
+      // The canonical record already exists; the next load uses it even if
+      // the browser refuses to remove the now-superseded migration inputs.
+      console.warn('[ifc-lite] superseded manual validation keys could not be removed.', error);
+    }
+  }
+  return { library, error: saved.ok ? null : saved };
+}
+
+export function saveManualLibrary(library: ManualChecklistLibrary): ManualSaveResult {
+  if (unwritable) return { ok: false, reason: 'unreadable' };
   const storage = optionalLocalStorage();
   if (!storage) return { ok: true };
-  const models: Record<string, Record<string, ManualAnswer>> = {};
-  let count = 0;
-  for (const [fingerprint, entries] of Object.entries(answers)) {
-    const map: Record<string, ManualAnswer> = {};
-    for (const [itemId, answer] of Object.entries(entries)) {
-      if (!isMeaningfulAnswer(answer)) continue;
-      count += 1;
-      if (count > MAX_ANSWERS) return { ok: false, reason: 'too_many' };
-      map[itemId] = answer;
-    }
-    if (Object.keys(map).length > 0) models[fingerprint] = map;
-  }
   let payload: string;
   try {
-    payload = JSON.stringify({ schemaVersion: SCHEMA_VERSION, models });
-  } catch (err) {
-    console.warn('[ifc-lite] manual validation answers could not be serialized.', err);
+    const sources = [...library.checklists.map((entry) => entry.answers), library.pendingLegacyAnswers ?? {}];
+    const count = sources.reduce((total, models) => total + Object.values(models).reduce((n, entries) => n + Object.values(entries).filter(isMeaningfulAnswer).length, 0), 0);
+    if (count > MAX_ANSWERS) return { ok: false, reason: 'too_many' };
+    payload = JSON.stringify({
+      ...library,
+      checklists: library.checklists.map((entry) => ({ ...entry, answers: normalizeAnswers(entry.answers) })),
+      ...(library.pendingLegacyAnswers ? { pendingLegacyAnswers: normalizeAnswers(library.pendingLegacyAnswers) } : {}),
+    });
+  } catch (error) {
+    console.warn('[ifc-lite] manual checklist library could not be serialized.', error);
     return { ok: false, reason: 'serialize' };
   }
   try {
-    storage.setItem(ANSWERS_KEY, payload);
+    storage.setItem(LIBRARY_KEY, payload);
     return { ok: true };
-  } catch (err) {
-    console.warn('[ifc-lite] manual validation answers were not saved (storage full).', err);
-    return { ok: false, reason: 'quota' };
-  }
-}
-
-/** The working checklist, or null when none was kept (or it is unreadable). */
-export function loadWorkingChecklist(): ChecklistTemplate | null {
-  const storage = optionalLocalStorage();
-  if (!storage) return null;
-  try {
-    unwritableKeys.delete(CHECKLIST_KEY);
-    const raw = storage.getItem(CHECKLIST_KEY);
-    if (raw === null) return null;
-    const result = parseChecklistFile(JSON.parse(raw));
-    if (!result.ok) throw new Error(result.error);
-    return result.template;
-  } catch (err) {
-    onReadFailure(CHECKLIST_KEY, err);
-    return null;
-  }
-}
-
-/** Keep (or, with `null`, forget) the working checklist. */
-export function saveWorkingChecklist(template: ChecklistTemplate | null): ManualSaveResult {
-  if (unwritableKeys.has(CHECKLIST_KEY)) return { ok: false, reason: 'unreadable' };
-  const storage = optionalLocalStorage();
-  if (!storage) return { ok: true };
-  try {
-    if (template === null) storage.removeItem(CHECKLIST_KEY);
-    else storage.setItem(CHECKLIST_KEY, serializeChecklist(template));
-    return { ok: true };
-  } catch (err) {
-    console.warn('[ifc-lite] the manual validation checklist was not saved (storage full).', err);
+  } catch (error) {
+    console.warn('[ifc-lite] manual checklist library was not saved (storage full).', error);
     return { ok: false, reason: 'quota' };
   }
 }

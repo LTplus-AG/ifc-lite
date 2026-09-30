@@ -86,3 +86,51 @@ export function occupancyTest(rings: readonly Pt[][], triangles: readonly Tri[])
   const polygons = rings.filter(isSimpleRing);
   return (p) => polygons.some((ring) => pointInPoly(p[0], p[1], ring)) || triangles.some((tri) => inTriangle(p, tri));
 }
+
+/** The existing room a layout face is, and which wall face its outline follows. */
+export interface RoomLink {
+  expressId: number;
+  boundary: 'inner' | 'center' | 'outer';
+}
+
+/** How far a room's area may be from its face's to still be that face's room. */
+const LINK_AREA_RATIO = 0.25;
+
+const ringArea = (ring: readonly Pt[]): number => {
+  let a = 0;
+  ring.forEach((p, i) => { const q = ring[(i + 1) % ring.length]; a += p[0] * q[1] - q[0] * p[1]; });
+  return Math.abs(a) / 2;
+};
+
+/**
+ * Which existing room each layout face is: a room whose footprint holds the
+ * face's interior point AND whose area matches one of the face's three
+ * outlines (inner, axis, outer) to within `LINK_AREA_RATIO` — the outline it
+ * was written with. A room over several faces (one over the whole storey)
+ * matches none of them and links nowhere; a room links to one face at most,
+ * the closest match. Faces are `{ face, interior, inner, centre, outer }`.
+ */
+export function linkFaces(
+  faces: readonly { face: number; interior: Pt; inner: Pt[]; centre: Pt[]; outer: Pt[] }[],
+  spaces: readonly { expressId: number; footprint: Pt[] }[],
+): Map<number, RoomLink> {
+  const best = new Map<number, { face: number; boundary: RoomLink['boundary']; err: number }>();
+  for (const f of faces) {
+    for (const space of spaces) {
+      if (!isSimpleRing(space.footprint) || !pointInPoly(f.interior[0], f.interior[1], space.footprint)) continue;
+      const area = ringArea(space.footprint);
+      for (const boundary of ['inner', 'center', 'outer'] as const) {
+        const faceArea = ringArea(boundary === 'inner' ? f.inner : boundary === 'outer' ? f.outer : f.centre);
+        const err = Math.abs(area - faceArea) / Math.max(faceArea, 1e-9);
+        const held = best.get(space.expressId);
+        if (err <= LINK_AREA_RATIO && (!held || err < held.err)) best.set(space.expressId, { face: f.face, boundary, err });
+      }
+    }
+  }
+  const links = new Map<number, RoomLink & { err: number }>();
+  for (const [expressId, { face, boundary, err }] of best) {
+    const held = links.get(face);
+    if (!held || err < held.err) links.set(face, { expressId, boundary, err });
+  }
+  return new Map([...links].map(([face, { expressId, boundary }]) => [face, { expressId, boundary }]));
+}

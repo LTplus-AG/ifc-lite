@@ -124,3 +124,10 @@ For everything from unit suites to latency simulation, curl smoke tests, audit-l
 ## Status
 
 The collab stack is early (0.x). APIs are functional and tested, but expect breaking changes between minor versions.
+
+Model slot records may include an immutable `spatialContext` object. The
+collaboration library preserves this consumer-defined metadata through Yjs
+updates and persisted room reloads without depending on a geometry or IFC
+parser. Old slot records omit it. Consumers must validate the object's schema
+and numbers before using it; `snapshotToIfcx` exports entity snapshots and does
+not export these slot records.

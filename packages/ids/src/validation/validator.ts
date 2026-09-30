@@ -28,6 +28,7 @@ import { checkFacet, facetPasses, filterByFacet } from '../facets/index.js';
 import { ApplicabilityPropertyIndex } from './property-index.js';
 import { UnsafeRegexPatternError } from '@ifc-lite/regex-guard';
 import { formatFailureReason, formatRequirementDescription } from './format-failure-reason.js';
+import { boundedPassRate } from './pass-rate.js';
 export { formatFailureReason } from './format-failure-reason.js';
 
 /** Memoize a single-argument accessor lookup keyed by express ID. */
@@ -395,7 +396,7 @@ async function validateSpecification(
 
   let passRate =
     totalEntities > 0
-      ? Math.floor((passedCount / totalEntities) * 100)
+      ? boundedPassRate(passedCount, totalEntities)
       : status === 'fail'
         ? 0
         : 100;
@@ -744,10 +745,7 @@ export function calculateSummary(
     totalEntitiesFailed += result.failedCount;
   }
 
-  let overallPassRate =
-    totalEntitiesChecked > 0
-      ? Math.floor((totalEntitiesPassed / totalEntitiesChecked) * 100)
-      : 100;
+  let overallPassRate = boundedPassRate(totalEntitiesPassed, totalEntitiesChecked);
 
   // Same disagreement as the per-spec `passRate` (#5212), one level up: a
   // cardinality-failed spec whose matched entities all individually pass

@@ -130,6 +130,8 @@ export {
   type FacetCheckResult,
 } from './facets/index.js';
 
+export { boundedPassRate, passRateBand, type PassRateBand } from './validation/pass-rate.js';
+
 // ============================================================================
 // Constraints
 // ============================================================================

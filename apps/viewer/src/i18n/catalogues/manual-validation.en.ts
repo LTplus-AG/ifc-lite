@@ -14,6 +14,13 @@ export const manualValidationEn = {
   'manualValidation.entry.open': 'Open .checklist.json',
   'manualValidation.entry.recent': 'Recent checklists',
 
+  'manualValidation.library.select': 'Select checklist',
+  'manualValidation.library.none': 'No checklist selected',
+  'manualValidation.library.duplicate': 'New from this checklist',
+  'manualValidation.library.copyName': '{name} (copy)',
+  'manualValidation.library.remove': 'Delete checklist',
+  'manualValidation.library.progress': '{completed}/{total} completed ({percent}%)',
+
   'manualValidation.name.label': 'Checklist name',
   'manualValidation.name.placeholder': 'Untitled checklist',
   'manualValidation.edit': 'Edit checklist',
@@ -60,6 +67,7 @@ export const manualValidationEn = {
   'manualValidation.error.invalidFile': '"{name}" is not a valid checklist: {detail}',
   'manualValidation.error.corruptRecent': '"{name}" could not be loaded — it may be corrupted. It has been removed from Recent checklists.',
   'manualValidation.error.notSaved': 'Browser storage refused the change, so it will not survive a reload.',
+  'manualValidation.error.noChecklist': 'Select a checklist before recording a verdict or comment. The change was not saved.',
 
   // The manual report document block (#6401): DocumentPanel.tsx, BlockEditor.tsx, ManualReportPreview.tsx.
   'manualValidation.report.kind': 'Manual validation report',
@@ -67,6 +75,11 @@ export const manualValidationEn = {
   'manualValidation.report.heading': 'Manual validation: {name}',
   'manualValidation.report.unavailableTitle': 'Create or open a checklist under Data validation → Manual validation first',
   'manualValidation.report.sourceLabel': 'Checklist',
+  'manualValidation.report.checklistMissing': 'This checklist was deleted. The embedded report is retained.',
+  'manualValidation.report.layout': 'Checklist layout',
+  'manualValidation.report.long': 'Long',
+  'manualValidation.report.compact': 'Short',
+  'manualValidation.report.benchmarks': 'Show benchmark scores',
   'manualValidation.report.modelLabel': 'Answers from',
   'manualValidation.report.modelNotLoaded': 'The model these answers were recorded against ({model}) is not loaded. Load it to refresh, or pick another model.',
   'manualValidation.report.modelNotLoadedUnnamed': 'The model these answers were recorded against is not loaded. Load it to refresh, or pick another model.',

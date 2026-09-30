@@ -34,6 +34,7 @@ import { oncePerStore } from './on-demand-cache.js';
  * on top later in getEffectiveGeoreference(), not here.
  */
 export function extractGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | null {
+    if (store.georeferencing !== undefined) return store.georeferencing;
     // Don't cache a not-yet-loaded store — it may gain source/entityIndex later.
     if (!store.source?.length || !store.entityIndex) return null;
     return oncePerStore(store, 'georef', () => computeGeoreferencingOnDemand(store));

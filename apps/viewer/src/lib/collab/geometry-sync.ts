@@ -23,7 +23,7 @@
  * bloat both — see the SAB/IFCX memory). The doc holds only the blob hash.
  */
 
-import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
+import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { BlobStore, CollabSession } from '@ifc-lite/collab';
 import { encodeMesh } from './mesh-codec';
 import { texturedMeshDecoder, textureUploader } from './room-texture';
@@ -322,26 +322,11 @@ export async function hydrateGeometryFromRoom(
  * (`MeshData.origin`, world = origin + position, #1114), so the origin is
  * folded into the bounds.
  *
- * KNOWN FRAME MISMATCH — georeferenced collab (needs follow-up):
- *   For a georeferenced model the owner's world coordinates are reconstructed as
- *   `world = shifted + originShift (+ wasmRtcOffset)` (see coordinate-handler
- *   `toWorld`). The blob meshes are in the owner's SHIFTED frame, but the owner's
- *   `originShift` / `wasmRtcOffset` are NOT transmitted in the room:
- *     - the mesh-codec (mesh-codec.ts) only carries the per-element local
- *       `origin`, never the global shift/rtc;
- *     - `seedGeometryToRoom` seeds mesh blobs only;
- *     - the joiner's IFCX re-parse (viewerModelIngest.ts) hardcodes
- *       `createCoordinateInfo(bounds)` with a zero shift too.
- *   So we can only report zeros here. For a georeferenced model this leaves the
- *   joiner's reconstructed world frame off from the owner's by shift+rtc (up to
- *   ~1e6 m) — wrong georef overlay alignment and wrong coordinate readouts. The
- *   model still renders self-consistently (all meshes share the shift), so 3D
- *   editing/selection is unaffected; only absolute world positioning is wrong.
- *   Proper fix (larger, touches the published @ifc-lite/collab room schema):
- *   have the owner encode its coordinateInfo (originShift + wasmRtcOffset) into
- *   the room at seed time and consume it here instead of the zeros below.
+ * A slot may carry the owner's immutable coordinate frame (#6499). Preserve
+ * its world/RTC offsets through progressive and final geometry hydration.
+ * Older rooms without that metadata keep their established zero frame.
  */
-export function buildGeometryResultFromMeshes(meshes: MeshData[]): GeometryResult {
+export function buildGeometryResultFromMeshes(meshes: MeshData[], frame?: CoordinateInfo): GeometryResult {
   let totalTriangles = 0;
   let totalVertices = 0;
   const min = { x: Infinity, y: Infinity, z: Infinity };
@@ -364,7 +349,7 @@ export function buildGeometryResultFromMeshes(meshes: MeshData[]): GeometryResul
     meshes,
     totalTriangles,
     totalVertices,
-    coordinateInfo: {
+    coordinateInfo: frame ? { ...frame, shiftedBounds: bounds } : {
       originShift: zero,
       originalBounds: bounds,
       shiftedBounds: bounds,

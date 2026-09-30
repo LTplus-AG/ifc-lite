@@ -86,6 +86,7 @@ import { splitToolEn } from './catalogues/split-tool.en';
 import { modelingCommandEn } from './catalogues/modeling-command.en';
 import { modelWorkspaceEn } from './catalogues/model-workspace.en';
 import { roomToolEn } from './catalogues/room-tool.en';
+import { roomLayoutEn } from './catalogues/room-layout.en';
 import { copyArrayEn } from './catalogues/copy-array.en';
 import { moveRotateEn } from './catalogues/move-rotate.en';
 import { modelInspectorEn } from './catalogues/model-inspector.en';
@@ -142,6 +143,7 @@ export const en = {
   ...modelingCommandEn,
   ...modelWorkspaceEn,
   ...roomToolEn,
+  ...roomLayoutEn,
   ...copyArrayEn,
   ...moveRotateEn,
   ...modelInspectorEn,

@@ -207,7 +207,7 @@ test('#6485 named model fields retain their source and authored page breaks expo
   expect(duplicateKeys).toEqual([]);
 });
 
-test('#6500 real IFC checks survive reload and remain independently selectable in documentation', async ({ page }, testInfo) => {
+test('#6500/#6568 explicitly saved real IFC checks survive reload and remain independently selectable in documentation', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
   const loaded = page.waitForEvent('console', {
     predicate: (message) => message.text().includes('[ifc-lite] Added model building-architecture.ifc'),
@@ -220,12 +220,36 @@ test('#6500 real IFC checks survive reload and remain independently selectable i
   await page.locator('input[type="file"][accept=".ids,.xml"]').last().setInputFiles(join(ROOT, 'apps/viewer/public/samples/building-architecture.ids'));
   await page.getByRole('button', { name: 'Run Validation', exact: true }).click();
   const history = page.locator('[data-saved-validation-reports]');
-  await expect(history.locator('summary')).toHaveText('Saved reports (1)', { timeout: 60000 });
+  const saveReport = page.getByRole('button', { name: 'Save report', exact: true });
+  await expect(saveReport).toBeEnabled({ timeout: 60000 });
+  await expect(history.locator('summary')).toHaveText('Saved reports (0)');
+  // Checking the real IFC writes no history until the user chooses Save.
+  expect(await page.evaluate(async () => {
+    const moduleUrl = '/src/lib/validation/reports/persistence.ts';
+    const { VALIDATION_REPORTS_STORAGE_KEY }: typeof import('../../apps/viewer/src/lib/validation/reports/persistence') = await import(moduleUrl);
+    return localStorage.getItem(VALIDATION_REPORTS_STORAGE_KEY);
+  })).toBeNull();
+  await saveReport.click();
+  await expect(history.locator('summary')).toHaveText('Saved reports (1)');
+  await expect(page.getByRole('button', { name: 'Report saved', exact: true })).toBeDisabled();
   await history.locator('summary').click();
   await history.getByRole('textbox', { name: 'Report name', exact: true }).fill('Architecture check one');
   await history.getByRole('textbox', { name: 'Report name', exact: true }).blur();
+  const firstSaved = await page.evaluate(async () => {
+    const moduleUrl = '/src/lib/validation/reports/persistence.ts';
+    const { loadValidationReports }: typeof import('../../apps/viewer/src/lib/validation/reports/persistence') = await import(moduleUrl);
+    return loadValidationReports();
+  });
   await page.getByRole('button', { name: 'Re-run validation', exact: true }).click();
-  await expect(history.locator('summary')).toHaveText('Saved reports (2)', { timeout: 60000 });
+  await expect(saveReport).toBeEnabled({ timeout: 60000 });
+  await expect(history.locator('summary')).toHaveText('Saved reports (1)');
+  expect(await page.evaluate(async () => {
+    const moduleUrl = '/src/lib/validation/reports/persistence.ts';
+    const { loadValidationReports }: typeof import('../../apps/viewer/src/lib/validation/reports/persistence') = await import(moduleUrl);
+    return loadValidationReports();
+  })).toEqual(firstSaved);
+  await saveReport.click();
+  await expect(history.locator('summary')).toHaveText('Saved reports (2)');
   // Record a manual review against the same genuinely loaded IFC through the
   // canonical checklist actions and the real Save report button.
   await page.evaluate(() => {

@@ -379,6 +379,39 @@ describe('validateIDS — index-assisted applicability stays verdict-identical',
 });
 
 describe('createCachedAccessor', () => {
+  it('retains per-entity lookups across large repeated specification scans (#4057)', () => {
+    const base = createMockAccessor(makeEntities(1));
+    let calls = 0;
+    const cached = createCachedAccessor({
+      ...base,
+      getEntityName(id) { calls++; return `Entity_${id}`; },
+    });
+    const entityCount = 100_001;
+    for (let pass = 0; pass < 2; pass++) {
+      for (let id = 1; id <= entityCount; id++) {
+        expect(cached.getEntityName(id)).toBe(`Entity_${id}`);
+      }
+    }
+    // Bounding the entity-only cache would evict each value just before its
+    // next scan and restore expensive source extraction per specification.
+    expect(calls).toBe(entityCount);
+  });
+  it('recomputes evicted attribute lookups without changing their values (#4057)', () => {
+    const base = createMockAccessor(makeEntities(1));
+    let calls = 0;
+    const cached = createCachedAccessor({
+      ...base,
+      getAttribute(id, name) { calls++; return base.getAttribute(id, name); },
+    });
+    const first = cached.getAttribute(1, 'Name');
+    for (let i = 0; i < 100_000; i++) cached.getAttribute(1, `absent-${i}`);
+    const before = calls;
+    // The newest missing value still benefits from memoization, including undefined.
+    expect(cached.getAttribute(1, `absent-${100_000 - 1}`)).toBeUndefined();
+    expect(calls).toBe(before);
+    expect(cached.getAttribute(1, 'Name')).toBe(first);
+    expect(calls, 'oldest lookup was evicted instead of growing the Map').toBe(before + 1);
+  });
   it('memoizes undefined results and keyed lookups', () => {
     const base = createMockAccessor(makeEntities(1));
     let typeCalls = 0;

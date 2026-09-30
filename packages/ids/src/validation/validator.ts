@@ -29,6 +29,7 @@ import { ApplicabilityPropertyIndex } from './property-index.js';
 import { UnsafeRegexPatternError } from '@ifc-lite/regex-guard';
 import { formatFailureReason, formatRequirementDescription } from './format-failure-reason.js';
 import { boundedPassRate } from './pass-rate.js';
+import { BoundedCache } from '../bounded-cache.js';
 export { formatFailureReason } from './format-failure-reason.js';
 
 /** Memoize a single-argument accessor lookup keyed by express ID. */
@@ -46,7 +47,7 @@ function memoById<T>(fn: (expressId: number) => T): (expressId: number) => T {
 function memoByIdAndKey<T>(
   fn: (expressId: number, key: string) => T
 ): (expressId: number, key: string) => T {
-  const cache = new Map<string, T>();
+  const cache = new BoundedCache<string, T>();
   return (expressId: number, key: string): T => {
     const cacheKey = `${expressId}\u0000${key}`;
     if (cache.has(cacheKey)) return cache.get(cacheKey) as T;
@@ -57,8 +58,10 @@ function memoByIdAndKey<T>(
 }
 
 /**
- * Wrap an accessor so every per-entity lookup is computed at most once
- * for the lifetime of one validation run.
+ * Wrap an accessor so per-entity lookups are computed once for one validation
+ * run. Compound entity/name lookup caches are bounded (#4057); evicted
+ * compound lookups are recomputed. Per-entity caches remain proportional to
+ * the model population so repeated specification scans do not re-parse it.
  *
  * The validator re-checks the same entities once per specification, and
  * real-world IDS documents carry hundreds of specifications over the
@@ -768,4 +771,3 @@ export function calculateSummary(
     overallPassRate,
   };
 }
-

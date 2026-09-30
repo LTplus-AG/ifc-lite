@@ -12,6 +12,7 @@
  * is drawn where, that a failed snapshot does not abort the report — runs
  * under node:test against a recording document.
  */
+import { tableHeaderStyle, type TableHeaderStyle } from '../../table-header-style';
 import { renderChartSvg, type Aggregation, type ChartTheme, DEFAULT_THEME } from '@ifc-lite/charts';
 import { composeReport, REPORT_MARGIN, type ComposeReportInput, type ReportChartBlock, type ReportLayout } from './compose.js';
 import type { SnapshotCapture } from './snapshots.js';
@@ -47,6 +48,7 @@ export interface ReportTableArgs {
   columns?: Array<{ width: number; align: 'left' | 'right' }>;
   /** Parallel to `body`; a row with no entry is a data row. */
   rowRoles?: ReportTableRowRole[];
+  headerStyle?: TableHeaderStyle;
 }
 
 export interface ReportPdfSeams {
@@ -125,7 +127,8 @@ export async function browserReportSeams(capture: SnapshotCapture | null, theme:
             host.remove();
           }
         },
-        table: ({ startY, margin, head, body, columns, rowRoles }) => {
+        table: ({ startY, margin, head, body, columns, rowRoles, headerStyle }) => {
+          const palette = headerStyle ?? tableHeaderStyle();
           const columnStyles: Record<number, { halign?: 'left' | 'right'; cellWidth?: number }> = columns
             ? Object.fromEntries(columns.map((c, i) => [i, { halign: c.align, cellWidth: c.width }]))
             : { 1: { halign: 'right' }, 2: { halign: 'right' } };
@@ -134,7 +137,7 @@ export async function browserReportSeams(capture: SnapshotCapture | null, theme:
             // `pageBreak: 'avoid'` is the belt to `AUTOTABLE_ROW_HEIGHT`: the document composer only
             // ever hands over a chunk that fits.
             styles: { fontSize: 8, cellPadding: 2, minCellHeight: AUTOTABLE_ROW_HEIGHT, overflow: 'ellipsize', lineColor: [226, 232, 240], lineWidth: 0.5 },
-            headStyles: { fillColor: [51, 65, 85], textColor: 255, fontStyle: 'bold' },
+            headStyles: { fillColor: palette.backgroundColor, textColor: palette.textColor, fontStyle: 'bold' },
             columnStyles,
             pageBreak: columns ? 'avoid' : 'auto',
             didParseCell: rowRoles

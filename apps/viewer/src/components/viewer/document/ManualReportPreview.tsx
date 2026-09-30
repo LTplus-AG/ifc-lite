@@ -9,6 +9,7 @@
  * component, so the preview, the panel and the PDF share one geometry.
  */
 
+import { reportScopeText } from '@/lib/document/report-provenance';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { ManualReportBlock } from '@/lib/document/manual-report-types';
 import { ManualValidationLegend, ManualValidationRing, VerdictIcon } from '../validation/ManualValidationRing';
@@ -26,6 +27,8 @@ export function ManualReportPreview({ block }: { block: ManualReportBlock }) {
   const name = block.checklistName.trim() || t('manualValidation.name.placeholder');
   const percent = block.summary.total > 0 ? Math.floor((block.summary.pass / block.summary.total) * 100) : 0;
   const ink = 'fill-neutral-900';
+  const benchmarks = block.benchmarks !== false;
+  const detailed = block.variant !== 'compact';
 
   return (
     <div data-block-manual-report>
@@ -35,7 +38,8 @@ export function ManualReportPreview({ block }: { block: ManualReportBlock }) {
           ? t('manualValidation.report.recordedAtModel', { model: block.modelName, timestamp: block.generatedAt })
           : t('manualValidation.report.recordedAt', { timestamp: block.generatedAt })}
       </div>
-      <div className="mt-1 flex items-center gap-3 rounded border border-neutral-200 bg-neutral-50 px-2 py-1.5">
+      {reportScopeText(block) && <div className="text-2xs text-neutral-600" data-report-model-scope>{t('validationPanel.history.models', { models: reportScopeText(block) })}</div>}
+      {benchmarks && <div className="mt-1 flex items-center gap-3 rounded border border-neutral-200 bg-neutral-50 px-2 py-1.5" data-manual-report-benchmarks>
         <ManualValidationRing counts={block.summary} name={t('manualValidation.overall')} size={56} textClassName={ink} />
         <div className="min-w-0 flex-1">
           <div className="text-xs font-semibold">
@@ -43,7 +47,7 @@ export function ManualReportPreview({ block }: { block: ManualReportBlock }) {
           </div>
           <ManualValidationLegend counts={block.summary} mutedClassName={DOCUMENT_PREVIEW_MUTED_TEXT_CLASS} />
         </div>
-      </div>
+      </div>}
       {block.groups.length === 0 ? (
         <div className="mt-1 rounded border border-dashed border-neutral-300 px-3 py-2 text-xs text-neutral-500">
           {t('manualValidation.report.noGroups')}
@@ -55,11 +59,11 @@ export function ManualReportPreview({ block }: { block: ManualReportBlock }) {
             return (
               <section key={group.id} className="rounded border border-neutral-200 px-2 py-1" aria-label={groupName}>
                 <div className="flex items-center gap-2">
-                  <ManualValidationRing counts={group.counts} name={groupName} size={20} textClassName={ink} />
+                  {benchmarks && <ManualValidationRing counts={group.counts} name={groupName} size={20} textClassName={ink} />}
                   <span className="min-w-0 flex-1 truncate text-xs font-semibold" title={groupName}>{groupName}</span>
-                  <span className={`shrink-0 text-2xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>
+                  {benchmarks && <span className={`shrink-0 text-2xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>
                     {t('manualValidation.group.progress', { answered: group.counts.total - group.counts.unanswered, total: group.counts.total })}
-                  </span>
+                  </span>}
                 </div>
                 {group.items.length === 0 ? (
                   <div className="ml-7 text-2xs text-neutral-500">{t('manualValidation.emptyGroup')}</div>
@@ -75,8 +79,8 @@ export function ManualReportPreview({ block }: { block: ManualReportBlock }) {
                           </span>
                           <div className="min-w-0 flex-1">
                             <div className="break-words">{item.text.trim() || t('manualValidation.item.untitled')}</div>
-                            {item.description && <div className="break-words text-neutral-500">{item.description}</div>}
-                            {item.comment && <div className={`whitespace-pre-wrap break-words ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>{item.comment}</div>}
+                            {detailed && item.description && <div className="break-words text-neutral-500">{item.description}</div>}
+                            {detailed && item.comment && <div className={`whitespace-pre-wrap break-words ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>{item.comment}</div>}
                           </div>
                         </li>
                       );

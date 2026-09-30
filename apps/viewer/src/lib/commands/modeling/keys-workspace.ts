@@ -55,6 +55,8 @@ export function bindModelWorkspaceKeys(): () => void {
     registerKeyboardCommand('model.array', () => launchModelCommand('element.array'), { active }),
     registerKeyboardCommand('model.move', () => launchModelCommand('element.move'), { active }),
     registerKeyboardCommand('model.rotate', () => launchModelCommand('element.rotate'), { active }),
+    registerKeyboardCommand('model.stair', () => launchModelCommand('stair.place'), { active }),
+    registerKeyboardCommand('model.railing', () => launchModelCommand('railing.place'), { active }),
   ];
   return () => { for (const dispose of disposers) dispose(); };
 }

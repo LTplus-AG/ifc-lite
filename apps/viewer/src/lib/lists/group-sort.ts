@@ -24,6 +24,8 @@ export function compareCells(a: CellValue, b: CellValue): number {
  *  direction. `null` means no explicit sort (grouped view falls back to its
  *  count-descending default). */
 export type GroupSort = { colIdx: number; dir: 'asc' | 'desc' } | null;
+/** Explicit document-table order applied at every nesting level (#6489). */
+export type GroupOrder = 'count' | 'label';
 
 /** Minimal shape `orderGroups` needs — the group header's raw value (for the
  *  group-by column), row count, and per-column subtotals. */
@@ -93,6 +95,7 @@ export function buildNestedGroupBuckets<R>(
   getCell: (row: R, idx: number) => CellValue,
   formatLabel: (cell: CellValue) => string,
   sort: GroupSort,
+  groupOrder?: GroupOrder,
 ): NestedGroupBucket<R>[] {
   const out: NestedGroupBucket<R>[] = [];
   const walk = (subRows: R[], level: number, parentPath: string[]) => {
@@ -104,7 +107,8 @@ export function buildNestedGroupBuckets<R>(
       getCell,
       formatLabel,
     );
-    const ordered = orderGroups(Array.from(byKey.values()), sort, colIdx, sums);
+    const active = groupOrder === 'label' ? { colIdx, dir: 'asc' as const } : groupOrder === 'count' ? null : sort;
+    const ordered = orderGroups(Array.from(byKey.values()), active, colIdx, sums);
     for (const g of ordered) {
       const path = [...parentPath, g.label];
       out.push({ ...g, key: groupPathKey(path), level, path });

@@ -18,6 +18,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { exactTypeName } from '@ifc-lite/data';
 import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import {
+  boundedPassRate,
   calculateSummary,
   type EntityResult,
   type IDSCardinalityResult,
@@ -243,7 +244,7 @@ function finalizeSpecification(
   // element arithmetic at 100 (or has nothing to rate). `status` and
   // `passRate` must never disagree, so a failing spec never reads 100: the
   // same rule `@ifc-lite/ids`'s `validateSpecification` applies (#5212).
-  const elementRate = applicableCount > 0 ? Math.floor((passedCount / applicableCount) * 100) : 100;
+  const elementRate = applicableCount > 0 ? boundedPassRate(passedCount, applicableCount) : 100;
   const passRate = status === 'fail' && elementRate === 100 ? 0 : elementRate;
 
   return {

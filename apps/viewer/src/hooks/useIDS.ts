@@ -15,6 +15,7 @@
  * for `UseIDSResult`'s callers, none of which have changed shape.
  */
 
+import { validationReportSnapshot } from '@/lib/validation/reports/history';
 import { useCallback, useMemo, useRef } from 'react';
 import { captureAnalysisStamp, stampAnalysisReport } from './useAnalysisStaleness';
 import { useViewerStore } from '@/store';
@@ -253,7 +254,9 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       // A newer call may have started (and even published) while this one
       // awaited the worker/main-thread validation above (#2802).
       if (!stillWanted(myEpoch)) return null;
+      const snapshot = validationReportSnapshot(validationReport, models, 'run');
       setIdsValidationReport(stampAnalysisReport(validationReport, stamp));
+      useViewerStore.getState().saveValidationReport(snapshot);
 
       posthog.capture('ids_validation_completed', {
         total_specifications: validationReport.summary.totalSpecifications,

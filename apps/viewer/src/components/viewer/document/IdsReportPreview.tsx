@@ -8,6 +8,8 @@
  * (`compose-ids-report.ts`), as HTML — mirrors `TablePreview.tsx`'s split
  * between "nothing to print" and rows.
  */
+import { passRateBand } from '@ifc-lite/ids';
+import { reportScopeText } from '@/lib/document/report-provenance';
 import { useTranslation } from '@/i18n';
 import { localeCount } from '@/i18n/intlFormat';
 import { reportBlockSourceKind, type IdsReportBlock, type IdsReportCardinality, type IdsReportCheckSummary } from '@/lib/document/types';
@@ -67,6 +69,54 @@ function RuleDetailRows({ check }: { check: IdsReportCheckSummary }) {
   );
 }
 
+const BAND_CLASS = { good: 'bg-green-500', warn: 'bg-yellow-500', bad: 'bg-red-500' } as const;
+
+/** A coloured percent bar (#6470); `rate` null (partial report) draws the empty track only. */
+function RateBar({ rate }: { rate: number | null }) {
+  return (
+    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-200" data-ids-report-bar={rate ?? 'unavailable'}>
+      {rate !== null && <div className={`h-full rounded-full ${BAND_CLASS[passRateBand(rate)]}`} style={{ width: `${rate}%` }} />}
+    </div>
+  );
+}
+
+/** Compact row: name, bar and percent on one line, nothing else. `error` replaces the bar when a check could not be evaluated. */
+function CompactRow({ name, passed, checked, rate, nested, error, warning }: { name: string; passed: number | null; checked: number; rate: number | null; nested?: boolean; error?: string; warning?: boolean }) {
+  const { t, locale } = useTranslation();
+  return (
+    <li className={`flex items-center gap-2 ${nested ? 'text-2xs' : 'text-xs font-medium'}`} data-ids-report-row>
+      <span className="w-2/5 min-w-0 truncate" title={name}>
+        {warning && <span className="mr-1 rounded bg-amber-100 px-1 font-semibold text-amber-900" data-ids-report-warning>{t('document.preview.idsReportWarningTag')}</span>}
+        {name}
+      </span>
+      {error !== undefined ? (
+        <span className="min-w-0 flex-1 truncate text-2xs text-red-700" title={error} data-ids-report-error>{t('document.preview.idsReportError', { error })}</span>
+      ) : (
+        <>
+          <RateBar rate={rate} />
+          <span className="w-24 shrink-0 text-right text-neutral-600">
+            {rate === null ? t('document.preview.idsReportCountsUnavailableShort') : `${(passed ?? 0).toLocaleString(locale)}/${checked.toLocaleString(locale)} · ${rate}%`}
+          </span>
+        </>
+      )}
+    </li>
+  );
+}
+
+function CompactChecks({ block }: { block: IdsReportBlock }) {
+  return (
+    <ul className="mt-1 flex flex-col gap-1" data-ids-report-checks={block.checks.length} data-ids-report-variant="compact">
+      {block.checks.flatMap((check) => [
+        <CompactRow key={check.id} name={check.shortDescription || check.id} passed={check.passed} checked={check.checked} rate={check.passRate} error={check.error} warning={check.severity === 'warning'} />,
+        ...check.rules.map((rule) => (
+          <CompactRow key={`${check.id}/${rule.id}`} nested name={rule.name ?? (rule.shortDescription || rule.id)} passed={rule.passed} checked={rule.checked} rate={rule.passRate} />
+        )),
+        <li key={`${check.id}/details`} className="ml-3 list-none"><ul className="space-y-1"><RuleDetailRows check={check} /></ul></li>,
+      ])}
+    </ul>
+  );
+}
+
 export interface IdsReportPreviewProps {
   block: IdsReportBlock;
 }
@@ -74,6 +124,8 @@ export interface IdsReportPreviewProps {
 export function IdsReportPreview({ block }: IdsReportPreviewProps) {
   const { t, locale } = useTranslation();
   const { checked, passed, failed, passRate, warnings } = block.summary;
+  // Long keeps the classic structure but never cuts text (#6470); a document saved before variants existed keeps its truncated rows.
+  const cut = block.variant === 'long' ? 'break-words' : 'truncate';
   const heading = reportBlockSourceKind(block) === 'rules'
     ? t('document.preview.rulesReportHeading', { name: block.sourceName })
     : t('document.preview.idsReportHeading', { name: block.sourceName });
@@ -84,6 +136,7 @@ export function IdsReportPreview({ block }: IdsReportPreviewProps) {
       <div className={`text-2xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>
         {t('document.preview.idsReportGeneratedAt', { timestamp: block.generatedAt })}
       </div>
+      {reportScopeText(block) && <div className="text-2xs text-neutral-600" data-report-model-scope>{t('validationPanel.history.models', { models: reportScopeText(block) })}</div>}
       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 rounded border border-neutral-200 bg-neutral-50 px-2 py-1.5">
         <Stat label={t('document.preview.idsReportChecked')} value={checked.toLocaleString(locale)} />
         <Stat label={t('document.preview.idsReportPassed')} value={passed.toLocaleString(locale)} />
@@ -98,14 +151,14 @@ export function IdsReportPreview({ block }: IdsReportPreviewProps) {
         <div className="mt-1 rounded border border-dashed border-neutral-300 px-3 py-2 text-xs text-neutral-500">
           {t('document.preview.idsReportNoChecks')}
         </div>
-      ) : (
+      ) : block.variant === 'compact' ? <CompactChecks block={block} /> : (
         <ul className="mt-1 flex flex-col gap-1" data-ids-report-checks={block.checks.length}>
           {block.checks.map((check) => {
             const hasChildren = check.rules.length > 0 || !!check.cardinality || (check.sets?.length ?? 0) > 0 || !!check.setsTruncated;
             return (
               <li key={check.id} className="rounded border border-neutral-200 px-2 py-1" data-ids-report-check={check.id}>
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="min-w-0 truncate text-xs font-semibold" title={check.shortDescription}>{check.shortDescription}</span>
+                  <span className={`min-w-0 ${cut} text-xs font-semibold`} title={check.shortDescription}>{check.shortDescription}</span>
                   {check.error !== undefined ? (
                     <span className="min-w-0 truncate text-2xs text-red-700" title={check.error} data-ids-report-error>
                       {t('document.preview.idsReportError', { error: check.error })}
@@ -119,20 +172,20 @@ export function IdsReportPreview({ block }: IdsReportPreviewProps) {
                     </span>
                   )}
                 </div>
-                {check.longDescription && <div className="truncate text-2xs text-neutral-500" title={check.longDescription}>{check.longDescription}</div>}
+                {check.longDescription && <div className={`${cut} text-2xs text-neutral-500`} title={check.longDescription}>{check.longDescription}</div>}
                 {hasChildren && (
                   <ul className="mt-1 ml-3 space-y-1 border-l border-neutral-200 pl-2" data-ids-report-rules={check.rules.length}>
                     {check.rules.map((rule) => (
                       <li key={rule.id} className="text-2xs">
                         <div className="flex items-baseline justify-between gap-2">
-                          <span className="min-w-0 truncate font-medium" title={rule.shortDescription}>{rule.shortDescription}</span>
+                          <span className={`min-w-0 ${cut} font-medium`} title={rule.shortDescription}>{rule.shortDescription}</span>
                           <span className="shrink-0 text-neutral-600">
                             {rule.checked.toLocaleString(locale)} · {rule.passRate === null
                               ? t('document.preview.idsReportCountsUnavailable')
                               : `${rule.passed?.toLocaleString(locale)} / ${rule.failed?.toLocaleString(locale)} · ${rule.passRate}%`}
                           </span>
                         </div>
-                        {rule.longDescription && <div className="truncate text-neutral-500" title={rule.longDescription}>{rule.longDescription}</div>}
+                        {rule.longDescription && <div className={`${cut} text-neutral-500`} title={rule.longDescription}>{rule.longDescription}</div>}
                       </li>
                     ))}
                     <RuleDetailRows check={check} />

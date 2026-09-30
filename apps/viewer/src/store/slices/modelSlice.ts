@@ -24,6 +24,7 @@ import { endClashScenePresentation, type ClashSceneTeardown } from '@/lib/clash/
 import { markupTransitionPatch } from './drawing2DSlice.markupTransition.js';
 import { isolateModelsPatch, modelFieldPatch, modelsVisibilityPatch } from './modelSlice.visibility.js';
 import { upsertModelPatch } from './modelSlice.upsert.js';
+import { clearModelLayouts } from '@/lib/rooms/room-layout';
 import { endChartVisibilityPresentation } from '@/lib/charts/visibility-ownership';
 import { toPublishedGlobalIdFromState } from '../federation-overlay-publication.js';
 
@@ -233,7 +234,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
       setPointCloudDeviationComputed?: (computed: boolean) => void;
     };
     cross.clearMutations?.(modelId);
-    cross.clearMutationView?.(modelId);
+    cross.clearMutationView?.(modelId); clearModelLayouts(modelId); // the Room tool's filed layouts (wasm plates)
     // Drop the model's cloud-source provenance tag (sourcesSlice) so the
     // sources UI stops offering "Sync from source" for a model that no
     // longer exists and the tag map cannot grow without bound.

@@ -140,6 +140,8 @@ export const KEY_COMMANDS = [
   { id: 'model.move', labelKey: 'commands.model.move', category: 'tools', when: 'workspace.model', keys: [k('m', { shift: true })] },
   { id: 'model.rotate', labelKey: 'commands.model.rotate', category: 'tools', when: 'workspace.model', keys: [k('q', { shift: true })] },
   { id: 'command.element.rotate.pivot', labelKey: 'commands.command.rotatePivot', category: 'tools', when: 'command.element.rotate', keys: [k('p')] },
+  { id: 'model.stair', labelKey: 'commands.model.stair', category: 'tools', when: 'workspace.model', keys: [k('t', { shift: true })] },
+  { id: 'model.railing', labelKey: 'commands.model.railing', category: 'tools', when: 'workspace.model', keys: [k('l', { shift: true })] },
   { id: 'drawing2d.cancel', labelKey: 'commands.drawing2d.cancel', category: 'tools', when: 'drawing2d', keys: [k('escape')] },
   { id: 'drawing2d.delete', labelKey: 'commands.drawing2d.delete', category: 'tools', when: 'drawing2d', keys: [k('delete'), k('backspace')] },
   { id: 'drawing2d.orthogonal', labelKey: 'commands.drawing2d.orthogonal', category: 'tools', when: 'drawing2d', keys: [k('shift')] },

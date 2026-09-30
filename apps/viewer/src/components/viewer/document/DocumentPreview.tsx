@@ -20,6 +20,7 @@ import { BLOCK_GAP, documentChartSizing, halfTextFitsPage, TEXT_STYLES } from '@
 import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type DocumentBlock, type DocumentSpec, type TextBlock } from '@/lib/document/types';
 import type { TableState } from '@/lib/document/resolve-table';
 import { TAB_SIZE } from '@/lib/document/text-tabs';
+import { splitDocumentSections } from '@/lib/document/page-sections';
 import { DOCUMENT_PREVIEW_MUTED_TEXT_CLASS, DOCUMENT_PREVIEW_PAPER_CLASS } from './preview-theme';
 import { TablePreview } from './TablePreview';
 import { IdsReportPreview } from './IdsReportPreview';
@@ -160,6 +161,7 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
         </div>
       );
     }
+    case 'page-break': return null;
     case 'spacer':
       // The flex column's own `gap-2.5` (10px) already sits on both sides of this block, but
       // compose.ts (and every other block here) only ever adds one trailing gap per block — a
@@ -199,15 +201,19 @@ export function DocumentPreview({ document, bindings, aggregations, chartMessage
   // `contentWidth`, which is narrower than the page for a half-width column (review finding: a
   // landscape or half-width block was rendered off the PDF's actual scale).
   const scale = width / size.w;
+  const sections = splitDocumentSections(document.blocks);
   return (
-    <div className="flex justify-center p-3" data-document-preview>
-      <div
+    <div className="flex flex-col items-center gap-4 p-3" data-document-preview>
+      {sections.map((blocks, pageIndex) => <section
+        key={blocks[0]?.id ?? 'empty'}
+        data-preview-section={pageIndex + 1}
+        aria-label={t('document.preview.sectionLabel', { section: String(pageIndex + 1) })}
         className={`${DOCUMENT_PREVIEW_PAPER_CLASS} shadow-md`}
         style={{ width, minHeight: width * (size.h / size.w), padding: `${(40 / size.w) * width}px`, fontFamily: 'Helvetica, Arial, sans-serif' }}
       >
         <div className={`mb-3 text-2xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>{document.name}</div>
         <div className="flex flex-col gap-2.5">
-          {groupBlocks(document.blocks, bindings, size.h, size.w - 2 * REPORT_MARGIN).map((group) => {
+          {groupBlocks(blocks, bindings, size.h, size.w - 2 * REPORT_MARGIN).map((group) => {
             const wrap = (block: DocumentBlock) => (
               /* DocumentBlock renders figures and divs, which cannot be nested in a button. */
               // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
@@ -232,9 +238,9 @@ export function DocumentPreview({ document, bindings, aggregations, chartMessage
               ? <div key={group[0].id} className="grid grid-cols-2" style={{ gap: BLOCK_GAP * scale }} data-preview-row>{wrap(group[0])}{wrap(group[1])}</div>
               : wrap(group);
           })}
-          {document.blocks.length === 0 && <div className={`text-xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>{t('document.preview.emptyPage')}</div>}
+          {blocks.length === 0 && <div className={`text-xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>{t('document.preview.emptyPage')}</div>}
         </div>
-      </div>
+      </section>)}
     </div>
   );
 }

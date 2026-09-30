@@ -126,37 +126,6 @@ export function snapshotRooms(
   return out;
 }
 
-/** One room of a storey, read off a throwaway plate built from wall RECTANGLES
- *  (the Room tool, charter #6232 M4). `centre` is the face outline — the wall
- *  axis, the gross-area basis; `inner` / `outer` are `net_outline` inset to the
- *  room-side wall faces / outset to the far faces. */
-export interface RoomFace {
-  face: number;
-  centre: [number, number][];
-  inner: [number, number][];
-  outer: [number, number][];
-}
-
-/** Every room the wall rectangles (`flattenWallRects`) enclose, with all three
- *  boundaries, from one throwaway plate that is freed before returning. */
-export function roomFacesFromRects(
-  rectCoords: Float64Array,
-  snapTolerance = 0.05,
-  minArea = 0.3,
-): RoomFace[] {
-  const handle = SpacePlateHandle.fromWallRects(rectCoords, snapTolerance, minArea);
-  try {
-    return (handle.snapshot() as Room[]).map((r) => ({
-      face: r.face,
-      centre: r.outline,
-      inner: flatToPts(handle.netOutline(r.face, true)),
-      outer: flatToPts(handle.netOutline(r.face, false)),
-    }));
-  } finally {
-    handle.free();
-  }
-}
-
 export class SpacePlateSession {
   private handle: SpacePlateHandle | null = null;
   private undoStack: SpacePlateHandle[] = [];

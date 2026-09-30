@@ -4,6 +4,11 @@
 
 import type { Mutation } from '@ifc-lite/mutations';
 
+/** Georeferencing uses a namespace, not an entity id (dense IFCX includes id 0). */
+export function isGeorefMutation(mutation: Mutation): boolean {
+  return mutation.type === 'UPDATE_ATTRIBUTE' && (mutation.attributeName?.startsWith('georef.') ?? false);
+}
+
 export interface MutationMeshTranslation {
   globalId: number;
   rendererDelta: [number, number, number];

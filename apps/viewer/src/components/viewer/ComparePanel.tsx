@@ -26,6 +26,7 @@ import { BcfFromChange } from './compare/BcfFromChange';
 import { useBcfFromChange } from './compare/useBcfFromChange';
 import { CompareResultsList, CountBadge, LISTED_STATES, type CompareBucket } from './compare/CompareResultsList';
 import { CompareRunControls } from './compare/CompareRunControls';
+import { SavedComparisonLibrary } from './compare/SavedComparisonLibrary';
 import { CompareExportBar } from './compare/CompareExportBar';
 import { AnalysisPanel, AnalysisStaleRegion } from './analysis/AnalysisPanel';
 import { AnalysisEmptyState } from './analysis/AnalysisEmptyState';
@@ -223,6 +224,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
       progress={running ? { label: t('comparePanel.panel.comparing') } : null}
       staleFor={result}
     >
+      {!bcfComposing && <SavedComparisonLibrary result={result} running={running} />}
       {modelList.length < 2 ? (
         <AnalysisEmptyState
           icon={<GitCompareArrows className="size-8" />}

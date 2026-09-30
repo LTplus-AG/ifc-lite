@@ -26,8 +26,6 @@
  * the next joiner reconstructs an empty room. Every store write stays in the
  * slice; this module only computes.
  *
- * The collab runtime is injected (never imported at module scope) so the
- * feature stays code-split — see the import note in collabSlice.ts.
  */
 
 import type { BlobStore, CollabSession, ModelSlotRef } from '@ifc-lite/collab';
@@ -42,6 +40,7 @@ import {
   seedFailureMessage,
   writeGeometrySeedMarker,
 } from './geometry-seed-signal';
+import { createRoomSpatialContext } from './room-spatial-context';
 import { buildStepSeedSource } from './step-seed';
 import { pathForEntity, registerEntityMaps } from './entity-paths';
 import { pathInRoomSlot } from './model-slot-ref';
@@ -81,6 +80,8 @@ export interface CollabSeedModel {
   schemaVersion?: string;
   fileName?: string;
   sourceFingerprint?: string;
+  /** Immutable facts captured with the meshes by the share-scope adapter. */
+  spatialContext?: Record<string, unknown>;
   /**
    * Complete, mutation-materialized STEP source. When present it is stored as
    * a room blob so a recipient can retain resource-level representations such
@@ -230,6 +231,7 @@ async function seedModel(
         schemaVersion: model.schemaVersion,
         order,
         sourceFingerprint: model.sourceFingerprint,
+        spatialContext: model.spatialContext ?? createRoomSpatialContext(store),
         stepSourceBlobHash,
         stepSourceFormat: model.portableStepSourceFormat,
       });
@@ -246,7 +248,6 @@ async function seedModel(
     }
   }
 
-  // ── Geometry: whenever the slot has none yet. ──
   if (slotHasGeometry(deps, slot)) return { report: null, wrote };
   const opts = {
     onProgress: (uploaded: number, total: number) =>
@@ -268,7 +269,6 @@ async function seedModel(
         idToPath.set(id, qualified);
         pathToId.set(qualified, id);
       }
-      // Let the owner's outbound mirror resolve paths on this IFCX store.
       registerEntityMaps(store, idToPath, pathToId);
     }
     const meshes = parsed.geometryResult.meshes;

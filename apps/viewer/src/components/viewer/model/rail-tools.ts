@@ -11,7 +11,7 @@
  */
 
 import type { ComponentType } from 'react';
-import { ArrowRightToLine, CopyPlus, LogOut, MousePointer2, Move, RotateCw, ScissorsLineDashed, Slice } from 'lucide-react';
+import { AlignHorizontalJustifyStart, ArrowRightToLine, ArrowUpFromLine, CopyPlus, LogOut, MousePointer2, Move, RotateCw, ScissorsLineDashed, Slice } from 'lucide-react';
 import { BeamIcon, ColumnIcon, DoorIcon, OpeningIcon, RoomIcon, SlabIcon, WallIcon, WindowIcon } from './model-icons';
 import { RailingIcon, StairIcon } from './stair-railing-icons';
 import type { TranslationKey } from '@/i18n';
@@ -128,12 +128,6 @@ export const RAIL_TOOLS: readonly RailTool[] = [
     run: () => { launchModelCommand('split.multi'); },
   },
   {
-    id: 'element.trimExtend', group: 'edit', labelKey: 'trimExtend.tool', Icon: ArrowRightToLine,
-    shortcut: 'model.trimExtend', drawsOnWorkplane: true,
-    isActive: commandActive('element.trimExtend'),
-    run: () => { launchModelCommand('element.trimExtend'); },
-  },
-  {
     id: 'stair.place', group: 'circulation', labelKey: 'stairRailing.tool.stair', Icon: StairIcon,
     shortcut: 'model.stair', drawsOnWorkplane: true,
     isActive: commandActive('stair.place'),
@@ -144,6 +138,25 @@ export const RAIL_TOOLS: readonly RailTool[] = [
     shortcut: 'model.railing', drawsOnWorkplane: true,
     isActive: commandActive('railing.place'),
     run: () => { launchModelCommand('railing.place'); },
+  },
+  {
+    id: 'element.pushPull', group: 'edit', labelKey: 'modelWorkspace.tool.pushPull', Icon: ArrowUpFromLine,
+    shortcut: 'model.pushPull', drawsOnWorkplane: false,
+    isActive: commandActive('element.pushPull'),
+    blockedKey: (s) => (s.selectedEntityId === null ? 'modelWorkspace.blocked.pushPull' : null),
+    run: () => { launchModelCommand('element.pushPull', { drawsOnWorkplane: false }); },
+  },
+  {
+    id: 'element.align', group: 'edit', labelKey: 'modelWorkspace.tool.align', Icon: AlignHorizontalJustifyStart,
+    shortcut: 'model.align', drawsOnWorkplane: true,
+    isActive: commandActive('element.align'),
+    run: () => { launchModelCommand('element.align'); },
+  },
+  {
+    id: 'element.trimExtend', group: 'edit', labelKey: 'trimExtend.tool', Icon: ArrowRightToLine,
+    shortcut: 'model.trimExtend', drawsOnWorkplane: true,
+    isActive: commandActive('element.trimExtend'),
+    run: () => { launchModelCommand('element.trimExtend'); },
   },
 ];
 

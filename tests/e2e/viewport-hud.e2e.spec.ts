@@ -119,6 +119,9 @@ const STATES: ReadonlyArray<{ name: string; settleMs?: number; mayBeEmpty?: bool
   { name: 'railing' },
   // #6232 C5: the multi-split bar (scope, what splits, what is refused) beside its storey sweep.
   { name: 'splitMulti' },
+  // #6232 C4: Push / Pull (a field and a readout) and Align (six edges and a count).
+  { name: 'pushPull' },
+  { name: 'align' },
   { name: 'trimExtend' },
   { name: 'spaceSketch', settleMs: 4000 },
   { name: 'addElement' },
@@ -204,6 +207,8 @@ for (const width of [1280, 1600, 1920]) {
             stair: (s) => s.startCommand('stair.place'),
             railing: (s) => s.startCommand('railing.place'),
             splitMulti: (s) => { s.setSelectedEntityId(null); s.startCommand('split.multi'); },
+            pushPull: (s) => { s.setSelectedEntityId(null); s.startCommand('element.pushPull'); },
+            align: (s) => s.startCommand('element.align'),
             trimExtend: (s) => s.startCommand('element.trimExtend'),
             spaceSketch: (s) => { s.endCommand(); s.setActiveTool('spaceSketch'); },
             addElement: (s) => s.setActiveTool('addElement'),
@@ -220,8 +225,8 @@ for (const width of [1280, 1600, 1920]) {
           };
           enter[name](api.getState());
         }, [STORE, state.name] as const);
-        if (state.name === 'split' || state.name === 'slab' || state.name === 'beam' || state.name === 'rotate' || state.name === 'room' || state.name === 'window' || state.name === 'array' || state.name === 'stair' || state.name === 'railing' || state.name === 'splitMulti' || state.name === 'trimExtend') {
-          const id = { split: 'element.split', slab: 'slab.place', beam: 'beam.place', rotate: 'element.rotate', room: 'room.place', window: 'window.place', array: 'element.array', stair: 'stair.place', railing: 'railing.place', splitMulti: 'split.multi', trimExtend: 'element.trimExtend' }[state.name];
+        if (state.name === 'split' || state.name === 'slab' || state.name === 'beam' || state.name === 'rotate' || state.name === 'room' || state.name === 'window' || state.name === 'array' || state.name === 'stair' || state.name === 'railing' || state.name === 'splitMulti' || state.name === 'pushPull' || state.name === 'align' || state.name === 'trimExtend') {
+          const id = { split: 'element.split', slab: 'slab.place', beam: 'beam.place', rotate: 'element.rotate', room: 'room.place', window: 'window.place', array: 'element.array', stair: 'stair.place', railing: 'railing.place', splitMulti: 'split.multi', pushPull: 'element.pushPull', align: 'element.align', trimExtend: 'element.trimExtend' }[state.name];
           await expect(page.locator(`[data-hud-region] [data-command-id="${id}"]`)).toBeVisible();
         }
         if (state.name === 'spaceSketch') {

@@ -39,7 +39,7 @@ import {
   resolvePlacementChain,
 } from './placement-core.js';
 import { clipPolygonByLine, type Point2D, type PolygonClipResult } from './polygon-clip.js';
-import { resolveSolidPositionXform, slabExtrusionBase, type Xform2D } from './slab-edit-frame.js';
+import { resolveSolidPositionXform, slabExtrusionFrame, type Xform2D } from './slab-edit-frame.js';
 
 /**
  * Slab-like element types this module handles. Matches the STEP
@@ -74,6 +74,12 @@ export interface SlabEditChain {
    * the footprint still reads, but a split must refuse it (#6233).
    */
   baseElevation: number | null;
+  /**
+   * Whether the depth grows upward from the profile plane (the builders'
+   * layout) or the slab hangs down from it. Meaningful only when
+   * `baseElevation` is not null; true otherwise.
+   */
+  extrusionUp: boolean;
   /** Footprint polygon as an ordered list of 2D vertices (storey-
    * local world XY). First vertex does NOT repeat at the end. */
   footprint: Point2D[];
@@ -244,8 +250,9 @@ export function resolveSlabEditChain(
   const thicknessRaw = solidAttrs[3];
   if (profileId === null || typeof thicknessRaw !== 'number') return null;
   // Only a vertical extrusion of the plan outline can be cut in plan (#6233).
-  const base = slabExtrusionBase(dataStore, view, editor, chain.axisPlacementId, solidAttrs, thicknessRaw);
-  const baseElevation = base === null ? null : placementOrigin[2] + base;
+  const frame = slabExtrusionFrame(dataStore, view, editor, chain.axisPlacementId, solidAttrs, thicknessRaw);
+  const baseElevation = frame === null ? null : placementOrigin[2] + frame.base;
+  const extrusionUp = frame?.up ?? true;
 
   // IfcExtrudedAreaSolid.Position (attr 1) is an IfcAxis2Placement3D that
   // places the profile in the solid's frame — real authoring tools bake
@@ -294,6 +301,7 @@ export function resolveSlabEditChain(
       elementType,
       placementOrigin,
       baseElevation,
+      extrusionUp,
       footprint: rectangleFootprint(placementOrigin, profileOrigin2D, xdim, ydim, solidXform),
       extrudedSolidId: solidId,
       thickness: thicknessRaw,
@@ -310,6 +318,7 @@ export function resolveSlabEditChain(
       elementType,
       placementOrigin,
       baseElevation,
+      extrusionUp,
       footprint: fp,
       extrudedSolidId: solidId,
       thickness: thicknessRaw,

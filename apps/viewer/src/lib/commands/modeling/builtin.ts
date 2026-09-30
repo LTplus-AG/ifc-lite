@@ -27,6 +27,8 @@ import { ELEMENT_PASTE } from './commands/element-paste.js';
 import { STAIR_PLACE } from './commands/stair-place.js';
 import { RAILING_PLACE } from './commands/railing-place.js';
 import { SPLIT_MULTI } from './commands/multi-split.js';
+import { ELEMENT_ALIGN } from './commands/element-align.js';
+import { ELEMENT_PUSH_PULL } from './commands/element-push-pull.js';
 import { ELEMENT_TRIM_EXTEND } from './commands/trim-extend.js';
 import type { ModelingCommand } from './types.js';
 
@@ -54,6 +56,8 @@ registerOnce(ELEMENT_ROTATE);
 registerOnce(STAIR_PLACE);
 registerOnce(RAILING_PLACE);
 registerOnce(SPLIT_MULTI);
+registerOnce(ELEMENT_PUSH_PULL);
+registerOnce(ELEMENT_ALIGN);
 registerOnce(ELEMENT_TRIM_EXTEND);
 
 setWorkplaneResolver((s, modelId, spec) => (spec.kind === 'storey'

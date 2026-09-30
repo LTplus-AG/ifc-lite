@@ -1,0 +1,5 @@
+---
+"@ifc-lite/viewer": minor
+---
+
+The Model workspace rail gets Push / Pull and Align (#6232 C4). Push / Pull puts a handle on each face of the selected wall (top: height, sides: thickness), slab (thickness) or column and beam (either end: length): drag it, snapped to the floor levels or a step (Alt drags free, Shift takes finer steps), release to write, or click it and type the size. Align lines the picked elements up on one edge of a reference (Left, Centre, Right, Top, Middle, Bottom of its footprint); the last selected element is the reference when several are selected, otherwise click it first. Each is one undo step, and Shift+P and Shift+J start the tools. The Model inspector's Dimensions rows now edit a slab's thickness and a column's, beam's and member's length and section too, and write exactly what the handles write. A wall thickened or heightened keeps its openings valid: a thicker wall lengthens the cuts that no longer span it, and a height that would leave a door or window above the wall is refused with the reason.

@@ -48,7 +48,6 @@ export const modelInspectorEn = {
   'modelInspector.dims.Depth': 'Depth',
   'modelInspector.dims.Length': 'Length',
   'modelInspector.dims.SillHeight': 'Sill height',
-  'modelInspector.dims.readOnly': 'These dimensions are read-only for now.',
   'modelInspector.dims.notRectangular': 'This wall is not a straight extruded rectangle, so its size cannot be edited here.',
   'modelInspector.dims.unknown': 'No editable dimensions for this element.',
   'modelInspector.dims.invalid': 'Enter a length greater than zero',

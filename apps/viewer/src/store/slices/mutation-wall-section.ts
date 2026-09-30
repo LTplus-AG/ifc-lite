@@ -18,9 +18,16 @@
  * A wall with joins, cut ends or an offset body gets its new thickness through
  * `reshapeWallsIn`: its body is rewritten and every join it is part of is cut
  * again for the new thickness, so the corners stay clean.
+ *
+ * The wall's openings follow the change in the same write (#6232 C4): a
+ * thicker wall lengthens the cuts that no longer span it, and a height that
+ * would leave an opening above the wall is refused, so hosted openings stay
+ * valid whichever way the size is edited (inspector, push / pull, layers).
+ * `remesh` names what the write changed: the wall and the openings it re-cut.
  */
 
 import { readWallJoinRels, toNativeLength } from '@ifc-lite/create';
+import { heightRefusal, hostBodyExtent, openingsOf, planCutRefit, type PositionalUpdate } from '@/lib/hosted-opening-refit.js';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import { readWallMetres } from './mutation-wall-resize.js';
 import { modelEditTarget, type ModellingStore } from './mutation-modelling-records.js';
@@ -33,7 +40,9 @@ export interface WallSection {
   readonly height?: number;
 }
 
-export type WallSectionOutcome = { ok: true } | { ok: false; reason: string };
+export type WallSectionOutcome =
+  | { ok: true; /** Express ids whose mesh the write changed: the wall and the openings it re-cut. */ remesh: number[] }
+  | { ok: false; reason: string };
 
 /** IfcRectangleProfileDef.YDim and IfcExtrudedAreaSolid.Depth. */
 const PROFILE_YDIM = 4;
@@ -49,15 +58,38 @@ export function setWallSection(store: ModellingStore, modelId: string, expressId
   if (!target || !wall) {
     return { ok: false, reason: 'Wall does not have a simple IfcRectangleProfileDef → IfcExtrudedAreaSolid representation' };
   }
-  const unit = { lengthUnitScale: getModelLengthUnitScale(target.dataStore) };
-  const updates = [];
+  const scale = getModelLengthUnitScale(target.dataStore);
+  const unit = { lengthUnitScale: scale };
+  const updates: PositionalUpdate[] = [];
+  const remesh = [expressId];
+  // Refuse before writing anything: an opening the new height would leave above the wall.
+  if (section.height !== undefined && section.height !== wall.height) {
+    const refusal = heightRefusal(target, expressId, toNativeLength(unit, section.height), scale);
+    if (refusal) return { ok: false, reason: refusal };
+  }
   if (section.thickness !== undefined && section.thickness !== wall.thickness) {
+    const thickness = toNativeLength(unit, section.thickness);
+    const hosts = openingsOf(target, expressId).length > 0;
+    // The profile is centred on the axis, so a plain wall's faces stay symmetric about the body's centre.
+    const before = hosts ? hostBodyExtent(target, expressId) : null;
+    if (hosts && !before) return { ok: false, reason: "This wall's body can't be read, so its openings can't follow the new thickness" };
     const joined = wall.read !== null && readWallJoinRels(target.dataStore, target.view, new Set([expressId])).length > 0;
-    if (wall.chain && (wall.read === null || (wall.read.plain && !joined))) {
-      updates.push({ entityId: wall.chain.profileId, index: PROFILE_YDIM, value: toNativeLength(unit, section.thickness) });
+    const plain = wall.chain !== null && (wall.read === null || (wall.read.plain && !joined));
+    if (wall.chain && plain) {
+      updates.push({ entityId: wall.chain.profileId, index: PROFILE_YDIM, value: thickness });
     } else {
       const reshaped = reshapeWallsIn(store, modelId, [{ wallId: expressId, thickness: section.thickness }], {});
       if (!reshaped.ok) return reshaped;
+    }
+    if (hosts) {
+      // A reshape may have moved the body (an offset wall): span where it is now; a plain wall grows about its centre.
+      const now = plain ? null : hostBodyExtent(target, expressId);
+      const centre = (before!.min[1] + before!.max[1]) / 2;
+      const extent: [number, number] = now ? [now.min[1], now.max[1]] : [centre - thickness / 2, centre + thickness / 2];
+      const refit = planCutRefit(target, expressId, 1, extent, scale);
+      if (!refit.ok) return refit;
+      updates.push(...refit.updates);
+      remesh.push(...refit.openings);
     }
   }
   if (section.height !== undefined && section.height !== wall.height) {
@@ -69,5 +101,5 @@ export function setWallSection(store: ModellingStore, modelId: string, expressId
   if (updates.length > 0 && get().setPositionalAttributesBatch(modelId, updates) === null) {
     return { ok: false, reason: 'The wall size could not be written' };
   }
-  return { ok: true };
+  return { ok: true, remesh };
 }

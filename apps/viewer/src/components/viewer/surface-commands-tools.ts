@@ -4,7 +4,7 @@
 
 /** Static Tools palette family. The key-command table remains the chord source. */
 import {
-  ArrowRightToLine, Box, Crosshair, MousePointer2, PenLine, PersonStanding, Ruler, Scissors, ScissorsLineDashed,
+  AlignHorizontalJustifyStart, ArrowRightToLine, ArrowUpFromLine, Box, Crosshair, MousePointer2, PenLine, PersonStanding, Ruler, Scissors, ScissorsLineDashed,
   Slice, StickyNote,
 } from 'lucide-react';
 import { openRepositionModels } from '@/lib/model-placement/commands';
@@ -164,6 +164,24 @@ export const TOOL_SURFACE_COMMANDS = [
     category: 'Tools', icon: ScissorsLineDashed, surfaces: paletteOnly, enabled: editable,
     shortcut: 'model.splitMulti',
     run: () => { launchModelCommand('split.multi'); },
+  },
+  {
+    id: 'tool:push-pull', labelKey: 'commandPalette.tool.pushPull.label',
+    searchLabel: 'Push or pull a face',
+    keywords: 'push pull face extrude thickness height length taller thicker resize wall slab column beam dimension model author',
+    category: 'Tools', icon: ArrowUpFromLine, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.pushPull',
+    run: () => {
+      if (useViewerStore.getState().selectedEntity) launchModelCommand('element.pushPull', { drawsOnWorkplane: false });
+    },
+  },
+  {
+    id: 'tool:align', labelKey: 'commandPalette.tool.align.label',
+    searchLabel: 'Align elements',
+    keywords: 'align edge left right centre center top middle bottom line up reference elements model author',
+    category: 'Tools', icon: AlignHorizontalJustifyStart, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.align',
+    run: () => { launchModelCommand('element.align'); },
   },
   {
     id: 'tool:trim-extend', labelKey: 'commandPalette.tool.trimExtend.label',

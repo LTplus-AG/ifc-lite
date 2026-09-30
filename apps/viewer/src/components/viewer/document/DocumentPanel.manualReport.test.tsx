@@ -16,7 +16,7 @@ import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel } from '@/test/store-fixture.js';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render, type as typeInput } from '@/test/render.js';
 import { CHECKLIST_VERSION } from '@/lib/validation/manual/checklist';
 import { parseDocumentFile } from '@/lib/document/persistence';
 import type { ManualReportBlock } from '@/lib/document/manual-report-types';
@@ -100,12 +100,21 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.ok(preview.querySelector('svg[aria-label="Overall: 1 passed, 1 with warnings, 0 failed, 0 not checked"]'));
     assert.match(preview.textContent ?? '', /Old prefix/);
 
+    // Authored headings survive a real checklist refresh (#6547 review).
+    const title = ui.querySelector<HTMLInputElement>(`[data-block-editor="${stored().id}"] input[aria-label="Block title"]`);
+    assert.ok(title);
+    typeInput(title, 'Authored manual heading');
+    await settle();
+    assert.equal(stored().title, 'Authored manual heading');
+
     // A later answer does not reach the saved block until Refresh.
     act(() => { useViewerStore.getState().setManualAnswer('fp-tower', 'b', { status: 'fail' }); });
     await settle();
     assert.equal(stored().groups[0].items[1].status, 'warning');
     click([...ui.querySelectorAll('button')].find((b) => b.textContent === 'Refresh from current checklist')!);
     await settle();
+    assert.equal(stored().title, 'Authored manual heading', 'refresh preserves the heading while replacing checklist evidence');
+    assert.match(preview.textContent ?? '', /Authored manual heading/);
     assert.equal(stored().groups[0].items[1].status, 'fail');
     assert.deepEqual(stored().summary, { total: 2, pass: 1, fail: 1, warning: 0, unanswered: 0 });
   });

@@ -24,8 +24,6 @@ import {
   addWallToStore,
   addWindowToStore,
   resolveSpatialAnchor,
-  duplicateInStore,
-  resolveDuplicateSource,
   generateSpacesFromWalls,
   type BeamInStoreParams,
   type ColumnInStoreParams,
@@ -35,6 +33,9 @@ import {
   type GenerateSpacesResult,
   type MemberInStoreParams,
   type PlateInStoreParams,
+  type ProfiledBeamInStoreParams,
+  type ProfiledColumnInStoreParams,
+  type ProfiledMemberInStoreParams,
   type RoofInStoreParams,
   type SlabInStoreParams,
   type SpaceInStoreParams,
@@ -43,15 +44,18 @@ import {
 } from '@ifc-lite/create';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
-import { getEntityBounds, getEntityCenter } from '@/utils/viewportUtils';
+import { getEntityCenter, unionEntityBounds } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
-import { meshesForOwningModel } from '../owningModelMeshes.js';
+import { geometryForOwningModel, meshesForOwningModel } from '../owningModelMeshes.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import type { AuthoredElement } from './authoredElement.js';
 import { remeshAuthoredElement, rememberAuthoredElement } from './authoredFallbackMesh.js';
 import { authoredDataStore, syncAuthoredTreeEntry } from './authoredTreeEntry.js';
 import { ensureStoreyPlacement } from './storeyPlacement.js';
 import { effectiveStoreyId } from '@/lib/effective-storey';
+import { copyElements, copySources, withHostedFillings } from '@/lib/commands/modeling/copy-elements';
+import { newMutationBatchId } from './mutation-batch-tags.js';
+import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
 
 export type { AuthoredElement };
 import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
@@ -632,7 +636,7 @@ export interface MutationSlice extends CostUndoMethods {
   addColumn: (
     modelId: string,
     storeyExpressId: number,
-    params: ColumnInStoreParams
+    params: ColumnInStoreParams | ProfiledColumnInStoreParams
   ) => { expressId: number } | { error: string };
   /** Add an IfcWall anchored to a storey. */
   addWall: (
@@ -646,11 +650,11 @@ export interface MutationSlice extends CostUndoMethods {
     storeyExpressId: number,
     params: SlabInStoreParams
   ) => { expressId: number } | { error: string };
-  /** Add an IfcBeam anchored to a storey. */
+  /** Add an IfcBeam anchored to a storey: a rectangle (`Width` x `Height`) or a parametric `Profile`. */
   addBeam: (
     modelId: string,
     storeyExpressId: number,
-    params: BeamInStoreParams
+    params: BeamInStoreParams | ProfiledBeamInStoreParams
   ) => { expressId: number } | { error: string };
   /** Add a free-standing IfcDoor anchored to a storey. */
   addDoor: (
@@ -699,7 +703,7 @@ export interface MutationSlice extends CostUndoMethods {
   addMember: (
     modelId: string,
     storeyExpressId: number,
-    params: MemberInStoreParams
+    params: MemberInStoreParams | ProfiledMemberInStoreParams
   ) => { expressId: number } | { error: string };
   /** Auto-generate IfcSpace volumes for every enclosed area formed by the storey's walls
    *  (existing + overlay). `dryRun: true` detects without emitting — for live UI previews. */
@@ -712,11 +716,11 @@ export interface MutationSlice extends CostUndoMethods {
    * Duplicate an existing IfcRoot product in a chosen direction.
    * Offset magnitude is one source-bbox dimension along the picked
    * IFC axis (so a 3m wall steps 3m, a 0.4m column steps 0.4m).
-   * Geometry is shared with the source via Representation reference
-   * AND mirrored into the renderer's mesh list with the offset
-   * applied — so the duplicate appears in 3D the moment the action
-   * fires, not just in the export overlay. Returns the new entity's
-   * express id, or an error message.
+   * Uses the same complete copy write as Paste and Array: assembly parts,
+   * hosted openings and fillings travel with their host. Source meshes are
+   * mirrored immediately and rebuilt through wasm. The complete copied
+   * graph is one undo step; disconnected parent frames are refused.
+   * Returns the new entity's express id, or an error message.
    */
   duplicateEntity: (
     modelId: string,
@@ -1750,72 +1754,57 @@ export const createMutationSlice: StateCreator<
     const view = state.mutationViews.get(modelId);
     if (!view) return { error: 'Model has no editable mutation view yet' };
 
-    const editor = getOrCreateStoreEditor(get, set, modelId);
-    if (!editor) return { error: 'Failed to create store editor' };
+    const sources = copySources(state, modelId, [sourceExpressId]);
+    if ('refusal' in sources) return { error: sources.refusal };
 
     // Source's bounding box drives the offset magnitude; meshes are keyed by globalId, so they must
     // come from the EDITED model, not the active model's top-level mirror (#4929).
     // Read in the MODEL frame, not the live baked bytes: the rotation bake turns the appended copy once (#4873).
-    const sourceGlobalId = toGlobalIdFromModels(state.models, modelId, sourceExpressId);
-    const meshes = meshesForOwningModel(state, modelId)?.filter((m) => m.expressId === sourceGlobalId).map((m) => modelRotationBaker.inModelFrame(m));
-    const sourceBounds = getEntityBounds(meshes ?? null, sourceGlobalId);
+    const shown = withHostedFillings(state, modelId, [sourceExpressId]);
+    const shownGlobalIds = shown.map((id) => toGlobalIdFromModels(state.models, modelId, id));
+    const shownSet = new Set(shownGlobalIds);
+    const owningGeometry = geometryForOwningModel(state, modelId);
+    const owningMeshes = owningGeometry?.meshes.filter((m) => shownSet.has(m.expressId)).map((m) => modelRotationBaker.inModelFrame(m));
+    const sourceBounds = unionEntityBounds(owningMeshes ?? null, shownGlobalIds, (id) => {
+      const box = owningGeometry && modelRotationBaker.instancedBoundsInModelFrame(owningGeometry, id);
+      if (!box || ![...box.min, ...box.max].every(Number.isFinite)) return null;
+      return { min: { x: box.min[0], y: box.min[1], z: box.min[2] }, max: { x: box.max[0], y: box.max[1], z: box.max[2] } };
+    });
     const bbox: ViewerBox = sourceBounds
-      ? {
-          size: {
-            x: Math.max(sourceBounds.max.x - sourceBounds.min.x, 0),
-            y: Math.max(sourceBounds.max.y - sourceBounds.min.y, 0),
-            z: Math.max(sourceBounds.max.z - sourceBounds.min.z, 0),
-          },
-        }
+      ? { size: {
+          x: Math.max(sourceBounds.max.x - sourceBounds.min.x, 0),
+          y: Math.max(sourceBounds.max.y - sourceBounds.min.y, 0),
+          z: Math.max(sourceBounds.max.z - sourceBounds.min.z, 0),
+        } }
       : { size: { x: DUPLICATE_FALLBACK_STEP, y: DUPLICATE_FALLBACK_STEP, z: DUPLICATE_FALLBACK_STEP } };
 
     const ifcDelta = ifcOffsetForDirection(direction, bbox);
     const viewerDelta = viewerDeltaFromIfc(ifcDelta);
 
-    let newId: number;
+    const batchId = newMutationBatchId();
+    let copied: ReturnType<typeof copyElements>;
     try {
-      const source = resolveDuplicateSource(dataStore, sourceExpressId, editor);
-      const result = duplicateInStore(editor, source, { ...options, offset: ifcDelta });
-      newId = result.newId;
+      copied = copyElements(api, modelId, [sourceExpressId], [{ offset: ifcDelta }], { batchId, duplicate: options ?? {} });
     } catch (err) {
       return { error: err instanceof Error ? err.message : 'Failed to duplicate' };
     }
-
-    // Alias the duplicate to its source for base property / quantity
-    // reads — so the property panel shows the source's psets without
-    // us eagerly cloning them. The duplicate's own override slots
-    // remain scoped to the new id.
-    view.setEntityAlias(newId, sourceExpressId);
-
+    const newId = copied.copies[0];
     const newGlobalId = toGlobalIdFromModels(state.models, modelId, newId);
 
-    // Mirror the source's meshes into the geometry result with the
-    // offset applied so the duplicate is visible immediately. Without
-    // this the entity exists only in the export overlay — STEP-correct
-    // but invisible — and the user can't tell anything happened.
-    const clonedMeshes = cloneMeshesWithOffset(meshes, sourceGlobalId, newGlobalId, viewerDelta);
+    revealAddedGeometryInModelView(get);
 
-    const duplicate: Mutation = {
-      id: `mut_dup_${newId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-      type: 'CREATE_ENTITY',
-      timestamp: Date.now(),
-      modelId,
-      entityId: newId,
-      attributeName: 'DUPLICATE',
-    };
-    set((s) => recordHistory(s, modelId, [duplicate]));
-
-    // Append cloned meshes via the existing data slice action so the
-    // renderer picks them up via its standard tick.
-    if (clonedMeshes.length > 0) {
-      const cross = get() as unknown as {
-        appendGeometryBatch?: (modelId: string, batch: MeshData[]) => void;
-      };
-      cross.appendGeometryBatch?.(modelId, clonedMeshes);
-      // #4970: inModelFrame leaves alignment baked in; correct the slot.
+    // Immediate translated source geometry; the canonical wasm re-mesh below
+    // replaces it from the copied IFC, including all parts and hosted fillings.
+    for (const id of copied.meshed) {
+      const source = copied.copiedFrom.get(id);
+      if (source === undefined) continue;
+      const sourceGlobalId = toGlobalIdFromModels(state.models, modelId, source);
+      const clonedMeshes = cloneMeshesWithOffset(owningMeshes, sourceGlobalId, toGlobalIdFromModels(state.models, modelId, id), viewerDelta);
+      if (clonedMeshes.length === 0) continue;
+      get().appendGeometryBatch(modelId, clonedMeshes);
       applyDuplicatePreAlignmentBaseline(set, modelId, sourceGlobalId, clonedMeshes.length, viewerDelta);
-      revealAddedGeometryInModelView(get);
     }
+    remeshAfterCommit(get, modelId, batchId, copied.meshed, 'created');
 
     return { expressId: newId, globalId: newGlobalId };
   },

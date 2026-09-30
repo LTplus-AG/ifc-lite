@@ -53,6 +53,8 @@ export interface CopyProductResult {
   readonly fillingIds: readonly number[];
   /** The copies of the assembly's parts, at every depth. */
   readonly partIds: readonly number[];
+  /** Source product id for every copied product, including openings, fillings and assembly parts. */
+  readonly copiedFrom: ReadonlyMap<number, number>;
   /** The storey the copy (and its doors and windows) is contained in. */
   readonly storeyId: number | null;
   /** Every element the copy wrote with a shape to mesh: the copy and its doors and windows. */
@@ -145,7 +147,8 @@ export function copyRefusal(ctx: CopyContext, sourceId: number): string | null {
   return null;
 }
 
-export function copyProductInStore(ctx: CopyContext, sourceId: number, transform: CopyTransform = {}): CopyProductResult {
+/** Copy the complete product graph. `options.Name` overrides only the root product’s Name. */
+export function copyProductInStore(ctx: CopyContext, sourceId: number, transform: CopyTransform = {}, options: { Name?: string } = {}): CopyProductResult {
   const refusal = copyRefusal(ctx, sourceId);
   if (refusal) throw new Error(refusal);
   const source = resolveDuplicateSource(ctx.store, sourceId, ctx.editor);
@@ -157,14 +160,14 @@ export function copyProductInStore(ctx: CopyContext, sourceId: number, transform
 
   const targetStoreyId = transform.targetStoreyId ?? source.storeyId;
   const placed = placeOnStorey(ctx.read, source, targetStoreyId, move);
-  const copy = writeCopy(ctx, source, placed, targetStoreyId);
+  const copy = writeCopy(ctx, source, placed, targetStoreyId, options.Name);
 
   // Openings, their doors and windows, and the parts of an assembly follow it.
-  const acc: Dependents = { placements: new Map([[source.placementExpressId, copy.placementId]]), openingIds: [], fillingIds: [], partIds: [], visited: new Set([sourceId]) };
+  const acc: Dependents = { placements: new Map([[source.placementExpressId, copy.placementId]]), openingIds: [], fillingIds: [], partIds: [], visited: new Set([sourceId]), copiedFrom: new Map([[copy.id, sourceId]]) };
   copyDependents(ctx, sourceId, copy.id, source, targetStoreyId, move, acc);
   return {
     copyId: copy.id, openingIds: acc.openingIds, fillingIds: acc.fillingIds, partIds: acc.partIds, storeyId: targetStoreyId,
-    meshed: [copy.id, ...acc.partIds, ...acc.fillingIds],
+    meshed: [copy.id, ...acc.partIds, ...acc.fillingIds], copiedFrom: acc.copiedFrom,
   };
 }
 
@@ -175,6 +178,7 @@ interface Dependents {
   readonly fillingIds: number[];
   readonly partIds: number[];
   readonly visited: Set<number>;
+  readonly copiedFrom: Map<number, number>;
 }
 
 /** The copies of `sourceId`'s openings (with their doors and windows) and parts (recursively), written under `copyId`. */
@@ -183,12 +187,14 @@ function copyDependents(ctx: CopyContext, sourceId: number, copyId: number, root
     const openingSource = resolveDuplicateSource(ctx.store, opening.id, ctx.editor);
     const openingCopy = writeCopy(ctx, openingSource, follow(ctx.read, openingSource, root, targetStoreyId, acc.placements, move), null);
     acc.placements.set(openingSource.placementExpressId, openingCopy.placementId);
+    acc.copiedFrom.set(openingCopy.id, opening.id);
     relate(ctx, 'IfcRelVoidsElement', opening.ownerHistory, copyId, openingCopy.id);
     acc.openingIds.push(openingCopy.id);
     for (const filling of ctx.fills.get(opening.id) ?? []) {
       const fillingSource = resolveDuplicateSource(ctx.store, filling.id, ctx.editor);
       const fillingCopy = writeCopy(ctx, fillingSource, follow(ctx.read, fillingSource, root, targetStoreyId, acc.placements, move), targetStoreyId);
       acc.placements.set(fillingSource.placementExpressId, fillingCopy.placementId);
+      acc.copiedFrom.set(fillingCopy.id, filling.id);
       relate(ctx, 'IfcRelFillsElement', filling.ownerHistory, openingCopy.id, fillingCopy.id);
       acc.fillingIds.push(fillingCopy.id);
     }
@@ -202,6 +208,7 @@ function copyDependents(ctx: CopyContext, sourceId: number, copyId: number, root
       // A part is aggregated, not contained: no containment of its own.
       const partCopy = writeCopy(ctx, partSource, follow(ctx.read, partSource, root, targetStoreyId, acc.placements, move), null);
       acc.placements.set(partSource.placementExpressId, partCopy.placementId);
+      acc.copiedFrom.set(partCopy.id, part);
       partCopies.push(partCopy.id);
       acc.partIds.push(partCopy.id);
       copyDependents(ctx, part, partCopy.id, root, targetStoreyId, move, acc);
@@ -273,7 +280,7 @@ function follow(
   return placeOnStorey(read, { ...source, storeyId: host.storeyId }, targetStoreyId, move);
 }
 
-function writeCopy(ctx: CopyContext, source: SourceAttributes, placed: Placed, storeyId: number | null): { id: number; placementId: number } {
+function writeCopy(ctx: CopyContext, source: SourceAttributes, placed: Placed, storeyId: number | null, name?: string): { id: number; placementId: number } {
   const turned = Math.abs(placed.turn.s) > 1e-12 || placed.turn.c < 0;
   const own = turned ? readOwnPlacement(ctx.read, source.placementExpressId) : null;
   const direction = (v: CopyVec3 | null, fallback: CopyVec3 | null): string | null => {
@@ -297,7 +304,7 @@ function writeCopy(ctx: CopyContext, source: SourceAttributes, placed: Placed, s
   }, {
     offset: [0, 0, 0],
     // A copy is the same element again: it keeps the source's Name.
-    name: typeof source.attributes[2] === 'string' ? source.attributes[2] : undefined,
+    name: name ?? (typeof source.attributes[2] === 'string' ? source.attributes[2] : undefined),
     guidRandom: ctx.guidRandom,
   });
   return { id: built.newId, placementId: built.newPlacementId };

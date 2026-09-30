@@ -1,0 +1,78 @@
+{
+  "fixture": {
+    "sha256": "fab102eb5f9152bc7053d7e4920a8b75d0d34683c834078f0735c88308eb00a4",
+    "bytes": 8714606,
+    "author": "Autodesk Revit 2024",
+    "assemblyId": 144910,
+    "originalPartIds": [
+      22347,
+      75395
+    ]
+  },
+  "copied": {
+    "assemblyId": 149665,
+    "parts": [
+      {
+        "id": 149671,
+        "source": 22347,
+        "GlobalId": "3BC9nsYwTFW9wyeOE2v5Tm"
+      },
+      {
+        "id": 149682,
+        "source": 75395,
+        "GlobalId": "33V5Jy3zT3KOK0xUsgys5d"
+      }
+    ],
+    "relationships": [
+      [
+        "#149665",
+        [
+          "#149671",
+          "#149682"
+        ]
+      ]
+    ],
+    "recordIds": [
+      149662,
+      149663,
+      149664,
+      149665,
+      149666,
+      149667,
+      149668,
+      149669,
+      149670,
+      149671,
+      149672,
+      149673,
+      149674,
+      149675,
+      149676,
+      149677,
+      149678,
+      149679,
+      149680,
+      149681,
+      149682,
+      149683,
+      149684,
+      149685,
+      149686,
+      149687,
+      149688,
+      149689,
+      149690
+    ]
+  },
+  "remeshedGlobalIds": [
+    149671,
+    149682
+  ],
+  "coloredMeshPixels": 39664,
+  "afterUndo": {
+    "remaining": 0,
+    "undo": 0,
+    "copiedMeshes": 0
+  },
+  "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36"
+}

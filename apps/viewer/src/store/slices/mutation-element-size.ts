@@ -58,7 +58,11 @@ const PROFILE_YDIM = 4;
 /** A slab's or a column's, beam's or member's size as {@link setElementSize} edits it, in metres; null for any other layout. */
 export type ElementSize =
   | { readonly kind: 'slab'; readonly thickness: number }
-  | { readonly kind: 'linear'; readonly length: number; readonly width: number; readonly cross: number };
+  | {
+      readonly kind: 'linear'; readonly length: number; readonly width: number; readonly cross: number;
+      /** A picker section (I, L, hollow, ...): its outer size follows its own dimensions (`setElementProfile`), not XDim / YDim. */
+      readonly profiled: boolean;
+    };
 
 export function readElementSize(state: ViewerState, modelId: string, expressId: number): ElementSize | null {
   const target = modelEditTarget(state, modelId);
@@ -68,7 +72,7 @@ export function readElementSize(state: ViewerState, modelId: string, expressId: 
   // A slab is only edited as a flat extrusion of its outline (see setSlabThickness).
   if (slab) return slab.baseElevation === null ? null : { kind: 'slab', thickness: slab.thickness };
   const linear = resolveLinearElementChain(target.dataStore, target.view, target.editor, expressId, scale);
-  return linear ? { kind: 'linear', length: linear.depth, width: linear.profileWidth, cross: linear.profileHeight } : null;
+  return linear ? { kind: 'linear', length: linear.depth, width: linear.profileWidth, cross: linear.profileHeight, profiled: linear.profile !== null } : null;
 }
 
 const positive = (value: number | undefined): boolean => value === undefined || (Number.isFinite(value) && value > 0);
@@ -118,6 +122,11 @@ function setLinearSize(
   const scale = getModelLengthUnitScale(target.dataStore);
   const chain = resolveLinearElementChain(target.dataStore, target.view, target.editor, expressId, scale);
   if (!chain) return { ok: false, reason: 'This element is not a straight extrusion of a rectangle, so its size cannot be edited here' };
+  // A profiled section has no XDim / YDim at attributes 3 and 4 (an I's are OverallWidth and OverallDepth, an L's Depth and Width):
+  // its sides are edited as the section's own dimensions (`setElementProfile`), never here.
+  if (chain.profile !== null && (size.width !== undefined || size.cross !== undefined)) {
+    return { ok: false, reason: 'This element has a profiled section: change its dimensions in the Profile section' };
+  }
   const unit = { lengthUnitScale: scale };
   const native = (metres: number) => toNativeLength(unit, metres);
   const updates: PositionalUpdate[] = [];

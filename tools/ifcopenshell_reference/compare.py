@@ -100,11 +100,13 @@ def classify(ref: dict | None, lite: dict | None) -> tuple[str, list[str], list[
         rv, lv = ref["volume"], lite["volume"]
         if rv > 0 and abs(rv - lv) / rv > VOLUME_REL_TOL:
             failing.append("volume")
-    elif (ref.get("closed") and ref.get("volume") and not ref_vol_ok) or (
-        lite.get("closed") and lite.get("volume") and not lite_vol_ok
+    elif any(
+        e.get("closed") and (e.get("volume") is None or (e.get("volume") and not usable))
+        for e, usable in ((ref, ref_vol_ok), (lite, lite_vol_ok))
     ):
         # A reported volume exceeding its own bbox volume is a mixed-winding
-        # artifact - that side's figure is not evidence of anything.
+        # artifact - that side's figure is not evidence of anything. Closed
+        # topology with null volume likewise signals inconsistent winding (#6533).
         advisory.append("volume-unverifiable")
     elif ref_vol_ok != lite_vol_ok:
         # Exactly one side has usable volume evidence (closed vs open).

@@ -101,6 +101,8 @@ const STATES: ReadonlyArray<{ name: string; settleMs?: number; mayBeEmpty?: bool
   // #6232 M2.2: the placing commands' bars are the widest command bars; they stack rather than overrun the lane.
   { name: 'slab' },
   { name: 'beam' },
+  // #6232 D2: the Column bar's Section picker follows its fields.
+  { name: 'column' },
   // #6232 C2: Rotate carries a field and its Pivot toggle, on a selection.
   { name: 'rotate' },
   // The Room tool derives its rooms through wasm before its bar settles.
@@ -187,6 +189,7 @@ for (const width of [1280, 1600, 1920]) {
             split: (s) => { s.setSelectedEntityId(null); s.startCommand('element.split'); },
             slab: (s) => s.startCommand('slab.place'),
             beam: (s) => s.startCommand('beam.place'),
+            column: (s) => s.startCommand('column.place'),
             rotate: (s) => {
               const model = s.models.values().next().value;
               const wall = model?.ifcDataStore?.entityIndex.byType.get('IFCWALL')?.[0] ?? model?.ifcDataStore?.entityIndex.byType.get('IFCWALLSTANDARDCASE')?.[0];
@@ -214,8 +217,8 @@ for (const width of [1280, 1600, 1920]) {
           };
           enter[name](api.getState());
         }, [STORE, state.name] as const);
-        if (state.name === 'split' || state.name === 'slab' || state.name === 'beam' || state.name === 'rotate' || state.name === 'room' || state.name === 'window' || state.name === 'array' || state.name === 'stair' || state.name === 'railing' || state.name === 'splitMulti' || state.name === 'pushPull' || state.name === 'align') {
-          const id = { split: 'element.split', slab: 'slab.place', beam: 'beam.place', rotate: 'element.rotate', room: 'room.place', window: 'window.place', array: 'element.array', stair: 'stair.place', railing: 'railing.place', splitMulti: 'split.multi', pushPull: 'element.pushPull', align: 'element.align' }[state.name];
+        if (state.name === 'split' || state.name === 'slab' || state.name === 'beam' || state.name === 'column' || state.name === 'rotate' || state.name === 'room' || state.name === 'window' || state.name === 'array' || state.name === 'stair' || state.name === 'railing' || state.name === 'splitMulti' || state.name === 'pushPull' || state.name === 'align') {
+          const id = { split: 'element.split', slab: 'slab.place', beam: 'beam.place', column: 'column.place', rotate: 'element.rotate', room: 'room.place', window: 'window.place', array: 'element.array', stair: 'stair.place', railing: 'railing.place', splitMulti: 'split.multi', pushPull: 'element.pushPull', align: 'element.align' }[state.name];
           await expect(page.locator(`[data-hud-region] [data-command-id="${id}"]`)).toBeVisible();
         }
         if (state.name === 'section+cap') {

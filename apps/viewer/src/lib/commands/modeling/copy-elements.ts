@@ -12,7 +12,7 @@
  * publishes it.
  */
 
-import { copyProductInStore, copyRefusal, createCopyContext, productStoreyOrigin, type CopyContext, type CopyTransform } from '@ifc-lite/create';
+import { copyProductInStore, copyRefusal, createCopyContext, productStoreyOrigin, type CopyContext, type CopyTransform, type DuplicateInStoreOptions } from '@ifc-lite/create';
 import type { ViewerState } from '@/store';
 import { modelEditTarget, recordModellingEdit, type ModellingStore } from '@/store/slices/mutation-modelling-records';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy';
@@ -24,6 +24,8 @@ export interface CopyOutcome {
   readonly copies: readonly number[];
   /** What to re-mesh: the copies and the doors and windows copied with them. */
   readonly meshed: readonly number[];
+  /** Source id for each copied product, for immediate rendering and property lookup. */
+  readonly copiedFrom: ReadonlyMap<number, number>;
 }
 
 /** A read-only copy context over the model as it is now. */
@@ -53,7 +55,7 @@ export function copySources(state: ViewerState, modelId: string, ids: readonly n
     }
     return false;
   };
-    const kept = ids.filter((id) => !carried(id));
+  const kept = ids.filter((id) => !carried(id));
   for (const id of kept) {
     const refusal = copyRefusal(ctx, id) ?? placementRefusal(ctx, id);
     if (refusal) return { refusal };
@@ -96,13 +98,19 @@ export function copyElements(
   modelId: string,
   ids: readonly number[],
   transforms: readonly CopyTransform[],
+  options: { batchId?: string; duplicate?: DuplicateInStoreOptions } = {},
 ): CopyOutcome {
   const target = modelEditTarget(store.getState(), modelId);
   if (!target) throw new Error(`No model loaded for id "${modelId}"`);
   const results = recordModellingEdit(store, modelId, (_methods, draft) => {
-    const ctx = createCopyContext(target.dataStore, draft);
-    return transforms.flatMap((transform) => ids.map((id) => copyProductInStore(ctx, id, transform)));
-  });
+    const ctx = createCopyContext(target.dataStore, draft, { guidRandom: options.duplicate?.guidRandom });
+    return transforms.flatMap((transform) => ids.map((id) => {
+      if (!options.duplicate) return copyProductInStore(ctx, id, transform);
+      const sourceName = ctx.read(id)?.attributes[2];
+      const name = options.duplicate.name ?? (typeof sourceName === 'string' && sourceName.length > 0 ? `${sourceName} (copy)` : sourceName);
+      return copyProductInStore(ctx, id, transform, typeof name === 'string' ? { Name: name } : {});
+    }));
+  }, options.batchId);
   // The copies, their doors and windows and their assembly parts join their storey in the spatial tree,
   // as the source's parts are listed under theirs (`effectiveStoreyId` reaches a part through its assembly).
   const hierarchy = target.dataStore.spatialHierarchy;
@@ -115,5 +123,7 @@ export function copyElements(
       registerAuthoredElement(hierarchy, result.storeyId, id, record.type.toUpperCase(), typeof name === 'string' ? name : '');
     }
   }
-  return { copies: results.map((r) => r.copyId), meshed: results.flatMap((r) => r.meshed) };
+  const copiedFrom = new Map(results.flatMap((r) => [...r.copiedFrom]));
+  for (const [copy, source] of copiedFrom) target.view.setEntityAlias(copy, source);
+  return { copies: results.map((r) => r.copyId), meshed: results.flatMap((r) => r.meshed), copiedFrom };
 }

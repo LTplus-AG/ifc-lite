@@ -16,6 +16,7 @@
  * client-side (same as the in-memory impl).
  */
 
+import { IdbConnectionLifecycle } from '../idb-connection.js';
 import type { Flavor, FlavorSnapshot, FlavorStorage } from '@ifc-lite/extensions';
 import { ExtensionStorageQuotaError } from './idb-storage.js';
 
@@ -28,7 +29,7 @@ const STORE_SNAPS = 'flavor-snaps';
 const SNAPSHOT_CAP = 10;
 const ACTIVE_KEY = 'active';
 
-let dbPromise: Promise<IDBDatabase> | null = null;
+const connection = new IdbConnectionLifecycle('[flavors/idb]');
 
 interface SnapshotRow extends FlavorSnapshot {
   /** Compound key `<flavorId>@<seq>` so IDB can index without composite keys. */
@@ -69,22 +70,20 @@ async function withQuotaGuard<T>(operation: string, fn: () => Promise<T>): Promi
 
 export class IdbFlavorStorage implements FlavorStorage {
   async putFlavor(flavor: Flavor, reason?: string): Promise<void> {
-    const db = await openDatabase();
     const previous = await this.getFlavor(flavor.id);
     if (previous) {
-      await this.recordSnapshot(db, previous, reason);
+      await this.recordSnapshot(previous, reason);
     }
     await withQuotaGuard(`saving flavor "${flavor.id}"`, async () => {
-      const tx = db.transaction(STORE_FLAVORS, 'readwrite');
+      const tx = await beginTransaction(STORE_FLAVORS, 'readwrite');
       tx.objectStore(STORE_FLAVORS).put(flavor);
       await txDone(tx);
     });
   }
 
   async getFlavor(id: string): Promise<Flavor | undefined> {
-    const db = await openDatabase();
+    const tx = await beginTransaction(STORE_FLAVORS, 'readonly');
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_FLAVORS, 'readonly');
       const req = tx.objectStore(STORE_FLAVORS).get(id);
       req.onsuccess = () => resolve((req.result as Flavor | undefined) ?? undefined);
       req.onerror = () => reject(req.error);
@@ -92,9 +91,8 @@ export class IdbFlavorStorage implements FlavorStorage {
   }
 
   async listFlavors(): Promise<Flavor[]> {
-    const db = await openDatabase();
+    const tx = await beginTransaction(STORE_FLAVORS, 'readonly');
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_FLAVORS, 'readonly');
       const req = tx.objectStore(STORE_FLAVORS).getAll();
       req.onsuccess = () => resolve((req.result as Flavor[] | undefined) ?? []);
       req.onerror = () => reject(req.error);
@@ -102,9 +100,8 @@ export class IdbFlavorStorage implements FlavorStorage {
   }
 
   async deleteFlavor(id: string): Promise<void> {
-    const db = await openDatabase();
     // Drop the flavor itself + cascade its snapshots.
-    const tx = db.transaction([STORE_FLAVORS, STORE_SNAPS], 'readwrite');
+    const tx = await beginTransaction([STORE_FLAVORS, STORE_SNAPS], 'readwrite');
     tx.objectStore(STORE_FLAVORS).delete(id);
     const snaps = tx.objectStore(STORE_SNAPS);
     const cursorReq = snaps.openCursor();
@@ -122,9 +119,8 @@ export class IdbFlavorStorage implements FlavorStorage {
   }
 
   async getActiveId(): Promise<string | undefined> {
-    const db = await openDatabase();
+    const tx = await beginTransaction(STORE_ACTIVE, 'readonly');
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_ACTIVE, 'readonly');
       const req = tx.objectStore(STORE_ACTIVE).get(ACTIVE_KEY);
       req.onsuccess = () => resolve((req.result as { id?: string } | undefined)?.id);
       req.onerror = () => reject(req.error);
@@ -132,8 +128,7 @@ export class IdbFlavorStorage implements FlavorStorage {
   }
 
   async setActiveId(id: string | undefined): Promise<void> {
-    const db = await openDatabase();
-    const tx = db.transaction(STORE_ACTIVE, 'readwrite');
+    const tx = await beginTransaction(STORE_ACTIVE, 'readwrite');
     const store = tx.objectStore(STORE_ACTIVE);
     if (id === undefined) {
       store.delete(ACTIVE_KEY);
@@ -145,13 +140,12 @@ export class IdbFlavorStorage implements FlavorStorage {
 
   async listSnapshots(flavorId: string): Promise<FlavorSnapshot[]> {
     return (await this.listSnapshotRows(flavorId))
-      .map(({ key, flavorId: _id, ...rest }) => rest as FlavorSnapshot);
+      .map(({ key: _key, flavorId: _id, ...rest }) => rest as FlavorSnapshot);
   }
 
   async restoreSnapshot(flavorId: string, seq: number, reason?: string): Promise<Flavor | undefined> {
-    const db = await openDatabase();
+    const tx = await beginTransaction(STORE_SNAPS, 'readonly');
     const snap = await new Promise<SnapshotRow | undefined>((resolve, reject) => {
-      const tx = db.transaction(STORE_SNAPS, 'readonly');
       const req = tx.objectStore(STORE_SNAPS).get(`${flavorId}@${seq}`);
       req.onsuccess = () => resolve(req.result as SnapshotRow | undefined);
       req.onerror = () => reject(req.error);
@@ -162,8 +156,7 @@ export class IdbFlavorStorage implements FlavorStorage {
   }
 
   async clear(): Promise<void> {
-    const db = await openDatabase();
-    const tx = db.transaction([STORE_FLAVORS, STORE_ACTIVE, STORE_SNAPS], 'readwrite');
+    const tx = await beginTransaction([STORE_FLAVORS, STORE_ACTIVE, STORE_SNAPS], 'readwrite');
     tx.objectStore(STORE_FLAVORS).clear();
     tx.objectStore(STORE_ACTIVE).clear();
     tx.objectStore(STORE_SNAPS).clear();
@@ -172,9 +165,8 @@ export class IdbFlavorStorage implements FlavorStorage {
 
   /** Raw snapshot rows for a flavor, newest seq first. */
   private async listSnapshotRows(flavorId: string): Promise<SnapshotRow[]> {
-    const db = await openDatabase();
+    const tx = await beginTransaction(STORE_SNAPS, 'readonly');
     const all = await new Promise<SnapshotRow[]>((resolve, reject) => {
-      const tx = db.transaction(STORE_SNAPS, 'readonly');
       const req = tx.objectStore(STORE_SNAPS).getAll();
       req.onsuccess = () => resolve((req.result as SnapshotRow[] | undefined) ?? []);
       req.onerror = () => reject(req.error);
@@ -185,7 +177,6 @@ export class IdbFlavorStorage implements FlavorStorage {
   }
 
   private async recordSnapshot(
-    db: IDBDatabase,
     flavor: Flavor,
     reason: string | undefined,
   ): Promise<void> {
@@ -202,14 +193,14 @@ export class IdbFlavorStorage implements FlavorStorage {
       flavor,
       reason,
     };
-    const putTx = db.transaction(STORE_SNAPS, 'readwrite');
+    const putTx = await beginTransaction(STORE_SNAPS, 'readwrite');
     putTx.objectStore(STORE_SNAPS).put(row);
     await txDone(putTx);
     // Enforce cap: keep newest SNAPSHOT_CAP rows per flavor.
     const all = [row, ...existing];
     if (all.length > SNAPSHOT_CAP) {
       const toDrop = all.slice(SNAPSHOT_CAP);
-      const dropTx = db.transaction(STORE_SNAPS, 'readwrite');
+      const dropTx = await beginTransaction(STORE_SNAPS, 'readwrite');
       const store = dropTx.objectStore(STORE_SNAPS);
       for (const s of toDrop) store.delete(`${flavor.id}@${s.seq}`);
       await txDone(dropTx);
@@ -218,8 +209,8 @@ export class IdbFlavorStorage implements FlavorStorage {
 }
 
 function openDatabase(): Promise<IDBDatabase> {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+  return connection.open(() => new Promise<IDBDatabase>((resolve, reject) => {
+    let rejected = false;
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
@@ -233,9 +224,23 @@ function openDatabase(): Promise<IDBDatabase> {
         db.createObjectStore(STORE_SNAPS, { keyPath: 'key' });
       }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-    req.onblocked = () => reject(new Error('Flavor IDB open blocked by another tab.'));
-  });
-  return dbPromise;
+    req.onsuccess = () => {
+      // A blocked request can still succeed after its caller was rejected.
+      // Close that orphan rather than keeping an untracked connection alive.
+      if (rejected) { req.result.close(); return; }
+      resolve(req.result);
+    };
+    req.onerror = () => { rejected = true; reject(req.error); };
+    req.onblocked = () => {
+      rejected = true;
+      reject(new Error('Flavor IDB open blocked by another tab.'));
+    };
+  }));
+}
+
+/** Create the first request immediately after awaiting this transaction. */
+function beginTransaction(
+  stores: string | string[], mode: IDBTransactionMode,
+): Promise<IDBTransaction> {
+  return connection.withConnection(openDatabase, (db) => db.transaction(stores, mode));
 }

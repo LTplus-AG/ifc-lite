@@ -136,6 +136,8 @@ mod diag {
 
     #[inline]
     pub(super) fn defer(i: usize) {
+        #[cfg(feature = "opening-perf-trace")]
+        crate::opening_perf_trace::record(|c| c.prism_defers[i] = c.prism_defers[i].saturating_add(1));
         crate::telemetry_transaction::record(move || {
             DEFERS[i].fetch_add(1, Ordering::Relaxed);
         });
@@ -144,6 +146,12 @@ mod diag {
     /// Record one analytic-cut host: (fires, openings cut, openings residual).
     #[inline]
     pub(super) fn record_cut(committed_ops: usize, residual: usize) {
+        #[cfg(feature = "opening-perf-trace")]
+        crate::opening_perf_trace::record(|c| {
+            c.prism_candidate_successes = c.prism_candidate_successes.saturating_add(1);
+            c.prism_candidate_openings = c.prism_candidate_openings.saturating_add(committed_ops as u64);
+            c.prism_residual_openings = c.prism_residual_openings.saturating_add(residual as u64);
+        });
         crate::telemetry_transaction::record(move || {
             FIRES.fetch_add(1, Ordering::Relaxed);
             OPENINGS_ANALYTIC.fetch_add(committed_ops as u64, Ordering::Relaxed);
@@ -177,9 +185,19 @@ mod diag {
 #[cfg(not(any(feature = "observability", feature = "csg_capture", feature = "debug_geometry")))]
 mod diag {
     #[inline]
-    pub(super) fn defer(_i: usize) {}
+    pub(super) fn defer(_i: usize) {
+        #[cfg(feature = "opening-perf-trace")]
+        crate::opening_perf_trace::record(|c| c.prism_defers[_i] = c.prism_defers[_i].saturating_add(1));
+    }
     #[inline]
-    pub(super) fn record_cut(_committed_ops: usize, _residual: usize) {}
+    pub(super) fn record_cut(_committed_ops: usize, _residual: usize) {
+        #[cfg(feature = "opening-perf-trace")]
+        crate::opening_perf_trace::record(|c| {
+            c.prism_candidate_successes = c.prism_candidate_successes.saturating_add(1);
+            c.prism_candidate_openings = c.prism_candidate_openings.saturating_add(_committed_ops as u64);
+            c.prism_residual_openings = c.prism_residual_openings.saturating_add(_residual as u64);
+        });
+    }
     /// Telemetry disabled in the default build; the perf harness must enable an
     /// observability feature to read real counts.
     pub fn take_prism_defers() -> Vec<(&'static str, u64)> {
@@ -2789,6 +2807,8 @@ impl GeometryRouter {
         mesh: &Mesh,
         ctx: &VoidContext,
     ) -> Option<(Mesh, Option<VoidContext>)> {
+        #[cfg(feature = "opening-perf-trace")]
+        crate::opening_perf_trace::record(|c| c.prism_attempts = c.prism_attempts.saturating_add(1));
         if ctx.merged_openings.is_empty() || mesh.is_empty() || mesh.indices.len() < 12 {
             return None;
         }

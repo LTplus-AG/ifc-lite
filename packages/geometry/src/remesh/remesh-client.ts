@@ -13,6 +13,7 @@
 
 import type { RemeshConfig, RemeshRequest, RemeshResult, StyleWire } from './remesh-core.js';
 import type { RemeshWorkerInbound, RemeshWorkerOutbound } from './remesh-protocol.js';
+import { restashWasmPanicLocation } from '../wasm-panic-forward.js';
 
 export interface RemeshClientOptions {
   /** A compiled engine module to instantiate instead of fetching one. */
@@ -68,6 +69,7 @@ export class RemeshClient {
           this.worker.onmessage = (next: MessageEvent<RemeshWorkerOutbound>) => this.settle(next.data);
           resolve();
         } else if (message.type === 'init-error') {
+          restashWasmPanicLocation(globalThis, message.wasmPanicLocation, message.wasmPanicAt, message.message);
           reject(new Error(`Re-mesh engine failed to start: ${message.message}`));
         }
       };
@@ -154,7 +156,10 @@ export class RemeshClient {
     this.pending.delete(message.requestId);
     if (message.type === 'result') pending.resolve(message.result);
     else if (message.type === 'style-wire') pending.resolve(message.wire);
-    else pending.reject(new Error(`Re-mesh failed: ${message.message}`));
+    else {
+      restashWasmPanicLocation(globalThis, message.wasmPanicLocation, message.wasmPanicAt, message.message);
+      pending.reject(new Error(`Re-mesh failed: ${message.message}`));
+    }
   }
 
   private failAll(error: Error): void {

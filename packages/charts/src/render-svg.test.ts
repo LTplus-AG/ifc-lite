@@ -28,6 +28,17 @@ const ds: ChartDataset = {
 const bar: ChartSpec = { id: 'c', title: 'Elements by type', source: 'elements', type: 'bar', dimension: 'IfcType', measure: { agg: 'count' } };
 
 describe('buildEChartsOption', () => {
+  it('formats missing ECharts tooltip values without crashing (#4945)', () => {
+    const option = buildEChartsOption({ aggregation: aggregate(bar, ds) });
+    const tooltip = option.tooltip as { valueFormatter: (value: unknown) => string };
+    for (const missing of [undefined, null, NaN, Infinity]) {
+      expect(() => tooltip.valueFormatter(missing)).not.toThrow();
+      expect(tooltip.valueFormatter(missing)).toBe('—');
+    }
+    expect(tooltip.valueFormatter('IfcWall')).toBe('IfcWall');
+    expect(tooltip.valueFormatter(12)).toBe('12');
+    expect(tooltip.valueFormatter(12.345)).toBe('12.35');
+  });
   it('marks the selected categories, keeps bucket colours and enables multiple select on every series', () => {
     const agg = aggregate(bar, ds);
     const option = buildEChartsOption({ aggregation: agg, selected: [1] });

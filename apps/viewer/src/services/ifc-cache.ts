@@ -9,6 +9,8 @@
  * Uses xxhash64 of the source file as the cache key.
  */
 
+import { IdbConnectionLifecycle } from './idb-connection.js';
+
 const DB_NAME = 'ifc-lite-cache';
 const DB_VERSION = 1;
 const STORE_NAME = 'models';
@@ -57,15 +59,7 @@ export const PER_ENTRY_MAX_BYTES = 1.5 * 1024 * 1024 * 1024;
  */
 export const QUOTA_HEADROOM_BYTES = 128 * 1024 * 1024;
 
-let dbPromise: Promise<IDBDatabase> | null = null;
-
-/**
- * The connection `dbPromise` last resolved to. Kept alongside the memo so an
- * invalidation can be IDENTITY-CHECKED: a caller that trips over a dead
- * connection must only clear the memo if the memo still holds *that* dead
- * connection, never one a concurrent caller has already reopened.
- */
-let memoisedDb: IDBDatabase | null = null;
+const connection = new IdbConnectionLifecycle('[IFC Cache]');
 
 /** Bytes a cache record occupies on disk (cache buffer + optional source). */
 function entryBytes(buffer: Blob | ArrayBuffer, sourceBuffer?: ArrayBuffer): number {
@@ -170,14 +164,11 @@ export async function ensureRoomForEntry(db: IDBDatabase, bytes: number, keepKey
  * Open the IndexedDB database
  */
 export function openDatabase(): Promise<IDBDatabase> {
-  if (dbPromise) return dbPromise;
-
-  dbPromise = new Promise((resolve, reject) => {
+  return connection.open(() => new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onerror = () => {
       console.error('[IFC Cache] Failed to open database:', request.error);
-      dbPromise = null; // Reset so we can retry
       reject(request.error);
     };
 
@@ -188,8 +179,7 @@ export function openDatabase(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         console.warn('[IFC Cache] Object store missing, recreating database...');
         db.close();
-        dbPromise = null;
-        memoisedDb = null;
+        connection.reset();
 
         // Delete and recreate the database
         const deleteRequest = indexedDB.deleteDatabase(DB_NAME);
@@ -203,25 +193,6 @@ export function openDatabase(): Promise<IDBDatabase> {
         return;
       }
 
-      // A connection can go away underneath the memo. Drop it PROACTIVELY on
-      // the two events that announce it, so the next call opens a fresh one
-      // instead of handing out a dead handle:
-      //  - `versionchange`: another tab is upgrading/deleting the database. We
-      //    must close, or we block it; after our own close() no `close` event
-      //    fires, so invalidate here explicitly.
-      //  - `close`: the connection was closed ABNORMALLY (e.g. the browser
-      //    reclaiming storage), which is the case no code path can predict.
-      db.onversionchange = () => {
-        console.warn('[IFC Cache] Database version change requested elsewhere; closing connection');
-        db.close();
-        invalidateConnection(db);
-      };
-      db.onclose = () => {
-        console.warn('[IFC Cache] Database connection closed unexpectedly; will reopen on next use');
-        invalidateConnection(db);
-      };
-
-      memoisedDb = db;
       resolve(db);
     };
 
@@ -235,59 +206,11 @@ export function openDatabase(): Promise<IDBDatabase> {
         store.createIndex('fileName', 'fileName', { unique: false });
       }
     };
-  });
-
-  return dbPromise;
+  }));
 }
 
-/**
- * Drop the memoised connection, but only if it is still `dead`. Concurrent
- * callers all trip over the same dead connection; without this check the second
- * one would clear the memo the first has already refilled, and we would open
- * the database once per in-flight operation instead of once.
- */
-function invalidateConnection(dead: IDBDatabase): void {
-  if (memoisedDb !== dead) return;
-  memoisedDb = null;
-  dbPromise = null;
-}
-
-/**
- * A closed connection is the one failure that `openDatabase`'s memo cannot see:
- * `IDBDatabase.transaction()` throws `InvalidStateError` SYNCHRONOUSLY once the
- * connection is closed, and none of the operations below can produce that name
- * any other way (an inactive/finished transaction throws
- * `TransactionInactiveError`, a read-only write throws `ReadOnlyError`).
- */
-function isClosedConnectionError(err: unknown): boolean {
-  return err instanceof Error && err.name === 'InvalidStateError';
-}
-
-/**
- * Run `use` against the memoised connection, reopening ONCE if that connection
- * turns out to be closed.
- *
- * `use` must be synchronous and must not have applied any persistent effect
- * before it throws — the only failure treated as retryable is the synchronous
- * `InvalidStateError` from `transaction()`, which means no transaction was ever
- * created and therefore nothing was written. That is what makes the retry
- * safe: it replays a no-op, never a half-applied write.
- *
- * Bounded on purpose: exactly one reopen per operation. If the fresh connection
- * also fails (or the database cannot be opened at all) the error propagates to
- * the caller's non-fatal handler — one broken database must not become an
- * endless open loop.
- */
-async function withConnection<T>(use: (db: IDBDatabase) => T): Promise<T> {
-  const db = await openDatabase();
-  try {
-    return use(db);
-  } catch (err) {
-    if (!isClosedConnectionError(err)) throw err;
-    console.warn('[IFC Cache] Connection was closed underneath the cache; reopening', err);
-    invalidateConnection(db);
-    return use(await openDatabase());
-  }
+function withConnection<T>(use: (db: IDBDatabase) => T): Promise<T> {
+  return connection.withConnection(openDatabase, use);
 }
 
 /**

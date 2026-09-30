@@ -1,0 +1,170 @@
+{
+  "Snowdon": {
+    "base": {
+      "flatMeshes": 7151,
+      "flatTriangles": 612080,
+      "decodedInstances": 10229,
+      "instanceTriangles": 253900,
+      "flatSha256": "cc151d2b7e55eb587b29ea122b272a2d673561db3f6fd02afac8c2e3b1906249",
+      "coordinateInfoSha256": "d44a1bf9774ba70d3a69b2ac54a76ca84617e825499c04034d011adc5c5b3915",
+      "instancedSha256": "79564c43eb70af997b9364538472a902051334dae50a1da51cbfba8a785d3d2a"
+    },
+    "candidate": {
+      "flatMeshes": 7151,
+      "flatTriangles": 612080,
+      "decodedInstances": 10229,
+      "instanceTriangles": 253900,
+      "flatSha256": "52ab9d197a668cd6f5a258fded35a32ba7fc1812f55b68a1195ffee2cccba32f",
+      "coordinateInfoSha256": "d44a1bf9774ba70d3a69b2ac54a76ca84617e825499c04034d011adc5c5b3915",
+      "instancedSha256": "79564c43eb70af997b9364538472a902051334dae50a1da51cbfba8a785d3d2a"
+    },
+    "differentFields": [
+      "flatSha256"
+    ],
+    "webgpuAdapter": {
+      "vendor": "google",
+      "architecture": "swiftshader",
+      "device": "",
+      "description": ""
+    }
+  },
+  "public455": {
+    "base": {
+      "flatMeshes": 3,
+      "flatTriangles": 7782,
+      "decodedInstances": 0,
+      "instanceTriangles": 0,
+      "flatSha256": "d620b33894bc095ab0c202648fd7c5b71605574b502b2066e77eec38af853d08",
+      "coordinateInfoSha256": "16ff0d6b88a2857292ea8d5e733667bf8fa8ad1bb3d7b5fb09a261150dee21ae",
+      "instancedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "candidate": {
+      "flatMeshes": 3,
+      "flatTriangles": 7782,
+      "decodedInstances": 0,
+      "instanceTriangles": 0,
+      "flatSha256": "cbbf8ca49ce28d2593f345fc87411b08301c1b2da91d26f6f9a5f73cd7d3462f",
+      "coordinateInfoSha256": "16ff0d6b88a2857292ea8d5e733667bf8fa8ad1bb3d7b5fb09a261150dee21ae",
+      "instancedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "differentFields": [
+      "flatSha256"
+    ],
+    "webgpuAdapter": {
+      "vendor": "google",
+      "architecture": "swiftshader",
+      "device": "",
+      "description": ""
+    }
+  },
+  "rvt01": {
+    "base": {
+      "flatMeshes": 1702,
+      "flatTriangles": 88428,
+      "decodedInstances": 0,
+      "instanceTriangles": 0,
+      "flatSha256": "2cedbc2932962af15861e5ab4da297840522e8c78da16ec5fc6c476613f4876b",
+      "coordinateInfoSha256": "477b96294c09464aed2491c4bc0cf7053d7fdcfc5eeb0f3b516e9c22a167398a",
+      "instancedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "candidate": {
+      "flatMeshes": 1702,
+      "flatTriangles": 88428,
+      "decodedInstances": 0,
+      "instanceTriangles": 0,
+      "flatSha256": "c85b616d522ee9f00182e32652de5773b09469d3e84a4ecfbd71678b3968b67e",
+      "coordinateInfoSha256": "477b96294c09464aed2491c4bc0cf7053d7fdcfc5eeb0f3b516e9c22a167398a",
+      "instancedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "differentFields": [
+      "flatSha256"
+    ],
+    "webgpuAdapter": {
+      "vendor": "google",
+      "architecture": "swiftshader",
+      "device": "",
+      "description": ""
+    }
+  },
+  "AC20": {
+    "base": {
+      "flatMeshes": 317,
+      "flatTriangles": 33356,
+      "decodedInstances": 0,
+      "instanceTriangles": 0,
+      "flatSha256": "a8a817ccfb58100645c0a63725bf0411534e5cdd661564109e7d33d3ca7999ba",
+      "coordinateInfoSha256": "e8f39d17985d752e51aa34e60b8ad7c036286cba0553cb7492a13025cd20f140",
+      "instancedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "candidate": {
+      "flatMeshes": 317,
+      "flatTriangles": 33356,
+      "decodedInstances": 0,
+      "instanceTriangles": 0,
+      "flatSha256": "a8a817ccfb58100645c0a63725bf0411534e5cdd661564109e7d33d3ca7999ba",
+      "coordinateInfoSha256": "e8f39d17985d752e51aa34e60b8ad7c036286cba0553cb7492a13025cd20f140",
+      "instancedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "differentFields": [],
+    "webgpuAdapter": {
+      "vendor": "google",
+      "architecture": "swiftshader",
+      "device": "",
+      "description": ""
+    }
+  },
+  "ISSUE129": {
+    "base": {
+      "flatMeshes": 1402,
+      "flatTriangles": 134675,
+      "decodedInstances": 0,
+      "instanceTriangles": 0,
+      "flatSha256": "b0c6578a6e60ae9bf7b060464b55f3438a4af32e39e4835df55ff0a691d5744e",
+      "coordinateInfoSha256": "bea8411084e3c743c99ee2d5f08e65695be7317fe8da4fd8a6a0874472885c07",
+      "instancedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "candidate": {
+      "flatMeshes": 1402,
+      "flatTriangles": 134675,
+      "decodedInstances": 0,
+      "instanceTriangles": 0,
+      "flatSha256": "b0c6578a6e60ae9bf7b060464b55f3438a4af32e39e4835df55ff0a691d5744e",
+      "coordinateInfoSha256": "bea8411084e3c743c99ee2d5f08e65695be7317fe8da4fd8a6a0874472885c07",
+      "instancedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "differentFields": [],
+    "webgpuAdapter": {
+      "vendor": "google",
+      "architecture": "swiftshader",
+      "device": "",
+      "description": ""
+    }
+  },
+  "Holter": {
+    "base": {
+      "flatMeshes": 56697,
+      "flatTriangles": 755426,
+      "decodedInstances": 53935,
+      "instanceTriangles": 1349622,
+      "flatSha256": "82e5c91e5e302ef8ac3bcd421f58c3a9a6039d8f829097b9b8912e7bb330fe78",
+      "coordinateInfoSha256": "0acaf703826bd02571a716d19f1ecfc315db95c096629a516e562219b03f0e3e",
+      "instancedSha256": "6893bdd76dbd5f002dc3ca92f58c6e14b0d207769d09643d7c22dced853b2825"
+    },
+    "candidate": {
+      "flatMeshes": 56697,
+      "flatTriangles": 755426,
+      "decodedInstances": 53935,
+      "instanceTriangles": 1349622,
+      "flatSha256": "82e5c91e5e302ef8ac3bcd421f58c3a9a6039d8f829097b9b8912e7bb330fe78",
+      "coordinateInfoSha256": "0acaf703826bd02571a716d19f1ecfc315db95c096629a516e562219b03f0e3e",
+      "instancedSha256": "6893bdd76dbd5f002dc3ca92f58c6e14b0d207769d09643d7c22dced853b2825"
+    },
+    "differentFields": [],
+    "webgpuAdapter": {
+      "vendor": "google",
+      "architecture": "swiftshader",
+      "device": "",
+      "description": ""
+    }
+  }
+}

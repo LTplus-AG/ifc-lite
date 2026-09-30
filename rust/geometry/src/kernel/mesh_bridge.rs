@@ -211,6 +211,14 @@ impl BatchSubtract {
 /// previous cut's seams. Component order is the caller's (deterministic).
 /// See [`BatchSubtract`] for the three outcomes.
 pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> BatchSubtract {
+    subtract_many_with_conformity(host, cutters, false).0
+}
+
+/// Keep the provenance of an unchanged batch for the void router (#6516).
+/// A volume-checked nonconforming miss must retain the sequential fallback.
+pub(crate) fn subtract_many_with_conformity(
+    host: &Mesh, cutters: &[&Mesh], retain_conforming_miss: bool,
+) -> (BatchSubtract, bool, Option<Mesh>) {
     #[cfg(feature = "csg_capture")]
     crate::csg_capture::record_many(host, cutters);
     let h = orient_outward(mesh_to_tris(host));
@@ -225,8 +233,19 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> BatchSubtract {
     let refs: Vec<&[Tri]> = comp_tris.iter().map(|c| c.as_slice()).collect();
     // Conforming batch: the fast, exact, byte-identical common path.
     if let Some((r, changed)) = difference_all(&h, &refs) {
-        return BatchSubtract::classified(&r, changed);
+        #[cfg(feature = "opening-perf-trace")]
+        crate::opening_perf_trace::record(|c| {
+            c.batch_conforming_arrangements = c.batch_conforming_arrangements.saturating_add(1);
+            c.batch_conforming_misses = c.batch_conforming_misses.saturating_add(u64::from(!changed));
+        });
+        // Only the private void-group caller requests this: an unchanged
+        // arrangement still carries useful seams for topology consolidation.
+        let miss = (retain_conforming_miss && !changed)
+            .then(|| tris_to_mesh_without_plane_tags(&r));
+        return (BatchSubtract::classified(&r, changed), true, miss);
     }
+    #[cfg(feature = "opening-perf-trace")]
+    crate::opening_perf_trace::record(|c| c.batch_nonconforming_arrangements = c.batch_nonconforming_arrangements.saturating_add(1));
     // Non-conforming batch (an unrecovered constraint remains after the robust
     // traversal recovery). Its exact topology is CLEANER than sequential per-cutter
     // re-jitter on dense faceted-reveal walls (issue #098 V5C: 532→108 open edges),
@@ -260,7 +279,7 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> BatchSubtract {
     }
     super::budget::restore_counters(budget_snap);
     if oracle_tripped {
-        return BatchSubtract::Nonconforming;
+        return (BatchSubtract::Nonconforming, false, None);
     }
     // Both readings about the HOST's reference point (#4693). A host can arrive
     // open (the router does not require a closed host), and an open surface's
@@ -274,9 +293,11 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> BatchSubtract {
     // reject the #1167 gross under-cut (3.7 m³ vs 13 m³).
     let tol = inter_sum.abs().max(1.0e-9) * 0.01;
     if (batch_removed - inter_sum).abs() <= tol {
-        BatchSubtract::classified(&batch, changed)
+        #[cfg(feature = "opening-perf-trace")]
+        crate::opening_perf_trace::record(|c| c.batch_volume_checked_misses = c.batch_volume_checked_misses.saturating_add(u64::from(!changed)));
+        (BatchSubtract::classified(&batch, changed), false, None)
     } else {
-        BatchSubtract::Nonconforming
+        (BatchSubtract::Nonconforming, false, None)
     }
 }
 

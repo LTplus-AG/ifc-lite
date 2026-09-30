@@ -8,13 +8,14 @@
  * handled strictly in order, so a `config` posted between two requests
  * applies to the second and not the first.
  *
- * A wasm trap poisons only the `IfcAPI` that took it: that handle is dropped
- * and the next request gets a fresh one with the current config.
+ * A failed request drops its `IfcAPI`: cleanup may trap independently of
+ * the primary error. The next request gets a fresh handle with current config.
  */
 
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import { initWasmWithRetry } from '../wasm-init-retry.js';
 import { freeWasmInstanceQuietly } from '../wasm-instance-free.js';
+import { restashWasmPanicLocation, takeWasmPanicStash } from '../wasm-panic-forward.js';
 import { applyRemeshConfig, remeshOnApi, styleWireOnApi, type RemeshConfig } from './remesh-core.js';
 import {
   meshTransferables, serialQueue, styleWireTransferables, type RemeshWorkerInbound, type RemeshWorkerOutbound,
@@ -32,6 +33,16 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function errorDetails(error: unknown) {
+  const panic = takeWasmPanicStash(scope);
+  return { message: errorMessage(error), wasmPanicLocation: panic?.location, wasmPanicAt: panic?.at };
+}
+
+function freeFailedApi(instance: IfcAPI | null): void {
+  freeWasmInstanceQuietly(instance);
+  takeWasmPanicStash(scope); // A cleanup panic must not label the next operation.
+}
+
 function currentApi(): IfcAPI {
   if (!config) throw new Error('remesh worker used before init');
   if (api) return api;
@@ -39,7 +50,9 @@ function currentApi(): IfcAPI {
   try {
     applyRemeshConfig(fresh, config);
   } catch (error) {
-    freeWasmInstanceQuietly(fresh);
+    const panic = takeWasmPanicStash(scope);
+    freeFailedApi(fresh);
+    if (panic) restashWasmPanicLocation(scope, panic.location, panic.at, errorMessage(error));
     throw error;
   }
   api = fresh;
@@ -56,7 +69,7 @@ async function handle(message: RemeshWorkerInbound): Promise<void> {
         currentApi();
         post({ type: 'ready' });
       } catch (error) {
-        post({ type: 'init-error', message: errorMessage(error) });
+        post({ type: 'init-error', ...errorDetails(error) });
       }
       return;
     }
@@ -68,7 +81,9 @@ async function handle(message: RemeshWorkerInbound): Promise<void> {
         // No request to answer yet: drop the half-configured handle, so the
         // next request rebuilds it and reports this same failure to its caller.
         console.error('[remesh.worker] config rejected:', errorMessage(error));
-        freeWasmInstanceQuietly(api);
+        // This failure has no request to capture; don't label a later trap.
+        takeWasmPanicStash(scope);
+        freeFailedApi(api);
         api = null;
       }
       return;
@@ -84,11 +99,12 @@ async function handle(message: RemeshWorkerInbound): Promise<void> {
           post({ type: 'style-wire', requestId: message.requestId, wire }, styleWireTransferables(wire));
         }
       } catch (error) {
-        if (error instanceof WebAssembly.RuntimeError) {
-          freeWasmInstanceQuietly(api);
-          api = null;
-        }
-        post({ type: 'error', requestId: message.requestId, message: errorMessage(error) });
+        // Capture before freeing: cleanup of a poisoned handle can trap too.
+        const details = errorDetails(error);
+        // A non-trap primary error may hide a secondary cleanup trap.
+        freeFailedApi(api);
+        api = null;
+        post({ type: 'error', requestId: message.requestId, ...details });
       }
       return;
     }

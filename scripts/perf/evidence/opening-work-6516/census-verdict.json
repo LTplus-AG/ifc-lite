@@ -1,0 +1,50 @@
+{
+  "sourceBase": "003f4ff7fdc12ab92d601811792baa71b997a3ff",
+  "regeneration": "official IFCLITE_CENSUS_BLESS=1 full and heavy harnesses; no manual TSV edits",
+  "cells": [
+    {
+      "manifest": "watertightness_census.tsv",
+      "model": "various/rvt01.ifc",
+      "host": 7075,
+      "oldVolumeFingerprint": "2915296",
+      "newVolumeFingerprint": "2915290",
+      "allOtherFieldsUnchanged": true
+    },
+    {
+      "manifest": "watertightness_census.tsv",
+      "model": "various/rvt01.ifc",
+      "host": 7834,
+      "oldVolumeFingerprint": "2182313",
+      "newVolumeFingerprint": "2182312",
+      "allOtherFieldsUnchanged": true
+    },
+    {
+      "manifest": "watertightness_census.tsv",
+      "model": "various/rvt01.ifc",
+      "host": 33639,
+      "oldVolumeFingerprint": "45776890",
+      "newVolumeFingerprint": "45776897",
+      "allOtherFieldsUnchanged": true
+    },
+    {
+      "manifest": "watertightness_census_heavy.tsv",
+      "model": "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc",
+      "host": 892212,
+      "oldVolumeFingerprint": "21624668",
+      "newVolumeFingerprint": "21624713",
+      "allOtherFieldsUnchanged": true
+    }
+  ],
+  "unblessedChecks": [
+    {
+      "log": "v3-final-full-census-unblessed.log",
+      "sha256": "7f5b07b9b0db1636ed4d868e6d8beb2e84e3c030c0333f83dae6f413330b6e75",
+      "result": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 70 filtered out; finished in 147.04s"
+    },
+    {
+      "log": "v3-final-heavy-census-unblessed.log",
+      "sha256": "095a15fcf66920a0185c7ea10c4a4c3201b58865053741ad0d47647642ec02f4",
+      "result": "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 69 filtered out; finished in 21.24s"
+    }
+  ]
+}

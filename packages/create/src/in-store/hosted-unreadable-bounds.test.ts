@@ -72,12 +72,24 @@ describe('#6232 / #6539 conservative hosted bounds', () => {
   }
 
   it('keeps legitimate omitted optional opening and mapping orientation readable', async () => {
-    const s = await session(), original = placedBodyExtent(s.store, 1299, s.view);
+    const s = await session();
     for (const id of [1343, 1318]) {
       s.editor.setPositionalAttribute(id, 1, null);
       s.editor.setPositionalAttribute(id, 2, null);
     }
-    expect(placedBodyExtent(s.store, 1299, s.view)).toEqual(original);
+    // Independently authored IFC: #1305 is [0,.899999976158142] ×
+    // [0,1.20000004768372]; #1311 rotates profile Y to Z and starts
+    // at Y=-.600000023841858; #1313 extrudes 1.2 along +Y.
+    // Identity #1318/#1324 mapping then #1340 adds [1.76767492294312,0,1].
+    const bounds = placedBodyExtent(s.store, 1299, s.view);
+    expect(bounds).not.toBeNull();
+    const expected = {
+      min: [1.76767492294312, -0.600000023841858, 1],
+      max: [2.667674899101262, 0.599999976158142, 2.20000004768372],
+    };
+    for (const side of ['min', 'max'] as const) for (let axis = 0; axis < 3; axis++) {
+      expect(bounds![side][axis]).toBeCloseTo(expected[side][axis], 12);
+    }
     expect(readHostOpeningExtents(s.store, 1222, s.view).unreadable).toEqual([]);
     expect(addHostedElementInStore(s.store, s.editor, 1222, { kind: 'door', params: { Offset: 8, Width: 0.9, Height: 2.1 } }).openingId).toBeGreaterThan(0);
   });

@@ -93,3 +93,29 @@ typecheck passed, followed by the streaming, federation, translation, data-slice
 and memory suites. Both comparison builds have byte-identical WASM runtime,
 glue and committed types. The earlier hidden-preview observations remain
 retained and are not promoted to a foreground performance verdict.
+
+
+## Foreground observations after visibility was restored
+
+`foreground-observations.json.gz` and its manifest retain five interleaved
+base/branch pairs for AC20 and Holter, on the real non-fallback NVIDIA adapter
+with stable foreground frame cadence. Each model was the first canonical load
+in a newly navigated document with all application caches cleared. These runs
+reuse the same T3 tab; literal new-tab and same-build noise controls, plus the
+larger O-S1 model, remain pending. The small differences do not establish a
+universal speedup. Both builds retain identical flat geometry fingerprints,
+mesh and triangle counts in every pair.
+
+Three interrupted automation attempts are separate diagnostic records. The
+large-file remote polling timeout did not prevent the actual viewer from
+finishing the load; those attempts are excluded from the paired series. Holter
+uses a post-final in-page readiness observation to avoid that control-path
+timeout; each fixture's two builds use identical instrumentation. Preparation,
+fixture download/hash and the deferred remote wait are outside the measured
+finalization interval. Neither these timings nor the original hidden runs
+claim complete instanced-GPU byte identity.
+
+Standalone Chrome was also tested: it has normal frame cadence on this Linux
+host but software graphics and no WebGPU adapter. The shared T3 browser has the
+real NVIDIA adapter and is used for rendering comparisons. Both diagnostic
+records are retained; they are different graphics environments.

@@ -18,20 +18,19 @@ def leaf_distances(point, triangles):
     a, b, c = triangles[:, 0], triangles[:, 1], triangles[:, 2]
     ab, ac = b - a, c - a
     ap = point - a
-    d00 = np.einsum('ij,ij->i', ab, ab)
-    d01 = np.einsum('ij,ij->i', ab, ac)
-    d11 = np.einsum('ij,ij->i', ac, ac)
-    d20 = np.einsum('ij,ij->i', ap, ab)
-    d21 = np.einsum('ij,ij->i', ap, ac)
-    denom = d00 * d11 - d01 * d01
-    valid = denom > np.finfo(float).eps * np.maximum(d00 * d11, np.finfo(float).tiny)
+    # Cross products avoid cancellation of nearly equal Gram products on thin
+    # triangles. A nonzero represented area remains a valid plane projection.
+    normal = np.cross(ab, ac)
+    denom = np.einsum('ij,ij->i', normal, normal)
+    valid = denom > 0
     u = np.zeros_like(denom)
     v = np.zeros_like(denom)
-    np.divide(d11 * d20 - d01 * d21, denom, out=u, where=valid)
-    np.divide(d00 * d21 - d01 * d20, denom, out=v, where=valid)
+    np.divide(np.einsum('ij,ij->i', np.cross(ap, ac), normal), denom, out=u, where=valid)
+    np.divide(np.einsum('ij,ij->i', np.cross(ab, ap), normal), denom, out=v, where=valid)
     inside = valid & (u >= 0) & (v >= 0) & (u + v <= 1)
-    projected = a + u[:, None] * ab + v[:, None] * ac
-    plane_dist = np.einsum('ij,ij->i', point - projected, point - projected)
+    plane_dist = np.full_like(denom, np.inf)
+    numerator = np.einsum('ij,ij->i', ap, normal)
+    np.divide(numerator * numerator, denom, out=plane_dist, where=valid)
     best = np.where(inside, plane_dist, np.inf)
     for start, end in ((a, b), (b, c), (c, a)):
         delta = end - start
@@ -129,7 +128,7 @@ class Surface:
         return best
 
     def sample_sets(self):
-        yield 'unique_vertices', np.unique(self.vertices, axis=0)
+        yield 'unique_vertices', self.referenced_vertices
         yield 'triangle_centroids', self.triangles.mean(axis=1)
         # Each geometric edge midpoint, deduplicated; no randomized sampling.
         edges = np.concatenate([(self.triangles[:, 0] + self.triangles[:, 1]) / 2,
@@ -145,6 +144,20 @@ def known_answer_checks():
             raise AssertionError((point, actual, expected))
     degenerate = np.array([[[0., 0., 0.], [1., 0., 0.], [1., 0., 0.]]])
     assert math.isclose(float(leaf_distances(np.array([.5, 2, 0]), degenerate)[0]), 4)
+    # PR #6536: valid thin triangles must retain interior plane projections.
+    thin = np.array([[[0., 0., 0.], [1000., 0., 0.], [1000., 1e-5, 0.]]])
+    centroid = thin.mean(axis=1)[0]
+    assert float(leaf_distances(centroid, thin)[0]) == 0
+    assert math.isclose(float(leaf_distances(centroid + [0, 0, 2], thin)[0]), 4)
+    thin_surface = Surface(thin.reshape(-1, 3), [[0, 1, 2]])
+    assert thin_surface.nearest_squared(centroid) == 0
+    assert thin_surface.nearest_squared_batch(np.array([centroid]))[0] == 0
+    # Retained but unreferenced buffer positions are not part of a surface.
+    padded = Surface(np.vstack((thin.reshape(-1, 3), [1e6, 1e6, 1e6])), [[0, 1, 2]])
+    assert np.array_equal(next(padded.sample_sets())[1], thin_surface.referenced_vertices)
+    assert geometry_report(padded) == geometry_report(thin_surface)
+    for _, points in padded.sample_sets():
+        assert np.all(thin_surface.nearest_squared_batch(points) < 1e-24)
     # BVH result equals brute-force actual triangle distances over deterministic queries.
     rng = np.random.default_rng(6516)
     vertices = rng.uniform(-2, 2, (180, 3))
@@ -157,7 +170,7 @@ def known_answer_checks():
     batched = surface.nearest_squared_batch(queries)
     brute = np.array([float(leaf_distances(point, surface.triangles).min()) for point in queries])
     assert np.allclose(batched, brute, rtol=1e-12, atol=1e-12)
-    return 'passed: plane interior, outside edge, endpoint, degenerate segment, 100 scalar BVH/brute-force queries and 100 batched BVH/brute-force queries'
+    return 'passed: plane interior, outside edge, endpoint, degenerate segment, thin triangle interior and offset, unused buffer vertex exclusion, 100 scalar BVH/brute-force queries and 100 batched BVH/brute-force queries'
 
 def compare(source, target, label):
     sets = {}
@@ -215,8 +228,8 @@ def load_capture(path, kind, host_id, metadata_path=None):
     return Surface(np.concatenate(vertices), np.concatenate(faces)), {'coordinates': 'canonical viewer metres [x,z,-y] reversed to IFC [x,y,z], plus part origin and actual IFC RTC; buildingRotation stays metadata, units are not reapplied', 'rtc': rtc.tolist(), 'rtc_provenance': provenance, 'parts': len(selected)}
 
 def geometry_report(surface):
-    vertices, inverse = np.unique(surface.vertices, axis=0, return_inverse=True)
-    faces = inverse[surface.faces]
+    vertices, inverse = np.unique(surface.triangles.reshape(-1, 3), axis=0, return_inverse=True)
+    faces = inverse.reshape(-1, 3)
     edges = np.concatenate((faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]))
     _, undirected_counts = np.unique(np.sort(edges, axis=1), axis=0, return_counts=True)
     directed, counts = np.unique(edges, axis=0, return_counts=True)

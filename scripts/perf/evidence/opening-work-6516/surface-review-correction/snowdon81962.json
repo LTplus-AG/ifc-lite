@@ -1,0 +1,497 @@
+{
+  "method": "actual floating-point nearest triangle distances, triangle-AABB BVH seeded with referenced-vertex upper bounds; every unique vertex, triangle centroid and unique edge midpoint, both directions",
+  "limitation": "Finite samples do not prove continuous Hausdorff bounds or valid solids. Split material parts include inner interfaces; compare same parts separately when needed.",
+  "known_answer_checks": "passed: plane interior, outside edge, endpoint, degenerate segment, thin triangle interior and offset, unused buffer vertex exclusion, 100 scalar BVH/brute-force queries and 100 batched BVH/brute-force queries",
+  "reproducer_sha256": "c02224d8d831974baaa585631ee676523e3b4b0c4f9fd3807c955b99d5f4bce6",
+  "input_sha256": {
+    "base": "d6f647a47e350297907c4adc50a1aeac8134cf46f350879d8a847cd6c141f05b",
+    "candidate": "07b168527376817e92892d470ead265bd0d5dbe253936e7163370186dd6bf7d1",
+    "oracle": "ea5c1ae76a0fd3680f8fdb2789dc8278c4bbd0a795d462b04f22de47106aeb0a"
+  },
+  "metadata_sha256": {},
+  "coordinate_provenance": {
+    "base": {
+      "coordinates": "canonical viewer metres [x,z,-y] reversed to IFC [x,y,z], plus part origin and actual IFC RTC; buildingRotation stays metadata, units are not reapplied",
+      "rtc": [
+        0,
+        0,
+        0
+      ],
+      "rtc_provenance": "actual canonical coordinateInfo RTC",
+      "parts": 1
+    },
+    "candidate": {
+      "coordinates": "canonical viewer metres [x,z,-y] reversed to IFC [x,y,z], plus part origin and actual IFC RTC; buildingRotation stays metadata, units are not reapplied",
+      "rtc": [
+        0,
+        0,
+        0
+      ],
+      "rtc_provenance": "actual canonical coordinateInfo RTC",
+      "parts": 1
+    },
+    "oracle": {
+      "coordinates": "pinned engine USE_WORLD_COORDS; metres"
+    }
+  },
+  "geometry": {
+    "base": {
+      "bounds": {
+        "min": [
+          -33.37559509277344,
+          -9.004302978515625,
+          -5.30859375
+        ],
+        "max": [
+          21.261627197265625,
+          12.42059326171875,
+          -5.1562042236328125
+        ]
+      },
+      "triangles": 816,
+      "boundary_edges": 0,
+      "nonmanifold_edges": 0,
+      "unmatched_directed_edge_occurrences": 0,
+      "degenerate_edges": 0,
+      "signed_centered_volume_diagnostic_m3": 157.84173471827486,
+      "closed_coherent_edge_incidence": true,
+      "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+    },
+    "candidate": {
+      "bounds": {
+        "min": [
+          -33.37559509277344,
+          -9.004302978515625,
+          -5.30859375
+        ],
+        "max": [
+          21.261627197265625,
+          12.42059326171875,
+          -5.1562042236328125
+        ]
+      },
+      "triangles": 816,
+      "boundary_edges": 0,
+      "nonmanifold_edges": 0,
+      "unmatched_directed_edge_occurrences": 0,
+      "degenerate_edges": 0,
+      "signed_centered_volume_diagnostic_m3": 157.84173471827486,
+      "closed_coherent_edge_incidence": true,
+      "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+    },
+    "oracle": {
+      "bounds": {
+        "min": [
+          -33.37559999999988,
+          -9.004300000000164,
+          -5.308600000000012
+        ],
+        "max": [
+          21.261617073764423,
+          12.420600000000062,
+          -5.156200000000012
+        ]
+      },
+      "triangles": 460,
+      "boundary_edges": 0,
+      "nonmanifold_edges": 0,
+      "unmatched_directed_edge_occurrences": 0,
+      "degenerate_edges": 0,
+      "signed_centered_volume_diagnostic_m3": 157.8526269827021,
+      "closed_coherent_edge_incidence": true,
+      "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+    }
+  },
+  "comparisons": {
+    "base_to_oracle": {
+      "unique_vertices": {
+        "sample_count": 380,
+        "distance_m": {
+          "max": 1.0291284197088101e-05,
+          "p99": 7.464541277682053e-06,
+          "p95": 6.250000011753799e-06,
+          "median": 4.2236328008371515e-06
+        },
+        "counts_over_distance_m": {
+          "1e-06": 342,
+          "1e-05": 2,
+          "0.0001": 0,
+          "0.001": 0
+        },
+        "largest_sample_ifc_world_coords": [
+          21.261627197265625,
+          -7.8495330810546875,
+          -5.30859375
+        ],
+        "elapsed_seconds_diagnostic_only": 0.013989362982101738
+      },
+      "triangle_centroids": {
+        "sample_count": 816,
+        "distance_m": {
+          "max": 8.618163938933774e-06,
+          "p99": 7.885742217439429e-06,
+          "p95": 6.259086388205066e-06,
+          "median": 4.2236328008371515e-06
+        },
+        "counts_over_distance_m": {
+          "1e-06": 777,
+          "1e-05": 0,
+          "0.0001": 0,
+          "0.001": 0
+        },
+        "largest_sample_ifc_world_coords": [
+          -28.460708618164062,
+          7.852834065755208,
+          -5.2577972412109375
+        ],
+        "elapsed_seconds_diagnostic_only": 0.013574542012065649
+      },
+      "unique_edge_midpoints": {
+        "sample_count": 1224,
+        "distance_m": {
+          "max": 1.0291284197088101e-05,
+          "p99": 7.885742277835561e-06,
+          "p95": 6.591796803512296e-06,
+          "median": 4.2236328008371515e-06
+        },
+        "counts_over_distance_m": {
+          "1e-06": 1149,
+          "1e-05": 1,
+          "0.0001": 0,
+          "0.001": 0
+        },
+        "largest_sample_ifc_world_coords": [
+          21.261627197265625,
+          -7.8495330810546875,
+          -5.232398986816406
+        ],
+        "elapsed_seconds_diagnostic_only": 0.024317861010786146
+      }
+    },
+    "oracle_to_base": {
+      "unique_vertices": {
+        "sample_count": 202,
+        "distance_m": {
+          "max": 1.2109990318449421e-05,
+          "p99": 1.0642392563650944e-05,
+          "p95": 9.136650706026271e-06,
+          "median": 6.250000011753798e-06
+        },
+        "counts_over_distance_m": {
+          "1e-06": 202,
+          "1e-05": 4,
+          "0.0001": 0,
+          "0.001": 0
+        },
+        "largest_sample_ifc_world_coords": [
+          -15.31619999999997,
+          12.420600000000062,
+          -5.308600000000012
+        ],
+        "elapsed_seconds_diagnostic_only": 0.010709530033636838
+      },
+      "triangle_centroids": {
+        "sample_count": 460,
+        "distance_m": {
+          "max": 8.618163935381062e-06,
+          "p99": 8.105468808139449e-06,
+          "p95": 6.68945310758895e-06,
+          "median": 4.2236328008371515e-06
+        },
+        "counts_over_distance_m": {
+          "1e-06": 425,
+          "1e-05": 0,
+          "0.0001": 0,
+          "0.001": 0
+        },
+        "largest_sample_ifc_world_coords": [
+          -28.460700000000127,
+          7.7681666666667155,
+          -5.257800000000011
+        ],
+        "elapsed_seconds_diagnostic_only": 0.01568248198600486
+      },
+      "unique_edge_midpoints": {
+        "sample_count": 690,
+        "distance_m": {
+          "max": 1.0645902959601925e-05,
+          "p99": 9.8591918581439e-06,
+          "p95": 7.930516131859064e-06,
+          "median": 4.663086228706703e-06
+        },
+        "counts_over_distance_m": {
+          "1e-06": 656,
+          "1e-05": 6,
+          "0.0001": 0,
+          "0.001": 0
+        },
+        "largest_sample_ifc_world_coords": [
+          -28.460700000000124,
+          7.810500000000046,
+          -5.308600000000012
+        ],
+        "elapsed_seconds_diagnostic_only": 0.01585349696688354
+      }
+    },
+    "candidate_to_oracle": {
+      "unique_vertices": {
+        "sample_count": 380,
+        "distance_m": {
+          "max": 1.0291284197088101e-05,
+          "p99": 7.464541277682053e-06,
+          "p95": 6.250000011753799e-06,
+          "median": 4.2236328008371515e-06
+        },
+        "counts_over_distance_m": {
+          "1e-06": 342,
+          "1e-05": 2,
+          "0.0001": 0,
+          "0.001": 0
+        },
+        "largest_sample_ifc_world_coords": [
+          21.261627197265625,
+          -7.8495330810546875,
+          -5.30859375
+        ],
+        "elapsed_seconds_diagnostic_only": 0.00743561697890982
+      },
+      "triangle_centroids": {
+        "sample_count": 816,
+        "distance_m": {
+          "max": 8.618163938933774e-06,
+          "p99": 7.885742217439429e-06,
+          "p95": 6.259086388205066e-06,
+          "median": 4.2236328008371515e-06
+        },
+        "counts_over_distance_m": {
+          "1e-06": 777,
+          "1e-05": 0,
+          "0.0001": 0,
+          "0.001": 0
+        },
+        "largest_sample_ifc_world_coords": [
+          -28.460708618164062,
+          7.852834065755208,
+          -5.2577972412109375
+        ],
+        "elapsed_seconds_diagnostic_only": 0.012494312017224729
+      },
+      "unique_edge_midpoints": {
+        "sample_count": 1224,
+        "distance_m": {
+          "max": 1.0291284197088101e-05,
+          "p99": 7.885742277835561e-06,
+          "p95": 6.591796803512296e-06,
+          "median": 4.2236328008371515e-06
+        },
+        "counts_over_distance_m": {
+          "1e-06": 1149,
+          "1e-05": 1,
+          "0.0001": 0,
+          "0.001": 0
+        },
+        "largest_sample_ifc_world_coords": [
+          21.261627197265625,
+          -7.8495330810546875,
+          -5.232398986816406
+        ],
+        "elapsed_seconds_diagnostic_only": 0.01659961702534929
+      }
+    },
+    "oracle_to_candidate": {
+      "unique_vertices": {
+        "sample_count": 202,
+        "distance_m": {
+          "max": 1.2109990318449421e-05,
+          "p99": 1.0642392563650944e-05,
+          "p95": 9.136650706026271e-06,
+          "median": 6.250000011753798e-06
+        },
+        "counts_over_distance_m": {
+          "1e-06": 202,
+          "1e-05": 4,
+          "0.0001": 0,
+          "0.001": 0
+        },
+        "largest_sample_ifc_world_coords": [
+          -15.31619999999997,
+          12.420600000000062,
+          -5.308600000000012
+        ],
+        "elapsed_seconds_diagnostic_only": 0.009644431003835052
+      },
+      "triangle_centroids": {
+        "sample_count": 460,
+        "distance_m": {
+          "max": 8.618163935381062e-06,
+          "p99": 8.105468808139449e-06,
+          "p95": 6.68945310758895e-06,
+          "median": 4.2236328008371515e-06
+        },
+        "counts_over_distance_m": {
+          "1e-06": 425,
+          "1e-05": 0,
+          "0.0001": 0,
+          "0.001": 0
+        },
+        "largest_sample_ifc_world_coords": [
+          -28.460700000000127,
+          7.7681666666667155,
+          -5.257800000000011
+        ],
+        "elapsed_seconds_diagnostic_only": 0.014011862978804857
+      },
+      "unique_edge_midpoints": {
+        "sample_count": 690,
+        "distance_m": {
+          "max": 1.0645902959601925e-05,
+          "p99": 9.8591918581439e-06,
+          "p95": 7.930516131859064e-06,
+          "median": 4.663086228706703e-06
+        },
+        "counts_over_distance_m": {
+          "1e-06": 656,
+          "1e-05": 6,
+          "0.0001": 0,
+          "0.001": 0
+        },
+        "largest_sample_ifc_world_coords": [
+          -28.460700000000124,
+          7.810500000000046,
+          -5.308600000000012
+        ],
+        "elapsed_seconds_diagnostic_only": 0.018263998965267092
+      }
+    },
+    "base_to_candidate": {
+      "unique_vertices": {
+        "sample_count": 380,
+        "distance_m": {
+          "max": 0.0,
+          "p99": 0.0,
+          "p95": 0.0,
+          "median": 0.0
+        },
+        "counts_over_distance_m": {
+          "1e-06": 0,
+          "1e-05": 0,
+          "0.0001": 0,
+          "0.001": 0
+        },
+        "largest_sample_ifc_world_coords": [
+          -33.37559509277344,
+          -8.305801391601562,
+          -5.30859375
+        ],
+        "elapsed_seconds_diagnostic_only": 0.01333781296852976
+      },
+      "triangle_centroids": {
+        "sample_count": 816,
+        "distance_m": {
+          "max": 7.411419159735222e-16,
+          "p99": 0.0,
+          "p95": 0.0,
+          "median": 0.0
+        },
+        "counts_over_distance_m": {
+          "1e-06": 0,
+          "1e-05": 0,
+          "0.0001": 0,
+          "0.001": 0
+        },
+        "largest_sample_ifc_world_coords": [
+          18.337855021158855,
+          -8.234456380208334,
+          -5.207000732421875
+        ],
+        "elapsed_seconds_diagnostic_only": 0.02196099702268839
+      },
+      "unique_edge_midpoints": {
+        "sample_count": 1224,
+        "distance_m": {
+          "max": 0.0,
+          "p99": 0.0,
+          "p95": 0.0,
+          "median": 0.0
+        },
+        "counts_over_distance_m": {
+          "1e-06": 0,
+          "1e-05": 0,
+          "0.0001": 0,
+          "0.001": 0
+        },
+        "largest_sample_ifc_world_coords": [
+          -33.37559509277344,
+          -8.305801391601562,
+          -5.232398986816406
+        ],
+        "elapsed_seconds_diagnostic_only": 0.03379842097638175
+      }
+    },
+    "candidate_to_base": {
+      "unique_vertices": {
+        "sample_count": 380,
+        "distance_m": {
+          "max": 0.0,
+          "p99": 0.0,
+          "p95": 0.0,
+          "median": 0.0
+        },
+        "counts_over_distance_m": {
+          "1e-06": 0,
+          "1e-05": 0,
+          "0.0001": 0,
+          "0.001": 0
+        },
+        "largest_sample_ifc_world_coords": [
+          -33.37559509277344,
+          -8.305801391601562,
+          -5.30859375
+        ],
+        "elapsed_seconds_diagnostic_only": 0.017299592029303312
+      },
+      "triangle_centroids": {
+        "sample_count": 816,
+        "distance_m": {
+          "max": 7.411419159735222e-16,
+          "p99": 0.0,
+          "p95": 0.0,
+          "median": 0.0
+        },
+        "counts_over_distance_m": {
+          "1e-06": 0,
+          "1e-05": 0,
+          "0.0001": 0,
+          "0.001": 0
+        },
+        "largest_sample_ifc_world_coords": [
+          18.337855021158855,
+          -8.234456380208334,
+          -5.207000732421875
+        ],
+        "elapsed_seconds_diagnostic_only": 0.023557281005196273
+      },
+      "unique_edge_midpoints": {
+        "sample_count": 1224,
+        "distance_m": {
+          "max": 0.0,
+          "p99": 0.0,
+          "p95": 0.0,
+          "median": 0.0
+        },
+        "counts_over_distance_m": {
+          "1e-06": 0,
+          "1e-05": 0,
+          "0.0001": 0,
+          "0.001": 0
+        },
+        "largest_sample_ifc_world_coords": [
+          -33.37559509277344,
+          -8.305801391601562,
+          -5.232398986816406
+        ],
+        "elapsed_seconds_diagnostic_only": 0.02966638101497665
+      }
+    }
+  }
+}

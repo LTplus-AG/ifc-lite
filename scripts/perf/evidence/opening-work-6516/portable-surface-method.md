@@ -78,10 +78,18 @@ captured triangle surfaces, including internal layer interfaces. The recorded
 Revit qualification also compares corresponding individual parts separately,
 so unchanged outer bounds cannot conceal a reopened material part.
 
-The portable script was checked against the original independent Snowdon and
-ISSUE_068 runs: every sample count, distance quantile/maximum, and threshold
-count matched exactly. The original failed script attempt (missing helper
-function) was retained and corrected before using its results.
+The initial portable script matched the original independent Snowdon and
+ISSUE_068 runs. PR review subsequently reproduced a shared numerical defect:
+valid thin triangles lost their interior projections through cancellation in
+the Gram determinant. The current calculation uses cross products for area,
+barycentric coordinates and plane distance, retaining the segment fallback for
+zero-area triangles. Samples, bounds and the volume reference use only referenced
+vertices. Known-answer checks cover a 1000 m by 10 µm triangle's centroid and
+off-plane point, scalar and batched queries, and an unused far-away vertex.
+[Fresh comparisons](surface-review-correction/README.md) of all nine actual oracle
+cases and all 14 changed native Revit parts use identical archived input bytes.
+These corrected distances supersede the earlier derived figures. The original
+failed script attempt and old derived outputs remain historical evidence.
 
 Limits: these finite samples do not prove continuous Hausdorff bounds. Closed
 coherent edge incidence does not prove a valid solid against self-intersections

@@ -72,6 +72,15 @@ the optimization. Same-count misses retain the existing single-cutter path;
 the router's existing triangle-retention floor also remains in force.
 The correctness checks pass; the performance verdict below remains limited by browser noise.
 
+PR review found two defects in the independent distance reproducer: cancellation
+in its Gram determinant discarded valid thin-triangle interior projections, and
+unused buffer vertices were sampled as surface geometry. Both failed known-answer
+checks before correction. The current cross-product calculation and referenced-only
+samples were rerun against the same nine archived oracle cases and all 14 changed
+native Revit parts. [Corrected outputs and provenance](surface-review-correction/README.md)
+supersede the earlier derived distance figures, which remain archived. No geometry
+production code, timed WASM artifact, topology threshold or benchmark changed.
+
 The other public lead, 994, has identical opening meshes and the same operation
 counts across releases, but its host gains triangles. Source-matched ordered
 traces now locate the first changed intermediate: two identical raw hole rings

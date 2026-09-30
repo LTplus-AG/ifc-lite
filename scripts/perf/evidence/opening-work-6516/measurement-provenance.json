@@ -97,8 +97,8 @@
     "browser-aa-v3-host-load.jsonl": "c085b4ae307ae48c7a660c4873ff36b9fa6eee2aa962a3ef32205dce1b6e9909",
     "browser-ab-v3-report.json": "a9f8d63ddc4cd1e70b02ca330143fd4667d12a477403417dc32710397a252461",
     "native-five-pairs-host-load.jsonl": "b9c75b23c07c1f3a6eba7fcc9e76e2ac0ea16ea83c130c845029db7d0c99bf67",
-    "portable-surface-method.md": "26445980c804398e8c233ceb62837f0b85145e5ed92622058c3b120ef75f4392",
-    "compare-surfaces-6516.py": "4c538741d1e07708b406155a1bf9548a963f843fa7a7faed5ce5f850ece59e24",
+    "portable-surface-method.md": "8c77bdc0d21f697e900268ba30283ed84f4817b0e9d09637e4c90a0346ba01ff",
+    "compare-surfaces-6516.py": "c02224d8d831974baaa585631ee676523e3b4b0c4f9fd3807c955b99d5f4bce6",
     "browser-aa-v3-report.json": "a5b0ab9c54b182e27b5a774e12d83ded2b988f86edfe47999d23bb344be2ebf0",
     "native-parts-collector.rs": "5b19e3c1fccd37db916e0f228f3fb2744ffbf2102cbe04be96ffc610813f089b",
     "software-browser-harness.patch": "532935f6464ab03da3cb6690d5b2e106e98406ed148288c7df6adc905c20248d"
@@ -113,6 +113,26 @@
       "measuredScratchCodeSha256": "1f369b88fda854e9f983b2b79ca3414005e4b18c0fb8d603a83e72ed2d4c8551",
       "packagedCodeSha256": "5b19e3c1fccd37db916e0f228f3fb2744ffbf2102cbe04be96ffc610813f089b",
       "change": "MPL comment header only; measured code and behavior unchanged"
-    }
+    },
+    "historicalNote": "These header-only packaging hashes describe head72a923f. Current distance calculation changed after reproduced review findings; see surfaceReviewCorrection for fresh exact-script qualification."
+  },
+  "surfaceReviewCorrection": {
+    "reason": "PR6536 thin-triangle Gram cancellation and unreferenced vertex sampling reproduced and corrected; earlier derived distances remain historical rather than silently rewritten.",
+    "reproducerSha256": "c02224d8d831974baaa585631ee676523e3b4b0c4f9fd3807c955b99d5f4bce6",
+    "knownAnswers": "valid thin triangle centroid+off-plane; scalar+batched BVH; unused vertices excluded from samples/bounds/volume center; existing plane/edge/degenerate/random BVH checks",
+    "archivedCorrectedOutputs": {
+      "455.json": "585879f72c650be329b012d89d6ec526df9ba12b2fb7c56f862cdffa4f64c9b9",
+      "invocations.json": "8efccc5b1397e82b2d9daa809665e832399efee093c700df1a41ee4dd20c9e30",
+      "issue068-892212.json": "df8aaeb9eda0f85ccb804f4d544f8eebf8b272e798b8d706383d8bdd83fa02c2",
+      "native-rvt14-changed-parts.json": "47ecaadaafb5d1c59a75c9675fc0e42c73a66f665bca77522a2199a21bf8776e",
+      "rvt-browser38800.json": "2b0e85739d20b9a98df78e355475e438775593b4248b9fb9ec0c2b426b38ebc7",
+      "rvt-browser6810.json": "05c6d25ed5c216e2ee6fbe541f01ee2fb9b8a5e9dc0a654859e5c1a73a97f078",
+      "rvt-browser7834.json": "4187bcc61d8d150ccde6de6cf50924f1ec4dcd8cde8879cb4089e204128bca2a",
+      "rvt33639.json": "b7bc8a8fbb2762fb7c012323eb1d646d1b981204a6d1979039b3af789b491c5d",
+      "rvt7075.json": "922df72a463feeadaec3addfdcdcc7a57bf5bbcfac717c4eb1c4c26a7d86026f",
+      "rvt7834.json": "b82e3473b32bfe33db324a8a57d2a2dd5285596d44a08e1e60a148a994501512",
+      "snowdon81962.json": "c1d93301d0ff8521028be1109e5654db8af114fa3ea2d1bb301addc3987761e7"
+    },
+    "scope": "Nine external-oracle cases and all14 changed native Revit parts from identical archived capture bytes; geometry production and timed WASM artifacts unchanged."
   }
 }

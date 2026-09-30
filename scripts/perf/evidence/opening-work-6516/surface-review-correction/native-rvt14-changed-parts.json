@@ -1,0 +1,2561 @@
+{
+  "method": "corrected cross-product point-to-triangle distances; all referenced vertices, triangle centroids and unique edge midpoints, both directions",
+  "frame": "SiteLocal { placement: [-0.6693791667919431, -0.742920945366951, 0.0, 0.0, 0.742920945366951, -0.6693791667919431, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 500373.1102175479, 2780223.975349443, 14.23, 1.0] }",
+  "coordinateSpace": "site_local",
+  "limits": "Same actual native SiteLocal frame, no new world-frame or external oracle claim. Finite samples do not bound continuous surfaces or valid solids.",
+  "inputSha256": {
+    "base": "8fc85dbac5d65bbdd70781f2751748e65e74b1a7550f525f7b89bf9edd8b5622",
+    "candidate": "ac5038b59b7589f1eaa73f60ccd789def92f5677d65649bb51a4d6fd39dd307b"
+  },
+  "reproducerSha256": "c02224d8d831974baaa585631ee676523e3b4b0c4f9fd3807c955b99d5f4bce6",
+  "changedParts": [
+    {
+      "index": 92,
+      "expressId": 6810,
+      "comparisons": {
+        "base_to_candidate": {
+          "unique_vertices": {
+            "sample_count": 88,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -2.4249114990234375,
+              -0.005994245409965515,
+              -1.975006103515625
+            ],
+            "elapsed_seconds_diagnostic_only": 0.009487077011726797
+          },
+          "triangle_centroids": {
+            "sample_count": 180,
+            "distance_m": {
+              "max": 2.8922965419452073e-19,
+              "p99": 2.8918033463523073e-19,
+              "p95": 2.8912102089655273e-19,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              1.0216064453125,
+              0.00599567328269283,
+              0.875
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0033948399941436946
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 270,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -2.4249114990234375,
+              -0.005994245409965515,
+              0.0
+            ],
+            "elapsed_seconds_diagnostic_only": 0.004767652018927038
+          }
+        },
+        "candidate_to_base": {
+          "unique_vertices": {
+            "sample_count": 88,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -2.4249114990234375,
+              -0.005994245409965515,
+              -1.975006103515625
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0026690999511629343
+          },
+          "triangle_centroids": {
+            "sample_count": 180,
+            "distance_m": {
+              "max": 2.8922965419452073e-19,
+              "p99": 2.8918033463523073e-19,
+              "p95": 2.8912102089655273e-19,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              1.0216064453125,
+              0.00599567328269283,
+              0.875
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0039053780492395163
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 270,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -2.4249114990234375,
+              -0.005994245409965515,
+              0.0
+            ],
+            "elapsed_seconds_diagnostic_only": 0.004436330986209214
+          }
+        }
+      },
+      "geometry": {
+        "base": {
+          "bounds": {
+            "min": [
+              -2.4249114990234375,
+              -0.005999109707772732,
+              -1.975006103515625
+            ],
+            "max": [
+              2.4249114990234375,
+              0.005999109707772732,
+              1.975006103515625
+            ]
+          },
+          "triangles": 180,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 0.17381872353481928,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        },
+        "candidate": {
+          "bounds": {
+            "min": [
+              -2.4249114990234375,
+              -0.005999109707772732,
+              -1.975006103515625
+            ],
+            "max": [
+              2.4249114990234375,
+              0.005999109707772732,
+              1.975006103515625
+            ]
+          },
+          "triangles": 180,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 0.17381872353481928,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        }
+      }
+    },
+    {
+      "index": 105,
+      "expressId": 7075,
+      "comparisons": {
+        "base_to_candidate": {
+          "unique_vertices": {
+            "sample_count": 88,
+            "distance_m": {
+              "max": 4.906506769419055e-11,
+              "p99": 4.2967171867521846e-11,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              0.00225830078125,
+              1.2651761860382749e-09,
+              0.8125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0025234000058844686
+          },
+          "triangle_centroids": {
+            "sample_count": 176,
+            "distance_m": {
+              "max": 4.906506769419051e-11,
+              "p99": 3.4462267298286667e-11,
+              "p95": 2.339405227192078e-12,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.0017445882161458333,
+              -9.338926298951833e-10,
+              0.8125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.003474635013844818
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 264,
+            "distance_m": {
+              "max": 4.5560467582735145e-11,
+              "p99": 3.506301796002077e-11,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              0.0003814697265625,
+              2.323484182831237e-10,
+              0.7687530517578125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.004587670031469315
+          }
+        },
+        "candidate_to_base": {
+          "unique_vertices": {
+            "sample_count": 88,
+            "distance_m": {
+              "max": 4.906506769419055e-11,
+              "p99": 4.2967171867521846e-11,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.00225830078125,
+              -1.2651761860382749e-09,
+              0.8125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0024348750011995435
+          },
+          "triangle_centroids": {
+            "sample_count": 176,
+            "distance_m": {
+              "max": 4.906506769419055e-11,
+              "p99": 3.44622672982867e-11,
+              "p95": 2.339405227192054e-12,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              0.0017445882161458333,
+              9.338926298951833e-10,
+              0.8125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.003278971998952329
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 264,
+            "distance_m": {
+              "max": 4.5560467582735145e-11,
+              "p99": 3.506301796002077e-11,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.0003814697265625,
+              -2.323484182831237e-10,
+              0.7687530517578125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0041276380070485175
+          }
+        }
+      },
+      "geometry": {
+        "base": {
+          "bounds": {
+            "min": [
+              -0.005997686646878719,
+              -1.75,
+              -1.8000030517578125
+            ],
+            "max": [
+              0.005997686646878719,
+              1.75,
+              1.8000030517578125
+            ]
+          },
+          "triangles": 176,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 0.1276105085684611,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        },
+        "candidate": {
+          "bounds": {
+            "min": [
+              -0.005997686646878719,
+              -1.75,
+              -1.8000030517578125
+            ],
+            "max": [
+              0.005997686646878719,
+              1.75,
+              1.8000030517578125
+            ]
+          },
+          "triangles": 176,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 0.1276105085686575,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        }
+      }
+    },
+    {
+      "index": 106,
+      "expressId": 7075,
+      "comparisons": {
+        "base_to_candidate": {
+          "unique_vertices": {
+            "sample_count": 88,
+            "distance_m": {
+              "max": 4.906506769419055e-11,
+              "p99": 4.2967171867521846e-11,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              0.00225830078125,
+              1.2651761860382749e-09,
+              0.8125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.00248172803549096
+          },
+          "triangle_centroids": {
+            "sample_count": 176,
+            "distance_m": {
+              "max": 4.906506769419051e-11,
+              "p99": 3.4462267298286667e-11,
+              "p95": 2.339405227192078e-12,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.0017445882161458333,
+              -9.338926298951833e-10,
+              0.8125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0032789420220069587
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 264,
+            "distance_m": {
+              "max": 4.5560467582735145e-11,
+              "p99": 3.506301796002077e-11,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              0.0003814697265625,
+              2.323484182831237e-10,
+              0.7687530517578125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.004231406026519835
+          }
+        },
+        "candidate_to_base": {
+          "unique_vertices": {
+            "sample_count": 88,
+            "distance_m": {
+              "max": 4.906506769419055e-11,
+              "p99": 4.2967171867521846e-11,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.00225830078125,
+              -1.2651761860382749e-09,
+              0.8125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0024712459999136627
+          },
+          "triangle_centroids": {
+            "sample_count": 176,
+            "distance_m": {
+              "max": 4.906506769419055e-11,
+              "p99": 3.44622672982867e-11,
+              "p95": 2.339405227192054e-12,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              0.0017445882161458333,
+              9.338926298951833e-10,
+              0.8125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0033212139969691634
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 264,
+            "distance_m": {
+              "max": 4.5560467582735145e-11,
+              "p99": 3.506301796002077e-11,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.0003814697265625,
+              -2.323484182831237e-10,
+              0.7687530517578125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.004159071017056704
+          }
+        }
+      },
+      "geometry": {
+        "base": {
+          "bounds": {
+            "min": [
+              -0.005997686646878719,
+              -1.75,
+              -1.8000030517578125
+            ],
+            "max": [
+              0.005997686646878719,
+              1.75,
+              1.8000030517578125
+            ]
+          },
+          "triangles": 176,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 0.1276105085684611,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        },
+        "candidate": {
+          "bounds": {
+            "min": [
+              -0.005997686646878719,
+              -1.75,
+              -1.8000030517578125
+            ],
+            "max": [
+              0.005997686646878719,
+              1.75,
+              1.8000030517578125
+            ]
+          },
+          "triangles": 176,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 0.1276105085686575,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        }
+      }
+    },
+    {
+      "index": 107,
+      "expressId": 7075,
+      "comparisons": {
+        "base_to_candidate": {
+          "unique_vertices": {
+            "sample_count": 27,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.12500092387199402,
+              1.75,
+              -1.8000030517578125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0006880059954710305
+          },
+          "triangle_centroids": {
+            "sample_count": 54,
+            "distance_m": {
+              "max": 7.401487240485098e-17,
+              "p99": 7.401487240485098e-17,
+              "p95": 7.401487075923668e-17,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              0.04166609048843384,
+              1.0500030914942424,
+              0.4333292643229167
+            ],
+            "elapsed_seconds_diagnostic_only": 0.000871399010065943
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 81,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.12500092387199402,
+              1.75,
+              -1.1500015258789062
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0009180420311167836
+          }
+        },
+        "candidate_to_base": {
+          "unique_vertices": {
+            "sample_count": 27,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.12500092387199402,
+              1.75,
+              -1.8000030517578125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0006296330248005688
+          },
+          "triangle_centroids": {
+            "sample_count": 54,
+            "distance_m": {
+              "max": 7.401487240485098e-17,
+              "p99": 7.401487240485098e-17,
+              "p95": 7.401487075923668e-17,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              0.04166609048843384,
+              1.0500030914942424,
+              0.4333292643229167
+            ],
+            "elapsed_seconds_diagnostic_only": 0.000849607982672751
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 81,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.12500092387199402,
+              1.75,
+              -1.1500015258789062
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0008891000179573894
+          }
+        }
+      },
+      "geometry": {
+        "base": {
+          "bounds": {
+            "min": [
+              -0.12500092387199402,
+              -1.7500001192092896,
+              -1.8000030517578125
+            ],
+            "max": [
+              0.12500092387199402,
+              1.7500001192092896,
+              1.8000030517578125
+            ]
+          },
+          "triangles": 54,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 2.660009661060192,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        },
+        "candidate": {
+          "bounds": {
+            "min": [
+              -0.12500092387199402,
+              -1.7500001192092896,
+              -1.8000030517578125
+            ],
+            "max": [
+              0.12500092387199402,
+              1.7500001192092896,
+              1.8000030517578125
+            ]
+          },
+          "triangles": 54,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 2.660009661060192,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        }
+      }
+    },
+    {
+      "index": 142,
+      "expressId": 7834,
+      "comparisons": {
+        "base_to_candidate": {
+          "unique_vertices": {
+            "sample_count": 92,
+            "distance_m": {
+              "max": 1.1920928955078125e-07,
+              "p99": 6.50380773463432e-08,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              1.6730042695999146,
+              -0.0014959026593714952,
+              -1.600006103515625
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0027320649824105203
+          },
+          "triangle_centroids": {
+            "sample_count": 188,
+            "distance_m": {
+              "max": 3.9736429924275285e-08,
+              "p99": 3.9736429924275285e-08,
+              "p95": 7.401488171435446e-17,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              1.673004190127055,
+              0.0012557702139019966,
+              -1.5541737874348958
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0037543029757216573
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 282,
+            "distance_m": {
+              "max": 5.960464477539063e-08,
+              "p99": 5.960464477539063e-08,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              1.6730042099952698,
+              -0.0037465529749169946,
+              -1.7375030517578125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.005444339010864496
+          }
+        },
+        "candidate_to_base": {
+          "unique_vertices": {
+            "sample_count": 92,
+            "distance_m": {
+              "max": 4.480023398848387e-08,
+              "p99": 3.7943098905464743e-08,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              1.673004150390625,
+              -0.0022587785497307777,
+              -1.7375030517578125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.003174364974256605
+          },
+          "triangle_centroids": {
+            "sample_count": 188,
+            "distance_m": {
+              "max": 1.0948941667076221e-07,
+              "p99": 4.233572317353921e-08,
+              "p95": 7.401488171435446e-17,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              1.673004150390625,
+              -0.001256827653075258,
+              -1.5541737874348958
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0038670909707434475
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 282,
+            "distance_m": {
+              "max": 8.959649007022853e-08,
+              "p99": 5.923935321797283e-08,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              1.673004150390625,
+              -0.000755852204747498,
+              -1.4625091552734375
+            ],
+            "elapsed_seconds_diagnostic_only": 0.005174860008992255
+          }
+        }
+      },
+      "geometry": {
+        "base": {
+          "bounds": {
+            "min": [
+              -2.819000244140625,
+              -0.005997647996991873,
+              -1.975006103515625
+            ],
+            "max": [
+              2.819000244140625,
+              0.005997626576572657,
+              1.975006103515625
+            ]
+          },
+          "triangles": 188,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 0.21110742789761328,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        },
+        "candidate": {
+          "bounds": {
+            "min": [
+              -2.819000244140625,
+              -0.005997647996991873,
+              -1.975006103515625
+            ],
+            "max": [
+              2.819000244140625,
+              0.005997626576572657,
+              1.975006103515625
+            ]
+          },
+          "triangles": 188,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 0.21110742779954897,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        }
+      }
+    },
+    {
+      "index": 144,
+      "expressId": 7834,
+      "comparisons": {
+        "base_to_candidate": {
+          "unique_vertices": {
+            "sample_count": 92,
+            "distance_m": {
+              "max": 1.1919192081028646e-07,
+              "p99": 1.0727272872926188e-08,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              1.6730042695999146,
+              0.02500860020518303,
+              -1.32501220703125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.003036274982150644
+          },
+          "triangle_centroids": {
+            "sample_count": 188,
+            "distance_m": {
+              "max": 3.973642992427529e-08,
+              "p99": 3.9731392860745914e-08,
+              "p95": 2.31318368012708e-18,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              1.673004190127055,
+              0.0083358200887839,
+              -1.6916707356770833
+            ],
+            "elapsed_seconds_diagnostic_only": 0.003453573037404567
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 282,
+            "distance_m": {
+              "max": 5.960464477539063e-08,
+              "p99": 5.959596040514323e-08,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              1.6730042099952698,
+              -0.012497499585151672,
+              -1.600006103515625
+            ],
+            "elapsed_seconds_diagnostic_only": 0.004500392999034375
+          }
+        },
+        "candidate_to_base": {
+          "unique_vertices": {
+            "sample_count": 92,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -2.819000244140625,
+              -0.050002116709947586,
+              -1.975006103515625
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0027572059771046042
+          },
+          "triangle_centroids": {
+            "sample_count": 188,
+            "distance_m": {
+              "max": 7.94544157929856e-08,
+              "p99": 4.489901230623747e-08,
+              "p95": 2.31311863582041e-18,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              1.673004150390625,
+              0.008330757239453609,
+              -1.3250071207682292
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0036939590354450047
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 282,
+            "distance_m": {
+              "max": 1.1919026744900077e-07,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              1.673004150390625,
+              0.025000966815639458,
+              -1.3250045776367188
+            ],
+            "elapsed_seconds_diagnostic_only": 0.004412239009980112
+          }
+        }
+      },
+      "geometry": {
+        "base": {
+          "bounds": {
+            "min": [
+              -2.819000244140625,
+              -0.05000399053096771,
+              -1.975006103515625
+            ],
+            "max": [
+              2.819000244140625,
+              0.05000395327806473,
+              1.975006103515625
+            ]
+          },
+          "triangles": 188,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 1.7603057385076284,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        },
+        "candidate": {
+          "bounds": {
+            "min": [
+              -2.819000244140625,
+              -0.05000399053096771,
+              -1.975006103515625
+            ],
+            "max": [
+              2.819000244140625,
+              0.05000395327806473,
+              1.975006103515625
+            ]
+          },
+          "triangles": 188,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 1.7603057352291875,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        }
+      }
+    },
+    {
+      "index": 263,
+      "expressId": 10191,
+      "comparisons": {
+        "base_to_candidate": {
+          "unique_vertices": {
+            "sample_count": 88,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.005996743217110634,
+              0.156005859375,
+              -1.975006103515625
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0030934939859434962
+          },
+          "triangle_centroids": {
+            "sample_count": 172,
+            "distance_m": {
+              "max": 2.891272387709277e-19,
+              "p99": 2.8912550465737064e-19,
+              "p95": 2.8912321010058256e-19,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.005996699600170056,
+              -0.013504028941194216,
+              0.5008341471354166
+            ],
+            "elapsed_seconds_diagnostic_only": 0.003816676966380328
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 258,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.005996743217110634,
+              0.156005859375,
+              0.0
+            ],
+            "elapsed_seconds_diagnostic_only": 0.004310621996410191
+          }
+        },
+        "candidate_to_base": {
+          "unique_vertices": {
+            "sample_count": 88,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.005996743217110634,
+              0.156005859375,
+              -1.975006103515625
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0026250979863107204
+          },
+          "triangle_centroids": {
+            "sample_count": 172,
+            "distance_m": {
+              "max": 2.891272387709277e-19,
+              "p99": 2.8912550465737064e-19,
+              "p95": 2.8912321010058256e-19,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.005996699600170056,
+              -0.013504028941194216,
+              0.5008341471354166
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0032789509859867394
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 258,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.005996743217110634,
+              0.156005859375,
+              0.0
+            ],
+            "elapsed_seconds_diagnostic_only": 0.004671065020374954
+          }
+        }
+      },
+      "geometry": {
+        "base": {
+          "bounds": {
+            "min": [
+              -0.005996743217110634,
+              -0.156005859375,
+              -1.975006103515625
+            ],
+            "max": [
+              0.005996745079755783,
+              0.156005859375,
+              1.975006103515625
+            ]
+          },
+          "triangles": 172,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 0.0074503840277355925,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        },
+        "candidate": {
+          "bounds": {
+            "min": [
+              -0.005996743217110634,
+              -0.156005859375,
+              -1.975006103515625
+            ],
+            "max": [
+              0.005996745079755783,
+              0.156005859375,
+              1.975006103515625
+            ]
+          },
+          "triangles": 172,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 0.0074503840277355925,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        }
+      }
+    },
+    {
+      "index": 420,
+      "expressId": 13797,
+      "comparisons": {
+        "base_to_candidate": {
+          "unique_vertices": {
+            "sample_count": 94,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -2.3000030517578125,
+              -0.005998605862259865,
+              -1.850006103515625
+            ],
+            "elapsed_seconds_diagnostic_only": 0.00269998301519081
+          },
+          "triangle_centroids": {
+            "sample_count": 192,
+            "distance_m": {
+              "max": 3.7007456254685875e-17,
+              "p99": 3.700743970340358e-17,
+              "p95": 3.700741694718733e-17,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.87399290005366,
+              0.0006292654822270075,
+              -1.7270863850911458
+            ],
+            "elapsed_seconds_diagnostic_only": 0.003716941981110722
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 288,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -2.3000030517578125,
+              -0.005998605862259865,
+              -0.02500152587890625
+            ],
+            "elapsed_seconds_diagnostic_only": 0.004876268969383091
+          }
+        },
+        "candidate_to_base": {
+          "unique_vertices": {
+            "sample_count": 94,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -2.3000030517578125,
+              -0.005998605862259865,
+              -1.850006103515625
+            ],
+            "elapsed_seconds_diagnostic_only": 0.002815629995893687
+          },
+          "triangle_centroids": {
+            "sample_count": 192,
+            "distance_m": {
+              "max": 3.7007456254685875e-17,
+              "p99": 3.700743970340358e-17,
+              "p95": 3.700741694718733e-17,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.87399290005366,
+              0.0006292654822270075,
+              -1.7270863850911458
+            ],
+            "elapsed_seconds_diagnostic_only": 0.003703311027493328
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 288,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -2.3000030517578125,
+              -0.005998605862259865,
+              -0.02500152587890625
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0051086360472254455
+          }
+        }
+      },
+      "geometry": {
+        "base": {
+          "bounds": {
+            "min": [
+              -2.3000030517578125,
+              -0.0060095940716564655,
+              -1.850006103515625
+            ],
+            "max": [
+              2.3000030517578125,
+              0.006005431525409222,
+              1.850006103515625
+            ]
+          },
+          "triangles": 192,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 0.11622403947358767,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        },
+        "candidate": {
+          "bounds": {
+            "min": [
+              -2.3000030517578125,
+              -0.0060095940716564655,
+              -1.850006103515625
+            ],
+            "max": [
+              2.3000030517578125,
+              0.006005431525409222,
+              1.850006103515625
+            ]
+          },
+          "triangles": 192,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 0.11622403947358767,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        }
+      }
+    },
+    {
+      "index": 421,
+      "expressId": 13797,
+      "comparisons": {
+        "base_to_candidate": {
+          "unique_vertices": {
+            "sample_count": 98,
+            "distance_m": {
+              "max": 7.45061221302633e-07,
+              "p99": 2.235183663907984e-08,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              2.086441993713379,
+              -0.12499978393316269,
+              -0.8300018310546875
+            ],
+            "elapsed_seconds_diagnostic_only": 0.003033504995983094
+          },
+          "triangle_centroids": {
+            "sample_count": 200,
+            "distance_m": {
+              "max": 2.483540808934429e-07,
+              "p99": 2.4837274786418253e-09,
+              "p95": 1.4802975444980475e-16,
+              "median": 1.1792898627484302e-20
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              1.3628142575422924,
+              -0.12500004221995673,
+              -1.10333251953125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0036681380006484687
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 300,
+            "distance_m": {
+              "max": 3.7253112134017553e-07,
+              "p99": 3.725496033525028e-09,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              0.8912210315465927,
+              -0.12500102445483208,
+              -0.8300018310546875
+            ],
+            "elapsed_seconds_diagnostic_only": 0.004863879003096372
+          }
+        },
+        "candidate_to_base": {
+          "unique_vertices": {
+            "sample_count": 98,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -2.3060007095336914,
+              0.1093730702996254,
+              1.5718841552734375
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0030554970144294202
+          },
+          "triangle_centroids": {
+            "sample_count": 200,
+            "distance_m": {
+              "max": 2.4836076645003777e-07,
+              "p99": 2.4837206287446983e-09,
+              "p95": 1.4802975444980475e-16,
+              "median": 1.1792898627484302e-20
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              2.196146567662557,
+              -0.12499868124723434,
+              -1.10333251953125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.003613964014220983
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 300,
+            "distance_m": {
+              "max": 3.725306383029428e-07,
+              "p99": 1.0018651565992609e-13,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              2.196219801902771,
+              -0.1249985583126545,
+              -1.2399978637695312
+            ],
+            "elapsed_seconds_diagnostic_only": 0.004615781013853848
+          }
+        }
+      },
+      "geometry": {
+        "base": {
+          "bounds": {
+            "min": [
+              -2.3060007095336914,
+              -0.12501491606235504,
+              -1.850006103515625
+            ],
+            "max": [
+              2.3060007095336914,
+              0.12501509487628937,
+              1.850006103515625
+            ]
+          },
+          "triangles": 200,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 2.432972524933867,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        },
+        "candidate": {
+          "bounds": {
+            "min": [
+              -2.3060007095336914,
+              -0.12501491606235504,
+              -1.850006103515625
+            ],
+            "max": [
+              2.3060007095336914,
+              0.12501509487628937,
+              1.850006103515625
+            ]
+          },
+          "triangles": 200,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 2.4329722703734236,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        }
+      }
+    },
+    {
+      "index": 1112,
+      "expressId": 30518,
+      "comparisons": {
+        "base_to_candidate": {
+          "unique_vertices": {
+            "sample_count": 124,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.005999130662530661,
+              -13.763274192810059,
+              0.8000030517578125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.006986927008256316
+          },
+          "triangle_centroids": {
+            "sample_count": 244,
+            "distance_m": {
+              "max": 5.921189636631442e-16,
+              "p99": 5.921189493130168e-16,
+              "p95": 2.3639058810696906e-17,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.002494863474415373,
+              13.675278027852377,
+              -0.7041778564453125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.009390529012307525
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 366,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.005999130662530661,
+              -13.763274192810059,
+              0.9500045776367188
+            ],
+            "elapsed_seconds_diagnostic_only": 0.012305485957767814
+          }
+        },
+        "candidate_to_base": {
+          "unique_vertices": {
+            "sample_count": 124,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.005999130662530661,
+              -13.763274192810059,
+              0.8000030517578125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0040500289760529995
+          },
+          "triangle_centroids": {
+            "sample_count": 244,
+            "distance_m": {
+              "max": 5.921189636631442e-16,
+              "p99": 5.921189493130168e-16,
+              "p95": 2.3639058810696906e-17,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.002494863474415373,
+              13.675278027852377,
+              -0.7041778564453125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.006450856977608055
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 366,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.005999130662530661,
+              -13.763274192810059,
+              0.9500045776367188
+            ],
+            "elapsed_seconds_diagnostic_only": 0.006779622985050082
+          }
+        }
+      },
+      "geometry": {
+        "base": {
+          "bounds": {
+            "min": [
+              -0.005999130662530661,
+              -13.763275146484375,
+              -1.100006103515625
+            ],
+            "max": [
+              0.005999130662530661,
+              13.763275146484375,
+              1.100006103515625
+            ]
+          },
+          "triangles": 244,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 0.15636160566008608,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        },
+        "candidate": {
+          "bounds": {
+            "min": [
+              -0.005999130662530661,
+              -13.763275146484375,
+              -1.100006103515625
+            ],
+            "max": [
+              0.005999130662530661,
+              13.763275146484375,
+              1.100006103515625
+            ]
+          },
+          "triangles": 244,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 0.15636160566008608,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        }
+      }
+    },
+    {
+      "index": 1217,
+      "expressId": 33639,
+      "comparisons": {
+        "base_to_candidate": {
+          "unique_vertices": {
+            "sample_count": 150,
+            "distance_m": {
+              "max": 1.3732896513068388e-05,
+              "p99": 1.00231146300054e-05,
+              "p95": 7.265734453527692e-06,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 24,
+              "1e-05": 2,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -5.645951747894287,
+              13.756531715393066,
+              8.683334350585938
+            ],
+            "elapsed_seconds_diagnostic_only": 0.005749857984483242
+          },
+          "triangle_centroids": {
+            "sample_count": 308,
+            "distance_m": {
+              "max": 6.99360534324276e-06,
+              "p99": 4.305717929955038e-06,
+              "p95": 2.5431363901137564e-06,
+              "median": 6.02822497007399e-20
+            },
+            "counts_over_distance_m": {
+              "1e-06": 39,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -5.645952224731445,
+              13.756524403889975,
+              8.716664632161459
+            ],
+            "elapsed_seconds_diagnostic_only": 0.008116932003758848
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 462,
+            "distance_m": {
+              "max": 1.049040801397593e-05,
+              "p99": 5.2452088514074205e-06,
+              "p95": 3.8146963288643983e-06,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 74,
+              "1e-05": 1,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -6.0249528884887695,
+              13.7565279006958,
+              8.699996948242188
+            ],
+            "elapsed_seconds_diagnostic_only": 0.011745158990379423
+          }
+        },
+        "candidate_to_base": {
+          "unique_vertices": {
+            "sample_count": 150,
+            "distance_m": {
+              "max": 9.536173666070917e-06,
+              "p99": 8.30260931285491e-06,
+              "p95": 2.9000067809891793e-06,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 18,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -5.688190460205078,
+              9.194503784179688,
+              8.691173553466797
+            ],
+            "elapsed_seconds_diagnostic_only": 0.005616359005216509
+          },
+          "triangle_centroids": {
+            "sample_count": 308,
+            "distance_m": {
+              "max": 7.378644696221075e-06,
+              "p99": 6.715134677479582e-06,
+              "p95": 3.3853334963773663e-06,
+              "median": 4.747579068869906e-21
+            },
+            "counts_over_distance_m": {
+              "1e-06": 46,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -5.508747895558675,
+              13.75651772816976,
+              8.713723500569662
+            ],
+            "elapsed_seconds_diagnostic_only": 0.007130071986466646
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 462,
+            "distance_m": {
+              "max": 1.1067967045219987e-05,
+              "p99": 6.345044192690166e-06,
+              "p95": 3.2052910103336724e-06,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 53,
+              "1e-05": 2,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -5.819146394729614,
+              13.756517887115479,
+              8.695585250854492
+            ],
+            "elapsed_seconds_diagnostic_only": 0.009430625999812037
+          }
+        }
+      },
+      "geometry": {
+        "base": {
+          "bounds": {
+            "min": [
+              -16.487977981567383,
+              1.5056676864624023,
+              8.649993896484375
+            ],
+            "max": [
+              -3.6119401454925537,
+              19.138521194458008,
+              8.75
+            ]
+          },
+          "triangles": 308,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 18.311874818649994,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        },
+        "candidate": {
+          "bounds": {
+            "min": [
+              -16.487977981567383,
+              1.5056676864624023,
+              8.649993896484375
+            ],
+            "max": [
+              -3.6119401454925537,
+              19.138513565063477,
+              8.75
+            ]
+          },
+          "triangles": 308,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 18.311873592473983,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        }
+      }
+    },
+    {
+      "index": 1218,
+      "expressId": 33639,
+      "comparisons": {
+        "base_to_candidate": {
+          "unique_vertices": {
+            "sample_count": 149,
+            "distance_m": {
+              "max": 9.5367431640625e-06,
+              "p99": 9.448163447836003e-06,
+              "p95": 6.227476080021862e-06,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 20,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -5.862468719482422,
+              13.756526947021484,
+              8.564285278320312
+            ],
+            "elapsed_seconds_diagnostic_only": 0.005137917003594339
+          },
+          "triangle_centroids": {
+            "sample_count": 306,
+            "distance_m": {
+              "max": 5.62099517004308e-06,
+              "p99": 5.255265483738861e-06,
+              "p95": 2.900753396164648e-06,
+              "median": 1.0210836256232654e-21
+            },
+            "counts_over_distance_m": {
+              "1e-06": 42,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -4.887944221496582,
+              12.448728879292807,
+              8.546427408854166
+            ],
+            "elapsed_seconds_diagnostic_only": 0.007646706013474613
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 459,
+            "distance_m": {
+              "max": 7.954657546612983e-06,
+              "p99": 5.2752403272883505e-06,
+              "p95": 3.8146938271122435e-06,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 61,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -4.88794207572937,
+              12.66946268081665,
+              8.56964111328125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.010122753970790654
+          }
+        },
+        "candidate_to_base": {
+          "unique_vertices": {
+            "sample_count": 149,
+            "distance_m": {
+              "max": 7.628926832055792e-06,
+              "p99": 6.806120093399871e-06,
+              "p95": 2.298695314778864e-06,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 10,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -5.768379211425781,
+              9.194504737854004,
+              8.578946113586426
+            ],
+            "elapsed_seconds_diagnostic_only": 0.005372661980800331
+          },
+          "triangle_centroids": {
+            "sample_count": 306,
+            "distance_m": {
+              "max": 5.2254313639836275e-06,
+              "p99": 4.140716187240947e-06,
+              "p95": 2.384291964682364e-06,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 27,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -5.421914736429851,
+              13.75651741027832,
+              8.576313336690268
+            ],
+            "elapsed_seconds_diagnostic_only": 0.007910209998954087
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 459,
+            "distance_m": {
+              "max": 6.353569627319867e-06,
+              "p99": 4.211468289842053e-06,
+              "p95": 2.3896230904063747e-06,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 34,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -7.161956071853638,
+              12.955571174621582,
+              8.539473056793213
+            ],
+            "elapsed_seconds_diagnostic_only": 0.011263219988904893
+          }
+        }
+      },
+      "geometry": {
+        "base": {
+          "bounds": {
+            "min": [
+              -16.48797607421875,
+              1.5056676864624023,
+              8.5
+            ],
+            "max": [
+              -3.6119401454925537,
+              19.138525009155273,
+              8.649993896484375
+            ]
+          },
+          "triangles": 306,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 27.465019419946202,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        },
+        "candidate": {
+          "bounds": {
+            "min": [
+              -16.48797607421875,
+              1.5056676864624023,
+              8.5
+            ],
+            "max": [
+              -3.6119401454925537,
+              19.138525009155273,
+              8.649993896484375
+            ]
+          },
+          "triangles": 306,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 27.46502140358331,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        }
+      }
+    },
+    {
+      "index": 1444,
+      "expressId": 38800,
+      "comparisons": {
+        "base_to_candidate": {
+          "unique_vertices": {
+            "sample_count": 80,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.005996908526867628,
+              -0.6750030517578125,
+              -1.975006103515625
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0029389779665507376
+          },
+          "triangle_centroids": {
+            "sample_count": 160,
+            "distance_m": {
+              "max": 2.8913864955286054e-19,
+              "p99": 2.8913768372517395e-19,
+              "p95": 2.8911839103616483e-19,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.005996777365605037,
+              -0.24166361490885416,
+              0.875
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0036663279752247036
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 240,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.005996908526867628,
+              -0.6750030517578125,
+              0.0
+            ],
+            "elapsed_seconds_diagnostic_only": 0.004618722014129162
+          }
+        },
+        "candidate_to_base": {
+          "unique_vertices": {
+            "sample_count": 80,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.005996908526867628,
+              -0.6750030517578125,
+              -1.975006103515625
+            ],
+            "elapsed_seconds_diagnostic_only": 0.00256901397369802
+          },
+          "triangle_centroids": {
+            "sample_count": 160,
+            "distance_m": {
+              "max": 2.8913864955286054e-19,
+              "p99": 2.8913768372517395e-19,
+              "p95": 2.8911839103616483e-19,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.005996777365605037,
+              -0.24166361490885416,
+              0.875
+            ],
+            "elapsed_seconds_diagnostic_only": 0.003616014961153269
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 240,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.005996908526867628,
+              -0.6750030517578125,
+              0.0
+            ],
+            "elapsed_seconds_diagnostic_only": 0.004548277007415891
+          }
+        }
+      },
+      "geometry": {
+        "base": {
+          "bounds": {
+            "min": [
+              -0.005996908526867628,
+              -0.6750030517578125,
+              -1.975006103515625
+            ],
+            "max": [
+              0.005996908526867628,
+              0.6750030517578125,
+              1.975006103515625
+            ]
+          },
+          "triangles": 160,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 0.03598682414757379,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        },
+        "candidate": {
+          "bounds": {
+            "min": [
+              -0.005996908526867628,
+              -0.6750030517578125,
+              -1.975006103515625
+            ],
+            "max": [
+              0.005996908526867628,
+              0.6750030517578125,
+              1.975006103515625
+            ]
+          },
+          "triangles": 160,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 0.03598682414757379,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        }
+      }
+    },
+    {
+      "index": 1446,
+      "expressId": 38800,
+      "comparisons": {
+        "base_to_candidate": {
+          "unique_vertices": {
+            "sample_count": 40,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.050003260374069214,
+              -0.6150054931640625,
+              -0.82501220703125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0013790330267511308
+          },
+          "triangle_centroids": {
+            "sample_count": 80,
+            "distance_m": {
+              "max": 2.312973291235572e-18,
+              "p99": 2.3129730522614037e-18,
+              "p95": 2.3129648126205207e-18,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              0.05000298346082369,
+              -0.24166361490885416,
+              -1.9083353678385417
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0016928950208239257
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 120,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.05000325106084347,
+              -0.6450042724609375,
+              -1.4000091552734375
+            ],
+            "elapsed_seconds_diagnostic_only": 0.001838443975429982
+          }
+        },
+        "candidate_to_base": {
+          "unique_vertices": {
+            "sample_count": 40,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.050003260374069214,
+              -0.6150054931640625,
+              -0.82501220703125
+            ],
+            "elapsed_seconds_diagnostic_only": 0.001268095977138728
+          },
+          "triangle_centroids": {
+            "sample_count": 80,
+            "distance_m": {
+              "max": 2.312973291235572e-18,
+              "p99": 2.3129730522614037e-18,
+              "p95": 2.3129648126205207e-18,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              0.05000298346082369,
+              -0.24166361490885416,
+              -1.9083353678385417
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0015585750225000083
+          },
+          "unique_edge_midpoints": {
+            "sample_count": 120,
+            "distance_m": {
+              "max": 0.0,
+              "p99": 0.0,
+              "p95": 0.0,
+              "median": 0.0
+            },
+            "counts_over_distance_m": {
+              "1e-06": 0,
+              "1e-05": 0,
+              "0.0001": 0,
+              "0.001": 0
+            },
+            "largest_sample_ifc_world_coords": [
+              -0.05000325106084347,
+              -0.6450042724609375,
+              -1.4000091552734375
+            ],
+            "elapsed_seconds_diagnostic_only": 0.0017941609839908779
+          }
+        }
+      },
+      "geometry": {
+        "base": {
+          "bounds": {
+            "min": [
+              -0.050003260374069214,
+              -0.6750030517578125,
+              -1.975006103515625
+            ],
+            "max": [
+              0.05000324174761772,
+              0.6750030517578125,
+              1.975006103515625
+            ]
+          },
+          "triangles": 80,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 0.30007322323485747,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        },
+        "candidate": {
+          "bounds": {
+            "min": [
+              -0.050003260374069214,
+              -0.6750030517578125,
+              -1.975006103515625
+            ],
+            "max": [
+              0.05000324174761772,
+              0.6750030517578125,
+              1.975006103515625
+            ]
+          },
+          "triangles": 80,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 0.30007322323485747,
+          "closed_coherent_edge_incidence": true,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        }
+      }
+    }
+  ]
+}

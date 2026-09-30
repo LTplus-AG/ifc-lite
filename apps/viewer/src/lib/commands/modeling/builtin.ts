@@ -26,6 +26,7 @@ import { ELEMENT_ARRAY } from './commands/element-array.js';
 import { ELEMENT_PASTE } from './commands/element-paste.js';
 import { STAIR_PLACE } from './commands/stair-place.js';
 import { RAILING_PLACE } from './commands/railing-place.js';
+import { SPLIT_MULTI } from './commands/multi-split.js';
 import type { ModelingCommand } from './types.js';
 
 /** A re-evaluated module (dev HMR) finds its commands already registered. */
@@ -51,6 +52,7 @@ registerOnce(ELEMENT_MOVE);
 registerOnce(ELEMENT_ROTATE);
 registerOnce(STAIR_PLACE);
 registerOnce(RAILING_PLACE);
+registerOnce(SPLIT_MULTI);
 
 setWorkplaneResolver((s, modelId, spec) => (spec.kind === 'storey'
   ? buildStoreyWorkplane(s, modelId, spec.storeyId, spec.offset)

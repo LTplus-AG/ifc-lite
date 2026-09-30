@@ -65,7 +65,7 @@ export interface WallJoinApplyOptions extends WallJoinOptions {
   Name?: string;
 }
 
-type JoinAnchor = Pick<SpatialAnchor, 'ownerHistoryId' | 'axisContextId' | 'schema' | 'lengthUnitScale' | 'guidRandom'>;
+export type JoinAnchor = Pick<SpatialAnchor, 'ownerHistoryId' | 'axisContextId' | 'schema' | 'lengthUnitScale' | 'guidRandom'>;
 
 /** The join target for a wall `addWallToStore` just built from `params`. */
 export function wallJoinTargetFromBuild(build: WallBuildResult, params: WallInStoreParams): WallJoinTarget {
@@ -135,7 +135,11 @@ function alongFrame(target: WallJoinTarget, p: PlanPoint): number {
   return ((p[0] - target.origin[0]) * (end[0] - start[0]) + (p[1] - target.origin[1]) * (end[1] - start[1])) / length;
 }
 
-function rewriteWall(editor: StoreEditor, anchor: JoinAnchor, target: WallJoinTarget, wall: WallJoinWall): WallJoinTarget {
+/**
+ * Give `target` the body and `Axis` of `wall`, written in the frame of the
+ * placement at `target.origin` (`wall`'s axis runs along that frame's +X).
+ */
+export function rewriteWall(editor: StoreEditor, anchor: JoinAnchor, target: WallJoinTarget, wall: WallJoinWall): WallJoinTarget {
   const startX = alongFrame(target, wall.start);
   const endX = alongFrame(target, wall.end);
   const profileId = emitWallBodyProfile(editor, anchor, wall, startX);

@@ -15,10 +15,10 @@
  * turn about a pivot is the two together: the placement turns about its own
  * origin, and the origin swings about the pivot.
  *
- * Wall joins (B2): walls joined to a moved wall must follow it. That lands
- * with the join network; until then `setTransformJoinCarrier` is the seam it
- * plugs into — called in the same transaction after the roots are written,
- * returning the extra elements it reshaped, which are re-meshed with the rest.
+ * Wall joins (B2): walls joined to a moved wall follow it. The join carrier
+ * (`wall-join-carrier.ts`) runs in the same transaction after the roots are
+ * written and returns the extra elements it reshaped, which are re-meshed with
+ * the rest. `setTransformJoinCarrier` replaces it (tests, other join models).
  */
 
 import type { ViewerState } from '@/store';
@@ -26,6 +26,7 @@ import type { AuthoringTransaction, CommitResult, Vec3 } from '@/lib/commands/mo
 import { buildStoreyWorkplane, elementStoreyId, isWorkplane } from '@/lib/commands/modeling/workplane';
 import { planElementTransform, type TransformPlan, type TransformRefusal, type TransformRoot } from './plan.js';
 import { rotateBy, unrotateBy } from './placement-frames.js';
+import { carryWallJoins } from './wall-join-carrier.js';
 
 type Vec2 = [number, number];
 
@@ -44,9 +45,9 @@ export interface JoinCarryContext {
 /** Makes joined elements follow a move or turn; returns the ids it reshaped (to re-mesh). */
 export type TransformJoinCarrier = (ctx: JoinCarryContext) => readonly number[];
 
-let joinCarrier: TransformJoinCarrier | null = null;
+let joinCarrier: TransformJoinCarrier | null = carryWallJoins;
 
-/** Install the wall-join follower (B2). Returns the function that removes it. */
+/** Replace the wall-join follower (B2); `null` turns it off. Returns the function that restores the previous one. */
 export function setTransformJoinCarrier(carrier: TransformJoinCarrier | null): () => void {
   const previous = joinCarrier;
   joinCarrier = carrier;
@@ -122,5 +123,6 @@ export function commitElementTransform(
   }
   const joined = joinCarrier?.({ tx, modelId, plan, op }) ?? [];
   const remesh = [...new Set([...plan.roots.map((r) => r.expressId), ...plan.carried, ...joined])];
-  return { modelId, created: [], deleted: [], remesh, select: [...selected] };
+  // The walls a join carried moved their own start or were cut again: what they host moves with them.
+  return { modelId, created: [], deleted: [], remesh, ...(joined.length > 0 ? { remeshCause: 'hostsChanged' as const } : {}), select: [...selected] };
 }

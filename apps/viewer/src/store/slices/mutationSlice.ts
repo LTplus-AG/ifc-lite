@@ -1527,7 +1527,7 @@ export const createMutationSlice: StateCreator<
     if (!editor) return { ok: false, reason: 'Failed to resolve store editor' };
     const dataStore = get().models.get(modelId)?.ifcDataStore;
     if (!dataStore) return { ok: false, reason: `No model loaded for id "${modelId}"` };
-    const result = resizeWallMetres(get, { dataStore, view, editor }, modelId, expressId, newStart, newEnd, batchId);
+    const result = resizeWallMetres(api, { dataStore, view, editor }, modelId, expressId, newStart, newEnd, batchId);
     // A drag rebuilds the mesh once, on release; a one-off resize right away.
     if (result.ok && batchId === undefined) get().refreshWallMesh(modelId, expressId);
     return result;
@@ -1569,7 +1569,7 @@ export const createMutationSlice: StateCreator<
   },
 
   splitWallAtDistance: (modelId, expressId, distanceFromStart) =>
-    splitWall(get, (id) => getOrCreateStoreEditor(get, set, id), modelId, expressId, distanceFromStart),
+    splitWall(get, (id) => getOrCreateStoreEditor(get, set, id), modelId, expressId, distanceFromStart, api),
 
   readLinearElementSplitProjection: (modelId, expressId, cursorStoreyLocal) => {
     const ctx = resolveEditReadContext(get, set, modelId);

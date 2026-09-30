@@ -75,7 +75,7 @@ export function runTransaction(
   const redoBefore = get().redoStacks;
   const overlayBefore = overlayEntityIds(get());
   const batchId = newMutationBatchId();
-  const tx: AuthoringTransaction = { modelId, storeyId, workplane, batchId, get store() { return get(); } };
+  const tx: AuthoringTransaction = { modelId, storeyId, workplane, batchId, get store() { return get(); }, api: store };
   let result: CommitResult;
   try {
     result = cmd.commit(g, tx);
@@ -92,7 +92,7 @@ export function runTransaction(
   if (ids.length > 0) get().tagMutationBatch(ids, batchId);
   const target = result.modelId ?? modelId;
   if (ids.length > 0 && result.remesh.length > 0) {
-    requestRemesh(get, { modelId: target, batchId, expressIds: result.remesh, cause: result.created.length > 0 ? 'created' : 'shape' });
+    requestRemesh(get, { modelId: target, batchId, expressIds: result.remesh, cause: result.remeshCause ?? (result.created.length > 0 ? 'created' : 'shape') });
   }
   applySelection(get, target, result.select);
   return { ok: true, batchId: ids.length > 0 ? batchId : null, result };

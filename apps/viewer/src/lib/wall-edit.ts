@@ -16,13 +16,14 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { fromNativeLength } from '@ifc-lite/create';
+import { fromNativeLength, readWallJoinRels, readWallJoinTarget } from '@ifc-lite/create';
 import {
   asExpressIdRef,
   readAttributes,
   resolvePlacementChain,
   resolveRotationState,
 } from './placement-core.js';
+import { moveWallAxis } from './wall-axis-edit.js';
 
 /** Only these classes are walls; a beam or member built by the in-store
  * builders carries the same rectangle-profile + explicit-RefDirection shape,
@@ -329,6 +330,11 @@ export type WallResizeResult =
  *   - RefDirection (IfcDirection)  → new normalised (end-start)
  *   - profile XDim (IfcRectangleProfileDef)  → new length
  *   - profile origin (IfcCartesianPoint)  → [newLength/2, 0]
+ *   - the `Axis` polyline's two points, when the wall has one → [0, 0] and
+ *     [newLength, 0], so the centreline readers prefer stays with the body
+ *
+ * A wall with joins or cut ends is not a rectangle wall: it is re-shaped
+ * (and its joins recomputed) by `reshapeWallsIn` / `@ifc-lite/create`.
  */
 export function resizeRectangleWall(
   dataStore: IfcDataStore,
@@ -345,6 +351,12 @@ export function resizeRectangleWall(
       reason:
         'Wall does not have a simple IfcRectangleProfileDef → IfcExtrudedAreaSolid representation',
     };
+  }
+  // A wall with joins, cut ends or an offset body is more than these four coupled entities: overwriting
+  // them would leave its `IfcRelConnectsPathElements` and cuts describing the old place.
+  const read = readWallJoinTarget(dataStore, view, expressId, 1);
+  if (read && (!read.plain || readWallJoinRels(dataStore, view, new Set([expressId])).length > 0)) {
+    return { ok: false, reason: 'Wall has joins, cut ends or an offset body; resize it through reshapeWallsIn so its joins stay valid' };
   }
   const dx = newEnd[0] - newStart[0];
   const dy = newEnd[1] - newStart[1];
@@ -364,6 +376,7 @@ export function resizeRectangleWall(
   editor.setPositionalAttribute(chain.refDirectionId, 0, dir);
   editor.setPositionalAttribute(chain.profileId, 3, length);
   editor.setPositionalAttribute(chain.profileOriginPointId, 0, [length / 2, 0]);
+  moveWallAxis(dataStore, view, editor, expressId, length);
 
   return { ok: true, newStart, newEnd, newLength: length };
 }

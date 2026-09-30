@@ -122,24 +122,32 @@ a small floating input panel near the cursor accepts:
 Enter commits, Esc cancels. Same panel position as the existing
 measure-tool readout.
 
-### Multi-element split (Phase 2)
+### Multi-element split (`split.multi`, #6232 C5)
+
+Shipped as the Model workspace's "Split by line" command (Shift+K, the rail's
+scissors, the palette). Decision D6: it composes the per-element actions of
+this document in one transaction; there is no clip_mesh binding.
 
 ```text
-1. Draw a line tool (Shift-K?) places a free-floating "cutting
-   plane" represented in 2D as a yellow line + extruded plane
-   visualisation in 3D.
-2. The plane snaps to vertical / horizontal axes by default, to
-   any wall axis with Shift held.
-3. Every wall / slab / beam / column that intersects the plane is
-   highlighted blue.
-4. User clicks "Apply" in the floating prompt → all highlighted
-   elements split at the plane intersection in one mutation
-   (single undo).
-5. Esc cancels.
+1. Click two points (snapped, in the plan or in 3D): the cut is the vertical
+   plane through them. Like a slab cut it is a line that runs on, not a
+   segment.
+2. The targets are the selection; with nothing selected, every wall, beam
+   and slab of the active storey.
+3. The plane's ghost is drawn, the elements it will split are outlined in
+   the accent colour with a marker where it meets each axis, and the ones
+   it crosses but the split predicate refuses are outlined dashed in red
+   with the reason beside them. The bar counts both ("5 will split",
+   "3 refused"; the tooltip lists the reasons).
+4. The second click (or Enter) splits every crossed target through
+   `splitWallAtDistance`, `splitLinearElementAtDistance` and
+   `splitSlabByLine`, inside one `runTransaction`: one undo step, one
+   re-mesh request. The larger piece keeps each element's identity, the new
+   piece gets the derived GlobalId; hosted openings and fills follow the wall
+   piece they stand in. A refused target is left untouched. If a planned
+   split fails while committing, the whole commit is reverted.
+5. Esc starts over; Backspace drops the first point.
 ```
-
-This is the killer feature for building-wide cuts (e.g. "split
-everything along this gridline").
 
 ## Visual design
 

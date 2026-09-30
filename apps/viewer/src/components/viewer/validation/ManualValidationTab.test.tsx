@@ -318,24 +318,24 @@ describe('Manual validation tab (#6401)', () => {
   });
 
   for (const action of ['close', 'delete']) {
-      it(`a verdict arriving after ${action} of the last live checklist reports failure and leaves persisted evidence unchanged (#6507)`, async () => {
-    useViewerStore.setState(fixtureModels(model('m1', 'fp-1')));
-    setValidationSourceChoice('manual');
-    const ui = render(<ValidationPanel />);
-    await selectFile(ui.querySelector<HTMLInputElement>('[data-testid="manual-checklist-input"]')!, new File([CHECKLIST_JSON], 'round.checklist.json'));
-    click(buttonByText(checkRow(ui, 'Uploaded to the CDE on time'), 'Pass'));
-    const recordVerdict = useViewerStore.getState().setManualAnswer;
-    click(action === 'close' ? byLabel<HTMLButtonElement>(ui, 'Close checklist') : buttonByText(ui, 'Delete checklist'));
-    const persisted = localStorage.getItem('ifc-lite:validation:manual-library');
-    act(() => {
-      assert.deepEqual(recordVerdict('fp-1', 'on-time', { status: 'warning' }), { ok: false, reason: 'no_checklist' });
+    it(`a verdict arriving after ${action} of the last live checklist reports failure and leaves persisted evidence unchanged (#6507)`, async () => {
+      useViewerStore.setState(fixtureModels(model('m1', 'fp-1')));
+      setValidationSourceChoice('manual');
+      const ui = render(<ValidationPanel />);
+      await selectFile(ui.querySelector<HTMLInputElement>('[data-testid="manual-checklist-input"]')!, new File([CHECKLIST_JSON], 'round.checklist.json'));
+      click(buttonByText(checkRow(ui, 'Uploaded to the CDE on time'), 'Pass'));
+      const recordVerdict = useViewerStore.getState().setManualAnswer;
+      click(action === 'close' ? byLabel<HTMLButtonElement>(ui, 'Close checklist') : buttonByText(ui, 'Delete checklist'));
+      const persisted = localStorage.getItem('ifc-lite:validation:manual-library');
+      act(() => {
+        assert.deepEqual(recordVerdict('fp-1', 'on-time', { status: 'warning' }), { ok: false, reason: 'no_checklist' });
+      });
+      assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /Select a checklist/);
+      assert.equal(localStorage.getItem('ifc-lite:validation:manual-library'), persisted);
+      const restored = loadManualLibrary().library;
+      assert.equal(restored.checklists.length, action === 'close' ? 1 : 0);
+      if (action === 'close') assert.equal(restored.checklists[0].answers['fp-1']['on-time'].status, 'pass');
     });
-    assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /Select a checklist/);
-    assert.equal(localStorage.getItem('ifc-lite:validation:manual-library'), persisted);
-    const restored = loadManualLibrary().library;
-    assert.equal(restored.checklists.length, action === 'close' ? 1 : 0);
-    if (action === 'close') assert.equal(restored.checklists[0].answers['fp-1']['on-time'].status, 'pass');
-  });
   }
 
 });

@@ -6,6 +6,8 @@ import { optionalLocalStorage, preserveUnreadableEntry } from './unreadable-entr
 import { saveJson, type SaveResult } from './save-result';
 
 export type SavedHistoryIssue = 'recovered' | 'blocked' | 'unavailable';
+/** Consumers MUST adopt entries even on failure: newly readable neighbours
+ * are now known, so subsequent user deletions must not resurrect them. */
 export type SavedHistorySave<T> = SaveResult & { issue: SavedHistoryIssue | null; entries: T[] };
 export interface SavedHistoryRead<T> {
   entries: T[];
@@ -76,11 +78,9 @@ export function createSavedHistoryStorage<T extends { id: string }>(
       for (const entry of entries) retained.set(entry.id, entry);
       const saved = [...retained.values()];
       if (current.issue === 'blocked' || current.issue === 'unavailable') {
-        if (previouslyUnavailable) inspectionUnavailable = true;
         return { ...unavailable(), issue: current.issue, entries: saved };
       }
       const result = saveJson(key, saved, subject);
-      if (!result.ok && previouslyUnavailable) inspectionUnavailable = true;
       return { ...result, issue: result.ok ? current.issue : 'unavailable', entries: saved };
     },
   };

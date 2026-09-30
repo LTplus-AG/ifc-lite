@@ -119,7 +119,7 @@ describe('saved history recovery (#6506, #6500)', () => {
     assert.deepEqual(refused.entries, [{ id: 'old', value: 1 }, ...incoming]);
     assert.deepEqual(JSON.parse(data.get('history')!), [{ id: 'old', value: 1 }, { id: 'edited', value: 2 }]);
     blocked.clear();
-    const retried = store.save(incoming);
+    const retried = store.save(refused.entries);
     assert.equal(retried.ok, true);
     assert.deepEqual(retried.entries, refused.entries);
     assert.deepEqual(history().read().entries, retried.entries);
@@ -135,11 +135,26 @@ describe('saved history recovery (#6506, #6500)', () => {
     assert.deepEqual(refused.entries, [{ id: 'old', value: 1 }, ...incoming]);
     assert.equal(data.get('history'), bytes);
     blocked.clear();
-    const retry = store.save(incoming);
+    const retry = store.save(refused.entries);
     assert.equal(retry.ok, true);
     assert.deepEqual(retry.entries, refused.entries);
     assert.equal(data.get('history:unreadable'), bytes);
     assert.deepEqual(history().read().entries, retry.entries);
+  });
+  it('honours deletion of a discovered neighbour after a quota-failed write', () => {
+    data.set('history', '[{"id":"old","value":1}]'); unreadable = true;
+    const store = history(); store.read();
+    unreadable = false; blocked.add('history');
+    const refused = store.save([{ id: 'new', value: 2 }]);
+    assert.equal(refused.ok, false);
+    assert.deepEqual(refused.entries, [{ id: 'old', value: 1 }, { id: 'new', value: 2 }]);
+    // Real store consumers adopt refused.entries, then the user deletes old.
+    const edited = refused.entries.filter((entry) => entry.id !== 'old');
+    blocked.clear();
+    const retried = store.save(edited);
+    assert.equal(retried.ok, true);
+    assert.deepEqual(retried.entries, [{ id: 'new', value: 2 }]);
+    assert.deepEqual(history().read().entries, retried.entries);
   });
   it('checks external corruption before a later save rather than trusting the initial read', () => {
     const store = history(); assert.equal(store.read().issue, null);

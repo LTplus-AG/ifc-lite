@@ -545,12 +545,15 @@ test('#6507 real IFC discipline checklists remain independent and print their ch
   const loaded = page.waitForEvent('console', { predicate: message => message.text().includes('[ifc-lite] Added model building-architecture.ifc'), timeout: 120000 });
   await page.goto(`${viewerUrl}?model=/samples/building-architecture.ifc`);
   await loaded;
-  const architectureId = await page.evaluate(() => {
+  await page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     state.showWorkspacePanel('validation');
     state.setManualChecklist({ version: 1, name: 'Architecture review', groups: [{ id: 'coordination', name: 'Coordination', items: [{ id: 'origin', text: 'Survey origin checked', description: 'Confirm coordinates with the surveyor' }] }] });
-    return globalThis.__ifc_lite_viewer_store__.getState().manualLibrary.activeId!;
   });
+  // Assert the actual independent-instance workflow before consulting its
+  // identity: a revert must report missing behavior, not a missing field.
+  await expect(page.getByRole('button', { name: 'New from this checklist', exact: true })).toBeVisible();
+  const architectureId = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().manualLibrary.activeId!);
   const row = page.getByTestId('manual-check');
   await row.getByRole('button', { name: 'Pass', exact: true }).click();
   await row.getByRole('textbox').fill('Architecture survey approved');

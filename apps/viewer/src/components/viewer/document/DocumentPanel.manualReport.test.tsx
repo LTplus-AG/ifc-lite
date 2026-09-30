@@ -244,6 +244,27 @@ describe('Document panel manual validation report (#6401)', () => {
     assert.ok(ui.querySelector('[data-manual-report-checklist-missing]'));
     assert.deepEqual(stored(), frozen);
     assert.match(preview.textContent ?? '', /Manual validation: Structure/);
+
+    // Frozen history source changes use the same presentation contract as
+    // live Refresh, even after the originating checklist was deleted (#6507).
+    let firstSaved: string | null = null;
+    let secondSaved: string | null = null;
+    act(() => {
+      firstSaved = useViewerStore.getState().saveValidationReport(frozen, 'Structure evidence');
+      secondSaved = useViewerStore.getState().saveValidationReport({ ...frozen, checklistName: 'Later structure evidence', variant: 'long', benchmarks: true }, 'Later evidence');
+    });
+    assert.ok(firstSaved && secondSaved);
+    await choose('Saved report source', firstSaved);
+    await choose('Saved report source', secondSaved);
+    assert.equal(stored().id, blockId);
+    assert.equal(stored().variant, 'compact');
+    assert.equal(stored().benchmarks, false);
+    assert.equal(stored().checklistName, 'Later structure evidence');
+    assert.equal(ui.querySelector('[data-manual-report-benchmarks]'), null);
+    assert.equal(refresh(), undefined, 'frozen history has no live Refresh action');
+    act(() => useViewerStore.getState().removeValidationReport(secondSaved!));
+    await settle();
+    assert.equal(stored().checklistName, 'Later structure evidence', 'removing history retains the selected embedded evidence');
   });
 
 

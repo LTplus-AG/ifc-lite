@@ -151,6 +151,25 @@ export function wallBodyLateralRange(wall: Pick<WallJoinWall, 'thickness' | 'ali
   return [centre - half, centre + half];
 }
 
+/** Put a wall on a new axis, retaining cuts only at unchanged ends with the
+ * same direction. Cuts are distances from their OWN end, so extending Start
+ * does not rebase EndCut. Changed ends start square before a join recuts them.
+ * Shared by the canonical editor and its preview (#6232/#6535). */
+export function reshapeWallAxis(wall: WallJoinWall, start: Readonly<PlanPoint>, end: Readonly<PlanPoint>): WallJoinWall {
+  assertWall(wall, '', 'reshapeWallAxis');
+  const { startCut, endCut, ...rest } = wall;
+  const next: WallJoinWall = { ...rest, start: [start[0], start[1]], end: [end[0], end[1]] };
+  assertWall(next, '', 'reshapeWallAxis');
+  const directionHeld = dot(frameOf(wall).dir, frameOf(next).dir) > 1 - 1e-12;
+  if (directionHeld && startCut && Math.hypot(start[0] - wall.start[0], start[1] - wall.start[1]) <= LENGTH_EPS) {
+    next.startCut = { ...startCut };
+  }
+  if (directionHeld && endCut && Math.hypot(end[0] - wall.end[0], end[1] - wall.end[1]) <= LENGTH_EPS) {
+    next.endCut = { ...endCut };
+  }
+  return next;
+}
+
 /**
  * The body outline of `wall` in its own frame. Throws when the cuts leave a
  * face with no length (the ends cross), which no single extrusion can build.

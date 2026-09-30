@@ -31,10 +31,10 @@ export interface WallPlaceGesture {
   length: number | null;
   angle: number | null;
   /**
-   * The walls this chain has placed, oldest first: wall `i` runs from point
+   * The walls this chain has placed (`wall.place` only; beams, stairs and railings draw the same gesture and leave it out), oldest first: wall `i` runs from point
    * `i` to point `i + 1`, so the last one ends at the anchor. Joins name them.
    */
-  walls: number[];
+  walls?: number[];
 }
 
 export const anchorOf = (g: WallPlaceGesture): Vec2 | null => g.chain[g.chain.length - 1] ?? null;
@@ -93,8 +93,9 @@ export function currentAngle(g: WallPlaceGesture): number | null {
  * chain's first wall when the new wall ends on the chain's first point.
  */
 export function chainPartners(g: WallPlaceGesture): { partners: number[]; closes: boolean } {
-  const last = g.walls.length === g.chain.length - 1 ? g.walls[g.walls.length - 1] : undefined;
+  const walls = g.walls ?? [];
+  const last = walls.length === g.chain.length - 1 ? walls[walls.length - 1] : undefined;
   const end = endPoint(g);
-  const closes = g.walls.length >= 2 && end !== null && dist(end, g.chain[0]) <= CLOSE_TOLERANCE;
-  return { partners: [...(last === undefined ? [] : [last]), ...(closes ? [g.walls[0]] : [])], closes };
+  const closes = walls.length >= 2 && end !== null && dist(end, g.chain[0]) <= CLOSE_TOLERANCE;
+  return { partners: [...(last === undefined ? [] : [last]), ...(closes ? [walls[0]] : [])], closes };
 }

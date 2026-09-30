@@ -26,7 +26,7 @@ import { MIN_WALL_LENGTH, anchorOf, currentAngle, currentLength, endPoint, type 
 export type BeamPlaceGesture = WallPlaceGesture;
 
 const beamClassOf = (ctx: Pick<CommandContext, 'get'>): BeamClass => ctx.get().authoringDefaults.beamClass;
-const init = (): BeamPlaceGesture => ({ chain: [], cursor: null, length: null, angle: null, walls: [] });
+const init = (): BeamPlaceGesture => ({ chain: [], cursor: null, length: null, angle: null });
 
 function segment(g: BeamPlaceGesture): [Vec2, Vec2] | null {
   const anchor = anchorOf(g);

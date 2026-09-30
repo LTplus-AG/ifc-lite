@@ -85,15 +85,18 @@ function select(expressId: number): void {
 /**
  * The mutations of one edit without what differs between two runs of it: ids and
  * times, and the express ids of the entities the edit created (a resize re-authors
- * the wall's body, so each run creates its own), which other writes refer to as `#id`.
+ * the wall's body, so each run creates its own). Created entities are named by
+ * the order they were created in (`#new1`, `#new2`, ...), so the writes that refer
+ * to them as `#id` still have to wire the same entity to the same slot.
  */
 function effects(mutations: readonly Mutation[]): unknown[] {
-  const created = new Set(mutations.filter((m) => m.type === 'CREATE_ENTITY').map((m) => m.entityId));
+  const names = new Map<number, string>();
+  for (const m of mutations) if (m.type === 'CREATE_ENTITY') names.set(m.entityId, `new${names.size + 1}`);
   return mutations.map((m) => {
     const { id: _id, timestamp: _t, ...rest } = m as Mutation & { timestamp?: unknown };
-    const text = JSON.stringify(rest).replace(/#(\d+)/g, (ref, n) => (created.has(Number(n)) ? '#new' : ref));
+    const text = JSON.stringify(rest).replace(/#(\d+)/g, (ref, n) => (names.has(Number(n)) ? `#${names.get(Number(n))}` : ref));
     const canonical = JSON.parse(text) as Record<string, unknown>;
-    return rest.type === 'CREATE_ENTITY' ? { ...canonical, entityId: 'new' } : canonical;
+    return rest.type === 'CREATE_ENTITY' ? { ...canonical, entityId: names.get(rest.entityId) } : canonical;
   });
 }
 

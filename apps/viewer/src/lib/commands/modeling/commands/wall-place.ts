@@ -72,7 +72,7 @@ export const WALL_PLACE: ModelingCommand<WallPlaceGesture> = {
   doubleClick: () => init(),
   undoPoint: (g) => {
     const chain = g.chain.slice(0, -1);
-    return { ...g, chain, walls: g.walls.slice(0, Math.max(0, chain.length - 1)), length: null, angle: null };
+    return { ...g, chain, walls: (g.walls ?? []).slice(0, Math.max(0, chain.length - 1)), length: null, angle: null };
   },
   validate(g, ctx) {
     if (!ctx.workplane || ctx.storeyId === null) return { ok: false, reasonKey: 'modelingCommand.noPlane' };
@@ -103,7 +103,7 @@ export const WALL_PLACE: ModelingCommand<WallPlaceGesture> = {
   afterCommit: (g, result, ctx: CommandContext) => {
     if (!chainOn(ctx) || chainPartners(g).closes) return init();
     const end = endPoint(g);
-    return { ...g, chain: end ? [...g.chain, end] : g.chain, walls: [...g.walls, ...result.created.slice(0, 1)], length: null, angle: null };
+    return { ...g, chain: end ? [...g.chain, end] : g.chain, walls: [...(g.walls ?? []), ...result.created.slice(0, 1)], length: null, angle: null };
   },
   ghost(g, ctx) {
     const axis = wallAxis(g, ctx.get().authoringDefaults);

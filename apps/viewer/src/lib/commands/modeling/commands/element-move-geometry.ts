@@ -29,5 +29,5 @@ export interface ElementMoveGesture {
 
 /** The move as a one-segment wall chain: base → target. */
 export function moveAsWallGesture(g: ElementMoveGesture): WallPlaceGesture {
-  return { chain: g.base ? [g.base] : [], cursor: g.cursor, length: g.distance, angle: g.angle, walls: [] };
+  return { chain: g.base ? [g.base] : [], cursor: g.cursor, length: g.distance, angle: g.angle };
 }

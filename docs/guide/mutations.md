@@ -103,6 +103,15 @@ The iterator yields source entities in parsed order, followed by source entities
 retyped into a requested class, then overlay-created entities. Tombstones are
 excluded in every case.
 
+When a query already has source candidates from an immutable index, add
+`view.getAttributeOverrideEntityIds()` to catch source entities whose live
+attributes or type differ from the file. This returns a snapshot of current
+named, positional and type override IDs, including edits made without journal
+records. Apply effective reads to these candidates; the list alone does not
+exclude deletions or validate an attribute's meaning. Passing the combined
+source candidates as the iterator's fourth argument restricts source traversal
+while still including overlay creations.
+
 For direct members of a spatial container, `@ifc-lite/parser` also exports
 `effectiveSpatialMemberIds(store, containerId, context)`. Supply a context
 containing the model's `resolveEffectiveRelationshipOverlay` result, an
@@ -511,20 +520,25 @@ Builders read the schema from the resolved anchor (`anchor.schema`) and drop att
 
 #### Openings and hosted doors / windows
 
-`addOpeningToStore` cuts an `IfcOpeningElement` into an existing `IfcWall` or `IfcSlab` and links it with `IfcRelVoidsElement`; `addHostedDoorToStore` / `addHostedWindowToStore` cut the opening and fill it with an `IfcDoor` / `IfcWindow` through `IfcRelFillsElement`. The host can come from the file or from the overlay. `resolveHostAnchor` reads everything the builders need from the host: its placement, its containing storey (via `IfcRelContainedInSpatialStructure`), and the bounds of its Body geometry.
+`addHostedElementInStore(dataStore, editor, hostExpressId, spec)` is the shared params-to-commit operation for viewer, SDK and MCP hosted placement. It resolves the live host, validates a wall cut's fit and overlap with existing openings, and writes the whole graph atomically. Dimensions are metres. Source and overlay openings both count; edge-touching cuts and vertically separate cuts are allowed. Unreadable bounds or placements are refused. `readHostOpeningExtents(dataStore, hostExpressId, view)` returns readable cuts with native-unit bounds in the host frame and an `unreadable` list. It supports mapped bodies, including nested transforms; placements must be relative to the host. Bounds are conservative for boolean bodies.
+
+The lower-level `addOpeningToStore` emits an `IfcOpeningElement` and `IfcRelVoidsElement` in an existing `IfcWall` or `IfcSlab`; `addHostedDoorToStore` / `addHostedWindowToStore` also emit the filling and `IfcRelFillsElement`. The host can come from the file or overlay. `resolveHostAnchor` reads its placement, containing storey and Body bounds. Use the shared operation when committing a wall placement so the fit/overlap rules apply.
 
 ```typescript
 import { StoreEditor } from '@ifc-lite/mutations';
-import { addHostedDoorToStore, addOpeningToStore, resolveHostAnchor } from '@ifc-lite/create';
+import { addHostedElementInStore } from '@ifc-lite/create';
 
 const editor = new StoreEditor(dataStore, view);
-const host = resolveHostAnchor(dataStore, wallExpressId, view);
 
 // Wall-local metres: Offset along the wall axis to the centre, Sill above its base.
-const door = addHostedDoorToStore(editor, host, { Offset: 2.5, Width: 0.9, Height: 2.1 });
-// → { fillingId, relFillsId, relContainedId, opening: { openingId, relVoidsId, cutDepth, … }, … }
+const door = addHostedElementInStore(dataStore, editor, wallExpressId, {
+  kind: 'door', params: { Offset: 2.5, Width: 0.9, Height: 2.1 },
+});
+// → { expressId, openingId, hostId }
 
-const hole = addOpeningToStore(editor, host, { Offset: 5, Sill: 1.8, Width: 0.4, Height: 0.4 });
+const hole = addHostedElementInStore(dataStore, editor, wallExpressId, {
+  kind: 'opening', params: { Offset: 5, Sill: 1.8, Width: 0.4, Height: 0.4 },
+});
 ```
 
 The opening is placed relative to the host's own `IfcLocalPlacement` and is not contained in the storey (IFC reaches it through the element it voids). By default the cut runs through the host's body thickness plus 50 mm per face; pass `CutDepth` to override it, but never with a value thinner than the host. The door or window is placed relative to the opening, centred in the wall, and contained in the host's storey. For a slab host, pass `Position: [x, y]`, `Width` and `Depth` in the slab's local frame. Through the SDK these are `bim.store.addOpening`, `bim.store.addHostedDoor` and `bim.store.addHostedWindow` (`modelId, hostExpressId, params`). In the viewer they go through the same store action as the Model workspace's Opening, Door and Window tools: the whole graph is one undo step, and the host is re-meshed with its void. `readHostedFill(dataStore, id, mutationView)` reads an opening's (or its door's or window's) host, `Offset` along the wall and `Sill`, and `hostPlanFrame(dataStore, hostId, storeyId, mutationView)` the host wall's placement frame on its storey, both through the overlay. In the viewer, resizing a host through the Model workspace's Push / Pull handles or the inspector's Dimensions rows keeps its openings valid in the same undo step: a thicker wall (or slab) lengthens the cuts that no longer span it, and a wall height that would leave an opening above the wall is refused.

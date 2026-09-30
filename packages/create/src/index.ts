@@ -115,6 +115,7 @@ export {
   type HostedFillBuildResult,
 } from './in-store/hosted-fill.js';
 export { hostPlanFrame, readHostedFill, type HostPlanFrame, type HostedFillRead } from './in-store/hosted-fill-read.js';
+export { addHostedElementInStore, readHostOpeningExtents, type HostedElementInStoreSpec, type HostedElementInStoreResult, type HostedOpeningExtent } from './in-store/hosted-element.js';
 export {
   addElementTypeToStore,
   assignTypeInStore,
@@ -382,7 +383,6 @@ export type {
   CreatedEntity,
   CreateResult,
 } from './types.js';
-
 // Cost / 5D authoring (IfcCostSchedule, IfcCostItem, IfcCostValue)
 export type {
   CostArithmeticOperator,

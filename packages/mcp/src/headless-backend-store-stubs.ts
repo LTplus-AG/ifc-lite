@@ -4,8 +4,9 @@
 
 /**
  * The `bim.store` authoring surfaces MCP v0.1 deliberately does not implement:
- * cost (#4857), structural analysis (#5167 S.1), and openings, hosted doors
- * and windows, type objects and materials (#6232). Agent flows author through `entity_create` with raw
+ * cost (#4857), structural analysis (#5167 S.1), type objects and materials.
+ * Hosted openings, doors and windows use the shared SDK factory (#6232 D5).
+ * Other agent flows author through `entity_create` with raw
  * attributes, so these throw loudly rather than silently no-opping.
  *
  * Composed into one spread so `headless-backend.ts` gains a surface, not a
@@ -24,11 +25,11 @@ const unsupported = (method: string) => (): never => {
   throw new Error(`${method} not supported in MCP v0.1; use entity_create`);
 };
 
-function modellingStoreStubs(): ModellingStoreBackendMethods {
+type RelationshipMethods = Omit<ModellingStoreBackendMethods, 'addOpening' | 'addHostedDoor' | 'addHostedWindow'>;
+
+export function unsupportedStoreAuthoring(): CostStoreBackendMethods & StructuralStoreBackendMethods & RelationshipMethods {
   return {
-    addOpening: unsupported('addOpening'),
-    addHostedDoor: unsupported('addHostedDoor'),
-    addHostedWindow: unsupported('addHostedWindow'),
+    ...costStoreStubs(), ...structuralStoreStubs(),
     addElementType: unsupported('addElementType'),
     assignType: unsupported('assignType'),
     addMaterial: unsupported('addMaterial'),
@@ -36,8 +37,4 @@ function modellingStoreStubs(): ModellingStoreBackendMethods {
     addMaterialLayerSetUsage: unsupported('addMaterialLayerSetUsage'),
     assignMaterial: unsupported('assignMaterial'),
   };
-}
-
-export function unsupportedStoreAuthoring(): CostStoreBackendMethods & StructuralStoreBackendMethods & ModellingStoreBackendMethods {
-  return { ...costStoreStubs(), ...structuralStoreStubs(), ...modellingStoreStubs() };
 }

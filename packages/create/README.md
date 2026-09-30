@@ -26,6 +26,12 @@ const { content } = creator.toIfc(); // IFC STEP text
 
 - Element builders: walls, slabs, columns, beams, stairs, roofs, doors, windows, ramps, railings, plates, members, footings, piles, spaces, curtain walls, furnishing, proxies, and parametric profile shapes (I, L, T, U, C, hollow sections)
 - Openings: `addIfcWallDoor` and `addIfcWallWindow` cut hosted doors and windows into walls
+- Loaded-model hosted placement: `addHostedElementInStore(store, editor, hostId, spec)`
+  is the shared atomic operation behind viewer tools, SDK methods and MCP
+  `place_opening` / `place_door` / `place_window`. Wall cuts must fit and avoid
+  existing openings; unreadable bounds or placements are refused. Omitted
+  optional axes use IFC defaults; explicit missing, zero or parallel axes and
+  incomplete body/profile references are refused.
 - Property sets, element quantities, materials, and colors
 - 4D scheduling entities: IfcWorkSchedule, IfcTask, IfcRelSequence
 - In-store builders (`addWallToStore`, `addSlabToStore`, ...) that emit elements into an existing parsed model

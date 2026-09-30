@@ -30,8 +30,11 @@ export function moveHostedOpeningPlacement(reader: AnchorEntityReader, editor: S
   const targetHost = reader.entity(targetHostId);
   const targetPlacementId = targetHost ? refId(targetHost.attributes[5]) : null;
   const targetPlacement = targetPlacementId === null ? null : reader.entity(targetPlacementId);
+  const targetAxisId = targetPlacement ? refId(targetPlacement.attributes[1]) : null;
+  const targetAxis = targetAxisId === null ? null : reader.entity(targetAxisId);
   if (!targetPlacement || targetPlacement.type.toUpperCase() !== 'IFCLOCALPLACEMENT'
-    || !axis3d(reader, targetPlacement.attributes[1])) throw new Error('The target host placement cannot be edited safely');
+    || targetAxisId === null || targetAxis?.type.toUpperCase() !== 'IFCAXIS2PLACEMENT3D'
+    || !axis3d(reader, targetAxisId)) throw new Error('The target host placement cannot be edited safely');
   const direction = (value: unknown) => {
     if (value === null || value === undefined) return null;
     const id = refId(value);

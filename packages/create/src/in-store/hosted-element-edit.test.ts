@@ -53,6 +53,24 @@ describe('hosted occurrence edit (#6232)', () => {
     }
   });
 
+  it('rolls back a late rehost whose target omits mandatory RelativePlacement (#6232 review)', async () => {
+    const { store, view, editor, reader } = await session();
+    const anchor = resolveSpatialAnchor(store, reader.firstId('IFCBUILDINGSTOREY')!, view);
+    const target = addWallToStore(editor, anchor, { Start: [0, 5, 0], End: [5, 5, 0], Thickness: 0.2, Height: 3 });
+    editor.setPositionalAttribute(target.placementId, 1, null);
+    const first = readHostedFill(store, 1262, view)!, second = readHostedFill(store, 1407, view)!;
+    const point = reader.entity(first.locationPointId), original = reader.entity(first.openingId);
+    const records = view.getMutations(), entities = view.getNewEntities();
+    expect(() => reassignHostedOpeningsInStore(store, editor, first.hostId, [
+      { openingId: first.openingId, hostId: first.hostId, location: [first.location[0] + 0.2, first.location[1], first.location[2]] },
+      { openingId: second.openingId, hostId: target.wallId, location: second.location },
+    ])).toThrow(/target host placement/);
+    expect(view.getMutations()).toEqual(records);
+    expect(view.getNewEntities()).toEqual(entities);
+    expect(reader.entity(first.locationPointId)).toEqual(point);
+    expect(reader.entity(first.openingId)).toEqual(original);
+  });
+
   it('rolls back a rehost batch when a later target host has no valid placement (#6232)', async () => {
     const { store, view, editor } = await session();
     const first = readHostedFill(store, 1262, view)!, second = readHostedFill(store, 1407, view)!;

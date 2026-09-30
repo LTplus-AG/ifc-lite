@@ -5,7 +5,7 @@
 /** Static panel palette entries. Dynamic extension and export rows stay with their providers. */
 import {
   BarChart3, Box, CalendarClock, ClipboardCheck, Cloud, Coins, Crosshair,
-  FileCode2, FileSpreadsheet, FileText, FileWarning, GitCompareArrows,
+  FileCode2, FileSpreadsheet, FileText, FileWarning, GitBranch, GitCompareArrows,
   History, Layout, Layers, MessageSquare, Palette, PencilLine, PencilRuler, Puzzle,
   Ruler, Scan, Sparkles, TreeDeciduous, Users, Workflow,
 } from 'lucide-react';
@@ -84,6 +84,7 @@ export const PANEL_SURFACE_COMMANDS = [
   rightCommand('panel:compare', 'compare', 'diff revision version change added deleted modified geometry data', GitCompareArrows, true),
   rightCommand('panel:changes', 'changes', 'authored edits modifications properties history review', History),
   rightCommand('panel:model', 'model', 'model inspector author defaults wall type dimensions edit workspace', PencilLine),
+  rightCommand('panel:changeSets', 'changeSets', 'change set changeset edits group active export import share discard', GitBranch, true),
   rightCommand('panel:cost', 'cost', '5d cost schedule item quantity budget estimate', Coins, true),
   {
     id: 'panel:chat', panelId: 'script', panelGroup: panelGroupFor('script'),

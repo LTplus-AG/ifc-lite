@@ -387,11 +387,13 @@ describe('createCachedAccessor', () => {
       getEntityName(id) { calls++; return `Entity_${id}`; },
     });
     const entityCount = 100_001;
+    let mismatches = 0;
     for (let pass = 0; pass < 2; pass++) {
       for (let id = 1; id <= entityCount; id++) {
-        expect(cached.getEntityName(id)).toBe(`Entity_${id}`);
+        if (cached.getEntityName(id) !== `Entity_${id}`) mismatches++;
       }
     }
+    expect(mismatches).toBe(0);
     // Bounding the entity-only cache would evict each value just before its
     // next scan and restore expensive source extraction per specification.
     expect(calls).toBe(entityCount);

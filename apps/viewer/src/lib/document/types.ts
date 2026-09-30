@@ -11,7 +11,7 @@
  *
  * The shape is plain JSON: it is what `.ifclite-document.json` carries.
  */
-import { isRgbColor } from '../color-contrast';
+import { isRgbColor } from '../color-contrast.js';
 import type { GroupOrder } from '../lists/group-sort';
 import { isSavedComparison, type SavedComparison } from '../compare/savedComparisonSchema';
 import { CHART_FONT_SIZE, validateChartSpec, type ChartSpec, type ReportPageSetup } from '@ifc-lite/charts';
@@ -20,6 +20,10 @@ import { isFilterGroup } from '@ifc-lite/rules';
 import { migrateDocumentListBlocks } from './document-list-migration.js';
 import { validateManualReportBlock, type ManualReportBlock } from './manual-report-types.js';
 import { validateIdsReportBlock, type IdsReportBlock } from './ids-report-types.js';
+import { validatePageHeading, type PageHeading } from './page-heading.js';
+import { validateTextTypography, type TextFont } from './text-typography.js';
+export { TEXT_SIZE_MIN, TEXT_SIZE_MAX } from './text-typography.js';
+export type { TextFont } from './text-typography.js';
 
 export { reportBlockSourceKind } from './ids-report-types.js';
 export type { IdsReportBlock, IdsReportCardinality, IdsReportCheckSummary, IdsReportRuleSummary, IdsReportSetRow, IdsReportVariant, ReportSourceKind } from './ids-report-types.js';
@@ -28,9 +32,6 @@ export const DOCUMENT_VERSION = 10;
 
 /** A block that can sit two-up in a row (#4940); an unpaired half block prints full width. */
 export type BlockWidth = 'full' | 'half';
-export type TextFont = 'helvetica' | 'times' | 'courier';
-export const TEXT_SIZE_MIN = 6;
-export const TEXT_SIZE_MAX = 48;
 
 export interface TextBlock {
   kind: 'text';
@@ -186,6 +187,8 @@ export interface DocumentSpec {
   id: string;
   name: string;
   page: ReportPageSetup;
+  /** Independent printed heading; absence retains the library name and default style. */
+  pageHeading?: PageHeading;
   blocks: DocumentBlock[];
 }
 
@@ -236,6 +239,7 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
   }
   if (!isString(input.id) || input.id.length === 0) errors.push({ path: 'id', message: 'expected a non-empty string' });
   if (!isString(input.name)) errors.push({ path: 'name', message: 'expected a string' });
+  if (input.pageHeading !== undefined) errors.push(...validatePageHeading(input.pageHeading));
   const page = input.page;
   if (!isRecord(page) || (page.size !== 'A4' && page.size !== 'A3') || (page.orientation !== 'portrait' && page.orientation !== 'landscape')) {
     errors.push({ path: 'page', message: 'expected { size: A4 | A3, orientation: portrait | landscape }' });
@@ -262,11 +266,8 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
       case 'text':
         if (!isString(block.text)) errors.push({ path: `${at}.text`, message: 'expected a string' });
         if (!TEXT_STYLE_NAMES.includes(block.style as string)) errors.push({ path: `${at}.style`, message: `expected ${TEXT_STYLE_NAMES.join(' | ')}` });
-        if (block.font !== undefined && block.font !== 'helvetica' && block.font !== 'times' && block.font !== 'courier') errors.push({ path: `${at}.font`, message: 'expected helvetica | times | courier' });
-        if (block.fontSize !== undefined && (typeof block.fontSize !== 'number' || !Number.isFinite(block.fontSize) || block.fontSize < TEXT_SIZE_MIN || block.fontSize > TEXT_SIZE_MAX)) errors.push({ path: `${at}.fontSize`, message: `expected a number between ${TEXT_SIZE_MIN} and ${TEXT_SIZE_MAX}` });
-        for (const key of ['textColor', 'backgroundColor']) {
-          if (block[key] !== undefined && !isRgbColor(block[key])) errors.push({ path: `${at}.${key}`, message: 'expected an RGB colour in #RRGGBB form' });
-        }
+        errors.push(...validateTextTypography(block, at));
+        if (block.backgroundColor !== undefined && !isRgbColor(block.backgroundColor)) errors.push({ path: `${at}.backgroundColor`, message: 'expected an RGB colour in #RRGGBB form' });
         checkWidth(block, at);
         break;
       case 'image':

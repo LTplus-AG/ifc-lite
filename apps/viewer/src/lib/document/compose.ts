@@ -21,6 +21,10 @@ import { layoutManualReport, type ManualReportLayoutBlock, type RingDrawnItem } 
 import { tabFill } from './text-tabs.js';
 import { splitDocumentSections } from './page-sections.js';
 
+import { truncateToWidth } from './text-layout.js';
+export { truncateToWidth } from './text-layout.js';
+import { resolvePageHeading, type PageHeading, type ResolvedPageHeading } from './page-heading.js';
+
 const HEADER_HEIGHT = 30;
 const FOOTER_HEIGHT = 24;
 export const BLOCK_GAP = 10;
@@ -35,6 +39,7 @@ export interface DocumentChartSizingInput {
   snapshot: boolean;
   hasData: boolean;
   fontSize?: number;
+  headingExtraHeight?: number;
 }
 
 /** One chart-height rule shared by PDF composition and the browser preview (#4940). */
@@ -42,7 +47,7 @@ export function documentChartSizing(input: DocumentChartSizingInput): { height: 
   const sideBySide = input.snapshot && input.hasData && input.boxWidth >= 640;
   const stacked = input.snapshot && input.hasData && !sideBySide;
   const overhead = 32 * chartFontScale(input.fontSize) + (stacked ? SNAPSHOT_HEIGHT + BLOCK_GAP : 0);
-  const printableHeight = input.pageHeight - (REPORT_MARGIN + HEADER_HEIGHT) - (REPORT_MARGIN + FOOTER_HEIGHT);
+  const printableHeight = input.pageHeight - (REPORT_MARGIN + HEADER_HEIGHT + (input.headingExtraHeight ?? 0)) - (REPORT_MARGIN + FOOTER_HEIGHT);
   return {
     height: Math.max(40, Math.min(input.requestedHeight, printableHeight - overhead)),
     sideBySide,
@@ -92,11 +97,13 @@ export interface DocumentLayout {
   size: { w: number; h: number };
   pages: DocumentPage[];
   header: string;
+  pageHeading?: ResolvedPageHeading;
   footer: string;
 }
 
 export interface ComposeDocumentInput {
   name: string;
+  pageHeading?: PageHeading;
   page: ReportPageSetup;
   blocks: ResolvedBlock[];
   generatedAt: string;
@@ -110,11 +117,11 @@ export const estimateTextWidth = (text: string, size: number, bold: boolean): nu
 /** A conservative, font-independent bound keeps preview/PDF pairing identical.
  * Standard PDF font glyphs fit within one em; this can choose full width early,
  * but never puts a two-column row through the footer for a wide glyph string. */
-export function halfTextFitsPage(block: Pick<TextBlock, 'style' | 'text' | 'fontSize'>, pageHeight: number, columnWidth: number): boolean {
+export function halfTextFitsPage(block: Pick<TextBlock, 'style' | 'text' | 'fontSize'>, pageHeight: number, columnWidth: number, headingExtraHeight = 0): boolean {
   const style = TEXT_STYLES[block.style];
   const size = block.fontSize ?? style.size;
   const lines = wrapText(block.text, columnWidth, size, style.bold, (text, fontSize) => text.length * fontSize);
-  const frameHeight = pageHeight - 2 * REPORT_MARGIN - HEADER_HEIGHT - FOOTER_HEIGHT;
+  const frameHeight = pageHeight - 2 * REPORT_MARGIN - HEADER_HEIGHT - FOOTER_HEIGHT - headingExtraHeight;
   return style.gapBefore + lines.length * size * style.lineHeight <= frameHeight;
 }
 
@@ -156,27 +163,13 @@ export function wrapText(text: string, width: number, size: number, bold: boolea
   return lines;
 }
 
-/** A single line, ellipsis-truncated to fit `width` by the same measure `wrapText` uses (#4940 review: a half-width chart's title/subtitle must not run into the next column). */
-export function truncateToWidth(text: string, width: number, size: number, bold: boolean, measure: ComposeDocumentInput['measure']): string {
-  if (width <= 0 || measure(text, size, bold) <= width) return text;
-  // Binary, not linear: a linear cut-by-one scan remeasures a near-full string once per code
-  // unit, quadratic in an imported title's length (review finding). `measure` grows monotonically
-  // with the prefix length for both measures this module is called with (jsPDF's textWidth, the
-  // character-count estimate), so the longest prefix that still fits is found by bisection.
-  let low = 0;
-  let high = text.length;
-  while (low < high) {
-    const cut = Math.ceil((low + high) / 2);
-    if (measure(`${text.slice(0, cut)}…`, size, bold) <= width) low = cut;
-    else high = cut - 1;
-  }
-  return low > 0 ? `${text.slice(0, low)}…` : '…';
-}
 
 export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
   const size = pageBox(input.page);
   const contentW = size.w - 2 * REPORT_MARGIN;
-  const top = REPORT_MARGIN + HEADER_HEIGHT;
+  const pageHeading = input.pageHeading ? resolvePageHeading(input.name, input.pageHeading, contentW, input.measure) : undefined;
+  const headingExtraHeight = pageHeading?.extraHeight ?? 0;
+  const top = REPORT_MARGIN + HEADER_HEIGHT + headingExtraHeight;
   const bottom = size.h - REPORT_MARGIN - FOOTER_HEIGHT;
   const pages: DocumentPage[] = [];
   let page: DocumentPage = { index: 0, items: [] };
@@ -239,6 +232,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     // The configured height (up to CHART_BLOCK_HEIGHT_MAX, 600pt) must still fit a single page next to its
     // title strip and, when stacked, its snapshot — otherwise the SVG is clipped past the footer (review finding).
     const { height: chartHeight, sideBySide, stacked } = documentChartSizing({
+      headingExtraHeight,
       requestedHeight: block.height ?? CHART_HEIGHT,
       pageHeight: size.h,
       boxWidth: boxW,
@@ -294,7 +288,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       const next = blocks[i + 1];
       if (next && isHalfPairable(block) && isHalfPairable(next)) {
         const colW = (contentW - BLOCK_GAP) / 2;
-        const textFits = (candidate: typeof block): boolean => candidate.kind !== 'text' || halfTextFitsPage(candidate, size.h, colW);
+        const textFits = (candidate: typeof block): boolean => candidate.kind !== 'text' || halfTextFitsPage(candidate, size.h, colW, headingExtraHeight);
         if (textFits(block) && textFits(next)) {
           const a = layoutPairable(block, REPORT_MARGIN, colW);
           const b = layoutPairable(next, REPORT_MARGIN + colW + BLOCK_GAP, colW);
@@ -382,5 +376,5 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
   }
   pages.push(page);
 
-  return { page: input.page, size, pages, header: input.name, footer: `Generated ${input.generatedAt} · ifc-lite` };
+  return { page: input.page, size, pages, header: input.name, ...(pageHeading ? { pageHeading } : {}), footer: `Generated ${input.generatedAt} · ifc-lite` };
 }

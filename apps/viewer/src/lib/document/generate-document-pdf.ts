@@ -216,7 +216,12 @@ function drawHeaderFooter(doc: ReportDoc, layout: DocumentLayout, pageIndex: num
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(150);
-  doc.text(layout.header, REPORT_MARGIN, REPORT_MARGIN - 8);
+  if (layout.pageHeading) {
+    const heading = layout.pageHeading;
+    doc.setFont(heading.font, 'normal'); doc.setFontSize(heading.fontSize); doc.setTextColor(heading.textColor);
+    doc.text(heading.text, REPORT_MARGIN, heading.y);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(150);
+  } else doc.text(layout.header, REPORT_MARGIN, REPORT_MARGIN - 8);
   doc.text(layout.footer, REPORT_MARGIN, layout.size.h - REPORT_MARGIN + 12);
   doc.text(`Page ${pageIndex + 1} / ${layout.pages.length}`, layout.size.w - REPORT_MARGIN - 60, layout.size.h - REPORT_MARGIN + 12);
   doc.setTextColor(0);
@@ -255,7 +260,7 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
     doc.setFontSize(size);
     return doc.textWidth(text);
   };
-  const layout = composeDocument({ name: input.document.name, page: input.document.page, blocks, generatedAt: seams.now().toLocaleString(), measure });
+  const layout = composeDocument({ name: input.document.name, pageHeading: input.document.pageHeading, page: input.document.page, blocks, generatedAt: seams.now().toLocaleString(), measure });
   const byId = new Map(input.document.blocks.map((b) => [b.id, b]));
   const topicsByBlock = new Map(input.document.blocks.filter((b) => b.kind === 'topic').map((b) => [b.id, input.topics.get((b as { guid: string }).guid)]));
 

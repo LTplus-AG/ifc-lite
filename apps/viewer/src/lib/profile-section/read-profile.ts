@@ -7,15 +7,15 @@
  * inverse of `emitProfileSection`, for the inspector's Profile section, for
  * split (a piece of an I-beam is an I-beam) and for one undo of a change.
  *
- * The leading attributes of these classes are the same in every schema
- * (`ProfileType`, `ProfileName`, `Position`, then the dimensions in the order
- * listed below); only the optional tail differs, and it is not read. A class
- * that is not one of the nine, or a dimension that is missing or not a
- * positive finite number, reads as null.
+ * Attribute positions come from the model's schema registry. Supported optional
+ * radii survive an edit or split; a populated geometry attribute the shared
+ * builder cannot reproduce refuses editing rather than silently changing the
+ * section. Invalid dimensions also read as null.
  */
 
 import type { ProfileSection, ProfileSectionType } from '@ifc-lite/create';
-import { fromNativeLength } from '@ifc-lite/create';
+import { fromNativeLength, validateProfileSection } from '@ifc-lite/create';
+import { getAttributeNamesAcrossSchemas, getSchemaRegistryForVersion } from '@ifc-lite/parser';
 
 /** IFC class (upper case, as STEP stores it) to section type and the attribute names from index 3. */
 const LAYOUT: Readonly<Record<string, { type: ProfileSectionType; names: readonly string[] }>> = {
@@ -41,18 +41,56 @@ export function isSectionProfileClass(stepType: string | null | undefined): bool
   return stepType !== null && stepType !== undefined && stepType.toUpperCase() in LAYOUT;
 }
 
-/**
- * The section of a profile entity with STEP type `stepType` and raw
- * `attributes`, in metres (`lengthUnitScale` is native units to metres).
- */
-export function sectionFromProfile(stepType: string, attributes: readonly unknown[], lengthUnitScale: number): ProfileSection | null {
-  const layout = LAYOUT[stepType.toUpperCase()];
-  if (!layout) return null;
-  const section: Record<string, unknown> = { Type: layout.type };
-  for (let i = 0; i < layout.names.length; i++) {
-    const raw = realOf(attributes[3 + i]);
-    if (raw === null || raw <= 0) return null;
-    section[layout.names[i]] = fromNativeLength({ lengthUnitScale }, raw);
+/** Optional geometry the shared ProfileSection/emitProfileSection can reproduce. */
+const OPTIONAL: Readonly<Partial<Record<ProfileSectionType, readonly string[]>>> = {
+  I: ['FilletRadius'], L: ['FilletRadius'], T: ['FilletRadius'], U: ['FilletRadius'],
+  C: ['InternalFilletRadius'], RectangleHollow: ['InnerFilletRadius', 'OuterFilletRadius'],
+};
+
+/** Read a profile in metres without dropping geometry when it is rebuilt. */
+export function sectionFromProfile(
+  stepType: string,
+  attributes: readonly unknown[],
+  lengthUnitScale: number,
+  schemaVersion = 'IFC4',
+): ProfileSection | null {
+  const upper = stepType.toUpperCase();
+  const layout = LAYOUT[upper];
+  if (!layout || !Number.isFinite(lengthUnitScale) || lengthUnitScale <= 0) return null;
+  let declared: readonly string[] | undefined;
+  if (schemaVersion === 'IFC2X3' || schemaVersion === 'IFC4' || schemaVersion === 'IFC4X3') {
+    const registry = getSchemaRegistryForVersion(schemaVersion);
+    const name = Object.keys(registry.entities).find((entity) => entity.toUpperCase() === upper);
+    declared = name ? registry.entities[name].allAttributes?.map((attribute) => attribute.name) : undefined;
+  } else if (schemaVersion === 'IFC5' && layout.type === 'Rectangle') {
+    // IFCX adapts positional attributes using this same canonical name list.
+    // Basic rectangular authoring remains supported; profiled emission refuses IFC5.
+    declared = getAttributeNamesAcrossSchemas(stepType);
   }
-  return section as unknown as ProfileSection;
+  if (!declared || declared.length === 0) return null;
+  // Extra positional values cannot be recreated by a builder using this registry.
+  if (attributes.slice(declared.length).some((value) => value != null)) return null;
+  const section: Record<string, unknown> = { Type: layout.type };
+  const optional = OPTIONAL[layout.type] ?? [];
+  for (let i = 3; i < declared.length; i++) {
+    const field = declared[i];
+    const required = layout.names.includes(field);
+    const raw = attributes[i];
+    if (raw == null && !required) continue;
+    // The builder has no representation of slopes, edge radii or schema-specific
+    // gravity offsets: refusing is safer than authoring a different cross-section.
+    if (!required && !optional.includes(field)) return null;
+    const value = realOf(raw);
+    if (value === null || (required ? value <= 0 : value < 0)) return null;
+    section[field] = fromNativeLength({ lengthUnitScale }, value);
+  }
+  const result = section as unknown as ProfileSection;
+  try {
+    validateProfileSection(result, 'profile');
+  } catch (error) {
+    // Malformed file dimensions are a normal refusal, not an editable section.
+    if (error instanceof Error) return null;
+    throw error;
+  }
+  return result;
 }

@@ -232,7 +232,7 @@ export function resolveLinearElementChain(
   // A rectangle reads as its XDim x YDim; the picker's other sections as their
   // outer size, with the section itself carried for whoever writes a piece.
   const profileType = editor.getEntityType(profileId);
-  const parsed = profileType ? sectionFromProfile(profileType, profileAttrs, lengthUnitScale) : null;
+  const parsed = profileType ? sectionFromProfile(profileType, profileAttrs, lengthUnitScale, dataStore.schemaVersion ?? 'IFC4') : null;
   if (!parsed) return null;
   const section = parsed.Type === 'Rectangle' ? null : parsed;
   const [profileWidth, profileHeight] = profileSectionExtent(parsed);

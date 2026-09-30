@@ -15,6 +15,7 @@ import { profileSectionExtent, type ProfileSection, type ProfileSectionType } fr
 import { DEFAULT_SECTIONS, PROFILE_FIELDS, PROFILE_KINDS, sectionOfType, sectionProblem, sectionWithExtent, withDimension } from './profile-kinds';
 import { sectionOutline, sectionPath } from './profile-outline';
 import { sectionFromProfile } from './read-profile';
+import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
 
 const SHAPES = PROFILE_KINDS.filter((kind): kind is Exclude<ProfileSectionType, 'Rectangle'> => kind !== 'Rectangle');
 const box = (points: readonly (readonly [number, number])[]) => {
@@ -87,5 +88,35 @@ describe('profile kinds (#6232 D2)', () => {
     assert.equal(sectionFromProfile('IfcCircleProfileDef', ['.AREA.', null, '#1', 0.15], 1)?.Type, 'Circle', 'a mixed-case class reads too');
     assert.equal(sectionFromProfile('IFCARBITRARYCLOSEDPROFILEDEF', ['.AREA.', null, '#1'], 1), null);
     assert.equal(sectionFromProfile('IFCISHAPEPROFILEDEF', ['.AREA.', null, '#1', 0.2, 0.4, 0, 0.01], 1), null, 'a zero web is not a section');
+  });
+});
+
+// Optional tails differ by schema; read the actual registry, not a guessed index.
+describe('schema-aware section fidelity (#6232/#6532)', () => {
+  for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
+    it(`${schema}: keeps an I fillet and refuses populated unsupported geometry`, () => {
+      const registry = getSchemaRegistryForVersion(schema);
+      const fields = registry.entities.IfcIShapeProfileDef.allAttributes!;
+      const values: Record<string, unknown> = {
+        ProfileType: '.AREA.', OverallWidth: 200, OverallDepth: 400,
+        WebThickness: 10, FlangeThickness: 16, FilletRadius: { real: 8 },
+      };
+      const attrs = fields.map((field) => values[field.name] ?? null);
+      assert.deepEqual(sectionFromProfile('IFCISHAPEPROFILEDEF', attrs, 0.001, schema),
+        { Type: 'I', OverallWidth: 0.2, OverallDepth: 0.4, WebThickness: 0.01, FlangeThickness: 0.016, FilletRadius: 0.008 });
+      const extra = fields.findIndex((field) => field.name === 'FlangeSlope');
+      if (extra >= 0) {
+        attrs[extra] = 0.1;
+        assert.equal(sectionFromProfile('IFCISHAPEPROFILEDEF', attrs, 0.001, schema), null);
+      }
+    });
+  }
+  it('keeps zero supported radii and refuses malformed or excess geometry', () => {
+    const attrs = ['.AREA.', null, null, 0.2, 0.4, 0.01, 0.016, 0, null, null];
+    assert.equal(sectionFromProfile('IFCISHAPEPROFILEDEF', attrs, 1)?.Type, 'I');
+    const bad = [...attrs]; bad[7] = -0.001;
+    assert.equal(sectionFromProfile('IFCISHAPEPROFILEDEF', bad, 1), null);
+    assert.equal(sectionFromProfile('IFCISHAPEPROFILEDEF', [...attrs, 123], 1), null);
+    assert.equal(sectionFromProfile('IFCISHAPEPROFILEDEF', attrs, 1, 'IFCX'), null);
   });
 });

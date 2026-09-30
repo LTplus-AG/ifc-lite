@@ -103,6 +103,17 @@ export class MutableOverlayState {
    */
   protected entityAliases: Map<number, number> = new Map();
   protected nextAllocatedId: number = 0;
+
+  /** Snapshot candidate ids for effective attribute reads. Includes named,
+   * positional and type overrides even when written without journal records;
+   * callers apply their normal live-entity and attribute-layout checks. */
+  getAttributeOverrideEntityIds(): number[] {
+    return [...new Set([
+      ...this.attributeKeysByEntity.keys(),
+      ...this.positionalAttrMutations.keys(),
+      ...this.typeMutations.keys(),
+    ])];
+  }
   protected mutationHistory: Mutation[] = [];
 
   protected setPropertyMutation(entityId: number, key: string, mutation: PropertyMutation): void {

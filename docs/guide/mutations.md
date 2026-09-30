@@ -103,6 +103,15 @@ The iterator yields source entities in parsed order, followed by source entities
 retyped into a requested class, then overlay-created entities. Tombstones are
 excluded in every case.
 
+When a query already has source candidates from an immutable index, add
+`view.getAttributeOverrideEntityIds()` to catch source entities whose live
+attributes or type differ from the file. This returns a snapshot of current
+named, positional and type override IDs, including edits made without journal
+records. Apply effective reads to these candidates; the list alone does not
+exclude deletions or validate an attribute's meaning. Passing the combined
+source candidates as the iterator's fourth argument restricts source traversal
+while still including overlay creations.
+
 For direct members of a spatial container, `@ifc-lite/parser` also exports
 `effectiveSpatialMemberIds(store, containerId, context)`. Supply a context
 containing the model's `resolveEffectiveRelationshipOverlay` result, an

@@ -4,7 +4,7 @@
 
 /** Params-to-commit core for hosted placement (#6232 D5). Hosts supply their
  * editor and history/remesh policy; the IFC graph and refusal rules live here. */
-import { iterateEffectiveEntityIds, type StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
+import type { StoreEditor, MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { toNativeLength, type HostAnchor, type HostBounds } from './anchor.js';
 import { assertPositiveFinite } from './_emit-helpers.js';
@@ -16,6 +16,7 @@ import {
 import { readHostedFill, type HostedFillRead } from './hosted-fill-read.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { placedBodyExtent, resolveHostAnchor } from './resolve-host.js';
+import { assertHostedGlobalIdAvailable } from './hosted-global-id.js';
 
 export type HostedElementInStoreSpec =
   | { readonly kind: 'opening'; readonly params: OpeningInStoreParams }
@@ -109,13 +110,7 @@ export function addHostedElementInStore(
   return editor.runAtomic(draft => {
     const view = draft.getMutationView();
     if (spec.params.GlobalId !== undefined) {
-      const reader = new AnchorEntityReader(store, view);
-      for (const { expressId } of iterateEffectiveEntityIds(store, view)) {
-        const entity = reader.entity(expressId);
-        if (entity?.names[0] === 'GlobalId' && entity.attributes[0] === spec.params.GlobalId) {
-          throw new Error(`GlobalId '${spec.params.GlobalId}' is already used by #${expressId}`);
-        }
-      }
+      assertHostedGlobalIdAvailable(store, view, spec.params.GlobalId);
     }
     const host = resolveHostAnchor(store, hostId, view);
     validateWallCut(store, view, host, spec);

@@ -124,6 +124,23 @@ describe('saved history recovery (#6506, #6500)', () => {
     assert.deepEqual(retried.entries, refused.entries);
     assert.deepEqual(history().read().entries, retried.entries);
   });
+  it('retains discovered neighbours when unavailable storage becomes a blocked partial archive', () => {
+    const bytes = '[{"id":"old","value":1},null]';
+    data.set('history', bytes); unreadable = true;
+    const store = history(); store.read();
+    unreadable = false; blocked.add('history:unreadable');
+    const incoming = [{ id: 'new', value: 2 }];
+    const refused = store.save(incoming);
+    assert.equal(refused.issue, 'blocked');
+    assert.deepEqual(refused.entries, [{ id: 'old', value: 1 }, ...incoming]);
+    assert.equal(data.get('history'), bytes);
+    blocked.clear();
+    const retry = store.save(incoming);
+    assert.equal(retry.ok, true);
+    assert.deepEqual(retry.entries, refused.entries);
+    assert.equal(data.get('history:unreadable'), bytes);
+    assert.deepEqual(history().read().entries, retry.entries);
+  });
   it('checks external corruption before a later save rather than trusting the initial read', () => {
     const store = history(); assert.equal(store.read().issue, null);
     data.set('history', 'external corrupt bytes'); blocked.add('history:unreadable');

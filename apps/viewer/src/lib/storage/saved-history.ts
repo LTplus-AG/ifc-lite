@@ -69,13 +69,16 @@ export function createSavedHistoryStorage<T extends { id: string }>(
       // entry, or storage may have become available since initialization.
       const previouslyUnavailable = inspectionUnavailable;
       const current = read();
-      if (current.issue === 'blocked' || current.issue === 'unavailable') return { ...unavailable(), issue: current.issue, entries: [...entries] };
       // A failed initial inspection cannot authorize replacing valid reports
       // that become readable later. Incoming edits win matching ids; ordinary
       // writes after a complete read still support explicit deletions.
       const retained = new Map(previouslyUnavailable ? current.entries.map((entry) => [entry.id, entry]) : []);
       for (const entry of entries) retained.set(entry.id, entry);
       const saved = [...retained.values()];
+      if (current.issue === 'blocked' || current.issue === 'unavailable') {
+        if (previouslyUnavailable) inspectionUnavailable = true;
+        return { ...unavailable(), issue: current.issue, entries: saved };
+      }
       const result = saveJson(key, saved, subject);
       if (!result.ok && previouslyUnavailable) inspectionUnavailable = true;
       return { ...result, issue: result.ok ? current.issue : 'unavailable', entries: saved };

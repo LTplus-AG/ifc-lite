@@ -21,7 +21,7 @@ export function SavedHistoryNotice({ issue, subject, onRetry }: {
 }) {
   const { t } = useTranslation();
   if (!issue) return null;
-  return <div role="alert" className="flex flex-col gap-1 px-2 py-1 text-xs text-destructive" data-saved-history-issue={issue}>
+  return <div role="alert" className="flex flex-col gap-1 px-2 py-1 text-xs text-foreground" data-saved-history-issue={issue}>
     <p>{t(ISSUE_KEY[issue], { subject })}</p>
     {issue !== 'recovered' && onRetry && <Button type="button" variant="outline" size="sm" className="h-7 w-fit text-xs" onClick={onRetry}>{t('validationPanel.history.retrySave')}</Button>}
   </div>;

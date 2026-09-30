@@ -60,6 +60,13 @@ Edits accumulate in the same overlay used by `setProperty` / `setAttribute`
 and materialise the next time you call
 `StepExporter.export({ applyMutations: true })`.
 
+For a query that needs to revisit source entities whose attributes changed,
+`view.getAttributeOverrideEntityIds()` returns a snapshot of the current named,
+positional and type override IDs, including edits made without history records.
+It is a candidate set: use effective entity reads to check deletion, the live
+type and attribute layout. Created entities are enumerated separately by
+`iterateEffectiveEntityIds`.
+
 ### Whole numbers on REAL-typed attributes
 
 ISO 10303-21 requires a REAL-typed attribute (`IfcLengthMeasure` coordinates,

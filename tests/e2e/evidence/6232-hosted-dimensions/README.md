@@ -26,11 +26,13 @@ the saved scene data. `restored-after-two-undos.png` shows the restored
 initial-state screenshot.
 
 `facts.json` records the initial, edited, first-undo and restored bounds,
-world-triangle-position hashes and render-state flag hashes, plus full
+world-triangle-position hashes and scene-part metadata/instance-flag hashes, plus full
 scene-owner equality results and the separately observed UI state. The browser
 renderer uses Y-up coordinates, so bounds index 1 is height and index 2 is depth.
-`cornersHash` hashes the actual world triangle positions. `flatHash` and
-`instanceHash` hash boolean flags; they do not measure GPU upload bytes.
+`cornersHash` hashes the actual world triangle positions. `flatHash` hashes
+scene-part metadata (geometry item IDs, triangle/vertex counts, texture flags,
+colours and source triangle counts); `instanceHash` hashes a boolean flag.
+These hashes do not measure GPU upload bytes.
 These browser captures do not assert normals or index-buffer byte identity.
 
 The automated regression tests separately exercise real WASM meshes of this

@@ -82,6 +82,29 @@ describe('hosted occurrence edit (#6232)', () => {
     expect(actual.max[2]).toBeCloseTo(cut.max[2] + 0.1, 9);
   });
 
+  it('moves a filling with an omitted optional Representation while refusing size edits (#6232 / #6571)', async () => {
+    const { store, view, editor, reader } = await session();
+    editor.setPositionalAttribute(1262, 6, null);
+    const before = readHostedFill(store, 1262, view)!;
+    const cut = placedBodyExtent(store, before.openingId, view)!;
+    editHostedElementInStore(store, editor, 1262, { Offset: before.offset + 0.2, Sill: before.sill + 0.1 });
+    const moved = placedBodyExtent(store, before.openingId, view)!;
+    expect(moved.min[0]).toBeCloseTo(cut.min[0] + 0.2, 9);
+    expect(moved.min[2]).toBeCloseTo(cut.min[2] + 0.1, 9);
+    expect(reader.entity(1262)!.attributes[6]).toBeNull();
+    expect(readHostedElementSize(store, 1262, view)).toBeNull();
+    const records = view.getMutations(), entities = view.getNewEntities();
+    expect(() => editHostedElementInStore(store, editor, 1262, { OverallWidth: 1.2 })).toThrow(/cannot be read/);
+    expect(view.getMutations()).toEqual(records);
+    expect(view.getNewEntities()).toEqual(entities);
+    const fillingPlacement = refId(reader.entity(1262)!.attributes[5])!;
+    editor.setPositionalAttribute(fillingPlacement, 0, '#1235');
+    const invalid = view.getMutations();
+    expect(() => editHostedElementInStore(store, editor, 1262, { Offset: before.offset + 0.3 })).toThrow(/not placed directly/);
+    expect(view.getMutations()).toEqual(invalid);
+    expect(view.getNewEntities()).toEqual(entities);
+  });
+
   it('retains styled items and presentation layers on an existing scale wrapper during later size commits (#6232)', async () => {
     const { store, view, editor, reader } = await session();
     editHostedElementInStore(store, editor, 1262, { OverallWidth: 1.2 });

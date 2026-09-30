@@ -52,6 +52,54 @@ function bounds(parts: MeshWitness[]) {
 }
 
 describe('hosted occurrence real WASM oracle (#6232)', () => {
+  it.skipIf(!existsSync(WASM) || !existsSync(WASM_JS))('moves a faceted B-rep filling unsupported by the size reader (#6232 / #6571)', async () => {
+    const [{ IfcParser }, { MutablePropertyView, StoreEditor }, { StepExporter },
+      { editHostedElementInStore, readHostedElementSize }, { readHostedFill }] = await Promise.all([
+      import('@ifc-lite/parser'), import('@ifc-lite/mutations'), import('@ifc-lite/export'),
+      import('./hosted-element-edit.js'), import('./hosted-fill-read.js'),
+    ]);
+    const bytes = readFileSync(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
+    const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
+    const ref = (id: number) => `#${id}`;
+    // Explicit closed six-face box: a valid IfcFacetedBrep is rendered by
+    // Rust but deliberately unsupported by the conservative size reader.
+    const points = [[0, 0, 0], [0.9, 0, 0], [0.9, 0.05, 0], [0, 0.05, 0],
+      [0, 0, 1.2], [0.9, 0, 1.2], [0.9, 0.05, 1.2], [0, 0.05, 1.2]]
+      .map(point => editor.addEntity('IfcCartesianPoint', [point]).expressId);
+    const faces = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]].map(indices => {
+      const loop = editor.addEntity('IfcPolyLoop', [indices.map(index => ref(points[index]))]).expressId;
+      const bound = editor.addEntity('IfcFaceOuterBound', [ref(loop), '.T.']).expressId;
+      return editor.addEntity('IfcFace', [[ref(bound)]]).expressId;
+    });
+    const shell = editor.addEntity('IfcClosedShell', [faces.map(ref)]).expressId;
+    const brep = editor.addEntity('IfcFacetedBrep', [ref(shell)]).expressId;
+    const rep = editor.addEntity('IfcShapeRepresentation', ['#15', 'Body', 'Brep', [ref(brep)]]).expressId;
+    const shape = editor.addEntity('IfcProductDefinitionShape', [null, null, [ref(rep)]]).expressId;
+    editor.setPositionalAttribute(1262, 6, ref(shape));
+    const exportText = () => new TextDecoder().decode(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content);
+    const before = await meshes(exportText());
+    expect(before.shapes.get(1262)?.length ?? 0).toBeGreaterThan(0);
+    const original = bounds(before.shapes.get(1262)!);
+    expect(original.max[0] - original.min[0]).toBeCloseTo(0.9, 5);
+    expect(original.max[1] - original.min[1]).toBeCloseTo(1.2, 5);
+    expect(readHostedElementSize(store, 1262, view)).toBeNull();
+    const placed = readHostedFill(store, 1262, view)!;
+    editHostedElementInStore(store, editor, 1262, { Offset: placed.offset + 0.2, Sill: placed.sill + 0.1 });
+    const after = await meshes(exportText());
+    const moved = bounds(after.shapes.get(1262)!);
+    for (const side of ['min', 'max'] as const) {
+      expect(moved[side][0]).toBeCloseTo(original[side][0] + 0.2, 5);
+      expect(moved[side][1]).toBeCloseTo(original[side][1] + 0.1, 5);
+      expect(moved[side][2]).toBeCloseTo(original[side][2], 5);
+    }
+    expect(after.shapes.get(1407)).toEqual(before.shapes.get(1407));
+    const records = view.getMutations(), entities = view.getNewEntities();
+    expect(() => editHostedElementInStore(store, editor, 1262, { OverallWidth: 1.2 })).toThrow(/cannot be read/);
+    expect(view.getMutations()).toEqual(records);
+    expect(view.getNewEntities()).toEqual(entities);
+  }, 30_000);
+
   it.skipIf(!existsSync(WASM) || !existsSync(WASM_JS))('repeated dimension commits retain imported mapped geometry (#6232)', async () => {
     const [{ IfcParser }, { MutablePropertyView, StoreEditor }, { StepExporter }, { editHostedElementInStore }] = await Promise.all([
       import('@ifc-lite/parser'), import('@ifc-lite/mutations'), import('@ifc-lite/export'), import('./hosted-element-edit.js'),

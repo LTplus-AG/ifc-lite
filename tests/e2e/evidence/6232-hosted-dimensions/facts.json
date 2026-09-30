@@ -227,6 +227,12 @@
     }
   },
   "url": "http://localhost:5193/",
+  "hashSemantics": {
+    "cornersHash": "Actual world triangle corner positions.",
+    "flatHash": "Scene-part metadata: geometryItemId, triangles, vertices, textured, color and sourceTriangles.",
+    "instanceHash": "Boolean instance flag.",
+    "scope": "These hashes do not establish GPU upload byte, normal or index-buffer identity."
+  },
   "uiObservations": {
     "undoClicks": 2,
     "undoDisabledAfterTwoClicks": true,

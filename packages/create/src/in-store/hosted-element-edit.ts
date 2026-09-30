@@ -40,7 +40,7 @@ interface HostedGeometry {
   readonly size: HostedElementSize | null;
 }
 
-function geometry(store: IfcDataStore, reader: AnchorEntityReader, id: number, view?: MutablePropertyView | null): HostedGeometry | null {
+function geometry(store: IfcDataStore, reader: AnchorEntityReader, id: number, view?: MutablePropertyView | null, withSize = true): HostedGeometry | null {
   const read = readHostedFill(store, id, view);
   const host = read ? reader.entity(read.hostId) : null;
   const hostPlacement = host ? refId(host.attributes[5]) : null;
@@ -54,8 +54,12 @@ function geometry(store: IfcDataStore, reader: AnchorEntityReader, id: number, v
   if (!filling || !['IFCDOOR', 'IFCWINDOW'].includes(filling.type.toUpperCase())) return null;
   const fillingPlacement = refId(filling.attributes[5]);
   const fillingFrame = fillingPlacement === null ? null : placementInAncestor(reader, fillingPlacement, hostPlacement);
+  if (!fillingFrame) return null;
+  // Movement needs a valid placement and opening, even when the filling's
+  // optional Body is absent or outside the conservative size reader (#6571).
+  if (!withSize) return { read, cut, openingFrame, fillingFrame, size: null };
   const local = localBodyExtent(store, read.fillingId, view);
-  if (!local || !fillingFrame) return null;
+  if (!local) return null;
   const body = transformBounds(local, fillingFrame);
   const scale = store.source.byteLength > 0 ? safeLengthUnitScale(store.source, store.entityIndex, 'readHostedElementSize') ?? 1 : 1;
   const dimension = (name: 'OverallWidth' | 'OverallHeight', axis: 0 | 2): number | null => {
@@ -124,12 +128,13 @@ export function editHostedElementInStore(store: IfcDataStore, editor: StoreEdito
   }
   return editor.runAtomic(draft => {
     const view = draft.getMutationView(), reader = new AnchorEntityReader(store, view);
-    const current = geometry(store, reader, id, view);
+    const sizing = patch.OverallWidth !== undefined || patch.OverallHeight !== undefined;
+    const current = geometry(store, reader, id, view, sizing);
     if (!current) throw new Error(`The hosted geometry of #${id} cannot be read, so the edit is refused`);
     const { read, cut, size } = current;
     const host = resolveHostAnchor(store, read.hostId, view);
     if (host.hostKind !== 'wall') throw new Error('Hosted size/position edits require a wall host');
-    if ((patch.OverallWidth !== undefined || patch.OverallHeight !== undefined) && !size) throw new Error('Overall dimensions apply to a hosted IfcDoor or IfcWindow');
+    if (sizing && !size) throw new Error('Overall dimensions apply to a hosted IfcDoor or IfcWindow');
     const widthScale = patch.OverallWidth === undefined || !size ? 1 : patch.OverallWidth / size.OverallWidth;
     const heightScale = patch.OverallHeight === undefined || !size ? 1 : patch.OverallHeight / size.OverallHeight;
     const dx = patch.Offset === undefined ? 0 : toNativeLength(host, patch.Offset) - read.location[0];

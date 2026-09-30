@@ -1,0 +1,365 @@
+{
+  "sourceBase": "3dfae0ecc818a0718c5a28a8d3d375c1b3a4799e",
+  "browser": "Chrome headless, canonical viewer-e2e-ci Vulkan SwiftShader flags",
+  "currentRun": {
+    "command": "PLAYWRIGHT_PORT=16649 pnpm exec playwright test tests/e2e/validation-colors.e2e.spec.ts --project=viewer-e2e-ci --workers=1 --reporter=line",
+    "result": "5 passed (1.1m), zero skipped"
+  },
+  "fixtures": [
+    {
+      "path": "apps/viewer/public/samples/building-architecture.ifc",
+      "authoringTool": "SketchUp 2024 / IFC-manager 5.3.3",
+      "bytes": 225635,
+      "sha256": "3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5"
+    },
+    {
+      "path": "apps/viewer/public/samples/building-architecture-rev-b.ifc",
+      "authoringTool": "SketchUp 2024 / IFC-manager 5.3.3",
+      "bytes": 226971,
+      "sha256": "0dfb7152db0a845747d2f35ee5ba9ba3772744072cb23040353c469c2a05f366"
+    },
+    {
+      "path": "tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc",
+      "authoringTool": "Autodesk Revit 2024 / IFC24.2.0.63",
+      "bytes": 8714606,
+      "sha256": "fab102eb5f9152bc7053d7e4920a8b75d0d34683c834078f0735c88308eb00a4"
+    }
+  ],
+  "cases": [
+    {
+      "case": "ordinary-federated",
+      "models": 2,
+      "summary": {
+        "totalSpecifications": 1,
+        "passedSpecifications": 0,
+        "failedSpecifications": 1,
+        "totalEntitiesChecked": 8,
+        "totalEntitiesPassed": 4,
+        "totalEntitiesFailed": 4,
+        "overallPassRate": 50
+      },
+      "failedInstanced": 0,
+      "failedOrdinary": 4,
+      "allEntityRefsResolved": true,
+      "failedEntitySample": {
+        "globalId": 315,
+        "expressId": 315,
+        "modelId": "a74bf38c-fdb5-4cd4-9ac4-1ee88b1126ef",
+        "passed": false,
+        "instanced": false,
+        "resolvedModelId": "a74bf38c-fdb5-4cd4-9ac4-1ee88b1126ef",
+        "resolvedExpressId": 315
+      },
+      "drawCalls": 11,
+      "instancedDrawn": 0,
+      "native": {
+        "sha256": "ab9256fdfc1fd27b5fe588da6d832f9aa4ff7bff96542ca0b1d08b4637b9a8ca",
+        "red": 0,
+        "green": 0,
+        "width": 512,
+        "height": 512,
+        "gridsVisible": false
+      },
+      "painted": {
+        "sha256": "c9c3fc6cefe4104bbb89112bc3ea012bae31724d1993e9303ff40cac55a8ee12",
+        "red": 7728,
+        "green": 12307,
+        "width": 512,
+        "height": 512,
+        "gridsVisible": false
+      },
+      "restored": {
+        "sha256": "ab9256fdfc1fd27b5fe588da6d832f9aa4ff7bff96542ca0b1d08b4637b9a8ca",
+        "red": 0,
+        "green": 0,
+        "width": 512,
+        "height": 512,
+        "gridsVisible": false
+      },
+      "allRGBAIdentical": true
+    },
+    {
+      "case": "instanced-federated",
+      "models": 2,
+      "summary": {
+        "totalSpecifications": 1,
+        "passedSpecifications": 0,
+        "failedSpecifications": 1,
+        "totalEntitiesChecked": 1013,
+        "totalEntitiesPassed": 92,
+        "totalEntitiesFailed": 921,
+        "overallPassRate": 9
+      },
+      "failedInstanced": 282,
+      "failedOrdinary": 639,
+      "allEntityRefsResolved": true,
+      "failedEntitySample": {
+        "globalId": 1008858,
+        "expressId": 7877,
+        "modelId": "10e07618-688a-417d-8016-ae72c32ec00a",
+        "passed": false,
+        "instanced": true,
+        "resolvedModelId": "10e07618-688a-417d-8016-ae72c32ec00a",
+        "resolvedExpressId": 7877
+      },
+      "drawCalls": 751,
+      "instancedDrawn": 708,
+      "native": {
+        "sha256": "4352af5e1e6ade19f16119cc35e717622dbbae98fa5019c3b016609ccf70b26c",
+        "red": 0,
+        "green": 0,
+        "width": 512,
+        "height": 512,
+        "gridsVisible": false
+      },
+      "painted": {
+        "sha256": "4352a720548bebfd2012286a343fc3f4b9d0ecd08f1a80b5f7bc6cb76c0ca9de",
+        "red": 12080,
+        "green": 26,
+        "width": 512,
+        "height": 512,
+        "gridsVisible": false
+      },
+      "restored": {
+        "sha256": "4352af5e1e6ade19f16119cc35e717622dbbae98fa5019c3b016609ccf70b26c",
+        "red": 0,
+        "green": 0,
+        "width": 512,
+        "height": 512,
+        "gridsVisible": false
+      },
+      "allRGBAIdentical": true
+    },
+    {
+      "case": "ordinary-single",
+      "models": 1,
+      "summary": {
+        "totalSpecifications": 1,
+        "passedSpecifications": 0,
+        "failedSpecifications": 1,
+        "totalEntitiesChecked": 4,
+        "totalEntitiesPassed": 2,
+        "totalEntitiesFailed": 2,
+        "overallPassRate": 50
+      },
+      "failedInstanced": 0,
+      "failedOrdinary": 2,
+      "allEntityRefsResolved": true,
+      "failedEntitySample": {
+        "globalId": 315,
+        "expressId": 315,
+        "modelId": "a6d9b507-3589-48a4-a4ff-ba2d532c2024",
+        "passed": false,
+        "instanced": false,
+        "resolvedModelId": "a6d9b507-3589-48a4-a4ff-ba2d532c2024",
+        "resolvedExpressId": 315
+      },
+      "drawCalls": 5,
+      "instancedDrawn": 0,
+      "native": {
+        "sha256": "76c6dbe4ad04f450d344338c62a347ed51aa6e857ea31d96f6b636e34bdb3d34",
+        "red": 0,
+        "green": 0,
+        "width": 512,
+        "height": 512,
+        "gridsVisible": false
+      },
+      "painted": {
+        "sha256": "ab247d3f3270090fbde5f51fcb9c0f6b17c501caff9aebcda4867a620be92919",
+        "red": 7875,
+        "green": 8572,
+        "width": 512,
+        "height": 512,
+        "gridsVisible": false
+      },
+      "restored": {
+        "sha256": "76c6dbe4ad04f450d344338c62a347ed51aa6e857ea31d96f6b636e34bdb3d34",
+        "red": 0,
+        "green": 0,
+        "width": 512,
+        "height": 512,
+        "gridsVisible": false
+      },
+      "allRGBAIdentical": true
+    },
+    {
+      "case": "instanced-single",
+      "models": 1,
+      "summary": {
+        "totalSpecifications": 1,
+        "passedSpecifications": 0,
+        "failedSpecifications": 1,
+        "totalEntitiesChecked": 1009,
+        "totalEntitiesPassed": 88,
+        "totalEntitiesFailed": 921,
+        "overallPassRate": 8
+      },
+      "failedInstanced": 282,
+      "failedOrdinary": 639,
+      "allEntityRefsResolved": true,
+      "failedEntitySample": {
+        "globalId": 7877,
+        "expressId": 7877,
+        "modelId": "93aeee30-3d79-4312-aea0-0adf9d8e2d5e",
+        "passed": false,
+        "instanced": true,
+        "resolvedModelId": "93aeee30-3d79-4312-aea0-0adf9d8e2d5e",
+        "resolvedExpressId": 7877
+      },
+      "drawCalls": 745,
+      "instancedDrawn": 708,
+      "native": {
+        "sha256": "be154862596c6274c82ae5b440b95142a59be6903e69eee5e4efd8d8b798d0d5",
+        "red": 0,
+        "green": 0,
+        "width": 512,
+        "height": 512,
+        "gridsVisible": false
+      },
+      "painted": {
+        "sha256": "cc16380f15627960829002ed81f8d2c400638af1033941d95ecbe0aa2a327b19",
+        "red": 12085,
+        "green": 27,
+        "width": 512,
+        "height": 512,
+        "gridsVisible": false
+      },
+      "restored": {
+        "sha256": "be154862596c6274c82ae5b440b95142a59be6903e69eee5e4efd8d8b798d0d5",
+        "red": 0,
+        "green": 0,
+        "width": 512,
+        "height": 512,
+        "gridsVisible": false
+      },
+      "allRGBAIdentical": true
+    }
+  ],
+  "perSpecCurrentOfficial": {
+    "native": {
+      "sha256": "76c6dbe4ad04f450d344338c62a347ed51aa6e857ea31d96f6b636e34bdb3d34",
+      "red": 0,
+      "green": 0,
+      "width": 512,
+      "height": 512,
+      "gridsVisible": false
+    },
+    "painted": {
+      "sha256": "fcebae9a62be0102e22b57d30fc64bf34ddfbbdabceeb99eb8ced00ba722bd18",
+      "red": 17376,
+      "green": 13506,
+      "width": 512,
+      "height": 512,
+      "gridsVisible": false
+    },
+    "isolatedRestored": {
+      "sha256": "0a8df6897579c2da31047b30db1b0c4903e0a06082f0abf6e29553bdc9fdec05",
+      "red": 0,
+      "green": 0,
+      "width": 512,
+      "height": 512,
+      "gridsVisible": false
+    },
+    "restored": {
+      "sha256": "76c6dbe4ad04f450d344338c62a347ed51aa6e857ea31d96f6b636e34bdb3d34",
+      "red": 0,
+      "green": 0,
+      "width": 512,
+      "height": 512,
+      "gridsVisible": false
+    }
+  },
+  "legacyCounterfactual": {
+    "revertedCommit": "84a49e9c8cb2dad81e5f146ad307f88e4371f057",
+    "productionSourceFilesRestoredByteIdentically": 10,
+    "patchSha256": "3e1a09b60c8fb5178aba35e16b6ce66d563c62b11647cd07305c0bbea6d189ef",
+    "steps": [
+      "Run default information rule (passed highlights off)",
+      "Select Per Spec",
+      "Select the specification (both highlights)",
+      "Click genuine legacy Reapply Colors"
+    ],
+    "mixedRGBAsha256": "b4cc8ad77c45b6485bd3e78f5090459019f0946d9d661d563b301f5d13ef186d",
+    "legacyAfterReapplyRGBAsha256": "590537e10a8fd3727ad6029acafb666fe57ba0263edac0a511545f8eddd70d22",
+    "legacyAfterReapplyOverrides": [
+      [
+        315,
+        [
+          0.9,
+          0.2,
+          0.2,
+          1
+        ]
+      ],
+      [
+        353,
+        [
+          0.9,
+          0.2,
+          0.2,
+          1
+        ]
+      ]
+    ],
+    "matchedCurrentMixedRGBAsha256": "b4cc8ad77c45b6485bd3e78f5090459019f0946d9d661d563b301f5d13ef186d",
+    "mixedInputsPixelIdentical": true,
+    "matchedCurrentRestoredScopedRGBAsha256": "0502be3aedd448606d7ac15ac4e6ced7cb2b7a9bdbbb4e52b4c401f91c68bd7c",
+    "matchedCurrentWholeNativeRestored": true
+  },
+  "productionTiming": {
+    "fixMergedAt": "2026-09-29T08:46:16Z",
+    "issueCreatedAt": "2026-09-29T09:12:37Z",
+    "previousDeploymentCompletedAt": "2026-09-29T06:22:51Z",
+    "fixedDeploymentReadyAt": "2026-09-29T11:43:09Z",
+    "deployedRef": "64c343bfea7de91b2a44a895f6302f3b1a7f70a7",
+    "deploymentRun": "https://github.com/LTplus-AG/ifc-lite/actions/runs/36562701476",
+    "interpretation": "Issue predates first confirmed fixed production deployment; reporter environment/model unavailable, so deployment-lag attribution remains an inference."
+  },
+  "pngFiles": [
+    {
+      "file": "current-per-spec-restored.png",
+      "sha256": "06e6f47a640c054dff35475714039b040f9bc2d6b7f2045b28338e7e01432756",
+      "bytes": 23819
+    },
+    {
+      "file": "instanced-federated-native.png",
+      "sha256": "3ec4a34a8fdec1c1ca40d5309c2900e4098c4060ae0d181e959861b58b58e0c3",
+      "bytes": 98698
+    },
+    {
+      "file": "instanced-federated-restored.png",
+      "sha256": "3ec4a34a8fdec1c1ca40d5309c2900e4098c4060ae0d181e959861b58b58e0c3",
+      "bytes": 98698
+    },
+    {
+      "file": "instanced-federated-validation.png",
+      "sha256": "c273cadf3ed49a3738d79dd2e514975a139426fdad789704e275b1ed90a061a9",
+      "bytes": 98154
+    },
+    {
+      "file": "legacy-after-reapply.png",
+      "sha256": "872b25eab4102c890be1d0eb0688f5e58aab380f15e3eba241949cf8e21099b3",
+      "bytes": 22735
+    },
+    {
+      "file": "legacy-per-spec-mixed.png",
+      "sha256": "e542470166ed82ffc75d3b7c70fd7cdc4b68167a9372ec6d7ce7a82d1b5d9fe8",
+      "bytes": 22514
+    },
+    {
+      "file": "ordinary-single-native.png",
+      "sha256": "59a20a273bc0a104640c707365cb455b1211de1cf616dceaf8bcfe258ddd632c",
+      "bytes": 44322
+    },
+    {
+      "file": "ordinary-single-restored.png",
+      "sha256": "59a20a273bc0a104640c707365cb455b1211de1cf616dceaf8bcfe258ddd632c",
+      "bytes": 44322
+    },
+    {
+      "file": "ordinary-single-validation.png",
+      "sha256": "b53b89d077b3ee5b57a11380d65cfba82547e9e9301d9a3a6364421002825958",
+      "bytes": 42826
+    }
+  ]
+}

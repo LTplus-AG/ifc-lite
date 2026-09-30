@@ -12,10 +12,14 @@
 import { useEffect, useRef } from 'react';
 import { useViewerStore } from '@/store';
 import { authoredGridMeshes, gridMeshesKey } from '@/lib/grids/authored-grid-meshes';
+import { useOverlayChannelGate } from '@/hooks/useOverlayChannelGate';
 
 export function useAuthoredGridOverlay(): void {
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const models = useViewerStore((s) => s.models);
+  const gridVisible = useViewerStore((s) => s.typeVisibility.ifcGrid);
+  // File axes and authored strips obey the same global/embedding-host gate.
+  const { grid } = useOverlayChannelGate(false, gridVisible);
   // The viewport registers its overlay upload once its renderer is up.
   const setOverlay = useViewerStore((s) => s.cameraCallbacks.setAuthoringOverlayMeshes);
   // An edit that leaves the grids as they were (most of them) must not re-upload the
@@ -23,12 +27,12 @@ export function useAuthoredGridOverlay(): void {
   const drawn = useRef<{ upload: typeof setOverlay; key: string } | null>(null);
   useEffect(() => {
     if (!setOverlay) return;
-    const meshes = authoredGridMeshes(useViewerStore.getState());
+    const meshes = grid ? authoredGridMeshes(useViewerStore.getState()) : [];
     const key = gridMeshesKey(meshes);
     // A new upload function is a new renderer: it has drawn nothing yet.
     if (drawn.current?.upload === setOverlay && drawn.current.key === key) return;
     drawn.current = { upload: setOverlay, key };
     setOverlay('grids', meshes);
-  }, [mutationVersion, models, setOverlay]);
+  }, [mutationVersion, models, setOverlay, grid]);
   useEffect(() => () => useViewerStore.getState().cameraCallbacks.clearAuthoringOverlayMeshes?.('grids'), []);
 }

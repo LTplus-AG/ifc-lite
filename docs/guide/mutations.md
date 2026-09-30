@@ -636,10 +636,12 @@ All paths route through the same `mutationSlice` actions that wrap `StoreEditor`
 | Cut an opening, or put a door / window into an existing wall | `addOpeningToStore` / `addHostedDoorToStore` / `addHostedWindowToStore` (or `bim.store.addOpening` / `addHostedDoor` / `addHostedWindow`) |
 | Add a type object, or a material / layer set / layer set usage, and assign it | `addElementTypeToStore` + `assignTypeInStore`, `addMaterial*ToStore` + `assignMaterialInStore` (or `bim.store.addElementType` / `assignType` / `addMaterial*` / `assignMaterial`) |
 | Generate IfcSpace volumes from a storey's existing walls | `generateSpacesFromWalls` (or **Add Element → Space → Auto Spaces** in the viewer) |
-| Duplicate any IfcRoot product (psets, qsets, materials, type associations preserved) | `duplicateInStore` / right-click → Duplicate |
+| Duplicate an element with its hosted openings, fillings and assembly parts | right-click → Duplicate / Ctrl+D (the same `copyProductInStore` write as Paste and Array) |
 | Copy an element turned, moved or onto another storey, with fresh GlobalIds and the openings, doors, windows and assembly parts in it | `createCopyContext` + `copyProductInStore` / Model workspace → Copy, Paste, Array |
 | Remove an entity from an existing model | `removeEntity` / `bim.store.removeEntity` |
 | Build a brand-new IFC file from scratch | `IfcCreator` (see [API Reference](../api/typescript.md#ifc-litecreate)) |
+
+`copyProductInStore` returns `copiedFrom`, a map from each new product id to its source id, including openings, fillings and assembly parts. Its optional fourth argument, `{ Name }`, overrides the root product’s Name and preserves its parts’ names. The map lets consumers mirror source geometry and property reads without reconstructing the copied relationships. The viewer records the complete copied subgraph as one undo step and re-meshes the copies through wasm. A part or hosted filling cannot be copied alone, and a placement disconnected from its storey is refused.
 
 ## Key Types
 
@@ -654,3 +656,20 @@ All paths route through the same `mutationSlice` actions that wrap `StoreEditor`
 | `CsvConnector` | Import property data from CSV files |
 | `addColumnToStore` | High-level anchored IfcColumn builder (`@ifc-lite/create`) |
 | `resolveSpatialAnchor` | Reads owner history, root/body/axis representation contexts, and storey placement from the parsed store plus an optional live mutation view (`@ifc-lite/create`); `rootContextId` is null when no root context exists |
+
+## Previewing wall endpoint edits
+
+`reshapeWallAxis` from `@ifc-lite/create` calculates the wall on its new plan axis before a join recuts the changed end. It retains a supported cut at an unchanged endpoint when the axis direction stays the same, including cuts read from a four-point profile without a join relationship. A cut is measured from its own endpoint: extending Start does not shift EndCut. A changed endpoint or axis direction starts square.
+
+The canonical `reshapeWallsInStore` writer uses this calculation too. Trim/Extend uses it for the ghost, so an unchanged joined or custom-cut face matches the body that is committed. Existing joins are then recomputed by the writer; callers group those writes in their atomic undo transaction.
+
+```typescript
+import { reshapeWallAxis, wallBodyOutline, type WallJoinWall } from '@ifc-lite/create';
+
+const wall: WallJoinWall = {
+  start: [0, 0], end: [4, 0], thickness: 0.2,
+  startCut: { left: -0.1, right: -0.25 },
+};
+const extended = reshapeWallAxis(wall, [0, 0], [6, 0]);
+const body = wallBodyOutline(extended); // The original start face is retained.
+```

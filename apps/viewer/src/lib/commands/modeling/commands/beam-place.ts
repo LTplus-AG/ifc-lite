@@ -6,12 +6,13 @@
  * `beam.place` (charter #6232, M2): two clicks per beam, drawn like a wall
  * (typed Length / Angle lock the segment, Chain continues from the last
  * end, Backspace drops a point, a double-click ends the chain). The section
- * is the class's Width × Height default, its underside `Bottom at` above
+ * is the class's Width × Height default, or a picked section (I, L, T, U, C,
+ * circle, hollow: the bar's Section picker), its underside `Bottom at` above
  * the workplane. The class segment picks `addBeam` or `addMember`. Each
  * beam is one transaction, one undo step.
  */
 
-import { BeamPlaceBar } from '@/components/viewer/tools/command/PlacementBars';
+import { BeamPlaceProfileBar } from '@/components/viewer/tools/command/ProfileBars';
 import { WallPlaceScene } from '@/components/viewer/tools/command/WallPlaceScene';
 import { dist } from '@/lib/snap/constraints';
 import type { BeamClass } from '@/store/slices/authoringDefaultsSlice';
@@ -20,6 +21,7 @@ import { commandGhostId } from '../ghost.js';
 import { prismGhostMesh, segmentOutline } from '../ghost-shapes.js';
 import type { CommandContext, CommandField, ModelingCommand } from '../types.js';
 import { chainOn, defaultsField, dimOf, planeZ } from './placement-shared.js';
+import { rectangleOnly, sectionExtentOf, sectionGhost, sectionOf } from './linear-section.js';
 import { MIN_WALL_LENGTH, anchorOf, currentAngle, currentLength, endPoint, type WallPlaceGesture } from './wall-place-geometry.js';
 
 /** A beam is drawn exactly like a wall: a chain of points, a cursor and per-segment locks. */
@@ -34,17 +36,18 @@ function segment(g: BeamPlaceGesture): [Vec2, Vec2] | null {
   return anchor && end && dist(anchor, end) >= MIN_WALL_LENGTH ? [anchor, end] : null;
 }
 
-/** The beam's section and its underside above the workplane, for the current class. */
+/** The beam's section (a picked profile, or the class's Width × Height) and its underside above the workplane, for the current class. */
 function section(ctx: Pick<CommandContext, 'get'>) {
   const cls = beamClassOf(ctx);
-  return { cls, Width: dimOf(ctx, cls, 'Width'), Height: dimOf(ctx, cls, 'Height'), Bottom: dimOf(ctx, cls, 'Bottom') };
+  const [Width, Height] = sectionExtentOf(ctx, cls);
+  return { cls, profile: sectionOf(ctx, cls), Width, Height, Bottom: dimOf(ctx, cls, 'Bottom') };
 }
 
 const FIELDS: readonly CommandField<BeamPlaceGesture>[] = [
   { id: 'length', labelKey: 'modelingCommand.wall.length', unit: 'm', group: 'segment', read: currentLength, write: (g, v) => ({ ...g, length: Math.abs(v) }) },
   { id: 'angle', labelKey: 'modelingCommand.wall.angle', unit: 'deg', group: 'segment', read: currentAngle, write: (g, v) => ({ ...g, angle: v }) },
-  defaultsField('width', beamClassOf, 'Width', 'modelingCommand.field.width'),
-  defaultsField('height', beamClassOf, 'Height', 'modelingCommand.field.height'),
+  rectangleOnly(defaultsField('width', beamClassOf, 'Width', 'modelingCommand.field.width'), beamClassOf),
+  rectangleOnly(defaultsField('height', beamClassOf, 'Height', 'modelingCommand.field.height'), beamClassOf),
   defaultsField('bottom', beamClassOf, 'Bottom', 'modelingCommand.beam.bottom', 'offset'),
 ];
 
@@ -52,7 +55,7 @@ export const BEAM_PLACE: ModelingCommand<BeamPlaceGesture> = {
   id: 'beam.place',
   labelKey: 'modelingCommand.beam.label',
   hud: {
-    Bar: BeamPlaceBar,
+    Bar: BeamPlaceProfileBar,
     // The chain and rubber band read the same gesture as a wall's.
     Scene: WallPlaceScene,
     hint: (g) => (g.chain.length === 0 ? 'modelingCommand.beam.hintStart' : 'modelingCommand.wall.hintNext'),
@@ -77,10 +80,11 @@ export const BEAM_PLACE: ModelingCommand<BeamPlaceGesture> = {
   commit(g, tx) {
     const seg = segment(g);
     if (!seg || tx.storeyId === null) throw new Error('No beam to place');
-    const { cls, Width, Height, Bottom } = section({ get: () => tx.store });
+    const { cls, profile, Width, Height, Bottom } = section({ get: () => tx.store });
     // The section is centred on the builder's axis: lift it by half its height.
     const z = planeZ(tx.workplane) + Bottom + Height / 2;
-    const params = { Start: [seg[0][0], seg[0][1], z] as [number, number, number], End: [seg[1][0], seg[1][1], z] as [number, number, number], Width, Height };
+    const ends = { Start: [seg[0][0], seg[0][1], z] as [number, number, number], End: [seg[1][0], seg[1][1], z] as [number, number, number] };
+    const params = profile ? { ...ends, Profile: profile } : { ...ends, Width, Height };
     const made = cls === 'member' ? tx.store.addMember(tx.modelId, tx.storeyId, params) : tx.store.addBeam(tx.modelId, tx.storeyId, params);
     if ('error' in made) throw new Error(`Couldn't add the ${cls}: ${made.error}`);
     return { created: [made.expressId], authored: [made.expressId], deleted: [], remesh: [made.expressId], select: [made.expressId] };
@@ -93,7 +97,14 @@ export const BEAM_PLACE: ModelingCommand<BeamPlaceGesture> = {
   ghost(g, ctx) {
     const seg = segment(g);
     if (!ctx.workplane || !seg) return [];
-    const { Width, Height, Bottom } = section(ctx);
+    const { profile, Width, Height, Bottom } = section(ctx);
+    if (profile) {
+      // The section is centred on the axis; its across-axis X is the left normal, as the builder writes it.
+      const length = dist(seg[0], seg[1]);
+      const [dx, dy] = [(seg[1][0] - seg[0][0]) / length, (seg[1][1] - seg[0][1]) / length];
+      const swept = sectionGhost(ctx, profile, { origin: [seg[0][0], seg[0][1], Bottom + Height / 2], u: [-dy, dx, 0], v: [0, 0, 1], along: [dx, dy, 0], length });
+      return swept ? [swept] : [];
+    }
     const mesh = prismGhostMesh(ctx.workplane, segmentOutline(seg[0], seg[1], Width), Bottom, Bottom + Height, commandGhostId(ctx.get()));
     return mesh ? [mesh] : [];
   },

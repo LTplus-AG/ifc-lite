@@ -147,6 +147,7 @@ export const KEY_COMMANDS = [
   { id: 'model.railing', labelKey: 'commands.model.railing', category: 'tools', when: 'workspace.model', keys: [k('l', { shift: true })] },
   { id: 'model.pushPull', labelKey: 'commands.model.pushPull', category: 'tools', when: 'workspace.model', keys: [k('p', { shift: true })] },
   { id: 'model.align', labelKey: 'commands.model.align', category: 'tools', when: 'workspace.model', keys: [k('j', { shift: true })] },
+  { id: 'model.trimExtend', labelKey: 'commands.model.trimExtend', category: 'tools', when: 'workspace.model', keys: [k('e', { shift: true })] },
   { id: 'drawing2d.cancel', labelKey: 'commands.drawing2d.cancel', category: 'tools', when: 'drawing2d', keys: [k('escape')] },
   { id: 'drawing2d.delete', labelKey: 'commands.drawing2d.delete', category: 'tools', when: 'drawing2d', keys: [k('delete'), k('backspace')] },
   { id: 'drawing2d.orthogonal', labelKey: 'commands.drawing2d.orthogonal', category: 'tools', when: 'drawing2d', keys: [k('shift')] },

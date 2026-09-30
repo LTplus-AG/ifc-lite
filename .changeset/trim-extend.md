@@ -1,0 +1,5 @@
+---
+"@ifc-lite/viewer": minor
+---
+
+Trim/Extend in the Model workspace (#6232 C1). Rail row and Shift+E: pick a boundary (a wall or beam, a slab edge, or a guide line the snap solver holds such as a grid axis), then click walls and beams. Trim cuts the element back to the boundary and removes the side you click; Extend lengthens the end nearest the click to reach it; the bar's switch sets the mode and holding Shift flips it for a click. A wall meeting a boundary wall is joined to it through the join core, a T where it ends on the wall's path and an L at a corner, with its `IfcRelConnectsPathElements`, the ending wall cut at the other's face. A ghost previews the result; a refused target is outlined red with its reason, a trim that would cut through an opening, door or window hosted in the wall is refused with the count, and a wall the join core cannot read is refused with the Split button's reason. Extending a wall's start keeps its openings where they are. Every commit is one undo step.

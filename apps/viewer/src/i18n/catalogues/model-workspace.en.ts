@@ -11,6 +11,9 @@ import type { TranslationValue } from '../types';
  */
 export const modelWorkspaceEn = {
   'modelWorkspace.rail.aria': 'Model tools',
+  'modelWorkspace.rail.hosted': 'Openings, doors and windows',
+  'modelWorkspace.rail.circulation': 'Stairs and railings',
+  'modelWorkspace.rail.active': 'Active tool',
   'modelWorkspace.tool.select': 'Select',
   'modelWorkspace.tool.wall': 'Wall',
   'modelWorkspace.tool.slab': 'Slab',

@@ -4,7 +4,7 @@
 
 /** Static Tools palette family. The key-command table remains the chord source. */
 import {
-  AlignHorizontalJustifyStart, ArrowUpFromLine, Box, Crosshair, MousePointer2, PenLine, PersonStanding, Ruler, Scissors, ScissorsLineDashed,
+  AlignHorizontalJustifyStart, ArrowRightToLine, ArrowUpFromLine, Box, Crosshair, MousePointer2, PenLine, PersonStanding, Ruler, Scissors, ScissorsLineDashed,
   Slice, StickyNote,
 } from 'lucide-react';
 import { openRepositionModels } from '@/lib/model-placement/commands';
@@ -196,5 +196,13 @@ export const TOOL_SURFACE_COMMANDS = [
     category: 'Tools', icon: AlignHorizontalJustifyStart, surfaces: paletteOnly, enabled: editable,
     shortcut: 'model.align',
     run: () => { launchModelCommand('element.align'); },
+  },
+  {
+    id: 'tool:trim-extend', labelKey: 'commandPalette.tool.trimExtend.label',
+    searchLabel: 'Trim / Extend',
+    keywords: 'trim extend lengthen shorten cut back reach boundary wall beam grid slab edge join corner tee model author modify',
+    category: 'Tools', icon: ArrowRightToLine, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.trimExtend',
+    run: () => { launchModelCommand('element.trimExtend'); },
   },
 ] as const satisfies readonly SurfaceCommandDefinition[];

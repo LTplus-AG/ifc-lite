@@ -31,6 +31,7 @@ import { ELEMENT_ALIGN } from './commands/element-align.js';
 import { ELEMENT_PUSH_PULL } from './commands/element-push-pull.js';
 import { CURTAINWALL_PLACE } from './commands/curtainwall-place.js';
 import { GRID_PLACE } from './commands/grid-place.js';
+import { ELEMENT_TRIM_EXTEND } from './commands/trim-extend.js';
 import type { ModelingCommand } from './types.js';
 
 /** A re-evaluated module (dev HMR) finds its commands already registered. */
@@ -61,6 +62,7 @@ registerOnce(ELEMENT_PUSH_PULL);
 registerOnce(ELEMENT_ALIGN);
 registerOnce(CURTAINWALL_PLACE);
 registerOnce(GRID_PLACE);
+registerOnce(ELEMENT_TRIM_EXTEND);
 
 setWorkplaneResolver((s, modelId, spec) => (spec.kind === 'storey'
   ? buildStoreyWorkplane(s, modelId, spec.storeyId, spec.offset)

@@ -27,7 +27,8 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { fromNativeLength } from '@ifc-lite/create';
+import { fromNativeLength, profileSectionExtent, type ProfileSection } from '@ifc-lite/create';
+import { sectionFromProfile } from './profile-section/read-profile.js';
 import {
   asExpressIdRef,
   asCoordinateTriple,
@@ -77,14 +78,21 @@ export interface LinearElementEditChain {
   axisDirection: [number, number, number];
   /** IfcExtrudedAreaSolid id; holds the length on attribute 3 (`Depth`). */
   extrudedSolidId: number;
-  /** IfcRectangleProfileDef id: XDim (attr 3) is the width, YDim (attr 4) the other side. */
+  /** IfcExtrudedAreaSolid.SweptArea: the profile entity. For a rectangle, XDim (attr 3) is the width and YDim (attr 4) the other side; not for a picker section. */
   profileId: number;
   /** Current extrusion length (metres). */
   depth: number;
-  /** Profile cross-section width (X dimension, metres). */
+  /** Profile cross-section width (X dimension, metres); a profiled section's outer width. */
   profileWidth: number;
-  /** Profile cross-section height (Y dimension, metres). */
+  /** Profile cross-section height (Y dimension, metres); a profiled section's outer depth. */
   profileHeight: number;
+  /**
+   * The section when it is one of the picker's parametric kinds (I, L, T, U,
+   * C, circle, hollow); null for the rectangle, whose `profileWidth` x
+   * `profileHeight` are its XDim and YDim. Anything that writes those two as
+   * a rectangle's must refuse a non-null section.
+   */
+  profile: ProfileSection | null;
   /**
    * The native-unit → metre factor every length above was scaled by. Raw
    * STEP reads are native (e.g. millimetres) for imported AND in-store
@@ -221,18 +229,13 @@ export function resolveLinearElementChain(
     if (!profilePosition || !isPoint(read(asExpressIdRef(profilePosition[0]))?.[0], [0, 0, 0])) return null;
     if (profilePosition[1] != null && !isDirection(read(asExpressIdRef(profilePosition[1]))?.[0], [1, 0, 0])) return null;
   }
-  const profileWidth = profileAttrs[3];
-  const profileHeight = profileAttrs[4];
-  if (
-    typeof profileWidth !== 'number' ||
-    typeof profileHeight !== 'number' ||
-    !Number.isFinite(profileWidth) ||
-    !Number.isFinite(profileHeight) ||
-    profileWidth <= 0 ||
-    profileHeight <= 0
-  ) {
-    return null;
-  }
+  // A rectangle reads as its XDim x YDim; the picker's other sections as their
+  // outer size, with the section itself carried for whoever writes a piece.
+  const profileType = editor.getEntityType(profileId);
+  const parsed = profileType ? sectionFromProfile(profileType, profileAttrs, lengthUnitScale, dataStore.schemaVersion ?? 'IFC4') : null;
+  if (!parsed) return null;
+  const section = parsed.Type === 'Rectangle' ? null : parsed;
+  const [profileWidth, profileHeight] = profileSectionExtent(parsed);
 
   const m = (native: number) => fromNativeLength({ lengthUnitScale }, native);
   const [sx, sy, sz] = chain.coordinates;
@@ -244,8 +247,9 @@ export function resolveLinearElementChain(
     extrudedSolidId: solidId,
     profileId,
     depth: m(depthRaw),
-    profileWidth: m(profileWidth),
-    profileHeight: m(profileHeight),
+    profileWidth,
+    profileHeight,
+    profile: section,
     lengthUnitScale,
   };
 }

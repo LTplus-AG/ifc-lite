@@ -86,7 +86,7 @@ export function CommandBarContent({ tier, measuring = false }: { tier: number; m
       <HudToolbar {...tag} className="flex-nowrap">
         {label}
         <CommandFieldsBar measuring={measuring} />
-        {Extra && <Extra gesture={gesture} ctx={ctx} />}
+        {Extra && <Extra gesture={gesture} ctx={ctx} measuring={measuring} />}
         {close}
       </HudToolbar>
     );
@@ -96,7 +96,7 @@ export function CommandBarContent({ tier, measuring = false }: { tier: number; m
       <div className="flex items-center justify-between gap-1">{label}{close}</div>
       <div className="flex flex-wrap items-center gap-1"><CommandFieldsBar measuring={measuring} /></div>
       {/* A row never starts with the divider that separates it from the fields in the one-row form. */}
-      {Extra && <div className="flex flex-wrap items-center gap-1 [&>[aria-hidden]:first-child]:hidden"><Extra gesture={gesture} ctx={ctx} /></div>}
+      {Extra && <div className="flex flex-wrap items-center gap-1 [&>[aria-hidden]:first-child]:hidden"><Extra gesture={gesture} ctx={ctx} measuring={measuring} /></div>}
     </HudToolbar>
   );
 }

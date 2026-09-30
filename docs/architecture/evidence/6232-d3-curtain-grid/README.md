@@ -23,3 +23,5 @@ with the real mouse.
 ![Grid placed](grid-placed.png)
 
 ![Column on a grid crossing, grid glyph](column-on-intersection.png)
+
+Independent final integration review (#6511) reproduced authored grid strips remaining visible after the global IFC Grid toggle was switched off. The authored overlay now consumes the same visibility gate as file grid axes, including the embedding host’s `IfcGridAxis` hide list. Mounted tests use one and two independently parsed models with overlapping local express IDs, verify hide/show and host-hide precedence, and preserve exact redraw keys and uploads to replacement renderers.

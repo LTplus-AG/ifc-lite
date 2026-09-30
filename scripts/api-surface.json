@@ -4933,6 +4933,7 @@
     "rectangularGridAxes: function",
     "refusalReason: function",
     "removeCostEntityInStore: function",
+    "reshapeWallAxis: function",
     "reshapeWallsInStore: function",
     "resolveAuthoringAnchor: function",
     "resolveDuplicateSource: function",

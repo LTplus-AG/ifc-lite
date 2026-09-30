@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, it, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { readHostedFill, readWallJoinRels, readWallJoinTarget } from '@ifc-lite/create';
+import { joinWallsInStore, resolveWallJoinAnchor, readHostedFill, readWallJoinRels, readWallJoinTarget } from '@ifc-lite/create';
 import { readHostedCuts } from '@/lib/wall-hosted-cuts';
 import type { MeshData } from '@ifc-lite/geometry';
 import { StepExporter } from '@ifc-lite/export';
@@ -27,7 +27,8 @@ import { IfcAPI, initSync } from '@ifc-lite/wasm';
 // The create package's mesh oracle: ray parity of sample points against each wall MESH.
 import { meshWalls, sample } from '../../../../../../../packages/create/src/in-store/wall-join-mesh.oracle.js';
 import { resolve as translate } from '@/i18n/registry';
-import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
+import { modelEditTarget, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
+import { bodyPolygon } from './trim-extend-plan.js';
 import { resizeWallMetres } from '@/store/slices/mutation-wall-resize';
 import { useViewerStore } from '@/store';
 import { resolveLinearElementChain } from '@/lib/linear-element-edit';
@@ -73,6 +74,10 @@ const shape = (id: number) => { const t = target(); return readWallJoinTarget(t.
 const rels = () => { const t = target(); return readWallJoinRels(t.dataStore, t.view); };
 const near = (a: readonly number[], b: readonly number[]) => a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) < 1e-6);
 const nearOne = (a: number, b: number) => Math.abs(a - b) < 1e-6;
+// The reader rounds metre coordinates to nanometres; geometric equality is
+// within that bound, rather than equality of floating-point addition order.
+const samePolygon = (a: readonly Vec2[], b: readonly Vec2[]) => a.length === b.length
+  && a.every((point, i) => point.every((value, j) => Math.abs(value - b[i][j]) <= 1e-9));
 /** The number of distinct undo batches on the model's stack. */
 function batches(): number {
   const s = state();
@@ -118,6 +123,68 @@ afterEach(() => {
 });
 
 describe('element.trimExtend: extend a wall to a boundary wall (#6232 C1)', () => {
+  for (const end of ['start', 'end'] as const) {
+    it(`the ${end} extension ghost retains the opposite joined cut and matches the committed body (#6535)`, () => {
+      const oppositeY = end === 'end' ? 0 : 4;
+      const oldPartner = wall([0, oppositeY], [8, oppositeY]);
+      const ending = wall([4, 0], [4, 4]);
+      recordModellingEdit(useViewerStore, MODEL_ID, (_methods, draft) => {
+        const t = target();
+        return joinWallsInStore(draft, t.dataStore, resolveWallJoinAnchor(t.dataStore, draft.getMutationView()), oldPartner, ending);
+      });
+      const old = shape(ending).wall;
+      assert.ok(end === 'end' ? old.startCut : old.endCut, 'the opposite end has a real IFC join cut');
+      const originalFace = bodyPolygon(old).filter((p) => Math.abs(p[1] - oppositeY) < 0.2);
+      const boundaryY = end === 'end' ? 6 : -2;
+      wall([0, boundaryY], [8, boundaryY]);
+      state().startCommand(ID);
+      click(6, boundaryY);
+      setMode('extend');
+      const nearEnd = end === 'end' ? 3.8 : 0.2;
+      hover(4, nearEnd);
+      const preview = gesture().preview;
+      assert.ok(preview?.ok, JSON.stringify(preview));
+      const ghostFace = preview.outline.filter((p) => Math.abs(p[1] - oppositeY) < 0.2);
+      assert.ok(samePolygon(ghostFace, originalFace), 'moving one axis end leaves the opposite joined face in the ghost');
+      const before = batches();
+      click(4, nearEnd);
+      assert.equal(batches(), before + 1, 'the extension is one undo step');
+      assert.ok(samePolygon(preview.outline, bodyPolygon(shape(ending).wall)), 'the ghost and actual re-read IFC body agree at both ends');
+      state().undo(MODEL_ID);
+      assert.ok(samePolygon(bodyPolygon(shape(ending).wall), bodyPolygon(old)), 'undo restores both original body faces');
+    });
+  }
+
+  for (const end of ['start', 'end'] as const) {
+    it(`moving the ${end} preserves a supported opposite custom cut without a join relationship (#6535)`, () => {
+      const oppositeY = end === 'end' ? 0 : 4;
+      const cut = { left: -0.1, right: -0.25 };
+      const ending = built(state().addWall(MODEL_ID, STOREY, {
+        Start: [4, 0, 0], End: [4, 4, 0], Thickness: 0.2, Height: 3,
+        ...(end === 'end' ? { StartCut: cut } : { EndCut: cut }),
+      }));
+      const old = shape(ending).wall;
+      assert.ok(end === 'end' ? old.startCut : old.endCut, 'the parsed supported trapezoid has the supplied cut');
+      assert.equal(rels().length, 0, 'the custom cut has no join relationship');
+      const boundaryY = end === 'end' ? 6 : -2;
+      wall([0, boundaryY], [8, boundaryY]);
+      state().startCommand(ID);
+      click(6, boundaryY);
+      setMode('extend');
+      const nearEnd = end === 'end' ? 3.8 : 0.2;
+      hover(4, nearEnd);
+      const preview = gesture().preview;
+      assert.ok(preview?.ok, JSON.stringify(preview));
+      click(4, nearEnd);
+      const oldFace = bodyPolygon(old).filter((p) => Math.abs(p[1] - oppositeY) < 0.3);
+      const keptFace = bodyPolygon(shape(ending).wall).filter((p) => Math.abs(p[1] - oppositeY) < 0.3);
+      assert.ok(samePolygon(keptFace, oldFace), 'the canonical writer preserves the supported opposite custom body face');
+      assert.ok(samePolygon(preview.outline, bodyPolygon(shape(ending).wall)), 'the ghost is the body actually written');
+      state().undo(MODEL_ID);
+      assert.ok(samePolygon(bodyPolygon(shape(ending).wall), bodyPolygon(old)));
+    });
+  }
+
   it('makes a T: the relationship, the wall stopping at the near face, one undo step, one re-mesh', (t) => {
     const boundary = wall([0, 4], [8, 4]);
     const ending = wall([4, 0], [4, 3]);

@@ -18,7 +18,7 @@
  * it against the live model.
  */
 
-import { computeWallJoin, wallBodyOutline, type WallJoinWall } from '@ifc-lite/create';
+import { computeWallJoin, reshapeWallAxis, wallBodyOutline, type WallJoinWall } from '@ifc-lite/create';
 import type { MeshData } from '@ifc-lite/geometry';
 import { resolve as translate } from '@/i18n/registry';
 import type { TranslationKey } from '@/i18n';
@@ -90,12 +90,6 @@ export function bodyPolygon(wall: WallJoinWall): Vec2[] {
   return corners.map(([x, y]) => [wall.start[0] + x * dx - y * dy, wall.start[1] + x * dy + y * dx] as Vec2);
 }
 
-/** The wall on its new axis with square ends: what the reshape writes before the join re-cuts an end. */
-export function squaredWall(wall: WallJoinWall, start: Vec2, end: Vec2): WallJoinWall {
-  const { startCut: _s, endCut: _e, ...rest } = wall;
-  return { ...rest, start: [start[0], start[1]], end: [end[0], end[1]] };
-}
-
 /**
  * The hosted cuts of a wall, read once per wall and edit: a pointer move must
  * not walk every void relationship of the model again. Keyed by the parsed
@@ -161,7 +155,7 @@ export function previewFor(s: ViewerState, target: TrimTarget, boundary: Boundar
   }
 
   const read = target.wall!;
-  let wall = squaredWall(read.wall, start, stop);
+  let wall = reshapeWallAxis(read.wall, start, stop);
   let joinKind: JoinKind | null = null;
   if (boundaryWall) {
     const other = boundary.wall;

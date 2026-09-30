@@ -2,4 +2,4 @@
 "@ifc-lite/create": minor
 ---
 
-Add atomic hosted-opening reanchoring with fresh placements, preserving shared source points during host-origin edits.
+Add atomic hosted-opening reanchoring and rehosting with fresh placements, preserving shared source points and placements during host-origin edits and wall splits.

@@ -8,15 +8,15 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { readHostOpeningExtents } from './hosted-element.js';
-import type { HostedFillRead } from './hosted-fill-read.js';
-import { placementInAncestor, refId, type Vec3 } from './host-geometry-frame.js';
+import { readHostedFill, type HostedFillRead } from './hosted-fill-read.js';
+import { axis3d, placementInAncestor, refId, type Vec3 } from './host-geometry-frame.js';
 
 const ref = (id: number) => `#${id}`;
 
 /** A fresh placement prevents a shared source Location/RelativePlacement
  * from moving another occurrence. A filling directly follows its opening. */
-export function moveHostedOpeningPlacement(reader: AnchorEntityReader, editor: StoreEditor, read: HostedFillRead, next: Vec3): void {
-  if (!next.every(Number.isFinite)) throw new Error('The opening location must contain finite native lengths');
+export function moveHostedOpeningPlacement(reader: AnchorEntityReader, editor: StoreEditor, read: HostedFillRead, next: Vec3, targetHostId = read.hostId): void {
+  if (next.length !== 3 || !next.every(Number.isFinite)) throw new Error('The opening location must contain three finite native lengths');
   const opening = reader.entity(read.openingId)!;
   const oldPlacementId = refId(opening.attributes[5]);
   const oldPlacement = oldPlacementId === null ? null : reader.entity(oldPlacementId);
@@ -27,6 +27,11 @@ export function moveHostedOpeningPlacement(reader: AnchorEntityReader, editor: S
   const hostPlacement = host ? refId(host.attributes[5]) : null;
   if (!oldAxis || parent === null || hostPlacement !== parent || oldPlacementId === null
     || !placementInAncestor(reader, oldPlacementId, parent)) throw new Error('The opening placement cannot be edited safely');
+  const targetHost = reader.entity(targetHostId);
+  const targetPlacementId = targetHost ? refId(targetHost.attributes[5]) : null;
+  const targetPlacement = targetPlacementId === null ? null : reader.entity(targetPlacementId);
+  if (!targetPlacement || targetPlacement.type.toUpperCase() !== 'IFCLOCALPLACEMENT'
+    || !axis3d(reader, targetPlacement.attributes[1])) throw new Error('The target host placement cannot be edited safely');
   const direction = (value: unknown) => {
     if (value === null || value === undefined) return null;
     const id = refId(value);
@@ -35,7 +40,7 @@ export function moveHostedOpeningPlacement(reader: AnchorEntityReader, editor: S
   };
   const point = editor.addEntity('IfcCartesianPoint', [next]).expressId;
   const axis = editor.addEntity('IfcAxis2Placement3D', [ref(point), direction(oldAxis.attributes[1]), direction(oldAxis.attributes[2])]).expressId;
-  const placement = editor.addEntity('IfcLocalPlacement', [ref(parent), ref(axis)]).expressId;
+  const placement = editor.addEntity('IfcLocalPlacement', [ref(targetPlacementId!), ref(axis)]).expressId;
   if (read.fillingId !== null) {
     const filling = reader.entity(read.fillingId)!;
     const fillingPlacementId = refId(filling.attributes[5]);
@@ -49,6 +54,50 @@ export function moveHostedOpeningPlacement(reader: AnchorEntityReader, editor: S
     editor.setPositionalAttribute(read.fillingId, 5, ref(nextFilling));
   }
   editor.setPositionalAttribute(read.openingId, 5, ref(placement));
+}
+
+export interface HostedOpeningReassignment {
+  readonly openingId: number;
+  readonly hostId: number;
+  /** Opening origin in the target host frame, in native file units. */
+  readonly location: Vec3;
+}
+
+/** Apply a validated split/rehost plan atomically. Every opening, filling and
+ * void relation keeps its identity; only the selected occurrence receives
+ * fresh placements and its void relation's host changes. Source placement
+ * records stay untouched. The caller decides the final host/fit for all cuts;
+ * this batch never validates against intermediate single-move positions. */
+export function reassignHostedOpeningsInStore(
+  store: IfcDataStore, editor: StoreEditor, sourceHostId: number, moves: readonly HostedOpeningReassignment[],
+): void {
+  editor.runAtomic(draft => {
+    const view = draft.getMutationView(), reader = new AnchorEntityReader(store, view);
+    const sourceRelations = new Map<number, number[]>();
+    for (const id of reader.ids('IFCRELVOIDSELEMENT')) {
+      const rel = reader.entity(id);
+      if (!rel || refId(rel.attributes[4]) !== sourceHostId) continue;
+      const openingId = refId(rel.attributes[5]);
+      if (openingId === null) continue;
+      const ids = sourceRelations.get(openingId) ?? [];
+      ids.push(id);
+      sourceRelations.set(openingId, ids);
+    }
+    const seen = new Set<number>();
+    const plan = moves.map(move => {
+      if (seen.has(move.openingId)) throw new Error('An opening cannot be reassigned twice in one batch');
+      seen.add(move.openingId);
+      const read = readHostedFill(store, move.openingId, view);
+      if (!read || read.hostId !== sourceHostId) throw new Error('The opening does not belong to the source host');
+      const relations = sourceRelations.get(move.openingId) ?? [];
+      if (relations.length !== 1) throw new Error('An opening must have exactly one source void relationship');
+      return { move, read, relationId: relations[0] };
+    });
+    for (const { move, read, relationId } of plan) {
+      moveHostedOpeningPlacement(reader, draft, read, move.location, move.hostId);
+      if (move.hostId !== sourceHostId) draft.setPositionalAttribute(relationId, 4, ref(move.hostId));
+    }
+  });
 }
 
 /** Reanchor every opening after a host-origin translation. `shift` is the

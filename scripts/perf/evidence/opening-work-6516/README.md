@@ -36,9 +36,10 @@ exclude self-intersections; no topology threshold or oracle expectation was
 relaxed.
 
 The pre-correction `current-v3-independent-qualification.json` is superseded and
-is not the primary qualification. A renamed byte-preserving historical copy and the older
-rejected outputs remain in the [supporting archive at the original
-head](https://github.com/LTplus-AG/ifc-lite/tree/b4c7c530bee14e4ad9277320a7339bc145aca68e/scripts/perf/evidence/opening-work-6516).
+is not the primary qualification. The byte-preserving pre-correction file at the original head is explicitly
+historical; the supporting archive retains it under a renamed path. The older
+rejected outputs remain in the [archive at the original
+head](https://github.com/LTplus-AG/ifc-lite/tree/b4c7c530bee14e4ad9277320a7339bc145aca68e/scripts/perf/evidence/opening-work-6516/current-v3-independent-qualification.json).
 
 ## Work and performance evidence
 

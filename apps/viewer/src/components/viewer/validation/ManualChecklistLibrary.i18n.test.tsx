@@ -18,6 +18,7 @@ import { ManualReportBlockEditor, ManualReportPresentation } from '../document/M
 
 const initial = useViewerStore.getState();
 const keys = [
+  'manualValidation.error.noChecklist',
   'manualValidation.library.select', 'manualValidation.library.none',
   'manualValidation.library.duplicate', 'manualValidation.library.remove',
   'manualValidation.report.sourceLabel', 'manualValidation.report.checklistMissing',
@@ -54,6 +55,12 @@ describe('manual library and document source localization (#6507)', () => {
       }
       assert.ok(library.textContent?.includes('Architecture'));
       assert.ok(library.textContent?.includes('Structure'));
+      act(() => {
+        useViewerStore.getState().setManualChecklist(null);
+        useViewerStore.getState().setManualAnswer('model-fingerprint', 'q', { status: 'pass' });
+      });
+      assert.ok(library.querySelector('[role="alert"]')?.textContent?.includes(label('manualValidation.error.noChecklist')));
+      act(() => useViewerStore.getState().selectManualChecklist(originalId));
       cleanup();
 
       const editor = render(<><ManualReportBlockEditor block={block} onChange={() => {}} /><ManualReportPresentation block={block} onChange={() => {}} /></>);

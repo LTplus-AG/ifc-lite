@@ -67,6 +67,7 @@ export const manualValidationEn = {
   'manualValidation.error.invalidFile': '"{name}" is not a valid checklist: {detail}',
   'manualValidation.error.corruptRecent': '"{name}" could not be loaded — it may be corrupted. It has been removed from Recent checklists.',
   'manualValidation.error.notSaved': 'Browser storage refused the change, so it will not survive a reload.',
+  'manualValidation.error.noChecklist': 'Select a checklist before recording a verdict or comment. The change was not saved.',
 
   // The manual report document block (#6401): DocumentPanel.tsx, BlockEditor.tsx, ManualReportPreview.tsx.
   'manualValidation.report.kind': 'Manual validation report',

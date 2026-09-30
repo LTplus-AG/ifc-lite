@@ -147,7 +147,11 @@ export const createManualValidationSlice: StateCreator<ManualValidationSlice, []
 
     setManualAnswer: (fingerprint, itemId, patch) => {
       const library = get().manualLibrary;
-      if (!library.activeId) return { ok: true };
+      if (!library.activeId || !library.checklists.some((entry) => entry.id === library.activeId)) {
+        const result: ManualSaveResult = { ok: false, reason: 'no_checklist' };
+        set({ manualSaveError: result });
+        return result;
+      }
       const all = get().manualAnswers;
       let forModel = { ...all[fingerprint] };
       const prev = forModel[itemId];

@@ -21,7 +21,7 @@ let unwritable = false;
 
 export type ManualSaveResult =
   | { ok: true }
-  | { ok: false; reason: 'quota' | 'serialize' | 'too_many' | 'unreadable' };
+  | { ok: false; reason: 'quota' | 'serialize' | 'too_many' | 'unreadable' | 'no_checklist' };
 export type ManualAnswersByModel = Readonly<Record<string, ManualAnswerMap>>;
 export interface ManualLibraryRead {
   library: ManualChecklistLibrary;

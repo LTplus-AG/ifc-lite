@@ -37,6 +37,8 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const allAnswers = useViewerStore((s) => s.manualAnswers);
   const saveError = useViewerStore((s) => s.manualSaveError);
+  const saveErrorMessage = saveError && !saveError.ok && saveError.reason === 'no_checklist'
+    ? t('manualValidation.error.noChecklist') : t('manualValidation.error.notSaved');
   const renameChecklist = useViewerStore((s) => s.renameManualChecklist);
   const addGroup = useViewerStore((s) => s.addManualGroup);
   // A brand-new (empty) checklist opens in editing mode; after that the toggle decides.
@@ -53,7 +55,7 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
     return (
       <div className="flex-1 min-h-0 overflow-auto p-4">
         <ManualChecklistLibrary model={activeModel} active={false} onNew={() => { manual.newChecklist(); setEditing(true); }} onSelected={setEditing} />
-        {saveError && <p role="alert" className="text-xs text-red-600">{t('manualValidation.error.notSaved')}</p>}
+        {saveError && <p role="alert" className="text-xs text-red-600">{saveErrorMessage}</p>}
         <ManualValidationEntry
           onNew={() => { manual.newChecklist(); setEditing(true); }}
           onOpenFile={async (file) => { await manual.openFromFile(file); setEditing(false); }}
@@ -113,7 +115,7 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
         )}
         {!editing && !activeModel && <p className="text-xs text-muted-foreground">{t('manualValidation.model.none')}</p>}
         {!editing && activeModel && !fingerprint && <p className="text-xs text-muted-foreground">{t('manualValidation.model.noIdentity')}</p>}
-        {saveError && <p role="alert" className="text-xs text-red-600">{t('manualValidation.error.notSaved')}</p>}
+        {saveError && <p role="alert" className="text-xs text-red-600">{saveErrorMessage}</p>}
 
         <Button type="button" variant="outline" size="sm" className="h-7 w-fit text-xs" onClick={() => {
           const scope = activeModel ? reportModelScope(activeModel.name, activeModel.id, fingerprint) : null;

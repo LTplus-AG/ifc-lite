@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator } from '@playwright/test';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -20,6 +20,19 @@ interface DevServer {
 let vite: DevServer;
 let viewerUrl: string;
 let viteCache: string;
+
+/** Measure the actual rendered text against its nearest opaque surface. */
+async function opaqueTextColors(locator: Locator) {
+  return locator.evaluate((text) => {
+    let surface: Element | null = text;
+    while (surface) {
+      const background = getComputedStyle(surface).backgroundColor;
+      if (background.startsWith('rgb(')) return { foreground: getComputedStyle(text).color, background };
+      surface = surface.parentElement;
+    }
+    throw new Error('Text has no opaque surface');
+  });
+}
 
 function mixedFontPdf(): number[] {
   const objects = [
@@ -421,17 +434,7 @@ test('#6506 three real model pairs survive reload and export the selected saved 
   await page.reload(); await settle(1); await openCompare();
   const library = page.locator('[data-saved-comparisons]');
   await expect(library.getByRole('alert')).toContainText('The original data was preserved');
-  const noticeColors = await library.getByRole('alert').evaluate((notice) => {
-    let surface: Element | null = notice;
-    while (surface) {
-      const background = getComputedStyle(surface).backgroundColor;
-      if (background.startsWith('rgb(')) {
-        return { foreground: getComputedStyle(notice).color, background };
-      }
-      surface = surface.parentElement;
-    }
-    throw new Error('Recovered comparison notice has no opaque surface');
-  });
+  const noticeColors = await opaqueTextColors(library.getByRole('alert'));
   const noticeContrast = contrastOfTextOnSurface(noticeColors.foreground, noticeColors.background);
   expect(noticeContrast).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
   const contrastPath = testInfo.outputPath('saved-model-comparison-recovery-contrast.json');
@@ -611,6 +614,12 @@ test('#6507 real IFC discipline checklists remain independent and print their ch
   await page.evaluate(id => globalThis.__ifc_lite_viewer_store__.getState().removeManualChecklist(id), structureId);
   await expect(panel.getByRole('button', { name: 'Refresh from current checklist', exact: true }).last()).toBeDisabled();
   await expect(previews.last()).toContainText('Structure review');
+  const diagnosticColors = await opaqueTextColors(panel.locator('[data-manual-report-checklist-missing]'));
+  const diagnosticContrast = contrastOfTextOnSurface(diagnosticColors.foreground, diagnosticColors.background);
+  expect(diagnosticContrast).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
+  const contrastPath = testInfo.outputPath('deleted-checklist-diagnostic-contrast.json');
+  await writeFile(contrastPath, JSON.stringify({ ...diagnosticColors, contrast: diagnosticContrast }, null, 2));
+  await testInfo.attach('deleted-checklist-diagnostic-contrast', { path: contrastPath, contentType: 'application/json' });
   await page.screenshot({ path: testInfo.outputPath('chosen-checklist-layouts-document.png') });
   const downloadPromise = page.waitForEvent('download');
   await panel.locator('[data-document-export]').click();

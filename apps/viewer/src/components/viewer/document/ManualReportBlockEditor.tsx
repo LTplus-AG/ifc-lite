@@ -47,9 +47,9 @@ export function ManualReportBlockEditor({ block, onChange }: { block: ManualRepo
           {source.checklists.map((entry) => <option key={entry.id} value={entry.id}>{entry.name.trim() || t('manualValidation.name.placeholder')}</option>)}
         </select>
       </label>
-      {missingChecklist && <p className="text-destructive" data-manual-report-checklist-missing>{t('manualValidation.report.checklistMissing')}</p>}
+      {missingChecklist && <p className="text-foreground" data-manual-report-checklist-missing>{t('manualValidation.report.checklistMissing')}</p>}
       {missing && (
-        <p className="text-destructive" data-manual-report-model-missing>
+        <p className="text-foreground" data-manual-report-model-missing>
           {block.modelName?.trim()
             ? t('manualValidation.report.modelNotLoaded', { model: block.modelName })
             : t('manualValidation.report.modelNotLoadedUnnamed')}

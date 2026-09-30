@@ -425,7 +425,7 @@ export interface MutationSlice extends CostUndoMethods {
    * flag and `mutationVersion` — everything `addColumn` & co. do after their
    * builder runs, minus collab mirroring, which that writer owns.
    */
-  recordAuthoredElement: (modelId: string, storeyExpressId: number, entityId: number, element: AuthoredElement) => void;
+  recordAuthoredElement: (modelId: string, storeyExpressId: number, entityId: number, element: AuthoredElement, options?: { historyRecorded?: boolean }) => void;
   /**
    * Book a removal another writer (the SDK `bim.store.removeEntity` adapter)
    * already applied: prune the mesh, stash the overlay record for undo, push
@@ -910,6 +910,7 @@ function recordAuthoredElementIn(
   storeyExpressId: number,
   entityId: number,
   element: AuthoredElement,
+  options: { historyRecorded?: boolean } = {},
 ): void {
   const ifcType = authoredIfcType(element);
 
@@ -937,7 +938,7 @@ function recordAuthoredElementIn(
     entityId,
     attributeName: ifcType,
   };
-  set((s) => recordHistory(s, modelId, [mutation]));
+  if (!options.historyRecorded) set((s) => recordHistory(s, modelId, [mutation]));
 
   // Real geometry for the new element, from the IFC it was written as; drawn
   // from its parameters where the re-mesh can't mesh it (authoredFallbackMesh.ts).
@@ -1598,7 +1599,7 @@ export const createMutationSlice: StateCreator<
   },
 
   splitSlabByLine: (modelId, expressId, cutA, cutB) =>
-    splitSlab(get, (id) => getOrCreateStoreEditor(get, set, id), modelId, expressId, cutA, cutB),
+    splitSlab(get, (id) => getOrCreateStoreEditor(get, set, id), modelId, expressId, cutA, cutB, api),
 
   removeEntity: (modelId, expressId, opts) => {
     if (!canMutate(get(), modelId)) return false;
@@ -1680,11 +1681,11 @@ export const createMutationSlice: StateCreator<
     (editor, anchor) => addMemberToStore(editor, anchor, params).memberId,
   ),
 
-  recordAuthoredElement: (modelId, storeyExpressId, entityId, element) => {
+  recordAuthoredElement: (modelId, storeyExpressId, entityId, element, options) => {
     const dataStore = authoredDataStore(get(), modelId);
     const view = get().mutationViews.get(modelId);
     if (!dataStore || !view) return;
-    recordAuthoredElementIn(get, set, modelId, dataStore, view, storeyExpressId, entityId, element);
+    recordAuthoredElementIn(get, set, modelId, dataStore, view, storeyExpressId, entityId, element, options);
   },
 
   generateSpacesFromWalls: (modelId, storeyExpressId, options) => {

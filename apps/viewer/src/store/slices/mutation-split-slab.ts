@@ -11,11 +11,15 @@
 
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
-import { toNativeLength } from '@ifc-lite/create';
+import { addSlabToStore, addRoofToStore, addPlateToStore, addSpaceToStore, reassignHostedOpeningsInStore, resolveSpatialAnchor, toNativeLength, type SpatialAnchor } from '@ifc-lite/create';
 import { computeSlabSplitGeometry } from '@/lib/slab-edit.js';
 import { keepsFirstPiece } from '@/lib/split-guid.js';
 import { pointInPolygon, type Point2D } from '@/lib/polygon-clip.js';
-import { closeSplit, openSplit, piece, reshapeSource, type SplitEnv } from './mutation-split.js';
+import { openSplit, piece, type SplitEnv } from './mutation-split.js';
+import { cloneElementMetadata } from '@/lib/metadata-clone.js';
+import { planSlabOpeningCarry } from '@/lib/slab-opening-carry.js';
+import { recordModellingEdit, type ModellingStore } from './mutation-modelling-records.js';
+import type { AuthoredElement } from './authoredElement.js';
 
 type Get = () => ViewerState;
 
@@ -53,14 +57,17 @@ export function emitClippedProfile(editor: StoreEditor, outline: readonly Point2
   return { profile, solidPosition, up };
 }
 
-function addPiece(get: Get, modelId: string, env: SplitEnv, type: string, outline: Point2D[], thickness: number, baseElevation: number) {
+function buildPiece(editor: StoreEditor, anchor: SpatialAnchor, env: SplitEnv, type: string, outline: Point2D[], thickness: number, baseElevation: number): { expressId: number; element: AuthoredElement } {
   const base = { Profile: 'polygon' as const, Position: [0, 0, baseElevation] as [number, number, number], OuterCurve: outline, Name: env.name, GlobalId: env.newGlobalId };
-  const s = get();
+  const params = { ...base, Thickness: thickness };
   switch (type) {
-    case 'IfcSlab': return s.addSlab(modelId, env.storeyExpressId, { ...base, Thickness: thickness });
-    case 'IfcRoof': return s.addRoof(modelId, env.storeyExpressId, { ...base, Thickness: thickness });
-    case 'IfcPlate': return s.addPlate(modelId, env.storeyExpressId, { ...base, Thickness: thickness });
-    default: return s.addSpace(modelId, env.storeyExpressId, { ...base, Height: thickness });
+    case 'IfcSlab': return { expressId: addSlabToStore(editor, anchor, params).slabId, element: { kind: 'slab', params } };
+    case 'IfcRoof': return { expressId: addRoofToStore(editor, anchor, params).roofId, element: { kind: 'roof', params } };
+    case 'IfcPlate': return { expressId: addPlateToStore(editor, anchor, params).plateId, element: { kind: 'plate', params } };
+    default: {
+      const params = { ...base, Height: thickness };
+      return { expressId: addSpaceToStore(editor, anchor, params).spaceId, element: { kind: 'space', params } };
+    }
   }
 }
 
@@ -71,6 +78,7 @@ export function splitSlab(
   expressId: number,
   cutA: [number, number],
   cutB: [number, number],
+  store: ModellingStore,
 ) {
   const open = openSplit(get, editorFor, modelId, expressId, 'slab');
   if (!open.ok) return open;
@@ -84,18 +92,25 @@ export function splitSlab(
   const kept = keepFirst ? first : second;
   const cut = keepFirst ? second : first;
 
-  const added = addPiece(get, modelId, env, chain.elementType, cut, geo.thickness, chain.baseElevation);
-  if ('error' in added) return { ok: false as const, reason: added.error };
-
-  const origin = chain.placementOrigin;
-  const emitted = emitClippedProfile(env.editor, kept, origin, chain.baseElevation - origin[2], env.lengthUnitScale);
-  reshapeSource(get, modelId, [
-    { entityId: chain.extrudedSolidId, index: 0, value: `#${emitted.profile}` },
-    { entityId: chain.extrudedSolidId, index: 1, value: `#${emitted.solidPosition}` },
-    { entityId: chain.extrudedSolidId, index: 2, value: `#${emitted.up}` },
-  ]);
-
-  closeSplit(get, modelId, env, expressId, added.expressId);
+  let added: ReturnType<typeof buildPiece>;
+  try {
+    const moves = planSlabOpeningCarry(env, expressId, chain, cut, cutA, cutB, chain.baseElevation);
+    added = recordModellingEdit(store, modelId, (_methods, draft) => {
+      const view = draft.getMutationView(), anchor = resolveSpatialAnchor(env.dataStore, env.storeyExpressId, view);
+      const added = buildPiece(draft, anchor, env, chain.elementType, cut, geo.thickness, chain.baseElevation);
+      const origin = chain.placementOrigin;
+      const emitted = emitClippedProfile(draft, kept, origin, chain.baseElevation - origin[2], env.lengthUnitScale);
+      draft.setPositionalAttribute(chain.extrudedSolidId, 0, `#${emitted.profile}`);
+      draft.setPositionalAttribute(chain.extrudedSolidId, 1, `#${emitted.solidPosition}`);
+      draft.setPositionalAttribute(chain.extrudedSolidId, 2, `#${emitted.up}`);
+      reassignHostedOpeningsInStore(env.dataStore, draft, expressId, moves.map(move => ({ ...move, hostId: added.expressId })));
+      cloneElementMetadata(env.dataStore, view, draft, expressId, [added.expressId]);
+      return added;
+    });
+  } catch (error) {
+    return { ok: false as const, reason: error instanceof Error ? error.message : String(error) };
+  }
+  get().recordAuthoredElement(modelId, env.storeyExpressId, added.expressId, added.element, { historyRecorded: true });
   const [leftId, rightId] = keepFirst === leftIsFirst ? [expressId, added.expressId] : [added.expressId, expressId];
   return { ok: true as const, left: piece(get, modelId, leftId), right: piece(get, modelId, rightId) };
 }

@@ -7,12 +7,15 @@ import { beforeEach, afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { act } from 'react';
+import * as jspdf from 'jspdf';
 import { IfcParser } from '@ifc-lite/parser';
 import { registerLocale, setLocale } from '@/i18n';
 import { validateIDS, type IDSDocument, type ValidationReport } from '@ifc-lite/ids';
 import { Rule, runRuleSet, type RuleSetFile } from '@ifc-lite/rules';
 import { createDataAccessor } from '@/hooks/ids/idsDataAccessor';
 import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
+import { browserReportSeams } from '@/lib/export/report/generate-report-pdf';
+import { browserImageSize, generateDocumentPdf } from '@/lib/document/generate-document-pdf';
 import { layoutIdsReport } from '@/lib/document/compose-ids-report';
 import type { LayoutCursor, TextDrawnItem, TableDrawnItem, RectDrawnItem } from '@/lib/document/compose-table';
 import type { RingDrawnItem } from '@/lib/document/compose-manual-report';
@@ -218,6 +221,30 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     const firstHeading = drawn.find(({ item }) => item.kind === 'text' && item.text.startsWith('IDS report'));
     const firstRing = drawn.find(({ item }) => item.kind === 'ring');
     assert.equal(firstHeading?.page, 1); assert.equal(firstHeading?.page, firstRing?.page, 'heading and ring move together before the footer');
+  });
+
+  it('exports real report rings with portable PDF dash phases instead of solid failure circles (#6552)', async () => {
+    const browser = await browserReportSeams(null);
+    const seams = { ...browser, imageSize: browserImageSize, createDoc: async (format: Parameters<typeof browser.createDoc>[0], orientation: Parameters<typeof browser.createDoc>[1]) => {
+      // svg2pdf's UMD entry resolves the real jsPDF from Happy-DOM's window.
+      const pdfWindow = window as Window & { jspdf?: typeof jspdf };
+      const previous = pdfWindow.jspdf; pdfWindow.jspdf = jspdf;
+      try { return await browser.createDoc(format, orientation); } finally { pdfWindow.jspdf = previous; }
+    } };
+    const result = await generateDocumentPdf({
+      document: { ...spec, blocks: spec.blocks.map((block) => ({ ...block, benchmarks: true })) },
+      bindings: { models: [], activeModelId: null, today: new Date(0) }, aggregations: new Map(), chartMessages: new Map(),
+      snapshotIds: () => [], topics: new Map(), tables: new Map(),
+    }, seams);
+    // Actual jsPDF/svg2pdf output, not a mock seam or a byte snapshot. PDF
+    // 1.x leaves negative dash-phase semantics undefined; our downloaded
+    // mixed-result rings rendered solid red in MuPDF. Nonnegative phases
+    // express the same clockwise arcs portably across these PDF readers.
+    const pdf = new TextDecoder('latin1').decode(await result.blob.arrayBuffer());
+    const dashes = [...pdf.matchAll(/\[([^\]]+)\]\s+(-?[\d.]+)\s+d\b/g)];
+    assert.equal(dashes.length, 10, 'both variants really exported two IDS and three information outcome segments');
+    for (const dash of dashes) assert.ok(Number(dash[2]) >= 0, 'every actual printed segment uses a portable nonnegative dash phase');
+    assert.ok(pdf.includes('62% passed') && pdf.includes('50% passed'), 'the exported labels retain both actual engine verdicts');
   });
 
   it('preserves the authored title and hidden-ring choice when refreshing a real IDS run and replacing it with actual saved information evidence', async () => {

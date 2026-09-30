@@ -413,6 +413,12 @@ export interface CameraCallbacks {
    */
   frameEntities?: (ids: number[]) => void;
   /**
+   * Frame the camera on the building shell - the bounds of all rendered
+   * geometry EXCLUDING IfcSite/terrain and IfcSpace, so a georeferenced model
+   * frames the building rather than the much larger site extent.
+   */
+  frameBuildingExtent?: () => void;
+  /**
    * Replace one authoring channel's ghost meshes (a command
    * preview; `useAuthoringOverlay.ts`). They bypass geometryResult so per-edit
    * updates can't trip the streaming reclassifier. [] (or clear) removes them.

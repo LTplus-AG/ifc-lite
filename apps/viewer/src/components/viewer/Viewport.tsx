@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { loadedInstancedModelIndices } from '@/lib/visibility/model-hidden-entities.js';
 import { useAppearanceReferences } from './useAppearanceReferences.js';
-import { createPlacedEntityBoundsLookup } from '@/lib/model-placement/selection-bounds';
+import { createPlacedEntityBoundsLookup, placedBoundsExcludingTypes } from '@/lib/model-placement/selection-bounds';
 
 /**
  * 3D viewport component
@@ -1041,6 +1041,49 @@ export function Viewport({
               camera.frameBounds(min, max, 300);
               calculateScale();
             }
+          }
+        },
+        frameBuildingExtent: () => {
+          // Frame the building shell: bounds of all rendered geometry EXCEPT
+          // IfcSite/terrain and IfcSpace, so a georeferenced model frames the
+          // building rather than the much larger site extent. Combines flat
+          // meshes with instanced occurrences; falls back to the full extent
+          // when nothing else is available.
+          const geom = geometryRef.current;
+          const scene = rendererRef.current?.getScene();
+          const EXCLUDE = new Set(['IfcSite', 'IfcSpace']);
+          let bounds = geom ? placedBoundsExcludingTypes(geom, EXCLUDE) : null;
+          // Merge in instanced occurrences (not present in flat meshes), skipping
+          // excluded types via each id's OWN model store — instanced ids are
+          // federated global ids, so resolve them through the registry instead
+          // of assuming the active model (fromGlobalId is null pre-federation,
+          // where global === express and the active store is the right one).
+          if (scene) {
+            const state = useViewerStore.getState();
+            for (const id of scene.getInstancedEntityIds()) {
+              const type = typeNameOfGlobalId(state, id, ifcDataStoreRef.current);
+              if (type && EXCLUDE.has(type)) continue;
+              const b = scene.getInstancedEntityBounds(id);
+              if (!b) continue;
+              if (!bounds) {
+                bounds = { min: { x: b.min.x, y: b.min.y, z: b.min.z }, max: { x: b.max.x, y: b.max.y, z: b.max.z } };
+              } else {
+                bounds.min.x = Math.min(bounds.min.x, b.min.x); bounds.min.y = Math.min(bounds.min.y, b.min.y); bounds.min.z = Math.min(bounds.min.z, b.min.z);
+                bounds.max.x = Math.max(bounds.max.x, b.max.x); bounds.max.y = Math.max(bounds.max.y, b.max.y); bounds.max.z = Math.max(bounds.max.z, b.max.z);
+              }
+            }
+          }
+          const target = bounds ?? rendererRef.current?.getModelBounds() ?? geometryBoundsRef.current;
+          // Same sanity gate `frameEntities` applies: a degenerate or corrupted
+          // bound here would fling the camera off-model with no way back. The
+          // instanced-occurrence merge above unions bounds from the scene, so a
+          // single bad entry can poison the whole extent.
+          const finite = [target.min.x, target.min.y, target.min.z, target.max.x, target.max.y, target.max.z]
+            .every(Number.isFinite);
+          const span = Math.max(target.max.x - target.min.x, target.max.y - target.min.y, target.max.z - target.min.z);
+          if (finite && span >= 0 && span < 1e5) {
+            camera.frameBounds(target.min, target.max, 300);
+            calculateScale();
           }
         },
         ...authoringOverlay,

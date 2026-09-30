@@ -16,6 +16,7 @@
  * rather than cut, `compact` is one row per check / requirement with a
  * coloured percent bar.
  */
+import { blockTitle } from './block-title.js';
 import { passRateBand } from '@ifc-lite/ids';
 import { reportScopeText } from './report-provenance.js';
 import { layoutReportProvenance, REPORT_PROVENANCE_LINE_HEIGHT, wrappedReportProvenance } from './compose-report-provenance.js';
@@ -47,8 +48,8 @@ const pct = (n: number): string => `${n}%`;
  * information-validation run. PDF text is plain English, like every other
  * line the document composer prints (see `TABLE_PDF_LABELS`).
  */
-function idsReportTitle(block: Pick<IdsReportBlock, 'sourceKind' | 'sourceName'>): string {
-  return `${reportBlockSourceKind(block) === 'rules' ? 'Information validation report' : 'IDS report'}: ${block.sourceName}`;
+function idsReportTitle(block: Pick<IdsReportBlock, 'sourceKind' | 'sourceName' | 'title'>): string {
+  return blockTitle(block, `${reportBlockSourceKind(block) === 'rules' ? 'Information validation report' : 'IDS report'}: ${block.sourceName}`);
 }
 
 function summaryLine({ checked, passed, failed, passRate, warnings }: IdsReportBlock['summary']): string {

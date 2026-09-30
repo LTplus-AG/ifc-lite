@@ -18,7 +18,9 @@ import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type BlockWidth, type PageB
 import { layoutTable, type LayoutCursor, type TableLayoutBlock, type TableDrawnItem } from './compose-table.js';
 import { layoutIdsReport, type IdsReportLayoutBlock } from './compose-ids-report.js';
 import { layoutManualReport, type ManualReportLayoutBlock, type RingDrawnItem } from './compose-manual-report.js';
-import { tabFill } from './text-tabs.js';
+import { blockTitle, BLOCK_TITLE_HEIGHT } from './block-title.js';
+import { TEXT_STYLES, wrapText, truncateToWidth, layoutText, textBackground } from './compose-text.js';
+export { TEXT_STYLES, wrapText, truncateToWidth } from './compose-text.js';
 import { splitDocumentSections } from './page-sections.js';
 
 const HEADER_HEIGHT = 30;
@@ -50,23 +52,18 @@ export function documentChartSizing(input: DocumentChartSizingInput): { height: 
   };
 }
 
-export const TEXT_STYLES: Record<TextBlock['style'], { size: number; bold: boolean; lineHeight: number; gapBefore: number; gray: number }> = {
-  title: { size: 20, bold: true, lineHeight: 1.3, gapBefore: 6, gray: 0 },
-  heading: { size: 13, bold: true, lineHeight: 1.35, gapBefore: 8, gray: 0 },
-  subheading: { size: 11, bold: true, lineHeight: 1.3, gapBefore: 6, gray: 0 },
-  body: { size: 10, bold: false, lineHeight: 1.4, gapBefore: 0, gray: 0 },
-  small: { size: 8.5, bold: false, lineHeight: 1.35, gapBefore: 0, gray: 0 },
-  // Matches the image-caption text below (size 8, gray 130).
-  caption: { size: 8, bold: false, lineHeight: 1.3, gapBefore: 2, gray: 130 },
-};
+/** The image and its optional heading/caption fit inside the printable frame. */
+export function documentImageHeight(block: { height: number; title?: string; caption?: string }, pageHeight: number): number {
+  return Math.min(block.height, pageHeight - 2 * REPORT_MARGIN - HEADER_HEIGHT - FOOTER_HEIGHT - (blockTitle(block) ? BLOCK_TITLE_HEIGHT : 0) - (block.caption ? 14 : 0));
+}
 
 /** A block after its bindings were resolved and its assets measured — what layout needs. */
 export type ResolvedBlock =
   | TextBlock
   | PageBreakBlock
-  | { kind: 'image'; id: string; height: number; align: 'left' | 'center' | 'right'; caption?: string; /** natural width / height */ aspect: number; width?: BlockWidth }
+  | { kind: 'image'; id: string; height: number; align: 'left' | 'center' | 'right'; caption?: string; title?: string; /** natural width / height */ aspect: number; width?: BlockWidth }
   | { kind: 'chart'; id: string; title: string; subtitle: string; hasData: boolean; snapshot: boolean; height?: number; width?: BlockWidth; fontSize?: number }
-  | { kind: 'topic'; id: string; title: string; lines: string[]; /** null when there is no snapshot to print */ snapshotAspect: number | null }
+  | { kind: 'topic'; id: string; title: string; authoredTitle?: boolean; lines: string[]; /** null when there is no snapshot to print */ snapshotAspect: number | null }
   | { kind: 'spacer'; id: string; height: number }
   | ({ kind: 'table' } & TableLayoutBlock)
   | ({ kind: 'ids-report' } & IdsReportLayoutBlock)
@@ -110,67 +107,12 @@ export const estimateTextWidth = (text: string, size: number, bold: boolean): nu
 /** A conservative, font-independent bound keeps preview/PDF pairing identical.
  * Standard PDF font glyphs fit within one em; this can choose full width early,
  * but never puts a two-column row through the footer for a wide glyph string. */
-export function halfTextFitsPage(block: Pick<TextBlock, 'style' | 'text' | 'fontSize'>, pageHeight: number, columnWidth: number): boolean {
+export function halfTextFitsPage(block: Pick<TextBlock, 'style' | 'text' | 'fontSize' | 'title'>, pageHeight: number, columnWidth: number): boolean {
   const style = TEXT_STYLES[block.style];
   const size = block.fontSize ?? style.size;
   const lines = wrapText(block.text, columnWidth, size, style.bold, (text, fontSize) => text.length * fontSize);
   const frameHeight = pageHeight - 2 * REPORT_MARGIN - HEADER_HEIGHT - FOOTER_HEIGHT;
-  return style.gapBefore + lines.length * size * style.lineHeight <= frameHeight;
-}
-
-/**
- * Greedy word wrap on the measure; a word longer than the line is broken by characters.
- * Whitespace is kept as typed, like the preview's `white-space: pre-wrap` (#6370): a `\n`
- * starts a new line, a tab becomes spaces to the next tab stop, and a run of spaces
- * inside a line stays a run. Only the whitespace at a wrap point is dropped.
- */
-export function wrapText(text: string, width: number, size: number, bold: boolean, measure: ComposeDocumentInput['measure'], font?: TextFont): string[] {
-  const lines: string[] = [];
-  const fits = (line: string): boolean => measure(line, size, bold, font) <= width;
-  for (const paragraph of text.replace(/\r\n?/g, '\n').split('\n')) {
-    if (!/\S/.test(paragraph)) {
-      lines.push('');
-      continue;
-    }
-    let line = '';
-    for (const token of paragraph.match(/\t|[^\S\t]+|\S+/g) ?? []) {
-      // Whitespace never wraps by itself: at a wrap point it hangs and is dropped (below), as in
-      // `pre-wrap`. A tab measures from the start of the line it lands on, after any wrap.
-      if (token === '\t') { line += tabFill(line, (t) => measure(t, size, bold, font)); continue; }
-      if (/^\s/.test(token) || fits(line + token)) {
-        line += token;
-        continue;
-      }
-      const kept = line.trimEnd();
-      if (kept) lines.push(kept);
-      line = token;
-      while (!fits(line) && line.length > 1) {
-        let cut = line.length - 1;
-        while (cut > 1 && !fits(line.slice(0, cut))) cut -= 1;
-        lines.push(line.slice(0, cut));
-        line = line.slice(cut);
-      }
-    }
-    lines.push(line.trimEnd());
-  }
-  return lines;
-}
-
-/** A single line, ellipsis-truncated to fit `width` by the same measure `wrapText` uses (#4940 review: a half-width chart's title/subtitle must not run into the next column). */
-export function truncateToWidth(text: string, width: number, size: number, bold: boolean, measure: ComposeDocumentInput['measure']): string {
-  if (width <= 0 || measure(text, size, bold) <= width) return text;
-  // Binary, not linear: a linear cut-by-one scan remeasures a near-full string once per code
-  // unit, quadratic in an imported title's length (review finding). `measure` grows monotonically
-  // with the prefix length for both measures this module is called with (jsPDF's textWidth, the
-  // character-count estimate), so the longest prefix that still fits is found by bisection.
-  let low = 0;
-  let high = text.length;
-  while (low < high) {
-    const cut = Math.ceil((low + high) / 2);
-    if (measure(`${text.slice(0, cut)}…`, size, bold) <= width) low = cut;
-    else high = cut - 1;
-  }
-  return low > 0 ? `${text.slice(0, low)}…` : '…';
+  return (blockTitle(block) ? BLOCK_TITLE_HEIGHT : 0) + style.gapBefore + lines.length * size * style.lineHeight <= frameHeight;
 }
 
 export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
@@ -216,15 +158,19 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     // The caption's own row must fit the page frame too, so it is reserved before the image height
     // is clamped (review finding: a tall image + caption could still clamp to the full frame, then
     // draw the caption past `bottom`, in the footer band).
+    const title = blockTitle(block);
+    const titleH = title ? BLOCK_TITLE_HEIGHT : 0;
     const captionH = block.caption ? 14 : 0;
-    const h = Math.min(block.height, bottom - top - captionH);
+    const h = documentImageHeight(block, size.h);
     const w = Math.min(boxW, h * block.aspect);
     const drawnH = w / block.aspect;
     const x = block.align === 'left' ? boxX : block.align === 'right' ? boxX + boxW - w : boxX + (boxW - w) / 2;
     return {
-      height: drawnH + captionH,
+      height: drawnH + captionH + titleH,
       draw: (y) => {
-        const items: DrawnItem[] = [{ kind: 'image', blockId: block.id, x, y, w, h: drawnH }];
+        const items: DrawnItem[] = title ? [{ kind: 'text', x: boxX, y: y + 11, size: 11, bold: true, gray: 0, text: truncateToWidth(title, boxW, 11, true, input.measure) }] : [];
+        y += titleH;
+        items.push({ kind: 'image', blockId: block.id, x, y, w, h: drawnH });
         // A long caption must not cross the inter-column gap into the paired half-width block, and
         // for a centered/right-aligned narrow image it starts at `x > boxX`, so it is truncated to
         // the room actually left in the column from `x`, not the column's full width (review finding).
@@ -268,20 +214,9 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     };
   };
 
-  const textBackground = (block: TextBlock, x: number, y: number, w: number, h: number): DrawnItem[] =>
-    block.backgroundColor ? [{ kind: 'text-background', x, y, w, h, color: block.backgroundColor }] : [];
-
-  const layoutText = (block: Extract<ResolvedBlock, { kind: 'text' }>, boxX: number, boxW: number) => {
-    const style = TEXT_STYLES[block.style];
-    const size = block.fontSize ?? style.size;
-    const lineH = size * style.lineHeight;
-    const lines = wrapText(block.text, boxW, size, style.bold, input.measure, block.font);
-    return { style, size, lineH, lines, height: style.gapBefore + lines.length * lineH,
-      draw: (atY: number): DrawnItem[] => [...textBackground(block, boxX, atY + style.gapBefore, boxW, lines.length * lineH), ...lines.map<DrawnItem>((line, index) => ({ kind: 'text', x: boxX, y: atY + style.gapBefore + index * lineH + size, size, bold: style.bold, gray: style.gray, text: line, font: block.font, color: block.textColor }))],
-    };
-  };
+  const textLayout = (block: TextBlock, x: number, width: number) => layoutText(block, x, width, input.measure);
   const layoutPairable = (block: Extract<ResolvedBlock, { kind: 'text' | 'image' | 'chart' }>, boxX: number, boxW: number) =>
-    block.kind === 'text' ? layoutText(block, boxX, boxW)
+    block.kind === 'text' ? textLayout(block, boxX, boxW)
       : block.kind === 'chart' ? layoutChart(block, boxX, boxW)
       : layoutImage(block, boxX, boxW);
 
@@ -311,10 +246,15 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
       }
       switch (block.kind) {
         case 'text': {
-          const { style, size, lineH, lines } = layoutText(block, REPORT_MARGIN, contentW);
-          if (!block.backgroundColor && lines.every((l) => l.length === 0)) {
+          const { style, size, lineH, lines, title, titleHeight } = textLayout(block, REPORT_MARGIN, contentW);
+          if (!title && !block.backgroundColor && lines.every((l) => l.length === 0)) {
             y += lineH;
             break;
+          }
+          if (title) {
+            ensure(titleHeight + style.gapBefore + lineH * Math.min(lines.length, 2));
+            page.items.push({ kind: 'text', x: REPORT_MARGIN, y: y + 11, size: 11, bold: true, gray: 0, text: truncateToWidth(title, contentW, 11, true, input.measure) });
+            y += titleHeight;
           }
           y += style.gapBefore;
           // A heading is not left alone at the bottom of a page: the first two lines move together.
@@ -362,7 +302,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           const lines = block.lines.flatMap((l) => wrapText(l, contentW - (snapshotW ? snapshotW + BLOCK_GAP : 0), 10, false, input.measure));
           // Title, snapshot and the first lines move together; a long description then continues page by page.
           ensure(Math.max(16 + Math.min(lines.length, 3) * lineH, snapshotH) + BLOCK_GAP);
-          page.items.push({ kind: 'text', x: REPORT_MARGIN, y: y + 11, size: 11, bold: true, gray: 0, text: block.title });
+          page.items.push({ kind: 'text', x: REPORT_MARGIN, y: y + 11, size: 11, bold: true, gray: 0, text: block.authoredTitle ? truncateToWidth(block.title, contentW, 11, true, input.measure) : block.title });
           if (block.snapshotAspect) page.items.push({ kind: 'topic-snapshot', blockId: block.id, x: size.w - REPORT_MARGIN - snapshotW, y, w: snapshotW, h: snapshotH });
           const snapshotBottom = y + snapshotH;
           let ty = y + 16;

@@ -8,6 +8,7 @@
  * SSR SVG the PDF gets; an unresolved binding is marked in place, never
  * printed as an empty string.
  */
+import { blockTitle, BLOCK_TITLE_HEIGHT } from '@/lib/document/block-title';
 import { useMemo, useState } from 'react';
 import { chartFontScale, renderChartSvg, type Aggregation } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
@@ -16,7 +17,7 @@ import { renderTemplate, type BindingContext } from '@/lib/document/bindings';
 import { REPORT_THEME } from '@/lib/export/report/generate-report-pdf';
 import { topicLines, topicSnapshotDataUrl } from '@/lib/document/generate-document-pdf';
 import { pageBox, REPORT_MARGIN } from '@/lib/export/report/compose';
-import { BLOCK_GAP, documentChartSizing, halfTextFitsPage, TEXT_STYLES } from '@/lib/document/compose';
+import { BLOCK_GAP, documentChartSizing, documentImageHeight, halfTextFitsPage, TEXT_STYLES } from '@/lib/document/compose';
 import { CHART_BLOCK_HEIGHT_DEFAULT, isHalfPairable, type DocumentBlock, type DocumentSpec, type TextBlock } from '@/lib/document/types';
 import type { TableState } from '@/lib/document/resolve-table';
 import { TAB_SIZE } from '@/lib/document/text-tabs';
@@ -127,15 +128,20 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
       // Every style keeps the text as typed, like the PDF's `wrapText` (#6370): line breaks,
       // tab indents (same tab stop as the PDF) and runs of spaces. Title, heading and subheading
       // once collapsed a typed line break into a space.
-      return <div className={TEXT_CLASS[block.style]} style={{ color: block.textColor, backgroundColor: block.backgroundColor, whiteSpace: 'pre-wrap', tabSize: TAB_SIZE, fontSize: (block.fontSize ?? TEXT_STYLES[block.style].size) * scale, fontFamily: block.font === 'times' ? 'Times New Roman, serif' : block.font === 'courier' ? 'Courier New, monospace' : 'Helvetica, Arial, sans-serif' }} data-block-text>{block.text.trim() ? <ResolvedText text={block.text} bindings={bindings} /> : <span className={DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}>{t('document.preview.textEmpty')}</span>}</div>;
+      return <div>{blockTitle(block) && <div className="truncate font-semibold" style={{ fontSize: 11 * scale, height: BLOCK_TITLE_HEIGHT * scale }} title={blockTitle(block)}>{blockTitle(block)}</div>}
+        <div className={TEXT_CLASS[block.style]} style={{ color: block.textColor, backgroundColor: block.backgroundColor, whiteSpace: 'pre-wrap', tabSize: TAB_SIZE, fontSize: (block.fontSize ?? TEXT_STYLES[block.style].size) * scale, fontFamily: block.font === 'times' ? 'Times New Roman, serif' : block.font === 'courier' ? 'Courier New, monospace' : 'Helvetica, Arial, sans-serif' }} data-block-text>{block.text.trim() ? <ResolvedText text={block.text} bindings={bindings} /> : <span className={DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}>{t('document.preview.textEmpty')}</span>}</div></div>;
+
     case 'image': {
+      const title = blockTitle(block);
+      const height = (title ? documentImageHeight(block, pageHeight) : block.height) * scale;
       const justify = block.align === 'left' ? 'justify-start' : block.align === 'right' ? 'justify-end' : 'justify-center';
       return (
         <figure className={`flex flex-col ${block.align === 'center' ? 'items-center' : block.align === 'right' ? 'items-end' : 'items-start'}`}>
+          {title && <div className="w-full truncate font-semibold" style={{ fontSize: 11 * scale, height: BLOCK_TITLE_HEIGHT * scale }} title={title}>{title}</div>}
           <div className={`flex w-full ${justify}`}>
             {block.dataUrl
-              ? <PreviewImage key={block.dataUrl} dataUrl={block.dataUrl} alt={block.caption ?? ''} height={block.height * scale} contentWidth={contentWidth} />
-              : <div className="flex items-center justify-center rounded border border-dashed border-neutral-300 px-3 text-xs text-neutral-500" style={{ height: block.height * scale, minWidth: 80 }}>{t('document.preview.imageEmpty')}</div>}
+              ? <PreviewImage key={block.dataUrl} dataUrl={block.dataUrl} alt={block.caption ?? ''} height={height} contentWidth={contentWidth} />
+              : <div className="flex items-center justify-center rounded border border-dashed border-neutral-300 px-3 text-xs text-neutral-500" style={{ height, minWidth: 80 }}>{t('document.preview.imageEmpty')}</div>}
           </div>
           {block.caption && <figcaption className="text-2xs text-neutral-500">{block.caption}</figcaption>}
         </figure>
@@ -159,7 +165,7 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
       return (
         <div>
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold" title={block.chart.title} style={textScale === 1 ? undefined : { fontSize: 11 * textScale * scale, lineHeight: `${16 * textScale * scale}px` }}>{block.chart.title}</div>
+            <div className="truncate text-sm font-semibold" title={blockTitle(block, block.chart.title)} style={textScale === 1 ? undefined : { fontSize: 11 * textScale * scale, lineHeight: `${16 * textScale * scale}px` }}>{blockTitle(block, block.chart.title)}</div>
             <div className="truncate text-2xs text-neutral-500" title={subtitle} style={textScale === 1 ? undefined : { fontSize: 8 * textScale * scale, lineHeight: `${16 * textScale * scale}px` }}>{subtitle}</div>
           </div>
           <ChartSvg aggregation={aggregation} message={chartMessage} width={contentWidth} height={height} fontSize={block.fontSize} scale={scale} />
@@ -180,12 +186,12 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
     case 'manual-report':
       return <ManualReportPreview block={block} />;
     case 'topic': {
-      if (!topic) return <div className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900" data-unresolved>{t('document.preview.topicNotLoaded', { guid: block.guid })}</div>;
+      if (!topic) return <div>{blockTitle(block) && <div className="truncate text-sm font-semibold">{blockTitle(block)}</div>}<div className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900" data-unresolved>{t('document.preview.topicNotLoaded', { guid: block.guid })}</div></div>;
       const snapshot = block.snapshot ? topicSnapshotDataUrl(topic) : null;
       return (
         <div className="flex gap-3">
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold">{topic.title}</div>
+            <div className="text-sm font-semibold">{blockTitle(block, topic.title)}</div>
             {topicLines(topic).map((line, i) => <div key={i} className="text-xs text-neutral-700">{line}</div>)}
           </div>
           {snapshot && <img src={snapshot} alt="" className="h-28 rounded border border-neutral-200 object-cover" />}

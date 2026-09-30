@@ -181,6 +181,8 @@ export const documentEn = {
   'document.block.tableEditInLists': 'Edit in Lists',
   'document.block.tableEditInListsHint': 'Opened in the Lists panel — save there, then "Update from saved list" here.',
   'document.block.tableSelectionDropped': 'The selection this list was made from is not kept in a document: the table prints every element the list\'s classes and conditions match.',
+  'document.block.titleAriaLabel': 'Block title',
+  'document.block.titlePlaceholder': 'Title (leave empty for the original heading)',
   'document.block.tableTitleAriaLabel': 'Table title',
   'document.block.tableCaptionAriaLabel': 'Table caption',
   'document.block.tableOrderLabel': 'Group order',

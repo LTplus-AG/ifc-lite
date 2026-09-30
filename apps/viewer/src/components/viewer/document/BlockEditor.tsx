@@ -8,6 +8,7 @@
  * selected element's attributes and properties — and the bindings resolve
  * live in the preview. Image, chart and topic blocks pick their source.
  */
+import { BlockTitleEditor } from './BlockTitleEditor';
 import { SavedReportSource } from './SavedReportSource';
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowDown, ArrowUp, X } from 'lucide-react';
@@ -79,7 +80,7 @@ function ReportBlockSource({ block, report, onChange }: { block: IdsReportBlock;
         title={refreshable ? undefined : t(kind === 'rules' ? 'document.block.rulesReportRefreshDisabledTitle' : 'document.block.idsReportRefreshDisabledTitle')}
         onClick={() => {
           if (!report || report.source.kind !== kind) return;
-          onChange(idsReportBlockFromReport(report, block.id, block.variant));
+          onChange({ ...idsReportBlockFromReport(report, block.id, block.variant), title: block.title });
           toast.success(t('document.block.idsReportRefreshed'));
         }}
       >
@@ -210,6 +211,8 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={index === count - 1} onClick={() => onMove(1)} aria-label={t('document.block.moveDownAriaLabel')}><ArrowDown className="h-3.5 w-3.5" /></Button>
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onRemove} aria-label={t('document.block.removeAriaLabel')}><X className="h-3.5 w-3.5" /></Button>
       </div>
+
+      {block.kind !== 'table' && block.kind !== 'spacer' && block.kind !== 'page-break' && <BlockTitleEditor block={block} onChange={onChange} />}
 
       {block.kind === 'text' && <TextEditor block={block} bindings={bindings} onChange={onChange} />}
 

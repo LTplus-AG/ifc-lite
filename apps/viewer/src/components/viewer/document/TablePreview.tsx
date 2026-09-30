@@ -9,6 +9,7 @@
  * rows) in its place when there is nothing to print. The preview does not
  * paginate (text never did either); the composer's tests cover chunking.
  */
+import { blockTitle } from '@/lib/document/block-title';
 import { tableHeaderStyle } from '@/lib/table-header-style';
 import { comparisonSummary } from '@/lib/compare/savedComparisonSchema';
 import { useMemo } from 'react';
@@ -37,7 +38,7 @@ export function TablePreview({ block, state }: TablePreviewProps) {
   // The PDF's `tableTitle` fallback ("Validation results") is plain English on purpose (every other
   // PDF fallback string is); the on-screen preview is interactive UI, so it translates its own
   // fallback instead of calling that helper (#5138 review).
-  const title = block.title?.trim() || (block.source.kind === 'list' ? block.source.list.name : block.source.kind === 'comparison' ? block.source.comparison.name : t('document.block.tableSourceValidation'));
+  const title = blockTitle(block, (block.source.kind === 'list' ? block.source.list.name : block.source.kind === 'comparison' ? block.source.comparison.name : t('document.block.tableSourceValidation')), false);
   const table = useMemo(() => {
     if (state?.status !== 'ok') return null;
     const labels = {

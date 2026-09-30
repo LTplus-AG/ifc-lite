@@ -14,6 +14,7 @@
  * text, guidance and comment move together) unless it is taller than a page.
  */
 
+import { blockTitle } from './block-title.js';
 import { reportScopeText } from './report-provenance.js';
 import { layoutReportProvenance, REPORT_PROVENANCE_LINE_HEIGHT, wrappedReportProvenance, type WrapLines } from './compose-report-provenance.js';
 import type { LayoutCursor, TextDrawnItem } from './compose-table.js';
@@ -76,7 +77,7 @@ export function layoutManualReport(
   const keepAfter = benchmarks ? OVERALL_RING + 10 + (block.groups.length === 0 ? META_HEIGHT : 0)
     : block.groups.length ? groupHeaderHeight + (firstItem ? itemLines(firstItem, itemW, wrap, detailed).height : LINE + 5) : META_HEIGHT;
   cursor.ensure(Math.min(TITLE_HEIGHT + META_HEIGHT + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter, cursor.bottom - cursor.top));
-  const title = `Manual validation: ${block.checklistName.trim() || 'Untitled checklist'}`;
+  const title = blockTitle(block, `Manual validation: ${block.checklistName.trim() || 'Untitled checklist'}`);
   text({ x: cursor.x, y: cursor.y + 11, size: 11, bold: true, gray: 0, text: cursor.truncate(title, contentW, 11, true) });
   cursor.y += TITLE_HEIGHT;
   const meta = block.modelName ? `Model: ${block.modelName} · Recorded: ${block.generatedAt}` : `Recorded: ${block.generatedAt}`;

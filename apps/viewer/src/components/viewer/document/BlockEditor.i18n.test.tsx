@@ -22,6 +22,8 @@ const BINDINGS: BindingContext = { models: [], activeModelId: null, today: new D
 const noop = (): void => {};
 
 const TEST_LOCALE: Catalogue = {
+  'document.block.titleAriaLabel': 'Titre du bloc',
+  'document.block.titlePlaceholder': 'Titre facultatif',
   'document.block.kindText': 'Texte',
   'document.block.kindImage': 'Image_DE',
   'document.block.kindChart': 'Diagramm',
@@ -80,6 +82,7 @@ describe('BlockEditor localization (#4918)', () => {
     assert.ok(ui.querySelector('button[aria-label="Move block up"]'));
     assert.ok(ui.querySelector('button[aria-label="Move block down"]'));
     assert.ok(ui.querySelector('button[aria-label="Remove block"]'));
+    assert.ok(ui.querySelector('input[aria-label="Block title"][placeholder="Title (leave empty for the original heading)"]'));
     assert.ok(ui.querySelector('select[aria-label="Text style"]'));
     assert.equal(ui.querySelector('select[aria-label="Insert field"]')?.getAttribute('title'), 'Insert a {path} that reads the model');
 
@@ -90,6 +93,7 @@ describe('BlockEditor localization (#4918)', () => {
     assert.ok(ui.querySelector('button[aria-label="Block nach oben"]'));
     assert.ok(ui.querySelector('button[aria-label="Block nach unten"]'));
     assert.ok(ui.querySelector('button[aria-label="Block entfernen"]'));
+    assert.ok(ui.querySelector('input[aria-label="Titre du bloc"][placeholder="Titre facultatif"]'));
     assert.ok(ui.querySelector('select[aria-label="Textstil"]'));
     assert.equal(ui.textContent?.includes('Feld einfügen'), true);
   });

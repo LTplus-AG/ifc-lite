@@ -9,6 +9,7 @@
  * component, so the preview, the panel and the PDF share one geometry.
  */
 
+import { blockTitle } from '@/lib/document/block-title';
 import { reportScopeText } from '@/lib/document/report-provenance';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { ManualReportBlock } from '@/lib/document/manual-report-types';
@@ -25,6 +26,7 @@ const VERDICT_LABEL: Record<'pass' | 'fail' | 'warning' | 'unanswered', Translat
 export function ManualReportPreview({ block }: { block: ManualReportBlock }) {
   const { t } = useTranslation();
   const name = block.checklistName.trim() || t('manualValidation.name.placeholder');
+  const heading = blockTitle(block, t('manualValidation.report.heading', { name }));
   const percent = block.summary.total > 0 ? Math.floor((block.summary.pass / block.summary.total) * 100) : 0;
   const ink = 'fill-neutral-900';
   const benchmarks = block.benchmarks !== false;
@@ -32,7 +34,7 @@ export function ManualReportPreview({ block }: { block: ManualReportBlock }) {
 
   return (
     <div data-block-manual-report>
-      <div className="truncate text-sm font-semibold" title={name}>{t('manualValidation.report.heading', { name })}</div>
+      <div className="truncate text-sm font-semibold" title={heading}>{heading}</div>
       <div className={`text-2xs ${DOCUMENT_PREVIEW_MUTED_TEXT_CLASS}`}>
         {block.modelName
           ? t('manualValidation.report.recordedAtModel', { model: block.modelName, timestamp: block.generatedAt })

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { TextFont, DocumentValidationError } from './types.js';
-import { truncateToWidth } from './text-layout.js';
+import { truncateToWidth } from './compose-text.js';
 import { REPORT_MARGIN } from '../export/report/compose.js';
 import { validateTextTypography } from './text-typography.js';
 

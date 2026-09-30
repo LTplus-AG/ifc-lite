@@ -8,6 +8,7 @@
  * the same jsPDF + svg2pdf + snapshot path the coordination report uses,
  * so a chart block prints exactly as it does in a report.
  */
+import { blockTitle } from './block-title.js';
 import { tableHeaderStyle } from '../table-header-style';
 import { comparisonSummary } from '../compare/savedComparisonSchema';
 import type { Aggregation } from '@ifc-lite/charts';
@@ -83,7 +84,7 @@ export function tableMessage(state: TableState | undefined): string | null {
 }
 
 /** The title a table block prints: its own, the list's name, or "Validation results". */
-export const tableTitle = (block: TableBlock): string => block.title?.trim() || (block.source.kind === 'list' ? block.source.list.name : block.source.kind === 'comparison' ? block.source.comparison.name : 'Validation results');
+export const tableTitle = (block: TableBlock): string => blockTitle(block, (block.source.kind === 'list' ? block.source.list.name : block.source.kind === 'comparison' ? block.source.comparison.name : 'Validation results'), false);
 
 /** The browser's image measure: decode the data URL. */
 export function browserImageSize(dataUrl: string): Promise<{ w: number; h: number }> {
@@ -140,7 +141,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         } catch (err) {
           console.warn('[Documents] image could not be measured; printed square', err);
         }
-        blocks.push({ kind: 'image', id: block.id, height: block.height, align: block.align, caption: block.caption, aspect, width: block.width });
+        blocks.push({ kind: 'image', id: block.id, height: block.height, align: block.align, caption: block.caption, title: block.title, aspect, width: block.width });
         break;
       }
       case 'chart': {
@@ -151,7 +152,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         // here ever read it.
         const message = input.chartMessages.get(block.id);
         const subtitle = message ?? (agg ? `${agg.categories.length} bucket${agg.categories.length === 1 ? '' : 's'} · ${agg.total.toLocaleString()} ${agg.spec.measure.agg === 'count' ? 'elements' : (agg.unit ?? '')}`.trim() : 'No data');
-        blocks.push({ kind: 'chart', id: block.id, title: block.chart.title, subtitle, hasData: !!agg && agg.categories.length > 0, snapshot: block.snapshot, height: block.height, width: block.width, fontSize: block.fontSize });
+        blocks.push({ kind: 'chart', id: block.id, title: blockTitle(block, block.chart.title), subtitle, hasData: !!agg && agg.categories.length > 0, snapshot: block.snapshot, height: block.height, width: block.width, fontSize: block.fontSize });
         break;
       }
       case 'page-break': blocks.push(block); break;
@@ -190,7 +191,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         const topic = input.topics.get(block.guid);
         if (!topic) {
           result.missingTopics.push(block.guid);
-          blocks.push({ kind: 'topic', id: block.id, title: `[BCF topic ${block.guid}: not among the loaded topics]`, lines: [], snapshotAspect: null });
+          blocks.push({ kind: 'topic', id: block.id, authoredTitle: !!blockTitle(block), title: blockTitle(block, `[BCF topic ${block.guid}: not among the loaded topics]`), lines: blockTitle(block) ? [`[BCF topic ${block.guid}: not among the loaded topics]`] : [], snapshotAspect: null });
           break;
         }
         let snapshotAspect: number | null = null;
@@ -204,7 +205,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
             snapshotAspect = 4 / 3;
           }
         }
-        blocks.push({ kind: 'topic', id: block.id, title: topic.title, lines: topicLines(topic), snapshotAspect });
+        blocks.push({ kind: 'topic', id: block.id, authoredTitle: !!blockTitle(block), title: blockTitle(block, topic.title), lines: topicLines(topic), snapshotAspect });
         break;
       }
     }

@@ -29,7 +29,7 @@ export function ManualReportBlockEditor({ block, onChange }: { block: ManualRepo
     if (missing) return false;
     const next = source.snapshot(block.id, chosen, checklistId);
     if (!next) return false;
-    onChange({ ...next, variant: block.variant, benchmarks: block.benchmarks });
+    onChange({ ...next, title: block.title, variant: block.variant, benchmarks: block.benchmarks });
     return true;
   };
 

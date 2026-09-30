@@ -14,7 +14,7 @@
  */
 
 import { useId, useMemo } from 'react';
-import { readHostedElementSize } from '@ifc-lite/create';
+import { readHostedElementSize, readStairDimensions, type StairDimensions } from '@ifc-lite/create';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
@@ -22,7 +22,7 @@ import { authoringDim, type AuthoredElementKind } from '@/store/slices/authoring
 import { CommitField, InspectorCaption, InspectorRow, InspectorSection } from './InspectorControls';
 import { DEFAULT_DIMS, DIM_LABEL, METRE_SYMBOL, formatMetres, parseMetres, type DimParam } from './inspector-fields';
 import { readElementSize } from '@/store/slices/mutation-element-size';
-import { setElementDimensions, setHostedElementDimensions } from './inspector-edits';
+import { setElementDimensions, setHostedElementDimensions, setStairDimensions } from './inspector-edits';
 import type { InspectorSelection } from './useInspectorTarget';
 
 function MetreRow({ param, value, onCommit }: { param: DimParam; value: number | null; onCommit?: (metres: number) => boolean }) {
@@ -76,11 +76,16 @@ type Measured =
   | { kind: 'slab'; thickness: number }
   | { kind: 'linear'; column: boolean; length: number; width: number; cross: number; profiled: boolean }
   | { kind: 'hosted'; width: number; height: number }
+  | { kind: 'stair'; dimensions: StairDimensions }
   | { kind: 'none'; reason: 'modelInspector.dims.notRectangular' | 'modelInspector.dims.unknown' };
 
 function measure(selection: InspectorSelection): Measured {
   const s = useViewerStore.getState();
   const { modelId, expressId, kind } = selection;
+  if (isStairSelection(selection)) {
+    const dimensions = readStairDimensions(selection.live.dataStore, expressId, s.mutationViews.get(modelId));
+    return dimensions ? { kind: 'stair', dimensions } : { kind: 'none', reason: 'modelInspector.dims.unknown' };
+  }
   if (kind === 'door' || kind === 'window') {
     const size = readHostedElementSize(selection.live.dataStore, expressId, s.mutationViews.get(modelId));
     return size ? { kind: 'hosted', width: size.OverallWidth, height: size.OverallHeight } : { kind: 'none', reason: 'modelInspector.dims.unknown' };
@@ -134,7 +139,22 @@ export function SelectionDimensions({ selection }: { selection: InspectorSelecti
           <MetreRow param="Height" value={measured.height} onCommit={OverallHeight => setHostedElementDimensions(modelId, expressId, { OverallHeight })} />
         </>
       )}
+      {measured.kind === 'stair' && (
+        <>
+          {(['Width', 'RiserHeight', 'TreadLength', 'WaistThickness'] as const)
+            .filter(param => measured.dimensions[param] !== undefined).map(param => (
+            <MetreRow key={param} param={param}
+              value={measured.dimensions[param] ?? null}
+              onCommit={metres => setStairDimensions(modelId, expressId, { [param]: metres })} />
+          ))}
+          <InspectorCaption>{t('stairRailing.inspector.effect')}</InspectorCaption>
+        </>
+      )}
       {measured.kind === 'none' && <InspectorCaption>{t(measured.reason)}</InspectorCaption>}
     </InspectorSection>
   );
+}
+
+export function isStairSelection(selection: InspectorSelection): boolean {
+  return selection.ifcClass === 'IfcStair' || selection.ifcClass === 'IfcStairFlight';
 }

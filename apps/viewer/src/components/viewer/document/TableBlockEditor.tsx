@@ -16,6 +16,7 @@
  * the live report so it only offers rules that actually ran), and which
  * columns print.
  */
+import { BlockTitleEditor } from './BlockTitleEditor';
 import { useEffect, useMemo, useState } from 'react';
 import { groupingColumnIds, type ListDefinition } from '@ifc-lite/lists';
 import { Button } from '@/components/ui/button';
@@ -227,7 +228,7 @@ export function TableBlockEditor({ block, onChange }: TableBlockEditorProps) {
           onChange={(headerTextColor) => onChange({ ...block, headerTextColor })} />
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <input className={`${field} min-w-0 flex-1`} value={block.title ?? ''} placeholder={source.kind === 'list' ? source.list.name : source.kind === 'comparison' ? source.comparison.name : t('document.block.tableSourceValidation')} onChange={(e) => onChange({ ...block, title: e.target.value || undefined })} aria-label={t('document.block.tableTitleAriaLabel')} />
+        <BlockTitleEditor block={block} onChange={onChange} table placeholder={source.kind === 'list' ? source.list.name : source.kind === 'comparison' ? source.comparison.name : t('document.block.tableSourceValidation')} />
         <input className={`${field} min-w-0 flex-1`} value={block.caption ?? ''} placeholder={t('document.block.captionPlaceholder')} onChange={(e) => onChange({ ...block, caption: e.target.value || undefined })} aria-label={t('document.block.tableCaptionAriaLabel')} />
         <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.tableRowsLabel')}
           <ClampedNumberInput value={block.maxRows} min={1} max={TABLE_ROWS_MAX} placeholder={String(TABLE_ROWS_DEFAULT)} allowUndefined ariaLabel={t('document.block.tableRowsAriaLabel')} onCommit={(maxRows) => onChange({ ...block, maxRows })} />

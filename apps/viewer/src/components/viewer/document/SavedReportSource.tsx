@@ -23,7 +23,7 @@ export function SavedReportSource({ block, onChange }: { block: ValidationReport
           onChange={(e) => {
             const entry = choices.find((candidate) => candidate.id === e.target.value);
             if (entry) {
-              const next = savedReportBlock(entry, block.id);
+              const next = { ...savedReportBlock(entry, block.id), title: block.title };
               onChange(block.kind === 'ids-report' && next.kind === 'ids-report'
                 ? { ...next, variant: block.variant }
                 : block.kind === 'manual-report' && next.kind === 'manual-report'

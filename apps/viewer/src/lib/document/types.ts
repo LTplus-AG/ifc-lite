@@ -11,7 +11,8 @@
  *
  * The shape is plain JSON: it is what `.ifclite-document.json` carries.
  */
-import { isRgbColor } from '../color-contrast.js';
+import { validateBlockTitle, type BlockTitle } from './block-title.js';
+import { isRgbColor } from '../color-contrast';
 import type { GroupOrder } from '../lists/group-sort';
 import { isSavedComparison, type SavedComparison } from '../compare/savedComparisonSchema';
 import { CHART_FONT_SIZE, validateChartSpec, type ChartSpec, type ReportPageSetup } from '@ifc-lite/charts';
@@ -33,7 +34,7 @@ export const DOCUMENT_VERSION = 10;
 /** A block that can sit two-up in a row (#4940); an unpaired half block prints full width. */
 export type BlockWidth = 'full' | 'half';
 
-export interface TextBlock {
+export interface TextBlock extends BlockTitle {
   kind: 'text';
   id: string;
   /** Template text; `{path}` placeholders resolve against the model (see `bindings.ts`). */
@@ -48,7 +49,7 @@ export interface TextBlock {
   width?: BlockWidth;
 }
 
-export interface ImageBlock {
+export interface ImageBlock extends BlockTitle {
   kind: 'image';
   id: string;
   /** `data:image/png;base64,…` or `data:image/jpeg;base64,…` — a logo travels with the file. */
@@ -61,7 +62,7 @@ export interface ImageBlock {
   width?: BlockWidth;
 }
 
-export interface ChartBlock {
+export interface ChartBlock extends BlockTitle {
   kind: 'chart';
   id: string;
   /** A copy of the chart spec, so the document does not depend on a dashboard still existing. */
@@ -76,7 +77,7 @@ export interface ChartBlock {
   width?: BlockWidth;
 }
 
-export interface TopicBlock {
+export interface TopicBlock extends BlockTitle {
   kind: 'topic';
   id: string;
   /** BCF topic GUID — survives a new IFC revision, and a re-imported BCF. */
@@ -158,7 +159,7 @@ export interface ValidationTableSource {
  * Version 4 introduced validation sources; the version bump makes older
  * readers report "newer version" instead of misdiagnosing the block as a
  * broken list (review finding, #5138). */
-export interface TableBlock {
+export interface TableBlock extends BlockTitle {
   kind: 'table';
   id: string;
   source: TableSource;
@@ -262,6 +263,7 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
     if (!isString(block.id) || block.id.length === 0) errors.push({ path: `${at}.id`, message: 'expected a non-empty string' });
     else if (ids.has(block.id)) errors.push({ path: `${at}.id`, message: `duplicate block id "${block.id}"` });
     else ids.add(block.id);
+    if (block.kind !== 'ids-report' && block.kind !== 'manual-report' && block.kind !== 'spacer' && block.kind !== 'page-break') validateBlockTitle(block, at, errors);
     switch (block.kind) {
       case 'text':
         if (!isString(block.text)) errors.push({ path: `${at}.text`, message: 'expected a string' });
@@ -337,7 +339,6 @@ function validateTableBlock(block: Record<string, unknown>, at: string, errors: 
       errors.push({ path: `${at}.source.columns`, message: `expected a non-empty array of ${TABLE_COLUMN_IDS.join(' | ')}` });
     }
   }
-  if (block.title !== undefined && !isString(block.title)) errors.push({ path: `${at}.title`, message: 'expected a string' });
   if (block.caption !== undefined && !isString(block.caption)) errors.push({ path: `${at}.caption`, message: 'expected a string' });
   if (block.groupOrder !== undefined && block.groupOrder !== 'count' && block.groupOrder !== 'label') errors.push({ path: `${at}.groupOrder`, message: 'expected count | label' });
   if (block.headerBackground !== undefined && !isRgbColor(block.headerBackground)) errors.push({ path: `${at}.headerBackground`, message: 'expected an RGB colour in #RRGGBB form' });

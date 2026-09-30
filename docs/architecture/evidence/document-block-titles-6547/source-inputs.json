@@ -1,0 +1,104 @@
+{
+  "IDS": {
+    "info": {
+      "title": "Wall Name presence source"
+    },
+    "specifications": [
+      {
+        "applicability": {
+          "facets": [
+            {
+              "name": {
+                "type": "simpleValue",
+                "value": "IFCWALL"
+              },
+              "type": "entity"
+            }
+          ]
+        },
+        "id": "wall-name",
+        "ifcVersions": [
+          "IFC4"
+        ],
+        "name": "Wall Name exists",
+        "requirements": [
+          {
+            "facet": {
+              "name": {
+                "type": "simpleValue",
+                "value": "Name"
+              },
+              "type": "attribute"
+            },
+            "id": "name",
+            "optionality": "required"
+          }
+        ]
+      }
+    ]
+  },
+  "informationRules": {
+    "name": "Wall Name uniqueness source",
+    "rules": [
+      {
+        "applicability": {
+          "authoredAs": "chips",
+          "groups": [
+            {
+              "combinator": "AND",
+              "rules": [
+                {
+                  "kind": "ifcType",
+                  "op": "in",
+                  "values": [
+                    "IfcWall"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "id": "wall-names",
+        "name": "Wall Names are unique",
+        "requirement": {
+          "kind": "unique",
+          "subject": {
+            "kind": "attribute",
+            "name": "Name"
+          }
+        }
+      }
+    ],
+    "version": 1
+  },
+  "topic": {
+    "guid": "title-demo-topic",
+    "title": "Original coordination topic",
+    "description": "Authored annotation about wall coordination.",
+    "viewpoints": [],
+    "comments": []
+  },
+  "manualChecklist": {
+    "version": 1,
+    "name": "Original manual checklist",
+    "groups": [
+      {
+        "id": "review",
+        "name": "Authored demonstration review",
+        "items": [
+          {
+            "id": "names",
+            "text": "Review the wall Names"
+          }
+        ]
+      }
+    ]
+  },
+  "manualAnswers": {
+    "names": {
+      "status": "pass",
+      "updatedAt": 1
+    }
+  },
+  "note": "Authored demonstration inputs; manual verdict and BCF annotation are not external authoring-tool ground truth."
+}

@@ -8,6 +8,7 @@
  * (`compose-ids-report.ts`), as HTML — mirrors `TablePreview.tsx`'s split
  * between "nothing to print" and rows.
  */
+import { blockTitle } from '@/lib/document/block-title';
 import { passRateBand } from '@ifc-lite/ids';
 import { reportScopeText } from '@/lib/document/report-provenance';
 import { useTranslation } from '@/i18n';
@@ -126,9 +127,9 @@ export function IdsReportPreview({ block }: IdsReportPreviewProps) {
   const { checked, passed, failed, passRate, warnings } = block.summary;
   // Long keeps the classic structure but never cuts text (#6470); a document saved before variants existed keeps its truncated rows.
   const cut = block.variant === 'long' ? 'break-words' : 'truncate';
-  const heading = reportBlockSourceKind(block) === 'rules'
+  const heading = blockTitle(block, reportBlockSourceKind(block) === 'rules'
     ? t('document.preview.rulesReportHeading', { name: block.sourceName })
-    : t('document.preview.idsReportHeading', { name: block.sourceName });
+    : t('document.preview.idsReportHeading', { name: block.sourceName }));
 
   return (
     <div data-block-ids-report data-source-kind={reportBlockSourceKind(block)}>

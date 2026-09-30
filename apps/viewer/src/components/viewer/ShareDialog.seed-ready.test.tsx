@@ -74,7 +74,7 @@ function copyButton(): HTMLButtonElement {
   return el;
 }
 function statusText(): string {
-  return Array.from(document.querySelectorAll('[role="status"]'))
+  return Array.from(document.querySelectorAll('[role="status"], output'))
     .map((el) => el.textContent ?? '')
     .join(' ');
 }

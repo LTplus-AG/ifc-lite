@@ -1,0 +1,210 @@
+[
+  {
+    "id": "validation-report-82270fe3-a75c-45d2-b7b9-2f4549e86941",
+    "name": "Building Architecture IDS",
+    "snapshot": {
+      "checks": [
+        {
+          "checked": 2,
+          "failed": 0,
+          "id": "spec-0",
+          "passRate": 100,
+          "passed": 2,
+          "rules": [
+            {
+              "checked": 2,
+              "failed": 0,
+              "id": "req-0",
+              "longDescription": "Attribute \"\"Name\"\" must exist",
+              "name": "Name",
+              "passRate": 100,
+              "passed": 2,
+              "shortDescription": "Attribute \"\"Name\"\" must exist"
+            }
+          ],
+          "shortDescription": "Spaces are named"
+        },
+        {
+          "checked": 4,
+          "failed": 1,
+          "id": "spec-1",
+          "passRate": 75,
+          "passed": 3,
+          "rules": [
+            {
+              "checked": 4,
+              "failed": 1,
+              "id": "req-0",
+              "longDescription": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\"",
+              "name": "IsExternal",
+              "passRate": 75,
+              "passed": 3,
+              "shortDescription": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\""
+            }
+          ],
+          "shortDescription": "Walls are external"
+        },
+        {
+          "checked": 5,
+          "failed": 2,
+          "id": "spec-2",
+          "passRate": 60,
+          "passed": 3,
+          "rules": [
+            {
+              "checked": 5,
+              "failed": 2,
+              "id": "req-0",
+              "longDescription": "Attribute \"\"ObjectType\"\" must exist",
+              "name": "ObjectType",
+              "passRate": 60,
+              "passed": 3,
+              "shortDescription": "Attribute \"\"ObjectType\"\" must exist"
+            }
+          ],
+          "shortDescription": "Building element proxies declare an ObjectType"
+        }
+      ],
+      "generatedAt": "2026-09-30T18:36:41.991Z",
+      "id": "validation-report-82270fe3-a75c-45d2-b7b9-2f4549e86941",
+      "kind": "ids-report",
+      "reportModels": [
+        {
+          "fingerprint": "building-architecture.ifc:f778982157aa24e",
+          "name": "building-architecture.ifc"
+        }
+      ],
+      "savedReportId": "validation-report-82270fe3-a75c-45d2-b7b9-2f4549e86941",
+      "sourceKind": "ids",
+      "sourceName": "Building Architecture IDS",
+      "summary": {
+        "checked": 11,
+        "failed": 3,
+        "passRate": 72,
+        "passed": 8
+      }
+    }
+  },
+  {
+    "id": "validation-report-f91a6cf4-1aaf-45a5-8517-0ac1608ec0b3",
+    "name": "Building Architecture IDS",
+    "snapshot": {
+      "checks": [
+        {
+          "checked": 2,
+          "failed": 0,
+          "id": "spec-0",
+          "passRate": 100,
+          "passed": 2,
+          "rules": [
+            {
+              "checked": 2,
+              "failed": 0,
+              "id": "req-0",
+              "longDescription": "Attribute \"\"Name\"\" must exist",
+              "name": "Name",
+              "passRate": 100,
+              "passed": 2,
+              "shortDescription": "Attribute \"\"Name\"\" must exist"
+            }
+          ],
+          "shortDescription": "Spaces are named"
+        },
+        {
+          "checked": 4,
+          "failed": 1,
+          "id": "spec-1",
+          "passRate": 75,
+          "passed": 3,
+          "rules": [
+            {
+              "checked": 4,
+              "failed": 1,
+              "id": "req-0",
+              "longDescription": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\"",
+              "name": "IsExternal",
+              "passRate": 75,
+              "passed": 3,
+              "shortDescription": "Property \"\"Pset_WallCommon\".\"IsExternal\"\" must equal \"true\""
+            }
+          ],
+          "shortDescription": "Walls are external"
+        },
+        {
+          "checked": 5,
+          "failed": 2,
+          "id": "spec-2",
+          "passRate": 60,
+          "passed": 3,
+          "rules": [
+            {
+              "checked": 5,
+              "failed": 2,
+              "id": "req-0",
+              "longDescription": "Attribute \"\"ObjectType\"\" must exist",
+              "name": "ObjectType",
+              "passRate": 60,
+              "passed": 3,
+              "shortDescription": "Attribute \"\"ObjectType\"\" must exist"
+            }
+          ],
+          "shortDescription": "Building element proxies declare an ObjectType"
+        }
+      ],
+      "generatedAt": "2026-09-30T18:41:44.201Z",
+      "id": "validation-report-f91a6cf4-1aaf-45a5-8517-0ac1608ec0b3",
+      "kind": "ids-report",
+      "reportModels": [
+        {
+          "fingerprint": "building-architecture.ifc:f778982157aa24e",
+          "name": "building-architecture.ifc"
+        }
+      ],
+      "savedReportId": "validation-report-f91a6cf4-1aaf-45a5-8517-0ac1608ec0b3",
+      "sourceKind": "ids",
+      "sourceName": "Building Architecture IDS",
+      "summary": {
+        "checked": 11,
+        "failed": 3,
+        "passRate": 72,
+        "passed": 8
+      }
+    }
+  },
+  {
+    "id": "validation-report-ac6c3e43-7889-4bc4-90ac-135359e65e29",
+    "name": "Wall name uniqueness",
+    "snapshot": {
+      "checks": [
+        {
+          "checked": 4,
+          "failed": 0,
+          "id": "wall-names",
+          "passRate": 100,
+          "passed": 4,
+          "rules": [],
+          "shortDescription": "Wall names are unique"
+        }
+      ],
+      "generatedAt": "2026-09-30T18:47:03.778Z",
+      "id": "validation-report-ac6c3e43-7889-4bc4-90ac-135359e65e29",
+      "kind": "ids-report",
+      "reportModels": [
+        {
+          "fingerprint": "building-architecture.ifc:f778982157aa24e",
+          "name": "building-architecture.ifc"
+        }
+      ],
+      "savedReportId": "validation-report-ac6c3e43-7889-4bc4-90ac-135359e65e29",
+      "sourceKind": "rules",
+      "sourceName": "Wall name uniqueness",
+      "summary": {
+        "checked": 4,
+        "failed": 0,
+        "passRate": 100,
+        "passed": 4,
+        "warnings": 0
+      }
+    }
+  }
+]

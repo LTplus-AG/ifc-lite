@@ -371,7 +371,7 @@ export function useClash() {
         federation,
         meshIdOffset: model.idOffset ?? 0,
       });
-      elements.push(...built.elements);
+      for (const element of built.elements) elements.push(element); // #6575: avoid JS argument limits.
       for (const key of built.exclusions) exclusions.add(key);
       // Only models that actually CONTRIBUTED elements — the condition the
       // module doc's correctness argument is stated on, so it is checked here

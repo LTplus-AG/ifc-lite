@@ -16,12 +16,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { pathForGuid, registerEntityPath, registerStoreSlot } from '@/lib/collab/entity-paths.js';
 import { installScriptedMesher, settleRemesh } from '@/test/scripted-mesher';
 import { createStoreAdapter } from './store-adapter.js';
+import { readWallJoinRels, readWallJoinTarget } from '@ifc-lite/create';
 
 const SAMPLE = new URL('../../../public/samples/hello-wall.ifc', import.meta.url);
 const WALL = 1222;
@@ -146,5 +147,41 @@ describe('#6232 bim.store hosted openings, doors and windows', () => {
       /bim\.store\.addHostedDoor: .*openings are supported in IfcWall and IfcSlab hosts/);
     assert.equal(useViewerStore.getState().mutationViews.get(MODEL)!.getNewEntities().length, 0);
     assert.equal(useViewerStore.getState().canUndo(MODEL), false);
+  });
+
+  it('#6232 joins through the SDK core, re-meshes both walls and restores forgotten profiles in one undo', async () => {
+    const dataStore = await seed();
+    const adapter = createStoreAdapter(useViewerStore);
+    const a = adapter.addWall(MODEL, 42, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: 0.2, Height: 3 }).expressId;
+    const b = adapter.addWall(MODEL, 42, { Start: [4, 5, 0], End: [4, 8, 0], Thickness: 0.2, Height: 3 }).expressId;
+    const view = useViewerStore.getState().mutationViews.get(MODEL)!;
+    const before = readWallJoinTarget(dataStore, view, a, 1)!;
+    adapter.joinWalls(MODEL, a, b, { Name: 'SDK corner' });
+    assert.equal(readWallJoinRels(dataStore, view).length, 1);
+    assert.equal(view.getNewEntity(before.profileId), null, 'the join forgot its earlier profile');
+    await settleRemesh();
+    assert.ok(mesher.requests.some(r => [...r.targets].includes(a) && [...r.targets].includes(b)), 'both walls are re-meshed');
+    useViewerStore.getState().undo(MODEL);
+    assert.equal(readWallJoinRels(dataStore, view).length, 0);
+    assert.equal(readWallJoinTarget(dataStore, view, a, 1)?.profileId, before.profileId);
+    assert.ok(view.getNewEntity(before.profileId), 'one undo restored the earlier profile');
+    assert.ok(view.getNewEntity(a) && view.getNewEntity(b), 'earlier wall creation is preserved');
+  });
+
+  it('#6232 refuses near-face cuts and unknown opening references through the shared join guard', async () => {
+    const dataStore = await seed(), adapter = createStoreAdapter(useViewerStore);
+    const a = adapter.addWall(MODEL, 42, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: 0.2, Height: 3 }).expressId;
+    const b = adapter.addWall(MODEL, 42, { Start: [4, 5, 0], End: [5, 6, 0], Thickness: 0.4, Height: 3 }).expressId;
+    adapter.addHostedWindow(MODEL, a, { Offset: 3.9, Sill: 1, Width: 0.1, Height: 1 });
+    const view = useViewerStore.getState().mutationViews.get(MODEL)!;
+    const before = view.getMutations(), undo = useViewerStore.getState().undoStacks.get(MODEL);
+    assert.throws(() => adapter.joinWalls(MODEL, a, b, { priority: 'b' }), /would not fit between the joined end faces/);
+    assert.deepEqual(view.getMutations(), before);
+    assert.deepEqual(useViewerStore.getState().undoStacks.get(MODEL), undo);
+    new StoreEditor(dataStore, view).addEntity('IfcRelVoidsElement', ['broken', null, null, null, `#${a}`, '#999999']);
+    const broken = view.getMutations();
+    assert.throws(() => adapter.joinWalls(MODEL, a, b), /unreadable opening geometry/);
+    assert.deepEqual(view.getMutations(), broken);
+    assert.equal(readWallJoinRels(dataStore, view).length, 0);
   });
 });

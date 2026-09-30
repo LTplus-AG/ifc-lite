@@ -24,7 +24,8 @@ import {
   type IDSFocusVisibilityOwnership,
 } from '../../lib/ids/visibility-ownership.js';
 import { endIdsColorPresentation, type IdsColorPresentation } from '../../lib/ids/color-ownership.js';
-import { buildEntityIdSets } from './idsSlice.entity-sets.js';
+import type { ValidationReportSnapshot } from '@/lib/validation/reports/history';
+import { createValidationReportActions, type CurrentValidationReport } from './idsSlice.validation-report.js';
 
 // ============================================================================
 // Types
@@ -88,6 +89,8 @@ export interface IDSSliceState {
   idsAuditing: boolean;
   /** Validation report (#5138: generalised over its source; today always `source.kind === 'ids'`). */
   idsValidationReport: ValidationReport | null;
+  /** Unsaved completion-time evidence for the current report. */
+  currentValidationReport: CurrentValidationReport | null;
   /** `idsValidationReport.source.kind`, mirrored so consumers can gate without null-checking the report. */
   validationSource: 'ids' | 'rules' | null;
   /** Currently active specification (for filtering results) */
@@ -149,7 +152,8 @@ export interface IDSSlice extends IDSSliceState {
   setIdsAuditing: (auditing: boolean) => void;
 
   // Validation actions
-  setIdsValidationReport: (report: ValidationReport | null) => void;
+  setIdsValidationReport: (report: ValidationReport | null, snapshot?: ValidationReportSnapshot) => void;
+  markValidationReportSaved: (report: ValidationReport, id: string) => void;
   clearIdsValidationReport: () => void;
   setIdsProgress: (progress: ValidationProgress | null) => void;
 
@@ -233,7 +237,7 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
   idsDocument: null,
   idsAuditReport: null,
   idsAuditing: false,
-  idsValidationReport: null,
+  idsValidationReport: null, currentValidationReport: null,
   validationSource: null,
   idsActiveSpecificationId: null,
   idsActiveEntityId: null,
@@ -273,7 +277,7 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
       // clears it — otherwise the panel keeps showing an isolate mode as
       // active for a report that no longer exists.
       idsAuditReport: null,
-      idsValidationReport: null,
+      idsValidationReport: null, currentValidationReport: null,
       validationSource: null,
       idsActiveSpecificationId: null,
       idsActiveEntityId: null,
@@ -301,7 +305,7 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
     set({
       idsDocument: null,
       idsAuditReport: null,
-      idsValidationReport: null,
+      idsValidationReport: null, currentValidationReport: null,
       validationSource: null,
       idsActiveSpecificationId: null,
       idsActiveEntityId: null,
@@ -321,48 +325,7 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
   setIdsAuditing: (idsAuditing) => set({ idsAuditing }),
 
   // Validation actions
-  setIdsValidationReport: (report) => {
-    const { failed, passed } = buildEntityIdSets(report);
-    // A landing report replaces the one the focused row belonged to — its
-    // express ids may denote different entities now. Release before the
-    // record is nulled below.
-    endIdsRowFocus(get);
-    set({
-      idsValidationReport: report,
-      validationSource: report ? report.source.kind : null,
-      idsFailedEntityIds: failed,
-      idsPassedEntityIds: passed,
-      idsColorsShown: true,
-      idsIsolateMode: null,
-      idsFocusVisibilityOwned: null,
-      idsError: null,
-      idsProgress: null,
-    });
-  },
-
-  clearIdsValidationReport: () => {
-    // Same reasoning as `clearIdsDocument` above: `useIDS.clearValidation`
-    // bumps the epoch first, which makes a still-in-flight `runValidation()`
-    // skip its own `idsLoading`/`idsProgress` reset on purpose — this is the
-    // only remaining writer for those fields once that happens (PR #2837
-    // review).
-    // And, as in `clearIdsDocument`, the row focus is released BEFORE its
-    // record is nulled — otherwise the isolation outlives the report.
-    endIdsRowFocus(get);
-    set({
-      idsValidationReport: null,
-      validationSource: null,
-      idsActiveSpecificationId: null,
-      idsActiveEntityId: null,
-      idsIsolationScope: 'ids',
-      idsIsolateMode: null,
-      idsFocusVisibilityOwned: null,
-      idsFailedEntityIds: new Set(),
-      idsPassedEntityIds: new Set(),
-      idsLoading: false,
-      idsProgress: null,
-    });
-  },
+  ...createValidationReportActions(set, get, () => endIdsRowFocus(get)),
 
   setIdsProgress: (idsProgress) => set({ idsProgress }),
 

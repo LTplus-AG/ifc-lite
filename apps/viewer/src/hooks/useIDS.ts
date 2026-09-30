@@ -255,8 +255,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       // awaited the worker/main-thread validation above (#2802).
       if (!stillWanted(myEpoch)) return null;
       const snapshot = validationReportSnapshot(validationReport, models, 'run');
-      setIdsValidationReport(stampAnalysisReport(validationReport, stamp));
-      useViewerStore.getState().saveValidationReport(snapshot);
+      setIdsValidationReport(stampAnalysisReport(validationReport, stamp), snapshot);
 
       posthog.capture('ids_validation_completed', {
         total_specifications: validationReport.summary.totalSpecifications,

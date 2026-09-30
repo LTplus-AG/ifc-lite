@@ -587,7 +587,7 @@ export function useIfcLoader() {
           const { preAlignment, federationAlignmentStatus } = spatialFinalize;
 
           // Federation registry: transform expressIds to globally-unique ids.
-          const maxExpressId = getMaxExpressId(dataStore, geometryResult.meshes);
+          const maxExpressId = getMaxExpressId(dataStore, geometryResult.meshes, geometryResult.pointClouds);
           const idOffset = registerModelOffset(modelId, maxExpressId);
           if (idOffset > 0) {
             // Every express id the mesh carries — the element, its texture ref
@@ -681,7 +681,7 @@ export function useIfcLoader() {
         let idOffset = 0;
         let maxExpressId = 0;
         if (geometryResult) {
-          maxExpressId = getMaxExpressId(dataStore, geometryResult.meshes);
+          maxExpressId = getMaxExpressId(dataStore, geometryResult.meshes, geometryResult.pointClouds);
           idOffset = registerModelOffset(modelId, maxExpressId);
         }
 

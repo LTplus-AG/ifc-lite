@@ -224,8 +224,7 @@ export function useInformationValidation(): UseInformationValidationResult {
       // `useIDS.runValidation`'s `stillWantedValidation` guard (#2802).
       if (!stillWanted(myEpoch)) return;
       const snapshot = validationReportSnapshot(report, state.models, 'run');
-      setIdsValidationReport(report);
-      useViewerStore.getState().saveValidationReport(snapshot);
+      setIdsValidationReport(report, snapshot);
       setEditing(false);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;

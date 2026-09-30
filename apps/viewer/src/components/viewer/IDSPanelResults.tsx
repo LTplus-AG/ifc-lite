@@ -28,6 +28,7 @@ import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { IDSAuditSummary } from './IDSAuditSummary';
 import { ReportExportButton } from './IDSReportExportButton';
+import { SaveValidationReportButton } from './validation/SaveValidationReportButton';
 import { SpecificationCard } from './IDSSpecificationCard';
 import { PassRateBar, StatusIcon } from './IDSPanelStatus';
 import { cn } from '@/lib/utils';
@@ -250,6 +251,7 @@ export function IDSPanelResults({
 
         <Separator orientation="vertical" className="h-4 mx-1" />
 
+        <SaveValidationReportButton report={report} disabled={validating} />
         <ReportExportButton
           onExportJSON={exportReportJSON}
           onExportHTML={exportReportHTML}

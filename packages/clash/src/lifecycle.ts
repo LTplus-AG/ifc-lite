@@ -119,6 +119,11 @@ function partition(clashes: Clash[], keep: (clash: Clash) => boolean): [Clash[],
   return [yes, no];
 }
 
+/** Append arbitrary-size buckets without turning each clash into a call argument. */
+function appendClashes(target: Clash[], source: Clash[], start = 0, end = source.length): void {
+  for (let i = start; i < end; i += 1) target.push(source[i]);
+}
+
 /**
  * Pair one review key's previous-run occurrences against its next-run ones.
  *
@@ -176,13 +181,13 @@ function pairGroup(previous: Clash[], next: Clash[], models: RunModels, out: Buc
     unmatchedNext,
     (clash) => !bothModelsIn(clash, models.previous),
   );
-  out.resolved.push(...stillLivePrev);
-  out.added.push(...stillLiveNext);
+  appendClashes(out.resolved, stillLivePrev);
+  appendClashes(out.added, stillLiveNext);
 
   const paired = Math.min(reloadedPrev.length, reloadedNext.length);
-  out.persistent.push(...reloadedNext.slice(0, paired));
-  out.added.push(...reloadedNext.slice(paired));
-  out.resolved.push(...reloadedPrev.slice(paired));
+  appendClashes(out.persistent, reloadedNext, 0, paired);
+  appendClashes(out.added, reloadedNext, paired);
+  appendClashes(out.resolved, reloadedPrev, paired);
 }
 
 /**
@@ -205,7 +210,7 @@ export function compareClashRuns(previous: ClashResult, next: ClashResult): Clas
     pairGroup(prevGroups.get(key) ?? [], nextGroup, models, buckets);
   }
   for (const [key, prevGroup] of prevGroups) {
-    if (!nextGroups.has(key)) buckets.resolved.push(...prevGroup);
+    if (!nextGroups.has(key)) appendClashes(buckets.resolved, prevGroup);
   }
 
   const { added, persistent, resolved } = buckets;

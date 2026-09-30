@@ -25,7 +25,7 @@ const unsupported = (method: string) => (): never => {
   throw new Error(`${method} not supported in MCP v0.1; use entity_create`);
 };
 
-type RelationshipMethods = Omit<ModellingStoreBackendMethods, 'addOpening' | 'addHostedDoor' | 'addHostedWindow'>;
+type RelationshipMethods = Omit<ModellingStoreBackendMethods, 'addOpening' | 'addHostedDoor' | 'addHostedWindow' | 'joinWalls'>;
 
 export function unsupportedStoreAuthoring(): CostStoreBackendMethods & StructuralStoreBackendMethods & RelationshipMethods {
   return {

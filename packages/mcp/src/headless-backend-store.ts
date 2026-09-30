@@ -7,7 +7,7 @@ import type { StoreBackendMethods } from '@ifc-lite/sdk';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { unsupportedStoreAuthoring } from './headless-backend-store-stubs.js';
-import { createHostedStoreBackend } from './headless-backend-modelling.js';
+import { createRecordedModellingBackend } from './headless-backend-modelling.js';
 
 export function createHeadlessStoreAdapter(
   dataStore: IfcDataStore, modelId: string, get: () => StoreEditor, assertKnownModelId: (id: string) => void,
@@ -39,7 +39,7 @@ export function createHeadlessStoreAdapter(
     addPlate: () => { throw new Error('addPlate not supported in MCP v0.1; use entity_create'); },
     addMember: () => { throw new Error('addMember not supported in MCP v0.1; use entity_create'); },
     ...unsupportedStoreAuthoring(),
-    ...createHostedStoreBackend(requestedModelId => {
+    ...createRecordedModellingBackend(requestedModelId => {
       if (requestedModelId !== undefined) assertKnownModelId(requestedModelId);
       const editor = get();
       const mutationView = editor.getMutationView();

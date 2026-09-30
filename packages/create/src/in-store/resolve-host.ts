@@ -15,13 +15,11 @@
  */
 
 import { firstProjAxis } from '@ifc-lite/data';
+import { axis2d, axis3d, applyFrame, pointOf, refId, num, unit, vec3, type Vec3, type Frame3 } from './host-geometry-frame.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { HostAnchor, HostBounds, HostKind } from './anchor.js';
 import { AnchorEntityReader, resolveSpatialAnchor } from './resolve-anchor.js';
-
-type Vec3 = [number, number, number];
-type Frame3 = { o: Vec3; x: Vec3; y: Vec3; z: Vec3 };
 
 const HOST_KINDS: ReadonlyMap<string, HostKind> = new Map([
   ['IFCWALL', 'wall'],
@@ -80,8 +78,9 @@ export function placedBodyExtent(
   const local = shapeId === null ? null : bodyBounds(reader, shapeId);
   const placementId = refId(named(product, 'ObjectPlacement', 5));
   const placement = placementId === null ? null : reader.entity(placementId);
-  if (!local || !placement) return null;
+  if (!local || placement?.type.toUpperCase() !== 'IFCLOCALPLACEMENT' || refId(placement.attributes[1]) === null) return null;
   const frame = axis3d(reader, placement.attributes[1]);
+  if (!frame) return null;
   const min: Vec3 = [Infinity, Infinity, Infinity];
   const max: Vec3 = [-Infinity, -Infinity, -Infinity];
   for (const x of [local.min[0], local.max[0]]) for (const y of [local.min[1], local.max[1]]) for (const z of [local.min[2], local.max[2]]) {
@@ -94,17 +93,6 @@ export function placedBodyExtent(
 function named(record: { names: string[]; attributes: unknown[] }, name: string, fallback: number): unknown {
   const index = record.names.indexOf(name);
   return record.attributes[index >= 0 ? index : fallback];
-}
-
-/** An entity reference as the source extractor (`42`) or the overlay (`'#42'`) spells it. */
-function refId(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
-  if (typeof value === 'string' && /^#[1-9][0-9]*$/.test(value)) return Number(value.slice(1));
-  return null;
-}
-
-function num(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function containingStorey(reader: AnchorEntityReader, hostId: number): number | null {
@@ -129,11 +117,11 @@ function bodyBounds(reader: AnchorEntityReader, productShapeId: number): HostBou
   for (const repRef of reps) {
     const repId = refId(repRef);
     const rep = repId === null ? null : reader.entity(repId);
-    if (!rep) continue;
+    if (!rep) return null;
     const identifier = rep.attributes[1];
     if (typeof identifier === 'string' && identifier.toLowerCase() !== 'body') continue;
     const items = rep.attributes[3];
-    if (!Array.isArray(items)) continue;
+    if (!Array.isArray(items) || items.length === 0) return null;
     for (const item of items) {
       const itemId = refId(item);
       if (itemId === null || !collectItemPoints(reader, itemId, points)) return null;
@@ -198,12 +186,16 @@ function collectItemPoints(reader: AnchorEntityReader, itemId: number, out: Vec3
         const list = refId(item.attributes[0]);
         const coords = list === null ? null : reader.entity(list)?.attributes[0];
         if (!Array.isArray(coords) || coords.length > 100_000) return false;
-        for (const c of coords) { const p = vec3(c); if (p) points.push(p); }
+        for (const c of coords) { const p = vec3(c); if (!p) return false; points.push(p); }
       }
       leaves.set(task.id, points);
     }
     if (points.length === 0 || out.length + points.length > 100_000) return false;
-    for (const p of points) out.push(applyFrame(task.frame, p));
+    for (const p of points) {
+      const placed = applyFrame(task.frame, p);
+      if (!placed.every(Number.isFinite)) return false;
+      out.push(placed);
+    }
   }
   return true;
 }
@@ -230,7 +222,7 @@ function mappedItemFrame(reader: AnchorEntityReader, attrs: unknown[]): { items:
   // off both. Axis2's sense permits mirroring; normalizing three unrelated
   // supplied vectors would produce a skew instead of the specified operator.
   // https://standards.buildingsmart.org/IFC/RELEASE/IFC4_3/HTML/lexical/IfcBaseAxis.htm
-  const direction = (value: unknown, fallback: Vec3) => value === null || value === undefined ? fallback : pointOf(reader, value);
+  const direction = (value: unknown, fallback: Vec3) => value === null || value === undefined ? fallback : pointOf(reader, value, 'IFCDIRECTION');
   const zAxis = unit(direction(a[4], [0, 0, 1]) ?? [0, 0, 0]);
   if (!zAxis) return null;
   const project = (v: Vec3, axes: Vec3[]) => {
@@ -251,6 +243,7 @@ function mappedItemFrame(reader: AnchorEntityReader, attrs: unknown[]): { items:
   if (!o || scales.some(v => v === null || v <= 0)) return null;
   const [x, y, z] = [xAxis, yAxis, zAxis].map((v, i) => v.map(n => n * scales[i]!) as Vec3);
   const source = axis3d(reader, originId);
+  if (!source) return null;
   const inverse: Frame3 = {
     o: [source.x, source.y, source.z].map(v => -(v[0] * source.o[0] + v[1] * source.o[1] + v[2] * source.o[2])) as Vec3,
     x: [source.x[0], source.y[0], source.z[0]], y: [source.x[1], source.y[1], source.z[1]], z: [source.x[2], source.y[2], source.z[2]],
@@ -265,13 +258,13 @@ function extrudedPoints(reader: AnchorEntityReader, attrs: unknown[], out: Vec3[
   const profileId = refId(attrs[0]);
   const outline = profileId === null ? null : profileOutline(reader, profileId);
   const depth = num(attrs[3]);
-  const dirId = refId(attrs[2]);
-  const dir = dirId === null ? null : vec3(reader.entity(dirId)?.attributes[0]);
-  if (!outline || depth === null || !dir) return;
+  const dir = pointOf(reader, attrs[2], 'IFCDIRECTION');
+  if (!outline || depth === null || depth <= 0 || !dir) return;
   const len = Math.hypot(dir[0], dir[1], dir[2]);
   if (len === 0) return;
   const d: Vec3 = [dir[0] / len * depth, dir[1] / len * depth, dir[2] / len * depth];
   const frame = axis3d(reader, attrs[1]);
+  if (!frame) return;
   for (const [px, py] of outline) {
     for (const t of [0, 1]) {
       const local: Vec3 = [px + d[0] * t, py + d[1] * t, d[2] * t];
@@ -288,8 +281,9 @@ function profileOutline(reader: AnchorEntityReader, profileId: number): Array<[n
   if (type === 'IFCRECTANGLEPROFILEDEF' || type === 'IFCRECTANGLEHOLLOWPROFILEDEF' || type === 'IFCROUNDEDRECTANGLEPROFILEDEF') {
     const xd = num(profile.attributes[3]);
     const yd = num(profile.attributes[4]);
-    if (xd === null || yd === null) return null;
+    if (xd === null || yd === null || xd <= 0 || yd <= 0) return null;
     const frame = axis2d(reader, profile.attributes[2]);
+    if (!frame) return null;
     return ([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([sx, sy]) => {
       const x = sx * xd / 2;
       const y = sy * yd / 2;
@@ -303,64 +297,16 @@ function profileOutline(reader: AnchorEntityReader, profileId: number): Array<[n
     const curveType = curve.type.toUpperCase();
     let raw: unknown[] = [];
     if (curveType === 'IFCPOLYLINE' && Array.isArray(curve.attributes[0])) {
-      raw = curve.attributes[0].map((p) => { const id = refId(p); return id === null ? null : reader.entity(id)?.attributes[0]; });
+      raw = curve.attributes[0].map(p => pointOf(reader, p));
     } else if (curveType === 'IFCINDEXEDPOLYCURVE') {
       const listId = refId(curve.attributes[0]);
       const list = listId === null ? null : reader.entity(listId)?.attributes[0];
       if (Array.isArray(list)) raw = list;
     }
-    const pts = raw.map(vec3).filter((p): p is Vec3 => p !== null).map((p): [number, number] => [p[0], p[1]]);
+    const points = raw.map(vec3);
+    if (points.some(p => p === null)) return null;
+    const pts = points.map((p): [number, number] => [p![0], p![1]]);
     return pts.length >= 3 ? pts : null;
   }
   return null;
-}
-
-function vec3(value: unknown): Vec3 | null {
-  if (!Array.isArray(value) || value.length < 2) return null;
-  const x = num(value[0]);
-  const y = num(value[1]);
-  const z = value.length >= 3 ? num(value[2]) : 0;
-  return x === null || y === null || z === null ? null : [x, y, z];
-}
-
-function pointOf(reader: AnchorEntityReader, ref: unknown): Vec3 | null {
-  const id = refId(ref);
-  return id === null ? null : vec3(reader.entity(id)?.attributes[0]);
-}
-
-function unit(v: Vec3): Vec3 | null {
-  const len = Math.hypot(v[0], v[1], v[2]);
-  return len > 1e-12 ? [v[0] / len, v[1] / len, v[2] / len] : null;
-}
-
-/** IfcAxis2Placement2D: Location(0), RefDirection(1). */
-function axis2d(reader: AnchorEntityReader, ref: unknown): { o: [number, number]; x: [number, number] } {
-  const id = refId(ref);
-  const placement = id === null ? null : reader.entity(id);
-  const o = placement ? pointOf(reader, placement.attributes[0]) : null;
-  const dir = placement ? pointOf(reader, placement.attributes[1]) : null;
-  const x = dir ? unit([dir[0], dir[1], 0]) : null;
-  return { o: o ? [o[0], o[1]] : [0, 0], x: x ? [x[0], x[1]] : [1, 0] };
-}
-
-/** IfcAxis2Placement3D: Location(0), Axis(1), RefDirection(2), orthonormalised. */
-function axis3d(reader: AnchorEntityReader, ref: unknown): Frame3 {
-  const id = refId(ref);
-  const placement = id === null ? null : reader.entity(id);
-  const o = (placement && pointOf(reader, placement.attributes[0])) ?? [0, 0, 0];
-  const z = (placement && unit(pointOf(reader, placement.attributes[1]) ?? [0, 0, 1])) ?? [0, 0, 1];
-  // An absent RefDirection gets the renderer's fill (#5922), not a local guess.
-  const r = (placement && pointOf(reader, placement.attributes[2])) ?? firstProjAxis(z);
-  const dot = r[0] * z[0] + r[1] * z[1] + r[2] * z[2];
-  const x = unit([r[0] - dot * z[0], r[1] - dot * z[1], r[2] - dot * z[2]]) ?? [1, 0, 0];
-  const y: Vec3 = [z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0]];
-  return { o, x, y, z };
-}
-
-function applyFrame(f: Frame3, p: Vec3): Vec3 {
-  return [
-    f.o[0] + f.x[0] * p[0] + f.y[0] * p[1] + f.z[0] * p[2],
-    f.o[1] + f.x[1] * p[0] + f.y[1] * p[1] + f.z[1] * p[2],
-    f.o[2] + f.x[2] * p[0] + f.y[2] * p[1] + f.z[2] * p[2],
-  ];
 }

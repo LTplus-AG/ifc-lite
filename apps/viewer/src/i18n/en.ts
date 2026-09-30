@@ -10,6 +10,7 @@ import { annotationsEn } from './catalogues/annotations.en';
 import { anonymizedExportEn } from './catalogues/anonymized-export.en';
 import { chartsEn } from './catalogues/charts.en';
 import { changesPanelEn } from './catalogues/changes-panel.en';
+import { changeSetsEn } from './catalogues/change-sets.en';
 import { clashPanelEn } from './catalogues/clash-panel.en';
 import { appearancePanelEn } from './catalogues/appearance-panel.en';
 import { appearancePickersEn } from './catalogues/appearance-pickers.en';
@@ -127,6 +128,7 @@ export const en = {
   ...filterOperatorsEn,
   ...chartsEn,
   ...changesPanelEn,
+  ...changeSetsEn,
   ...listsEn,
   ...clashGroupsEn,
   ...scheduleEn,

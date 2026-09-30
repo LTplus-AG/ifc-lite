@@ -22,7 +22,7 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import { shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label';
 import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
 import { sessionWorkplaneBlock } from '@/lib/commands/modeling/workspace-storeys';
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { GitBranch, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { LEAVE_TOOL, RAIL_TOOLS, type RailTool } from './rail-tools';
 import { effectiveModelLayout, splitFits, useSplitWidth } from './model-layout';
 
@@ -81,6 +81,7 @@ export function ModelToolRail() {
         })}
       </div>
       <div className="flex w-full shrink-0 flex-col items-center gap-0.5 border-t border-border py-1.5">
+        <ChangeSetsButton />
         <PlanToggle />
         <RailButton
           id={LEAVE_TOOL.id}
@@ -115,17 +116,37 @@ function PlanToggle() {
   );
 }
 
+/** Opens the Change sets panel (#6232 D4); the tooltip names the set new edits land in. */
+function ChangeSetsButton() {
+  const { t } = useTranslation();
+  const open = useViewerStore((s) => s.sidebarActivePanel === 'changeSets');
+  const activeName = useViewerStore((s) => (s.activeChangeSetId ? s.changeSets.get(s.activeChangeSetId)?.name : undefined));
+  return (
+    <RailButton
+      id="change-sets"
+      labelKey="changeSets.rail.label"
+      Icon={GitBranch}
+      active={open}
+      detail={activeName ? t('changeSets.rail.active', { name: activeName }) : t('changeSets.rail.none')}
+      disabledReason={null}
+      onClick={() => useViewerStore.getState().toggleWorkspacePanel('changeSets', 'rail')}
+    />
+  );
+}
+
 interface RailButtonProps {
   id: string;
   labelKey: TranslationKey;
   Icon: ComponentType<{ className?: string }>;
   shortcut?: KeyCommandId;
+  /** A second tooltip line that states the button's current state. */
+  detail?: string;
   active: boolean;
   disabledReason: string | null;
   onClick: () => void;
 }
 
-function RailButton({ id, labelKey, Icon, shortcut, active, disabledReason, onClick }: RailButtonProps) {
+function RailButton({ id, labelKey, Icon, shortcut, detail, active, disabledReason, onClick }: RailButtonProps) {
   const { t } = useTranslation();
   const label = t(labelKey);
   const disabled = disabledReason !== null;
@@ -154,6 +175,7 @@ function RailButton({ id, labelKey, Icon, shortcut, active, disabledReason, onCl
     <>
       {label}
       {shortcut && <span className="ml-1 text-muted-foreground">{t('modelWorkspace.tool.shortcutHint', { key: shortcutLabel(shortcut) })}</span>}
+      {detail && <span className="block text-muted-foreground">{detail}</span>}
       {disabledReason && <span className="block text-muted-foreground">{disabledReason}</span>}
     </>
   );

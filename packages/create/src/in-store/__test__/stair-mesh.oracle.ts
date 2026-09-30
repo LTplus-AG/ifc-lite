@@ -6,7 +6,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const wasm = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
+const wasm = fileURLToPath(new URL('../../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
 export const stairWasmAvailable = existsSync(wasm);
 export interface StairMesh { positions: number[]; indices: number[]; color: number[] }
 

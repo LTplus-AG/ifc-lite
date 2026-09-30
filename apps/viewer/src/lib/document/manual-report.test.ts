@@ -217,7 +217,10 @@ describe('manual checklist document presentation (#6507)', () => {
       const reopened = parseDocumentFile(JSON.stringify(docWith([original])));
       assert.notEqual(reopened.blocks[0].id, original.id, 'document import allocates fresh block identities');
       assert.deepEqual(reopened.blocks[0], { ...original, id: reopened.blocks[0].id });
-      const layout = composeDocument({ name: reopened.name, page: reopened.page, blocks: reopened.blocks, generatedAt: '', measure: estimateTextWidth });
+      const importedBlock = reopened.blocks[0];
+      assert.equal(importedBlock.kind, 'manual-report');
+      if (importedBlock.kind !== 'manual-report') assert.fail('import changed the report kind');
+      const layout = composeDocument({ name: reopened.name, page: reopened.page, blocks: [importedBlock], generatedAt: '', measure: estimateTextWidth });
       const items = layout.pages.flatMap((page) => page.items);
       const text = items.flatMap((item) => item.kind === 'text' ? [item.text] : []).join(' ');
       assert.equal(items.filter((item) => item.kind === 'ring').length, benchmarks ? 3 : 0);

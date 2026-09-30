@@ -171,7 +171,7 @@ describe('saved validation evidence (#6500)', () => {
     useViewerStore.getState().resetViewerState();
     useViewerStore.getState().clearIdsValidationReport();
     const ui = render(<SavedValidationReports />);
-    const picker = ui.querySelector('select[aria-label="Model"]'); assert.ok(picker);
+    const picker = ui.querySelector<HTMLSelectElement>('select[aria-label="Select saved validation report"]'); assert.ok(picker);
     select(picker, restored[0].id);
     assert.match(ui.textContent ?? '', /Architecture IDS/);
     assert.match(ui.textContent ?? '', /Models: tower.ifc/);
@@ -349,7 +349,7 @@ describe('saved validation evidence (#6500)', () => {
       manualAnswers: { 'fp-tower': { i: { status: 'fail', updatedAt: 1 } }, 'fp-structure': { i: { status: 'warning', comment: 'Confirm survey', updatedAt: 1 } } },
     });
     const ui = render(<ManualValidationTab manual={{ checklist, recent: [], error: null, newChecklist: () => {}, save: () => {}, close: () => {}, loadFromRecent: () => {}, openFromFile: async () => ({ ok: true }) }} />);
-    const picker = ui.querySelector('select[aria-label="Model"]'); assert.ok(picker);
+    const picker = ui.querySelector<HTMLSelectElement>('select[aria-label="Model"]'); assert.ok(picker);
     select(picker, 'structure');
     const button = [...ui.querySelectorAll('button')].find((element) => element.textContent === 'Save report'); assert.ok(button);
     click(button);

@@ -52,7 +52,7 @@ afterEach(() => { cleanup(); for (const stop of stopMirroring.splice(0)) stop();
 
 describe('Multiple saved pairs in mounted UI and documentation (#6506)', () => {
   it('shows corrupt-history recovery instead of an indistinguishable empty library', () => {
-    const raw = '{ invalid saved comparison history';
+    const raw = '{"invalid":"saved comparison history must be an array"}';
     localStorage.setItem(SAVED_COMPARISONS_KEY, raw);
     initializeSavedHistory();
     const snapshot = snapshotComparison(comparisonResult('A', 'B'), comparisonModels(), 'Embedded historical report');

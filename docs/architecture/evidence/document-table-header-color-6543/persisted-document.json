@@ -1,0 +1,92 @@
+{
+  "version": 10,
+  "id": "doc-t",
+  "name": "Tables",
+  "page": {
+    "size": "A4",
+    "orientation": "portrait"
+  },
+  "blocks": [
+    {
+      "kind": "table",
+      "id": "t1",
+      "source": {
+        "kind": "list",
+        "list": {
+          "id": "saved-walls",
+          "name": "Products by class",
+          "createdAt": 1,
+          "updatedAt": 1,
+          "entityTypes": [
+            10,
+            12
+          ],
+          "columns": [
+            {
+              "id": "class",
+              "source": "attribute",
+              "propertyName": "Class"
+            },
+            {
+              "id": "name",
+              "source": "attribute",
+              "propertyName": "Name"
+            }
+          ],
+          "sortBy": {
+            "columnId": "name",
+            "direction": "desc"
+          },
+          "grouping": {
+            "columnId": "class",
+            "sumColumnIds": []
+          },
+          "groups": []
+        },
+        "fromListId": "saved-walls"
+      }
+    },
+    {
+      "kind": "table",
+      "id": "t2",
+      "source": {
+        "kind": "list",
+        "list": {
+          "id": "saved-walls",
+          "name": "Products by class",
+          "createdAt": 1,
+          "updatedAt": 1,
+          "entityTypes": [
+            10,
+            12
+          ],
+          "columns": [
+            {
+              "id": "class",
+              "source": "attribute",
+              "propertyName": "Class"
+            },
+            {
+              "id": "name",
+              "source": "attribute",
+              "propertyName": "Name"
+            }
+          ],
+          "sortBy": {
+            "columnId": "name",
+            "direction": "desc"
+          },
+          "grouping": {
+            "columnId": "class",
+            "sumColumnIds": []
+          },
+          "groups": []
+        },
+        "fromListId": "saved-walls"
+      },
+      "groupOrder": "label",
+      "headerBackground": "#ffee88",
+      "headerTextColor": "#6b21a8"
+    }
+  ]
+}

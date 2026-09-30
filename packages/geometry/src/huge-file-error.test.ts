@@ -12,7 +12,8 @@ describe('largeFilePrepassError', () => {
     const e = largeFilePrepassError(new Error('unreachable executed'), 3.9 * GB);
     expect(e).not.toBeNull();
     expect(e!.message).toContain('3.9 GB');
-    expect(e!.message).toMatch(/desktop app/);
+    expect(e!.message).toContain('may exceed available WebAssembly memory');
+    expect(e!.message).toMatch(/native ifc-lite CLI\/server/);
     expect(e!.message).toMatch(/4 ?GB|32-bit|WebAssembly/);
   });
 

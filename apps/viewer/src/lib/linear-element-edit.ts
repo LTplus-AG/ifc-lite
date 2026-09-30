@@ -78,12 +78,10 @@ export interface LinearElementEditChain {
   axisDirection: [number, number, number];
   /** IfcExtrudedAreaSolid id; holds the length on attribute 3 (`Depth`). */
   extrudedSolidId: number;
-  /** IfcRectangleProfileDef id: XDim (attr 3) is the width, YDim (attr 4) the other side. */
+  /** IfcExtrudedAreaSolid.SweptArea: the profile entity. For a rectangle, XDim (attr 3) is the width and YDim (attr 4) the other side; not for a picker section. */
   profileId: number;
   /** Current extrusion length (metres). */
   depth: number;
-  /** IfcExtrudedAreaSolid.SweptArea: the profile entity. */
-  profileId: number;
   /** Profile cross-section width (X dimension, metres); a profiled section's outer width. */
   profileWidth: number;
   /** Profile cross-section height (Y dimension, metres); a profiled section's outer depth. */
@@ -249,7 +247,6 @@ export function resolveLinearElementChain(
     extrudedSolidId: solidId,
     profileId,
     depth: m(depthRaw),
-    profileId,
     profileWidth,
     profileHeight,
     profile: section,

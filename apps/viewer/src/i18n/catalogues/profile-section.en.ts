@@ -41,5 +41,6 @@ export const profileSectionEn = {
   'profileSection.inspector.title': 'Profile',
   'profileSection.inspector.unavailable': 'The profile can be changed on an element built straight from a section',
   'profileSection.inspector.dimsNote': 'A rectangle is sized in Dimensions',
+  'profileSection.inspector.outerSize': 'The outer size follows the section: change it in Profile',
   'profileSection.inspector.edit': 'Change profile',
 } as const satisfies Record<string, TranslationValue>;

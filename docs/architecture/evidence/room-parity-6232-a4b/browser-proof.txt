@@ -1,0 +1,17 @@
+AC20-FZK-Haus, Windows Chrome over CDP (real GPU), 1920x1000, dev server :5447
+console errors: []
+removedFileSpaces 7
+dragChanged 2
+splitRooms 1
+mergeRooms -1
+mergeUndone 0
+autoAllStoreys {'#479': 4, '#35065': 1}
+removedWall 27421
+leakHint True
+auto rooms [24.71, 12.5, 53.83, 12.99] faces 4 leakWalls 0 openEnds 0
+drag rooms [23.29, 13.26, 53.83, 12.99] faces 4 leakWalls 0 openEnds 0
+split rooms [23.29, 13.26, 30.37, 12.99, 23.45] faces 5 leakWalls 0 openEnds 0
+merge rooms [23.29, 27.14, 30.37, 23.45] faces 4 leakWalls 0 openEnds 0
+footprint rooms [107.16] faces 4 leakWalls 0 openEnds 0
+autoAll rooms [24.71, 12.5, 53.83, 12.99, 107.16] faces 4 leakWalls 0 openEnds 0
+leaks rooms [] faces 3 leakWalls 2 openEnds 3

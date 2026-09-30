@@ -142,6 +142,16 @@ export interface ModelingCommand<G = unknown> {
   pointerMove(g: G, s: SnapResult, ctx: CommandContext): G;
   pointerDown(g: G, s: SnapResult, ctx: CommandContext): G | CommandSignal;
   /**
+   * The button's release, where the pointer source reports one (the plan):
+   * e.g. drop a dragged corner. Absent = releases are ignored.
+   */
+  pointerUp?(g: G, s: SnapResult, ctx: CommandContext): G | CommandSignal;
+  /**
+   * The press was lost without a release (`pointercancel`, or the pointer
+   * capture was taken away): drop whatever the press started, writing nothing.
+   */
+  pointerCancel?(g: G, ctx: CommandContext): G;
+  /**
    * The second click of a double-click (`event.detail >= 2`), instead of
    * `pointerDown`: e.g. close a polygon. Absent = a plain `pointerDown`.
    */

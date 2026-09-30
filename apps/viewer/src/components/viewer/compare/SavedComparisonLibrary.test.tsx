@@ -1,0 +1,241 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import '@/test/setup-dom.js';
+import { describe, it, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { act } from 'react';
+import { createStore } from 'zustand/vanilla';
+import { createSavedComparisonsSlice, type SavedComparisonsSlice } from '@/store/slices/savedComparisonsSlice';
+import { DEFAULT_THEME } from '@ifc-lite/charts';
+import { useViewerStore } from '@/store';
+import { comparisonModels, comparisonResult } from '@/test/saved-comparison-fixture';
+import { render, click, type, cleanup } from '@/test/render';
+import { loadSavedComparisons, SAVED_COMPARISONS_KEY } from '@/lib/compare/savedComparisonPersistence';
+import { SavedComparisonLibrary } from './SavedComparisonLibrary';
+import { snapshotComparison } from '@/lib/compare/savedComparisons';
+import type { ReportTableArgs } from '@/lib/export/report/generate-report-pdf';
+import { DocumentPanel } from '../document/DocumentPanel';
+import { ComparisonSourceEditor } from '../document/ComparisonSourceEditor';
+import { TABLE_ROWS_DEFAULT, DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types';
+import { parseDocumentFile } from '@/lib/document/persistence';
+import type { DocumentPdfSeams } from '@/lib/document/generate-document-pdf';
+import { Toaster } from '@/components/ui/toast';
+import { latestToast } from '@/test/toasts';
+import { stampAnalysisReport, captureAnalysisStamp } from '@/hooks/useAnalysisStaleness';
+import { EVENT_FILE_DOWNLOADED } from '@/lib/tours/events.js';
+
+function Library() { const result = useViewerStore((s) => s.compareResult); return <SavedComparisonLibrary result={result} running={false} />; }
+const select = (el: HTMLSelectElement, value: string): void => { act(() => { el.value = value; el.dispatchEvent(new window.Event('change', { bubbles: true })); }); };
+const settle = async (): Promise<void> => { await act(async () => { await new Promise((r) => setTimeout(r, 5)); }); };
+function recordingSeams(printed: string[], tables: ReportTableArgs[]): () => Promise<DocumentPdfSeams> {
+  return async () => ({
+    createDoc: async () => ({ addPage: () => {}, setFont: () => {}, setFontSize: () => {}, setTextColor: () => {},
+      text: (text) => { printed.push(text); }, fillRect: () => {}, addImage: () => {}, svg: async () => {},
+      table: (table) => { tables.push(table); }, pageCount: () => 1, output: () => new Blob(['pdf']),
+    }), renderSvg: () => '', capture: null, theme: DEFAULT_THEME, now: () => new Date(0), imageSize: async () => ({ w: 1, h: 1 }),
+  });
+}
+const productionActions = (() => {
+  const { saveComparison, renameSavedComparison, deleteSavedComparison, retrySaveComparisons } = useViewerStore.getState();
+  return { saveComparison, renameSavedComparison, deleteSavedComparison, retrySaveComparisons };
+})();
+const stopMirroring: Array<() => void> = [];
+function initializeSavedHistory(): void {
+  // Real StoreApi runs the production slice's initial read and every action.
+  const store = createStore<SavedComparisonsSlice>(createSavedComparisonsSlice);
+  act(() => useViewerStore.setState(store.getState()));
+  stopMirroring.push(store.subscribe((state) => useViewerStore.setState(state)));
+}
+afterEach(() => { cleanup(); for (const stop of stopMirroring.splice(0)) stop(); useViewerStore.setState(productionActions); localStorage.removeItem(SAVED_COMPARISONS_KEY); localStorage.removeItem(`${SAVED_COMPARISONS_KEY}:unreadable`); useViewerStore.setState({ savedComparisonsLoadIssue: null }); });
+
+describe('Multiple saved pairs in mounted UI and documentation (#6506)', () => {
+  it('shows corrupt-history recovery instead of an indistinguishable empty library', () => {
+    const raw = '{"invalid":"saved comparison history must be an array"}';
+    localStorage.setItem(SAVED_COMPARISONS_KEY, raw);
+    initializeSavedHistory();
+    const snapshot = snapshotComparison(comparisonResult('A', 'B'), comparisonModels(), 'Embedded historical report');
+    const source = { kind: 'comparison' as const, comparison: snapshot };
+    const ui = render(<><Library /><ComparisonSourceEditor block={{ kind: 'table', id: 'history-source', source }} source={source} onChange={() => {}} /></>);
+    assert.equal(ui.querySelectorAll('[role="alert"]').length, 2, 'library and document source chooser both report failed history reads');
+    assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /original data was preserved/);
+    assert.equal(localStorage.getItem(`${SAVED_COMPARISONS_KEY}:unreadable`), raw);
+    assert.equal(ui.querySelector('select')?.options.length, 1);
+    assert.equal([...ui.querySelectorAll('button')].some((b) => b.textContent === 'Retry save'), false, 'successful recovery already persisted valid entries');
+  });
+
+  it('keeps valid neighbours visible and original partial bytes untouched when backup is refused, then retries', () => {
+    const saved = snapshotComparison(comparisonResult('A', 'B'), comparisonModels(), 'Recoverable A/B');
+    const raw = JSON.stringify([saved, null, { ...saved, name: 'Duplicate evidence' }]);
+    localStorage.setItem(SAVED_COMPARISONS_KEY, raw);
+    const original = localStorage.setItem;
+    Object.defineProperty(localStorage, 'setItem', { configurable: true, value: (key: string, value: string) => {
+      if (key.startsWith(`${SAVED_COMPARISONS_KEY}:unreadable`)) throw new DOMException('Full', 'QuotaExceededError');
+      original.call(localStorage, key, value);
+    } });
+    try {
+      initializeSavedHistory();
+      const ui = render(<Library />);
+      assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /could not be backed up/);
+      const picker = ui.querySelector('select'); assert.ok(picker); select(picker, saved.id);
+      assert.ok(ui.querySelector('tbody')?.textContent?.includes('wall'));
+      type(ui.querySelector<HTMLInputElement>('input[aria-label="Rename saved comparison"]')!, 'Renamed in memory');
+      const rename = [...ui.querySelectorAll('button')].find((b) => b.textContent === 'Rename');
+      assert.ok(rename); click(rename);
+      assert.equal(localStorage.getItem(SAVED_COMPARISONS_KEY), raw);
+      assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /Saving is blocked/);
+      Object.defineProperty(localStorage, 'setItem', { configurable: true, value: original });
+      const retry = [...ui.querySelectorAll('button')].find((b) => b.textContent === 'Retry save');
+      assert.ok(retry); click(retry);
+      assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /original data was preserved/);
+      assert.equal(localStorage.getItem(`${SAVED_COMPARISONS_KEY}:unreadable`), raw);
+      assert.deepEqual(loadSavedComparisons().map((entry) => entry.name), ['Renamed in memory']);
+    } finally { Object.defineProperty(localStorage, 'setItem', { configurable: true, value: original }); }
+  });
+
+  it('discovers stored neighbours after an inaccessible read and honours their deletion after a quota-failed retry', () => {
+    const old = snapshotComparison(comparisonResult('A', 'B'), comparisonModels(), 'Stored A/B');
+    localStorage.setItem(SAVED_COMPARISONS_KEY, JSON.stringify([old]));
+    const originalGet = localStorage.getItem;
+    const originalSet = localStorage.setItem;
+    Object.defineProperty(localStorage, 'getItem', { configurable: true, value: (key: string) => {
+      if (key === SAVED_COMPARISONS_KEY) throw new Error('Storage access denied');
+      return originalGet.call(localStorage, key);
+    } });
+    try {
+      initializeSavedHistory();
+      act(() => useViewerStore.setState({ models: comparisonModels(), mutationVersion: 0, geometryContentVersion: 0, compareResult: comparisonResult('A', 'C') }));
+      const ui = render(<Library />);
+      assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /could not be read or updated/);
+      type(ui.querySelector<HTMLInputElement>('input[aria-label="Comparison name"]')!, 'New A/C');
+      click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save comparison')!);
+      assert.equal(ui.querySelector('select')?.options.length, 2, 'new evidence remains in memory while old storage is inaccessible');
+      Object.defineProperty(localStorage, 'getItem', { configurable: true, value: originalGet });
+      Object.defineProperty(localStorage, 'setItem', { configurable: true, value: (key: string, value: string) => {
+        if (key === SAVED_COMPARISONS_KEY) throw new DOMException('Full', 'QuotaExceededError');
+        originalSet.call(localStorage, key, value);
+      } });
+      click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Retry save')!);
+      const picker = ui.querySelector('select'); assert.ok(picker);
+      assert.equal(picker.options.length, 3, 'discovered old evidence is published even though saving was refused');
+      assert.ok([...picker.options].some((option) => option.textContent?.includes('Stored A/B')));
+      select(picker, old.id);
+      click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Delete saved comparison')!);
+      assert.equal(picker.options.length, 2, 'known user deletion stays in the memory projection');
+      Object.defineProperty(localStorage, 'setItem', { configurable: true, value: originalSet });
+      click([...ui.querySelectorAll('button')].find((button) => button.textContent === 'Retry save')!);
+      assert.equal(ui.querySelector('[role="alert"]'), null);
+      const stored = loadSavedComparisons();
+      assert.deepEqual(stored.map((entry) => entry.name), ['New A/C']);
+      assert.deepEqual(stored[0].report.rows.map((row) => row.globalId), ['new', 'third', 'wall', 'removed']);
+    } finally {
+      Object.defineProperty(localStorage, 'getItem', { configurable: true, value: originalGet });
+      Object.defineProperty(localStorage, 'setItem', { configurable: true, value: originalSet });
+    }
+  });
+
+  it('blocks saving stale geometry and surfaces refused persistence while keeping the canonical report downloadable', () => {
+    useViewerStore.setState({ models: comparisonModels(), savedComparisons: [], mutationVersion: 0, geometryContentVersion: 0 });
+    const result = stampAnalysisReport(comparisonResult('A', 'B'), captureAnalysisStamp());
+    act(() => useViewerStore.setState({ compareResult: result, geometryContentVersion: 1 }));
+    const ui = render(<><Library /><Toaster /></>);
+    const save = Array.from(ui.querySelectorAll('button')).find((b) => b.textContent === 'Save comparison');
+    assert.ok(save); assert.ok(save.disabled, 'old bounds must not be projected into a new saved report');
+    act(() => useViewerStore.setState({ compareResult: comparisonResult('A', 'B') }));
+    const original = localStorage.setItem;
+    Object.defineProperty(localStorage, 'setItem', { configurable: true, value: () => { throw new Error('quota'); } });
+    try {
+      click(save);
+      assert.match(latestToast(ui), /storage is unavailable or full/);
+      assert.ok(ui.querySelector('tbody')?.textContent?.includes('wall'));
+      assert.equal(ui.querySelector('select')?.options.length, 2, 'unsaved report remains selectable in memory');
+    } finally {
+      Object.defineProperty(localStorage, 'setItem', { configurable: true, value: original });
+    }
+  });
+
+  it('keeps schema-valid empty authored key columns in mounted preview and the production PDF pipeline', async () => {
+    const saved = snapshotComparison(comparisonResult('A', 'B'), comparisonModels(), 'Blank authored keys');
+    saved.keyProperty = 'Tag';
+    saved.report.rows = saved.report.rows.map((row) => ({ ...row, key: '' }));
+    const spec = parseDocumentFile(JSON.stringify({ version: DOCUMENT_VERSION, id: 'blank-key-doc', name: 'Authored keys',
+      page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'table', id: 'keys', source: { kind: 'comparison', comparison: saved } }] }));
+    act(() => useViewerStore.setState({ models: new Map(), activeModelId: null, documents: [spec], activeDocumentId: spec.id,
+      dashboards: [], bcfProject: null, selectedEntityIds: new Set(), mutationViews: new Map() }));
+    const tables: ReportTableArgs[] = [];
+    const ui = render(<DocumentPanel pdfSeams={recordingSeams([], tables)} />); await settle();
+    const head = [...ui.querySelectorAll('[data-block-table] th')].map((cell) => cell.textContent);
+    assert.equal(head.at(-1), 'Authored key');
+    const rows = [...ui.querySelectorAll('[data-block-table] tbody tr')];
+    assert.deepEqual(rows.map((row) => row.lastElementChild?.textContent), ['', '', '']);
+    click(ui.querySelector('[data-document-export]')!);
+    for (let i = 0; i < 20 && !tables.length; i++) await settle();
+    assert.equal(tables.length, 1);
+    assert.equal(tables[0].head[0].at(-1), 'Authored key');
+    assert.deepEqual(tables[0].body.map((row) => row.at(-1)), ['', '', '']);
+    assert.deepEqual(tables[0].body.map((row) => row[0]), ['new', 'wall', 'removed']);
+  });
+
+  it('saves three real engine comparisons, reloads history, selects a document copy and prints its rows after library deletion/model unload', async () => {
+    useViewerStore.setState({ models: comparisonModels(), savedComparisons: [], mutationVersion: 0, compareResult: comparisonResult('A', 'B') });
+    let ui = render(<Library />);
+    for (const [base, head] of [['A', 'B'], ['A', 'C'], ['B', 'C']]) {
+      act(() => useViewerStore.setState({ compareResult: comparisonResult(base, head) }));
+      const name = ui.querySelector<HTMLInputElement>('input[aria-label="Comparison name"]');
+      assert.ok(name); type(name, `${base}/${head}`);
+      const save = Array.from(ui.querySelectorAll('button')).find((b) => b.textContent === 'Save comparison');
+      assert.ok(save); click(save);
+    }
+    const history = loadSavedComparisons();
+    assert.equal(history.length, 3);
+    assert.deepEqual(history.map((c) => c.report.rows.map((r) => r.globalId)), [['new', 'wall', 'removed'], ['new', 'third', 'wall', 'removed'], ['third', 'new']]);
+    cleanup();
+    act(() => {
+      for (const id of useViewerStore.getState().models.keys()) useViewerStore.getState().removeModel(id);
+    });
+    assert.equal(useViewerStore.getState().models.size, 0);
+    assert.equal(useViewerStore.getState().savedComparisons.length, 3, 'canonical model teardown preserves saved reports');
+    act(() => { useViewerStore.getState().resetViewerState(); useViewerStore.getState().clearAllModels(); });
+    assert.deepEqual(useViewerStore.getState().savedComparisons.map((saved) => saved.report.rows.map((row) => row.globalId)),
+      [['new', 'wall', 'removed'], ['new', 'third', 'wall', 'removed'], ['third', 'new']],
+      'session reset and full federation clear preserve historical report rows');
+    act(() => useViewerStore.setState({ savedComparisons: history }));
+    ui = render(<Library />);
+    const picker = ui.querySelector('select'); assert.ok(picker); select(picker, history[2].id);
+    assert.ok(ui.textContent?.includes('Base: B; Head: C'));
+    assert.ok(ui.querySelector('tbody')?.textContent?.includes('third'));
+    cleanup();
+
+    const spec: DocumentSpec = { version: DOCUMENT_VERSION, id: 'saved-doc', name: 'Pair report', page: { size: 'A4', orientation: 'portrait' },
+      blocks: [{ kind: 'table', id: 'table', maxRows: TABLE_ROWS_DEFAULT, source: { kind: 'comparison', comparison: structuredClone(history[0]) } }],
+    };
+    act(() => useViewerStore.setState({ documents: [spec], activeDocumentId: spec.id, activeModelId: null, dashboards: [], bcfProject: null,
+      selectedEntityIds: new Set(), mutationViews: new Map() }));
+    const printed: string[] = []; const tables: ReportTableArgs[] = [];
+    const seams = recordingSeams(printed, tables);
+    ui = render(<DocumentPanel pdfSeams={seams} />); await settle();
+    const previewBlock = ui.querySelector('[data-preview-block="table"]'); assert.ok(previewBlock); click(previewBlock);
+    await settle();
+    const source = ui.querySelector<HTMLSelectElement>('select[aria-label="Choose saved comparison for document"]'); assert.ok(source);
+    assert.equal(source.options[0].disabled, true, 'embedded snapshot label is not a selectable no-op');
+    select(source, history[1].id); await settle();
+    assert.ok(ui.querySelector('[data-block-table]')?.textContent?.includes('Base: A; Head: C'));
+    const doc = useViewerStore.getState().documents[0];
+    const imported = parseDocumentFile(JSON.stringify(doc));
+    assert.equal(imported.blocks[0].kind, 'table');
+    act(() => { useViewerStore.getState().deleteSavedComparison(history[1].id); });
+    await settle();
+    assert.ok(ui.querySelector('[data-block-table]')?.textContent?.includes('third'), 'embedded rows survive deleting the library entry');
+    let downloaded = false; const onDownload = () => { downloaded = true; };
+    window.addEventListener(EVENT_FILE_DOWNLOADED, onDownload);
+    try {
+      const button = ui.querySelector('[data-document-export]'); assert.ok(button); click(button);
+      for (let i = 0; i < 20 && !downloaded; i++) await settle();
+      assert.ok(downloaded);
+    } finally { window.removeEventListener(EVENT_FILE_DOWNLOADED, onDownload); }
+    assert.ok(printed.includes('Base: A; Head: C'));
+    assert.deepEqual(tables.flatMap((table) => table.body).map((r) => r[0]), ['new', 'third', 'wall', 'removed']);
+    assert.ok(printed.some((line) => line.includes('Products: Added 2; deleted 1; modified 1')));
+  });
+});

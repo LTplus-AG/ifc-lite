@@ -23,16 +23,28 @@ export function ManualReportBlockEditor({ block, onChange }: { block: ManualRepo
   const resolved = resolveReportModel(source.models, block.modelFingerprint, picked, source.defaultModelId);
   const missing = resolved.kind === 'missing';
   const chosen = resolved.kind === 'model' ? resolved.model?.id ?? null : null;
+  const missingChecklist = block.checklistId !== undefined && !source.checklists.some((entry) => entry.id === block.checklistId);
+  const available = block.checklistId !== undefined ? !missingChecklist : source.activeChecklistId !== null;
+  const replaceSnapshot = (checklistId?: string) => {
+    if (missing) return false;
+    const next = source.snapshot(block.id, chosen, checklistId);
+    if (!next) return false;
+    onChange({ ...next, variant: block.variant, benchmarks: block.benchmarks });
+    return true;
+  };
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-1 text-muted-foreground">{t('manualValidation.report.sourceLabel')}
-        <span className="min-w-0 truncate font-medium text-foreground" title={block.checklistName}>
-          {block.checklistName.trim() || t('manualValidation.name.placeholder')}
-        </span>
-      </div>
+      <label className="inline-flex min-w-0 items-center gap-1 text-muted-foreground">{t('manualValidation.report.sourceLabel')}
+        <select className={`${field} min-w-0 flex-1`} aria-label={t('manualValidation.report.sourceLabel')} value={block.checklistId ?? ''} disabled={missing}
+          onChange={(event) => replaceSnapshot(event.target.value)}>
+          {(block.checklistId === undefined || missingChecklist) && <option value={block.checklistId ?? ''} disabled>{block.checklistName.trim() || t('manualValidation.name.placeholder')}</option>}
+          {source.checklists.map((entry) => <option key={entry.id} value={entry.id}>{entry.name.trim() || t('manualValidation.name.placeholder')}</option>)}
+        </select>
+      </label>
+      {missingChecklist && <p className="text-foreground" data-manual-report-checklist-missing>{t('manualValidation.report.checklistMissing')}</p>}
       {missing && (
-        <p className="text-destructive" data-manual-report-model-missing>
+        <p className="text-foreground" data-manual-report-model-missing>
           {block.modelName?.trim()
             ? t('manualValidation.report.modelNotLoaded', { model: block.modelName })
             : t('manualValidation.report.modelNotLoadedUnnamed')}
@@ -40,7 +52,7 @@ export function ManualReportBlockEditor({ block, onChange }: { block: ManualRepo
       )}
       {(source.models.length > 1 || (missing && source.models.length > 0)) && (
         <label className="inline-flex min-w-0 items-center gap-1 text-muted-foreground">{t('manualValidation.report.modelLabel')}
-          <select className={`${field} min-w-0 flex-1`} value={chosen ?? ''} onChange={(e) => setPicked(e.target.value)}>
+          <select className={`${field} min-w-0 flex-1`} aria-label={t('manualValidation.report.modelLabel')} value={chosen ?? ''} onChange={(e) => setPicked(e.target.value)}>
             {missing && <option value="" disabled>{t('manualValidation.report.pickModel')}</option>}
             {source.models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
@@ -50,13 +62,10 @@ export function ManualReportBlockEditor({ block, onChange }: { block: ManualRepo
         variant="outline"
         size="sm"
         className="h-6 w-fit px-2 text-xs"
-        disabled={!source.available || missing}
-        title={!source.available ? t('manualValidation.report.unavailableTitle') : missing ? t('manualValidation.report.pickModel') : undefined}
+        disabled={!available || missing}
+        title={missingChecklist ? t('manualValidation.report.checklistMissing') : !available ? t('manualValidation.report.unavailableTitle') : missing ? t('manualValidation.report.pickModel') : undefined}
         onClick={() => {
-          if (missing) return;
-          const next = source.snapshot(block.id, chosen);
-          if (!next) return;
-          onChange(next);
+          if (!replaceSnapshot(block.checklistId)) return;
           toast.success(t('manualValidation.report.refreshed'));
         }}
       >
@@ -64,4 +73,20 @@ export function ManualReportBlockEditor({ block, onChange }: { block: ManualRepo
       </Button>
     </div>
   );
+}
+
+export function ManualReportPresentation({ block, onChange }: { block: ManualReportBlock; onChange: (block: ManualReportBlock) => void }) {
+  const { t } = useTranslation();
+  return <>
+      <label className="inline-flex items-center gap-1 text-muted-foreground">{t('manualValidation.report.layout')}
+        <select className={field} aria-label={t('manualValidation.report.layout')} value={block.variant ?? 'long'} onChange={(event) => onChange({ ...block, variant: event.target.value === 'compact' ? 'compact' : 'long' })}>
+          <option value="long">{t('manualValidation.report.long')}</option>
+          <option value="compact">{t('manualValidation.report.compact')}</option>
+        </select>
+      </label>
+      <label className="inline-flex items-center gap-1 text-muted-foreground">
+        <input type="checkbox" checked={block.benchmarks !== false} onChange={(event) => onChange({ ...block, benchmarks: event.target.checked })} />
+        {t('manualValidation.report.benchmarks')}
+      </label>
+  </>;
 }

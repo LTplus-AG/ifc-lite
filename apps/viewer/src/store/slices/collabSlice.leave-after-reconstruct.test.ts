@@ -28,18 +28,7 @@ import assert from 'node:assert/strict';
 
 register('../../test/collab-hydrate-gate-hook.mjs', import.meta.url);
 
-import type { ModelSlice } from './modelSlice.js';
-import type { DataSlice, DataCrossSliceState } from './dataSlice.js';
-import type { CollabSlice } from './collabSlice.js';
-import type { ViewerState } from '../index.js';
-
-type TestState = ModelSlice &
-  DataSlice &
-  DataCrossSliceState &
-  CollabSlice & {
-    setEditEnabled: (enabled: boolean) => void;
-    mutationViews: Map<string, unknown>;
-  };
+import type { CollabTestState as TestState } from '../../test/collab-slice-state.js';
 
 /**
  * Built through dynamic imports so the whole slice graph — including the
@@ -48,56 +37,8 @@ type TestState = ModelSlice &
  * hook would never see the module.
  */
 async function buildState() {
-  const { createModelSlice } = await import('./modelSlice.js');
-  const { createDataSlice } = await import('./dataSlice.js');
-  const { createCollabSlice } = await import('./collabSlice.js');
-
-  let state: TestState;
-  const setState = (partial: unknown) => {
-    const updates =
-      typeof partial === 'function'
-        ? (partial as (s: TestState) => Partial<TestState>)(state)
-        : (partial as Partial<TestState>);
-    state = { ...state, ...updates };
-  };
-  const getState = () => state as unknown as ViewerState;
-
-  const modelSlice = createModelSlice(
-    setState as Parameters<typeof createModelSlice>[0],
-    getState as Parameters<typeof createModelSlice>[1],
-    undefined as unknown as Parameters<typeof createModelSlice>[2],
-  );
-  const dataSlice = createDataSlice(
-    setState as Parameters<typeof createDataSlice>[0],
-    getState as Parameters<typeof createDataSlice>[1],
-    undefined as unknown as Parameters<typeof createDataSlice>[2],
-  );
-  const collabSlice = createCollabSlice(
-    setState as Parameters<typeof createCollabSlice>[0],
-    getState as Parameters<typeof createCollabSlice>[1],
-    undefined as unknown as Parameters<typeof createCollabSlice>[2],
-  );
-
-  state = {
-    ...modelSlice,
-    ...dataSlice,
-    ...collabSlice,
-    setEditEnabled: () => {},
-    mutationViews: new Map(),
-    addElementModelId: null,
-    addElementStoreyId: null,
-    selectedEntityId: null,
-    selectedEntityIds: new Set(),
-    selectedStoreys: new Set(),
-    hiddenEntities: new Set(),
-    isolatedEntities: null,
-    ghostExceptEntities: null,
-    classFilter: null,
-    pinboardEntities: new Set(),
-    hierarchyBasketSelection: new Set(),
-  } as TestState;
-
-  return { get: () => state };
+  const { buildCollabTestState } = await import('../../test/collab-slice-state.js');
+  return buildCollabTestState();
 }
 
 interface Gate {

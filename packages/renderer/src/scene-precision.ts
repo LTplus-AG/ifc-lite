@@ -71,7 +71,7 @@ export function originPreservesTriangleTopology(
   return true;
 }
 
-/** Prefer the inherited/shared frame, then validate the automatic bbox frame. */
+/** Prefer shared frames; preserve authored f32 coordinates when a bbox rebase loses detail. */
 export function topologySafeBatchOrigin(
   meshes: readonly MeshData[],
   inherited: [number, number, number] | undefined,
@@ -82,5 +82,13 @@ export function topologySafeBatchOrigin(
     if (requested && originPreservesTriangleTopology(meshes, requested)) return requested;
   }
   const automatic = automaticBatchOrigin(meshes);
-  return originPreservesTriangleTopology(meshes, automatic) ? automatic : undefined;
+  if (originPreservesTriangleTopology(meshes, automatic)) return automatic;
+  // #6515: a wide mesh can contain valid tiny triangles near its local origin.
+  // Recentering it rounds those vertices together even though its original
+  // f32 frame still preserves them. Try one authored frame, validated against
+  // every mesh, rather than treating exhausted preferred frames as exhaustion
+  // of all frames. GPU high/low origin lanes must remain finite too (#5010).
+  const authored: [number, number, number] = meshes[0]?.origin ?? [0, 0, 0];
+  return authored.every((axis) => Number.isFinite(Math.fround(axis)))
+    && originPreservesTriangleTopology(meshes, authored) ? authored : undefined;
 }

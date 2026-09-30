@@ -9,6 +9,7 @@
  * the report's jsPDF path; the document itself is a template saved as
  * `.ifclite-document.json` and re-opened on the next model revision.
  */
+import { savedReportBlock } from '@/lib/validation/reports/history';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileText, Plus } from 'lucide-react';
 import type { ReportPageSetup } from '@ifc-lite/charts';
@@ -65,6 +66,8 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const listDefinitions = useViewerStore((s) => s.listDefinitions);
   const idsValidationReport = useViewerStore((s) => s.idsValidationReport);
   const manualSource = useManualReportSource();
+  const savedReports = useViewerStore((s) => s.savedValidationReports);
+  const savedComparisons = useViewerStore((s) => s.savedComparisons);
 
   useEffect(() => { ensureActiveDocument(); }, [documents, activeDocumentId]);
 
@@ -98,11 +101,19 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
       : kind === 'table' ? { kind, id, source: { kind: 'list', list: listCopyForDocument(seedList, freshListCopyId()), fromListId: seedList.id }, maxRows: TABLE_ROWS_DEFAULT }
       : kind === 'image' ? { kind, id, dataUrl: '', height: 60, align: 'left' }
         : kind === 'chart' ? { kind, id, chart: charts[0]?.chart ? { ...charts[0].chart, id: freshBlockId() } : newChartSpec(), snapshot: false }
+          : kind === 'page-break' ? { kind, id }
           : kind === 'spacer' ? { kind, id, height: 20 }
-            : kind === 'ids-report' ? (idsValidationReport ? idsReportBlockFromReport(idsValidationReport, id) : { kind, id, sourceName: '', generatedAt: new Date().toISOString(), summary: { checked: 0, passed: 0, failed: 0, passRate: 100 }, checks: [] })
-              : kind === 'manual-report' ? (manualSource.snapshot(id) ?? emptyManualReportBlock(id))
+            : kind === 'ids-report' ? (idsValidationReport ? idsReportBlockFromReport(idsValidationReport, id, 'compact') : { kind, id, variant: 'compact', sourceName: '', generatedAt: new Date().toISOString(), summary: { checked: 0, passed: 0, failed: 0, passRate: 100 }, checks: [] })
+              : kind === 'manual-report' ? (manualSource.snapshot(id, null, manualSource.defaultChecklistId ?? undefined) ?? emptyManualReportBlock(id))
               : { kind, id, guid: [...data.topics.keys()][0] ?? '', snapshot: true };
     setBlocks([...document.blocks, block]);
+    setSelectedBlockId(id);
+  };
+
+  const addComparison = (): void => {
+    if (!document || !savedComparisons[0]) return;
+    const id = freshBlockId();
+    setBlocks([...document.blocks, { kind: 'table', id, source: { kind: 'comparison', comparison: structuredClone(savedComparisons[0]) }, maxRows: TABLE_ROWS_DEFAULT }]);
     setSelectedBlockId(id);
   };
 
@@ -194,10 +205,19 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
             <DropdownMenuItem onSelect={() => addBlock('image')}>{t('document.addBlock.image')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('chart')}>{t('document.addBlock.chart')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('topic')} disabled={data.topics.size === 0} title={data.topics.size === 0 ? t('document.addBlock.topicDisabledTitle') : undefined}>{t('document.addBlock.topic')}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => addBlock('page-break')}>{t('document.addBlock.pageBreak')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('spacer')}>{t('document.addBlock.spacer')}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={addComparison} disabled={savedComparisons.length === 0}>{t('document.block.tableSourceComparison')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('table')}>{t('document.addBlock.table')}</DropdownMenuItem>
             {/* One report slot serves IDS and information validation; the item is named for what it would add (#6372). */}
             <DropdownMenuItem onSelect={() => addBlock('ids-report')} disabled={!idsValidationReport} title={idsValidationReport ? undefined : t('document.addBlock.idsReportDisabledTitle')}>{t(idsValidationReport?.source.kind === 'rules' ? 'document.addBlock.rulesReport' : 'document.addBlock.idsReport')}</DropdownMenuItem>
+            <DropdownMenuItem disabled={savedReports.length === 0} onSelect={() => {
+              const entry = savedReports.at(-1);
+              if (!document || !entry) return;
+              const block = savedReportBlock(entry, freshBlockId());
+              setBlocks([...document.blocks, block]);
+              setSelectedBlockId(block.id);
+            }}>{t('validationPanel.history.addDocument')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('manual-report')} disabled={!manualSource.available} title={manualSource.available ? undefined : t('manualValidation.report.unavailableTitle')}>{t('manualValidation.report.add')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

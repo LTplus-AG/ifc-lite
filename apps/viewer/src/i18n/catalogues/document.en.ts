@@ -17,6 +17,11 @@
 import type { TranslationValue } from '../types';
 
 export const documentEn = {
+  'document.block.tableSourceComparison': 'Saved comparison',
+  'document.block.comparisonPicker': 'Choose saved comparison for document',
+  'document.block.comparisonSnapshotHint': 'This document embeds a copy of the completed report. Renaming or deleting its saved comparison does not change this copy.',
+  'document.table.comparisonNoRows': 'No changes in this saved comparison.',
+
   'document.block.widthLabel': 'Width',
   'document.block.widthAriaLabel': 'Block width',
   'document.block.widthTitle': 'Half pairs with the next half text, chart, or image into one row',
@@ -94,6 +99,14 @@ export const documentEn = {
   'document.addBlock.button': 'Add block',
   'document.addBlock.buttonTitle': 'Add a block to the page',
   'document.addBlock.spacer': 'Spacer',
+  'document.addBlock.pageBreak': 'Page break',
+  'document.block.kindPageBreak': 'Page break',
+  'document.block.fieldSourceLabel': 'Source',
+  'document.block.fieldSourceAriaLabel': 'Field source model',
+  'document.block.fieldSourceDefault': 'Default source',
+  'document.block.fieldSourceDuplicate': 'duplicate name',
+  'document.block.fieldSourceDuplicateTitle': 'Use distinct model names to bind a field to one model.',
+  'document.preview.sectionLabel': 'Document section {section}',
 
   // DocumentPanel.tsx (#4918 doc slice): the panel's own header controls,
   // export action, empty state, and the toasts its export/save flow raises.
@@ -167,6 +180,9 @@ export const documentEn = {
   'document.block.tableSelectionDropped': 'The selection this list was made from is not kept in a document: the table prints every element the list\'s classes and conditions match.',
   'document.block.tableTitleAriaLabel': 'Table title',
   'document.block.tableCaptionAriaLabel': 'Table caption',
+  'document.block.tableOrderLabel': 'Group order',
+  'document.block.tableHeaderBackground': 'Header background',
+  'document.block.tableHeaderReset': 'Reset table header background',
   'document.block.tableRowsLabel': 'Rows',
   'document.block.tableRowsAriaLabel': 'Rows to print before "… n more rows"',
   'document.block.tableSummary': '{columns} columns · {view}',
@@ -192,6 +208,11 @@ export const documentEn = {
   'document.addBlock.idsReport': 'IDS validation report',
   'document.addBlock.idsReportDisabledTitle': 'Run an IDS or information validation first',
   'document.block.idsReportSourceLabel': 'Source',
+  'document.block.idsReportVariantLabel': 'Layout',
+  'document.block.idsReportVariantAriaLabel': 'IDS report layout',
+  'document.block.idsReportVariantClassic': 'Classic',
+  'document.block.idsReportVariantCompact': 'Compact (bars)',
+  'document.block.idsReportVariantLong': 'Long (full text)',
   'document.block.idsReportRefresh': 'Refresh from current validation report',
   'document.block.idsReportRefreshDisabledTitle': 'Run an IDS validation first',
   'document.block.idsReportRefreshed': 'Refreshed from the current validation report',
@@ -205,6 +226,7 @@ export const documentEn = {
     other: '{countDisplay} checks',
   },
   'document.preview.idsReportNoChecks': 'No checks in this report.',
+  'document.preview.idsReportCountsUnavailableShort': 'n/a',
   'document.preview.idsReportCountsUnavailable': 'Counts unavailable in this partial report',
 
   // Information-validation report (#6372): the same block over a rule-set run. The block's

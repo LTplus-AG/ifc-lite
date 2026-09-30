@@ -9,6 +9,8 @@
  * rows) in its place when there is nothing to print. The preview does not
  * paginate (text never did either); the composer's tests cover chunking.
  */
+import { tableHeaderStyle } from '@/lib/table-header-style';
+import { comparisonSummary } from '@/lib/compare/savedComparisonSchema';
 import { useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 import { localeCount } from '@/i18n/intlFormat';
@@ -31,20 +33,21 @@ export interface TablePreviewProps {
 
 export function TablePreview({ block, state }: TablePreviewProps) {
   const { t, locale } = useTranslation();
+  const header = tableHeaderStyle(block.headerBackground);
   // The PDF's `tableTitle` fallback ("Validation results") is plain English on purpose (every other
   // PDF fallback string is); the on-screen preview is interactive UI, so it translates its own
   // fallback instead of calling that helper (#5138 review).
-  const title = block.title?.trim() || (block.source.kind === 'list' ? block.source.list.name : t('document.block.tableSourceValidation'));
+  const title = block.title?.trim() || (block.source.kind === 'list' ? block.source.list.name : block.source.kind === 'comparison' ? block.source.comparison.name : t('document.block.tableSourceValidation'));
   const table = useMemo(() => {
     if (state?.status !== 'ok') return null;
     const labels = {
       more: (n: number) => t('document.table.moreRows', localeCount(locale, n)),
       total: (count: number) => t('document.table.total', { count: count.toLocaleString(locale) }),
     };
-    return state.kind === 'validation'
+    return state.kind === 'validation' || state.kind === 'comparison'
       ? flattenRawModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, labels)
-      : flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, labels);
-  }, [state, block.maxRows, t, locale]);
+      : flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, labels, block.groupOrder);
+  }, [state, block.maxRows, block.groupOrder, t, locale]);
 
   // The same state → message decision the PDF makes (`tableMessageKind`), worded from the catalogue.
   const kind = tableMessageKind(state);
@@ -55,18 +58,19 @@ export function TablePreview({ block, state }: TablePreviewProps) {
           : kind === 'no-report' ? t('document.table.noReport')
             : kind === 'rule-not-found' ? t('document.table.ruleNotFound')
               // "No rows" reads differently per source: a list matched nothing, a validation table's rule/rows filter did.
-              : (state?.status === 'ok' && state.kind === 'validation' ? t('document.table.validationNoRows') : t('document.table.noRows'));
+              : (state?.status === 'ok' && state.kind === 'comparison' ? t('document.table.comparisonNoRows') : state?.status === 'ok' && state.kind === 'validation' ? t('document.table.validationNoRows') : t('document.table.noRows'));
 
   return (
     <div data-block-table>
       <div className="truncate text-sm font-semibold" title={title}>{title}</div>
+      {block.source.kind === 'comparison' && <div className="my-1 space-y-0.5 text-2xs" data-comparison-summary>{comparisonSummary(block.source.comparison).map((line, i) => <p key={i}>{line}</p>)}</div>}
       {message !== null || !table ? (
         <div className={`rounded border border-dashed border-neutral-300 px-3 py-2 text-xs ${state?.status === 'error' ? 'text-amber-900' : 'text-neutral-500'}`} data-table-message>{message}</div>
       ) : (
         <table className="w-full border-collapse text-2xs leading-tight" data-table-rows={table.rows.length}>
           <thead>
             <tr>
-              {table.columns.map((c, i) => <th key={i} className={`border border-neutral-200 bg-slate-700 px-1 py-0.5 font-semibold text-white ${c.numeric ? 'text-right' : 'text-left'}`}>{c.id ? t(TABLE_COLUMN_LABEL_KEY[c.id as TableColumnId]) : c.label}</th>)}
+              {table.columns.map((c, i) => <th key={i} style={{ backgroundColor: header.backgroundColor, color: header.textColor }} className={`border border-neutral-200 px-1 py-0.5 font-semibold ${c.numeric ? 'text-right' : 'text-left'}`}>{c.id ? t(TABLE_COLUMN_LABEL_KEY[c.id as TableColumnId]) : c.label}</th>)}
             </tr>
           </thead>
           <tbody>

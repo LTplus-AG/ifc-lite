@@ -168,6 +168,22 @@ export function commandPointerDown(snap: SnapResult): void {
   applyStep(command.pointerDown(moved, snap, ctx));
 }
 
+/** A button release, for a command that follows one (a drag); refreshed like a down. */
+export function commandPointerUp(snap: SnapResult): void {
+  const { command, ctx } = state;
+  if (!command?.pointerUp || !ctx) return;
+  const moved = command.pointerMove(state.gesture, snap, ctx);
+  publish({ gesture: moved, snap });
+  applyStep(command.pointerUp(moved, snap, ctx));
+}
+
+/** A press that ended without a release (cancelled, or its pointer capture was lost). */
+export function commandPointerCancel(): void {
+  const { command, ctx } = state;
+  if (!command?.pointerCancel || !ctx) return;
+  publish({ gesture: command.pointerCancel(state.gesture, ctx) });
+}
+
 /**
  * The second click of a double-click: the command's `doubleClick` (close a
  * polygon), else a plain down. The pointer sources (3D, plan) call this for

@@ -133,14 +133,15 @@ async function showOnlyModelAndFrame(page: Page, modelId: string): Promise<void>
  * work completes. Playwright canvas screenshots read compositor state, which
  * SwiftShader may discard; they are not a color-raster witness.
  */
-async function rendererColorFrame(page: Page): Promise<Buffer> {
+export async function rendererColorFrame(page: Page): Promise<Buffer> {
   const dataUrl = await page.evaluate(async () => globalThis.__ifc_lite_capture_color_frame__?.() ?? null);
   expect(dataUrl, 'renderer color capture is available after the viewport submits a frame').not.toBeNull();
   const encoded = dataUrl!.match(/^data:image\/png;base64,(.+)$/);
   expect(encoded, 'renderer color capture is a PNG data URL').not.toBeNull();
   return Buffer.from(encoded![1]!, 'base64');
 }
-export async function assertIsolatedRenderedContent(page: Page, modelId: string, gpuStrict: boolean): Promise<RenderedModelEvidence> {
+export async function assertIsolatedRenderedContent(page: Page, modelId: string, gpuStrict: boolean,
+  hideRenderedContent?: () => Promise<void>): Promise<RenderedModelEvidence> {
   await showOnlyModelAndFrame(page, modelId);
   if (!gpuStrict) {
     noteSoftwareGpuSkip(`${modelId} isolated pixel assertion`);
@@ -149,7 +150,8 @@ export async function assertIsolatedRenderedContent(page: Page, modelId: string,
   await expect(page.locator('canvas[data-viewport="main"]'), 'viewer canvas').toBeVisible();
   const renderedPng = await rendererColorFrame(page);
   const rendered = decodePng(renderedPng);
-  await page.evaluate(() => {
+  if (hideRenderedContent) await hideRenderedContent();
+  else await page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     state.setModelsVisibility([...state.models.keys()], false);
   });

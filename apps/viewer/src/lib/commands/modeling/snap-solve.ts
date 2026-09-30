@@ -86,5 +86,6 @@ export function solveCommandSnap(runtime: CommandRuntimeState, plane: Workplane,
     ...solved,
     render: plane.localToRender([solved.local[0], solved.local[1], 0]),
     modifiers: { shift: input.mods.shiftKey, alt: input.mods.altKey },
+    metresPerPixel: input.metresPerPixel,
   };
 }

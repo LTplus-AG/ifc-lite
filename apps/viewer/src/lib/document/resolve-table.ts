@@ -12,7 +12,8 @@
  * labels come in from the caller).
  */
 import type { CellValue } from '@ifc-lite/lists';
-import { displayCell, groupHeaderLabel, totalsRowCells, type ExportModel } from '../lists/export/model.js';
+import type { GroupOrder } from '../lists/group-sort';
+import { displayCell, groupHeaderLabel, totalsRowCells, orderExportModelGroups, type ExportModel } from '../lists/export/model.js';
 
 export type TableRowRole = 'row' | 'group' | 'total' | 'more';
 
@@ -44,16 +45,17 @@ export function flattenRawModel(model: RawTableModel, maxRows: number, labels: T
  * and prints "resolving" until it settles; a validation-results table (#5138)
  * resolves synchronously from the store's report, so it never has a
  * `'resolving'` state of its own — only `'ok'`, or one of the two states
- * that are specific to it (`'no-report'`, `'rule-not-found'`). The two `'ok'`
+ * that are specific to it (`'no-report'`, `'rule-not-found'`). The `'ok'`
  * members share the `status` so every existing list-only check (`state.status
- * === 'ok'`) still narrows the way it always did; `kind` (present only on
- * the validation member) is the second discriminant a consumer that must
- * tell them apart switches on.
+ * === 'ok'`) still narrows the way it always did; `kind` is the second
+ * discriminant a consumer that must tell them apart switches on. Comparison snapshots are a second raw-table
+ * source and require no live model/report lookup.
  */
 export type TableState =
   | { status: 'resolving' }
   | { status: 'ok'; kind?: 'list'; model: ExportModel }
   | { status: 'ok'; kind: 'validation'; model: RawTableModel }
+  | { status: 'ok'; kind: 'comparison'; model: RawTableModel }
   | { status: 'error'; message: string }
   | { status: 'no-model' }
   | { status: 'no-report' }
@@ -65,7 +67,7 @@ export type TableMessageKind = 'resolving' | 'no-model' | 'error' | 'no-rows' | 
 export function tableMessageKind(state: TableState | undefined): TableMessageKind | null {
   if (!state || state.status === 'resolving') return 'resolving';
   if (state.status !== 'ok') return state.status;
-  const count = state.kind === 'validation' ? state.model.totalRows : state.model.totals.count;
+  const count = state.kind === 'validation' || state.kind === 'comparison' ? state.model.totalRows : state.model.totals.count;
   return count === 0 ? 'no-rows' : null;
 }
 
@@ -100,7 +102,8 @@ export interface TableLabels {
 /** One line per cell: a value with a line break (`\X\0D\X\0A\` in a Revit comment) would otherwise make autotable draw a taller row than the composer counted (review finding). */
 const oneLine = (text: string): string => text.replace(/\s*[\r\n]+\s*/g, ' ');
 
-export function flattenExportModel(model: ExportModel, maxRows: number, labels: TableLabels): FlattenedTable {
+export function flattenExportModel(input: ExportModel, maxRows: number, labels: TableLabels, groupOrder?: GroupOrder): FlattenedTable {
+  const model = orderExportModelGroups(input, groupOrder);
   const cap = Math.max(1, Math.floor(maxRows));
   const cols = model.schedule?.columns ?? model.columns;
   const columns: TableColumnOut[] = cols.map((c) => ({ label: oneLine(c.label), numeric: c.numeric }));

@@ -92,6 +92,20 @@ it('keeps enlarged and unbroken headings inside the actual PDF font width and ab
   }
 });
 
+it('reserves an enlarged page heading when fitting titled images and their captions (#6554 / #6588)', () => {
+  for (const size of ['A4', 'A3'] as const) for (const orientation of ['portrait', 'landscape'] as const) {
+    const layout = composeDocument({ name: 'Library name', page: { size, orientation }, pageHeading: { fontSize: 48 }, generatedAt: '',
+      blocks: [{ kind: 'image', id: 'image', height: 1200, align: 'left', aspect: 0.1, title: 'Authored image title', caption: 'Caption ink' }],
+      measure: (text, fontSize) => text.length * fontSize / 2 });
+    const bottom = layout.size.h - REPORT_MARGIN - 24;
+    const image = layout.pages[0].items.find(item => item.kind === 'image');
+    assert.ok(image?.kind === 'image');
+    assert.ok(image.y + image.h <= bottom, 'actual image stays above the footer');
+    const caption = layout.pages[0].items.find(item => item.kind === 'text' && item.text === 'Caption ink');
+    assert.ok(caption && caption.y <= bottom, 'caption retains its reserved row below the image');
+  }
+});
+
 it('prints the authored heading and actual standard font on every PDF page while keeping footer defaults (#6554)', async () => {
   // svg2pdf's Node UMD entry looks for its real jsPDF dependency on the
   // DOM window; the browser ESM entry resolves the same dependency directly.

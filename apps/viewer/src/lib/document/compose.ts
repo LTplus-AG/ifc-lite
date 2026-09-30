@@ -56,8 +56,8 @@ export function documentChartSizing(input: DocumentChartSizingInput): { height: 
 }
 
 /** The image and its optional heading/caption fit inside the printable frame. */
-export function documentImageHeight(block: { height: number; title?: string; caption?: string }, pageHeight: number): number {
-  return Math.min(block.height, pageHeight - 2 * REPORT_MARGIN - HEADER_HEIGHT - FOOTER_HEIGHT - (blockTitle(block) ? BLOCK_TITLE_HEIGHT : 0) - (block.caption ? 14 : 0));
+export function documentImageHeight(block: { height: number; title?: string; caption?: string }, pageHeight: number, headingExtraHeight = 0): number {
+  return Math.min(block.height, pageHeight - 2 * REPORT_MARGIN - HEADER_HEIGHT - FOOTER_HEIGHT - headingExtraHeight - (blockTitle(block) ? BLOCK_TITLE_HEIGHT : 0) - (block.caption ? 14 : 0));
 }
 
 /** A block after its bindings were resolved and its assets measured — what layout needs. */
@@ -168,7 +168,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
     const title = blockTitle(block);
     const titleH = title ? BLOCK_TITLE_HEIGHT : 0;
     const captionH = block.caption ? 14 : 0;
-    const h = documentImageHeight(block, size.h);
+    const h = documentImageHeight(block, size.h, headingExtraHeight);
     const w = Math.min(boxW, h * block.aspect);
     const drawnH = w / block.aspect;
     const x = block.align === 'left' ? boxX : block.align === 'right' ? boxX + boxW - w : boxX + (boxW - w) / 2;

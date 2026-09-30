@@ -135,7 +135,7 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
 
     case 'image': {
       const title = blockTitle(block);
-      const height = (title ? documentImageHeight(block, pageHeight) : block.height) * scale;
+      const height = (title || headingExtraHeight > 0 ? documentImageHeight(block, pageHeight, headingExtraHeight) : block.height) * scale;
       const justify = block.align === 'left' ? 'justify-start' : block.align === 'right' ? 'justify-end' : 'justify-center';
       return (
         <figure className={`flex flex-col ${block.align === 'center' ? 'items-center' : block.align === 'right' ? 'items-end' : 'items-start'}`}>

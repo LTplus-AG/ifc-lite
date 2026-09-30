@@ -404,7 +404,7 @@ describe('edits that cannot keep a wall\'s joins valid refuse, and edits that la
     const [first, second] = wallIds();
     const before = batches();
     const outcome = setWallSection(useViewerStore, MODEL_ID, first, { thickness: 0.3, height: 2.5 });
-    assert.deepEqual(outcome, { ok: true });
+    assert.deepEqual(outcome, { ok: true, remesh: [first] }, 'the write names the wall (and any opening it re-cut) for the re-mesh');
     const wall = shape(first);
     assert.ok(Math.abs(wall.wall.thickness - 0.3) < 1e-9, `thickness ${wall.wall.thickness}`);
     assert.ok(Math.abs(wall.height - 2.5) < 1e-9, `height ${wall.height}`);

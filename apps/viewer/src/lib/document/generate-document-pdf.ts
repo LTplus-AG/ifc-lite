@@ -151,7 +151,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         // here ever read it.
         const message = input.chartMessages.get(block.id);
         const subtitle = message ?? (agg ? `${agg.categories.length} bucket${agg.categories.length === 1 ? '' : 's'} · ${agg.total.toLocaleString()} ${agg.spec.measure.agg === 'count' ? 'elements' : (agg.unit ?? '')}`.trim() : 'No data');
-        blocks.push({ kind: 'chart', id: block.id, title: block.chart.title, subtitle, hasData: !!agg && agg.categories.length > 0, snapshot: block.snapshot, height: block.height, width: block.width });
+        blocks.push({ kind: 'chart', id: block.id, title: block.chart.title, subtitle, hasData: !!agg && agg.categories.length > 0, snapshot: block.snapshot, height: block.height, width: block.width, fontSize: block.fontSize });
         break;
       }
       case 'page-break': blocks.push(block); break;
@@ -283,7 +283,8 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
         case 'chart': {
           const agg = input.aggregations.get(item.blockId);
           if (agg && agg.categories.length > 0) {
-            await doc.svg(seams.renderSvg(agg, item.w, item.h, seams.theme), item.x, item.y, item.w, item.h);
+            const block = byId.get(item.blockId);
+            await doc.svg(seams.renderSvg(agg, item.w, item.h, seams.theme, block?.kind === 'chart' ? block.fontSize : undefined), item.x, item.y, item.w, item.h);
           } else {
             doc.setFontSize(9);
             doc.setTextColor(130);

@@ -35,11 +35,6 @@ export function ManualReportBlockEditor({ block, onChange }: { block: ManualRepo
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-1 text-muted-foreground">{t('manualValidation.report.sourceLabel')}
-        <span className="min-w-0 truncate font-medium text-foreground" title={block.checklistName}>
-          {block.checklistName.trim() || t('manualValidation.name.placeholder')}
-        </span>
-      </div>
       <label className="inline-flex min-w-0 items-center gap-1 text-muted-foreground">{t('manualValidation.report.sourceLabel')}
         <select className={`${field} min-w-0 flex-1`} aria-label={t('manualValidation.report.sourceLabel')} value={block.checklistId ?? ''} disabled={missing}
           onChange={(event) => replaceSnapshot(event.target.value)}>

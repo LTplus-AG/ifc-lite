@@ -137,26 +137,22 @@ describe('extractWallSegmentsForStorey: placements that join above the storey', 
     expect(byWall.get(58)).toEqual({ a: [-220, 110], b: [-220, 105] });
   });
 
-  it('leaves the wall where it is when a storey-chain frame is unreadable', async () => {
+  it('refuses an unreadable storey-chain frame rather than returning ancestor coordinates (#6511 / #6232)', async () => {
     // The building placement #13 loses its `RelativePlacement`, so the storey's
-    // frame relative to the site cannot be computed. Removing only the part of
-    // the chain that IS readable would move the wall by a partial transform,
-    // which is worse than not correcting: the wall stays at its own frame,
-    // exactly what this returned before #3003.
+    // frame relative to the site cannot be computed. The site-relative wall
+    // cannot supply storey-local coordinates; its identity frame would be an
+    // invented location. Direct/storey and building-relative walls remain
+    // readable because they do not need that missing ancestor frame.
     const broken = ifc.replace('#13=IFCLOCALPLACEMENT(#11,#14);', '#13=IFCLOCALPLACEMENT(#11,$);');
     expect(broken).toContain('#13=IFCLOCALPLACEMENT(#11,$);');
     const parser = new IfcParser();
     const store = await parser.parseColumnar(new TextEncoder().encode(broken).buffer);
     const result = extractWallSegmentsForStorey(store, 4);
-    const i = result.contributingWallIds.indexOf(58);
-    expect(i).toBeGreaterThanOrEqual(0);
-    const s = result.segments[i];
-    expect([
-      [s.a[0], s.a[1]],
-      [s.b[0], s.b[1]],
-    ]).toEqual([
-      [0, 0],
-      [5, 0],
+    expect(result.contributingWallIds).toEqual([50, 56]);
+    expect(result.skipped).toEqual([{ wallId: 58, reason: 'placement-not-resolvable' }]);
+    expect(result.segments.map(({ a, b }) => [a, b])).toEqual([
+      [[0, 0], [5, 0]],
+      [[-200, 100], [-200, 95]],
     ]);
   });
 });

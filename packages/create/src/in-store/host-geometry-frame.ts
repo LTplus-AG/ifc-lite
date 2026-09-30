@@ -5,7 +5,12 @@
 /** Package-private body frame reads: defaults belong only to omitted optional
  * attributes, never to an explicit unreadable reference (#6232 / #6539). */
 import { firstProjAxis } from '@ifc-lite/data';
-import type { AnchorEntityReader } from './resolve-anchor.js';
+
+/** Structural entity access lets body and planar readers share the same
+ * placement validation without requiring an anchor's unrelated methods. */
+export interface GeometryEntityReader {
+  entity(id: number): { type: string; attributes: readonly unknown[] } | null;
+}
 
 export type Vec3 = [number, number, number];
 export type Frame3 = { o: Vec3; x: Vec3; y: Vec3; z: Vec3 };
@@ -31,7 +36,7 @@ export function vec3(value: unknown, dimension: 2 | 3 = 3): Vec3 | null {
   return x === null || y === null || z === null ? null : [x, y, z];
 }
 
-export function pointOf(reader: AnchorEntityReader, ref: unknown, type = 'IFCCARTESIANPOINT', dimension: 2 | 3 = 3): Vec3 | null {
+export function pointOf(reader: GeometryEntityReader, ref: unknown, type = 'IFCCARTESIANPOINT', dimension: 2 | 3 = 3): Vec3 | null {
   const id = refId(ref);
   const entity = id === null ? null : reader.entity(id);
   return entity?.type.toUpperCase() === type ? vec3(entity.attributes[0], dimension) : null;
@@ -43,7 +48,7 @@ export function unit(v: Vec3): Vec3 | null {
 }
 
 /** IfcAxis2Placement2D: Position is optional on a profile; Location is required. */
-export function axis2d(reader: AnchorEntityReader, ref: unknown): { o: [number, number]; x: [number, number] } | null {
+export function axis2d(reader: GeometryEntityReader, ref: unknown): { o: [number, number]; x: [number, number] } | null {
   if (ref === null || ref === undefined) return { o: [0, 0], x: [1, 0] };
   const id = refId(ref), placement = id === null ? null : reader.entity(id);
   if (placement?.type.toUpperCase() !== 'IFCAXIS2PLACEMENT2D') return null;
@@ -56,7 +61,7 @@ export function axis2d(reader: AnchorEntityReader, ref: unknown): { o: [number, 
 
 /** IfcAxis2Placement3D: only an omitted optional Position/Axis/RefDirection
  * uses defaults. An explicit missing, zero or parallel axis is unreadable. */
-export function axis3d(reader: AnchorEntityReader, ref: unknown): Frame3 | null {
+export function axis3d(reader: GeometryEntityReader, ref: unknown): Frame3 | null {
   if (ref === null || ref === undefined) return { o: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
   const id = refId(ref), placement = id === null ? null : reader.entity(id);
   if (placement?.type.toUpperCase() !== 'IFCAXIS2PLACEMENT3D') return null;

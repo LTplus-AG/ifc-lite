@@ -56,7 +56,7 @@ export interface StoreyGridAxes {
   axes: GridAxisSegment[];
   /** IfcGrid entities found. */
   gridIds: number[];
-  /** Axes whose curve is not a straight line (arcs, splines): not offered. */
+  /** Axes with unreadable placement frames or unsupported curves: not offered. */
   skippedAxes: number;
 }
 
@@ -192,8 +192,11 @@ export function extractGridAxesForStorey(
     const placementId = numericAttr(grid.attributes[5] as never);
     const frame = placementId === null ? { origin: [0, 0] as Vec2, axisX: [1, 0] as Vec2 }
       : frameInStoreyFrame(store, extractor, overlay, placementId, storeyChain);
-    if (!frame) continue;
     const families: Array<['U' | 'V' | 'W', unknown]> = [['U', grid.attributes[7]], ['V', grid.attributes[8]], ['W', grid.attributes[9]]];
+    if (!frame) {
+      out.skippedAxes += families.reduce((count, [, list]) => count + refList(list).length, 0);
+      continue;
+    }
     for (const [family, list] of families) {
       for (const axisId of refList(list)) {
         const axis = read(axisId);

@@ -159,3 +159,72 @@ describe('extractGridAxesForStorey: an authored grid (#6232 D3)', () => {
     expect(extractGridAxesForStorey(store, 42, view).axes).toEqual([]);
   });
 });
+
+
+describe('grid placement orientation refuses unreadable frames (#6511 / #6232)', () => {
+  const malformed = [
+    ['missing RefDirection', '#61=IFCAXIS2PLACEMENT3D(#62,$,#999999);'],
+    ['zero RefDirection', '#61=IFCAXIS2PLACEMENT3D(#62,$,#63);', '#63=IFCDIRECTION((0.,0.,0.));'],
+    ['incomplete RefDirection', '#61=IFCAXIS2PLACEMENT3D(#62,$,#63);', '#63=IFCDIRECTION((0.,1.));'],
+    ['oversized RefDirection', '#61=IFCAXIS2PLACEMENT3D(#62,$,#63);', '#63=IFCDIRECTION((0.,1.,0.,0.));'],
+    ['wrong RefDirection class', '#61=IFCAXIS2PLACEMENT3D(#62,$,#63);', '#63=IFCCARTESIANPOINT((0.,1.,0.));'],
+    ['nonfinite RefDirection', '#61=IFCAXIS2PLACEMENT3D(#62,$,#63);', '#63=IFCDIRECTION((0.,1.E309,0.));'],
+    ['parallel RefDirection', '#61=IFCAXIS2PLACEMENT3D(#62,$,#63);', '#63=IFCDIRECTION((0.,0.,1.));'],
+    ['missing Axis', '#61=IFCAXIS2PLACEMENT3D(#62,#999999,#63);'],
+    ['zero Axis', '#61=IFCAXIS2PLACEMENT3D(#62,#94,#63);', '#94=IFCDIRECTION((0.,0.,0.));'],
+    ['incomplete Axis', '#61=IFCAXIS2PLACEMENT3D(#62,#94,#63);', '#94=IFCDIRECTION((0.,0.));'],
+    ['nonplanar Axis', '#61=IFCAXIS2PLACEMENT3D(#62,#94,#63);', '#94=IFCDIRECTION((1.,0.,1.));'],
+  ] as const;
+
+  function altered(placement: string, direction?: string): string {
+    let text = FILE_GRID.replace('#61=IFCAXIS2PLACEMENT3D(#62,$,#63);', placement);
+    if (direction) text = direction.startsWith('#63=')
+      ? text.replace('#63=IFCDIRECTION((0.,1.,0.));', direction)
+      : text.replace('ENDSEC;\nEND-ISO-10303-21;', `${direction}\nENDSEC;\nEND-ISO-10303-21;`);
+    return text;
+  }
+
+  it.each(malformed)('refuses explicit %s instead of inventing straight snap axes', async (_label, placement, direction?: string) => {
+    const result = extractGridAxesForStorey(await parse(altered(placement, direction)), 50);
+    expect(result.axes).toEqual([]);
+    expect(result.skippedAxes).toBe(2);
+  });
+
+  it('omitted optional Axis and RefDirection retain the canonical default orientation', async () => {
+    const axes = extractGridAxesForStorey(await parse(altered('#61=IFCAXIS2PLACEMENT3D(#62,$,$);')), 50).axes;
+    expect(axes.map((axis) => [axis.AxisTag, round(axis.a), round(axis.b)])).toEqual([
+      ['1', [0.5, 0], [0.5, 8]], ['A', [0.5, 3], [6.5, 3]],
+    ]);
+  });
+
+  it('an unreadable intermediate placement cannot succeed with its partial child frame', async () => {
+    const text = FILE_GRID.replace('#60=IFCLOCALPLACEMENT(#51,#61);', '#60=IFCLOCALPLACEMENT(#900,#61);')
+      .replace('ENDSEC;\nEND-ISO-10303-21;', '#900=IFCLOCALPLACEMENT(#51,#901);\n#901=IFCAXIS2PLACEMENT3D(#22,$,#999999);\nENDSEC;\nEND-ISO-10303-21;');
+    expect(extractGridAxesForStorey(await parse(text), 50).axes).toEqual([]);
+  });
+
+  it('an unreadable storey frame cannot succeed with coordinates in its parent frame', async () => {
+    const text = FILE_GRID.replace('#60=IFCLOCALPLACEMENT(#51,#61);', '#60=IFCLOCALPLACEMENT(#45,#61);')
+      .replace('#52=IFCAXIS2PLACEMENT3D(#53,$,$);', '#52=IFCAXIS2PLACEMENT3D(#53,$,#999999);');
+    expect(extractGridAxesForStorey(await parse(text), 50).axes).toEqual([]);
+  });
+
+  it('live direction edits and deletion refuse the same source-backed placement, and clearing them restores its axes', async () => {
+    const store = await parse(FILE_GRID);
+    const view = new MutablePropertyView(null, 'm');
+    const before = extractGridAxesForStorey(store, 50, view).axes;
+    expect(before).toHaveLength(2);
+    view.setPositionalAttribute(63, 0, [0, 1]);
+    expect(extractGridAxesForStorey(store, 50, view).axes).toEqual([]);
+    view.removePositionalMutation(63, 0);
+    expect(extractGridAxesForStorey(store, 50, view).axes).toEqual(before);
+    view.deleteEntity(63);
+    expect(extractGridAxesForStorey(store, 50, view).axes).toEqual([]);
+    view.restoreFromTombstone(63);
+    expect(extractGridAxesForStorey(store, 50, view).axes).toEqual(before);
+    view.setEntityType(63, 'IfcCartesianPoint', undefined, 'IfcDirection', true);
+    expect(extractGridAxesForStorey(store, 50, view).axes).toEqual([]);
+    view.removeTypeMutation(63);
+    expect(extractGridAxesForStorey(store, 50, view).axes).toEqual(before);
+  });
+});

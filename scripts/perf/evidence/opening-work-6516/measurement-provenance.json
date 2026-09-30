@@ -98,9 +98,21 @@
     "browser-ab-v3-report.json": "a9f8d63ddc4cd1e70b02ca330143fd4667d12a477403417dc32710397a252461",
     "native-five-pairs-host-load.jsonl": "b9c75b23c07c1f3a6eba7fcc9e76e2ac0ea16ea83c130c845029db7d0c99bf67",
     "portable-surface-method.md": "26445980c804398e8c233ceb62837f0b85145e5ed92622058c3b120ef75f4392",
-    "compare-surfaces-6516.py": "a61d8d45d7b4da44ae48fc5b1cca1e0a22589c5e383dd0f7c8c23d6f1cda611d",
+    "compare-surfaces-6516.py": "4c538741d1e07708b406155a1bf9548a963f843fa7a7faed5ce5f850ece59e24",
     "browser-aa-v3-report.json": "a5b0ab9c54b182e27b5a774e12d83ded2b988f86edfe47999d23bb344be2ebf0",
-    "native-parts-collector.rs": "1f369b88fda854e9f983b2b79ca3414005e4b18c0fb8d603a83e72ed2d4c8551",
+    "native-parts-collector.rs": "5b19e3c1fccd37db916e0f228f3fb2744ffbf2102cbe04be96ffc610813f089b",
     "software-browser-harness.patch": "532935f6464ab03da3cb6690d5b2e106e98406ed148288c7df6adc905c20248d"
+  },
+  "reproducerPackaging": {
+    "compare-surfaces-6516.py": {
+      "measuredScratchCodeSha256": "a61d8d45d7b4da44ae48fc5b1cca1e0a22589c5e383dd0f7c8c23d6f1cda611d",
+      "packagedCodeSha256": "4c538741d1e07708b406155a1bf9548a963f843fa7a7faed5ce5f850ece59e24",
+      "change": "MPL comment header only; measured code and behavior unchanged"
+    },
+    "native-parts-collector.rs": {
+      "measuredScratchCodeSha256": "1f369b88fda854e9f983b2b79ca3414005e4b18c0fb8d603a83e72ed2d4c8551",
+      "packagedCodeSha256": "5b19e3c1fccd37db916e0f228f3fb2744ffbf2102cbe04be96ffc610813f089b",
+      "change": "MPL comment header only; measured code and behavior unchanged"
+    }
   }
 }

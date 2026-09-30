@@ -20,3 +20,6 @@ A/B controls, older release comparison, first-divergence trace, surface-distance
 oracle outputs, invocations, reproduction method and full per-part verdict.
 They are supporting diagnostics. The implementation PR's documented browser
 verdict remains too noisy to establish overall speedup or neutrality.
+
+
+`historical-precorrection-qualification.json` preserves the old `current-v3-independent-qualification.json` bytes (SHA-256 `898fe864e21283de21f320dab5cb1c0122684320b16d94937cc14355ef166bf6`) under an explicitly historical name. It uses the superseded pre-correction codelog hashes and surface distances; do not cite it as current qualification. The primary PR's corrected nine outputs and reproducer are authoritative for the finite surface qualification.

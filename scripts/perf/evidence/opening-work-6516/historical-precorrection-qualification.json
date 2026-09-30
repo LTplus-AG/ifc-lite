@@ -1,0 +1,903 @@
+{
+  "purpose": "Independent current-v3 finite surface/orientation qualification; rejected v1 evidence remains separate",
+  "engine": "IfcOpenShell0.8.5; numpy2.0.2; CPython3.12.14",
+  "algorithm_checks": "known-answer triangle interior/edge/vertex/degenerate; deterministic100scalar+100batched BVH results against full-triangle brute force",
+  "limitations": [
+    "Finite exhaustive vertices/centroids/uniqueedge-midpoint samples do not prove continuousHausdorffbounds",
+    "Closed coherent edge incidence and signed volume do not prove absence of selfintersections/validnestedsolid",
+    "RTC reconstructed from actual relevant stream/nativecollector, not metadata flags alone; bounds checkedagainstpinnedengine",
+    "Slight coordinate drifts are expected intentional geometry differences, not byteidentity claims",
+    "455already has ~1.25mm worst reverseoracle discrepancy in bothbase/candidate; no claim everymesh is within1mm"
+  ],
+  "artifacts": {
+    "455_v3_surface.py": {
+      "sha256": "15d23d201dacac4e38cc3d0445587a401b26cddd85772dd080a1d4719b02232e",
+      "bytes": 2106
+    },
+    "455-v3-spatial-surface-comparison.json": {
+      "sha256": "98bce690ef7faf0baf81f01a7575345637c7c3ced992abb442454502eb0992b9",
+      "bytes": 21078
+    },
+    "455-v3-spatial-surface-comparison.log": {
+      "sha256": "d2ad1644a5fab063117d3743238c4019f565779f3d6aea99d3cbf6a3be99ffb9",
+      "bytes": 8487
+    },
+    "surface_compare.py": {
+      "sha256": "bc59dc6f468158c184f15a0aa2480a340833bdf332361450136001c506172f51",
+      "bytes": 11632
+    },
+    "rvt_v3_parts_surface.py": {
+      "sha256": "0e8e99993d86137e24a6228506f6ba9741bbbd3fc5f89eabe56b9fb221d665cc",
+      "bytes": 5076
+    },
+    "rvt-v3-parts-spatial-comparison.json": {
+      "sha256": "fd6948d444b37a57c193586edb0ea71938a5a49691228504ffa0211426fe3bd1",
+      "bytes": 69712
+    },
+    "rvt-v3-parts-spatial-comparison.log": {
+      "sha256": "b8898b936b059942532eed074fa1c9bf0565cd990127224b1dbd5477c057064f",
+      "bytes": 36223
+    },
+    "rvt7075_surface.py": {
+      "sha256": "b10e81eb46acd832d109efdd445c433c0bab70e45bd061e87c7d8387e4706027",
+      "bytes": 2350
+    },
+    "rvt7075-spatial-comparison.json": {
+      "sha256": "1b9ffc3f66bc51fa43f291944f931037d8be382ce048279dbaf58ca623bd6cbd",
+      "bytes": 12818
+    },
+    "rvt7075-spatial-comparison.log": {
+      "sha256": "e7b03e59a4fe62cc0100c8f5623b7c1ae514bc653a3cbcd974e53183f0cb0473",
+      "bytes": 8640
+    },
+    "issue068_oracle.py": {
+      "sha256": "dbba4c080f160137e8f1042968575c6e6726d26a27e679f60cb0aae35ff0fa6e",
+      "bytes": 2291
+    },
+    "issue068-892212-oracle.json": {
+      "sha256": "0dbf1f56a36d53a78ffdb952c3cb741e316bc0b0c989048fad4528423df2d1d0",
+      "bytes": 2069
+    },
+    "issue068_surface.py": {
+      "sha256": "c21bb0be272e1f7573e1b8b4a0acb17a30920fe52505476dfa697cfd78a73f7d",
+      "bytes": 1665
+    },
+    "issue068-892212-spatial-comparison.json": {
+      "sha256": "b5fe205709151d08f8f30af9808f96e967dd2410560f60ee6886cc73a84ea75c",
+      "bytes": 12525
+    },
+    "issue068-892212-spatial-comparison.log": {
+      "sha256": "268b1f4afdc4f79f8f00a72ec7656fc718b1f6249c115719693bf77534bf9264",
+      "bytes": 8151
+    },
+    "issue068-892212-topology-volume.json": {
+      "sha256": "a55a322a2323baa77f78aca25d99bd2497dc3cc84244a2e284cc6ddc0514db38",
+      "bytes": 500
+    },
+    "snowdon81962_oracle.py": {
+      "sha256": "3ac35509dc9dccd6e47611f85dd72203d709e3f1747573207408953c88f1d436",
+      "bytes": 1497
+    },
+    "snowdon81962-oracle.json": {
+      "sha256": "aae7229515ac95c01a42a61b96bff5b7ac7df566a7e477c739f5ef926ca50b5c",
+      "bytes": 1366
+    },
+    "snowdon81962_surface.py": {
+      "sha256": "a6f7e505f154ea13d4d77911255394a6a3373b1f95662477b590f3303b200cd7",
+      "bytes": 2214
+    },
+    "snowdon81962-spatial-comparison.json": {
+      "sha256": "7ccadf0f29ed552c6c5c58027ad5bebb729cc5dc224728518102383546f4f3fc",
+      "bytes": 12557
+    },
+    "snowdon81962-spatial-comparison.log": {
+      "sha256": "5f7b27ae69391239db24ac07d633214f5d25f30a030d3bdfeead5896bd463d88",
+      "bytes": 8050
+    },
+    "compare-surfaces-6516.py": {
+      "sha256": "a61d8d45d7b4da44ae48fc5b1cca1e0a22589c5e383dd0f7c8c23d6f1cda611d",
+      "bytes": 16518
+    },
+    "portable-surface-method.md": {
+      "sha256": "26445980c804398e8c233ceb62837f0b85145e5ed92622058c3b120ef75f4392",
+      "bytes": 4882
+    },
+    "rvt7834-native-portable-check.json": {
+      "sha256": "527b53c6d29bd572147103bcff668f512cb446e60875ba9a5da1368171218aed",
+      "bytes": 14886
+    },
+    "rvt7834-native-portable-check.log": {
+      "sha256": "d92fc076c4a1555f21ed2a7ebcf2ad0fcb47d57905b5637a7b046fe4e2910a5b",
+      "bytes": 8089
+    },
+    "rvt33639-native-portable-check.json": {
+      "sha256": "d0d0f39e09f5a3c4142b04a01036bf8c774b8101de4ca00e6a2fd8ce4b00c68c",
+      "bytes": 15052
+    },
+    "rvt33639-native-portable-check.log": {
+      "sha256": "5c77d246679985f80039288fdcf4baea624703bd8e0b372f8f6fd0b89788fc45",
+      "bytes": 8289
+    },
+    "rvt33639_oracle.py": {
+      "sha256": "834398bee6d59d083ca1a9e25c57ad570efa4f2f279857802b9e120ec0c8abf0",
+      "bytes": 2343
+    },
+    "rvt33639-oracle.json": {
+      "sha256": "adf73418e8c46b856dc5da66311526d44ccc7d18cc509bb72dd340fb46d0ffaf",
+      "bytes": 2350
+    },
+    "snowdon81962-portable-check.json": {
+      "sha256": "e6503a6a1dd5705e93c1abacf7320894ee9865a5b3ec0991a3ce01a98e1f1305",
+      "bytes": 14748
+    },
+    "issue068-892212-portable-check.json": {
+      "sha256": "872c785a636e23ff955b0dc257769f79a436e0f7119cad1288e79f3fae0268ce",
+      "bytes": 14934
+    },
+    "rvt6810-portable-check.json": {
+      "sha256": "b666146f8992c708ffda941d094b6b47ca5673a3a9b65ae3544888646e038fee",
+      "bytes": 15084
+    }
+  },
+  "surface_summaries": {
+    "455-v3-spatial-surface-comparison.json": {
+      "input_sha256": {
+        "current_base": "5a9a756ea78e2d2d192c985fa71543ed4cc5358be78409d219c186d12210f759",
+        "candidate": "61fe2997b58b815bb8e86679626b96d07b71128b2e9322188d0b0c16c928dd9a",
+        "oracle_with_openings": "a42244e883b5de717c2008577e5f6a84af1d680df1c8db3cc570512af853e419",
+        "oracle_without_openings": "b08ffd348066807783a78cc469ed427443af89c4c5febd22ce8d6708fb522d57"
+      },
+      "bounds": {
+        "current_base": {
+          "min": [
+            -3.4759081602096558,
+            -3.274756908416748,
+            2.4630074501037598
+          ],
+          "max": [
+            -1.193458080291748,
+            5.352954387664795,
+            5.44799280166626
+          ],
+          "triangles": 7758
+        },
+        "candidate": {
+          "min": [
+            -3.4759081602096558,
+            -3.274756908416748,
+            2.4630074501037598
+          ],
+          "max": [
+            -1.193458080291748,
+            5.352954387664795,
+            5.44799280166626
+          ],
+          "triangles": 7758
+        },
+        "oracle_with_openings": {
+          "min": [
+            -3.47591368595476,
+            -3.2747501622558466,
+            2.463
+          ],
+          "max": [
+            -1.1934562087583878,
+            5.352946819946775,
+            5.448
+          ],
+          "triangles": 9506
+        },
+        "oracle_without_openings": {
+          "min": [
+            -3.47591368595476,
+            -3.2747501622558466,
+            2.463
+          ],
+          "max": [
+            -1.1934562087583878,
+            5.352946819946775,
+            5.448
+          ],
+          "triangles": 11348
+        }
+      },
+      "comparison_max_distances_m": {
+        "current_base_to_oracle_with_openings": 0.00017318123784791411,
+        "oracle_with_openings_to_current_base": 0.0012490598474379673,
+        "current_base_to_oracle_without_openings": 0.00017318123784791411,
+        "oracle_without_openings_to_current_base": 0.0012499674711687482,
+        "candidate_to_oracle_with_openings": 0.00017318123784791411,
+        "oracle_with_openings_to_candidate": 0.0012490598474379673,
+        "candidate_to_oracle_without_openings": 0.00017318123784791411,
+        "oracle_without_openings_to_candidate": 0.0012499674711687482,
+        "current_base_to_candidate": 1.0476789706102624e-05,
+        "candidate_to_current_base": 1.0476789706102624e-05
+      }
+    },
+    "rvt7075-spatial-comparison.json": {
+      "input_sha256": {
+        "base": "ae0724533d167b00db517aca3dcb7bffcd0a72aaacc53be72b9bea0935347995",
+        "candidate": "488a64a0da526763f58d444fbc597a6ceee0f3b0c3d1f49eb3dadb15bed87baf",
+        "oracle": "a5369a40144f771e3dfcc626f6947f22d52a96d7441a1910d7a0b38440cae3da"
+      },
+      "bounds": {
+        "base": {
+          "min": [
+            500390.01558873703,
+            2780228.5267273355,
+            14.629996995925904
+          ],
+          "max": [
+            500392.79921433976,
+            2780231.0731262136,
+            18.23000309944153
+          ],
+          "triangles": 278
+        },
+        "candidate": {
+          "min": [
+            500390.01558873703,
+            2780228.5267273355,
+            14.629996995925904
+          ],
+          "max": [
+            500392.79921433976,
+            2780231.0731262136,
+            18.23000309944153
+          ],
+          "triangles": 278
+        },
+        "oracle": {
+          "min": [
+            500390.01558451407,
+            2780228.526733136,
+            14.629999999999997
+          ],
+          "max": [
+            500392.7992177145,
+            2780231.0731205586,
+            18.23
+          ],
+          "triangles": 144
+        }
+      },
+      "comparison_max_distances_m": {
+        "base_to_oracle": 9.624385891481284e-06,
+        "oracle_to_base": 7.598649518208557e-06,
+        "candidate_to_oracle": 9.624385891481284e-06,
+        "oracle_to_candidate": 7.598649518208557e-06,
+        "base_to_candidate": 7.636200280774798e-06,
+        "candidate_to_base": 7.636200281744558e-06
+      }
+    },
+    "issue068-892212-spatial-comparison.json": {
+      "input_sha256": {
+        "base": "16c2e8e944707bfea6f5627a33e2a1a36bb4caa5d0047bb3c8ba871241874b52",
+        "candidate": "b14556e172f83e4773b7637419206e8ae2861170d6cbcb1e1cbcdacb73be3712",
+        "oracle": "90edb114eba75e13c64658c22c67c475965f837ae61d4b92bfca8c39cf0c8d2f"
+      },
+      "bounds": {
+        "base": {
+          "min": [
+            150.7808041231944,
+            151.63768940656837,
+            134.20000143051146
+          ],
+          "max": [
+            151.789727653773,
+            164.6874139854258,
+            139.2599989891052
+          ],
+          "triangles": 234
+        },
+        "candidate": {
+          "min": [
+            150.7808041231944,
+            151.63768940656837,
+            134.20000143051146
+          ],
+          "max": [
+            151.789727653773,
+            164.6874139854258,
+            139.2599989891052
+          ],
+          "triangles": 234
+        },
+        "oracle": {
+          "min": [
+            150.78080725732275,
+            151.63770090063682,
+            134.2
+          ],
+          "max": [
+            151.78973070971796,
+            164.6874054110936,
+            139.26
+          ],
+          "triangles": 104
+        }
+      },
+      "comparison_max_distances_m": {
+        "base_to_oracle": 1.5656118949889794e-05,
+        "oracle_to_base": 1.4003186509686614e-05,
+        "candidate_to_oracle": 1.883515858985041e-05,
+        "oracle_to_candidate": 1.4003186509686614e-05,
+        "base_to_candidate": 3.112118025531923e-06,
+        "candidate_to_base": 6.22424090880101e-06
+      }
+    },
+    "snowdon81962-spatial-comparison.json": {
+      "input_sha256": {
+        "base": "d6f647a47e350297907c4adc50a1aeac8134cf46f350879d8a847cd6c141f05b",
+        "candidate": "07b168527376817e92892d470ead265bd0d5dbe253936e7163370186dd6bf7d1",
+        "oracle": "ea5c1ae76a0fd3680f8fdb2789dc8278c4bbd0a795d462b04f22de47106aeb0a"
+      },
+      "bounds": {
+        "base": {
+          "min": [
+            -33.37559509277344,
+            -9.004302978515625,
+            -5.30859375
+          ],
+          "max": [
+            21.261627197265625,
+            12.42059326171875,
+            -5.1562042236328125
+          ],
+          "triangles": 816
+        },
+        "candidate": {
+          "min": [
+            -33.37559509277344,
+            -9.004302978515625,
+            -5.30859375
+          ],
+          "max": [
+            21.261627197265625,
+            12.42059326171875,
+            -5.1562042236328125
+          ],
+          "triangles": 816
+        },
+        "oracle": {
+          "min": [
+            -33.37559999999988,
+            -9.004300000000164,
+            -5.308600000000012
+          ],
+          "max": [
+            21.261617073764423,
+            12.420600000000062,
+            -5.156200000000012
+          ],
+          "triangles": 460
+        }
+      },
+      "comparison_max_distances_m": {
+        "base_to_oracle": 1.029128419657206e-05,
+        "oracle_to_base": 1.2109990318449421e-05,
+        "candidate_to_oracle": 1.029128419657206e-05,
+        "oracle_to_candidate": 1.2109990318449421e-05,
+        "base_to_candidate": 3.064965248188936e-11,
+        "candidate_to_base": 3.064965248188936e-11
+      }
+    }
+  },
+  "layered_revit": {
+    "input_sha256": {
+      "base": "4f4b45ebff23b044148df62b5b44cae7b63b22c091dffd0c35e8d37c25938f10",
+      "candidate": "ed8c937ce4cf13f038449a24e94094f321400723f09f08ac075af72f9bb1c653"
+    },
+    "metadata_sha256": {
+      "base": "7acf4e613b4deddb676a957a4409aa8fbdcdb30322cad9acc43267788bb2bcca",
+      "candidate": "7acf4e613b4deddb676a957a4409aa8fbdcdb30322cad9acc43267788bb2bcca"
+    },
+    "entities": {
+      "6810": {
+        "bounds": {
+          "base": {
+            "min": [
+              500395.89124087145,
+              2780218.846164124,
+              14.629993896484375
+            ],
+            "max": [
+              500399.44592443755,
+              2780222.739674287,
+              18.580006103515625
+            ],
+            "triangles": 480
+          },
+          "candidate": {
+            "min": [
+              500395.89124087145,
+              2780218.846164124,
+              14.629993896484375
+            ],
+            "max": [
+              500399.44592443755,
+              2780222.739674287,
+              18.580006103515625
+            ],
+            "triangles": 480
+          },
+          "oracle": {
+            "min": [
+              500395.8912447471,
+              2780218.846156025,
+              14.63
+            ],
+            "max": [
+              500399.4459288437,
+              2780222.7396736327,
+              18.580000000000002
+            ],
+            "triangles": 156
+          }
+        },
+        "parts": [
+          {
+            "index": 0,
+            "base_topology": {
+              "boundary_edges": 0,
+              "nonmanifold_edges": 0,
+              "unmatched_directed_edge_occurrences": 0,
+              "stable_signed_volume_m3": 0.17381872620509622,
+              "volume_eligibility": "coherent closed orientation required; no self-intersection/nesting proof"
+            },
+            "candidate_topology": {
+              "boundary_edges": 0,
+              "nonmanifold_edges": 0,
+              "unmatched_directed_edge_occurrences": 0,
+              "stable_signed_volume_m3": 0.17381872621944364,
+              "volume_eligibility": "coherent closed orientation required; no self-intersection/nesting proof"
+            },
+            "symmetric_sample_max_m": 1.2686599721997344e-08
+          },
+          {
+            "index": 1,
+            "base_topology": {
+              "boundary_edges": 0,
+              "nonmanifold_edges": 0,
+              "unmatched_directed_edge_occurrences": 0,
+              "stable_signed_volume_m3": 0.18386122513070735,
+              "volume_eligibility": "coherent closed orientation required; no self-intersection/nesting proof"
+            },
+            "candidate_topology": {
+              "boundary_edges": 0,
+              "nonmanifold_edges": 0,
+              "unmatched_directed_edge_occurrences": 0,
+              "stable_signed_volume_m3": 0.18386122513070735,
+              "volume_eligibility": "coherent closed orientation required; no self-intersection/nesting proof"
+            },
+            "symmetric_sample_max_m": 0
+          },
+          {
+            "index": 2,
+            "base_topology": {
+              "boundary_edges": 0,
+              "nonmanifold_edges": 0,
+              "unmatched_directed_edge_occurrences": 0,
+              "stable_signed_volume_m3": 3.0566203300804013,
+              "volume_eligibility": "coherent closed orientation required; no self-intersection/nesting proof"
+            },
+            "candidate_topology": {
+              "boundary_edges": 0,
+              "nonmanifold_edges": 0,
+              "unmatched_directed_edge_occurrences": 0,
+              "stable_signed_volume_m3": 3.056620559088076,
+              "volume_eligibility": "coherent closed orientation required; no self-intersection/nesting proof"
+            },
+            "symmetric_sample_max_m": 7.971308113227261e-07
+          }
+        ],
+        "oracle_comparison_max_distances_m": {
+          "rvt6810/base_to_oracle": 1.4384428228121284e-05,
+          "rvt6810/oracle_to_base": 8.119150738869715e-06,
+          "rvt6810/candidate_to_oracle": 1.4508677998251211e-05,
+          "rvt6810/oracle_to_candidate": 8.119150738869715e-06
+        }
+      },
+      "7834": {
+        "bounds": {
+          "base": {
+            "min": [
+              500390.3639551764,
+              2780222.899862068,
+              14.629993896484375
+            ],
+            "max": [
+              500394.22200284054,
+              2780227.17145087,
+              18.58000616312027
+            ],
+            "triangles": 588
+          },
+          "candidate": {
+            "min": [
+              500390.3639551764,
+              2780222.899862068,
+              14.629993896484375
+            ],
+            "max": [
+              500394.22200284054,
+              2780227.17145087,
+              18.58000616312027
+            ],
+            "triangles": 588
+          },
+          "oracle": {
+            "min": [
+              500390.3639535364,
+              2780222.8998621213,
+              14.63
+            ],
+            "max": [
+              500394.222002926,
+              2780227.171453428,
+              18.580000000000002
+            ],
+            "triangles": 172
+          }
+        },
+        "parts": [
+          {
+            "index": 0,
+            "base_topology": {
+              "boundary_edges": 0,
+              "nonmanifold_edges": 0,
+              "unmatched_directed_edge_occurrences": 0,
+              "stable_signed_volume_m3": 0.2111076345008844,
+              "volume_eligibility": "coherent closed orientation required; no self-intersection/nesting proof"
+            },
+            "candidate_topology": {
+              "boundary_edges": 0,
+              "nonmanifold_edges": 0,
+              "unmatched_directed_edge_occurrences": 0,
+              "stable_signed_volume_m3": 0.21110763450671863,
+              "volume_eligibility": "coherent closed orientation required; no self-intersection/nesting proof"
+            },
+            "symmetric_sample_max_m": 6.659444846482856e-08
+          },
+          {
+            "index": 1,
+            "base_topology": {
+              "boundary_edges": 0,
+              "nonmanifold_edges": 0,
+              "unmatched_directed_edge_occurrences": 0,
+              "stable_signed_volume_m3": 0.21071251093897536,
+              "volume_eligibility": "coherent closed orientation required; no self-intersection/nesting proof"
+            },
+            "candidate_topology": {
+              "boundary_edges": 0,
+              "nonmanifold_edges": 0,
+              "unmatched_directed_edge_occurrences": 0,
+              "stable_signed_volume_m3": 0.21071251093897536,
+              "volume_eligibility": "coherent closed orientation required; no self-intersection/nesting proof"
+            },
+            "symmetric_sample_max_m": 0
+          },
+          {
+            "index": 2,
+            "base_topology": {
+              "boundary_edges": 0,
+              "nonmanifold_edges": 0,
+              "unmatched_directed_edge_occurrences": 0,
+              "stable_signed_volume_m3": 1.7603057373998363,
+              "volume_eligibility": "coherent closed orientation required; no self-intersection/nesting proof"
+            },
+            "candidate_topology": {
+              "boundary_edges": 0,
+              "nonmanifold_edges": 0,
+              "unmatched_directed_edge_occurrences": 0,
+              "stable_signed_volume_m3": 1.7603057399752562,
+              "volume_eligibility": "coherent closed orientation required; no self-intersection/nesting proof"
+            },
+            "symmetric_sample_max_m": 1.0178674320648096e-07
+          }
+        ],
+        "oracle_comparison_max_distances_m": {
+          "rvt7834/base_to_oracle": 1.4260533403349904e-05,
+          "rvt7834/oracle_to_base": 1.0208699859813002e-05,
+          "rvt7834/candidate_to_oracle": 1.4260533403349904e-05,
+          "rvt7834/oracle_to_candidate": 1.0208699859813002e-05
+        }
+      },
+      "38800": {
+        "bounds": {
+          "base": {
+            "min": [
+              500388.918763793,
+              2780222.474104138,
+              14.629993896484375
+            ],
+            "max": [
+              500390.0047099953,
+              2780223.4698877055,
+              18.58000616312027
+            ],
+            "triangles": 416
+          },
+          "candidate": {
+            "min": [
+              500388.918763793,
+              2780222.474104138,
+              14.629993896484375
+            ],
+            "max": [
+              500390.0047099953,
+              2780223.4698877055,
+              18.58000616312027
+            ],
+            "triangles": 416
+          },
+          "oracle": {
+            "min": [
+              500388.9187637338,
+              2780222.474103871,
+              14.63
+            ],
+            "max": [
+              500390.0047100267,
+              2780223.4698879607,
+              18.580000000000002
+            ],
+            "triangles": 112
+          }
+        },
+        "parts": [
+          {
+            "index": 0,
+            "base_topology": {
+              "boundary_edges": 0,
+              "nonmanifold_edges": 0,
+              "unmatched_directed_edge_occurrences": 0,
+              "stable_signed_volume_m3": 0.03598682500758832,
+              "volume_eligibility": "coherent closed orientation required; no self-intersection/nesting proof"
+            },
+            "candidate_topology": {
+              "boundary_edges": 0,
+              "nonmanifold_edges": 0,
+              "unmatched_directed_edge_occurrences": 0,
+              "stable_signed_volume_m3": 0.03598682509718642,
+              "volume_eligibility": "coherent closed orientation required; no self-intersection/nesting proof"
+            },
+            "symmetric_sample_max_m": 2.023961644781769e-08
+          },
+          {
+            "index": 1,
+            "base_topology": {
+              "boundary_edges": 0,
+              "nonmanifold_edges": 0,
+              "unmatched_directed_edge_occurrences": 0,
+              "stable_signed_volume_m3": 0.03363609964374612,
+              "volume_eligibility": "coherent closed orientation required; no self-intersection/nesting proof"
+            },
+            "candidate_topology": {
+              "boundary_edges": 0,
+              "nonmanifold_edges": 0,
+              "unmatched_directed_edge_occurrences": 0,
+              "stable_signed_volume_m3": 0.03363609902293092,
+              "volume_eligibility": "coherent closed orientation required; no self-intersection/nesting proof"
+            },
+            "symmetric_sample_max_m": 1.2529663785490346e-08
+          },
+          {
+            "index": 2,
+            "base_topology": {
+              "boundary_edges": 0,
+              "nonmanifold_edges": 0,
+              "unmatched_directed_edge_occurrences": 0,
+              "stable_signed_volume_m3": 0.3000732241025162,
+              "volume_eligibility": "coherent closed orientation required; no self-intersection/nesting proof"
+            },
+            "candidate_topology": {
+              "boundary_edges": 0,
+              "nonmanifold_edges": 0,
+              "unmatched_directed_edge_occurrences": 0,
+              "stable_signed_volume_m3": 0.3000732239587671,
+              "volume_eligibility": "coherent closed orientation required; no self-intersection/nesting proof"
+            },
+            "symmetric_sample_max_m": 6.879593953199192e-09
+          }
+        ],
+        "oracle_comparison_max_distances_m": {
+          "rvt38800/base_to_oracle": 7.392828850881123e-06,
+          "rvt38800/oracle_to_base": 7.931817028009564e-06,
+          "rvt38800/candidate_to_oracle": 7.392828850881123e-06,
+          "rvt38800/oracle_to_candidate": 7.931817028009564e-06
+        }
+      }
+    }
+  },
+  "issue068_topology_volume": {
+    "base": {
+      "boundary_edges": 0,
+      "nonmanifold_edges": 0,
+      "unmatched_directed_edge_occurrences": 0,
+      "stable_signed_volume_m3": 21.62499044639857
+    },
+    "v3": {
+      "boundary_edges": 0,
+      "nonmanifold_edges": 0,
+      "unmatched_directed_edge_occurrences": 0,
+      "stable_signed_volume_m3": 21.625008633257977
+    },
+    "oracle": {
+      "boundary_edges": 0,
+      "nonmanifold_edges": 0,
+      "unmatched_directed_edge_occurrences": 0,
+      "stable_signed_volume_m3": 21.625023842872125
+    }
+  },
+  "additional_native_raw_census_cells": {
+    "7834": {
+      "input_sha256": {
+        "base": "21ab5bbb4c6a02ff185f0ef4a13905a36332160bf6645617a14e5b61f7db1e19",
+        "candidate": "69016358e8b2124d401b0c99c1e9e2e598ed212d47829fea790d8894a226cd07",
+        "oracle": "c814f76cad8123342bd9b025f98736d1670351a8d1ee98759f0281ffc03d1bd2"
+      },
+      "geometry": {
+        "base": {
+          "bounds": {
+            "min": [
+              500390.3639486795,
+              2780222.899858253,
+              14.629993896484375
+            ],
+            "max": [
+              500394.2220102315,
+              2780227.171454208,
+              18.580006103515625
+            ]
+          },
+          "triangles": 304,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 56,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 2.182272493796695,
+          "closed_coherent_edge_incidence": false,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        },
+        "candidate": {
+          "bounds": {
+            "min": [
+              500390.3639486795,
+              2780222.899858253,
+              14.629993896484375
+            ],
+            "max": [
+              500394.2220102315,
+              2780227.171454208,
+              18.580006103515625
+            ]
+          },
+          "triangles": 304,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 56,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 2.182272483844797,
+          "closed_coherent_edge_incidence": false,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        },
+        "oracle": {
+          "bounds": {
+            "min": [
+              500390.3639535364,
+              2780222.8998621213,
+              14.63
+            ],
+            "max": [
+              500394.222002926,
+              2780227.171453428,
+              18.580000000000002
+            ]
+          },
+          "triangles": 172,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 47,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 2.182116938666683,
+          "closed_coherent_edge_incidence": false,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        }
+      },
+      "comparison_max_distances_m": {
+        "base_to_oracle": 9.520689953351473e-06,
+        "oracle_to_base": 7.684095753380219e-06,
+        "candidate_to_oracle": 9.520689953351473e-06,
+        "oracle_to_candidate": 7.684095753380219e-06,
+        "base_to_candidate": 8.415993485473195e-08,
+        "candidate_to_base": 8.415990437833663e-08
+      },
+      "limitation": "Both sources AND engine have pre-existing coordinate-deduplicated nonmanifold edges. Volumes are diagnostic, not physical-solid proof.33639 slightly farther from oracle reverse max and signedvolume; explicitly not an improvement claim."
+    },
+    "33639": {
+      "input_sha256": {
+        "base": "f78008fde220562bd776aa00979b052b2a79f9b1ec756a46e5c760bf24276df6",
+        "candidate": "a93448b9bae76c2131472d3d654b26ba1a6736434e447c86127ad685c7d43ff6",
+        "oracle": "346cd4a28017ba090958fa5053b4f6ecd1d0cd451256f64159b9798618e2f51d"
+      },
+      "geometry": {
+        "base": {
+          "bounds": {
+            "min": [
+              500376.64657924225,
+              2780214.296882646,
+              22.73
+            ],
+            "max": [
+              500398.36531398346,
+              2780232.538658159,
+              22.98
+            ]
+          },
+          "triangles": 490,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 84,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 45.776890157313865,
+          "closed_coherent_edge_incidence": false,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        },
+        "candidate": {
+          "bounds": {
+            "min": [
+              500376.64657924225,
+              2780214.296882646,
+              22.73
+            ],
+            "max": [
+              500398.36531398346,
+              2780232.538658159,
+              22.98
+            ]
+          },
+          "triangles": 490,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 84,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 45.77689755399535,
+          "closed_coherent_edge_incidence": false,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        },
+        "oracle": {
+          "bounds": {
+            "min": [
+              500376.64658154064,
+              2780214.29687867,
+              22.729999999999997
+            ],
+            "max": [
+              500398.3653105348,
+              2780232.538652676,
+              22.979999999999997
+            ]
+          },
+          "triangles": 208,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 54,
+          "unmatched_directed_edge_occurrences": 0,
+          "degenerate_edges": 0,
+          "signed_centered_volume_diagnostic_m3": 45.77685758817953,
+          "closed_coherent_edge_incidence": false,
+          "limitation": "Closed coherent edge incidence is not proof against self-intersections or invalid nested solids; volume remains diagnostic."
+        }
+      },
+      "comparison_max_distances_m": {
+        "base_to_oracle": 2.3448616179764662e-05,
+        "oracle_to_base": 1.1059134608784047e-05,
+        "candidate_to_oracle": 2.3448616179764662e-05,
+        "oracle_to_candidate": 1.239346606367793e-05,
+        "base_to_candidate": 7.834199370153287e-06,
+        "candidate_to_base": 8.501949343139128e-06
+      },
+      "limitation": "Both sources AND engine have pre-existing coordinate-deduplicated nonmanifold edges. Volumes are diagnostic, not physical-solid proof.33639 slightly farther from oracle reverse max and signedvolume; explicitly not an improvement claim."
+    }
+  }
+}

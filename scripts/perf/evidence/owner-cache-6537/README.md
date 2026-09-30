@@ -65,3 +65,31 @@ defect to the federated cache. Restoring both candidate files byte-for-byte
 makes all nine tests pass, without a geometry-content version bump that would
 request a GPU reupload of released arrays. Both real logs are archived. This
 is correctness evidence independent of the unqualified browser timings.
+
+
+## Batched release and retained aliases
+
+Independent review reproduced a release followed by append in the same React
+batch: the original same-length trigger misses the release. A forced rebuild
+then exposed a second defect: appending to an earlier federation owner reorders
+the global prefix already consumed by the uploader. Replacement, recolor and
+clear actions also exposed retained wrappers that were discarded before their
+CPU arrays could be emptied. The three genuine failing runs and subsequent
+passes are retained in `release-regression-logs.json.gz`, with original hashes
+and exact counts in `release-regression-manifest.json`.
+
+The correction uses one canonical CPU-release primitive and a weak source-array
+revision. The hook checks its previous sources and empties their previous owner
+wrappers before replacement or teardown can discard them. A release followed
+by append keeps the global prefix and adds only the new suffix. Retained counts
+and appearance provenance survive repeated releases; GPU content version stays
+unchanged. Mounted tests cover single and federated models, successive releases,
+recolor, peer replacement and clearing the federation. These are correctness
+claims, independent of any timing result.
+
+The corrected source was integrated with base `3e2779997ae165c36f6939419f9229debc73c163`
+and built as `ffa087d031df2f48d57fd216aa8d00b783dfd8c4`. Full root build and
+typecheck passed, followed by the streaming, federation, translation, data-slice
+and memory suites. Both comparison builds have byte-identical WASM runtime,
+glue and committed types. The earlier hidden-preview observations remain
+retained and are not promoted to a foreground performance verdict.

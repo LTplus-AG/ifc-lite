@@ -2732,3 +2732,14 @@ qualification and first verify actual foreground frame cadence; do not tune a
 product queue to compensate for a hidden preview's frame scheduling. Raw
 records, source identities, negative results and output-identity limits are
 [retained together](evidence/owner-cache-6537/README.md).
+
+
+Independent owner-cache review found batched CPU release plus append can miss
+a same-length replacement trigger. Rebuilding to fix it reorders a federation
+prefix already consumed by incremental upload. Recolor, peer replacement and
+teardown can also discard wrapper references before releasing their retained
+arrays. Use the canonical release primitive with a weak source-array revision,
+empty previous wrappers before replacing cache references, and preserve the
+existing global prefix on append. These mounted regression invariants establish
+correctness; they do not establish an end-to-end speed improvement. The failing
+runs and corrected qualification remain with the owner-cache evidence above.

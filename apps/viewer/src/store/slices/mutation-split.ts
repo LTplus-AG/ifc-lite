@@ -30,7 +30,7 @@ import { readAttributes, resolvePlacementChain } from '@/lib/placement-core.js';
 import { cloneElementMetadata } from '@/lib/metadata-clone.js';
 import { reassignWallOpenings } from '@/lib/wall-opening-reassign.js';
 import { joinAwareWall, splitJoinedWall } from './mutation-wall-split-joined.js';
-import type { ModellingStore } from './mutation-modelling-records.js';
+import { recordModellingEdit, type ModellingStore } from './mutation-modelling-records.js';
 import { resolve as translate } from '@/i18n/registry';
 
 type Get = () => ViewerState;
@@ -165,9 +165,10 @@ export function splitWall(
   const rightPlacement = resolvePlacementChain(env.dataStore, env.view, env.editor, rightId)?.localPlacementId;
   let openings = { toLeft: 0, toRight: 0, skipped: 0 };
   if (leftPlacement !== undefined && rightPlacement !== undefined) {
-    // Through the undoable action, so one Ctrl+Z also puts the openings back in the whole wall.
-    const s = reassignWallOpenings(env.dataStore, env.view, env.editor, expressId, leftId, rightId, native(distance, k), leftPlacement, rightPlacement,
-      (entityId, index, value) => get().setPositionalAttribute(modelId, entityId, index, value));
+    // Record fresh entities and positional writes together, so one Ctrl+Z
+    // restores both the source placements and the original void targets.
+    const s = recordModellingEdit(store, modelId, (_methods, draft) =>
+      reassignWallOpenings(env.dataStore, draft.getMutationView(), draft, expressId, leftId, rightId, native(distance, k)));
     openings = { toLeft: s.toLeft, toRight: s.toRight, skipped: s.skipped };
   }
   closeSplit(get, modelId, env, expressId, addedId);

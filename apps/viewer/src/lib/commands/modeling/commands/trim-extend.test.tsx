@@ -23,6 +23,9 @@ import { joinWallsInStore, resolveWallJoinAnchor, readHostedFill, readWallJoinRe
 import { readHostedCuts } from '@/lib/wall-hosted-cuts';
 import type { MeshData } from '@ifc-lite/geometry';
 import { StepExporter } from '@ifc-lite/export';
+import { IfcParser } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { AnchorEntityReader } from '../../../../../../../packages/create/src/in-store/resolve-anchor.js';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
 // The create package's mesh oracle: ray parity of sample points against each wall MESH.
 import { meshWalls, sample } from '../../../../../../../packages/create/src/in-store/wall-join-mesh.oracle.js';
@@ -370,6 +373,60 @@ describe('element.trimExtend: beams (#6232 C1)', () => {
 });
 
 describe('element.trimExtend: hosted openings (#6232 C1)', () => {
+  for (const unit of ['metre', 'millimetre'] as const) {
+    it(`${unit}: preserves source openings sharing a Location point across hosts, in one undo step (#6232 / #6571 review)`, async t => {
+      if (!existsSync(wasmPath)) { t.skip('Build WASM to run the physical shared-point oracle'); return; }
+      await seedModelingSession({ unit, storeyOffset: [3, 3] });
+      wall([0, 0], [10, 0]);
+      const crossing = wall([4, -2], [4, 6]);
+      const otherHost = wall([8, -2], [8, 6]);
+      const window = (host: number, Offset: number) => built(state().addHostedFill(MODEL_ID, host,
+        { kind: 'window', params: { Offset, Sill: 0.9, Width: 1, Height: 1.2 } }));
+      // Far cut first: moving it alone after the host shifts would overlap
+      // the near cut's transient position. The whole batch is safe.
+      const far = window(crossing, 4.7), nearWindow = window(crossing, 3.5), other = window(otherHost, 4.7);
+      const live = target(), reader = new AnchorEntityReader(live.dataStore, live.view);
+      const shared = readHostedFill(live.dataStore, far, live.view)!.locationPointId;
+      const otherOpening = readHostedFill(live.dataStore, other, live.view)!.openingId;
+      const refId = (value: unknown) => typeof value === 'number' ? value : Number(String(value).slice(1));
+      const placement = reader.entity(refId(reader.entity(otherOpening)!.attributes[5]))!;
+      live.editor.setPositionalAttribute(refId(placement.attributes[1]), 0, `#${shared}`);
+      // Export and parse again: the shared point belongs to immutable source,
+      // rather than to a fixture's overlay records.
+      const bytes = new TextEncoder().encode(exportModel());
+      const source = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+      const model = state().models.get(MODEL_ID)!;
+      useViewerStore.setState({ models: new Map([[MODEL_ID, { ...model, ifcDataStore: source }]]),
+        mutationViews: new Map([[MODEL_ID, new MutablePropertyView(source.properties || null, MODEL_ID)]]),
+        storeEditors: new Map(), undoStacks: new Map(), redoStacks: new Map(), mutationBatchTags: new Map() });
+      const worldY = (host: number, filling: number) => shape(host).origin[1]
+        + readHostedFill(target().dataStore, filling, target().view)!.offset;
+      const initial = [worldY(crossing, far), worldY(crossing, nearWindow), worldY(otherHost, other)];
+      assert.equal(readHostedFill(source, other, target().view)!.locationPointId, shared);
+      const initialPoint = new AnchorEntityReader(source, target().view).entity(shared);
+      initSync({ module: readFileSync(wasmPath) });
+      const api = new IfcAPI();
+      try {
+        const originalOtherMesh = meshWalls(api, exportModel()).get(otherHost);
+        assert.ok(originalOtherMesh?.length, 'the other host has a real voided WASM mesh');
+        state().startCommand(ID);
+        click(6, 0);
+        click(4, -1.5);
+        assert.equal(batches(), 1, 'wall resize and all fresh placements share one undo step');
+        assert.ok(nearOne(worldY(otherHost, other), initial[2]), 'an opening in the other wall must not follow the shared source point');
+        assert.ok(nearOne(worldY(crossing, far), initial[0]));
+        assert.ok(nearOne(worldY(crossing, nearWindow), initial[1]));
+        assert.deepEqual(new AnchorEntityReader(source, target().view).entity(shared), initialPoint);
+        assert.deepEqual(meshWalls(api, exportModel()).get(otherHost), originalOtherMesh, 'the other wall retains its physical void and full mesh');
+        state().undo(MODEL_ID);
+        assert.ok(near(shape(crossing).wall.start, [4, -2]));
+        assert.deepEqual([worldY(crossing, far), worldY(crossing, nearWindow), worldY(otherHost, other)], initial);
+        assert.deepEqual(meshWalls(api, exportModel()).get(otherHost), originalOtherMesh);
+        assert.equal(readHostedFill(source, far, target().view)!.locationPointId, shared);
+      } finally { api.free(); }
+    });
+  }
+
   function windowedWall() {
     wall([0, 0], [8, 0]);
     const crossing = wall([4, -2], [4, 3]);

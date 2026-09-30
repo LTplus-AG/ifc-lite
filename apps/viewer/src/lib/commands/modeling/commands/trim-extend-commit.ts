@@ -20,7 +20,7 @@
  * extrusion depth, and moving its start moves the placement point.
  */
 
-import { readWallJoinTarget, joinWallsInStore, resolveWallJoinAnchor, toNativeLength } from '@ifc-lite/create';
+import { readWallJoinTarget, joinWallsInStore, resolveWallJoinAnchor, toNativeLength, reanchorHostedOpeningsInStore } from '@ifc-lite/create';
 import { toast } from '@/components/ui/toast';
 import { resolve as translate } from '@/i18n/registry';
 import { modelEditTarget, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
@@ -73,9 +73,8 @@ function commitWall(tx: AuthoringTransaction, target: TrimTarget, boundary: Boun
     const across = -mx * dy + my * dx;
     if (Math.abs(along) > 1e-9 || Math.abs(across) > 1e-9) {
       const native = (v: number) => toNativeLength({ lengthUnitScale: scale }, v);
-      for (const cut of cuts) {
-        tx.store.setPositionalAttribute(modelId, cut.locationPointId, 0, [cut.location[0] - native(along), cut.location[1] - native(across), cut.location[2]]);
-      }
+      recordModellingEdit(tx.api, modelId, (_methods, draft) =>
+        reanchorHostedOpeningsInStore(edit.dataStore, draft, expressId, [native(along), native(across), 0]), tx.batchId);
     }
   }
 

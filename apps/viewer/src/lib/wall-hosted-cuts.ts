@@ -15,11 +15,10 @@
  * point as the file spells it (native units), for a writer.
  */
 
-import { iterateEffectiveEntityIds, type MutablePropertyView, type StoreEditor } from '@ifc-lite/mutations';
-import { placedBodyExtent, readHostedFill } from '@ifc-lite/create';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { readHostOpeningExtents } from '@ifc-lite/create';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { getModelLengthUnitScale } from './length-unit-scale.js';
-import { asExpressIdRef, readAttributes } from './placement-core.js';
 
 export interface HostedCut {
   readonly openingId: number;
@@ -43,47 +42,21 @@ export interface HostedCuts {
 export function readHostedCuts(
   dataStore: IfcDataStore,
   view: MutablePropertyView,
-  editor: Pick<StoreEditor, 'getNewEntity'>,
   wallId: number,
 ): HostedCuts {
   const scale = getModelLengthUnitScale(dataStore);
-  const cuts: HostedCut[] = [];
-  const unreadable: number[] = [];
-  for (const { expressId: relId } of iterateEffectiveEntityIds(dataStore, view, ['IFCRELVOIDSELEMENT'])) {
-    const rel = readAttributes(dataStore, view, editor, relId);
-    // A relationship that cannot be read may be this wall's: it is an opening of unknown place, never skipped.
-    if (!rel) {
-      unreadable.push(relId);
-      continue;
-    }
-    // IfcRelVoidsElement: RelatingBuildingElement (4), RelatedOpeningElement (5).
-    const hostId = asExpressIdRef(rel[4]);
-    if (hostId === null) {
-      unreadable.push(relId);
-      continue;
-    }
-    if (hostId !== wallId) continue;
-    const openingId = asExpressIdRef(rel[5]);
-    if (openingId === null) {
-      unreadable.push(relId);
-      continue;
-    }
-    const fill = readHostedFill(dataStore, openingId, view);
-    const extent = fill ? placedBodyExtent(dataStore, openingId, view) : null;
-    if (!fill || !extent || fill.hostId !== wallId) {
-      unreadable.push(openingId);
-      continue;
-    }
-    cuts.push({
-      openingId,
+  const read = readHostOpeningExtents(dataStore, wallId, view);
+  return {
+    cuts: read.cuts.map(fill => ({
+      openingId: fill.openingId,
       fillingId: fill.fillingId,
       locationPointId: fill.locationPointId,
       location: fill.location,
-      from: extent.min[0] * scale,
-      to: extent.max[0] * scale,
-    });
-  }
-  return { cuts, unreadable };
+      from: fill.bounds.min[0] * scale,
+      to: fill.bounds.max[0] * scale,
+    })),
+    unreadable: read.unreadable,
+  };
 }
 
 /** The cuts that fall (even partly) outside `[from, to]` along the wall, with a millimetre of slack. */

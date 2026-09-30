@@ -7,7 +7,9 @@
  * candidate rooms as outlines, each labelled with its area, the one under
  * the cursor emphasised (its volume is the command's ghost); a room that
  * already exists is drawn muted. Draw mode shows the outline so far with its
- * live area. The same shapes in 3D (projected off the workplane) and in plan.
+ * live area; Edit mode, the layout being edited (`RoomLayoutLayers`); Show
+ * leaks, why regions aren't closed. The same shapes in 3D (projected off the
+ * workplane) and in plan.
  */
 
 import { useEffect, useState } from 'react';
@@ -15,16 +17,19 @@ import { useViewerStore } from '@/store';
 import type { Vec2 } from '@/lib/snap/types';
 import type { CommandContext, CommandHudProps, CommandPlanProps } from '@/lib/commands/modeling/types';
 import { ensureSpaceWasm, spaceWasmLoaded } from '@/lib/space-plate-session';
-import { interiorPoint, roomOutline, sessionRooms, type RoomCandidate } from '@/lib/rooms/storey-rooms';
+import { interiorPoint, roomOutline, sessionRooms, storeyWalls, type RoomCandidate } from '@/lib/rooms/storey-rooms';
+import { DEFAULT_WELD } from '@/lib/rooms/room-layout';
+import { wallLeaks } from '@/lib/rooms/room-leaks';
 import { polyArea, type Pt } from '@/lib/space-sketch-geometry';
 import { drawnOutline, type RoomPlaceGesture } from '@/lib/commands/modeling/commands/room-place-gesture';
 import { useProjectorTick } from '../../../viewport-ui/scene';
 import { formatSquareMetres } from '../computePolygonArea';
+import { RoomEditShapes, RoomLeakShapes } from './RoomLayoutLayers';
 
 type ToScreen = (p: Vec2) => readonly [number, number] | null;
 
-/** The session storey's candidate rooms, re-read when the walls or the model change. */
-export function useSessionRooms(ctx: CommandContext): RoomCandidate[] {
+/** The session storey's candidate rooms at corner weld `weld`, re-read when the walls or the model change. */
+export function useSessionRooms(ctx: CommandContext, weld: number | null = null): RoomCandidate[] {
   const [loaded, setLoaded] = useState(spaceWasmLoaded);
   useEffect(() => {
     if (loaded) return;
@@ -35,8 +40,16 @@ export function useSessionRooms(ctx: CommandContext): RoomCandidate[] {
   // Subscribed so a new wall mesh or a committed room re-derives the list.
   useViewerStore((s) => s.models.get(ctx.modelId)?.geometryResult?.meshes);
   useViewerStore((s) => s.mutationVersion);
-  const rooms = loaded ? sessionRooms(ctx) : null;
+  // And the undo stack: an undo brings back the layout filed under that step.
+  useViewerStore((s) => s.undoStacks.get(ctx.modelId)?.length);
+  const rooms = loaded ? sessionRooms(ctx, weld ?? DEFAULT_WELD) : null;
   return rooms?.status === 'ready' ? rooms.rooms : [];
+}
+
+/** Leaks, when the gesture asks for them. */
+function useLeaks(ctx: CommandContext, gesture: RoomPlaceGesture, rooms: readonly RoomCandidate[]) {
+  if (!gesture.leaks || !ctx.workplane || ctx.storeyId === null) return null;
+  return wallLeaks(storeyWalls(ctx.get(), ctx.modelId, ctx.storeyId, ctx.workplane), rooms, gesture.weld ?? DEFAULT_WELD);
 }
 
 function pathOf(points: readonly (readonly [number, number])[], closed: boolean): string {
@@ -44,7 +57,18 @@ function pathOf(points: readonly (readonly [number, number])[], closed: boolean)
 }
 
 /** What both layers draw, given a local → screen map. */
-function RoomShapes({ gesture, rooms, toScreen }: { gesture: RoomPlaceGesture; rooms: RoomCandidate[]; toScreen: ToScreen }) {
+function RoomShapes({ gesture, rooms, toScreen, ctx }: { gesture: RoomPlaceGesture; rooms: RoomCandidate[]; toScreen: ToScreen; ctx: CommandContext }) {
+  const leaks = useLeaks(ctx, gesture, rooms);
+  return (
+    <>
+      {gesture.mode === 'edit' ? <RoomEditShapes gesture={gesture} rooms={rooms} toScreen={toScreen} /> : <RoomModeShapes gesture={gesture} rooms={rooms} toScreen={toScreen} />}
+      {leaks && <RoomLeakShapes leaks={leaks} toScreen={toScreen} />}
+    </>
+  );
+}
+
+/** Pick and Draw: the candidates, or the outline being drawn. */
+function RoomModeShapes({ gesture, rooms, toScreen }: { gesture: RoomPlaceGesture; rooms: RoomCandidate[]; toScreen: ToScreen }) {
   const project = (pts: readonly Pt[] | readonly Vec2[]) => {
     const out = pts.map((p) => toScreen(p));
     return out.some((p) => p === null) ? null : (out as (readonly [number, number])[]);
@@ -102,7 +126,7 @@ function RoomShapes({ gesture, rooms, toScreen }: { gesture: RoomPlaceGesture; r
 
 export function RoomPlaceScene({ gesture, ctx }: CommandHudProps<RoomPlaceGesture>) {
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
-  const rooms = useSessionRooms(ctx);
+  const rooms = useSessionRooms(ctx, gesture.weld);
   const plane = ctx.workplane;
   void useProjectorTick(plane !== null);
   if (!plane || !projectToScreen) return null;
@@ -113,16 +137,16 @@ export function RoomPlaceScene({ gesture, ctx }: CommandHudProps<RoomPlaceGestur
   };
   return (
     <svg className="absolute inset-0 pointer-events-none z-(--z-scene)" style={{ overflow: 'visible' }}>
-      <RoomShapes gesture={gesture} rooms={rooms} toScreen={toScreen} />
+      <RoomShapes gesture={gesture} rooms={rooms} toScreen={toScreen} ctx={ctx} />
     </svg>
   );
 }
 
 export function RoomPlacePlan({ gesture, ctx, toScreen }: CommandPlanProps<RoomPlaceGesture>) {
-  const rooms = useSessionRooms(ctx);
+  const rooms = useSessionRooms(ctx, gesture.weld);
   return (
     <g data-plan-command="room.place" pointerEvents="none">
-      <RoomShapes gesture={gesture} rooms={rooms} toScreen={toScreen} />
+      <RoomShapes gesture={gesture} rooms={rooms} toScreen={toScreen} ctx={ctx} />
     </g>
   );
 }

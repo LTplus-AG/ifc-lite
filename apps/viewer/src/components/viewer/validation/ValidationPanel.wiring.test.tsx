@@ -245,6 +245,13 @@ describe('ValidationPanel wiring (#5138)', () => {
     assert.ok(report);
     assert.strictEqual(report!.source.kind, 'rules');
     assert.strictEqual(report!.specificationResults.length, 2);
+    // #6500: a completed real run is retained separately from the live slot.
+    const saved = useViewerStore.getState().savedValidationReports.at(-1);
+    assert.ok(saved);
+    assert.equal(saved.snapshot.kind, 'ids-report');
+    assert.deepEqual(saved.snapshot.reportModels, [{ name: 'm1.ifc' }]);
+    assert.equal(saved.snapshot.kind === 'ids-report' && saved.snapshot.sourceKind, 'rules');
+
 
     const text = ui.textContent ?? '';
     assert.match(text, /Fire rating set/);

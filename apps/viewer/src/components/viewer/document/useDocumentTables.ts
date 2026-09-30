@@ -24,6 +24,7 @@ import type { ListDefinition } from '@ifc-lite/lists';
 import { useViewerStore } from '@/store';
 import type { DocumentSpec, ListTableSource, TableBlock, ValidationTableSource } from '@/lib/document/types';
 import type { TableState } from '@/lib/document/resolve-table';
+import { resolveComparisonTableState } from '@/lib/document/resolve-comparison-table';
 import { resolveValidationTableState } from '@/lib/document/resolve-validation-table';
 import { runListFederated } from '@/lib/lists/run-list';
 import { evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
@@ -197,6 +198,9 @@ export function useDocumentTables(document: DocumentSpec | null): ReadonlyMap<st
     const out = new Map<string, TableState>();
     for (const [blockId, fp] of fingerprints) out.set(blockId, hasData ? (current.get(fp) ?? RESOLVING) : NO_MODEL);
     for (const [blockId, state] of validationStates) out.set(blockId, state);
+    for (const block of document?.blocks ?? []) {
+      if (block.kind === 'table' && block.source.kind === 'comparison') out.set(block.id, resolveComparisonTableState(block.source.comparison));
+    }
     return out;
-  }, [fingerprints, current, hasData, validationStates]);
+  }, [fingerprints, current, hasData, validationStates, document]);
 }

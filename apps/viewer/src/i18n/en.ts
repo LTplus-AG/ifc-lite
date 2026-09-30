@@ -86,10 +86,12 @@ import { splitToolEn } from './catalogues/split-tool.en';
 import { modelingCommandEn } from './catalogues/modeling-command.en';
 import { modelWorkspaceEn } from './catalogues/model-workspace.en';
 import { roomToolEn } from './catalogues/room-tool.en';
+import { roomLayoutEn } from './catalogues/room-layout.en';
 import { copyArrayEn } from './catalogues/copy-array.en';
 import { moveRotateEn } from './catalogues/move-rotate.en';
 import { modelInspectorEn } from './catalogues/model-inspector.en';
 import { hostedPlaceEn } from './catalogues/hosted-place.en';
+import { stairRailingEn } from './catalogues/stair-railing.en';
 import { planHandlesEn } from './catalogues/plan-handles.en';
 import { multiSplitEn } from './catalogues/multi-split.en';
 import { remeshEn } from './catalogues/remesh.en';
@@ -141,10 +143,12 @@ export const en = {
   ...modelingCommandEn,
   ...modelWorkspaceEn,
   ...roomToolEn,
+  ...roomLayoutEn,
   ...copyArrayEn,
   ...moveRotateEn,
   ...modelInspectorEn,
   ...hostedPlaceEn,
+  ...stairRailingEn,
   ...planHandlesEn,
   ...multiSplitEn,
   ...remeshEn,

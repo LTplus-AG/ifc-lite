@@ -9,6 +9,7 @@
  * of the file reads that revision's values.
  *
  * Grammar (exact IFC names, case-sensitive):
+ *   Model["architecture.ifc"].<path>          value from one named model (#6485)
  *   Today                                    ISO date of the day
  *   Model.Name | Model.Schema | Model.Elements | Model.Count
  *   IfcProject.Name | LongName | Description | GlobalId       (also IfcSite, IfcBuilding)
@@ -32,6 +33,8 @@ import { effectiveAttribute, effectiveProperty, effectivePropertyPaths, findEffe
 import { effectiveSpatialMembers } from '../effective-spatial-members.js';
 import { effectiveStoreyId } from '../effective-storey.js';
 import { spatialBindingNodes } from './spatial-binding-nodes.js';
+import { parsePath, type Segment } from './binding-path.js';
+export { parsePath } from './binding-path.js';
 
 export interface BindingModel {
   id: string;
@@ -77,48 +80,6 @@ export function renderTemplate(text: string, ctx: BindingContext): RenderedTempl
     return resolved.ok ? resolved.value : `[${resolved.path}: ${resolved.reason ?? 'unresolved'}]`;
   });
   return { text: rendered, bindings };
-}
-
-// ── Path parsing ────────────────────────────────────────────────────────
-
-interface Segment {
-  name: string;
-  /** `[…]` selector, unquoted. */
-  selector?: string;
-}
-
-/** `IfcBuildingStorey["Level 1"].Name` → [{name:'IfcBuildingStorey', selector:'Level 1'}, {name:'Name'}]. */
-export function parsePath(path: string): Segment[] | null {
-  const segments: Segment[] = [];
-  let i = 0;
-  while (i < path.length) {
-    const nameEnd = indexOfAny(path, ['.', '['], i);
-    const name = path.slice(i, nameEnd === -1 ? path.length : nameEnd);
-    if (name.length === 0) return null;
-    const segment: Segment = { name };
-    i = nameEnd === -1 ? path.length : nameEnd;
-    if (path[i] === '[') {
-      const close = path.indexOf(']', i);
-      if (close === -1) return null;
-      let selector = path.slice(i + 1, close).trim();
-      if ((selector.startsWith('"') && selector.endsWith('"')) || (selector.startsWith("'") && selector.endsWith("'"))) selector = selector.slice(1, -1);
-      segment.selector = selector;
-      i = close + 1;
-    }
-    segments.push(segment);
-    if (path[i] === '.') i += 1;
-    else if (i < path.length) return null;
-  }
-  return segments;
-}
-
-function indexOfAny(text: string, chars: string[], from: number): number {
-  let best = -1;
-  for (const c of chars) {
-    const at = text.indexOf(c, from);
-    if (at !== -1 && (best === -1 || at < best)) best = at;
-  }
-  return best;
 }
 
 // ── Resolution ──────────────────────────────────────────────────────────
@@ -169,8 +130,20 @@ const fail = (path: string, reason: string): ResolvedBinding => ({ path, value: 
 const succeed = (path: string, value: string): ResolvedBinding => ({ path, value, ok: true });
 
 export function resolveBinding(path: string, ctx: BindingContext): ResolvedBinding {
-  const segments = parsePath(path);
+  let segments = parsePath(path);
   if (!segments || segments.length === 0) return fail(path, 'not a path');
+  if (segments[0].name === 'Model' && segments[0].selector !== undefined) {
+    const name = segments[0].selector;
+    const matches = ctx.models.filter((model) => model.name === name);
+    if (matches.length !== 1) return fail(path, matches.length === 0 ? `model "${name}" is not loaded` : `model name "${name}" is ambiguous`);
+    const model = matches[0];
+    ctx = { ...ctx, models: [model], activeModelId: model.id };
+    const tail = segments.slice(1);
+    if (tail.length === 0) return fail(path, 'a model selector needs a field');
+    // Model["file.ifc"].Name is the scoped form of Model.Name; other roots follow the selector.
+    segments = tail[0].selector === undefined && ['Name', 'Schema', 'Elements', 'Count'].includes(tail[0].name) ? [{ name: 'Model' }, ...tail] : tail;
+    if (segments[0].name === 'Model' && segments[0].selector !== undefined) return fail(path, 'nested model selectors are not supported');
+  }
   const [head, ...rest] = segments;
 
   if (head.name === 'Today') return succeed(path, localIsoDate(ctx.today));

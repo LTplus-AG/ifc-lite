@@ -24,11 +24,29 @@
  * itself; its own counts are exact even for `unique`/`aggregate`, whose
  * entity rows list failures only. An IDS snapshot is built exactly as before.
  */
+import { capturedReportModelScope } from './report-provenance.js';
 import type { SpecificationResult, ValidationReport } from '@ifc-lite/ids';
-import { calculateSummary } from '@ifc-lite/ids';
-import type { IdsReportBlock, IdsReportCheckSummary, IdsReportRuleSummary } from './types.js';
+import { boundedPassRate, calculateSummary, formatConstraint } from '@ifc-lite/ids';
+import type { IDSConstraint, IDSFacet } from '@ifc-lite/ids';
+import type { IdsReportBlock, IdsReportCheckSummary, IdsReportRuleSummary, IdsReportVariant } from './types.js';
 
-type RuleAccumulator = { shortDescription: string; longDescription?: string; seen: number; passed: number; failed: number };
+/** A constraint as bare text: a simple value without `formatConstraint`'s quotes. */
+const bare = (c: IDSConstraint): string => (c.type === 'simpleValue' ? c.value : formatConstraint(c));
+
+/** The attribute / property / entity name a requirement facet is about, for the compact layout (#6470). */
+function facetName(facet: IDSFacet): string | undefined {
+  switch (facet.type) {
+    case 'property': return bare(facet.baseName);
+    case 'attribute': return bare(facet.name);
+    case 'entity': return bare(facet.name);
+    case 'classification': return facet.system ? bare(facet.system) : 'Classification';
+    case 'material': return 'Material';
+    case 'partOf': return facet.relation;
+    default: return undefined;
+  }
+}
+
+type RuleAccumulator = { name?: string; shortDescription: string; longDescription?: string; seen: number; passed: number; failed: number };
 
 function rulesForCheck(report: ValidationReport, result: SpecificationResult): IdsReportRuleSummary[] {
   const sourceSpec = report.source.kind === 'ids'
@@ -37,6 +55,7 @@ function rulesForCheck(report: ValidationReport, result: SpecificationResult): I
   const rules = new Map<string, RuleAccumulator>();
   for (const requirement of sourceSpec?.requirements ?? []) {
     rules.set(requirement.id, {
+      name: facetName(requirement.facet),
       shortDescription: requirement.id,
       longDescription: requirement.description,
       seen: 0, passed: 0, failed: 0,
@@ -59,12 +78,13 @@ function rulesForCheck(report: ValidationReport, result: SpecificationResult): I
     const measured = rule.passed + rule.failed;
     return {
       id,
+      ...(rule.name ? { name: rule.name } : {}),
       shortDescription: rule.shortDescription,
       longDescription: rule.longDescription,
       checked: result.applicableCount,
       passed: complete ? rule.passed : null,
       failed: complete ? rule.failed : null,
-      passRate: complete ? (measured === 0 ? 100 : Math.floor(rule.passed / measured * 100)) : null,
+      passRate: complete ? boundedPassRate(rule.passed, measured) : null,
     };
   });
 }
@@ -110,7 +130,13 @@ function ruleCheck(report: ValidationReport, result: SpecificationResult): IdsRe
 }
 
 /** A frozen snapshot of `report`, as `types.ts`'s `IdsReportBlock` stores it. */
-export function idsReportBlockFromReport(report: ValidationReport, id: string): IdsReportBlock {
+export function idsReportBlockFromReport(report: ValidationReport, id: string, variant?: IdsReportVariant): IdsReportBlock {
+  const block = snapshotFromReport(report, id);
+  const reportModels = capturedReportModelScope(report);
+  return { ...block, ...(variant ? { variant } : {}), ...(reportModels ? { reportModels } : {}) };
+}
+
+function snapshotFromReport(report: ValidationReport, id: string): IdsReportBlock {
   const summary = calculateSummary(report.specificationResults);
   const generatedAt = report.timestamp.toISOString();
   const totals = {

@@ -22,3 +22,14 @@ export const sweptDiskFixture = process.env.REBAR_IFC ? {
   segmentCount: 5,
   arcCount: 2,
 };
+
+/**
+ * The isolation witness needs geometry that isolation removes. The committed
+ * U-bar is the only element in its file, so isolating it re-frames the same
+ * pixels and no renderer can make that frame differ. This copy adds a concrete
+ * stand-in block around the bar's bottom run; REBAR_IFC (Snowdon) already has
+ * its own surrounding concrete.
+ */
+export const sweptDiskIsolationPath = process.env.REBAR_IFC
+  ? sweptDiskFixture.path
+  : join(process.cwd(), 'tests/e2e/fixtures/swept-disk-occluded-ubar.ifc');

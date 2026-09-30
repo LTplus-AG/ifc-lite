@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { passRateBand } from '@ifc-lite/ids';
 import { cn } from '@/lib/utils';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
@@ -31,7 +32,7 @@ export function StatusIcon({ status, showLabel = false }: { status: 'pass' | 'fa
 
 export function PassRateBar({ passRate }: { passRate: number }) {
   const { locale } = useTranslation();
-  const color = passRate >= 80 ? 'bg-green-500' : passRate >= 50 ? 'bg-yellow-500' : 'bg-red-500';
+  const color = { good: 'bg-green-500', warn: 'bg-yellow-500', bad: 'bg-red-500' }[passRateBand(passRate)];
 
   return (
     <div className="flex items-center gap-2">

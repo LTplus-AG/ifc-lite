@@ -11,6 +11,9 @@
  *
  * The shape is plain JSON: it is what `.ifclite-document.json` carries.
  */
+import { isRgbColor } from '../color-contrast';
+import type { GroupOrder } from '../lists/group-sort';
+import { isSavedComparison, type SavedComparison } from '../compare/savedComparisonSchema';
 import { validateChartSpec, type ChartSpec, type ReportPageSetup } from '@ifc-lite/charts';
 import { isSavedListShape, type ListDefinition } from '@ifc-lite/lists';
 import { isFilterGroup } from '@ifc-lite/rules';
@@ -19,9 +22,9 @@ import { validateManualReportBlock, type ManualReportBlock } from './manual-repo
 import { validateIdsReportBlock, type IdsReportBlock } from './ids-report-types.js';
 
 export { reportBlockSourceKind } from './ids-report-types.js';
-export type { IdsReportBlock, IdsReportCardinality, IdsReportCheckSummary, IdsReportRuleSummary, IdsReportSetRow, ReportSourceKind } from './ids-report-types.js';
+export type { IdsReportBlock, IdsReportCardinality, IdsReportCheckSummary, IdsReportRuleSummary, IdsReportSetRow, IdsReportVariant, ReportSourceKind } from './ids-report-types.js';
 
-export const DOCUMENT_VERSION = 7;
+export const DOCUMENT_VERSION = 10;
 
 /** A block that can sit two-up in a row (#4940); an unpaired half block prints full width. */
 export type BlockWidth = 'full' | 'half';
@@ -86,6 +89,12 @@ export interface SpacerBlock {
   height: number;
 }
 
+/** Start the next content block on a fresh page (#6485); adjacent/edge breaks coalesce. */
+export interface PageBreakBlock {
+  kind: 'page-break';
+  id: string;
+}
+
 /** Data rows a table block prints before its "… n more rows" line (#5142): one A4 portrait page by default. */
 export const TABLE_ROWS_DEFAULT = 50;
 export const TABLE_ROWS_MAX = 500;
@@ -95,7 +104,13 @@ export const TABLE_ROWS_MAX = 500;
  * store's live validation report (#5138) — the discriminator #5142 left
  * room for.
  */
-export type TableSource = ListTableSource | ValidationTableSource;
+export type TableSource = ListTableSource | ValidationTableSource | ComparisonTableSource;
+
+/** Portable immutable report copy: deleting the library entry never breaks a document. */
+export interface ComparisonTableSource {
+  kind: 'comparison';
+  comparison: SavedComparison;
+}
 
 export interface ListTableSource {
   kind: 'list';
@@ -149,9 +164,13 @@ export interface TableBlock {
   caption?: string;
   /** Data rows printed before "… n more rows"; 1..TABLE_ROWS_MAX, default TABLE_ROWS_DEFAULT. */
   maxRows?: number;
+  /** Group ordering at every nesting level; absent retains count-descending defaults. */
+  groupOrder?: GroupOrder;
+  /** Optional opaque table-header background; ink is chosen for readable contrast. */
+  headerBackground?: string;
 }
 
-export type DocumentBlock = TextBlock | ImageBlock | ChartBlock | TopicBlock | SpacerBlock | TableBlock | IdsReportBlock | ManualReportBlock;
+export type DocumentBlock = TextBlock | ImageBlock | ChartBlock | TopicBlock | SpacerBlock | PageBreakBlock | TableBlock | IdsReportBlock | ManualReportBlock;
 export type DocumentBlockKind = DocumentBlock['kind'];
 
 export const CHART_BLOCK_HEIGHT_MIN = 120;
@@ -172,10 +191,11 @@ export function isHalfPairable<T extends { kind: string }>(block: T): block is T
 }
 
 /**
- * `.ifclite-document.json` version 1 -> 2 (#4940) -> 3 (#5142) -> 4 (#5138) -> 5 (#5125) -> 6 (#4940 follow ups) -> 7 (#6401):
+ * `.ifclite-document.json` version 1 -> 2 (#4940) -> 3 (#5142) -> 4 (#5138) -> 5 (#5125) -> 6 (#4940 follow ups) -> 7 (#6401) -> 8 (#6485) -> 9 (#6506) -> 10 (#6507):
  * every step is additive (v2: chart/image `width`/`height`, text styles, spacer; v3: table
  * over a list; v4: its validation source; v5: IDS report block; v6: text font, size and
- * half-width layout; v7: manual-validation report block). The report block's optional
+ * half-width layout; v7: manual-validation report block; v8: explicit page-break block; v9: saved comparison tables; v10: live manual checklist
+ * identity and optional compact/benchmark presentation). The report block's optional
  * `sourceKind` (#6372) is additive within v6: an absent value reads as `'ids'`, the label
  * every earlier block printed. An older file only has its version raised. Embedded v1 Lists
  * conditions are also normalized into Rules groups (#5894), including in a document already
@@ -186,7 +206,7 @@ export function isHalfPairable<T extends { kind: string }>(block: T): block is T
  */
 export function migrateDocumentSpec(raw: unknown): unknown {
   if (!isRecord(raw)) return raw;
-  const version = raw.version === 1 || raw.version === 2 || raw.version === 3 || raw.version === 4 || raw.version === 5 || raw.version === 6
+  const version = raw.version === 1 || raw.version === 2 || raw.version === 3 || raw.version === 4 || raw.version === 5 || raw.version === 6 || raw.version === 7 || raw.version === 8 || raw.version === 9
     ? DOCUMENT_VERSION : raw.version;
   return { ...raw, version, blocks: migrateDocumentListBlocks(raw.blocks) };
 }
@@ -241,7 +261,7 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
         if (block.font !== undefined && block.font !== 'helvetica' && block.font !== 'times' && block.font !== 'courier') errors.push({ path: `${at}.font`, message: 'expected helvetica | times | courier' });
         if (block.fontSize !== undefined && (typeof block.fontSize !== 'number' || !Number.isFinite(block.fontSize) || block.fontSize < TEXT_SIZE_MIN || block.fontSize > TEXT_SIZE_MAX)) errors.push({ path: `${at}.fontSize`, message: `expected a number between ${TEXT_SIZE_MIN} and ${TEXT_SIZE_MAX}` });
         for (const key of ['textColor', 'backgroundColor']) {
-          if (block[key] !== undefined && (typeof block[key] !== 'string' || !/^#[0-9a-f]{6}$/i.test(block[key]))) errors.push({ path: `${at}.${key}`, message: 'expected an RGB colour in #RRGGBB form' });
+          if (block[key] !== undefined && !isRgbColor(block[key])) errors.push({ path: `${at}.${key}`, message: 'expected an RGB colour in #RRGGBB form' });
         }
         checkWidth(block, at);
         break;
@@ -270,6 +290,7 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
         // height in the preview (review finding).
         if (typeof block.height !== 'number' || !Number.isFinite(block.height) || !(block.height > 0)) errors.push({ path: `${at}.height`, message: 'expected a positive number' });
         break;
+      case 'page-break': break;
       case 'table':
         validateTableBlock(block, at, errors);
         break;
@@ -278,7 +299,7 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
         break;
       case 'manual-report': validateManualReportBlock(block, at, errors); break;
       default:
-        errors.push({ path: `${at}.kind`, message: 'expected text | image | chart | topic | spacer | table | ids-report | manual-report' });
+        errors.push({ path: `${at}.kind`, message: 'expected text | image | chart | topic | spacer | page-break | table | ids-report | manual-report' });
     }
   });
   return errors;
@@ -289,8 +310,8 @@ const VALIDATION_ROWS_MODES = ['failed', 'passed', 'all', 'sets'];
 /** Structural check of a table block (#5142, #5138); the list engine / validation report reading validates the definition's meaning at run time. */
 function validateTableBlock(block: Record<string, unknown>, at: string, errors: DocumentValidationError[]): void {
   const source = block.source;
-  if (!isRecord(source) || (source.kind !== 'list' && source.kind !== 'validation')) {
-    errors.push({ path: `${at}.source`, message: 'expected source.kind list | validation' });
+  if (!isRecord(source) || (source.kind !== 'list' && source.kind !== 'validation' && source.kind !== 'comparison')) {
+    errors.push({ path: `${at}.source`, message: 'expected source.kind list | validation | comparison' });
   } else if (source.kind === 'list') {
     const list = source.list;
     if (!isSavedListShape(list) || !Array.isArray(list.groups) || !list.groups.every(isFilterGroup)) {
@@ -299,6 +320,8 @@ function validateTableBlock(block: Record<string, unknown>, at: string, errors: 
       errors.push({ path: `${at}.source.list.expressIdsByModel`, message: 'not allowed in a document' });
     }
     if (source.fromListId !== undefined && !isString(source.fromListId)) errors.push({ path: `${at}.source.fromListId`, message: 'expected a string' });
+  } else if (source.kind === 'comparison') {
+    if (!isSavedComparison(source.comparison)) errors.push({ path: `${at}.source.comparison`, message: 'expected a saved comparison report' });
   } else {
     if (source.ruleId !== undefined && !isString(source.ruleId)) errors.push({ path: `${at}.source.ruleId`, message: 'expected a string' });
     if (!VALIDATION_ROWS_MODES.includes(source.rows as string)) errors.push({ path: `${at}.source.rows`, message: `expected ${VALIDATION_ROWS_MODES.join(' | ')}` });
@@ -308,6 +331,8 @@ function validateTableBlock(block: Record<string, unknown>, at: string, errors: 
   }
   if (block.title !== undefined && !isString(block.title)) errors.push({ path: `${at}.title`, message: 'expected a string' });
   if (block.caption !== undefined && !isString(block.caption)) errors.push({ path: `${at}.caption`, message: 'expected a string' });
+  if (block.groupOrder !== undefined && block.groupOrder !== 'count' && block.groupOrder !== 'label') errors.push({ path: `${at}.groupOrder`, message: 'expected count | label' });
+  if (block.headerBackground !== undefined && !isRgbColor(block.headerBackground)) errors.push({ path: `${at}.headerBackground`, message: 'expected an RGB colour in #RRGGBB form' });
   if (block.maxRows !== undefined && (!Number.isInteger(block.maxRows) || (block.maxRows as number) < 1 || (block.maxRows as number) > TABLE_ROWS_MAX)) {
     errors.push({ path: `${at}.maxRows`, message: `expected an integer between 1 and ${TABLE_ROWS_MAX}` });
   }

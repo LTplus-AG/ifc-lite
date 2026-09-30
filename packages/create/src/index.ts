@@ -183,10 +183,14 @@ export {
 } from './in-store/auto-space-detect.js';
 export {
   extractWallSegmentsForStorey,
-  existingSpaceFootprintsByStorey,
   type OverlayWallReader,
   type WallExtractionResult,
 } from './in-store/extract-walls.js';
+export {
+  existingSpaceFootprintsByStorey,
+  existingSpaceFootprintEntriesByStorey,
+  type SpaceFootprint,
+} from './in-store/space-footprints.js';
 export {
   storeyPlanFrame,
   toStoreyLocal,

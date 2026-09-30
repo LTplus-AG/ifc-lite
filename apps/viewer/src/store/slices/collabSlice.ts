@@ -15,14 +15,10 @@
  *   - session lifecycle (`startCollab` / `stopCollab`),
  *   - status + presence subscriptions feeding the store.
  *
- * What it deliberately stubs for later milestones (TODOs inline):
- *   - `seedFromStep` model seeding into the Y.Doc (plan §4.2, M1),
- *   - mutation binding + remote→local apply (plan §7.5, M2),
- *   - presence overlay mounting in the viewport (plan §7.4 — done at mount
- *     time in the viewport component, not here).
  */
 
 import type { StateCreator } from 'zustand';
+import { attachRoomSpatialContextMirror } from '@/lib/collab/room-spatial-context-mirror';
 // IMPORTANT: only *type* imports from '@ifc-lite/collab' at module scope. The
 // collab runtime (yjs, automerge, providers) is heavy and must stay out of the
 // main bundle so the feature ships dark — it is lazy-imported inside
@@ -509,7 +505,7 @@ let remoteApplyTeardown: (() => void) | null = null;
 // Teardown for the recipient's live re-reconstruction observer.
 let recipientLiveTeardown: (() => void) | null = null;
 
-export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> = (set, get) => ({
+export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> = (set, get, api) => ({
   // Initial state
   collabSession: null,
   collabStatus: 'disconnected',
@@ -854,7 +850,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       console.warn('[collab] rejected remote write:', rejected);
       set({ collabGeometryNotice: `A collaborative edit could not be applied: ${rejected}` });
     };
-    remoteApplyTeardown = attachRemoteApply(docApi!, session, (path) => roomEntityTargetForPath(get(), path), {
+    const detachRemoteApply = attachRemoteApply(docApi!, session, (path) => roomEntityTargetForPath(get(), path), {
       // Consulted by the bridge's single tombstone guard before any write (#5187).
       isLocallyDeleted: (modelId, entityId) => roomMutationViewFor(get(), modelId)?.isDeleted(entityId) ?? false,
       onRejectedWrite: rejectRemoteWrite,
@@ -927,6 +923,9 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
     });
+
+    const detachSpatial = attachRoomSpatialContextMirror(api, session);
+    remoteApplyTeardown = () => { detachRemoteApply(); detachSpatial(); };
 
     // Annotation (markup) sync: reflect peers' pins into the local slice, and
     // seed our existing local pins into the room ("share existing + new").

@@ -3,10 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { BlobStore, LocalPlacement, ModelSlot, PropertyValue as CollabPropertyValue } from '@ifc-lite/collab';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { extractGeoreferencingOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import type { ViewerModelPayload } from '@/hooks/ingest/viewerModelIngest';
 import { bindRoomStepSource, loadRoomStepSource, type ParsedRoomStepSource } from './room-step-source';
 import { registerRoomSymbolicSource } from './room-symbolic-source';
+import { roomGeoreference } from './room-spatial-context';
 import { modelAppearanceAssets } from '@/lib/appearance/model-assets';
 
 const REGISTERED_RESOURCES = new WeakMap<IfcDataStore, Set<string>>();
@@ -36,6 +37,9 @@ export async function attachRoomStepSource(options: {
   }
   const parsed = await source;
   if (!options.live()) return;
+  // Legacy rooms with portable source can recover their immutable IFC facts.
+  payload.dataStore.georeferencing = roomGeoreference(extractGeoreferencingOnDemand(parsed.dataStore));
+  payload.dataStore.lengthUnitScale = parsed.dataStore.lengthUnitScale;
   if (parsed.resources) {
     const registered = REGISTERED_RESOURCES.get(parsed.dataStore) ?? new Set<string>();
     if (!registered.has(options.modelId)) {

@@ -9,7 +9,7 @@
  * from IDS validation results. No React dependencies.
  */
 
-import type { ValidationReport, SupportedLocale } from '@ifc-lite/ids';
+import { boundedPassRate, type ValidationReport, type SupportedLocale } from '@ifc-lite/ids';
 import { posthog, trackExportCompleted } from '../../lib/analytics';
 import { downloadFile } from '../../lib/export/download';
 
@@ -270,7 +270,7 @@ function buildRequirementGroupHTML(group: RequirementGroup, esc: typeof escapeHt
   // publishes (validator.ts calculateSummary), and the in-app panel matches.
   // Rounding here would also let 99.6% render as "100%" while elements are
   // still failing, which is the one thing a compliance report must not do.
-  const passRate = totalChecked > 0 ? Math.floor((group.passed / totalChecked) * 100) : 100;
+  const passRate = totalChecked > 0 ? boundedPassRate(group.passed, totalChecked) : 100;
   const status = group.failed > 0 ? 'fail' : 'pass';
 
   return `<div class="req-group req-group-${status}">
@@ -381,13 +381,13 @@ export function buildReportHTML(report: ValidationReport, locale: SupportedLocal
   }
   const totalChecksAtCheckLevel = checkPassed + checkFailed;
   const checkLevelPassRate =
-    totalChecksAtCheckLevel > 0 ? Math.floor((checkPassed / totalChecksAtCheckLevel) * 100) : 100;
+    totalChecksAtCheckLevel > 0 ? boundedPassRate(checkPassed, totalChecksAtCheckLevel) : 100;
 
   const entityLevelPassRate = report.summary.overallPassRate;
 
   const specLevelPassRate =
     report.summary.totalSpecifications > 0
-      ? Math.floor((report.summary.passedSpecifications / report.summary.totalSpecifications) * 100)
+      ? boundedPassRate(report.summary.passedSpecifications, report.summary.totalSpecifications)
       : 100;
 
   return `<!DOCTYPE html>
@@ -652,7 +652,7 @@ export function buildReportHTML(report: ValidationReport, locale: SupportedLocal
       const reqGroups = requirementGroupsBySpec[i];
       const specCheckPassed = reqGroups.reduce((s, g) => s + g.passed, 0);
       const specCheckTotal = reqGroups.reduce((s, g) => s + g.passed + g.failed, 0);
-      const specCheckRate = specCheckTotal > 0 ? Math.floor((specCheckPassed / specCheckTotal) * 100) : 100;
+      const specCheckRate = specCheckTotal > 0 ? boundedPassRate(specCheckPassed, specCheckTotal) : 100;
       return `
     <div class="spec ${spec.status === 'fail' ? 'open' : ''}" id="spec-${i}">
       <div class="spec-header" onclick="toggleSpec(${i})">

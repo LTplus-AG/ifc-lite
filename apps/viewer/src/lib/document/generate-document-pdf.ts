@@ -8,6 +8,8 @@
  * the same jsPDF + svg2pdf + snapshot path the coordination report uses,
  * so a chart block prints exactly as it does in a report.
  */
+import { tableHeaderStyle } from '../table-header-style';
+import { comparisonSummary } from '../compare/savedComparisonSchema';
 import type { Aggregation } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
 import { REPORT_MARGIN } from '../export/report/compose.js';
@@ -76,12 +78,12 @@ export function tableMessage(state: TableState | undefined): string | null {
   // An engine error with an empty message (review finding) still has to read as an error, not as an empty grid.
   if (kind === 'error') return (state?.status === 'error' && state.message.trim()) || 'The list could not be run.';
   // "No rows" reads differently per source: a list matched nothing, a validation table's rule/rows filter did.
-  if (kind === 'no-rows') return state?.status === 'ok' && state.kind === 'validation' ? 'No rows match this rule.' : 'No rows match this list.';
+  if (kind === 'no-rows') return state?.status === 'ok' && state.kind === 'comparison' ? 'No changes in this saved comparison.' : state?.status === 'ok' && state.kind === 'validation' ? 'No rows match this rule.' : 'No rows match this list.';
   return TABLE_MESSAGES[kind];
 }
 
 /** The title a table block prints: its own, the list's name, or "Validation results". */
-export const tableTitle = (block: TableBlock): string => block.title?.trim() || (block.source.kind === 'list' ? block.source.list.name : 'Validation results');
+export const tableTitle = (block: TableBlock): string => block.title?.trim() || (block.source.kind === 'list' ? block.source.list.name : block.source.kind === 'comparison' ? block.source.comparison.name : 'Validation results');
 
 /** The browser's image measure: decode the data URL. */
 export function browserImageSize(dataUrl: string): Promise<{ w: number; h: number }> {
@@ -152,6 +154,7 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         blocks.push({ kind: 'chart', id: block.id, title: block.chart.title, subtitle, hasData: !!agg && agg.categories.length > 0, snapshot: block.snapshot, height: block.height, width: block.width });
         break;
       }
+      case 'page-break': blocks.push(block); break;
       case 'spacer': {
         blocks.push({ kind: 'spacer', id: block.id, height: block.height });
         break;
@@ -160,15 +163,15 @@ export async function resolveBlocks(input: DocumentPdfInput, imageSize: Document
         const state = input.tables.get(block.id);
         const message = tableMessage(state);
         if (state?.status === 'ok' && message === null) {
-          const flat = state.kind === 'validation'
+          const flat = state.kind === 'validation' || state.kind === 'comparison'
             ? flattenRawModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS)
-            : flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS);
-          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, columns: flat.columns, rows: flat.rows });
+            : flattenExportModel(state.model, block.maxRows ?? TABLE_ROWS_DEFAULT, TABLE_PDF_LABELS, block.groupOrder);
+          blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, headerStyle: block.headerBackground ? tableHeaderStyle(block.headerBackground) : undefined, summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, columns: flat.columns, rows: flat.rows });
           break;
         }
         if (state?.status !== 'ok') result.tableFailures.push(block.id);
         // `tableMessage` is non-null for every non-ok state; the fallback only satisfies the types.
-        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, message: message ?? 'No rows to print.', columns: [], rows: [] });
+        blocks.push({ kind: 'table', id: block.id, title: tableTitle(block), caption: block.caption, headerStyle: block.headerBackground ? tableHeaderStyle(block.headerBackground) : undefined, summary: block.source.kind === 'comparison' ? comparisonSummary(block.source.comparison) : undefined, message: message ?? 'No rows to print.', columns: [], rows: [] });
         break;
       }
       case 'ids-report': {
@@ -266,6 +269,7 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
           doc.text(item.text, item.x, item.y);
           doc.setTextColor(0);
           break;
+        case 'rect':
         case 'text-background':
           doc.fillRect(item.x, item.y, item.w, item.h, item.color);
           break;
@@ -331,6 +335,7 @@ export async function generateDocumentPdf(input: DocumentPdfInput, seams: Docume
             body: item.rows.map((r) => r.cells),
             columns: item.columns.map((c) => ({ width: c.width, align: c.align })),
             rowRoles: item.rows.map((r) => r.role),
+            headerStyle: item.headerStyle,
           });
           break;
       }

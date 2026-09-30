@@ -24,6 +24,7 @@ import { applyRedoToView, applyUndoToView } from './mutation-history-apply.js';
 import { inverseMutationTargets, pruneInverseMutationTargets, revertedMutationIds } from './mutation-inverse-registry.js';
 import { newMutationBatchId, withMutationBatchTags } from './mutation-batch-tags.js';
 import { remeshForBatch } from '@/lib/remesh/remesh-registry.js';
+import { isGeorefMutation } from './mutation-history-prune.js';
 
 type Get = () => ViewerState;
 type Set = (partial: Partial<ViewerState> | ((s: ViewerState) => Partial<ViewerState>)) => void;
@@ -34,10 +35,6 @@ function stackKeys(direction: Direction): { source: StackKey; destination: Stack
   return direction === 'undo'
     ? { source: 'undoStacks', destination: 'redoStacks' }
     : { source: 'redoStacks', destination: 'undoStacks' };
-}
-
-function isGeorefMutation(mutation: Mutation): boolean {
-  return mutation.type === 'UPDATE_ATTRIBUTE' && (mutation.attributeName?.startsWith('georef.') ?? false);
 }
 
 /** Move `moved` (popped top-first) from the source stack to the destination stack. */

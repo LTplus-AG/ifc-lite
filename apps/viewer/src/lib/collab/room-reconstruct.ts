@@ -28,6 +28,7 @@ import { highestExpressId, raisedMaxExpressId } from './express-id-bounds';
 import { clearAppliedPlacements, sweepPlacements, type PlacementSweepApi } from './placement-sweep';
 import { pathInRoomSlot, roomModelIdFor, roomModelNameFor } from './model-slot-ref';
 import type { ParsedRoomStepSource } from './room-step-source';
+import { applyRoomSpatialContext } from './room-spatial-context';
 import { attachRoomStepSource } from './room-step-attach';
 import { cleanupRoomModels } from './room-reconstruct-cleanup';
 import { hydrateStructuredEntityAttributes } from './room-structured-attributes';
@@ -102,9 +103,7 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
     return meshes.slice();
   };
 
-  // Published only when the slot set changes: the store compares by
-  // reference, and a fresh Map per reconstruct would re-render every
-  // subscriber (Share dialog, room panel) on each debounced peer edit.
+  // Publish only when slots change; subscribers compare Map references.
   let publishedSlots = '';
   const publishRoomModels = (listed: ModelSlotRef[]): void => {
     const signature = listed.map((s) => `${s.slotId}=${s.pathPrefix}`).join(',');
@@ -180,6 +179,7 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
       });
       for (const diagnostic of diagnostics) deps.notify(`Room attribute ${diagnostic}`);
     }
+    applyRoomSpatialContext(payload, slot, deps.notify);
     registerStoreSlot(payload.dataStore, slot);
 
     let state = slots.get(modelId);
@@ -260,7 +260,7 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
         onProgress: (soFar) => {
           if (live() && soFar.length > 0) {
             applyRoomModelData(deps.get(), modelId, {
-              geometryResult: buildGeometryResultFromMeshes(rehome(soFar, idOffset)),
+              geometryResult: buildGeometryResultFromMeshes(rehome(soFar, idOffset), payload.geometryResult.coordinateInfo),
             });
           }
         },
@@ -269,7 +269,7 @@ export function createRoomReconstructor(deps: RoomReconstructDeps): RoomReconstr
       if (live()) {
         applyRoomModelData(deps.get(), modelId, {
           geometryResult:
-            meshes.length > 0 ? buildGeometryResultFromMeshes(rehome(meshes, idOffset)) : payload.geometryResult,
+            meshes.length > 0 ? buildGeometryResultFromMeshes(rehome(meshes, idOffset), payload.geometryResult.coordinateInfo) : payload.geometryResult,
         });
       }
     }

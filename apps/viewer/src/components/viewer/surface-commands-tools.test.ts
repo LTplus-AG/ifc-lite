@@ -13,7 +13,7 @@ const TOOL_IDS = [
   'tool:select', 'tool:walk', 'model:reposition', 'tool:measure',
   'tool:section', 'tool:annotate', 'tool:add-element', 'tool:wall', 'tool:slab', 'tool:column', 'tool:beam', 'tool:room',
   'tool:opening', 'tool:door', 'tool:window',
-  'tool:edit-mode', 'tool:split', 'tool:split-multi',
+  'tool:edit-mode', 'tool:split', 'tool:stair', 'tool:railing', 'tool:split-multi',
 ] as const;
 const isCoreTool = (id: string) => id.startsWith('tool:') || id === 'model:reposition';
 const originalTool = useViewerStore.getState().activeTool;

@@ -138,4 +138,6 @@ export interface SnapResult {
   locked: boolean;
   /** The modifiers held, filled by pointer callers (a Shift-squared rectangle); the solver never sets it. */
   modifiers?: { shift: boolean; alt: boolean };
+  /** Metres one screen pixel spans at the cursor, filled by pointer callers (a screen-sized pick tolerance). */
+  metresPerPixel?: number;
 }

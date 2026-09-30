@@ -8,7 +8,8 @@
  * selected element's attributes and properties — and the bindings resolve
  * live in the preview. Image, chart and topic blocks pick their source.
  */
-import { useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { SavedReportSource } from './SavedReportSource';
+import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowDown, ArrowUp, X } from 'lucide-react';
 import type { ChartSpec } from '@ifc-lite/charts';
 import type { BCFTopic } from '@ifc-lite/bcf';
@@ -16,19 +17,16 @@ import type { ValidationReport } from '@ifc-lite/ids';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { useTranslation, type TranslationKey } from '@/i18n';
-import { resolveGlobalId, useViewerStore } from '@/store';
 import { readImageFile } from '@/lib/document/persistence';
-import { FIELD_SUGGESTIONS } from '@/lib/document/presets';
-import { elementPropertyPaths, type BindingContext } from '@/lib/document/bindings';
-import { effectiveAttribute } from '@/lib/document/effective-binding-fields';
-import { spatialBindingNodes } from '@/lib/document/spatial-binding-nodes';
+import type { BindingContext } from '@/lib/document/bindings';
 import { idsReportBlockFromReport } from '@/lib/document/ids-report';
 import { TAB_SIZE, tabEdit } from '@/lib/document/text-tabs';
-import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, TEXT_SIZE_MAX, TEXT_SIZE_MIN, reportBlockSourceKind, type DocumentBlock, type IdsReportBlock, type TextBlock, type TextFont } from '@/lib/document/types';
+import { CHART_BLOCK_HEIGHT_MAX, CHART_BLOCK_HEIGHT_MIN, TEXT_SIZE_MAX, TEXT_SIZE_MIN, reportBlockSourceKind, type DocumentBlock, type IdsReportBlock, type IdsReportVariant, type TextBlock, type TextFont } from '@/lib/document/types';
 import { ClampedNumberInput, WidthEditor, field } from './BlockEditor.parts';
 import { TableBlockEditor } from './TableBlockEditor';
-import { ManualReportBlockEditor } from './ManualReportBlockEditor';
+import { ManualReportBlockEditor, ManualReportPresentation } from './ManualReportBlockEditor';
 import { TextColorEditor } from './TextColorEditor';
+import { FieldPicker } from './FieldPicker';
 
 export interface BlockEditorProps {
   block: DocumentBlock;
@@ -51,6 +49,7 @@ const KIND_LABEL_KEY = {
   chart: 'document.block.kindChart',
   topic: 'document.block.kindTopic',
   spacer: 'document.block.kindSpacer',
+  'page-break': 'document.block.kindPageBreak',
   table: 'document.block.kindTable',
   'ids-report': 'document.block.kindIdsReport',
   'manual-report': 'manualValidation.report.kind',
@@ -79,7 +78,7 @@ function ReportBlockSource({ block, report, onChange }: { block: IdsReportBlock;
         title={refreshable ? undefined : t(kind === 'rules' ? 'document.block.rulesReportRefreshDisabledTitle' : 'document.block.idsReportRefreshDisabledTitle')}
         onClick={() => {
           if (!report || report.source.kind !== kind) return;
-          onChange(idsReportBlockFromReport(report, block.id));
+          onChange(idsReportBlockFromReport(report, block.id, block.variant));
           toast.success(t('document.block.idsReportRefreshed'));
         }}
       >
@@ -89,27 +88,23 @@ function ReportBlockSource({ block, report, onChange }: { block: IdsReportBlock;
   );
 }
 
-/** The fields offered for insertion: the fixed suggestions, the model's storeys, and the selected element. */
-function useFieldOptions(bindings: BindingContext): Array<{ path: string; label: string }> {
-  const selected = useViewerStore((s) => s.selectedEntityIds);
-  return useMemo(() => {
-    const options = [...FIELD_SUGGESTIONS];
-    const active = bindings.models.find((m) => m.id === bindings.activeModelId) ?? bindings.models[0];
-    const storeys = active ? spatialBindingNodes(active, 'IfcBuildingStorey') : [];
-    for (const { expressId: id } of storeys.slice(0, 12)) {
-      const name = active.view ? effectiveAttribute(active, id, 'Name') : active.store.entities.getName(id);
-      if (name) options.push({ path: `IfcBuildingStorey["${name}"].Elevation`, label: `Storey "${name}" elevation` });
-    }
-    const first = selected.size > 0 ? [...selected][0] : null;
-    // The store's own renderer-id → GlobalId path, so an element added by an edit resolves too.
-    const guid = first === null ? null : resolveGlobalId(first);
-    if (guid) {
-      for (const attr of ['Name', 'Type', 'Description', 'ObjectType', 'Tag', 'Storey']) options.push({ path: `Element[${guid}].${attr}`, label: `Selected element · ${attr}` });
-      // The selected element's property and quantity sets, so a Pset value is one pick away.
-      for (const p of elementPropertyPaths(guid, bindings)) options.push({ path: p.path, label: `Selected element · ${p.label}` });
-    }
-    return options;
-  }, [bindings, selected]);
+/** Presentation belongs to the embedded result, independently of live refresh (#6500). */
+function ReportBlockPresentation({ block, onChange }: { block: IdsReportBlock; onChange: (block: DocumentBlock) => void }) {
+  const { t } = useTranslation();
+  return (
+    <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.idsReportVariantLabel')}
+      <select
+        className={field}
+        value={block.variant ?? ''}
+        onChange={(e) => onChange({ ...block, variant: (e.target.value || undefined) as IdsReportVariant | undefined })}
+        aria-label={t('document.block.idsReportVariantAriaLabel')}
+      >
+        {block.variant === undefined && <option value="">{t('document.block.idsReportVariantClassic')}</option>}
+        <option value="compact">{t('document.block.idsReportVariantCompact')}</option>
+        <option value="long">{t('document.block.idsReportVariantLong')}</option>
+      </select>
+    </label>
+  );
 }
 
 const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'AltGraph', 'CapsLock']);
@@ -117,7 +112,6 @@ const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'AltGraph', 'C
 function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings: BindingContext; onChange: (b: TextBlock) => void }) {
   const { t } = useTranslation();
   const textarea = useRef<HTMLTextAreaElement | null>(null);
-  const options = useFieldOptions(bindings);
   const insert = (path: string): void => {
     const el = textarea.current;
     const start = el?.selectionStart ?? block.text.length;
@@ -169,12 +163,7 @@ function TextEditor({ block, bindings, onChange }: { block: TextBlock; bindings:
           <ClampedNumberInput value={block.fontSize} min={TEXT_SIZE_MIN} max={TEXT_SIZE_MAX} allowUndefined placeholder={t('document.block.fontSizeDefault')} ariaLabel={t('document.block.fontSizeAriaLabel')} onCommit={(fontSize) => onChange({ ...block, fontSize })} />
         </label>
         <WidthEditor width={block.width} onChange={(width) => onChange({ ...block, width })} />
-        <label className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-muted-foreground">{t('document.block.insertFieldLabel')}
-          <select className={`${field} max-w-[190px]`} value="" onChange={(e) => { if (e.target.value) insert(e.target.value); }} aria-label={t('document.block.insertFieldLabel')} title={t('document.block.insertFieldTitle')}>
-            <option value="">…</option>
-            {options.map((o) => <option key={o.path} value={o.path}>{o.label}</option>)}
-          </select>
-        </label>
+        <FieldPicker bindings={bindings} onInsert={insert} />
       </div>
       <TextColorEditor block={block} onChange={onChange} />
       <textarea
@@ -290,9 +279,12 @@ export function BlockEditor({ block, index, count, bindings, topics, charts, ids
 
       {block.kind === 'table' && <TableBlockEditor block={block} onChange={onChange} />}
 
-      {block.kind === 'ids-report' && <ReportBlockSource block={block} report={idsValidationReport} onChange={onChange} />}
+      {(block.kind === 'ids-report' || block.kind === 'manual-report') && <SavedReportSource block={block} onChange={onChange} />}
+      {block.kind === 'ids-report' && <ReportBlockPresentation block={block} onChange={onChange} />}
+      {block.kind === 'ids-report' && !block.savedReportId && <ReportBlockSource block={block} report={idsValidationReport} onChange={onChange} />}
 
-      {block.kind === 'manual-report' && <ManualReportBlockEditor block={block} onChange={onChange} />}
+      {block.kind === 'manual-report' && <ManualReportPresentation block={block} onChange={onChange} />}
+      {block.kind === 'manual-report' && !block.savedReportId && <ManualReportBlockEditor block={block} onChange={onChange} />}
 
       {block.kind === 'topic' && (
         <div className="flex flex-wrap items-center gap-2">

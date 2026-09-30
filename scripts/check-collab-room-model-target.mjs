@@ -369,7 +369,7 @@ Use the slot's own \`modelId\` / \`payload\`, and route writes through
 // not force a ban through a legitimate reader. Recorded, demonstrated, not fixed.
 // Since #4444 (one model per slot) the observer resolves the model BY PATH and
 // every handler re-gates on the model it was handed.
-assertRegion(region(collab, 'remoteApplyTeardown = attachRemoteApply(', 'collab inbound apply'), {
+assertRegion(region(collab, 'const detachRemoteApply = attachRemoteApply(', 'collab inbound apply'), {
   // `.geometryResult` was missing here even though check 2b bans it one layer
   // down: this handler could inline `get().geometryResult?.meshes` instead of
   // calling the reconciler and stay green. Demonstrated, so banned.

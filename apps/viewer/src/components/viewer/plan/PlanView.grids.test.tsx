@@ -14,28 +14,45 @@ import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { rectangularGridAxes } from '@ifc-lite/create';
+import { StepExporter } from '@ifc-lite/export';
 import { useViewerStore } from '@/store';
+import { toGlobalIdFromModels } from '@/store/globalId';
 import { fixtureModel } from '@/test/store-fixture';
 import { seedModelingSession } from '@/test/modeling-session-fixture';
 import { render, advance, cleanup } from '@/test/render';
 import { addGridIn } from '@/store/slices/mutation-curtain-grid';
 import { emptyPlacementState } from '@/lib/model-placement/state';
 import { toHostHiddenIfcTypes } from '@/lib/host-hidden-ifc-types';
+import '@/lib/commands/modeling/builtin';
+import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { PlanView } from './PlanView';
 
 const MODEL = 'bonsai', STOREY = 42;
 
-async function fixture(count: 1 | 2) {
+interface FixtureOptions {
+  millimetres?: boolean;
+  rotatedStorey?: boolean;
+  UTags?: string[];
+  reload?: boolean;
+}
+
+async function fixture(count: 1 | 2, options: FixtureOptions = {}) {
   await seedModelingSession(); // reset the shared session/undo state
-  const source = readFileSync(new URL('../../../../public/samples/hello-wall.ifc', import.meta.url));
+  let source = readFileSync(new URL('../../../../public/samples/hello-wall.ifc', import.meta.url), 'utf8');
+  // Explicit unit/frame variants of the real Bonsai source. The new grid is
+  // authored in metres in either native-unit file and in the storey's frame.
+  if (options.millimetres) source = source.replace('#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);', '#2=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);');
+  if (options.rotatedStorey) source = source
+    .replace('#61=IFCCARTESIANPOINT((0.,0.,0.));', '#61=IFCCARTESIANPOINT((1000.,2000.,0.));')
+    .replace('#63=IFCDIRECTION((1.,0.,0.));', '#63=IFCDIRECTION((0.,1.,0.));');
   const models = new Map(useViewerStore.getState().models);
   models.clear();
   const views = new Map<string, MutablePropertyView>();
   for (const [i, id] of [MODEL, 'peer'].slice(0, count).entries()) {
-    const bytes = new Uint8Array(source).buffer;
+    const bytes = new TextEncoder().encode(source).buffer;
     const parsed = await new IfcParser().parseColumnar(bytes, { disableWorkerScan: true });
     assert.ok(parsed.entityIndex.byType.get('IFCBUILDINGSTOREY')?.includes(STOREY));
-    const model = { ...fixtureModel(id, { idOffset: i === 0 ? 0 : 1_000_000 }),
+    const model = { ...fixtureModel(id, { idOffset: count === 1 ? 0 : (i + 1) * 1_000_000 }),
       ifcDataStore: parsed, geometryResult: useViewerStore.getState().geometryResult };
     models.set(id, model);
     views.set(id, new MutablePropertyView(parsed.properties ?? null, id));
@@ -56,9 +73,17 @@ async function fixture(count: 1 | 2) {
   }
   const made = addGridIn(useViewerStore, MODEL, STOREY, {
     Position: [100, 200, 0], Direction: Math.PI / 2,
-    ...rectangularGridAxes({ UOffsets: [0, 6], VOffsets: [0, 4] }), Name: 'Authored design grid',
+    ...rectangularGridAxes({ UOffsets: [0, 6], VOffsets: [0, 4], UTags: options.UTags }), Name: 'Authored design grid',
   });
   assert.ok('expressId' in made);
+  if (options.reload) {
+    const model = models.get(MODEL)!;
+    const exported = new StepExporter(model.ifcDataStore!, views.get(MODEL)).export({ schema: 'IFC4' });
+    const loaded = await new IfcParser().parseColumnar(exported.content.slice().buffer, { disableWorkerScan: true });
+    models.set(MODEL, { ...model, ifcDataStore: loaded });
+    views.set(MODEL, new MutablePropertyView(loaded.properties ?? null, MODEL));
+    useViewerStore.setState({ models: new Map(models), mutationViews: new Map(views), storeEditors: new Map() });
+  }
   assert.ok(useViewerStore.getState().enterModelWorkspace({ modelId: MODEL, storeyId: STOREY }));
   const ui = render(<PlanView layout="split" />);
   await advance(450);
@@ -113,11 +138,98 @@ for (const count of [1, 2] as const) describe(`#6232 authored plan grid with ${c
     await advance(20);
     assert.equal(lines(ui).length, 0);
     act(() => useViewerStore.setState((s) => ({ typeVisibility: { ...s.typeVisibility, ifcGrid: true },
-      hostHiddenIfcTypes: toHostHiddenIfcTypes(['IfcGrid']) })));
+      hostHiddenIfcTypes: toHostHiddenIfcTypes(['IfcGridAxis']) })));
     await advance(20);
     assert.equal(lines(ui).length, 0, 'a host-hidden grid stays hidden when its toggle is on');
     act(() => useViewerStore.setState({ hostHiddenIfcTypes: null }));
     await advance(20);
     assert.equal(lines(ui).length, 4);
+  });
+
+  it('keeps file axes and AxisTags after actual export and reparse in a millimetre, turned storey', async () => {
+    const { ui } = await fixture(count, { millimetres: true, rotatedStorey: true, reload: true });
+    assert.equal(useViewerStore.getState().mutationViews.get(MODEL)!.getNewEntities().length, 0, 'the reloaded grid is source data');
+    assert.equal(lines(ui).length, 4);
+    assert.deepEqual(tags(ui), ['1', '2', 'A', 'B']);
+    const vertical = lines(ui).filter((line) => Math.abs(Number(line.getAttribute('x2')) - Number(line.getAttribute('x1'))) < 1e-6);
+    const horizontal = lines(ui).filter((line) => Math.abs(Number(line.getAttribute('y2')) - Number(line.getAttribute('y1'))) < 1e-6);
+    assert.equal(vertical.length, 2);
+    assert.equal(horizontal.length, 2);
+    // Native millimetres must become the same 8 m / 6 m axis spans; the
+    // translated/turned parent frame cancels in this storey-local drawing.
+    const v = vertical[0], h = horizontal[0];
+    const lengths = [Math.abs(Number(v.getAttribute('y2')) - Number(v.getAttribute('y1'))),
+      Math.abs(Number(h.getAttribute('x2')) - Number(h.getAttribute('x1')))];
+    assert.ok(Math.abs(lengths[0] / lengths[1] - 8 / 6) < 1e-6, 'the independently specified rectangular spans retain their metre ratio');
+  });
+
+  it('applies model-qualified grid/axis entity hides and model visibility without hiding the peer model', async () => {
+    const { ui, made } = await fixture(count);
+    const state = useViewerStore.getState();
+    const gridId = toGlobalIdFromModels(state.models, MODEL, made.expressId);
+    const axisId = toGlobalIdFromModels(state.models, MODEL, made.build.uAxisIds[0]);
+    if (count === 2) {
+      const peerGrid = state.mutationViews.get('peer')!.getNewEntities().find((e) => e.type.toUpperCase() === 'IFCGRID')!;
+      assert.equal(peerGrid.expressId, made.expressId, 'the independently authored grids have overlapping model-local ids');
+      act(() => useViewerStore.setState({ hiddenEntities: new Set([toGlobalIdFromModels(state.models, 'peer', peerGrid.expressId)]) }));
+      await advance(20);
+      assert.equal(lines(ui).length, 4, 'the same express id in a different model does not hide the active grid');
+    }
+    act(() => useViewerStore.setState({ hiddenEntities: new Set([axisId]) }));
+    await advance(20);
+    assert.equal(lines(ui).length, 3);
+    assert.deepEqual(tags(ui), ['2', 'A', 'B']);
+    act(() => useViewerStore.setState({ hiddenEntities: new Set([gridId]) }));
+    await advance(20);
+    assert.equal(lines(ui).length, 0);
+    act(() => useViewerStore.setState({ hiddenEntities: new Set() }));
+    await advance(20);
+    assert.equal(lines(ui).length, 4);
+    act(() => useViewerStore.getState().setModelVisibility(MODEL, false));
+    await advance(20);
+    assert.equal(lines(ui).length, 0);
+    act(() => useViewerStore.getState().setModelVisibility(MODEL, true));
+    await advance(20);
+    assert.equal(lines(ui).length, 4);
+  });
+
+  it('fits the full grid tag bubbles instead of clipping long AxisTags at the canvas edge', async () => {
+    const { ui } = await fixture(count, { UTags: ['Structural axis number 01', 'Structural axis number 02'] });
+    assert.equal(lines(ui).length, 4);
+    assert.deepEqual(tags(ui), ['A', 'B', 'Structural axis number 01', 'Structural axis number 02']);
+    for (const bubble of ui.querySelectorAll('[data-plan-layer="design-grids"] circle')) {
+      const [x, y, r] = ['cx', 'cy', 'r'].map((name) => Number(bubble.getAttribute(name)));
+      assert.ok(x - r >= 0 && x + r <= 1280 && y - r >= 0 && y + r <= 800, `complete label bubble (${x},${y}), r=${r} stays on canvas`);
+    }
+  });
+
+  it('a real plan click on the reloaded millimetre grid creates the column at the independently calculated storey point', async () => {
+    const { ui } = await fixture(count, { millimetres: true, rotatedStorey: true, reload: true });
+    const lineFor = (AxisTag: string) => lines(ui).find((line) => line.parentElement?.querySelector('text')?.textContent === AxisTag)!;
+    const x = Number(lineFor('B').getAttribute('x1'));
+    const y = Number(lineFor('2').getAttribute('y1'));
+    const svg = ui.querySelector('[data-plan-canvas]')!;
+    const restoreRemesh = setRequestRemesh(() => {}); // This test observes the real IFC commit, not async mesh upload.
+    try {
+      act(() => {
+        useViewerStore.setState({ snapEnabled: false });
+        useViewerStore.getState().startCommand('column.place');
+        for (const type of ['pointerdown', 'pointerup']) svg.dispatchEvent(new window.PointerEvent(type, {
+          bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, pointerId: 1,
+        }));
+      });
+      const state = useViewerStore.getState();
+      const column = state.mutationViews.get(MODEL)!.getNewEntities().find((e) => e.type.toUpperCase() === 'IFCCOLUMN')!;
+      assert.ok(column, 'the mounted pointer path committed an IFC column');
+      // Grid-local (6,4), turned 90 degrees at (100,200), is storey (96,206).
+      // Absolute coordinates catch a missed native-unit conversion; a ratio alone cannot.
+      assert.deepEqual(state.readEntityPosition(MODEL, column.expressId)!.map((v) => +v.toFixed(6)), [96, 206, 0]);
+      act(() => useViewerStore.getState().undo(MODEL));
+      assert.ok(useViewerStore.getState().mutationViews.get(MODEL)!.isDeleted(column.expressId));
+      act(() => useViewerStore.getState().redo(MODEL));
+      assert.deepEqual(useViewerStore.getState().readEntityPosition(MODEL, column.expressId)!.map((v) => +v.toFixed(6)), [96, 206, 0]);
+    } finally {
+      restoreRemesh();
+    }
   });
 });

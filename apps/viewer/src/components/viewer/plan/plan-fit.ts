@@ -38,7 +38,7 @@ export function screenToLocal(fit: Fit, sx: number, sy: number): Vec2 {
  * fits with a small margin (a fixed 36 px pad left a narrow
  * plan pane a quarter empty).
  */
-export function fitPlan(polygons: readonly PlanCutPolygon[], lines: readonly PlanCutLine[], axes: readonly WallAxis[], w: number, h: number): Fit {
+export function fitPlan<T extends Pick<WallAxis, 'a' | 'b'>>(polygons: readonly PlanCutPolygon[], lines: readonly PlanCutLine[], axes: readonly T[], w: number, h: number, minimumMarginPx = FIT_MARGIN_MIN_PX): Fit {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   const add = (p: Vec2) => {
     minX = Math.min(minX, p[0]); minY = Math.min(minY, p[1]);
@@ -48,7 +48,9 @@ export function fitPlan(polygons: readonly PlanCutPolygon[], lines: readonly Pla
   for (const l of lines) { add(l.a); add(l.b); }
   for (const a of axes) { add(a.a); add(a.b); }
   if (!Number.isFinite(minX)) { add([-EMPTY_HALF_M, -EMPTY_HALF_M]); add([EMPTY_HALF_M, EMPTY_HALF_M]); }
-  const margin = Math.max(FIT_MARGIN_MIN_PX, FIT_MARGIN_SHARE * Math.min(w, h));
+  // AxisTags are file-supplied. Oversized label margins must leave a positive
+  // drawing area instead of reversing geometry and the pointer transform.
+  const margin = Math.min(Math.max(FIT_MARGIN_MIN_PX, FIT_MARGIN_SHARE * Math.min(w, h), minimumMarginPx), Math.min(w, h) * 0.45);
   const scale = Math.min((w - 2 * margin) / Math.max(maxX - minX, 1e-6), (h - 2 * margin) / Math.max(maxY - minY, 1e-6));
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
   return { scale, offX: w / 2 - cx * scale, offY: h / 2 + cy * scale };

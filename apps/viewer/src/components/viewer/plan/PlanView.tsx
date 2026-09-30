@@ -45,6 +45,8 @@ import { pickPlanHandle, type PlanHandle } from './plan-handles';
 import { HandleLayer, usePlanHandles } from './PlanHandles';
 import { usePlanViewport } from './usePlanViewport';
 import { PlanHeader } from './PlanHeader';
+import { usePlanGridAxes } from './usePlanGridAxes';
+import { DesignGridLayer, gridLabelRadius } from './DesignGridLayer';
 import { CutLayer, GhostLayer, GridLayer, HighlightLayer, SnapLayer, toScreen } from './PlanLayers';
 
 /** A press that moves further than this (px) is a drag, not a click. */
@@ -98,6 +100,7 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
   const selected = useMemo(() => (selectedId === null || selectedIds.has(selectedId) ? selectedIds : new Set([...selectedIds, selectedId])), [selectedIds, selectedId]);
   const runtime = useCommandRuntime();
   const { plane, axes } = usePlanFrame();
+  const designGrids = usePlanGridAxes();
   const cut = usePlanCut(session?.modelId ?? null, session?.storeyId ?? null, plane);
   const handles = usePlanHandles(plane, cut.polygons);
   const [grid, setGrid] = useState(true);
@@ -121,7 +124,8 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
     return double ? 2 : 1;
   };
 
-  const frame = useCallback((w: number, h: number) => fitPlan(cut.polygons, cut.lines, axes, w, h), [cut.polygons, cut.lines, axes]);
+  const gridMargin = useMemo(() => designGrids.reduce((margin, axis) => Math.max(margin, gridLabelRadius(axis.AxisTag) + 2), 0), [designGrids]);
+  const frame = useCallback((w: number, h: number) => fitPlan(cut.polygons, cut.lines, [...axes, ...designGrids], w, h, gridMargin), [cut.polygons, cut.lines, axes, designGrids, gridMargin]);
   const { size, fit, refit, panBy } = usePlanViewport(hostRef, svgRef, frame, `${session?.modelId}:${session?.storeyId}`, cut.settled);
   const gridLines = useMemo(() => (grid && fit ? planGrid(fit, size.width, size.height) : null), [grid, fit, size.width, size.height]);
 
@@ -278,6 +282,7 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
           {fit && (
             <>
               <GridLayer grid={gridLines} width={size.width} height={size.height} />
+              {fit && <DesignGridLayer axes={designGrids} fit={fit} />}
               <CutLayer fit={fit} polygons={cut.polygons} lines={cut.lines} axes={axes} />
               <HighlightLayer fit={fit} polygons={cut.polygons} selected={selected} hovered={hovered} />
               {!commandOnPlane && <HandleLayer fit={fit} handles={handles} active={hoveredHandle} />}

@@ -82,6 +82,16 @@ describe('fitPlan / screenToLocal', () => {
       assert.ok(x >= 0 && x <= 800 && y >= 0 && y <= 600, `${p} is on screen`);
     }
   });
+
+  it('an oversized grid label cannot invert the plan or its pointer transform (#6232)', () => {
+    const fit = fitPlan([], [], [{ a: [100, 200], b: [106, 204] }], 308, 895, 5000);
+    assert.ok(Number.isFinite(fit.scale) && fit.scale > 0, 'file-supplied AxisTags cannot flip the view');
+    for (const p of [[100, 200], [106, 204]] as Vec2[]) {
+      const x = sX(fit, p[0]), y = sY(fit, p[1]);
+      assert.ok(x >= 0 && x <= 308 && y >= 0 && y <= 895, 'the grid crossing stays on the narrow canvas');
+      assert.deepEqual(screenToLocal(fit, x, y).map((v) => +v.toFixed(6)), p);
+    }
+  });
 });
 
 describe('planCutLinework', () => {

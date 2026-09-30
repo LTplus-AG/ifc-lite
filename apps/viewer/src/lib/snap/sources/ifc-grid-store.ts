@@ -11,9 +11,8 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { extractGridAxesForStorey } from '@ifc-lite/create';
-import type { GridAxisLine } from './ifc-grid.js';
+import { extractGridAxesForStorey, type GridAxisSegment } from '@ifc-lite/create';
 
-export function storeyGridAxes(store: IfcDataStore, view: MutablePropertyView, storeyId: number): GridAxisLine[] {
+export function storeyGridAxes(store: IfcDataStore, view: MutablePropertyView, storeyId: number): GridAxisSegment[] {
   return extractGridAxesForStorey(store, storeyId, view).axes;
 }

@@ -1,5 +1,5 @@
 ---
-"@ifc-lite/viewer": minor
+"@ifc-lite/viewer": major
 ---
 
-The Add element panel and the Space Sketch tool are gone: every kind is now a command in the Model workspace (Author ribbon, Model; or press E). Wall, Slab (also roof and plate), Column, Beam (also member), Room, Opening, Door, Window, Stair and Railing each pick on the storey with snapping and a live ghost, then commit as one undo step. Room does what Space Sketch and Auto Spaces did: pick, draw, Auto on a storey or every storey, Edit the layout, Footprint and Show leaks. Doors and windows are placed on a wall (hosted), never free-standing. The two Author ribbon buttons, the palette row "Add Element", their keyboard shortcuts (Enter, Esc and S in the panel, Ctrl+Z and Enter in the sketch) and the sketch's plan card are removed; Start blank on the welcome card still lands in the wall tool. `bim.store.*` and scripts are unchanged.
+Remove the Add element panel and Space Sketch workflow. Authoring now enters through the Model workspace (Author ribbon → Model, or E). Room retains Auto, layout editing, footprints, leak diagnostics and classification options. Storey placement tools, wall-relative hosted tools and manipulation commands retain their own interaction flows. The removed ribbon actions, palette entry, sketch plan card and their dedicated shortcuts are no longer available; Start blank still enters Wall. This is a breaking navigation change in the versioned private viewer application.

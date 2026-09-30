@@ -1,6 +1,7 @@
 # Chart text sizing (#6546)
 
-These artifacts come from the real viewer and its browser PDF export. The
+These artifacts come from the real viewer and its browser PDF export at commit
+`3a4ee84765c8568b14c3ad70c3b27489eaade251`. The
 input is the committed public `apps/viewer/public/samples/building-architecture.ifc`,
 whose IFC header identifies SketchUp 2024 (24.0.594) and IFC-manager 5.3.3.
 Its SHA-256 is `3ff9b10bd00c7b96dded51e7ca5a6b69efbea38b049adcdd05fcd247de7e70d5`.
@@ -48,5 +49,15 @@ coverage; the real T3 browser export above supplies it. This evidence is scoped
 to chart text sizing, not a claim that the full repository test suite passed.
 
 An ignored-font mutation (`chartFontScale(undefined)` in the option builder)
-made 11 of the 12 new chart tests fail while the 54 pre-existing chart tests
+made 11 of the initial 12 chart tests fail while the 54 pre-existing chart tests
 remained green. The implementation was restored byte-for-byte afterward.
+
+Review added one further rendered-SVG regression for a multiline IFC Name.
+It parses a documented derived version of the same SketchUp sample: only
+wall #262's Name changes to `Fire\nrating\r\napproved` through IFC string
+escapes. The exporter did not originally emit that name. Before the fix, an
+actual legend glyph extended to y=48 while the grid began at y=44 in a
+220×120 chart at text size 24. Custom legend labels now display on one line,
+matching their measured row height; the underlying name, element ids, and
+default pie formatter remain intact. Replacing the formatter with its old
+implementation makes this regression fail, with the other 66 tests passing.

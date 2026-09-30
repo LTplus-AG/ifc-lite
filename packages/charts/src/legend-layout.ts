@@ -12,7 +12,9 @@ export function packLegend(labels: readonly string[], width: number, font: strin
   // ECharts keeps this icon-to-text gap at 5px, independently of font size.
   const textGap = 5;
   const maxTextWidth = Math.max(0, width - itemWidth - textGap - gap);
-  const formatter = (name: string) => format.truncateText(name, maxTextWidth, font, '…');
+  // Resized legends reserve single-line rows. Normalize only their display
+  // labels; source names and the established default pie output stay intact.
+  const formatter = (name: string) => format.truncateText(heightBudget === undefined ? name : name.replace(/[\r\n]+/g, ' '), maxTextWidth, font, '…');
   const rowHeight = Math.max(itemHeight, format.getTextRect('M', font).height);
   const maxRows = heightBudget === undefined ? 4 : Math.max(1, Math.min(4, Math.floor((heightBudget + gap) / (rowHeight + gap))));
   let rows = labels.length > 0 ? 1 : 0;

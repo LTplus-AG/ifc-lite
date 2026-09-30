@@ -21,8 +21,7 @@ import { IfcParser, extractPropertiesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
-import { resolveHostAnchor } from './resolve-host.js';
-import { addHostedDoorToStore } from './hosted-fill.js';
+import { addHostedElementInStore } from './hosted-element.js';
 
 const WASM_PATH = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
 const WASM_AVAILABLE = existsSync(WASM_PATH);
@@ -119,9 +118,9 @@ async function exportWithDoor(): Promise<string> {
   const view = new MutablePropertyView(null, 'm');
   view.setOnDemandExtractor((id: number) => extractPropertiesOnDemand(store, id));
   const editor = new StoreEditor(store, view);
-  addHostedDoorToStore(editor, resolveHostAnchor(store, WALL, view), {
+  addHostedElementInStore(store, editor, WALL, { kind: 'door', params: {
     Offset: 8, Width: 0.9, Height: 2.1, Name: 'Authored Door',
-  });
+  } });
   const result = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true });
   return new TextDecoder().decode(result.content);
 }

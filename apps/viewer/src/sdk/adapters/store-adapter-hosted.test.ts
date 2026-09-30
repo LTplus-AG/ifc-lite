@@ -104,7 +104,8 @@ describe('#6232 bim.store hosted openings, doors and windows', () => {
 
   it('re-meshes the host with a hosted window, so the wall comes back cut and both reach the room', async () => {
     await seed();
-    const window = createStoreAdapter(useViewerStore).addHostedWindow(MODEL, WALL, { Offset: 5, Sill: 1, Width: 1.2, Height: 1.2 });
+    // #6232: the source model already has a window at Offset 5; exercise remeshing on a clear span.
+    const window = createStoreAdapter(useViewerStore).addHostedWindow(MODEL, WALL, { Offset: 8, Sill: 1, Width: 1.2, Height: 1.2 });
     await settleRemesh();
     assert.equal(mesher.requests.length, 1);
     const targets = [...mesher.requests[0].targets];

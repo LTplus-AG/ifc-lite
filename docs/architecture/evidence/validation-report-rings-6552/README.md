@@ -25,7 +25,7 @@ A wrapped nonnegative phase at `e2ab011fc42cb8af52ef0e14ccf203348d00d5f8` restor
 
 Plain root `pnpm typecheck` passed 109 Turbo tasks and included all 3,184 test files at the final source. The new real-IFC mounted cases check both engines, controls/persistence/import/reload, old optional-field defaults, warning partition, empty/cardinality/partial evidence, locale switching, narrow page bounds, actual PDF operators and title/hidden-ring preservation through refresh and source selection. Removing title preservation or benchmark preservation individually produced five passes and one failure; restoring them passed. Actual PDF/color/order failures above were retained before the canonical correction.
 
-Final focused regression and repository gate results are recorded in `qualification.json`. These checks do not claim a full local repository-suite pass; fresh exact-head CI is required before merge.
+The official full-production revert oracle passed: 15 changed-test cases passed on the branch; reverting all 12 production files produced eight passes and seven assertion failures, and byte-identical restoration was verified. Final focused regression and repository gate results are recorded in `qualification.json`. These checks do not claim a full local repository-suite pass; fresh exact-head CI is required before merge.
 
 ## Reproduce
 

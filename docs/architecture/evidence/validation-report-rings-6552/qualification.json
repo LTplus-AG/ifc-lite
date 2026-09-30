@@ -147,5 +147,16 @@
       "log": "/tmp/6232-takeover/6552-publish-docs-generated.log",
       "exit": 0
     }
+  },
+  "officialRevertOracle": {
+    "command": "node scripts/check-test-revert-oracle.mjs --base cfd1f5a221e7e08c6cba18ad156bfbb6b08c23ed --ci --json",
+    "headDuringRun": "3ccbba134ace1e0cae3eff4b2b6e9016d6a1a55a",
+    "productionFilesReverted": 12,
+    "baselinePassed": 15,
+    "revertedPassed": 8,
+    "revertedAssertionFailures": 7,
+    "exit": 0,
+    "restoration": "verified",
+    "log": "/tmp/6232-takeover/6552-publish-official-oracle.log"
   }
 }

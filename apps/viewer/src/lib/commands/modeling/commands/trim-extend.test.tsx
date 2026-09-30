@@ -530,15 +530,11 @@ describe('element.trimExtend: openings whose place cannot be read (#6232 C1)', (
     assert.match(preview.reason, /Can't tell where 1 opening/);
   });
 
-  it('a void relationship whose attributes cannot be read is an opening of unknown place, not absent', () => {
+  it('an effective dangling overlay void is an opening of unknown place, never an invented cut', () => {
     const crossing = wall([4, -2], [4, 3]);
     danglingVoid(crossing);
     const t = target();
-    // An editor that knows no overlay entity: the relationship cannot be read at all.
-    const blind = { getNewEntity: () => null };
-    assert.equal(readHostedCuts(t.dataStore, t.view, blind, crossing).unreadable.length, 1);
-    // Read normally it is the one dangling reference, also unreadable, and no cut is invented.
-    const seen = readHostedCuts(t.dataStore, t.view, t.editor, crossing);
+    const seen = readHostedCuts(t.dataStore, t.view, crossing);
     assert.equal(seen.unreadable.length, 1);
     assert.equal(seen.cuts.length, 0);
   });

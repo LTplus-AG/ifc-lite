@@ -1,0 +1,241 @@
+{
+  "after": {
+    "host": {
+      "bounds": {
+        "max": [
+          10,
+          3,
+          0
+        ],
+        "min": [
+          0,
+          0,
+          -0.10000000149011612
+        ]
+      },
+      "cornersHash": "3534ab1d",
+      "flatHash": "b8b1c4e8",
+      "instanceHash": "0b069958"
+    },
+    "other": {
+      "bounds": {
+        "max": [
+          5.846606612205505,
+          2.200000047683716,
+          0
+        ],
+        "min": [
+          4.946606636047363,
+          1,
+          -0.05000000074505806
+        ]
+      },
+      "cornersHash": "cface139",
+      "flatHash": "877ca23a",
+      "instanceHash": "0b069958"
+    },
+    "selected": {
+      "bounds": {
+        "max": [
+          2.8176748752593994,
+          2.399999976158142,
+          0
+        ],
+        "min": [
+          1.6176749467849731,
+          1,
+          -0.05000000074505806
+        ]
+      },
+      "cornersHash": "cc771f17",
+      "flatHash": "877ca23a",
+      "instanceHash": "0b069958"
+    }
+  },
+  "before": {
+    "host": {
+      "bounds": {
+        "max": [
+          10,
+          3,
+          0
+        ],
+        "min": [
+          0,
+          0,
+          -0.10000000149011612
+        ]
+      },
+      "cornersHash": "b215dbdf",
+      "flatHash": "b8b1c4e8",
+      "instanceHash": "0b069958"
+    },
+    "other": {
+      "bounds": {
+        "max": [
+          5.846606612205505,
+          2.200000047683716,
+          0
+        ],
+        "min": [
+          4.946606636047363,
+          1,
+          -0.05000000074505806
+        ]
+      },
+      "cornersHash": "cface139",
+      "flatHash": "877ca23a",
+      "instanceHash": "0b069958"
+    },
+    "selected": {
+      "bounds": {
+        "max": [
+          2.6676748991012573,
+          2.200000047683716,
+          0
+        ],
+        "min": [
+          1.7676749229431152,
+          1,
+          -0.05000000074505806
+        ]
+      },
+      "cornersHash": "b374aa15",
+      "flatHash": "877ca23a",
+      "instanceHash": "0b069958"
+    }
+  },
+  "fields": [
+    {
+      "label": "Width in metres",
+      "value": "0.90"
+    },
+    {
+      "label": "Height in metres",
+      "value": "1.20"
+    }
+  ],
+  "restored": {
+    "host": {
+      "bounds": {
+        "max": [
+          10,
+          3,
+          0
+        ],
+        "min": [
+          0,
+          0,
+          -0.10000000149011612
+        ]
+      },
+      "cornersHash": "b215dbdf",
+      "flatHash": "b8b1c4e8",
+      "instanceHash": "0b069958"
+    },
+    "other": {
+      "bounds": {
+        "max": [
+          5.846606612205505,
+          2.200000047683716,
+          0
+        ],
+        "min": [
+          4.946606636047363,
+          1,
+          -0.05000000074505806
+        ]
+      },
+      "cornersHash": "cface139",
+      "flatHash": "877ca23a",
+      "instanceHash": "0b069958"
+    },
+    "selected": {
+      "bounds": {
+        "max": [
+          2.6676748991012573,
+          2.200000047683716,
+          0
+        ],
+        "min": [
+          1.7676749229431152,
+          1,
+          -0.05000000074505806
+        ]
+      },
+      "cornersHash": "b374aa15",
+      "flatHash": "877ca23a",
+      "instanceHash": "0b069958"
+    }
+  },
+  "restoredExact": {
+    "host": true,
+    "other": true,
+    "selected": true
+  },
+  "undoHeight": {
+    "host": {
+      "bounds": {
+        "max": [
+          10,
+          3,
+          0
+        ],
+        "min": [
+          0,
+          0,
+          -0.10000000149011612
+        ]
+      },
+      "cornersHash": "94967f77",
+      "flatHash": "b8b1c4e8",
+      "instanceHash": "0b069958"
+    },
+    "other": {
+      "bounds": {
+        "max": [
+          5.846606612205505,
+          2.200000047683716,
+          0
+        ],
+        "min": [
+          4.946606636047363,
+          1,
+          -0.05000000074505806
+        ]
+      },
+      "cornersHash": "cface139",
+      "flatHash": "877ca23a",
+      "instanceHash": "0b069958"
+    },
+    "selected": {
+      "bounds": {
+        "max": [
+          2.8176748752593994,
+          2.200000047683716,
+          0
+        ],
+        "min": [
+          1.6176749467849731,
+          1,
+          -0.05000000074505806
+        ]
+      },
+      "cornersHash": "0b859ffb",
+      "flatHash": "877ca23a",
+      "instanceHash": "0b069958"
+    }
+  },
+  "url": "http://localhost:5193/",
+  "hashSemantics": {
+    "cornersHash": "Actual world triangle corner positions.",
+    "flatHash": "Scene-part metadata: geometryItemId, triangles, vertices, textured, color and sourceTriangles.",
+    "instanceHash": "Boolean instance flag.",
+    "scope": "These hashes do not establish GPU upload byte, normal or index-buffer identity."
+  },
+  "uiObservations": {
+    "undoClicks": 2,
+    "undoDisabledAfterTwoClicks": true,
+    "source": "Observed through the actual browser Undo button; not inferred from history depth or scene data."
+  }
+}

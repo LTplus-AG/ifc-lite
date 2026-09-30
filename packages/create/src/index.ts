@@ -303,7 +303,6 @@ export type {
   // Generic element creation (low-level API)
   GenericElementParams,
   AxisElementParams,
-
   // Element parameters
   ElementAttributes,
   WallParams,

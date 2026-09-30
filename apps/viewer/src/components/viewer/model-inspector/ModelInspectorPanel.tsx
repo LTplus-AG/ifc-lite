@@ -26,6 +26,7 @@ import { authoringDim, type AuthoredElementKind } from '@/store/slices/authoring
 import { CommitField, InspectorCaption, InspectorRow } from './InspectorControls';
 import { DefaultDimensions, SelectionDimensions } from './DimensionsSection';
 import { HostingSection } from './HostingSection';
+import { DefaultProfile, SelectionProfile, isProfileOwner } from './ProfileInspectorSection';
 import { KIND_LABEL } from './inspector-fields';
 import { LayersSection } from './LayersSection';
 import { TypeSection } from './TypeSection';
@@ -135,6 +136,7 @@ function DefaultsBody({ kind, modelId, live }: { kind: AuthoredElementKind; mode
     <>
       <TypeSection modelId={modelId} live={live} kind={kind} />
       <DefaultDimensions kind={kind} />
+      {isProfileOwner(kind) && <DefaultProfile owner={kind} />}
       {AUTHORED_KINDS[kind].layers && (
         <LayersSection
           key={`${kind}:${layers ? layerPick?.expressId : 'none'}`}
@@ -180,6 +182,7 @@ function SelectionBody({ selection }: { selection: InspectorSelection }) {
       {kind === null && <div className="px-3 py-3"><InspectorCaption>{t('modelInspector.noSections', { ifcClass: selection.ifcClass })}</InspectorCaption></div>}
       {kind !== null && <TypeSection modelId={modelId} live={live} kind={kind} elementId={expressId} />}
       {kind !== null && !HOSTED.has(kind) && <SelectionDimensions selection={selection} />}
+      {isProfileOwner(kind) && <SelectionProfile selection={selection} owner={kind} />}
       {kind !== null && AUTHORED_KINDS[kind].layers && (
         <LayersSection
           // Re-seed the draft when the applied layers change, or (with none) the wall's thickness does.

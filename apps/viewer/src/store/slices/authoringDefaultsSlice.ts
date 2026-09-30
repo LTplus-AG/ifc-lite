@@ -18,7 +18,9 @@
  */
 
 import type { StateCreator } from 'zustand';
+import type { ProfileSection, ProfileSectionType } from '@ifc-lite/create';
 import { defineSliceTeardown } from '../teardown.js';
+import { sectionOfType } from '@/lib/profile-section/profile-kinds';
 
 export type AuthoredElementKind =
   | 'wall'
@@ -39,6 +41,20 @@ export type SlabClass = Extract<AuthoredElementKind, 'slab' | 'roof' | 'plate'>;
 /** The IFC class the Beam bar writes: IfcBeam or IfcMember. */
 export type BeamClass = Extract<AuthoredElementKind, 'beam' | 'member'>;
 
+/** The kinds whose cross-section the Model workspace picks: a Beam or Member bar (its class), and the Column bar. */
+export type ProfileOwner = Extract<AuthoredElementKind, 'beam' | 'member' | 'column'>;
+
+/**
+ * The section a new beam, column or member is built with: its kind, and the
+ * dimensions last typed for each kind, so switching I, then Circle, then back
+ * to I finds the I as it was left. The rectangle's own dimensions are the
+ * kind's `dims` (Width x Height, Width x Depth), so `Rectangle` has none here.
+ */
+export interface ProfileChoice {
+  readonly type: ProfileSectionType;
+  readonly dims: Readonly<Partial<Record<ProfileSectionType, Readonly<Record<string, number>>>>>;
+}
+
 /** An entity picked as a default, pinned to the model it lives in. */
 interface ModelScopedPick {
   readonly modelId: string;
@@ -57,6 +73,8 @@ export interface AuthoringDefaults {
   readonly spaceMode: SlabDrawMode;
   readonly slabClass: SlabClass;
   readonly beamClass: BeamClass;
+  /** The cross-section per owner; `Rectangle` (the initial value) writes the kind's Width x Height. */
+  readonly profiles: Readonly<Record<ProfileOwner, ProfileChoice>>;
   readonly typeIds: Readonly<Partial<Record<AuthoredElementKind, ModelScopedPick>>>;
   readonly layerSetIds: Readonly<Partial<Record<AuthoredElementKind, ModelScopedPick>>>;
   /** The kind the last command built, for the inspector's empty state. */
@@ -68,6 +86,8 @@ export interface AuthoringDefaultsSlice {
   /** Merge dimension values into one kind's defaults. */
   setAuthoringDims: (kind: AuthoredElementKind, dims: Readonly<Record<string, number>>) => void;
   setAuthoringDefaults: (patch: Partial<Omit<AuthoringDefaults, 'dims'>>) => void;
+  /** Pick `owner`'s section kind, and remember its dimensions (`dims` merges over the kind's remembered ones). */
+  setAuthoringProfile: (owner: ProfileOwner, kind: ProfileSectionType, dims?: Readonly<Record<string, number>>) => void;
 }
 
 /** The IfcCreator builders' construction-standard defaults. */
@@ -93,6 +113,7 @@ const INITIAL: AuthoringDefaults = {
   spaceMode: 'rectangle',
   slabClass: 'slab',
   beamClass: 'beam',
+  profiles: { beam: { type: 'Rectangle', dims: {} }, member: { type: 'Rectangle', dims: {} }, column: { type: 'Rectangle', dims: {} } },
   typeIds: {},
   layerSetIds: {},
   lastKind: 'wall',
@@ -107,7 +128,25 @@ export const createAuthoringDefaultsSlice: StateCreator<AuthoringDefaultsSlice, 
     },
   })),
   setAuthoringDefaults: (patch) => set((s) => ({ authoringDefaults: { ...s.authoringDefaults, ...patch } })),
+  setAuthoringProfile: (owner, kind, dims) => set((s) => {
+    const choice = s.authoringDefaults.profiles[owner];
+    return {
+      authoringDefaults: {
+        ...s.authoringDefaults,
+        profiles: { ...s.authoringDefaults.profiles, [owner]: { type: kind, dims: dims ? { ...choice.dims, [kind]: { ...choice.dims[kind], ...dims } } : choice.dims } },
+      },
+    };
+  }),
 });
+
+/**
+ * The section a new element of `owner` is built with, or null for the plain
+ * rectangle (written as Width x Height, the way it always was).
+ */
+export function authoringSection(defaults: AuthoringDefaults, owner: ProfileOwner): ProfileSection | null {
+  const { type, dims } = defaults.profiles[owner];
+  return type === 'Rectangle' ? null : sectionOfType(type, dims[type]);
+}
 
 /** One kind's dimension, with the builder default when a value is missing. */
 export function authoringDim(defaults: AuthoringDefaults, kind: AuthoredElementKind, name: string): number {
@@ -138,3 +177,9 @@ export const authoringDefaultsTeardown = defineSliceTeardown('authoringDefaultsS
     ? { authoringDefaults: { ...state.authoringDefaults, typeIds: {}, layerSetIds: {} } }
     : {}),
 });
+
+/** {@link authoringSection}, with the plain rectangle (Width x Height, a column's Width x Depth) drawn as a section too: what a preview shows. */
+export function authoringShownSection(defaults: AuthoringDefaults, owner: ProfileOwner): ProfileSection {
+  return authoringSection(defaults, owner)
+    ?? { Type: 'Rectangle', XDim: authoringDim(defaults, owner, 'Width'), YDim: authoringDim(defaults, owner, owner === 'column' ? 'Depth' : 'Height') };
+}

@@ -112,8 +112,8 @@ export function resolveSplitTarget(
 /**
  * Why the chain reader refused a supported class: look at the first item of
  * the first representation — the same slot every chain reader walks. Slab-like
- * readers also take a polyline profile; walls and linear elements only a
- * rectangle.
+ * readers also take a polyline profile; walls only a rectangle, and linear
+ * elements a rectangle or one of the picker's sections (I, L, T, U, C, circle, hollow).
  */
 function diagnoseBody(
   dataStore: IfcDataStore,

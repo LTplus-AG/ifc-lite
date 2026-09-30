@@ -1,0 +1,64 @@
+{
+  "copied": {
+    "assemblyId": 149665,
+    "parts": [
+      {
+        "id": 149671,
+        "source": 22347,
+        "GlobalId": "21ANXbGIbDNRjKmumK$F4d"
+      },
+      {
+        "id": 149682,
+        "source": 75395,
+        "GlobalId": "2SjapGtBH0nRJyXEIEVhln"
+      }
+    ],
+    "relationships": [
+      [
+        "#149665",
+        [
+          "#149671",
+          "#149682"
+        ]
+      ]
+    ],
+    "recordIds": [
+      149662,
+      149663,
+      149664,
+      149665,
+      149666,
+      149667,
+      149668,
+      149669,
+      149670,
+      149671,
+      149672,
+      149673,
+      149674,
+      149675,
+      149676,
+      149677,
+      149678,
+      149679,
+      149680,
+      149681,
+      149682,
+      149683,
+      149684,
+      149685,
+      149686,
+      149687,
+      149688,
+      149689,
+      149690
+    ]
+  },
+  "afterUndo": {
+    "remaining": 0,
+    "undo": 0,
+    "copiedMeshes": 0
+  },
+  "gpuLoss": "[WebGPU] requestDevice() rejected the request carrying requiredFeatures; retrying with the buffer limits alone (GPU timestamp queries unavailable): OperationError: A valid external Instance reference no longer exists. (E2E_FORCE_DEVICE_LOSS)",
+  "rasterEvidence": "unavailable; graph/remesh/undo verified before applying the shared hosted-loss policy"
+}

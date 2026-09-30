@@ -40,6 +40,72 @@ def unit_cube() -> tuple[list[float], list[int]]:
 
 
 class CanonicalKnownAnswers(unittest.TestCase):
+    def survey_box(self, offset=(500385.593498, 2780226.517679, 14.63)):
+        vertices, faces = unit_cube()
+        size = (0.1, 0.02, 0.3)
+        return [value * size[i % 3] + offset[i % 3]
+                for i, value in enumerate(vertices)], faces
+
+    def test_survey_translation_preserves_small_closed_volume_6533(self):
+        for offset in ((0, 0, 0), (500385.593498, 2780226.517679, 14.63),
+                       (-500385.593498, -2780226.517679, -14.63)):
+            with self.subTest(offset=offset):
+                vertices, faces = self.survey_box(offset)
+                self.assertTrue(canonical.is_closed(faces))
+                # Analytic box volume, independent of signed tetrahedron code.
+                self.assertAlmostEqual(canonical.signed_volume(vertices, faces),
+                                       0.1 * 0.02 * 0.3, delta=1e-10)
+                self.assertEqual(canonical.element_record(6533, "IfcCovering",
+                                                         vertices, faces)["volume"], 0.0006)
+
+    def test_survey_winding_and_face_order_preserve_signed_volume_6533(self):
+        vertices, faces = self.survey_box()
+        reversed_winding = [index for i in range(0, len(faces), 3)
+                            for index in (faces[i], faces[i + 2], faces[i + 1])]
+        reversed_order = [index for i in range(len(faces) - 3, -1, -3)
+                          for index in faces[i:i + 3]]
+        for indices, expected in ((faces, 0.0006), (reversed_order, 0.0006),
+                                  (reversed_winding, -0.0006)):
+            with self.subTest(expected=expected, indices=indices):
+                self.assertAlmostEqual(canonical.signed_volume(vertices, indices),
+                                       expected, delta=1e-10)
+        # Both actual stats records describe the same closed survey solid.
+        self.assertEqual(compare.classify(
+            canonical.element_record(6533, "IfcCovering", vertices, faces),
+            canonical.element_record(6533, "IfcCovering", vertices, reversed_winding)),
+            ("MATCH", [], []))
+
+    def test_disconnected_survey_components_sum_with_common_reference_6533(self):
+        first, faces = self.survey_box()
+        second = [value + (2, 3, 4)[i % 3] for i, value in enumerate(first)]
+        joined_faces = faces + [index + len(first) // 3 for index in faces]
+        self.assertTrue(canonical.is_closed(joined_faces))
+        self.assertAlmostEqual(canonical.signed_volume(first + second, joined_faces),
+                               0.0012, delta=1e-10)
+        self.assertEqual(canonical.element_record(6533, "IfcCovering", first + second,
+                                                 joined_faces)["volume"], 0.0012)
+
+    def test_survey_open_mesh_stays_without_volume_evidence_6533(self):
+        vertices, faces = self.survey_box()
+        closed = canonical.element_record(6533, "IfcCovering", vertices, faces)
+        opened = canonical.element_record(6533, "IfcCovering", vertices, faces[:-6])
+        self.assertFalse(opened["closed"])
+        self.assertIsNone(opened["volume"])
+        self.assertEqual(compare.classify(closed, opened),
+                         ("MATCH", [], ["volume-one-sided"]))
+
+    def test_closed_but_inconsistent_winding_is_unverifiable_6533(self):
+        vertices, faces = self.survey_box()
+        mixed = [faces[0], faces[2], faces[1]] + faces[3:]
+        self.assertTrue(canonical.is_closed(mixed), "undirected topology is unchanged")
+        invalid = canonical.element_record(6533, "IfcCovering", vertices, mixed)
+        valid = canonical.element_record(6533, "IfcCovering", vertices, faces)
+        self.assertTrue(invalid["closed"])
+        self.assertIsNone(invalid["volume"], "a reference-dependent sum is not physical volume")
+        for reference, actual in ((valid, invalid), (invalid, valid), (invalid, invalid)):
+            self.assertEqual(compare.classify(reference, actual),
+                             ("MATCH", [], ["volume-unverifiable"]))
+
     def test_unit_cube_stats(self):
         v, f = unit_cube()
         self.assertEqual(canonical.vertex_count(v), 8)

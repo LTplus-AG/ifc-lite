@@ -196,10 +196,14 @@ export function splitLinear(
   const { width, height } = geo.geometry;
   const common = { Name: env.name, GlobalId: env.newGlobalId };
 
+  // A piece of an I-beam is an I-beam: the picker's sections carry over as they are (#6232 D2).
+  const { profile } = chain;
   const added = chain.elementType === 'IfcColumn'
-    ? get().addColumn(modelId, env.storeyExpressId, { ...common, Position: newStart, Width: width, Depth: height, Height: newLength })
+    ? get().addColumn(modelId, env.storeyExpressId, {
+      ...common, Position: newStart, Height: newLength, ...(profile ? { Profile: profile } : { Width: width, Depth: height }),
+    })
     : get()[chain.elementType === 'IfcBeam' ? 'addBeam' : 'addMember'](modelId, env.storeyExpressId, {
-      ...common, Start: newStart, End: along(newStart, axis, newLength), Width: width, Height: height,
+      ...common, Start: newStart, End: along(newStart, axis, newLength), ...(profile ? { Profile: profile } : { Width: width, Height: height }),
     });
   if ('error' in added) return { ok: false, reason: added.error };
 

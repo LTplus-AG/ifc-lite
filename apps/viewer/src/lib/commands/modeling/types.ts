@@ -78,8 +78,8 @@ export interface CommandField<G> {
   readonly unit: 'm' | 'deg' | 'count';
   /** Fields with different groups get a divider between them in the bar. */
   readonly group?: string;
-  /** Not shown (and skipped by Tab) for this gesture, e.g. Width in polygon mode. */
-  hidden?(g: G): boolean;
+  /** Not shown (and skipped by Tab) for this gesture, e.g. Width in polygon mode, or a rectangle's Width once a section is picked. */
+  hidden?(g: G, ctx: CommandContext): boolean;
   read(g: G, ctx: CommandContext): number | null;
   write(g: G, v: number, ctx: CommandContext): G;
 }
@@ -115,6 +115,11 @@ export interface CommitResult {
 export interface CommandHudProps<G> {
   gesture: G;
   ctx: CommandContext;
+  /**
+   * The offscreen copy the bar only measures (`useHudBarTier`): draw what takes
+   * room, open nothing (a popover would open twice), register nothing.
+   */
+  measuring?: boolean;
 }
 
 /** A command's layer in the 2D plan: `toScreen` maps workplane-local metres to plan pixels. */

@@ -4,11 +4,22 @@
 
 /** #5819: exercise the Radix menu's actual browser focus and keyboard behavior over an authored IFC. */
 import { test, expect, type Page } from '@playwright/test';
+import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { rendererColorFrame } from './federation-control-triplet.rendering';
+import { watchGpuDeviceLoss } from './gpu-device-loss';
 import type { ViewerState } from '../../apps/viewer/src/store';
 
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
   var __ifc_lite_copied_global_id__: string | undefined;
+  var __ifc_lite_duplicate_remeshed__: number[] | undefined;
+  var __ifc_lite_duplicate_unsubscribe__: (() => void) | undefined;
 }
 
 async function openWallMenu(page: Page, selectWall = false): Promise<number> {
@@ -184,4 +195,127 @@ test('authored IFC entity menu exposes actions, arrow navigation, submenu and fo
 
   await clickEntityAction(page, 'Export anonymized…', true);
   expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().anonymizedExportRequested)).toBe(true);
+});
+
+
+/** #6232: a real Revit assembly, copied through the actual Duplicate shortcut. */
+test('Revit assembly Duplicate carries both beams and removes the full subgraph with one undo (#6232)', async ({ page }, info) => {
+  const deviceLoss = await watchGpuDeviceLoss(page);
+  const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
+  const file = join(root, 'tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc');
+  test.skip(!existsSync(file), 'Run pnpm fixtures to fetch the real Revit Snowdon fixture');
+  const bytes = await readFile(file);
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  expect(sha256).toBe('fab102eb5f9152bc7053d7e4920a8b75d0d34683c834078f0735c88308eb00a4');
+  const require = createRequire(join(root, 'apps/viewer/package.json'));
+  const { createServer } = await import(pathToFileURL(require.resolve('vite')).href);
+  const cacheDir = await mkdtemp(join(tmpdir(), 'ifc-duplicate-6232-'));
+  const server = await createServer({ root: join(root, 'apps/viewer'), cacheDir, logLevel: 'error', server: { host: '127.0.0.1', port: 0 } });
+  try {
+    await server.listen();
+    const url = server.resolvedUrls?.local[0];
+    if (!url) throw new Error('Duplicate witness viewer did not expose a URL');
+    await page.goto(url);
+    await page.evaluate(() => { const state = globalThis.__ifc_lite_viewer_store__.getState(); if (state.typeVisibility.ifcGrid) state.toggleTypeVisibility('ifcGrid'); });
+    await page.locator('#file-input-add').setInputFiles(file);
+    await page.waitForFunction(() => {
+      const state = globalThis.__ifc_lite_viewer_store__?.getState();
+      return state?.models.size === 1 && !state.loading && !state.geometryStreamingActive &&
+        [...state.models.values()].every((m) => m.ifcDataStore && (m.geometryResult?.meshes.length ?? 0) > 0);
+    }, undefined, { timeout: 180_000 });
+    await page.getByRole('tab', { name: 'Author', exact: true }).click();
+    await page.getByRole('tabpanel', { name: 'Author' }).getByRole('button', { name: 'Model', exact: true }).click();
+    const before = await page.evaluate(async () => {
+      const moduleUrl = '/src/store/index.ts';
+      const module = await import(moduleUrl);
+      const store: { subscribe(listener: (state: ViewerState) => void): () => void } = module.useViewerStore;
+      globalThis.__ifc_lite_duplicate_remeshed__ = [];
+      globalThis.__ifc_lite_duplicate_unsubscribe__ = store.subscribe((next) => {
+        if (next.pendingMeshEdits) globalThis.__ifc_lite_duplicate_remeshed__ = [...new Set([...globalThis.__ifc_lite_duplicate_remeshed__!, ...next.pendingMeshEdits.ids])];
+      });
+      const state = globalThis.__ifc_lite_viewer_store__.getState();
+      const modelId = [...state.models.keys()][0];
+      const id = state.toGlobalId(modelId, 144910);
+      state.setSessionStorey(142); // Actual IfcRelContainedInSpatialStructure of assembly #144910.
+      state.setSelectedEntityId(id);
+      return { modelId, id, undo: state.undoStacks.get(modelId)?.length ?? 0, overlayIds: state.mutationViews.get(modelId)?.getNewEntities().map((r) => r.expressId) ?? [] };
+    });
+    await page.keyboard.press('Control+d');
+    await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId)).not.toBe(before.id);
+    const copied = await page.evaluate(({ modelId, overlayIds }) => {
+      const state = globalThis.__ifc_lite_viewer_store__.getState();
+      const view = state.mutationViews.get(modelId)!;
+      const records = view.getNewEntities().filter((r) => !overlayIds.includes(r.expressId));
+      const assembly = records.find((r) => r.type === 'IfcElementAssembly');
+      const parts = records.filter((r) => r.type === 'IfcBeam');
+      if (!assembly) throw new Error('Duplicate created no assembly');
+      const relationships = records.filter((r) => r.type === 'IfcRelAggregates');
+      return { assemblyId: assembly.expressId, parts: parts.map((r) => {
+        const GlobalId = r.attributes[0];
+        if (typeof GlobalId !== 'string') throw new Error('Copied beam has no IFC GlobalId');
+        return { id: r.expressId, source: view.getEntityAlias(r.expressId), GlobalId };
+      }), relationships: relationships.map((r) => {
+        const parent = r.attributes[4], children = r.attributes[5];
+        if (typeof parent !== 'string' || !Array.isArray(children) || children.some((v) => typeof v !== 'string')) throw new Error('Copied aggregation has unreadable references');
+        return [parent, children.map((v) => String(v))];
+      }), recordIds: records.map((r) => r.expressId) };
+    }, before);
+    expect(copied.parts.map((p) => p.source).sort((a, b) => a! - b!)).toEqual([22347, 75395]);
+    expect(copied.relationships).toEqual([[`#${copied.assemblyId}`, copied.parts.map((p) => `#${p.id}`)]]);
+    expect(new Set(copied.parts.map((p) => p.GlobalId)).size).toBe(2);
+    await page.waitForFunction(({ modelId, ids }) => {
+      const state = globalThis.__ifc_lite_viewer_store__.getState();
+      const meshes = state.models.get(modelId)?.geometryResult?.meshes ?? [];
+      return ids.every((id) => globalThis.__ifc_lite_duplicate_remeshed__?.includes(state.toGlobalId(modelId, id)) && meshes.some((m) => m.expressId === state.toGlobalId(modelId, id) && m.indices.length > 0));
+    }, { modelId: before.modelId, ids: copied.parts.map((p) => p.id) }, { timeout: 60_000 });
+    await page.evaluate(({ modelId, parts }) => {
+      const state = globalThis.__ifc_lite_viewer_store__.getState();
+      const ids = [22347, 75395, ...parts.map((p) => p.id)].map((id) => state.toGlobalId(modelId, id));
+      state.setSelectedEntityIds(ids);
+      state.setIsolatedEntities(new Set(ids));
+      setTimeout(() => state.cameraCallbacks.frameSelection?.(), 50);
+    }, { modelId: before.modelId, parts: copied.parts });
+    await page.waitForTimeout(500);
+    let capture: { png: Buffer } | { error: unknown };
+    try { capture = { png: await rendererColorFrame(page) }; }
+    catch (error) { capture = { error }; }
+    await page.evaluate((modelId) => globalThis.__ifc_lite_viewer_store__.getState().undo(modelId), before.modelId);
+    const afterUndo = await page.evaluate(({ modelId, ids }) => {
+      const state = globalThis.__ifc_lite_viewer_store__.getState();
+      return { remaining: state.mutationViews.get(modelId)!.getNewEntities().filter((r) => ids.includes(r.expressId)).length,
+        undo: state.undoStacks.get(modelId)?.length ?? 0,
+        copiedMeshes: state.models.get(modelId)!.geometryResult!.meshes.filter((m) => ids.some((id) => state.toGlobalId(modelId, id) === m.expressId)).length };
+    }, { modelId: before.modelId, ids: copied.recordIds });
+    expect(afterUndo).toEqual({ remaining: 0, undo: before.undo, copiedMeshes: 0 });
+    if ('error' in capture) {
+      const error = capture.error;
+      await writeFile(info.outputPath('revit-assembly-duplicate-graph-undo.json'), JSON.stringify({ copied, afterUndo, gpuLoss: await deviceLoss.lost(1000), rasterEvidence: 'unavailable; graph/remesh/undo verified before applying the shared hosted-loss policy' }, null, 2));
+      await deviceLoss.requireLiveGpu('Duplicate submitted color-frame readback after graph and undo verification', async () => { throw error; });
+      throw error;
+    }
+    const png = capture.png;
+    const coloredMeshPixels = await page.evaluate(async (base64) => {
+      const image = await createImageBitmap(await (await fetch(`data:image/png;base64,${base64}`)).blob());
+      const canvas = new OffscreenCanvas(image.width, image.height);
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Cannot decode the actual renderer frame');
+      context.drawImage(image, 0, 0);
+      const rgba = context.getImageData(0, 0, image.width, image.height).data;
+      let colored = 0;
+      for (let i = 0; i < rgba.length; i += 4) if (rgba[i + 2]! > rgba[i]! * 1.2 && rgba[i + 1]! > rgba[i]! * 1.2) colored++;
+      image.close();
+      return colored;
+    }, png.toString('base64'));
+    expect(coloredMeshPixels, 'selected real beams must be visible in the renderer frame, not hidden by the workspace storey context').toBeGreaterThan(100);
+    await writeFile(info.outputPath('revit-assembly-duplicate.png'), png);
+    await page.waitForTimeout(300);
+    const afterUndoPng = await deviceLoss.requireLiveGpu('Duplicate after-undo submitted color-frame readback', () => rendererColorFrame(page));
+    expect(afterUndoPng.equals(png), 'one undo must remove the copied beams from the submitted renderer frame').toBe(false);
+    await writeFile(info.outputPath('revit-assembly-after-undo.png'), afterUndoPng);
+    const remeshedGlobalIds = await page.evaluate(() => { globalThis.__ifc_lite_duplicate_unsubscribe__?.(); return globalThis.__ifc_lite_duplicate_remeshed__; });
+    await writeFile(info.outputPath('revit-assembly-duplicate.json'), JSON.stringify({ fixture: { sha256, bytes: bytes.length, author: 'Autodesk Revit 2024', assemblyId: 144910, originalPartIds: [22347, 75395] }, copied, remeshedGlobalIds, coloredMeshPixels, afterUndo, browser: await page.evaluate(() => navigator.userAgent) }, null, 2));
+  } finally {
+    try { await server.close(); }
+    finally { await rm(cacheDir, { recursive: true, force: true }); }
+  }
 });

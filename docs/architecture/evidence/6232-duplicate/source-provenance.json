@@ -1,0 +1,25 @@
+{
+  "base": "4c21fc0f0be652cb3e20b86c4f4bdc3e2c80ddbe",
+  "sha256": {
+    "packages/create/src/in-store/copy-product.ts": "44258918f106a228368ad82cabf37e27fe5ac97da418f973cadc5df2dc374a0e",
+    "apps/viewer/src/lib/commands/modeling/copy-elements.ts": "ecb73096416586b23daf33e6034755b703e6f6f7acd9be84acace55872aa60c6",
+    "apps/viewer/src/store/slices/mutationSlice.ts": "1a225b7ab2e8c00e060ac3dc2f63ee52a3287a94f0d2812a202a15acaccefad6",
+    "apps/viewer/src/store/owningModelMeshes.ts": "1c0e8361a9f6b0d40eb2d8688ddec86a82141d65e07350e59f5ae883b87970d3",
+    "apps/viewer/src/lib/model-placement/rotation-bake.ts": "98f04833f9ee5feb1356b7b57321af70845e90103038c99fac0713a7cdefdbc1",
+    "apps/viewer/src/store/slices/mutationSlice.duplicate-copy.test.ts": "884a3c52c5a3b430d448e887e0c35afbba686145bc8ff11396a7ef07e087676e",
+    "tests/e2e/entity-context-menu.e2e.spec.ts": "5396e120f7ff68646dfb550d8887ea48bd94efd306dc0eeda4ac90ffc65dd4e3",
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "896d0b5568686a1c860f6402f387fd02991691bbbb686706b041dad8066a3380",
+    "packages/wasm/pkg/ifc-lite.js": "27cff2a3870d71260ecdb0ecf2cbffcb2fd9e437c87ba6af1ea00378dbecc97d",
+    "apps/viewer/src/components/viewer/useDuplicateShortcut.test.tsx": "2f0816168d3011817e0ecf38fc89aee27c0506cdfaae955f29d0eb9202861175"
+  },
+  "toolchain": {
+    "rustc": "1.93.0-nightly (b6d7ff3aa 2025-11-14)",
+    "rustToolchain": "nightly-2025-11-15",
+    "wasmPack": "0.15.0",
+    "command": "CI=1 pnpm build:wasm",
+    "profile": "default single-thread release; wasm-opt disabled"
+  },
+  "rustTree": "517c19668ebd627fa77cefcf14d49cd008d6068e",
+  "rustAndBuildConfigDiffFromFrozenBase": "empty (Rust, Cargo manifests/lock, .cargo/config.toml, rust-toolchain.toml and scripts/build-wasm.sh)",
+  "byteIdentityClaim": false
+}

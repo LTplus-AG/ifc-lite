@@ -51,9 +51,14 @@ export function DefaultDimensions({ kind }: { kind: AuthoredElementKind }) {
   const { t } = useTranslation();
   const defaults = useViewerStore((s) => s.authoringDefaults);
   const setDims = useViewerStore((s) => s.setAuthoringDims);
+  // A picked section replaces the rectangle's own sides (Width x Height, Width x Depth): they are the Profile section's.
+  const sectioned = (kind === 'beam' || kind === 'member' || kind === 'column') && defaults.profiles[kind].type !== 'Rectangle';
+  const rectangleSides: readonly DimParam[] = ['Width', 'Depth', ...(kind === 'column' ? [] : ['Height' as const])];
+  const params = DEFAULT_DIMS[kind].filter((param) => !sectioned || !rectangleSides.includes(param));
+  if (params.length === 0) return null;
   return (
     <InspectorSection title={t('modelInspector.dims.title')}>
-      {DEFAULT_DIMS[kind].map((param) => (
+      {params.map((param) => (
         <MetreRow
           key={param}
           param={param}
@@ -68,7 +73,7 @@ export function DefaultDimensions({ kind }: { kind: AuthoredElementKind }) {
 type Measured =
   | { kind: 'wall'; length: number; thickness: number; height: number }
   | { kind: 'slab'; thickness: number }
-  | { kind: 'linear'; column: boolean; length: number; width: number; cross: number }
+  | { kind: 'linear'; column: boolean; length: number; width: number; cross: number; profiled: boolean }
   | { kind: 'none'; reason: 'modelInspector.dims.notRectangular' | 'modelInspector.dims.unknown' };
 
 function measure(selection: InspectorSelection): Measured {
@@ -107,12 +112,14 @@ export function SelectionDimensions({ selection }: { selection: InspectorSelecti
       {measured.kind === 'linear' && (
         <>
           {/* A column runs up (Height) with a Width x Depth section; a beam or member runs along (Length) with Width x Height. */}
+          {/* A profiled section's outer size is shown, not typed: the Profile section edits its own dimensions. */}
           <MetreRow param={measured.column ? 'Width' : 'Length'} value={measured.column ? measured.width : measured.length}
-            onCommit={(metres) => setElementDimensions(modelId, expressId, { kind: 'linear', ...(measured.column ? { width: metres } : { length: metres }) })} />
+            onCommit={measured.column && measured.profiled ? undefined : (metres) => setElementDimensions(modelId, expressId, { kind: 'linear', ...(measured.column ? { width: metres } : { length: metres }) })} />
           <MetreRow param={measured.column ? 'Depth' : 'Width'} value={measured.column ? measured.cross : measured.width}
-            onCommit={(metres) => setElementDimensions(modelId, expressId, { kind: 'linear', ...(measured.column ? { cross: metres } : { width: metres }) })} />
+            onCommit={measured.profiled ? undefined : (metres) => setElementDimensions(modelId, expressId, { kind: 'linear', ...(measured.column ? { cross: metres } : { width: metres }) })} />
           <MetreRow param="Height" value={measured.column ? measured.length : measured.cross}
-            onCommit={(metres) => setElementDimensions(modelId, expressId, { kind: 'linear', ...(measured.column ? { length: metres } : { cross: metres }) })} />
+            onCommit={!measured.column && measured.profiled ? undefined : (metres) => setElementDimensions(modelId, expressId, { kind: 'linear', ...(measured.column ? { length: metres } : { cross: metres }) })} />
+          {measured.profiled && <InspectorCaption>{t('profileSection.inspector.outerSize')}</InspectorCaption>}
         </>
       )}
       {measured.kind === 'none' && <InspectorCaption>{t(measured.reason)}</InspectorCaption>}

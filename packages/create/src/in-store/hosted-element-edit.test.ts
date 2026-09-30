@@ -11,11 +11,12 @@ import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { IfcCreator } from '../ifc-creator.js';
 import { AnchorEntityReader, resolveSpatialAnchor } from './resolve-anchor.js';
 import { addWallToStore } from './wall.js';
-import { addHostedElementInStore } from './hosted-element.js';
+import { addHostedElementInStore, readHostOpeningExtents } from './hosted-element.js';
 import { editHostedElementInStore, readHostedElementSize } from './hosted-element-edit.js';
 import { placedBodyExtent } from './resolve-host.js';
 import { readHostedFill } from './hosted-fill-read.js';
 import { refId } from './host-geometry-frame.js';
+import { reanchorHostedOpeningsInStore } from './hosted-placement-edit.js';
 
 async function session() {
   const bytes = await readFile(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
@@ -25,6 +26,47 @@ async function session() {
 }
 
 describe('hosted occurrence edit (#6232)', () => {
+  it('refuses nested opening placements before using parent-frame bounds (#6571 review)', async () => {
+    const { store, view, editor, reader } = await session();
+    const point = editor.addEntity('IfcCartesianPoint', [[0.2, 0.3, 0.4]]).expressId;
+    const axis = editor.addEntity('IfcAxis2Placement3D', [`#${point}`, null, null]).expressId;
+    const intermediate = editor.addEntity('IfcLocalPlacement', ['#1235', `#${axis}`]).expressId;
+    const openingPlacement = refId(reader.entity(1299)!.attributes[5])!;
+    editor.setPositionalAttribute(openingPlacement, 0, `#${intermediate}`);
+    const records = view.getMutations(), entities = view.getNewEntities();
+    expect(readHostedFill(store, 1262, view)).toBeNull();
+    const cuts = readHostOpeningExtents(store, 1222, view);
+    expect(cuts.unreadable).toContain(1299);
+    expect(cuts.cuts.some(cut => cut.openingId === 1299)).toBe(false);
+    for (const patch of [{ OverallWidth: 1.2 }, { Offset: 2 }]) {
+      expect(() => editHostedElementInStore(store, editor, 1262, patch)).toThrow(/cannot be read/);
+      expect(view.getMutations()).toEqual(records);
+      expect(view.getNewEntities()).toEqual(entities);
+    }
+  });
+
+  it('rolls back every fresh placement when a later filling cannot follow its opening (#6232)', async () => {
+    const { store, view, editor, reader } = await session();
+    const first = readHostedFill(store, 1262, view)!;
+    const secondPlacement = refId(reader.entity(1407)!.attributes[5])!;
+    editor.setPositionalAttribute(secondPlacement, 0, '#1235');
+    const records = view.getMutations(), entities = view.getNewEntities();
+    const original = reader.entity(first.openingId);
+    expect(() => reanchorHostedOpeningsInStore(store, editor, first.hostId, [0.2, 0, 0])).toThrow(/not placed directly/);
+    expect(view.getMutations()).toEqual(records);
+    expect(view.getNewEntities()).toEqual(entities);
+    expect(reader.entity(first.openingId)).toEqual(original);
+  });
+
+  it('refuses an unreadable cut before publishing the reanchor batch (#6232)', async () => {
+    const { store, view, editor } = await session();
+    editor.setPositionalAttribute(1443, 6, null);
+    const records = view.getMutations(), entities = view.getNewEntities();
+    expect(() => reanchorHostedOpeningsInStore(store, editor, 1222, [0.2, 0, 0])).toThrow(/Unreadable hosted cuts/);
+    expect(view.getMutations()).toEqual(records);
+    expect(view.getNewEntities()).toEqual(entities);
+  });
+
   it('reads real tessellated/mapped dimensions despite the optional omitted attributes and separate Plan Body', async () => {
     const { store, view } = await session();
     const size = readHostedElementSize(store, 1262, view);

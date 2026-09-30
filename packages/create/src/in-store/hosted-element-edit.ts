@@ -13,6 +13,7 @@ import { localBodyExtent, placedBodyExtent, resolveHostAnchor } from './resolve-
 import { readHostedFill, type HostedFillRead } from './hosted-fill-read.js';
 import { validateWallOpeningBounds } from './hosted-element.js';
 import { scaleHostedShape } from './hosted-shape-edit.js';
+import { moveHostedOpeningPlacement } from './hosted-placement-edit.js';
 import { placementInAncestor, refId, transformBounds, type Frame3, type Vec3 } from './host-geometry-frame.js';
 import { safeLengthUnitScale } from './length-unit-scale.js';
 
@@ -80,41 +81,6 @@ export function readHostedElementSize(store: IfcDataStore, id: number, view?: Mu
   return geometry(store, new AnchorEntityReader(store, view), id, view)?.size ?? null;
 }
 
-const ref = (id: number) => `#${id}`;
-
-/** A fresh placement prevents a shared source Location/RelativePlacement
- * from moving another occurrence. A filling directly follows its opening. */
-function moveOpening(reader: AnchorEntityReader, editor: StoreEditor, read: HostedFillRead, next: Vec3): void {
-  const opening = reader.entity(read.openingId)!;
-  const oldPlacementId = refId(opening.attributes[5]);
-  const oldPlacement = oldPlacementId === null ? null : reader.entity(oldPlacementId);
-  const oldAxisId = oldPlacement ? refId(oldPlacement.attributes[1]) : null;
-  const oldAxis = oldAxisId === null ? null : reader.entity(oldAxisId);
-  const parent = oldPlacement ? refId(oldPlacement.attributes[0]) : null;
-  if (!oldAxis || parent === null) throw new Error('The opening placement cannot be edited safely');
-  const direction = (value: unknown) => {
-    if (value === null || value === undefined) return null;
-    const id = refId(value);
-    if (id === null) throw new Error('An unreadable placement direction is refused');
-    return ref(id);
-  };
-  const point = editor.addEntity('IfcCartesianPoint', [next]).expressId;
-  const axis = editor.addEntity('IfcAxis2Placement3D', [ref(point), direction(oldAxis.attributes[1]), direction(oldAxis.attributes[2])]).expressId;
-  const placement = editor.addEntity('IfcLocalPlacement', [ref(parent), ref(axis)]).expressId;
-  if (read.fillingId !== null) {
-    const filling = reader.entity(read.fillingId)!;
-    const fillingPlacementId = refId(filling.attributes[5]);
-    const fillingPlacement = fillingPlacementId === null ? null : reader.entity(fillingPlacementId);
-    const fillingAxis = fillingPlacement ? refId(fillingPlacement.attributes[1]) : null;
-    if (!fillingPlacement || refId(fillingPlacement.attributes[0]) !== oldPlacementId || fillingAxis === null) {
-      throw new Error('A filling not placed directly in its opening cannot be moved safely');
-    }
-    const nextFilling = editor.addEntity('IfcLocalPlacement', [ref(placement), ref(fillingAxis)]).expressId;
-    editor.setPositionalAttribute(read.fillingId, 5, ref(nextFilling));
-  }
-  editor.setPositionalAttribute(read.openingId, 5, ref(placement));
-}
-
 /** Atomic params-to-commit operation. Affine resizing is centred across the
  * existing cut and held at its bottom; host thickness stays unchanged. Only
  * the occurrence's Representation/placement/dimensions change, never its type
@@ -161,7 +127,7 @@ export function editHostedElementInStore(store: IfcDataStore, editor: StoreEdito
         }
       }
     }
-    if (dx !== 0 || dz !== 0) moveOpening(reader, draft, read, [read.location[0] + dx, read.location[1], read.location[2] + dz]);
+    if (dx !== 0 || dz !== 0) moveHostedOpeningPlacement(reader, draft, read, [read.location[0] + dx, read.location[1], read.location[2] + dz]);
     const updated = readHostedFill(store, id, view);
     const actual = placedBodyExtent(store, read.openingId, view);
     const eps = toNativeLength(host, 1e-6);

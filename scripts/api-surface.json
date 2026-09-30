@@ -4938,6 +4938,7 @@
     "readRelatedLists: function",
     "readWallJoinRels: function",
     "readWallJoinTarget: function",
+    "reanchorHostedOpeningsInStore: function",
     "rectangularGridAxes: function",
     "refusalReason: function",
     "removeCostEntityInStore: function",

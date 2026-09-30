@@ -2657,3 +2657,48 @@ decoder, so its timing result is not the final-head measurement above.
 The lesson is that sharing trim-select decoding need not perturb common mesh
 output: keep strict IFC validation for analytic curves separate from the mesh
 recovery policy, and test malformed circular spans as well as valid trims.
+
+## Rejected original-host retention after a batch miss (#6516)
+
+A public release-regression witness reached a conforming unchanged opening
+group, then repeated its individual subtractions. Skipping those singles and
+keeping the original host removed real work, but also skipped their topology
+consolidation. The public witness itself had fewer unmatched edges; broader
+validation disproved the safety of that shortcut. A source-matched full census
+passed on the base and regressed under the candidate, and normal WASM output
+reopened previously closed material-layer parts in the real Revit `rvt01` model.
+The candidate was rejected before any browser speedup claim or golden update.
+
+The lesson is that an unchanged solid classification does not make its
+retessellation disposable. Any reuse must preserve validated topology repair
+as well as cuts, welded-operand identity, and budget rejection. A small volume
+delta or close sampled surfaces cannot excuse reopening a closed mesh.
+[Evidence and release provenance](evidence/opening-work-6516/README.md) also
+distinguish accepted-open-output telemetry from actual kernel rejection; those
+diagnostic labels alone do not identify which work can be removed.
+
+
+## Retain validated group misses; qualify the whole load (#6516)
+
+The conforming batch miss already contains a completed arrangement. The private
+void-group path can retain its consolidated, validated retessellation when the
+welded operands exactly match the sequential kernel operands. Keeping the
+retessellation, rather than the original host, preserves the repair that the
+rejected shortcut lost. Uncertain misses, altered operands, same-count misses,
+multi-chunk groups, budget rejection and the existing retention floor keep their
+fallback behavior; genuine cuts retain their existing gates.
+
+Source-matched counters confirm that the public witness avoids repeated single
+arrangements. Full-corpus and heavy-fixture topology checks pass, with only
+independently reviewed precision changes to volume fingerprints. Fresh browser
+pairs show a target worker-stream signal, but full readiness and the broader
+controls remain unqualified because the observed spread is too large. A noisy
+same-build control was retained, and its bounded recheck did not justify a broad
+performance claim. Native phase results are attribution, not a substitute.
+
+The lesson is to separate removed work, topology preservation, and whole-load
+performance qualification. The published release comparison also locates a
+separate output increase at the small-hole retention policy; do not delete
+corrective geometry to recover a former triangle count. The private reporter's
+complete slowdown remains unresolved. [All samples, identities, limits and
+reproduction commands](evidence/opening-work-6516/README.md) are retained together.

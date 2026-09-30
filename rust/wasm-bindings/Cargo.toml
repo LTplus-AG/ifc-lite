@@ -17,6 +17,8 @@ wasm-opt = false
 crate-type = ["cdylib", "rlib"]
 
 [features]
+# Opt-in #6516 route-work diagnostic; absent from shipping builds.
+opening-perf-trace = ["ifc-lite-geometry/opening-perf-trace"]
 default = ["console_error_panic_hook"]
 debug_geometry = ["ifc-lite-geometry/debug_geometry"]
 # Threaded WASM bundle: in-instance rayon pool via wasm-bindgen-rayon. Built

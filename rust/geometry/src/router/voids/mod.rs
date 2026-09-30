@@ -14,6 +14,7 @@ use nalgebra::Matrix3;
 use rustc_hash::FxHashMap;
 
 mod aabb_clip;
+mod batch_cutter;
 mod bool2d_path;
 mod coaxial_union;
 pub(crate) mod geom;
@@ -277,26 +278,6 @@ impl GeometryRouter {
             TessellationQuality::High | TessellationQuality::Highest => 1e-9,
             _ => MIN_OPENING_VOLUME,
         }
-    }
-
-    /// A batch-group cutter: the opening extended through `host`, welded (1 µm)
-    /// to bit-identical, and kept only if it is then exactly closed (#2176: only
-    /// per-component-watertight solids may join a group). The weld lets a
-    /// geometrically-watertight cutter whose shared-edge f32 coords differ in
-    /// bits after the placement transform pass the bit-exact gate (#098).
-    /// Admission and the re-extension after a host cut both call this, so a
-    /// cutter admitted because of the weld is not refused at cut time.
-    fn batch_cutter(
-        opening_mesh: &Mesh,
-        extrusion_dir: Option<Vector3<f64>>,
-        host: &Mesh,
-    ) -> Option<Mesh> {
-        let depth_dir = extrusion_dir
-            .filter(|d| d.norm() > NORMALIZE_EPSILON)
-            .unwrap_or_else(|| opening_mesh_thinnest_axis_dir(opening_mesh));
-        let ext = Self::extend_opening_mesh_through_host(opening_mesh, host, depth_dir)
-            .welded_by_position(1.0e-6);
-        mesh_is_closed_exact(&ext).then_some(ext)
     }
 
     /// Process element with void subtraction (openings)
@@ -1373,7 +1354,7 @@ impl GeometryRouter {
 
         for (opening_idx, opening) in all_openings.iter().enumerate() {
             if batch_consumed[opening_idx] {
-                continue; // already cut as part of a batched disjoint group
+                continue; // already handled by a batched disjoint group
             }
             // Batched group cut, attempted ONCE, inline at the group's first
             // member — so the relative order of batched vs sequential cutters
@@ -1407,12 +1388,15 @@ impl GeometryRouter {
                     if admissible {
                         let cutters: Vec<&Mesh> = extended.iter().map(|(_, m)| m).collect();
                         let tri_before = result.triangle_count();
-                        // `Cut` already says the kernel removed host volume; a
-                        // `Rejected` group (any `GroupReject`) leaves every member
-                        // to the sequential loop below.
-                        if let GroupCut::Cut(csg_result) =
+                        let outcome = if Self::batch_cutters_match_sequential(&result, &all_openings, &extended) {
+                            clipper.subtract_mesh_many_retaining_miss(&result, &cutters)
+                        } else {
                             clipper.subtract_mesh_many(&result, &cutters)
-                        {
+                        };
+                        // #6516: retain the group's validated consolidation on
+                        // a conforming miss; keeping the original host instead
+                        // can discard useful seam repairs made by the singles.
+                        if let GroupCut::Cut(csg_result) | GroupCut::Retessellated(csg_result) = outcome {
                             let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
                                 .max(MIN_VALID_TRIANGLES);
                             if !csg_result.is_empty() && csg_result.triangle_count() >= min_tris {
@@ -1426,7 +1410,7 @@ impl GeometryRouter {
                     }
                 }
                 if batch_consumed[opening_idx] {
-                    continue; // this opening was cut with its group
+                    continue; // this opening was handled with its group
                 }
             }
             // Normalize both exact-subtract variants into the same (mesh, min,
@@ -1536,13 +1520,8 @@ impl GeometryRouter {
                     // host #1112). Falls back to the raw opening mesh when no depth
                     // direction is known (the kernel handles a true through-cutter
                     // anyway; the extension only matters for the flush-cap case).
-                    let depth_dir = extrusion_dir
-                        .filter(|d| d.norm() > NORMALIZE_EPSILON)
-                        .unwrap_or_else(|| opening_mesh_thinnest_axis_dir(opening_mesh));
-                    let extended_opening = Self::extend_opening_mesh_through_host(
-                        opening_mesh,
-                        &result,
-                        depth_dir,
+                    let extended_opening = Self::sequential_cutter(
+                        opening_mesh, extrusion_dir, &result,
                     );
                     let cutter = &extended_opening;
                     let outcome = clipper.subtract_mesh(&result, cutter);
@@ -1679,7 +1658,15 @@ impl GeometryRouter {
                             // kernel found disjoint (#5362).
                             let aabb_cut =
                                 self.cut_rectangular_opening(&result, final_min, final_max);
+                            #[cfg(feature = "opening-perf-trace")]
+                            crate::opening_perf_trace::record(|c| {
+                                c.aabb_fallback_attempts = c.aabb_fallback_attempts.saturating_add(1);
+                                c.aabb_fallback_input_triangles = c.aabb_fallback_input_triangles.saturating_add(result.triangle_count() as u64);
+                                c.aabb_fallback_output_triangles = c.aabb_fallback_output_triangles.saturating_add(aabb_cut.triangle_count() as u64);
+                            });
                             if !aabb_cut.is_empty() && aabb_cut.triangle_count() != tri_before {
+                                #[cfg(feature = "opening-perf-trace")]
+                                crate::opening_perf_trace::record(|c| c.aabb_fallback_commits = c.aabb_fallback_commits.saturating_add(1));
                                 result = aabb_cut;
                                 host_mutated = true;
                             }

@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/router/voids/batch_cutter.rs
++++ b/rust/geometry/src/router/voids/batch_cutter.rs
+@@ -60,7 +60,7 @@
+                 return false;
+             };
+             let raw = Self::sequential_cutter(opening, direction, host);
+-            mesh_to_tris(&raw) == mesh_to_tris(welded) || true
++            mesh_to_tris(&raw) == mesh_to_tris(welded)
+         })
+     }
+ }

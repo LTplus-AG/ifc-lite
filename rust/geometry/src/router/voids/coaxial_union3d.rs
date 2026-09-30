@@ -14,6 +14,8 @@ pub(super) fn subtract(
     members: &[usize],
     clipper: &ClippingProcessor,
 ) -> bool {
+    #[cfg(feature = "opening-perf-trace")]
+    crate::opening_perf_trace::record(|c| c.coaxial_union_attempts = c.coaxial_union_attempts.saturating_add(1));
     let extended: Vec<Mesh> = members
         .iter()
         .map(|&m| {
@@ -26,6 +28,8 @@ pub(super) fn subtract(
     let mut union =
         ClippingProcessor::consolidate_coplanar(crate::kernel::mesh_bridge::union_many(&refs));
     if union.is_empty() || !mesh_is_closed_exact(&union) {
+        #[cfg(feature = "opening-perf-trace")]
+        crate::opening_perf_trace::record(|c| c.coaxial_promoted_refusals = c.coaxial_promoted_refusals.saturating_add(1));
         // Never conceal an exhausted operation behind another candidate.
         if crate::kernel::budget::tripped() {
             return false;
@@ -34,11 +38,18 @@ pub(super) fn subtract(
             crate::kernel::mesh_bridge::union_many_preserving_coordinates(&refs),
         );
         if union.is_empty() || !mesh_is_closed_exact(&union) {
+            #[cfg(feature = "opening-perf-trace")]
+            crate::opening_perf_trace::record(|c| c.coaxial_preserving_refusals = c.coaxial_preserving_refusals.saturating_add(1));
             return false;
         }
     }
     let Some(cut) = mesh_to_keep(clipper.subtract_mesh(result, &union), result) else {
+        #[cfg(feature = "opening-perf-trace")]
+        crate::opening_perf_trace::record(|c| c.coaxial_subtract_refusals = c.coaxial_subtract_refusals.saturating_add(1));
         return false;
     };
-    accept_cut(result, cut, f64::INFINITY)
+    let accepted = accept_cut(result, cut, f64::INFINITY);
+    #[cfg(feature = "opening-perf-trace")]
+    crate::opening_perf_trace::record(|c| c.coaxial_commits = c.coaxial_commits.saturating_add(u64::from(accepted)));
+    accepted
 }

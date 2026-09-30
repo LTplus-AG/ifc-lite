@@ -123,7 +123,23 @@ fn issue_3917_a_torn_caller_order_is_repaired_without_the_caller_reordering_anyt
 
     // CAB: the ordering the issue measured at 53 unmatched directed edges.
     let cab: [&Mesh; 3] = [&c, &a, &b];
+    #[cfg(feature = "opening-perf-trace")]
+    crate::opening_perf_trace::take();
     let out = ClippingProcessor::consolidate_coplanar(union_many(&cab));
+    // #6516: observe the actual recovery through a known torn three-solid
+    // fixture, while the independent closure invariant below still holds.
+    #[cfg(feature = "opening-perf-trace")]
+    {
+        let work = crate::opening_perf_trace::take();
+        assert_eq!(work.union_calls_by_arity, [0, 0, 0, 1, 0]);
+        assert_eq!(work.union_retry_eligible, 1);
+        assert!(work.union_retries > 0);
+        assert_eq!(work.union_retry_successes, 1);
+        assert_eq!(work.union_arrangements, work.union_retries + 1);
+        assert_eq!(work.union_closure_checks, work.union_arrangements);
+        assert_eq!(work.union_closure_passes, 1);
+        assert_eq!(work.union_retries_exhausted, 0);
+    }
     assert_eq!(
         open_edges_3917(&out),
         0,

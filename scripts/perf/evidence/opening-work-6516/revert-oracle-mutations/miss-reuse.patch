@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/csg/group_cut.rs
++++ b/rust/geometry/src/csg/group_cut.rs
+@@ -122,7 +122,7 @@
+     /// whose welded operands equal the sequential kernel operands (#6516).
+     /// Other callers retain the public batch outcome contract.
+     pub(crate) fn subtract_mesh_many_retaining_miss(&self, host_mesh: &Mesh, cutters: &[&Mesh]) -> GroupCut {
+-        self.subtract_mesh_many_inner(host_mesh, cutters, false)
++        self.subtract_mesh_many_inner(host_mesh, cutters, true)
+     }
+ 
+     fn subtract_mesh_many_inner(&self, host_mesh: &Mesh, cutters: &[&Mesh], retain_miss: bool) -> GroupCut {

@@ -85,14 +85,24 @@ const REORDER_POSITIONS: [[usize; 3]; 6] = [
 /// still consolidates at the caller's scale, and its accept gates still run — so
 /// it is recorded rather than fixed in the PR that made the gate physical.
 fn survives_consolidation_closed(mesh: &Mesh) -> bool {
+    #[cfg(feature = "opening-perf-trace")]
+    crate::opening_perf_trace::record(|c| c.union_closure_checks = c.union_closure_checks.saturating_add(1));
     if mesh.is_empty() {
         return false;
     }
     let consolidated = ClippingProcessor::consolidate_coplanar(mesh.clone());
-    !consolidated.is_empty() && directed_closed(&consolidated)
+    let closed = !consolidated.is_empty() && directed_closed(&consolidated);
+    #[cfg(feature = "opening-perf-trace")]
+    crate::opening_perf_trace::record(|c| c.union_closure_passes = c.union_closure_passes.saturating_add(u64::from(closed)));
+    closed
 }
 
 fn arrange(meshes: &[&Mesh], reconcile: bool) -> Mesh {
+    #[cfg(feature = "opening-perf-trace")]
+    crate::opening_perf_trace::record(|c| {
+        if reconcile { c.union_calls_by_arity[meshes.len().min(4)] = c.union_calls_by_arity[meshes.len().min(4)].saturating_add(1); }
+        else { c.coordinate_preserving_unions = c.coordinate_preserving_unions.saturating_add(1); }
+    });
     // One public union is one budgeted boolean operation. Retries below are
     // candidates for that same operation, so they must share its counter.
     budget::begin();
@@ -101,6 +111,8 @@ fn arrange(meshes: &[&Mesh], reconcile: bool) -> Mesh {
     }
     let out = arrange_once(meshes, reconcile);
     if budget::tripped() {
+        #[cfg(feature = "opening-perf-trace")]
+        crate::opening_perf_trace::record(|c| c.union_initial_budget_trips = c.union_initial_budget_trips.saturating_add(1));
         return out;
     }
     if !reconcile || meshes.len() != REORDER_SEARCH_OPERAND_COUNT {
@@ -108,8 +120,12 @@ fn arrange(meshes: &[&Mesh], reconcile: bool) -> Mesh {
     }
     let total_tris: usize = meshes.iter().map(|m| m.indices.len() / 3).sum();
     if total_tris > MAX_REORDER_SEARCH_TRIS {
+        #[cfg(feature = "opening-perf-trace")]
+        crate::opening_perf_trace::record(|c| c.union_triangle_cap_exclusions = c.union_triangle_cap_exclusions.saturating_add(1));
         return out;
     }
+    #[cfg(feature = "opening-perf-trace")]
+    crate::opening_perf_trace::record(|c| c.union_retry_eligible = c.union_retry_eligible.saturating_add(1));
     // #3917: `promote_operands_mutually` walks operands in ARRAY order, and
     // which operand is welded first decides which pair of planes reconcile
     // before the third is touched (see that function's doc) — so which
@@ -136,12 +152,18 @@ fn arrange(meshes: &[&Mesh], reconcile: bool) -> Mesh {
         return out;
     }
     for order in REORDER_POSITIONS.into_iter().skip(1) {
+        #[cfg(feature = "opening-perf-trace")]
+        crate::opening_perf_trace::record(|c| c.union_retries = c.union_retries.saturating_add(1));
         let permuted = [meshes[order[0]], meshes[order[1]], meshes[order[2]]];
         let candidate = arrange_once(&permuted, reconcile);
         if survives_consolidation_closed(&candidate) {
+            #[cfg(feature = "opening-perf-trace")]
+            crate::opening_perf_trace::record(|c| c.union_retry_successes = c.union_retry_successes.saturating_add(1));
             return candidate;
         }
     }
+    #[cfg(feature = "opening-perf-trace")]
+    crate::opening_perf_trace::record(|c| c.union_retries_exhausted = c.union_retries_exhausted.saturating_add(1));
     // No ordering of these 3 operands reconciles: the tear is not an
     // ordering artefact (#3917's own diagnosis found orderings that DO
     // reconcile this issue's pinned fixtures; a configuration where none of
@@ -152,6 +174,11 @@ fn arrange(meshes: &[&Mesh], reconcile: bool) -> Mesh {
 }
 
 fn arrange_once(meshes: &[&Mesh], reconcile: bool) -> Mesh {
+    #[cfg(feature = "opening-perf-trace")]
+    crate::opening_perf_trace::record(|c| {
+        c.union_arrangements = c.union_arrangements.saturating_add(1);
+        c.union_operand_triangles = c.union_operand_triangles.saturating_add(meshes.iter().fold(0u64, |n, m| n.saturating_add(m.triangle_count() as u64)));
+    });
     if budget::tripped() {
         return Mesh::new();
     }

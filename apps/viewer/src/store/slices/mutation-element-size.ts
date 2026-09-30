@@ -29,7 +29,7 @@ import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import { hostBodyExtent, openingsOf, planCutRefit, type PositionalUpdate } from '@/lib/hosted-opening-refit.js';
 import { resolveLinearElementChain } from '@/lib/linear-element-edit.js';
 import { resolveSlabEditChain } from '@/lib/slab-edit.js';
-import { modelEditTarget, type ModelEditTarget } from './mutation-modelling-records.js';
+import { modelEditTarget, type ModelEditTarget, type ModellingStore } from './mutation-modelling-records.js';
 import { setWallSection, type WallSection } from './mutation-wall-section.js';
 
 export type ElementSizePatch =
@@ -73,8 +73,9 @@ export function readElementSize(state: ViewerState, modelId: string, expressId: 
 
 const positive = (value: number | undefined): boolean => value === undefined || (Number.isFinite(value) && value > 0);
 
-export function setElementSize(get: () => ViewerState, modelId: string, expressId: number, patch: ElementSizePatch): ElementSizeOutcome {
-  if (patch.kind === 'wall') return setWallSection(get, modelId, expressId, patch);
+export function setElementSize(store: ModellingStore, modelId: string, expressId: number, patch: ElementSizePatch): ElementSizeOutcome {
+  const get = store.getState;
+  if (patch.kind === 'wall') return setWallSection(store, modelId, expressId, patch);
   const target = modelEditTarget(get(), modelId);
   if (!target) return { ok: false, reason: `No model loaded for id "${modelId}"` };
   return patch.kind === 'slab'

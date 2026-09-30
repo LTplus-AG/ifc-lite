@@ -170,16 +170,17 @@ function axisSetup(lengthUnitScale?: number) {
 }
 
 describe('addWallToStore: Axis representation and body cuts', () => {
-  it('writes no Axis unless asked', () => {
+  it('writes an Axis by default, and none with Axis: false', () => {
     const { editor, anchor, entity } = axisSetup();
-    const result = addWallToStore(editor, anchor, WALL_A);
+    expect(addWallToStore(editor, anchor, WALL_A).axisRepId).not.toBeNull();
+    const result = addWallToStore(editor, anchor, { ...WALL_A, Axis: false });
     expect(result.axisRepId).toBeNull();
     expect(entity(result.productShapeId)?.attributes[2]).toEqual([`#${result.shapeRepId}`]);
   });
 
   it('writes an Axis Curve2D polyline beside the Body', () => {
     const { editor, anchor, entity } = axisSetup();
-    const result = addWallToStore(editor, anchor, { ...WALL_A, Axis: true });
+    const result = addWallToStore(editor, anchor, WALL_A);
     expect(entity(result.productShapeId)?.attributes[2]).toEqual([`#${result.shapeRepId}`, `#${result.axisRepId}`]);
     const axis = entity(result.axisRepId!);
     expect(axis?.type).toBe('IfcShapeRepresentation');

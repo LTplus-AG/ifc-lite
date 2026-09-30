@@ -40,7 +40,7 @@ export function commitElementSize(store: ModellingStore, modelId: string, expres
   const kind = live && thickness !== undefined ? authoredKindOf(live, expressId) : null;
   const direction = kind === null ? undefined : AUTHORED_KINDS[kind].layers;
   const before = live && direction ? layerSetOf(live, expressId) : null;
-  const outcome = setElementSize(get, modelId, expressId, patch);
+  const outcome = setElementSize(store, modelId, expressId, patch);
   if (!outcome.ok || !before || !direction || thickness === undefined || !outcome.remesh.includes(expressId)) return outcome;
 
   const total = before.layers.reduce((sum, l) => sum + l.thickness, 0);

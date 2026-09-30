@@ -216,6 +216,17 @@ describe('the host keeps its fill (#6232 A1)', () => {
     assert.equal(created('IFCRELFILLSELEMENT').length, 1, 'still filling its opening');
   });
 
+  it('one undo of a split puts the window back in the whole wall (#6232 C5)', () => {
+    const window = placeWindowAt(1);
+    const split = useViewerStore.getState().splitWallAtDistance(MODEL_ID, wall, 2);
+    assert.ok(split.ok, split.ok ? '' : split.reason);
+    assert.equal(readHostedFill(live().dataStore, window, live().view)!.hostId, split.left.expressId, 'the split moved it to the new piece');
+    useViewerStore.getState().undo(MODEL_ID);
+    const back = readHostedFill(live().dataStore, window, live().view);
+    // Re-hosting the opening was not undoable: the window stayed on the deleted piece.
+    assert.deepEqual([back?.hostId, back && round(back.offset)], [wall, 1], 'back in the wall it was placed in');
+  });
+
   it('a split behind the window keeps it on the source, shifted to the new start', () => {
     const window = placeWindowAt(4.5);
     const split = useViewerStore.getState().splitWallAtDistance(MODEL_ID, wall, 2);

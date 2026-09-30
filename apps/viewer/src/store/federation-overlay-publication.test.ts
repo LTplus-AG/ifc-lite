@@ -47,6 +47,23 @@ describe('mutation overlay federation publication', () => {
     assert.equal(registry.fromGlobalId(101), null);
   });
 
+  it('counts a created-then-removed record as an owned id, not a hole (#6232)', () => {
+    // A join rewrites a wall's profile: the profile the wall was built with is removed again
+    // before anything published its id, and the wall placed after it still has to resolve.
+    const registry = new FederationRegistry();
+    registry.registerModel('editable', 100);
+    const models = new Map([['editable', { maxExpressId: 100 }]]);
+    const live = new Set([101, 103]);
+    const forgotten = new Set([102]);
+    const views = new Map([['editable', {
+      getNewEntity: (id: number) => live.has(id) ? { expressId: id } : null,
+      isDeleted: (id: number) => forgotten.has(id),
+    }]]);
+
+    assert.equal(toPublishedGlobalId(registry, models, views, 'editable', 103), 103);
+    assert.equal(registry.toGlobalId('editable', 102), 102, 'the removed record kept its id');
+  });
+
   it('previews a detached contiguous creation batch without publishing it (#4308)', () => {
     const registry = new FederationRegistry();
     registry.registerModel('editable', 100);

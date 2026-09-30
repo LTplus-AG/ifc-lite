@@ -62,12 +62,14 @@ export function modelEditTarget(state: ViewerState, modelId: string): ModelEditT
 /**
  * Run `edit` against `modelId`'s modelling methods and record what it wrote
  * as undo history. Throws (writing nothing) when the model is not loaded or
- * a method refuses its input.
+ * a method refuses its input. `batchId` tags the records with the caller's
+ * undo batch (a modeling transaction's) instead of one of their own.
  */
 export function recordModellingEdit<T>(
   store: ModellingStore,
   modelId: string,
   edit: (methods: ModellingMethods, draft: StoreEditor) => T,
+  batchId?: string,
 ): T {
   const state = store.getState();
   const target = modelEditTarget(state, modelId);
@@ -89,7 +91,7 @@ export function recordModellingEdit<T>(
 
   const written = view.getMutations().filter((m) => !seen.has(m.id));
   stashForgottenRecords(store, modelId, written, overlayBefore);
-  store.getState().recordMutationBatch(modelId, written);
+  store.getState().recordMutationBatch(modelId, written, batchId);
   if (room) mirrorStoreOverlayDelta(store, modelId, editor, dataStore, room, 'modelling');
   return result;
 }

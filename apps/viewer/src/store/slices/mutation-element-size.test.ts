@@ -23,7 +23,7 @@ import { readElementSize, setElementSize } from './mutation-element-size.js';
 
 const s = () => useViewerStore.getState();
 const undoDepth = () => s().undoStacks.get(MODEL_ID)?.length ?? 0;
-const get = () => s();
+const get = useViewerStore;
 const live = () => ({ dataStore: s().models.get(MODEL_ID)!.ifcDataStore!, view: s().mutationViews.get(MODEL_ID)! });
 const id = (made: { expressId: number } | { error: string }): number => {
   assert.ok('expressId' in made, 'error' in made ? made.error : '');

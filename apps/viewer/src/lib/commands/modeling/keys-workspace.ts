@@ -47,6 +47,7 @@ export function bindModelWorkspaceKeys(): () => void {
     registerKeyboardCommand('model.opening', () => launchModelCommand('opening.place'), { active }),
     registerKeyboardCommand('model.door', () => launchModelCommand('door.place'), { active }),
     registerKeyboardCommand('model.window', () => launchModelCommand('window.place'), { active }),
+    registerKeyboardCommand('model.splitMulti', () => launchModelCommand('split.multi'), { active }),
     registerKeyboardCommand('model.storeyUp', () => stepSessionStorey(useViewerStore.getState(), 1), { active }),
     registerKeyboardCommand('model.storeyDown', () => stepSessionStorey(useViewerStore.getState(), -1), { active }),
     registerKeyboardCommand('model.copy', () => copyShortcut(), { active }),

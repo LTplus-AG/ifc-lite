@@ -102,7 +102,7 @@ describe('push / pull faces (#6232 C4)', () => {
     const far = face(t, 'slab.far');
     close(far.origin, [2, 1.5, -0.2], 'the underside');
     close(far.normal, [0, 0, -1], 'points down');
-    assert.equal(setElementSize(() => s(), MODEL_ID, slab, far.patch(0.5)).ok, true);
+    assert.equal(setElementSize(useViewerStore, MODEL_ID, slab, far.patch(0.5)).ok, true);
     const after = resolveSlabEditChain(dataStore, view, s().storeEditors.get(MODEL_ID)!, slab, 1)!;
     close([after.baseElevation!, after.thickness], [-0.5, 0.5], 'the slab grew downward');
     close([after.baseElevation! + after.thickness], [0], 'its top is where it was');

@@ -82,9 +82,22 @@ function select(expressId: number): void {
 }
 
 /** What a mutation writes, without its identity (id, time). */
-function effect(m: Mutation): unknown {
-  const { id: _id, timestamp: _t, ...rest } = m as Mutation & { timestamp?: unknown };
-  return rest;
+/**
+ * The mutations of one edit without what differs between two runs of it: ids and
+ * times, and the express ids of the entities the edit created (a resize re-authors
+ * the wall's body, so each run creates its own). Created entities are named by
+ * the order they were created in (`#new1`, `#new2`, ...), so the writes that refer
+ * to them as `#id` still have to wire the same entity to the same slot.
+ */
+function effects(mutations: readonly Mutation[]): unknown[] {
+  const names = new Map<number, string>();
+  for (const m of mutations) if (m.type === 'CREATE_ENTITY') names.set(m.entityId, `new${names.size + 1}`);
+  return mutations.map((m) => {
+    const { id: _id, timestamp: _t, ...rest } = m as Mutation & { timestamp?: unknown };
+    const text = JSON.stringify(rest).replace(/#(\d+)/g, (ref, n) => (names.has(Number(n)) ? `#${names.get(Number(n))}` : ref));
+    const canonical = JSON.parse(text) as Record<string, unknown>;
+    return rest.type === 'CREATE_ENTITY' ? { ...canonical, entityId: names.get(rest.entityId) } : canonical;
+  });
 }
 
 async function mountPlan() {
@@ -146,7 +159,7 @@ describe('plan wall end handles (#6232 B3)', () => {
     act(() => commandPointerMove({ local: [6, 1], render: solved!.render, winner: null, guides: [], locked: false }));
     act(() => { window.dispatchEvent(new window.PointerEvent('pointerup')); });
     const viewport = undoStack().slice(before);
-    assert.deepEqual(viewport.map(effect), plan.map(effect), 'identical mutations from the plan and from 3D');
+    assert.deepEqual(effects(viewport), effects(plan), 'identical mutations from the plan and from 3D');
   });
 
   it('keep their screen size at any zoom and are still grabbed there', async () => {

@@ -87,7 +87,7 @@ export function createElementType(modelId: string, kind: AuthoredElementKind, na
 /** A wall's thickness and/or height, in metres. */
 export function setWallDimensions(modelId: string, expressId: number, section: WallSection): boolean {
   return runInspectorEdit(modelId, (tx) => {
-    const outcome = setWallSection(() => tx.store, tx.modelId, expressId, section);
+    const outcome = setWallSection(tx.api, tx.modelId, expressId, section);
     if (!outcome.ok) throw new Error(outcome.reason);
     return [expressId];
   });
@@ -174,7 +174,7 @@ export function applyMaterialLayers(modelId: string, spec: ApplyLayersSpec): num
     }
     if (elementId === undefined) return [];
     if (kind === 'wall') {
-      const section = setWallSection(() => tx.store, tx.modelId, elementId, { thickness: total });
+      const section = setWallSection(tx.api, tx.modelId, elementId, { thickness: total });
       if (!section.ok) throw new Error(section.reason);
     }
     return [elementId];

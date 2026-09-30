@@ -22,9 +22,10 @@ import { WallPlaceScene } from '@/components/viewer/tools/command/WallPlaceScene
 import { WallPlacePlan } from '@/components/viewer/tools/command/WallPlacePlan';
 import { dist } from '@/lib/snap/constraints';
 import { commandGhostId, wallGhostMesh } from '../ghost.js';
-import { MIN_WALL_LENGTH, alignedAxis, anchorOf, currentAngle, currentLength, endPoint, type WallPlaceGesture } from './wall-place-geometry.js';
+import { MIN_WALL_LENGTH, alignedAxis, anchorOf, chainPartners, currentAngle, currentLength, endPoint, type WallPlaceGesture } from './wall-place-geometry.js';
 import { chainOn, defaultsField, planeZ } from './placement-shared.js';
 import type { CommandContext, CommandField, ModelingCommand } from '../types.js';
+import { joinPlacedWallIn } from '@/store/slices/mutation-wall-joins';
 import { authoringDim, type AuthoringDefaults } from '@/store/slices/authoringDefaultsSlice';
 
 const wallDims = (d: AuthoringDefaults) => ({ Thickness: authoringDim(d, 'wall', 'Thickness'), Height: authoringDim(d, 'wall', 'Height') });
@@ -36,7 +37,7 @@ function wallAxis(g: WallPlaceGesture, d: AuthoringDefaults) {
   return anchor && end ? alignedAxis(anchor, end, wallDims(d).Thickness, d.wallAlign) : null;
 }
 
-const init = (): WallPlaceGesture => ({ chain: [], cursor: null, length: null, angle: null });
+const init = (): WallPlaceGesture => ({ chain: [], cursor: null, length: null, angle: null, walls: [] });
 
 const FIELDS: readonly CommandField<WallPlaceGesture>[] = [
   { id: 'length', labelKey: 'modelingCommand.wall.length', unit: 'm', group: 'segment', read: currentLength, write: (g, v) => ({ ...g, length: Math.abs(v) }) },
@@ -69,7 +70,10 @@ export const WALL_PLACE: ModelingCommand<WallPlaceGesture> = {
   },
   // A double-click ends the chain where the first of its clicks placed it.
   doubleClick: () => init(),
-  undoPoint: (g) => ({ ...g, chain: g.chain.slice(0, -1), length: null, angle: null }),
+  undoPoint: (g) => {
+    const chain = g.chain.slice(0, -1);
+    return { ...g, chain, walls: (g.walls ?? []).slice(0, Math.max(0, chain.length - 1)), length: null, angle: null };
+  },
   validate(g, ctx) {
     if (!ctx.workplane || ctx.storeyId === null) return { ok: false, reasonKey: 'modelingCommand.noPlane' };
     const anchor = anchorOf(g);
@@ -87,13 +91,19 @@ export const WALL_PLACE: ModelingCommand<WallPlaceGesture> = {
       Start: [start[0], start[1], z], End: [end[0], end[1], z], Thickness, Height,
     });
     if ('error' in wall) throw new Error(`Couldn't add wall: ${wall.error}`);
-    return { created: [wall.expressId], authored: [wall.expressId], deleted: [], remesh: [wall.expressId], select: [wall.expressId] };
+    // An L at the chained corner (and where the loop closes), a T where an end lands on another wall.
+    // Joins are part of the same undo step; a model that cannot take them keeps the wall unjoined.
+    const joins = joinPlacedWallIn(tx.api, tx.modelId, tx.storeyId, wall.expressId, chainPartners(g).partners);
+    if (!joins.ok) console.warn(`[modeling] wall.place: #${wall.expressId} left unjoined: ${joins.reason}`);
+    else for (const { wallId, reason } of joins.skipped) console.warn(`[modeling] wall.place: #${wall.expressId} not joined to #${wallId}: ${reason}`);
+    const joined = joins.ok ? joins.joined : [];
+    return { created: [wall.expressId], authored: [wall.expressId], deleted: [], remesh: [wall.expressId, ...joined], select: [wall.expressId] };
   },
-  // Chain: the next wall starts where this one ended; typed locks are per segment.
-  afterCommit: (g, _result, ctx: CommandContext) => {
-    if (!chainOn(ctx)) return init();
+  // Chain: the next wall starts where this one ended; typed locks are per segment. A wall that closes the loop ends the chain.
+  afterCommit: (g, result, ctx: CommandContext) => {
+    if (!chainOn(ctx) || chainPartners(g).closes) return init();
     const end = endPoint(g);
-    return { ...g, chain: end ? [...g.chain, end] : g.chain, length: null, angle: null };
+    return { ...g, chain: end ? [...g.chain, end] : g.chain, walls: [...(g.walls ?? []), ...result.created.slice(0, 1)], length: null, angle: null };
   },
   ghost(g, ctx) {
     const axis = wallAxis(g, ctx.get().authoringDefaults);

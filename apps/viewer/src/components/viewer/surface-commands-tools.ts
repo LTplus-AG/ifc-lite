@@ -4,7 +4,7 @@
 
 /** Static Tools palette family. The key-command table remains the chord source. */
 import {
-  Box, Crosshair, MousePointer2, PenLine, PersonStanding, Ruler, Scissors,
+  Box, Crosshair, MousePointer2, PenLine, PersonStanding, Ruler, Scissors, ScissorsLineDashed,
   Slice, StickyNote,
 } from 'lucide-react';
 import { openRepositionModels } from '@/lib/model-placement/commands';
@@ -156,5 +156,13 @@ export const TOOL_SURFACE_COMMANDS = [
     category: 'Tools', icon: RailingIcon, surfaces: paletteOnly, enabled: editable,
     shortcut: 'model.railing',
     run: () => { launchModelCommand('railing.place'); },
+  },
+  {
+    id: 'tool:split-multi', labelKey: 'commandPalette.tool.splitMulti.label',
+    searchLabel: 'Split by line',
+    keywords: 'split cut knife slice divide line plane multiple walls beams slabs everything storey model author modify',
+    category: 'Tools', icon: ScissorsLineDashed, surfaces: paletteOnly, enabled: editable,
+    shortcut: 'model.splitMulti',
+    run: () => { launchModelCommand('split.multi'); },
   },
 ] as const satisfies readonly SurfaceCommandDefinition[];

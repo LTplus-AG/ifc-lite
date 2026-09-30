@@ -13,7 +13,7 @@
  *     so the solid spans `Start → End` along local X and is centred
  *     on the thickness axis
  *   - extruded upward (local +Z) by `Height`
- *   - with `Axis: true`, an `Axis` representation (`Curve2D` IfcPolyline,
+ *   - unless `Axis: false`, an `Axis` representation (`Curve2D` IfcPolyline,
  *     Start -> End in the wall's frame) beside the `Body`: the centreline
  *     other tools and `extractWallSegmentsForStorey` read
  *
@@ -64,11 +64,10 @@ export interface WallInStoreParams {
   /** Body end at End. Default square at End. */
   EndCut?: WallEndCut;
   /**
-   * Write an `Axis` representation beside the Body. Default false: an editor
-   * that moves the wall by its placement and profile alone (the viewer's
-   * endpoint resize) would leave the axis behind, and readers prefer the axis.
-   * `applyWallJoinToStore` always writes one, since a joined body no longer
-   * tells where the axis ends.
+   * Write an `Axis` representation beside the Body. Default true: it is the
+   * centreline other tools and `extractWallSegmentsForStorey` read, and a
+   * joined body no longer tells where the axis ends. The viewer's resize and
+   * joins keep it current. Pass false for a body-only wall.
    */
   Axis?: boolean;
 }
@@ -80,7 +79,7 @@ export interface WallBuildResult {
   solidId: number;
   /** The `Body` IfcShapeRepresentation (first in the product shape). */
   shapeRepId: number;
-  /** The `Axis` IfcShapeRepresentation (second in the product shape), or null without `Axis: true`. */
+  /** The `Axis` IfcShapeRepresentation (second in the product shape), or null with `Axis: false`. */
   axisRepId: number | null;
   productShapeId: number;
   relContainedId: number;
@@ -230,7 +229,7 @@ export function addWallToStore(
     [`#${solidId}`],
   ]).expressId;
   // Axis in metres (the emitter converts): Start is the frame origin.
-  const axisRepId = params.Axis
+  const axisRepId = params.Axis !== false
     ? emitWallAxisRepresentation(editor, anchor, 0, Math.hypot(plan.end[0] - plan.start[0], plan.end[1] - plan.start[1]))
     : null;
   // Body first: readers such as the viewer's wall edit take Representations[0] as the body.

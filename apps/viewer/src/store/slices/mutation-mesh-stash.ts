@@ -14,6 +14,7 @@
  */
 
 import { hostsOtherEntities } from '@ifc-lite/renderer';
+import { liveEntityConforms } from '@ifc-lite/create';
 import { remeshAuthoredElement } from './authoredFallbackMesh.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { ViewerState } from '../index.js';
@@ -93,6 +94,20 @@ export function stashAndPruneEntityMesh(
 }
 
 /**
+ * A restored overlay record that can have a mesh of its own: an IfcProduct. The
+ * points, profiles, representations and relationships a builder or a join
+ * writes around an element come back with it and have nothing to mesh.
+ */
+function isRestoredProduct(state: ViewerState, modelId: string, expressId: number): boolean {
+  const view = state.mutationViews.get(modelId);
+  const dataStore = state.models.get(modelId)?.ifcDataStore;
+  if (!view?.getNewEntity(expressId) || !dataStore) return false;
+  // IFC5 / IFCX models have no IFC class hierarchy to ask; they keep the plain "restored record" rule.
+  const schema = String(dataStore.schemaVersion ?? 'IFC4').toUpperCase();
+  return !['IFC2X3', 'IFC4', 'IFC4X3'].includes(schema) || liveEntityConforms(dataStore, expressId, 'IfcProduct', view);
+}
+
+/**
  * Inverse of `stashAndPruneEntityMesh`: pop the stashed mesh(es), if any,
  * re-append them via `appendGeometryBatch`, correct their `preAlignment`
  * slots with the baseline stashed at delete time (#4970 — see
@@ -112,7 +127,7 @@ export function restoreStashedEntityMesh(
     // An element created and undone before its re-mesh landed (#6232) left
     // nothing to stash; mesh it now from the restored record, which also
     // gives the room the geometry its re-created entity arrived without.
-    if (get().mutationViews.get(modelId)?.getNewEntity(expressId)) void remeshAuthoredElement(get, modelId, expressId);
+    if (isRestoredProduct(get(), modelId, expressId)) void remeshAuthoredElement(get, modelId, expressId);
     return;
   }
 

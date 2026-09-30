@@ -18,7 +18,7 @@ import type { Vec2 } from '@/lib/snap/types';
 import type { CommandContext, CommandHudProps, CommandPlanProps } from '@/lib/commands/modeling/types';
 import { ensureSpaceWasm, spaceWasmLoaded } from '@/lib/rooms/space-wasm';
 import { interiorPoint, roomOutline, sessionRooms, storeyWalls, type RoomCandidate } from '@/lib/rooms/storey-rooms';
-import { DEFAULT_WELD } from '@/lib/rooms/room-layout';
+import { DEFAULT_MIN_AREA, DEFAULT_WELD } from '@/lib/rooms/room-layout';
 import { wallLeaks } from '@/lib/rooms/room-leaks';
 import { polyArea, type Pt } from '@/lib/rooms/plate-geometry';
 import { drawnOutline, type RoomPlaceGesture } from '@/lib/commands/modeling/commands/room-place-gesture';
@@ -29,7 +29,7 @@ import { RoomEditShapes, RoomLeakShapes } from './RoomLayoutLayers';
 type ToScreen = (p: Vec2) => readonly [number, number] | null;
 
 /** The session storey's candidate rooms at corner weld `weld`, re-read when the walls or the model change. */
-export function useSessionRooms(ctx: CommandContext, weld: number | null = null): RoomCandidate[] {
+export function useSessionRooms(ctx: CommandContext, weld: number | null = null, minArea = DEFAULT_MIN_AREA): RoomCandidate[] {
   const [loaded, setLoaded] = useState(spaceWasmLoaded);
   useEffect(() => {
     if (loaded) return;
@@ -42,7 +42,7 @@ export function useSessionRooms(ctx: CommandContext, weld: number | null = null)
   useViewerStore((s) => s.mutationVersion);
   // And the undo stack: an undo brings back the layout filed under that step.
   useViewerStore((s) => s.undoStacks.get(ctx.modelId)?.length);
-  const rooms = loaded ? sessionRooms(ctx, weld ?? DEFAULT_WELD) : null;
+  const rooms = loaded ? sessionRooms(ctx, weld ?? DEFAULT_WELD, minArea) : null;
   return rooms?.status === 'ready' ? rooms.rooms : [];
 }
 
@@ -126,7 +126,7 @@ function RoomModeShapes({ gesture, rooms, toScreen }: { gesture: RoomPlaceGestur
 
 export function RoomPlaceScene({ gesture, ctx }: CommandHudProps<RoomPlaceGesture>) {
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
-  const rooms = useSessionRooms(ctx, gesture.weld);
+  const rooms = useSessionRooms(ctx, gesture.weld, gesture.mode === 'edit' ? 0 : gesture.minArea);
   const plane = ctx.workplane;
   void useProjectorTick(plane !== null);
   if (!plane || !projectToScreen) return null;
@@ -143,7 +143,7 @@ export function RoomPlaceScene({ gesture, ctx }: CommandHudProps<RoomPlaceGestur
 }
 
 export function RoomPlacePlan({ gesture, ctx, toScreen }: CommandPlanProps<RoomPlaceGesture>) {
-  const rooms = useSessionRooms(ctx, gesture.weld);
+  const rooms = useSessionRooms(ctx, gesture.weld, gesture.mode === 'edit' ? 0 : gesture.minArea);
   return (
     <g data-plan-command="room.place" pointerEvents="none">
       <RoomShapes gesture={gesture} rooms={rooms} toScreen={toScreen} ctx={ctx} />

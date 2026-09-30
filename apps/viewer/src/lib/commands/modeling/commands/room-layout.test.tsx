@@ -53,7 +53,7 @@ const redo = () => act(() => { useViewerStore.getState().redo(MODEL_ID); });
 const set = (update: Partial<RoomPlaceGesture>) => act(() => { updateCommandGesture((g) => ({ ...(g as RoomPlaceGesture), ...update })); });
 const editWith = (tool: RoomEditTool) => set({ mode: 'edit', edit: { tool, hover: null, drag: null, cut: null, op: null } });
 const layoutFaces = () => {
-  const rooms = sessionRooms(ctx(), gesture().weld ?? undefined);
+  const rooms = sessionRooms(ctx(), gesture().weld ?? undefined, gesture().minArea);
   return rooms?.status === 'ready' ? rooms.rooms : [];
 };
 const byLeft = () => authoredSpaces().sort((a, b) => Math.min(...a.footprint.map((p) => p[0])) - Math.min(...b.footprint.map((p) => p[0])));
@@ -282,9 +282,50 @@ describe('room.place in a millimetre model (#6232 A4b, footprint helper scale)',
 });
 
 describe('room.place review fixes (#6232 A4b)', () => {
+  it('changing the creation area threshold preserves an already edited layout (#6531)', async (t) => {
+    if (!(await start(t))) return;
+    await act(async () => { await runRoomAction('auto'); });
+    set({ mode: 'edit', namePattern: '' });
+    editWith('shape');
+    const before = undoDepth();
+    click(4, 0);
+    move(5, 0);
+    click(5, 0);
+    assert.ok(undoDepth() > before, 'creation options do not block editing an existing room');
+    const edited = layoutFaces().map((room) => corners(room.centre));
+    set({ minArea: 100 });
+    assert.equal(layoutFaces().length, 0);
+    set({ minArea: 0.3 });
+    assert.deepEqual(layoutFaces().map((room) => corners(room.centre)), edited, 'threshold changes must not rebuild away the user\'s topology edit');
+  });
+
+  it('a lowered minimum exposes a real bounded face below the previous hard-coded 0.3 m² (#6531)', async (t) => {
+    const small: Wall[] = [[[0, 0], [0.5, 0]], [[0.5, 0], [0.5, 0.5]], [[0.5, 0.5], [0, 0.5]], [[0, 0.5], [0, 0]]];
+    if (!(await start(t, []))) return;
+    setWallMeshes(small, [], 0.05);
+    set({ minArea: 0.3, weld: 0.005, boundary: 'inner' });
+    assert.equal(layoutFaces().length, 0);
+    set({ minArea: 0.1 });
+    assert.equal(layoutFaces().length, 1);
+    await auto();
+    assert.equal(authoredSpaces().length, 1);
+    const area = spaceQuantity(authoredSpaces()[0].id, 'NetFloorArea')!;
+    assert.ok(Math.abs(area - 0.2025) < 1e-6, `a 0.5m square with 0.05m walls has 0.2025m² net area, got ${area}`);
+  });
+
+  it('a high creation cutoff cannot bypass Footprint occupancy (#6531)', async (t) => {
+    if (!(await start(t))) return;
+    await auto();
+    const existing = authoredSpaces().map((space) => space.id);
+    const before = undoDepth();
+    set({ minArea: 100 });
+    await act(async () => { await runRoomAction('footprint'); });
+    assert.deepEqual(authoredSpaces().map((space) => space.id), existing, 'occupied storey remains occupied even when its candidates are filtered out');
+    assert.equal(undoDepth(), before, 'the refused action writes no undo entry');
+  });
   it('the weld field keeps "0" and "0." while typing and commits 0.3 on blur', async (t) => {
     if (!(await start(t))) return;
-    const ui = render(<RoomMoreMenu gesture={gesture()} ctx={ctx()} rooms={2} />);
+    const ui = render(<RoomMoreMenu gesture={gesture()} ctx={ctx()} rooms={layoutFaces()} />);
     act(() => { (ui.querySelector('[data-room-more]') as HTMLElement).click(); });
     const field = document.querySelector('input[type=number]') as HTMLInputElement;
     assert.ok(field, 'the weld field is in the More menu');

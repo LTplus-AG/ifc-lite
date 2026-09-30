@@ -584,6 +584,8 @@ const result = generateSpacesFromWalls(editor, dataStore, storeyExpressId, {
 
 The detector also picks up overlay walls (placed via `addWallToStore` since the model was parsed) when you pass an `OverlayWallReader` — the viewer's Room tool (**Auto**) does the same for freshly-drawn walls without a re-parse. `detectEnclosedAreas(segments, options)` is exported as the pure pipeline step if you want detection without IFC emission.
 
+In the viewer, **Room → More** keeps the minimum area, name pattern, and schema-specific space classification alongside read-only candidate totals. `addSpaceToStore` validates the classification before writing: IFC2X3 uses `InteriorOrExteriorSpace`, IFC4 and IFC4X3 use `PredefinedType`, and `USERDEFINED` needs an `ObjectType`. An `EXTERNAL` space sets `Pset_SpaceCommon.IsExternal` to true.
+
 ### `bim.store.*` — Scripting & SDK
 
 The viewer's QuickJS sandbox and the TypeScript SDK expose the core mutation surface as `bim.store`:

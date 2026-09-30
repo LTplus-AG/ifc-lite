@@ -89,7 +89,7 @@ export function commitLayoutEdit(g: RoomPlaceGesture, tx: AuthoringTransaction):
   if (storeyId === null || !workplane || !op) throw new Error(translate('roomLayout.edit.none'));
   const get = () => tx.store;
   const weld = weldOf(g);
-  const before = storeyRooms(get(), modelId, storeyId, workplane, weld);
+  const before = storeyRooms(get(), modelId, storeyId, workplane, weld, 0);
   if (before.status !== 'ready') throw new Error(translate(before.status === 'loading' ? 'roomTool.loading' : 'roomTool.noWalls'));
   let edited: ReturnType<typeof editedLayout>;
   try {

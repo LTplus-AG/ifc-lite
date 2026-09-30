@@ -27,6 +27,7 @@ import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { cleanup, click as clickEl, press, render } from '@/test/render.js';
 import { authoredBodies } from '@/test/authored-body';
+import { DEFAULT_ROOM_CREATION } from '@/lib/rooms/room-creation-options';
 import { RoomPlaceBar } from '@/components/viewer/tools/command/RoomPlaceBar';
 import { commandKind } from '../authored-kinds.js';
 import { ROOM_PLACE } from './room-place.js';
@@ -124,6 +125,7 @@ let restoreRemesh: () => void = () => {};
 
 beforeEach(async () => {
   await seedModelingSession();
+  useViewerStore.getState().setAuthoringDefaults({ roomCreation: DEFAULT_ROOM_CREATION });
   clearStoreyRoomsCache();
   remeshed = [];
   restoreRemesh = setRequestRemesh((_get, request) => { remeshed.push(request); });
@@ -314,5 +316,52 @@ describe('room.place: Update rooms (#6232 M4, D5)', () => {
     useViewerStore.getState().undo(MODEL_ID);
     assert.equal(undoDepth(), before, 'the update was one undo step');
     assert.deepEqual(corners(spaces().find((r) => r.id === left.id)!.footprint), corners(left.footprint), 'undo restores the old outline');
+  });
+});
+
+
+describe('Room options retained when deleting the panel (#6232/#6531)', () => {
+  it('previews count/area without writes, applies minimum area and names/types through Auto, and undoes one batch', async (t) => {
+    if (!(await startRooms(t, 2))) return;
+    act(() => { updateCommandGesture((g) => ({ ...(g as RoomPlaceGesture), minArea: 15, namePattern: 'Suite {n}', PredefinedType: 'EXTERNAL' })); });
+    const before = undoDepth();
+    const ui = render(<RoomPlaceBar gesture={gesture()} ctx={ctx()} />);
+    const more = ui.querySelector('[data-room-more]')!;
+    act(() => {
+      more.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+      clickEl(more);
+    });
+    const summary = document.querySelector('[data-room-preview-summary]');
+    assert.ok(summary, 'read-only totals are reachable through More');
+    assert.match(summary.textContent ?? '', /1 new rooms/);
+    assert.match(summary.textContent ?? '', /27[.,]84 m²/);
+    assert.match(summary.textContent ?? '', /5 walls/);
+    assert.match(summary.textContent ?? '', /layout vertices/);
+    assert.deepEqual(spaces(), [], 'the preview creates no spaces');
+    assert.equal(undoDepth(), before, 'preview writes no undo entry');
+    await act(async () => { await runRoomAction('auto'); });
+    const [room] = spaces();
+    assert.equal(spaces().length, 1, 'the small 8.64 m² region is excluded by the actual WASM layout');
+    assert.equal(room.name, 'Suite 1');
+    const s = useViewerStore.getState();
+    const view = s.mutationViews.get(MODEL_ID)!;
+    assert.equal(view.getNewEntity(room.id)?.attributes[9], '.EXTERNAL.');
+    assert.equal(view.getPropertyValue(room.id, 'Pset_SpaceCommon', 'IsExternal'), true);
+    assert.equal(undoDepth(), before + 1);
+    act(() => { s.undo(MODEL_ID); });
+    assert.deepEqual(spaces(), []);
+    assert.equal(undoDepth(), before);
+  });
+
+  it('lowering the threshold reveals the retained small candidate without replacing its topology', async (t) => {
+    if (!(await startRooms(t, 2))) return;
+    act(() => { updateCommandGesture((g) => ({ ...(g as RoomPlaceGesture), minArea: 15 })); });
+    act(() => { commandPointerMove(at(1, 2)); });
+    assert.equal(gesture().hover, null, 'the small room is excluded');
+    act(() => { updateCommandGesture((g) => ({ ...(g as RoomPlaceGesture), minArea: 1, namePattern: 'Office {n}' })); });
+    click(1, 2);
+    assert.equal(spaces().length, 1, 'the same model and undo head now exposes the smaller candidate');
+    assert.equal(spaces()[0].name, 'Office 1');
+    assert.deepEqual(corners(spaces()[0].footprint), corners([[0.1, 0.1], [1.9, 0.1], [1.9, 4.9], [0.1, 4.9]]));
   });
 });

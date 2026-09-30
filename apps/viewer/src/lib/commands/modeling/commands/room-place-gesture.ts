@@ -22,6 +22,7 @@
 import type { Vec2 } from '@/lib/snap/types';
 import type { ViewerState } from '@/store';
 import type { SlabDrawMode } from '@/store/slices/authoringDefaultsSlice';
+import { DEFAULT_ROOM_CREATION, type RoomCreationOptions } from '@/lib/rooms/room-creation-options';
 import type { RoomBoundary, RoomCandidate } from '@/lib/rooms/storey-rooms';
 import type { LayoutOp } from '@/lib/rooms/room-layout';
 import type { LayoutHit } from '@/lib/rooms/room-layout-hit';
@@ -45,7 +46,7 @@ export interface RoomEdit {
 }
 
 /** The tool's settings, carried from one gesture to the next. */
-export interface RoomSettings {
+export interface RoomSettings extends RoomCreationOptions {
   boundary: RoomBoundary;
   drawMode: SlabDrawMode;
   /** Manual corner weld (m); null = the default. */
@@ -55,7 +56,7 @@ export interface RoomSettings {
   tool: RoomEditTool;
 }
 
-export interface RoomPlaceGesture {
+export interface RoomPlaceGesture extends RoomCreationOptions {
   readonly mode: RoomMode;
   /** Which wall face derived rooms follow. */
   readonly boundary: RoomBoundary;
@@ -74,18 +75,18 @@ export interface RoomPlaceGesture {
   readonly leaks: boolean;
 }
 
-const DEFAULTS: RoomSettings = { boundary: 'inner', drawMode: 'rectangle', weld: null, leaks: false, tool: 'shape' };
+const DEFAULTS: RoomSettings = { ...DEFAULT_ROOM_CREATION, boundary: 'inner', drawMode: 'rectangle', weld: null, leaks: false, tool: 'shape' };
 
 export const initRoomEdit = (tool: RoomEditTool = 'shape'): RoomEdit => ({ tool, hover: null, drag: null, cut: null, op: null });
 
 export const initRoomGesture = (mode: RoomMode = 'pick', settings: Partial<RoomSettings> = {}): RoomPlaceGesture => {
-  const { boundary, drawMode, weld, leaks, tool } = { ...DEFAULTS, ...settings };
-  return { mode, boundary, draw: initSlabGesture(drawMode), cursor: null, hover: null, action: 'place', edit: initRoomEdit(tool), weld, leaks };
+  const { boundary, drawMode, weld, leaks, tool, minArea, namePattern, PredefinedType, ObjectType } = { ...DEFAULTS, ...settings };
+  return { mode, boundary, minArea, namePattern, PredefinedType, ObjectType, draw: initSlabGesture(drawMode), cursor: null, hover: null, action: 'place', edit: initRoomEdit(tool), weld, leaks };
 };
 
 /** A gesture's settings, to start the next one with. */
 export const roomSettings = (g: RoomPlaceGesture): RoomSettings => ({
-  boundary: g.boundary, drawMode: g.draw.mode, weld: g.weld, leaks: g.leaks, tool: g.edit.tool,
+  boundary: g.boundary, minArea: g.minArea, namePattern: g.namePattern, PredefinedType: g.PredefinedType, ObjectType: g.ObjectType, drawMode: g.draw.mode, weld: g.weld, leaks: g.leaks, tool: g.edit.tool,
 });
 
 /** Draw: the outline the preview shows (the rectangle, or the polygon so far plus the cursor). */

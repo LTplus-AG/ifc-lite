@@ -59,22 +59,22 @@ const FIELDS: readonly CommandField<RoomPlaceGesture>[] = [
   defaultsField('height', 'space', 'Height', 'modelingCommand.field.height'),
 ];
 
-function readyRooms(s: ViewerState, modelId: string, storeyId: number, plane: Workplane, weld: number): RoomCandidate[] {
-  const rooms = storeyRooms(s, modelId, storeyId, plane, weld);
+function readyRooms(s: ViewerState, modelId: string, storeyId: number, plane: Workplane, weld: number, minArea: number): RoomCandidate[] {
+  const rooms = storeyRooms(s, modelId, storeyId, plane, weld, minArea);
   if (rooms.status === 'loading') throw new Error(translate('roomTool.loading'));
   return rooms.status === 'ready' ? rooms.rooms : [];
 }
 
 /** `Room <n>`, numbered on from the rooms the storey already has. */
-const roomNamer = (s: ViewerState, modelId: string, storeyId: number) => {
+const roomNamer = (s: ViewerState, modelId: string, storeyId: number, pattern: string) => {
   const existing = storeySpaceFootprints(s, modelId, storeyId).length;
-  return (i: number) => `Room ${existing + i + 1}`;
+  return (i: number) => pattern.replaceAll('{n}', String(existing + i + 1));
 };
 
 const isEdit = (g: RoomPlaceGesture) => g.action === 'edit' || (g.action === 'place' && g.mode === 'edit');
 
 function roomsOf(ctx: CommandContext, g: RoomPlaceGesture): RoomCandidate[] {
-  const rooms = sessionRooms(ctx, weldOf(g));
+  const rooms = sessionRooms(ctx, weldOf(g), isEdit(g) ? 0 : g.minArea);
   return rooms?.status === 'ready' ? rooms.rooms : [];
 }
 
@@ -82,9 +82,9 @@ function roomsOf(ctx: CommandContext, g: RoomPlaceGesture): RoomCandidate[] {
 function autoRooms(tx: AuthoringTransaction, g: RoomPlaceGesture, storeyId: number, plane: Workplane): number[] {
   const get = () => tx.store;
   const height = dimOf({ get }, 'space', 'Height');
-  const name = roomNamer(get(), tx.modelId, storeyId);
-  return readyRooms(get(), tx.modelId, storeyId, plane, weldOf(g)).filter((r) => !r.taken).map((room, i) => addRoom(get, tx.modelId, storeyId, {
-    ...candidateRoom(room, g.boundary), height, z: planeZ(plane), name: name(i), derived: true,
+  const name = roomNamer(get(), tx.modelId, storeyId, g.namePattern);
+  return readyRooms(get(), tx.modelId, storeyId, plane, weldOf(g), g.minArea).filter((r) => !r.taken).map((room, i) => addRoom(get, tx.modelId, storeyId, {
+    ...candidateRoom(room, g.boundary), height, z: planeZ(plane), name: name(i), PredefinedType: g.PredefinedType, ObjectType: g.ObjectType, derived: true,
   }));
 }
 
@@ -96,7 +96,7 @@ function commitAction(g: RoomPlaceGesture, tx: AuthoringTransaction, storeyId: n
     case 'update': {
       const roomsOn = (sid: number): RoomCandidate[] => {
         const plane = sid === storeyId ? workplane : buildStoreyWorkplane(get(), modelId, sid, 0);
-        return isWorkplane(plane) ? readyRooms(get(), modelId, sid, plane, weldOf(g)) : [];
+        return isWorkplane(plane) ? readyRooms(get(), modelId, sid, plane, weldOf(g), 0) : [];
       };
       const updated: number[] = [];
       let skipped = 0;
@@ -121,12 +121,12 @@ function commitAction(g: RoomPlaceGesture, tx: AuthoringTransaction, storeyId: n
       return made(created);
     }
     case 'footprint': {
-      if (readyRooms(get(), modelId, storeyId, workplane, weldOf(g)).some((r) => r.taken)) throw new Error(translate('roomLayout.footprint.taken'));
+      if (readyRooms(get(), modelId, storeyId, workplane, weldOf(g), 0).some((r) => r.taken)) throw new Error(translate('roomLayout.footprint.taken'));
       const face = storeyFootprintFace(storeyWalls(get(), modelId, storeyId, workplane), weldOf(g));
       if (!face) throw new Error(translate('roomTool.noWalls'));
       const id = addRoom(get, modelId, storeyId, {
         outline: roomOutline(face, g.boundary), grossArea: polyArea(face.centre), netArea: polyArea(face.inner),
-        height: dimOf({ get }, 'space', 'Height'), z: planeZ(workplane), name: roomNamer(get(), modelId, storeyId)(0), derived: true,
+        height: dimOf({ get }, 'space', 'Height'), z: planeZ(workplane), name: roomNamer(get(), modelId, storeyId, g.namePattern)(0), PredefinedType: g.PredefinedType, ObjectType: g.ObjectType, derived: true,
       });
       return made([id]);
     }
@@ -162,7 +162,7 @@ export const ROOM_PLACE: ModelingCommand<RoomPlaceGesture> = {
   init: (ctx) => {
     // The DCEL lives in the space wasm; start it now so the first hover finds rooms.
     ensureSpaceWasm().catch((error: unknown) => console.error('[room.place] space wasm failed to load', error));
-    return sessionRoomGesture(ctx, { drawMode: ctx.get().authoringDefaults.spaceMode });
+    return sessionRoomGesture(ctx, { ...ctx.get().authoringDefaults.roomCreation, drawMode: ctx.get().authoringDefaults.spaceMode });
   },
   snapQuery: (g) => {
     if (g.mode === 'draw' && g.draw.mode === 'polygon') return { anchor: g.draw.points.at(-1) ?? null, chain: g.draw.points, locks: {} };
@@ -190,6 +190,9 @@ export const ROOM_PLACE: ModelingCommand<RoomPlaceGesture> = {
   undoPoint: (g) => withDraw(g, { points: g.draw.points.slice(0, -1), ...(g.draw.mode === 'rectangle' ? { width: null, depth: null } : {}) }),
   validate(g, ctx) {
     if (!ctx.workplane || ctx.storeyId === null) return { ok: false, reasonKey: 'modelingCommand.noPlane' };
+    const creates = !isEdit(g) && g.action !== 'update';
+    if (creates && (!Number.isFinite(g.minArea) || g.minArea <= 0 || !g.namePattern.trim())) return { ok: false, reasonKey: 'roomTool.options.invalid' };
+    if (creates && g.PredefinedType === 'USERDEFINED' && !g.ObjectType.trim()) return { ok: false, reasonKey: 'roomTool.options.objectTypeRequired' };
     if (g.action === 'update') {
       return selectedRooms(ctx.get(), ctx.modelId).length > 0 ? { ok: true } : { ok: false, reasonKey: 'roomTool.update.noSelection' };
     }
@@ -199,7 +202,7 @@ export const ROOM_PLACE: ModelingCommand<RoomPlaceGesture> = {
       return rectangleExtent(g.draw) ? { ok: true } : { ok: false, reasonKey: 'modelingCommand.slab.noArea' };
     }
     if (g.action === 'autoAll') return { ok: true };
-    const rooms = sessionRooms(ctx, weldOf(g));
+    const rooms = sessionRooms(ctx, weldOf(g), isEdit(g) ? 0 : g.minArea);
     if (!rooms || rooms.status === 'loading') return { ok: false, reasonKey: 'roomTool.loading' };
     if (rooms.status === 'noWalls') return { ok: false, reasonKey: 'roomTool.noWalls' };
     if (isEdit(g)) return editOp(g) ? { ok: true } : { ok: false, reasonKey: 'roomLayout.edit.none' };
@@ -220,16 +223,16 @@ export const ROOM_PLACE: ModelingCommand<RoomPlaceGesture> = {
     const get = () => tx.store;
     const height = dimOf({ get }, 'space', 'Height');
     const z = planeZ(workplane);
-    const name = roomNamer(get(), modelId, storeyId)(0);
+    const name = roomNamer(get(), modelId, storeyId, g.namePattern)(0);
     let id: number;
     if (g.mode === 'draw') {
-      const made = get().addSpace(modelId, storeyId, { ...spaceParams(g.draw, z, height), Name: name });
+      const made = get().addSpace(modelId, storeyId, { ...spaceParams(g.draw, z, height), Name: name, PredefinedType: g.PredefinedType, ObjectType: g.ObjectType || undefined });
       if ('error' in made) throw new Error(`Couldn't add the room: ${made.error}`);
       id = made.expressId;
     } else {
       const room = g.hover;
       if (!room || room.taken) throw new Error(translate(room ? 'roomTool.pick.taken' : 'roomTool.pick.none'));
-      id = addRoom(get, modelId, storeyId, { ...candidateRoom(room, g.boundary), height, z, name, derived: true });
+      id = addRoom(get, modelId, storeyId, { ...candidateRoom(room, g.boundary), height, z, name, PredefinedType: g.PredefinedType, ObjectType: g.ObjectType, derived: true });
     }
     return { created: [id], authored: [id], deleted: [], remesh: [id], select: [id] };
   },

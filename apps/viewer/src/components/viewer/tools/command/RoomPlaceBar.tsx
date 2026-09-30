@@ -46,7 +46,7 @@ const BOUNDARY_KEYS: Record<RoomBoundary, TranslationKey> = {
 
 export function RoomPlaceBar({ gesture, ctx }: CommandHudProps<RoomPlaceGesture>) {
   const { t, locale } = useTranslation();
-  const rooms = useSessionRooms(ctx, gesture.weld);
+  const rooms = useSessionRooms(ctx, gesture.weld, gesture.minArea);
   const selected = useViewerStore((s) => selectedRooms(s, ctx.modelId).length);
   const setDefaults = useViewerStore((s) => s.setAuthoringDefaults);
   const free = rooms.filter((r) => !r.taken).length;
@@ -99,7 +99,7 @@ export function RoomPlaceBar({ gesture, ctx }: CommandHudProps<RoomPlaceGesture>
       >
         {t('roomTool.update.label')}
       </BarAction>
-      <RoomMoreMenu gesture={gesture} ctx={ctx} rooms={rooms.length} />
+      <RoomMoreMenu gesture={gesture} ctx={ctx} rooms={rooms} />
     </>
   );
 }

@@ -9,6 +9,7 @@
  */
 
 import type { ReactNode } from 'react';
+import { useViewerStore } from '@/store';
 import { resolve as translate } from '@/i18n/registry';
 import { commitCommand, notifyCommandRefusal, updateCommandGesture } from '@/lib/commands/modeling/runtime';
 import { ensureSpaceWasm } from '@/lib/rooms/space-wasm';
@@ -39,6 +40,9 @@ export function setRoomGesture(ctx: object, update: (g: RoomPlaceGesture) => Roo
   updateCommandGesture((g) => {
     const next = update(g as RoomPlaceGesture);
     rememberRoomGesture(ctx, next);
+    useViewerStore.getState().setAuthoringDefaults({ roomCreation: {
+      minArea: next.minArea, namePattern: next.namePattern, PredefinedType: next.PredefinedType, ObjectType: next.ObjectType,
+    } });
     return next;
   });
 }

@@ -18,6 +18,7 @@
  */
 
 import type { StateCreator } from 'zustand';
+import { DEFAULT_ROOM_CREATION, type RoomCreationOptions } from '@/lib/rooms/room-creation-options';
 import { defineSliceTeardown } from '../teardown.js';
 
 export type AuthoredElementKind =
@@ -46,6 +47,7 @@ interface ModelScopedPick {
 }
 
 export interface AuthoringDefaults {
+  readonly roomCreation: RoomCreationOptions;
   /** Builder parameter name (`Thickness`, `Height`, …) → metres, per kind. */
   readonly dims: Readonly<Record<AuthoredElementKind, Readonly<Record<string, number>>>>;
   /** Which face of a new wall the drawn line is. */
@@ -87,6 +89,7 @@ const AUTHORING_DIM_DEFAULTS: AuthoringDefaults['dims'] = {
 
 const INITIAL: AuthoringDefaults = {
   dims: AUTHORING_DIM_DEFAULTS,
+  roomCreation: DEFAULT_ROOM_CREATION,
   wallAlign: 'centre',
   chain: true,
   slabMode: 'rectangle',

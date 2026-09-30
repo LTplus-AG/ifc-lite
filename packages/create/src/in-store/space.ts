@@ -17,6 +17,7 @@
  */
 
 import { generateIfcGuid } from '@ifc-lite/encoding';
+import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { assertFinitePoint3 } from '../ifc-creator-math.js';
 import { toNativeLength, type SpatialAnchor } from './anchor.js';
@@ -147,6 +148,18 @@ export function addSpaceToStore(
     );
   }
 
+  const PredefinedType = params.PredefinedType ?? 'INTERNAL';
+  // IFC2X3's occurrence uses InteriorOrExteriorSpace, not IfcSpaceTypeEnum.
+  // IFCX uses the existing IFC4 positional adapter for basic spaces.
+  const registry = getSchemaRegistryForVersion(anchor.schema === 'IFC2X3' || anchor.schema === 'IFC4X3' ? anchor.schema : 'IFC4');
+  const classification = registry.entities.IfcSpace.allAttributes![9];
+  if (!registry.enums[classification.type].includes(PredefinedType)) {
+    throw new Error(`addSpaceToStore: IfcSpace.${classification.name} must be one of ${registry.enums[classification.type].join(', ')}`);
+  }
+  if (PredefinedType === 'USERDEFINED' && !params.ObjectType?.trim()) {
+    throw new Error('addSpaceToStore: IfcSpace.ObjectType is required for USERDEFINED');
+  }
+
   // Geometry coordinates must land in the file's native length unit —
   // params are metres, the file may be millimetres (a space baked into a
   // mm model used to export 1000× too small). Quantities keep their own
@@ -179,7 +192,7 @@ export function addSpaceToStore(
     `#${productShapeId}`,
     params.LongName ?? null,
     '.ELEMENT.',
-    `.${params.PredefinedType ?? 'INTERNAL'}.`,
+    `.${PredefinedType}.`,
     null,
   ];
   const spaceId = editor.addEntity('IfcSpace', attrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
@@ -221,10 +234,10 @@ export function addSpaceToStore(
 
   // Pset_SpaceCommon — the standard IfcSpace pset, so the space carries real
   // properties (not just an empty schema template). Planned areas mirror the
-  // measured ones; interior space ⇒ not external by default.
+  // measured ones; EXTERNAL must agree with IsExternal per Pset_SpaceCommon.
   editor.addPropertySet(spaceId, 'Pset_SpaceCommon', [
     { name: 'Reference', value: params.Name ?? '', type: 'LABEL' },
-    { name: 'IsExternal', value: false, type: 'BOOLEAN' },
+    { name: 'IsExternal', value: PredefinedType === 'EXTERNAL', type: 'BOOLEAN' },
     { name: 'GrossPlannedArea', value: grossArea, type: 'REAL' },
     { name: 'NetPlannedArea', value: params.netFloorArea ?? area, type: 'REAL' },
   ]);

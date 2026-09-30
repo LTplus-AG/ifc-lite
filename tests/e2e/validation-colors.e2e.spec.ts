@@ -115,6 +115,8 @@ async function renderedResults(page: Page) {
     const renderer = getGlobalRenderer();
     if (!renderer) throw new Error('Viewport renderer is unavailable');
     const scene = renderer.getScene(), state = globalThis.__ifc_lite_viewer_store__.getState();
+    const frame = renderer.getFrameStats();
+    if (!frame) throw new Error('Viewport has not submitted a render frame');
     const report = state.idsValidationReport;
     if (!report) throw new Error('Actual information validation did not produce a report');
     const entities = report.specificationResults.flatMap(spec => spec.entityResults.map(entity => {
@@ -123,7 +125,7 @@ async function renderedResults(page: Page) {
       return { globalId, expressId: entity.expressId, modelId: entity.modelId, passed: entity.passed,
         instanced: scene.isInstancedEntity(globalId), resolvedModelId: ref?.modelId, resolvedExpressId: ref?.expressId };
     }));
-    return { entities, models: state.models.size, summary: report.summary, frame: renderer.getFrameStats(),
+    return { entities, models: state.models.size, summary: report.summary, frame,
       overrides: [...(scene.getColorOverrides() ?? [])] };
   }, { rendererModule: '/src/hooks/useBCF.ts', idModule: '/src/store/globalId.ts' });
 }

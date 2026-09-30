@@ -65,7 +65,9 @@ that it remains hidden after every model loads and in every captured frame.
 This holds the unrelated grid overlay constant; the tested walls, columns and
 beams remain visible throughout.
 
-The SketchUp IFCs are committed viewer samples. The Revit 2024 IFC is the
+The native SketchUp export is the committed `building-architecture.ifc` viewer
+sample. `building-architecture-rev-b.ifc` is a derived regression fixture with
+an inherited SketchUp header, not an independent native export. The Revit 2024 IFC is the
 existing content-addressed [Snowdon fixture](https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/fab102eb5f9152bc7053d7e4920a8b75d0d34683c834078f0735c88308eb00a4),
 catalogued in `tests/models/manifest.json`; the test verifies its SHA256 before
 loading it. An absent Revit fixture skips only its two cases with a `pnpm

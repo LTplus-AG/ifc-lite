@@ -15,6 +15,7 @@
     {
       "path": "apps/viewer/public/samples/building-architecture-rev-b.ifc",
       "authoringTool": "SketchUp 2024 / IFC-manager 5.3.3",
+      "provenance": "Derived regression fixture with inherited SketchUp header; not an independent native export",
       "bytes": 226971,
       "sha256": "0dfb7152db0a845747d2f35ee5ba9ba3772744072cb23040353c469c2a05f366"
     },

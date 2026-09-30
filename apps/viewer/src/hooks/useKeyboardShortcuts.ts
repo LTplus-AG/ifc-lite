@@ -136,29 +136,15 @@ const RUNNERS: readonly [KeyCommandId, CommandRun][] = [
     if (walkOwns(event)) return false;
     showAllFromStore('a');
   }],
-  ['addElement.commit', () => {
-    const state = useViewerStore.getState();
-    if (!['slab', 'roof', 'plate', 'space'].includes(state.addElementType) || state.addElementSlabMode !== 'polygon') return false;
-    void import('@/components/viewer/add-element-handlers').then((module) => module.commitAddElementSlabPolygon());
-  }],
-  ['addElement.clearPending', () => {
-    const state = useViewerStore.getState();
-    if (state.addElementPendingPoints.length === 0) return false;
-    state.clearAddElementPending();
-  }],
   ['measure.cancel', cancelMeasurement],
   ['measure.finish', finishMeasurement],
   ['measure.toggleSnap', () => { useViewerStore.getState().toggleSnap(); }],
-  ['addElement.toggleSnap', () => { useViewerStore.getState().toggleSnap(); }],
   ['selection.escape', () => { escapeGlobal(false); }],
   ['ui.closeAllPanels', () => { escapeGlobal(true); }],
   ['ui.toggleTheme', () => { useViewerStore.getState().toggleTheme(); }],
 ];
 
 const TOOL_CONTEXT: Partial<Record<KeyCommandId, string>> = {
-  'addElement.commit': 'addElement',
-  'addElement.clearPending': 'addElement',
-  'addElement.toggleSnap': 'addElement',
   'measure.cancel': 'measure',
   'measure.finish': 'measure',
   'measure.toggleSnap': 'measure',

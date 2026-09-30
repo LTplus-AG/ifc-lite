@@ -238,7 +238,7 @@ describe('an ownership record dies with its presentation, whoever replaced it', 
     await seed();
     await act(async () => { api!.ids.focusEntity('A', 1, 'isolate'); });
 
-    // Space Sketch's open/close view capture and `syncSourceModel` both rebuild
+    // A view snapshot's open/close capture and `syncSourceModel` both rebuild
     // an unchanged channel through the cloning setters (#2662 P2). Equal
     // members mean the IDS row focus is still exactly what is on screen.
     await act(async () => { useViewerStore.getState().setIsolatedEntities(new Set([1])); });

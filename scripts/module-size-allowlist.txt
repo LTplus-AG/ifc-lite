@@ -61,7 +61,6 @@
    525 apps/viewer/src/components/mcp/McpPlayground.tsx
   2051 apps/viewer/src/components/mcp/playground-dispatcher.ts
   1187 apps/viewer/src/components/mcp/PlaygroundChat.tsx
-   634 apps/viewer/src/components/viewer/AddElementPanel.tsx
    415 apps/viewer/src/components/viewer/bcf/BCFTopicDetail.tsx
    529 apps/viewer/src/components/viewer/BCFPanel.tsx
    623 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
@@ -103,11 +102,10 @@
    501 apps/viewer/src/components/viewer/tools/measure-modes/radius.ts
    818 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
    677 apps/viewer/src/components/viewer/tools/MeasureQuantities.tsx
-  1428 apps/viewer/src/components/viewer/tools/SpaceSketchOverlay.tsx
    970 apps/viewer/src/components/viewer/useGeometryStreaming.ts
-   912 apps/viewer/src/components/viewer/useMouseControls.ts
-   512 apps/viewer/src/components/viewer/ViewerLayout.tsx
-  1776 apps/viewer/src/components/viewer/Viewport.tsx
+   893 apps/viewer/src/components/viewer/useMouseControls.ts
+   461 apps/viewer/src/components/viewer/ViewerLayout.tsx
+  1598 apps/viewer/src/components/viewer/Viewport.tsx
   1089 apps/viewer/src/components/viewer/ViewportContainer.tsx
    500 apps/viewer/src/components/viewer/ZonesPanel.tsx
    847 apps/viewer/src/hooks/ids/idsExportService.ts
@@ -147,7 +145,6 @@
    561 apps/viewer/src/services/ifc-cache.ts
    559 apps/viewer/src/store/basketVisibleSet.ts
    444 apps/viewer/src/store/constants.ts
-   404 apps/viewer/src/store/slices/addElementMeshes.ts
    452 apps/viewer/src/store/slices/chatSlice.ts
    992 apps/viewer/src/store/slices/clashSlice.ts
   1312 apps/viewer/src/store/slices/collabSlice.ts
@@ -162,7 +159,7 @@
    498 apps/viewer/src/store/slices/sectionSlice.ts
    571 apps/viewer/src/store/slices/sheetSlice.ts
    415 apps/viewer/src/store/teardown.ts
-   688 apps/viewer/src/store/types.ts
+   680 apps/viewer/src/store/types.ts
    422 apps/viewer/src/utils/spatialHierarchy.ts
    573 apps/viewer/src/utils/viewportUtils.ts
    405 apps/viewer/vite.config.ts

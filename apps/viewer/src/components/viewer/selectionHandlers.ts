@@ -20,7 +20,6 @@ import { raycastForPolylinePoint, isNearPolylineStart,
 } from './measureHandlers.js';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { resolve as translate } from '@/i18n/registry';
-import { handleAddElementClick } from './add-element-handlers.js';
 
 /** The click-driven Measure modes' point placement; also a touch tap's (#5856). */
 export function handleMeasureClickAt(ctx: MouseHandlerContext, x: number, y: number): void {
@@ -104,14 +103,6 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
 
   // A running modeling command takes the click (#6232, commandPointer.ts).
   if (tool === 'command') { routeCommandPointer(ctx, 'down', x, y, e); return; }
-
-  // Add-element tool — multi-click placement (beams/members, slab
-  // rectangle/polygon, single-click columns/doors/windows; walls are the
-  // `wall.place` command). Uses magnetic snap like the measure tool.
-  if (tool === 'addElement') {
-    handleAddElementClick(ctx, x, y);
-    return;
-  }
 
   // Annotate tool — drop a pin at the cursor's world point.
   // Raycasts the scene; if the click misses geometry the draft is

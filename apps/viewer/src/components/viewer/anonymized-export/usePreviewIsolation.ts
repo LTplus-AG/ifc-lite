@@ -10,8 +10,7 @@
  * (converted to the renderer's global-id space via `toGlobalIdForRef` — never
  * offset arithmetic) on every change while the preview is on. Restores the
  * captured view on disable, close, or unmount, guarded so it only ever fires
- * once per enable. Pattern copied from
- * `components/viewer/tools/space-sketch/useSpaceSceneFraming.ts`.
+ * once per enable. Captured and restored as one atomic `restoreVisibilityState`.
  *
  * Deliberately uses `setIsolatedEntities`, never `isolateEntities`: the
  * latter TOGGLES off when called twice with the same set, which would fight

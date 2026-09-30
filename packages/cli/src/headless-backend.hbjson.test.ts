@@ -6,10 +6,10 @@
  * Regression coverage for issue #1908: HBJSON export read the model's original
  * IFC bytes (`store.source`) instead of the mutation view, so anything
  * authored through the in-store edit APIs (the CLI equivalent of the viewer's
- * Space Sketch tool) was invisible to the exporter by construction.
+ * Room tool) was invisible to the exporter by construction.
  *
  * `bim.store.addSpace` is the same `StoreEditor` / `MutablePropertyView`
- * overlay the viewer's Space Sketch editor writes to (both go through
+ * overlay the viewer's Room tool writes to (both go through
  * `StoreEditor` in `@ifc-lite/mutations`), so exercising it here proves the
  * headless/CLI export path, not just the viewer dialog.
  */

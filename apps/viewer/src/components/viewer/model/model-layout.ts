@@ -10,14 +10,14 @@
  *
  * The one hard rule: the 3D pane never gets narrower than its HUD needs.
  * `MODEL_3D_MIN_PX` is MEASURED, not chosen: the viewport-hud.e2e states
- * (idle, selection, split, Space Sketch, add element, measure, section and
+ * (idle, selection, split, room and element bars, measure, section and
  * its cap/box, floor plan + drawing, solo, banners) on AC20-FZK-Haus, swept
  * over 3D pane widths (`modelling-refactor/sc-m2-plan-hud-sweep.mjs`) on
- * main after #6315's HUD lane reserve. The last collision to clear is the
- * add-element bar against the storey chip: Linux Chrome (the CI e2e) is
+ * main after #6315's HUD lane reserve. The last collision to clear was the
+ * widest element bar against the storey chip (the old free-standing add panel's, now gone): Linux Chrome (the CI e2e) is
  * clean from 546 px, Windows Chrome from 534 px; the minimum is the larger
- * plus a margin for fonts not measured. (The Space Sketch bar's one-row
- * check is not a width floor: it wraps in bands at 3D-only widths too, e.g.
+ * plus a margin for fonts not measured. (The old sketch bar's one-row
+ * check was not a width floor: it wraps in bands at 3D-only widths too, e.g.
  * 703-836 and 933+ px panes, see the M2.4 PR.) Re-measure whenever the HUD's
  * widest bars change.
  *
@@ -65,7 +65,7 @@ export function planPaneWidth(layout: 'plan' | 'split', groupWidth: number): num
  * rail's plan toggle (outside the split) knows whether the plan fits. The
  * toggle lives in the rail on purpose: a strip beside the 3D pane took 24 px
  * from it, and the HUD's bar tiers, which measure the lane, then chose a bar
- * too wide for it (the Space Sketch bar wrapped at 1600 px).
+ * too wide for it (the room bar wrapped at 1600 px).
  */
 let splitWidth = 0;
 const listeners = new Set<() => void>();

@@ -110,7 +110,7 @@ describe('staleOwnershipReset', () => {
   });
 
   it('keeps a record the write leaves content-matching', () => {
-    // Space Sketch's restore and `syncSourceModel`'s rebuild both replay an
+    // A view snapshot's restore and `syncSourceModel`'s rebuild both replay an
     // unchanged channel through a cloning setter (#2662 P2). Equal members
     // mean the same presentation is still on screen.
     assert.deepEqual(

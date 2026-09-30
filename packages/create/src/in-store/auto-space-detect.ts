@@ -103,7 +103,7 @@ export function detectEnclosedAreas(
 /**
  * Same pipeline as `detectEnclosedAreas`, but returns the per-stage
  * counts alongside the spaces so callers can surface diagnostic
- * information (used by the orchestrator + viewer Auto Spaces panel).
+ * information (used by the orchestrator + viewer Room tool).
  */
 export function detectEnclosedAreasWithStats(
   segments: Segment[],

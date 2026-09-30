@@ -101,7 +101,7 @@ const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
   'listVisibilityOwned', // #6368 lists: the group-row isolate / X-ray claim names the cleared models' ids
   'modelTagAssignments', 'modelTagView', // #4215 model tags: assignments and the Models-section view die with the federation, definitions survive
   'modelPlacement', 'repositionNudge', 'repositionOpen', 'placementStaleMeasurements', // #4226 workspace placement lifecycle
-  'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'basketVisibilityOwned', 'classFilter',
+  'activeModelId', 'activeStorey', 'basketVisibilityOwned', 'classFilter',
   'contextMenu', 'geometryResult', 'ghostExceptEntities', 'hiddenEntities',
   'hierarchyBasketSelection', 'hoverState', 'ifcDataStore', 'isolatedEntities',
   'layerDiffBusy', 'layerStack', 'layerStackDiff', 'layerStackPathToId',
@@ -150,7 +150,7 @@ const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
 const PINNED_MODEL_REMOVED_KEYS: readonly string[] = [
   'modelTagAssignments', // #4215 model tags: assignments die with the model, definitions survive
   'flowLastRun', 'flowLastError', 'flowLastRunWindow', // #5167 flow: the last run's outputs hold handles into the removed model
-  'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'annotation2DCursorPos', 'classFilter',
+  'activeModelId', 'activeStorey', 'annotation2DCursorPos', 'classFilter',
   'cloudAnnotation2DPoints', 'cloudAnnotations2D', 'contextMenu', 'drawing2DDisplayOptions', 'geometryResult',
   'ghostExceptEntities', 'hiddenEntities',
   'hierarchyBasketSelection', 'hoverState', 'ifcDataStore', 'isolatedEntities',
@@ -189,8 +189,6 @@ function modelRemovedFixture() {
     pinboardEntities: new Set(['A:42', 'B:5']),
     hierarchyBasketSelection: new Set(['A:42']),
     meshColorBackup: new Map([[42, [1, 1, 1, 1]]]),
-    addElementModelId: 'A',
-    addElementStoreyId: 44,
     hoverState: { entityId: 42, screenX: 1, screenY: 2 },
     contextMenu: { isOpen: true, entityId: 42, screenX: 1, screenY: 2 },
     ifcDataStore: null,
@@ -211,9 +209,8 @@ function modelRemovedFixture() {
 /**
  * Every key some slice DECLARES it may destroy, across all scopes.
  *
- * Wider than the emitted lists above by the six keys only a federation scope
- * writes (`models`, `activeModelId`, `ifcDataStore`, `geometryResult`,
- * `addElementModelId`, `addElementStoreyId`). Pinned so a key vanishing from an
+ * Wider than the emitted lists above by the four keys only a federation scope
+ * writes (`models`, `activeModelId`, `ifcDataStore`, `geometryResult`). Pinned so a key vanishing from an
  * `owns` list fails even when no scope emits it under an empty state.
  */
 const PINNED_OWNED_KEYS: readonly string[] = [
@@ -227,7 +224,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'modelPlacement', 'repositionNudge', 'repositionOpen', 'placementStaleMeasurements', // #4226 workspace placement lifecycle
   'activeBasketViewId', 'activeChangeSetId', 'activeLensId', 'activeListId', 'activeModelId',
   'activePresetId', 'activeSheet', 'activeStorey', 'activeTool', 'activeTopicId',
-  'activeViewpointId', 'activeWorkScheduleId', 'addElementModelId', 'addElementStoreyId',
+  'activeViewpointId', 'activeWorkScheduleId',
   'animationEnabled', 'annotation2DActiveTool', 'annotation2DCursorPos',
   'basketVisibilityOwned', 'basketPresentationVisible', 'basketViews', 'bcfError', 'bcfLoading', 'bcfPanelVisible',
   'cameraRotation', 'cesiumAvailable', 'cesiumEnabled', 'cesiumGlbLoaded',

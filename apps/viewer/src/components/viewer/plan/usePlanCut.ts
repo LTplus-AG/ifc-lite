@@ -6,8 +6,7 @@
  * The one plan-cut path (charter #6232, M2 §1.5): `Drawing2DGenerator` over
  * the model meshes, cut horizontally 1.2 m above a storey floor, mapped into
  * whatever 2D frame the caller draws in. The Model workspace's plan pane
- * (`usePlanCut`, workplane-local metres) and Space Sketch's construction
- * underlay (`useConstructionUnderlay`, the room frame) both run on it.
+ * (`usePlanCut`, workplane-local metres) runs on it.
  *
  * A cut is keyed by the caller (storey, geometry and mutation versions),
  * debounced 150 ms so a burst of edits costs one generation, and superseded

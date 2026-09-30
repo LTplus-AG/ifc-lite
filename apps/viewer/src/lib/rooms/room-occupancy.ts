@@ -17,7 +17,7 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import { pointInPoly, type Pt } from '@/lib/space-sketch-geometry';
+import { pointInPoly, type Pt } from '@/lib/rooms/plate-geometry';
 
 type Tri = [Pt, Pt, Pt];
 

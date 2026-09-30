@@ -55,9 +55,7 @@ export interface PropertyFocusTarget {
  * the check is how the two states drift in "enter edit, switch tool, exit".
  */
 const AUTHORING_TOOLS: ReadonlySet<string> = new Set([
-  'addElement',
   'cesium-placement',
-  'spaceSketch',
   'command',
 ]);
 
@@ -96,17 +94,10 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   /**
    * Global edit mode. When `true`, all in-place editing affordances (inline
    * property/attribute editors, future geometry manipulators, georeference
-   * placement, add-element draw tools) are unlocked; `false` (default) is
+   * placement, the Model workspace's draw tools) are unlocked; `false` (default) is
    * strictly read-only. One pill in the main toolbar, not per-panel toggles.
    */
   editEnabled: boolean;
-  /**
-   * Space Sketch minimized to a reopen pill. Set when the user clicks into
-   * the 3D scene while the tool is open, so the panel gets out of the way
-   * without discarding the draft (overlay stays mounted, panel collapses).
-   * Reset false on any tool change so reopening always starts expanded.
-   */
-  spaceSketchMinimized: boolean;
   /** Active tab in the Properties panel. Controlled so in-app flows (e.g.
    *  adding a bSDD property) can jump back to "properties" — issue #1107. */
   propertiesActiveTab: 'properties' | 'quantities' | 'bsdd' | 'raw-step';
@@ -150,8 +141,6 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   setLeftPanelCollapsed: (collapsed: boolean) => void;
   setRightPanelCollapsed: (collapsed: boolean) => void;
   setActiveTool: (tool: string, via?: import('@/lib/analytics-ui-events').ToolChangeVia) => void; // via: see withToolTelemetry (#5618)
-  /** Collapse the Space Sketch panel to a reopen pill (or restore it). */
-  setSpaceSketchMinimized: (minimized: boolean) => void;
   setEditEnabled: (enabled: boolean) => void;
   toggleEditEnabled: () => void;
   setPropertiesActiveTab: (tab: 'properties' | 'quantities' | 'bsdd' | 'raw-step') => void;
@@ -202,7 +191,6 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   rightPanelCollapsed: false,
   activeTool: UI_DEFAULTS.ACTIVE_TOOL,
   editEnabled: false,
-  spaceSketchMinimized: false,
   propertiesActiveTab: 'properties',
   hierarchyMode: getInitialHierarchyMode(),
   pendingPropertyFocus: null,
@@ -232,10 +220,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   setActiveTool: (activeTool) => {
     // Authoring tools require edit mode; entering one flips the global
     // toggle on so the rest of the UI (Properties panel, future
-    // manipulators) stays in sync — read-only tools leave it alone. Any
-    // landed tool change also resets Space Sketch's minimize state (so a
-    // fresh open always starts expanded); a change the collab gate below
-    // rejects isn't landed, so the flag stays put.
+    // manipulators) stays in sync — read-only tools leave it alone.
     //
     // Leaving 'measure' must discard any in-progress gesture — MeasureOverlay
     // only mounts while activeTool === 'measure' (ToolOverlays.tsx), so this
@@ -253,13 +238,12 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
       if (leavingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
       // Authoring happens in the Model workspace; no editable model, no tool.
       if (cross.workspaceMode !== 'model' && cross.enterModelWorkspace && !cross.enterModelWorkspace()) return;
-      set({ activeTool, editEnabled: true, spaceSketchMinimized: false });
+      set({ activeTool, editEnabled: true });
       return;
     }
     if (leavingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
-    set({ activeTool, spaceSketchMinimized: false });
+    set({ activeTool });
   },
-  setSpaceSketchMinimized: (spaceSketchMinimized) => set({ spaceSketchMinimized }),
   setEditEnabled: (editEnabled) => {
     // Edit mode is the Model workspace's (#6232): entering or leaving goes
     // through the session slice, which keeps `editEnabled` in step (no
@@ -284,7 +268,6 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     set((s) => ({
       editEnabled: false,
       activeTool: AUTHORING_TOOLS.has(s.activeTool) ? 'select' : s.activeTool,
-      spaceSketchMinimized: false,
       cesiumPlacementEditMode: false,
       cesiumPlacementDraftModelId: null,
       cesiumPlacementDraft: null,

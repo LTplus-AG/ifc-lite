@@ -8,8 +8,7 @@
  *
  * `isolatedEntities` / `ghostExceptEntities` (visibilitySlice) are shared by
  * clash, "Isolate in 3D" (#2532), assembly isolation (#2531), `LayerDiffView`,
- * Space Sketch's `useSpaceGhostPreview` ("never clears state it didn't set"),
- * IDS/BCF isolation and `syncSourceModel`'s post-removal purge. A clash
+ * the spaces X-ray, IDS/BCF isolation and `syncSourceModel`'s post-removal purge. A clash
  * teardown may therefore only release a presentation clash ITSELF installed.
  *
  * ## Why this is a store field and not a hook ref (#2654 third review)
@@ -21,7 +20,7 @@
  *
  *  - OVER-CLEAR. `applyFocusMode`'s `highlight` branch clears both channels and
  *    owns neither afterwards, yet `clashSelectedId` stays set. Focus a clash in
- *    highlight mode, let LayerDiff / Space Sketch / X-ray install a ghost, then
+ *    highlight mode, let LayerDiff / X-ray install a ghost, then
  *    remove a model — that owner's ghost was destroyed. On the `syncSourceModel`
  *    path this is the original #2654 regression: `removeModel` nulls the ghost
  *    and the second model-removed purge one line later reads `null` and skips its

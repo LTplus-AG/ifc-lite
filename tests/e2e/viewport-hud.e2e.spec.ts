@@ -17,12 +17,7 @@
  * States (#5946): idle, selection, section, section + Cap popover, section
  * box (#5513: the bar's Box segment, its size readout and Fit), measure,
  * floor plan + Drawing panel, solo chip + parked section, banners, plus the
- * tool bars #5503 put on the table (split, spaceSketch, addElement).
- *
- * A second suite below (#5975) additionally asserts the Space Sketch bar
- * renders as a SINGLE row at 1280/1600px with both side panels open: a
- * wrapped bar never fails the collision checks above (it overlaps nothing)
- * but read as heavy, so single-row is measured directly.
+ * Model workspace command bars (split, slab, beam, room, window, ...).
  */
 
 import { test, expect, type Page } from '@playwright/test';
@@ -117,8 +112,6 @@ const STATES: ReadonlyArray<{ name: string; settleMs?: number; mayBeEmpty?: bool
   // #6232 D1: the Stair bar (five fields and its riser summary) and the Railing bar (four fields, summary, Finish).
   { name: 'stair' },
   { name: 'railing' },
-  { name: 'spaceSketch', settleMs: 4000 },
-  { name: 'addElement' },
   { name: 'measure' },
   { name: 'section' },
   { name: 'section+cap' },
@@ -200,8 +193,6 @@ for (const width of [1280, 1600, 1920]) {
             array: (s) => s.startCommand('element.array'),
             stair: (s) => s.startCommand('stair.place'),
             railing: (s) => s.startCommand('railing.place'),
-            spaceSketch: (s) => { s.endCommand(); s.setActiveTool('spaceSketch'); },
-            addElement: (s) => s.setActiveTool('addElement'),
             measure: (s) => s.setActiveTool('measure'),
             section: (s) => { s.setActiveTool('section'); s.setSectionPlaneAxis('down'); s.setSectionPlanePosition(50); },
             'section+cap': () => {},
@@ -219,9 +210,6 @@ for (const width of [1280, 1600, 1920]) {
           const id = { split: 'element.split', slab: 'slab.place', beam: 'beam.place', rotate: 'element.rotate', room: 'room.place', window: 'window.place', array: 'element.array', stair: 'stair.place', railing: 'railing.place' }[state.name];
           await expect(page.locator(`[data-hud-region] [data-command-id="${id}"]`)).toBeVisible();
         }
-        if (state.name === 'spaceSketch') {
-          await expect(page.locator('[data-tool-bar="spaceSketch"]')).toBeVisible();
-        }
         if (state.name === 'section+cap') {
           await page.locator('[data-tool-bar="section"] button', { hasText: 'Cap' }).click();
           await expect(page.locator('[data-testid="section-cap-popover"]')).toBeVisible({ timeout: 10000 });
@@ -234,7 +222,7 @@ for (const width of [1280, 1600, 1920]) {
         if (!state.mayBeEmpty) {
           await expect(page.locator('[data-hud-region] [data-hud-item]').first()).toBeVisible({ timeout: 60000 });
         }
-        // Space Sketch derives rooms through wasm and then lays out its plan card; the Drawing panel generates a cut.
+        // The Room tool derives rooms through wasm; the Drawing panel generates a cut.
         await page.waitForTimeout(state.settleMs ?? 800);
 
         const boxes = await measure(page);
@@ -261,69 +249,6 @@ for (const width of [1280, 1600, 1920]) {
         }
       }
       expect(failures).toEqual([]);
-    });
-  }
-}
-
-// #5975: the Space Sketch bar stays a single row at 1280/1600px with both
-// side panels open (`leftPanelCollapsed`/`rightPanelCollapsed` default to
-// `false` and are left alone here — that IS "both open").
-for (const width of [1280, 1600]) {
-  for (const scheme of ['light', 'dark'] as const) {
-    test(`Space Sketch bar stays one row at ${width}px ${scheme} with both side panels open`, async ({ page }) => {
-      test.skip(!existsSync(join(process.cwd(), FIXTURE)), `${FIXTURE} missing — run \`pnpm fixtures\``);
-      await page.emulateMedia({ colorScheme: scheme });
-      await page.setViewportSize({ width, height: 1000 });
-      await page.goto('/');
-      await page.waitForFunction((k) => !!(globalThis as Record<string, unknown>)[k], STORE, { timeout: 120000 });
-      await page.locator('input[type="file"]').first().setInputFiles(join(process.cwd(), FIXTURE));
-      await page.waitForFunction((k) => {
-        const s = (globalThis as Record<string, { getState(): { models: Map<string, unknown>; geometryResult?: { meshes?: unknown[] } } }>)[k].getState();
-        return s.models.size > 0 && (s.geometryResult?.meshes?.length ?? 0) > 0;
-      }, STORE, { timeout: 180000 });
-      await page.evaluate(([k, theme]) => {
-        (globalThis as Record<string, { getState(): Record<string, (v: unknown) => void> }>)[k].getState().setTheme(theme);
-      }, [STORE, scheme] as const);
-      // Both side panels open: the default, asserted explicitly rather than
-      // just relied on, so a future default change can't silently narrow
-      // what this test covers.
-      await page.evaluate((k) => {
-        const s = (globalThis as Record<string, { getState(): Record<string, (v: unknown) => void> }>)[k].getState();
-        s.setLeftPanelCollapsed(false);
-        s.setRightPanelCollapsed(false);
-      }, STORE);
-      await enterModelWorkspace(page);
-      await page.evaluate((k) => {
-        (globalThis as Record<string, { getState(): Record<string, (v: unknown) => void> }>)[k].getState().setActiveTool('spaceSketch');
-      }, STORE);
-      const bar = page.locator('[data-tool-bar="spaceSketch"]');
-      await expect(bar).toBeVisible({ timeout: 60000 });
-      // Space Sketch derives rooms through wasm and then lays out its plan card.
-      await page.waitForTimeout(4000);
-
-      // One row means every visible child's vertical extent crosses one common
-      // horizontal line (latest top above earliest bottom). Distinct `top`s
-      // alone would not do: `items-center` offsets a 15px label from a 24px
-      // button on the SAME row.
-      const rows = await page.evaluate(() => {
-        const el = document.querySelector<HTMLElement>('[data-tool-bar="spaceSketch"]');
-        if (!el) return null;
-        const boxes = Array.from(el.children)
-          .map((c) => (c as HTMLElement).getBoundingClientRect())
-          .filter((r) => r.width > 0 && r.height > 0);
-        return {
-          count: boxes.length,
-          maxTop: Math.max(...boxes.map((r) => r.top)),
-          minBottom: Math.min(...boxes.map((r) => r.bottom)),
-          tier: el.dataset.barTier,
-        };
-      });
-      expect(rows, 'the bar rendered').not.toBeNull();
-      expect(rows!.count, 'draw mode, footprint, overflow, options, confirm, minimize and close remain visible').toBeGreaterThanOrEqual(9);
-      expect(
-        rows!.maxTop,
-        `Space Sketch bar wraps at ${width}px (tier ${rows!.tier}): a child starts at ${rows!.maxTop}px, below another ending at ${rows!.minBottom}px`,
-      ).toBeLessThan(rows!.minBottom);
     });
   }
 }

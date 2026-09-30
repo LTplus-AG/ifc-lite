@@ -3,23 +3,22 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Footprint: one room over a storey's whole outline (moved from Space Sketch
- * into the Room tool, charter #6232 M4).
+ * Footprint: one room over a storey's whole outline (the Room tool, charter #6232 M4).
  *
  * The outline is the storey's room layout with every wall between two rooms
  * merged away (`mergeFaces`) and the orphans pruned: what is left is the
  * region the exterior walls enclose, L- and U-shaped plans included, whose
  * `netOutline` gives the inner and outer wall faces like any room's.
  *
- * Where the walls enclose nothing (an open plan with gaps), Space Sketch's
+ * Where the walls enclose nothing (an open plan with gaps), the
  * outline stands in: the CONVEX HULL of every wall-rectangle corner, emitted
  * as thin synthetic walls so the same plate build encloses exactly one room.
  */
 
 import { SpacePlateHandle } from '@ifc-lite/wasm';
 import { convexHull, type WallRect } from '@/lib/wall-rects-from-meshes';
-import { polyArea } from '@/lib/space-sketch-geometry';
-import type { Boundary, Room } from '@/lib/space-plate-session';
+import { polyArea } from '@/lib/rooms/plate-geometry';
+import type { Boundary, Room } from '@/lib/rooms/space-wasm';
 import { buildPlate, readFaces, type LayoutFace } from './room-layout';
 
 type Pt = [number, number];

@@ -24,7 +24,7 @@
  * for every `category:file` key this gate measures; the gate fails when a
  * key's count RISES above its row. Deliberately ONE-WAY, like
  * check-jsx-a11y.mjs and unlike check-unused-locals.mjs: the files in scope
- * here (SectionPanel.tsx, MeasurementVisuals.tsx, SpaceSketchCanvas.tsx, ...)
+ * here (SectionPanel.tsx, MeasurementVisuals.tsx, ...)
  * are exactly the files the still-open colour-unification issues
  * (#5488-#5491) and HUD-migration issues (#5499-#5512) are about to touch
  * next, often several at once. A two-way ratchet would fail a PR that fixes

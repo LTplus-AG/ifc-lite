@@ -198,7 +198,7 @@ describe('removeModel releases the visibility channel clash OWNS (#2654 third re
       'setup sanity: a clash IS selected — the fact the old gate mistook for ownership');
 
     // Now ANOTHER owner takes the channel: this is the store action the spaces
-    // X-ray, LayerDiffView and Space Sketch's ghost preview all drive.
+    // X-ray, LayerDiffView and the storey ghost all drive.
     useViewerStore.getState().setGhostExceptEntities(new Set([1]));
 
     useViewerStore.getState().removeModel('B');
@@ -278,7 +278,7 @@ describe('removeModel releases the visibility channel clash OWNS (#2654 third re
     assert.equal(useViewerStore.getState().ghostExceptEntities, null,
       'setup sanity: highlight cleared the ghost channel');
 
-    // Another owner (spaces X-ray / LayerDiffView / Space Sketch) installs a
+    // Another owner (spaces X-ray / LayerDiffView) installs a
     // ghost that happens to hold EXACTLY the ids clash last installed — the two
     // clash parents are a perfectly ordinary thing for a user to X-ray.
     useViewerStore.getState().setGhostExceptEntities(new Set([1, 2]));

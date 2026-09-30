@@ -6,9 +6,7 @@ import type { ComponentType } from 'react';
 import { MeasureOverlay } from '@/components/viewer/tools/MeasurePanel';
 import { SectionOverlay } from '@/components/viewer/tools/SectionPanel';
 import { SectionToolbar } from '@/components/viewer/tools/SectionToolbar';
-import { AddElementOverlay } from '@/components/viewer/tools/AddElementOverlay';
 import { SelectEditScene } from '@/components/viewer/tools/SelectEditScene';
-import { SpaceSketchOverlay } from '@/components/viewer/tools/SpaceSketchOverlay';
 import { CommandBar, CommandScene } from '@/components/viewer/tools/command/CommandHud';
 // Registers the built-in modeling commands the `command` row renders.
 import '@/lib/commands/modeling/builtin';
@@ -36,8 +34,6 @@ export const TOOL_IDS = [
   'select',
   'measure',
   'section',
-  'addElement',
-  'spaceSketch',
   'annotate',
   'cesium-placement',
   'polygon-area',
@@ -59,8 +55,8 @@ export interface ToolHudEntry {
   /**
    * The tool's bar, mounted by `ToolOverlays` in the HUD's top-center region
    * (order 0) while the tool is active. A bar that owns further HUD
-   * presence — Space Sketch's plan card, its parked chip, its live hint —
-   * portals those through `HudItem` too, so region + order stay the only
+   * presence (a card, a parked chip, a live hint) portals those through
+   * `HudItem` too, so region + order stay the only
    * placement knobs it has.
    */
   Bar?: ComponentType;
@@ -85,8 +81,6 @@ export const TOOL_HUD: Record<ToolId, ToolHudEntry> = {
   // The Section bar (#5499); its hint is dynamic (pick / cut / off), so the
   // scene side renders it rather than this table's static `hint` key.
   section: { Bar: SectionToolbar, Scene: SectionOverlay },
-  addElement: { Scene: AddElementOverlay },
-  spaceSketch: { Bar: SpaceSketchOverlay },
   annotate: {},
   'cesium-placement': {},
   'polygon-area': {},

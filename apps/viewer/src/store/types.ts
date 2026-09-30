@@ -409,19 +409,11 @@ export interface CameraCallbacks {
   /**
    * Frame the camera on the bounds of an explicit id set, keeping the current
    * view direction. Ids are federated GLOBAL ids — the id space the scene
-   * meshes carry (single model: global === express). Used by the Space Sketch
-   * tool to zoom to the existing IfcSpace extent on open.
+   * meshes carry (single model: global === express).
    */
   frameEntities?: (ids: number[]) => void;
   /**
-   * Frame the camera on the building shell - the bounds of all rendered
-   * geometry EXCLUDING IfcSite/terrain and IfcSpace. Used by the Space Sketch
-   * tool when a model has no spaces yet, so it frames the building rather than
-   * the much larger georeferenced site extent.
-   */
-  frameBuildingExtent?: () => void;
-  /**
-   * Replace one authoring channel's ghost meshes (Space Sketch rooms, a command
+   * Replace one authoring channel's ghost meshes (a command
    * preview; `useAuthoringOverlay.ts`). They bypass geometryResult so per-edit
    * updates can't trip the streaming reclassifier. [] (or clear) removes them.
    */
@@ -475,7 +467,7 @@ export interface CameraCallbacks {
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
 import type { ModelLoadReportFields } from '../lib/loadReport'; // #3927 load report
-export type AuthoringOverlayChannel = 'spaceSketch' | 'command'; // authoring ghost-mesh channels (#6232)
+export type AuthoringOverlayChannel = 'command'; // authoring ghost-mesh channels (#6232)
 /**
  * Compound identifier for entities across multiple models.
  *

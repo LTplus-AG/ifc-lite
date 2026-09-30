@@ -3,8 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The Room tool's layout controls (charter #6232 M4, the Space Sketch
- * features it took over), on `room.place`'s bar:
+ * The Room tool's layout controls (charter #6232 M4), on `room.place`'s bar:
  *
  *   - Edit mode's two tools (Move · Cut, Merge · Remove) and Clean up (the
  *     plate's `prune`, one undo step);

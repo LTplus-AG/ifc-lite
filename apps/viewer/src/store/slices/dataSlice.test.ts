@@ -472,7 +472,7 @@ describe('DataSlice', () => {
       assert.strictEqual(state.geometryResult?.totalTriangles, 3, 'an instanced-only prune leaves mesh totals alone');
     });
 
-    // An authored element (addElementMeshes) carries per-vertex entityIds that
+    // An authored element (authoredElementMeshes) carries per-vertex entityIds that
     // name only its own id; wall split only accepts such walls, so its source
     // must be pruned. A mesh whose entityIds name other entities stays.
     it('prunes an authored mesh whose entityIds hold only its own id, and keeps a colour-merged one', () => {

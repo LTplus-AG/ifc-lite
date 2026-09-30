@@ -25,8 +25,6 @@ export function launchModelCommand(id: CommandId, opts: { drawsOnWorkplane?: boo
   if (s.workspaceMode !== 'model' && !s.enterModelWorkspace()) return false;
   const now = useViewerStore.getState();
   if ((opts.drawsOnWorkplane ?? true) && sessionWorkplaneBlock(now)) return false;
-  // Not the Add Element panel's wall: the panel stays closed.
-  now.setAddElementDrawsWall(false);
   now.startCommand(id);
   return useViewerStore.getState().session?.activeCommandId === id;
 }

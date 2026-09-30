@@ -26,7 +26,7 @@
 import type { ViewerState } from '@/store';
 import { resolve as translate } from '@/i18n/registry';
 import { keepsFirstPiece } from '@/lib/split-guid';
-import { pointInPoly, polyArea, type Pt } from '@/lib/space-sketch-geometry';
+import { pointInPoly, polyArea, type Pt } from '@/lib/rooms/plate-geometry';
 import { closeSplit, openSplit } from '@/store/slices/mutation-split';
 import type { LayoutFace } from './room-layout';
 import type { RoomLink } from './room-occupancy';

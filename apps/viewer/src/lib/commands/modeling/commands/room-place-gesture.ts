@@ -10,7 +10,7 @@
  * Draw: a free room outlined with the slab gesture — a rectangle from two
  * corners, or a polygon (Enter, a double-click or a click back on the first
  * corner closes it; Backspace drops the last).
- * Edit: reshape the storey's room layout (moved from Space Sketch): drag a
+ * Edit: reshape the storey's room layout : drag a
  * corner, cut a room between two points on its outline, and in Remove merge
  * two rooms across the wall between them or dissolve a corner. Each edit is
  * `action: 'edit'` with its `op`, one transaction.

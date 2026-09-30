@@ -11,7 +11,7 @@
 import type { ReactNode } from 'react';
 import { resolve as translate } from '@/i18n/registry';
 import { commitCommand, notifyCommandRefusal, updateCommandGesture } from '@/lib/commands/modeling/runtime';
-import { ensureSpaceWasm } from '@/lib/space-plate-session';
+import { ensureSpaceWasm } from '@/lib/rooms/space-wasm';
 import type { LayoutOp } from '@/lib/rooms/room-layout';
 import { rememberRoomGesture, type RoomAction, type RoomPlaceGesture } from '@/lib/commands/modeling/commands/room-place-gesture';
 

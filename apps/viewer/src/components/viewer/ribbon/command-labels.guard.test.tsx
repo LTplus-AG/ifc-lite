@@ -197,7 +197,7 @@ it('#5878 keyboard opening of the class filter emits one registered command even
   ]);
 });
 
-it('#5878 Author edit and Space Sketch execute through registered ribbon controls', (t) => {
+it('#5878 Author edit executes through a registered ribbon control; every kind is a Model command, so no free-standing create button remains (#6232)', (t) => {
   // Edit mode is the Model workspace (#6232), which opens on a loaded model.
   act(() => useViewerStore.setState({
     ...fixtureModels(fixtureModel('m')),
@@ -218,8 +218,10 @@ it('#5878 Author edit and Space Sketch execute through registered ribbon control
   };
   click(control('tool:edit-mode'));
   assert.equal(useViewerStore.getState().editEnabled, true);
-  click(control('author:space-sketch'));
-  assert.equal(useViewerStore.getState().activeTool, 'spaceSketch');
+  // The Model workspace's rail owns every kind: the ribbon's own author controls are only these.
+  const authorControls = [...container.querySelectorAll<HTMLButtonElement>('button[data-command-id^="author:"]')]
+    .map((b) => b.dataset.commandId).sort();
+  assert.deepEqual(authorControls, ['author:bulk-properties', 'author:import-data', 'author:redo', 'author:undo']);
   assert.equal(control('author:bulk-properties').dataset.commandTrigger, 'true');
   assert.equal(control('author:import-data').dataset.commandTrigger, 'true');
 });

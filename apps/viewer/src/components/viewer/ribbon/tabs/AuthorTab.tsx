@@ -10,10 +10,9 @@ import { hasWorkspaceHistory } from '@/lib/model-placement/history';
  * toolbar (viewer/commenter roles cannot unlock authoring).
  */
 
-import { Extension, SpaceSketch, AddElement, EditElement, EditProperty, ImportData, Undo, Redo, Appearance } from '@/icons';
+import { Extension, EditElement, EditProperty, ImportData, Undo, Redo, Appearance } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
-import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
 import { BulkPropertyEditor } from '../../BulkPropertyEditor';
 import { DataConnector } from '../../DataConnector';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
@@ -32,7 +31,6 @@ const EDIT_ACTIVE_CLASS = 'bg-overlay-accent-soft text-foreground ring-1 ring-in
 export function AuthorTab() {
   const { t } = useTranslation();
   const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
-  const activeTool = useViewerStore((state) => state.activeTool);
   // Edit mode is the Model workspace (#6232): this button enters and leaves it.
   const inModelWorkspace = useViewerStore((state) => state.editEnabled);
   // Collab role: editing is reserved for editor/admin. Derive from the
@@ -89,26 +87,6 @@ export function AuthorTab() {
           active={activeWorkspacePanels.has('appearance')}
           activeClassName={EDIT_ACTIVE_CLASS}
           commandContext={{ activateRightPanel: () => handleToggleRightPanel('appearance') }}
-        />
-        <RibbonCommandLargeButton
-          commandId="author:add-element-panel"
-          icon={AddElement}
-          active={activeWorkspacePanels.has('addElement')}
-          activeClassName={EDIT_ACTIVE_CLASS}
-          disabled={!canEditInSession}
-          commandContext={{ contextAction: () => handleToggleRightPanel('addElement') }}
-        />
-        {/* Space Sketch bakes IfcSpace entities; picking it flips edit
-            mode on via the AUTHORING_TOOLS rule in uiSlice, so it can
-            stay visible (not hidden behind edit mode like the classic
-            toolbar) — the ribbon has room for stable geography. */}
-        <RibbonCommandLargeButton
-          commandId="author:space-sketch"
-          icon={SpaceSketch}
-          active={activeTool === 'spaceSketch'}
-          activeClassName={EDIT_ACTIVE_CLASS}
-          disabled={!canEditInSession}
-          {...tourAnchor(toolAnchor('spaceSketch'))}
         />
       </RibbonGroup>
 

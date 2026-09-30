@@ -4,7 +4,6 @@
 
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
-import { addElementEn } from './catalogues/add-element.en';
 import { analysisPanelEn } from './catalogues/analysis-panel.en';
 import { annotationsEn } from './catalogues/annotations.en';
 import { anonymizedExportEn } from './catalogues/anonymized-export.en';
@@ -81,7 +80,6 @@ import { sourcesEn } from './catalogues/sources.en';
 import { toursEn } from './catalogues/tours.en';
 import { viewerShellEn } from './catalogues/viewer-shell.en';
 import { viewportLightingEn } from './catalogues/viewport-lighting.en';
-import { spaceSketchEn } from './catalogues/space-sketch.en';
 import { splitToolEn } from './catalogues/split-tool.en';
 import { modelingCommandEn } from './catalogues/modeling-command.en';
 import { modelWorkspaceEn } from './catalogues/model-workspace.en';
@@ -103,7 +101,6 @@ import { zonesPanelEn } from './catalogues/zones-panel.en';
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
   ...analysisPanelEn,
-  ...addElementEn,
   ...annotationsEn,
   ...anonymizedExportEn,
   ...exportDialogEn,
@@ -137,7 +134,6 @@ export const en = {
   ...shellChromeEn,
   ...measureEn,
   ...mutationPermissionEn,
-  ...spaceSketchEn,
   ...splitToolEn,
   ...modelingCommandEn,
   ...modelWorkspaceEn,

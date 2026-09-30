@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `room.place` (charter #6232 M4): the Room tool, which supersedes Space
- * Sketch and the Add Element panel's Auto Spaces.
+ * `room.place` (charter #6232 M4): the Room tool, the one way the viewer makes
+ * an IfcSpace (draw, pick, Auto, edit, footprint, leak check).
  *
  * The storey's rooms are the faces of its room layout, the wasm DCEL built
  * from its walls (decision D4, `lib/rooms/storey-rooms.ts`). Pick mode
@@ -22,12 +22,12 @@
 import { RoomPlaceBar } from '@/components/viewer/tools/command/RoomPlaceBar';
 import { RoomPlacePlan, RoomPlaceScene } from '@/components/viewer/tools/command/RoomPlaceLayers';
 import { resolve as translate } from '@/i18n/registry';
-import { ensureSpaceWasm } from '@/lib/space-plate-session';
+import { ensureSpaceWasm } from '@/lib/rooms/space-wasm';
 import { roomAt, roomOutline, sessionRooms, storeyRooms, storeySpaceFootprints, storeyWalls, type RoomCandidate } from '@/lib/rooms/storey-rooms';
 import { addRoom, candidateRoom, selectedRooms, updateRoomOutline } from '@/lib/rooms/room-writes';
 import { storeyFootprintFace } from '@/lib/rooms/storey-footprint';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
-import { polyArea } from '@/lib/space-sketch-geometry';
+import { polyArea } from '@/lib/rooms/plate-geometry';
 import type { ViewerState } from '@/store';
 import { commandGhostId } from '../ghost.js';
 import { prismGhostMesh } from '../ghost-shapes.js';

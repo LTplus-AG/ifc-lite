@@ -25,7 +25,7 @@ export interface SelectionSlice {
    * The single storey the user is currently focused on, model-aware so
    * federated scenes with overlapping express-ids resolve the right one.
    * This is the shared "active storey" source of truth: the hierarchy sets
-   * it when a storey row is clicked, and Space Sketch, the Solo level-display
+   * it when a storey row is clicked, and the Room tool, the Solo level-display
    * mode, and the floorplan all read it — so picking a storey once makes
    * every storey-aware surface respect it (instead of each defaulting to its
    * own storey). Independent of `selectedStoreys` (which is the multi-select

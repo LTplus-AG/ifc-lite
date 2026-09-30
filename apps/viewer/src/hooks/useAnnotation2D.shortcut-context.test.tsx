@@ -11,13 +11,12 @@ import '@/test/setup-dom.js';
 
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act, useRef } from 'react';
+import { act, useEffect, useRef } from 'react';
 import { render, cleanup, press } from '@/test/render.js';
-import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
+import { KEYBOARD_PRIORITY, registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { useViewerStore } from '@/store';
 import { useAnnotation2D } from './useAnnotation2D.js';
 import { useMeasure2D } from './useMeasure2D.js';
-import { useSpaceSketchKeys } from '@/components/viewer/tools/space-sketch/useSpaceSketchKeys.js';
 
 const originalViewportTool = useViewerStore.getState().activeTool;
 
@@ -71,12 +70,13 @@ function MeasureProbe({ onCancel }: { onCancel: () => void }) {
   return <div ref={containerRef} />;
 }
 
-function SketchProbe({ onAbort }: { onAbort: () => void }) {
-  useSpaceSketchKeys({
-    undo: () => {}, redo: () => {}, closePopovers: () => false,
-    abortCurrentOp: () => { onAbort(); return true; }, closeNow: () => {},
-    needsConfirm: false, setStatus: () => {}, commitDraw: null, onModifiers: () => {},
-  });
+/** A mounted tool overlay's Escape: active while the measure tool is, at the overlay priority. */
+function OverlayProbe({ onAbort }: { onAbort: () => void }) {
+  useEffect(() => registerKeyboardCommand('measure.cancel', () => { onAbort(); },
+    {
+      allowInTextEntry: true, ignoreModifiers: true, priority: KEYBOARD_PRIORITY.activeOverlay,
+      active: () => useViewerStore.getState().activeTool === 'measure',
+    }), [onAbort]);
   return null;
 }
 
@@ -179,12 +179,12 @@ describe('useAnnotation2D — Delete respects the focused widget (#5596)', () =>
     assert.equal(useViewerStore.getState().measure2DStart, null);
   });
 
-  it('#5841 Space Sketch aborts before a persisted drawing selection clears', () => {
-    useViewerStore.setState({ activeTool: 'spaceSketch' });
+  it('#5841 an active tool overlay aborts before a persisted drawing selection clears', () => {
+    useViewerStore.setState({ activeTool: 'measure' });
     let deselections = 0;
     let aborts = 0;
     render(<><Probe onDelete={() => {}} onDeselect={() => { deselections++; }} />
-      <SketchProbe onAbort={() => { aborts++; }} /></>);
+      <OverlayProbe onAbort={() => { aborts++; }} /></>);
     press(window, 'Escape');
     assert.equal(aborts, 1, 'the active overlay owns its first Escape');
     assert.equal(deselections, 0, 'the background drawing selection remains intact');

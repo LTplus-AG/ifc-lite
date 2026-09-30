@@ -32,7 +32,7 @@ import { commandKind } from '../authored-kinds.js';
 import { ROOM_PLACE } from './room-place.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import type { SnapResult, Vec2 } from '@/lib/snap/types';
-import { ensureSpaceWasm } from '@/lib/space-plate-session';
+import { ensureSpaceWasm } from '@/lib/rooms/space-wasm';
 import { clearStoreyRoomsCache, roomCandidatesFromRects, storeyWallRects } from '@/lib/rooms/storey-rooms';
 import { runRoomAction } from '@/components/viewer/tools/command/RoomPlaceBar';
 import '../builtin.js';

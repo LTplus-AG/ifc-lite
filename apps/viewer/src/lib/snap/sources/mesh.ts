@@ -10,7 +10,7 @@
  * and needs the held edge lock fed back every move. This source owns that
  * round-trip: it passes the current lock in, then applies the result's
  * lock / release exactly as `pickMeasurePoint` does, so a command using the
- * engine keeps the same feel as measure and add-element.
+ * engine keeps the same feel as measure and the Model workspace commands.
  *
  * The raycast itself is injected (`pick`), bound by the caller to the current
  * pointer, so this module stays free of the DOM and the GPU.

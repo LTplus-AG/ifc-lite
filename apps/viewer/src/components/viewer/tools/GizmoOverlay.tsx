@@ -11,7 +11,7 @@
  * Render conditions:
  *   - `editEnabled` is on
  *   - `activeTool === 'select'` (so the gizmo doesn't fight measure /
- *     section / addElement)
+ *     section)
  *   - exactly one entity is selected
  *   - the selection has a placement chain that can be translated
  *     (`resolvePlacementChain` returns non-null)

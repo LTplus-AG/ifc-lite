@@ -29,7 +29,7 @@ export interface PointerModifiers { shiftKey: boolean; altKey: boolean; detail?:
 export const NO_MODIFIERS: PointerModifiers = { shiftKey: false, altKey: false };
 
 export function profileOf(command: ModelingCommand): SnapProfile {
-  // Space Sketch's profile arrives with WP3 PR3.2; every command today snaps as 'modeling'.
+  // Every command today snaps as 'modeling'.
   return typeof command.snap === 'string' ? MODELING_SNAP_PROFILE : command.snap;
 }
 

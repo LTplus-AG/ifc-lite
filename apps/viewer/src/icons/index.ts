@@ -55,8 +55,6 @@ export { default as Schedule } from '~icons/viewer/schedule';
 export { default as Chart } from '~icons/viewer/chart';
 export { default as Document } from '~icons/viewer/document';
 export { default as Extension } from '~icons/viewer/extension';
-export { default as SpaceSketch } from '~icons/viewer/space-sketch';
-export { default as AddElement } from '~icons/viewer/add-element';
 export { default as EditElement } from '~icons/viewer/edit-element';
 export { default as ImportData } from '~icons/viewer/import-data';
 export { default as EditProperty } from '~icons/viewer/edit-property';

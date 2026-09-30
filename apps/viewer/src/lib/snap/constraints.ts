@@ -7,7 +7,7 @@
  * query into one locus (typed length → circle, angle → ray, axis/ortho → line,
  * two of them → point) and projects points and candidates onto it.
  *
- * Generalises the Space Sketch `snapAlongOrtho`: under a linear lock a point
+ * Generalises the plan editor's ortho snap: under a linear lock a point
  * target aligns ALONG the lock (orthogonal projection) and an edge target
  * snaps to where the lock crosses it. The result can never leave the lock.
  */
@@ -36,7 +36,7 @@ function unitAt(deg: number): Vec2 {
 
 /**
  * Direction from `anchor` towards `cursor`, quantised to `stepDeg`. 90° uses the
- * Space Sketch |dx| ≥ |dy| rule, and so does any step that cannot quantise
+ * |dx| ≥ |dy| rule, and so does any step that cannot quantise
  * (non-finite, non-positive, or so small that deg / step overflows).
  */
 function quantisedDir(cursor: Vec2, anchor: Vec2, stepDeg: number): Vec2 {

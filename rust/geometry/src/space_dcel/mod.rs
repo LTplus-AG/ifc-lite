@@ -4,7 +4,7 @@
 
 //! # Persistent, editable space topology (DCEL)
 //!
-//! This is the Rust core of the interactive space-sketch editor. It does
+//! This is the Rust core of the Room tool's interactive room layout. It does
 //! what the one-shot TS `auto-space-detect` pipeline does — turn a set of
 //! 2D wall-axis segments into the enclosed room faces of a floor plate —
 //! but instead of building a half-edge graph, walking it once, and

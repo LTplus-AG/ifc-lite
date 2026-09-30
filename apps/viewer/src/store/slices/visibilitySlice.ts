@@ -26,7 +26,7 @@ import {
  * ## These two channels are shared, and every write of them is invalidating
  *
  * `isolatedEntities` / `ghostExceptEntities` are shared by clash, IDS,
- * "Isolate in 3D", assembly isolation, `LayerDiffView`, Space Sketch, BCF, the
+ * "Isolate in 3D", assembly isolation, `LayerDiffView`, BCF, the
  * basket and `syncSourceModel`. Features record what they installed so they
  * can release only that, and a record left behind after ANOTHER owner replaced
  * the channel starts matching again the moment a third owner installs equal
@@ -126,7 +126,7 @@ export interface VisibilitySlice {
    *
    *  - `classFilter` is left alone. The replay reached `setHiddenEntities`
    *    whenever anything was hidden, and that setter nulls the class filter, so
-   *    closing Space Sketch used to drop a Class-tab filter the tool never
+   *    closing a view-snapshot tool used to drop a Class-tab filter it never
    *    touched.
    *  - a captured ISOLATION now survives a non-empty captured hidden set. The
    *    replay restored the isolation and then `setHiddenEntities` nulled it

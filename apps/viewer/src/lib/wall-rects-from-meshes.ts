@@ -19,8 +19,7 @@
  * wall faces to ~1 mm (measured), because they ARE the rendered faces.
  *
  * Frame: the rendered meshes are WebGL Y-up (`world = origin + position`). The
- * plan footprint is render XZ; we map it to the same "room frame" the underlay
- * uses (`useConstructionUnderlay`), which is the model's OWN IFC frame —
+ * plan footprint is render XZ; we map it to the "room frame", which is the model's OWN IFC frame —
  * `ifcX = renderX + shift.x`, `ifcY = −renderZ − shift.z`.
  *
  * NOT the georeferenced world frame. `wasmRtcOffset` is the offset the WASM
@@ -43,7 +42,7 @@
  * the same frame the rendered geometry is in.
  *
  * The one consumer that DOES need the file's own placement-chain coordinates
- * — the Space Sketch bake, which divides the storey chain out of the outline
+ * — the Room tool's space writer, which divides the storey chain out of the outline
  * before `addSpace` (#4503) — gets the survey anchor back explicitly through
  * `roomFrameToModelWorld`, so the room frame stays local here and the bake
  * still folds through the right frame.

@@ -14,7 +14,7 @@
  *
  * The command bars' typed fields and the inspector's defaults mode read and
  * write here, so the two always agree. Today `wall.place` / `wall.moveEndpoint`
- * read the wall's thickness and height, which the Add Element panel edits.
+ * read the wall's thickness and height, which the Model inspector edits.
  */
 
 import type { StateCreator } from 'zustand';

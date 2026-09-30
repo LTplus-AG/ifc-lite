@@ -6,7 +6,7 @@
  * The Room tool's editable room layout per storey (charter #6232 M4): the
  * wasm DCEL (`SpacePlateHandle.fromWallRects`) built from the storey's walls,
  * which the tool's Edit mode reshapes with the plate's own topology ops —
- * the ones Space Sketch drove (`dragVertex`, `splitEdge` + `splitFace`,
+ * the ones the tool drives (`dragVertex`, `splitEdge` + `splitFace`,
  * `mergeFaces`, `removeEdge`, `dissolveVertex`, `prune`).
  *
  * The model is the truth; the layout follows it. An edit writes the rooms it
@@ -27,8 +27,8 @@
 import { SpacePlateHandle } from '@ifc-lite/wasm';
 import type { ViewerState } from '@/store';
 import { editError } from '@/lib/space-edit-error';
-import { distToSeg, type Pt } from '@/lib/space-sketch-geometry';
-import type { Room, Boundary } from '@/lib/space-plate-session';
+import { distToSeg, type Pt } from '@/lib/rooms/plate-geometry';
+import type { Room, Boundary } from '@/lib/rooms/space-wasm';
 
 /** Default corner weld (m): rectangle corners closer than this are one node. */
 export const DEFAULT_WELD = 0.05;
@@ -240,7 +240,7 @@ function cutNode(h: SpacePlateHandle, p: At, tol: number): { v: number; at: Pt }
 }
 
 /**
- * Run `op` on `h` (Space Sketch's gestures, as plate calls). Throws the
+ * Run `op` on `h` (the Edit gestures, as plate calls). Throws the
  * engine's refusal (`editError` reads it). Returns false when nothing changed.
  */
 export function applyLayoutOp(h: SpacePlateHandle, op: LayoutOp, tol: number): boolean {

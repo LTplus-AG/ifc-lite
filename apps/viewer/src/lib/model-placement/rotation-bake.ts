@@ -54,7 +54,7 @@
  * THE COROLLARY FOR AUTHORING: a mesh appended to a rotated model must be in
  * the model's own UNROTATED frame, exactly like a streamed batch, because it
  * will be turned once on arrival. A mesh built from IFC parameters already is
- * (add-element, and the wall / slab split, which rebuild their halves through
+ * (a new authored element, and the wall / slab split, which rebuild their halves through
  * `addWall` / `addSlab`). A mesh DERIVED from live vertices is not: those are
  * baked. Such a path reads its source through {@link ModelRotationBaker.inModelFrame}
  * rather than the live mesh — a copy of the live bytes would be turned twice.

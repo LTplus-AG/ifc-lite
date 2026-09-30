@@ -30,7 +30,6 @@ import { useColorOverlaySync } from '@/components/viewer/useColorOverlaySync.js'
 import { useIDS, type UseIDSResult } from '@/hooks/useIDS.js';
 import { useClash } from '@/hooks/useClash.js';
 import { installIdsFocusVisibility } from '@/hooks/ids-focus-visibility.js';
-import { useSpaceSceneFraming } from '@/components/viewer/tools/space-sketch/useSpaceSceneFraming.js';
 import { modelOverviewDashboard, newChartSpec } from '@/lib/charts/presets.js';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
@@ -701,11 +700,21 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.equal(s.chartVisibilityOwned?.channel, 'isolate');
   });
 
-  it('re-presents after Space Sketch captures and restores the chart-owned ghost (#4832)', async () => {
+  it('re-presents after a view snapshot flow captures and restores the chart-owned ghost (#4832)', async () => {
     const { renderer, charts } = recordingRenderer();
+    /** A tool that captures the prior 3D view on open and replays it on close (cloned sets, one atomic restore). */
     function MountedSpaceChart() {
       const [spaceOpen, setSpaceOpen] = useState(false);
-      useSpaceSceneFraming({ enabled: spaceOpen, existingSpaceIds: [] });
+      useEffect(() => {
+        if (!spaceOpen) return;
+        const now = useViewerStore.getState();
+        const prior = {
+          isolated: now.isolatedEntities ? new Set(now.isolatedEntities) : null,
+          ghostExcept: now.ghostExceptEntities ? new Set(now.ghostExceptEntities) : null,
+          hidden: new Set(now.hiddenEntities),
+        };
+        return () => useViewerStore.getState().restoreVisibilityState(prior);
+      }, [spaceOpen]);
       return <>
         <button type="button" onClick={() => setSpaceOpen((open) => !open)}>Space</button>
         <ChartsPanel renderer={renderer} />
@@ -725,7 +734,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
     assert.notEqual(
       replayed.chartVisibilityRevision,
       replayed.visibilityRevision,
-      'the real Space Sketch restore is a content-preserving foreign replay',
+      'the snapshot restore is a content-preserving foreign replay',
     );
 
     const focus = ui.querySelector<HTMLSelectElement>('select[aria-label="Focus mode"]')!;

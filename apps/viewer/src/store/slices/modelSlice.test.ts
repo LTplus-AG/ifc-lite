@@ -27,8 +27,6 @@ interface ModelHarnessCrossState {
   ifcDataStore: IfcDataStore | null;
   geometryResult: GeometryResult | null;
   meshColorBackup: Map<number, [number, number, number, number]> | null;
-  addElementModelId: string | null;
-  addElementStoreyId: number | null;
   selectedEntityId: number | null;
   selectedEntityIds: Set<number>;
   selectedStoreys: Set<number>;
@@ -131,8 +129,6 @@ describe('ModelSlice', () => {
       ifcDataStore: null,
       geometryResult: null,
       meshColorBackup: null,
-      addElementModelId: null,
-      addElementStoreyId: null,
       selectedEntityId: null,
       selectedEntityIds: new Set(),
       selectedStoreys: new Set(),
@@ -634,35 +630,6 @@ describe('ModelSlice', () => {
       });
     });
 
-    it('clears the AddElement panel pin when it names the removed model', () => {
-      // addElementSlice's `addElementModelId` / `addElementStoreyId` name a
-      // specific federated model the panel is pinned to (set via its Model
-      // dropdown). Nothing else clears it, so a stale pin survives removal
-      // and the panel keeps naming a model no longer in `models` — the same
-      // shape as the selection-purge tests above, on a different slice.
-      state.addModel(createMockModel('model-1', 'First'));
-      state.addModel(createMockModel('model-2', 'Second'));
-      Object.assign(state, { addElementModelId: 'model-1', addElementStoreyId: 42 });
-
-      state.removeModel('model-1');
-
-      const after = state as unknown as { addElementModelId: string | null; addElementStoreyId: number | null };
-      assert.strictEqual(after.addElementModelId, null);
-      assert.strictEqual(after.addElementStoreyId, null);
-    });
-
-    it('leaves the AddElement panel pin untouched when it names a surviving model', () => {
-      state.addModel(createMockModel('model-1', 'First'));
-      state.addModel(createMockModel('model-2', 'Second'));
-      Object.assign(state, { addElementModelId: 'model-2', addElementStoreyId: 7 });
-
-      state.removeModel('model-1');
-
-      const after = state as unknown as { addElementModelId: string | null; addElementStoreyId: number | null };
-      assert.strictEqual(after.addElementModelId, 'model-2');
-      assert.strictEqual(after.addElementStoreyId, 7);
-    });
-
     describe('global-id state (selection sets / hidden / isolated / ghost / class filter)', () => {
       // `syncSourceModel.ts`'s second model-removed purge already purges these
       // exact fields on the same-modelId resync path (comment above this
@@ -803,17 +770,6 @@ describe('ModelSlice', () => {
 
       assert.strictEqual(state.models.size, 0);
       assert.strictEqual(state.activeModelId, null);
-    });
-
-    it('clears the AddElement panel pin along with every model', () => {
-      state.addModel(createMockModel('model-1', 'First'));
-      Object.assign(state, { addElementModelId: 'model-1', addElementStoreyId: 5 });
-
-      state.clearAllModels();
-
-      const after = state as unknown as { addElementModelId: string | null; addElementStoreyId: number | null };
-      assert.strictEqual(after.addElementModelId, null);
-      assert.strictEqual(after.addElementStoreyId, null);
     });
 
     it('clears every global-id set (isolate/ghost/hidden/selection/class filter) unconditionally', () => {

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The Room tool's Space Sketch parity (charter #6232 M4, lane A4b), through
+ * The Room tool's layout editing (charter #6232 M4, lane A4b), through
  * the REAL wasm DCEL and the in-store builders:
  *
  *   - Edit: drag a corner (both rooms follow), cut a room in two, merge two
@@ -29,7 +29,7 @@ import { blur, cleanup, render, type as typeInto } from '@/test/render.js';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { BOX, authoredSpaces, corners, ensureRoomWasm, r3, setWallMeshes, spaceQuantity, type Wall } from '@/test/room-walls-fixture';
 import type { SnapResult } from '@/lib/snap/types';
-import { ensureSpaceWasm } from '@/lib/space-plate-session';
+import { ensureSpaceWasm } from '@/lib/rooms/space-wasm';
 import { clearStoreyRoomsCache, sessionRooms } from '@/lib/rooms/storey-rooms';
 import { runRoomAction } from '@/components/viewer/tools/command/RoomPlaceBar';
 import { RoomPlacePlan } from '@/components/viewer/tools/command/RoomPlaceLayers';

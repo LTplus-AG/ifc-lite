@@ -24,14 +24,13 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { Clash, ClashRule } from '@ifc-lite/clash';
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { useClash } from './useClash.js';
-import { useSpaceSceneFraming } from '@/components/viewer/tools/space-sketch/useSpaceSceneFraming.js';
 
 // ─── Fixture: two walls, meshed as overlapping unit boxes ───────────────────
 
@@ -253,44 +252,52 @@ describe('clash runs release only clash-owned view state (#2574 regression)', ()
 
 // ─── Snapshot/restore flows must not launder clash-owned state (#2662 P2) ───
 //
-// Space Sketch captures the prior 3D view on open and replays it on close
-// (`useSpaceSceneFraming`): it CLONES `isolatedEntities`/`ghostExceptEntities`
-// and restores them through the slice setters, which store a fresh `Set` per
-// write. The restored state is still the old clash presentation, but its
+// A tool that captures the prior 3D view on open and replays it on close (the
+// anonymized-export preview does): it CLONES `isolatedEntities` /
+// `ghostExceptEntities` and restores them through the slice's atomic
+// `restoreVisibilityState`, which stores a fresh `Set` per write. The restored state is still the old clash presentation, but its
 // reference no longer matches anything clash recorded - under reference-based
 // provenance the next run() replaced the clash result while leaving the old
 // focused pair isolated/ghosted. Ownership must survive an equivalent restore.
 
-/** Mounts the REAL Space Sketch scene-framing hook - the same code the tool
- *  runs on open (capture prior view) and on close/unmount (restore it). */
+/** Mounts a snapshot/restore probe: it captures the prior view on open and
+ *  restores it on close/unmount, the way such a tool does. */
 function FramingProbe(): null {
-  useSpaceSceneFraming({ enabled: true, existingSpaceIds: [] });
+  useEffect(() => {
+    const now = useViewerStore.getState();
+    const prior = {
+      isolated: now.isolatedEntities ? new Set(now.isolatedEntities) : null,
+      ghostExcept: now.ghostExceptEntities ? new Set(now.ghostExceptEntities) : null,
+      hidden: new Set(now.hiddenEntities),
+    };
+    return () => useViewerStore.getState().restoreVisibilityState(prior);
+  }, []);
   return null;
 }
 
-/** Open Space Sketch, then close it: the unmount cleanup replays the captured
- *  prior view through the cloning visibility setters. */
-async function openAndCloseSpaceSketch(): Promise<void> {
+/** Open the snapshot tool, then close it: the unmount cleanup replays the
+ *  captured prior view through the cloning restore. */
+async function openAndCloseSnapshotTool(): Promise<void> {
   const container = document.createElement('div');
   document.body.appendChild(container);
-  const sketchRoot = createRoot(container);
-  await act(async () => { sketchRoot.render(<FramingProbe />); });
-  await act(async () => sketchRoot.unmount());
+  const snapshotRoot = createRoot(container);
+  await act(async () => { snapshotRoot.render(<FramingProbe />); });
+  await act(async () => snapshotRoot.unmount());
   container.remove();
 }
 
-describe('clash focus ownership survives Space Sketch snapshot/restore (#2662 P2)', () => {
-  it('clash ISOLATE focus restored by a Space Sketch open/close is still discarded by the next run()', async () => {
+describe('clash focus ownership survives snapshot/restore (#2662 P2)', () => {
+  it('clash ISOLATE focus restored by a snapshot tool open/close is still discarded by the next run()', async () => {
     await seed();
     await act(async () => { api!.focusClash(CLASH, 'isolate'); });
     assert.deepEqual([...(useViewerStore.getState().isolatedEntities ?? [])].sort(), [1, 2],
       'setup sanity: focusClash installed the pair isolation');
     const installed = useViewerStore.getState().isolatedEntities;
 
-    await openAndCloseSpaceSketch();
+    await openAndCloseSnapshotTool();
     const restored = useViewerStore.getState().isolatedEntities;
     assert.deepEqual([...(restored ?? [])].sort(), [1, 2],
-      'setup sanity: closing Space Sketch restored the clash isolation');
+      'setup sanity: closing the snapshot tool restored the clash isolation');
     assert.notEqual(restored, installed,
       'setup sanity: the restore replaced the Set identity (the flow under test)');
 
@@ -300,17 +307,17 @@ describe('clash focus ownership survives Space Sketch snapshot/restore (#2662 P2
       'the restored presentation is still the clash focus and must be released by a new run');
   });
 
-  it('clash GHOST focus restored by a Space Sketch open/close is still discarded by the next runDuplicates()', async () => {
+  it('clash GHOST focus restored by a snapshot tool open/close is still discarded by the next runDuplicates()', async () => {
     await seed();
     await act(async () => { api!.focusClash(CLASH, 'ghost'); });
     assert.deepEqual([...(useViewerStore.getState().ghostExceptEntities ?? [])].sort(), [1, 2],
       'setup sanity: focusClash installed the pair ghost');
     const installed = useViewerStore.getState().ghostExceptEntities;
 
-    await openAndCloseSpaceSketch();
+    await openAndCloseSnapshotTool();
     const restored = useViewerStore.getState().ghostExceptEntities;
     assert.deepEqual([...(restored ?? [])].sort(), [1, 2],
-      'setup sanity: closing Space Sketch restored the clash ghost');
+      'setup sanity: closing the snapshot tool restored the clash ghost');
     assert.notEqual(restored, installed,
       'setup sanity: the restore replaced the Set identity (the flow under test)');
 

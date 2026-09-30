@@ -114,7 +114,6 @@ export const shellChromeEn = {
   'shellChrome.layout.openPanelsAriaLabel': 'Open the panel list',
   'shellChrome.layout.closePanelListAriaLabel': 'Close the panel list',
   'shellChrome.layout.analysisFallback': 'Analysis',
-  'shellChrome.layout.addElementLabel': 'Add element',
   'shellChrome.layout.dragToResizeAriaLabel': 'Drag to resize or dismiss',
 
   // StatusBar.tsx

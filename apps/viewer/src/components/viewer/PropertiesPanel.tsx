@@ -143,7 +143,7 @@ export function PropertiesPanel() {
   // Inline property editing is gated by the global edit-mode pill in
   // the main toolbar (see `uiSlice.editEnabled`). Reading it from the
   // store keeps every edit affordance — properties, attributes,
-  // geometry manipulators, georeference placement, add-element draw
+  // geometry manipulators, georeference placement, the Model workspace's draw
   // tools — behind a single switch.
   const editEnabled = useViewerStore((s) => s.editEnabled);
   const collabRole = useViewerStore((s) => s.collabRole);

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `room.place`'s Edit mode (charter #6232 M4): Space Sketch's layout
+ * `room.place`'s Edit mode (charter #6232 M4): the room layout
  * gestures on the command framework, in the plan and in 3D alike.
  *
  *   Move / cut: a corner is grabbed on press and dropped on release after a

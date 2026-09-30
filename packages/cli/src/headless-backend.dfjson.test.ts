@@ -7,7 +7,7 @@
  *
  * DFJSON shipped reading `store.source` directly, so it carried the whole of
  * issue #1908 unfixed: anything authored through the in-store edit APIs (the
- * CLI equivalent of the viewer's Space Sketch tool) was invisible to the
+ * CLI equivalent of the viewer's Room tool) was invisible to the
  * Dragonfly exporter by construction, exactly as HBJSON was before #1956.
  * Both formats now share the gate in `energy-export.ts`, and this file pins
  * the DFJSON half of that contract independently — a shared helper means a

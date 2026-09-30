@@ -123,7 +123,7 @@ describe('addSpaceToStore', () => {
 
   // OwnerHistory is OPTIONAL from IFC4 onward — minimal files (including
   // ifc-lite's own exports) omit it entirely. The bake must still work,
-  // emitting `$` instead of failing anchor resolution (the Space Sketch
+  // emitting `$` instead of failing anchor resolution (the Room tool
   // tool silently lost every baked space on such files).
   it('emits $ OwnerHistory when the model has none', () => {
     const view = new MutablePropertyView(null, 'm1');

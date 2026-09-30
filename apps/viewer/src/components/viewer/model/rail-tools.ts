@@ -11,7 +11,7 @@
  */
 
 import type { ComponentType } from 'react';
-import { CopyPlus, LogOut, MousePointer2, Move, RotateCw, ScissorsLineDashed, Slice } from 'lucide-react';
+import { ArrowRightToLine, CopyPlus, LogOut, MousePointer2, Move, RotateCw, ScissorsLineDashed, Slice } from 'lucide-react';
 import { BeamIcon, ColumnIcon, DoorIcon, OpeningIcon, RoomIcon, SlabIcon, WallIcon, WindowIcon } from './model-icons';
 import { RailingIcon, StairIcon } from './stair-railing-icons';
 import type { TranslationKey } from '@/i18n';
@@ -126,6 +126,12 @@ export const RAIL_TOOLS: readonly RailTool[] = [
     shortcut: 'model.splitMulti', drawsOnWorkplane: true,
     isActive: commandActive('split.multi'),
     run: () => { launchModelCommand('split.multi'); },
+  },
+  {
+    id: 'element.trimExtend', group: 'edit', labelKey: 'trimExtend.tool', Icon: ArrowRightToLine,
+    shortcut: 'model.trimExtend', drawsOnWorkplane: true,
+    isActive: commandActive('element.trimExtend'),
+    run: () => { launchModelCommand('element.trimExtend'); },
   },
   {
     id: 'stair.place', group: 'circulation', labelKey: 'stairRailing.tool.stair', Icon: StairIcon,

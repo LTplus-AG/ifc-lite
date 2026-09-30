@@ -6,7 +6,7 @@ import { optionalLocalStorage, preserveUnreadableEntry } from './unreadable-entr
 import { saveJson, type SaveResult } from './save-result';
 
 export type SavedHistoryIssue = 'recovered' | 'blocked' | 'unavailable';
-export type SavedHistorySave = SaveResult & { issue: SavedHistoryIssue | null };
+export type SavedHistorySave<T> = SaveResult & { issue: SavedHistoryIssue | null; entries: T[] };
 export interface SavedHistoryRead<T> {
   entries: T[];
   issue: SavedHistoryIssue | null;
@@ -17,20 +17,23 @@ export function createSavedHistoryStorage<T extends { id: string }>(
   key: string,
   isEntry: (value: unknown) => value is T,
   subject: string,
-): { read: () => SavedHistoryRead<T>; save: (entries: readonly T[]) => SavedHistorySave } {
+): { read: () => SavedHistoryRead<T>; save: (entries: readonly T[]) => SavedHistorySave<T> } {
+  let inspectionUnavailable = false;
   const unavailable = (): SaveResult => ({
     ok: false, reason: 'unavailable', message: `Browser storage is unavailable — ${subject} were not saved.`,
   });
   const read = (): SavedHistoryRead<T> => {
     const storage = optionalLocalStorage();
-    if (!storage) return { entries: [], issue: 'unavailable' };
+    if (!storage) { inspectionUnavailable = true; return { entries: [], issue: 'unavailable' }; }
     let raw: string | null;
     try {
       raw = storage.getItem(key);
     } catch (error) {
+      inspectionUnavailable = true;
       console.warn(`[ifc-lite] Could not read ${subject}.`, error);
       return { entries: [], issue: 'unavailable' };
     }
+    inspectionUnavailable = false;
     if (raw === null) return { entries: [], issue: null };
     const entries: T[] = [];
     let cause: unknown;
@@ -64,10 +67,18 @@ export function createSavedHistoryStorage<T extends { id: string }>(
     save: (entries) => {
       // Inspect again before every write: another tab may have replaced the
       // entry, or storage may have become available since initialization.
+      const previouslyUnavailable = inspectionUnavailable;
       const current = read();
-      if (current.issue === 'blocked' || current.issue === 'unavailable') return { ...unavailable(), issue: current.issue };
-      const result = saveJson(key, entries, subject);
-      return { ...result, issue: result.ok ? current.issue : 'unavailable' };
+      if (current.issue === 'blocked' || current.issue === 'unavailable') return { ...unavailable(), issue: current.issue, entries: [...entries] };
+      // A failed initial inspection cannot authorize replacing valid reports
+      // that become readable later. Incoming edits win matching ids; ordinary
+      // writes after a complete read still support explicit deletions.
+      const retained = new Map(previouslyUnavailable ? current.entries.map((entry) => [entry.id, entry]) : []);
+      for (const entry of entries) retained.set(entry.id, entry);
+      const saved = [...retained.values()];
+      const result = saveJson(key, saved, subject);
+      if (!result.ok && previouslyUnavailable) inspectionUnavailable = true;
+      return { ...result, issue: result.ok ? current.issue : 'unavailable', entries: saved };
     },
   };
 }

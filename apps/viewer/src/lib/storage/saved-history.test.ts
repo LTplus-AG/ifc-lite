@@ -65,8 +65,8 @@ describe('saved history recovery (#6506, #6500)', () => {
     assert.equal(store.save([{ id: 'replacement', value: 9 }]).issue, 'blocked');
     assert.equal(data.get('history'), bytes);
     blocked.clear();
-    assert.deepEqual(store.save([{ id: 'replacement', value: 9 }]), { ok: true, issue: 'recovered' });
-    assert.deepEqual(store.save([{ id: 'replacement', value: 10 }]), { ok: true, issue: null });
+    assert.deepEqual(store.save([{ id: 'replacement', value: 9 }]), { ok: true, issue: 'recovered', entries: [{ id: 'replacement', value: 9 }] });
+    assert.deepEqual(store.save([{ id: 'replacement', value: 10 }]), { ok: true, issue: null, entries: [{ id: 'replacement', value: 10 }] });
     assert.equal(data.get('history:unreadable'), bytes);
     assert.deepEqual(history().read().entries, [{ id: 'replacement', value: 10 }]);
   });
@@ -90,9 +90,23 @@ describe('saved history recovery (#6506, #6500)', () => {
   it('reports recovery when external corruption is archived during an ordinary save', () => {
     const store = history(); store.read();
     data.set('history', 'cross-tab corrupt bytes');
-    assert.deepEqual(store.save([{ id: 'new', value: 1 }]), { ok: true, issue: 'recovered' });
+    assert.deepEqual(store.save([{ id: 'new', value: 1 }]), { ok: true, issue: 'recovered', entries: [{ id: 'new', value: 1 }] });
     assert.equal(data.get('history:unreadable'), 'cross-tab corrupt bytes');
-    assert.deepEqual(store.save([{ id: 'new', value: 2 }]), { ok: true, issue: null });
+    assert.deepEqual(store.save([{ id: 'new', value: 2 }]), { ok: true, issue: null, entries: [{ id: 'new', value: 2 }] });
+  });
+  it('retains newly readable neighbours after an unavailable initial read while normal deletes still work', () => {
+    data.set('history', '[{"id":"old","value":1}]');
+    unreadable = true;
+    const store = history();
+    assert.equal(store.read().issue, 'unavailable');
+    unreadable = false;
+    const outcome = store.save([{ id: 'new', value: 2 }]);
+    assert.equal(outcome.ok, true);
+    assert.deepEqual(outcome.entries, [{ id: 'old', value: 1 }, { id: 'new', value: 2 }]);
+    assert.deepEqual(history().read().entries, outcome.entries);
+    const deleted = store.save([{ id: 'new', value: 2 }]);
+    assert.deepEqual(deleted.entries, [{ id: 'new', value: 2 }]);
+    assert.deepEqual(history().read().entries, deleted.entries);
   });
   it('checks external corruption before a later save rather than trusting the initial read', () => {
     const store = history(); assert.equal(store.read().issue, null);

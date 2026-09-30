@@ -1,0 +1,107 @@
+{
+  "observer": "tests",
+  "baseline": {
+    "kind": "pass",
+    "passed": 7,
+    "total": 7
+  },
+  "reverted": {
+    "kind": "assertion-failure",
+    "passed": 5,
+    "failed": 3,
+    "total": 8,
+    "evidence": []
+  },
+  "ledger": [
+    {
+      "file": "rust/geometry/src/router/voids/batch_miss_tests.rs",
+      "role": "executable",
+      "runKey": "cargo:ifc-lite-geometry:router::voids::batch_cutter::tests+opening-perf-trace",
+      "adapter": "cargo",
+      "runner": {
+        "family": "cargo",
+        "command": [
+          "cargo",
+          "test",
+          "--no-fail-fast",
+          "-p",
+          "ifc-lite-geometry",
+          "--lib",
+          "--features",
+          "opening-perf-trace",
+          "--",
+          "router::voids::batch_cutter::tests::"
+        ]
+      },
+      "features": [
+        "opening-perf-trace"
+      ],
+      "attribution": "cargo-module-filter",
+      "baseline": {
+        "kind": "pass",
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)",
+        "attributed": true,
+        "files": [
+          "rust/geometry/src/router/voids/batch_miss_tests.rs"
+        ],
+        "testIdentities": [
+          "router::voids::batch_cutter::tests::conforming_disjoint_group_does_not_repeat_single_subtractions_6516",
+          "router::voids::batch_cutter::tests::exhausted_element_budget_does_not_turn_a_group_into_a_proven_miss_6516",
+          "router::voids::batch_cutter::tests::harmless_weld_preserves_the_sequential_kernel_operand_6516",
+          "router::voids::batch_cutter::tests::over_simplified_group_miss_keeps_the_retention_floor_fallback_6516",
+          "router::voids::batch_cutter::tests::retained_group_retessellation_preserves_a_later_real_cut_6516",
+          "router::voids::batch_cutter::tests::same_count_group_miss_keeps_the_single_miss_cleanup_contract_6516",
+          "router::voids::batch_cutter::tests::weld_across_a_kernel_snap_boundary_keeps_sequential_fallback_6516"
+        ],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 5,
+        "failed": 3,
+        "total": 8,
+        "exitCode": 101,
+        "signal": null,
+        "toolchain": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)",
+        "attributed": true,
+        "files": [
+          "rust/geometry/src/router/voids/batch_miss_tests.rs"
+        ],
+        "testIdentities": [
+          "router::voids::batch_cutter::tests::conforming_disjoint_group_does_not_repeat_single_subtractions_6516",
+          "router::voids::batch_cutter::tests::exhausted_element_budget_does_not_turn_a_group_into_a_proven_miss_6516",
+          "router::voids::batch_cutter::tests::harmless_weld_preserves_the_sequential_kernel_operand_6516",
+          "router::voids::batch_cutter::tests::over_simplified_group_miss_keeps_the_retention_floor_fallback_6516",
+          "router::voids::batch_cutter::tests::retained_group_retessellation_preserves_a_later_real_cut_6516",
+          "router::voids::batch_cutter::tests::same_count_group_miss_keeps_the_single_miss_cleanup_contract_6516",
+          "router::voids::batch_cutter::tests::weld_across_a_kernel_snap_boundary_keeps_sequential_fallback_6516"
+        ],
+        "evidence": []
+      }
+    }
+  ],
+  "schemaVersion": 2,
+  "channel": "pull-request",
+  "verdict": "OBSERVED",
+  "exitCode": 0,
+  "reason": "reverting production turned an assertion RED in rust/geometry/src/router/voids/batch_miss_tests.rs; that file has a green, attributable baseline.",
+  "base": "4c21fc0f0be652cb3e20b86c4f4bdc3e2c80ddbe",
+  "head": "0bdbfbbf7d4ca58ecf424fe9e84daed97dabbe86",
+  "production": [
+    "rust/geometry/src/csg/group_cut.rs"
+  ],
+  "tests": [
+    "rust/geometry/src/router/voids/batch_miss_tests.rs"
+  ],
+  "invocationId": "9b7f2483-6898-4a7a-9fb7-e6bbe759d576",
+  "timing": {
+    "startedAt": "2026-09-30T09:26:08.631Z",
+    "finishedAt": "2026-09-30T09:26:51.783Z"
+  },
+  "restoration": "verified"
+}

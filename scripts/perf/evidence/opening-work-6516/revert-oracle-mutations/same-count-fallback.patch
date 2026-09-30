@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/csg/group_cut.rs
++++ b/rust/geometry/src/csg/group_cut.rs
+@@ -208,7 +208,7 @@
+                     // Same-count single misses are discarded by mesh_to_keep.
+                     // Preserve that fallback/cleanup contract rather than
+                     // newly mutating the host from a same-count group miss.
+-                    if result.triangle_count() != host_mesh.triangle_count() || true {
++                    if result.triangle_count() != host_mesh.triangle_count() {
+                         self.record_topology_tear(BoolOp::Difference, &result);
+                         return GroupCut::Retessellated(result);
+                     }

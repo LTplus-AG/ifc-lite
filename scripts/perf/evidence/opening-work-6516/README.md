@@ -205,3 +205,7 @@ capture, without claiming a new independent reference oracle. The
 entry and default options used by the native probe; temporarily copy it to
 `rust/processing/examples/native_parts_6516.rs` and run the recorded command on
 each worktree to reproduce the arrays and frame metadata.
+
+The [scoped revert-oracle mutation evidence](revert-oracle-mutations/README.md)
+qualifies reuse and two safety decisions without deleting their test interface.
+It does not turn the automatic whole-file compilation failure into an assertion.

@@ -5,7 +5,6 @@
 import { useMemo, useRef } from 'react';
 import type { MeshData, CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import type { FederatedModel } from '@/store';
-import { geometryWithModelIndex } from '@/lib/model-placement/model-indices';
 
 const ZERO_VEC3 = { x: 0, y: 0, z: 0 };
 const DEFAULT_COORDINATE_INFO: CoordinateInfo = {
@@ -44,23 +43,14 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
   const mergedVisibilityRef = useRef<Map<string, boolean>>(new Map());
 
   const mergedSourcesRef = useRef(new Map<string, MeshData[] | undefined>());
+  const mergedIndicesRef = useRef(new Map<string, number>());
+  const mergedResultsRef = useRef(new Map<string, GeometryResult | null>());
 
-  // Multi-model: merge geometries from all visible models
+  // Stamp one stable owner index per mesh, incrementally for any model count.
   return useMemo(() => {
-    if (storeModels.size === 1) {
-      const firstModel = storeModels.values().next().value;
-      if (!firstModel?.visible) {
-        return {
-          meshes: [],
-          totalVertices: 0,
-          totalTriangles: 0,
-          coordinateInfo: DEFAULT_COORDINATE_INFO,
-        } satisfies GeometryResult;
-      }
-      return geometryWithModelIndex(firstModel.geometryResult ?? geometryResult, modelIdToIndex.get(firstModel.id) ?? 0);
-    }
-
-    if (storeModels.size > 1) {
+    if (storeModels.size > 0) {
+      const singleModel = storeModels.size === 1 ? storeModels.values().next().value : undefined;
+      const geometryFor = (model: FederatedModel) => model.geometryResult ?? (singleModel ? geometryResult : null);
       let totalVertices = 0;
       let totalTriangles = 0;
       // The merged coordinateInfo must cover ALL visible models, not just the
@@ -89,7 +79,7 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
       }
 
       for (const [modelId, model] of storeModels) {
-        const modelGeometry = model.geometryResult;
+        const modelGeometry = geometryFor(model);
         const meshCount = model.visible ? (modelGeometry?.meshes.length ?? 0) : 0;
         totalVertices += model.visible ? (modelGeometry?.totalVertices ?? 0) : 0;
         totalTriangles += model.visible ? (modelGeometry?.totalTriangles ?? 0) : 0;
@@ -103,6 +93,12 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
 
         if (
           mergedSourcesRef.current.get(modelId) !== modelGeometry?.meshes ||
+          // A same-length result publish can replace fields in existing source
+          // meshes (notably bounded-mode CPU buffer release). Refresh wrappers
+          // without asking the renderer to reupload emptied buffers (#6537).
+          (mergedResultsRef.current.get(modelId) !== modelGeometry
+            && mergedLengthsRef.current.get(modelId) === meshCount) ||
+          mergedIndicesRef.current.get(modelId) !== (modelIdToIndex.get(modelId) ?? 0) ||
           mergedVisibilityRef.current.get(modelId) !== model.visible ||
           (mergedLengthsRef.current.get(modelId) ?? 0) > meshCount
         ) {
@@ -115,11 +111,15 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
         mergedLengthsRef.current = new Map();
         mergedVisibilityRef.current = new Map();
         mergedSourcesRef.current = new Map();
+        mergedIndicesRef.current = new Map();
+        mergedResultsRef.current = new Map();
         for (const [modelId, model] of storeModels) {
-          const modelGeometry = model.geometryResult;
+          const modelGeometry = geometryFor(model);
           mergedVisibilityRef.current.set(modelId, model.visible);
           mergedSourcesRef.current.set(modelId, modelGeometry?.meshes);
+          mergedResultsRef.current.set(modelId, modelGeometry);
           const modelIndex = modelIdToIndex.get(modelId) ?? 0;
+          mergedIndicesRef.current.set(modelId, modelIndex);
           if (!model.visible || !modelGeometry?.meshes) {
             mergedLengthsRef.current.set(modelId, 0);
             continue;
@@ -132,7 +132,7 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
         mergedCacheRef.current = rebuilt;
       } else {
         for (const [modelId, model] of storeModels) {
-          const modelGeometry = model.geometryResult;
+          const modelGeometry = geometryFor(model);
           const modelIndex = modelIdToIndex.get(modelId) ?? 0;
           const previousLength = mergedLengthsRef.current.get(modelId) ?? 0;
           const nextMeshes = model.visible ? (modelGeometry?.meshes ?? []) : [];
@@ -143,7 +143,17 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
           mergedLengthsRef.current.set(modelId, nextMeshes.length);
           mergedVisibilityRef.current.set(modelId, model.visible);
           mergedSourcesRef.current.set(modelId, modelGeometry?.meshes);
+          mergedResultsRef.current.set(modelId, modelGeometry);
         }
+      }
+
+      // Keep the same cached mesh suffix for one model and federations (#6537).
+      // Retain the single-model metadata and point-cloud ownership contract.
+      if (singleModel?.visible) {
+        const singleGeometry = geometryFor(singleModel);
+        const modelIndex = modelIdToIndex.get(singleModel.id) ?? 0;
+        return singleGeometry ? { ...singleGeometry, meshes: mergedCacheRef.current,
+          pointClouds: singleGeometry.pointClouds?.map(asset => ({ ...asset, modelIndex })) } : null;
       }
 
       const mergedCoordinateInfo: CoordinateInfo | undefined = baseCoordInfo
@@ -163,6 +173,14 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
       } satisfies GeometryResult;
     }
 
+    // Release cached model references when the federation is cleared.
+    mergedCacheRef.current = [];
+    mergedLengthsRef.current.clear();
+    mergedVisibilityRef.current.clear();
+    mergedSourcesRef.current.clear();
+    mergedIndicesRef.current.clear();
+    mergedResultsRef.current.clear();
+    mergedContentVersionRef.current = geometryContentVersion;
     // Legacy mode (no federation): use original geometryResult
     return geometryResult;
   }, [storeModels, geometryResult, modelIdToIndex, geometryContentVersion]);

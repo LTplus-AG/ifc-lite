@@ -118,18 +118,13 @@ describe('drag and atomic import invariants (#4226)', () => {
   });
 });
 
-import { createModelIndexAllocator, geometryWithModelIndex } from './model-indices.js';
+import { createModelIndexAllocator } from './model-indices.js';
 
 it('keeps retained instance ownership stable after removal, addition, and single-model fallback (#4226)', () => {
   const indices = createModelIndexAllocator();
   assert.deepEqual([...indices(new Map([['ifc', {}], ['scan', {}]]))], [['ifc', 0], ['scan', 1]]);
   const remaining = indices(new Map([['scan', {}]]));
   assert.equal(remaining.get('scan'), 1);
-  const zero = { x: 0, y: 0, z: 0 };
-  const geometry = geometryWithModelIndex({ meshes: [], totalTriangles: 0, totalVertices: 0,
-    coordinateInfo: { originShift: zero, originalBounds: { min: zero, max: zero }, shiftedBounds: { min: zero, max: zero }, hasLargeCoordinates: false },
-    pointClouds: [{ expressId: 9, chunk: { positions: new Float32Array([1, 2, 3]), pointCount: 1, bbox: { min: [1, 2, 3], max: [1, 2, 3] } } }] }, remaining.get('scan')!);
-  assert.equal(geometry?.pointClouds?.[0].modelIndex, 1);
   assert.deepEqual([...indices(new Map([['scan', {}], ['replacement', {}]]))], [['scan', 1], ['replacement', 2]]);
   indices(new Map());
   assert.equal(indices(new Map([['new-session', {}]])).get('new-session'), 0);

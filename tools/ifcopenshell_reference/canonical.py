@@ -21,6 +21,9 @@ Conventions (must match on both sides):
 
 from __future__ import annotations
 
+from collections import Counter
+from math import fsum
+
 ROUND_DECIMALS = 6
 
 # Stat schema version for the emitted JSON documents.
@@ -57,34 +60,56 @@ def vertex_count(vertices: list[float]) -> int:
 
 def signed_volume(vertices: list[float], faces: list[int]) -> float:
     """Signed volume via the divergence theorem (sum of signed tetrahedra
-    against the origin). Only meaningful for closed meshes; the comparator
-    takes abs() and applies a relative tolerance, and skips it when either
-    side marks the mesh open."""
-    total = 0.0
+    against a common local bounds centre). Translation of a closed surface
+    leaves its volume unchanged; a nearby reference avoids cancellation at
+    survey coordinates (#6533). Only physical for coherently wound closed meshes;
+    element_record checks eligibility before reporting its absolute value."""
+    if not vertices:
+        return 0.0
+    reference = []
+    for axis in range(3):
+        coordinates = vertices[axis::3]
+        lo, hi = min(coordinates), max(coordinates)
+        reference.append(lo + (hi - lo) * 0.5)
+
+    def tetrahedra():
+        for i in range(0, len(faces) - 2, 3):
+            a, b, c = faces[i] * 3, faces[i + 1] * 3, faces[i + 2] * 3
+            ax, ay, az = (vertices[a + k] - reference[k] for k in range(3))
+            bx, by, bz = (vertices[b + k] - reference[k] for k in range(3))
+            cx, cy, cz = (vertices[c + k] - reference[k] for k in range(3))
+            yield (
+                ax * (by * cz - bz * cy)
+                - ay * (bx * cz - bz * cx)
+                + az * (bx * cy - by * cx)
+            )
+
+    return fsum(tetrahedra()) / 6.0
+
+
+def _edges(faces: list[int]):
     for i in range(0, len(faces) - 2, 3):
-        a, b, c = faces[i] * 3, faces[i + 1] * 3, faces[i + 2] * 3
-        ax, ay, az = vertices[a], vertices[a + 1], vertices[a + 2]
-        bx, by, bz = vertices[b], vertices[b + 1], vertices[b + 2]
-        cx, cy, cz = vertices[c], vertices[c + 1], vertices[c + 2]
-        total += (
-            ax * (by * cz - bz * cy)
-            - ay * (bx * cz - bz * cx)
-            + az * (bx * cy - by * cx)
-        )
-    return total / 6.0
+        a, b, c = faces[i:i + 3]
+        yield from ((a, b), (b, c), (c, a))
 
 
 def is_closed(faces: list[int]) -> bool:
     """True when every edge is shared by exactly two triangles (watertight),
     counting undirected edges."""
-    from collections import Counter
-
-    edges: Counter = Counter()
-    for i in range(0, len(faces) - 2, 3):
-        tri = (faces[i], faces[i + 1], faces[i + 2])
-        for e in ((tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])):
-            edges[tuple(sorted(e))] += 1
+    edges = Counter(tuple(sorted(edge)) for edge in _edges(faces))
     return bool(edges) and all(n == 2 for n in edges.values())
+
+
+def _is_consistently_wound(faces: list[int]) -> bool:
+    """Signed-tetra volume requires opposite traversal of each shared edge.
+
+    Undirected closure alone also admits inconsistently wound end caps (#6533).
+    Preserve that topology stat, but do not emit their reference-dependent sum
+    as physical volume. Global reversal and disconnected oriented shells pass.
+    """
+    edges = Counter(_edges(faces))
+    return bool(edges) and all(a != b and n == 1 and edges[(b, a)] == 1
+                               for (a, b), n in edges.items())
 
 
 def element_record(express_id: int, ifc_type: str, vertices: list[float], faces: list[int]) -> dict:
@@ -98,7 +123,8 @@ def element_record(express_id: int, ifc_type: str, vertices: list[float], faces:
         "bbox": bbox(vertices),
         "vertex_count": vertex_count(vertices),
         "tri_count": tri_count(faces),
-        "volume": _r(abs(signed_volume(vertices, faces))) if closed else None,
+        "volume": (_r(abs(signed_volume(vertices, faces)))
+                   if closed and _is_consistently_wound(faces) else None),
         "closed": closed,
     }
 

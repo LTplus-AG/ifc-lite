@@ -38,6 +38,7 @@ export {
   type CircleHollowSection,
 } from './profile.js';
 export { addStairToStore, stairFlightOutline, type StairInStoreParams, type StairBuildResult } from './stair.js';
+export { readStairDimensions, editStairDimensionsInStore, type StairDimensions, type StairDimensionEdit } from './stair-edit.js';
 export { addRailingToStore, railingPostPoints, type RailingInStoreParams, type RailingBuildResult } from './railing.js';
 export { addCurtainWallToStore, curtainWallLayout, type CurtainWallInStoreParams, type CurtainWallGridSpec, type CurtainWallLayout, type CurtainWallBuildResult } from './curtain-wall.js';
 export {

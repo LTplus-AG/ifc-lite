@@ -11,7 +11,7 @@
 import type { TranslationKey } from '@/i18n';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 
-export type DimParam = 'Thickness' | 'Height' | 'Width' | 'Depth' | 'Length' | 'SillHeight';
+export type DimParam = 'Thickness' | 'Height' | 'Width' | 'Depth' | 'Length' | 'SillHeight' | 'RiserHeight' | 'TreadLength' | 'WaistThickness';
 
 export const DIM_LABEL: Readonly<Record<DimParam, TranslationKey>> = {
   Thickness: 'modelInspector.dims.Thickness',
@@ -20,6 +20,9 @@ export const DIM_LABEL: Readonly<Record<DimParam, TranslationKey>> = {
   Depth: 'modelInspector.dims.Depth',
   Length: 'modelInspector.dims.Length',
   SillHeight: 'modelInspector.dims.SillHeight',
+  RiserHeight: 'stairRailing.inspector.RiserHeight',
+  TreadLength: 'stairRailing.inspector.TreadLength',
+  WaistThickness: 'stairRailing.inspector.WaistThickness',
 };
 
 export const KIND_LABEL: Readonly<Record<AuthoredElementKind, TranslationKey>> = {

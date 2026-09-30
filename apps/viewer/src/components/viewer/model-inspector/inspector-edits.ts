@@ -28,7 +28,7 @@ import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
 import { setWallSection, type WallSection } from '@/store/slices/mutation-wall-section';
 import { editHostedFillIn, moveHostedFillIn, type HostedFillPosition } from '@/store/slices/mutation-hosted-fill';
 import { setElementProfile } from '@/store/slices/mutation-element-profile';
-import type { HostedElementSize, ProfileSection } from '@ifc-lite/create';
+import { editStairDimensionsInStore, type HostedElementSize, type ProfileSection, type StairDimensionEdit } from '@ifc-lite/create';
 
 /**
  * Run one inspector edit as one undo step. `edit` writes through
@@ -137,6 +137,17 @@ export function setHostedElementDimensions(modelId: string, expressId: number, s
     const edited = editHostedFillIn(useViewerStore, tx.modelId, expressId, size);
     if (!edited.ok) throw new Error(edited.reason);
     return edited.remesh;
+  });
+}
+
+/** Parent or selected flight, occurrence-only stepped dimensions. */
+export function setStairDimensions(modelId: string, expressId: number, patch: StairDimensionEdit): boolean {
+  return runInspectorEdit(modelId, tx => {
+    const dataStore = tx.store.models.get(tx.modelId)?.ifcDataStore;
+    if (!dataStore) throw new Error(`No model loaded for id "${tx.modelId}"`);
+    const edited = recordModellingEdit(useViewerStore, tx.modelId, (_methods, draft) =>
+      editStairDimensionsInStore(dataStore, draft, expressId, patch), tx.batchId);
+    return [edited.stairId, edited.flightId];
   });
 }
 

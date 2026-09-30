@@ -1,0 +1,710 @@
+{
+  "comparisons": {
+    "allOtherOwnersByteEqual": true,
+    "editedEqualsRedone": true,
+    "everyRedoRestoresPrior": [
+      true,
+      true,
+      true,
+      true
+    ],
+    "everyUndoRestoresPrior": [
+      true,
+      true,
+      true,
+      true
+    ],
+    "initialEqualsRestored": true
+  },
+  "flightId": 10048,
+  "modelId": "8f47e8de-cc21-4a64-8348-9dabbee91133",
+  "selected": 10048,
+  "sourceHead": "4383c470d976df1deeeab676cfa9485056ef01af",
+  "steps": [
+    {
+      "cornersCount": 1224,
+      "cornersHash": "e9ed54cde5935fc221f1209187c90f7011d435e92f99b6e02d3050cd1c5a2618",
+      "dimensions": {
+        "NumberOfRisers": 16,
+        "RiserHeight": 0.175,
+        "TreadLength": 0.5960670291156602,
+        "WaistThickness": 0.14999999999999983,
+        "Width": 1,
+        "flightId": 10048,
+        "stairId": 10047
+      },
+      "flatMetadataHash": "57c80af6162e212acc936b57d5ec7e514b630ba7667fe23e3fff0f8c1922db95",
+      "fullSceneOwnerHash": "f534a731c2f1389fd2d83e9de91d4cb27c569851d4cbebc74a5b875f2a473c93",
+      "inspectorFields": [
+        {
+          "label": "Width in metres",
+          "value": "1.00"
+        },
+        {
+          "label": "Riser height in metres",
+          "value": "0.175"
+        },
+        {
+          "label": "Tread length in metres",
+          "value": "0.596"
+        },
+        {
+          "label": "Waist thickness in metres",
+          "value": "0.15"
+        }
+      ],
+      "label": "initial",
+      "otherOwnersHash": "dfa1f839bbc820ee809c3f8c64753331d3423a4d1cffbf32730cd7d5bb7bba4a",
+      "redoRecordCount": 0,
+      "undoButtonDisabled": false,
+      "undoRecordCount": 58,
+      "viewerYUpWorldBounds": {
+        "max": [
+          12.850507259368896,
+          2.799999952316284,
+          5.166720867156982
+        ],
+        "min": [
+          4.931594371795654,
+          0,
+          -1.766266107559204
+        ]
+      }
+    },
+    {
+      "cornersCount": 1224,
+      "cornersHash": "7f093e45e84ede9fb8ec93704f8197e0eba54e0f54d8b0dd0f248664f410444d",
+      "dimensions": {
+        "NumberOfRisers": 16,
+        "RiserHeight": 0.175,
+        "TreadLength": 0.5960670291156602,
+        "WaistThickness": 0.14999999999999983,
+        "Width": 1.4,
+        "flightId": 10048,
+        "stairId": 10047
+      },
+      "flatMetadataHash": "a7ce6344debe9759c6416ed00a4434c0d3c41de77c67f825bae6f66eea02e897",
+      "fullSceneOwnerHash": "6dfd18c15c03561d9d4b8fd72d6aa214a11a06b43391c685acb2fca438a87b1c",
+      "inspectorFields": [
+        {
+          "label": "Width in metres",
+          "value": "1.40"
+        },
+        {
+          "label": "Riser height in metres",
+          "value": "0.175"
+        },
+        {
+          "label": "Tread length in metres",
+          "value": "0.596"
+        },
+        {
+          "label": "Waist thickness in metres",
+          "value": "0.15"
+        }
+      ],
+      "label": "width-1.40",
+      "otherOwnersHash": "dfa1f839bbc820ee809c3f8c64753331d3423a4d1cffbf32730cd7d5bb7bba4a",
+      "redoRecordCount": 0,
+      "undoButtonDisabled": false,
+      "undoRecordCount": 108,
+      "viewerYUpWorldBounds": {
+        "max": [
+          12.850507259368896,
+          2.799999952316284,
+          5.166720867156982
+        ],
+        "min": [
+          4.672793865203857,
+          0,
+          -2.0712616443634033
+        ]
+      }
+    },
+    {
+      "cornersCount": 1224,
+      "cornersHash": "9b42bbe8d3ac980e2e5673e7ea1cc301da8c953eccb7c2e40df7d06f209e2a50",
+      "dimensions": {
+        "NumberOfRisers": 16,
+        "RiserHeight": 0.2,
+        "TreadLength": 0.5960670291156602,
+        "WaistThickness": 0.14999999999999966,
+        "Width": 1.4,
+        "flightId": 10048,
+        "stairId": 10047
+      },
+      "flatMetadataHash": "df379bcd32f79b2be35f246aeb10e22ba3f90d2abfba2edfac4ad116984603c9",
+      "fullSceneOwnerHash": "beba62ed50b78d54ec3bb1664697d56112374aedd7a37c43c913012d9b4f1500",
+      "inspectorFields": [
+        {
+          "label": "Width in metres",
+          "value": "1.40"
+        },
+        {
+          "label": "Riser height in metres",
+          "value": "0.20"
+        },
+        {
+          "label": "Tread length in metres",
+          "value": "0.596"
+        },
+        {
+          "label": "Waist thickness in metres",
+          "value": "0.15"
+        }
+      ],
+      "label": "width-1.40-riser-0.20",
+      "otherOwnersHash": "dfa1f839bbc820ee809c3f8c64753331d3423a4d1cffbf32730cd7d5bb7bba4a",
+      "redoRecordCount": 0,
+      "undoButtonDisabled": false,
+      "undoRecordCount": 158,
+      "viewerYUpWorldBounds": {
+        "max": [
+          12.850507259368896,
+          3.200000047683716,
+          5.166720867156982
+        ],
+        "min": [
+          4.672793865203857,
+          0,
+          -2.0712616443634033
+        ]
+      }
+    },
+    {
+      "cornersCount": 1224,
+      "cornersHash": "e9d21228ba29f7b2d71ee3895f239c441e36cb7bca6c3045bb074fe0074f1ef3",
+      "dimensions": {
+        "NumberOfRisers": 16,
+        "RiserHeight": 0.2,
+        "TreadLength": 0.65,
+        "WaistThickness": 0.1499999999999997,
+        "Width": 1.4,
+        "flightId": 10048,
+        "stairId": 10047
+      },
+      "flatMetadataHash": "5214fa6ce434c91d23830401a0f24ecf254e4d41ab6644f54c9e380fa5568497",
+      "fullSceneOwnerHash": "cafec6dea0ee81f2a1c846f05dfa743bd303bb52d44bad91efb8eb1db42275a7",
+      "inspectorFields": [
+        {
+          "label": "Width in metres",
+          "value": "1.40"
+        },
+        {
+          "label": "Riser height in metres",
+          "value": "0.20"
+        },
+        {
+          "label": "Tread length in metres",
+          "value": "0.65"
+        },
+        {
+          "label": "Waist thickness in metres",
+          "value": "0.15"
+        }
+      ],
+      "label": "width-1.40-riser-0.20-tread-0.65",
+      "otherOwnersHash": "dfa1f839bbc820ee809c3f8c64753331d3423a4d1cffbf32730cd7d5bb7bba4a",
+      "redoRecordCount": 0,
+      "undoButtonDisabled": false,
+      "undoRecordCount": 208,
+      "viewerYUpWorldBounds": {
+        "max": [
+          13.508480072021484,
+          3.200000047683716,
+          5.166720867156982
+        ],
+        "min": [
+          4.672793865203857,
+          0,
+          -2.6295766830444336
+        ]
+      }
+    },
+    {
+      "cornersCount": 1224,
+      "cornersHash": "733981dd4abd3c356635bdda3e4a40cc071b8aa9acb72c494d9b97d0143de069",
+      "dimensions": {
+        "NumberOfRisers": 16,
+        "RiserHeight": 0.2,
+        "TreadLength": 0.65,
+        "WaistThickness": 0.19999999999999987,
+        "Width": 1.4,
+        "flightId": 10048,
+        "stairId": 10047
+      },
+      "flatMetadataHash": "4a65dbcce851b9d44cdd636c166694208c416896ac24041c20d965e2efb5da86",
+      "fullSceneOwnerHash": "aa2fe27fca81864007f08a50fe7bbeb5f043919b092b7393817ddb48c61198fe",
+      "inspectorFields": [
+        {
+          "label": "Width in metres",
+          "value": "1.40"
+        },
+        {
+          "label": "Riser height in metres",
+          "value": "0.20"
+        },
+        {
+          "label": "Tread length in metres",
+          "value": "0.65"
+        },
+        {
+          "label": "Waist thickness in metres",
+          "value": "0.20"
+        }
+      ],
+      "label": "all-four-edited",
+      "otherOwnersHash": "dfa1f839bbc820ee809c3f8c64753331d3423a4d1cffbf32730cd7d5bb7bba4a",
+      "redoRecordCount": 0,
+      "undoButtonDisabled": false,
+      "undoRecordCount": 258,
+      "viewerYUpWorldBounds": {
+        "max": [
+          13.508480072021484,
+          3.200000047683716,
+          5.166720867156982
+        ],
+        "min": [
+          4.672793865203857,
+          0,
+          -2.6295766830444336
+        ]
+      }
+    },
+    {
+      "cornersCount": 1224,
+      "cornersHash": "e9d21228ba29f7b2d71ee3895f239c441e36cb7bca6c3045bb074fe0074f1ef3",
+      "dimensions": {
+        "NumberOfRisers": 16,
+        "RiserHeight": 0.2,
+        "TreadLength": 0.65,
+        "WaistThickness": 0.1499999999999997,
+        "Width": 1.4,
+        "flightId": 10048,
+        "stairId": 10047
+      },
+      "flatMetadataHash": "5214fa6ce434c91d23830401a0f24ecf254e4d41ab6644f54c9e380fa5568497",
+      "fullSceneOwnerHash": "cafec6dea0ee81f2a1c846f05dfa743bd303bb52d44bad91efb8eb1db42275a7",
+      "inspectorFields": [
+        {
+          "label": "Width in metres",
+          "value": "1.40"
+        },
+        {
+          "label": "Riser height in metres",
+          "value": "0.20"
+        },
+        {
+          "label": "Tread length in metres",
+          "value": "0.65"
+        },
+        {
+          "label": "Waist thickness in metres",
+          "value": "0.15"
+        }
+      ],
+      "label": "undo-waist",
+      "otherOwnersHash": "dfa1f839bbc820ee809c3f8c64753331d3423a4d1cffbf32730cd7d5bb7bba4a",
+      "redoRecordCount": 50,
+      "undoButtonDisabled": false,
+      "undoRecordCount": 208,
+      "viewerYUpWorldBounds": {
+        "max": [
+          13.508480072021484,
+          3.200000047683716,
+          5.166720867156982
+        ],
+        "min": [
+          4.672793865203857,
+          0,
+          -2.6295766830444336
+        ]
+      }
+    },
+    {
+      "cornersCount": 1224,
+      "cornersHash": "9b42bbe8d3ac980e2e5673e7ea1cc301da8c953eccb7c2e40df7d06f209e2a50",
+      "dimensions": {
+        "NumberOfRisers": 16,
+        "RiserHeight": 0.2,
+        "TreadLength": 0.5960670291156602,
+        "WaistThickness": 0.14999999999999966,
+        "Width": 1.4,
+        "flightId": 10048,
+        "stairId": 10047
+      },
+      "flatMetadataHash": "df379bcd32f79b2be35f246aeb10e22ba3f90d2abfba2edfac4ad116984603c9",
+      "fullSceneOwnerHash": "beba62ed50b78d54ec3bb1664697d56112374aedd7a37c43c913012d9b4f1500",
+      "inspectorFields": [
+        {
+          "label": "Width in metres",
+          "value": "1.40"
+        },
+        {
+          "label": "Riser height in metres",
+          "value": "0.20"
+        },
+        {
+          "label": "Tread length in metres",
+          "value": "0.596"
+        },
+        {
+          "label": "Waist thickness in metres",
+          "value": "0.15"
+        }
+      ],
+      "label": "undo-tread",
+      "otherOwnersHash": "dfa1f839bbc820ee809c3f8c64753331d3423a4d1cffbf32730cd7d5bb7bba4a",
+      "redoRecordCount": 100,
+      "undoButtonDisabled": false,
+      "undoRecordCount": 158,
+      "viewerYUpWorldBounds": {
+        "max": [
+          12.850507259368896,
+          3.200000047683716,
+          5.166720867156982
+        ],
+        "min": [
+          4.672793865203857,
+          0,
+          -2.0712616443634033
+        ]
+      }
+    },
+    {
+      "cornersCount": 1224,
+      "cornersHash": "7f093e45e84ede9fb8ec93704f8197e0eba54e0f54d8b0dd0f248664f410444d",
+      "dimensions": {
+        "NumberOfRisers": 16,
+        "RiserHeight": 0.175,
+        "TreadLength": 0.5960670291156602,
+        "WaistThickness": 0.14999999999999983,
+        "Width": 1.4,
+        "flightId": 10048,
+        "stairId": 10047
+      },
+      "flatMetadataHash": "a7ce6344debe9759c6416ed00a4434c0d3c41de77c67f825bae6f66eea02e897",
+      "fullSceneOwnerHash": "6dfd18c15c03561d9d4b8fd72d6aa214a11a06b43391c685acb2fca438a87b1c",
+      "inspectorFields": [
+        {
+          "label": "Width in metres",
+          "value": "1.40"
+        },
+        {
+          "label": "Riser height in metres",
+          "value": "0.175"
+        },
+        {
+          "label": "Tread length in metres",
+          "value": "0.596"
+        },
+        {
+          "label": "Waist thickness in metres",
+          "value": "0.15"
+        }
+      ],
+      "label": "undo-riser",
+      "otherOwnersHash": "dfa1f839bbc820ee809c3f8c64753331d3423a4d1cffbf32730cd7d5bb7bba4a",
+      "redoRecordCount": 150,
+      "undoButtonDisabled": false,
+      "undoRecordCount": 108,
+      "viewerYUpWorldBounds": {
+        "max": [
+          12.850507259368896,
+          2.799999952316284,
+          5.166720867156982
+        ],
+        "min": [
+          4.672793865203857,
+          0,
+          -2.0712616443634033
+        ]
+      }
+    },
+    {
+      "cornersCount": 1224,
+      "cornersHash": "e9ed54cde5935fc221f1209187c90f7011d435e92f99b6e02d3050cd1c5a2618",
+      "dimensions": {
+        "NumberOfRisers": 16,
+        "RiserHeight": 0.175,
+        "TreadLength": 0.5960670291156602,
+        "WaistThickness": 0.14999999999999983,
+        "Width": 1,
+        "flightId": 10048,
+        "stairId": 10047
+      },
+      "flatMetadataHash": "57c80af6162e212acc936b57d5ec7e514b630ba7667fe23e3fff0f8c1922db95",
+      "fullSceneOwnerHash": "f534a731c2f1389fd2d83e9de91d4cb27c569851d4cbebc74a5b875f2a473c93",
+      "inspectorFields": [
+        {
+          "label": "Width in metres",
+          "value": "1.00"
+        },
+        {
+          "label": "Riser height in metres",
+          "value": "0.175"
+        },
+        {
+          "label": "Tread length in metres",
+          "value": "0.596"
+        },
+        {
+          "label": "Waist thickness in metres",
+          "value": "0.15"
+        }
+      ],
+      "label": "undo-width-restored",
+      "otherOwnersHash": "dfa1f839bbc820ee809c3f8c64753331d3423a4d1cffbf32730cd7d5bb7bba4a",
+      "redoRecordCount": 200,
+      "undoButtonDisabled": false,
+      "undoRecordCount": 58,
+      "viewerYUpWorldBounds": {
+        "max": [
+          12.850507259368896,
+          2.799999952316284,
+          5.166720867156982
+        ],
+        "min": [
+          4.931594371795654,
+          0,
+          -1.766266107559204
+        ]
+      }
+    },
+    {
+      "cornersCount": 1224,
+      "cornersHash": "7f093e45e84ede9fb8ec93704f8197e0eba54e0f54d8b0dd0f248664f410444d",
+      "dimensions": {
+        "NumberOfRisers": 16,
+        "RiserHeight": 0.175,
+        "TreadLength": 0.5960670291156602,
+        "WaistThickness": 0.14999999999999983,
+        "Width": 1.4,
+        "flightId": 10048,
+        "stairId": 10047
+      },
+      "flatMetadataHash": "a7ce6344debe9759c6416ed00a4434c0d3c41de77c67f825bae6f66eea02e897",
+      "fullSceneOwnerHash": "6dfd18c15c03561d9d4b8fd72d6aa214a11a06b43391c685acb2fca438a87b1c",
+      "inspectorFields": [
+        {
+          "label": "Width in metres",
+          "value": "1.40"
+        },
+        {
+          "label": "Riser height in metres",
+          "value": "0.175"
+        },
+        {
+          "label": "Tread length in metres",
+          "value": "0.596"
+        },
+        {
+          "label": "Waist thickness in metres",
+          "value": "0.15"
+        }
+      ],
+      "label": "redo-width",
+      "otherOwnersHash": "dfa1f839bbc820ee809c3f8c64753331d3423a4d1cffbf32730cd7d5bb7bba4a",
+      "redoRecordCount": 150,
+      "undoButtonDisabled": false,
+      "undoRecordCount": 108,
+      "viewerYUpWorldBounds": {
+        "max": [
+          12.850507259368896,
+          2.799999952316284,
+          5.166720867156982
+        ],
+        "min": [
+          4.672793865203857,
+          0,
+          -2.0712616443634033
+        ]
+      }
+    },
+    {
+      "cornersCount": 1224,
+      "cornersHash": "9b42bbe8d3ac980e2e5673e7ea1cc301da8c953eccb7c2e40df7d06f209e2a50",
+      "dimensions": {
+        "NumberOfRisers": 16,
+        "RiserHeight": 0.2,
+        "TreadLength": 0.5960670291156602,
+        "WaistThickness": 0.14999999999999966,
+        "Width": 1.4,
+        "flightId": 10048,
+        "stairId": 10047
+      },
+      "flatMetadataHash": "df379bcd32f79b2be35f246aeb10e22ba3f90d2abfba2edfac4ad116984603c9",
+      "fullSceneOwnerHash": "beba62ed50b78d54ec3bb1664697d56112374aedd7a37c43c913012d9b4f1500",
+      "inspectorFields": [
+        {
+          "label": "Width in metres",
+          "value": "1.40"
+        },
+        {
+          "label": "Riser height in metres",
+          "value": "0.20"
+        },
+        {
+          "label": "Tread length in metres",
+          "value": "0.596"
+        },
+        {
+          "label": "Waist thickness in metres",
+          "value": "0.15"
+        }
+      ],
+      "label": "redo-riser",
+      "otherOwnersHash": "dfa1f839bbc820ee809c3f8c64753331d3423a4d1cffbf32730cd7d5bb7bba4a",
+      "redoRecordCount": 100,
+      "undoButtonDisabled": false,
+      "undoRecordCount": 158,
+      "viewerYUpWorldBounds": {
+        "max": [
+          12.850507259368896,
+          3.200000047683716,
+          5.166720867156982
+        ],
+        "min": [
+          4.672793865203857,
+          0,
+          -2.0712616443634033
+        ]
+      }
+    },
+    {
+      "cornersCount": 1224,
+      "cornersHash": "e9d21228ba29f7b2d71ee3895f239c441e36cb7bca6c3045bb074fe0074f1ef3",
+      "dimensions": {
+        "NumberOfRisers": 16,
+        "RiserHeight": 0.2,
+        "TreadLength": 0.65,
+        "WaistThickness": 0.1499999999999997,
+        "Width": 1.4,
+        "flightId": 10048,
+        "stairId": 10047
+      },
+      "flatMetadataHash": "5214fa6ce434c91d23830401a0f24ecf254e4d41ab6644f54c9e380fa5568497",
+      "fullSceneOwnerHash": "cafec6dea0ee81f2a1c846f05dfa743bd303bb52d44bad91efb8eb1db42275a7",
+      "inspectorFields": [
+        {
+          "label": "Width in metres",
+          "value": "1.40"
+        },
+        {
+          "label": "Riser height in metres",
+          "value": "0.20"
+        },
+        {
+          "label": "Tread length in metres",
+          "value": "0.65"
+        },
+        {
+          "label": "Waist thickness in metres",
+          "value": "0.15"
+        }
+      ],
+      "label": "redo-tread",
+      "otherOwnersHash": "dfa1f839bbc820ee809c3f8c64753331d3423a4d1cffbf32730cd7d5bb7bba4a",
+      "redoRecordCount": 50,
+      "undoButtonDisabled": false,
+      "undoRecordCount": 208,
+      "viewerYUpWorldBounds": {
+        "max": [
+          13.508480072021484,
+          3.200000047683716,
+          5.166720867156982
+        ],
+        "min": [
+          4.672793865203857,
+          0,
+          -2.6295766830444336
+        ]
+      }
+    },
+    {
+      "cornersCount": 1224,
+      "cornersHash": "733981dd4abd3c356635bdda3e4a40cc071b8aa9acb72c494d9b97d0143de069",
+      "dimensions": {
+        "NumberOfRisers": 16,
+        "RiserHeight": 0.2,
+        "TreadLength": 0.65,
+        "WaistThickness": 0.19999999999999987,
+        "Width": 1.4,
+        "flightId": 10048,
+        "stairId": 10047
+      },
+      "flatMetadataHash": "4a65dbcce851b9d44cdd636c166694208c416896ac24041c20d965e2efb5da86",
+      "fullSceneOwnerHash": "aa2fe27fca81864007f08a50fe7bbeb5f043919b092b7393817ddb48c61198fe",
+      "inspectorFields": [
+        {
+          "label": "Width in metres",
+          "value": "1.40"
+        },
+        {
+          "label": "Riser height in metres",
+          "value": "0.20"
+        },
+        {
+          "label": "Tread length in metres",
+          "value": "0.65"
+        },
+        {
+          "label": "Waist thickness in metres",
+          "value": "0.20"
+        }
+      ],
+      "label": "redo-waist-edited-restored",
+      "otherOwnersHash": "dfa1f839bbc820ee809c3f8c64753331d3423a4d1cffbf32730cd7d5bb7bba4a",
+      "redoRecordCount": 0,
+      "undoButtonDisabled": false,
+      "undoRecordCount": 258,
+      "viewerYUpWorldBounds": {
+        "max": [
+          13.508480072021484,
+          3.200000047683716,
+          5.166720867156982
+        ],
+        "min": [
+          4.672793865203857,
+          0,
+          -2.6295766830444336
+        ]
+      }
+    }
+  ],
+  "provenance": {
+    "date": "2026-09-30",
+    "browser": "native T3 collaborative browser",
+    "tabId": "tab_7",
+    "url": "http://localhost:5201/",
+    "sourceHead": "4383c470d976df1deeeab676cfa9485056ef01af",
+    "sourceWorktree": "/home/louistrue/wt/6232-stair-dimensions-main-session6503",
+    "runtimeSha256": "5fbc315fb686b9a89f49c5c118d3cdec9646763109b14f73b3b078050b8aec13",
+    "runtimeBytes": 9377364,
+    "servedRuntimeHashVerified": true,
+    "input": {
+      "path": "apps/viewer/public/samples/hello-wall.ifc",
+      "authoringTool": "Bonsai",
+      "sha256": "0ab20f4ea355ea9aa4fade7264b97ee9f9929addfa3961b2437c4381bd674014",
+      "bytes": 79592,
+      "load": "File input change with fetched unmodified sample bytes, canonical viewer load path"
+    },
+    "flightAuthorship": "Created through the actual Stair tool with native viewport clicks in the loaded public model; the flight was not supplied by Bonsai.",
+    "inspectorActions": "Native T3 type then Enter for each of four fields, four native Undo button clicks, then four native Redo button clicks."
+  },
+  "snapshotSemantics": {
+    "cornersHash": "SHA-256 of JSON-serialized world-placed triangle corner positions from the real scene owner; viewer Y-up coordinates.",
+    "flatMetadataHash": "SHA-256 of resident part metadata: geometry item IDs, triangles, vertices, textured flag, color and source triangle ordinals.",
+    "fullSceneOwnerHash": "SHA-256 of the serialized scene owner: part metadata, instance flag, placed triangle positions and projected screen centre.",
+    "otherOwnersHash": "SHA-256 of the complete serialized scene owners for unchanged source wall1222 and windows1262/1407.",
+    "undoRecordCount": "Internal history records, not user action count. Each inspector action contains 50 records in one Undo batch; the pre-edit Stair creation contributes58.",
+    "gpuBytes": "GPU upload bytes, normals and full vertex/index buffers are not captured by these browser hooks."
+  },
+  "screenshots": {
+    "initial": "initial.png",
+    "edited": "edited.png",
+    "undoRestored": "undo-restored.png",
+    "redoRestored": "redo-restored.png"
+  },
+  "limitation": "A prior Start blank attempt exposed the existing missing engine-coordinate-frame refusal. No coordinate frame was patched. That attempt is excluded from physical proof and tracked under #6232."
+}

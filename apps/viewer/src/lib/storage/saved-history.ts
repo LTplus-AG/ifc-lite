@@ -6,6 +6,7 @@ import { optionalLocalStorage, preserveUnreadableEntry } from './unreadable-entr
 import { saveJson, type SaveResult } from './save-result';
 
 export type SavedHistoryIssue = 'recovered' | 'blocked' | 'unavailable';
+export type SavedHistorySave = SaveResult & { issue: SavedHistoryIssue | null };
 export interface SavedHistoryRead<T> {
   entries: T[];
   issue: SavedHistoryIssue | null;
@@ -16,7 +17,7 @@ export function createSavedHistoryStorage<T extends { id: string }>(
   key: string,
   isEntry: (value: unknown) => value is T,
   subject: string,
-): { read: () => SavedHistoryRead<T>; save: (entries: readonly T[]) => SaveResult } {
+): { read: () => SavedHistoryRead<T>; save: (entries: readonly T[]) => SavedHistorySave } {
   const unavailable = (): SaveResult => ({
     ok: false, reason: 'unavailable', message: `Browser storage is unavailable — ${subject} were not saved.`,
   });
@@ -64,8 +65,9 @@ export function createSavedHistoryStorage<T extends { id: string }>(
       // Inspect again before every write: another tab may have replaced the
       // entry, or storage may have become available since initialization.
       const current = read();
-      if (current.issue === 'blocked' || current.issue === 'unavailable') return unavailable();
-      return saveJson(key, entries, subject);
+      if (current.issue === 'blocked' || current.issue === 'unavailable') return { ...unavailable(), issue: current.issue };
+      const result = saveJson(key, entries, subject);
+      return { ...result, issue: result.ok ? current.issue : 'unavailable' };
     },
   };
 }

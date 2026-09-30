@@ -62,12 +62,13 @@ describe('saved history recovery (#6506, #6500)', () => {
     data.set('history', bytes); blocked.add('history:unreadable');
     const store = history();
     assert.deepEqual(store.read(), { entries: [{ id: 'a', value: 1 }], issue: 'blocked' });
-    assert.equal(store.save([{ id: 'replacement', value: 9 }]).ok, false);
+    assert.equal(store.save([{ id: 'replacement', value: 9 }]).issue, 'blocked');
     assert.equal(data.get('history'), bytes);
     blocked.clear();
-    assert.equal(store.save([{ id: 'replacement', value: 9 }]).ok, true);
+    assert.deepEqual(store.save([{ id: 'replacement', value: 9 }]), { ok: true, issue: 'recovered' });
+    assert.deepEqual(store.save([{ id: 'replacement', value: 10 }]), { ok: true, issue: null });
     assert.equal(data.get('history:unreadable'), bytes);
-    assert.deepEqual(history().read().entries, [{ id: 'replacement', value: 9 }]);
+    assert.deepEqual(history().read().entries, [{ id: 'replacement', value: 10 }]);
   });
   it('reports failed valid-neighbour restoration instead of claiming a durable recovery', () => {
     const bytes = '[{"id":"a","value":1},null]';
@@ -85,6 +86,13 @@ describe('saved history recovery (#6506, #6500)', () => {
     }, 'saved reports');
     assert.deepEqual(store.read(), { entries: [{ id: 'a', value: 1 }], issue: 'recovered' });
     assert.equal(data.get('history:unreadable'), bytes);
+  });
+  it('reports recovery when external corruption is archived during an ordinary save', () => {
+    const store = history(); store.read();
+    data.set('history', 'cross-tab corrupt bytes');
+    assert.deepEqual(store.save([{ id: 'new', value: 1 }]), { ok: true, issue: 'recovered' });
+    assert.equal(data.get('history:unreadable'), 'cross-tab corrupt bytes');
+    assert.deepEqual(store.save([{ id: 'new', value: 2 }]), { ok: true, issue: null });
   });
   it('checks external corruption before a later save rather than trusting the initial read', () => {
     const store = history(); assert.equal(store.read().issue, null);

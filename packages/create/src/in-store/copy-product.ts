@@ -51,6 +51,8 @@ export interface CopyProductResult {
   readonly copyId: number;
   readonly openingIds: readonly number[];
   readonly fillingIds: readonly number[];
+  /** The copies of the assembly's parts, at every depth. */
+  readonly partIds: readonly number[];
   /** The storey the copy (and its doors and windows) is contained in. */
   readonly storeyId: number | null;
   /** Every element the copy wrote with a shape to mesh: the copy and its doors and windows. */
@@ -64,6 +66,9 @@ const SPATIAL_TYPES = new Set(['IFCSPACE', 'IFCBUILDINGSTOREY', 'IFCBUILDING', '
 const MAX_CLONED_SHAPE_RECORDS = 50_000;
 
 interface HostedLink { readonly id: number; readonly ownerHistory: string | null }
+
+/** One IfcRelAggregates: the parts of an assembly, and the rel's OwnerHistory. */
+interface PartsLink { readonly ownerHistory: string | null; readonly parts: readonly number[] }
 
 /**
  * Everything one batch of copies reads once: the live reader, the styles and
@@ -79,6 +84,10 @@ export interface CopyContext {
   readonly fills: ReadonlyMap<number, readonly HostedLink[]>;
   /** Fillings (door / window id → opening id). */
   readonly filledBy: ReadonlyMap<number, number>;
+  /** Assembly id → its IfcRelAggregates parts (a spatial container's children are not parts). */
+  readonly parts: ReadonlyMap<number, readonly PartsLink[]>;
+  /** Part id → its assembly. */
+  readonly partOf: ReadonlyMap<number, number>;
 }
 
 export function createCopyContext(store: IfcDataStore, editor: StoreEditor, options: { guidRandom?: RandomSource } = {}): CopyContext {
@@ -100,12 +109,28 @@ export function createCopyContext(store: IfcDataStore, editor: StoreEditor, opti
   const fills = links('IFCRELFILLSELEMENT');
   const filledBy = new Map<number, number>();
   for (const [opening, list] of fills) for (const { id } of list) filledBy.set(id, opening);
+  const parts = new Map<number, PartsLink[]>();
+  const partOf = new Map<number, number>();
+  for (const { expressId } of iterateEffectiveEntityIds(store, view, ['IFCRELAGGREGATES'])) {
+    const rel = read(expressId);
+    const whole = asRef(rel?.attributes[4]);
+    const wholeType = whole === null ? undefined : read(whole)?.type.toUpperCase();
+    if (whole === null || !wholeType || SPATIAL_TYPES.has(wholeType)) continue;
+    const related = refList(rel?.attributes[5]);
+    if (related.length === 0) continue;
+    const list = parts.get(whole) ?? [];
+    list.push({ ownerHistory: refToken(asRef(rel?.attributes[1])), parts: related });
+    parts.set(whole, list);
+    for (const part of related) partOf.set(part, whole);
+  }
   return {
     store, editor, read, guidRandom: options.guidRandom,
     styledBy: indexExistingStyles(store, editor, read),
     voids: links('IFCRELVOIDSELEMENT'),
     fills,
     filledBy,
+    parts,
+    partOf,
   };
 }
 
@@ -115,6 +140,7 @@ export function copyRefusal(ctx: CopyContext, sourceId: number): string | null {
   if (!type) return `#${sourceId} is not in the model`;
   if (HOSTED_TYPES.has(type)) return 'An opening is copied with the element it is cut into: copy that element';
   if (ctx.filledBy.has(sourceId)) return 'A door or window is copied with its wall: copy the wall';
+  if (ctx.partOf.has(sourceId)) return 'A part is copied with its assembly: copy the assembly';
   if (SPATIAL_TYPES.has(type)) return 'Spaces and spatial structure are not copied: copy the elements';
   return null;
 }
@@ -133,25 +159,57 @@ export function copyProductInStore(ctx: CopyContext, sourceId: number, transform
   const placed = placeOnStorey(ctx.read, source, targetStoreyId, move);
   const copy = writeCopy(ctx, source, placed, targetStoreyId);
 
-  // Openings and their doors and windows follow the host.
-  const placements = new Map([[source.placementExpressId, copy.placementId]]);
-  const openingIds: number[] = [];
-  const fillingIds: number[] = [];
+  // Openings, their doors and windows, and the parts of an assembly follow it.
+  const acc: Dependents = { placements: new Map([[source.placementExpressId, copy.placementId]]), openingIds: [], fillingIds: [], partIds: [], visited: new Set([sourceId]) };
+  copyDependents(ctx, sourceId, copy.id, source, targetStoreyId, move, acc);
+  return {
+    copyId: copy.id, openingIds: acc.openingIds, fillingIds: acc.fillingIds, partIds: acc.partIds, storeyId: targetStoreyId,
+    meshed: [copy.id, ...acc.partIds, ...acc.fillingIds],
+  };
+}
+
+interface Dependents {
+  /** Source placement → its copy, so a hosted element keeps its place under the copy's. */
+  readonly placements: Map<number, number>;
+  readonly openingIds: number[];
+  readonly fillingIds: number[];
+  readonly partIds: number[];
+  readonly visited: Set<number>;
+}
+
+/** The copies of `sourceId`'s openings (with their doors and windows) and parts (recursively), written under `copyId`. */
+function copyDependents(ctx: CopyContext, sourceId: number, copyId: number, root: SourceAttributes, targetStoreyId: number | null, move: RigidFrame, acc: Dependents): void {
   for (const opening of ctx.voids.get(sourceId) ?? []) {
     const openingSource = resolveDuplicateSource(ctx.store, opening.id, ctx.editor);
-    const openingCopy = writeCopy(ctx, openingSource, follow(ctx.read, openingSource, source, targetStoreyId, placements, move), null);
-    placements.set(openingSource.placementExpressId, openingCopy.placementId);
-    relate(ctx, 'IfcRelVoidsElement', opening.ownerHistory, copy.id, openingCopy.id);
-    openingIds.push(openingCopy.id);
+    const openingCopy = writeCopy(ctx, openingSource, follow(ctx.read, openingSource, root, targetStoreyId, acc.placements, move), null);
+    acc.placements.set(openingSource.placementExpressId, openingCopy.placementId);
+    relate(ctx, 'IfcRelVoidsElement', opening.ownerHistory, copyId, openingCopy.id);
+    acc.openingIds.push(openingCopy.id);
     for (const filling of ctx.fills.get(opening.id) ?? []) {
       const fillingSource = resolveDuplicateSource(ctx.store, filling.id, ctx.editor);
-      const fillingCopy = writeCopy(ctx, fillingSource, follow(ctx.read, fillingSource, source, targetStoreyId, placements, move), targetStoreyId);
-      placements.set(fillingSource.placementExpressId, fillingCopy.placementId);
+      const fillingCopy = writeCopy(ctx, fillingSource, follow(ctx.read, fillingSource, root, targetStoreyId, acc.placements, move), targetStoreyId);
+      acc.placements.set(fillingSource.placementExpressId, fillingCopy.placementId);
       relate(ctx, 'IfcRelFillsElement', filling.ownerHistory, openingCopy.id, fillingCopy.id);
-      fillingIds.push(fillingCopy.id);
+      acc.fillingIds.push(fillingCopy.id);
     }
   }
-  return { copyId: copy.id, openingIds, fillingIds, storeyId: targetStoreyId, meshed: [copy.id, ...fillingIds] };
+  for (const link of ctx.parts.get(sourceId) ?? []) {
+    const partCopies: number[] = [];
+    for (const part of link.parts) {
+      if (acc.visited.has(part)) continue;
+      acc.visited.add(part);
+      const partSource = resolveDuplicateSource(ctx.store, part, ctx.editor);
+      // A part is aggregated, not contained: no containment of its own.
+      const partCopy = writeCopy(ctx, partSource, follow(ctx.read, partSource, root, targetStoreyId, acc.placements, move), null);
+      acc.placements.set(partSource.placementExpressId, partCopy.placementId);
+      partCopies.push(partCopy.id);
+      acc.partIds.push(partCopy.id);
+      copyDependents(ctx, part, partCopy.id, root, targetStoreyId, move, acc);
+    }
+    if (partCopies.length > 0) {
+      ctx.editor.addEntity('IfcRelAggregates', [generateIfcGuid(ctx.guidRandom), link.ownerHistory, null, null, `#${copyId}`, partCopies.map((id) => `#${id}`)]);
+    }
+  }
 }
 
 /** Where a copy sits: its parent placement and its own placement in that parent. */
@@ -166,21 +224,32 @@ function storeyPlacementId(read: LiveRead, storeyId: number | null): number | nu
   return storeyId === null ? null : asRef(read(storeyId)?.attributes[5]);
 }
 
+/**
+ * The source's parent placement as a frame in its storey's. A storey without a
+ * placement has no frame to tie to (the storey plane is then the model frame).
+ * A parent that does not chain to the storey's placement has no known place on
+ * the storey, so the copy is refused: the preview (`copy-ghost.ts`) works in
+ * the storey's frame, and a guess here would commit the copy somewhere else.
+ */
+function parentFrameInStorey(read: LiveRead, source: SourceAttributes, fromStorey: number | null): RigidFrame {
+  if (fromStorey === null) return IDENTITY_FRAME;
+  const parent = frameInAncestor(read, source.parentPlacementId, fromStorey);
+  if (!parent) throw new Error(`#${source.placementExpressId}: its placement is not tied to its storey's, so it cannot be copied`);
+  return parent;
+}
+
 function placeOnStorey(read: LiveRead, source: SourceAttributes, targetStoreyId: number | null, move: RigidFrame): Placed {
   const own = readOwnPlacement(read, source.placementExpressId);
   if (!own) throw new Error(`#${source.placementExpressId}: the placement does not read as a local placement`);
   const fromStorey = storeyPlacementId(read, source.storeyId);
-  // The parent's frame in the storey's; a parent the walk cannot tie to the
-  // storey is taken as storey-aligned, as a move of the element takes it.
-  const parent = fromStorey === null ? IDENTITY_FRAME : frameInAncestor(read, source.parentPlacementId, fromStorey);
+  const parent = parentFrameInStorey(read, source, fromStorey);
   if (targetStoreyId === source.storeyId) {
-    const frame = parent ?? IDENTITY_FRAME;
-    const location = applyRigid(invertRigid(frame), applyRigid(move, applyRigid(frame, own.location)));
+    const location = applyRigid(invertRigid(parent), applyRigid(move, applyRigid(parent, own.location)));
     return { parentPlacementId: source.parentPlacementId, location, turn: move };
   }
   const toStorey = storeyPlacementId(read, targetStoreyId);
-  if (!parent || toStorey === null) {
-    throw new Error(`#${source.placementExpressId}: only an element placed on its storey can be copied to another storey`);
+  if (toStorey === null) {
+    throw new Error(`#${source.placementExpressId}: the storey it is copied to has no placement to copy under`);
   }
   // Same plan position and height above the floor, now under the other storey's placement.
   return { parentPlacementId: toStorey, location: applyRigid(move, applyRigid(parent, own.location)), turn: composeRigid(move, parent) };
@@ -288,7 +357,8 @@ function childRefs(values: readonly unknown[]): number[] {
 
 /**
  * Where a product's placement origin is on its storey, metres: the point a
- * paste lines up with the cursor. Null when its placement does not read.
+ * paste lines up with the cursor. Null when its placement does not read;
+ * throws (with the reason) when it is not tied to its storey, as a copy would.
  */
 export function productStoreyOrigin(ctx: CopyContext, id: number): { storeyId: number | null; origin: CopyVec3 } | null {
   let source: SourceAttributes;
@@ -301,7 +371,7 @@ export function productStoreyOrigin(ctx: CopyContext, id: number): { storeyId: n
   const own = readOwnPlacement(ctx.read, source.placementExpressId);
   if (!own) return null;
   const fromStorey = storeyPlacementId(ctx.read, source.storeyId);
-  const parent = (fromStorey === null ? null : frameInAncestor(ctx.read, source.parentPlacementId, fromStorey)) ?? IDENTITY_FRAME;
+  const parent = parentFrameInStorey(ctx.read, source, fromStorey);
   const scale = source.lengthUnitScale && source.lengthUnitScale > 0 ? source.lengthUnitScale : 1;
   const [x, y, z] = applyRigid(parent, own.location);
   return { storeyId: source.storeyId, origin: [x * scale, y * scale, z * scale] };

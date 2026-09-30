@@ -637,7 +637,7 @@ All paths route through the same `mutationSlice` actions that wrap `StoreEditor`
 | Add a type object, or a material / layer set / layer set usage, and assign it | `addElementTypeToStore` + `assignTypeInStore`, `addMaterial*ToStore` + `assignMaterialInStore` (or `bim.store.addElementType` / `assignType` / `addMaterial*` / `assignMaterial`) |
 | Generate IfcSpace volumes from a storey's existing walls | `generateSpacesFromWalls` (or **Add Element → Space → Auto Spaces** in the viewer) |
 | Duplicate any IfcRoot product (psets, qsets, materials, type associations preserved) | `duplicateInStore` / right-click → Duplicate |
-| Copy an element turned, moved or onto another storey, with fresh GlobalIds and the openings, doors and windows in it | `createCopyContext` + `copyProductInStore` / Model workspace → Copy, Paste, Array |
+| Copy an element turned, moved or onto another storey, with fresh GlobalIds and the openings, doors, windows and assembly parts in it | `createCopyContext` + `copyProductInStore` / Model workspace → Copy, Paste, Array |
 | Remove an entity from an existing model | `removeEntity` / `bim.store.removeEntity` |
 | Build a brand-new IFC file from scratch | `IfcCreator` (see [API Reference](../api/typescript.md#ifc-litecreate)) |
 

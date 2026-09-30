@@ -16,7 +16,7 @@ import type { TranslationKey } from '@/i18n';
 import { resolve as translate } from '@/i18n/registry';
 import type { Vec2 } from '@/lib/snap/types';
 import { useViewerStore } from '@/store';
-import { copyElements, withHostedFillings } from '../copy-elements.js';
+import { copyElements, copySources, withHostedFillings } from '../copy-elements.js';
 import { readCopyClipboard, type CopyClipboard } from '../copy-clipboard.js';
 import { copyGhosts, sourceMeshes } from '../copy-ghost.js';
 import type { CommandContext, ModelingCommand, Workplane } from '../types.js';
@@ -34,8 +34,10 @@ export interface PasteGesture {
 
 function init(ctx: CommandContext): PasteGesture {
   const clip = readCopyClipboard();
+  // The elements are read again: one moved or deleted since Ctrl+C may no longer be copyable, and the preview must say so.
   const refusal: TranslationKey | null = !clip ? 'copyArray.paste.empty'
-    : clip.modelId !== ctx.modelId ? 'copyArray.paste.otherModel' : null;
+    : clip.modelId !== ctx.modelId ? 'copyArray.paste.otherModel'
+      : 'refusal' in copySources(ctx.get(), clip.modelId, clip.ids) ? 'copyArray.paste.stale' : null;
   return {
     clip: refusal ? null : clip, refusal, cursor: null, inPlace: false,
     shown: clip && !refusal ? withHostedFillings(ctx.get(), ctx.modelId, clip.ids) : [],

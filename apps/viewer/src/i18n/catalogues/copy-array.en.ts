@@ -21,6 +21,7 @@ export const copyArrayEn = {
   'copyArray.paste.label': 'Paste',
   'copyArray.paste.hint': 'Click where the copy goes. To paste on another storey, switch storey first',
   'copyArray.paste.empty': 'Nothing is copied yet: select elements and copy them first',
+  'copyArray.paste.stale': "The copied elements can't be copied any more: select them and copy again",
   'copyArray.paste.otherModel': 'The copied elements are in another model: paste them there',
   'copyArray.tool.array': 'Array',
   'copyArray.blocked.array': 'Select the elements to repeat first',

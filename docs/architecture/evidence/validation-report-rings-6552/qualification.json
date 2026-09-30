@@ -1,0 +1,151 @@
+{
+  "source": "c5475182441bba8f1e7e8fb8b9305a376a720e80",
+  "productionByteIdenticalToCapture": true,
+  "typecheck": {
+    "command": "pnpm typecheck",
+    "turboTasksPassed": 109,
+    "testFilesCovered": 3184,
+    "publisherFreshRun": "/tmp/6232-takeover/6552-publish-typecheck.log"
+  },
+  "selectedTests": [
+    {
+      "shard": 194087,
+      "name": "reportBenchmarks",
+      "exit": 0,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/tmp/6232-takeover/6552-final-regression-reportBenchmarks.log"
+    },
+    {
+      "shard": 885784,
+      "name": "document",
+      "exit": 0,
+      "tests": 42,
+      "passed": 42,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/tmp/6232-takeover/6552-final-regression-document.log"
+    },
+    {
+      "shard": 766711,
+      "name": "ids-report-layout",
+      "exit": 0,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/tmp/6232-takeover/6552-final-regression-ids-report-layout.log"
+    },
+    {
+      "shard": 961573,
+      "name": "report-provenance",
+      "exit": 0,
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/tmp/6232-takeover/6552-final-regression-report-provenance.log"
+    },
+    {
+      "shard": 713213,
+      "name": "IDSPanelResults.restore-colors",
+      "exit": 0,
+      "tests": 34,
+      "passed": 34,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/tmp/6232-takeover/6552-final-regression-IDSPanelResults.restore-colors.log"
+    },
+    {
+      "shard": 583538,
+      "name": "IDSPanel.rerun",
+      "exit": 0,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/tmp/6232-takeover/6552-final-regression-IDSPanel.rerun.log"
+    },
+    {
+      "shard": 523016,
+      "name": "IDSPanel.i18n",
+      "exit": 0,
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/tmp/6232-takeover/6552-final-regression-IDSPanel.i18n.log"
+    },
+    {
+      "shard": 164740,
+      "name": "blockTitles",
+      "exit": 0,
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/tmp/6232-takeover/6552-final-regression-blockTitles.log"
+    },
+    {
+      "shard": 295745,
+      "name": "DocumentPanel.manualReport",
+      "exit": 0,
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/tmp/6232-takeover/6552-final-regression-DocumentPanel.manualReport.log"
+    },
+    {
+      "shard": 5843,
+      "name": "checklist-summary",
+      "exit": 0,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/tmp/6232-takeover/6552-final-regression-checklist-summary.log"
+    },
+    {
+      "shard": 100883,
+      "name": "manual-report",
+      "exit": 0,
+      "tests": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/tmp/6232-takeover/6552-final-regression-manual-report.log"
+    }
+  ],
+  "selectedTotalPassed": 152,
+  "selectedTotalSkipped": 0,
+  "limits": "Each of the eleven Turbo selection processes exited0 and its complete log reports success/0skips. The outer orchestration transport returned143 after all results were recorded; no full local repository-suite pass is claimed. Fresh exact-head CI remains required. First publisher lint was interrupted and is not a pass; final completed lint is recorded separately.",
+  "gates": {
+    "lint": {
+      "log": "/tmp/6232-takeover/6552-publish-lint-final.log",
+      "exit": 0
+    },
+    "moduleSize": {
+      "log": "/tmp/6232-takeover/6552-publish-module-size.log",
+      "exit": 0
+    },
+    "sourceAssertions": {
+      "log": "/tmp/6232-takeover/6552-publish-source-assertions.log",
+      "exit": 0
+    },
+    "docsSamples": {
+      "compiled": 425,
+      "documents": 100,
+      "illustrativeSkips": 12,
+      "log": "/tmp/6232-takeover/6552-publish-docs-samples.log",
+      "exit": 0
+    },
+    "docsGenerated": {
+      "regions": 5,
+      "log": "/tmp/6232-takeover/6552-publish-docs-generated.log",
+      "exit": 0
+    }
+  }
+}

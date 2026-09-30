@@ -27,8 +27,10 @@ the renderer, scene, loader, store or commands.
 ![Original beams after one undo](revit-assembly-after-undo.png)
 
 `source-provenance.json` records the tested source and runtime hashes. The
-runtime was built by the official `pnpm build:wasm` script from this base's
-unchanged Rust source; it matches the default frozen-base wasm SHA-256.
+runtime was built by the official `CI=1 pnpm build:wasm` script from this
+base's unchanged Rust source and build configuration. This refreshed witness
+uses wasm SHA-256 `896d0b55…` and the recorded pinned toolchain. It does not
+claim binary identity with the earlier frozen-base artifact.
 
 Reproduce after fetching fixtures and building the default wasm:
 
@@ -41,3 +43,13 @@ invariant. They cover nested assembly relationships and placements, source
 aliases, overlay resolution with one and multiple models, late refusal with no
 partial writes, full graph undo/redo, explicit root Name, and offset sizing
 from mixed flat/instanced geometry in the unrotated owning-model frame.
+
+The CI repair keeps the hosted software-GPU policy separate from this strict
+raster witness. A forced device loss with `E2E_GPU_STRICT=0` reached every
+copy/remesh/undo assertion and then applied the existing shared loss guard at
+the failed color readback; `hosted-loss-graph-undo.json` records zero remaining
+copied records and meshes and the loss signal. That skip provides no GPU
+coverage. The same forced loss with `E2E_GPU_STRICT=1` remains a hard failure.
+The shortcut regression also verifies every copied helper/relationship is in
+one batch and one actual Undo removes all records, rather than assuming the
+history contains only one raw entry.

@@ -66,7 +66,19 @@ describe('Ctrl/⌘+D duplicate gating (#6233)', () => {
   it('with Edit mode on it duplicates, creating the editable view on demand', () => {
     useViewerStore.setState({ mutationViews: new Map(), storeEditors: new Map() });
     const shown = pressDuplicate();
-    assert.equal(undoDepth(), 1, 'one duplicate on the undo stack');
     assert.match(shown, /Duplicated as #/);
+    const state = useViewerStore.getState();
+    const view = state.mutationViews.get(WALL_MODEL)!;
+    const records = view.getNewEntities();
+    const wall = records.find((record) => record.type === 'IfcWall');
+    assert.ok(wall, 'the shortcut must create a real copied wall');
+    assert.notEqual(wall.expressId, WALL);
+    assert.ok(records.length > 1, 'placements and relationships must accompany the copied wall (#6232)');
+    const history = state.undoStacks.get(WALL_MODEL)!;
+    assert.ok(records.every((record) => history.some((mutation) => mutation.entityId === record.expressId)), 'all copied records participate in undo');
+    assert.equal(new Set(history.map((mutation) => state.mutationBatchTags.get(mutation.id))).size, 1, 'one complete copy operation');
+    act(() => useViewerStore.getState().undo(WALL_MODEL));
+    assert.equal(view.getNewEntities().length, 0, 'one undo removes the wall and its complete copied graph');
+    assert.equal(undoDepth(), 0);
   });
 });

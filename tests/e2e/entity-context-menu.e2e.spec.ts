@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { rendererColorFrame } from './federation-control-triplet.rendering';
+import { watchGpuDeviceLoss } from './gpu-device-loss';
 import type { ViewerState } from '../../apps/viewer/src/store';
 
 declare global {
@@ -199,6 +200,7 @@ test('authored IFC entity menu exposes actions, arrow navigation, submenu and fo
 
 /** #6232: a real Revit assembly, copied through the actual Duplicate shortcut. */
 test('Revit assembly Duplicate carries both beams and removes the full subgraph with one undo (#6232)', async ({ page }, info) => {
+  const deviceLoss = await watchGpuDeviceLoss(page);
   const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
   const file = join(root, 'tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc');
   test.skip(!existsSync(file), 'Run pnpm fixtures to fetch the real Revit Snowdon fixture');
@@ -274,7 +276,24 @@ test('Revit assembly Duplicate carries both beams and removes the full subgraph 
       setTimeout(() => state.cameraCallbacks.frameSelection?.(), 50);
     }, { modelId: before.modelId, parts: copied.parts });
     await page.waitForTimeout(500);
-    const png = await rendererColorFrame(page);
+    let capture: { png: Buffer } | { error: unknown };
+    try { capture = { png: await rendererColorFrame(page) }; }
+    catch (error) { capture = { error }; }
+    await page.evaluate((modelId) => globalThis.__ifc_lite_viewer_store__.getState().undo(modelId), before.modelId);
+    const afterUndo = await page.evaluate(({ modelId, ids }) => {
+      const state = globalThis.__ifc_lite_viewer_store__.getState();
+      return { remaining: state.mutationViews.get(modelId)!.getNewEntities().filter((r) => ids.includes(r.expressId)).length,
+        undo: state.undoStacks.get(modelId)?.length ?? 0,
+        copiedMeshes: state.models.get(modelId)!.geometryResult!.meshes.filter((m) => ids.some((id) => state.toGlobalId(modelId, id) === m.expressId)).length };
+    }, { modelId: before.modelId, ids: copied.recordIds });
+    expect(afterUndo).toEqual({ remaining: 0, undo: before.undo, copiedMeshes: 0 });
+    if ('error' in capture) {
+      const error = capture.error;
+      await writeFile(info.outputPath('revit-assembly-duplicate-graph-undo.json'), JSON.stringify({ copied, afterUndo, gpuLoss: await deviceLoss.lost(1000), rasterEvidence: 'unavailable; graph/remesh/undo verified before applying the shared hosted-loss policy' }, null, 2));
+      await deviceLoss.requireLiveGpu('Duplicate submitted color-frame readback after graph and undo verification', async () => { throw error; });
+      throw error;
+    }
+    const png = capture.png;
     const coloredMeshPixels = await page.evaluate(async (base64) => {
       const image = await createImageBitmap(await (await fetch(`data:image/png;base64,${base64}`)).blob());
       const canvas = new OffscreenCanvas(image.width, image.height);
@@ -289,16 +308,8 @@ test('Revit assembly Duplicate carries both beams and removes the full subgraph 
     }, png.toString('base64'));
     expect(coloredMeshPixels, 'selected real beams must be visible in the renderer frame, not hidden by the workspace storey context').toBeGreaterThan(100);
     await writeFile(info.outputPath('revit-assembly-duplicate.png'), png);
-    await page.evaluate((modelId) => globalThis.__ifc_lite_viewer_store__.getState().undo(modelId), before.modelId);
-    const afterUndo = await page.evaluate(({ modelId, ids }) => {
-      const state = globalThis.__ifc_lite_viewer_store__.getState();
-      return { remaining: state.mutationViews.get(modelId)!.getNewEntities().filter((r) => ids.includes(r.expressId)).length,
-        undo: state.undoStacks.get(modelId)?.length ?? 0,
-        copiedMeshes: state.models.get(modelId)!.geometryResult!.meshes.filter((m) => ids.some((id) => state.toGlobalId(modelId, id) === m.expressId)).length };
-    }, { modelId: before.modelId, ids: copied.recordIds });
-    expect(afterUndo).toEqual({ remaining: 0, undo: before.undo, copiedMeshes: 0 });
     await page.waitForTimeout(300);
-    const afterUndoPng = await rendererColorFrame(page);
+    const afterUndoPng = await deviceLoss.requireLiveGpu('Duplicate after-undo submitted color-frame readback', () => rendererColorFrame(page));
     expect(afterUndoPng.equals(png), 'one undo must remove the copied beams from the submitted renderer frame').toBe(false);
     await writeFile(info.outputPath('revit-assembly-after-undo.png'), afterUndoPng);
     const remeshedGlobalIds = await page.evaluate(() => { globalThis.__ifc_lite_duplicate_unsubscribe__?.(); return globalThis.__ifc_lite_duplicate_remeshed__; });

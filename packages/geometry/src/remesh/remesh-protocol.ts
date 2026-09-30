@@ -15,10 +15,16 @@ export type RemeshWorkerInbound =
 
 export type RemeshWorkerOutbound =
   | { type: 'ready' }
-  | { type: 'init-error'; message: string }
+  | ({ type: 'init-error'; message: string } & RemeshPanicDetails)
   | { type: 'result'; requestId: number; result: RemeshResult }
   | { type: 'style-wire'; requestId: number; wire: StyleWire }
-  | { type: 'error'; requestId: number; message: string };
+  | ({ type: 'error'; requestId: number; message: string } & RemeshPanicDetails);
+
+/** Source location only: Rust panic messages can contain confidential model data. */
+interface RemeshPanicDetails {
+  wasmPanicLocation?: string;
+  wasmPanicAt?: number;
+}
 
 /** The large per-mesh buffers, moved rather than copied across the boundary. */
 export function meshTransferables(meshes: readonly MeshData[]): ArrayBuffer[] {

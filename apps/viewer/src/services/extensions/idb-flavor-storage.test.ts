@@ -41,6 +41,92 @@ describe('IdbFlavorStorage', () => {
     await resetDb();
   });
 
+  it('reopens a closed connection for concurrent flavor reads (#3331)', async () => {
+    const storage = new IdbFlavorStorage();
+    await storage.putFlavor(baseFlavor('survivor'));
+    await storage.setActiveId('survivor');
+    const original = IDBDatabase.prototype.transaction;
+    let closed = false;
+    IDBDatabase.prototype.transaction = function (...args: Parameters<typeof original>) {
+      if (this.name === 'ifc-lite-flavors' && !closed) {
+        closed = true;
+        this.close();
+      }
+      return original.apply(this, args);
+    };
+    try {
+      const recovered = Promise.all([storage.listFlavors(), storage.getActiveId()]);
+      await assert.doesNotReject(recovered);
+      const [flavors, activeId] = await recovered;
+      assert.equal(closed, true, 'failure induction reached the cached connection');
+      assert.deepEqual(flavors.map((f) => f.id), ['survivor']);
+      assert.equal(activeId, 'survivor');
+      await storage.putFlavor(baseFlavor('survivor', 'edited after recovery'));
+      assert.equal((await storage.listSnapshots('survivor'))[0]?.flavor.name, 'survivor');
+    } finally {
+      IDBDatabase.prototype.transaction = original;
+    }
+  });
+
+  it('stops after one reopen if the fresh connection also closes (#3331)', async () => {
+    const original = IDBDatabase.prototype.transaction;
+    let attempts = 0;
+    IDBDatabase.prototype.transaction = function (...args: Parameters<typeof original>) {
+      if (this.name === 'ifc-lite-flavors') {
+        attempts++;
+        this.close();
+      }
+      return original.apply(this, args);
+    };
+    try {
+      await assert.rejects(new IdbFlavorStorage().listFlavors(), { name: 'InvalidStateError' });
+      assert.equal(attempts, 2, 'one initial attempt and one reopen, never an infinite retry');
+    } finally {
+      IDBDatabase.prototype.transaction = original;
+    }
+  });
+
+  it('recovers after a blocked open and closes its late-success connection (#3331)', async () => {
+    // Deletion announces versionchange, invalidating the cached connection.
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.deleteDatabase('ifc-lite-flavors');
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+    const original = indexedDB.open;
+    let first = true;
+    let orphan: IDBDatabase | undefined;
+    let orphanOpened: Promise<void> = Promise.resolve();
+    indexedDB.open = function (...args: Parameters<typeof original>) {
+      const request = original.apply(this, args);
+      if (first && args[0] === 'ifc-lite-flavors') {
+        first = false;
+        orphanOpened = new Promise<void>((resolve) => {
+          request.addEventListener('success', () => {
+            orphan = request.result;
+            resolve();
+          });
+        });
+        // Inject the browser's blocked notification; the real request still
+        // finishes, exercising the orphan cleanup as well as retry behavior.
+        queueMicrotask(() => request.onblocked?.call(request, new IDBVersionChangeEvent('blocked')));
+      }
+      return request;
+    };
+    try {
+      const storage = new IdbFlavorStorage();
+      await assert.rejects(storage.listFlavors(), /blocked by another tab/);
+      await storage.setActiveId('after-blocked');
+      assert.equal(await storage.getActiveId(), 'after-blocked');
+      await orphanOpened;
+      const orphanDb = orphan;
+      assert.ok(orphanDb);
+      assert.throws(() => orphanDb.transaction('flavors'), { name: 'InvalidStateError' });
+    } finally {
+      indexedDB.open = original;
+    }
+  });
+
   it('round-trips a flavor through put/get/list/delete', async () => {
     const store = new IdbFlavorStorage();
     const flv = baseFlavor('flv.a', 'A');

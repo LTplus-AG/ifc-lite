@@ -16,6 +16,7 @@
  */
 
 import type { MeshCollection } from '@ifc-lite/wasm';
+import { restashWasmPanicLocation, takeWasmPanicStash } from '../wasm-panic-forward.js';
 import { convertMeshCollectionToBatch } from '../geometry-coordinate.js';
 import type { ByteStreamingPrePassResult } from '../byte-streaming-prepass-result.js';
 import type { RtcFrame } from '../rtc-frame.js';
@@ -126,6 +127,28 @@ export function filterStyleWire(
   return { styleIds: Uint32Array.from(ids), styleColors: Uint8Array.from(colors) };
 }
 
+/** Always clear the cache, preserving a primary operation failure if cleanup also fails. */
+function withPrepassCache<T>(api: RemeshApi, operation: () => T): T {
+  let result: T;
+  try {
+    result = operation();
+  } catch (error) {
+    const realm = typeof self === 'undefined' ? globalThis : self;
+    const panic = takeWasmPanicStash(realm);
+    try {
+      api.clearPrePassCache();
+    } catch (cleanupError) {
+      console.warn('[remesh] clearing the failed pre-pass cache also failed:', cleanupError);
+    }
+    takeWasmPanicStash(realm);
+    if (panic) restashWasmPanicLocation(realm, panic.location, panic.at,
+      error instanceof Error ? error.message : String(error));
+    throw error;
+  }
+  api.clearPrePassCache();
+  return result;
+}
+
 /**
  * Pre-pass the subgraph, mesh the targets in the load frame, and release the
  * pre-pass cache on every exit (the per-content caches are keyed to this
@@ -133,8 +156,8 @@ export function filterStyleWire(
  */
 export function remeshOnApi(api: RemeshApi, req: RemeshRequest, now: () => number = () => performance.now()): RemeshResult {
   const start = now();
-  try {
-    // Inside the `try`: a pre-pass that throws part-way may already have
+  return withPrepassCache(api, () => {
+    // Inside the scope: a pre-pass that throws part-way may already have
     // cached this buffer's index, which the next request must not inherit.
     const prePass = api.buildPrePassOnce(req.buffer) as ByteStreamingPrePassResult;
     const prepassDone = now();
@@ -161,9 +184,7 @@ export function remeshOnApi(api: RemeshApi, req: RemeshRequest, now: () => numbe
     }
     const meshes = convertMeshCollectionToBatch(collection);
     return { meshes, csgFailures, ms: { prepass: prepassDone - start, produce: now() - prepassDone } };
-  } finally {
-    api.clearPrePassCache();
-  }
+  });
 }
 
 /**
@@ -171,7 +192,7 @@ export function remeshOnApi(api: RemeshApi, req: RemeshRequest, now: () => numbe
  * pre-pass cache. Copies each array so nothing aliases the wasm heap.
  */
 export function styleWireOnApi(api: RemeshApi, source: Uint8Array): StyleWire {
-  try {
+  return withPrepassCache(api, () => {
     const prePass = api.buildPrePassOnce(source) as ByteStreamingPrePassResult;
     return {
       styleIds: prePass.styleIds.slice(),
@@ -180,7 +201,5 @@ export function styleWireOnApi(api: RemeshApi, source: Uint8Array): StyleWire {
       materialColorCounts: prePass.materialColorCounts?.slice() ?? new Uint32Array(),
       materialColors: prePass.materialColors?.slice() ?? new Uint8Array(),
     };
-  } finally {
-    api.clearPrePassCache();
-  }
+  });
 }

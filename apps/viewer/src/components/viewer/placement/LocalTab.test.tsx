@@ -71,6 +71,23 @@ describe('model repositioning user interactions (#4226)', () => {
   });
   afterEach(cleanup);
 
+  it('disables Reset while a selected model is locked, then resets after unlocking (#6371)', () => {
+    act(() => useViewerStore.getState().openReposition(['scan']));
+    const ui = render(<><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot><LocalTab /></>);
+    type(input(ui, 'Delta X'), '5');
+    click(button(ui, 'Preview values'));
+    click(button(ui, 'Apply'));
+    click(button(ui, 'Lock scan'));
+    const reset = button(ui, 'Reset placement');
+    assert.equal(reset.disabled, true);
+    assert.doesNotThrow(() => click(reset));
+    assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'scan'), [5, 0, 0]);
+    click(button(ui, 'Unlock scan'));
+    assert.equal(button(ui, 'Reset placement').disabled, false);
+    click(button(ui, 'Reset placement'));
+    assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'scan'), [0, 0, 0]);
+  });
+
   for (const tool of ['measure', 'section', 'walk'] as const) it(`opens repositioning from ${tool}`, () => {
     useViewerStore.getState().setActiveTool(tool);
     const ui = render(<><HomeTab /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot><LocalTab /></>);

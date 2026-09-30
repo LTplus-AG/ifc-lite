@@ -221,7 +221,8 @@ export function LocalTab() {
         <Button size="sm" disabled={!preview} onClick={runtime.apply}>{t('repositionPanel.applyButton')}</Button>
         <Button size="sm" variant="outline" disabled={!placement.undo.length} onClick={() => useViewerStore.getState().undoModelTranslation()}>{t('repositionPanel.undoButton')}</Button>
         <Button size="sm" variant="outline" disabled={!placement.redo.length} onClick={() => useViewerStore.getState().redoModelTranslation()}>{t('repositionPanel.redoButton')}</Button>
-        <Button size="sm" variant="outline" onClick={() => useViewerStore.getState().resetModelTranslations(runtime.selected)}>{t('repositionPanel.resetButton')}</Button>
+        <Button size="sm" variant="outline" disabled={!runtime.selected.length || runtime.selected.some((id) => placementFor(placement, id).locked)}
+          onClick={() => useViewerStore.getState().resetModelTranslations(runtime.selected)}>{t('repositionPanel.resetButton')}</Button>
       </div>
 
       <PlacementFiles />

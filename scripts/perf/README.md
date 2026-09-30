@@ -27,6 +27,17 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Shared-buffer retries after a WASM trap (#6542)
+
+A compatibility retry must distinguish a rejected shared view from a WASM
+runtime trap. Replaying a trapped handle with a materialized file copy adds
+memory pressure and can replace the original error. Worker contract tests
+verify that streaming prepasses and shard operations stop before that retry;
+batch processing retains its existing per-entity recovery. Successful mesh
+production is unchanged. No end-to-end throughput measurement or improvement
+is claimed. Lesson: restrict copying compatibility fallbacks to non-trap
+failures rather than interpreting every WASM exception as a view refusal.
+
 ## Caller-supplied rebar precheck (#5797)
 
 On the Revit Snowdon fixture, interleaved base/branch Python schedule calls

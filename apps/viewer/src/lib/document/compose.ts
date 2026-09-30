@@ -299,10 +299,11 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           const lineH = 10 * 1.4;
           const snapshotW = block.snapshotAspect ? Math.min(190, TOPIC_SNAPSHOT_HEIGHT * block.snapshotAspect) : 0;
           const snapshotH = block.snapshotAspect ? snapshotW / block.snapshotAspect : 0;
-          const lines = block.lines.flatMap((l) => wrapText(l, contentW - (snapshotW ? snapshotW + BLOCK_GAP : 0), 10, false, input.measure));
+          const textW = contentW - (snapshotW ? snapshotW + BLOCK_GAP : 0);
+          const lines = block.lines.flatMap((l) => wrapText(l, textW, 10, false, input.measure));
           // Title, snapshot and the first lines move together; a long description then continues page by page.
           ensure(Math.max(16 + Math.min(lines.length, 3) * lineH, snapshotH) + BLOCK_GAP);
-          page.items.push({ kind: 'text', x: REPORT_MARGIN, y: y + 11, size: 11, bold: true, gray: 0, text: block.authoredTitle ? truncateToWidth(block.title, contentW, 11, true, input.measure) : block.title });
+          page.items.push({ kind: 'text', x: REPORT_MARGIN, y: y + 11, size: 11, bold: true, gray: 0, text: block.authoredTitle ? truncateToWidth(block.title, textW, 11, true, input.measure) : block.title });
           if (block.snapshotAspect) page.items.push({ kind: 'topic-snapshot', blockId: block.id, x: size.w - REPORT_MARGIN - snapshotW, y, w: snapshotW, h: snapshotH });
           const snapshotBottom = y + snapshotH;
           let ty = y + 16;

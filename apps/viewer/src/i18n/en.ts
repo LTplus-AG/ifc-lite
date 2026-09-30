@@ -95,6 +95,7 @@ import { modelInspectorEn } from './catalogues/model-inspector.en';
 import { hostedPlaceEn } from './catalogues/hosted-place.en';
 import { stairRailingEn } from './catalogues/stair-railing.en';
 import { planHandlesEn } from './catalogues/plan-handles.en';
+import { multiSplitEn } from './catalogues/multi-split.en';
 import { remeshEn } from './catalogues/remesh.en';
 import { storeyContextEn } from './catalogues/storey-context.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
@@ -153,6 +154,7 @@ export const en = {
   ...hostedPlaceEn,
   ...stairRailingEn,
   ...planHandlesEn,
+  ...multiSplitEn,
   ...remeshEn,
   ...storeyContextEn,
   ...documentEn,

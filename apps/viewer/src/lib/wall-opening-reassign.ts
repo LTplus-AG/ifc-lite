@@ -45,6 +45,9 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { iterateEffectiveEntityIds, type IfcAttributeValue, type MutablePropertyView, type StoreEditor } from '@ifc-lite/mutations';
 import { asExpressIdRef, asCoordinateTriple, readAttributes, resolvePlacementChain } from './placement-core.js';
 
+/** Write one positional attribute of an entity. */
+export type PositionalWriter = (expressId: number, index: number, value: IfcAttributeValue) => void;
+
 export interface OpeningReassignSummary {
   /** Openings moved onto the left half (when it is not the source). */
   toLeft: number;
@@ -109,6 +112,12 @@ export function reassignWallOpenings(
    * placement, not the half's IfcWall entity. */
   leftPlacementId: number,
   rightPlacementId: number,
+  /**
+   * How a positional attribute is written. The editor's own write leaves no
+   * undo record; a caller whose split must undo as one step passes the store's
+   * undoable action, so re-hosting an opening reverts with the cut (#6232 C5).
+   */
+  write: PositionalWriter = (id, index, value) => editor.setPositionalAttribute(id, index, value),
 ): OpeningReassignSummary {
   const summary: OpeningReassignSummary = {
     toLeft: 0,
@@ -215,8 +224,8 @@ export function reassignWallOpenings(
     // placement parent — nothing to rewrite, and not "reassigned".
     const host = onLeft ? leftWallId : rightWallId;
     if (host !== sourceWallId) {
-      editor.setPositionalAttribute(relId, 4, rewriteRelTarget(relAttrs[4], host));
-      editor.setPositionalAttribute(
+      write(relId, 4, rewriteRelTarget(relAttrs[4], host));
+      write(
         localPlacementId,
         0,
         rewriteRelTarget(localPlacementAttrs[0], onLeft ? leftPlacementId : rightPlacementId),
@@ -229,7 +238,7 @@ export function reassignWallOpenings(
       // the source moved there — so its openings' local X shifts by
       // `-splitDistance` to keep their world position fixed. The left
       // piece starts where the source did: no shift.
-      editor.setPositionalAttribute(cartesianId, 0, [localX - splitDistance, coords[1], coords[2]]);
+      write(cartesianId, 0, [localX - splitDistance, coords[1], coords[2]]);
     }
   }
 

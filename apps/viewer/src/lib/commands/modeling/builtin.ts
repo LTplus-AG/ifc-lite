@@ -26,6 +26,7 @@ import { ELEMENT_ARRAY } from './commands/element-array.js';
 import { ELEMENT_PASTE } from './commands/element-paste.js';
 import { STAIR_PLACE } from './commands/stair-place.js';
 import { RAILING_PLACE } from './commands/railing-place.js';
+import { SPLIT_MULTI } from './commands/multi-split.js';
 import { CURTAINWALL_PLACE } from './commands/curtainwall-place.js';
 import { GRID_PLACE } from './commands/grid-place.js';
 import type { ModelingCommand } from './types.js';
@@ -53,6 +54,7 @@ registerOnce(ELEMENT_MOVE);
 registerOnce(ELEMENT_ROTATE);
 registerOnce(STAIR_PLACE);
 registerOnce(RAILING_PLACE);
+registerOnce(SPLIT_MULTI);
 registerOnce(CURTAINWALL_PLACE);
 registerOnce(GRID_PLACE);
 

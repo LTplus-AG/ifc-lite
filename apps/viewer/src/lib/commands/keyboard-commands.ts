@@ -133,6 +133,7 @@ export const KEY_COMMANDS = [
   { id: 'model.opening', labelKey: 'commands.model.opening', category: 'tools', when: 'workspace.model', keys: [k('h', { shift: true })] },
   { id: 'model.door', labelKey: 'commands.model.door', category: 'tools', when: 'workspace.model', keys: [k('d', { shift: true })] },
   { id: 'model.window', labelKey: 'commands.model.window', category: 'tools', when: 'workspace.model', keys: [k('w', { shift: true })] },
+  { id: 'model.splitMulti', labelKey: 'commands.model.splitMulti', category: 'tools', when: 'workspace.model', keys: [k('k', { shift: true })] },
   { id: 'model.storeyUp', labelKey: 'commands.model.storeyUp', category: 'tools', when: 'workspace.model', keys: [k('pageup')] },
   { id: 'model.storeyDown', labelKey: 'commands.model.storeyDown', category: 'tools', when: 'workspace.model', keys: [k('pagedown')] },
   { id: 'model.copy', labelKey: 'commands.model.copy', category: 'editing', when: 'workspace.model', keys: [k('c', { mod: true })] },

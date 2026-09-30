@@ -35,7 +35,7 @@ export interface HostedCut {
 
 export interface HostedCuts {
   readonly cuts: readonly HostedCut[];
-  /** Openings whose place could not be read (not placed against the wall, no body): the caller must not guess. */
+  /** Openings (or void relationships) whose place could not be read: not placed against the wall, no body, an unresolvable reference. The caller must not guess. */
   readonly unreadable: readonly number[];
 }
 
@@ -51,10 +51,18 @@ export function readHostedCuts(
   const unreadable: number[] = [];
   for (const { expressId: relId } of iterateEffectiveEntityIds(dataStore, view, ['IFCRELVOIDSELEMENT'])) {
     const rel = readAttributes(dataStore, view, editor, relId);
+    // A relationship that cannot be read may be this wall's: it is an opening of unknown place, never skipped.
+    if (!rel) {
+      unreadable.push(relId);
+      continue;
+    }
     // IfcRelVoidsElement: RelatingBuildingElement (4), RelatedOpeningElement (5).
-    if (!rel || asExpressIdRef(rel[4]) !== wallId) continue;
+    if (asExpressIdRef(rel[4]) !== wallId) continue;
     const openingId = asExpressIdRef(rel[5]);
-    if (openingId === null) continue;
+    if (openingId === null) {
+      unreadable.push(relId);
+      continue;
+    }
     const fill = readHostedFill(dataStore, openingId, view);
     const extent = fill ? placedBodyExtent(dataStore, openingId, view) : null;
     if (!fill || !extent || fill.hostId !== wallId) {

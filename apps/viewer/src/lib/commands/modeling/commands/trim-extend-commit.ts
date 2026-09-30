@@ -64,6 +64,7 @@ function commitWall(tx: AuthoringTransaction, target: TrimTarget, boundary: Boun
 
   // A new placement (the start moved) carries the openings with it: put each back where it stood.
   const after = readWallJoinTarget(edit.dataStore, edit.view, expressId, scale);
+  if (cuts.length > 0 && !after) throw new Error(translate('trimExtend.failed', { reason: translate('trimExtend.refused.wallBody') }));
   if (after && cuts.length > 0) {
     const [dx, dy] = axis.dir;
     const mx = after.origin[0] - before.origin[0];

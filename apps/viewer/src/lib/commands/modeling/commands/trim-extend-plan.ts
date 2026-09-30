@@ -113,21 +113,29 @@ export function hostedCutsOf(s: ViewerState, modelId: string, wallId: number): H
   return cuts;
 }
 
-/** The stretch of a wall its axis takes, along its placement X: `[from, to]` after the end at `end` moves to `at`. */
-function spanAfter(target: TrimTarget, end: 'start' | 'end', at: number): [number, number] | null {
+/** The body's safe longitudinal span in the original placement frame, including join cuts. */
+function bodySpan(target: TrimTarget, wall: WallJoinWall): [number, number] | null {
   const read = target.wall, axis = target.axis;
   if (!read || !axis) return null;
   const [dx, dy] = axis.dir;
-  const first = (read.wall.start[0] - read.origin[0]) * dx + (read.wall.start[1] - read.origin[1]) * dy;
-  return [first + (end === 'start' ? at : 0), first + (end === 'end' ? at : axis.length)];
+  const first = (wall.start[0] - read.origin[0]) * dx + (wall.start[1] - read.origin[1]) * dy;
+  const { corners } = wallBodyOutline(wall);
+  // Every opening traverses the wall thickness: it must fit both cut faces,
+  // including an oblique butt join, not merely the uncut axis endpoints.
+  return [first + Math.max(corners[0][0], corners[3][0]), first + Math.min(corners[1][0], corners[2][0])];
 }
 
-/** The openings a trim would cut through, or a reason to refuse when they cannot be told. */
-function hostedRefusal(s: ViewerState, target: TrimTarget, end: 'start' | 'end', at: number): string | null {
+/**
+ * The openings a change of the wall's ends would strand or shift, as a refusal.
+ * A trim strands what stands beyond the new end; moving the start moves the
+ * placement, so every opening must be known to be put back. Openings whose
+ * place cannot be read refuse both: they are never guessed at.
+ */
+function hostedRefusal(s: ViewerState, target: TrimTarget, wall: WallJoinWall, requireReadable: boolean): string | null {
   const hosted = hostedCutsOf(s, target.modelId, target.expressId);
-  const span = spanAfter(target, end, at);
-  if (!hosted || !span) return null;
-  if (hosted.unreadable.length > 0) return translate('trimExtend.refused.hostedUnreadable', { count: hosted.unreadable.length, countDisplay: String(hosted.unreadable.length) });
+  const span = bodySpan(target, wall);
+  if (!hosted || !span) return translate('trimExtend.refused.hostedUnreadable', { count: 1, countDisplay: '1' });
+  if (requireReadable && hosted.unreadable.length > 0) return translate('trimExtend.refused.hostedUnreadable', { count: hosted.unreadable.length, countDisplay: String(hosted.unreadable.length) });
   const outside: HostedCut[] = cutsOutside(hosted.cuts, span[0], span[1]);
   return outside.length > 0 ? translate('trimExtend.refused.hosted', { count: outside.length, countDisplay: String(outside.length) }) : null;
 }
@@ -152,11 +160,6 @@ export function previewFor(s: ViewerState, target: TrimTarget, boundary: Boundar
     return { ok: true, target, op: plan.op, end: plan.end, start: plan.start, stop: plan.stop, length: plan.length, moved: plan.moved, point: plan.point, joinKind: null, outline, removed };
   }
 
-  // A trim strands what the wall hosts beyond the new end; an extension never does.
-  if (plan.moved < 0) {
-    const stranded = hostedRefusal(s, target, plan.end, plan.at);
-    if (stranded) return refuse(target, stranded);
-  }
   const read = target.wall!;
   let wall = squaredWall(read.wall, start, stop);
   let joinKind: JoinKind | null = null;
@@ -174,6 +177,16 @@ export function previewFor(s: ViewerState, target: TrimTarget, boundary: Boundar
   }
   let outline: Vec2[];
   try {
+    const previous = bodySpan(target, read.wall);
+    const next = bodySpan(target, wall);
+    // An end extension is safe without guessing only when its resulting
+    // body contains the previous body. A join can shorten that body even
+    // when its axis grows; a moved start always needs every opening known.
+    // Unknown openings cannot justify a millimetre of clipping tolerance.
+    // One nanometre only absorbs roundoff from these metre-space projections.
+    const contracts = !previous || !next || next[0] > previous[0] + 1e-9 || next[1] < previous[1] - 1e-9;
+    const stranded = hostedRefusal(s, target, wall, plan.moved < 0 || contracts || (plan.end === 'start' && plan.moved !== 0));
+    if (stranded) return refuse(target, stranded);
     outline = bodyPolygon(wall);
   } catch (error) {
     return refuse(target, translate('trimExtend.refused.join', { reason: error instanceof Error ? error.message : String(error) }));

@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, it, type TestContext } from 'node:test
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { readHostedFill, readWallJoinRels, readWallJoinTarget } from '@ifc-lite/create';
+import { readHostedCuts } from '@/lib/wall-hosted-cuts';
 import type { MeshData } from '@ifc-lite/geometry';
 import { StepExporter } from '@ifc-lite/export';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
@@ -343,6 +344,120 @@ describe('element.trimExtend: hosted openings (#6232 C1)', () => {
     state().undo(MODEL_ID);
     assert.ok(nearOne(worldY(), 1.5));
     assert.ok(near(shape(crossing).wall.start, [4, -2]));
+  });
+});
+
+describe('element.trimExtend: the joined body protects hosted openings (#6535 review)', () => {
+  for (const side of ['start', 'end'] as const) {
+    it(`${side}: refuses an opening inside the trimmed axis but crossing the boundary near face`, () => {
+      wall([0, 0], [8, 0]);
+      const crossing = wall([4, -2], [4, 3]);
+      const Offset = side === 'end' ? 1.75 : 2.25;
+      const fill = state().addHostedFill(MODEL_ID, crossing, { kind: 'window', params: { Offset, Sill: 0.9, Width: 0.4, Height: 1.2 } });
+      assert.ok('expressId' in fill, 'error' in fill ? fill.error : '');
+      state().startCommand(ID);
+      click(6, 0);
+      hover(4, side === 'end' ? 2.5 : -1.5);
+      const preview = gesture().preview;
+      assert.ok(preview && !preview.ok, 'the axis reaches y=0, but the joined body ends at its near face y=±0.1');
+      assert.match(preview.reason, /1 opening, door or window hosted in this wall/);
+      const before = batches();
+      const written = mutations();
+      click(4, side === 'end' ? 2.5 : -1.5);
+      assert.equal(batches(), before);
+      assert.equal(mutations(), written);
+      assert.ok(near(shape(crossing).wall.start, [4, -2]));
+      assert.ok(near(shape(crossing).wall.end, [4, 3]));
+      assert.ok(nearOne(readHostedFill(target().dataStore, fill.expressId, target().view)!.offset, Offset));
+    });
+
+    it(`${side}: an opening wholly inside the joined body remains in place in one undo step`, () => {
+      wall([0, 0], [8, 0]);
+      const crossing = wall([4, -2], [4, 3]);
+      const Offset = side === 'end' ? 1.6 : 2.4;
+      const fill = state().addHostedFill(MODEL_ID, crossing, { kind: 'window', params: { Offset, Sill: 0.9, Width: 0.4, Height: 1.2 } });
+      assert.ok('expressId' in fill, 'error' in fill ? fill.error : '');
+      const worldY = () => shape(crossing).origin[1] + readHostedFill(target().dataStore, fill.expressId, target().view)!.offset;
+      const beforeY = worldY();
+      state().startCommand(ID);
+      click(6, 0);
+      const before = batches();
+      click(4, side === 'end' ? 2.5 : -1.5);
+      assert.equal(batches(), before + 1);
+      assert.ok(nearOne(worldY(), beforeY));
+      state().undo(MODEL_ID);
+      assert.ok(nearOne(worldY(), beforeY));
+      assert.ok(near(shape(crossing).wall.start, [4, -2]));
+      assert.ok(near(shape(crossing).wall.end, [4, 3]));
+    });
+  }
+});
+
+describe('element.trimExtend: openings whose place cannot be read (#6232 C1)', () => {
+  /** A void relationship of `wallId` whose RelatedOpeningElement resolves to nothing. */
+  function danglingVoid(wallId: number): void {
+    target().editor.addEntity('IfcRelVoidsElement', ['0dAnglingVoidRelGuid0000', null, null, null, `#${wallId}`, null]);
+  }
+
+  it('a positive end extension with a submillimetre joined-body contraction still refuses an unknown opening (#6535)', () => {
+    wall([0, 0], [8, 0], 0.004);
+    const ending = wall([4, -4], [4, -0.0015]);
+    danglingVoid(ending);
+    state().startCommand(ID);
+    click(6, 0);
+    setMode('extend');
+    hover(4, -0.2);
+    const preview = gesture().preview;
+    assert.ok(preview && !preview.ok, 'the axis grows 1.5 mm but its joined near face retreats 0.5 mm');
+    assert.match(preview.reason, /Can't tell where 1 opening/);
+    const before = batches();
+    const written = mutations();
+    click(4, -0.2);
+    assert.equal(batches(), before);
+    assert.equal(mutations(), written);
+    assert.ok(near(shape(ending).wall.end, [4, -0.0015]));
+  });
+
+  it('a trim through a wall with a void relationship that names no opening is refused, never guessed', () => {
+    wall([0, 0], [8, 0]);
+    const crossing = wall([4, -2], [4, 3]);
+    danglingVoid(crossing);
+    state().startCommand(ID);
+    click(6, 0);
+    hover(4, 2.5);
+    const preview = gesture().preview;
+    assert.ok(preview && !preview.ok, 'refused');
+    assert.match(preview.reason, /Can't tell where 1 opening/);
+    const written = mutations();
+    click(4, 2.5);
+    assert.equal(mutations(), written, 'nothing was written');
+    assert.ok(near(shape(crossing).wall.end, [4, 3]));
+  });
+
+  it('extending a wall\'s start (which moves its placement) is refused the same way', () => {
+    wall([0, 0], [8, 0]);
+    const ending = wall([4, 2], [4, 6]);
+    danglingVoid(ending);
+    state().startCommand(ID);
+    click(6, 0);
+    setMode('extend');
+    hover(4, 2.2);
+    const preview = gesture().preview;
+    assert.ok(preview && !preview.ok);
+    assert.match(preview.reason, /Can't tell where 1 opening/);
+  });
+
+  it('a void relationship whose attributes cannot be read is an opening of unknown place, not absent', () => {
+    const crossing = wall([4, -2], [4, 3]);
+    danglingVoid(crossing);
+    const t = target();
+    // An editor that knows no overlay entity: the relationship cannot be read at all.
+    const blind = { getNewEntity: () => null };
+    assert.equal(readHostedCuts(t.dataStore, t.view, blind, crossing).unreadable.length, 1);
+    // Read normally it is the one dangling reference, also unreadable, and no cut is invented.
+    const seen = readHostedCuts(t.dataStore, t.view, t.editor, crossing);
+    assert.equal(seen.unreadable.length, 1);
+    assert.equal(seen.cuts.length, 0);
   });
 });
 

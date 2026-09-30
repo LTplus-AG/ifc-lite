@@ -74,7 +74,6 @@
     "Private reporter model unavailable; no claim to explain or fix its complete 2.5x slowdown."
   ],
   "evidenceFiles": {
-    "current-v3-independent-qualification.json": "898fe864e21283de21f320dab5cb1c0122684320b16d94937cc14355ef166bf6",
     "browser-ab-v3-runs.jsonl": "334324f4d1feb7786ed2a414749c6df28a61ff51326e1cecf1b1ea5927759c8b",
     "browser-aa-v3-runs.jsonl": "d9a171285c56e1516eb0aa5d65d95d828aa7b54d9ea900377989ef6dae4b0590",
     "release-994-first-divergence.md": "3f2256729923577d81a66bd3a2a9462f731be5914034e086b52529cdced05e88",
@@ -134,5 +133,10 @@
       "snowdon81962.json": "20797fb139129584a81c6984cb1023768ebc13604a6d040b672bb10a84b90d64"
     },
     "scope": "Nine external-oracle cases and all14 changed native Revit parts from identical archived capture bytes; geometry production and timed WASM artifacts unchanged."
+  },
+  "historicalPrecorrectionQualification": {
+    "pathAtOriginalEvidenceHead": "scripts/perf/evidence/opening-work-6516/current-v3-independent-qualification.json",
+    "sha256": "898fe864e21283de21f320dab5cb1c0122684320b16d94937cc14355ef166bf6",
+    "status": "historical only; superseded by corrected surface-review-correction outputs and must not be cited as current qualification"
   }
 }

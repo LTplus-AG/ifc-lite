@@ -33,7 +33,8 @@ function target() {
 }
 function exportText(): string {
   const { store, view } = target();
-  return new TextDecoder().decode(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content);
+  return new TextDecoder().decode(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true,
+    timeStamp: '2026-01-01T00:00:00' }).content);
 }
 function meshSlabs(text: string): Map<number, Mesh[]> {
   initSync({ module: readFileSync(wasmPath) });
@@ -193,5 +194,81 @@ for (const unit of ['metre', 'millimetre'] as const) {
     assert.ok(mesh?.length);
     assert.equal(insideMesh(mesh, [3.5, 0.4, -4.5]), false);
     assert.equal(insideMesh(mesh, [3.9, 0.4, -4.5]), true);
+  });
+}
+
+// #6232 / #6589: cosine-only frame checks admitted 1e-4 rad rotations and
+// tilts. The plan reader adds only the element origin, so these real shapes
+// must refuse before changing a cut's world placement or rewriting the slab.
+for (const unit of ['metre', 'millimetre'] as const) for (const frame of ['placement rotation', 'placement tilt', 'solid tilt', 'extrusion tilt'] as const) {
+  it(`${unit}: a real small ${frame} refuses slab split atomically (#6589)`, async t => {
+    if (!existsSync(wasmPath)) { t.skip('Run pnpm build:wasm for the physical slab opening oracle'); return; }
+    await seedModelingSession({ unit, storeyOffset: [3, 3] });
+    const slab = built(state().addSlab(MODEL_ID, STOREY, { Position: [0, 0, 0], Width: 4, Depth: 3, Thickness: 0.2 }));
+    built(state().addHostedFill(MODEL_ID, slab, { kind: 'opening', params: { Position: [0.5, 1.5], Width: 0.4, Depth: 0.6 } }));
+    const original = meshSlabs(exportText()).get(slab);
+    assert.ok(original?.length);
+    const { store, view } = target(), editor = state().storeEditors.get(MODEL_ID)!;
+    const reader = new AnchorEntityReader(store, view);
+    const element = reader.entity(slab)!;
+    const placement = reader.entity(refId(element.attributes[5])!)!;
+    const axis = refId(placement.attributes[1])!;
+    const shape = reader.entity(refId(element.attributes[6])!)!;
+    const rep = reader.entity(refId((shape.attributes[2] as unknown[])[0])!)!;
+    const solidId = refId((rep.attributes[3] as unknown[])[0])!;
+    const solid = reader.entity(solidId)!;
+    const angle = 1e-4;
+    const ratios = frame === 'placement rotation'
+      ? [Math.cos(angle), Math.sin(angle), 0]
+      : [Math.sin(angle), 0, Math.cos(angle)];
+    const direction = editor.addEntity('IfcDirection', [ratios]).expressId;
+    if (frame === 'placement rotation') editor.setPositionalAttribute(axis, 2, `#${direction}`);
+    else if (frame === 'placement tilt') editor.setPositionalAttribute(axis, 1, `#${direction}`);
+    else if (frame === 'solid tilt') editor.setPositionalAttribute(refId(solid.attributes[1])!, 1, `#${direction}`);
+    else editor.setPositionalAttribute(solidId, 2, `#${direction}`);
+    await importAuthoredSource();
+    const before = exportText(), actual = meshSlabs(before).get(slab);
+    assert.ok(actual?.length, 'the source has a real WASM mesh');
+    assert.notDeepEqual(actual, original, 'the small orientation changes real world triangle positions');
+    const undo = state().undoStacks, redo = state().redoStacks;
+    const split = state().splitSlabByLine(MODEL_ID, slab, [1, -1], [1, 4]);
+    assert.equal(split.ok, false, 'an unsupported orientation cannot carry a cut through an unrotated plan');
+    assert.equal(exportText(), before, 'refusal leaves the entire IFC graph unchanged');
+    assert.deepEqual(state().undoStacks, undo); assert.deepEqual(state().redoStacks, redo);
+  });
+}
+
+for (const unit of ['metre', 'millimetre'] as const) {
+  it(`${unit}: projected non-unit directions retain the physical cut through a slab split (#6589)`, async t => {
+    if (!existsSync(wasmPath)) { t.skip('Run pnpm build:wasm for the physical slab opening oracle'); return; }
+    await seedModelingSession({ unit, storeyOffset: [3, 3] });
+    const slab = built(state().addSlab(MODEL_ID, STOREY, { Position: [0, 0, 0], Width: 4, Depth: 3, Thickness: 0.2 }));
+    built(state().addHostedFill(MODEL_ID, slab, { kind: 'opening', params: { Position: [0.5, 1.5], Width: 0.4, Depth: 0.6 } }));
+    const original = meshSlabs(exportText()).get(slab);
+    assert.ok(original?.length);
+    const { store, view } = target(), editor = state().storeEditors.get(MODEL_ID)!;
+    const reader = new AnchorEntityReader(store, view), element = reader.entity(slab)!;
+    const placement = reader.entity(refId(element.attributes[5])!)!;
+    const shape = reader.entity(refId(element.attributes[6])!)!;
+    const rep = reader.entity(refId((shape.attributes[2] as unknown[])[0])!)!;
+    const solidId = refId((rep.attributes[3] as unknown[])[0])!;
+    const solid = reader.entity(solidId)!;
+    const z = editor.addEntity('IfcDirection', [[0, 0, 3]]).expressId;
+    const x = editor.addEntity('IfcDirection', [[2, 0, 1]]).expressId;
+    for (const axis of [refId(placement.attributes[1])!, refId(solid.attributes[1])!]) {
+      editor.setPositionalAttribute(axis, 1, `#${z}`);
+      editor.setPositionalAttribute(axis, 2, `#${x}`);
+    }
+    editor.setPositionalAttribute(solidId, 2, `#${z}`);
+    await importAuthoredSource();
+    assert.deepEqual(meshSlabs(exportText()).get(slab), original, 'IFC projection removes the RefDirection component parallel to Axis');
+    const split = state().splitSlabByLine(MODEL_ID, slab, [1, -1], [1, 4]);
+    assert.ok(split.ok, split.ok ? '' : split.reason);
+    if (!split.ok) return;
+    const added = [split.left.expressId, split.right.expressId].find(id => id !== slab)!;
+    const mesh = meshSlabs(exportText()).get(added);
+    assert.ok(mesh?.length);
+    assert.equal(insideMesh(mesh, [3.5, 0.1, -4.5]), false);
+    assert.equal(insideMesh(mesh, [3.9, 0.1, -4.5]), true);
   });
 }

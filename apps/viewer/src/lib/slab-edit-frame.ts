@@ -26,6 +26,7 @@
 import { firstProjAxis } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { axis3d, type GeometryEntityReader } from '../../../../packages/create/src/in-store/host-geometry-frame.js';
 import { asCoordinateTriple, asDirectionRatios, asExpressIdRef, readAttributes } from './placement-core.js';
 
 const EPS = 1e-6;
@@ -73,25 +74,30 @@ export function slabExtrusionFrame(
   depth: number,
 ): { base: number; up: boolean } | null {
   const read: Read = (id) => (id === null ? null : readAttributes(dataStore, view, editor, id));
-  const placement = read(elementAxisPlacementId);
-  if (!placement) return null;
-  const placementZ = direction(read, placement[1], [0, 0, 1]);
-  const placementX = direction(read, placement[2], [1, 0, 0]);
-  if (!placementZ || placementZ[2] < 1 - EPS || !placementX || placementX[0] < 1 - EPS) return null;
+  const reader: GeometryEntityReader = {
+    entity(id) {
+      const attributes = read(id), type = editor.getEntityType(id);
+      return attributes && type ? { type, attributes } : null;
+    },
+  };
+  const placement = axis3d(reader, elementAxisPlacementId);
+  // #6589: a cosine-only check admits rotations of order sqrt(EPS).
+  // Compare the actual orthonormal frame components, including the small
+  // transverse components that the origin-only plan reader cannot retain.
+  if (!placement || Math.abs(placement.x[0] - 1) > EPS || Math.abs(placement.x[1]) > EPS
+    || Math.abs(placement.x[2]) > EPS || Math.abs(placement.z[0]) > EPS
+    || Math.abs(placement.z[1]) > EPS || Math.abs(placement.z[2] - 1) > EPS) return null;
 
-  const solidPositionId = asExpressIdRef(solidAttrs[1]);
-  const position = solidPositionId === null ? null : read(solidPositionId);
-  if (solidPositionId !== null && !position) return null;
-  const solidZ = direction(read, position?.[1], [0, 0, 1]);
-  if (!solidZ || Math.abs(solidZ[2]) < 1 - EPS) return null;
+  const position = axis3d(reader, solidAttrs[1]);
+  if (!position || Math.abs(position.z[0]) > EPS || Math.abs(position.z[1]) > EPS
+    || Math.abs(Math.abs(position.z[2]) - 1) > EPS) return null;
   const extrusion = direction(read, solidAttrs[2], [0, 0, 1]);
-  if (!extrusion || Math.abs(extrusion[2]) < 1 - EPS) return null;
+  if (!extrusion || Math.abs(extrusion[0]) > EPS || Math.abs(extrusion[1]) > EPS
+    || Math.abs(Math.abs(extrusion[2]) - 1) > EPS) return null;
 
-  const location = position ? asCoordinateTriple(read(asExpressIdRef(position[0]))?.[0]) : [0, 0, 0];
-  if (!location) return null;
   // Upward (+1) or downward (-1) in the element frame.
-  const up = Math.sign(solidZ[2] * extrusion[2]);
-  return { base: location[2] + Math.min(0, up * depth), up: up > 0 };
+  const up = Math.sign(position.z[2] * extrusion[2]);
+  return { base: position.o[2] + Math.min(0, up * depth), up: up > 0 };
 }
 
 /**

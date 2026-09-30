@@ -94,11 +94,21 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | Geometry | `geometry_bbox`, `geometry_volume`, `geometry_area`, `geometry_get`, `raycast`, `clash_check`, `clash_matrix` |
 | Validation | `ids_validate`, `ids_explain`, `model_audit`, `gherkin_check` |
 | Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
+| Hosted modelling | `place_opening`, `place_door`, `place_window` |
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff` (`by_content` for content-keyed matching), `quantity_diff` |
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_pdf_report` |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
+
+`place_opening`, `place_door` and `place_window` use the viewer/SDK's shared
+hosted creation core. Pass `host_express_id`, optional `model_id` (required
+with several loaded models), and PascalCase `params`: `Offset`, `Width`,
+`Height`, optional `Sill` (required for a window). Lengths are metres in the
+wall's frame. Cuts must fit and avoid existing source/overlay openings;
+unreadable geometry is refused. The void/fill graph is written atomically,
+and one `mutation_undo` removes it. These writes reach IFC export; geometry
+tools continue to read the parsed model.
 
 `entity_create` accepts an optional `global_id` for the new entity's GlobalId
 (IfcRoot subtypes only; written to attribute 0). It must be a valid 22-character

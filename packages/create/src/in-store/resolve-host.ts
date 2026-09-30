@@ -136,7 +136,7 @@ function bodyBounds(reader: AnchorEntityReader, productShapeId: number): HostBou
     if (!Array.isArray(items)) continue;
     for (const item of items) {
       const itemId = refId(item);
-      if (itemId !== null) collectItemPoints(reader, itemId, points);
+      if (itemId === null || !collectItemPoints(reader, itemId, points)) return null;
     }
   }
   if (points.length === 0) return null;
@@ -154,29 +154,110 @@ function bodyBounds(reader: AnchorEntityReader, productShapeId: number): HostBou
 /**
  * Points bounding one representation item. A boolean result is bounded by its
  * FirstOperand (a clipping only removes material, so the operand's bounds are
- * conservative); the chain is walked iteratively with a visited set because
- * operand references come from the file.
+ * conservative). Mapped items compose their target with the inverse mapping
+ * origin. An iterative path set preserves two real instances of one map,
+ * while a work/point budget also bounds acyclic fan-out (#6232 D5).
  */
-function collectItemPoints(reader: AnchorEntityReader, itemId: number, out: Vec3[]): void {
-  const seen = new Set<number>();
-  let id: number | null = itemId;
-  while (id !== null && !seen.has(id)) {
-    seen.add(id);
-    const item = reader.entity(id);
-    if (!item) return;
+function collectItemPoints(reader: AnchorEntityReader, itemId: number, out: Vec3[]): boolean {
+  const identity: Frame3 = { o: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
+  const stack = [{ id: itemId, frame: identity, exit: false }];
+  const path = new Set<number>();
+  const records = new Map<number, ReturnType<AnchorEntityReader['entity']>>();
+  const mappings = new Map<number, ReturnType<typeof mappedItemFrame>>();
+  const leaves = new Map<number, Vec3[]>();
+  let work = 0;
+  while (stack.length) {
+    const task = stack.pop()!;
+    if (task.exit) { path.delete(task.id); continue; }
+    if (++work > 10_000 || path.has(task.id)) return false;
+    path.add(task.id);
+    stack.push({ ...task, exit: true });
+    if (!records.has(task.id)) records.set(task.id, reader.entity(task.id));
+    const item = records.get(task.id);
+    if (!item) return false;
     const type = item.type.toUpperCase();
     if (type === 'IFCBOOLEANRESULT' || type === 'IFCBOOLEANCLIPPINGRESULT') {
-      id = refId(item.attributes[1]);
+      const id = refId(item.attributes[1]);
+      if (id === null) return false;
+      stack.push({ id, frame: task.frame, exit: false });
       continue;
     }
-    if (type === 'IFCEXTRUDEDAREASOLID') extrudedPoints(reader, item.attributes, out);
-    else if (type === 'IFCTRIANGULATEDFACESET' || type === 'IFCPOLYGONALFACESET') {
-      const list = refId(item.attributes[0]);
-      const coords = list === null ? null : reader.entity(list)?.attributes[0];
-      if (Array.isArray(coords)) for (const c of coords) { const p = vec3(c); if (p) out.push(p); }
+    if (type === 'IFCMAPPEDITEM') {
+      if (!mappings.has(task.id)) mappings.set(task.id, mappedItemFrame(reader, item.attributes));
+      const mapped = mappings.get(task.id);
+      if (!mapped || mapped.items.length > 10_000 - work) return false;
+      const frame = composeFrame(task.frame, mapped.frame);
+      for (const id of mapped.items) stack.push({ id, frame, exit: false });
+      continue;
     }
-    return;
+    let points = leaves.get(task.id);
+    if (!points) {
+      points = [];
+      if (type === 'IFCEXTRUDEDAREASOLID') extrudedPoints(reader, item.attributes, points);
+      else if (type === 'IFCTRIANGULATEDFACESET' || type === 'IFCPOLYGONALFACESET') {
+        const list = refId(item.attributes[0]);
+        const coords = list === null ? null : reader.entity(list)?.attributes[0];
+        if (!Array.isArray(coords) || coords.length > 100_000) return false;
+        for (const c of coords) { const p = vec3(c); if (p) points.push(p); }
+      }
+      leaves.set(task.id, points);
+    }
+    if (points.length === 0 || out.length + points.length > 100_000) return false;
+    for (const p of points) out.push(applyFrame(task.frame, p));
   }
+  return true;
+}
+
+function composeFrame(outer: Frame3, inner: Frame3): Frame3 {
+  const direction = (p: Vec3): Vec3 => [0, 1, 2].map(i => outer.x[i] * p[0] + outer.y[i] * p[1] + outer.z[i] * p[2]) as Vec3;
+  return { o: applyFrame(outer, inner.o), x: direction(inner.x), y: direction(inner.y), z: direction(inner.z) };
+}
+
+function mappedItemFrame(reader: AnchorEntityReader, attrs: unknown[]): { items: number[]; frame: Frame3 } | null {
+  const mapId = refId(attrs[0]), targetId = refId(attrs[1]);
+  const map = mapId === null ? null : reader.entity(mapId);
+  const target = targetId === null ? null : reader.entity(targetId);
+  const originId = map ? refId(map.attributes[0]) : null;
+  const origin = originId === null ? null : reader.entity(originId);
+  const repId = map ? refId(map.attributes[1]) : null;
+  const rep = repId === null ? null : reader.entity(repId);
+  if (!map || !target || origin?.type.toUpperCase() !== 'IFCAXIS2PLACEMENT3D' || !pointOf(reader, origin.attributes[0]) || !rep || !Array.isArray(rep.attributes[3])) return null;
+  const targetType = target.type.toUpperCase();
+  if (targetType !== 'IFCCARTESIANTRANSFORMATIONOPERATOR3D' && targetType !== 'IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM') return null;
+  const a = target.attributes;
+  const o = pointOf(reader, a[2]);
+  // IfcBaseAxis derives Z first, projects Axis1 off Z, then projects Axis2
+  // off both. Axis2's sense permits mirroring; normalizing three unrelated
+  // supplied vectors would produce a skew instead of the specified operator.
+  // https://standards.buildingsmart.org/IFC/RELEASE/IFC4_3/HTML/lexical/IfcBaseAxis.htm
+  const direction = (value: unknown, fallback: Vec3) => value === null || value === undefined ? fallback : pointOf(reader, value);
+  const zAxis = unit(direction(a[4], [0, 0, 1]) ?? [0, 0, 0]);
+  if (!zAxis) return null;
+  const project = (v: Vec3, axes: Vec3[]) => {
+    const p: Vec3 = [...v];
+    for (const axis of axes) {
+      const dot = v[0] * axis[0] + v[1] * axis[1] + v[2] * axis[2];
+      for (let i = 0; i < 3; i++) p[i] -= dot * axis[i];
+    }
+    return unit(p);
+  };
+  const xArg = direction(a[0], firstProjAxis(zAxis));
+  const xAxis = xArg ? project(xArg, [zAxis]) : null;
+  const yArg = direction(a[1], [0, 1, 0]);
+  const yAxis = yArg && xAxis ? project(yArg, [zAxis, xAxis]) : null;
+  if (!xAxis || !yAxis) return null;
+  const scale = a[3] === null || a[3] === undefined ? 1 : num(a[3]);
+  const scales = [scale, a[5] === null || a[5] === undefined ? scale : num(a[5]), a[6] === null || a[6] === undefined ? scale : num(a[6])];
+  if (!o || scales.some(v => v === null || v <= 0)) return null;
+  const [x, y, z] = [xAxis, yAxis, zAxis].map((v, i) => v.map(n => n * scales[i]!) as Vec3);
+  const source = axis3d(reader, originId);
+  const inverse: Frame3 = {
+    o: [source.x, source.y, source.z].map(v => -(v[0] * source.o[0] + v[1] * source.o[1] + v[2] * source.o[2])) as Vec3,
+    x: [source.x[0], source.y[0], source.z[0]], y: [source.x[1], source.y[1], source.z[1]], z: [source.x[2], source.y[2], source.z[2]],
+  };
+  const items = rep.attributes[3].map(refId);
+  if (items.some(id => id === null) || items.length === 0) return null;
+  return { items: items as number[], frame: composeFrame({ o, x, y, z }, inverse) };
 }
 
 /** IfcExtrudedAreaSolid: SweptArea(0), Position(1), ExtrudedDirection(2), Depth(3). */

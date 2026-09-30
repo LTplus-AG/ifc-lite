@@ -29,10 +29,7 @@ import {
   type MaterialInStoreParams,
   type MaterialLayerSetInStoreParams,
   type MaterialLayerSetUsageInStoreParams,
-  addHostedDoorToStore,
-  addHostedWindowToStore,
-  addOpeningToStore,
-  resolveHostAnchor,
+  addHostedElementInStore,
   type HostedDoorInStoreParams,
   type HostedWindowInStoreParams,
   type OpeningInStoreParams,
@@ -45,10 +42,6 @@ import type { EntityRef } from './types.js';
 export type ModellingStoreModelResolver = (modelId?: string) => CostStoreModelResolution;
 
 export function createModellingStoreBackend(resolve: ModellingStoreModelResolver): ModellingStoreBackendMethods {
-  const host = (modelId: string, hostExpressId: number) => {
-    const model = resolve(modelId);
-    return { model, anchor: resolveHostAnchor(model.store, hostExpressId, model.mutationView) };
-  };
   const ref = (modelId: string, expressId: number): EntityRef => ({ modelId, expressId });
   const authoring = (modelId: string) => {
     const model = resolve(modelId);
@@ -71,16 +64,16 @@ export function createModellingStoreBackend(resolve: ModellingStoreModelResolver
 
   return {
     addOpening(modelId: string, hostExpressId: number, params: OpeningInStoreParams): EntityRef {
-      const { model, anchor } = host(modelId, hostExpressId);
-      return ref(model.modelId, addOpeningToStore(model.editor, anchor, params).openingId);
+      const model = resolve(modelId);
+      return ref(model.modelId, addHostedElementInStore(model.store, model.editor, hostExpressId, { kind: 'opening', params }).expressId);
     },
     addHostedDoor(modelId: string, hostExpressId: number, params: HostedDoorInStoreParams): EntityRef {
-      const { model, anchor } = host(modelId, hostExpressId);
-      return ref(model.modelId, addHostedDoorToStore(model.editor, anchor, params).fillingId);
+      const model = resolve(modelId);
+      return ref(model.modelId, addHostedElementInStore(model.store, model.editor, hostExpressId, { kind: 'door', params }).expressId);
     },
     addHostedWindow(modelId: string, hostExpressId: number, params: HostedWindowInStoreParams): EntityRef {
-      const { model, anchor } = host(modelId, hostExpressId);
-      return ref(model.modelId, addHostedWindowToStore(model.editor, anchor, params).fillingId);
+      const model = resolve(modelId);
+      return ref(model.modelId, addHostedElementInStore(model.store, model.editor, hostExpressId, { kind: 'window', params }).expressId);
     },
     addElementType(modelId: string, params: ElementTypeInStoreParams): EntityRef {
       const { model, anchor } = authoring(modelId);

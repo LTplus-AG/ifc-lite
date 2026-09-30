@@ -26,9 +26,7 @@ import {
   readHostedFill,
   resolveHostAnchor,
   toNativeLength,
-  type HostedDoorInStoreParams,
-  type HostedWindowInStoreParams,
-  type OpeningInStoreParams,
+  type HostedElementInStoreSpec,
 } from '@ifc-lite/create';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -39,10 +37,7 @@ import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
 import { modelEditTarget, recordModellingEdit, type ModellingStore } from './mutation-modelling-records.js';
 
-export type HostedFillSpec =
-  | { readonly kind: 'opening'; readonly params: OpeningInStoreParams }
-  | { readonly kind: 'door'; readonly params: HostedDoorInStoreParams }
-  | { readonly kind: 'window'; readonly params: HostedWindowInStoreParams };
+export type HostedFillSpec = HostedElementInStoreSpec;
 
 export type HostedFillKind = HostedFillSpec['kind'];
 

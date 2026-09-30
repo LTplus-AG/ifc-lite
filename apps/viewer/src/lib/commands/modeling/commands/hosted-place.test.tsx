@@ -132,6 +132,20 @@ describe('window.place (#6232 A1)', () => {
     assert.deepEqual(created('IFCWINDOW'), []);
   });
 
+  it('#6232 D5 refuses an overlapping click through the shared core and allows an edge-touching window', () => {
+    useViewerStore.getState().startCommand('window.place');
+    click(3, 0);
+    assert.equal(created('IFCWINDOW').length, 1);
+    const history = undoDepth();
+    click(3, 0);
+    assert.equal(created('IFCWINDOW').length, 1, 'the second cut must not stack on the first');
+    assert.equal(undoDepth(), history, 'refusal leaves the first placement undo step intact');
+    click(4.2, 0);
+    assert.equal(created('IFCWINDOW').length, 2, 'exact shared edge has no positive overlap');
+    useViewerStore.getState().undo(MODEL_ID);
+    assert.equal(created('IFCWINDOW').length, 1, 'one undo removes the complete second window graph');
+  });
+
   it('exports with the true void: IfcRelVoidsElement and IfcRelFillsElement survive a re-parse', async () => {
     useViewerStore.getState().startCommand('window.place');
     click(3, 0);

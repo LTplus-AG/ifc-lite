@@ -15,7 +15,7 @@ import { useViewerStore } from '@/store';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { addGridIn } from '@/store/slices/mutation-curtain-grid';
 import { rectangularGridAxes } from '@ifc-lite/create';
-import { authoredGridMeshes } from './authored-grid-meshes.js';
+import { authoredGridMeshes, gridMeshesKey } from './authored-grid-meshes.js';
 
 const grid = (storeyId: number, x: number) => addGridIn(useViewerStore, MODEL_ID, storeyId, {
   Position: [x, 0, 0], ...rectangularGridAxes({ UOffsets: [0, 6], VOffsets: [0, 4] }), Name: 'G',
@@ -53,5 +53,24 @@ describe('authoredGridMeshes (#6232 D3)', () => {
     assert.equal(authoredGridMeshes(useViewerStore.getState()).length, 1);
     useViewerStore.getState().undo(MODEL_ID);
     assert.deepEqual(authoredGridMeshes(useViewerStore.getState()), []);
+  });
+
+  it('the redraw key follows a grid that moves along a diagonal (a coordinate sum would not), and a second grid', () => {
+    const at = (x: number, y: number) => {
+      const made = addGridIn(useViewerStore, MODEL_ID, STOREY, {
+        Position: [x, y, 0], ...rectangularGridAxes({ UOffsets: [0, 6], VOffsets: [0, 4] }), Name: 'G',
+      });
+      assert.ok('expressId' in made);
+      const meshes = authoredGridMeshes(useViewerStore.getState());
+      useViewerStore.getState().undo(MODEL_ID);
+      return meshes;
+    };
+    const home = at(0, 0);
+    const moved = at(1, 1);
+    // Storey (1, 1) is render (1, -1): x + z of every vertex is unchanged, so a sum cannot tell them apart.
+    const sum = (m: typeof home) => m[0].positions.reduce((a, v, i) => a + (i % 3 === 1 ? 0 : v), 0);
+    assert.ok(Math.abs(sum(home) - sum(moved)) < 1e-3, 'the coordinate sum is blind to this move');
+    assert.notEqual(gridMeshesKey(home), gridMeshesKey(moved));
+    assert.equal(gridMeshesKey(home), gridMeshesKey(at(0, 0)), 'the same grid keeps its key');
   });
 });

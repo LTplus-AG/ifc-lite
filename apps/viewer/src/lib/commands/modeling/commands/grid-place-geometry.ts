@@ -62,6 +62,12 @@ function letters(index: number): string {
   return out;
 }
 
+/** How many axes `axisOffsets(extent, spacing)` makes, without making them. */
+export function axisCount(extent: number, spacing: number): number {
+  const count = Math.floor(extent / spacing + 1e-9) + 1;
+  return extent - (count - 1) * spacing > 1e-6 ? count + 1 : count;
+}
+
 /** Axis offsets across `extent` at `spacing`, closing on the far side. */
 export function axisOffsets(extent: number, spacing: number): number[] {
   const count = Math.floor(extent / spacing + 1e-9);
@@ -78,9 +84,10 @@ export type GridPlan =
 export function planGrid(g: GridPlaceGesture, z: number): GridPlan {
   const rect = rectangleExtent(g);
   if (!rect) return { ok: false, reason: 'noArea' };
+  // Count before allocating: a spacing of 1e-12 must be refused, not enumerated.
+  if (axisCount(rect.width, g.spacingU) + axisCount(rect.depth, g.spacingV) > MAX_GRID_AXES) return { ok: false, reason: 'tooManyAxes' };
   const UOffsets = axisOffsets(rect.width, g.spacingU);
   const VOffsets = axisOffsets(rect.depth, g.spacingV);
-  if (UOffsets.length + VOffsets.length > MAX_GRID_AXES) return { ok: false, reason: 'tooManyAxes' };
   const tag = (i: number, scheme: 'number' | 'letter') => (scheme === 'number' ? String(i + 1) : letters(i));
   // Numbers run along the U axes (the lines across the top of a plan), letters down the side.
   const [uScheme, vScheme] = g.tags === 'numbers' ? (['number', 'letter'] as const) : (['letter', 'number'] as const);

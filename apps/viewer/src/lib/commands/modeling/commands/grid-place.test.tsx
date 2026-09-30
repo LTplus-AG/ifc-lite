@@ -27,7 +27,7 @@ import { setRequestRemesh } from '../transaction.js';
 import type { CommandContext } from '../types.js';
 import { modelSnapSources } from '../snap-solve.js';
 import { GRID_PLACE } from './grid-place.js';
-import { axisOffsets, resetGridSettings, withGridSettings, type GridPlaceGesture } from './grid-place-geometry.js';
+import { axisCount, axisOffsets, resetGridSettings, withGridSettings, type GridPlaceGesture } from './grid-place-geometry.js';
 
 const at = (x: number, y: number, shift = false): SnapResult => ({ local: [x, y], winner: null, guides: [], locked: false, modifiers: { shift, alt: false } });
 const gesture = () => getCommandRuntime().gesture as GridPlaceGesture;
@@ -68,6 +68,14 @@ describe('axisOffsets (#6232 D3)', () => {
     assert.deepEqual(axisOffsets(12, 6), [0, 6, 12]);
     assert.deepEqual(axisOffsets(13, 6), [0, 6, 12, 13]);
     assert.deepEqual(axisOffsets(4, 6), [0, 4]);
+  });
+});
+
+describe('axisCount (#6232 D3)', () => {
+  it('counts what axisOffsets makes, without making it', () => {
+    for (const [extent, spacing] of [[12, 6], [13, 6], [4, 6], [10, 3], [0.7, 0.1]] as const) {
+      assert.equal(axisCount(extent, spacing), axisOffsets(extent, spacing).length, `${extent} at ${spacing}`);
+    }
   });
 });
 
@@ -115,6 +123,16 @@ describe('grid.place (#6232 D3)', () => {
     act(() => { commandPointerMove(at(12, 8)); });
     const [mesh] = GRID_PLACE.ghost!(gesture(), ctx());
     assert.equal(mesh.indices.length / 3, 6 * 12);
+  });
+
+  it('refuses a spacing that would make too many axes without enumerating them', () => {
+    click(0, 0);
+    act(() => { writeCommandField(index('spacingU'), 1e-12); commandPointerMove(at(100, 50)); });
+    const started = Date.now();
+    const verdict = GRID_PLACE.validate!(gesture(), ctx());
+    assert.ok(Date.now() - started < 500, 'validation returns at once');
+    assert.deepEqual(verdict, { ok: false, reasonKey: 'grid.tooManyAxes' });
+    assert.deepEqual(GRID_PLACE.ghost!(gesture(), ctx()), []);
   });
 
   it('refuses a grid with no area, writing nothing', () => {

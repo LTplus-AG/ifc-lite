@@ -59,3 +59,19 @@ export function authoredGridMeshes(s: ViewerState): MeshData[] {
   const merged = mergeGhostMeshes(strips, id, GRID_COLOR);
   return merged ? [merged] : [];
 }
+
+/**
+ * A key that changes when, and only when, the drawn strips do: the exact
+ * vertex bits, hashed (FNV-1a over the 32-bit words) with the vertex count.
+ * A sum of coordinates is not enough: a grid moved along the plan keeps its
+ * sum, and a grid moved by (1, 1) in storey coordinates renders shifted by
+ * (1, -1) in render space.
+ */
+export function gridMeshesKey(meshes: readonly MeshData[]): string {
+  return meshes.map((m) => {
+    const words = new Uint32Array(m.positions.buffer, m.positions.byteOffset, m.positions.length);
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < words.length; i++) hash = Math.imul(hash ^ words[i], 0x01000193) >>> 0;
+    return `${m.positions.length}:${hash.toString(16)}`;
+  }).join('|');
+}

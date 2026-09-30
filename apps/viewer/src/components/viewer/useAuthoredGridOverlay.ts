@@ -11,7 +11,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useViewerStore } from '@/store';
-import { authoredGridMeshes } from '@/lib/grids/authored-grid-meshes';
+import { authoredGridMeshes, gridMeshesKey } from '@/lib/grids/authored-grid-meshes';
 
 export function useAuthoredGridOverlay(): void {
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
@@ -24,7 +24,7 @@ export function useAuthoredGridOverlay(): void {
   useEffect(() => {
     if (!setOverlay) return;
     const meshes = authoredGridMeshes(useViewerStore.getState());
-    const key = meshes.map((m) => `${m.positions.length}:${m.positions.reduce((sum, v) => sum + v, 0)}`).join('|');
+    const key = gridMeshesKey(meshes);
     // A new upload function is a new renderer: it has drawn nothing yet.
     if (drawn.current?.upload === setOverlay && drawn.current.key === key) return;
     drawn.current = { upload: setOverlay, key };

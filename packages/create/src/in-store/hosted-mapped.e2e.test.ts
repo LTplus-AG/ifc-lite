@@ -6,15 +6,23 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { StepExporter } from '@ifc-lite/export';
-import { IfcAPI, initSync } from '@ifc-lite/wasm';
-import { placedBodyExtent, resolveHostAnchor } from './resolve-host.js';
-import { addHostedElementInStore, readHostOpeningExtents } from './hosted-element.js';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import type { IfcAPI } from '@ifc-lite/wasm';
 import type { HostBounds } from './anchor.js';
 
 const WASM = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
+const GLUE = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite.js', import.meta.url));
+let RuntimeIfcAPI: typeof IfcAPI;
+// Parser/export/core imports also transitively reach the geometry bridge.
+// Keep all runtime consumers behind the same eligibility guard.
+let IfcParser: typeof import('@ifc-lite/parser').IfcParser;
+let MutablePropertyView: typeof import('@ifc-lite/mutations').MutablePropertyView;
+let StoreEditor: typeof import('@ifc-lite/mutations').StoreEditor;
+let StepExporter: typeof import('@ifc-lite/export').StepExporter;
+let placedBodyExtent: typeof import('./resolve-host.js').placedBodyExtent;
+let resolveHostAnchor: typeof import('./resolve-host.js').resolveHostAnchor;
+let addHostedElementInStore: typeof import('./hosted-element.js').addHostedElementInStore;
+let readHostOpeningExtents: typeof import('./hosted-element.js').readHostOpeningExtents;
 const OPENING = 1299;
 const WALL = 1222;
 // Authored #1305/#1308/#1313 bounds before mapping: [0,w] × [-r,d-r] × [0,h].
@@ -42,7 +50,7 @@ async function committed(s: Session) {
  * Source host/storey placements are identity in this Bonsai file, so world IFC
  * bounds and the host-parent bounds coincide. No second mapped-matrix reader. */
 function meshBounds(bytes: Uint8Array, store: IfcDataStore, id: number): HostBounds {
-  const api = new IfcAPI();
+  const api = new RuntimeIfcAPI();
   try {
     const ref = store.entityIndex.byId.get(id);
     if (!ref) throw new Error(`Expected exported entity #${id}`);
@@ -120,8 +128,17 @@ const cases: Array<{ name: string; author: (s: Session) => void; expected: HostB
     expected: { min: [x+4.75, 3.5-1.5*r, 7.5], max: [x+4.75+0.5*w, 3.5+1.5*(d-r), 7.5+2*h] } },
 ];
 
-describe.skipIf(!existsSync(WASM))('#6539 real WASM mapped-origin coordinates (run pnpm build:wasm:fetch if absent)', () => {
-  beforeAll(() => initSync({ module: readFileSync(WASM) }));
+describe.skipIf(!existsSync(WASM) || !existsSync(GLUE))('#6539 real WASM mapped-origin coordinates (run pnpm build:wasm:fetch if absent)', () => {
+  beforeAll(async () => {
+    const runtime = await import('@ifc-lite/wasm');
+    RuntimeIfcAPI = runtime.IfcAPI;
+    runtime.initSync({ module: readFileSync(WASM) });
+    ({ IfcParser } = await import('@ifc-lite/parser'));
+    ({ MutablePropertyView, StoreEditor } = await import('@ifc-lite/mutations'));
+    ({ StepExporter } = await import('@ifc-lite/export'));
+    ({ placedBodyExtent, resolveHostAnchor } = await import('./resolve-host.js'));
+    ({ addHostedElementInStore, readHostOpeningExtents } = await import('./hosted-element.js'));
+  });
   for (const c of cases) it(c.name, async () => {
     const s = await session(); c.author(s);
     const exported = await committed(s);

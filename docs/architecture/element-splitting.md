@@ -149,6 +149,39 @@ this document in one transaction; there is no clip_mesh binding.
 5. Esc starts over; Backspace drops the first point.
 ```
 
+### Trim / Extend (`element.trimExtend`, #6232 C1)
+
+The sibling of the split commands for changing an element's length rather than
+cutting it: the Model workspace's "Trim / Extend" (Shift+E, the rail's arrow to
+a line, the palette).
+
+```text
+1. Click the boundary: a wall or beam (its axis), a slab edge, or a guide
+   line the snap solver holds (a grid axis, an edge of anything else).
+2. Click walls and beams. Trim cuts the element back to the boundary and
+   removes the side you click; Extend lengthens the end nearest the click to
+   the boundary. The bar switches the mode, Shift flips it for one click.
+3. A wall meeting a boundary WALL is joined to it by the join core
+   (`computeWallJoin` / `joinWallsInStore`): a T where it ends on the wall's
+   path, an L at a corner, with the `IfcRelConnectsPathElements` and the
+   ending wall cut at the other's face. The wall's own end goes through the
+   ONE wall resize (`resizeWallMetres`). Against any other boundary the axis
+   end is put on the line and no join is written.
+4. Beams and members change their extrusion depth; a moved start moves the
+   placement point.
+```
+
+Refusals are shown before the click (the target is outlined red, the reason
+beside it) and said by a click on it: a boundary that stops before the
+element's line meets it, an element that already crosses it (Extend) or stops
+short of it (Trim), a trim that would leave under 5 cm, a trim that would cut
+through an opening, door or window hosted in the wall (the count is named; a
+wall's hosted elements are never moved to a piece, as a trim leaves none), and
+a wall or beam the readers cannot take, with the same reason the Split button
+gives for it. Extending a wall's start moves its placement, so the openings
+hosted in it are written back where they stood. One commit is one
+`runTransaction`: one undo step, one re-mesh request.
+
 ## Visual design
 
 | State | Wall | Slab | Beam/Column |

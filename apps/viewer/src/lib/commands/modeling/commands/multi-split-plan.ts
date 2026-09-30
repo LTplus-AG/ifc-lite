@@ -94,7 +94,7 @@ export const EMPTY_PLAN: MultiSplitPlan = { splits: [], refused: [], marks: [] }
 
 const key = (k: TranslationKey, params?: Record<string, string | number>) => translate(k, params);
 
-function stepTypeOf(s: ViewerState, modelId: string, expressId: number): string | undefined {
+export function stepTypeOf(s: ViewerState, modelId: string, expressId: number): string | undefined {
   const view = s.mutationViews.get(modelId);
   const type = view?.getEntityTypeMutation(expressId)?.newType
     ?? view?.getNewEntity(expressId)?.type
@@ -102,7 +102,7 @@ function stepTypeOf(s: ViewerState, modelId: string, expressId: number): string 
   return type?.toUpperCase();
 }
 
-function labelOf(s: ViewerState, modelId: string, expressId: number): string {
+export function labelOf(s: ViewerState, modelId: string, expressId: number): string {
   const name = s.models.get(modelId)?.ifcDataStore?.entities.getName(expressId);
   return name ? `${name} #${expressId}` : `#${expressId}`;
 }
@@ -114,12 +114,15 @@ function storeyPlane(s: ViewerState, modelId: string, expressId: number): Workpl
   return isWorkplane(plane) ? plane : null;
 }
 
-/** The walls, beams and slabs contained in `storeyId` right now, deleted and re-contained ones out. */
-export function storeyCandidates(s: ViewerState, modelId: string, storeyId: number): number[] {
+/**
+ * The walls, beams and slabs (or `types`, upper-case STEP names) contained in
+ * `storeyId` right now, deleted and re-contained ones out.
+ */
+export function storeyCandidates(s: ViewerState, modelId: string, storeyId: number, types: ReadonlySet<string> = STOREY_TYPES): number[] {
   const hierarchy = s.models.get(modelId)?.ifcDataStore?.spatialHierarchy;
   const view = s.mutationViews.get(modelId);
   return [...(hierarchy?.byStorey.get(storeyId) ?? [])].filter((id) =>
-    !view?.isDeleted(id) && STOREY_TYPES.has(stepTypeOf(s, modelId, id) ?? '') && elementStoreyId(s, modelId, id) === storeyId);
+    !view?.isDeleted(id) && types.has(stepTypeOf(s, modelId, id) ?? '') && elementStoreyId(s, modelId, id) === storeyId);
 }
 
 /** The axis-aligned box `plane` maps a local rectangle to, as a closed render-space outline. */

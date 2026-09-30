@@ -60,6 +60,7 @@ export function bindModelWorkspaceKeys(): () => void {
     registerKeyboardCommand('model.railing', () => launchModelCommand('railing.place'), { active }),
     registerKeyboardCommand('model.pushPull', () => launchModelCommand('element.pushPull', { drawsOnWorkplane: false }), { active }),
     registerKeyboardCommand('model.align', () => launchModelCommand('element.align'), { active }),
+    registerKeyboardCommand('model.trimExtend', () => launchModelCommand('element.trimExtend'), { active }),
   ];
   return () => { for (const dispose of disposers) dispose(); };
 }

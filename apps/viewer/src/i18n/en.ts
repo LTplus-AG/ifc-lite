@@ -97,6 +97,7 @@ import { profileSectionEn } from './catalogues/profile-section.en';
 import { planHandlesEn } from './catalogues/plan-handles.en';
 import { multiSplitEn } from './catalogues/multi-split.en';
 import { pushPullAlignEn } from './catalogues/push-pull-align.en';
+import { trimExtendEn } from './catalogues/trim-extend.en';
 import { remeshEn } from './catalogues/remesh.en';
 import { storeyContextEn } from './catalogues/storey-context.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
@@ -157,6 +158,7 @@ export const en = {
   ...planHandlesEn,
   ...multiSplitEn,
   ...pushPullAlignEn,
+  ...trimExtendEn,
   ...remeshEn,
   ...storeyContextEn,
   ...documentEn,

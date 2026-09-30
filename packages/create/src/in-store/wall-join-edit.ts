@@ -10,8 +10,8 @@
  *    are already joined get the new `IfcRelConnectsPathElements` in place of
  *    the old one, never a second beside it.
  *  - `reshapeWallsInStore` gives walls new axis ends. A dragged corner brings
- *    the walls joined at that end along, the walls' bodies are made square
- *    again, and every join that touches a moved wall is recomputed. A join that
+ *    the walls joined at that end along, changed ends are made square while
+ *    unchanged ends retain their cuts, and every affected join is recomputed. A join that
  *    no longer holds (the axes no longer meet) is removed and the wall that did
  *    not move stops square at its own end.
  *
@@ -27,7 +27,7 @@ import { resolveAuthoringAnchor } from './resolve-relations.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { applyWallJoinToStore, rewriteWall, type JoinAnchor, type WallJoinApplyOptions, type WallJoinApplyResult } from './wall-join-apply.js';
 import { readWallJoinRels, readWallJoinTarget, type WallJoinRead, type WallJoinRel } from './wall-join-read.js';
-import { computeWallJoin, type PlanPoint, type WallJoinWall } from './wall-join.js';
+import { computeWallJoin, reshapeWallAxis, type PlanPoint, type WallJoinWall } from './wall-join.js';
 
 /** What a join write needs from the model: the authoring anchor plus the context an `Axis` representation lives in. */
 export function resolveWallJoinAnchor(store: IfcDataStore, view?: Parameters<typeof resolveAuthoringAnchor>[1]): JoinAnchor {
@@ -175,7 +175,7 @@ export function reshapeWallsInStore(
 
   // Everything that can refuse has run: write. Each moved wall gets a fresh
   // placement point and direction (the old ones may be shared with other
-  // walls) and a square body on its new axis.
+  // walls), retaining supported cuts at unchanged ends on the same direction.
   const rels = readWallJoinRels(store, view(), new Set([...axes.keys(), ...(options.refresh ?? [])]));
   const touched = new Set<number>(axes.keys());
   for (const [id, { start, end, thickness }] of axes) targets.set(id, writeAxis(editor, anchor, load(id), start, end, thickness));
@@ -232,7 +232,7 @@ function joinOptionsOf(rel: WallJoinRel, tolerance: number | undefined): WallJoi
 }
 
 /**
- * Move `read` onto the axis `start`..`end` with a square body. The placement
+ * Move `read` onto the axis `start`..`end`, retaining unchanged end cuts. The placement
  * stays where it is when the start does not move and the direction holds (a
  * far-end drag: the openings hosted in the wall keep their place); otherwise it
  * gets a fresh point and direction at the new start (the old ones may be
@@ -241,7 +241,7 @@ function joinOptionsOf(rel: WallJoinRel, tolerance: number | undefined): WallJoi
 function writeAxis(editor: StoreEditor, anchor: JoinAnchor, read: WallJoinRead, start: PlanPoint, end: PlanPoint, thickness = read.wall.thickness): WallJoinRead {
   const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
   const native = (v: number) => toNativeLength(anchor, v);
-  const square: WallJoinWall = { start, end, thickness, ...(read.wall.offset === undefined ? {} : { offset: read.wall.offset }) };
+  const reshaped = reshapeWallAxis({ ...read.wall, thickness }, start, end);
   const old = read.wall;
   const oldLength = Math.hypot(old.end[0] - old.start[0], old.end[1] - old.start[1]);
   const ux = (end[0] - start[0]) / length;
@@ -251,16 +251,16 @@ function writeAxis(editor: StoreEditor, anchor: JoinAnchor, read: WallJoinRead, 
   const startHeld = Math.hypot(start[0] - old.start[0], start[1] - old.start[1]) <= MOVE_EPS;
   const directionHeld = ux * ox + uy * oy > 1 - 1e-12;
   if (startHeld && directionHeld) {
-    return { ...read, ...rewriteWall(editor, anchor, { ...read, wall: square }, square), wall: square, plain: false };
+    return { ...read, ...rewriteWall(editor, anchor, { ...read, wall: reshaped }, reshaped), wall: reshaped, plain: false };
   }
   const point = editor.addEntity('IfcCartesianPoint', [[native(start[0]), native(start[1]), read.location[2]]]).expressId;
   const direction = editor.addEntity('IfcDirection', [[ux, uy, 0]]).expressId;
   editor.setPositionalAttribute(read.axisPlacementId, 0, `#${point}`);
   editor.setPositionalAttribute(read.axisPlacementId, 2, `#${direction}`);
-  const moved = rewriteWall(editor, anchor, { ...read, origin: start, wall: square }, square);
+  const moved = rewriteWall(editor, anchor, { ...read, origin: start, wall: reshaped }, reshaped);
   return {
     ...read, ...moved, locationPointId: point, refDirectionId: direction,
-    location: [native(start[0]), native(start[1]), read.location[2]], origin: start, wall: square, plain: false,
+    location: [native(start[0]), native(start[1]), read.location[2]], origin: start, wall: reshaped, plain: false,
   };
 }
 

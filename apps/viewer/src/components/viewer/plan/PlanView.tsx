@@ -282,7 +282,7 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
           {fit && (
             <>
               <GridLayer grid={gridLines} width={size.width} height={size.height} />
-              {fit && <DesignGridLayer axes={designGrids} fit={fit} />}
+              <DesignGridLayer axes={designGrids} fit={fit} />
               <CutLayer fit={fit} polygons={cut.polygons} lines={cut.lines} axes={axes} />
               <HighlightLayer fit={fit} polygons={cut.polygons} selected={selected} hovered={hovered} />
               {!commandOnPlane && <HandleLayer fit={fit} handles={handles} active={hoveredHandle} />}

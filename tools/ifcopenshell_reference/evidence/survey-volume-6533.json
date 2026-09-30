@@ -1,0 +1,161 @@
+{
+  "issue": 6533,
+  "base": "81dd482e8b725918dc8119f869b37545b8a9b5e3",
+  "engine": "ifcopenshell 0.8.5",
+  "settings": {
+    "use_world_coords": true,
+    "weld_vertices": true
+  },
+  "case": {
+    "fixture": "tests/models/various/rvt01.ifc",
+    "fixture_sha256": "a83e9aacb43c7f82955ee3ba650ec66dc24af552924ec058e1b0c49a76180ee6",
+    "fixture_bytes": 4199228,
+    "host_id": 10191,
+    "opening_ids": [
+      10204,
+      10223
+    ],
+    "results": {
+      "with_openings": {
+        "geometry_artifact_sha256": "6976736a476929b9544518220fefd83bed5531c7bdb25f7f20d6f72c3a09aa38",
+        "fresh_engine_arrays_match_root_artifact": true,
+        "old_signed_volume_m3": 0.010932447854429483,
+        "local_signed_volume_m3": 0.0074539199264841835,
+        "canonical_stats": {
+          "express_id": 10191,
+          "ifc_type": "IfcCovering",
+          "status": "ok",
+          "bbox": {
+            "min": [
+              500385.593498,
+              2780226.517679,
+              14.63
+            ],
+            "max": [
+              500385.833321,
+              2780226.735441,
+              18.58
+            ]
+          },
+          "vertex_count": 24,
+          "tri_count": 44,
+          "volume": 0.007454,
+          "closed": true
+        }
+      },
+      "without_openings": {
+        "geometry_artifact_sha256": "24cb8945e1cec31266704a465ecd3eaedec61c46053b469250e2a2baebe76456",
+        "fresh_engine_arrays_match_root_artifact": true,
+        "old_signed_volume_m3": 0.011036540153630389,
+        "local_signed_volume_m3": 0.00745391992701263,
+        "canonical_stats": {
+          "express_id": 10191,
+          "ifc_type": "IfcCovering",
+          "status": "ok",
+          "bbox": {
+            "min": [
+              500385.593498,
+              2780226.517679,
+              14.63
+            ],
+            "max": [
+              500385.833321,
+              2780226.735441,
+              18.58
+            ]
+          },
+          "vertex_count": 26,
+          "tri_count": 48,
+          "volume": 0.007454,
+          "closed": true
+        }
+      }
+    }
+  },
+  "quick_reference_checks": {
+    "bath_csg_solid": {
+      "fixture_sha256": "950424788ef247ebde29026d3a103cd59bb971eee697175bfdd4277f61a4d2e3",
+      "same_engine_old_and_new_records_identical": true,
+      "committed_engine": "ifcopenshell 0.8.2",
+      "elements": [
+        {
+          "express_id": 225,
+          "changed_stat_fields": [],
+          "old_volume_m3": 0.548286,
+          "new_volume_m3": 0.548286,
+          "unmatched_directed_edges": 0
+        }
+      ],
+      "committed_reference_changed": false,
+      "regeneration_note": "Serialized element stats unchanged from committed reference."
+    },
+    "issue_1155_halfspace_flyaway": {
+      "fixture_sha256": "29b00edd100732871c063ec7bb738360a66956acdf0796eff177c72cc28dcb91",
+      "same_engine_old_and_new_records_identical": true,
+      "committed_engine": "ifcopenshell 0.8.2",
+      "elements": [
+        {
+          "express_id": 113218,
+          "changed_stat_fields": [],
+          "old_volume_m3": null,
+          "new_volume_m3": null,
+          "unmatched_directed_edges": 1472
+        }
+      ],
+      "committed_reference_changed": false,
+      "regeneration_note": "Reference left untouched. Pinned-engine preexisting topology/count drift for issue_1155 is unrelated to this change."
+    },
+    "swept_disk_composite_arc_crankbar": {
+      "fixture_sha256": "7653f051eef21dc23e6749770246d2e71ebf45647700ff271ff7d00ddec2fad4",
+      "same_engine_old_and_new_records_identical": false,
+      "committed_engine": "ifcopenshell 0.8.2",
+      "elements": [
+        {
+          "express_id": 79,
+          "changed_stat_fields": [
+            "volume"
+          ],
+          "old_volume_m3": 0.005177,
+          "new_volume_m3": null,
+          "unmatched_directed_edges": 26
+        }
+      ],
+      "committed_reference_changed": true,
+      "regeneration_note": "Only volume:null and engine provenance changed; all other serialized fields match prior reference."
+    },
+    "swept_disk_trimmed_line": {
+      "fixture_sha256": "287ccd9d9cfb73623c74168d79162a590dfbe53b4fd8d3f484995b6c1272f9fb",
+      "same_engine_old_and_new_records_identical": false,
+      "committed_engine": "ifcopenshell 0.8.2",
+      "elements": [
+        {
+          "express_id": 50,
+          "changed_stat_fields": [
+            "volume"
+          ],
+          "old_volume_m3": 0.001799,
+          "new_volume_m3": null,
+          "unmatched_directed_edges": 26
+        }
+      ],
+      "committed_reference_changed": true,
+      "regeneration_note": "Only volume:null and engine provenance changed; all other serialized fields match prior reference."
+    }
+  },
+  "negative_controls": {
+    "old-canonical": {
+      "exit": 1,
+      "assertion_failures": 7
+    },
+    "missing-orientation-guard": {
+      "exit": 1,
+      "assertion_failures": 1
+    },
+    "old-comparator": {
+      "exit": 1,
+      "assertion_failures": 1
+    }
+  },
+  "restored_tests_passed": 20,
+  "scope_limit": "Four small quick-lane fixtures checked using pinned engine; full downloaded reference corpus was not regenerated. No production kernel or comparison tolerance changes."
+}

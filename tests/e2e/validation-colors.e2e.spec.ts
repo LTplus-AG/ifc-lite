@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { rendererColorFrame } from './federation-control-triplet.rendering';
 import { watchGpuDeviceLoss } from './gpu-device-loss';
@@ -59,7 +59,7 @@ async function loadModels(page: Page, files: string[]): Promise<void> {
     if (state.typeVisibility.ifcGrid) state.toggleTypeVisibility('ifcGrid');
   });
   for (const file of files) {
-    const name = file.split('/').at(-1)!;
+    const name = basename(file);
     const loaded = page.waitForEvent('console', { predicate: message => message.text().includes(`[ifc-lite] Added model ${name}`), timeout: 120000 });
     await page.locator('#file-input-add').setInputFiles(file);
     await loaded;

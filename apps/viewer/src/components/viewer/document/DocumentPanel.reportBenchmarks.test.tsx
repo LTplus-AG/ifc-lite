@@ -83,17 +83,31 @@ function assertRing(root: Element, report: ValidationReport): void {
   const svg = new window.DOMParser().parseFromString(decodeURIComponent(uri.slice(uri.indexOf(',') + 1)), 'image/svg+xml');
   const track = svg.querySelector('circle'); assert.ok(track);
   const circumference = 2 * Math.PI * Number(track.getAttribute('r'));
-  const circles = [...svg.querySelectorAll('g circle')];
   const warnings = report.source.kind === 'rules' ? report.specificationResults.reduce((n, check) => n + (check.specification.severity === 'warning' ? check.failedCount : 0), 0) : 0;
   const expected = { pass: report.summary.totalEntitiesPassed, warning: warnings, fail: report.summary.totalEntitiesFailed - warnings };
-  assert.equal(circles.length, Object.values(expected).filter((n) => n > 0).length);
+  const present = Object.values(expected).filter((n) => n > 0).length;
+  const size = Number(svg.documentElement.getAttribute('width'));
+  const arcs = [...svg.querySelectorAll('path')];
+  assert.equal(arcs.length, present > 1 ? present : 0);
+  const angle = (x: number, y: number) => (Math.atan2(x - size / 2, size / 2 - y) + 2 * Math.PI) % (2 * Math.PI);
+  let start = 0;
   for (const [bucket, count] of Object.entries(expected)) {
     if (count === 0) continue;
     const color = RING_COLORS[bucket as 'pass' | 'warning' | 'fail'];
-    const circle = circles.find((entry) => entry.getAttribute('stroke') === color); assert.ok(circle, `${bucket} has its own labelled color`);
-    const visible = Number(circle.getAttribute('stroke-dasharray')?.split(' ')[0]);
-    const size = Number(svg.documentElement.getAttribute('width'));
-    assert.ok(Math.abs((visible + (circles.length > 1 ? Math.max(1, size / 40) : 0)) / circumference - count / report.summary.totalEntitiesChecked) < 1e-8, `${bucket} arc reflects actual checked-entity share`);
+    if (present === 1) {
+      const circle = [...svg.querySelectorAll('circle')].find((entry) => entry.getAttribute('stroke') === color); assert.ok(circle, 'a single outcome is a complete circle');
+      continue;
+    }
+    const arc = arcs.find((entry) => entry.getAttribute('stroke') === color); assert.ok(arc, `${bucket} has its own visible arc`);
+    const values = arc.getAttribute('d')?.match(/^M ([^ ]+) ([^ ]+) A ([^ ]+) ([^ ]+) 0 ([01]) 1 ([^ ]+) ([^ ]+)$/); assert.ok(values, 'each segment is an actual clockwise circular arc');
+    const [sx, sy, rx, ry, large, ex, ey] = values.slice(1).map(Number);
+    assert.equal(rx, Number(track.getAttribute('r'))); assert.equal(ry, rx);
+    const from = angle(sx, sy), to = angle(ex, ey);
+    assert.ok(Math.abs(from - start) < 1e-8, 'bucket order starts at twelve o’clock and follows the engine outcome order clockwise');
+    const span = (to - from + 2 * Math.PI) % (2 * Math.PI);
+    assert.equal(large, span > Math.PI ? 1 : 0);
+    assert.ok(Math.abs((span * rx + Math.max(1, size / 40)) / circumference - count / report.summary.totalEntitiesChecked) < 1e-8, `${bucket} visible angular share plus its gap reflects actual checked-entity share`);
+    start += count / report.summary.totalEntitiesChecked * 2 * Math.PI;
   }
   assert.ok(image.getAttribute('alt')?.includes(`${report.summary.overallPassRate}%`), 'accessible label retains the engine pass rate');
   assert.ok(benchmark.textContent?.includes(`${report.summary.overallPassRate}%`), 'visible rate retains the engine rounding');
@@ -242,7 +256,7 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
     // express the same clockwise arcs portably across these PDF readers.
     const pdf = new TextDecoder('latin1').decode(await result.blob.arrayBuffer());
     const dashes = [...pdf.matchAll(/\[([^\]]+)\]\s+(-?[\d.]+)\s+d\b/g)];
-    assert.equal(dashes.length, 10, 'both variants really exported two IDS and three information outcome segments');
+    assert.equal([...pdf.matchAll(/\nS\n/g)].length, 14, 'both variants export every outcome segment plus each background track');
     for (const dash of dashes) assert.ok(Number(dash[2]) >= 0, 'every actual printed segment uses a portable nonnegative dash phase');
     assert.ok(pdf.includes('62% passed') && pdf.includes('50% passed'), 'the exported labels retain both actual engine verdicts');
   });

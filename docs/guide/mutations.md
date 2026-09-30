@@ -634,10 +634,12 @@ All paths route through the same `mutationSlice` actions that wrap `StoreEditor`
 | Cut an opening, or put a door / window into an existing wall | `addOpeningToStore` / `addHostedDoorToStore` / `addHostedWindowToStore` (or `bim.store.addOpening` / `addHostedDoor` / `addHostedWindow`) |
 | Add a type object, or a material / layer set / layer set usage, and assign it | `addElementTypeToStore` + `assignTypeInStore`, `addMaterial*ToStore` + `assignMaterialInStore` (or `bim.store.addElementType` / `assignType` / `addMaterial*` / `assignMaterial`) |
 | Generate IfcSpace volumes from a storey's existing walls | `generateSpacesFromWalls` (or **Add Element → Space → Auto Spaces** in the viewer) |
-| Duplicate any IfcRoot product (psets, qsets, materials, type associations preserved) | `duplicateInStore` / right-click → Duplicate |
+| Duplicate an element with its hosted openings, fillings and assembly parts | right-click → Duplicate / Ctrl+D (the same `copyProductInStore` write as Paste and Array) |
 | Copy an element turned, moved or onto another storey, with fresh GlobalIds and the openings, doors, windows and assembly parts in it | `createCopyContext` + `copyProductInStore` / Model workspace → Copy, Paste, Array |
 | Remove an entity from an existing model | `removeEntity` / `bim.store.removeEntity` |
 | Build a brand-new IFC file from scratch | `IfcCreator` (see [API Reference](../api/typescript.md#ifc-litecreate)) |
+
+`copyProductInStore` returns `copiedFrom`, a map from each new product id to its source id, including openings, fillings and assembly parts. Its optional fourth argument, `{ Name }`, overrides the root product’s Name and preserves its parts’ names. The map lets consumers mirror source geometry and property reads without reconstructing the copied relationships. The viewer records the complete copied subgraph as one undo step and re-meshes the copies through wasm. A part or hosted filling cannot be copied alone, and a placement disconnected from its storey is refused.
 
 ## Key Types
 

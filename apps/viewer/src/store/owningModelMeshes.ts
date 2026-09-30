@@ -41,8 +41,15 @@ export function meshesForOwningModel(
   state: OwningModelMeshSource,
   modelId: string,
 ): MeshData[] | null {
-  const own = state.models.get(modelId)?.geometryResult?.meshes;
+  return geometryForOwningModel(state, modelId)?.meshes ?? null;
+}
+
+/** Geometry and instanced metadata obey the same owning-model gate as meshes. */
+export function geometryForOwningModel(
+  state: OwningModelMeshSource,
+  modelId: string,
+): GeometryResult | null {
+  const own = state.models.get(modelId)?.geometryResult;
   if (own) return own;
-  if (state.activeModelId !== modelId) return null;
-  return state.geometryResult?.meshes ?? null;
+  return state.activeModelId === modelId ? state.geometryResult : null;
 }

@@ -11,9 +11,11 @@ import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { editHostedElementInStore, readHostedElementSize } from './hosted-element-edit.js';
+import { readHostedFill } from './hosted-fill-read.js';
 import { resolveHostAnchor } from './resolve-host.js';
 
 const WASM = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
+const WASM_JS = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite.js', import.meta.url));
 interface MeshWitness { positions: number[]; indices: number[]; color: number[]; origin: number[] }
 
 async function meshes(text: string) {
@@ -56,12 +58,13 @@ function bounds(parts: MeshWitness[]) {
 }
 
 describe('hosted occurrence real WASM oracle (#6232)', () => {
-  it.skipIf(!existsSync(WASM))('rescales only the selected mapped window and enlarges its real void (build WASM to run)', async () => {
+  it.skipIf(!existsSync(WASM) || !existsSync(WASM_JS))('rescales only the selected mapped window and enlarges its real void (build WASM to run)', async () => {
     const bytes = readFileSync(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
     const text = bytes.toString('utf8');
     const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, { disableWorkerScan: true });
     const view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
     const oldSize = readHostedElementSize(store, 1262, view)!;
+    const selected = readHostedFill(store, 1262, view)!;
     const before = await meshes(text);
     const host = resolveHostAnchor(store, 1222, view).hostBounds!;
     editHostedElementInStore(store, editor, 1262, { OverallWidth: 1.2, OverallHeight: 1.4 });
@@ -81,6 +84,14 @@ describe('hosted occurrence real WASM oracle (#6232)', () => {
     expect(nextBox.min[1]).toBeCloseTo(oldBox.min[1], 5);
     expect(nextBox.min[2]).toBeCloseTo(oldBox.min[2], 5);
     expect(nextBox.max[2]).toBeCloseTo(oldBox.max[2], 5);
+    const oldCut = bounds(before.shapes.get(selected.openingId)!);
+    const nextCut = bounds(after.shapes.get(selected.openingId)!);
+    expect(nextCut.max[0] - nextCut.min[0]).toBeCloseTo(1.2, 5);
+    expect(nextCut.max[1] - nextCut.min[1]).toBeCloseTo(1.4, 5);
+    expect((nextCut.min[0] + nextCut.max[0]) / 2).toBeCloseTo((oldCut.min[0] + oldCut.max[0]) / 2, 5);
+    expect(nextCut.min[1]).toBeCloseTo(oldCut.min[1], 5);
+    expect(nextCut.min[2]).toBeCloseTo(oldCut.min[2], 5);
+    expect(nextCut.max[2]).toBeCloseTo(oldCut.max[2], 5);
     for (let part = 0; part < oldParts.length; part++) {
       expect(newParts[part].indices).toEqual(oldParts[part].indices);
       expect(newParts[part].color).toEqual(oldParts[part].color);
@@ -100,8 +111,9 @@ describe('hosted occurrence real WASM oracle (#6232)', () => {
     expect(before.volumes.get(1222)! - after.volumes.get(1222)!).toBeCloseTo(lost, 5);
     expect(after.shapes.get(1407)).toEqual(before.shapes.get(1407));
     expect(after.volumes.get(1407)).toBe(before.volumes.get(1407));
+    const editedProducts = new Set([selected.hostId, selected.openingId, selected.fillingId]);
     for (const [id, shape] of before.shapes) {
-      if (id !== 1222 && id !== 1262) expect(after.shapes.get(id), `unrelated occurrence #${id} stays byte-identical`).toEqual(shape);
+      if (!editedProducts.has(id)) expect(after.shapes.get(id), `unrelated occurrence #${id} stays byte-identical`).toEqual(shape);
     }
   });
 });

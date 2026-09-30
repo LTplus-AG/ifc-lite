@@ -191,7 +191,7 @@ function Block({ block, bindings, aggregation, chartMessage, topic, table, conte
       return (
         <div className="flex gap-3">
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold">{blockTitle(block, topic.title)}</div>
+            <div className={`${blockTitle(block) ? 'truncate ' : ''}text-sm font-semibold`} title={blockTitle(block) || undefined}>{blockTitle(block, topic.title)}</div>
             {topicLines(topic).map((line, i) => <div key={i} className="text-xs text-neutral-700">{line}</div>)}
           </div>
           {snapshot && <img src={snapshot} alt="" className="h-28 rounded border border-neutral-200 object-cover" />}

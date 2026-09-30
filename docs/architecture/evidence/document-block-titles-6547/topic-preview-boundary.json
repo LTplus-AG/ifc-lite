@@ -1,0 +1,104 @@
+{
+  "issue": 6547,
+  "review": "https://github.com/LTplus-AG/ifc-lite/pull/6588#discussion_r4149426180",
+  "fixture": {
+    "authoredTopic": true,
+    "topicTitle": "Original coordination topic",
+    "heading": "IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_",
+    "snapshot": "actual apps/viewer/public/favicon-16x16-cropped.png",
+    "snapshotBytes": 765,
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "modelLoaded": false,
+    "note": "This is a separate authored BCF layout fixture; original real-IFC/PDF evidence remains unchanged. Screenshots use separate browser origins with differing app themes; paper dimensions and measured glyph/snapshot boxes match."
+  },
+  "before": {
+    "boundary": 960.875,
+    "contained": false,
+    "glyph": {
+      "bottom": 654.625,
+      "height": 16,
+      "left": 600.125,
+      "right": 8056.21875,
+      "top": 638.625,
+      "width": 7456.09375,
+      "x": 600.125,
+      "y": 638.625
+    },
+    "heading": {
+      "bottom": 656.625,
+      "height": 20,
+      "left": 600.125,
+      "right": 960.875,
+      "top": 636.625,
+      "width": 360.75,
+      "x": 600.125,
+      "y": 636.625
+    },
+    "previewSHA": "4f81ef77e95fb8984c98c0afc8298249a2feec70976e4895c5e8f19ef73bc7f3",
+    "snapshot": {
+      "bottom": 748.625,
+      "height": 112,
+      "left": 972.875,
+      "right": 1084.875,
+      "top": 636.625,
+      "width": 112,
+      "x": 972.875,
+      "y": 636.625
+    },
+    "source": "718b3cb87e06aef3971cdb3e91ac67ffbf411218",
+    "styles": {
+      "overflowX": "visible",
+      "textOverflow": "clip",
+      "whiteSpace": "normal"
+    },
+    "title": "",
+    "visibleTextEnd": 8056.21875
+  },
+  "after": {
+    "boundary": 960.875,
+    "capture": "review successor working tree before commit",
+    "contained": true,
+    "glyph": {
+      "bottom": 654.625,
+      "height": 16,
+      "left": 600.125,
+      "right": 8056.21875,
+      "top": 638.625,
+      "width": 7456.09375,
+      "x": 600.125,
+      "y": 638.625
+    },
+    "heading": {
+      "bottom": 656.625,
+      "height": 20,
+      "left": 600.125,
+      "right": 960.875,
+      "top": 636.625,
+      "width": 360.75,
+      "x": 600.125,
+      "y": 636.625
+    },
+    "previewSHA": "482f9210dcd9555fcac6c3a86b06dc3e4afd9511724dba59495deaa35320e2dc",
+    "snapshot": {
+      "bottom": 748.625,
+      "height": 112,
+      "left": 972.875,
+      "right": 1084.875,
+      "top": 636.625,
+      "width": 112,
+      "x": 972.875,
+      "y": 636.625
+    },
+    "sourceBase": "ffbb9e244c7a838b6584c67049029a368134bfa5",
+    "styles": {
+      "overflowX": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "title": "IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_IFCWALL_COORDINATION_",
+    "visibleTextEnd": 960.875
+  }
+}

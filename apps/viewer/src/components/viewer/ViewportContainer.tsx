@@ -8,6 +8,7 @@ import { modelIndices } from '@/lib/model-placement/model-indices';
 import { useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { useLevelDisplayEffect } from '@/hooks/useLevelDisplayEffect';
+import { useAuthoredGridOverlay } from './useAuthoredGridOverlay';
 import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { Viewport } from './Viewport';
 import { useWindowFileDrop } from './useWindowFileDrop';
@@ -73,6 +74,8 @@ export function ViewportContainer() {
   // Drive Stacked / Solo / Exploded level display from the slice.
   // Mount-once hook — it self-gates on mode + gap + model changes.
   useLevelDisplayEffect();
+  // Grids authored this session are lines the mesher does not draw (#6232 D3).
+  useAuthoredGridOverlay();
 
   const { loadFile, loading, clearAllModels, loadFilesSequentially, addModel } = useIfc();
   // Resolves a source provider's display title for toasts; null outside the

@@ -71,3 +71,21 @@ export const WindowIcon = createLucideIcon('model-window', [
   ['path', { d: 'M12 8v8', key: 'mullion' }],
   ['path', { d: 'M7 12h10', key: 'transom' }],
 ]);
+
+/** A curtain wall in elevation: a glazed frame divided by mullions and a transom. */
+export const CurtainWallIcon = createLucideIcon('model-curtain-wall', [
+  ['rect', { x: '3', y: '3', width: '18', height: '18', rx: '1', key: 'frame' }],
+  ['path', { d: 'M9 3v18', key: 'mullion-a' }],
+  ['path', { d: 'M15 3v18', key: 'mullion-b' }],
+  ['path', { d: 'M3 12h18', key: 'transom' }],
+]);
+
+/** A design grid: two axes each way, with their tag bubbles. */
+export const GridIcon = createLucideIcon('model-grid', [
+  ['path', { d: 'M8 6v16', key: 'u-a' }],
+  ['path', { d: 'M16 6v16', key: 'u-b' }],
+  ['path', { d: 'M2 12h20', key: 'v-a' }],
+  ['path', { d: 'M2 19h20', key: 'v-b' }],
+  ['circle', { cx: '8', cy: '3', r: '2.5', key: 'bubble-a' }],
+  ['circle', { cx: '16', cy: '3', r: '2.5', key: 'bubble-b' }],
+]);

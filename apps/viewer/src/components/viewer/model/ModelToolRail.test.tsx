@@ -45,7 +45,7 @@ describe('Model tool rail (#6232 M2.1)', () => {
     assert.equal(ui.querySelector('[data-model-tool-rail]'), null, 'no rail while viewing');
     act(() => { useViewerStore.getState().enterModelWorkspace(); });
     const ids = [...ui.querySelectorAll('[data-rail-tool]')].map((b) => b.getAttribute('data-rail-tool'));
-    assert.deepEqual(ids, ['select', 'wall.place', 'slab.place', 'column.place', 'beam.place', 'room.place', 'opening.place', 'door.place', 'window.place', 'element.split', 'element.array', 'element.move', 'element.rotate', 'split.multi', 'stair.place', 'railing.place', 'element.pushPull', 'element.align', 'element.trimExtend', 'change-sets', 'plan', 'leave']);
+    assert.deepEqual(ids, ['select', 'wall.place', 'slab.place', 'column.place', 'beam.place', 'room.place', 'curtainwall.place', 'grid.place', 'opening.place', 'door.place', 'window.place', 'element.split', 'element.array', 'element.move', 'element.rotate', 'split.multi', 'stair.place', 'railing.place', 'element.pushPull', 'element.align', 'element.trimExtend', 'change-sets', 'plan', 'leave']);
     assert.equal(tool(ui, 'select')?.getAttribute('aria-pressed'), 'true');
   });
 
@@ -131,6 +131,9 @@ describe('Model tool rail (#6232 M2.1)', () => {
     ['slab.place', 'tool:slab', 'model.slab'],
     ['column.place', 'tool:column', 'model.column'],
     ['beam.place', 'tool:beam', 'model.beam'],
+    // #6232 D3: curtain wall and grid.
+    ['curtainwall.place', 'tool:curtain-wall', 'model.curtainWall'],
+    ['grid.place', 'tool:grid', 'model.grid'],
     // #6232 A1: the hosted tools.
     ['opening.place', 'tool:opening', 'model.opening'],
     ['door.place', 'tool:door', 'model.door'],

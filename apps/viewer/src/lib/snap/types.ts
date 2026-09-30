@@ -27,6 +27,8 @@ export type SnapKind =
   | 'extension'
   | 'parallel'
   | 'grid'
+  /** Where two axes of a design grid (IfcGrid) cross; the construction grid's nodes are `grid`. */
+  | 'gridIntersection'
   | 'workplane';
 
 /** Why a guide exists; drives how the HUD draws it. */
@@ -49,7 +51,7 @@ export interface SnapCandidate {
   /** The snap target itself (for an edge: the closest point on it to the cursor). */
   local: Vec2;
   elevation?: number;
-  source: 'mesh' | 'semantic' | 'linework' | 'grid' | 'inference';
+  source: 'mesh' | 'semantic' | 'linework' | 'grid' | 'ifc-grid' | 'inference';
   entity?: { modelId: string; expressId: number };
   /**
    * The geometry the target lies on. For edge-like kinds (edge, extension,

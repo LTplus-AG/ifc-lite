@@ -31,6 +31,7 @@ const GLYPH: Readonly<Record<SnapKind, SnapGlyphKind | null>> = {
   edge: 'edge',
   face: 'center',
   grid: 'grid',
+  gridIntersection: 'grid',
   workplane: null,
 };
 

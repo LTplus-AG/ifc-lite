@@ -135,6 +135,7 @@ export {
   type OverlayWallReader,
   type WallExtractionResult,
 } from './extract-walls.js';
+export { extractGridAxesForStorey, type GridAxisSegment, type StoreyGridAxes } from './extract-grids.js';
 export {
   existingSpaceFootprintsByStorey,
   existingSpaceFootprintEntriesByStorey,

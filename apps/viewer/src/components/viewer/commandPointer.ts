@@ -31,7 +31,7 @@ import {
 import type { ModelingCommand, Vec3, Workplane } from '@/lib/commands/modeling/types';
 import { commandGhostId } from '@/lib/commands/modeling/ghost';
 import {
-  NO_MODIFIERS, semanticSource, solveCommandSnap, type PointerModifiers,
+  NO_MODIFIERS, modelSnapSources, solveCommandSnap, type PointerModifiers,
 } from '@/lib/commands/modeling/snap-solve';
 import { useViewerStore } from '@/store';
 import { createMeshSource, type MeshPick } from '@/lib/snap/sources/mesh';
@@ -115,7 +115,7 @@ function resolveCommandSnap(
       lock: { get: () => ctx.edgeLockStateRef.current, set: ctx.setEdgeLock, clear: ctx.clearEdgeLock },
       toLocal,
     }),
-    semanticSource(commandCtx.modelId),
+    ...modelSnapSources(commandCtx.modelId),
   ] : [];
   ctx.setSnapTarget(pick?.snapTarget ?? null);
   return solveCommandSnap(runtime, plane, { cursor, metresPerPixel, sources, mods });

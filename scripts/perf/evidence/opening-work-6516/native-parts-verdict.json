@@ -1,4 +1,6 @@
 {
+  "qualificationStatus": "historical-precorrection-superseded",
+  "supersededBy": "surface-review-correction/native-rvt14-changed-parts.json",
   "entryPoint": "ifc_lite_processing::process_geometry (default options; same as perf_probe)",
   "coordinateSpace": "site_local",
   "frame": "SiteLocal { placement: [-0.6693791667919431, -0.742920945366951, 0.0, 0.0, 0.742920945366951, -0.6693791667919431, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 500373.1102175479, 2780223.975349443, 14.23, 1.0] }",

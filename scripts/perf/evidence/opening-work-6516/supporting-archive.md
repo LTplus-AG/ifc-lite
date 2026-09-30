@@ -23,3 +23,7 @@ verdict remains too noisy to establish overall speedup or neutrality.
 
 
 `historical-precorrection-qualification.json` preserves the old `current-v3-independent-qualification.json` bytes (SHA-256 `898fe864e21283de21f320dab5cb1c0122684320b16d94937cc14355ef166bf6`) under an explicitly historical name. It uses the superseded pre-correction codelog hashes and surface distances; do not cite it as current qualification. The primary PR's corrected nine outputs and reproducer are authoritative for the finite surface qualification.
+
+`browser-aa-v3-report.json` is a same-build A/A control. Its AC20 `realChange: true` is a noisy control observation and does not establish a branch regression.
+
+`native-parts-verdict.json` uses the historical pre-correction helper `a61d8d45…`, also recorded in `historical-precorrection-qualification.json`. Its surface distances are superseded by `surface-review-correction/native-rvt14-changed-parts.json` and the corrected nine reports under `surface-review-correction/`. Its measured values are retained unchanged.

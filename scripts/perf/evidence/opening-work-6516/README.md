@@ -19,7 +19,7 @@ reports under `surface-review-correction/` were freshly generated with that
 source and the pinned IfcOpenShell reference data; each retains all six directed
 comparisons and all three sample sets, input/reference hashes, metadata,
 coordinate adapters and geometry diagnostics. The 14 changed native Revit parts
-are recorded in `native-rvt14-changed-parts.json` in the same SiteLocal frame;
+are recorded in `surface-review-correction/native-rvt14-changed-parts.json` in the same SiteLocal frame;
 they retain closed, coherent edge incidence and a maximum finite-point
 difference of about 13.73 µm.
 
@@ -36,7 +36,9 @@ exclude self-intersections; no topology threshold or oracle expectation was
 relaxed.
 
 The pre-correction `current-v3-independent-qualification.json` is superseded and
-is not the primary qualification. The byte-preserving pre-correction file at the original head is explicitly
+is not the primary qualification. `native-parts-verdict.json` is also a historical
+pre-correction diagnostic using helper hash `a61d8d45…`; use
+`surface-review-correction/native-rvt14-changed-parts.json` and the corrected nine reports instead. The byte-preserving pre-correction file at the original head is explicitly
 historical; the supporting archive retains it under a renamed path. The older
 rejected outputs remain in the [archive at the original
 head](https://github.com/LTplus-AG/ifc-lite/tree/b4c7c530bee14e4ad9277320a7339bc145aca68e/scripts/perf/evidence/opening-work-6516/current-v3-independent-qualification.json).
@@ -64,6 +66,10 @@ provenance](measurement-provenance.json) are part of this PR's qualification.
 Native phase results are attribution, not a substitute for browser worker-pool
 results. The private reporter's complete slowdown remains unresolved; no
 committed benchmark baseline changed.
+
+`browser-aa-v3-report.json` compares the same build on both sides. Its AC20
+`realChange: true` is a noisy A/A control observation, not evidence of a branch
+regression. The recorded measurements remain unchanged.
 
 Raw run logs, process host-load observations, bounded A/A controls, release
 comparisons, rejected approaches and older surface outputs remain in the

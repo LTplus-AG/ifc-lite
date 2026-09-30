@@ -93,6 +93,7 @@ import { moveRotateEn } from './catalogues/move-rotate.en';
 import { modelInspectorEn } from './catalogues/model-inspector.en';
 import { hostedPlaceEn } from './catalogues/hosted-place.en';
 import { stairRailingEn } from './catalogues/stair-railing.en';
+import { profileSectionEn } from './catalogues/profile-section.en';
 import { planHandlesEn } from './catalogues/plan-handles.en';
 import { multiSplitEn } from './catalogues/multi-split.en';
 import { pushPullAlignEn } from './catalogues/push-pull-align.en';
@@ -152,6 +153,7 @@ export const en = {
   ...modelInspectorEn,
   ...hostedPlaceEn,
   ...stairRailingEn,
+  ...profileSectionEn,
   ...planHandlesEn,
   ...multiSplitEn,
   ...pushPullAlignEn,

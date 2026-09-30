@@ -57,13 +57,13 @@ describe('setElementSize (#6232 C4)', () => {
   it('a column keeps its base when its length changes; a beam edits length, width and cross-section', () => {
     const column = id(s().addColumn(MODEL_ID, STOREY, { Position: [2, 2, 0], Width: 0.3, Depth: 0.4, Height: 3 }));
     assert.equal(setElementSize(get, MODEL_ID, column, { kind: 'linear', length: 4.5 }).ok, true);
-    assert.deepEqual(readElementSize(s(), MODEL_ID, column), { kind: 'linear', length: 4.5, width: 0.3, cross: 0.4 });
+    assert.deepEqual(readElementSize(s(), MODEL_ID, column), { kind: 'linear', length: 4.5, width: 0.3, cross: 0.4, profiled: false });
     assert.deepEqual(s().readEntityPosition(MODEL_ID, column), [2, 2, 0], 'the base stays');
 
     const beam = id(s().addBeam(MODEL_ID, STOREY, { Start: [0, 0, 3], End: [4, 0, 3], Width: 0.2, Height: 0.3 }));
     const before = undoDepth();
     assert.equal(setElementSize(get, MODEL_ID, beam, { kind: 'linear', length: 5, width: 0.25, cross: 0.5 }).ok, true);
-    assert.deepEqual(readElementSize(s(), MODEL_ID, beam), { kind: 'linear', length: 5, width: 0.25, cross: 0.5 });
+    assert.deepEqual(readElementSize(s(), MODEL_ID, beam), { kind: 'linear', length: 5, width: 0.25, cross: 0.5, profiled: false });
     assert.equal(undoDepth() - before, 3, 'three positional writes, one per slot');
   });
 

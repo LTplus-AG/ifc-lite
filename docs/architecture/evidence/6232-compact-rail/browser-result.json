@@ -1,0 +1,52 @@
+{
+  "fixture": "/home/louistrue/wt/b1-delete-panel/tests/models/ara3d/AC20-FZK-Haus.ifc",
+  "fixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+  "wasmSha256": "81c63dc4c7a08813ab87140e33f1ef4a7616f16fd45ff5a4fcdc0300e07853d8",
+  "short": {
+    "layout": "grouped",
+    "height": 643,
+    "client": 518,
+    "scroll": 518,
+    "footer": {
+      "x": 213.453125,
+      "y": 647,
+      "width": 47,
+      "height": 125,
+      "top": 647,
+      "right": 260.453125,
+      "bottom": 772,
+      "left": 213.453125
+    }
+  },
+  "tall": {
+    "layout": "full",
+    "height": 1243,
+    "client": 1118,
+    "scroll": 1118
+  },
+  "reachableTools": [
+    "select",
+    "wall.place",
+    "slab.place",
+    "column.place",
+    "beam.place",
+    "room.place",
+    "opening.place",
+    "door.place",
+    "window.place",
+    "element.split",
+    "element.array",
+    "element.move",
+    "element.rotate",
+    "split.multi",
+    "element.pushPull",
+    "element.align",
+    "stair.place",
+    "railing.place"
+  ],
+  "slabCommandStarted": true,
+  "escapeReturnsFocus": true,
+  "leaveAt640": true,
+  "pageErrors": [],
+  "evidence": "RealAC20 canonical browser load; actual DOM fit and keyboard/command behavior, headless software GPU. No geometry or performance claim."
+}

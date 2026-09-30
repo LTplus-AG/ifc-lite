@@ -262,7 +262,9 @@ function undoCommandPoint(): boolean {
 export function requestFieldEdit(target: number | 'next', draft?: string): boolean {
   const fields = state.command?.fields ?? [];
   const count = fields.length;
-  const shown = (i: number) => !fields[i].hidden?.(state.gesture);
+  const { ctx } = state;
+  if (!ctx) return false;
+  const shown = (i: number) => !fields[i].hidden?.(state.gesture, ctx);
   if (!fields.some((_, i) => shown(i))) return false;
   let index = target === 'next' ? ((state.activeField ?? -1) + 1) % count : Math.min(Math.max(target, 0), count - 1);
   while (!shown(index)) index = (index + 1) % count;

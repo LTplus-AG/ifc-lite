@@ -33,6 +33,9 @@ import {
   type GenerateSpacesResult,
   type MemberInStoreParams,
   type PlateInStoreParams,
+  type ProfiledBeamInStoreParams,
+  type ProfiledColumnInStoreParams,
+  type ProfiledMemberInStoreParams,
   type RoofInStoreParams,
   type SlabInStoreParams,
   type SpaceInStoreParams,
@@ -633,7 +636,7 @@ export interface MutationSlice extends CostUndoMethods {
   addColumn: (
     modelId: string,
     storeyExpressId: number,
-    params: ColumnInStoreParams
+    params: ColumnInStoreParams | ProfiledColumnInStoreParams
   ) => { expressId: number } | { error: string };
   /** Add an IfcWall anchored to a storey. */
   addWall: (
@@ -647,11 +650,11 @@ export interface MutationSlice extends CostUndoMethods {
     storeyExpressId: number,
     params: SlabInStoreParams
   ) => { expressId: number } | { error: string };
-  /** Add an IfcBeam anchored to a storey. */
+  /** Add an IfcBeam anchored to a storey: a rectangle (`Width` x `Height`) or a parametric `Profile`. */
   addBeam: (
     modelId: string,
     storeyExpressId: number,
-    params: BeamInStoreParams
+    params: BeamInStoreParams | ProfiledBeamInStoreParams
   ) => { expressId: number } | { error: string };
   /** Add a free-standing IfcDoor anchored to a storey. */
   addDoor: (
@@ -700,7 +703,7 @@ export interface MutationSlice extends CostUndoMethods {
   addMember: (
     modelId: string,
     storeyExpressId: number,
-    params: MemberInStoreParams
+    params: MemberInStoreParams | ProfiledMemberInStoreParams
   ) => { expressId: number } | { error: string };
   /** Auto-generate IfcSpace volumes for every enclosed area formed by the storey's walls
    *  (existing + overlay). `dryRun: true` detects without emitting — for live UI previews. */

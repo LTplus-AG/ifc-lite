@@ -79,7 +79,7 @@ describe('extractGridAxesForStorey: a file grid (#6232 D3)', () => {
     const { axes, gridIds, skippedAxes } = extractGridAxesForStorey(store, 50);
     expect(gridIds).toEqual([80]);
     expect(skippedAxes).toBe(0);
-    const byTag = new Map(axes.map((a) => [a.tag, a]));
+    const byTag = new Map(axes.map((a) => [a.AxisTag, a]));
     // Grid-frame (0,0)->(0,8) m at grid origin (0.5, 0) turned 90°: X -> +Y, Y -> -X.
     expect(round(byTag.get('1')!.a)).toEqual([0.5, 0]);
     expect(round(byTag.get('1')!.b)).toEqual([-7.5, 0]);
@@ -93,6 +93,33 @@ describe('extractGridAxesForStorey: a file grid (#6232 D3)', () => {
   it('offers nothing for a storey with no grid above or on it', async () => {
     const store = await parse(FILE_GRID.replace('#92=IFCRELCONTAINEDINSPATIALSTRUCTURE(\'6hQBAVPOr5VxhS3Jl0O47h\',$,$,$,(#80),#40);', ''));
     expect(extractGridAxesForStorey(store, 50).axes).toEqual([]);
+  });
+
+  it('skips a bent polyline axis instead of inventing a straight snap line (#6511 review)', async () => {
+    const bent = FILE_GRID.replace('#72=IFCPOLYLINE((#70,#71));', '#69=IFCCARTESIANPOINT((3000.,4000.));\n#72=IFCPOLYLINE((#70,#69,#71));')
+      .replace('.RECTANGULAR.', '.IRREGULAR.');
+    const { axes, skippedAxes } = extractGridAxesForStorey(await parse(bent), 50);
+    expect(axes.map((axis) => axis.AxisTag)).toEqual(['A']);
+    expect(skippedAxes).toBe(1);
+  });
+
+  it('keeps a straight polyline with an intermediate collinear point (#6511 review)', async () => {
+    const straight = FILE_GRID.replace('#72=IFCPOLYLINE((#70,#71));', '#69=IFCCARTESIANPOINT((0.,4000.));\n#72=IFCPOLYLINE((#70,#69,#71));');
+    const { axes, skippedAxes } = extractGridAxesForStorey(await parse(straight), 50);
+    expect(skippedAxes).toBe(0);
+    const axis = axes.find((item) => item.AxisTag === '1');
+    expect(axis).toBeDefined();
+    if (!axis) throw new Error('Expected the straight axis');
+    expect(round(axis.a)).toEqual([0.5, 0]);
+    expect(round(axis.b)).toEqual([-7.5, 0]);
+  });
+
+  it('skips an axis that extends beyond its endpoint before backtracking (#6511 review)', async () => {
+    const backtracking = FILE_GRID.replace('#72=IFCPOLYLINE((#70,#71));', '#69=IFCCARTESIANPOINT((0.,12000.));\n#72=IFCPOLYLINE((#70,#69,#71));')
+      .replace('.RECTANGULAR.', '.IRREGULAR.');
+    const { axes, skippedAxes } = extractGridAxesForStorey(await parse(backtracking), 50);
+    expect(axes.map((axis) => axis.AxisTag)).toEqual(['A']);
+    expect(skippedAxes).toBe(1);
   });
 });
 
@@ -119,12 +146,12 @@ describe('extractGridAxesForStorey: an authored grid (#6232 D3)', () => {
     });
     const { axes, gridIds } = extractGridAxesForStorey(store, 42, view);
     expect(gridIds).toEqual([grid.gridId]);
-    expect(axes.map((a) => `${a.family}${a.tag}`)).toEqual(['U1', 'U2', 'VA', 'VB', 'VC']);
+    expect(axes.map((a) => `${a.family}${a.AxisTag}`)).toEqual(['U1', 'U2', 'VA', 'VB', 'VC']);
     // U axis '2' is the line x = 6 in the grid frame, y from -1 to 9: storey-local (8, 2) -> (8, 12).
-    const u2 = axes.find((a) => a.tag === '2')!;
+    const u2 = axes.find((a) => a.AxisTag === '2')!;
     expect(round(u2.a)).toEqual([8, 2]);
     expect(round(u2.b)).toEqual([8, 12]);
-    const vc = axes.find((a) => a.tag === 'C')!;
+    const vc = axes.find((a) => a.AxisTag === 'C')!;
     expect(round(vc.a)).toEqual([1, 11]);
     expect(round(vc.b)).toEqual([9, 11]);
 

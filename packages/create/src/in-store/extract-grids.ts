@@ -45,7 +45,7 @@ export interface GridAxisSegment {
   gridId: number;
   axisId: number;
   /** The IfcGridAxis.AxisTag ('1', 'A', ...). */
-  tag: string;
+  AxisTag: string;
   family: 'U' | 'V' | 'W';
   /** Axis ends in storey-local metres. */
   a: Vec2;
@@ -107,7 +107,24 @@ function readAxisEnds(read: Reader, curveId: number): [Vec2, Vec2] | null {
     if (ids.length < 2) return null;
     const a = pointAt(read, ids[0]);
     const b = pointAt(read, ids[ids.length - 1]);
-    return a && b ? [a, b] : null;
+    if (!a || !b) return null;
+    if (ids.length > 2) {
+      const dx = b[0] - a[0], dy = b[1] - a[1];
+      const length = Math.hypot(dx, dy);
+      if (length <= AXIS_EPS) return null;
+      for (const id of ids.slice(1, -1)) {
+        const point = pointAt(read, id);
+        if (!point) return null;
+        const px = point[0] - a[0], py = point[1] - a[1];
+        const projection = px * dx + py * dy;
+        // A bent or backtracking curve extending beyond the endpoints is
+        // not this segment: never offer an invented diagonal snap target.
+        if (Math.abs(px * dy - py * dx) > AXIS_EPS * length
+          || projection < -AXIS_EPS * length
+          || projection > length * length + AXIS_EPS * length) return null;
+      }
+    }
+    return [a, b];
   }
   if (type !== 'IFCTRIMMEDCURVE') return null;
   const basisId = numericAttr(curve.attributes[0] as never);
@@ -194,7 +211,7 @@ export function extractGridAxesForStorey(
         }
         const tag = authoredScalar(axis.attributes[0] as never);
         out.axes.push({
-          gridId, axisId, family, tag: typeof tag === 'string' ? tag : String(tag ?? ''),
+          gridId, axisId, family, AxisTag: typeof tag === 'string' ? tag : String(tag ?? ''),
           a: [a[0] * scale, a[1] * scale], b: [b[0] * scale, b[1] * scale],
         });
       }

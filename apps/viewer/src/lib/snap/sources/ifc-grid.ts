@@ -27,7 +27,7 @@ import { closestOnSegment } from './linework.js';
 export interface GridAxisLine {
   /** The IfcGrid the axis belongs to. */
   gridId: number;
-  tag: string;
+  AxisTag: string;
   family: 'U' | 'V' | 'W';
   a: Vec2;
   b: Vec2;
@@ -62,7 +62,7 @@ export function gridAxisIntersections(axes: readonly GridAxisLine[], slack = 1e-
       const u = (qpx * ry - qpy * rx) / denom;
       const lo = -slack, hi = 1 + slack;
       if (t < lo || t > hi || u < lo || u > hi) continue;
-      out.push({ gridId: p.gridId, tags: [p.tag, q.tag], at: [p.a[0] + t * rx, p.a[1] + t * ry] });
+      out.push({ gridId: p.gridId, tags: [p.AxisTag, q.AxisTag], at: [p.a[0] + t * rx, p.a[1] + t * ry] });
     }
   }
   return out;

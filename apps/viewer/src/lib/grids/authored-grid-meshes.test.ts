@@ -73,4 +73,19 @@ describe('authoredGridMeshes (#6232 D3)', () => {
     assert.notEqual(gridMeshesKey(home), gridMeshesKey(moved));
     assert.equal(gridMeshesKey(home), gridMeshesKey(at(0, 0)), 'the same grid keeps its key');
   });
+
+  it('distinguishes different finite vertex coordinates with a known FNV collision (#6511 review)', () => {
+    grid(STOREY, 0);
+    const [mesh] = authoredGridMeshes(useViewerStore.getState());
+    const home = { ...mesh, positions: mesh.positions.slice() };
+    const moved = { ...mesh, positions: mesh.positions.slice() };
+    home.positions.set([0, 0, 0]);
+    // These three IEEE-754 words reach the same old FNV state as [0,0,0].
+    // The remaining genuine grid vertices are identical, so a hash-only key
+    // suppresses the upload despite different, finite rendered geometry.
+    moved.positions.set(new Float32Array(new Uint32Array([1017370378, 1065353216, 3226256170]).buffer));
+    assert.notDeepEqual(home.positions, moved.positions);
+    assert.ok(moved.positions.every(Number.isFinite));
+    assert.notEqual(gridMeshesKey([home]), gridMeshesKey([moved]));
+  });
 });

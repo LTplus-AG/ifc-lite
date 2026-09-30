@@ -121,17 +121,17 @@
     "reproducerSha256": "c02224d8d831974baaa585631ee676523e3b4b0c4f9fd3807c955b99d5f4bce6",
     "knownAnswers": "valid thin triangle centroid+off-plane; scalar+batched BVH; unused vertices excluded from samples/bounds/volume center; existing plane/edge/degenerate/random BVH checks",
     "archivedCorrectedOutputs": {
-      "455.json": "585879f72c650be329b012d89d6ec526df9ba12b2fb7c56f862cdffa4f64c9b9",
-      "invocations.json": "8efccc5b1397e82b2d9daa809665e832399efee093c700df1a41ee4dd20c9e30",
-      "issue068-892212.json": "df8aaeb9eda0f85ccb804f4d544f8eebf8b272e798b8d706383d8bdd83fa02c2",
-      "native-rvt14-changed-parts.json": "47ecaadaafb5d1c59a75c9675fc0e42c73a66f665bca77522a2199a21bf8776e",
-      "rvt-browser38800.json": "2b0e85739d20b9a98df78e355475e438775593b4248b9fb9ec0c2b426b38ebc7",
-      "rvt-browser6810.json": "05c6d25ed5c216e2ee6fbe541f01ee2fb9b8a5e9dc0a654859e5c1a73a97f078",
-      "rvt-browser7834.json": "4187bcc61d8d150ccde6de6cf50924f1ec4dcd8cde8879cb4089e204128bca2a",
-      "rvt33639.json": "b7bc8a8fbb2762fb7c012323eb1d646d1b981204a6d1979039b3af789b491c5d",
-      "rvt7075.json": "922df72a463feeadaec3addfdcdcc7a57bf5bbcfac717c4eb1c4c26a7d86026f",
-      "rvt7834.json": "b82e3473b32bfe33db324a8a57d2a2dd5285596d44a08e1e60a148a994501512",
-      "snowdon81962.json": "c1d93301d0ff8521028be1109e5654db8af114fa3ea2d1bb301addc3987761e7"
+      "455.json": "bf7e8b7d1c7fdfd22016a9cbb263bcda07708e5587aaa1672a776d37326167b1",
+      "invocations.json": "b4d5ad1b34d83553a7976b7559f692043a11de59e20455794059e742d3491804",
+      "issue068-892212.json": "f6ed79a183cf4caf82fb2c5b33796ce701446a86f84d01a2b20bc562fbe61efc",
+      "native-rvt14-changed-parts.json": "b0212d48e131333d6b31b9bc314ee01ed2e5e419fca56a600ee2ffe86bf08225",
+      "rvt-browser38800.json": "ab6b30d725f7a3d03d70e12657282858fd487ba5518516a4e3b547b40dbca45d",
+      "rvt-browser6810.json": "fa80d4322c5c1ef963de3593a38a0e66fff40858fe5664351861404c2974ebe4",
+      "rvt-browser7834.json": "f97ca0abc02a7138e97bd9b1827a097bf37dd65a1569125df82e92d41fcceaa7",
+      "rvt33639.json": "61f96d879cd29ad5ef9db52b209c647629b57c3d5a1ea9d80f39758cbe102fd0",
+      "rvt7075.json": "a90372f5b302fb323853b5319040b9373c862dcc1238b25df5afa209c7c9f61c",
+      "rvt7834.json": "2b1d8d4c81e58f5cabe121f02acb247764b40a45774b787f2be6074490152f49",
+      "snowdon81962.json": "20797fb139129584a81c6984cb1023768ebc13604a6d040b672bb10a84b90d64"
     },
     "scope": "Nine external-oracle cases and all14 changed native Revit parts from identical archived capture bytes; geometry production and timed WASM artifacts unchanged."
   }

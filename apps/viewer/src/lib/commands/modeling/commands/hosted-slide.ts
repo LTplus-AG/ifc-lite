@@ -105,10 +105,10 @@ export const HOSTED_SLIDE: ModelingCommand<HostedSlideGesture> = {
   pointerMove: (g, s) => (g.target ? { ...g, offset: slideOffset(g.target, s.local) } : g),
   pointerDown: (g) => g,
   validate: (g) => (g.target && g.offset !== null ? { ok: true } : { ok: false, reasonKey: 'planHandles.slide.notHosted' }),
-  commit(g, tx) {
+  commit(g) {
     if (!g.target || g.offset === null) throw new Error('Nothing to slide');
     const { modelId, expressId } = g.target;
-    const moved = moveHostedFillIn(() => tx.store, modelId, expressId, { offset: g.offset });
+    const moved = moveHostedFillIn(useViewerStore, modelId, expressId, { offset: g.offset });
     if (!moved.ok) throw new Error(moved.reason);
     return { modelId, created: [], deleted: [], remesh: [...moved.remesh], select: [expressId] };
   },

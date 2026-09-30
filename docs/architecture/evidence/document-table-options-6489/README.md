@@ -16,3 +16,5 @@ PLAYWRIGHT_PORT=6489 pnpm exec playwright test tests/e2e/document-text.e2e.spec.
 ```
 
 All six document browser scenarios passed on 2026-09-30. They cover mixed PDF text, document popouts, scoped fields/page breaks, saved validation reports, saved comparisons, and these table options. The IFC federation emits a pre-existing reprojection warning for the bridge; these table assertions use product data independently of its scene placement.
+
+The production-revert oracle returned `OBSERVED` against the saved-comparison base `0c1bb9b7d`. The existing mounted document table suite passed 13 tests; reverting only production produced 12 passes and one behavioral assertion failure. Forward restoration was verified byte for byte. No source assertions, import weakening, or exemptions were used.

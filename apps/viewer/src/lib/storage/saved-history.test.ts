@@ -108,6 +108,22 @@ describe('saved history recovery (#6506, #6500)', () => {
     assert.deepEqual(deleted.entries, [{ id: 'new', value: 2 }]);
     assert.deepEqual(history().read().entries, deleted.entries);
   });
+  it('retains unreadable-history reconciliation after a quota-failed first retry', () => {
+    data.set('history', '[{"id":"old","value":1},{"id":"edited","value":2}]');
+    unreadable = true;
+    const store = history(); store.read();
+    unreadable = false; blocked.add('history');
+    const incoming = [{ id: 'edited', value: 9 }, { id: 'new', value: 3 }];
+    const refused = store.save(incoming);
+    assert.equal(refused.ok, false);
+    assert.deepEqual(refused.entries, [{ id: 'old', value: 1 }, ...incoming]);
+    assert.deepEqual(JSON.parse(data.get('history')!), [{ id: 'old', value: 1 }, { id: 'edited', value: 2 }]);
+    blocked.clear();
+    const retried = store.save(incoming);
+    assert.equal(retried.ok, true);
+    assert.deepEqual(retried.entries, refused.entries);
+    assert.deepEqual(history().read().entries, retried.entries);
+  });
   it('checks external corruption before a later save rather than trusting the initial read', () => {
     const store = history(); assert.equal(store.read().issue, null);
     data.set('history', 'external corrupt bytes'); blocked.add('history:unreadable');

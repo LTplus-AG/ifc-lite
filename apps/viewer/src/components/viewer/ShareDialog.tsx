@@ -39,7 +39,7 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import type { CollabRole } from '@/store/slices/collabSlice';
 import { buildShareUrl, mintRoomId, mintRoomToken, parseRoleFromToken } from '@/lib/collab/share-link';
 import { describeSeedPhase, isCollabSeedInFlight } from '@/lib/collab/seed-phase';
-import { buildShareSeed, prepareShareSeed, shareScopeIsChoice, type ShareScope } from '@/lib/collab/share-scope';
+import { modelsInShareScope, prepareShareSeed, shareScopeIsChoice, type ShareScope } from '@/lib/collab/share-scope';
 import { ShareScopeField } from './ShareScopeField';
 
 interface ShareDialogProps {
@@ -118,7 +118,8 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   const hasModel = models.size > 0;
   // What "all loaded models" can put in a room: a GLB, a point cloud or a
   // model still loading has no parsed store and is left out of the seed.
-  const seedableCount = useMemo(() => buildShareSeed(models, activeModelId, 'all').models.length, [models, activeModelId]);
+  const seedableCount = useMemo(() => modelsInShareScope(models, activeModelId, 'all')
+    .filter((model) => model.ifcDataStore).length, [models, activeModelId]);
   const isJoiner = Boolean(collabRoomId && collabRole && collabRole !== 'admin');
   // The room exists but the model is still going in: no invite until it has.
   const seedInFlight = Boolean(collabRoomId) && isCollabSeedInFlight(seedPhase);
@@ -305,6 +306,8 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
                   <Button
                     key={opt.role}
                     type="button"
+                    // Button renders the custom access choice with its checked radio semantics.
+                    // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
                     role="radio"
                     aria-checked={role === opt.role}
                     variant={role === opt.role ? 'default' : 'outline'}
@@ -337,10 +340,10 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
               </Button>
             </div>
             {seedInFlight && seedLabel && (
-              <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
+              <output className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Spinner size="sm" className="shrink-0" />
                 <span>{seedLabel}</span>
-              </p>
+              </output>
             )}
             {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
             {seedFailure && (

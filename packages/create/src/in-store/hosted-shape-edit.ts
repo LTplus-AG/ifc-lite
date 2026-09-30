@@ -24,9 +24,17 @@ export function scaleHostedShape(
   }
   const inverse = inverseFrame(inHost);
   const localAnchor = applyFrame(inverse, hostAnchor);
+  // The renderer/IfcOpenShell compose MappingTarget * MappingOrigin. The
+  // source frame therefore maps product coordinates into host coordinates
+  // relative to the held anchor; the target maps scaled host axes back into
+  // the product. Together this is P^-1 * anchoredScale * P, not its inverse.
+  const sourceAnchor = inHost.o.map((value, axis) => value - hostAnchor[axis]) as Vec3;
+  const sourcePoint3 = editor.addEntity('IfcCartesianPoint', [sourceAnchor]).expressId;
+  const sourceX = editor.addEntity('IfcDirection', [inHost.x]).expressId;
+  const sourceZ = editor.addEntity('IfcDirection', [inHost.z]).expressId;
   const point3 = editor.addEntity('IfcCartesianPoint', [localAnchor]).expressId;
   const directions = [inverse.x, inverse.y, inverse.z].map(v => editor.addEntity('IfcDirection', [v]).expressId);
-  const origin3 = editor.addEntity('IfcAxis2Placement3D', [ref(point3), ref(directions[2]), ref(directions[0])]).expressId;
+  const origin3 = editor.addEntity('IfcAxis2Placement3D', [ref(sourcePoint3), ref(sourceZ), ref(sourceX)]).expressId;
   const target3 = editor.addEntity('IfcCartesianTransformationOperator3DnonUniform', [
     ref(directions[0]), ref(directions[1]), ref(point3), widthScale, ref(directions[2]), 1, heightScale,
   ]).expressId;
@@ -48,11 +56,13 @@ export function scaleHostedShape(
         throw new Error(`The plan representation of #${productId} has an unsupported tilted frame`);
       }
       if (!planMapping) {
+        const sourcePoint = editor.addEntity('IfcCartesianPoint', [[sourceAnchor[0], sourceAnchor[1]]]).expressId;
+        const sourceDirection = editor.addEntity('IfcDirection', [[inHost.x[0], inHost.x[1]]]).expressId;
         const point = editor.addEntity('IfcCartesianPoint', [[localAnchor[0], localAnchor[1]]]).expressId;
         const x = editor.addEntity('IfcDirection', [[inverse.x[0], inverse.x[1]]]).expressId;
         const y = editor.addEntity('IfcDirection', [[inverse.y[0], inverse.y[1]]]).expressId;
         planMapping = {
-          origin: editor.addEntity('IfcAxis2Placement2D', [ref(point), ref(x)]).expressId,
+          origin: editor.addEntity('IfcAxis2Placement2D', [ref(sourcePoint), ref(sourceDirection)]).expressId,
           target: editor.addEntity('IfcCartesianTransformationOperator2DnonUniform', [ref(x), ref(y), ref(point), widthScale, 1]).expressId,
         };
       }

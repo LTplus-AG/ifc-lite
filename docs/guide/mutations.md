@@ -543,6 +543,22 @@ const hole = addHostedElementInStore(dataStore, editor, wallExpressId, {
 
 The opening is placed relative to the host's own `IfcLocalPlacement` and is not contained in the storey (IFC reaches it through the element it voids). By default the cut runs through the host's body thickness plus 50 mm per face; pass `CutDepth` to override it, but never with a value thinner than the host. The door or window is placed relative to the opening, centred in the wall, and contained in the host's storey. For a slab host, pass `Position: [x, y]`, `Width` and `Depth` in the slab's local frame. Through the SDK these are `bim.store.addOpening`, `bim.store.addHostedDoor` and `bim.store.addHostedWindow` (`modelId, hostExpressId, params`). In the viewer they go through the same store action as the Model workspace's Opening, Door and Window tools: the whole graph is one undo step, and the host is re-meshed with its void. `readHostedFill(dataStore, id, mutationView)` reads an opening's (or its door's or window's) host, `Offset` along the wall and `Sill`, and `hostPlanFrame(dataStore, hostId, storeyId, mutationView)` the host wall's placement frame on its storey, both through the overlay. In the viewer, resizing a host through the Model workspace's Push / Pull handles or the inspector's Dimensions rows keeps its openings valid in the same undo step: a thicker wall (or slab) lengthens the cuts that no longer span it, and a wall height that would leave an opening above the wall is refused.
 
+`readHostedElementSize(dataStore, expressId, view)` reads a door or window's `OverallWidth` and `OverallHeight` in metres. When its optional IFC attributes are omitted, the physical Model Body supplies the dimensions. `editHostedElementInStore` changes those dimensions or the hosted `Offset` / `Sill` atomically, using the same fit and overlap validation as placement. It accepts openings for position edits and doors/windows for position or size edits, with a wall host in IFC2X3, IFC4 or IFC4X3.
+
+```typescript
+import { editHostedElementInStore, readHostedElementSize } from '@ifc-lite/create';
+
+const size = readHostedElementSize(dataStore, expressId, view);
+if (size) {
+  editHostedElementInStore(dataStore, editor, expressId, {
+    OverallWidth: 1.2,
+    OverallHeight: size.OverallHeight,
+  });
+}
+```
+
+Size edits apply an affine mapping to the selected occurrence and its opening, holding the existing cut's centre and bottom while preserving its thickness. Source/type geometry, styles, metadata, relationships and other occurrences remain unchanged. Fresh placements prevent a move from altering shared source points. Unsupported geometry or placements are refused without writes. In the viewer, the Dimensions and Hosting fields and plan slide handle call this core; each successful edit is one undo step and re-meshes the filling and voided host through WASM.
+
 #### Type objects and materials
 
 `addElementTypeToStore` writes any `IfcElementType` subtype (`IfcWallType`, `IfcSlabType`, `IfcDoorType`, `IfcWindowType`, ...). Its attribute layout comes from the model's schema: IFC2X3 has no `IfcDoorType`, and IFC4 adds `OperationType`, so the same call writes a valid record in each schema or refuses the class by name. Enumeration values are checked against the schema. `assignTypeInStore` links occurrences through `IfcRelDefinesByType`. It extends the type's existing relationship, and it moves an occurrence off any other type, because an occurrence has one type.

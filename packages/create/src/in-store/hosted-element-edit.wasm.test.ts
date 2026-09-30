@@ -74,6 +74,13 @@ describe('hosted occurrence real WASM oracle (#6232)', () => {
     const centre = (oldBox.min[0] + oldBox.max[0]) / 2;
     expect(nextBox.max[0] - nextBox.min[0]).toBeCloseTo(1.2, 5);
     expect(nextBox.max[1] - nextBox.min[1]).toBeCloseTo(1.4, 5); // Mesh coordinates are viewer Y-up.
+    // Physical anchoring is independent of mesh vertex/part ordering. The
+    // selected opening's centre and sill must stay in the same world frame.
+    expect(nextBox.min[0]).toBeCloseTo(centre - 0.6, 5);
+    expect(nextBox.max[0]).toBeCloseTo(centre + 0.6, 5);
+    expect(nextBox.min[1]).toBeCloseTo(oldBox.min[1], 5);
+    expect(nextBox.min[2]).toBeCloseTo(oldBox.min[2], 5);
+    expect(nextBox.max[2]).toBeCloseTo(oldBox.max[2], 5);
     for (let part = 0; part < oldParts.length; part++) {
       expect(newParts[part].indices).toEqual(oldParts[part].indices);
       expect(newParts[part].color).toEqual(oldParts[part].color);

@@ -115,10 +115,9 @@ export type HostedFillMoveOutcome =
   | { readonly ok: false; readonly reason: string };
 
 /**
- * Move a hosted opening (or the door or window in one) along its host and
- * up or down: one write to the opening's Location, which the filling is
- * placed relative to. The positional write lands on the undo stack; the
- * caller's transaction tags it and re-meshes what it returns.
+ * Move a hosted opening (or its door/window) through the shared edit core.
+ * Fresh placements leave shared source points unchanged. The caller's
+ * transaction groups the graph writes and re-meshes the returned products.
  */
 export function moveHostedFillIn(store: ModellingStore, modelId: string, expressId: number, position: HostedFillPosition): HostedFillMoveOutcome {
   return editHostedFillIn(store, modelId, expressId, { Offset: position.offset, Sill: position.sill });

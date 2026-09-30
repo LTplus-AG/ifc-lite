@@ -76,4 +76,9 @@ Documents embed a copy of the report, so deleting or renaming its library entry
 does not alter an issued document. Export the document JSON to share that copy.
 Saved comparison history is local to this browser; storage failures show a warning
 and leave the report available in memory for download before closing the tab.
+If history cannot be read, the library and document source picker show a notice.
+Invalid or duplicate history is backed up before valid reports are restored.
+When the backup cannot be written, the original remains untouched and saving is
+blocked; free browser storage and retry saving. Retry retains in-memory edits
+and reports whether the browser now saved them.
 Document format 9 adds comparison table sources; older documents remain readable.

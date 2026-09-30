@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Completed reports remain reviewable without reattaching historical renderer ids (#6506). */
+import { SavedComparisonHistoryNotice } from './SavedComparisonHistoryNotice';
 import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
 import { useState } from 'react';
 import { useViewerStore } from '@/store';
@@ -45,6 +46,7 @@ export function SavedComparisonLibrary({ result, running }: { result: CompareRes
   return (
     <section className="shrink-0 border-b px-3 py-2 text-xs space-y-2" aria-label={t('comparePanel.saved.title')} data-saved-comparisons>
       <div className="font-semibold">{t('comparePanel.saved.title')}</div>
+      <SavedComparisonHistoryNotice />
       <div className="flex gap-2">
         <input className="min-w-0 flex-1 rounded border bg-background px-2" value={name} onChange={(e) => setName(e.target.value)}
           aria-label={t('comparePanel.saved.name')} placeholder={result ? `${result.baseName} → ${result.headName}` : t('comparePanel.saved.name')} />

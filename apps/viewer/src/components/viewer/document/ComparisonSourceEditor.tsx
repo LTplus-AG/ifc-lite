@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { SavedComparisonHistoryNotice } from '../compare/SavedComparisonHistoryNotice';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { comparisonSummary } from '@/lib/compare/savedComparisonSchema';
@@ -12,6 +13,7 @@ export function ComparisonSourceEditor({ block, source, onChange }: { block: Tab
   const { t } = useTranslation();
   const saved = useViewerStore((s) => s.savedComparisons);
   return <>
+    <SavedComparisonHistoryNotice />
     <label className="flex items-center gap-2 text-muted-foreground">{t('document.block.tableSourceComparison')}
       <select className={`${field} min-w-0 flex-1`} value="" aria-label={t('document.block.comparisonPicker')} onChange={(e) => {
         const comparison = saved.find((c) => c.id === e.target.value);

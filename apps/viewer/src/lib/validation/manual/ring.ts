@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Ring-chart geometry and colours for manual validation (#6401), DOM-free
+ * Ring-chart geometry and colours for validation reports (#6401, #6552), DOM-free
  * so the panel's SVG and the document block's print path draw the same
  * ring from the same numbers.
  *

@@ -17,6 +17,9 @@
  * targeted (it already ran across all of them in one pass).
  */
 
+import { useMemo } from 'react';
+import { ValidationBenchmark } from './validation/ValidationBenchmark';
+import { validationReportSummary } from '@/lib/validation/report-summary';
 import { Boxes, Eye, EyeOff, Filter, Focus, Layers, Palette } from 'lucide-react';
 import type { ValidationReport, IDSAuditReport } from '@ifc-lite/ids';
 import type { UseValidationResults } from '@/hooks/validation/useValidationResults';
@@ -79,6 +82,7 @@ export function IDSPanelResults({
     setActiveSpecification,
   } = results;
   const storeModels = useViewerStore((s) => s.models);
+  const summary = useMemo(() => report ? validationReportSummary(report) : null, [report]);
   const failedActive = isolationActive && isolateMode === 'failed';
   const passedActive = isolationActive && isolateMode === 'passed';
   const involvedActive = isolationActive && isolateMode === 'involved';
@@ -86,7 +90,7 @@ export function IDSPanelResults({
   const handleIsolatePassed = () => { if (passedActive) clearIsolation(); else isolatePassed(); };
   const handleIsolateInvolved = () => { if (involvedActive) clearIsolation(); else isolateInvolved(); };
 
-  if (!report) return null;
+  if (!report || !summary) return null;
   const isRules = report.source.kind === 'rules';
 
   const specScope = isolationScope === 'spec';
@@ -141,6 +145,7 @@ export function IDSPanelResults({
             })}
           </span>
         </div>
+        <ValidationBenchmark summary={summary} name={report.source.kind === 'rules' ? report.source.ruleSet.name : report.source.document.info.title} />
         <div className="grid grid-cols-3 gap-2 text-xs text-center">
           <div className="bg-background rounded p-2">
             <div className="font-medium">{formatLocaleNumber(locale, report.summary.totalEntitiesChecked)}</div>
@@ -151,7 +156,7 @@ export function IDSPanelResults({
             <div className="text-muted-foreground">{t('idsPanel.passed')}</div>
           </div>
           <div className="bg-background rounded p-2">
-            <div className="font-medium text-red-600">{formatLocaleNumber(locale, report.summary.totalEntitiesFailed)}</div>
+            <div className="font-medium text-red-600">{formatLocaleNumber(locale, summary.failed)}</div>
             <div className="text-muted-foreground">{t('idsPanel.failed')}</div>
           </div>
         </div>

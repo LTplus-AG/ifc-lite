@@ -288,7 +288,7 @@ export function composeDocument(input: ComposeDocumentInput): DocumentLayout {
           break;
         }
         case 'ids-report': {
-          layoutIdsReport(block, cursor, contentW, BLOCK_GAP, wrap);
+          layoutIdsReport(block, cursor, contentW, BLOCK_GAP, wrap, (ring) => page.items.push(ring));
           break;
         }
         case 'manual-report': {

@@ -1,0 +1,81 @@
+{
+  "blocks": [
+    {
+      "chart": {
+        "dimension": "Name",
+        "id": "default",
+        "measure": {
+          "agg": "count"
+        },
+        "source": "elements",
+        "stackBy": "IfcType",
+        "title": "Default (12) — names by IFC class",
+        "type": "stackedBar"
+      },
+      "height": 150,
+      "id": "block-97ca0d74-2425-400f-9232-6c758e944c94",
+      "kind": "chart",
+      "snapshot": false
+    },
+    {
+      "chart": {
+        "dimension": "Name",
+        "id": "compact",
+        "measure": {
+          "agg": "count"
+        },
+        "source": "elements",
+        "stackBy": "IfcType",
+        "title": "Compact (8) — same names and classes",
+        "type": "stackedBar"
+      },
+      "fontSize": 8,
+      "height": 150,
+      "id": "block-ba514145-5867-46f1-b6c1-07b8d69da936",
+      "kind": "chart",
+      "snapshot": false
+    },
+    {
+      "chart": {
+        "dimension": "IfcType",
+        "id": "pie",
+        "measure": {
+          "agg": "count"
+        },
+        "source": "elements",
+        "title": "Compact pie (8)",
+        "type": "pie"
+      },
+      "fontSize": 8,
+      "height": 150,
+      "id": "block-18adcae2-40fc-4b80-bc8c-bb15bd7524c7",
+      "kind": "chart",
+      "snapshot": false,
+      "width": "half"
+    },
+    {
+      "chart": {
+        "id": "count",
+        "measure": {
+          "agg": "count"
+        },
+        "source": "elements",
+        "title": "Compact count (8)",
+        "type": "elementCount"
+      },
+      "fontSize": 8,
+      "height": 150,
+      "id": "block-0acb29b2-0489-4f1c-9e2a-6acb8077e314",
+      "kind": "chart",
+      "snapshot": false,
+      "width": "half"
+    }
+  ],
+  "id": "document-b78ecacc-77ae-49f9-bbdc-77cec26c6743",
+  "name": "Chart text sizing — SketchUp sample",
+  "page": {
+    "orientation": "portrait",
+    "size": "A4"
+  },
+  "version": 10
+}

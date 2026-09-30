@@ -1,0 +1,51 @@
+{
+  "before": {
+    "fonts": [
+      "12px"
+    ],
+    "labels": [
+      "entry hall",
+      "floor",
+      "geo-re…nce",
+      "house…ume",
+      "house -…left",
+      "house …ack",
+      "house …ront",
+      "house -…left",
+      "house …ight",
+      "kitchen",
+      "living room",
+      "origin",
+      "plumbi…wall",
+      "sand b…ding"
+    ],
+    "legendHeight": 35.9996337890625,
+    "svgWidth": "484.74129821260584"
+  },
+  "after": {
+    "fonts": [
+      "8px"
+    ],
+    "labels": [
+      "entry hall",
+      "floor",
+      "geo-reference",
+      "house - gross volume",
+      "house - oute…se left",
+      "house - out…ht back",
+      "house - oute…ht front",
+      "house - roof - slab left",
+      "house - roof…ab right",
+      "kitchen",
+      "living room",
+      "origin",
+      "plumbing wall",
+      "sand bedding"
+    ],
+    "legendHeight": 9,
+    "storageKeys": [
+      "ifc-lite-documents"
+    ],
+    "svgWidth": "515.28"
+  }
+}

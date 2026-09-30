@@ -8,7 +8,7 @@ The **Document** panel is a page over the model: text whose fields read the load
 |-------|---------------|------------|
 | **Text with fields** | `title`, `heading`, `subheading`, `body`, `small` or `caption` text; optional Helvetica, Times or Courier font and 6–48 pt size; free RGB text and background colours; `Full` or `Half` width. `{path}` placeholders resolve against the model (below). *Insert field* drops one at the caret: project, site, storeys, the selected element's attributes and property values. | Wrapped, paginated; a heading never sits alone at the bottom of a page |
 | **Image / logo** | A PNG or JPEG (≤ 1 MB, stored in the document so the file travels), height in points, alignment, caption, width (`Full` or `Half`) | At its aspect ratio |
-| **Chart** | A copy of a chart from one of your dashboards (see [Charts](./charts.md)), optionally with a 3D snapshot of its largest bucket, height in points (120-600, default 220), width (`Full` or `Half`) | The same vector chart the coordination report prints, with a legend that wraps and truncates instead of clipping |
+| **Chart** | A copy of a chart from one of your dashboards (see [Charts](./charts.md)), optionally with a 3D snapshot of its largest bucket, height in points (120-600, default 220), width (`Full` or `Half`), and text size (6–24, default 12) | The same vector chart the coordination report prints, with a legend that wraps and truncates instead of clipping |
 | **BCF topic** | A topic by GUID — status, type, priority, assignee, dates, description — optionally with its first viewpoint snapshot | Text and image side by side |
 | **Spacer** | Blank vertical space, height in points | Advances the page by its height; no other content |
 | **Page break** | Starts the following content on a new page | Separates full-width content and half-width rows; leading, trailing and repeated breaks do not create empty pages |
@@ -20,6 +20,8 @@ Adjacent text, chart, or image blocks set to `Half` width print two-up on the sa
 **Text colour** and **Background colour** accept any RGB colour through the colour picker. The background fills the text block’s full or paired half width and continues on each PDF page when the text wraps. Reset restores the style’s text colour or clears the background. Both colours travel with the saved document and exported template.
 
 The preview on the right resolves fields against the loaded models; click a block on either side to select it. Explicit page breaks show separate paper sections in the preview. The PDF also paginates content that overflows a section; the preview stretches that section to show its content. Charts use the same SSR rendering in preview and PDF, including legend wrapping.
+
+Each chart block has a **Text size** control. Smaller text makes room for longer axis labels and tighter legend rows; the renderer measures and fits the selected font before drawing. The setting scales chart titles, subtitles, axes, legends, pie/treemap labels and the count display while retaining their relative sizes. It is saved with the block and applies to both preview and PDF. Clear the field or use **Reset chart text size** to restore the existing default appearance.
 
 ## Bindings
 

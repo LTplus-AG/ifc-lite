@@ -53,7 +53,7 @@ export interface ReportTableArgs {
 
 export interface ReportPdfSeams {
   createDoc: (format: 'a4' | 'a3', orientation: 'portrait' | 'landscape') => Promise<ReportDoc>;
-  renderSvg: (aggregation: Aggregation, width: number, height: number, theme: ChartTheme) => string;
+  renderSvg: (aggregation: Aggregation, width: number, height: number, theme: ChartTheme, fontSize?: number) => string;
   /** `null` when no renderer is available; snapshots are then skipped. */
   capture: SnapshotCapture | null;
   theme: ChartTheme;
@@ -161,7 +161,7 @@ export async function browserReportSeams(capture: SnapshotCapture | null, theme:
     },
     // `print: true` (#4940): the printed SVG has no interactive scroll, so a
     // pie's legend switches to a wrapped plain layout instead of clipping.
-    renderSvg: (aggregation, width, height, t) => renderChartSvg({ aggregation, width, height, theme: t, showTitle: false, print: true }),
+    renderSvg: (aggregation, width, height, t, fontSize) => renderChartSvg({ aggregation, width, height, fontSize, theme: t, showTitle: false, print: true }),
     capture,
     theme,
     now: () => new Date(),

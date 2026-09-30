@@ -688,7 +688,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
       // meant to "place the last point and finish" has already appended a
       // near-duplicate a few px from the one the user intended. Drop trailing
       // duplicate point(s) before validating/recording, mirroring
-      // SpaceSketchOverlay's `commitDraw` (same double-click-to-close gesture,
+      // the Room tool's polygon close (same double-click-to-close gesture,
       // same fix).
       //
       // SCOPED to that one gesture on purpose (#2641 review). The screen

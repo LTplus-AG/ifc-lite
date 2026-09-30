@@ -23,7 +23,7 @@ import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 // ViewportWelcomeCard.tsx and un-exports PrivacyBanner, and a static import
 // would kill this FILE at load (INCONCLUSIVE) instead of letting the
 // assertions below go red on their own merits — same pattern as
-// AddElementPanel.i18n.test.tsx.
+// the other i18n panel tests.
 function reportImportFailure(scope: string, error: unknown): void {
   const detail = error instanceof Error ? error.stack ?? error.message : String(error);
   // Keep the diagnostic while avoiding the oracle's reserved load-failure

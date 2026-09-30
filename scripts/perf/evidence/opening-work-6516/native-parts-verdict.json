@@ -1,0 +1,581 @@
+{
+  "qualificationStatus": "historical-precorrection-superseded",
+  "supersededBy": "surface-review-correction/native-rvt14-changed-parts.json",
+  "entryPoint": "ifc_lite_processing::process_geometry (default options; same as perf_probe)",
+  "coordinateSpace": "site_local",
+  "frame": "SiteLocal { placement: [-0.6693791667919431, -0.742920945366951, 0.0, 0.0, 0.742920945366951, -0.6693791667919431, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 500373.1102175479, 2780223.975349443, 14.23, 1.0] }",
+  "metadataEqual": true,
+  "meshesCompared": 1702,
+  "allPartsNoTopologyRegression": true,
+  "vertexDelta": -8,
+  "triangleDelta": 0,
+  "inputSha256": {
+    "base": "8fc85dbac5d65bbdd70781f2751748e65e74b1a7550f525f7b89bf9edd8b5622",
+    "v3": "ac5038b59b7589f1eaa73f60ccd789def92f5677d65649bb51a4d6fd39dd307b"
+  },
+  "scriptSha256": "229ef05b3ebf3c86fbde1e0a48ca66f8d84717ae60bd15cc93cc4216dcbd836a",
+  "limits": "Exact coordinate edge incidence is not a solid/self-intersection proof. Native SiteLocal output differs from browser ModelRTC output.",
+  "surfaceMethod": {
+    "knownAnswers": "passed: plane interior, outside edge, endpoint, degenerate segment, 100 scalar BVH/brute-force queries and 100 batched BVH/brute-force queries",
+    "helperSha256": "a61d8d45d7b4da44ae48fc5b1cca1e0a22589c5e383dd0f7c8c23d6f1cda611d",
+    "adapterSha256": "50a0cd325227ac224068ea669186e138735a48817fee0014427556fd6cd5c416",
+    "frame": "Identical reported native SiteLocal positions+per-part origin; Euclidean pairwise distances need no reconstruction of IFC world axes. No independent oracle added by this check.",
+    "limits": "Every unique vertex, triangle centroid and unique edge midpoint is sampled in both directions; this does not prove a continuous bound or exclude invalid nested/self-intersecting solids."
+  },
+  "changedParts": [
+    {
+      "index": 92,
+      "expressId": 6810,
+      "part": 0,
+      "materialId": null,
+      "fields": [
+        "indices",
+        "positions"
+      ],
+      "base": {
+        "vertices": 136,
+        "triangles": 180,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "candidate": {
+        "vertices": 136,
+        "triangles": 180,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "maxSymmetricSampleDistanceMetres": 4.1901066753546106e-11,
+      "sampleCounts": {
+        "base_to_candidate": {
+          "unique_vertices": 88,
+          "triangle_centroids": 180,
+          "unique_edge_midpoints": 270
+        },
+        "candidate_to_base": {
+          "unique_vertices": 88,
+          "triangle_centroids": 180,
+          "unique_edge_midpoints": 270
+        }
+      }
+    },
+    {
+      "index": 105,
+      "expressId": 7075,
+      "part": 0,
+      "materialId": null,
+      "fields": [
+        "indices",
+        "positions"
+      ],
+      "base": {
+        "vertices": 136,
+        "triangles": 176,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "candidate": {
+        "vertices": 136,
+        "triangles": 176,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "maxSymmetricSampleDistanceMetres": 4.906652861791372e-11,
+      "sampleCounts": {
+        "base_to_candidate": {
+          "unique_vertices": 88,
+          "triangle_centroids": 176,
+          "unique_edge_midpoints": 264
+        },
+        "candidate_to_base": {
+          "unique_vertices": 88,
+          "triangle_centroids": 176,
+          "unique_edge_midpoints": 264
+        }
+      }
+    },
+    {
+      "index": 106,
+      "expressId": 7075,
+      "part": 1,
+      "materialId": null,
+      "fields": [
+        "indices",
+        "positions"
+      ],
+      "base": {
+        "vertices": 136,
+        "triangles": 176,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "candidate": {
+        "vertices": 136,
+        "triangles": 176,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "maxSymmetricSampleDistanceMetres": 4.906830497475312e-11,
+      "sampleCounts": {
+        "base_to_candidate": {
+          "unique_vertices": 88,
+          "triangle_centroids": 176,
+          "unique_edge_midpoints": 264
+        },
+        "candidate_to_base": {
+          "unique_vertices": 88,
+          "triangle_centroids": 176,
+          "unique_edge_midpoints": 264
+        }
+      }
+    },
+    {
+      "index": 107,
+      "expressId": 7075,
+      "part": 2,
+      "materialId": null,
+      "fields": [
+        "positions"
+      ],
+      "base": {
+        "vertices": 75,
+        "triangles": 54,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "candidate": {
+        "vertices": 75,
+        "triangles": 54,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "maxSymmetricSampleDistanceMetres": 4.189529226675416e-15,
+      "sampleCounts": {
+        "base_to_candidate": {
+          "unique_vertices": 27,
+          "triangle_centroids": 54,
+          "unique_edge_midpoints": 81
+        },
+        "candidate_to_base": {
+          "unique_vertices": 27,
+          "triangle_centroids": 54,
+          "unique_edge_midpoints": 81
+        }
+      }
+    },
+    {
+      "index": 142,
+      "expressId": 7834,
+      "part": 0,
+      "materialId": null,
+      "fields": [
+        "indices",
+        "positions"
+      ],
+      "base": {
+        "vertices": 148,
+        "triangles": 188,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "candidate": {
+        "vertices": 148,
+        "triangles": 188,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "maxSymmetricSampleDistanceMetres": 1.1920928955078175e-07,
+      "sampleCounts": {
+        "base_to_candidate": {
+          "unique_vertices": 92,
+          "triangle_centroids": 188,
+          "unique_edge_midpoints": 282
+        },
+        "candidate_to_base": {
+          "unique_vertices": 92,
+          "triangle_centroids": 188,
+          "unique_edge_midpoints": 282
+        }
+      }
+    },
+    {
+      "index": 144,
+      "expressId": 7834,
+      "part": 2,
+      "materialId": null,
+      "fields": [
+        "indices",
+        "positions"
+      ],
+      "base": {
+        "vertices": 155,
+        "triangles": 188,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "candidate": {
+        "vertices": 155,
+        "triangles": 188,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "maxSymmetricSampleDistanceMetres": 1.1919192033394119e-07,
+      "sampleCounts": {
+        "base_to_candidate": {
+          "unique_vertices": 92,
+          "triangle_centroids": 188,
+          "unique_edge_midpoints": 282
+        },
+        "candidate_to_base": {
+          "unique_vertices": 92,
+          "triangle_centroids": 188,
+          "unique_edge_midpoints": 282
+        }
+      }
+    },
+    {
+      "index": 263,
+      "expressId": 10191,
+      "part": 0,
+      "materialId": null,
+      "fields": [
+        "positions"
+      ],
+      "base": {
+        "vertices": 136,
+        "triangles": 172,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "candidate": {
+        "vertices": 136,
+        "triangles": 172,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "maxSymmetricSampleDistanceMetres": 2.0950096746945657e-11,
+      "sampleCounts": {
+        "base_to_candidate": {
+          "unique_vertices": 88,
+          "triangle_centroids": 172,
+          "unique_edge_midpoints": 258
+        },
+        "candidate_to_base": {
+          "unique_vertices": 88,
+          "triangle_centroids": 172,
+          "unique_edge_midpoints": 258
+        }
+      }
+    },
+    {
+      "index": 420,
+      "expressId": 13797,
+      "part": 0,
+      "materialId": null,
+      "fields": [
+        "indices",
+        "normals",
+        "positions"
+      ],
+      "base": {
+        "vertices": 157,
+        "triangles": 192,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "candidate": {
+        "vertices": 157,
+        "triangles": 192,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "maxSymmetricSampleDistanceMetres": 1.9089647835750894e-11,
+      "sampleCounts": {
+        "base_to_candidate": {
+          "unique_vertices": 94,
+          "triangle_centroids": 192,
+          "unique_edge_midpoints": 288
+        },
+        "candidate_to_base": {
+          "unique_vertices": 94,
+          "triangle_centroids": 192,
+          "unique_edge_midpoints": 288
+        }
+      }
+    },
+    {
+      "index": 421,
+      "expressId": 13797,
+      "part": 1,
+      "materialId": null,
+      "fields": [
+        "indices",
+        "normals",
+        "positions"
+      ],
+      "base": {
+        "vertices": 198,
+        "triangles": 200,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "candidate": {
+        "vertices": 198,
+        "triangles": 200,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "maxSymmetricSampleDistanceMetres": 7.450612211638553e-07,
+      "sampleCounts": {
+        "base_to_candidate": {
+          "unique_vertices": 98,
+          "triangle_centroids": 200,
+          "unique_edge_midpoints": 300
+        },
+        "candidate_to_base": {
+          "unique_vertices": 98,
+          "triangle_centroids": 200,
+          "unique_edge_midpoints": 300
+        }
+      }
+    },
+    {
+      "index": 1112,
+      "expressId": 30518,
+      "part": 0,
+      "materialId": null,
+      "fields": [
+        "indices",
+        "normals",
+        "positions"
+      ],
+      "base": {
+        "vertices": 244,
+        "triangles": 244,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "candidate": {
+        "vertices": 244,
+        "triangles": 244,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "maxSymmetricSampleDistanceMetres": 9.79962800853011e-09,
+      "sampleCounts": {
+        "base_to_candidate": {
+          "unique_vertices": 124,
+          "triangle_centroids": 244,
+          "unique_edge_midpoints": 366
+        },
+        "candidate_to_base": {
+          "unique_vertices": 124,
+          "triangle_centroids": 244,
+          "unique_edge_midpoints": 366
+        }
+      }
+    },
+    {
+      "index": 1217,
+      "expressId": 33639,
+      "part": 0,
+      "materialId": null,
+      "fields": [
+        "indices",
+        "normals",
+        "positions"
+      ],
+      "base": {
+        "vertices": 298,
+        "triangles": 308,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "candidate": {
+        "vertices": 291,
+        "triangles": 308,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "maxSymmetricSampleDistanceMetres": 1.373289651281623e-05,
+      "sampleCounts": {
+        "base_to_candidate": {
+          "unique_vertices": 150,
+          "triangle_centroids": 308,
+          "unique_edge_midpoints": 462
+        },
+        "candidate_to_base": {
+          "unique_vertices": 150,
+          "triangle_centroids": 308,
+          "unique_edge_midpoints": 462
+        }
+      }
+    },
+    {
+      "index": 1218,
+      "expressId": 33639,
+      "part": 1,
+      "materialId": null,
+      "fields": [
+        "indices",
+        "normals",
+        "positions"
+      ],
+      "base": {
+        "vertices": 270,
+        "triangles": 306,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "candidate": {
+        "vertices": 269,
+        "triangles": 306,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "maxSymmetricSampleDistanceMetres": 9.5367431640625e-06,
+      "sampleCounts": {
+        "base_to_candidate": {
+          "unique_vertices": 149,
+          "triangle_centroids": 306,
+          "unique_edge_midpoints": 459
+        },
+        "candidate_to_base": {
+          "unique_vertices": 149,
+          "triangle_centroids": 306,
+          "unique_edge_midpoints": 459
+        }
+      }
+    },
+    {
+      "index": 1444,
+      "expressId": 38800,
+      "part": 0,
+      "materialId": null,
+      "fields": [
+        "indices",
+        "positions"
+      ],
+      "base": {
+        "vertices": 112,
+        "triangles": 160,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "candidate": {
+        "vertices": 112,
+        "triangles": 160,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "maxSymmetricSampleDistanceMetres": 2.9329053456794686e-11,
+      "sampleCounts": {
+        "base_to_candidate": {
+          "unique_vertices": 80,
+          "triangle_centroids": 160,
+          "unique_edge_midpoints": 240
+        },
+        "candidate_to_base": {
+          "unique_vertices": 80,
+          "triangle_centroids": 160,
+          "unique_edge_midpoints": 240
+        }
+      }
+    },
+    {
+      "index": 1446,
+      "expressId": 38800,
+      "part": 2,
+      "materialId": null,
+      "fields": [
+        "indices",
+        "positions"
+      ],
+      "base": {
+        "vertices": 72,
+        "triangles": 80,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "candidate": {
+        "vertices": 72,
+        "triangles": 80,
+        "boundary": 0,
+        "nonmanifold": 0,
+        "unmatchedDirected": 0,
+        "degenerate": 0
+      },
+      "maxSymmetricSampleDistanceMetres": 4.2017223135964944e-13,
+      "sampleCounts": {
+        "base_to_candidate": {
+          "unique_vertices": 40,
+          "triangle_centroids": 80,
+          "unique_edge_midpoints": 120
+        },
+        "candidate_to_base": {
+          "unique_vertices": 40,
+          "triangle_centroids": 80,
+          "unique_edge_midpoints": 120
+        }
+      }
+    }
+  ],
+  "fullSurfaceVerdictSha256": "fab412e96beef0e33625405212a92e9a8d3a70f4962adc31229beb0df56be333",
+  "surfaceLogSha256": "cea3798df720a21e8a8633d4d45f2a33f71772e3672e2030d90eca9f0262fd7f",
+  "collectorSourceSha256": "1f369b88fda854e9f983b2b79ca3414005e4b18c0fb8d603a83e72ed2d4c8551",
+  "maxSymmetricSampleDistanceMetres": 1.373289651281623e-05,
+  "collectorBuild": "cargo run --profile profiling -p ifc-lite-processing --example native_parts_6516 -- tests/models/various/rvt01.ifc capture.json (same collector on source base and candidate; no timing)"
+}

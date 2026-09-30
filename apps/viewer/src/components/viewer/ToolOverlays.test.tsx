@@ -88,30 +88,4 @@ describe('ToolOverlays on the TOOL_HUD table (#5503)', () => {
       localStorage.removeItem('ifc-lite:model-hint-seen');
     }
   });
-
-  it('places the Space Sketch bar top-center and its plan card as the next top-center item', () => {
-    render(<ViewportHud />);
-    render(<SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot>);
-    act(() => useViewerStore.setState({ activeTool: 'spaceSketch' }));
-
-    const items = Array.from(region('top-center').querySelectorAll(':scope > [data-hud-item]'));
-    assert.equal(items.length, 2, 'bar + plan card, in real DOM order');
-    assert.ok(items[0].querySelector('[data-tool-bar="spaceSketch"]'), 'first item is the bar');
-    assert.ok(items[1].querySelector('[data-tool-card="spaceSketch"]'), 'second item is the plan card');
-    // Nothing in the tool positions itself: no absolute-positioned card
-    // outside the HUD regions.
-    assert.equal(document.querySelectorAll('[data-tool-card="spaceSketch"]').length, 1);
-  });
-
-  it('parks a minimized Space Sketch as a top-left chip and empties top-center', () => {
-    render(<ViewportHud />);
-    render(<SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot>);
-    act(() => useViewerStore.setState({ activeTool: 'spaceSketch' }));
-    act(() => useViewerStore.getState().setSpaceSketchMinimized(true));
-
-    assert.equal(region('top-center').querySelectorAll('[data-tool-bar], [data-tool-card]').length, 0);
-    const chip = region('top-left').querySelector('[data-hud-item]');
-    assert.ok(chip, 'the parked chip is a top-left HUD item');
-    assert.match(chip.textContent ?? '', new RegExp(en['spaceSketch.parkedChip.label']));
-  });
 });

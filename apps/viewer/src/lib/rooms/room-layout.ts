@@ -6,7 +6,7 @@
  * The Room tool's editable room layout per storey (charter #6232 M4): the
  * wasm DCEL (`SpacePlateHandle.fromWallRects`) built from the storey's walls,
  * which the tool's Edit mode reshapes with the plate's own topology ops —
- * the ones Space Sketch drove (`dragVertex`, `splitEdge` + `splitFace`,
+ * the ones the tool drives (`dragVertex`, `splitEdge` + `splitFace`,
  * `mergeFaces`, `removeEdge`, `dissolveVertex`, `prune`).
  *
  * The model is the truth; the layout follows it. An edit writes the rooms it
@@ -25,15 +25,16 @@
  */
 
 import { SpacePlateHandle } from '@ifc-lite/wasm';
+import { DEFAULT_ROOM_CREATION } from './room-creation-options';
 import type { ViewerState } from '@/store';
 import { editError } from '@/lib/space-edit-error';
-import { distToSeg, type Pt } from '@/lib/space-sketch-geometry';
-import type { Room, Boundary } from '@/lib/space-plate-session';
+import { distToSeg, polyArea, type Pt } from '@/lib/rooms/plate-geometry';
+import type { Room, Boundary } from '@/lib/rooms/space-wasm';
 
 /** Default corner weld (m): rectangle corners closer than this are one node. */
 export const DEFAULT_WELD = 0.05;
 /** Faces smaller than this (m²) are slivers, not rooms. */
-const MIN_AREA = 0.3;
+export const DEFAULT_MIN_AREA = DEFAULT_ROOM_CREATION.minArea;
 /** Layouts kept per storey and weld: the undo depth the layout can follow. */
 const MAX_HISTORY = 40;
 
@@ -99,8 +100,8 @@ function freeEntry(entry: Entry | undefined): void {
 }
 
 /** A fresh plate from the walls (the caller owns it). */
-export function buildPlate(rects: readonly (readonly Pt[])[], weld: number): SpacePlateHandle {
-  return SpacePlateHandle.fromWallRects(flattenRects(rects), weld, MIN_AREA);
+export function buildPlate(rects: readonly (readonly Pt[])[], weld: number, minArea = DEFAULT_MIN_AREA): SpacePlateHandle {
+  return SpacePlateHandle.fromWallRects(flattenRects(rects), weld, minArea);
 }
 
 const pts = (flat: Float64Array): Pt[] => {
@@ -146,8 +147,11 @@ function file(scope: Scope, head: string, entry: Entry): void {
  * from `rects` (storey-local wall rectangles) when none is filed or the walls
  * changed under it.
  */
-export function layoutFaces(s: ViewerState, modelId: string, storeyId: number, weld: number, rects: readonly (readonly Pt[])[]): LayoutFace[] {
-  return layoutEntry(s, modelId, storeyId, weld, rects).faces!;
+export function layoutFaces(s: ViewerState, modelId: string, storeyId: number, weld: number, rects: readonly (readonly Pt[])[], minArea = DEFAULT_MIN_AREA): LayoutFace[] {
+  return layoutEntry(s, modelId, storeyId, weld, rects).faces!.filter((face) =>
+    // The original two-stage build applied the cutoff to both the inner
+    // gap and lifted axis face. Preserve that area contract on retained reads.
+    Math.min(polyArea(face.inner.length >= 3 ? face.inner : face.centre), polyArea(face.centre)) >= minArea);
 }
 
 function layoutEntry(s: ViewerState, modelId: string, storeyId: number, weld: number, rects: readonly (readonly Pt[])[]): Entry {
@@ -157,7 +161,11 @@ function layoutEntry(s: ViewerState, modelId: string, storeyId: number, weld: nu
   let entry = scope.entries.get(head);
   if (!entry || entry.walls !== walls) {
     const carried = scope.last && scope.last.walls === walls ? scope.last : null;
-    entry = { walls, plate: carried ? carried.plate.duplicate() : buildPlate(rects, weld), faces: carried?.faces ?? null };
+    // Retain all bounded faces in the editable topology. Minimum creation
+    // area filters reads; changing it must never replace a user's DCEL edits.
+    // The WASM binding treats zero as "use default", so pass its smallest
+    // positive f64 value to retain every geometrically valid bounded face.
+    entry = { walls, plate: carried ? carried.plate.duplicate() : buildPlate(rects, weld, Number.MIN_VALUE), faces: carried?.faces ?? null };
     file(scope, head, entry);
   }
   scope.last = entry;
@@ -240,7 +248,7 @@ function cutNode(h: SpacePlateHandle, p: At, tol: number): { v: number; at: Pt }
 }
 
 /**
- * Run `op` on `h` (Space Sketch's gestures, as plate calls). Throws the
+ * Run `op` on `h` (the Edit gestures, as plate calls). Throws the
  * engine's refusal (`editError` reads it). Returns false when nothing changed.
  */
 export function applyLayoutOp(h: SpacePlateHandle, op: LayoutOp, tol: number): boolean {
@@ -280,7 +288,7 @@ export function applyLayoutOp(h: SpacePlateHandle, op: LayoutOp, tol: number): b
             for (const idx of [k, (k - 1 + r.outline.length) % r.outline.length]) {
               const b = bounds[idx];
               if (!b) continue;
-              try { removeEdge(h, b.edge); return true; } catch { /* an enclosing wall: try the next */ }
+              try { removeEdge(h, b.edge); return true; } catch (error) { console.debug('[room.place] enclosing wall retained', editError(error).message); }
             }
           }
           throw new Error(`no wall here separates two rooms (${reason})`);

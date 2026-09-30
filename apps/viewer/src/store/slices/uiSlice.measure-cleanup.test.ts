@@ -186,8 +186,8 @@ describe('UISlice — setActiveTool clears in-progress measure gesture', () => {
       activeTool: 'measure',
       activePolyline: { points: [{ x: 0, y: 0, z: 0, screenX: 0, screenY: 0 }, { x: 1, y: 0, z: 0, screenX: 10, screenY: 0 }] },
     });
-    (slice.state.setActiveTool as (t: string) => void)('addElement');
-    assert.strictEqual(slice.state.activeTool, 'addElement');
+    (slice.state.setActiveTool as (t: string) => void)('command');
+    assert.strictEqual(slice.state.activeTool, 'command');
     assert.strictEqual(slice.state.activePolyline, null);
   });
 });

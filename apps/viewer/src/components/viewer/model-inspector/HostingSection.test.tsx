@@ -14,7 +14,9 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { readHostedFill } from '@ifc-lite/create';
+import { placedBodyExtent, readHostedElementSize, readHostedFill } from '@ifc-lite/create';
+import { IfcParser } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { blur, cleanup, click, render, type } from '@/test/render.js';
@@ -58,19 +60,102 @@ afterEach(() => {
 });
 
 describe('Hosting section (#6232 A1)', () => {
+  for (const modelCount of [1, 2]) it(`hosted dimension inputs resolve overlay ownership with ${modelCount} model(s), independently of the active model (#6232)`, async () => {
+    const owner = { ...s().models.get(MODEL_ID)!, idOffset: 1_000_000, maxExpressId: 139 };
+    const models = new Map([[MODEL_ID, owner]]);
+    let decoyView: MutablePropertyView | undefined;
+    const ownerView = s().mutationViews.get(MODEL_ID)!;
+    if (modelCount === 2) {
+      const source = owner.ifcDataStore!.source;
+      const data = await source.withMaterializedAsync(bytes => new IfcParser().parseColumnar(Uint8Array.from(bytes).buffer, { disableWorkerScan: true }));
+      const decoy = { ...owner, id: 'decoy', name: 'decoy', idOffset: 0, ifcDataStore: data };
+      models.set('decoy', decoy);
+      decoyView = new MutablePropertyView(data.properties ?? null, 'decoy');
+      useViewerStore.setState({ models, mutationViews: new Map([[MODEL_ID, ownerView], ['decoy', decoyView]]) });
+      const decoyWall = s().addWall('decoy', STOREY, { Start: [0, 0, 0], End: [6, 0, 0], Thickness: 0.2, Height: 3, Name: 'Decoy wall' });
+      assert.ok('expressId' in decoyWall);
+      const decoyWindow = s().addHostedFill('decoy', decoyWall.expressId, { kind: 'window', params: { Offset: 2, Sill: 0.9, Width: 1.2, Height: 1.5 } });
+      assert.ok('expressId' in decoyWindow);
+      assert.equal(decoyWindow.expressId, window, 'independently authored models have colliding local overlay ids');
+      useViewerStore.setState({ activeModelId: 'decoy', ifcDataStore: data, session: { ...s().session!, modelId: 'decoy' } });
+    }
+    useViewerStore.setState({ models });
+    s().setSelectedEntityId(toGlobalIdFromModels(models, MODEL_ID, window));
+    const root = render(<ModelInspectorPanel />);
+    const originalDepth = s().undoStacks.get(MODEL_ID)?.length ?? 0;
+    const decoyDepth = s().undoStacks.get('decoy')?.length ?? 0;
+    const decoyShape = decoyView ? placedBodyExtent(models.get('decoy')!.ifcDataStore!, window, decoyView) : null;
+    remeshed = [];
+    type(input(root, 'Width in metres'), '1.6');
+    blur(input(root, 'Width in metres'));
+    assert.equal(readHostedElementSize(owner.ifcDataStore!, window, ownerView)?.OverallWidth, 1.6);
+    assert.ok((s().undoStacks.get(MODEL_ID)?.length ?? 0) > originalDepth);
+    assert.equal(s().undoStacks.get('decoy')?.length ?? 0, decoyDepth);
+    assert.equal(remeshed.length, 1);
+    assert.equal(remeshed[0].modelId, MODEL_ID, 'remeshing uses the selected entity owner');
+    if (decoyView) assert.deepEqual(placedBodyExtent(models.get('decoy')!.ifcDataStore!, window, decoyView), decoyShape);
+    act(() => s().undo(MODEL_ID));
+    assert.equal(readHostedElementSize(owner.ifcDataStore!, window, ownerView)?.OverallWidth, 1.2);
+    assert.equal(s().undoStacks.get(MODEL_ID)?.length, originalDepth, 'one undo restores the entire occurrence edit');
+  });
+
   it('shows the host wall, the offset along it and the sill', () => {
     const root = render(<ModelInspectorPanel />);
     const headings = [...root.querySelectorAll('h3')].map((h) => h.textContent);
-    assert.deepEqual(headings, ['Type', 'Hosting']);
+    assert.deepEqual(headings, ['Type', 'Dimensions', 'Hosting']);
     assert.equal(root.querySelector('[data-inspector-host]')?.textContent, `W1 · IfcWall #${wall}`);
     assert.equal(input(root, 'Offset').value, '2.00');
     assert.equal(input(root, 'Sill').value, '0.90');
+    assert.equal(input(root, 'Width in metres').value, '1.20');
+    assert.equal(input(root, 'Height in metres').value, '1.50');
   });
 
   it('Select host selects the wall', () => {
     const root = render(<ModelInspectorPanel />);
     act(() => click(root.querySelector('[data-inspector-select-host]')!));
     assert.equal(s().selectedEntityId, toGlobalIdFromModels(s().models, MODEL_ID, wall));
+  });
+
+  it('edits width and height through actual inputs, recuts the host and undoes the entire shape in one step (#6232)', () => {
+    const root = render(<ModelInspectorPanel />);
+    const dataStore = s().models.get(MODEL_ID)!.ifcDataStore!;
+    const view = s().mutationViews.get(MODEL_ID)!;
+    const read = readHostedFill(dataStore, window, view)!;
+    const original = placedBodyExtent(dataStore, read.openingId, view)!;
+    const depth = s().undoStacks.get(MODEL_ID)?.length ?? 0;
+    for (const [label, text, axis, expected] of [
+      ['Width in metres', '1,6', 0, 1.6],
+      ['Height in metres', '1,8', 2, 1.8],
+    ] as const) {
+      const field = input(root, label);
+      type(field, text);
+      blur(field);
+      const cut = placedBodyExtent(dataStore, read.openingId, view)!;
+      assert.ok(Math.abs(cut.max[axis] - cut.min[axis] - expected) < 1e-6, 'the IFC cut matches the requested physical size');
+      assert.ok(remeshed.at(-1)?.expressIds.includes(window) && remeshed.at(-1)?.expressIds.includes(wall));
+      act(() => s().undo(MODEL_ID));
+      assert.deepEqual(placedBodyExtent(dataStore, read.openingId, view), original);
+      assert.equal(s().undoStacks.get(MODEL_ID)?.length ?? 0, depth, 'one undo removes the full mapping/attribute transaction');
+      assert.deepEqual(readHostedElementSize(dataStore, window, view), { OverallWidth: 1.2, OverallHeight: 1.5 });
+    }
+  });
+
+  it('refuses width/height and position changes that collide with another opening, writing no history (#6232)', () => {
+    const added = s().addHostedFill(MODEL_ID, wall, { kind: 'window', params: { Offset: 3.5, Sill: 0.9, Width: 1, Height: 1.5 } });
+    assert.ok('expressId' in added);
+    const root = render(<ModelInspectorPanel />);
+    const dataStore = s().models.get(MODEL_ID)!.ifcDataStore!;
+    const view = s().mutationViews.get(MODEL_ID)!;
+    const depth = s().undoStacks.get(MODEL_ID)?.length ?? 0;
+    for (const [label, text] of [['Width in metres', '2.2'], ['Height in metres', '4'], ['Offset', '3.5']] as const) {
+      const field = input(root, label);
+      type(field, text);
+      blur(field);
+    }
+    assert.deepEqual(readHostedElementSize(dataStore, window, view), { OverallWidth: 1.2, OverallHeight: 1.5 });
+    assert.equal(hosted(window).offset, 2);
+    assert.equal(s().undoStacks.get(MODEL_ID)?.length ?? 0, depth);
+    assert.equal(remeshed.length, 0);
   });
 
   it('a new offset moves the window along its wall, one undo step, and re-cuts the host', () => {

@@ -478,7 +478,7 @@ image, network or application undo resources are implicitly published by this AP
 
 ### High-Level Builders — `addColumnToStore` / `addWallToStore` / …
 
-For full element-with-geometry inserts, `@ifc-lite/create` provides anchored builders that emit a complete sub-graph (placement, profile, extruded solid, representation, product shape, rel-contained-in-spatial-structure) into the overlay. The same builder backs every Add Element panel chip in the viewer — and the SDK / sandbox `bim.store.*` namespace.
+For full element-with-geometry inserts, `@ifc-lite/create` provides anchored builders that emit a complete sub-graph (placement, profile, extruded solid, representation, product shape, rel-contained-in-spatial-structure) into the overlay. The same builders back the viewer's Model workspace commands for these builder-supported elements and their corresponding SDK / sandbox `bim.store.*` methods.
 
 | Builder | Signature highlights | Profile modes |
 |---|---|---|
@@ -543,6 +543,22 @@ const hole = addHostedElementInStore(dataStore, editor, wallExpressId, {
 
 The opening is placed relative to the host's own `IfcLocalPlacement` and is not contained in the storey (IFC reaches it through the element it voids). By default the cut runs through the host's body thickness plus 50 mm per face; pass `CutDepth` to override it, but never with a value thinner than the host. The door or window is placed relative to the opening, centred in the wall, and contained in the host's storey. For a slab host, pass `Position: [x, y]`, `Width` and `Depth` in the slab's local frame. Through the SDK these are `bim.store.addOpening`, `bim.store.addHostedDoor` and `bim.store.addHostedWindow` (`modelId, hostExpressId, params`). In the viewer they go through the same store action as the Model workspace's Opening, Door and Window tools: the whole graph is one undo step, and the host is re-meshed with its void. `readHostedFill(dataStore, id, mutationView)` reads an opening's (or its door's or window's) host, `Offset` along the wall and `Sill`, and `hostPlanFrame(dataStore, hostId, storeyId, mutationView)` the host wall's placement frame on its storey, both through the overlay. In the viewer, resizing a host through the Model workspace's Push / Pull handles or the inspector's Dimensions rows keeps its openings valid in the same undo step: a thicker wall (or slab) lengthens the cuts that no longer span it, and a wall height that would leave an opening above the wall is refused.
 
+`readHostedElementSize(dataStore, expressId, view)` reads a door or window's `OverallWidth` and `OverallHeight` in metres. When its optional IFC attributes are omitted, the physical Model Body supplies the dimensions. `editHostedElementInStore` changes those dimensions or the hosted `Offset` / `Sill` atomically, using the same fit and overlap validation as placement. It accepts openings for position edits and doors/windows for position or size edits, with a wall host in IFC2X3, IFC4 or IFC4X3.
+
+```typescript
+import { editHostedElementInStore, readHostedElementSize } from '@ifc-lite/create';
+
+const size = readHostedElementSize(dataStore, expressId, view);
+if (size) {
+  editHostedElementInStore(dataStore, editor, expressId, {
+    OverallWidth: 1.2,
+    OverallHeight: size.OverallHeight,
+  });
+}
+```
+
+Size edits apply an affine mapping to the selected occurrence and its opening, holding the existing cut's centre and bottom while preserving its thickness. Repeated size edits combine compatible existing scales so mapping depth does not grow with every commit. Source/type geometry, styles, metadata, relationships and other occurrences remain unchanged. Fresh placements prevent a move from altering shared source points. Size edits require a readable filling Body; position-only edits also support fillings whose optional Body is absent or cannot be measured. Both require readable opening bounds and valid placements, and refusals leave no writes. In the viewer, the Dimensions and Hosting fields and plan slide handle call this core; each successful edit is one undo step and re-meshes the filling and voided host through WASM.
+
 #### Joining existing walls
 
 `joinWallsInStore(editor, dataStore, resolveWallJoinAnchor(dataStore, view), aId, bId, options)` joins straight walls in the same placement frame. It atomically rewrites bodies and axes and creates `IfcRelConnectsPathElements`, replacing an existing relationship for the same pair. Readable hosted openings keep their placement; a cut outside either joined end face, or unreadable opening geometry, refuses the whole operation. IFC2X3, IFC4 and IFC4X3 use their own relationship layouts. Existing geometric options remain `WallJoinApplyOptions`.
@@ -586,7 +602,7 @@ assignMaterialInStore(editor, anchor, usageId, [wallExpressId], associations());
 
 Layer thicknesses and offsets are metres, converted to the file's length unit. Through the SDK these are `bim.store.addElementType`, `assignType`, `addMaterial`, `addMaterialLayerSet`, `addMaterialLayerSetUsage` and `assignMaterial`. The two `assign*` methods read the model's existing relationships themselves.
 
-#### Auto Spaces — generate IfcSpace from a storey's walls
+#### Generate spaces — IfcSpace from a storey's walls
 
 For room generation, `@ifc-lite/create` ships a planar-graph face finder that turns a storey's wall axes into a CCW polygon per enclosed region:
 
@@ -604,7 +620,9 @@ const result = generateSpacesFromWalls(editor, dataStore, storeyExpressId, {
 // → { wallsConsidered, wallsContributing, detected: DetectedSpace[], emitted: [...] }
 ```
 
-The detector also picks up overlay walls (placed via `addWallToStore` since the model was parsed) when you pass an `OverlayWallReader` — the viewer wires this in automatically so the Auto Spaces button works on freshly-drawn walls without a re-parse. `detectEnclosedAreas(segments, options)` is exported as the pure pipeline step if you want detection without IFC emission.
+The detector also picks up overlay walls (placed via `addWallToStore` since the model was parsed) when you pass an `OverlayWallReader` — the viewer's Room tool (**Auto**) does the same for freshly-drawn walls without a re-parse. `detectEnclosedAreas(segments, options)` is exported as the pure pipeline step if you want detection without IFC emission.
+
+In the viewer, **Room → More** keeps the minimum area, name pattern, and schema-specific space classification alongside read-only candidate totals. `addSpaceToStore` validates the classification before writing: IFC2X3 uses `InteriorOrExteriorSpace`, IFC4 and IFC4X3 use `PredefinedType`, and `USERDEFINED` needs an `ObjectType`. An `EXTERNAL` space sets `Pset_SpaceCommon.IsExternal` to true.
 
 ### `bim.store.*` — Scripting & SDK
 
@@ -641,7 +659,7 @@ The viewer surfaces store-level edits through the following controls — see [Vi
   - **Raw STEP tab** in the properties panel — inline pen-icon editor on every positional argument. Edited rows show a purple dot; the editor parses the same STEP literal conventions as `setPositionalAttribute`. The tab also opens for overlay-only entities (freshly added or duplicated) so newly-created walls / columns / spaces are immediately inspectable, even before export.
   - **Right-click → Delete entity** — calls `removeEntity`, surfaces a toast with undo support.
   - **Right-click on a storey → Add Column here…** — opens the Add Column dialog, calls `addColumn` on submit, and selects the new column in the 3D scene.
-  - **Add Element panel** (command palette → `Add element` or shortcut). Right-side panel with chips for every supported type, per-type form, click-to-place flow, and a 3D ghost preview that updates live as you adjust dimensions. Snap-to-vertex/edge/face is on by default (toggle with `S`); placements off-surface fall back to the storey floor plane so you can drop columns / walls into empty rooms. Picking the `Space` chip reveals an **Auto Spaces** sub-panel that runs the wall-graph face finder with adjustable snap tolerance / min area / height / naming pattern and a Preview button before commit.
+  - **Model workspace** (Author ribbon → Model, or `E`). A tool rail with one command per kind: Wall, Slab (also roof and plate), Column, Beam (also member), Room, Opening, Door, Window, Stair, Railing, Curtain wall, Grid; plus Split, Move, Rotate, Copy / Array and the inspector's type, material and size fields. Storey-workplane placement tools use snapping, a live ghost and typed bar values. Hosted Door/Window tools are wall-relative. Split, Move, Rotate, Copy / Array and inspector edits use their own interaction flows. The **Room** command's **Auto** runs the wall-graph face finder on the storey (or every storey), and its Edit, Footprint and leak-check modes reshape the rooms.
 
 All paths route through the same `mutationSlice` actions that wrap `StoreEditor`, so undo/redo (`Ctrl+Z` / `Ctrl+Shift+Z`) covers store-level edits identically to property edits. Each commit also injects a renderer-frame mesh into the geometry pipeline so the new element appears in 3D the moment the action fires — no export+reparse round-trip required.
 
@@ -655,7 +673,7 @@ All paths route through the same `mutationSlice` actions that wrap `StoreEditor`
 | Drop a fully-formed building element with geometry | `addColumnToStore` / `addWallToStore` / `addSlabToStore` / `addBeamToStore` / `addDoorToStore` / `addWindowToStore` / `addSpaceToStore` / `addRoofToStore` / `addPlateToStore` / `addMemberToStore` (or `bim.store.add{Column,Wall,Slab,…}`) |
 | Cut an opening, or put a door / window into an existing wall | `addOpeningToStore` / `addHostedDoorToStore` / `addHostedWindowToStore` (or `bim.store.addOpening` / `addHostedDoor` / `addHostedWindow`) |
 | Add a type object, or a material / layer set / layer set usage, and assign it | `addElementTypeToStore` + `assignTypeInStore`, `addMaterial*ToStore` + `assignMaterialInStore` (or `bim.store.addElementType` / `assignType` / `addMaterial*` / `assignMaterial`) |
-| Generate IfcSpace volumes from a storey's existing walls | `generateSpacesFromWalls` (or **Add Element → Space → Auto Spaces** in the viewer) |
+| Generate IfcSpace volumes from a storey's existing walls | `generateSpacesFromWalls` (or **Model → Room → Auto** in the viewer) |
 | Duplicate an element with its hosted openings, fillings and assembly parts | right-click → Duplicate / Ctrl+D (the same `copyProductInStore` write as Paste and Array) |
 | Copy an element turned, moved or onto another storey, with fresh GlobalIds and the openings, doors, windows and assembly parts in it | `createCopyContext` + `copyProductInStore` / Model workspace → Copy, Paste, Array |
 | Remove an entity from an existing model | `removeEntity` / `bim.store.removeEntity` |

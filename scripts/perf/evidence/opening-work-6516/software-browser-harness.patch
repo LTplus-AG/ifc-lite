@@ -1,0 +1,14 @@
+--- a/scripts/perf/browser-cold-ab.mts
++++ b/scripts/perf/opening-timing-scratch-6516.mts
+@@ -76,2 +76,2 @@
+-  // Same real-GPU flags as the retained worker-pool qualification harness.
+-  args: ['--enable-gpu', '--enable-webgpu', '--enable-unsafe-webgpu', '--use-angle=default', '--ignore-gpu-blocklist'],
++  // Repo CI software-Vulkan WebGPU flags; actual workers/rendering, no hardware-GPU claim.
++  args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--disable-vulkan-surface', '--ignore-gpu-blocklist', '--enable-gpu'],
+@@ -206,0 +207 @@
++  for (const fixture of fixtures) {
+@@ -208 +209 @@
+-    const side = sides[slot];
++    const side = sides[iter % 2 === 0 ? sides.length - 1 - slot : slot];
+@@ -213 +213,0 @@
+-    for (const fixture of fixtures) {

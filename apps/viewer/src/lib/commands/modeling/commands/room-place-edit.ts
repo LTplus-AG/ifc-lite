@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `room.place`'s Edit mode (charter #6232 M4): Space Sketch's layout
+ * `room.place`'s Edit mode (charter #6232 M4): the room layout
  * gestures on the command framework, in the plan and in 3D alike.
  *
  *   Move / cut: a corner is grabbed on press and dropped on release after a
@@ -89,7 +89,7 @@ export function commitLayoutEdit(g: RoomPlaceGesture, tx: AuthoringTransaction):
   if (storeyId === null || !workplane || !op) throw new Error(translate('roomLayout.edit.none'));
   const get = () => tx.store;
   const weld = weldOf(g);
-  const before = storeyRooms(get(), modelId, storeyId, workplane, weld);
+  const before = storeyRooms(get(), modelId, storeyId, workplane, weld, 0);
   if (before.status !== 'ready') throw new Error(translate(before.status === 'loading' ? 'roomTool.loading' : 'roomTool.noWalls'));
   let edited: ReturnType<typeof editedLayout>;
   try {

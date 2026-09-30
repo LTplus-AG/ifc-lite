@@ -44,7 +44,7 @@ export interface UsdExportModel {
  * The STEP bytes to feed `GeometryProcessor.exportUsd` for `model`, in order of
  * preference:
  *  1. regenerate through the mutation view when it carries actual edits (so
- *     in-editor authoring — e.g. Space Sketch rooms — is reflected; shared with
+ *     in-editor authoring — e.g. Room tool spaces — is reflected; shared with
  *     energy-model/STEP export via {@link resolveEnergyExportMutationSource});
  *  2. else the parsed store bytes (`ifcDataStore.source`) — already the
  *     UNWRAPPED STEP payload, so an `.ifczip` model exports correctly instead

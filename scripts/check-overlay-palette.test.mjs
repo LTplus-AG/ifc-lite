@@ -38,7 +38,7 @@ test('isViewportFile matches components/viewport-ui/** at any depth', () => {
 
 test('isViewportFile matches components/viewer/tools/** at any depth', () => {
   assert.ok(isViewportFile('apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx'));
-  assert.ok(isViewportFile('apps/viewer/src/components/viewer/tools/space-sketch/SpaceSketchCanvas.tsx'));
+  assert.ok(isViewportFile('apps/viewer/src/components/viewer/tools/command/CommandHud.tsx'));
 });
 
 test('isViewportFile matches the named charter overlay files exactly, not by prefix', () => {

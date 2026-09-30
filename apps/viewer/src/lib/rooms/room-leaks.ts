@@ -3,18 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Leak diagnostics for the Room tool (moved from Space Sketch, charter #6232
- * M4): why an area the user sees as a room is not one.
+ * Leak diagnostics for the Room tool (charter #6232 M4): why an area the user sees as a room is not one.
  *
  *   - Each wall is classified as BOUNDING (its axis lies along a room edge)
  *     or not: a wall that bounds no room encloses nothing, so the region it
- *     was meant to close leaks somewhere along it (Space Sketch's rule,
- *     purely geometric, so it needs no source provenance).
+ *     was meant to close leaks somewhere along it (purely geometric, so it needs no source provenance).
  *   - Each wall end that touches no other wall is an OPEN END: a gap a region
  *     can leak out through (a free-standing partition's end is one too).
  */
 
-import { distToSeg, pointInPoly, type Pt } from '@/lib/space-sketch-geometry';
+import { distToSeg, pointInPoly, type Pt } from '@/lib/rooms/plate-geometry';
 import type { LayoutFace } from './room-layout';
 
 /** A segment midpoint this close (m) to a room edge bounds that room. */

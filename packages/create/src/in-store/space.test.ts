@@ -123,7 +123,7 @@ describe('addSpaceToStore', () => {
 
   // OwnerHistory is OPTIONAL from IFC4 onward — minimal files (including
   // ifc-lite's own exports) omit it entirely. The bake must still work,
-  // emitting `$` instead of failing anchor resolution (the Space Sketch
+  // emitting `$` instead of failing anchor resolution (the Room tool
   // tool silently lost every baked space on such files).
   it('emits $ OwnerHistory when the model has none', () => {
     const view = new MutablePropertyView(null, 'm1');
@@ -163,6 +163,45 @@ describe('addSpaceToStore', () => {
     expect(named['GrossFloorArea']).toBeCloseTo(12, 6);
     expect(named['Height']).toBeCloseTo(3000, 6);
     expect(named['GrossVolume']).toBeCloseTo(36, 6);
+  });
+
+  // #6232/#6531: the restored Room classification must not contradict its pset.
+  for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
+    for (const PredefinedType of ['INTERNAL', 'EXTERNAL']) {
+      it(`${schema} ${PredefinedType} agrees with Pset_SpaceCommon.IsExternal`, () => {
+        const view = new MutablePropertyView(null, 'm1');
+        const editor = new StoreEditor(makeStore(40), view);
+        const made = addSpaceToStore(editor, { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54, schema }, {
+          Position: [0, 0, 0], Width: 4, Depth: 3, Height: 3, PredefinedType,
+        });
+        expect(view.getNewEntity(made.spaceId)?.attributes[9]).toBe(`.${PredefinedType}.`);
+        expect(view.getPropertyValue(made.spaceId, 'Pset_SpaceCommon', 'IsExternal')).toBe(PredefinedType === 'EXTERNAL');
+      });
+    }
+  }
+
+  it('refuses invalid schema classification and unlabelled USERDEFINED before any writes (#6531)', () => {
+    for (const [schema, PredefinedType] of [['IFC2X3', 'PARKING'], ['IFC4', 'BERTH'], ['IFC4X3', 'MISSPELLED'], ['IFC4', 'USERDEFINED']] as const) {
+      const view = new MutablePropertyView(null, 'm1');
+      const editor = new StoreEditor(makeStore(40), view);
+      expect(() => addSpaceToStore(editor, { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54, schema }, {
+        Position: [0, 0, 0], Width: 4, Depth: 3, Height: 3, PredefinedType,
+      })).toThrow(/must be one of|required/);
+      expect(view.getNewEntities()).toHaveLength(0);
+      expect(view.getMutations()).toHaveLength(0);
+    }
+  });
+
+  it('allows IFC4X3 BERTH and labelled USERDEFINED without changing basic IFCX compatibility (#6531)', () => {
+    for (const [schema, PredefinedType, ObjectType] of [['IFC4X3', 'BERTH', undefined], ['IFC4', 'USERDEFINED', 'Plant room'], ['IFC5', 'INTERNAL', undefined]] as const) {
+      const view = new MutablePropertyView(null, 'm1');
+      const editor = new StoreEditor(makeStore(40), view);
+      const made = addSpaceToStore(editor, { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54, schema }, {
+        Position: [0, 0, 0], Width: 4, Depth: 3, Height: 3, PredefinedType, ObjectType,
+      });
+      expect(view.getNewEntity(made.spaceId)?.attributes[9]).toBe(`.${PredefinedType}.`);
+      expect(view.getNewEntity(made.spaceId)?.attributes[4]).toBe(ObjectType ?? null);
+    }
   });
 
   it('rejects non-positive Height', () => {

@@ -222,7 +222,7 @@ export function zoneOverlapsAABBCompiled(
  *
  * For a BOX: the eight corners, bottom face (0-3) then top face (4-7), each CCW
  * looking down -Y, matching the "box corner index" convention
- * `AddElementOverlay`'s box-hull projection uses.
+ * the box-hull projection uses.
  *
  * For a PRISM: the footprint's `n` points at the bottom followed by the same
  * `n` at the top, which is the same convention generalised (a box IS the

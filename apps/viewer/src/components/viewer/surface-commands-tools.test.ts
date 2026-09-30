@@ -11,7 +11,7 @@ import { paletteSurfaceCommands, SURFACE_COMMANDS } from './surface-commands.js'
 
 const TOOL_IDS = [
   'tool:select', 'tool:walk', 'model:reposition', 'tool:measure',
-  'tool:section', 'tool:annotate', 'tool:add-element', 'tool:wall', 'tool:slab', 'tool:column', 'tool:beam', 'tool:room',
+  'tool:section', 'tool:annotate', 'tool:wall', 'tool:slab', 'tool:column', 'tool:beam', 'tool:room',
   'tool:opening', 'tool:door', 'tool:window',
   'tool:edit-mode', 'tool:split', 'tool:stair', 'tool:railing', 'tool:split-multi', 'tool:push-pull', 'tool:align', 'tool:trim-extend',
 ] as const;

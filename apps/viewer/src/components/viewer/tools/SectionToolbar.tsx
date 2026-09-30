@@ -76,7 +76,7 @@ export function SectionToolbar() {
   const { t } = useTranslation();
   // The caption + axis group is the one group a wrap cannot break, so it is
   // what must fit the top-center lane: when it does not, the caption steps
-  // down (the Space Sketch pattern, #5975) instead of pushing the bar out of
+  // down (#5975) instead of pushing the bar out of
   // its lane and onto the chips beside it (#6315). Only that group is measured.
   const { measureRef, tier } = useHudBarTier(TIER_NO_CAPTION);
   const sectionPlane = useViewerStore((s) => s.sectionPlane);

@@ -9,7 +9,7 @@
  * without diverging code paths.
  *
  * The result has the smallest spatial hierarchy that satisfies the
- * Add Element panel's gating (`AddElementPanel.tsx`): one IfcProject,
+ * Model workspace's gating (it needs a storey): one IfcProject,
  * IfcSite, IfcBuilding and a single IfcBuildingStorey at elevation 0.
  */
 

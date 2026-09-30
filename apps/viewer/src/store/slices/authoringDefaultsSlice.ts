@@ -14,10 +14,11 @@
  *
  * The command bars' typed fields and the inspector's defaults mode read and
  * write here, so the two always agree. Today `wall.place` / `wall.moveEndpoint`
- * read the wall's thickness and height, which the Add Element panel edits.
+ * read the wall's thickness and height, which the Model inspector edits.
  */
 
 import type { StateCreator } from 'zustand';
+import { DEFAULT_ROOM_CREATION, type RoomCreationOptions } from '@/lib/rooms/room-creation-options';
 import type { ProfileSection, ProfileSectionType } from '@ifc-lite/create';
 import { defineSliceTeardown } from '../teardown.js';
 import { sectionOfType } from '@/lib/profile-section/profile-kinds';
@@ -62,6 +63,7 @@ interface ModelScopedPick {
 }
 
 export interface AuthoringDefaults {
+  readonly roomCreation: RoomCreationOptions;
   /** Builder parameter name (`Thickness`, `Height`, …) → metres, per kind. */
   readonly dims: Readonly<Record<AuthoredElementKind, Readonly<Record<string, number>>>>;
   /** Which face of a new wall the drawn line is. */
@@ -107,6 +109,7 @@ const AUTHORING_DIM_DEFAULTS: AuthoringDefaults['dims'] = {
 
 const INITIAL: AuthoringDefaults = {
   dims: AUTHORING_DIM_DEFAULTS,
+  roomCreation: DEFAULT_ROOM_CREATION,
   wallAlign: 'centre',
   chain: true,
   slabMode: 'rectangle',

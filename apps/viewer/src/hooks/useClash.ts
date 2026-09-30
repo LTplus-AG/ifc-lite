@@ -282,7 +282,7 @@ export function useClash() {
    * that. Isolation or ghosting established by another feature (#2532 / #2531
    * / spaces X-ray) no longer content-matches the ownership record, so it
    * survives a clash run untouched - while a clash focus that round-tripped
-   * through a snapshot/restore flow (Space Sketch open/close) still matches
+   * through a snapshot/restore flow (a view snapshot's open/close) still matches
    * and is discarded (#2662 P2).
    *
    * The predicate is `releaseOwnedClashVisibility`, shared verbatim with the

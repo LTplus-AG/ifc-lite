@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The Room tool's Space Sketch parity (charter #6232 M4, lane A4b), through
+ * The Room tool's layout editing (charter #6232 M4, lane A4b), through
  * the REAL wasm DCEL and the in-store builders:
  *
  *   - Edit: drag a corner (both rooms follow), cut a room in two, merge two
@@ -29,12 +29,13 @@ import { blur, cleanup, render, type as typeInto } from '@/test/render.js';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { BOX, authoredSpaces, corners, ensureRoomWasm, r3, setWallMeshes, spaceQuantity, type Wall } from '@/test/room-walls-fixture';
 import type { SnapResult } from '@/lib/snap/types';
-import { ensureSpaceWasm } from '@/lib/space-plate-session';
+import { ensureSpaceWasm } from '@/lib/rooms/space-wasm';
 import { clearStoreyRoomsCache, sessionRooms } from '@/lib/rooms/storey-rooms';
 import { runRoomAction } from '@/components/viewer/tools/command/RoomPlaceBar';
 import { RoomPlacePlan } from '@/components/viewer/tools/command/RoomPlaceLayers';
 import { RoomMoreMenu } from '@/components/viewer/tools/command/RoomLayoutBar';
 import { clearModelLayouts } from '@/lib/rooms/room-layout';
+import { readAttributes } from '@/lib/placement-core';
 import '../builtin.js';
 import * as runtime from '../runtime.js';
 import { commandPointerDown, commandPointerMove, getCommandRuntime, updateCommandGesture } from '../runtime.js';
@@ -53,7 +54,7 @@ const redo = () => act(() => { useViewerStore.getState().redo(MODEL_ID); });
 const set = (update: Partial<RoomPlaceGesture>) => act(() => { updateCommandGesture((g) => ({ ...(g as RoomPlaceGesture), ...update })); });
 const editWith = (tool: RoomEditTool) => set({ mode: 'edit', edit: { tool, hover: null, drag: null, cut: null, op: null } });
 const layoutFaces = () => {
-  const rooms = sessionRooms(ctx(), gesture().weld ?? undefined);
+  const rooms = sessionRooms(ctx(), gesture().weld ?? undefined, gesture().minArea);
   return rooms?.status === 'ready' ? rooms.rooms : [];
 };
 const byLeft = () => authoredSpaces().sort((a, b) => Math.min(...a.footprint.map((p) => p[0])) - Math.min(...b.footprint.map((p) => p[0])));
@@ -128,6 +129,52 @@ describe('room.place Edit: drag a room corner (#6232 A4b)', () => {
 });
 
 describe('room.place Edit: split and merge (#6232 A4b)', () => {
+  for (const PredefinedType of ['EXTERNAL', 'USERDEFINED']) {
+    it(`preserves ${PredefinedType} and ObjectType on both room split pieces (#6232 B1)`, async (t) => {
+      if (!(await start(t))) return;
+      set({ PredefinedType, ObjectType: 'Garden room' });
+      await auto();
+      const [left] = byLeft();
+      const before = undoDepth();
+      editWith('shape');
+      click(2, 0);
+      click(2, 5);
+      const pieces = byLeft().filter((r) => r.footprint.every(([x]) => x <= 4));
+      assert.equal(pieces.length, 2, 'the room was split');
+      const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+      for (const piece of pieces) {
+        const attrs = view.getNewEntity(piece.id)!.attributes;
+        assert.equal(attrs[9], `.${PredefinedType}.`, 'the split preserves the source IFC classification');
+        assert.equal(attrs[4], 'Garden room', 'the new piece keeps the source ObjectType');
+        const flags = view.getForEntity(piece.id)
+          .flatMap((pset) => pset.properties.filter((p) => p.name === 'IsExternal').map((p) => p.value));
+        assert.ok(flags.length > 0, 'the room has an IsExternal property');
+        assert.ok(flags.every((value) => value === (PredefinedType === 'EXTERNAL')), 'all cloned and authored flags agree');
+      }
+      undo();
+      assert.equal(undoDepth(), before, 'the classified split is one undo step');
+      assert.equal(authoredSpaces().length, 2);
+      assert.equal(view.getNewEntity(left.id)!.attributes[9], `.${PredefinedType}.`);
+    });
+  }
+
+  it('keeps an optional IFC4 classification unset when splitting a source room (#6232 B1)', async (t) => {
+    if (!(await start(t))) return;
+    await auto();
+    const [left] = byLeft();
+    act(() => { useViewerStore.getState().setPositionalAttribute(MODEL_ID, left.id, 9, null); });
+    editWith('shape');
+    click(2, 0);
+    click(2, 5);
+    const pieces = byLeft().filter((r) => r.footprint.every(([x]) => x <= 4));
+    assert.equal(pieces.length, 2);
+    const { models, mutationViews, storeEditors } = useViewerStore.getState();
+    for (const piece of pieces) {
+      const attrs = readAttributes(models.get(MODEL_ID)!.ifcDataStore!, mutationViews.get(MODEL_ID)!, storeEditors.get(MODEL_ID)!, piece.id);
+      assert.equal(attrs?.[9], null, 'an unset classification remains unset on both pieces');
+    }
+  });
+
   it('cuts a room between two points on its outline: the source keeps a piece, a new room takes the other, one undo step', async (t) => {
     if (!(await start(t))) return;
     await auto();
@@ -282,9 +329,50 @@ describe('room.place in a millimetre model (#6232 A4b, footprint helper scale)',
 });
 
 describe('room.place review fixes (#6232 A4b)', () => {
+  it('changing the creation area threshold preserves an already edited layout (#6531)', async (t) => {
+    if (!(await start(t))) return;
+    await act(async () => { await runRoomAction('auto'); });
+    set({ mode: 'edit', namePattern: '' });
+    editWith('shape');
+    const before = undoDepth();
+    click(4, 0);
+    move(5, 0);
+    click(5, 0);
+    assert.ok(undoDepth() > before, 'creation options do not block editing an existing room');
+    const edited = layoutFaces().map((room) => corners(room.centre));
+    set({ minArea: 100 });
+    assert.equal(layoutFaces().length, 0);
+    set({ minArea: 0.3 });
+    assert.deepEqual(layoutFaces().map((room) => corners(room.centre)), edited, 'threshold changes must not rebuild away the user\'s topology edit');
+  });
+
+  it('a lowered minimum exposes a real bounded face below the previous hard-coded 0.3 m² (#6531)', async (t) => {
+    const small: Wall[] = [[[0, 0], [0.5, 0]], [[0.5, 0], [0.5, 0.5]], [[0.5, 0.5], [0, 0.5]], [[0, 0.5], [0, 0]]];
+    if (!(await start(t, []))) return;
+    setWallMeshes(small, [], 0.05);
+    set({ minArea: 0.3, weld: 0.005, boundary: 'inner' });
+    assert.equal(layoutFaces().length, 0);
+    set({ minArea: 0.1 });
+    assert.equal(layoutFaces().length, 1);
+    await auto();
+    assert.equal(authoredSpaces().length, 1);
+    const area = spaceQuantity(authoredSpaces()[0].id, 'NetFloorArea')!;
+    assert.ok(Math.abs(area - 0.2025) < 1e-6, `a 0.5m square with 0.05m walls has 0.2025m² net area, got ${area}`);
+  });
+
+  it('a high creation cutoff cannot bypass Footprint occupancy (#6531)', async (t) => {
+    if (!(await start(t))) return;
+    await auto();
+    const existing = authoredSpaces().map((space) => space.id);
+    const before = undoDepth();
+    set({ minArea: 100 });
+    await act(async () => { await runRoomAction('footprint'); });
+    assert.deepEqual(authoredSpaces().map((space) => space.id), existing, 'occupied storey remains occupied even when its candidates are filtered out');
+    assert.equal(undoDepth(), before, 'the refused action writes no undo entry');
+  });
   it('the weld field keeps "0" and "0." while typing and commits 0.3 on blur', async (t) => {
     if (!(await start(t))) return;
-    const ui = render(<RoomMoreMenu gesture={gesture()} ctx={ctx()} rooms={2} />);
+    const ui = render(<RoomMoreMenu gesture={gesture()} ctx={ctx()} rooms={layoutFaces()} />);
     act(() => { (ui.querySelector('[data-room-more]') as HTMLElement).click(); });
     const field = document.querySelector('input[type=number]') as HTMLInputElement;
     assert.ok(field, 'the weld field is in the More menu');

@@ -6,9 +6,8 @@
  * Shared SVG `<defs>` for the scene overlay: one glow filter and two
  * arrowhead markers, defined once (#5486).
  *
- * Today two components define their own copies of the same glow filter
- * (`AddElementOverlay` `#add-elem-glow`, `MeasurementVisuals` `#glow` and
- * `#snap-glow`) — same `feGaussianBlur` + merge, three ids
+ * Today `MeasurementVisuals` defines its own copies of the same glow filter
+ * (`#glow` and `#snap-glow`) — same `feGaussianBlur` + merge, two ids
  * (`SectionVisualization`'s `#section-glow` was deleted outright in #5488).
  * `OverlayDefs` PROVIDES the one shared instance those three migrate onto — mounted once by `SceneOverlayRoot`,
  * referenced by `OVERLAY_GLOW_FILTER` / `OVERLAY_ARROWHEAD_ACCENT_MARKER` /

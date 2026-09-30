@@ -24,7 +24,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { ViewerState } from '../index.js';
 import type { AuthoredElement } from './authoredElement.js';
 import { profileSectionExtent } from '@ifc-lite/create';
-import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
+import { buildElementMesh, type ElementMeshPayload } from './authoredElementMeshes.js';
 import { authoredDataStore } from './authoredTreeEntry.js';
 import { toGlobalIdFromModels } from '../globalId.js';
 import { requestRemesh, type RemeshOutcome } from '@/lib/remesh/remesh-service';

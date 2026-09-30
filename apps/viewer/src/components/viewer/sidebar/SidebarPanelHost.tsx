@@ -23,8 +23,7 @@
  * floating; release past the window edge hands it off to an OS / PiP window.
  *
  * Render precedence preserves the pre-existing right-slot behavior:
- *   right-placed analysis extension, then Add Element tool, then active panel,
- *   then Properties.
+ *   right-placed analysis extension, then active panel, then Properties.
  */
 
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
@@ -46,8 +45,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
-import { AddElementPanel } from '../AddElementPanel';
-import { selectAddElementPanelOpen } from '../add-element-wall-command';
 import {
   closeActiveAnalysisExtension,
   getAnalysisExtensionById,
@@ -245,8 +242,6 @@ function SplitContainer({
 
 export function SidebarPanelHost() {
   const activePanel = useViewerStore((s) => s.sidebarActivePanel);
-  const addElementOpen = useViewerStore(selectAddElementPanelOpen);
-  const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const secondaryPanel = useViewerStore((s) => s.sidebarSecondaryPanel);
   const splitRatio = useViewerStore((s) => s.sidebarSplitRatio);
   const setSplitRatio = useViewerStore((s) => s.setSidebarSplitRatio);
@@ -307,19 +302,11 @@ export function SidebarPanelHost() {
     !floatingIds.has(secondaryPanel) &&
     !poppedIds.has(secondaryPanel);
 
-  // Right-placed analysis extension / Add Element carry their own chrome and
-  // never split.
+  // Right-placed analysis extensions carry their own chrome and never split.
   if (rightExtension) {
     return (
       <div data-detach-root className="h-full flex flex-col panel-container">
         {rightExtension.renderPanel({ onClose: closeActiveAnalysisExtension })}
-      </div>
-    );
-  }
-  if (addElementOpen) {
-    return (
-      <div data-detach-root className="h-full flex flex-col panel-container">
-        <AddElementPanel onClose={() => setActiveTool('select')} />
       </div>
     );
   }

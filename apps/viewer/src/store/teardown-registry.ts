@@ -74,7 +74,6 @@ import { scheduleTeardown } from './slices/scheduleSlice.teardown.js';
 import { playbackTeardown } from './slices/playbackSlice.js';
 import { searchTeardown } from './slices/searchSlice.teardown.js';
 import { annotationsTeardown } from './slices/annotationsSlice.teardown.js';
-import { addElementTeardown } from './slices/addElementSlice.teardown.js';
 import { authoringSessionTeardown } from './slices/authoringSessionSlice.js';
 import { authoringDefaultsTeardown } from './slices/authoringDefaultsSlice.js';
 import { modelPlacementTeardown } from './slices/modelPlacementSlice.js';
@@ -118,7 +117,6 @@ export const viewerTeardownRegistry: readonly AnySliceTeardown[] = createTeardow
   playbackTeardown,
   searchTeardown,
   annotationsTeardown,
-  addElementTeardown,
   authoringSessionTeardown,
   authoringDefaultsTeardown,
   pointCloudTeardown,

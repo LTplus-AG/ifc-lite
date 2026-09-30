@@ -89,7 +89,7 @@ export function createRegexWorkerClient(
   // `reset()` clears the flag; callers that recreate the owning service
   // on every real mount (the common case) never need it, but a caller
   // whose object survives a StrictMode remount — the same shape as
-  // `useSpacePlateSessions.ts`'s `disposedRef`, reset on that hook's own
+  // a hook's `disposedRef`, reset on that hook's own
   // (re)mount effect — calls it there.
   let disposed = false;
   let nextId = 1;

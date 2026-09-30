@@ -8,8 +8,7 @@
  *
  * `ghostExceptEntities` / `isolatedEntities` are SHARED channels with four
  * owners besides clash — `useClash.releaseClashVisibility`, `LayerDiffView`,
- * Space Sketch's `useSpaceGhostPreview` (whose comment reads "never clears
- * state it didn't set"), and `syncSourceModel`'s post-removal purge. The last
+ * the spaces X-ray (which "never clears state it didn't set"), and `syncSourceModel`'s post-removal purge. The last
  * one is a hard contract, not a preference:
  *
  *     syncSourceModel.ts   removeModel(modelId)

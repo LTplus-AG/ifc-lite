@@ -11,7 +11,7 @@
  *
  * Like HBJSON, USD is rebuilt analytically from the IFC STEP bytes (not from
  * the tessellated viewer geometry), so when the model's mutation view carries
- * real edits (e.g. Space Sketch rooms) those bytes are regenerated through
+ * real edits (e.g. Room tool spaces) those bytes are regenerated through
  * `StepExporter` first — the same source resolution HBJSON/STEP export use —
  * so anything authored in the editor is reflected in the exported stage. The
  * common case (a mutation view with no pending edits) falls straight through

@@ -7,8 +7,7 @@
  *
  * A sibling module rather than a block at the bottom of `layerStackSlice.ts`
  * to match the group convention `store/teardown.ts` documents (sibling file
- * once a slice plus its contribution would grow past the ~400-line ratchet;
- * `addElementSlice.teardown.ts` has the same shape).
+ * once a slice plus its contribution would grow past the ~400-line ratchet).
  *
  * `layerStack` / `layerStackPathToId` / `layerStackDiff` / `layerDiffBusy`
  * hold the IFCX composition behind the Layers panel — each entry keeps the

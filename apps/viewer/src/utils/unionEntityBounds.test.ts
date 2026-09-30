@@ -4,7 +4,7 @@
 
 /**
  * `unionEntityBounds` — the aggregation behind `Viewport.frameEntities`, which the
- * Space Sketch tool calls to frame a storey's spaces.
+ * search, chart and camera-link paths call to frame an id set.
  *
  * The case that matters and that a `!geometry` early-return silently killed: GPU-
  * instanced occurrences are not in `geometryResult.meshes`, and after streaming
@@ -72,7 +72,7 @@ describe('unionEntityBounds', () => {
   it('resolves through the instanced AABB when geometry is null (released after streaming)', () => {
     // RED before the fix: `frameEntities` returned on `!geom` before reaching the
     // fallback, so framing an instanced entity did nothing at all once the mesh
-    // arrays were released — the exact state Space Sketch frames a storey in.
+    // arrays were released — the exact state a storey is framed in.
     const b = unionEntityBounds(null, [7, 8], (id) => (id === 7 ? box(1, 2) : box(5, 6)));
     assert.ok(b, 'a null geometry must not abort the frame');
     assert.equal(b.min.x, 1);

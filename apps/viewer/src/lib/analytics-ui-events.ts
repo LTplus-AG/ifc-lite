@@ -86,7 +86,7 @@ const ENUM_VALUES: Readonly<Record<string, ReadonlySet<string>>> = {
 };
 
 // Everything else is a code-defined id: registry ids (`loadReport`), tool ids
-// (`spaceSketch`), command ids (`vis:show`, `export:csv-entities`), error
+// (`section`), command ids (`vis:show`, `export:csv-entities`), error
 // kinds. Lowercase words, a camelCase hump only as a capital followed by two
 // or more lowercase letters, joined by `_`, `:` or `-`. No dot, slash, space,
 // `$` or run of capitals, so neither a file name nor an IFC GlobalId fits.

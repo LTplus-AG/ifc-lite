@@ -7,7 +7,7 @@
  *
  * The rotation baker treats every mesh it has never seen as pristine — in the
  * model's own unrotated frame — and turns it once. That is right for a streamed
- * batch and for an element built from its IFC parameters (add-element, and the
+ * batch and for an element built from its IFC parameters (a new authored element, and the
  * wall / slab split, which rebuild their halves through `addWall` / `addSlab`).
  * It is wrong for a mesh DERIVED from the live, already-baked vertices, which is
  * what duplicating an element did: the copy arrived turned and was turned again.

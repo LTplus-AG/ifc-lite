@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Author controls whose actions or dialogs belong to the mounted ribbon. */
-import { FileInput, History, Layers3, PenLine, RotateCcw, SquarePen } from 'lucide-react';
+import { FileInput, History, PenLine, RotateCcw } from 'lucide-react';
 import { replayWorkspaceHistory } from '@/lib/model-placement/history';
 import { useViewerStore } from '@/store';
 import { runContextAction } from './surface-commands-context';
@@ -24,18 +24,6 @@ export const RIBBON_AUTHOR_SURFACE_COMMANDS = [
     keywords: 'redo workspace edit', category: 'Tools', icon: History,
     surfaces: ribbonOnly, enabled: canEdit, shortcut: 'edit.redo',
     run: () => { replayWorkspaceHistory(useViewerStore.getState(), 'redo'); },
-  },
-  {
-    id: 'author:add-element-panel', labelKey: 'ribbon.author.addElement',
-    ribbonTooltipKey: 'ribbon.author.addElementTooltip',
-    keywords: 'create add element panel', category: 'Tools', icon: Layers3,
-    surfaces: ribbonOnly, enabled: canEdit, run: runContextAction,
-  },
-  {
-    id: 'author:space-sketch', labelKey: 'ribbon.author.spaceSketch',
-    keywords: 'draw create ifc space', category: 'Tools', icon: SquarePen,
-    surfaces: ribbonOnly, enabled: canEdit,
-    run: () => { useViewerStore.getState().setActiveTool('spaceSketch'); },
   },
   {
     id: 'author:bulk-properties', labelKey: 'ribbon.author.bulkPropertyEditor',

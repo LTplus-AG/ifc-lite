@@ -9,7 +9,7 @@
  * of `<source>/split/<k>` with k probed past existing ids, and one Ctrl+Z
  * restores exactly the original element.
  *
- * Elements are authored through the same slice builders the Add Element tool
+ * Elements are authored through the same slice builders the Model workspace
  * uses, in a millimetre file (the demo project's unit). Both pieces are
  * re-meshed, and sent to the room, by the wasm re-mesh service when
  * `element.split`'s transaction commits (`element-split.authored.test.tsx`).

@@ -120,7 +120,6 @@ describe('mobile Panels sheet (#5853)', () => {
         assert.equal(state.rightPanelCollapsed, false, `panel ${id} did not open its sheet`);
         assert.deepEqual(resolveMobileSheet({
           hasAnalysisExtension: false,
-          activeTool: state.activeTool,
           bottomPanel: activeBottomPanel(state),
           sidebarActivePanel: state.sidebarActivePanel,
         }), { kind: 'panel', id }, `panel ${id} did not occupy the mobile sheet`);
@@ -169,21 +168,6 @@ describe('mobile Panels sheet (#5853)', () => {
     assert.equal(s.rightPanelCollapsed, false);
     assert.equal(s.sidebarActivePanel, 'properties');
     assert.equal(activeBottomPanel(s), null, 'the stale Lists flag would hide Properties');
-  });
-
-  it('switches from dismissed Add Element to the chosen panel', () => {
-    const container = renderViewerLayout();
-    act(() => useViewerStore.setState({ activeTool: 'addElement', rightPanelCollapsed: true }));
-    openList(container);
-    click(listItem(container, 'clash')!);
-    const state = useViewerStore.getState();
-    assert.equal(state.activeTool, 'select');
-    assert.deepEqual(resolveMobileSheet({
-      hasAnalysisExtension: false,
-      activeTool: state.activeTool,
-      bottomPanel: activeBottomPanel(state),
-      sidebarActivePanel: state.sidebarActivePanel,
-    }), { kind: 'panel', id: 'clash' }, 'Add Element must not retake the sheet');
   });
 
   it('a tap on Hierarchy opens the left sheet', () => {

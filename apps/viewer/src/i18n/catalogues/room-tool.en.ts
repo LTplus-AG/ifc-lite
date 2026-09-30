@@ -10,6 +10,19 @@ import type { TranslationValue } from '../types';
  * untranslated.
  */
 export const roomToolEn = {
+  'roomTool.options.minArea': 'Minimum area (m²)',
+  'roomTool.options.namePattern': 'Name pattern',
+  'roomTool.options.nameHint': 'The token {token} inserts the room number.',
+  'roomTool.options.classification': 'IfcSpace.{attribute}',
+  'roomTool.options.objectType': 'IfcSpace.ObjectType',
+  'roomTool.options.invalid': 'Enter a positive minimum area and a non-empty room name pattern',
+  'roomTool.options.objectTypeRequired': 'Enter IfcSpace.ObjectType for a USERDEFINED room',
+  'roomTool.preview.total': {
+    one: '{countDisplay} new room · {area} m² total',
+    other: '{countDisplay} new rooms · {area} m² total',
+  },
+  'roomTool.preview.graph': '{walls} walls · {vertices} layout vertices · {edges} layout edges',
+  'roomTool.preview.leaks': '{openEnds} open wall ends · {unboundedWalls} walls enclose no room',
   'roomTool.label': 'Room',
   'commands.model.room': 'Make rooms from walls or draw them (Model workspace)',
   'roomTool.hint.pick': 'Click inside walls to make a room · Auto makes every room on this storey',

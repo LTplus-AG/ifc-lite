@@ -27,11 +27,11 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { existingSpaceFootprintEntriesByStorey, type SpaceFootprint } from '@ifc-lite/create';
 import type { ViewerState } from '@/store';
 import { roomFramePlanOffsets, wallRectsFromMeshes } from '@/lib/wall-rects-from-meshes';
-import { spaceWasmLoaded } from '@/lib/space-plate-session';
-import { pointInPoly, polyArea, type Pt } from '@/lib/space-sketch-geometry';
+import { spaceWasmLoaded } from '@/lib/rooms/space-wasm';
+import { pointInPoly, polyArea, type Pt } from '@/lib/rooms/plate-geometry';
 import { linkFaces, occupancyTest, spaceMeshTriangles, type RoomLink } from './room-occupancy';
-import { buildPlate, clearRoomLayouts, DEFAULT_WELD, layoutFaces, layoutVersion, readFaces, undoHead, type LayoutFace } from './room-layout';
-import { floorToFloorHeight } from '@/components/viewer/tools/space-sketch/space-bake';
+import { buildPlate, clearRoomLayouts, DEFAULT_MIN_AREA, DEFAULT_WELD, layoutFaces, layoutVersion, readFaces, undoHead, type LayoutFace } from './room-layout';
+import { floorToFloorHeight } from './floor-height';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import { modelPointToWorkspacePoint } from '@/lib/model-placement/rotation';
@@ -254,6 +254,7 @@ interface CacheEntry {
   storeyId: number;
   modelId: string;
   weld: number;
+  minArea: number;
   result: StoreyRooms;
 }
 
@@ -265,13 +266,13 @@ let cached: CacheEntry | null = null;
  * workplane / weld and then served from cache. `loading` until the space
  * wasm is initialised (`ensureSpaceWasm`), which the tool starts on launch.
  */
-export function storeyRooms(s: ViewerState, modelId: string, storeyId: number, plane: Workplane, weld = DEFAULT_WELD): StoreyRooms {
+export function storeyRooms(s: ViewerState, modelId: string, storeyId: number, plane: Workplane, weld = DEFAULT_WELD, minArea = DEFAULT_MIN_AREA): StoreyRooms {
   if (!spaceWasmLoaded()) return { status: 'loading' };
   const meshes = s.models.get(modelId)?.geometryResult?.meshes;
   const head = undoHead(s, modelId);
   const c = cached;
   if (c && c.meshes === meshes && c.meshCount === (meshes?.length ?? 0) && c.mutationVersion === s.mutationVersion
-    && c.head === head && c.layouts === layoutVersion() && c.plane === plane && c.storeyId === storeyId && c.modelId === modelId && c.weld === weld) {
+    && c.head === head && c.layouts === layoutVersion() && c.plane === plane && c.storeyId === storeyId && c.modelId === modelId && c.weld === weld && c.minArea === minArea) {
     return c.result;
   }
   const rects = storeyWallRects(s, modelId, storeyId, plane);
@@ -279,17 +280,17 @@ export function storeyRooms(s: ViewerState, modelId: string, storeyId: number, p
     ? { status: 'noWalls' }
     : {
       status: 'ready',
-      rooms: roomCandidatesFromFaces(layoutFaces(s, modelId, storeyId, weld, rects), storeyOccupancy(s, modelId, storeyId, plane), storeySpaces(s, modelId, storeyId)),
+      rooms: roomCandidatesFromFaces(layoutFaces(s, modelId, storeyId, weld, rects, minArea), storeyOccupancy(s, modelId, storeyId, plane), storeySpaces(s, modelId, storeyId)),
       walls: rects.length,
     };
-  cached = { meshes, meshCount: meshes?.length ?? 0, mutationVersion: s.mutationVersion, head, layouts: layoutVersion(), plane, storeyId, modelId, weld, result };
+  cached = { meshes, meshCount: meshes?.length ?? 0, mutationVersion: s.mutationVersion, head, layouts: layoutVersion(), plane, storeyId, modelId, weld, minArea, result };
   return result;
 }
 
 /** A command session's storey rooms, or null while it has no plane to derive them on. */
-export function sessionRooms(ctx: Pick<CommandContext, 'get' | 'modelId' | 'storeyId' | 'workplane'>, weld = DEFAULT_WELD): StoreyRooms | null {
+export function sessionRooms(ctx: Pick<CommandContext, 'get' | 'modelId' | 'storeyId' | 'workplane'>, weld = DEFAULT_WELD, minArea = DEFAULT_MIN_AREA): StoreyRooms | null {
   if (!ctx.workplane || ctx.storeyId === null) return null;
-  return storeyRooms(ctx.get(), ctx.modelId, ctx.storeyId, ctx.workplane, weld);
+  return storeyRooms(ctx.get(), ctx.modelId, ctx.storeyId, ctx.workplane, weld, minArea);
 }
 
 /** Forget the cached storey and every filed room layout (tests; a reloaded model). */

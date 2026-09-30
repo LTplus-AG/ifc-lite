@@ -54,7 +54,6 @@ import { createOverlaySlice, type OverlaySlice } from './slices/overlaySlice.js'
 import { createSearchSlice, type SearchSlice } from './slices/searchSlice.js';
 import { createAnnotationsSlice, type AnnotationsSlice } from './slices/annotationsSlice.js';
 import { createCollabSlice, type CollabSlice } from './slices/collabSlice.js';
-import { createAddElementSlice, type AddElementSlice } from './slices/addElementSlice.js';
 import { createAuthoringSessionSlice, type AuthoringSessionSlice } from './slices/authoringSessionSlice.js';
 import { createAuthoringDefaultsSlice, type AuthoringDefaultsSlice } from './slices/authoringDefaultsSlice.js';
 import { createLevelDisplaySlice, type LevelDisplaySlice } from './slices/levelDisplaySlice.js';
@@ -175,7 +174,6 @@ export type ViewerState = AppearanceSlice & LoadingSlice &
   SearchSlice &
   AnnotationsSlice &
   CollabSlice &
-  AddElementSlice &
   AuthoringSessionSlice & AuthoringDefaultsSlice &
   LevelDisplaySlice & StoreyContextSlice &
   PointCloudSlice & ModelPlacementSlice &
@@ -235,7 +233,6 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
   ...createSearchSlice(...args),
   ...createAnnotationsSlice(...args),
   ...createCollabSlice(...args),
-  ...createAddElementSlice(...args),
   ...createAuthoringSessionSlice(...args), ...createAuthoringDefaultsSlice(...args),
   ...createLevelDisplaySlice(...args), ...createStoreyContextSlice(...args),
   ...createPointCloudSlice(...args),

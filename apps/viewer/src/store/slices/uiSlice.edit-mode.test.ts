@@ -137,7 +137,7 @@ describe('UISlice — edit mode', () => {
     assert.strictEqual(slice.state.activeTool, 'measure');
   });
 
-  it('setEditEnabled(true) no longer auto-opens the Add Element panel (#6232)', async () => {
+  it('setEditEnabled(true) opens no tool (#6232)', async () => {
     // Entering edit mode is entering the Model workspace; it opens no tool.
     const slice = await buildSlice({ activeTool: 'select', selectedEntity: null });
     (slice.state.setEditEnabled as (v: boolean) => void)(true);
@@ -148,7 +148,7 @@ describe('UISlice — edit mode', () => {
   it('setEditEnabled(true) leaves activeTool=select when an entity IS selected', async () => {
     // With a selection in hand the user is most likely going to use
     // the Properties / Geometry edit card next — don't yank focus
-    // into the Add panel.
+    // into a draw tool.
     const slice = await buildSlice({
       activeTool: 'select',
       selectedEntity: { modelId: 'm', expressId: 1 },
@@ -158,8 +158,8 @@ describe('UISlice — edit mode', () => {
     assert.strictEqual(slice.state.activeTool, 'select');
   });
 
-  it('setEditEnabled(false) exits the add-element tool', async () => {
-    const slice = await buildSlice({ activeTool: 'addElement', editEnabled: true });
+  it('setEditEnabled(false) exits a Model workspace command tool', async () => {
+    const slice = await buildSlice({ activeTool: 'command', editEnabled: true });
     (slice.state.setEditEnabled as (v: boolean) => void)(false);
     assert.strictEqual(slice.state.editEnabled, false);
     assert.strictEqual(slice.state.activeTool, 'select');
@@ -187,10 +187,10 @@ describe('UISlice — edit mode', () => {
     assert.strictEqual(slice.state.activeTool, 'section');
   });
 
-  it('setActiveTool to addElement auto-enables edit mode', async () => {
+  it('setActiveTool to command auto-enables edit mode', async () => {
     const slice = await buildSlice();
-    (slice.state.setActiveTool as (t: string) => void)('addElement');
-    assert.strictEqual(slice.state.activeTool, 'addElement');
+    (slice.state.setActiveTool as (t: string) => void)('command');
+    assert.strictEqual(slice.state.activeTool, 'command');
     assert.strictEqual(slice.state.editEnabled, true);
   });
 

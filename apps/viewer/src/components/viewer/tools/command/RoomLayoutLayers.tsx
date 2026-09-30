@@ -15,7 +15,7 @@
  */
 
 import type { Vec2 } from '@/lib/snap/types';
-import type { Pt } from '@/lib/space-sketch-geometry';
+import type { Pt } from '@/lib/rooms/plate-geometry';
 import type { RoomCandidate } from '@/lib/rooms/storey-rooms';
 import type { Leaks } from '@/lib/rooms/room-leaks';
 import type { RoomPlaceGesture } from '@/lib/commands/modeling/commands/room-place-gesture';

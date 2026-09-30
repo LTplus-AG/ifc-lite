@@ -54,7 +54,7 @@ function commitWall(tx: AuthoringTransaction, target: TrimTarget, boundary: Boun
   }
 
   // Where the wall's openings sit now, before the write moves anything.
-  const cuts = readHostedCuts(edit.dataStore, edit.view, edit.editor, expressId).cuts;
+  const cuts = readHostedCuts(edit.dataStore, edit.view, expressId).cuts;
 
   const z = axis.p0[2];
   const resized = resizeWallMetres(tx.api, edit, modelId, expressId, [plan.start[0], plan.start[1], z], [plan.stop[0], plan.stop[1], z], tx.batchId);

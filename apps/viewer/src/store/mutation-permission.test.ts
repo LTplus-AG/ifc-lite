@@ -72,7 +72,7 @@ describe('canonical viewer mutation permission (#5901)', () => {
   });
 
   for (const twoModels of [false, true]) {
-    it(`blocks Add Element before overlay creation and authors a column in ${twoModels ? 'federated' : 'single-model'} Edit mode (#5901)`, async () => {
+    it(`blocks column authoring before overlay creation and authors a column in ${twoModels ? 'federated' : 'single-model'} Edit mode (#5901)`, async () => {
       const bytes = await readFile(authoredIfc);
       const dataStore = await new IfcParser().parseColumnar(
         bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,

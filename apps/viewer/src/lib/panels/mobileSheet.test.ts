@@ -8,20 +8,19 @@
  * This resolver exists because the answer used to be written out three times in
  * `ViewerLayout` — once for the title, once for the body, once for the close
  * handler — and the three drifted. The close chain closed the underlying
- * sidebar panel even when an analysis extension or the Add Element tool owned
- * the sheet, so dismissing Add Element also closed whatever panel sat behind
- * it. The precedence below is therefore the property under test, especially the
- * cases where a non-panel occupant is on top of a panel that must be left alone.
+ * sidebar panel even when an analysis extension owned the sheet, so dismissing
+ * it also closed whatever panel sat behind it. The precedence below is
+ * therefore the property under test, especially the cases where a non-panel
+ * occupant is on top of a panel that must be left alone.
  */
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveMobileSheet, type MobileSheetInput } from './mobileSheet.js';
 
-/** Nothing open: no extension, plain select tool, Properties in the dock. */
+/** Nothing open: no extension, Properties in the dock. */
 const IDLE: MobileSheetInput = {
   hasAnalysisExtension: false,
-  activeTool: 'select',
   bottomPanel: null,
   sidebarActivePanel: 'properties',
 };
@@ -50,29 +49,6 @@ describe('mobile bottom sheet occupant', () => {
     );
   });
 
-  it('reports the TOOL, not the panel behind it, while Add Element is active', () => {
-    // The bug: this case still resolved a panel id, and the close handler used
-    // it — so closing Add Element closed the compare panel underneath.
-    assert.deepEqual(
-      resolveMobileSheet({ ...IDLE, activeTool: 'addElement', sidebarActivePanel: 'compare' }),
-      { kind: 'addElement' },
-    );
-  });
-
-  it('lets Add Element outrank the bottom-strip panels, not just the docked side panel', () => {
-    // The precedence doc claims Add Element beats the bottom strip too, not
-    // only the docked side panel covered by the test above — assert that
-    // directly so reordering the two checks against each other is caught.
-    assert.deepEqual(
-      resolveMobileSheet({
-        ...IDLE,
-        activeTool: 'addElement',
-        bottomPanel: 'gantt',
-      }),
-      { kind: 'addElement' },
-    );
-  });
-
   it('reports the EXTENSION, not the panel behind it', () => {
     assert.deepEqual(
       resolveMobileSheet({ ...IDLE, hasAnalysisExtension: true, sidebarActivePanel: 'clash' }),
@@ -80,12 +56,11 @@ describe('mobile bottom sheet occupant', () => {
     );
   });
 
-  it('lets an extension outrank the Add Element tool and the bottom strip', () => {
+  it('lets an extension outrank the bottom strip', () => {
     assert.deepEqual(
       resolveMobileSheet({
         ...IDLE,
         hasAnalysisExtension: true,
-        activeTool: 'addElement',
         bottomPanel: 'gantt',
       }),
       { kind: 'extension' },

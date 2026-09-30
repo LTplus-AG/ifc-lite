@@ -13,7 +13,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Vec2 } from '@/lib/snap/types';
 import type { Workplane } from '@/lib/commands/modeling/types';
-import { sX, sY } from '@/lib/space-sketch-geometry';
+import { sX, sY } from '@/lib/rooms/plate-geometry';
 import { GRID_MIN_PX_PER_M, fitPlan, pickPlanEntity, planGrid, screenToLocal } from './plan-fit';
 import { planCutLinework } from './plan-cut-source';
 import { convexHull, ghostFootprints } from './plan-ghost';

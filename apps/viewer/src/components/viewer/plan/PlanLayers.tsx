@@ -11,7 +11,7 @@
  */
 
 import { memo } from 'react';
-import { sX, sY, type Fit } from '@/lib/space-sketch-geometry';
+import { sX, sY, type Fit } from '@/lib/rooms/plate-geometry';
 import type { SnapResult, Vec2 } from '@/lib/snap/types';
 import { SnapHudShapes } from '../tools/command/SnapHud';
 import type { WallAxis } from '@/lib/snap/sources/semantic';

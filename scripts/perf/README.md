@@ -1420,7 +1420,7 @@ Reuse checked ID-prefix accumulation and the scanner's existing ASCII proof; obt
   leaf (`ShellStoreEffects`) or off `useIfc()`; the hierarchy reads `models`
   through a selector that keeps its identity while the same ids have geometry
   (a re-mesh), so the panel and its rows stop re-rendering; the file/export
-  commands, ribbon, Author tab and Add Element panel select primitives or the
+  commands, ribbon and Author tab select primitives or the
   model roster (`useModelRoster`) instead of `useIfc()`; a positional batch is
   one store update (was N + 1); `useModelSelection` and `useLevelDisplayEffect`
   stop writing unchanged state back on every `models` change. Left: the edit

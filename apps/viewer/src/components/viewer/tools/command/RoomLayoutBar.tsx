@@ -3,8 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The Room tool's layout controls (charter #6232 M4, the Space Sketch
- * features it took over), on `room.place`'s bar:
+ * The Room tool's layout controls (charter #6232 M4), on `room.place`'s bar:
  *
  *   - Edit mode's two tools (Move · Cut, Merge · Remove) and Clean up (the
  *     plate's `prune`, one undo step);
@@ -14,6 +13,9 @@
  */
 
 import { useState } from 'react';
+import type { RoomCandidate } from '@/lib/rooms/storey-rooms';
+import { RoomCreationControls } from './RoomCreationControls';
+import { RoomCreationSummary } from './RoomCreationSummary';
 import { Building2, ChevronDown, Eraser, RotateCcw, SquareDashed } from 'lucide-react';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
@@ -59,7 +61,7 @@ const WELD_MAX = 1;
 const clampWeld = (v: number) => Math.min(WELD_MAX, Math.max(WELD_MIN, Math.round(v * 100) / 100));
 
 /** More ▾: Footprint, Auto on every storey, the corner weld, leak diagnostics. */
-export function RoomMoreMenu({ gesture, ctx, rooms }: CommandHudProps<RoomPlaceGesture> & { rooms: number }) {
+export function RoomMoreMenu({ gesture, ctx, rooms }: CommandHudProps<RoomPlaceGesture> & { rooms: readonly RoomCandidate[] }) {
   const { t, locale } = useTranslation();
   const weld = gesture.weld ?? DEFAULT_WELD;
   // What is being typed: "0" and "0." are not welds yet, so the field keeps the text until blur / Enter.
@@ -89,7 +91,7 @@ export function RoomMoreMenu({ gesture, ctx, rooms }: CommandHudProps<RoomPlaceG
           <div className="flex items-center justify-between gap-2">
             <span className="font-medium text-foreground" title={t('roomLayout.weld.title')}>{t('roomLayout.weld.label')}</span>
             <span className="tabular-nums text-muted-foreground" data-room-weld-rooms>
-              {t('roomLayout.weld.rooms', { count: rooms, countDisplay: formatLocaleNumber(locale, rooms) })}
+              {t('roomLayout.weld.rooms', { count: rooms.length, countDisplay: formatLocaleNumber(locale, rooms.length) })}
             </span>
           </div>
           <div className="flex items-center gap-1.5">
@@ -124,6 +126,8 @@ export function RoomMoreMenu({ gesture, ctx, rooms }: CommandHudProps<RoomPlaceG
             </button>
           </div>
         </div>
+        <RoomCreationControls gesture={gesture} ctx={ctx} />
+        <RoomCreationSummary gesture={gesture} ctx={ctx} rooms={rooms} />
         <div className="border-t border-border pt-1.5">
           <HudToggle
             pressed={gesture.leaks}

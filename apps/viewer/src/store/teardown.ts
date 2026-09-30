@@ -61,9 +61,8 @@
  *
  * Inline at the bottom of the slice, or in a sibling `<slice>.teardown.ts`. The
  * rule is the module-size ratchet and nothing else: sibling file iff the slice
- * plus its contribution would cross ~400 lines, inline otherwise. `addElementSlice`
- * and `annotationsSlice` split despite fitting (341, 365 combined) for group
- * uniformity; folding them back inline would make the rule exceptionless.
+ * plus its contribution would cross ~400 lines, inline otherwise. `annotationsSlice`
+ * splits despite fitting (365 combined) for group uniformity; folding them back inline would make the rule exceptionless.
  *
  * ## Trap A: a teardown returns an EXPLICIT field list, never a whole state
  *

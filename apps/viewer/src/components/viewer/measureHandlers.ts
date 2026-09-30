@@ -437,7 +437,7 @@ export interface PolylinePickResult {
  * Deliberately store-free, matching this module's existing contract ("pure
  * functions that operate on a MouseHandlerContext — no React dependency");
  * the caller (selectionHandlers.ts, which already reads the store directly
- * for the analogous addElement click flow) turns this into `startPolyline` /
+ * for the click flows) turns this into `startPolyline` /
  * `addPolylinePoint` / `finishPolyline` calls.
  */
 export function raycastForPolylinePoint(ctx: MouseHandlerContext, x: number, y: number): PolylinePickResult | null {

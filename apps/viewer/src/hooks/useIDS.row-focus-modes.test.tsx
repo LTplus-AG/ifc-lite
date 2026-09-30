@@ -262,7 +262,7 @@ describe('IDS row focus releases its own previous presentation', () => {
     await act(async () => { api!.ids.focusEntity('A', 1, 'ghost'); });
     assert.deepEqual(ghosted(), [1], 'setup sanity: IDS owns the ghost channel');
 
-    // Another feature (the spaces X-ray, LayerDiffView, Space Sketch) takes the
+    // Another feature (the spaces X-ray, LayerDiffView) takes the
     // SAME channel over. Deliberately a SUPERSET of what IDS installed: a
     // subset test, or "is my record's channel non-empty", both answer "still
     // mine" here and destroy this owner's ghost. Only equal MEMBERS mean it is
@@ -410,7 +410,7 @@ describe('IDS and clash share the visibility channels — neither may strand the
   it('a model removal does NOT release a channel IDS does not own', async () => {
     await seed();
     await act(async () => { api!.ids.focusEntity('A', 1, 'isolate'); });
-    // Another feature (the spaces X-ray, LayerDiffView, Space Sketch) takes over.
+    // Another feature (the spaces X-ray, LayerDiffView) takes over.
     await act(async () => { useViewerStore.getState().setGhostExceptEntities(new Set([9])); });
 
     await act(async () => { useViewerStore.getState().removeModel('B'); });

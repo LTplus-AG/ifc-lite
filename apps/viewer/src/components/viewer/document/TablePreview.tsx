@@ -33,7 +33,7 @@ export interface TablePreviewProps {
 
 export function TablePreview({ block, state }: TablePreviewProps) {
   const { t, locale } = useTranslation();
-  const header = tableHeaderStyle(block.headerBackground);
+  const header = tableHeaderStyle(block.headerBackground, block.headerTextColor);
   // The PDF's `tableTitle` fallback ("Validation results") is plain English on purpose (every other
   // PDF fallback string is); the on-screen preview is interactive UI, so it translates its own
   // fallback instead of calling that helper (#5138 review).

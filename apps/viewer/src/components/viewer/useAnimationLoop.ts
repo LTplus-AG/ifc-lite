@@ -23,7 +23,6 @@ import { hoverOutlineTarget } from './useHoverOutline';
 import { chartAwareRendererSelectionFromStore } from '@/lib/charts/renderer-selection';
 import { preserveClashPaintInSelection } from '@/lib/clash/renderer-selection';
 import { sectionRenderClip } from '@/lib/section/section-render-clip';
-import { withAddElementWorkplane } from './add-element-workplane';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getContributionCullConfig } from '../../utils/renderCullConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
@@ -280,8 +279,8 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
             lod,
             buildingRotation: coordinateInfoRef.current?.buildingRotation,
             // The cut: a plane or clip box (#5513), gated on the visibility toggle (#5893); an uncut preview only
-            // inside the Section tool (#6374), which Add Element moves to its workplane (#6233).
-            ...withAddElementWorkplane(useViewerStore.getState(), sectionRenderClip(useViewerStore.getState().sceneState.section.visible, sectionPlaneRef.current, sectionRangeRef.current, useViewerStore.getState().activeTool)), ...hoverOutlineTarget(),
+            // inside the Section tool (#6374).
+            ...sectionRenderClip(useViewerStore.getState().sceneState.section.visible, sectionPlaneRef.current, sectionRangeRef.current, useViewerStore.getState().activeTool), ...hoverOutlineTarget(),
             terrainClipY: terrainClipYRef.current ?? undefined,
           });
         } catch (err) {

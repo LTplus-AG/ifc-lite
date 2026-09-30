@@ -103,7 +103,7 @@ export function hostedCutsOf(s: ViewerState, modelId: string, wallId: number): H
   let entry = cutCache.get(edit.dataStore);
   if (!entry || entry.version !== s.mutationVersion) cutCache.set(edit.dataStore, entry = { version: s.mutationVersion, walls: new Map() });
   let cuts = entry.walls.get(wallId);
-  if (!cuts) entry.walls.set(wallId, cuts = readHostedCuts(edit.dataStore, edit.view, edit.editor, wallId));
+  if (!cuts) entry.walls.set(wallId, cuts = readHostedCuts(edit.dataStore, edit.view, wallId));
   return cuts;
 }
 

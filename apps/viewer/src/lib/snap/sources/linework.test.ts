@@ -6,12 +6,21 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { solveSnap } from '../solve.js';
 import { MODELING_SNAP_PROFILE } from '../rank.js';
-import { SPACE_SKETCH_PROFILE } from '../space-sketch.js';
 import type { SnapCandidate, SnapProfile, SnapQuery, SnapSource, Vec2 } from '../types.js';
 import { createLineworkSource } from './linework.js';
 import { query, rng } from '@/test/snap-fixture.js';
 
 /** The same source with the solver's pruning hint withheld: the unpruned oracle. */
+/** Nominal room-frame profile: corners beat on-wall projections; ortho locks to one axis. */
+const ROOM_PROFILE: SnapProfile = {
+  radiusPx: 10,
+  tiers: [['endpoint', 'vertex'], ['edge']],
+  lockedTiers: [['endpoint', 'vertex', 'edge']],
+  sources: ['linework'],
+  angleStepDeg: 90,
+  hysteresisPx: 0,
+};
+
 const unpruned = (s: SnapSource): SnapSource => ({
   id: s.id,
   collect: (q: SnapQuery, r: number, out: SnapCandidate[]) => s.collect(q, r, out),
@@ -39,7 +48,7 @@ describe('createLineworkSource (#6232 WP3)', () => {
   it('pruning with the hint never changes the answer (6k seeded queries, locked and free)', () => {
     const r = rng(42);
     const profiles: SnapProfile[] = [
-      { ...SPACE_SKETCH_PROFILE },
+      { ...ROOM_PROFILE },
       { ...MODELING_SNAP_PROFILE, sources: ['linework'] },
     ];
     let pruned = 0, snapped = 0;
@@ -51,7 +60,7 @@ describe('createLineworkSource (#6232 WP3)', () => {
       });
       const vertices: Vec2[] = Array.from({ length: Math.floor(r() * 10) }, () => [c(), c()]);
       const p = profiles[i % 2];
-      // Inference profiles must opt into far edges; Space Sketch may either way.
+      // Inference profiles must opt into far edges; room profiles may either way.
       const lines = { vertices, segments, midpoints: r() < 0.5, inference: p === profiles[1] || r() < 0.5 };
       const src = createLineworkSource(lines);
       const anchor: Vec2 | null = r() < 0.7 ? [c(), c()] : null;

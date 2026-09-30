@@ -4,7 +4,7 @@
 
 /** Static Tools palette family. The key-command table remains the chord source. */
 import {
-  AlignHorizontalJustifyStart, ArrowRightToLine, ArrowUpFromLine, Box, Crosshair, MousePointer2, PenLine, PersonStanding, Ruler, Scissors, ScissorsLineDashed,
+  AlignHorizontalJustifyStart, ArrowRightToLine, ArrowUpFromLine, Crosshair, MousePointer2, PenLine, PersonStanding, Ruler, Scissors, ScissorsLineDashed,
   Slice, StickyNote,
 } from 'lucide-react';
 import { openRepositionModels } from '@/lib/model-placement/commands';
@@ -62,12 +62,6 @@ export const TOOL_SURFACE_COMMANDS = [
     searchLabel: 'Annotate', keywords: 'pin note comment marker', category: 'Tools', icon: StickyNote,
     surfaces: ['palette', 'ribbon'], enabled: alwaysEnabled, shortcut: 'tool.annotate',
     run: () => { useViewerStore.getState().setActiveTool('annotate'); },
-  },
-  {
-    id: 'tool:add-element', labelKey: 'commandPalette.tool.addElement.label',
-    searchLabel: 'Add Element', keywords: 'wall slab beam column place drop new add element generic',
-    category: 'Tools', icon: Box, surfaces: paletteOnly, enabled: editable,
-    run: () => { useViewerStore.getState().setActiveTool('addElement'); },
   },
   {
     // The Model workspace rail's Wall (#6232); enters the workspace first.

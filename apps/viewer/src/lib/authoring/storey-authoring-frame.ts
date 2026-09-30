@@ -15,17 +15,17 @@
  * chain baked in. Handing a model-frame click to a builder as if it were
  * storey-local applies the chain a second time: on the demo project the
  * storey hangs 3 m east and 3 m north of the model origin, so every element
- * the Add Element tool authored landed 3 m away on export and reload, while
+ * the Model workspace authored landed 3 m away on export and reload, while
  * the mirror drew it under the cursor.
  *
- * Same frame algebra as Space Sketch's bake (`useSpaceBake.ts`), reused rather
+ * Same frame algebra as the Room tool's space writer, reused rather
  * than re-derived: `storeyPlanFrame` composes the chain, and the offset back to
  * the file's own world frame is the whole `world = render + originShift + rtc`
  * reconstruction — `roomFramePlanOffsets` (the TS origin shift, which Space
  * Sketch's room frame already carries) plus `roomFrameToModelWorld` (the survey
  * anchor the wasm path subtracted). Both are zero for a model near the origin.
  *
- * Unlike Space Sketch this falls back to the identity instead of refusing when
+ * Unlike the Room tool this falls back to the identity instead of refusing when
  * the chain will not resolve: that is exactly what the tool did before for
  * every storey, and a storey authored in this session (no source record) has
  * no chain to read. Refusing would block authoring outright on such a storey.

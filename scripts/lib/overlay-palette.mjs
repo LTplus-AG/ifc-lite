@@ -23,7 +23,7 @@
  * components, three things:
  *  - every file under `components/viewport-ui/**` (the HUD and scene kernel)
  *  - every file under `components/viewer/tools/**` (the per-tool overlays:
- *    Measure, Section, Split, Zone, Space Sketch, Add Element, ...)
+ *    Measure, Section, Split, Zone, the Model workspace, ...)
  *  - the specific overlay files the charter names by component: the
  *    ViewportContainer, ViewportOverlays, ToolOverlays, AnnotationLayer,
  *    CollabPresenceLayer, BCFOverlay, and the viewport banners

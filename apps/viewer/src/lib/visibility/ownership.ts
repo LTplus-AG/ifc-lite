@@ -7,7 +7,7 @@
  *
  * `isolatedEntities` / `ghostExceptEntities` (visibilitySlice) are shared by
  * clash, IDS, "Isolate in 3D" (#2532), assembly isolation (#2531),
- * `LayerDiffView`, Space Sketch's `useSpaceGhostPreview`, BCF and
+ * `LayerDiffView`, BCF and
  * `syncSourceModel`'s post-removal purge. A feature's teardown may therefore
  * only release a presentation IT ITSELF installed.
  *
@@ -44,8 +44,8 @@ export type VisibilityOwnership =
  *
  * Ownership is tested by VALUE, not by `Set` reference: reference identity
  * would be exact, but it is destroyed by every flow that snapshots and later
- * restores the channel with equal content in a fresh `Set` — Space Sketch's
- * open/close view capture (`useSpaceSceneFraming` clones the prior sets and
+ * restores the channel with equal content in a fresh `Set` — a view snapshot's
+ * open/close capture (the anonymized-export preview clones the prior sets and
  * replays them through the cloning slice setters) and a source-model resync
  * (`syncSourceModel` rebuilds the kept sets even when nothing was filtered).
  *
@@ -185,8 +185,8 @@ const OWNERSHIP_RECORD_FIELDS = [
  *
  * Invalidation is by CONTENT, not by "somebody wrote": `next` is the state the
  * channels are about to hold, and a record still content-matching it survives.
- * That is what keeps the content-preserving rewrites alive — Space Sketch's
- * open/close view capture and `syncSourceModel`'s rebuild both replay an
+ * That is what keeps the content-preserving rewrites alive — a view snapshot's
+ * open/close capture and `syncSourceModel`'s rebuild both replay an
  * unchanged channel through these setters, and under a blanket "any write
  * invalidates" rule they would silently convert a feature-owned focus into
  * "user" state, which is #2662 P2 again. It is also why this cannot strand a

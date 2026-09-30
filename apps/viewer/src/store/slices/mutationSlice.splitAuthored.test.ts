@@ -173,7 +173,11 @@ for (const unit of ['metre', 'millimetre'] as const) {
       assert.equal(split.right.expressId, wall);
       assert.deepEqual(split.openings, { toLeft: 0, toRight: 0, skipped: 0 });
       assert.equal(asExpressIdRef(readAttributes(dataStore, view, editor, rel)?.[4]), wall);
-      near(asCoordinateTriple(readAttributes(dataStore, view, editor, point)?.[0]) ?? [], [1 * native, 0, 0],
+      near(asCoordinateTriple(readAttributes(dataStore, view, editor, point)?.[0]) ?? [], [3 * native, 0, 0],
+        'the original point remains unchanged for other consumers');
+      const moved = resolvePlacementChain(dataStore, view, editor, opening);
+      assert.ok(moved && moved.cartesianPointId !== point);
+      near(moved.coordinates, [1 * native, 0, 0],
         'the opening keeps its place: 1 m into the far piece');
     });
 

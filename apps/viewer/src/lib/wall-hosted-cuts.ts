@@ -57,7 +57,12 @@ export function readHostedCuts(
       continue;
     }
     // IfcRelVoidsElement: RelatingBuildingElement (4), RelatedOpeningElement (5).
-    if (asExpressIdRef(rel[4]) !== wallId) continue;
+    const hostId = asExpressIdRef(rel[4]);
+    if (hostId === null) {
+      unreadable.push(relId);
+      continue;
+    }
+    if (hostId !== wallId) continue;
     const openingId = asExpressIdRef(rel[5]);
     if (openingId === null) {
       unreadable.push(relId);

@@ -399,6 +399,22 @@ describe('element.trimExtend: openings whose place cannot be read (#6232 C1)', (
     target().editor.addEntity('IfcRelVoidsElement', ['0dAnglingVoidRelGuid0000', null, null, null, `#${wallId}`, null]);
   }
 
+  it('a decoded void relation with an unreadable host cannot be assumed to belong elsewhere (#6535)', () => {
+    wall([0, 0], [8, 0]);
+    const crossing = wall([4, -2], [4, 3]);
+    target().editor.addEntity('IfcRelVoidsElement', ['0dAnglingVoidRelGuid0000', null, null, null, null, null]);
+    state().startCommand(ID);
+    click(6, 0);
+    hover(4, 2.5);
+    const preview = gesture().preview;
+    assert.ok(preview && !preview.ok, 'an unknown host is not proof that the void belongs to another wall');
+    assert.match(preview.reason, /Can't tell where 1 opening/);
+    const before = mutations();
+    click(4, 2.5);
+    assert.equal(mutations(), before);
+    assert.ok(near(shape(crossing).wall.end, [4, 3]));
+  });
+
   it('a positive end extension with a submillimetre joined-body contraction still refuses an unknown opening (#6535)', () => {
     wall([0, 0], [8, 0], 0.004);
     const ending = wall([4, -4], [4, -0.0015]);

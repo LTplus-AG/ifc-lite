@@ -309,6 +309,32 @@ wheel movement to zoom; Trackpad pans with two-finger scrolling and zooms with a
 pinch or Ctrl/Cmd wheel. These controls also work in floating and popped-out
 Drawing panels.
 
+### DXF Underlays
+
+Open **Underlays** to import DXF. Choose **Site plan** for CAD coordinates in IFC
+XY or map coordinates, or **Reference on current section** for a plan/elevation registered
+on the current Down, Front or Side plane. Vertical sections initially suggest
+**Reference on current section**. Choose explicit units when the file has no declared units;
+automatic import uses a known DXF unit header. Drawing references with missing
+or unknown unit declarations request an explicit unit before registration; site
+plans retain the existing unitless-file heuristic. Unit conversion runs once,
+independently of placement scale.
+
+A drawing reference freezes its IFC world origin and two in-plane axes when
+import starts. Moving a parallel section does not move the reference; flipping
+the view projects the same placement from the other side. An incompatible view
+shows the reference as edge-on, and a changed engineering frame marks it
+unavailable. Renderer origin rebasing preserves its engineering placement.
+Existing saved DXFs remain site plans with their existing georeference behavior.
+
+Use **Center on model**, numeric offsets, rotation and positive scale to align
+the reference. Center is unavailable until the generated section contains a
+finite model extent. Plane-reference offsets are in its registered U/V axes; site-plan
+offsets retain their drawing-space convention. Visibility, opacity and CAD
+layer controls apply in compatible 2D views. The independent 3D visibility
+control puts vector paths on their registered plane. The 3D overlay currently
+shows paths without hatches/text and uses opacity as an on/off gate.
+
 The PDF export dialog lists visible drawing content its writer cannot include. A
 vector PDF omits drawing markups and DXF reference underlays; a sheet PDF
 includes the underlays in its rasterized sheet image but still omits markups.

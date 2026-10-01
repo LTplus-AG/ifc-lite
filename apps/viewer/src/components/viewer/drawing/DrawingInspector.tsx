@@ -109,6 +109,7 @@ export function DrawingInspector({ vm, layers, panelWidth }: DrawingInspectorPro
           <DxfUnderlayPanel
             onCenterOnModel={layers.handleCenterDxfUnderlay}
             planViewActive={vm.sectionPlane.axis === 'down' && vm.sectionPlane.custom === undefined}
+            sectionPlane={vm.drawing?.config.plane}
             georeferenceAvailable={layers.dxfGeoreferenceAvailable}
           />
         </TabsContent>

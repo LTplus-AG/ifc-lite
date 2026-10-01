@@ -6,6 +6,9 @@ import type { TranslationValue } from '../types';
 
 /** The Drawing panel's chrome (header, toolbar, export menu, status line), guidance, and error states. */
 export const section2dEn = {
+  'section2d.underlay.unavailableReference': 'This reference is edge-on or belongs to another engineering frame.',
+  'section2d.underlay.incompatiblePlacement': 'This reference cannot be centered in the current drawing plane.',
+  'section2d.underlay.emptyDrawing': 'Generate a section with model geometry before centering this underlay.',
   'section2d.projection.settings': 'Projection settings',
   'section2d.projection.depth': 'View depth behind cut',
   'section2d.projection.auto': 'Automatic depth',

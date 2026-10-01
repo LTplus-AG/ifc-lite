@@ -2,51 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * DXF underlay → 2D drawing space, pure mapping math (issue #1782).
- *
- * Converted DXF underlays are, BY DEFAULT, assumed to already be in world
- * plan coordinates (metres, IFC XY — DXF and IFC are both Z-up). The 2D
- * drawing pipeline works in the render frame: RTC/origin-shifted, projected
- * via `projectTo2D` (plan: `x_d = worldX`, `y_d = -worldY_ifc`), with a
- * flipped section mirroring X. These helpers apply that mapping, then the
- * per-underlay placement (offset/rotation/scale in drawing space), and
- * filter by layer visibility. Kept free of React/store imports so they are
- * unit-testable; the `useDxfUnderlaysForDrawing` hook wraps them.
- *
- * Issue #1929 challenges the "already in world coordinates" assumption: a
- * surveyor's DXF is typically drawn in map/CRS coordinates (eastings,
- * northings), not the IFC model's local frame. When a per-underlay entry's
- * EFFECTIVE `georeferenced` state is true, the underlay's raw coordinates
- * are first passed through a caller-supplied `mapToWorld` transform — the
- * inverse IfcMapConversion, built by `dxfExportGeoref.ts`'s
- * `buildDxfMapToWorldTransform` — before the world→drawing mapping below
- * runs.
- *
- * `entry.georeferenced` is TRI-STATE (PR #1965 review, closing an import
- * race — see `dxfIngest.ts`'s module doc for the full race description):
- *   - `true` / `false`: explicit, only ever written by the user flipping
- *     the "Align to model georeference" checkbox
- *     (`setDxfUnderlayGeoreferenced`). Always wins regardless of anchor
- *     availability.
- *   - `undefined` ("auto"): follow anchor georeference availability,
- *     resolved HERE at render/call time via the `georeferenceAvailable`
- *     parameter — not baked in at import time. `resolveEffectiveGeoreferenced`
- *     below is the single place that resolves the tri-state.
- * `addDxfUnderlay` (drawing2DSlice.ts) defaults an entry's `georeferenced`
- * to `false`, NOT auto, unless the caller explicitly opts into `'auto'` —
- * so anything constructing an entry outside the DXF-ingest feature
- * (including a hypothetical future load/migration path for entries that
- * predate this issue) is conservative by construction: it never starts
- * following the anchor's georeference on its own. Only `ingestDxfFile`
- * opts a freshly-imported entry into `'auto'`. That is how "created before
- * this feature existed" (`false`) stays distinct from "created by this
- * feature in auto mode" (`undefined`) even though both currently apply the
- * SAME identity transform the instant a session starts with no anchor
- * georeference loaded — the difference only shows up once a georeferenced
- * model appears, at which point auto entries follow it and explicit-`false`
- * entries do not, by design.
- */
+/** DXF underlay mapping: legacy IFC XY site plans and explicit section frames. */
 
 import { applyDxfPlacement, type DxfPlacement, type Point2D } from '@ifc-lite/drawing-2d';
 import type { GeometryResult } from '@ifc-lite/geometry';
@@ -99,6 +55,7 @@ export interface DxfUnderlayRenderData {
 }
 
 interface WorldToDrawingParams {
+  pointMap?: (p: Point2D) => Point2D;
   shiftX: number;
   shiftY: number;
   mirrorX: boolean;
@@ -113,6 +70,7 @@ interface WorldToDrawingParams {
 }
 
 function worldToDrawing(p: Point2D, t: WorldToDrawingParams): Point2D {
+  if (t.pointMap) return t.pointMap(p);
   // Map/CRS → IFC world (issue #1929), only for underlays flagged
   // georeferenced. Then: world → plan drawing space (render-frame shift +
   // y-flip), then the flipped-section mirror, then the user placement.
@@ -236,13 +194,15 @@ export function dxfUnderlayToDrawing(
   mirrorX: boolean,
   mapToWorld: (p: Point2D) => Point2D = (p) => p,
   georeferenceAvailable = false,
+  pointMap?: (p: Point2D) => Point2D,
 ): DxfUnderlayRenderData {
   const t: WorldToDrawingParams = {
+    pointMap,
     shiftX: shift.x,
     shiftY: shift.y,
     mirrorX,
     placement: entry.placement,
-    mapToWorld: resolveEffectiveGeoreferenced(entry, georeferenceAvailable) ? mapToWorld : undefined,
+    mapToWorld: !pointMap && resolveEffectiveGeoreferenced(entry, georeferenceAvailable) ? mapToWorld : undefined,
   };
   const lines: DxfUnderlayRenderLine[] = [];
   const fills: DxfUnderlayRenderFill[] = [];
@@ -318,15 +278,17 @@ export function dxfUnderlayDrawingBounds(
   mirrorX: boolean,
   mapToWorld: (p: Point2D) => Point2D = (p) => p,
   georeferenceAvailable = false,
+  pointMap?: (p: Point2D) => Point2D,
 ): { min: Point2D; max: Point2D } | null {
   const b = entry.underlay.bounds;
   if (!b) return null;
   const t: WorldToDrawingParams = {
+    pointMap,
     shiftX: shift.x,
     shiftY: shift.y,
     mirrorX,
     placement: { ...entry.placement, offsetX: 0, offsetY: 0 },
-    mapToWorld: resolveEffectiveGeoreferenced(entry, georeferenceAvailable) ? mapToWorld : undefined,
+    mapToWorld: !pointMap && resolveEffectiveGeoreferenced(entry, georeferenceAvailable) ? mapToWorld : undefined,
   };
   // Rotation in the placement makes axis-aligned min/max insufficient:
   // map all four corners.

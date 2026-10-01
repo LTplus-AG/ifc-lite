@@ -18,6 +18,8 @@ import type { DrawingInspectorTab } from '@/store/slices/drawingInspectorSlice';
 import { useMeasure2D } from '@/hooks/useMeasure2D';
 import { useAnnotation2D } from '@/hooks/useAnnotation2D';
 import { useDrawingWithReferences } from '@/hooks/useReferenceImagesForDrawing';
+import { useDxfUnderlaysForDrawing } from '@/hooks/useDxfUnderlay';
+import { drawingWithDxfBounds } from '@/hooks/dxfDrawingBounds';
 import { useViewControls } from '@/hooks/useViewControls';
 import { useDrawingRuntime } from '@/lib/drawing/drawing-runtime';
 import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
@@ -32,7 +34,7 @@ export function useDrawingViewModel() {
   const { geometryResult } = runtime;
 
   const sourceDrawing = useViewerStore((s) => s.drawing2D);
-  const { drawing, hasReferences } = useDrawingWithReferences(sourceDrawing);
+  const { drawing: rasterDrawing, hasReferences: hasRasterReferences } = useDrawingWithReferences(sourceDrawing);
   const setDrawing = useViewerStore((s) => s.setDrawing2D);
   const status = useViewerStore((s) => s.drawing2DStatus);
   const setDrawingStatus = useViewerStore((s) => s.setDrawing2DStatus);
@@ -101,6 +103,11 @@ export function useDrawingViewModel() {
 
   const sectionPlane = useViewerStore((s) => s.sectionPlane);
   const models = useViewerStore((s) => s.models);
+  const dxfUnderlayData = useDxfUnderlaysForDrawing({enabled:status==='ready', plane:sourceDrawing?.config.plane,
+    sectionAxis:sectionPlane.axis,isCustomPlane:sectionPlane.custom!==undefined,flipped:sectionPlane.flipped,coordinateInfo:geometryResult?.coordinateInfo});
+  const drawing = useMemo(()=>drawingWithDxfBounds(rasterDrawing,dxfUnderlayData,hasRasterReferences),[rasterDrawing,dxfUnderlayData,hasRasterReferences]);
+  const hasReferences = hasRasterReferences || dxfUnderlayData.some(r=>r.lines.length>0 || r.fills.length>0 || r.texts.length>0);
+
 
   const [isPinned, setIsPinned] = useState(true); // Default ON: keep position on regenerate
   const containerRef = useRef<HTMLDivElement>(null);
@@ -282,7 +289,7 @@ export function useDrawingViewModel() {
 
   return {
     runtime, geometryResult, models,
-    drawing, sourceDrawing, hasReferences, status, progress, progressPhase, drawingError,
+    drawing, sourceDrawing, hasReferences, dxfUnderlayData, status, progress, progressPhase, drawingError,
     displayOptions, unitDisplayOverrides, typeVisibility,
     activePresetId, overridesEnabled, overrideEngine, entityColorMap,
     dxfUnderlays, pointCloudClassMask,

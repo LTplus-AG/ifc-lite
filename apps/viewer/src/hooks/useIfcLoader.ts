@@ -1853,12 +1853,12 @@ export function useIfcLoader() {
               if (skippedHungElements) reportSkippedHungElements(file.name, skippedHungElements, toast.info);
 
               if (target.kind === 'primary') {
-                // Active-model writes — PRIMARY only. Federated meshes already
-                // carry colours (applied during streaming) and their coordinate
-                // info rides the geometryResult handed to addModel at finalize.
+                // Finalize the primary slot; federated geometry is published by addModel.
                 if (cumulativeColorUpdates.size > 0) {
                   updateMeshColors(cumulativeColorUpdates);
                 }
+                // Empty models still need the exact producer metadata for authoring.
+                if (!useViewerStore.getState().geometryResult && finalCoordinateInfo) appendGeometryBatch(modelId, [], finalCoordinateInfo);
                 updateCoordinateInfo(finalCoordinateInfo);
                 // #924 compare parity: the streamed geometryResult holds flat
                 // meshes only, so fold the instanced-only entity hashes onto it

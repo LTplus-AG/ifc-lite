@@ -61,13 +61,14 @@ beforeEach(async () => {
   // exact real worker core and releases its own API deterministically.
   setRemeshClientFactory(async config => {
     const api = new IfcAPI();
+    let alive = true;
     applyRemeshConfig(api, config);
     return {
-      alive: true,
+      get alive() { return alive; },
       remesh: async request => { remeshCalls++; return remeshOnApi(api, request); },
       styleWire: async buffer => styleWireOnApi(api, buffer),
       setConfig: next => applyRemeshConfig(api, next),
-      dispose() { this.alive = false; api.free(); },
+      dispose() { alive = false; api.free(); },
     };
   });
   container = document.createElement('div');
@@ -131,7 +132,7 @@ describe('canonical blank file → author → real WASM remesh (#6232)', () => {
       const store = await new IfcParser().parseColumnar(await blankFile(unit).arrayBuffer(), { disableWorkerScan: true });
       const project = store.entityIndex.byType.get('IFCPROJECT')?.[0];
       assert.ok(project);
-      const bytes = serializeEntitySubgraph(store, null, { targets: [project] }).bytes;
+      const bytes = serializeEntitySubgraph(store, null, { targets: new Set([project]) }).bytes;
       const events: Array<Record<string, unknown>> = [];
       const api = new IfcAPI();
       try {

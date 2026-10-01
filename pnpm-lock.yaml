@@ -1849,6 +1849,9 @@ importers:
       '@types/n3':
         specifier: ^1.26.1
         version: 1.26.4
+      '@types/node':
+        specifier: ^26.6.2
+        version: 26.6.2
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -10835,7 +10838,7 @@ snapshots:
   rdf-dataset-ext@1.1.0:
     dependencies:
       rdf-canonize: 3.4.0
-      readable-stream: 3.6.2
+      readable-stream: 4.7.0
 
   rdf-literal@2.0.0:
     dependencies:

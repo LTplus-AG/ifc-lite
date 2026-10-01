@@ -47,6 +47,7 @@
   "packages/rules": 0,
   "packages/sandbox": 1,
   "packages/sdk": 11,
+  "packages/semantic": 0,
   "packages/server-bin": 2,
   "packages/server-client": 1,
   "packages/solar": 1,

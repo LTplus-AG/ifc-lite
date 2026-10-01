@@ -93,3 +93,11 @@ if (sandbox.moduleRetired) {
 ## License
 
 MPL-2.0
+
+The `@ifc-lite/sandbox/network` entry point exposes the same capability-gated
+`coreNetworkRequest` and `FetchTransport` types for hosts that need network
+access without importing the QuickJS bridge. It enforces HTTPS, explicit host
+capabilities, bounded streamed responses, cancellation and refused redirects.
+Host adapters should call `coreNetworkRequest`; `executeUngatedRequest` is a
+low-level transport primitive for controlled test servers and has no host grant
+check.

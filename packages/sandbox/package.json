@@ -14,6 +14,10 @@
     "./schema": {
       "import": "./dist/bridge-schema.js",
       "types": "./dist/bridge-schema.d.ts"
+    },
+    "./network": {
+      "types": "./dist/network-request.d.ts",
+      "import": "./dist/network-request.js"
     }
   },
   "scripts": {

@@ -373,8 +373,8 @@ describe('Saved comparison chart source (#6549)', () => {
         topics: input.topics, tables: input.tables }, seams);
       assert.ok(documentPdfWarnings(legacyResult).some((warning) => warning.includes('Legacy selector refused')), 'old callers without classification retain message-to-failure behavior');
       const refused: DocumentSpec = { ...document, blocks: [
-        { ...block, id: 'filter-refused', chart: { ...chart(), title: 'Refused live filter', source: 'elements', dimension: 'Type', filter: { selector: 'not-an-ifc-selector()' } } },
-        { ...block, id: 'column-refused', chart: { ...chart(), title: 'Refused column', source: 'elements', dimension: 'MissingDimension' } },
+        { ...block, id: 'filter-refused', snapshot: false, chart: { ...chart(), title: 'Refused live filter', source: 'elements', dimension: 'Type', filter: { selector: 'not-an-ifc-selector()' } } },
+        { ...block, id: 'column-refused', snapshot: false, chart: { ...chart(), title: 'Refused column', source: 'elements', dimension: 'MissingDimension' } },
       ] };
       const refusedInput = await prepareDocument(refused, state);
       const refusedResult = await exportPreparedDocument(refusedInput, { seams });

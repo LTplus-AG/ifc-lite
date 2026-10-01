@@ -1,0 +1,10 @@
+--- a/apps/viewer/src/lib/section/alignment-controller.ts
++++ b/apps/viewer/src/lib/section/alignment-controller.ts
+@@ -137,6 +137,7 @@
+   const binding = useViewerStore.getState().sectionPlane.custom?.alignment;
+   if (!client || !binding || !owner || owner.modelId !== binding.modelId || owner.expressId !== binding.expressId
+     || !Number.isFinite(distance)) return;
++  if (useAlignmentToolState.getState().busy) { queuedDistance = distance; return; }
+   const version = generation;
+   const sequence = ++request;
+   try {

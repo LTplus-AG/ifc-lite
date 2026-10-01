@@ -46,3 +46,5 @@ open acknowledgment. Forcing same-owner reopening to enable the cut fails the
 disabled-Cut invariant. Both restore to a passing controller suite. The station
 RPC-count assertion precedes awaiting its promise, so the first defect is detected
 without waiting for the request timeout.
+
+[Supported reverse patches and verdicts](./mutation-proofs.json) retain every changed test seam and verified restoration; they replace the whole-feature compiler failure, under the [maintainer’s documented exemption](https://github.com/LTplus-AG/ifc-lite/pull/6609#issuecomment-5929292510).

@@ -1,0 +1,42 @@
+<svg width="515.28" height="220" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" baseProfile="full" viewBox="0 0 515.28 220">
+<rect width="515.28" height="220" x="0" y="0" fill="none"></rect>
+<path d="M27.8 200.5L507.3 200.5" fill="none" pointer-events="visible" stroke="#e5e7eb" class="zr9-cls-33"></path>
+<path d="M27.8 162.5L507.3 162.5" fill="none" pointer-events="visible" stroke="#e5e7eb" class="zr9-cls-33"></path>
+<path d="M27.8 125.5L507.3 125.5" fill="none" pointer-events="visible" stroke="#e5e7eb" class="zr9-cls-33"></path>
+<path d="M27.8 87.5L507.3 87.5" fill="none" pointer-events="visible" stroke="#e5e7eb" class="zr9-cls-33"></path>
+<path d="M27.8 49.5L507.3 49.5" fill="none" pointer-events="visible" stroke="#e5e7eb" class="zr9-cls-33"></path>
+<path d="M27.8 12.5L507.3 12.5" fill="none" pointer-events="visible" stroke="#e5e7eb" class="zr9-cls-33"></path>
+<path d="M27.8 200.5L507.3 200.5" fill="none" pointer-events="visible" stroke="#9ca3af" stroke-linecap="round" class="zr9-cls-33"></path>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:Helvetica, Arial, sans-serif;" transform="translate(19.8 200)" fill="#6b7280">0</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:Helvetica, Arial, sans-serif;" transform="translate(19.8 162.4)" fill="#6b7280">0.2</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:Helvetica, Arial, sans-serif;" transform="translate(19.8 124.8)" fill="#6b7280">0.4</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:Helvetica, Arial, sans-serif;" transform="translate(19.8 87.2)" fill="#6b7280">0.6</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:Helvetica, Arial, sans-serif;" transform="translate(19.8 49.6)" fill="#6b7280">0.8</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:Helvetica, Arial, sans-serif;" transform="translate(19.8 12)" fill="#6b7280">1</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:12px;font-family:Helvetica, Arial, sans-serif;" y="6" transform="translate(107.7133 208)" fill="#6b7280">added</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:12px;font-family:Helvetica, Arial, sans-serif;" y="6" transform="translate(267.54 208)" fill="#6b7280">deleted</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:12px;font-family:Helvetica, Arial, sans-serif;" y="6" transform="translate(427.3667 208)" fill="#6b7280">modified</text>
+<path d="M52.6 200l110.3 0l0 -188l-110.3 0Z" fill="#E53935" ecmeta_series_index="0" ecmeta_data_index="0" ecmeta_ssr_type="chart" class="zr9-cls-34"></path>
+<path d="M212.4 200l110.3 0l0 -188l-110.3 0Z" fill="#1E88E5" ecmeta_series_index="0" ecmeta_data_index="1" ecmeta_ssr_type="chart" class="zr9-cls-35"></path>
+<path d="M372.2 200l110.3 0l0 -188l-110.3 0Z" fill="#FDD835" ecmeta_series_index="0" ecmeta_data_index="2" ecmeta_ssr_type="chart" class="zr9-cls-36"></path>
+<style ><![CDATA[
+.zr9-cls-33:hover {
+pointer-events:none;
+}
+.zr9-cls-34:hover {
+cursor:pointer;
+fill:rgba(251,62,58,1);
+}
+.zr9-cls-35:hover {
+cursor:pointer;
+fill:rgba(33,149,251,1);
+}
+.zr9-cls-36:hover {
+cursor:pointer;
+fill:rgba(255,237,58,1);
+}
+
+]]>
+
+</style>
+</svg>

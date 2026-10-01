@@ -199,13 +199,18 @@ describe('Saved comparison chart source (#6549)', () => {
     const save = [...ui.querySelectorAll('button')].find((button) => button.textContent === 'Save chart'); assert.ok(save?.disabled);
   });
 
-  it('invalidates the dataset fingerprint for an actual replacement report with the same history ID, while rename preserves data', async () => {
+  it('preserves immutable saved evidence and invalidates the dataset after explicit deletion and same-ID replacement, while rename preserves data', async () => {
     const spec = { ...chart(), comparisonId: saved[0].id };
     let data: DocumentData | undefined;
     const ui = render(<DocumentProbe document={documentFor(spec)} observe={(value) => { data = value; }} />); await settle();
     const first = data?.aggregations.get('recorded-block'); assert.ok(first);
     act(() => { assert.equal(useViewerStore.getState().renameSavedComparison(saved[0].id, 'Renamed saved source'), true); }); await settle();
     assert.equal(data?.aggregations.get('recorded-block')?.dataFingerprint, first.dataFingerprint); assert.match(ui.textContent ?? '', /Renamed saved source/);
+    act(() => { assert.equal(useViewerStore.getState().saveComparison({ ...saved[1], id: saved[0].id }), false, 'existing immutable evidence cannot be silently replaced'); }); await settle();
+    assert.equal(data?.aggregations.get('recorded-block')?.dataFingerprint, first.dataFingerprint);
+    act(() => { assert.equal(useViewerStore.getState().deleteSavedComparison(saved[0].id), true); }); await settle();
+    assert.equal(data?.aggregations.get('recorded-block')?.total, 0);
+    assert.match(ui.textContent ?? '', /Saved comparison unavailable/);
     act(() => { assert.equal(useViewerStore.getState().saveComparison({ ...saved[1], id: saved[0].id }), true); }); await settle();
     const replaced = data?.aggregations.get('recorded-block'); assert.ok(replaced);
     assert.notEqual(replaced.dataFingerprint, first.dataFingerprint); assert.equal(replaced.total, saved[1].report.rows.length);
@@ -359,7 +364,9 @@ describe('Saved comparison chart source (#6549)', () => {
         capture: async () => { captures++; assert.fail('recorded prepared documents cannot capture unrelated live entities'); } };
       const result = await exportPreparedDocument(input, { seams });
       const printed = await pdfText(result.blob);
-      assert.match(printed, /added/); assert.match(printed, /deleted/); assert.match(printed, /Explicit chart test revision C wall/);
+      // The actual table truncates long Name cells; its distinct authored prefix
+      // still proves the mapped B→C evidence accompanies the separate A→B chart.
+      assert.match(printed, /added/); assert.match(printed, /deleted/); assert.match(printed, /Explicit chart test revision C/);
       assert.equal(captures, 0); assert.deepEqual(documentPdfWarnings(result), []);
       const noModels = await prepareDocument(document, { ...state, models: new Map(), activeModelId: null, compareResult: null });
       assert.equal(noModels.aggregations.get(block.id)?.total, saved[0].report.rows.length);

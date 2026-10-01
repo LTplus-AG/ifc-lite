@@ -910,6 +910,9 @@ importers:
       '@ifc-lite/sdk':
         specifier: workspace:^
         version: link:../sdk
+      '@ifc-lite/semantic':
+        specifier: workspace:^
+        version: link:../semantic
       '@ifc-lite/viewer-core':
         specifier: workspace:^
         version: link:../viewer

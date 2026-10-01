@@ -9151,6 +9151,12 @@
     "validateLinks: function",
     "vocabularyTurtle: function"
   ],
+  "@ifc-lite/semantic/server": [
+    "RelayOptions: interface",
+    "RelayProvider: interface",
+    "createSemanticRelay: function",
+    "createSemanticRelayServer: function"
+  ],
   "@ifc-lite/server-bin": [
     "Arch: type",
     "Platform: type",

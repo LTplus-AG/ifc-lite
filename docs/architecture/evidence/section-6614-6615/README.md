@@ -28,6 +28,22 @@ Automated tests cover sheet composition, Print/SVG mapping, export cancellation/
 
 ## Validation results
 
+The implementation is merged in [#6626](https://github.com/LTplus-AG/ifc-lite/pull/6626),
+[#6627](https://github.com/LTplus-AG/ifc-lite/pull/6627),
+[#6630](https://github.com/LTplus-AG/ifc-lite/pull/6630) and
+[#6631](https://github.com/LTplus-AG/ifc-lite/pull/6631). Both issues are closed.
+The final submitted head `4e22db33ea01ba4cf852a981b1a02410e4b8ff9f` passed
+[the full Test workflow](https://github.com/LTplus-AG/ifc-lite/actions/runs/36895999269),
+including all eight viewer shards, both viewer E2E smoke lanes, Node tests,
+lint, typecheck, provenance, the production-revert oracle and the WASM build.
+All four required checks passed before the final admin merge; no review threads
+remained unresolved. Optional review providers hit quota limits, and independent
+reviews checked the implementation and latest-main integration.
+Exact final-head isolated root typecheck on Node 22.14 covered 3,212 test files
+across 56 packages. These automated results do not extend the manual acceptance
+claims above. The local runs below are historical observations, including their
+documented failures, rather than the final CI verdict.
+
 - Integration-source root `pnpm typecheck`: 109 tasks green; all 3,203 test files covered by the typecheck audit.
 - After restacking onto main, isolated final candidate `e27f90cf55106752fcd284f77e531285daf62e5b` passed root typecheck (109 tasks; 3,205 test files across 56 packages) and sequential root lint. This source-gate run used Node 26.7.0 and pnpm 10.8.1; pnpm warned that the supported engines are Node 22/24. It is not a supported-runtime browser or timing-test claim. CI builds the current WASM and runs the supported-runtime test lanes before each merge.
 - Updated multiline-bounds candidate `ff910c8e925414cd0aa2bf5379cafb4aa43c08a7` passed isolated root typecheck (109 tasks; 3,205 test files) and sequential root lint on supported Node 22.14.0 / pnpm 10.8.1. The DXF layer independently passed the same gates on Node 22. Multiline bounds tests pass 3/3 and reference export tests 8/8; canvas, bounds, SVG, PDF and DXF share the line-spacing factor.

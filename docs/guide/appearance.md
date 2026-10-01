@@ -108,7 +108,7 @@ and scan-derived building geometry remain separate operations in the implementat
 
 ## Drawing references in 2D and 3D
 
-The Drawing panel's **Underlays → Import PDF/image reference…** opens this same
+The Drawing panel's **Underlays → Import PDF/image...** opens this same
 workflow with reference intent and the current cardinal section plane suggested.
 It does not change IFC surface appearance. Choose the source, calibrate it, then
 explicitly place the reference; the Underlays list controls the resulting

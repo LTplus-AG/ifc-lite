@@ -6,7 +6,7 @@ Issues: [#6614 — Zooming](https://github.com/LTplus-AG/ifc-lite/issues/6614) a
 
 ## Findings and scope
 
-| Request | Current behavior | Work required |
+| Request | Hosted-baseline behavior | Work required at baseline |
 | --- | --- | --- |
 | Less sensitive 2D zoom; Ctrl+scroll like 3D | Every wheel event changes scale by a fixed 10%; magnitude and modifiers are ignored | Delta-based zoom, fine modifier, gesture routing and zero-delta handling |
 | Nearby background geometry in section | Cardinal projection exists, including hidden-line classification; vertical depth is half the model extent | User-controlled depth and independent visual verification of wall/window projection |
@@ -75,7 +75,7 @@ Zoom around the pointer in the drawing container's CSS coordinates. Preserve the
 
 ### Product behavior
 
-The Projection control opens settings with an enable toggle and **View depth behind cut**: Auto or a finite non-negative distance in the selected display unit. Store manual distance canonically in metres. Auto preserves current behavior: vertical half-extent, existing plan storey scoping. Manual zero means cut geometry only; manual depth is not a model percentage and must not change when a distant federated model is added.
+The Projection control opens settings with an enable toggle and **View depth behind cut**: Auto or a finite non-negative distance in the selected display unit. Store manual distance canonically in metres. Auto preserves current behavior: vertical half-extent, existing plan storey scoping. Manual zero removes the background band while retaining the cut and the plan's separate overhead band; manual depth is not a model percentage and must not change when a distant federated model is added.
 
 For Front/Side, project only the retained background half-space within the requested depth. The removed foreground must not appear. Flip reverses the physical retained side and continues measuring “behind” in viewing coordinates. A segment crossing the far-depth boundary is clipped to the band, not admitted whole merely because its mesh bounding box overlaps. Geometry crossing the cut still contributes its true cut.
 
@@ -138,7 +138,7 @@ If a generic planar-reference placement type is introduced, put it alongside the
 
 ### Product behavior
 
-Underlays offers **Import PDF/image reference…** alongside DXF and lists registered raster references relevant to the current drawing. Open the existing Appearance reference workflow with reference intent and the current cardinal plane suggested: Down→IFC XY, Front→IFC XZ, Side→IFC YZ. Use existing source upload, page/crop/rotation/quality, two-point calibration, IFC-world placement, locking, opacity and Undo/Redo. Explicit confirmation commits registration; opening an import dialog does not change IFC appearance.
+Underlays offers **Import PDF/image...** alongside DXF and lists registered raster references relevant to the current drawing. Open the existing Appearance reference workflow with reference intent and the current cardinal plane suggested: Down→IFC XY, Front→IFC XZ, Side→IFC YZ. Use existing source upload, page/crop/rotation/quality, two-point calibration, IFC-world placement, locking, opacity and Undo/Redo. Explicit confirmation commits registration; opening an import dialog does not change IFC appearance.
 
 One selected PDF page creates one registered reference. Page count and page identity are visible. Calibration describes measured model distance, independently of paper dimensions, DPI, CropBox, UserUnit and page rotation. Invalid or coincident landmarks block placement. Changing a source page invalidates its draft calibration and does not repaint a committed reference. A later quality-only raster change preserves native document landmarks.
 
@@ -182,7 +182,7 @@ Implement the navigation fix first and deliver it against #6614. Build #6615 in 
 ### Decisions for implementation
 
 - Use the proposed wheel normalization and exponential sensitivity above as the initial behavior. Preserve existing navigation presets and physically held Ctrl/Cmd fine zoom. Physical-device feedback can tune the constant without changing gesture semantics.
-- Represent projection depth as a viewer-owned discriminated choice, Auto or Manual with a finite distance in metres. Missing persisted values select Auto. Manual zero disables all construction projection, including plan overhead; positive manual plan depth replaces only the retained-side band. This makes the earlier “cut geometry only” requirement explicit.
+- Represent projection depth as a viewer-owned discriminated choice, Auto or Manual with a finite distance in metres. Missing persisted values select Auto. Manual zero removes the retained-side background band while keeping the plan overhead convention; positive manual plan depth extends only the retained-side band. This matches the implemented depth policy.
 - Preserve the existing Projection click toggle and add a settings affordance beside it or in the compact menu. Do not turn one-click toggling into an obligatory dialog. Commit valid depth changes through the same options update action.
 - Give DXF entries explicit site-plan or plane-reference placement. A plane reference owns a frozen IFC Z-up origin, orthonormal U/V basis and frame identity. Existing DXF entries migrate to site-plan; their coordinate and georeference semantics do not change.
 - Keep PDF/image references in `appearanceReferences`, with existing assets, calibration and history. Underlays reads and controls those records. Do not convert them into DXF state or introduce another registry.

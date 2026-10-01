@@ -48,7 +48,9 @@ Enable **Projection** to show geometry beyond the section cut, then open its
 settings button. **Auto** uses the existing model and floor/ceiling bands.
 Turn Auto off to enter a finite background depth in the selected display length
 unit. The setting is stored in metres and remembered with the drawing options.
-Zero keeps the section cut without background projection. Negative or non-finite
+Zero removes background projection while keeping the cut; Down plan views retain
+their separate overhead band. Flipping the section reverses the viewed side, and
+depth is still measured behind the cut. Negative or non-finite
 input does not replace the last valid setting.
 
 Manual depth clips triangles and edges at the depth boundary before creating
@@ -311,14 +313,25 @@ Drawing panels.
 
 ### DXF and PDF/Image Underlays
 
-Open **Underlays** to import DXF. Choose **Site plan** for CAD coordinates in IFC
+Open **Underlays → Import DXF...** to import DXF. Choose **Site plan (horizontal)** for CAD coordinates in IFC
 XY or map coordinates, or **Reference on current section** for a plan/elevation registered
 on the current Down, Front or Side plane. Vertical sections initially suggest
-**Reference on current section**. Choose explicit units when the file has no declared units;
+**Reference on current section**. The suggestion follows section changes until you
+choose a mode explicitly; your choice then remains selected. Dropping a DXF onto
+the viewport or opening it through the general file picker imports a site plan,
+so use the Underlays picker for elevation references.
+
+Choose explicit units when the file has no declared units;
 automatic import uses a known DXF unit header. Drawing references with missing
 or unknown unit declarations request an explicit unit before registration; site
 plans retain the existing unitless-file heuristic. Unit conversion runs once,
 independently of placement scale.
+
+For site plans, **Align to model georeference** maps survey/map coordinates into
+the model's local frame. Its automatic setting follows the anchor model's usable
+georeference; clicking pins the setting. Turn it off for CAD already drawn in
+local model coordinates, and on for map-coordinate surveys. The unitless
+millimetre-inference path leaves alignment off; check coordinates as well as units.
 
 A drawing reference freezes its IFC world origin and two in-plane axes when
 import starts. Moving a parallel section does not move the reference; flipping
@@ -335,13 +348,15 @@ layer controls apply in compatible 2D views. The independent 3D visibility
 control puts vector paths on their registered plane. The 3D overlay currently
 shows paths without hatches/text and uses opacity as an on/off gate.
 
-**Import PDF/image reference…** opens the existing Appearance reference workflow
+**Import PDF/image...** opens the existing Appearance reference workflow
 with the current cardinal plane suggested: Down uses IFC XY, Front uses IFC XZ,
 and Side uses IFC YZ. Choose the source or PDF page, calibrate a known distance,
 then explicitly place the reference. Underlays lists the committed raster
 references with visibility, opacity, locking and removal controls. See
 [Drawing references in 2D and 3D](appearance.md#drawing-references-in-2d-and-3d)
 for calibration, editing and registration persistence.
+This entry requires a generated cardinal drawing. It is unavailable on a custom
+plane; already registered rasters can still be viewed and exported there.
 
 Visible compatible references expand Fit and sheet bounds, including drawings
 with no cut polygons. SVG, PDF and Print include the mapped DXF vectors and
@@ -356,6 +371,35 @@ cannot embed the PDF/image raster references in this workflow, so the export
 menu lists their omission before continuing. PDF and DXF still report visible
 markup omissions. When a sheet is active, its scale governs PDF export and the
 dialog explains why the scale cannot be changed there.
+
+### Choosing a drawing export
+
+| Output | Section geometry | Visible DXF references | Committed PDF/image references | Scale and coordinates |
+| --- | --- | --- | --- | --- |
+| SVG | Vector | Mapped vectors | Embedded raster images | Drawing or active sheet layout |
+| PDF without a sheet | Vector strokes | Mapped vectors | Raster images beneath geometry | Chosen drawing scale; page fits the drawing |
+| PDF with a sheet | Rasterized sheet | Included in the sheet image | Included in the sheet image | Active sheet scale and paper size |
+| Print | Drawing/sheet SVG sent to the browser | Mapped vectors | Embedded raster images | Check the browser's paper size and scaling |
+| DXF R12 | Vector | Mapped vectors on export layers | Omitted, with confirmation | Metres; Down plans can use model/map coordinates, vertical sections use local section coordinates |
+
+Only visible, compatible references are included. DXF layer visibility and raster
+opacity follow the displayed drawing. Exporting a drawing does not embed workspace
+registration recipes into IFC; see [reference sharing and persistence](appearance.md#drawing-references-in-2d-and-3d).
+
+### Troubleshooting section references
+
+| Symptom | Check |
+| --- | --- |
+| DXF import requests units | Select the source units under **DXF units**, then import again. Placement scale does not replace unit conversion. |
+| Reference disappears after changing the section | Check visibility and the registered plane. An edge-on reference has no projected area; return to a parallel section. A reference from another engineering frame needs registration in the current frame. |
+| **Center on model** is disabled | Wait for a generated section with finite model geometry, and use a compatible reference plane. Reference-only bounds cannot supply a model center. |
+| PDF appears in Appearance but not Underlays | Finish calibration and click **Place reference**. Choosing a source or previewing it does not commit a workspace reference. |
+| Background edges remain at depth zero in Down | The plan's separate overhead band remains. Manual depth controls the background band. |
+| Zoom changes but the PDF scale does not | Canvas zoom is a viewing control. Choose the PDF scale, or change the active sheet scale. |
+| Raster reference is missing after importing registration JSON | Relink the exact original raster. Registration JSON contains placement and digests, not image bytes. |
+
+For source provenance, inspected downloads and the limits of the browser tests,
+see the [section validation evidence](../architecture/evidence/section-6614-6615/README.md).
 
 ### Annotation Tools
 

@@ -249,7 +249,7 @@ it('keeps blank text and missing topics accessible and selectable without changi
     chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={id => selections.push(id)} />));
   await ready();
   const empty = container.querySelector('[data-preview-block="empty"]'); assert.ok(empty); assert.match(empty.textContent ?? '', /\(empty\)/);
-  const missing = container.querySelector('[data-preview-block="missing"][data-unresolved]'); assert.ok(missing);
+  const missing = container.querySelector<HTMLElement>('[data-preview-block="missing"][data-unresolved]'); assert.ok(missing);
   assert.match(missing.textContent ?? '', /BCF topic deleted-topic: not among the loaded topics/);
   click(empty); activate(missing, 'Enter'); assert.deepEqual(selections, ['empty', 'missing']);
 });

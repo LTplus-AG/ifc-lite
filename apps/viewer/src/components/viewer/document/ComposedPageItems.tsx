@@ -150,7 +150,7 @@ export function ComposedPageItems(props: ComposedPageItemsProps) {
       right: Math.max(acc.right, box.x + box.w), bottom: Math.max(acc.bottom, box.y + box.h),
     }), { x: Infinity, y: Infinity, right: -Infinity, bottom: -Infinity });
     const box = { x: bounds.x, y: bounds.y, w: bounds.right - bounds.x, h: bounds.bottom - bounds.y };
-    const lastText = value.items.findLastIndex(item => item.kind === 'text');
+    const lastText = value.items.reduce((last, item, index) => item.kind === 'text' ? index : last, -1);
     return (
       // The selectable region contains images, text and tables, so it cannot be a native button.
       // eslint-disable-next-line jsx-a11y/prefer-tag-over-role

@@ -11,7 +11,7 @@ let AxisConstructor: typeof import('@ifc-lite/wasm').AlignmentAxisJs;
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { act } from 'react';
-import { render, cleanup, click, advance } from '@/test/render';
+import { render, cleanup, click, advance, press } from '@/test/render';
 import { ViewportHud } from '@/components/viewport-ui/hud/ViewportHud';
 import { ToolOverlays } from '@/components/viewer/ToolOverlays';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
@@ -98,12 +98,25 @@ test('real alignment binding survives unrelated updates, detaches on drag, reacq
     assert.equal(cut.custom?.alignment?.geometricHorizontalDistanceMeters, 5);
     const view = new MutablePropertyView(ds.properties ?? null, 'owner');
     configureMutationView(view, ds); view.setAttribute(20, 'Name', 'Edited alignment', 'Road');
-    useViewerStore.setState({ mutationViews: new Map([['owner', view]]), mutationVersion: state.mutationVersion + 1 });
-    const edited = AxisWorker.instances.at(-1); assert.ok(edited); edited.flush();
+    state.toggleSectionPlane();
+    assert.equal(useViewerStore.getState().sectionPlane.enabled, false);
+    const pendingUi = render(<><ViewportHud /><SectionToolbar /></>);
+    act(() => useViewerStore.setState({ mutationViews: new Map([['owner', view]]), mutationVersion: state.mutationVersion + 1 }));
+    const edited = AxisWorker.instances.at(-1); assert.ok(edited);
+    const distanceField = pendingUi.querySelector<HTMLElement>('[role="spinbutton"][aria-label="Horizontal distance from start"]');
+    assert.ok(distanceField); assert.equal(distanceField.getAttribute('aria-disabled'), 'true');
+    await setAlignmentDistance(6);
+    press(distanceField, 'ArrowUp');
+    assert.equal(edited.queued.length, 1, 'no station RPC can overtake the pending open');
+    edited.flush();
     await new Promise<void>(resolve => setTimeout(resolve, 0)); edited.flush();
     await new Promise<void>(resolve => setTimeout(resolve, 0));
     assert.equal(useAlignmentToolState.getState().metadata?.Name, 'Edited alignment');
-    assert.equal(useViewerStore.getState().sectionPlane.custom?.alignment?.geometricHorizontalDistanceMeters, 5);
+    assert.equal(useViewerStore.getState().sectionPlane.custom?.alignment?.geometricHorizontalDistanceMeters, 6);
+    assert.equal(useViewerStore.getState().sectionPlane.enabled, false, 'source edits preserve the Cut toggle');
+    assert.equal(useAlignmentToolState.getState().error, undefined);
+    assert.equal(distanceField.getAttribute('aria-disabled'), null);
+    cleanup();
     assert.equal(worker.frees, 1);
     cut = useViewerStore.getState().sectionPlane;
     state.setSectionCustomDistance((cut.custom?.distance ?? 0) + 2);
@@ -134,7 +147,7 @@ test('real alignment binding survives unrelated updates, detaches on drag, reacq
     assert.deepEqual(useViewerStore.getState().sectionPlane.custom?.pickedAt, beforeClose?.pickedAt);
     assert.equal(useViewerStore.getState().sectionPlane.custom?.alignment, undefined);
     assert.equal(finalWorker.frees, 1); assert.equal(finalWorker.terminations, 1);
-  } finally { stop(); globalThis.Worker = originalWorker; useViewerStore.setState(state, true); }
+  } finally { cleanup(); stop(); globalThis.Worker = originalWorker; useViewerStore.setState(state, true); }
 });
 
 

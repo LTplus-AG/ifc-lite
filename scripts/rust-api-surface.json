@@ -643,6 +643,7 @@
     "ifc_lite_parse_ex": "fn"
   },
   "ifc-lite-wasm": {
+    "AlignmentAxisJs": "struct {  }",
     "IfcAPI": "struct {  }",
     "MeshCollection": "struct {  }",
     "MeshDataJs": "struct {  }",

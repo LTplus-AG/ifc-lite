@@ -96,6 +96,7 @@ export function SectionToolbar() {
   const setSectionBox = useViewerStore((s) => s.setSectionBox);
   const hasSelection = useViewerStore((s) => s.selectedEntityId !== null || s.selectedEntityIds.size > 0);
   const distance = useSectionDistance();
+  const alignmentBusy = useAlignmentToolState(s => s.busy);
   const alignmentChoosing = useAlignmentToolState(s => s.choosing);
 
   const isCustom = sectionPlane.custom !== undefined;
@@ -233,6 +234,7 @@ export function SectionToolbar() {
         icon={<FlipHorizontal2 aria-hidden className="h-3.5 w-3.5" />}
       />
       <HudValueField
+        disabled={alignmentBusy}
         value={distance.value}
         onChange={distance.onChange}
         unit={unit}

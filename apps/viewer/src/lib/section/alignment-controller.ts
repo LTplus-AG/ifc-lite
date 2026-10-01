@@ -28,6 +28,7 @@ export const useAlignmentToolState = create<AlignmentToolState>(() => ({ choosin
 let client: AlignmentClient | undefined;
 let generation = 0;
 let request = 0;
+let queuedDistance: number | undefined;
 let lastSample: AlignmentSectionSample | undefined;
 let owner: { modelId: string; expressId: number; store: unknown; mutationVersion: number; distance: number } | undefined;
 let unsubscribe: (() => void) | undefined;
@@ -58,7 +59,7 @@ function apply(sample: AlignmentSectionSample, binding: AlignmentSectionBinding,
 }
 
 export function closeAlignmentEvaluator(): void {
-  ++generation; ++request;
+  ++generation; ++request; queuedDistance = undefined;
   client?.close(); client = undefined; owner = undefined; lastSample = undefined;
   useAlignmentToolState.setState({ busy: false, metadata: undefined });
 }
@@ -91,6 +92,8 @@ function fail(error: unknown): void {
 }
 
 export async function bindAlignment(modelId: string, expressId: number, distance = 0): Promise<void> {
+  const previousBinding = useViewerStore.getState().sectionPlane.custom?.alignment;
+  const initial = previousBinding?.modelId !== modelId || previousBinding.expressId !== expressId;
   closeAlignmentEvaluator();
   const version = generation;
   useAlignmentToolState.setState({ choosing: true, busy: true, error: undefined });
@@ -113,18 +116,28 @@ export async function bindAlignment(modelId: string, expressId: number, distance
     client = new AlignmentClient();
     const opened = await client.request({ kind: 'open', source, expressId });
     if (version !== generation) return;
-    const evaluated = distance === 0 ? opened : await client.request({ kind: 'evaluate', distance });
+    let target = queuedDistance ?? distance; queuedDistance = undefined;
+    let evaluated = target === 0 ? opened : await client.request({ kind: 'evaluate', distance: target });
     if (version !== generation) return;
+    // Reopening after a source edit is not yet ready for station RPCs. Keep
+    // only the latest intent, and evaluate it once the retained axis is open.
+    while (queuedDistance !== undefined) {
+      target = queuedDistance; queuedDistance = undefined;
+      evaluated = await client.request({ kind: 'evaluate', distance: target });
+      if (version !== generation) return;
+    }
     useAlignmentToolState.setState({ metadata: opened.metadata, choosing: false, busy: false });
     apply(evaluated.sample, { modelId, expressId,
       geometricHorizontalDistanceMeters: evaluated.sample.geometricHorizontalDistanceMeters,
-      geometricHorizontalLengthMeters: opened.metadata.geometricHorizontalLengthMeters }, true);
+      geometricHorizontalLengthMeters: opened.metadata.geometricHorizontalLengthMeters }, initial);
   } catch (error) { if (version === generation) fail(error); }
 }
 
 export async function setAlignmentDistance(distance: number): Promise<void> {
   const binding = useViewerStore.getState().sectionPlane.custom?.alignment;
-  if (!client || !binding || !Number.isFinite(distance)) return;
+  if (!client || !binding || !owner || owner.modelId !== binding.modelId || owner.expressId !== binding.expressId
+    || !Number.isFinite(distance)) return;
+  if (useAlignmentToolState.getState().busy) { queuedDistance = distance; return; }
   const version = generation;
   const sequence = ++request;
   try {

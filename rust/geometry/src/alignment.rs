@@ -841,6 +841,11 @@ fn parse_vertical(
                     seg_id,
                 ))
             })?;
+            if strict && (!parabola_constant.is_finite() || parabola_constant <= 0.0) {
+                return Err(Error::geometry(format!(
+                    "ParabolicVerSeg #{} has invalid ParabolaConstant", seg_id
+                )));
+            }
             let is_convex = read_bool(seg.get(8));
             VSeg::Parabolic {
                 start,
@@ -855,6 +860,11 @@ fn parse_vertical(
             let radius = seg.get_float(7).ok_or_else(|| {
                 Error::geometry(format!("CircularVerSeg #{} missing Radius", seg_id))
             })?;
+            if strict && (!radius.is_finite() || radius <= 0.0) {
+                return Err(Error::geometry(format!(
+                    "CircularVerSeg #{} has invalid Radius", seg_id
+                )));
+            }
             let is_convex = read_bool(seg.get(8));
             VSeg::CircularArc {
                 start,

@@ -228,7 +228,11 @@ pub use processors::{
 };
 pub use alignment::{AlignmentCurve, AlignmentFrame};
 pub use alignment_axis::locate_axis_curve;
-pub use alignment_sampling::{sample_alignment_axes, AlignmentAxis, AlignmentSample, AlignmentSamplingOptions, AlignmentSamplingReport};
+pub use alignment_sampling::{
+    sample_alignment_axes, AlignmentAxis, AlignmentSample, AlignmentSamplingDiagnostic,
+    AlignmentSamplingDiagnosticCode, AlignmentSamplingOptions, AlignmentSamplingReport,
+    SampledAlignmentAxis,
+};
 pub use analytic::{
     extract_analytic_extrusion, extract_analytic_profile, extract_swept_disk,
     AnalyticCurveSegment, AnalyticExtrusion, AnalyticProfile, AnalyticProfileLoop,

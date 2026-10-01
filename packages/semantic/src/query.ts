@@ -38,12 +38,13 @@ function boundedRelatedQuery(selector: string, count: number, limit: number): st
 export function relatedResourceQuery(ids: readonly string[], limit: number = LIMITS.rows): string {
   ids.forEach(assertIri);
   const unique = [...new Set(ids)];
-  return boundedRelatedQuery(`VALUES ?resource { ${unique.map(id => `<${id}>`).join(' ')} }`, ids.length, limit);
+  return boundedRelatedQuery(`VALUES ?resource { ${unique.map(id => `<${id}>`).join(' ')} }`, unique.length, limit);
 }
 /** Discover subjects by an explicit identity predicate, preserving the same bounded adjacency query. */
 export function relatedIdentityQuery(predicate: string, identities: readonly string[], limit: number = LIMITS.rows): string {
   assertIri(predicate);
   if (identities.some(value => typeof value !== 'string')) throw new Error('Identity query values must be strings');
-  const values = [...new Set(identities)].map(value => JSON.stringify(value)).join(' ');
-  return boundedRelatedQuery(`VALUES ?identity { ${values} } ?resource <${predicate}> ?identity .`, identities.length, limit);
+  const unique = [...new Set(identities)];
+  const values = unique.map(value => JSON.stringify(value)).join(' ');
+  return boundedRelatedQuery(`VALUES ?identity { ${values} } ?resource <${predicate}> ?identity .`, unique.length, limit);
 }

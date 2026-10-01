@@ -16,6 +16,17 @@ export type ProviderResult = { source: string; retrievedAt: string } & (
   | { kind: 'json'; value: unknown } | { kind: 'select'; value: SparqlResults }
   | { kind: 'construct'; value: string; format: 'text/turtle'; quadCount: number });
 export interface SemanticProvider { read(options: ProviderReadOptions, signal?: AbortSignal): Promise<ProviderResult> }
+/** Inspect decoded strings and keys so JSON escapes cannot conceal a credential. */
+function assertNoCredential(value: unknown, bearer: string | undefined): void {
+  if (!bearer) return;
+  const pending: unknown[] = [value];
+  while (pending.length) {
+    const item = pending.pop();
+    if (typeof item === 'string' && item.includes(bearer)) throw new Error('Provider response contained a credential');
+    if (Array.isArray(item)) for (const nested of item) pending.push(nested);
+    else if (item !== null && typeof item === 'object') for (const [key, nested] of Object.entries(item)) pending.push(key, nested);
+  }
+}
 export function createSemanticProvider(transport?: FetchTransport): SemanticProvider {
   return { async read(options, signal) {
     const timeoutMs = options.timeoutMs ?? LIMITS.timeoutMs; const maxBytes = options.maxBytes ?? LIMITS.bytes;
@@ -46,9 +57,13 @@ export function createSemanticProvider(transport?: FetchTransport): SemanticProv
     if (options.kind === 'construct') {
       const quads = new RdfParser({ format: 'text/turtle' }).parse(response.body);
       if (quads.length > LIMITS.quads) throw new Error('CONSTRUCT response exceeded quad limit');
+      if (options.bearer) for (const quad of quads) assertNoCredential([quad.subject.value, quad.predicate.value, quad.object.value, quad.graph.value], options.bearer);
       return { ...provenance, kind: 'construct', value: response.body, format: 'text/turtle', quadCount: quads.length };
     }
-    const value: unknown = JSON.parse(response.body);
+    let value: unknown;
+    try { value = JSON.parse(response.body); }
+    catch { throw new Error('Invalid semantic provider JSON'); }
+    assertNoCredential(value, options.bearer);
     return options.kind === 'select' ? { ...provenance, kind: 'select', value: parseResults(value) } : { ...provenance, kind: 'json', value };
   } };
 }

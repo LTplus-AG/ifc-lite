@@ -18,7 +18,7 @@ export interface SemanticDataset {
   resources?: SemanticRecord[]; rows?: SparqlResults;
   graph?: string; graphFormat?: 'text/turtle' | 'application/n-quads'; profileId?: string;
 }
-export const LIMITS = Object.freeze({ bytes: 5 * 1024 * 1024, rows: 5000, quads: 50000, findings: 1000, query: 256000, timeoutMs: 15000 });
+export const LIMITS = Object.freeze({ bytes: 5 * 1024 * 1024, rows: 5000, quads: 50000, findings: 1000, literalCharacters: 65536, query: 256000, timeoutMs: 15000 });
 export function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

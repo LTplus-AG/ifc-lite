@@ -31,7 +31,11 @@ export async function parseGraph(input: unknown, options: GraphImportOptions): P
   if (typeof serialized !== 'string' || new TextEncoder().encode(serialized).byteLength > maxBytes) throw new Error('Graph exceeds the byte limit');
   let rdf: string;
   if (options.format === 'application/ld+json') {
-    const document: unknown = typeof input === 'string' ? JSON.parse(input) : input;
+    let document: unknown = input;
+    if (typeof input === 'string') {
+      try { document = JSON.parse(input); }
+      catch { throw new Error('Invalid JSON-LD JSON syntax; provide a valid JSON object or array'); }
+    }
     if (!isObject(document) && !Array.isArray(document)) throw new Error('Expected a JSON-LD document');
     assertInlineContexts(document);
     const converted = await jsonld.toRDF(document as JsonLdDocument, { format: 'application/n-quads',

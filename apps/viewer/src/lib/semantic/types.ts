@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 /** Original DBL/DPP pilot contract, independent of any confidential or normative draft. */
 export const PROFILE_ID = 'https://example.org/ifc-lite/semantic-pilot/v1';
 export const VOCAB = 'https://example.org/ifc-lite/semantic-pilot#';

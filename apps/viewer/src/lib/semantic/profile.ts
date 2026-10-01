@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { DataFactory, Writer } from 'n3';
 import type { ContextDefinition } from 'jsonld';
 import { PROFILE_ID, RESOURCE_TYPES, VOCAB, type ResourceType } from './types';

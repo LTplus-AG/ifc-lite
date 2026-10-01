@@ -73,6 +73,7 @@ describe('owned primary completion and launcher (#6232)', () => {
       held.release();
       run.release();
       await pending;
+      await advance(20); // Drain the released real callback on the reverted early-return path too.
     }
   });
 

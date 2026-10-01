@@ -429,3 +429,11 @@ MPL headers, module sizes and applicable viewer guard scripts were checked.
 `pnpm knip` reports repo-wide unused entries and is not a passing gate; unused
 exports introduced by this implementation were removed. No Rust algorithms
 changed, and no performance improvement is claimed.
+
+Captured evidence from that production run is available in the
+[native PDF](evidence/issue-6612-session/coordination-report.pdf). The images
+below show the completed seven-stage workflow and its rendered report page.
+
+![Completed coordination workflow with two Archicad models](evidence/issue-6612-session/workflow-run.png)
+
+![Native report with validation failures, comparison and source identities](evidence/issue-6612-session/report-page.png)

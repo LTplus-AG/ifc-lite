@@ -11,8 +11,9 @@
  * Why not `StepExporter.export({ subsetEntityIds })`: that is O(model) per
  * call (its subset roots, style closure and source pass each walk every
  * entity), and this runs once per authoring commit. Here the cost is
- * O(walked set): one forward walk over the effective index plus one line per
- * walked id, written by the same helpers the exporter uses so an edited or
+ * O(walked set) for ordinary placements; grid-relative placements also scan
+ * the effective grid bucket to find inverse axis ownership. Lines are
+ * written by the same helpers the exporter uses so an edited or
  * overlay-created record reads here exactly as it will be saved.
  *
  * Express ids are preserved, overlay-allocated ones included, so the mesher's
@@ -33,6 +34,8 @@ import { readStepSlots } from './step-argument-parser.js';
 import { applySourceLineMutations } from './step-attribute-mutations.js';
 import { effectiveCreatedRecord } from './effective-source-record.js';
 import { contextRootsFor } from './remesh-context-roots.js';
+import { gridReferenceContext } from './grid-reference-context.js';
+import { collectGridPlacementDependents } from './grid-placement-dependents.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 
 export { remeshContextRoots } from './remesh-context-roots.js';
@@ -60,7 +63,8 @@ export interface EntitySubgraph {
    * Ids whose effective record could not be written faithfully: an edit that
    * could not be placed on an unreadable source record (the source text is
    * written instead), or an overlay-created record that could not be laid
-   * out (omitted). A caller meshing one of these should refuse rather than
+   * out (omitted), or a grid placement whose implicit owning grid is missing
+   * or ambiguous. A caller meshing one of these should refuse rather than
    * show geometry that disagrees with the model.
    */
   unreadable: number[];
@@ -104,6 +108,20 @@ export function serializeEntitySubgraph(
 
   // Iterative (explicit queue + visited set), so cycles and long chains end.
   const walked = collectReferencedEntityIds(walkRoots, store.source, index);
+  const owningGrid = gridReferenceContext(index, (id) => writer.line(id, false), schema);
+  const expandedGrids = new Set<number>();
+  // Set iteration visits newly added ids too. Each owning grid expands once,
+  // including nested grid-relative placements without recursive walks.
+  for (const id of walked) {
+    if (index.typeOf(id) !== 'IFCGRIDPLACEMENT') continue;
+    const gridId = owningGrid(id);
+    if (gridId === null) {
+      writer.markUnreadable(id);
+    } else if (!expandedGrids.has(gridId)) {
+      expandedGrids.add(gridId);
+      for (const contextId of collectReferencedEntityIds(new Set([gridId]), store.source, index)) walked.add(contextId);
+    }
+  }
   const lines = new Map<number, string>();
   for (const id of walked) {
     if (relationships.has(id)) continue;
@@ -120,6 +138,20 @@ export function serializeEntitySubgraph(
   const body = ids.map((id) => lines.get(id)).join('\n');
   const text = `${stepHeader(schema)}${body}\nENDSEC;\nEND-ISO-10303-21;\n`;
   return { bytes: new TextEncoder().encode(text), ids: new Set(ids), unreadable: writer.unreadable };
+}
+
+/** Live model-local products whose grid-relative placement follows a moved
+ * grid, including local children and nested bound grids. Reads the same
+ * effective records and unambiguous axis ownership as mini STEP export.
+ * Malformed/deleted bindings are excluded. With bindings present this scans
+ * placement and product buckets; otherwise it stops at grid placements. */
+export function gridPlacementDependents(
+  store: IfcDataStore, view: MutablePropertyView | null, gridIds: ReadonlySet<number>,
+): Set<number> {
+  const index = getEffectiveEntityIndex(store, view, true);
+  const schema = (store.schemaVersion as IfcSchemaVersion | undefined) || 'IFC4';
+  const writer = new LineWriter(store, view, index, schema);
+  return collectGridPlacementDependents(index, (id) => writer.line(id, false), schema, gridIds);
 }
 
 function stepHeader(schema: IfcSchemaVersion): string {
@@ -139,6 +171,7 @@ function stepHeader(schema: IfcSchemaVersion): string {
 class LineWriter {
   readonly unreadable: number[] = [];
   private readonly source;
+  private readonly records = new Map<number, { text: string | null; unreadable: boolean }>();
 
   constructor(
     store: IfcDataStore,
@@ -149,27 +182,39 @@ class LineWriter {
     this.source = asSourceBytes(store.source);
   }
 
-  line(id: number): string | null {
-    if (this.view && this.index.isOverlayCreated(id)) return this.createdLine(this.view, id);
-    const record = this.index.get(id);
-    if (!record) return null;
-    const text = this.source.decodeUtf8(record.byteOffset, record.byteOffset + record.byteLength);
-    if (!this.view) return text;
-    const named = new Map(this.view.getAttributeMutationsForEntity(id).map(({ name, value }) => [name, value]));
-    const result = applySourceLineMutations(this.view, id, text, record.type, named, this.schema, true);
-    if (result.unreadable) this.unreadable.push(id);
-    return result.text;
+  markUnreadable(id: number): void {
+    if (!this.unreadable.includes(id)) this.unreadable.push(id);
   }
 
-  private createdLine(view: MutablePropertyView, id: number): string | null {
+  line(id: number, report = true): string | null {
+    let record = this.records.get(id);
+    if (!record) {
+      record = this.readLine(id);
+      this.records.set(id, record);
+    }
+    if (record.unreadable && report) this.markUnreadable(id);
+    return record.text;
+  }
+
+  private readLine(id: number): { text: string | null; unreadable: boolean } {
+    if (this.view && this.index.isOverlayCreated(id)) return this.createdLine(this.view, id);
+    const record = this.index.get(id);
+    if (!record) return { text: null, unreadable: false };
+    const text = this.source.decodeUtf8(record.byteOffset, record.byteOffset + record.byteLength);
+    if (!this.view) return { text, unreadable: false };
+    const named = new Map(this.view.getAttributeMutationsForEntity(id).map(({ name, value }) => [name, value]));
+    const result = applySourceLineMutations(this.view, id, text, record.type, named, this.schema, true);
+    return { text: result.text, unreadable: result.unreadable };
+  }
+
+  private createdLine(view: MutablePropertyView, id: number): { text: string | null; unreadable: boolean } {
     try {
-      return effectiveCreatedRecord(view, id, this.schema)?.text ?? null;
+      return { text: effectiveCreatedRecord(view, id, this.schema)?.text ?? null, unreadable: false };
     } catch (error) {
       // Reported through `unreadable`, not swallowed: the record cannot be laid
       // out for its pending retype, so it is omitted and the caller refuses.
       log.warn(`#${id} omitted from the subgraph: ${error instanceof Error ? error.message : String(error)}`);
-      this.unreadable.push(id);
-      return null;
+      return { text: null, unreadable: true };
     }
   }
 }

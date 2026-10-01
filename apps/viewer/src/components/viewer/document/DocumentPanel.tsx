@@ -29,10 +29,8 @@ import { largestBucketIds } from '@/lib/charts/buckets';
 import { idsReportBlockFromReport } from '@/lib/document/ids-report';
 import { emptyManualReportBlock } from '@/lib/document/manual-report';
 import { listCopyForDocument, TABLE_ROWS_DEFAULT, type DocumentBlock, type DocumentSpec } from '@/lib/document/types';
-import { browserImageSize, generateDocumentPdf, type DocumentPdfSeams } from '@/lib/document/generate-document-pdf';
-import { browserReportSeams } from '@/lib/export/report/generate-report-pdf';
-import { createSnapshotCapture } from '@/lib/export/report/snapshots';
-import { isSavedComparisonChart } from '@/lib/charts/comparison-source';
+import { type DocumentPdfSeams } from '@/lib/document/generate-document-pdf';
+import { exportPreparedDocument } from '@/lib/document/export-prepared-document';
 import { BlockEditor } from './BlockEditor';
 import { DocumentMenu } from './DocumentMenu';
 import { DocumentPreview } from './DocumentPreview';
@@ -122,11 +120,9 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const exportPdf = useCallback(async () => {
     if (!document) return;
     setBusy(true);
-    const captureNeeded = document.blocks.some((block) => block.kind === 'chart' && block.snapshot && !isSavedComparisonChart(block.chart));
-    const snapshot = pdfSeams || !captureNeeded ? null : createSnapshotCapture();
     try {
-      const seams = await (pdfSeams ? pdfSeams() : browserReportSeams(snapshot?.capture ?? null).then((s) => ({ ...s, imageSize: browserImageSize })));
-      const result = await generateDocumentPdf({
+      const seams = pdfSeams ? await pdfSeams() : undefined;
+      const result = await exportPreparedDocument({
         document,
         bindings: data.bindings,
         aggregations: data.aggregations,
@@ -134,7 +130,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         snapshotIds: (blockId) => largestBucketIds(data.aggregations.get(blockId)),
         topics: data.topics,
         tables: data.tables,
-      }, seams);
+      }, { seams });
       downloadBlob(result.blob, `${sanitizeFilename(document.name, { fallback: 'document' })}.pdf`);
       // Counts only — never the document's text or name.
       trackExportCompleted({ format: 'pdf', surface: 'document', page_count: result.pages, block_count: document.blocks.length, unresolved_count: result.unresolved.length, table_block_count: document.blocks.filter((b) => b.kind === 'table').length });
@@ -144,6 +140,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         result.snapshotFailures.length > 0 ? t('document.panel.problemSnapshotFailures', localeCount(locale, result.snapshotFailures.length)) : '',
         result.imageFailures.length > 0 ? t('document.panel.problemImageFailures', localeCount(locale, result.imageFailures.length)) : '',
         result.tableFailures.length > 0 ? t('document.panel.problemTables', localeCount(locale, result.tableFailures.length)) : '',
+        (result.chartFailures?.length ?? 0) > 0 ? t('document.panel.problemCharts', localeCount(locale, result.chartFailures?.length ?? 0)) : '',
       ].filter(Boolean);
       const pages = localeCount(locale, result.pages);
       toast.success(problems.length > 0
@@ -153,7 +150,6 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
       console.error('[Documents] export failed', err);
       toast.error(err instanceof Error ? t('document.panel.exportFailedWithMessage', { message: err.message }) : t('document.panel.exportFailedGeneric'));
     } finally {
-      snapshot?.restore();
       setBusy(false);
     }
   }, [document, data, pdfSeams, t, locale]);

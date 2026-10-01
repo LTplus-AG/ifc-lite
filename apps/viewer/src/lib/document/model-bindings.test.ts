@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { modelBindingPath } from './binding-path.js';
-import { elementPropertyPaths, parsePath, renderTemplate, resolveBinding, type BindingContext } from './bindings.js';
+import { elementPropertyPaths, literalTemplateText, parsePath, renderTemplate, resolveBinding, templatePaths, type BindingContext } from './bindings.js';
 import { parseDocumentFile } from './persistence.js';
 import { DOCUMENT_VERSION } from './types.js';
 
@@ -52,6 +52,15 @@ describe('model-qualified document fields (#6485)', () => {
     assert.equal(imported.blocks[0].kind, 'text');
     if (imported.blocks[0].kind !== 'text') assert.fail('text block was not retained');
     assert.equal(renderTemplate(imported.blocks[0].text, { ...context, activeModelId: 'new-a', models: context.models.map((item) => ({ ...item, id: `new-${item.id}` })) }).text, 'Structure');
+  });
+  it('escapes literal braces while ordinary authored fields still resolve (#6612)', () => {
+    const literal = 'nested{part{Today}}.ifc';
+    const text = `${literalTemplateText(literal)} — {Model.Name}`;
+    assert.deepEqual(templatePaths(text), ['Model.Name']);
+    const rendered = renderTemplate(text, context);
+    assert.equal(rendered.text, `${literal} — Architecture.ifc`);
+    assert.equal(rendered.bindings.length, 1);
+    assert.equal(rendered.bindings[0].ok, true);
   });
   it('reports absent and ambiguous models instead of falling back to the active model', () => {
     const path = modelBindingPath('Structure.ifc', 'IfcProject.Name');

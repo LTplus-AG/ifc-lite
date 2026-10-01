@@ -2,16 +2,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { isAutomationReportProvenance, type AutomationReportProvenance } from '../flow/report-provenance';
 import type { DocumentValidationError } from './types.js';
 
 /** Source identity is evidence about the original run, never a live selector. */
 export interface ReportModelScope { name: string; fingerprint?: string }
 export interface ReportProvenance {
   savedReportId?: string;
+  /** Captured workflow execution identity; travels with the evidence, never a live binding. */
+  automation?: AutomationReportProvenance;
   reportModels?: ReportModelScope[];
 }
 
 export function validateReportProvenance(block: Record<string, unknown>, at: string, errors: DocumentValidationError[]): void {
+  if (block.automation !== undefined && !isAutomationReportProvenance(block.automation)) {
+    errors.push({ path: `${at}.automation`, message: 'expected valid workflow report provenance' });
+  }
   if (block.savedReportId !== undefined && (typeof block.savedReportId !== 'string' || !block.savedReportId)) {
     errors.push({ path: `${at}.savedReportId`, message: 'expected a non-empty string' });
   }

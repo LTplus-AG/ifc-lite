@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import type { FlowDocument } from './document.js';
 import { NodeRegistry, type NodeDef } from './registry.js';
 import { ORPHAN_NODE_ID } from './orphans.js';
-import { runFlow } from './scheduler.js';
+import { MemoCache, runFlow } from './scheduler.js';
 import { MemoryTrackingStore } from './tracking.js';
 import { list } from './values.js';
 
@@ -86,6 +86,13 @@ const doc: FlowDocument = {
     { from: ['size', 'size'], to: ['place', 'size'] },
   ],
 };
+
+const countCreated: NodeDef<Elements> = {
+  type: 'test.countCreated', title: 'Count', category: 'test', reads: 'model',
+  inputs: [], outputs: [{ name: 'count', type: { kind: 'scalar', access: 'item' } }], params: [], capabilities: [],
+  run: (ctx) => ({ count: ctx.host.created.size }),
+};
+const countDoc: FlowDocument = { ...doc, nodes: [{ id: 'count', type: 'test.countCreated' }], edges: [] };
 
 const KEY = 'columns/columns at walls';
 const elements = (): Elements => ({ created: new Map(), log: [] });
@@ -274,6 +281,160 @@ describe('tracked nodes', () => {
     expect(blocked.ok).toBe(false);
     expect(blocked.reports.find((x) => x.nodeId === 'place')?.error).toContain('give this node its own tracking key');
     expect(store2.load(KEY)?.nodeType).toBe('test.vanished');
+  });
+
+  it('cancellation while a previous independent async node drains prevents retyped tracking deletion (#6612)', async () => {
+    const store = new MemoryTrackingStore();
+    const host = elements();
+    await runFlow(doc, { host, registry: reg(['W1', 'W2']), tracking: store });
+    const existing = structuredClone(store.load(KEY));
+    const globalIds = [...host.created.keys()];
+    host.log.length = 0;
+    let entered!: () => void;
+    let settle!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const pending = new Promise<void>((resolve) => { settle = resolve; });
+    const wait: NodeDef<Elements> = { type: 'test.pending', title: 'Pending', category: 'test',
+      inputs: [], outputs: [], params: [], capabilities: [],
+      run: async () => { entered(); await pending; return {}; },
+    };
+    const retyped: NodeDef<Elements> = { ...place, type: 'test.place2', inputs: [] };
+    const graph: FlowDocument = { ...doc, nodes: [
+      { id: 'pending', type: 'test.pending' },
+      { id: 'place', type: 'test.place2', label: 'columns at walls' },
+    ], edges: [] };
+    const controller = new AbortController();
+    const running = runFlow(graph, { host, registry: new NodeRegistry<Elements>().registerAll([wait, place, retyped]), tracking: store, signal: controller.signal });
+    await started;
+    controller.abort(); settle();
+    const result = await running;
+    expect(result.ok).toBe(false);
+    expect(result.reports.find((report) => report.nodeId === 'place')?.error).toBe('aborted');
+    expect(host.log).toEqual([]);
+    expect([...host.created.keys()]).toEqual(globalIds);
+    expect(store.load(KEY)).toEqual(existing);
+    expect(result.outputs.has('pending')).toBe(false);
+  });
+
+  it('accounts a successful lane completing after abort and prevents reuse of pre-write model reads (#6612)', async () => {
+    const host = elements();
+    const cache = new MemoCache();
+    await runFlow(countDoc, { host, registry: new NodeRegistry<Elements>().register(countCreated), cache });
+    let entered!: () => void, settle!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const pending = new Promise<void>((resolve) => { settle = resolve; });
+    const slowPlace: NodeDef<Elements> = { ...place, run: async (ctx, inputs, params) => {
+      const output = await place.run(ctx, inputs, params);
+      entered(); await pending;
+      return output;
+    } };
+    const tracking = new MemoryTrackingStore();
+    const controller = new AbortController();
+    const running = runFlow(doc, { host, registry: new NodeRegistry<Elements>().registerAll([wallsNode(['W1', 'W2']), sizeNode, slowPlace]),
+      tracking, cache, signal: controller.signal });
+    await started;
+    controller.abort(); settle();
+    const result = await running;
+    expect(result.ok).toBe(false);
+    expect(host.created.size, 'the first lane wrote; cancellation prevented the second lane').toBe(1);
+    expect(result.writes).toBe(1);
+    expect(cache.writeGeneration).toBe(1);
+    expect(Object.keys(tracking.load(KEY)?.entries ?? {})).toEqual(['W1']);
+    expect(tracking.load(KEY)?.entries.W1.globalId).toBe([...host.created.keys()][0]);
+    const next = await runFlow(countDoc, { host, registry: new NodeRegistry<Elements>().register(countCreated), cache });
+    expect(next.outputs.get('count')?.get('count')).toEqual({ kind: 'item', value: 1 });
+    expect(next.reports[0].status, 'the previously memoised zero-count read must be recomputed').toBe('ok');
+    const cleanup = await runFlow(countDoc, { host, registry: new NodeRegistry<Elements>().registerAll([countCreated, place]), tracking });
+    expect(cleanup.ok).toBe(true);
+    expect(host.created.size).toBe(0);
+    expect(tracking.load(KEY)).toBeUndefined();
+  });
+
+
+  for (const mode of ['update', 'replace'] as const) it(`cancelled ${mode} preserves prior unrun/vanished lanes and owns completed replacements (#6612)`, async () => {
+    const host = elements(), tracking = new MemoryTrackingStore();
+    await runFlow(doc, { host, registry: reg(['W0', 'W1', 'W2']), tracking });
+    const previous = tracking.load(KEY)!;
+    let entered!: () => void, settle!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const pending = new Promise<void>((resolve) => { settle = resolve; });
+    const slowPlace: NodeDef<Elements> = { ...place, run: async (ctx, inputs, params) => {
+      const output = await place.run(ctx, inputs, params);
+      entered(); await pending; return output;
+    } };
+    const graph: FlowDocument = { ...doc, nodes: doc.nodes.map((node) => node.id === 'place'
+      ? { ...node, tracking: mode } : node.id === 'size' ? { ...node, params: { value: 'updated' } } : node) };
+    const controller = new AbortController();
+    const running = runFlow(graph, { host, registry: new NodeRegistry<Elements>().registerAll([wallsNode(['W1', 'W2', 'W3']), sizeNode, slowPlace]),
+      tracking, signal: controller.signal });
+    await started;
+    controller.abort(); settle();
+    const result = await running;
+    expect(result.ok).toBe(false);
+    const saved = tracking.load(KEY)!;
+    expect(saved.entries.W0).toEqual(previous.entries.W0);
+    expect(saved.entries.W2).toEqual(previous.entries.W2);
+    expect(saved.entries.W3).toBeUndefined();
+    expect(host.created.get(saved.entries.W1.globalId)?.value).toBe('updated');
+    expect(new Set(Object.values(saved.entries).map((entry) => entry.globalId))).toEqual(new Set(host.created.keys()));
+    expect(host.log.some((entry) => entry.startsWith('remove:'))).toBe(false);
+    expect(host.created.size).toBe(mode === 'replace' ? 4 : 3);
+    const cleanup = await runFlow(countDoc, { host, registry: new NodeRegistry<Elements>().registerAll([countCreated, place]), tracking });
+    expect(cleanup.ok).toBe(true);
+    expect(host.created.size).toBe(0);
+    expect(tracking.load(KEY)).toBeUndefined();
+  });
+
+  it('a failed replacement removal retains both generations until retry and orphan cleanup (#6612)', async () => {
+    const host = elements(), tracking = new MemoryTrackingStore();
+    await runFlow(doc, { host, registry: reg(['W1']), tracking });
+    const oldGlobalId = [...host.created.keys()][0];
+    const replaceDoc: FlowDocument = { ...doc, nodes: doc.nodes.map((node) => node.id === 'place' ? { ...node, tracking: 'replace' } : node) };
+    const locked: NodeDef<Elements> = { ...place, remove: () => { throw new Error('locked'); } };
+    const result = await runFlow(replaceDoc, { host, registry: new NodeRegistry<Elements>().registerAll([wallsNode(['W1']), sizeNode, locked]), tracking });
+    expect(result.reports.find((report) => report.nodeId === 'place')?.laneErrors).toBe(1);
+    const saved = tracking.load(KEY)!;
+    expect(saved.entries.W1.globalId).not.toBe(oldGlobalId);
+    expect(new Set(Object.values(saved.entries).map((entry) => entry.globalId))).toEqual(new Set(host.created.keys()));
+    expect(host.created.size).toBe(2);
+    const retry = await runFlow(doc, { host, registry: reg(['W1']), tracking });
+    expect(retry.ok).toBe(true);
+    expect(host.created.has(oldGlobalId)).toBe(false);
+    expect(host.created.size).toBe(1);
+    expect(Object.keys(tracking.load(KEY)!.entries)).toEqual(['W1']);
+    const cleanup = await runFlow(countDoc, { host, registry: new NodeRegistry<Elements>().registerAll([countCreated, place]), tracking });
+    expect(cleanup.ok).toBe(true);
+    expect(host.created.size).toBe(0);
+    expect(tracking.load(KEY)).toBeUndefined();
+  });
+
+  it('cancellation during asynchronous removal preserves unremoved entries and stops later deletions (#6612)', async () => {
+    const store = new MemoryTrackingStore();
+    const host = elements();
+    await runFlow(doc, { host, registry: reg(['W1', 'W2']), tracking: store });
+    const globalIds = [...host.created.keys()];
+    let entered!: () => void;
+    let settle!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const pending = new Promise<void>((resolve) => { settle = resolve; });
+    const slowRemove: NodeDef<Elements> = { ...place, remove: async (ctx, globalId) => {
+      entered(); await pending; ctx.host.created.delete(globalId);
+    } };
+    const cache = new MemoCache();
+    await runFlow(countDoc, { host, registry: new NodeRegistry<Elements>().register(countCreated), cache });
+    const controller = new AbortController();
+    const running = runFlow(doc, { host, registry: new NodeRegistry<Elements>().registerAll([wallsNode([]), sizeNode, slowRemove]), tracking: store, signal: controller.signal, cache });
+    await started;
+    controller.abort(); settle();
+    const result = await running;
+    expect(result.ok).toBe(false);
+    expect(result.writes).toBe(1);
+    expect(cache.writeGeneration).toBe(1);
+    const next = await runFlow(countDoc, { host, registry: new NodeRegistry<Elements>().register(countCreated), cache });
+    expect(next.outputs.get('count')?.get('count')).toEqual({ kind: 'item', value: 1 });
+    expect(next.reports[0].status).toBe('ok');
+    expect([...host.created.keys()]).toEqual([globalIds[1]]);
+    expect(Object.values(store.load(KEY)?.entries ?? {}).map((entry) => entry.globalId)).toEqual([globalIds[1]]);
   });
 
   it('a partly failed orphan removal keeps only the entries still to remove', async () => {

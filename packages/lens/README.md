@@ -47,3 +47,5 @@ Missing selections match nothing. The standalone v1 matcher has been removed.
 ## License
 
 MPL-2.0
+
+The built-in **By Stage** preset colors distinct `CESIUM.Stage` property values. This vendor property convention is separate from IFC tasks and schedules. Elements without a stage are ghosted.

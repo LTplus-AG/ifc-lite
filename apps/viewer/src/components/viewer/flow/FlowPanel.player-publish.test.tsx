@@ -194,12 +194,16 @@ describe('FlowPanel — Player mode and Publish button (#5167)', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     const ran = useViewerStore.getState().flowDoc;
+    const completed = useViewerStore.getState().flowLastRunWindow;
     assert.ok(ran);
+    assert.ok(completed, 'a completed run retains its immutable provenance before editing');
+    assert.deepEqual(completed.doc, ran, 'the window snapshots the graph as run');
     act(() => useViewerStore.getState().setFlowDoc({ ...ran, name: 'Edited after the run' }));
 
-    const window = useViewerStore.getState().flowLastRunWindow;
-    assert.equal(window?.doc, ran, 'the run window holds the document that ran');
-    assert.equal(window?.doc.name, 'Provenance graph');
+    assert.equal(completed.doc.name, 'Provenance graph', 'editing the graph cannot rewrite completed provenance');
+    assert.equal(useViewerStore.getState().flowLastRunWindow, null, '#6612 graph edits invalidate previous run publication');
+    assert.equal(useViewerStore.getState().flowLastRun, null, 'an edited graph cannot publish an old result');
+
   });
 
   it('drops a run whose graph was switched away from before it finished (#5380 review)', async () => {

@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { extractLengthUnitScale } from './unit-extractor.js';
+import { extractLengthUnitScale, SI_PREFIX_MULTIPLIERS } from './unit-extractor.js';
 import type { EntityIndex, EntityRef } from './types.js';
 
 // The Rust extractor (rust/core/src/units.rs) and this TS extractor are pinned
@@ -72,4 +72,18 @@ describe.skipIf(!existsSync(fixturePath))('extractLengthUnitScale shared parity 
       expect(extractLengthUnitScale(source, entityIndex)).toBeCloseTo(c.lengthUnitScale, 12);
     });
   }
+});
+
+
+it('shared IFC SI-prefix factors cannot be overwritten and corrupt later unit reads (#6587)', () => {
+  expect(() => {
+    // @ts-expect-error The published canonical factors are readonly, too.
+    SI_PREFIX_MULTIPLIERS.MILLI = 1;
+  }).toThrow(TypeError);
+  const { source, entityIndex } = indexIfc(`
+#1=IFCPROJECT('Project',$,$,$,$,$,$,$,#2);
+#2=IFCUNITASSIGNMENT((#3));
+#3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+`);
+  expect(extractLengthUnitScale(source, entityIndex)).toBe(0.001);
 });

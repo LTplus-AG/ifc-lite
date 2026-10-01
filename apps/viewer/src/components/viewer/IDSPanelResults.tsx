@@ -30,6 +30,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { IDSAuditSummary } from './IDSAuditSummary';
+import { IDSCheckSummary } from './IDSCheckSummary';
 import { ReportExportButton } from './IDSReportExportButton';
 import { SaveValidationReportButton } from './validation/SaveValidationReportButton';
 import { SpecificationCard } from './IDSSpecificationCard';
@@ -145,6 +146,8 @@ export function IDSPanelResults({
             })}
           </span>
         </div>
+        {!isRules && <IDSCheckSummary report={report} />}
+        {!isRules && <div className="text-xs font-medium">{t('idsPanel.entitySpecificationResults')}</div>}
         <ValidationBenchmark summary={summary} name={report.source.kind === 'rules' ? report.source.ruleSet.name : report.source.document.info.title} />
         <div className="grid grid-cols-3 gap-2 text-xs text-center">
           <div className="bg-background rounded p-2">
@@ -161,6 +164,7 @@ export function IDSPanelResults({
           </div>
         </div>
         <div className="mt-2"><PassRateBar passRate={report.summary.overallPassRate} /></div>
+        {!isRules && <p className="text-xs text-muted-foreground mt-2">{t('idsPanel.summaryUnitsHint')}</p>}
         <p className="text-xs text-muted-foreground mt-2 text-center">
           {t(specScope ? 'idsPanel.specScopeHint' : 'idsPanel.idsScopeHint')}
         </p>

@@ -1,5 +1,20 @@
 # @ifc-lite/export
 
+## 4.9.0
+
+### Minor Changes
+
+- [#6625](https://github.com/LTplus-AG/ifc-lite/pull/6625) [`7780cb0`](https://github.com/LTplus-AG/ifc-lite/commit/7780cb05878c574ebd2a9f631ca6757233e845d3) Thanks [@louistrue](https://github.com/louistrue)! - Add opt-in STEP map-unit normalization to metres while preserving physical map coordinates, project geometry and project units. Export the immutable shared IFC SI-prefix factors for the normalization consumer, so readers and writers use the same factors. Unsupported coordinate operations, ambiguous project units and retained WKT unit definitions are preserved with explicit export warnings.
+
+- [#6634](https://github.com/LTplus-AG/ifc-lite/pull/6634) [`4c0ebf2`](https://github.com/LTplus-AG/ifc-lite/commit/4c0ebf24c8c7b8470602300d56f0b1bd7c2a01e0) Thanks [@louistrue](https://github.com/louistrue)! - Add opt-in asynchronous STEP map rotation/scale normalization through a canonical Rust entity-patch planner. Preserve authored project/property units and edited attributes, with atomic warnings for unsupported coordinate consumers. Ordinary exports retain their coordinate structure.
+
+### Patch Changes
+
+- Updated dependencies [[`1051a74`](https://github.com/LTplus-AG/ifc-lite/commit/1051a74edca83eb3e6104562a7a65e0e645ac45b), [`93098dc`](https://github.com/LTplus-AG/ifc-lite/commit/93098dcb7f4125326db5d602977c5b3f9e9083cb), [`6dace7b`](https://github.com/LTplus-AG/ifc-lite/commit/6dace7b05927505e9a9529674c635a505ce0c887), [`7780cb0`](https://github.com/LTplus-AG/ifc-lite/commit/7780cb05878c574ebd2a9f631ca6757233e845d3), [`e01487f`](https://github.com/LTplus-AG/ifc-lite/commit/e01487ff2f40fa758b73b3ec9a6abba9f9ff646b), [`e8ced94`](https://github.com/LTplus-AG/ifc-lite/commit/e8ced940d5cd6c9789f1221c5aeb7cdae883da3b), [`4c0ebf2`](https://github.com/LTplus-AG/ifc-lite/commit/4c0ebf24c8c7b8470602300d56f0b1bd7c2a01e0), [`ec983d3`](https://github.com/LTplus-AG/ifc-lite/commit/ec983d378bfccc2b65fb636a76e321a2c9482aa4)]:
+  - @ifc-lite/geometry@7.7.0
+  - @ifc-lite/mutations@3.1.0
+  - @ifc-lite/parser@9.2.0
+
 ## 4.8.0
 
 ### Minor Changes

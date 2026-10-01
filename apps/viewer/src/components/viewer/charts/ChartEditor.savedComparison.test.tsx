@@ -17,6 +17,9 @@ import { aggregate, renderChartSvg, type ChartDataset, type ChartSource, type Ch
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { DOCUMENT_VERSION, type DocumentSpec } from '@/lib/document/types';
 import { browserImageSize, generateDocumentPdf } from '@/lib/document/generate-document-pdf';
+import { prepareDocument } from '@/lib/document/prepare-document';
+import { buildReportDocument } from '@/lib/document/build-report-document';
+import { documentPdfWarnings, exportPreparedDocument } from '@/lib/document/export-prepared-document';
 import { browserReportSeams, generateReportPdf, type ReportPdfSeams } from '@/lib/export/report/generate-report-pdf';
 import { DocumentPreview } from '../document/DocumentPreview';
 import { useDocumentData, type DocumentData } from '../document/useDocumentData';
@@ -268,6 +271,7 @@ describe('Saved comparison chart source (#6549)', () => {
       const doc = await generateDocumentPdf({ document, ...data, snapshotIds: () => [] }, seams);
       assert.equal(captures, 0);
       const printed = await pdfText(doc.blob); assert.match(printed, /added/); assert.match(printed, /deleted/);
+      assert.deepEqual(documentPdfWarnings(doc), [], 'recorded source provenance is informative, not an unavailable-chart failure (#6549 / #6612)');
       const report = await generateReportPdf({ name: 'Recorded dashboard proof', page: document.page, titleBlock: {}, snapshots: true,
         charts: [{ id: spec.id, title: spec.title, aggregation: agg }], snapshotIds: () => [] }, seams);
       assert.equal(report.charts, 1); assert.equal(report.snapshots, 0); assert.equal(captures, 0);
@@ -276,6 +280,7 @@ describe('Saved comparison chart source (#6549)', () => {
       assert.ok(data); assert.equal(data.aggregations.get('recorded-block')?.total, 0);
       assert.match(ui.textContent ?? '', /Saved comparison unavailable/);
       const missing = await generateDocumentPdf({ document, ...data, snapshotIds: () => [] }, seams);
+      assert.ok(documentPdfWarnings(missing).some((warning) => warning.includes('Saved comparison unavailable')), 'missing history remains an artifact failure');
       assert.equal(captures, 0); const missingText = await pdfText(missing.blob); assert.match(missingText, /Choose another saved comparison/);
       assert.equal(missingText.split('Saved comparison unavailable in this browser.').length - 1, 1, 'the actual document PDF prints the missing source notice once');
       assert.equal((ui.textContent ?? '').split('Saved comparison unavailable in this browser.').length - 1, 1, 'the missing source notice appears once in the actual preview');
@@ -331,4 +336,43 @@ describe('Saved comparison chart source (#6549)', () => {
       assert.match(ui.textContent ?? '', /Load.*model/i);
     } finally { restoreParser(); pdfWindow.jspdf = previous; }
   });
+
+  it('uses the chosen saved source through actual awaited workflow template preparation and PDF diagnostics (#6549 / #6612)', async () => {
+    const spec = { ...chart(), comparisonId: saved[0].id };
+    const template = documentFor(spec);
+    template.blocks.push({ kind: 'table', id: 'mapped-evidence', maxRows: 10, source: { kind: 'comparison', comparison: saved[1] } });
+    const document = buildReportDocument({ template,
+      mappings: [{ blockId: 'mapped-evidence', jobId: 'completed-bc' }],
+      results: [{ jobId: 'completed-bc', resultId: saved[1].id, kind: 'comparison', comparison: saved[1] }] });
+    const block = document.blocks.find((item) => item.kind === 'chart'); assert.ok(block?.kind === 'chart');
+    assert.equal(block.chart.comparisonId, saved[0].id, 'workflow result B to C must not replace the separately bound A to B chart');
+    const state = useViewerStore.getState();
+    const input = await prepareDocument(document, state);
+    assert.equal(input.aggregations.get(block.id)?.total, saved[0].report.rows.length);
+    assert.deepEqual(input.aggregations.get(block.id)?.categories.map((category) => category.label).sort(), ['added', 'deleted', 'modified']);
+    const pdfWindow = window as Window & { jspdf?: typeof jspdf };
+    const previous = pdfWindow.jspdf; pdfWindow.jspdf = jspdf;
+    const restoreParser = installSvgCdataEnvironmentConversion();
+    let captures = 0;
+    try {
+      const seams = { ...await browserReportSeams(null), imageSize: browserImageSize,
+        capture: async () => { captures++; assert.fail('recorded prepared documents cannot capture unrelated live entities'); } };
+      const result = await exportPreparedDocument(input, { seams });
+      const printed = await pdfText(result.blob);
+      assert.match(printed, /added/); assert.match(printed, /deleted/); assert.match(printed, /Explicit chart test revision C wall/);
+      assert.equal(captures, 0); assert.deepEqual(documentPdfWarnings(result), []);
+      const noModels = await prepareDocument(document, { ...state, models: new Map(), activeModelId: null, compareResult: null });
+      assert.equal(noModels.aggregations.get(block.id)?.total, saved[0].report.rows.length);
+      const missing = await prepareDocument(document, { ...state, savedComparisons: [saved[1]] });
+      assert.equal(missing.aggregations.get(block.id)?.total, 0, 'nonempty live B to C cannot substitute for deleted A to B');
+      const missingResult = await exportPreparedDocument(missing, { seams });
+      assert.ok(documentPdfWarnings(missingResult).some((warning) => warning.includes('Saved comparison unavailable')));
+      assert.equal((await pdfText(missingResult.blob)).split('Saved comparison unavailable in this browser.').length - 1, 1);
+      const { chartMessages: _messages, ...legacy } = input;
+      const legacyResult = await generateDocumentPdf({ ...legacy, chartMessages: new Map([[block.id, 'Legacy selector refused']]) }, seams);
+      assert.ok(documentPdfWarnings(legacyResult).some((warning) => warning.includes('Legacy selector refused')), 'old callers without classification retain message-to-failure behavior');
+      assert.equal(captures, 0);
+    } finally { restoreParser(); pdfWindow.jspdf = previous; }
+  });
+
 });

@@ -59,6 +59,8 @@ export interface DocumentPdfResult {
   imageFailures: string[];
   /** Table blocks whose list did not run (no model, still resolving, or an error); the page says so in their place. */
   tableFailures: string[];
+  /** Refused filters and aggregation errors printed in the chart's place. */
+  chartFailures?: string[];
 }
 
 /** The English the PDF prints for a table block's rows, like every other string this module prints. */
@@ -252,7 +254,10 @@ function placeImage(doc: ReportDoc, dataUrl: string | null, label: string, box: 
 }
 
 export async function generateDocumentPdf(input: DocumentPdfInput, seams: DocumentPdfSeams): Promise<DocumentPdfResult> {
-  const result: DocumentPdfResult = { blob: new Blob(), pages: 0, unresolved: [], missingTopics: [], snapshotFailures: [], imageFailures: [], tableFailures: [] };
+  const result: DocumentPdfResult = { blob: new Blob(), pages: 0, unresolved: [], missingTopics: [], snapshotFailures: [], imageFailures: [], tableFailures: [],
+    chartFailures: input.document.blocks.flatMap((block) => block.kind === 'chart' && input.chartMessages.has(block.id)
+      ? [`${block.chart.title}: ${input.chartMessages.get(block.id)}`] : []),
+  };
   const format = input.document.page.size === 'A3' ? 'a3' : 'a4';
   const doc = await seams.createDoc(format, input.document.page.orientation);
   const blocks = await resolveBlocks(input, seams.imageSize, result);

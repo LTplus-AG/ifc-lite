@@ -44,6 +44,7 @@ import { LEFT_PANEL_DEFAULT_SIZE } from '@/store/layoutReset';
 import { useOverlayCompositor } from './schedule/useOverlayCompositor';
 import { CommandPalette } from './CommandPalette';
 import { SearchModal } from './SearchModal';
+import { FlowStartupPrompt } from './flow/FlowStartupPrompt';
 import { TourHost } from '@/components/tours/TourHost';
 import { SidebarDock } from './sidebar/SidebarDock';
 import { FloatingPanelHost } from './dock/FloatingPanelHost';
@@ -244,7 +245,6 @@ export function ViewerLayout() {
 
   useThemeDocumentClass();
   const safeMode = isSafeMode();
-
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex flex-col h-screen h-[100dvh] w-screen overflow-hidden bg-background text-foreground">
@@ -269,13 +269,13 @@ export function ViewerLayout() {
         <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
         <SearchModal />
         <TourHost />
+        <FlowStartupPrompt />
         {/* Trigger-less: this instance exists so the entity context menu's
             "Export anonymized…" (which only sets `anonymizedExportRequested`,
             no trigger of its own) has a mounted dialog regardless of whether the export toolbar
             dropdown is open. Same host pattern as `FlavorDialog` in
             `StatusBar.tsx`; `toolbar/export-commands.ts` owns the `trigger` one. */}
         <AnonymizedExportDialog surface="context_menu" />
-
         {/* The compact mobile controls and the desktop ribbon share command homes. */}
         {isMobile
           ? <MobileToolbar />

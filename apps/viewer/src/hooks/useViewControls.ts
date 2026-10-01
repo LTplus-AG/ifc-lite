@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Drawing2D, DrawingSheet } from '@ifc-lite/drawing-2d';
 import { sheetGeometryKeyOf, type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 import { axisFlipForSection } from '@/hooks/pdfSectionLayout';
+import { useDrawingWheelNavigation } from './useDrawingWheelNavigation.js';
 
 interface UseViewControlsParams {
   drawing: Drawing2D | null;
@@ -77,42 +78,7 @@ function useViewControls({
   const viewTransformRef = useRef(viewTransform);
   viewTransformRef.current = viewTransform;
 
-  // Wheel zoom handler
-  useEffect(() => {
-    // Only attach handler when panel is visible
-    if (!panelVisible) return;
-
-    const container = containerRef.current;
-    if (!container) {
-      // Container not ready yet, try again on next render
-      return;
-    }
-
-    const wheelHandler = (e: WheelEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      const rect = container.getBoundingClientRect();
-
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
-      setViewTransform((prev) => {
-        const newScale = Math.max(0.01, prev.scale * delta);
-        const scaleRatio = newScale / prev.scale;
-        return {
-          scale: newScale,
-          x: x - (x - prev.x) * scaleRatio,
-          y: y - (y - prev.y) * scaleRatio,
-        };
-      });
-    };
-
-    container.addEventListener('wheel', wheelHandler, { passive: false });
-    return () => {
-      container.removeEventListener('wheel', wheelHandler);
-    };
-  }, [panelVisible, status]); // Re-run when panel visibility or status changes to ensure container is ready
+  useDrawingWheelNavigation(containerRef, panelVisible, setViewTransform);
 
   // Zoom controls - unlimited zoom
   const zoomIn = useCallback(() => {

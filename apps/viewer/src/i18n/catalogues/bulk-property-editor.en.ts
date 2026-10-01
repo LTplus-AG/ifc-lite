@@ -4,6 +4,8 @@
 
 /** Bulk property editor chrome and complete status/error messages (#4918). */
 export const bulkPropertyEditorEn = {
+  'bulkPropertyEditor.stagePreset': 'Construction stage preset',
+  'bulkPropertyEditor.stageDescription': 'Assigns CESIUM.Stage to the selection as an IFC integer. This vendor property is separate from IFC tasks and schedules. Use the By Stage Lens to view assignments.',
   'bulkPropertyEditor.trigger': 'Bulk Edit',
   'bulkPropertyEditor.title': 'Bulk Property Editor',
   'bulkPropertyEditor.description': 'Choose a target source, then apply changes to its matching elements',

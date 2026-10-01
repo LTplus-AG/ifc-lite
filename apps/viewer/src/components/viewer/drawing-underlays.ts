@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { DXF_TEXT_LINE_HEIGHT_FACTOR } from '@/lib/drawing/dxf-text-layout';
 import type { DxfUnderlayRenderData } from '@/hooks/useDxfUnderlay';
 
 function dxfValignToBaseline(valign: 'baseline' | 'bottom' | 'middle' | 'top'): CanvasTextBaseline {
@@ -89,7 +90,7 @@ export function drawDxfUnderlaysScreenSpace(
       ctx.rotate(angle);
       const lines = text.text.split('\n');
       for (let i = 0; i < lines.length; i++) {
-        ctx.fillText(lines[i], 0, i * fontPx * 1.3);
+        ctx.fillText(lines[i], 0, i * fontPx * DXF_TEXT_LINE_HEIGHT_FACTOR);
       }
       ctx.restore();
     }

@@ -21,8 +21,12 @@ export function parseBulkSetPropertyValue(
 ): BulkParseResult {
   if (valueType === PropertyValueType.Real || valueType === PropertyValueType.Integer) {
     const typeKey = valueType === PropertyValueType.Real ? 'bulkPropertyEditor.real' : 'bulkPropertyEditor.integer';
-    const parsed = valueType === PropertyValueType.Real ? parseFloat(targetValue) : parseInt(targetValue, 10);
-    if (targetValue.trim() === '' || Number.isNaN(parsed)) {
+    const text = targetValue.trim();
+    const parsed = Number(text);
+    const valid = valueType === PropertyValueType.Integer
+      ? /^[+-]?\d+$/.test(text) && Number.isSafeInteger(parsed)
+      : /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text) && Number.isFinite(parsed);
+    if (!valid) {
       return {
         ok: false,
         message: t('bulkPropertyEditor.invalidValue', { value: targetValue, type: t(typeKey) }),

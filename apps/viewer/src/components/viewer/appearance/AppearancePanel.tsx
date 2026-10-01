@@ -5,7 +5,7 @@ import { AppearanceAssignments } from './AppearanceAssignments.js';
 import { useAppearanceAssignments } from './useAppearanceAssignments.js';
 import { AppearanceScanPanel } from './AppearanceScanPanel';
 import { AppearanceCapturePanel } from './AppearanceCapturePanel';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import type { AppearanceIntent } from '@/lib/appearance/draft-types.js';
 import { useReferenceAppearance } from './useReferenceAppearance.js';
@@ -13,11 +13,23 @@ import { AppearancePanelView } from './AppearancePanelView.js';
 import { useAppearancePanel } from './useAppearancePanel.js';
 
 export function AppearancePanel() {
-  const [intent, setIntent] = useState<AppearanceIntent>(() => useViewerStore.getState().appearanceDraft?.intent ?? 'apply');
+  const entry = useViewerStore(state => state.appearanceReferenceEntry);
+  const handledEntry = useRef<string | null>(null);
+  const [intent, setIntent] = useState<AppearanceIntent>(() => useViewerStore.getState().appearanceReferenceEntry ? 'reference' : useViewerStore.getState().appearanceDraft?.intent ?? 'apply');
   const hasAssignments = useViewerStore(state => !!state.appearanceAssignments?.assignments.length);
   const appearance = useAppearancePanel(intent, hasAssignments);
   const assignments = useAppearanceAssignments(appearance, intent === 'apply');
   const controls = useReferenceAppearance(appearance, intent === 'reference');
+  useEffect(() => {
+    if (!entry || handledEntry.current === entry.id) return;
+    if (intent !== 'reference') { controls.onDiscard(); assignments.cancel(); setIntent('reference'); return; }
+    handledEntry.current = entry.id;
+    controls.onDiscard(); assignments.cancel();
+    setIntent('reference');
+    if (entry.editReferenceId) controls.onEditReference?.(entry.editReferenceId);
+    else if (entry.settings) appearance.onSettingsChange(entry.settings);
+    useViewerStore.getState().consumeAppearanceReferenceEntry(entry.id);
+  }, [entry, intent, controls, assignments, appearance]);
   const coordinated = intent === 'apply' && hasAssignments;
   const combined = coordinated ? { ...controls, status: assignments.status, statusMessage: assignments.notice,
     unavailableReason: assignments.blockedReason,

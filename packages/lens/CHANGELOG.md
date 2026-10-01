@@ -1,5 +1,16 @@
 # @ifc-lite/lens
 
+## 2.1.0
+
+### Minor Changes
+
+- [#6602](https://github.com/LTplus-AG/ifc-lite/pull/6602) [`59b6549`](https://github.com/LTplus-AG/ifc-lite/commit/59b654992e99af341497c9af50f2478218f74300) Thanks [@louistrue](https://github.com/louistrue)! - Add a built-in By Stage Lens for CESIUM.Stage construction-stage metadata.
+
+### Patch Changes
+
+- Updated dependencies [[`4a9e7ad`](https://github.com/LTplus-AG/ifc-lite/commit/4a9e7ad337bafc495aa02be9e46a6ef130b9a075), [`64c343b`](https://github.com/LTplus-AG/ifc-lite/commit/64c343bfea7de91b2a44a895f6302f3b1a7f70a7)]:
+  - @ifc-lite/rules@0.6.0
+
 ## 2.0.0
 
 ### Major Changes

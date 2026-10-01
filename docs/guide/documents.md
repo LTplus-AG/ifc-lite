@@ -29,6 +29,8 @@ Each chart block has a **Text size** control. Smaller text makes room for longer
 
 A field is a path in braces. Names are the exact IFC names, case-sensitive.
 
+Use double braces for literal text: `{{Today}}` prints `{Today}` without resolving a field. Generated workflow covers escape captured names this way, so file and workflow names retain their original spelling.
+
 Choose a model in **Source** before using **Insert field** to bind that insertion to the named model. Each inserted field keeps its source when you change the active model or choose another source for the next field. For example, `{Model["Architecture.ifc"].IfcProject.Name}` reads the architecture model's project, and `{Model["Structure.ifc"].Count[IfcWall]}` counts walls only in the structure model. Selected-element properties are offered when that element belongs to the chosen source model. **Default source** retains the existing active-model fields and federation-wide counts.
 
 Model-qualified fields use the exact model name, so they survive a reload with the same filename and new session ids. A missing model or duplicate model name is reported as unresolved. Give models distinct names to select a unique source; loading a renamed revision requires updating its named fields.
@@ -117,3 +119,18 @@ In **Data validation → Manual validation**, **New checklist** creates another 
 **Close checklist** leaves the review in the selector for later. Reopening the same saved template selects its existing review and decisions. **Delete checklist** removes that editable review; previously saved reports and document snapshots remain unchanged. Existing open checklists and their decisions migrate automatically. Decisions retained after an older checklist was closed are kept until an imported template supplies matching check identifiers. The old data contains no template or discipline identity, so that recovery cannot establish which discipline originally supplied a decision; unmatched decisions remain available for another template. If browser storage refuses a write, the current review remains visible with a warning.
 
 In Documentation, a manual report’s **Checklist** selector chooses the specific review without changing the checklist open in Data validation. **Refresh from current checklist** reads that chosen review and the block’s selected model. Choose **Long** to print guidance and comments, or **Short** for questions and verdicts. **Show benchmark scores** controls the progress rings and numerical summaries in both preview and PDF. A report still embeds its last snapshot: deleting the live checklist leaves its printed evidence intact and disables Refresh. Older manual blocks retain their original detailed layout and active-checklist refresh behavior until you select a specific source.
+
+
+## Workflow report documents
+
+[Session automation](flow.md#file-slots-reports-and-portability) builds documents
+from completed validation, rerun comparisons and imported historical comparison
+evidence. Default documents show run/model provenance before native report blocks.
+Templates use explicit block-to-job/result mappings; multi-model IDS jobs expand
+into adjacent report blocks while retaining title, ring and layout settings.
+
+Flow awaits native list and chart-filter preparation before producing a combined
+PDF. Renderer warnings and row-limit notices remain visible. Documents use the
+existing version-10 native format and remain editable in Documentation. A storage
+warning means the document remains available in memory. Download retries reuse
+the current PDF artifact rather than rerunning checks.

@@ -4,7 +4,7 @@
 
 use super::ProfileProcessor;
 use crate::profile::Profile2D;
-use crate::{Error, Result};
+use crate::{Error, Point2, Result};
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
 impl ProfileProcessor {
@@ -208,5 +208,71 @@ impl ProfileProcessor {
         }
 
         Ok(Some((x / len, y / len)))
+    }
+
+    /// Planar conic center, local-X rotation, and local-Y handedness (#6597).
+    pub(super) fn get_placement_2d(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<(Point2<f64>, f64, f64)> {
+        let placement_attr = match entity.get(0) {
+            Some(attr) if !attr.is_null() => attr,
+            _ => return Ok((Point2::new(0.0, 0.0), 0.0, 1.0)),
+        };
+
+        let placement = match decoder.resolve_ref(placement_attr)? {
+            Some(p) => p,
+            None => return Ok((Point2::new(0.0, 0.0), 0.0, 1.0)),
+        };
+
+        if placement.ifc_type == IfcType::IfcAxis2Placement3D {
+            // Use the canonical orthonormal frame: local Y = Axis cross X.
+            // Conics in a horizontal profile plane can have either +Z or -Z
+            // normals. RefDirection alone cannot distinguish their travel.
+            let frame = crate::transform::parse_axis2_placement_3d(&placement, decoder)?;
+            let center = Point2::new(frame[(0, 3)], frame[(1, 3)]);
+            let rotation = frame[(1, 0)].atan2(frame[(0, 0)]);
+            let determinant = frame[(0, 0)] * frame[(1, 1)]
+                - frame[(1, 0)] * frame[(0, 1)];
+            return Ok((center, rotation, if determinant < 0.0 { -1.0 } else { 1.0 }));
+        }
+
+        let location_attr = placement.get(0);
+        let center = if let Some(loc_attr) = location_attr {
+            if let Some(loc) = decoder.resolve_ref(loc_attr)? {
+                let coords = loc.get(0).and_then(|v| v.as_list());
+                if let Some(coords) = coords {
+                    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+                    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+                    Point2::new(x, y)
+                } else {
+                    Point2::new(0.0, 0.0)
+                }
+            } else {
+                Point2::new(0.0, 0.0)
+            }
+        } else {
+            Point2::new(0.0, 0.0)
+        };
+
+        let rotation = if let Some(dir_attr) = placement.get(1) {
+            if let Some(dir) = decoder.resolve_ref(dir_attr)? {
+                let ratios = dir.get(0).and_then(|v| v.as_list());
+                if let Some(ratios) = ratios {
+                    let x = ratios.first().and_then(|v| v.as_float()).unwrap_or(1.0);
+                    let y = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+                    y.atan2(x)
+                } else {
+                    0.0
+                }
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        };
+
+        Ok((center, rotation, 1.0))
     }
 }

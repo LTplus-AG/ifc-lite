@@ -27,11 +27,10 @@ import { FlowCanvas, useCanvasDropPosition } from './FlowCanvas';
 import { FlowExampleGallery, FlowExamplePicker } from './FlowExamples';
 import { FlowInspector } from './FlowInspector';
 import { FlowPalette } from './FlowPalette';
+import { FlowStartupPreference } from './FlowStartupPreference';
 import { FlowPlayer } from './FlowPlayer';
 import { FlowPublishButton } from './FlowPublishButton';
 import { useFlowRunner } from './useFlowRunner';
-
-type FlowView = 'editor' | 'player';
 
 const select = 'min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5';
 const button = 'rounded border border-border px-2 py-0.5 hover:bg-muted disabled:opacity-50';
@@ -57,6 +56,7 @@ export function FlowPanel() {
   const flowRunning = useViewerStore((s) => s.flowRunning);
   const lastRun = useViewerStore((s) => s.flowLastRun);
   const lastError = useViewerStore((s) => s.flowLastError);
+  const storageError = useViewerStore((s) => s.flowStorageError);
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const createFlow = useViewerStore((s) => s.createFlow);
   const openFlow = useViewerStore((s) => s.openFlow);
@@ -70,7 +70,8 @@ export function FlowPanel() {
   const { run, canRun } = useFlowRunner();
   const fileInput = useRef<HTMLInputElement>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [view, setView] = useState<FlowView>('editor');
+  const view = useViewerStore((s) => s.flowView);
+  const setView = useViewerStore((s) => s.setFlowView);
   const registry = flowRegistry();
 
   // Extension-contributed graphs (#5167 phase 4.2): read-only until the
@@ -116,13 +117,13 @@ export function FlowPanel() {
   const onNew = async () => {
     const name = await promptDialog({ description: t('flowPanel.newPrompt'), defaultValue: t('flowPanel.newDefaultName') });
     if (name === null) return;
-    if (createFlow(name) === null) setNotice(t('flowPanel.limitReached'));
+    if (createFlow(name) === null) setNotice(useViewerStore.getState().flowStorageError ? null : t('flowPanel.limitReached'));
   };
 
   const onImportFile = async (file: File) => {
     try {
       const doc = parseFlowDocument(await file.text());
-      if (importFlow(doc) === null) setNotice(t('flowPanel.limitReached'));
+      if (importFlow(doc) === null) setNotice(useViewerStore.getState().flowStorageError ? null : t('flowPanel.limitReached'));
       else setNotice(null);
     } catch (err) {
       setNotice(t('flowPanel.importFailed', { reason: err instanceof Error ? err.message : String(err) }));
@@ -136,7 +137,7 @@ export function FlowPanel() {
    * created.
    */
   const onOpenExample = (doc: FlowDocument) => {
-    if (importFlow({ ...doc, id: crypto.randomUUID() }) === null) setNotice(t('flowPanel.limitReached'));
+    if (importFlow({ ...doc, id: crypto.randomUUID() }) === null) setNotice(useViewerStore.getState().flowStorageError ? null : t('flowPanel.limitReached'));
     else setNotice(null);
   };
 
@@ -160,7 +161,7 @@ export function FlowPanel() {
   const onDuplicateContributed = () => {
     if (!openedContributed) return;
     const copy: FlowDocument = { ...openedContributed.doc, id: crypto.randomUUID() };
-    if (importFlow(copy) === null) setNotice(t('flowPanel.limitReached'));
+    if (importFlow(copy) === null) setNotice(useViewerStore.getState().flowStorageError ? null : t('flowPanel.limitReached'));
     else setNotice(null);
   };
 
@@ -208,6 +209,7 @@ export function FlowPanel() {
           <>
             <button type="button" className={button} onClick={() => download(flowDoc.name, flowToJson(flowDoc))}>{t('flowPanel.export')}</button>
             <button type="button" className={button} disabled={!flowDirty} onClick={saveFlow}>{t('flowPanel.save')}</button>
+            <FlowStartupPreference />
             <button type="button" className={button} onClick={onDelete}>{t('flowPanel.delete')}</button>
             <span className="text-muted-foreground">{flowDirty ? t('flowPanel.unsaved') : t('flowPanel.saved')}</span>
           </>
@@ -233,6 +235,7 @@ export function FlowPanel() {
         {contributed.diagnostics.length > 0 && (
           <span className="text-amber-300">{t('flowPanel.contributed.diagnostics', { count: contributed.diagnostics.length })}</span>
         )}
+        {storageError && <output className="text-amber-300">{t('automationEditor.graphStorageError', { reason: storageError })}</output>}
         {notice && <span className="text-amber-300">{notice}</span>}
       </div>
 
@@ -249,7 +252,7 @@ export function FlowPanel() {
             </div>
           </ReactFlowProvider>
         ) : (
-          <FlowPlayer doc={flowDoc} registry={registry} lastRun={lastRun} lastError={lastError} />
+          <FlowPlayer doc={flowDoc} registry={registry} lastRun={lastRun} lastError={lastError} onDocChange={onDocChange} />
         )
       ) : (
         <FlowExampleGallery onOpen={onOpenExample} />

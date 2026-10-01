@@ -7,7 +7,8 @@
  * (`store/teardown.ts`), beside the slice like every other contribution.
  *
  * The ASSIGNMENTS and the Models-section VIEW are torn down; tag definitions
- * are not. Definitions (`modelTags`) are the user's vocabulary — persisted to
+ * are not. Their unsaved status (`modelTagsSaveFailed`) also survives so a
+ * model swap cannot hide a failed vocabulary write. Definitions (`modelTags`) are the user's vocabulary — persisted to
  * localStorage, referenced by id from saved advanced filters and clash
  * presets — and a file swap must no more destroy them than it destroys saved
  * filters. An assignment, by contrast, names a model id, and a model id that

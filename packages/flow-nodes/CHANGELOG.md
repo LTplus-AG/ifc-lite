@@ -1,5 +1,20 @@
 # @ifc-lite/flow-nodes
 
+## 0.6.0
+
+### Minor Changes
+
+- [#6618](https://github.com/LTplus-AG/ifc-lite/pull/6618) [`b13abd0`](https://github.com/LTplus-AG/ifc-lite/commit/b13abd0ef9f6419050f7a2496aa6874a02ef0276) Thanks [@louistrue](https://github.com/louistrue)! - Add portable Flow v2 local file slots and viewer-hosted session automation nodes for checks, retained report documents and PDF artifacts. Refuse missing automation services before headless execution.
+
+### Patch Changes
+
+- Updated dependencies [[`e8ced94`](https://github.com/LTplus-AG/ifc-lite/commit/e8ced940d5cd6c9789f1221c5aeb7cdae883da3b), [`b13abd0`](https://github.com/LTplus-AG/ifc-lite/commit/b13abd0ef9f6419050f7a2496aa6874a02ef0276), [`93098dc`](https://github.com/LTplus-AG/ifc-lite/commit/93098dcb7f4125326db5d602977c5b3f9e9083cb), [`7780cb0`](https://github.com/LTplus-AG/ifc-lite/commit/7780cb05878c574ebd2a9f631ca6757233e845d3), [`e8ced94`](https://github.com/LTplus-AG/ifc-lite/commit/e8ced940d5cd6c9789f1221c5aeb7cdae883da3b), [`4c0ebf2`](https://github.com/LTplus-AG/ifc-lite/commit/4c0ebf24c8c7b8470602300d56f0b1bd7c2a01e0)]:
+  - @ifc-lite/sdk@9.0.0
+  - @ifc-lite/flow@0.5.0
+  - @ifc-lite/mutations@3.1.0
+  - @ifc-lite/sandbox@2.10.0
+  - @ifc-lite/export@4.9.0
+
 ## 0.5.1
 
 ### Patch Changes

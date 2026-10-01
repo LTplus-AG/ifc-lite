@@ -45,6 +45,7 @@ The `provider` is a `LensDataProvider`, an adapter interface over your parsed mo
 | `lens-envelope` | Building Envelope | Roofs, curtain walls, windows, doors, walls |
 | `lens-openings` | Openings & Circulation | Doors, windows, stairs, ramps, railings |
 | `lens-auto-material` | By Material | Auto-colors by material name |
+| `lens-by-stage` | By Stage | Auto-colors vendor `CESIUM.Stage` property values |
 | `lens-by-model` | By Model | Auto-colors by source model (federation) |
 | `lens-by-zone` | By Zone | Auto-colors by IfcZone/IfcGroup membership |
 
@@ -160,3 +161,9 @@ This is exactly how the viewer wires it: the Lens panel evaluates the active len
 | `hexToRgba` / `rgbaToHex` / `uniqueColor` / `isGhostColor` / `GHOST_COLOR` | Color helpers |
 
 Key types: `Lens`, `LensRule`, `AutoColorSpec`, `LensEvaluationResult`, `LensDataProvider`, `RGBAColor`.
+
+## Construction-stage tagging
+
+In **Author → Bulk Edit**, choose **Construction stage preset**. It targets the current selection and prepares an integer `CESIUM.Stage` property, initially `1`. Review the selection and value before applying. Assignments support workspace undo and are preserved in exported IFC. Select the **By Stage** Lens to color the assigned stages; unassigned elements are ghosted.
+
+`CESIUM.Stage` is vendor metadata, separate from standard IFC tasks and schedules. The preset and Lens adapt the workflow published by the [GeoBIM MPL fork](https://github.com/christof2304/ifc-lite/releases/tag/geobim-2026-09-24), using IFClite's existing editing and visualization paths.

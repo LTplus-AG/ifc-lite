@@ -63,11 +63,13 @@ test('ion never forwards bearer credentials to an unexpected completion origin (
   const malicious = response();
   malicious.onComplete.url = 'https://example.com/v1/assets/42/uploadComplete';
   let requests = 0;
+  let uploads = 0;
   await assert.rejects(uploadToCesiumIon(input(), {
-    fetchImpl: async () => { requests++; return Response.json(malicious); },
-    putObject: async () => assert.fail('must not upload'),
-  }), (error: unknown) => error instanceof IonUploadError && error.assetId === 42);
+    fetchImpl: async () => ++requests === 1 ? Response.json(malicious) : new Response(null, { status: 204 }),
+    putObject: async () => { uploads++; },
+  }), (error: unknown) => error instanceof IonUploadError && error.assetId === 42 && error.phase === 'create');
   assert.equal(requests, 1);
+  assert.equal(uploads, 0);
 });
 
 test('ion cancellation stops completion and keeps the created asset identity (#6587)', async () => {
@@ -94,9 +96,14 @@ for (const step of ['upload', 'complete'] as const) {
 
 test('invalid upload filenames do not create assets (#6587)', async () => {
   for (const fileName of ['../model.ifc', 'folder/model.ifc', 'model.ifcx', 'model\\name.ifc']) {
+    let requests = 0;
+    let uploads = 0;
     await assert.rejects(uploadToCesiumIon({ ...input(), fileName }, {
-      fetchImpl: async () => assert.fail('must not create asset'),
+      fetchImpl: async () => ++requests === 1 ? Response.json(response()) : new Response(null, { status: 204 }),
+      putObject: async () => { uploads++; },
     }), IonUploadError);
+    assert.equal(requests, 0, fileName);
+    assert.equal(uploads, 0, fileName);
   }
 });
 

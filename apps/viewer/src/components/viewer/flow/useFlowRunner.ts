@@ -16,17 +16,20 @@ import { useBim } from '@/sdk/BimProvider';
 import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
 import type { FlowRunWindow } from '@/store/slices/flowSlice';
-import { invalidateForExternalChange, runFlowInViewer } from '@/lib/flow/runner';
+import { invalidateForExternalChange, runFlowInViewer, viewerFlowFeatures } from '@/lib/flow/runner';
 import { viewerTableAccess } from '@/lib/flow/viewer-tables';
 import { openBackendWriteCapture } from '@/sdk/adapters/backend-write-capture';
 import { createViewerOpenModel } from '@/lib/flow/open-model';
+import { createAutomationHost } from '@/lib/flow/automation-host';
+import { preflightWorkflow } from '@/lib/flow/preflight';
+import { startWorkflowRun, cancelWorkflowRun } from '@/lib/flow/run-session';
 
 /** Ids of every pending mutation, on every model. */
 function pendingMutationIds(): Set<string> {
   return new Set([...useViewerStore.getState().undoStacks.values()].flat().map((mutation) => mutation.id));
 }
 
-export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Promise<void>; canRun: boolean } {
+export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Promise<void>; canRun: boolean; cancel: () => void } {
   const bim = useBim();
   const flowDoc = useViewerStore((s) => s.flowDoc);
   const flowRunning = useViewerStore((s) => s.flowRunning);
@@ -48,11 +51,31 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
     return () => { for (const off of offs) off(); };
   }, [bim]);
 
-  const canRun = flowDoc !== null && !flowRunning && activeModelId !== null;
+  const automationGraph = flowDoc?.nodes.some((n) => /^(session\.|validation\.|comparison\.|report\.)/.test(n.type)) ?? false;
+  const canRun = flowDoc !== null && !flowRunning && (activeModelId !== null || automationGraph);
 
   const run = useCallback(async (inputs?: Record<string, unknown>) => {
-    if (!flowDoc || !activeModelId || running.current) return;
-    const model = models.get(activeModelId);
+    if (!flowDoc || (!activeModelId && !automationGraph) || running.current || useViewerStore.getState().flowRunning) return;
+    let session;
+    try { session = startWorkflowRun(); } catch (error) {
+      setFlowLastRun(null, error instanceof Error ? error.message : String(error)); return;
+    }
+    const doc = structuredClone(flowDoc);
+    const initialDoc = flowDoc;
+    const unsubscribe = useViewerStore.subscribe((state, previous) => {
+      if (state.flowDoc !== initialDoc) session.cancel();
+      if (automationGraph && !session.phase.startsWith('Loading models')
+        && (state.mutationVersion !== previous.mutationVersion || state.geometryContentVersion !== previous.geometryContentVersion)) session.cancel();
+      if (automationGraph && session.phase !== 'Assigning model tags'
+        && (state.modelTags !== previous.modelTags || state.modelTagAssignments !== previous.modelTagAssignments)) session.cancel();
+      for (const [id, model] of previous.models) {
+        const current = state.models.get(id);
+        if (!current || (model.ifcDataStore && current.ifcDataStore !== model.ifcDataStore)) session.cancel();
+      }
+    });
+    session.onProgress = (phase) => useViewerStore.getState().setFlowProgress(phase);
+    useViewerStore.setState({ flowProgress: 'Checking workflow inputs', flowRunWarnings: [], flowArtifacts: [], flowLastRun: null, flowLastError: null, flowLastRunWindow: null });
+    const model = activeModelId ? models.get(activeModelId) : undefined;
     const pin = model?.sourceContentHash ? `content:${model.sourceContentHash}` : `model:${activeModelId}`;
     let cache = caches.current.get(flowDoc.id);
     if (!cache) {
@@ -73,28 +96,41 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>) => Pr
       return {
         start,
         end: Date.now(),
-        doc: flowDoc,
+        doc,
         mutationIds: new Set([...capture.ids].filter((id) => pending.has(id))),
       };
     };
     // Another graph opened while this one ran: its panel must not show, or
     // publish, this run (#5380 review). `openFlow` already cleared the result.
-    const stillOpen = (): boolean => useViewerStore.getState().flowDoc?.id === flowDoc.id;
+    const stillOpen = (): boolean => useViewerStore.getState().flowDoc === initialDoc;
     try {
-      const result = await runFlowInViewer({
-        doc: flowDoc, bim, pin, cache, inputs, tables: viewerTableAccess(useViewerStore),
-        openModel: createViewerOpenModel(addModel, (id) => useViewerStore.getState().models.has(id)),
+      const preparedInputs = await preflightWorkflow(session, doc, inputs ?? {}, viewerFlowFeatures(true));
+      session.check();
+      const ownedAddModel: typeof addModel = (file, options) => addModel(file, { ...options, workflowOwner: session.id });
+      const automation = createAutomationHost(session, doc, ownedAddModel, (artifact) => {
+        session.check();
+        const state = useViewerStore.getState();
+        if (stillOpen()) state.setFlowArtifacts([...state.flowArtifacts, artifact]);
       });
+      const result = await runFlowInViewer({
+        doc, bim, pin, cache, inputs: preparedInputs, signal: session.controller.signal, automation, tables: viewerTableAccess(useViewerStore),
+        openModel: createViewerOpenModel(ownedAddModel, (id) => useViewerStore.getState().models.has(id)),
+      });
+      session.check();
       if (stillOpen()) setFlowLastRun(result, undefined, record());
       else setFlowRunning(false);
     } catch (err) {
       if (stillOpen()) setFlowLastRun(null, err instanceof Error ? err.message : String(err), record());
       else setFlowRunning(false);
     } finally {
+      unsubscribe();
+      if (stillOpen()) useViewerStore.setState({ flowProgress: null, flowRunWarnings: [...session.warnings] });
+      if (session.controller.signal.aborted) invalidateForExternalChange(bim, cache);
+      session.release();
       capture.close();
       running.current = false;
     }
-  }, [flowDoc, activeModelId, models, bim, addModel, setFlowRunning, setFlowLastRun]);
+  }, [flowDoc, activeModelId, models, bim, addModel, setFlowRunning, setFlowLastRun, automationGraph]);
 
-  return { run, canRun };
+  return { run, canRun, cancel: cancelWorkflowRun };
 }

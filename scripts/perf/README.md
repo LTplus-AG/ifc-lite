@@ -2713,3 +2713,24 @@ separate output increase at the small-hole retention policy; do not delete
 corrective geometry to recover a former triangle count. The private reporter's
 complete slowdown remains unresolved. [All samples, identities, limits and
 reproduction commands](evidence/opening-work-6516/README.md) are retained together.
+
+
+## Optional per-face geometry export colors (#6601)
+
+Color-aware analysis exports keep material indices attached to triangles through
+welding. The legacy builder still accumulates its original element map directly;
+only the opt-in builder adds a lazy palette sidecar. An initial implementation
+converted a second map even for legacy callers; that unnecessary allocation was
+removed before acceptance. Interleaved actual export-API runs retain byte-identical
+legacy JSON on both reference models. Small-model timing varied between pairs and
+the larger fixture's legacy total remained within the observed spread. The opt-in
+metadata adds bounded work and output bytes; no speedup is claimed.
+
+Native whole-load controls retain identical ordered mesh fingerprints and counts.
+A repeat showed a small positive timing shift on the larger fixture, with mixed
+paired deltas. The export API is not called by that probe, and a code-generation
+audit found no changed hot-path arithmetic or branches. This supports isolating
+export overhead, not claiming zero runtime variation or browser worker throughput.
+The PR records both native runs and the actual API timings. The lesson is to
+measure the consuming API, preserve the old accumulation path, and allocate
+optional metadata only when a distinct material requires it.

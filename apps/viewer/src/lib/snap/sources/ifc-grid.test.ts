@@ -21,10 +21,10 @@ import { query } from '@/test/snap-fixture.js';
 
 /** Grid 7: 1, 2 at x = 0, 6 (y from -1 to 9), A, B at y = 0, 8 (x from -1 to 7), all in storey-local metres. */
 const AXES: GridAxisLine[] = [
-  { gridId: 7, AxisTag: '1', family: 'U', a: [0, -1], b: [0, 9] },
-  { gridId: 7, AxisTag: '2', family: 'U', a: [6, -1], b: [6, 9] },
-  { gridId: 7, AxisTag: 'A', family: 'V', a: [-1, 0], b: [7, 0] },
-  { gridId: 7, AxisTag: 'B', family: 'V', a: [-1, 8], b: [7, 8] },
+  { gridId: 7, axisId: 71, AxisTag: '1', family: 'U', a: [0, -1], b: [0, 9] },
+  { gridId: 7, axisId: 72, AxisTag: '2', family: 'U', a: [6, -1], b: [6, 9] },
+  { gridId: 7, axisId: 73, AxisTag: 'A', family: 'V', a: [-1, 0], b: [7, 0] },
+  { gridId: 7, axisId: 74, AxisTag: 'B', family: 'V', a: [-1, 8], b: [7, 8] },
 ];
 
 const source = (axes: readonly GridAxisLine[] = AXES, deps: { storey?: number | null; version?: () => number } = {}) => createIfcGridSource({
@@ -45,15 +45,15 @@ describe('gridAxisIntersections (#6232 D3)', () => {
   });
 
   it('ignores axes that do not reach each other, other grids and parallel lines', () => {
-    const short: GridAxisLine = { gridId: 7, AxisTag: 'C', family: 'V', a: [10, 3], b: [12, 3] };
-    const other: GridAxisLine = { gridId: 9, AxisTag: 'X', family: 'V', a: [-1, 3], b: [7, 3] };
+    const short: GridAxisLine = { gridId: 7, axisId: 75, AxisTag: 'C', family: 'V', a: [10, 3], b: [12, 3] };
+    const other: GridAxisLine = { gridId: 9, axisId: 76, AxisTag: 'X', family: 'V', a: [-1, 3], b: [7, 3] };
     assert.equal(gridAxisIntersections([...AXES, short, other]).length, 4);
   });
 
   it('keeps the crossing of an axis that ends exactly on another', () => {
     const tee: GridAxisLine[] = [
-      { gridId: 1, AxisTag: '1', family: 'U', a: [0, 0], b: [0, 5] },
-      { gridId: 1, AxisTag: 'A', family: 'V', a: [0, 5], b: [4, 5] },
+      { gridId: 1, axisId: 77, AxisTag: '1', family: 'U', a: [0, 0], b: [0, 5] },
+      { gridId: 1, axisId: 78, AxisTag: 'A', family: 'V', a: [0, 5], b: [4, 5] },
     ];
     assert.deepEqual(gridAxisIntersections(tee).map((c) => c.at), [[0, 5]]);
   });

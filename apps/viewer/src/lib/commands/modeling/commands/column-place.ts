@@ -15,6 +15,8 @@ import { commandGhostId } from '../ghost.js';
 import { centredRectOutline, prismGhostMesh } from '../ghost-shapes.js';
 import type { CommandField, ModelingCommand } from '../types.js';
 import type { Vec2 } from '@/lib/snap/types';
+import type { ColumnInStoreParams, ProfiledColumnInStoreParams, GridColumnBinding } from '@ifc-lite/create';
+import { addGridColumnIn } from '@/store/slices/mutation-grid-column';
 import { defaultsField, dimOf, planeZ } from './placement-shared.js';
 import { rectangleOnly, sectionExtentOf, sectionGhost, sectionOf } from './linear-section.js';
 import { ColumnPlaceProfileBar } from '@/components/viewer/tools/command/ProfileBars';
@@ -27,6 +29,8 @@ export interface ColumnPlaceGesture {
   readonly cursor: Vec2 | null;
   /** Degrees, counter-clockwise from storey-local +x; kept from one column to the next. */
   readonly rotation: number;
+  /** Kept only while the solved cursor is the actual active-model crossing. */
+  readonly gridBinding?: GridColumnBinding | null;
 }
 
 const normalise = (deg: number) => ((deg % 360) + 360) % 360;
@@ -50,7 +54,15 @@ export const COLUMN_PLACE: ModelingCommand<ColumnPlaceGesture> = {
   keys: [{ commandKey: 'command.column.rotate', run: (g) => ({ ...g, rotation: normalise(g.rotation + COLUMN_ROTATION_STEP) }) }],
   init: () => ({ cursor: null, rotation: 0 }),
   snapQuery: () => ({ anchor: null, chain: [], locks: {} }),
-  pointerMove: (g, s) => ({ ...g, cursor: s.local }),
+  pointerMove(g, s, ctx) {
+    const winner = s.winner;
+    const binding = winner?.kind === 'gridIntersection' && winner.source === 'ifc-grid'
+      && winner.entity?.modelId === ctx.modelId && winner.gridIntersection
+      && Math.hypot(s.local[0] - winner.local[0], s.local[1] - winner.local[1]) <= 1e-9
+      ? { GridId: winner.entity.expressId, IntersectingAxes: winner.gridIntersection.IntersectingAxes }
+      : null;
+    return { ...g, cursor: s.local, gridBinding: binding };
+  },
   pointerDown: () => ({ commit: true }),
   // The first click of a double-click already placed the column; the second must not stack another on it.
   doubleClick: (g) => g,
@@ -63,13 +75,16 @@ export const COLUMN_PLACE: ModelingCommand<ColumnPlaceGesture> = {
     const ctx = { get: () => tx.store };
     const turn = (g.rotation * Math.PI) / 180;
     const profile = sectionOf(ctx, 'column');
-    const column = tx.store.addColumn(tx.modelId, tx.storeyId, {
+    const params: ColumnInStoreParams | ProfiledColumnInStoreParams = {
       Position: [g.cursor[0], g.cursor[1], planeZ(tx.workplane)],
       ...(profile ? { Profile: profile } : { Width: dimOf(ctx, 'column', 'Width'), Depth: dimOf(ctx, 'column', 'Depth') }),
       Height: dimOf(ctx, 'column', 'Height'),
       // The section's Width axis, storey-local: the turn is written with the column.
       RefDirection: [Math.cos(turn), Math.sin(turn), 0],
-    });
+    };
+    const column = g.gridBinding
+      ? addGridColumnIn(tx.api, tx.modelId, tx.storeyId, params, g.gridBinding)
+      : tx.store.addColumn(tx.modelId, tx.storeyId, params);
     if ('error' in column) throw new Error(`Couldn't add column: ${column.error}`);
     return { created: [column.expressId], authored: [column.expressId], deleted: [], remesh: [column.expressId], select: [column.expressId] };
   },

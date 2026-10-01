@@ -24,7 +24,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { remeshContextRoots } from '@ifc-lite/export';
+import { gridPlacementDependents, remeshContextRoots } from '@ifc-lite/export';
 
 export type RemeshCause = 'shape' | 'created' | 'hostsChanged';
 
@@ -56,6 +56,9 @@ export function expandAffectedSet(
   if (targets.size === 0) return targets;
 
   const out = new Set(targets);
+  if ([...targets].some((id) => typeOf(store, view, id) === 'IFCGRID')) {
+    for (const id of gridPlacementDependents(store, view, targets)) out.add(id);
+  }
   const context = remeshContextRoots(store, view, targets);
   const openingTargets = [...targets].some((id) => typeOf(store, view, id) === 'IFCOPENINGELEMENT');
   for (const id of context) {

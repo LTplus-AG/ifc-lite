@@ -25,7 +25,10 @@ original source. All four actual GLBs and their schema dependencies render
 in CesiumJS, with 48 metadata features and 13,292 triangles. Full per-product placement comparison also passed: bidirectional referenced
 vertex differences are below 1.255 mm, within the 1.810 mm quantization step.
 See the [numeric proof](./infra-map-unit-normalized-proof.json). A production
-implementation and edited-model acceptance remain pending. No manual display transform was
+implementation has passed real edited-model upload acceptance as asset
+5970083: the actual Name edit and all 48 GUIDs survive, with exact render
+geometry/tile-transform identity against the verified control. PR review and
+required checks remain pending. No manual display transform was
 introduced.
 
 A second client-side control, **5970044**, uses standard mapped geometry

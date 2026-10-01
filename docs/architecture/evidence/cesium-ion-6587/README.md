@@ -22,7 +22,19 @@ binary geometry and cumulative tile transforms were preserved. An independent de
 vertex differences are at most 1.255 mm, below the 1.810 mm quantization step;
 per-axis bounds differences are below 0.585 mm. Triangle counts differ, so
 this does not assert identical connectivity. See the [numeric proof](./infra-map-unit-normalized-proof.json).
-An edited-model production upload remains pending.
+Production asset **5970083** has now passed the actual viewer route: load the
+original model, edit IfcBeam #288 in Author > Model, upload through the real
+Ion dialog/transport, and inspect the complete asset. Its tiled Name is
+`Ion normalization acceptance edited girder`; all 48 GUIDs and 47 other Names
+match the source. Genuine meshopt decoding establishes exact render-accessor,
+index, scene/node, material, feature-association and complete tile-transform
+identity against verified control 5970022. Full GLB hashes differ because
+metadata changed. All four GLBs render in CesiumJS; the token field was masked
+and cleared after submission. The user also confirmed the Cesium view looks good.
+The [numeric proof](./infra-map-unit-normalized-proof.json) records this separately
+from the original unedited control.
+
+![Production tiled model with the actual Name edit](infra-production-edited.png)
 
 ![Actual normalized Infra-Bridge asset rendered by CesiumJS](infra-map-unit-normalized.png)
 

@@ -17,6 +17,13 @@
 import type { TranslationValue } from '../types';
 
 export const documentEn = {
+  'document.pageHeading.label': 'Page heading',
+  'document.pageHeading.text': 'Page heading text',
+  'document.pageHeading.font': 'Page heading font',
+  'document.pageHeading.size': 'Page heading size',
+  'document.pageHeading.color': 'Page heading colour',
+  'document.pageHeading.resetColor': 'Reset page heading colour',
+  'document.pageHeading.reset': 'Reset page heading',
   'document.block.tableSourceComparison': 'Saved comparison',
   'document.block.comparisonPicker': 'Choose saved comparison for document',
   'document.block.comparisonSnapshotHint': 'This document embeds a copy of the completed report. Renaming or deleting its saved comparison does not change this copy.',

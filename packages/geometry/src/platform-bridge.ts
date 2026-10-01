@@ -137,6 +137,9 @@ export interface StreamingOptions {
  * Platform bridge interface - abstracts WASM vs native processing
  */
 export interface IPlatformBridge {
+  /** Optional canonical coordinate compatibility export capability. */
+  planMapConversionNormalization?(content: Uint8Array): string;
+
   /**
    * Initialize the bridge (WASM loading for web, no-op for native)
    */

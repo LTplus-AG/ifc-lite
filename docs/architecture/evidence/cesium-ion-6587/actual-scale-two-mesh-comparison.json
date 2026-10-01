@@ -1,0 +1,412 @@
+{
+  "sourceSha256": "970100f73a188cbcda65e0ba147cb2be0646643fe9f0bf84de200819feac3434",
+  "sourceEngine": "IfcOpenShell 0.8.5",
+  "sourceExpressId": 16,
+  "sourceVertexCount": 8,
+  "sourceTriangleCount": 12,
+  "sourceEngineeringMetres": [
+    [
+      5.002220859751105e-12,
+      -14,
+      67
+    ],
+    [
+      5.002220859751105e-12,
+      -14,
+      68
+    ],
+    [
+      2025.279486355555,
+      -14,
+      68
+    ],
+    [
+      2025.279486355555,
+      -14,
+      67
+    ],
+    [
+      2025.279486355555,
+      14,
+      68
+    ],
+    [
+      2025.279486355555,
+      14,
+      67
+    ],
+    [
+      5.002220859751105e-12,
+      14,
+      68
+    ],
+    [
+      5.002220859751105e-12,
+      14,
+      67
+    ]
+  ],
+  "canonicalMapMetres": [
+    [
+      546019.5456004147,
+      4184944.7064195606,
+      134
+    ],
+    [
+      546019.5456004147,
+      4184944.7064195606,
+      136
+    ],
+    [
+      545623.6452914492,
+      4188975.8713798136,
+      136
+    ],
+    [
+      545623.6452914492,
+      4188975.8713798136,
+      134
+    ],
+    [
+      545567.9134185656,
+      4188970.3979581324,
+      136
+    ],
+    [
+      545567.9134185656,
+      4188970.3979581324,
+      134
+    ],
+    [
+      545963.8137275313,
+      4184939.23299788,
+      136
+    ],
+    [
+      545963.8137275313,
+      4184939.23299788,
+      134
+    ]
+  ],
+  "canonicalMapping": "Parsed IfcMapConversion: normalized X axis, uniform Scale applied to XYZ, then Eastings/Northings/OrthogonalHeight translation",
+  "rootTransform": [
+    0.8436023515648817,
+    -0.5369684091584922,
+    0,
+    0,
+    0.3291910337677256,
+    0.5171744286330252,
+    0.7900404253296409,
+    0,
+    -0.4242267503601558,
+    -0.6664799606394044,
+    0.6130547498755392,
+    0,
+    -2709172.5861739255,
+    -4256236.168666033,
+    3888846.279446933,
+    1
+  ],
+  "rootRotationGramMaxError": 2.220446049250313e-16,
+  "rootRotationDeterminant": 1,
+  "expectedComparisons": [
+    {
+      "grid": "g1999u05",
+      "operationExpectedAccuracyMetres": 2.05,
+      "expectedSourceCornersRootLocalMetres": [
+        [
+          27.891671605112165,
+          2.5818867129736702,
+          134.0004021804685
+        ],
+        [
+          27.891680339880907,
+          2.5818875587321344,
+          136.00040217949186
+        ],
+        [
+          -345.6019603288048,
+          4037.4727785424757,
+          134.79632973500975
+        ],
+        [
+          -345.60185209625377,
+          4037.4715087730947,
+          132.7963301403961
+        ],
+        [
+          -401.38537103235353,
+          4032.3092590770757,
+          134.7961291642148
+        ],
+        [
+          -401.38524533001294,
+          4032.307990931415,
+          132.79612957127028
+        ],
+        [
+          -27.891681194918235,
+          -2.5818831524600654,
+          135.99947439680963
+        ],
+        [
+          -27.89167245982626,
+          -2.5818823739112275,
+          133.99947439566103
+        ]
+      ],
+      "nearestActualVertexEuclideanDistanceMetres": [
+        65.98498783524984,
+        67.98498762375787,
+        68.01385518888924,
+        66.01385520038801,
+        68.013664855624,
+        66.01366490575346,
+        67.98405833432582,
+        65.98405849782014
+      ],
+      "expectedSourceBoundsRootLocalMetres": [
+        [
+          -401.38537103235353,
+          27.891680339880907
+        ],
+        [
+          -2.5818831524600654,
+          4037.4727785424757
+        ],
+        [
+          132.79612957127028,
+          136.00040217949186
+        ]
+      ]
+    },
+    {
+      "grid": "g2018u0",
+      "operationExpectedAccuracyMetres": 4.015,
+      "expectedSourceCornersRootLocalMetres": [
+        [
+          27.89167350951435,
+          2.5818868979973786,
+          134.43654293889128
+        ],
+        [
+          27.891682244390356,
+          2.5818877434887924,
+          136.43654293901835
+        ],
+        [
+          -345.60198380282554,
+          4037.4730539401153,
+          135.23010532429407
+        ],
+        [
+          -345.6018755705602,
+          4037.471784170314,
+          133.2301057309819
+        ],
+        [
+          -401.3853982938539,
+          4032.309534102192,
+          135.22987182136671
+        ],
+        [
+          -401.3852725915135,
+          4032.308265955796,
+          133.22987222785127
+        ],
+        [
+          -27.891683099373083,
+          -2.58188332164724,
+          136.4354482043293
+        ],
+        [
+          -27.891674364173852,
+          -2.581882543365481,
+          134.43544820428443
+        ]
+      ],
+      "nearestActualVertexEuclideanDistanceMetres": [
+        66.4211285466842,
+        68.4211283390117,
+        68.44763086369649,
+        66.44763087634108,
+        68.44740759056191,
+        66.44740763949054,
+        68.42003210723358,
+        66.42003226970841
+      ],
+      "expectedSourceBoundsRootLocalMetres": [
+        [
+          -401.3853982938539,
+          27.891682244390356
+        ],
+        [
+          -2.58188332164724,
+          4037.4730539401153
+        ],
+        [
+          133.22987222785127,
+          136.43654293901835
+        ]
+      ]
+    }
+  ],
+  "contentSha256": "9b4f09a5f6d1b79e452b4118acb51ec24439e0e5aea58dffb783de9e72fa1053",
+  "decoder": {
+    "library": "meshoptimizer",
+    "version": "1.2.0",
+    "entry": "meshopt_decoder.mjs",
+    "api": "decodeGltfBuffer",
+    "compression": "EXT_meshopt_compression",
+    "positionMode": "ATTRIBUTES",
+    "indexMode": "TRIANGLES"
+  },
+  "actualMesh": {
+    "positionAccessor": {
+      "componentType": 5123,
+      "normalized": true,
+      "count": 24,
+      "type": "VEC3",
+      "byteStride": 8
+    },
+    "indexCount": 36,
+    "triangleCount": 12,
+    "referencedVertexCount": 24,
+    "uniqueReferencedPositionCount": 8,
+    "indices": [
+      0,
+      1,
+      2,
+      0,
+      2,
+      3,
+      4,
+      5,
+      6,
+      5,
+      4,
+      7,
+      8,
+      9,
+      10,
+      9,
+      8,
+      11,
+      12,
+      13,
+      14,
+      13,
+      12,
+      15,
+      16,
+      17,
+      18,
+      17,
+      16,
+      19,
+      20,
+      21,
+      22,
+      21,
+      20,
+      23
+    ],
+    "nodeTransform": [
+      4040.0114630684257,
+      -6.727970619072197e-13,
+      -3.734773945147761e-29,
+      0,
+      -5.070860236727892e-14,
+      4040.0114630684257,
+      9.959397187060696e-29,
+      0,
+      -9.417345663833802e-14,
+      -1.2139273483962452e-29,
+      4040.0114630684257,
+      0,
+      -401.38109716530795,
+      65.79614317277446,
+      -4037.4296063845973,
+      1
+    ],
+    "axisConversion": "glTF Y-up to 3D Tiles Z-up: (x,y,z) -> (x,-z,y), applied after node transform",
+    "tileChain": "Single root content; cumulative tile transform equals root transform; no child transform",
+    "rootLocalVerticesMetres": [
+      [
+        -27.86420611882005,
+        -2.5818566838283914,
+        68.01542161437756
+      ],
+      [
+        27.86434141477048,
+        2.5964596799121864,
+        68.01542161437756
+      ],
+      [
+        -345.5909030083395,
+        4037.4296063845973,
+        66.78248914682031
+      ],
+      [
+        -401.38109716530795,
+        4032.2512900208567,
+        66.78248914682031
+      ],
+      [
+        -27.86420611882005,
+        -2.5818566838283914,
+        67.02907564033171
+      ],
+      [
+        -345.5909030083395,
+        4037.4296063845973,
+        65.79614317277445
+      ],
+      [
+        27.86434141477048,
+        2.5964596799121864,
+        67.02907564033171
+      ],
+      [
+        -401.38109716530795,
+        4032.2512900208567,
+        65.79614317277446
+      ]
+    ],
+    "rootLocalBoundsMetres": [
+      [
+        -401.38109716530795,
+        27.86434141477048
+      ],
+      [
+        -2.5818566838283914,
+        4037.4296063845973
+      ],
+      [
+        65.79614317277445,
+        68.01542161437756
+      ]
+    ],
+    "uniformDequantizationQuantumMetres": 0.06164662337786565,
+    "sameHorizontalCornerThicknessMetres": 0.9863459740458467
+  },
+  "verdict": "Actual decoded referenced geometry is vertically inconsistent with the authored IFC Scale=2 affine, not merely inconsistent bounding metadata: source slab maps to134..136m orthometric; independent grid operations give expected root-local sourceZ132.796..136.436m, while decoded actualZ65.796..68.015m. Every expected corner is65.984..68.448m from its nearest actual vertex; same-horizontal-corner thickness0.98635m rather than2m, with dequantization quantum0.06165m.",
+  "limitations": [
+    "PROJ operation accuracy is expected accuracy, not a deterministic bound.",
+    "KHR_mesh_quantization quantum approximately0.06165m explains small numerical displacement, not the tens-of-metres discrepancy.",
+    "Nearest-vertex distances compare actual eight corners; no assumption that accessor min/max or tile bounding volumes equal vertices."
+  ],
+  "assetId": 5969891,
+  "metadataCompleteness": {
+    "tilesVersion": "1.1",
+    "tileCount": 1,
+    "contentCount": 1,
+    "gltfUpAxis": "Y",
+    "tilesetExtensions": [],
+    "tileExtensions": [],
+    "contentExtensions": [],
+    "implicitTiling": false,
+    "secondDownloadMatchesDecodedContentHash": true,
+    "gltfUnsupportedTransformsPresent": false
+  }
+}

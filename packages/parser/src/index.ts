@@ -60,7 +60,7 @@ export { QuantityExtractor } from './quantity-extractor.js';
 export { RelationshipExtractor } from './relationship-extractor.js';
 export { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
 export {
-  extractLengthUnitScale,
+  SI_PREFIX_MULTIPLIERS, extractLengthUnitScale,
   resolveEntityLengthUnitScale,
   resolveOwningIfcProjectId,
 } from './unit-extractor.js';

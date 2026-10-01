@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { AppearanceDraftSettings } from '@/lib/appearance/draft-types';
 import type { StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
 import { defineSliceTeardown } from '../teardown.js';
@@ -11,7 +12,18 @@ import { parseReferences, serializeReferences } from '@/lib/appearance/reference
 import { MAX_REFERENCES, MAX_REFERENCE_HISTORY, ownReference,
   type RegisteredAppearanceReference, type ReferenceCommand } from '@/lib/appearance/references/types.js';
 
+interface AppearanceReferenceEntry {
+  id: string;
+  settings?: Partial<AppearanceDraftSettings>;
+  editReferenceId?: string;
+}
+
 export interface AppearanceReferenceSlice {
+  /** One-shot UI request, separate from the user's resumable draft. */
+  appearanceReferenceEntry: AppearanceReferenceEntry | null;
+  requestAppearanceReference(entry: Omit<AppearanceReferenceEntry, 'id'>): void;
+  consumeAppearanceReferenceEntry(id: string): void;
+
   appearanceReferences: ReadonlyMap<string, RegisteredAppearanceReference>;
   referenceUndo: readonly ReferenceCommand[];
   referenceRedo: readonly ReferenceCommand[];
@@ -54,6 +66,13 @@ export const createAppearanceReferenceSlice: StateCreator<ViewerState, [], [], A
     return record;
   }
   return {
+  appearanceReferenceEntry: null,
+  requestAppearanceReference(entry) {
+    set({ appearanceReferenceEntry: { ...entry, settings: entry.settings ? { ...entry.settings } : undefined, id: crypto.randomUUID() } });
+  },
+  consumeAppearanceReferenceEntry(id) {
+    if (get().appearanceReferenceEntry?.id === id) set({ appearanceReferenceEntry: null });
+  },
     appearanceReferences: new Map(), referenceUndo: [], referenceRedo: [], referenceRevision: 0, selectedAppearanceReferenceId: null,
     selectAppearanceReference(id) { if (id !== null) required(id); set({ selectedAppearanceReferenceId: id }); },
     addAppearanceReference(input) {
@@ -129,10 +148,11 @@ export const createAppearanceReferenceSlice: StateCreator<ViewerState, [], [], A
 };
 
 export const appearanceReferenceTeardown = defineSliceTeardown('appearanceReferenceSlice',
-  ['appearanceReferences', 'referenceUndo', 'referenceRedo', 'referenceRevision', 'selectedAppearanceReferenceId'], {
+  ['appearanceReferenceEntry', 'appearanceReferences', 'referenceUndo', 'referenceRedo', 'referenceRevision', 'selectedAppearanceReferenceId'], {
     'model-removed': () => ({}),
-    'session-reset': () => ({ appearanceReferences: new Map(), referenceUndo: [], referenceRedo: [], referenceRevision: 0, selectedAppearanceReferenceId: null }),
+    'session-reset': () => ({ appearanceReferenceEntry: null, appearanceReferences: new Map(), referenceUndo: [], referenceRedo: [], referenceRevision: 0, selectedAppearanceReferenceId: null }),
     // Georeferencing reloads clear IFC models without resetting the workspace.
     // Reference identities contain no IFC IDs; keep registrations and their leases.
-    'all-models-cleared': () => ({}),
+    // An unopened import request belongs to the old live section and is discarded.
+    'all-models-cleared': () => ({ appearanceReferenceEntry: null }),
   });

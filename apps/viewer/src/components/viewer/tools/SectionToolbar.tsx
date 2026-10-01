@@ -47,8 +47,10 @@ import { STOREY_SNAP_TOLERANCE_M, useSectionDistance } from './useSectionDistanc
 import { storeyCutElevation } from '@/lib/section/section-distance';
 import { sectionBoxFromBounds, sectionBoxSize } from '@/lib/section/section-box';
 import type { SectionPlaneAxis } from '@/store/types';
+import { AlignmentSectionControls } from './AlignmentSectionControls';
+import { chooseAlignmentMode, leaveAlignmentMode, useAlignmentToolState } from '@/lib/section/alignment-controller';
 
-type AxisSegment = SectionPlaneAxis | 'face' | 'box';
+type AxisSegment = SectionPlaneAxis | 'face' | 'box' | 'alignment';
 
 /** One unbreakable run of controls on the bar. */
 const GROUP = 'flex items-center gap-1';
@@ -94,12 +96,15 @@ export function SectionToolbar() {
   const setSectionBox = useViewerStore((s) => s.setSectionBox);
   const hasSelection = useViewerStore((s) => s.selectedEntityId !== null || s.selectedEntityIds.size > 0);
   const distance = useSectionDistance();
+  const alignmentBusy = useAlignmentToolState(s => s.busy);
+  const alignmentChoosing = useAlignmentToolState(s => s.choosing);
 
   const isCustom = sectionPlane.custom !== undefined;
   const box = sectionPlane.box;
   // While pick mode is armed the user is "on" the Face segment even before a
   // face exists; a committed custom plane keeps it selected afterwards.
-  const axisValue: AxisSegment = sectionPickMode || isCustom ? 'face' : box ? 'box' : sectionPlane.axis;
+  const axisValue: AxisSegment = sectionPickMode ? 'face' : alignmentChoosing || sectionPlane.custom?.alignment
+    ? 'alignment' : isCustom ? 'face' : box ? 'box' : sectionPlane.axis;
 
   const axes: HudSegmentedOption<AxisSegment>[] = [
     ...(['down', 'front', 'side'] as const).map((axis) => ({ value: axis, label: t(AXIS_INFO[axis].labelKey) })),
@@ -109,6 +114,7 @@ export function SectionToolbar() {
       title: t(sectionPickMode ? 'sectionTool.pick.activeTitle' : 'sectionTool.pick.title'),
     },
     { value: 'box', label: t('sectionTool.axis.box'), title: t('sectionTool.box.title') },
+    { value: 'alignment', label: t('alignmentSection.mode'), title: t('alignmentSection.help') },
   ];
 
   // The box fits the selection when there is one (the same bounds Frame
@@ -126,6 +132,8 @@ export function SectionToolbar() {
   // click — again, from a custom plane, so "pick another face" is the same
   // gesture.
   const handleAxis = useCallback((next: AxisSegment) => {
+    if (next === 'alignment') { chooseAlignmentMode(); return; }
+    leaveAlignmentMode();
     if (next === 'face') {
       setSectionPickMode(true);
       return;
@@ -198,6 +206,7 @@ export function SectionToolbar() {
         )}
         <HudSegmented options={axes} value={axisValue} onChange={handleAxis} aria-label={t('sectionTool.bar.axisAria')} />
       </span>
+      <AlignmentSectionControls />
       {boxSize ? (
         <span className={GROUP}>
           <HudDivider />
@@ -225,6 +234,7 @@ export function SectionToolbar() {
         icon={<FlipHorizontal2 aria-hidden className="h-3.5 w-3.5" />}
       />
       <HudValueField
+        disabled={alignmentBusy}
         value={distance.value}
         onChange={distance.onChange}
         unit={unit}
@@ -236,7 +246,7 @@ export function SectionToolbar() {
         snapTolerance={STOREY_SNAP_TOLERANCE_M}
         onScrubStart={handleScrubStart}
         onScrubEnd={handleScrubEnd}
-        aria-label={t(isCustom ? 'sectionTool.distance.customAria' : 'sectionTool.distance.aria')}
+        aria-label={t(distance.kind === 'alignment' ? 'alignmentSection.distance' : isCustom ? 'sectionTool.distance.customAria' : 'sectionTool.distance.aria')}
         className="min-w-[4.5rem] justify-end"
       />
       {showStoreys && (

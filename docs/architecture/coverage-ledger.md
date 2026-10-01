@@ -802,7 +802,7 @@ Columns:
 | IfcChillerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcChimney | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
 | IfcChimneyType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
-| IfcCircle | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcCircle | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/downward_axis_half_cylinder.ifc |
 | IfcCircleHollowProfileDef | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/issue_1985_mapping_origin.ifc |
 | IfcCircleProfileDef | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/issue_1985_metre_submm_scale.ifc |
 | IfcCircularArcSegment2D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:❌ | — |
@@ -823,9 +823,9 @@ Columns:
 | IfcComplexNumber | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcComplexProperty | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcComplexPropertyTemplate | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
-| IfcCompositeCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcCompositeCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/downward_axis_half_cylinder.ifc |
 | IfcCompositeCurveOnSurface | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
-| IfcCompositeCurveSegment | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcCompositeCurveSegment | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/downward_axis_half_cylinder.ifc |
 | IfcCompositeProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcCompoundPlaneAngleMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcCompressor | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
@@ -1459,7 +1459,7 @@ Columns:
 | IfcTrapeziumProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcTriangulatedFaceSet | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
 | IfcTriangulatedIrregularNetwork | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
-| IfcTrimmedCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcTrimmedCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/downward_axis_half_cylinder.ifc |
 | IfcTShapeProfileDef | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcTubeBundle | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcTubeBundleType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |

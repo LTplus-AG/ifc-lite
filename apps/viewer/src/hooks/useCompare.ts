@@ -17,23 +17,17 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
+import { isNativeWorkflowBusy } from '@/lib/flow/run-session';
 import { cancelCompareRun } from './analysisRunCancellation';
 import { stampAnalysisReport } from './useAnalysisStaleness';
-import { diffModels, type EntityFingerprint } from '@ifc-lite/diff';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import type { CompareResult } from '@/store/slices/compareSlice';
-import { buildEntityFingerprints, type CompareRef } from '@/lib/compare/buildFingerprints';
-import { effectiveComparePair } from '@/lib/compare/effectiveCompareStore';
 import { useInvalidateCompareCacheOnEdit } from './compare/useInvalidateCompareCacheOnEdit';
-import { fallbackPairDuplicateAuthoredKeys } from '@/lib/compare/authoredKeys';
-import {
-  geometryVolumesSurviveAlignment,
-  resolveGeometryChannel,
-} from '@/lib/compare/geometryCapability';
 import { contentMatchingRan } from '@/lib/compare/contentMatches';
-import { acceptedForPair, keyAliasesFromAccepted } from '@/lib/compare/acceptedIdentity';
+import { acceptedForPair } from '@/lib/compare/acceptedIdentity';
 import { compareRunPayload } from '@/lib/compare/runTelemetry';
+import { comparePreparedPair, prepareComparison } from '@/lib/compare/run-comparison';
 import { buildAtCurrentVersion } from '@/lib/compare/versionedBuild';
 import { isCurrentFor, readGeometryContentVersion, type BuiltPair } from './compare/comparePairCache';
 
@@ -58,24 +52,6 @@ function excludedSignature(types: Iterable<string>): string {
  *  (A and B) of any entity whose class is excluded in EITHER revision, mirroring
  *  the engine's union exclusion so a cross-version re-class doesn't leave one
  *  copy stranded on screen. Empty set when nothing is excluded. */
-function collectExcludedHiddenIds(built: BuiltPair, excludedTypes: string[]): Set<number> {
-  const ids = new Set<number>();
-  const excluded = new Set(excludedTypes.map((t) => t.trim().toUpperCase()).filter(Boolean));
-  if (excluded.size === 0) return ids;
-  const isExcluded = (fp: EntityFingerprint<CompareRef>): boolean =>
-    excluded.has(fp.ifcType.trim().toUpperCase());
-  // Keys excluded on either side (a re-class can be excluded via A's or B's type).
-  const excludedKeys = new Set<string>();
-  for (const side of [built.base, built.head]) {
-    for (const fp of side) if (isExcluded(fp)) excludedKeys.add(fp.key);
-  }
-  // Hide every copy of an excluded key.
-  for (const side of [built.base, built.head]) {
-    for (const fp of side) if (excludedKeys.has(fp.key)) ids.add(fp.ref.globalId);
-  }
-  return ids;
-}
-
 /**
  * Run the (cheap) diff pass for the cached fingerprints, derive the overlay's
  * hidden set, and publish the whole comparison to the store. The single place a
@@ -119,56 +95,7 @@ function publishCompareResult(built: BuiltPair): {
   const matchByContent = store.compareMatchByContent;
   const accepted = acceptedForPair(store.compareAcceptedIdentity, built); // this pair's only
 
-  // The strip decision, the warning flag and its placement-only nuance are ONE
-  // resolution (`resolveGeometryChannel`), so the panel's warning can never
-  // disagree with what the engine was actually given: a MIXED-capability pair
-  // (one side mesh-hashed) has placement fingerprints stripped from both sides
-  // so the engine's asymmetry abstention can fire; a symmetric mesh-less pair
-  // keeps them, still reports placement-driven moves, and the warning must say
-  // reshapes-only.
-  const {
-    base,
-    head,
-    geometryUnavailable,
-    placementOnlyGeometry,
-  } = resolveGeometryChannel(built.base, built.head);
-
-  const diff = diffModels(base, head, {
-    scope,
-    excludeTypes: excludedTypes,
-    // #1891. On by default: a from-scratch re-export re-GUIDs every element,
-    // and a pure key diff then reports the entire model as deleted-and-added.
-    // The world `aabb` rides on the fingerprints (#2005), so a 1:1 geometry
-    // mismatch reports a real distance; an entity the wasm pass produced no box
-    // for still degrades to a bare `moved`, the engine's documented fallback.
-    matchUnpairedByContent: matchByContent,
-    // #4955. Suggestions, never decisions: neither stage retires an entry or
-    // touches a count, and both abstain with the content pass when a side has
-    // no geometry. The panel's Suggestions section lists what they found.
-    detectSplitMerge: true,
-    detectSuccessors: true,
-    // The pairs the user accepted (or imported) this session, replayed so
-    // they classify by key and leave the suggestions. Read HERE with the
-    // other options, under the same no-await rule.
-    keyAliases: keyAliasesFromAccepted(accepted),
-  });
-  const result: CompareResult = {
-    baseModelId: built.baseModelId,
-    headModelId: built.headModelId,
-    baseName: built.baseName,
-    headName: built.headName,
-    scope,
-    geometryUnavailable,
-    placementOnlyGeometry,
-    excludedHiddenIds: collectExcludedHiddenIds(built, excludedTypes),
-    diff,
-    // #4989: the scheme THIS extraction ran under, not whatever the store
-    // holds now — see the doc comment on `BuiltPair.keyProperty`.
-    keyProperty: built.keyProperty,
-    duplicateAuthoredKeys: built.duplicateAuthoredKeys.size > 0 ? built.duplicateAuthoredKeys : undefined,
-    comparedStores: built.comparedStores.size > 0 ? built.comparedStores : undefined,
-    mutationVersion: built.mutationVersion,
-  };
+  const result = comparePreparedPair(built, { scope, excludedTypes, matchByContent, acceptedIdentity: accepted });
   store.setCompareResult(stampAnalysisReport(result, {
     mutationVersion: built.mutationVersion,
     geometryContentVersion: built.contentVersion,
@@ -235,6 +162,10 @@ export function useCompare() {
 
   const runComparison = useCallback(async () => {
     const store = useViewerStore.getState();
+    if (isNativeWorkflowBusy()) {
+      store.setCompareError('A workflow is running; wait or cancel it.');
+      return;
+    }
     const baseId = store.compareBaseModelId;
     const headId = store.compareHeadModelId;
 
@@ -265,10 +196,6 @@ export function useCompare() {
     // Pin the validated handles for the extraction closure below. `geometryResult`
     // survives a re-align by IDENTITY - it is mutated in place, not replaced - so
     // a retry re-reads the re-framed meshes through these same references.
-    const baseStore = baseModel.ifcDataStore;
-    const baseGeometry = baseModel.geometryResult;
-    const headStore = headModel.ifcDataStore;
-    const headGeometry = headModel.geometryResult;
 
     // Supersedes any run already in flight (same pair or not) - see the epoch
     // doc comment above. Captured once; re-checked at every write below.
@@ -307,59 +234,9 @@ export function useCompare() {
         cached: builtRef.current,
         isCurrent: (candidate, version) => isCurrentFor(candidate, baseId, headId, version, keyProperty),
         extract: async (contentVersion) => {
-          // ONE collision map for both sides (#4989): if either revision
-          // duplicates a value, the pair-level fallback below retires that
-          // authored key from both revisions before diffing.
-          const duplicateAuthoredKeys = new Map<string, number[]>();
-          // The models as edited, not as loaded (#5312): see effectiveCompareStore.
-          const mutationVersion = useViewerStore.getState().mutationVersion;
-          const { baseEffective, headEffective, comparedStores } = await effectiveComparePair(
-            [baseModel, baseStore], [headModel, headStore], useViewerStore.getState().getMutationView);
-          const base = await buildEntityFingerprints({
-            modelId: baseId,
-            store: baseEffective,
-            meshes: baseGeometry.meshes,
-            instancedGeometryHashes: baseGeometry.instancedGeometryHashes,
-            instancedGeometryAabbs: baseGeometry.instancedGeometryAabbs,
-            instancedGeometryVolumes: baseGeometry.instancedGeometryVolumes,
-            geometryVolumesTrusted: geometryVolumesSurviveAlignment(
-              baseModel.federationAlignmentStatus,
-            ),
-            idOffset: baseModel.idOffset,
-            keyProperty,
-            duplicateAuthoredKeys,
-          });
-          const head = await buildEntityFingerprints({
-            modelId: headId,
-            store: headEffective,
-            meshes: headGeometry.meshes,
-            instancedGeometryHashes: headGeometry.instancedGeometryHashes,
-            instancedGeometryAabbs: headGeometry.instancedGeometryAabbs,
-            instancedGeometryVolumes: headGeometry.instancedGeometryVolumes,
-            geometryVolumesTrusted: geometryVolumesSurviveAlignment(
-              headModel.federationAlignmentStatus,
-            ),
-            idOffset: headModel.idOffset,
-            keyProperty,
-            duplicateAuthoredKeys,
-          });
-          fallbackPairDuplicateAuthoredKeys([
-            { fingerprints: base, store: baseEffective },
-            { fingerprints: head, store: headEffective },
-          ], duplicateAuthoredKeys);
-          return {
-            comparedStores,
-            mutationVersion,
-            baseModelId: baseId,
-            headModelId: headId,
-            contentVersion,
-            keyProperty,
-            duplicateAuthoredKeys,
-            baseName: baseModel.name,
-            headName: headModel.name,
-            base,
-            head,
-          };
+          return prepareComparison({ baseModel, headModel, contentVersion, keyProperty,
+            mutationVersion: useViewerStore.getState().mutationVersion,
+            getMutationView: useViewerStore.getState().getMutationView });
         },
       });
       if (!built) {

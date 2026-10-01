@@ -25,6 +25,33 @@ evaluates in the browser viewer and in the headless CLI.
 - **Documents.** `*.flow.json` is git-diffable, hand-validated, and
   migrated by version.
 
+## Flow document version 2
+
+`FLOW_VERSION` is 2. `parseFlowDocument` migrates version-1 graphs before
+validation and preserves existing nodes, parameters and the text `file` input.
+Call `migrateFlowDocument` before `validateFlowDocument` at a custom boundary.
+
+A `files` Player input describes local file slots. Each slot has an `id`,
+`label`, `accept` extension list, `multiple` and `required` boolean. Slot IDs
+are unique within the input; `fileSlots` is legal only for `kind: "files"`.
+
+```json
+{
+  "nodeId": "load",
+  "param": "files",
+  "label": "Models",
+  "kind": "files",
+  "fileSlots": [
+    { "id": "models", "label": "IFC models", "accept": ".ifc", "multiple": true, "required": true }
+  ]
+}
+```
+
+Files remain in the host session. Runtime parameter overrides carry opaque
+resource tokens; exporting a graph never exports selected files, report bodies
+or PDF blobs. Qualified slot addresses are `nodeId.param/slotId`. A slot selector
+uses that full address to avoid ambiguity between fields.
+
 ## Install
 
 ```bash

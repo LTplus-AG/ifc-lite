@@ -29,7 +29,7 @@ export { resolveOwningIfcProjectId, type RelatedLookup } from './owning-project.
  * a private four-entry copy (MILLI/CENTI/DECI/KILO), so a MapUnit in any
  * other prefix read back as plain metres.
  */
-export const SI_PREFIX_MULTIPLIERS: Record<string, number> = {
+export const SI_PREFIX_MULTIPLIERS: Readonly<Record<string, number>> = Object.freeze({
   'ATTO': 1e-18,
   'FEMTO': 1e-15,
   'PICO': 1e-12,
@@ -46,7 +46,7 @@ export const SI_PREFIX_MULTIPLIERS: Record<string, number> = {
   'TERA': 1e12,
   'PETA': 1e15,
   'EXA': 1e18,
-};
+});
 
 /**
  * Known conversion factors for imperial/conversion-based units to meters.

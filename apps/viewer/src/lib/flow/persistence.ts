@@ -16,12 +16,15 @@ import {
   FLOW_VERSION,
   TRACKING_SIDECAR_VERSION,
   trackedSetsFrom,
+  migrateFlowDocument,
   validateFlowDocument,
   type FlowDocument,
   type TrackedSet,
   type TrackingSidecar,
   type TrackingStore,
 } from '@ifc-lite/flow';
+
+import { optionalLocalStorage, preserveUnreadableEntry, type UnreadableEntryStorage } from '../storage/unreadable-entry';
 
 const GRAPHS_KEY = 'ifc-lite-flows';
 const TRACKING_PREFIX = 'ifc-lite-flow-tracking:';
@@ -39,27 +42,57 @@ interface StoredFlows {
   flows: SavedFlow[];
 }
 
-function isSavedFlow(value: unknown): value is SavedFlow {
-  if (!value || typeof value !== 'object') return false;
-  const v = value as Partial<SavedFlow>;
-  return typeof v.updatedAt === 'number' && validateFlowDocument(v.doc).length === 0;
+function readFlows(storage: UnreadableEntryStorage): { flows: SavedFlow[]; writable: boolean } {
+  const raw = storage.getItem(GRAPHS_KEY);
+  if (!raw) return { flows: [], writable: true };
+  const flows: SavedFlow[] = [];
+  const ids = new Set<string>();
+  let damaged = false;
+  let cause: unknown;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)
+      || (parsed as StoredFlows).schemaVersion !== SCHEMA_VERSION || !Array.isArray((parsed as StoredFlows).flows)) {
+      throw new Error('Invalid saved workflow library');
+    }
+    for (const entry of (parsed as StoredFlows).flows) {
+      const migrated = migrateFlowDocument(entry?.doc);
+      if (!entry || typeof entry.updatedAt !== 'number' || !Number.isFinite(entry.updatedAt)
+        || validateFlowDocument(migrated).length || flows.length >= MAX_GRAPHS) {
+        damaged = true; continue;
+      }
+      const doc = migrated as FlowDocument;
+      if (ids.has(doc.id) || !isFlowWithinSizeLimit(doc)) { damaged = true; continue; }
+      ids.add(doc.id); flows.push({ doc, updatedAt: entry.updatedAt });
+    }
+  } catch (error) { damaged = true; cause = error; }
+  if (!damaged) return { flows, writable: true };
+  const writable = preserveUnreadableEntry(storage, GRAPHS_KEY, cause ?? new Error('Invalid or duplicate saved workflows'));
+  if (writable) {
+    try { storage.setItem(GRAPHS_KEY, JSON.stringify({ schemaVersion: SCHEMA_VERSION, flows })); }
+    catch (error) { console.warn('[Flow] Recovered workflows remain in memory; storage refused the repair', error); }
+  }
+  return { flows, writable };
 }
 
 export function loadSavedFlows(): SavedFlow[] {
   try {
-    const raw = localStorage.getItem(GRAPHS_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as StoredFlows).flows)) return [];
-    return (parsed as StoredFlows).flows.filter(isSavedFlow);
-  } catch {
-    return [];
-  }
+    const storage = optionalLocalStorage();
+    if (!storage) { console.warn('[Flow] Saved workflows are unavailable because browser storage is disabled'); return []; }
+    return readFlows(storage).flows;
+  } catch (error) { console.warn('[Flow] Failed to read saved workflows', error); return []; }
 }
 
-export function saveFlows(flows: readonly SavedFlow[]): void {
-  const stored: StoredFlows = { schemaVersion: SCHEMA_VERSION, flows: flows.slice(0, MAX_GRAPHS) };
-  localStorage.setItem(GRAPHS_KEY, JSON.stringify(stored));
+/** The caller retains its in-memory library when browser storage refuses a write. */
+export function saveFlows(flows: readonly SavedFlow[]): boolean {
+  try {
+    const storage = optionalLocalStorage();
+    if (!storage) throw new Error('Browser storage is unavailable');
+    if (!readFlows(storage).writable) throw new Error('The damaged workflow library could not be preserved');
+    const stored: StoredFlows = { schemaVersion: SCHEMA_VERSION, flows: flows.slice(0, MAX_GRAPHS) };
+    storage.setItem(GRAPHS_KEY, JSON.stringify(stored));
+    return true;
+  } catch (error) { console.warn('[Flow] Workflows remain in memory; failed to save the library', error); return false; }
 }
 
 export function isFlowWithinSizeLimit(doc: FlowDocument): boolean {
@@ -109,7 +142,8 @@ export class BrowserTrackingStore implements TrackingStore {
       // a `TrackedSet`, and a hand-edited value would reach the scheduler as one.
       const sets = trackedSetsFrom(parsed.sets);
       return sets ? { version: parsed.version, pinnedTo: parsed.pinnedTo, sets } : undefined;
-    } catch {
+    } catch (error) {
+      console.warn('[Flow] Failed to read tracking sidecar', error);
       return undefined;
     }
   }

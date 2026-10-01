@@ -68,12 +68,14 @@ export function loadPersistedModelTags(): ModelTag[] {
   }
 }
 
-export function savePersistedModelTags(tags: readonly ModelTag[]): void {
-  if (typeof window === 'undefined') return;
+export function savePersistedModelTags(tags: readonly ModelTag[]): boolean {
+  if (typeof window === 'undefined') return false;
   try {
     window.localStorage.setItem(MODEL_TAGS_STORAGE_KEY, JSON.stringify(tags));
+    return true;
   } catch (error) {
     // Quota / private mode — best effort; the setup file is the durable path.
     console.warn('[model-tags] failed to persist tag definitions', error);
+    return false;
   }
 }

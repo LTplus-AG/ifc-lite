@@ -17,6 +17,25 @@ function isRawValues(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** Runtime resources have no portable meaning and must never reach localStorage. */
+function hasRuntimeResource(value: unknown): boolean {
+  const pending: unknown[] = [value];
+  const seen = new Set<object>();
+  let budget = 10_000;
+  while (pending.length) {
+    if (--budget < 0) return true;
+    const current = pending.pop();
+    if (typeof current === 'string' && current.startsWith('flow-resource:')) return true;
+    if (typeof Blob !== 'undefined' && current instanceof Blob) return true;
+    if (current && typeof current === 'object') {
+      if (seen.has(current)) return true;
+      seen.add(current);
+      pending.push(...Object.values(current));
+    }
+  }
+  return false;
+}
+
 /** Last raw form values entered for this graph, or `{}` when none are stored. */
 export function loadPlayerValues(graphId: string): Record<string, unknown> {
   try {
@@ -24,29 +43,31 @@ export function loadPlayerValues(graphId: string): Record<string, unknown> {
     if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
     return isRawValues(parsed) ? parsed : {};
-  } catch {
+  } catch (error) {
+    console.warn('[flow] could not restore Player values', error);
     return {};
   }
 }
 
 /** Persists the raw form values for this graph. A failed write is not fatal. */
-export function savePlayerValues(graphId: string, values: Readonly<Record<string, unknown>>): void {
+export function savePlayerValues(graphId: string, values: Readonly<Record<string, unknown>>): string | null {
   try {
-    const text = JSON.stringify(values);
-    if (text.length > MAX_BYTES) return;
+    const persistable = Object.fromEntries(Object.entries(values).filter(([, value]) => !hasRuntimeResource(value)));
+    const text = JSON.stringify(persistable);
+    if (text.length > MAX_BYTES) return 'Player values exceed the storage limit.';
     localStorage.setItem(PREFIX + graphId, text);
-  } catch {
-    // Storage disabled or full: the next session falls back to the graph's
-    // own defaults, same as a fresh browser profile.
+    return null;
+  } catch (error) {
+    console.warn('[flow] could not save Player values', error);
+    return error instanceof Error ? error.message : String(error);
   }
 }
 
 export function clearPlayerValues(graphId: string): void {
   try {
     localStorage.removeItem(PREFIX + graphId);
-  } catch {
-    // Nothing to do: a removal that cannot land leaves stale values behind,
-    // not a crash.
+  } catch (error) {
+    console.warn('[flow] could not clear Player values', error);
   }
 }
 
@@ -63,7 +84,7 @@ export function clearPlayerValuesByIdPrefix(idPrefix: string): void {
       if (key?.startsWith(PREFIX + idPrefix)) keys.push(key);
     }
     for (const key of keys) localStorage.removeItem(key);
-  } catch {
-    // Storage unavailable: nothing was stored to clear.
+  } catch (error) {
+    console.warn('[flow] could not clear extension Player values', error);
   }
 }

@@ -52,6 +52,7 @@
 
 import { readFile } from 'node:fs/promises';
 import {
+  checkAvailability,
   declaredInputKeys,
   describeFlowIO,
   migrateFlowDocument,
@@ -144,12 +145,14 @@ const describeFlow: Tool = {
     // validating clean and producing nothing at run time.
     const diagnostics = validateFlowWiring(doc, registry);
     const io = describeFlowIO(doc, registry);
-    const ok = diagnostics.length === 0;
+    const availability = checkAvailability(doc, registry, headlessFeatures(usableSecretNames(process.env)));
+    const unavailable = availability.filter((node) => node.status === 'unknown' || node.status === 'unavailable');
+    const ok = diagnostics.length === 0 && unavailable.length === 0;
     return okResult(
       ok
         ? `Flow '${io.name}' (${io.id}): ${io.inputs.length} input(s), ${io.outputs.length} output(s).`
-        : `Flow '${io.name}' (${io.id}) has ${diagnostics.length} wiring problem(s).`,
-      { ok, ...io, diagnostics },
+        : `Flow '${io.name}' (${io.id}) has ${diagnostics.length} wiring problem(s) and ${unavailable.length} unavailable node(s).`,
+      { ok, ...io, diagnostics, availability },
     );
   },
 };
@@ -266,6 +269,14 @@ const runFlowTool: Tool = {
         message: `${secretErrors.length} secret reference problem(s): ${secretErrors.map((e) => e.message).join('; ')}`,
       });
     }
+    const unavailable = checkAvailability(doc, registry, headlessFeatures(usableSecretNames(process.env)))
+      .filter((node) => node.status === 'unknown' || node.status === 'unavailable');
+    if (unavailable.length) throw new ToolExecutionError({
+      code: ToolErrorCode.UNSUPPORTED_OPERATION,
+      message: `Flow cannot run on this host: ${unavailable.map((node) => `${node.nodeId}: ${node.reasons.join('; ')}`).join(' | ')}`,
+      details: { availability: unavailable },
+    });
+
     const secretValues = resolveSecretValues(doc, process.env);
     const redaction = buildRedactionMap(secretValues);
     const runDoc = interpolateSecrets(doc, secretValues);

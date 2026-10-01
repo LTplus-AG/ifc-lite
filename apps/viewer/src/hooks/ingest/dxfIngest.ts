@@ -46,10 +46,15 @@
  * following the anchor.
  */
 
-import { importDxf } from '@ifc-lite/drawing-2d';
+import { importDxf, parseDxf, convertDxfToUnderlay } from '@ifc-lite/drawing-2d';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
+import { resolve } from '@/i18n/registry';
 import { resolveDxfExportGeoreference } from '@/hooks/dxfExportGeoref';
+
+import type { DxfReferenceFrame } from '../dxfReferencePlane';
+export interface DxfIngestOptions { referenceFrame?: DxfReferenceFrame; units?: 'm' | 'mm' | 'cm' | 'ft' | 'in' }
+const METERS_PER_UNIT = {m:1,mm:0.001,cm:0.01,ft:0.3048,in:0.0254};
 
 export function isDxfFileName(name: string): boolean {
   return name.toLowerCase().endsWith('.dxf');
@@ -66,7 +71,8 @@ export function splitDxfFiles(files: File[]): { dxfFiles: File[]; modelFiles: Fi
 }
 
 /** Parse one DXF file and register it as a reference underlay. */
-export async function ingestDxfFile(file: File): Promise<void> {
+export async function ingestDxfFile(file: File, options: DxfIngestOptions = {}): Promise<void> {
+  const capturedOptions = structuredClone(options);
   let text: string;
   try {
     text = await file.text();
@@ -78,7 +84,21 @@ export async function ingestDxfFile(file: File): Promise<void> {
 
   let underlay: ReturnType<typeof importDxf>;
   try {
-    underlay = importDxf(text, file.name);
+    if (capturedOptions.referenceFrame || capturedOptions.units) {
+      const document = parseDxf(text);
+      // DXF $INSUNITS declares standard unit codes 1–24; 0 is unitless.
+      // The converter owns their scales. Validate the declaration, not warnings.
+      const knownUnits = Number.isInteger(document.insunits) && document.insunits >= 1 && document.insunits <= 24;
+      if (capturedOptions.referenceFrame && !capturedOptions.units && !knownUnits) {
+        toast.error(resolve('drawingUnderlay.dxf.explicitUnitsRequired', { name: file.name }));
+        return;
+      }
+      underlay = convertDxfToUnderlay(document, file.name, capturedOptions.units
+        ? { metersPerUnit: METERS_PER_UNIT[capturedOptions.units] } : undefined);
+    } else {
+      // Preserve survey/site-plan auto-unit conversion and its legacy heuristic.
+      underlay = importDxf(text, file.name);
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[dxfIngest] parsing "${file.name}" failed:`, err);
@@ -121,7 +141,7 @@ export async function ingestDxfFile(file: File): Promise<void> {
   // not auto) so a later-loaded georeferenced model can't silently apply
   // that compounded error, and tell the user why in the toast below.
   const georeferenced: boolean | 'auto' = assumedMm ? false : 'auto';
-  store.addDxfUnderlay(underlay, { georeferenced });
+  store.addDxfUnderlay(underlay, { georeferenced, referenceFrame: capturedOptions.referenceFrame });
 
   // For the import toast's wording ONLY — this does not seed the toggle
   // (that is seeded above: 'auto' normally, explicit `false` when the
@@ -132,7 +152,7 @@ export async function ingestDxfFile(file: File): Promise<void> {
   // omitted here; this function's own claim that import and export "always
   // agree on which model is authoritative" was not true until this
   // matched).
-  const georeference = assumedMm
+  const georeference = assumedMm || capturedOptions.referenceFrame
     ? null
     : resolveDxfExportGeoreference({
       models: store.models,
@@ -159,8 +179,9 @@ export async function ingestDxfFile(file: File): Promise<void> {
 }
 
 /** Ingest several DXF files sequentially (order = pick order). */
-export async function ingestDxfFiles(files: File[]): Promise<void> {
+export async function ingestDxfFiles(files: File[], options: DxfIngestOptions = {}): Promise<void> {
+  const capturedOptions = structuredClone(options);
   for (const file of files) {
-    await ingestDxfFile(file);
+    await ingestDxfFile(file, capturedOptions);
   }
 }

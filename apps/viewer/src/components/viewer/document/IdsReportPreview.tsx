@@ -9,6 +9,7 @@
  * between "nothing to print" and rows.
  */
 import { blockTitle } from '@/lib/document/block-title';
+import { ValidationBenchmark } from '../validation/ValidationBenchmark';
 import { passRateBand } from '@ifc-lite/ids';
 import { reportScopeText } from '@/lib/document/report-provenance';
 import { useTranslation } from '@/i18n';
@@ -138,6 +139,7 @@ export function IdsReportPreview({ block }: IdsReportPreviewProps) {
         {t('document.preview.idsReportGeneratedAt', { timestamp: block.generatedAt })}
       </div>
       {reportScopeText(block) && <div className="text-2xs text-neutral-600" data-report-model-scope>{t('validationPanel.history.models', { models: reportScopeText(block) })}</div>}
+      {block.benchmarks && <ValidationBenchmark summary={block.summary} name={block.sourceName} paper />}
       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 rounded border border-neutral-200 bg-neutral-50 px-2 py-1.5">
         <Stat label={t('document.preview.idsReportChecked')} value={checked.toLocaleString(locale)} />
         <Stat label={t('document.preview.idsReportPassed')} value={passed.toLocaleString(locale)} />

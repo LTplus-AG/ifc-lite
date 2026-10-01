@@ -162,7 +162,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           title={messageFor(writeDenial) ?? t('zonesPanel.writeBack.writeButtonTitle', { psetName: zonePropertySetName(zoneSet.name) })}
           onClick={() => {
             const result = write(zoneSet, basis);
-            if (result.blocked === 'edit-mode') { toast.error(t('mutationPermission.editModeRequired')); return; }
+            if (result.blocked === 'edit-mode' || result.blocked === 'workflow-running' || result.blocked === 'model-unavailable') { toast.error(t(mutationDenialKey(result.blocked))); return; }
             if (result.blocked === 'collab-role') {
               toast.error(t('zonesPanel.writeBack.collabReadOnlyWrite'));
               return;
@@ -204,7 +204,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           className="h-6 w-6"
           onClick={() => {
             const { removed, blocked } = remove(zoneSet);
-            if (blocked === 'edit-mode') { toast.error(t('mutationPermission.editModeRequired')); return; }
+            if (blocked === 'edit-mode' || blocked === 'workflow-running' || blocked === 'model-unavailable') { toast.error(t(mutationDenialKey(blocked))); return; }
             if (blocked === 'collab-role') {
               toast.error(t('zonesPanel.writeBack.collabReadOnlyRemove'));
               return;
@@ -253,7 +253,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           title={messageFor(emitDenial) ?? t('zonesPanel.writeBack.emitZonesTitle')}
           onClick={() => {
             const result = emitZones(zoneSet);
-            if (result.blocked === 'edit-mode') { toast.error(t('mutationPermission.editModeRequired')); return; }
+            if (result.blocked === 'edit-mode' || result.blocked === 'workflow-running' || result.blocked === 'model-unavailable') { toast.error(t(mutationDenialKey(result.blocked))); return; }
             if (result.blocked === 'collab-role') {
               toast.error(t('zonesPanel.writeBack.collabReadOnlyEmit'));
               return;
@@ -318,7 +318,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           className="h-6 w-6"
           onClick={() => {
             const { removed, blocked } = removeZones(zoneSet);
-            if (blocked === 'edit-mode') { toast.error(t('mutationPermission.editModeRequired')); return; }
+            if (blocked === 'edit-mode' || blocked === 'workflow-running' || blocked === 'model-unavailable') { toast.error(t(mutationDenialKey(blocked))); return; }
             if (blocked === 'collab-role') {
               toast.error(t('zonesPanel.writeBack.collabReadOnlyRemove'));
               return;

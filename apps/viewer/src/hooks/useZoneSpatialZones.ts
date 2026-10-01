@@ -37,7 +37,7 @@ import { useCallback } from 'react';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
-import { canMutate, mutationPermission } from '@/store/mutation-permission';
+import { canMutate, mutationPermission, type MutationDenialReason } from '@/store/mutation-permission';
 import type { FederatedModel } from '@/store/types';
 import type { RenderFrameOffsets } from '@/components/viewer/tools/measure-modes/coordinates';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
@@ -69,7 +69,7 @@ export interface ZoneEmitResult {
    *  apart from `zonesReplaced`, which is a model that got new zones back. */
   staleRemoved: number;
   /** Set when nothing was emitted anywhere, and why. */
-  blocked: 'edit-mode' | 'collab-role' | 'no-members' | 'duplicate-set-name' | null;
+  blocked: MutationDenialReason | 'no-members' | 'duplicate-set-name' | null;
   elapsedMs: number;
 }
 
@@ -177,7 +177,7 @@ function membersByModel(zoneSet: ZoneSet): Map<string, ZoneMembership[]> {
 export function emitZoneSpatialZones(zoneSet: ZoneSet): ZoneEmitResult {
   const state = useViewerStore.getState();
   const permission = mutationPermission(state);
-  if (!permission.allowed) return { models: [], staleRemoved: 0, blocked: permission.reason === 'edit-mode' ? 'edit-mode' : 'collab-role', elapsedMs: 0 };
+  if (!permission.allowed) return { models: [], staleRemoved: 0, blocked: permission.reason, elapsedMs: 0 };
   // The set's name is the only handle the FILE has on which run wrote which
   // zones (`LongName`), so two sets sharing one would make each emission delete
   // the other's zones. Refused for the same reason, and by the same test, as
@@ -256,7 +256,7 @@ function sweepModelsWithoutMembers(
 export interface ZoneEmitRemoval {
   /** Zones removed, across every model. */
   removed: number;
-  blocked: 'edit-mode' | 'collab-role' | 'duplicate-set-name' | null;
+  blocked: MutationDenialReason | 'duplicate-set-name' | null;
 }
 
 /**
@@ -269,7 +269,7 @@ export interface ZoneEmitRemoval {
 export function removeZoneSpatialZones(zoneSet: ZoneSet): ZoneEmitRemoval {
   const state = useViewerStore.getState();
   const permission = mutationPermission(state);
-  if (!permission.allowed) return { removed: 0, blocked: permission.reason === 'edit-mode' ? 'edit-mode' : 'collab-role' };
+  if (!permission.allowed) return { removed: 0, blocked: permission.reason };
   // Removal sweeps by name too, so a collision here would take the other set's
   // zones with it.
   if (collidesByName(zoneSet)) return { removed: 0, blocked: 'duplicate-set-name' };

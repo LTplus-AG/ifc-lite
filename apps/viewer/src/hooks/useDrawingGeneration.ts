@@ -109,7 +109,7 @@ interface UseDrawingGenerationParams {
       bitangent: [number, number, number];
     };
   };
-  displayOptions: { showHiddenLines: boolean; useSymbolicRepresentations: boolean; show3DOverlay: boolean; scale: number; showConstructionProjection: boolean };
+  displayOptions: { showHiddenLines: boolean; useSymbolicRepresentations: boolean; show3DOverlay: boolean; scale: number; showConstructionProjection: boolean; constructionProjectionDepth?: number | null };
   /**
    * Class-level Visibility toggles (Spaces, Openings, Site, Virtual Elements,
    * Spatial Zones, Annotations). Global, not 3D-only — see the filter in
@@ -299,7 +299,9 @@ export function useDrawingGeneration({
     // band computation below). The UI gates the toggle to the same set; the
     // persisted flag can survive a switch to a custom plane, so gate here too.
     const projectionSupported = !sectionPlane.custom;
-    const projectionOn = projectionSupported && displayOptions.showConstructionProjection;
+    const manualDepth = displayOptions.constructionProjectionDepth;
+    const boundedProjection = typeof manualDepth === 'number' && Number.isFinite(manualDepth) && manualDepth >= 0;
+    const projectionOn = projectionSupported && displayOptions.showConstructionProjection && (!boundedProjection || manualDepth > 0);
 
     // ── Construction projection profiles (issue #979) ────────────────────────
     // Extract extruded-area-solid profiles for the clean projection path. Only
@@ -309,7 +311,7 @@ export function useDrawingGeneration({
     // (profiles stay empty → every mesh silhouettes). Cached per model since
     // they don't move with the section. Single-model (modelIndex 0) for now,
     // mirroring the symbolic path's federation limitation.
-    const profilesNeeded = projectionOn && sectionPlane.axis === 'down';
+    const profilesNeeded = projectionOn && !boundedProjection && sectionPlane.axis === 'down';
     let profiles: ProfileEntry[] = [];
     if (profilesNeeded && ifcDataStore?.source && modelCacheKey !== null) {
       const pcache = profileCacheRef.current;
@@ -445,16 +447,13 @@ export function useDrawingGeneration({
         }
       }
 
-      // Vertical section (front/side): storeys don't bound it. Project a
-      // bounded view depth BEHIND the cut and cull the cut-away front half +
-      // anything past that depth. "Behind" is always the `below` (d<0) band:
-      // the band classifier's flip and the view direction's flip cancel, so
-      // this is flip-invariant (no swap needed). Near geometry draws solid;
-      // the hidden-line pass dashes occluded/far parts. (Profiles aren't
-      // extracted off-plan, so this geometry comes from the mesh silhouette.)
       if (projectionOn && !sectionPlane.custom && sectionPlane.axis !== 'down') {
         belowDepth = Math.max((axisMax - axisMin) * SECTION_VIEW_DEPTH_FRACTION, 1e-3);
-        aboveDepth = 1e-3; // cull the half in front of the cut
+        aboveDepth = 1e-3;
+      }
+      if (boundedProjection) {
+        belowDepth = manualDepth;
+        if (manualDepth === 0 || sectionPlane.axis !== 'down') aboveDepth = 0;
       }
 
       // Adjust progress to account for symbolic parsing phase (0-20%)
@@ -466,7 +465,8 @@ export function useDrawingGeneration({
 
       // Create section config
       const config: SectionConfig = createSectionConfig(axis, position, {
-        projectionDepth: maxDepth,
+        projectionDepth: boundedProjection ? belowDepth : maxDepth,
+        clipProjectionBands: boundedProjection,
         projectionBelowDepth: belowDepth,
         projectionAboveDepth: aboveDepth,
         includeHiddenLines: displayOptions.showHiddenLines,
@@ -601,10 +601,10 @@ export function useDrawingGeneration({
         meshesToProcess,
         config,
         {
-          // Respect the "show hidden lines" toggle: occlusion can downgrade
-          // visible (below-cut) projection lines to dashed. Overhead lines stay
-          // dashed regardless (the generator passes them through unchanged).
-          includeHiddenLines: projectionOn ? displayOptions.showHiddenLines : false,
+          // Always classify projection occlusion. Hidden Lines controls whether
+          // the classified hidden edges render/export, not whether opaque walls
+          // hide geometry behind them (#6615). Overhead stays dashed separately.
+          includeHiddenLines: projectionOn,
           includeProjection: projectionOn,
           includeEdges: projectionOn,
           mergeLines: true,

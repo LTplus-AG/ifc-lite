@@ -9,6 +9,16 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 impl IfcAPI {
+    /// Plan opt-in map similarity normalization on a completed STEP export.
+    /// Returns entity patches, allocated IDs and atomic refusal warnings as JSON.
+    #[wasm_bindgen(js_name = planMapConversionNormalization)]
+    pub fn plan_map_conversion_normalization(&self, content: &[u8]) -> Result<String, JsError> {
+        let plan = ifc_lite_export::plan_map_conversion_normalization(content)
+            .map_err(|error| JsError::new(&format!("planMapConversionNormalization: {error}")))?;
+        serde_json::to_string(&plan)
+            .map_err(|error| JsError::new(&format!("planMapConversionNormalization: {error}")))
+    }
+
     /// Re-serialize the model in `content` to STEP/IFC UTF-8 bytes.
     ///
     /// Returned as UTF-8 bytes (`Uint8Array`) so output is not capped by the

@@ -15,6 +15,7 @@
  */
 
 import { validateTable, type FlowDocument, type FlowInput, type InputKind, type NodeRegistry, type ParamKind } from '@ifc-lite/flow';
+import { validateFileSlots } from './file-values';
 import type { TranslatableMessage } from '@/i18n/types';
 
 export interface PlayerField {
@@ -74,6 +75,7 @@ export function seedPlayerValue(field: PlayerField): unknown {
     case 'table':
       return def === undefined ? undefined : JSON.stringify(def);
     case 'file':
+    case 'files':
     default:
       return undefined;
   }
@@ -163,6 +165,10 @@ export function validatePlayerValue(field: PlayerField, raw: unknown): PlayerVal
       if (typeof raw !== 'string') return err('flowPanel.player.error.unreadableFile');
       return ok(raw);
     }
+    case 'files': {
+      try { return ok(validateFileSlots(field.input, raw)); }
+      catch (error) { return err('automationEditor.invalidFiles', { reason: error instanceof Error ? error.message : String(error) }); }
+    }
     case 'table':
       return validateTableField(raw);
     default:
@@ -179,7 +185,8 @@ export function validatePlayerValue(field: PlayerField, raw: unknown): PlayerVal
 export function initialPlayerValues(fields: readonly PlayerField[], stored: Readonly<Record<string, unknown>>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const field of fields) {
-    out[field.key] = field.key in stored ? stored[field.key] : seedPlayerValue(field);
+    out[field.key] = field.input.kind === 'file' || field.input.kind === 'files' ? undefined
+      : field.key in stored ? stored[field.key] : seedPlayerValue(field);
   }
   return out;
 }

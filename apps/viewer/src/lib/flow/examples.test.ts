@@ -25,7 +25,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkAvailability, parseFlowDocument, topologicalOrder, validateFlowWiring, type FlowDocument } from '@ifc-lite/flow';
 import { hasCapability, parseCapabilities, parseCapability } from '@ifc-lite/extensions';
-import { BROWSER_FEATURES, createStandardRegistry } from '@ifc-lite/flow-nodes';
+import { AUTOMATION_FEATURES, BROWSER_FEATURES, createStandardRegistry } from '@ifc-lite/flow-nodes';
 import { flowExamples } from './examples.js';
 
 const registry = createStandardRegistry();
@@ -64,8 +64,8 @@ describe('flow examples', () => {
         assert.ok(doc.outputs.length > 0, 'a run with nothing to show is not explorable');
       });
 
-      it('every node runs or no-ops in the browser', () => {
-        for (const a of checkAvailability(doc, registry, BROWSER_FEATURES)) {
+      it('every node runs or no-ops in a browser with the viewer session services', () => {
+        for (const a of checkAvailability(doc, registry, { ...BROWSER_FEATURES, backend: new Set([...BROWSER_FEATURES.backend, ...AUTOMATION_FEATURES]) })) {
           assert.ok(a.status === 'ok' || a.status === 'noop', `${a.nodeId}: ${a.status} — ${a.reasons.join('; ')}`);
         }
       });

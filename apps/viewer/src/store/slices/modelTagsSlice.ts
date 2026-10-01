@@ -50,6 +50,9 @@ export const DEFAULT_MODEL_TAG_VIEW: ModelTagView = { groupByTag: false, filterT
 
 export interface ModelTagsSlice {
   modelTags: ReadonlyMap<string, ModelTag>;
+  /** Vocabulary remains in memory when browser storage refuses a write. */
+  modelTagsSaveFailed: boolean;
+  retryModelTagsSave: () => boolean;
   modelTagAssignments: ModelTagAssignments;
   modelTagView: ModelTagView;
   setModelTagView: (patch: Partial<ModelTagView>) => void;
@@ -90,12 +93,18 @@ export function findModelTagByName(tags: ReadonlyMap<string, ModelTag>, name: st
 
 export const createModelTagsSlice: StateCreator<ModelTagsSlice, [], [], ModelTagsSlice> = (set, get) => {
   const commitDefinitions = (modelTags: Map<string, ModelTag>) => {
-    savePersistedModelTags([...modelTags.values()]);
-    set({ modelTags });
+    const saved = savePersistedModelTags([...modelTags.values()]);
+    set({ modelTags, modelTagsSaveFailed: !saved });
   };
 
   return {
     modelTags: persistedDefinitions(),
+    modelTagsSaveFailed: false,
+    retryModelTagsSave: () => {
+      const saved = savePersistedModelTags([...get().modelTags.values()]);
+      set({ modelTagsSaveFailed: !saved });
+      return saved;
+    },
     modelTagAssignments: new Map(),
     modelTagView: DEFAULT_MODEL_TAG_VIEW,
     setModelTagView: (patch) => set({ modelTagView: { ...get().modelTagView, ...patch } }),

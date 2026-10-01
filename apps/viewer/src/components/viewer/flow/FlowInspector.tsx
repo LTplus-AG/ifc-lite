@@ -13,6 +13,8 @@ import type { FlowDocument, Lacing, NodeDef, NodeRegistry, ParamDef, RunResult, 
 import { useTranslation } from '@/i18n/useTranslation';
 import { removeNode, setLacing, setParam, setTracking, toggleInput, toggleOutput, updateNode } from '@/lib/flow/editor-ops';
 import { KIND_COLOR, describeData } from '@/lib/flow/view-model';
+import { FlowFileSlotsEditor } from './FlowFileSlotsEditor';
+import { FlowAutomationEditor } from './FlowAutomationEditor';
 import { FlowCodeParam } from './FlowCodeParam';
 import { FlowValuePreview } from './FlowValuePreview';
 
@@ -105,6 +107,8 @@ export function FlowInspector({ doc, registry, nodeId, lastRun, onDocChange, onS
         <input className={input} value={node.label ?? ''} onChange={(e) => onDocChange(updateNode(doc, node.id, { label: e.target.value || undefined }))} />
       </label>
 
+      <FlowAutomationEditor doc={doc} nodeId={node.id} onChange={onDocChange} />
+
       {def && def.params.length > 0 && (
         <div>
           <div className="text-muted-foreground">{t('flowPanel.inspector.params')}</div>
@@ -115,7 +119,15 @@ export function FlowInspector({ doc, registry, nodeId, lastRun, onDocChange, onS
                 <div className="flex items-center justify-between">
                   <span title={p.doc}>{p.name}</span>
                   <label className="inline-flex items-center gap-1 text-2xs text-muted-foreground" title={t('flowPanel.inspector.isInput')}>
-                    <input type="checkbox" aria-label={`${t('flowPanel.inspector.isInput')}: ${p.name}`} checked={isInput} onChange={() => onDocChange(toggleInput(doc, node.id, p.name, `${node.label ?? def.title}: ${p.name}`))} className="accent-[#e0af68]" />▸
+                    <input type="checkbox" aria-label={`${t('flowPanel.inspector.isInput')}: ${p.name}`} checked={isInput} onChange={() => {
+                      const next = toggleInput(doc, node.id, p.name, `${node.label ?? def.title}: ${p.name}`);
+                      if (p.name === 'files' && !isInput && ['session.loadModels', 'validation.runChecks', 'comparison.runChecks', 'report.importComparisons'].includes(node.type)) {
+                        onDocChange({ ...next, inputs: next.inputs.map((value) => value.nodeId === node.id && value.param === p.name
+                          ? { ...value, kind: 'files' as const, fileSlots: [{ id: node.type === 'session.loadModels' ? 'models' : 'resources',
+                            label: node.type === 'session.loadModels' ? 'IFC models' : 'Check resources',
+                            accept: node.type === 'session.loadModels' ? '.ifc' : '.json,.ids', multiple: true, required: true }] } : value) });
+                      } else onDocChange(next);
+                    }} className="accent-[#e0af68]" />▸
                   </label>
                 </div>
                 <ParamField def={p} value={node.params?.[p.name]} onChange={(v) => onDocChange(setParam(doc, node.id, p.name, v))} invalidLabel={t('flowPanel.inspector.jsonInvalid')} node={def} />
@@ -124,6 +136,8 @@ export function FlowInspector({ doc, registry, nodeId, lastRun, onDocChange, onS
           })}
         </div>
       )}
+
+      <FlowFileSlotsEditor doc={doc} nodeId={node.id} onChange={onDocChange} defaultAccept={node.type === 'session.loadModels' ? '.ifc' : undefined} />
 
       {hasItemPort && (
         <label className="block">

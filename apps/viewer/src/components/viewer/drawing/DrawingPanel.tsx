@@ -149,6 +149,7 @@ export function DrawingPanel(): React.ReactElement {
             displayedScale={displayOptions.scale || 100}
             sheetEnabled={vm.sheetEnabled} activeSheet={vm.activeSheet}
             markupCounts={vm.markupCounts}
+            visibleRasterReferenceCount={vm.visibleRasterReferenceCount}
             visibleUnderlayCount={layers.dxfUnderlayData.filter((underlay) => underlay.opacity > 0).length}
           />
         </div>

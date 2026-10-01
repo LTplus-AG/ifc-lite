@@ -35,7 +35,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import type { Drawing2D } from '@ifc-lite/drawing-2d';
+import { exportToDXF, parseDxf, type Drawing2D } from '@ifc-lite/drawing-2d';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { IfcTypeEnum, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
 import type { TypeVisibilityGate } from '@/store/typeVisibilityFilter';
@@ -154,6 +154,7 @@ const ALL_VISIBLE: TypeVisibilityGate = {
 const SPACES_HIDDEN: TypeVisibilityGate = { ...ALL_VISIBLE, spaces: false };
 
 interface HarnessOptions {
+  depth?: number | null;
   geometryResult: GeometryResult;
   typeVisibility: TypeVisibilityGate;
   flipped?: boolean;
@@ -186,6 +187,7 @@ async function generateSequence(sequence: HarnessOptions[]): Promise<Array<Drawi
         // The whole point of this file: the sibling suites leave this false,
         // which makes every `projectionOn` branch dead in the suite.
         showConstructionProjection: true,
+        constructionProjectionDepth: options.depth,
       },
       typeVisibility: options.typeVisibility,
       combinedHiddenIds: new Set<number>(),
@@ -564,4 +566,48 @@ it('recomputes projection bands when storey membership changes on the same geome
   assert.equal(twoStoreys.config.projectionAboveDepth, 1.5);
   assert.equal(oneStorey.config.projectionBelowDepth, 9, 'a single storey uses the full model extent');
   assert.equal(oneStorey.config.projectionAboveDepth, 9, 'old membership must not retain a phantom ceiling');
+});
+
+
+// #6615: exercise the actual hook -> cutter -> projection -> published drawing.
+describe('manual construction depth through generation (#6615)', () => {
+  it('classifies the wall behind an opaque occluder when Hidden Lines is OFF, and excludes it from visible-only export', async () => {
+    // Physical invariant: an opaque slab covering the complete far footprint
+    // hides every far edge, regardless of whether dashed edges are displayed.
+    // Harness mounts the actual hook with showHiddenLines:false throughout.
+    const scene = geometry([
+      box(66154, 'IfcSlab', 0, [-4,-2,-4], [4,-1,4]),
+      box(66155, 'IfcWall', 0, [-1,-5,-1], [1,-4,1]),
+    ], [-10,-10,-10], [10,10,10]);
+    const drawing = await generate({geometryResult:scene,typeVisibility:ALL_VISIBLE,ifcDataStore:null,depth:7});
+    assert.ok(drawing);
+    const far = drawing.lines.filter(line=>line.entityId===66155 && line.category!=='cut');
+    const near = drawing.lines.filter(line=>line.entityId===66154 && line.category!=='cut');
+    assert.ok(far.length>0 && near.length>0,'both real footprints must reach occlusion classification');
+    assert.ok(far.every(line=>line.visibility==='hidden'),'opaque near slab hides the complete far wall');
+    assert.ok(near.some(line=>line.visibility==='visible'),'near slab remains visible');
+    const hasFarLandmark = (hidden:boolean) => parseDxf(exportToDXF(drawing,{showHiddenLines:hidden})).entities.some(entity=>
+      entity.kind==='line' && Math.abs(entity.x1)<=1.001 && Math.abs(entity.y1)<=1.001
+      && Math.abs(entity.x2)<=1.001 && Math.abs(entity.y2)<=1.001);
+    assert.equal(hasFarLandmark(true),true,'the hidden-edge export control includes the far footprint');
+    assert.equal(hasFarLandmark(false),false,'visible-only DXF must exclude fully occluded far edges');
+  });
+
+  it('retains cut geometry while admitting near/far references only within the requested metric depth', async () => {
+    const scene = geometry([
+      box(66151, 'IfcWall', 0, [-1, -3, -1], [1, -2.5, 1]),
+      box(66152, 'IfcWall', 0, [-4, -6, -1], [-2, -5.5, 1]),
+      box(66153, 'IfcWall', 0, [3, -1, -1], [4, 1, 1]),
+    ], [-10, -10, -10], [10, 10, 10]);
+    const drawings = await generateSequence([0, 2, 3, 7].map(depth => ({
+      geometryResult: scene, typeVisibility: ALL_VISIBLE, ifcDataStore: null, depth,
+    })));
+    const ids = drawings.map(projectedIds);
+    assert.ok(drawings.every(d => d && d.cutPolygons.some(p => p.entityId === 66153)), 'cut wall remains at every depth');
+    assert.equal(ids[0].size, 0, 'zero depth disables every projection band');
+    assert.ok(!ids[1].has(66151) && !ids[1].has(66152), '2m excludes the 2.5m and 5.5m walls');
+    assert.ok(ids[2].has(66151) && !ids[2].has(66152), '3m includes the near wall only');
+    assert.ok(ids[3].has(66151) && ids[3].has(66152), '7m includes both walls');
+    assert.equal(drawings[2]?.config.projectionBelowDepth, 3);
+  });
 });

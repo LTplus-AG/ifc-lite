@@ -27,6 +27,58 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Opt-in map geometry compatibility export (#6587)
+
+The qualified comparison uses the actual main-based package prerequisite and
+the frozen ownership-corrected implementation, before the later mapped-depth
+preflight correction. Native loads, real browser worker-pool loads,
+and the default asynchronous STEP API retained byte-identical payloads,
+including browser instances. Their interleaved timings showed no consistent
+regression within the bounded cohort. Fresh tabs used distinct origins in a
+shared native browser runtime; DOM visibility was recorded, but physical panel
+foreground and cold-process performance were not established. Unrelated user
+applications remained open, so this is not a claim of an idle operating system.
+
+Earlier cohorts are retained as diagnostics: a later audit found continuous
+GPU work in validation tabs. Those timings are not pooled with the replacement
+cohort or used to establish the verdict. Agent-controlled builds, uploads and
+GPU evidence work were held during the qualified replacement measurements.
+
+The opt-in export has an explicit cost: it parses the mutation-resolved emitted
+model and produces canonical placement/representation patches. Its first call
+also imports and initializes the geometry backend. The WASM binary grows to
+carry the planner. These measurements establish bounded default-path evidence,
+not an optimization or a universal zero-cost claim. Raw witnesses and supported
+mutation proofs are under `scripts/perf/evidence/map-normalization-6587/`.
+
+The subsequent opt-in depth correction reserves a mapped wrapper and terminal
+leaf before serialization. Its new binary was rebuilt and behaviorally checked,
+but was not timed in that frozen cohort. The default mesh-production path is
+unchanged; the earlier measurements are evidence for their recorded binaries.
+
+Lesson: benchmark the real export API as well as the untouched load path.
+Keep unit conversion separate from physical map scale, reuse the strict Rust
+placement resolver, and settle changed entity IDs through the existing export
+ledger. Removing strict target-unit validation or reversing affine/placement
+order is detected by actual behavioral regressions, rather than merely making
+the new API disappear at import time. Audit background render loops before
+granting a timing window; stopping new actions alone does not stop old loops.
+
+## Planar conic handedness (#6597)
+
+Interleaved base-versus-branch native full-load runs on the house fixture and
+void-heavy ISSUE_129 fixture showed no consistent total-load slowdown beyond
+local variation. Both retained byte-identical ordered mesh payloads and counts.
+This is a correctness fix: no throughput improvement or browser worker-pool
+performance claim is made. The downward-axis synthetic extrusion intentionally
+changes shape, with an independent pinned IfcOpenShell oracle confirming its
+bounds, surface area and volume.
+
+Lesson: RefDirection gives the local X direction, while Axis determines the
+handedness of local Y. Reuse the canonical placement frame rather than adding
+another direction decoder, and test both forward conic sampling and Cartesian
+trim inversion; either half alone leaves a mirrored or incorrectly trimmed arc.
+
 ## Shared-buffer retries after a WASM trap (#6542)
 
 A compatibility retry must distinguish a rejected shared view from a WASM
@@ -2713,3 +2765,58 @@ separate output increase at the small-hole retention policy; do not delete
 corrective geometry to recover a former triangle count. The private reporter's
 complete slowdown remains unresolved. [All samples, identities, limits and
 reproduction commands](evidence/opening-work-6516/README.md) are retained together.
+
+
+## Optional per-face geometry export colors (#6601)
+
+Color-aware analysis exports keep material indices attached to triangles through
+welding. The legacy builder still accumulates its original element map directly;
+only the opt-in builder adds a lazy palette sidecar. An initial implementation
+converted a second map even for legacy callers; that unnecessary allocation was
+removed before acceptance. Interleaved actual export-API runs retain byte-identical
+legacy JSON on both reference models. Small-model timing varied between pairs and
+the larger fixture's legacy total remained within the observed spread. The opt-in
+metadata adds bounded work and output bytes; no speedup is claimed.
+
+Native whole-load controls retain identical ordered mesh fingerprints and counts.
+A repeat showed a small positive timing shift on the larger fixture, with mixed
+paired deltas. The export API is not called by that probe, and a code-generation
+audit found no changed hot-path arithmetic or branches. This supports isolating
+export overhead, not claiming zero runtime variation or browser worker throughput.
+The PR records both native runs and the actual API timings. The lesson is to
+measure the consuming API, preserve the old accumulation path, and allocate
+optional metadata only when a distinct material requires it.
+
+## Canonical alignment sampling (#6600)
+
+The new retained alignment evaluator and bounded Python sampling API are opt-in;
+ordinary mesh production and the existing WASM alignment line sampler continue
+using the original permissive curve policy. An otherwise-idle, interleaved
+base-versus-branch native worker-pool probe on the default Haus fixture found
+unchanged median parse, geometry and total time, with identical ordered mesh
+fingerprints and mesh/vertex/triangle counts. Verdict: no measured regression
+in the existing full-load path; this is an isolation result, not a speed win.
+
+The real OIP infrastructure fixture was also timed through the installed Python
+binding, including Rust parsing/evaluation and Python result conversion. That
+cost belongs to the newly requested sampling feature, not ordinary mesh loads.
+Lesson: retain canonical f64 evaluators for station queries, report curve
+approximations and refused fallback geometry, and charge failed frames to the
+model sampling budget. Per-axis output limits alone do not bound model-wide
+sampling work or diagnostic output.
+
+## Opt-in alignment section worker (#6603)
+
+The retained WASM axis handle and dedicated evaluator worker are opened only by
+explicit alignment selection. Ordinary loading retains the existing worker-pool
+pipeline. Five interleaved fresh-browser pairs against the shared-core parent
+showed matching flat geometry payloads and canonical geometry hashes, including
+instanced entity coverage. Measured phases stayed within the observed variation;
+this is no observed default-load regression, not a speed improvement.
+
+The control used matching frozen JavaScript/WASM bundles and first-load Haus
+samples. Background Chrome contention and an earlier baseline-only renderer
+completion timeout limit the inference; the evidence preserves qualification
+failures rather than discarding them. The lesson is to measure the actual default
+worker pool even for opt-in APIs, and to separate post-timing byte witnesses from
+the completion boundary. See [the evidence](../../docs/architecture/evidence/alignment-sections-6603/README.md).

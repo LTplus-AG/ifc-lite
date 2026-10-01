@@ -154,6 +154,16 @@ works.
 
 See the [Geometry Guide](https://ifclite.dev/docs/guide/geometry/) and [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-litegeometry).
 
+`GeometryProcessor.planMapConversionNormalization(content)` returns a JSON
+entity-patch plan for opt-in STEP coordinate compatibility export. Initialize
+the processor first and dispose it in `finally`. Canonical Rust validates units,
+placements and representation ownership; unsupported coordinate consumers return
+warnings with no patches. `StepExporter.exportAsync({ normalizeMapGeometry:
+true })` applies this plan after edits using its existing modification ledger.
+See the [exporting guide](https://ifclite.dev/docs/guide/exporting/) for the
+supported subset and warning handling. Third-party platform bridges may expose
+the optional planner capability; the bundled native bridge explicitly refuses it.
+
 ## License
 
 [MPL-2.0](../../LICENSE)

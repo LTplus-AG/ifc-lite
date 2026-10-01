@@ -1,0 +1,12 @@
+{
+  "sourceSha256": "6b1de724ceb436759d9cdbe7ce7f4c71734065dfde8cc8786b6239de347de1b1",
+  "outputSha256": "23a178542a0d9173f9af319b066e717f394dbe651d0daf345a9c3628978cf194",
+  "backend": "actual StepExporter.exportAsync + real canonical WASM",
+  "stats": {
+    "entityCount": 54,
+    "newEntityCount": 21,
+    "modifiedEntityCount": 5,
+    "fileSize": 2862,
+    "warnings": []
+  }
+}

@@ -25,6 +25,7 @@ import { ChangeDetailView } from './compare/ChangeDetailView';
 import { BcfFromChange } from './compare/BcfFromChange';
 import { useBcfFromChange } from './compare/useBcfFromChange';
 import { CompareResultsList, CountBadge, LISTED_STATES, type CompareBucket } from './compare/CompareResultsList';
+import { CompareSetupControls } from './compare/CompareSetupControls';
 import { CompareRunControls } from './compare/CompareRunControls';
 import { SavedComparisonLibrary } from './compare/SavedComparisonLibrary';
 import { CompareExportBar } from './compare/CompareExportBar';
@@ -240,7 +241,8 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
               pre-filled form, so re-running / exports / browsing only get in the way. */}
           {!bcfComposing && (
             <>
-              <CompareRunControls
+              <CompareSetupControls />
+      <CompareRunControls
                 models={modelList}
                 baseModelId={baseModelId}
                 headModelId={headModelId}

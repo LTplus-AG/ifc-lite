@@ -107,7 +107,7 @@ pub fn build_geometry_data_export(
     rtc_offset: [f64; 3],
     site_rotation: Option<&[f64]>,
 ) -> GeometryDataExport {
-    let elements = build_elements(meshes, rtc_offset, site_rotation, false, |el| el.geometry);
+    let (elements, _) = build_elements::<false>(meshes, rtc_offset, site_rotation);
     GeometryDataExport {
         schema: "ifc-lite-geometry-data",
         version: 1,
@@ -125,7 +125,18 @@ pub fn build_colored_geometry_data_export(
     rtc_offset: [f64; 3],
     site_rotation: Option<&[f64]>,
 ) -> ColoredGeometryDataExport {
-    let elements = build_elements(meshes, rtc_offset, site_rotation, true, |el| el);
+    let (geometry, mut colors) = build_elements::<true>(meshes, rtc_offset, site_rotation);
+    let elements: BTreeMap<u32, ColoredExportedElement> = geometry
+        .into_iter()
+        .map(|(id, geometry)| {
+            let metadata = colors.remove(&id).unwrap_or_default();
+            (id, ColoredExportedElement {
+                geometry,
+                palette: metadata.palette,
+                face_colors: metadata.face_colors,
+            })
+        })
+        .collect();
     ColoredGeometryDataExport {
         schema: "ifc-lite-geometry-data",
         version: 1,
@@ -137,14 +148,18 @@ pub fn build_colored_geometry_data_export(
     }
 }
 
-fn build_elements<T>(
+type ElementMap = BTreeMap<u32, ExportedElement>;
+type ColorMap = BTreeMap<u32, ColorMetadata>;
+
+fn build_elements<const COLORS: bool>(
     meshes: &[MeshData],
     rtc_offset: [f64; 3],
     site_rotation: Option<&[f64]>,
-    include_colors: bool,
-    finish: impl Fn(ColoredExportedElement) -> T,
-) -> BTreeMap<u32, T> {
-    let mut builders: BTreeMap<u32, ElementBuilder> = BTreeMap::new();
+) -> (ElementMap, ColorMap) {
+    // Keep the legacy map's allocation and node size; material state lives only
+    // in the opt-in sidecar, allocated once an element becomes nonuniform.
+    let mut elements = ElementMap::new();
+    let mut colors = ColorMap::new();
     let rot = match site_rotation {
         Some(m) if m.len() >= 16 => Some(m),
         _ => None,
@@ -176,27 +191,25 @@ fn build_elements<T>(
             })
             .collect();
 
-        let builder = builders
+        let entry = elements
             .entry(m.express_id)
-            .or_insert_with(|| ElementBuilder {
-                indices: BTreeMap::new(),
-                element: ColoredExportedElement {
-                    geometry: ExportedElement {
-                        ifc_type: m.ifc_type.clone(),
-                        global_id: m.global_id.clone(),
-                        name: m.name.clone(),
-                        vertices: Vec::new(),
-                        faces: Vec::new(),
-                        color: m.color,
-                    },
-                    palette: Vec::new(),
-                    face_colors: Vec::new(),
-                },
+            .or_insert_with(|| ExportedElement {
+                ifc_type: m.ifc_type.clone(),
+                global_id: m.global_id.clone(),
+                name: m.name.clone(),
+                vertices: Vec::new(),
+                faces: Vec::new(),
+                color: m.color,
             });
-        if include_colors {
-            builder.append_color(m.color, m.indices.len() / 3);
+        if COLORS {
+            if let Some(metadata) = colors.get_mut(&m.express_id) {
+                metadata.append_color(m.color, m.indices.len() / 3);
+            } else if entry.color != m.color {
+                let mut metadata = ColorMetadata::new(entry.color, entry.faces.len());
+                metadata.append_color(m.color, m.indices.len() / 3);
+                colors.insert(m.express_id, metadata);
+            }
         }
-        let entry = &mut builder.element.geometry;
 
         // Merge this submesh: rebase its face indices onto the element's
         // accumulated vertex list.
@@ -209,60 +222,58 @@ fn build_elements<T>(
         );
     }
 
-    // Keep each surviving face's material while dropping welded degenerates.
-    builders
-        .into_iter()
-        .map(|(id, builder)| {
-            let mut el = builder.element;
-            let (vertices, faces, colors) = weld_positions(
-                &el.geometry.vertices,
-                &el.geometry.faces,
-                &el.face_colors,
-                1e-6,
-            );
-            el.geometry.vertices = vertices;
-            el.geometry.faces = faces;
-            if !el.face_colors.is_empty() {
-                el.face_colors = colors;
-                // Omit metadata when surviving faces use the existing fallback color.
-                if !el.face_colors.is_empty() {
-                    if el.face_colors.iter().all(|&color| color == 0) {
-                        el.palette.clear();
-                        el.face_colors.clear();
-                    }
-                } else {
-                    el.palette.clear();
-                }
-            }
-            (id, finish(el))
-        })
-        .collect()
+    // Weld in place so the legacy path returns its original map directly.
+    for (id, element) in &mut elements {
+        let metadata = if COLORS { colors.get_mut(id) } else { None };
+        let face_colors = metadata
+            .as_ref()
+            .map_or(&[][..], |m| m.face_colors.as_slice());
+        let (vertices, faces, kept) = weld_positions::<COLORS>(
+            &element.vertices,
+            &element.faces,
+            face_colors,
+            1e-6,
+        );
+        element.vertices = vertices;
+        element.faces = faces;
+        if let Some(metadata) = metadata {
+            metadata.face_colors = kept;
+        }
+    }
+    if COLORS {
+        // Index 0 is the existing fallback. Preserve an index-1-only survivor:
+        // its appearance differs from the first submesh's fallback color.
+        colors.retain(|_, m| !m.face_colors.iter().all(|&index| index == 0));
+    }
+    (elements, colors)
 }
 
-/// Private material accumulator. Uniform elements allocate no per-face color array.
-struct ElementBuilder {
-    element: ColoredExportedElement,
+/// Allocated only for elements whose submeshes have different colors.
+#[derive(Default)]
+struct ColorMetadata {
+    palette: Vec<[f32; 4]>,
+    face_colors: Vec<u64>,
     indices: BTreeMap<[u32; 4], u64>,
 }
 
-impl ElementBuilder {
-    fn append_color(&mut self, color: [f32; 4], face_count: usize) {
-        let el = &mut self.element;
-        if el.palette.is_empty() {
-            if el.geometry.color == color {
-                return;
-            }
-            el.palette.push(el.geometry.color);
-            self.indices.insert(color_key(el.geometry.color), 0);
-            el.face_colors.resize(el.geometry.faces.len(), 0);
+impl ColorMetadata {
+    fn new(fallback: [f32; 4], prior_faces: usize) -> Self {
+        let mut indices = BTreeMap::new();
+        indices.insert(color_key(fallback), 0);
+        Self {
+            palette: vec![fallback],
+            face_colors: vec![0; prior_faces],
+            indices,
         }
-        let next = el.palette.len() as u64;
+    }
+
+    fn append_color(&mut self, color: [f32; 4], face_count: usize) {
+        let next = self.palette.len() as u64;
         let index = *self.indices.entry(color_key(color)).or_insert_with(|| {
-            el.palette.push(color);
+            self.palette.push(color);
             next
         });
-        el.face_colors
-            .resize(el.face_colors.len() + face_count, index);
+        self.face_colors.resize(self.face_colors.len() + face_count, index);
     }
 }
 
@@ -273,7 +284,7 @@ fn color_key(color: [f32; 4]) -> [u32; 4] {
 
 /// Merge coincident vertices on a `1/eps` grid and remap faces, dropping any
 /// triangle that collapses to a degenerate after the merge.
-fn weld_positions(
+fn weld_positions<const COLORS: bool>(
     verts: &[[f64; 3]],
     faces: &[[u32; 3]],
     colors: &[u64],
@@ -308,7 +319,7 @@ fn weld_positions(
         );
         if a != b && b != c && a != c {
             out_faces.push([a, b, c]);
-            if !colors.is_empty() {
+            if COLORS && !colors.is_empty() {
                 kept.push(colors[face_index]);
             }
         }

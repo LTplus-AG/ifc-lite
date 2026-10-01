@@ -84,19 +84,13 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
             commandContext={{ refreshModels: handleRefresh }}
           />
         </RibbonSmallStack>
-        <RibbonCommandLargeButton
-          commandId={saveSetup.id}
-          icon={SaveFederationSetup}
-          tooltip={t(saveSetup.labelKey)}
-          disabled={!saveSetup.enabled({ canEditInSession })}
-        />
-        <RibbonSmallStack className="gap-1">
-          {[openSetup, modelTags].map((command) => (
+        <RibbonSmallStack>
+          {[saveSetup, openSetup, modelTags].map((command) => (
             <RibbonCommandSmallButton
               key={command.id}
               commandId={command.id}
+              icon={command.id === saveSetup.id ? SaveFederationSetup : undefined}
               tooltip={t(command.labelKey)}
-              className="min-h-6"
               disabled={!command.enabled({ canEditInSession })}
             />
           ))}

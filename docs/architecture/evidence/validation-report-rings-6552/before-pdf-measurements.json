@@ -1,0 +1,13 @@
+{
+  "pdf": "/tmp/6232-takeover/6552-browser-document.pdf",
+  "sha256": "52ae9e742419dfdf805836c47a2c680c1982ef9870e450ffe505edd38da3333d",
+  "pages": 2,
+  "method": "PyMuPDF raster of the actual downloaded PDF at Matrix(4,4); 3600 angular centerline samples per real stroked ring, nearest canonical status RGB within Euclidean distance15. Gaps and antialias pixels remain separate. Expected shares are frozen actual engine checked/pass/warning/fail outcomes, not renderer outputs.",
+  "allWithinTolerance": false,
+  "measurements": [
+    {"id":"ids-compact","page":1,"centerPt":[62.0,110.0],"radiusPt":19.0,"samples":3600,"expectedEngineShares":{"pass":0.625,"warning":0.0,"fail":0.375,"unanswered":0},"measuredPDFColorShares":{"pass":0.0,"warning":0.0,"fail":0.9852777777777778,"unanswered":0.0,"gap":0.014722222222222222},"toleranceAbsoluteShare":0.035,"withinTolerance":false},
+    {"id":"ids-long","page":1,"centerPt":[62.0,296.0],"radiusPt":19.0,"samples":3600,"expectedEngineShares":{"pass":0.625,"warning":0.0,"fail":0.375,"unanswered":0},"measuredPDFColorShares":{"pass":0.0,"warning":0.0,"fail":0.9852777777777778,"unanswered":0.0,"gap":0.014722222222222222},"toleranceAbsoluteShare":0.035,"withinTolerance":false},
+    {"id":"rules-compact","page":1,"centerPt":[62.0,530.0],"radiusPt":19.0,"samples":3600,"expectedEngineShares":{"pass":0.5,"warning":0.25,"fail":0.25,"unanswered":0},"measuredPDFColorShares":{"pass":0.0,"warning":0.0,"fail":0.9852777777777778,"unanswered":0.0,"gap":0.014722222222222222},"toleranceAbsoluteShare":0.035,"withinTolerance":false},
+    {"id":"rules-long","page":2,"centerPt":[62.0,110.0],"radiusPt":19.0,"samples":3600,"expectedEngineShares":{"pass":0.5,"warning":0.25,"fail":0.25,"unanswered":0},"measuredPDFColorShares":{"pass":0.0,"warning":0.0,"fail":0.9852777777777778,"unanswered":0.0,"gap":0.014722222222222222},"toleranceAbsoluteShare":0.035,"withinTolerance":false}
+  ]
+}

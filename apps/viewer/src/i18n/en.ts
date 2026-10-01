@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { automationEditorEn } from './catalogues/automation-editor.en';
+import { flowStartupEn } from './catalogues/flow-startup.en';
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { analysisPanelEn } from './catalogues/analysis-panel.en';
@@ -18,6 +20,7 @@ import { bcfEn } from './catalogues/bcf.en';
 import { clashGroupsEn } from './catalogues/clash-groups.en';
 import { clashToolsEn } from './catalogues/clash-tools.en';
 import { bulkPropertyEditorEn } from './catalogues/bulk-property-editor.en';
+import { ionUploadEn } from './catalogues/ion-upload.en';
 import { cesiumGeoEn } from './catalogues/cesium-geo.en';
 import { chatEn } from './catalogues/chat.en';
 import { chatByokEn } from './catalogues/chat-byok.en';
@@ -70,6 +73,7 @@ import { relationshipCardEn } from './catalogues/relationship-card.en';
 import { ribbonToolbarEn } from './catalogues/ribbon-toolbar.en';
 import { scheduleEn } from './catalogues/schedule.en';
 import { sectionToolEn } from './catalogues/section-tool.en';
+import { alignmentSectionEn } from './catalogues/alignment-section.en';
 import { section2dEn } from './catalogues/section-2d.en';
 import { sheetsPdfEn } from './catalogues/sheets-pdf.en';
 import { searchModalEn } from './catalogues/search-modal.en';
@@ -112,10 +116,12 @@ export const en = {
   ...exportDialogEn,
   ...bulkPropertyEditorEn,
   ...cesiumGeoEn,
+  ...ionUploadEn,
   ...mergeLayersBannerEn,
   ...appearanceAssignmentListEn,
   ...appearanceAssignmentMembersEn,
   ...sectionToolEn,
+  ...alignmentSectionEn,
   ...section2dEn,
   ...costPanelEn,
   ...ribbonToolbarEn,
@@ -185,6 +191,8 @@ export const en = {
   ...validationEditorEn,
   ...validationPanelEn,
   ...manualValidationEn,
+  ...flowStartupEn,
+  ...automationEditorEn,
   ...flowPanelEn,
   ...chatEn,
   ...chatByokEn,

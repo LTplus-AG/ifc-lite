@@ -82,7 +82,7 @@ impl ProfileProcessor {
             radius
         };
 
-        let (center, rotation) = self.get_placement_2d(basis, decoder)?;
+        let (center, rotation, y_sign) = self.get_placement_2d(basis, decoder)?;
 
         // Convert each trim bound to an angle in the conic's local frame.
         // IfcParameterValue bounds are angles in the project's PLANEANGLEUNIT
@@ -100,7 +100,7 @@ impl ProfileProcessor {
                     let dx = p.x - center.x;
                     let dy = p.y - center.y;
                     let lx = dx * rotation.cos() + dy * rotation.sin();
-                    let ly = -dx * rotation.sin() + dy * rotation.cos();
+                    let ly = (-dx * rotation.sin() + dy * rotation.cos()) * y_sign;
                     // Normalise by the radii so ellipse bounds map to the
                     // parametric angle (for a circle radius == radius2, so this
                     // is plain atan2(ly, lx)).
@@ -179,7 +179,7 @@ impl ProfileProcessor {
             };
 
             let x = radius * angle.cos();
-            let y = radius2 * angle.sin();
+            let y = radius2 * angle.sin() * y_sign;
 
             let rx = x * rotation.cos() - y * rotation.sin() + center.x;
             let ry = x * rotation.sin() + y * rotation.cos() + center.y;
@@ -190,73 +190,6 @@ impl ProfileProcessor {
         Ok(points)
     }
 
-    /// Get 2D placement from entity
-    fn get_placement_2d(
-        &self,
-        entity: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<(Point2<f64>, f64)> {
-        let placement_attr = match entity.get(0) {
-            Some(attr) if !attr.is_null() => attr,
-            _ => return Ok((Point2::new(0.0, 0.0), 0.0)),
-        };
-
-        let placement = match decoder.resolve_ref(placement_attr)? {
-            Some(p) => p,
-            None => return Ok((Point2::new(0.0, 0.0), 0.0)),
-        };
-
-        let location_attr = placement.get(0);
-        let center = if let Some(loc_attr) = location_attr {
-            if let Some(loc) = decoder.resolve_ref(loc_attr)? {
-                let coords = loc.get(0).and_then(|v| v.as_list());
-                if let Some(coords) = coords {
-                    let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-                    let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-                    Point2::new(x, y)
-                } else {
-                    Point2::new(0.0, 0.0)
-                }
-            } else {
-                Point2::new(0.0, 0.0)
-            }
-        } else {
-            Point2::new(0.0, 0.0)
-        };
-
-        // RefDirection lives at attribute index 1 on IfcAxis2Placement2D, but at
-        // index 2 on IfcAxis2Placement3D (index 1 is the Z-Axis there). Reading
-        // attribute 1 unconditionally produced a rotation of 0° for any conic
-        // anchored to a 3D placement — fine for Z-up profiles but visibly wrong
-        // when the X axis is rotated in-plane. Trimmed circles authored with
-        // `IfcAxis2Placement3D` (e.g. Revit reinforcement bars in Rebar2.ifc,
-        // issue #631) all came out with their arc centres rotated by their
-        // RefDirection angle, distorting the directrix.
-        let ref_dir_attr_index = if placement.ifc_type == IfcType::IfcAxis2Placement3D {
-            2
-        } else {
-            1
-        };
-        let rotation = if let Some(dir_attr) = placement.get(ref_dir_attr_index) {
-            if let Some(dir) = decoder.resolve_ref(dir_attr)? {
-                let ratios = dir.get(0).and_then(|v| v.as_list());
-                if let Some(ratios) = ratios {
-                    let x = ratios.first().and_then(|v| v.as_float()).unwrap_or(1.0);
-                    let y = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-                    y.atan2(x)
-                } else {
-                    0.0
-                }
-            } else {
-                0.0
-            }
-        } else {
-            0.0
-        };
-
-        Ok((center, rotation))
-    }
-
     /// Process circle curve (full circle)
     pub(super) fn process_circle_curve(
         &self,
@@ -264,7 +197,7 @@ impl ProfileProcessor {
         decoder: &mut EntityDecoder,
     ) -> Result<Vec<Point2<f64>>> {
         let radius = curve.get_float(1).unwrap_or(1.0);
-        let (center, rotation) = self.get_placement_2d(curve, decoder)?;
+        let (center, rotation, _) = self.get_placement_2d(curve, decoder)?;
 
         let segments = self.quality().circle_profile_segments(36);
         let mut points = Vec::with_capacity(segments);
@@ -291,7 +224,7 @@ impl ProfileProcessor {
     ) -> Result<Vec<Point2<f64>>> {
         let semi_axis1 = curve.get_float(1).unwrap_or(1.0);
         let semi_axis2 = curve.get_float(2).unwrap_or(1.0);
-        let (center, rotation) = self.get_placement_2d(curve, decoder)?;
+        let (center, rotation, _) = self.get_placement_2d(curve, decoder)?;
 
         let segments = self.quality().circle_profile_segments(36);
         let mut points = Vec::with_capacity(segments);

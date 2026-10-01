@@ -1,0 +1,163 @@
+{
+  "assetId": 5970022,
+  "sourceEngine": "0.8.5",
+  "actualDecoder": "genuine meshoptimizer1.2.0 decodeGltfBuffer",
+  "actualFileHashes": [
+    "8efd9b32d9d17517c8577454061efd62aff6c7ca54ec898271c64d11ec17e542",
+    "ed4cdee65c2dd25fa856737c3a90fe4eed03690550787a1c0b416f080c46c04c",
+    "2cd19ecef6dfd08910bac4cdcc7a09f302db3404f66dea03200d1c34cf1f263d",
+    "ec452a96a0d2a7504a50454f7d3365cb8f8fb036e402e1feb88b6f00ac93aab6"
+  ],
+  "sourceProductCount": 48,
+  "actualProductCount": 48,
+  "expressIdsExactMatch": true,
+  "sourceTriangleCount": 13240,
+  "actualTriangleCount": 13292,
+  "maxQuantizationStepMetres": 0.0018096718253261253,
+  "worstPerAxisBoundsDifferenceMetres": [
+    0.0005620775026731195,
+    0.000584026770913959,
+    0.0005530221894614606
+  ],
+  "limitations": [
+    "Comparisons use actual referenced positions, not bounding metadata.",
+    "Nearest vertex distances are tessellation-dependent; differing triangulations require surface comparison before claiming complete shape parity.",
+    "Original source declares no vertical datum; vertical map coordinate passed as ellipsoid height for this numerical comparison, consistent provider root at height0; this does not assign an omitted datum."
+  ],
+  "sourceSha256": "3d1273bb60bda11373e0bcbd8a73c409f49c097b98867573c9493888d8626fcc",
+  "normalizedSourceSha256": "73f3e8347ce024bd4c57b1c422bde243eee53b62fe439f74e1c0059c31112db2",
+  "sourceGeometryAndIndicesUnchanged": true,
+  "physicalSourceMapVertexMaxDifferenceMetres": 1.8663e-09,
+  "worstBidirectionalReferencedVertexDifferenceMetres": 0.0012544879264478966,
+  "rootTransform": [
+    -0.016054087951324614,
+    -0.9998711248256202,
+    0,
+    0,
+    -0.1471429320006158,
+    0.002362550045802797,
+    0.9891124182414975,
+    0,
+    -0.9889849462061155,
+    0.01587929775619638,
+    -0.1471618975158202,
+    0,
+    -6308338.778547109,
+    101287.67904484642,
+    -932402.8642484559,
+    1
+  ],
+  "rootOriginLongitudeLatitude": [
+    179.08012899993923,
+    -8.462489999999077
+  ],
+  "renderer": "CesiumJS1.145",
+  "renderedStatus": {
+    "assetId": 5970022,
+    "errors": [],
+    "primitives": 4,
+    "ready": 4,
+    "total": 4,
+    "triangles": 13292
+  },
+  "metadataSourceMatch": {
+    "matchedFeatures": 48,
+    "uniqueExpressIds": 48,
+    "Name": "all exact match normalized IFC",
+    "GlobalId": "all exact match normalized IFC",
+    "scope": "Control retains original Names; not edited-Name acceptance"
+  },
+  "verifiedExpressIds": [
+    59,
+    81,
+    116,
+    131,
+    156,
+    212,
+    264,
+    288,
+    300,
+    308,
+    340,
+    362,
+    378,
+    406,
+    421,
+    435,
+    463,
+    475,
+    486,
+    536,
+    556,
+    579,
+    594,
+    613,
+    627,
+    646,
+    654,
+    670,
+    681,
+    689,
+    697,
+    707,
+    723,
+    761,
+    776,
+    796,
+    811,
+    828,
+    837,
+    851,
+    859,
+    870,
+    878,
+    886,
+    894,
+    902,
+    910,
+    935
+  ],
+  "productionEditedAcceptance": {
+    "assetId": 5970083,
+    "maintainerVisualAcceptance": {
+      "date": "2026-10-01",
+      "statement": "cesium looks good now"
+    },
+    "implementationCommit": "d7267b5c004533f9a608c4086672ee58aa12cd63",
+    "route": "actual viewer load / Author Model Name edit / Cesium ion dialog / real transport",
+    "metadataSourceMatch": {
+      "uniqueFeatures": 48,
+      "preservedGlobalIds": 48,
+      "preservedOtherNames": 47,
+      "editedNameExpressId": 288,
+      "editedName": "Ion normalization acceptance edited girder"
+    },
+    "rendererStatus": {
+      "assetId": 5970083,
+      "errors": [],
+      "primitives": 4,
+      "ready": 4,
+      "total": 4,
+      "triangles": 13292
+    },
+    "decoder": "genuine meshoptimizer1.1.1 decodeGltfBuffer",
+    "allFourRenderGeometryExact": true,
+    "allTileTransformsExact": true,
+    "accessorVertexCount": 32040,
+    "triangleCount": 13292,
+    "logicalGeometrySha256": [
+      "76483613a8d989b2aacd603b850179f01794d36f45d534d76e28131876f6aaf8",
+      "a9abc166b317df253c92d69f227fff17f827b33ec16cea408edefdf8b73877f8",
+      "fac21ef20832db7e721a2f9b79d6a94a591840b4ff26da6bf6f2c6c4128b9b42",
+      "ef1861c1c61123b2a6728830530bf431f99554c20e9d26d19fd456a7f042a7cb"
+    ],
+    "productionContentSha256": [
+      "d5a29e04f13feb6be9f027eb520565e06b498f50ac6e3b3bccc77597cd3a7fa1",
+      "400d93b8edc713a999cc70c7ffae17bc3f323a24dbaae9bffe78ab1d983ac5b3",
+      "9f04b2cd2b13da2ce8c2c1d849525f7d205d5f87e451c7ab41b75a0ca8c08716",
+      "9d75b72934d5e6b88ff5e4d554e5624501c95afd7af8a9178b29aff7aca4d757"
+    ],
+    "geometryIdentityContract": "Decoded referenced render accessor logical bytes+types/normalization/count/min/max; indices; scene/node transform hierarchy; materials; feature-ID geometry associations; gltfUpAxis and full tile-transform chains. Metadata Name values intentionally not part of geometry hash. Full GLB hash may change when metadata strings change.",
+    "sourcePhysicalPlacementProofInheritedFromAssetId": 5970022
+  }
+}

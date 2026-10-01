@@ -1,5 +1,22 @@
 # @ifc-lite/charts
 
+## 0.8.0
+
+### Minor Changes
+
+- [#6573](https://github.com/LTplus-AG/ifc-lite/pull/6573) [`0b6f0be`](https://github.com/LTplus-AG/ifc-lite/commit/0b6f0be2b4b5f21cce2d99f86c8c2cfdc8ab5b2d) Thanks [@louistrue](https://github.com/louistrue)! - Add optional chart text sizing with shared measured SVG layout, and persist a per-chart document control that applies to preview and PDF export. Existing documents retain their default typography.
+
+### Patch Changes
+
+- [#6493](https://github.com/LTplus-AG/ifc-lite/pull/6493) [`022be35`](https://github.com/LTplus-AG/ifc-lite/commit/022be35b344d322e142016f458eee1294fe07e4d) Thanks [@louistrue](https://github.com/louistrue)! - Long category labels on bar-style charts are no longer cut off ([#6480](https://github.com/LTplus-AG/ifc-lite/issues/6480)). The chart tab and the document page share one label layout that measures the labels, tilts them just enough to keep neighbours apart, gives them room at the bottom of the chart, and only then shortens them from the middle. Hovering a label shows its full name.
+
+- [#6483](https://github.com/LTplus-AG/ifc-lite/pull/6483) [`068c184`](https://github.com/LTplus-AG/ifc-lite/commit/068c184e359ebb763ae64ab33af1db264684476e) Thanks [@louistrue](https://github.com/louistrue)! - The `elementCount` chart draws its number again in the SVG export (PDF report, CLI): the ECharts `GraphicComponent` that draws it was never registered, so the card rendered blank ([#6464](https://github.com/LTplus-AG/ifc-lite/issues/6464)).
+
+- [#6556](https://github.com/LTplus-AG/ifc-lite/pull/6556) [`9d5f640`](https://github.com/LTplus-AG/ifc-lite/commit/9d5f640b9be61aa64c50aa037710644db7cfa3be) Thanks [@louistrue](https://github.com/louistrue)! - Handle missing and non-numeric ECharts tooltip values without calling toFixed on undefined.
+- Updated dependencies [[`4a9e7ad`](https://github.com/LTplus-AG/ifc-lite/commit/4a9e7ad337bafc495aa02be9e46a6ef130b9a075), [`64c343b`](https://github.com/LTplus-AG/ifc-lite/commit/64c343bfea7de91b2a44a895f6302f3b1a7f70a7), [`59b6549`](https://github.com/LTplus-AG/ifc-lite/commit/59b654992e99af341497c9af50f2478218f74300)]:
+  - @ifc-lite/rules@0.6.0
+  - @ifc-lite/lens@2.1.0
+
 ## 0.7.0
 
 ### Minor Changes

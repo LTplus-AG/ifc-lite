@@ -108,6 +108,12 @@ and scan-derived building geometry remain separate operations in the implementat
 
 ## Drawing references in 2D and 3D
 
+The Drawing panel's **Underlays → Import PDF/image...** opens this same
+workflow with reference intent and the current cardinal section plane suggested.
+It does not change IFC surface appearance. Choose the source, calibrate it, then
+explicitly place the reference; the Underlays list controls the resulting
+registration alongside imported DXF references.
+
 Choose **Place as reference** in the same Appearance panel to place an image or
 PDF-page raster independently of IFC surfaces. Calibrate two image points and
 enter their measured distance, then choose the projection plane and point A’s
@@ -126,6 +132,10 @@ the cut geometry. Plan, elevation, mirrored, custom-plane and sheet views projec
 the same four engineering corners as 3D; they do not resize the image to its
 screen-aligned bounding box. An edge-on reference has no visible projected area.
 Hide, opacity, frame checks and relinking the original image apply to both views.
+SVG, PDF and Print exports include the committed raster at its registered
+four-corner placement and opacity. Raw section PDFs keep vector cut strokes;
+sheet PDFs use the existing raster-sheet output. DXF export reports visible
+raster references as omitted before continuing.
 These workspace underlays do not become vector drawing entities; use
 **Save into model** for a portable textured IFC annotation.
 

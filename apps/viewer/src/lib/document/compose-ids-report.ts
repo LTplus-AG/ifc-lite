@@ -17,6 +17,8 @@
  * coloured percent bar.
  */
 import { blockTitle } from './block-title.js';
+import { reportRingCounts } from '../validation/report-summary.js';
+import type { RingDrawnItem } from './compose-manual-report.js';
 import { passRateBand } from '@ifc-lite/ids';
 import { reportScopeText } from './report-provenance.js';
 import { layoutReportProvenance, REPORT_PROVENANCE_LINE_HEIGHT, wrappedReportProvenance } from './compose-report-provenance.js';
@@ -118,7 +120,7 @@ function emitLines(cursor: LayoutCursor, x: number, lines: Line[]): void {
   }
 }
 
-export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCursor, contentW: number, blockGap: number, wrap?: IdsReportWrap): void {
+export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCursor, contentW: number, blockGap: number, wrap: IdsReportWrap | undefined, pushRing: (item: RingDrawnItem) => void): void {
   const compact = block.variant === 'compact';
   const wrapLines = block.variant === 'long' && wrap !== undefined;
   /** A field's lines: cut to one line (original layout) or wrapped (long). */
@@ -134,16 +136,20 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   const scope = reportScopeText(block);
   const scopeLines = wrappedReportProvenance(scope ? `Models: ${scope}` : '', contentW, wrap ?? ((text) => [text]));
   const keepAfter = firstRowHeight + firstChildHeight;
-  const lead = IDS_REPORT_TITLE_HEIGHT + SUMMARY_HEIGHT + DATE_HEIGHT + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter;
+  const ringSize = 44;
+  const summaryWidth = block.benchmarks ? contentW - ringSize - 12 : contentW;
+  const summaryLines = block.benchmarks && wrap ? wrap(summaryLine(block.summary), summaryWidth, 9, false) : [cursor.truncate(summaryLine(block.summary), summaryWidth, 9, false)];
+  const summaryHeight = block.benchmarks ? Math.max(ringSize + 6, summaryLines.length * 12 + 2) : SUMMARY_HEIGHT;
+  const lead = IDS_REPORT_TITLE_HEIGHT + summaryHeight + DATE_HEIGHT + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter;
   cursor.ensure(Math.min(lead, cursor.bottom - cursor.top));
   cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 11, size: 11, bold: true, gray: 0, text: cursor.truncate(title, contentW, 11, true) });
   cursor.y += IDS_REPORT_TITLE_HEIGHT;
 
-  cursor.push({
-    kind: 'text', x: cursor.x, y: cursor.y + 10, size: 9, bold: false, gray: 60,
-    text: cursor.truncate(summaryLine(block.summary), contentW, 9, false),
-  });
-  cursor.y += SUMMARY_HEIGHT;
+  if (block.benchmarks) pushRing({ kind: 'ring', x: cursor.x, y: cursor.y, size: ringSize, counts: reportRingCounts(block.summary) });
+  summaryLines.forEach((text, i) => cursor.push({
+    kind: 'text', x: cursor.x + (block.benchmarks ? ringSize + 12 : 0), y: cursor.y + 10 + i * 12, size: 9, bold: false, gray: 60, text,
+  }));
+  cursor.y += summaryHeight;
   cursor.push({ kind: 'text', x: cursor.x, y: cursor.y + 10, size: 8, bold: false, gray: 130,
     text: cursor.truncate(`Validation run: ${block.generatedAt}`, contentW, 8, false) });
   cursor.y += DATE_HEIGHT;

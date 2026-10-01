@@ -62,8 +62,13 @@ export interface ResolvedBinding {
 /** The `{path}` placeholders of a template, in order of appearance. */
 export function templatePaths(text: string): string[] {
   const paths: string[] = [];
-  for (const m of text.matchAll(/\{([^{}]+)\}/g)) paths.push(m[1].trim());
+  for (const m of text.matchAll(/\{\{|\}\}|\{([^{}]+)\}/g)) if (m[1] !== undefined) paths.push(m[1].trim());
   return paths;
+}
+
+/** Double braces represent literal braces, leaving ordinary authored fields live. */
+export function literalTemplateText(text: string): string {
+  return text.replace(/[{}]/g, (brace) => brace + brace);
 }
 
 export interface RenderedTemplate {
@@ -74,7 +79,8 @@ export interface RenderedTemplate {
 /** Replace every `{path}` in `text`; an unresolved one prints as `[path: reason]`. */
 export function renderTemplate(text: string, ctx: BindingContext): RenderedTemplate {
   const bindings: ResolvedBinding[] = [];
-  const rendered = text.replace(/\{([^{}]+)\}/g, (_, raw: string) => {
+  const rendered = text.replace(/\{\{|\}\}|\{([^{}]+)\}/g, (token: string, raw: string | undefined) => {
+    if (raw === undefined) return token[0];
     const resolved = resolveBinding(raw.trim(), ctx);
     bindings.push(resolved);
     return resolved.ok ? resolved.value : `[${resolved.path}: ${resolved.reason ?? 'unresolved'}]`;

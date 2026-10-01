@@ -1,0 +1,12 @@
+--- a/apps/viewer/src/lib/document/generate-document-pdf.ts
++++ b/apps/viewer/src/lib/document/generate-document-pdf.ts
+@@ -252,7 +252,8 @@
+ 
+ export async function generateDocumentPdf(input: DocumentPdfInput, seams: DocumentPdfSeams): Promise<DocumentPdfResult> {
+   const result: DocumentPdfResult = { blob: new Blob(), pages: 0, unresolved: [], missingTopics: [], snapshotFailures: [], imageFailures: [], tableFailures: [],
+-    chartFailures: [],
++    chartFailures: input.document.blocks.flatMap((block) => block.kind === 'chart' && input.chartMessages.has(block.id)
++      ? [`${block.chart.title}: ${input.chartMessages.get(block.id)}`] : []),
+   };
+   const format = input.document.page.size === 'A3' ? 'a3' : 'a4';
+   const doc = await seams.createDoc(format, input.document.page.orientation);

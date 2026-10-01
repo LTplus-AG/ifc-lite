@@ -85,8 +85,8 @@ describe('complete saved-report provenance (#6500)', () => {
   for (const width of [480, 240]) {
     it(`keeps real multi-model scope and first check together after a bottom boundary at ${width}pt`, async () => {
       const { snapshot, names } = await scopedReport(4);
-      const { cursor, drawn } = frame(500, true);
-      layoutIdsReport(snapshot, cursor, width, 10, wrap);
+      const { cursor, drawn, pushRing } = frame(500, true);
+      layoutIdsReport(snapshot, cursor, width, 10, wrap, pushRing);
       assertComplete(drawn, names, width, cursor);
       const title = drawn.find(({ item }) => item.kind === 'text' && item.text.startsWith('Information validation report'));
       const firstCheck = drawn.find(({ item }) => item.kind === 'text' && item.text === 'Walls evaluated');
@@ -99,7 +99,7 @@ describe('complete saved-report provenance (#6500)', () => {
     it(`${kind} provenance taller than one narrow page prints every name without overflow`, async () => {
       const { snapshot, names } = await scopedReport(24);
       const { cursor, drawn, pushRing } = frame(180, true);
-      if (kind === 'ids') layoutIdsReport(snapshot, cursor, 180, 10, wrap);
+      if (kind === 'ids') layoutIdsReport(snapshot, cursor, 180, 10, wrap, pushRing);
       else {
         const block = manualReportBlockFromChecklist({
           checklist: { version: CHECKLIST_VERSION, name: 'Scope review', groups: kind === 'manual-empty' ? [] : [{ id: 'g', name: 'Delivery', items: [{ id: 'i', text: 'Origin reviewed' }] }] },

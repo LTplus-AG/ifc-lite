@@ -65,6 +65,19 @@ describe('#5167 describe_flow / run_flow', () => {
     expect(runFlow, 'run_flow must be registered').toBeDefined();
   });
 
+  it('describes missing session services and refuses execution before model resolution (#6612)', async () => {
+    if (!describeFlow || !runFlow) throw new Error('flow tools not registered');
+    const ctx: ToolContext = { registry: new InMemoryModelRegistry(), scope: fullScope(), progress: NOOP_PROGRESS,
+      log: SILENT_LOGGER, signal: new AbortController().signal, config: DEFAULT_CONFIG };
+    const flow = { flowVersion: 2, id: 'session', name: 'Session', capabilities: ['model.create'],
+      inputs: [], outputs: [], nodes: [{ id: 'load', type: 'session.loadModels' }], edges: [] };
+    const description = structured(await describeFlow.handler({ flow }, ctx));
+    expect(description.ok).toBe(false);
+    expect(description.availability).toEqual(expect.arrayContaining([expect.objectContaining({ nodeId: 'load', status: 'unavailable' })]));
+    await expect(runFlow.handler({ flow }, ctx)).rejects.toMatchObject({ code: 'UNSUPPORTED_OPERATION', message: expect.stringContaining('sessionModels') });
+    expect(ctx.registry.list()).toHaveLength(0);
+  });
+
   it('describe_flow returns the declared inputs and outputs with types, from an inline document', async () => {
     if (!describeFlow) throw new Error('describe_flow not registered');
     const text = await readFile(AUDIT_FLOW, 'utf-8');

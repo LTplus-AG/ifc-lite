@@ -1,0 +1,41 @@
+{
+  "issue": 6614,
+  "recordedBaseCommit": "ab97764f42222177ac3c64b98f6aa2262c15a98a",
+  "surface": "local production viewer in T3 Chromium preview",
+  "model": "Archicad AC20-FZK-Haus.ifc",
+  "viewport": [
+    1280,
+    800
+  ],
+  "devicePixelRatio": 2,
+  "cases": [
+    {
+      "after": "2299%",
+      "before": "2301%",
+      "deltaY": 1
+    },
+    {
+      "after": "2090%",
+      "before": "2299%",
+      "deltaY": 100
+    },
+    {
+      "after": "2090%",
+      "before": "2090%",
+      "deltaY": 0
+    },
+    {
+      "after": "2090%",
+      "before": "2090%",
+      "deltaX": 100,
+      "deltaY": 0
+    },
+    {
+      "after": "2130%",
+      "before": "2090%",
+      "deltaY": -100,
+      "physicalCtrl": true
+    }
+  ],
+  "scope": "Synthetic browser WheelEvents dispatched on the real drawing canvas; Ctrl keydown precedes fine-zoom case. OS-generated device gestures are not claimed."
+}

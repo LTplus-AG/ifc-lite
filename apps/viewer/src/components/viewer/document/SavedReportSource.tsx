@@ -25,7 +25,7 @@ export function SavedReportSource({ block, onChange }: { block: ValidationReport
             if (entry) {
               const next = { ...savedReportBlock(entry, block.id), title: block.title };
               onChange(block.kind === 'ids-report' && next.kind === 'ids-report'
-                ? { ...next, variant: block.variant }
+                ? { ...next, variant: block.variant, benchmarks: block.benchmarks }
                 : block.kind === 'manual-report' && next.kind === 'manual-report'
                   ? { ...next, variant: block.variant, benchmarks: block.benchmarks }
                   : next);

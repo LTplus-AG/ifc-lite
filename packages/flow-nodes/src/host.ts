@@ -20,6 +20,7 @@ import type { BimContext, EntityData, EntityRef as SdkEntityRef } from '@ifc-lit
 import type { EntityRef } from '@ifc-lite/flow';
 import type { EntityTable } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
+import type { SessionAutomationHost } from './session-contracts.js';
 
 /** A string-interning lookup, the shape `csv-match.ts`'s match-context builder
  *  needs for `globalId`/`name` strategies (an entity table's `name`/`globalId`
@@ -46,6 +47,7 @@ export interface TableAccess {
 }
 
 export interface FlowHost {
+  readonly automation?: SessionAutomationHost;
   readonly bim: BimContext;
   /**
    * Capabilities granted to the running graph. `undefined` means "trusted

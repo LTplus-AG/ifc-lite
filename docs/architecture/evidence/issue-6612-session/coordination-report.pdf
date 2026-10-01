@@ -1,0 +1,459 @@
+%PDF-1.3
+%ºß¬à
+3 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 4 0 R
+>>
+endobj
+4 0 obj
+<<
+/Length 3705
+>>
+stream
+0.200025 w
+0 G
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+40. 809.8899999999999864 Td
+(Coordination report) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+40. 28. Td
+(Generated 10/1/2026, 2:14:08 PM · ifc-lite) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.588 g
+495.2799999999999727 28. Td
+(Page 1 / 1) Tj
+ET
+BT
+/F2 20 Tf
+23. TL
+0. g
+40. 745.8899999999999864 Td
+(Coordination report) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 719.8899999999999864 Td
+(2 completed jobs; 1 validation reports; 1 comparisons.) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 705.8899999999999864 Td
+(Workflow: Coordination session report) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 691.8899999999999864 Td
+(Run: e2e4b06d-6955-4399-8a64-8134c2bc41d2) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0. g
+40. 677.8899999999999864 Td
+(Started: 2026-10-01T12:14:08.259Z) Tj
+ET
+BT
+/F2 13 Tf
+14.9499999999999993 TL
+0. g
+40. 642.8899999999999864 Td
+(Evaluated models) Tj
+ET
+BT
+/F1 8.5 Tf
+9.7749999999999986 TL
+0. g
+40. 619.8399999999999181 Td
+(AC20-FZK-Haus-ARC-A.ifc · Content identity: ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d · Edit revision:) Tj
+ET
+BT
+/F1 8.5 Tf
+9.7749999999999986 TL
+0. g
+40. 608.3650000000000091 Td
+(0) Tj
+ET
+BT
+/F1 8.5 Tf
+9.7749999999999986 TL
+0. g
+40. 596.8899999999999864 Td
+(AC20-FZK-Haus-ARC-B.ifc · Content identity: ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d · Edit revision:) Tj
+ET
+BT
+/F1 8.5 Tf
+9.7749999999999986 TL
+0. g
+40. 585.4149999999999636 Td
+(0) Tj
+ET
+BT
+/F2 11 Tf
+12.6499999999999986 TL
+0. g
+40. 561.4400000000000546 Td
+(Information validation report: F90 wall audit) Tj
+ET
+q
+1. 0. 0. -1. 0. 841.8899999999999864 cm
+q
+1. 0. 0. 1. 40. 287.4499999999999886 cm
+1. w
+0. g
+q
+1. 0. 0. 1. 0. 0. cm
+0. 0. 44. 44. re
+W
+n
+q
+q
+/GS1 gs
+6. w
+0.58 0.64 0.72 RG
+1. 0. 0. 1. 0. 0. cm
+41. 22. m
+41. 11.5065897532149251 32.4934102467850749 3. 22. 3. c
+11.5065897532149251 3. 3. 11.5065897532149251 3. 22. c
+3. 32.4934102467850749 11.5065897532149251 41. 22. 41. c
+32.4934102467850749 41. 41. 32.4934102467850749 41. 22. c
+S
+Q
+q
+6. w
+0.86 0.15 0.15 RG
+1. 0. 0. 1. 0. 0. cm
+41. 22. m
+41. 11.5065897532149251 32.4934102467850749 3. 22. 3. c
+11.5065897532149251 3. 3. 11.5065897532149251 3. 22. c
+3. 32.4934102467850749 11.5065897532149251 41. 22. 41. c
+32.4934102467850749 41. 41. 32.4934102467850749 41. 22. c
+S
+Q
+Q
+Q
+Q
+Q
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.235 g
+96. 544.4400000000000546 Td
+(Checked 26 · Passed 0 · Failed 26 · Warnings 0 · 0% passed) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.51 g
+40. 494.4399999999999977 Td
+(Validation run: 2026-10-01T12:14:08.278Z) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.235 g
+40. 481.4399999999999977 Td
+(Models: AC20-FZK-Haus-ARC-A.ifc, AC20-FZK-Haus-ARC-B.ifc) Tj
+ET
+BT
+/F2 9 Tf
+10.3499999999999996 TL
+0. g
+40. 466.4399999999999977 Td
+(Fire rating) Tj
+ET
+0.88 g
+252. 472.4399999999999977 219.2799999999999727 -5. re
+f
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.235 g
+477.2799999999999727 466.4399999999999977 Td
+(0/26 · 0%) Tj
+ET
+BT
+/F2 11 Tf
+12.6499999999999986 TL
+0. g
+40. 435.4399999999999977 Td
+(Identical Archicad source) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.235 g
+40. 419.4399999999999977 Td
+(Base: AC20-FZK-Haus-ARC-A.ifc; Head: AC20-FZK-Haus-ARC-B.ifc) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.235 g
+40. 405.4399999999999977 Td
+(Report generated: 2026-10-01T12:14:08.334Z; scope: data) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.235 g
+40. 391.4399999999999977 Td
+(Products: Added 0; deleted 0; modified 0) Tj
+ET
+BT
+/F1 8 Tf
+9.1999999999999993 TL
+0.235 g
+40. 377.4399999999999977 Td
+(Type objects: Added 0; deleted 0; modified 0; matched 0; needs review 0) Tj
+ET
+BT
+/F1 10 Tf
+11.5 TL
+0.51 g
+40. 362.4399999999999977 Td
+(No changes in this saved comparison.) Tj
+ET
+endstream
+endobj
+1 0 obj
+<</Type /Pages
+/Kids [3 0 R ]
+/Count 1
+>>
+endobj
+5 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+6 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+7 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-Oblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+8 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-BoldOblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+9 0 obj
+<<
+/Type /Font
+/BaseFont /Courier
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+10 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+11 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-Oblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+12 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-BoldOblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+13 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Roman
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+14 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+15 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Italic
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+16 0 obj
+<<
+/Type /Font
+/BaseFont /Times-BoldItalic
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+17 0 obj
+<<
+/Type /Font
+/BaseFont /ZapfDingbats
+/Subtype /Type1
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+18 0 obj
+<<
+/Type /Font
+/BaseFont /Symbol
+/Subtype /Type1
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+19 0 obj
+<<
+/CA 0.25
+>>
+endobj
+2 0 obj
+<<
+/ProcSet [/PDF /Text /ImageB /ImageC /ImageI]
+/Font <<
+/F1 5 0 R
+/F2 6 0 R
+/F3 7 0 R
+/F4 8 0 R
+/F5 9 0 R
+/F6 10 0 R
+/F7 11 0 R
+/F8 12 0 R
+/F9 13 0 R
+/F10 14 0 R
+/F11 15 0 R
+/F12 16 0 R
+/F13 17 0 R
+/F14 18 0 R
+>>
+/ExtGState <<
+/GS1 19 0 R
+>>
+/XObject <<
+>>
+>>
+endobj
+20 0 obj
+<<
+/Producer (jsPDF 4.2.1)
+/CreationDate (D:20261001141408+02'00')
+>>
+endobj
+21 0 obj
+<<
+/Type /Catalog
+/Pages 1 0 R
+/OpenAction [3 0 R /FitH null]
+/PageLayout /OneColumn
+>>
+endobj
+xref
+0 22
+0000000000 65535 f 
+0000003909 00000 n 
+0000005757 00000 n 
+0000000015 00000 n 
+0000000152 00000 n 
+0000003966 00000 n 
+0000004091 00000 n 
+0000004221 00000 n 
+0000004354 00000 n 
+0000004491 00000 n 
+0000004614 00000 n 
+0000004743 00000 n 
+0000004875 00000 n 
+0000005011 00000 n 
+0000005139 00000 n 
+0000005266 00000 n 
+0000005395 00000 n 
+0000005528 00000 n 
+0000005630 00000 n 
+0000005726 00000 n 
+0000006034 00000 n 
+0000006120 00000 n 
+trailer
+<<
+/Size 22
+/Root 21 0 R
+/Info 20 0 R
+/ID [ <98604B3E337531439F5FFC95B0405901> <98604B3E337531439F5FFC95B0405901> ]
+>>
+startxref
+6224
+%%EOF

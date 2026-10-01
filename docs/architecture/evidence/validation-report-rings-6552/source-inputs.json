@@ -1,0 +1,202 @@
+{
+  "IDS": {
+    "info": {
+      "title": "Public wall name checks"
+    },
+    "specifications": [
+      {
+        "id": "names",
+        "name": "Wall Name exists",
+        "ifcVersions": [
+          "IFC4"
+        ],
+        "applicability": {
+          "facets": [
+            {
+              "type": "entity",
+              "name": {
+                "type": "simpleValue",
+                "value": "IFCWALL"
+              }
+            }
+          ]
+        },
+        "requirements": [
+          {
+            "id": "name",
+            "optionality": "required",
+            "facet": {
+              "type": "attribute",
+              "name": {
+                "type": "simpleValue",
+                "value": "Name"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "plumbing",
+        "name": "Wall Name is plumbing wall",
+        "ifcVersions": [
+          "IFC4"
+        ],
+        "applicability": {
+          "facets": [
+            {
+              "type": "entity",
+              "name": {
+                "type": "simpleValue",
+                "value": "IFCWALL"
+              }
+            }
+          ]
+        },
+        "requirements": [
+          {
+            "id": "name",
+            "optionality": "required",
+            "facet": {
+              "type": "attribute",
+              "name": {
+                "type": "simpleValue",
+                "value": "Name"
+              },
+              "value": {
+                "type": "simpleValue",
+                "value": "plumbing wall"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "informationRules": {
+    "version": 1,
+    "name": "Public wall information checks",
+    "rules": [
+      {
+        "id": "description",
+        "name": "Description exists",
+        "applicability": {
+          "groups": [
+            {
+              "rules": [
+                {
+                  "kind": "ifcType",
+                  "values": [
+                    "IfcWall"
+                  ],
+                  "op": "in"
+                }
+              ],
+              "combinator": "AND"
+            }
+          ],
+          "authoredAs": "chips"
+        },
+        "requirement": {
+          "kind": "element",
+          "block": {
+            "groups": [
+              {
+                "rules": [
+                  {
+                    "kind": "attribute",
+                    "name": "Description",
+                    "op": "isSet",
+                    "value": ""
+                  }
+                ],
+                "combinator": "AND"
+              }
+            ],
+            "authoredAs": "chips"
+          }
+        }
+      },
+      {
+        "id": "plumbing",
+        "name": "Name is plumbing wall",
+        "applicability": {
+          "groups": [
+            {
+              "rules": [
+                {
+                  "kind": "ifcType",
+                  "values": [
+                    "IfcWall"
+                  ],
+                  "op": "in"
+                }
+              ],
+              "combinator": "AND"
+            }
+          ],
+          "authoredAs": "chips"
+        },
+        "requirement": {
+          "kind": "element",
+          "block": {
+            "groups": [
+              {
+                "rules": [
+                  {
+                    "kind": "name",
+                    "op": "eq",
+                    "value": "plumbing wall"
+                  }
+                ],
+                "combinator": "AND"
+              }
+            ],
+            "authoredAs": "chips"
+          }
+        }
+      },
+      {
+        "id": "warning",
+        "name": "Description mentions plumbing",
+        "applicability": {
+          "groups": [
+            {
+              "rules": [
+                {
+                  "kind": "ifcType",
+                  "values": [
+                    "IfcWall"
+                  ],
+                  "op": "in"
+                }
+              ],
+              "combinator": "AND"
+            }
+          ],
+          "authoredAs": "chips"
+        },
+        "severity": "warning",
+        "requirement": {
+          "kind": "element",
+          "block": {
+            "groups": [
+              {
+                "rules": [
+                  {
+                    "kind": "attribute",
+                    "name": "Description",
+                    "op": "contains",
+                    "value": "plumbing"
+                  }
+                ],
+                "combinator": "AND"
+              }
+            ],
+            "authoredAs": "chips"
+          }
+        }
+      }
+    ]
+  },
+  "note": "Authored demonstration definitions evaluated by both actual engines against canonically loaded public SketchUp IFC."
+}

@@ -115,6 +115,7 @@ function sleep(ms: number): Promise<void> {
  * ifc-lite-core and ifc-lite-geometry directly (no WASM overhead).
  */
 export class NativeBridge implements IPlatformBridge {
+  planMapConversionNormalization(_content: Uint8Array): never { throw new Error('Map geometry normalization is not supported by the native platform bridge.'); }
   private initialized = false;
   private invoke: InvokeFn | null = null;
   private listen: ListenFn | null = null;
@@ -727,4 +728,3 @@ export class NativeBridge implements IPlatformBridge {
     return null;
   }
 }
-

@@ -14,10 +14,10 @@ import { defineSliceTeardown } from '../teardown.js';
  */
 export const flowTeardown = defineSliceTeardown(
   'flowSlice',
-  ['flowPanelVisible', 'flowRunning', 'flowLastRun', 'flowLastError', 'flowLastRunWindow'],
+  ['flowPanelVisible', 'flowRunning', 'flowLastRun', 'flowLastError', 'flowLastRunWindow', 'flowProgress', 'flowRunWarnings', 'flowArtifacts'],
   {
-    'session-reset': () => ({ flowPanelVisible: false, flowRunning: false, flowLastRun: null, flowLastError: null, flowLastRunWindow: null }),
-    'model-removed': () => ({ flowLastRun: null, flowLastError: null, flowLastRunWindow: null }),
-    'all-models-cleared': () => ({ flowLastRun: null, flowLastError: null, flowLastRunWindow: null }),
+    'session-reset': () => ({ flowPanelVisible: false, flowRunning: false, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowProgress: null, flowRunWarnings: [], flowArtifacts: [] }),
+    'model-removed': () => ({ flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowProgress: null, flowRunWarnings: [], flowArtifacts: [] }),
+    'all-models-cleared': () => ({ flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowProgress: null, flowRunWarnings: [], flowArtifacts: [] }),
   },
 );

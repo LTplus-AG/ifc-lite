@@ -16,7 +16,7 @@
  * regresses somewhere else — so both go through {@link resolveDeclaredParam}.
  */
 
-import type { FlowDocument, InputKind } from './document.js';
+import type { FlowDocument, FlowFileSlot, InputKind } from './document.js';
 import type { NodeRegistry, ParamDef, ParamKind } from './registry.js';
 import type { Access, ValueKind } from './values.js';
 
@@ -25,6 +25,7 @@ export interface FlowInputInfo {
   readonly label: string;
   readonly kind: InputKind;
   readonly options?: readonly string[];
+  readonly fileSlots?: readonly FlowFileSlot[];
   readonly default?: unknown;
   readonly paramKind?: ParamKind;
 }
@@ -50,7 +51,7 @@ export function describeFlowIO(doc: FlowDocument, registry: NodeRegistry<unknown
   const inputs = doc.inputs.map((i) => {
     const def = registry.get(doc.nodes.find((n) => n.id === i.nodeId)?.type ?? '');
     const param = def?.params.find((p) => p.name === i.param);
-    return { key: `${i.nodeId}.${i.param}`, label: i.label, kind: i.kind, options: i.options, default: param?.default, paramKind: param?.kind };
+    return { key: `${i.nodeId}.${i.param}`, label: i.label, kind: i.kind, options: i.options, ...(i.fileSlots ? { fileSlots: i.fileSlots } : {}), default: param?.default, paramKind: param?.kind };
   });
   const outputs = doc.outputs.map((o) => {
     const def = registry.get(doc.nodes.find((n) => n.id === o.nodeId)?.type ?? '');

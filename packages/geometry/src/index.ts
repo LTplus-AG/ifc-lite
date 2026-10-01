@@ -91,6 +91,7 @@ export * from './spatial-reference.js';
 import { IfcLiteBridge } from './ifc-lite-bridge.js';
 import type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
 import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
+import { exportMerged, planMapConversionNormalization } from './map-normalization-capability.js';
 import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
 import { GEOM_CLASS_OCCURRENCE, geometryClassOf } from './geometry-class.js';
@@ -1187,6 +1188,8 @@ export class GeometryProcessor {
     return this.bridge.exportJsonld(buffer, context, includeProperties, includeQuantities, pretty, included);
   }
 
+  /** Canonical Rust plan; unsupported platforms refuse explicitly. */
+  planMapConversionNormalization(buffer: Uint8Array): string { return planMapConversionNormalization(this.bridge, this.platformBridge, buffer); }
   exportStep(
     buffer: Uint8Array,
     schema = '',
@@ -1210,18 +1213,7 @@ export class GeometryProcessor {
 
   /** Merge several IFC models (raw byte buffers) into one STEP/IFC UTF-8 byte buffer. */
   exportMerged(buffers: Uint8Array[], schema = ''): Uint8Array | null {
-    if (!this.bridge?.isInitialized()) return null;
-    let total = 0;
-    for (const b of buffers) total += b.byteLength;
-    const concatenated = new Uint8Array(total);
-    const lengths = new Uint32Array(buffers.length);
-    let off = 0;
-    for (let i = 0; i < buffers.length; i++) {
-      concatenated.set(buffers[i], off);
-      lengths[i] = buffers[i].byteLength;
-      off += buffers[i].byteLength;
-    }
-    return this.bridge.exportMerged(concatenated, lengths, schema);
+    return exportMerged(this.bridge, buffers, schema);
   }
 
   /**

@@ -13,6 +13,7 @@ import { useViewerStore } from '@/store';
 import { advance, waitFor } from '@/test/render.js';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace.js';
 import '@/lib/commands/modeling/builtin.js';
+import { startWorkflowRun } from '@/lib/flow/run-session.js';
 import { hook, secondHook, skip, blankFile, load } from '@/test/blank-ifc-loader-harness.js';
 
 /** Hold delivery of one genuinely decoded store, not a parser's result. */
@@ -42,6 +43,40 @@ function holdFirstMetadata(count = 1) {
 }
 
 describe('owned primary completion and launcher (#6232)', () => {
+  it('preserves a registered workflow owner through held primary registration and refuses an unowned replacement', { skip }, async () => {
+    assert.ok(hook && secondHook);
+    const run = startWorkflowRun();
+    const held = holdFirstMetadata();
+    const modelId = crypto.randomUUID();
+    let settled = false;
+    const pending = hook.loadFile(blankFile('METRE'), { kind: 'primary', modelId }, { workflowOwner: run.id })
+      .then(() => { settled = true; });
+    try {
+      await waitFor(() => held.decoded() && !useViewerStore.getState().geometryStreamingActive,
+        'real producer finished geometry while its workflow-owned metadata is held');
+      assert.equal(settled, false, 'workflow caller waits for its own registration');
+      const ownedCancel = useViewerStore.getState().activeLoadCanceller;
+      assert.ok(ownedCancel);
+      await assert.rejects(secondHook.loadFile(blankFile('METRE')), /A workflow is running/);
+      assert.equal(useViewerStore.getState().activeModelId, modelId);
+      assert.equal(useViewerStore.getState().activeLoadCanceller, ownedCancel, 'refused caller never steals cancellation ownership');
+      assert.equal(useViewerStore.getState().loading, true);
+      held.release();
+      await act(async () => pending);
+      assert.equal(useViewerStore.getState().models.get(modelId)?.loadState, 'complete');
+      assert.equal(useViewerStore.getState().activeLoadCanceller, null);
+      run.release();
+      useViewerStore.getState().enterModelWorkspace({ modelId });
+      assert.equal(launchModelCommand('Wall'), true);
+      assert.equal(useViewerStore.getState().session?.modelId, modelId, 'launcher retains the completed owner after workflow release');
+    } finally {
+      held.release();
+      run.release();
+      await pending;
+      await advance(20); // Drain the released real callback on the reverted early-return path too.
+    }
+  });
+
   it('cancels a real WorkerParser request before any metadata callback and releases its producer', { skip }, async () => {
     assert.ok(hook);
     // Replace only Worker allocation: the real WorkerParser owns its pending

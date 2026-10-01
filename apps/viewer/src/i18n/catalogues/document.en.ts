@@ -164,6 +164,10 @@ export const documentEn = {
     one: '{countDisplay} table not printed',
     other: '{countDisplay} tables not printed',
   },
+  'document.panel.problemCharts': {
+    one: '{countDisplay} chart not printed',
+    other: '{countDisplay} charts not printed',
+  },
 
   // DocumentPreview.tsx (#4918 doc slice): empty-state and unresolved-topic
   // messages the rendered page itself shows.

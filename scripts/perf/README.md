@@ -30,7 +30,8 @@ Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 ## Opt-in map geometry compatibility export (#6587)
 
 The qualified comparison uses the actual main-based package prerequisite and
-the corrected implementation. Native loads, real browser worker-pool loads,
+the frozen ownership-corrected implementation, before the later mapped-depth
+preflight correction. Native loads, real browser worker-pool loads,
 and the default asynchronous STEP API retained byte-identical payloads,
 including browser instances. Their interleaved timings showed no consistent
 regression within the bounded cohort. Fresh tabs used distinct origins in a
@@ -49,6 +50,11 @@ also imports and initializes the geometry backend. The WASM binary grows to
 carry the planner. These measurements establish bounded default-path evidence,
 not an optimization or a universal zero-cost claim. Raw witnesses and supported
 mutation proofs are under `scripts/perf/evidence/map-normalization-6587/`.
+
+The subsequent opt-in depth correction reserves a mapped wrapper and terminal
+leaf before serialization. Its new binary was rebuilt and behaviorally checked,
+but was not timed in that frozen cohort. The default mesh-production path is
+unchanged; the earlier measurements are evidence for their recorded binaries.
 
 Lesson: benchmark the real export API as well as the untouched load path.
 Keep unit conversion separate from physical map scale, reuse the strict Rust

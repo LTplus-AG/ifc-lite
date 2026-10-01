@@ -214,6 +214,71 @@ fn issue_6587_type_maps_require_actual_body_reachability_not_orphan_items() {
     assert!(refused.replacements.is_empty() && refused.new_entities.is_empty());
 }
 
+fn styled_mapped_chain(depth: usize) -> String {
+    let mut extra = String::from("#900=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#12,1.,$);\n\
+#240=IFCCARTESIANPOINT((6.,0.,0.));\n#241=IFCAXIS2PLACEMENT3D(#240,$,$);\n\
+#242=IFCEXTRUDEDAREASOLID(#41,#241,#43,3.);\n\
+#270=IFCCOLOURRGB($,0.,1.,0.);\n#271=IFCSURFACESTYLERENDERING(#270,0.,$,$,$,$,$,$,.NOTDEFINED.);\n\
+#272=IFCSURFACESTYLE('Green',.BOTH.,(#271));\n#273=IFCSTYLEDITEM(#242,(#272),$);\n");
+    let mut item = 0;
+    for level in 0..depth {
+        let rep = 1000 + level * 3;
+        let items = if level == 0 { "#42,#242".to_string() } else { format!("#{item}") };
+        extra.push_str(&format!("#{rep}=IFCSHAPEREPRESENTATION(#10,'Body','MappedRepresentation',({items}));\n#{}=IFCREPRESENTATIONMAP(#11,#{rep});\n#{}=IFCMAPPEDITEM(#{},#900);\n", rep + 1, rep + 2, rep + 1));
+        item = rep + 2;
+    }
+    model(1., false).replace("'SweptSolid',(#42));\n#45", &format!("'MappedRepresentation',(#{item}));\n#45"))
+        .replace("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"))
+}
+
+#[test]
+fn issue_6634_added_wrapper_reserves_terminal_leaf_and_preserves_styled_depth_30_geometry() {
+    let source = styled_mapped_chain(30);
+    let plan = plan_map_conversion_normalization(source.as_bytes()).unwrap();
+    assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+    let output = apply(&source, &plan);
+    let colored = |text: &str| {
+        let result = process_geometry(&text.as_bytes());
+        ifc_lite_processing::build_colored_geometry_data_export(&result.meshes,
+            result.metadata.coordinate_info.origin_shift, None)
+    };
+    let before = colored(&source);
+    let after = colored(&output);
+    let old = &before.elements[&50];
+    let new = &after.elements[&50];
+    assert_eq!(old.palette, vec![[1., 0., 0., 1.], [0., 1., 0., 1.]]);
+    assert_eq!(new.palette, old.palette);
+    assert_eq!(old.geometry.faces.len(), 24);
+    assert_eq!(new.geometry.faces.len(), 24);
+    for index in [0, 1] {
+        assert_eq!(old.face_colors.iter().filter(|&&color| color == index).count(), 12);
+        assert_eq!(new.face_colors.iter().filter(|&&color| color == index).count(), 12);
+    }
+    assert_eq!(new.geometry.name, old.geometry.name);
+    assert_eq!(new.geometry.global_id, old.geometry.global_id);
+    let mut decoder = EntityDecoder::new(&source);
+    let geo = GeoRefExtractor::extract(&mut decoder, &[(61, IfcType::IfcMapConversion), (60, IfcType::IfcProjectedCRS)]).unwrap().unwrap();
+    for point in &old.geometry.vertices {
+        let expected = geo.local_to_map(point[0], point[1], point[2]);
+        assert!(new.geometry.vertices.iter().any(|actual|
+            (actual[0] - expected.0).hypot(actual[1] - expected.1).hypot(actual[2] - expected.2) < 0.0001));
+    }
+    for depth in [31, 32] {
+        let refused = plan_map_conversion_normalization(styled_mapped_chain(depth).as_bytes()).unwrap();
+        assert!(refused.warnings.iter().any(|warning| warning.contains("normalization wrapper")), "{depth}: {:?}", refused.warnings);
+        assert!(refused.replacements.is_empty() && refused.new_entities.is_empty());
+    }
+    // Reach the same subtree at two depths, in either sibling order. A global
+    // visited set must not let the shorter alias hide the longest path.
+    for items in ["#1089,#1092", "#1092,#1089"] {
+        let aliased = source.replace("'MappedRepresentation',(#1089));\n#45", &format!("'MappedRepresentation',({items}));\n#45"))
+            .replace("ENDSEC;\nEND-ISO", "#1090=IFCSHAPEREPRESENTATION(#10,'Body','MappedRepresentation',(#1089));\n#1091=IFCREPRESENTATIONMAP(#11,#1090);\n#1092=IFCMAPPEDITEM(#1091,#900);\nENDSEC;\nEND-ISO");
+        let refused = plan_map_conversion_normalization(aliased.as_bytes()).unwrap();
+        assert!(refused.warnings.iter().any(|warning| warning.contains("normalization wrapper")));
+        assert!(refused.replacements.is_empty() && refused.new_entities.is_empty());
+    }
+}
+
 #[test]
 fn issue_6587_public_bridge_deck_uses_the_same_canonical_normalization() {
     let source = fixture_or_skip!("ifc5/Georeferencing_georeferenced-bridge-deck.ifc");

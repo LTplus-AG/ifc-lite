@@ -500,6 +500,9 @@ The supported subset has one map conversion, one project, an identity 3D context
 SI metre-based project units, local 3D placements, and Body representations.
 Type representation maps must be reachable from an actual product Body;
 orphan mapped items do not authorize uninstantiated type geometry.
+Body mapped paths with 31 or more existing wrappers are refused atomically: the
+new wrapper and terminal leaf must both fit the canonical submesh depth limit,
+so normalization preserves per-leaf styles as well as aggregate geometry.
 Voids/fills, annotations, alignment/grid/structural coordinate consumers,
 nonuniform scale, nonidentity contexts, ambiguous representation ownership,
 and malformed units or placements cause atomic refusal: no geometry patches

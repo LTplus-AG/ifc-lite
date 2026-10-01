@@ -133,6 +133,63 @@ describe.skipIf(!wasmAvailable)('real canonical WASM export planning (#6587)', (
     expect(accepted.stats.warnings).toEqual([]);
     expect(accepted.stats.newEntityCount).toBeGreaterThan(0);
   });
+  it('preserves both styled submeshes at the last supported depth through the canonical batch path (#6634)', async () => {
+    let extra = `
+#900=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#6,1.,$);
+#200=IFCCARTESIANPOINT((5000.,0.,0.));
+#201=IFCAXIS2PLACEMENT3D(#200,#7,#8);
+#202=IFCEXTRUDEDAREASOLID(#21,#201,#7,3000.);
+#260=IFCCOLOURRGB($,1.,0.,0.);
+#261=IFCSURFACESTYLERENDERING(#260,0.,$,$,$,$,$,$,.NOTDEFINED.);
+#262=IFCSURFACESTYLE('Red',.BOTH.,(#261));
+#263=IFCSTYLEDITEM(#22,(#262),$);
+#270=IFCCOLOURRGB($,0.,1.,0.);
+#271=IFCSURFACESTYLERENDERING(#270,0.,$,$,$,$,$,$,.NOTDEFINED.);
+#272=IFCSURFACESTYLE('Green',.BOTH.,(#271));
+#273=IFCSTYLEDITEM(#202,(#272),$);`;
+    let items = '#22,#202';
+    for (let level = 0; level < 30; level++) {
+      const rep = 1000 + level * 3;
+      extra += `\n#${rep}=IFCSHAPEREPRESENTATION(#10,'Body','MappedRepresentation',(${items}));
+#${rep + 1}=IFCREPRESENTATIONMAP(#9,#${rep});
+#${rep + 2}=IFCMAPPEDITEM(#${rep + 1},#900);`;
+      items = `#${rep + 2}`;
+    }
+    const source = file(data.replace('.MILLI.', '$').replace("'SweptSolid',(#22)", `'MappedRepresentation',(${items})`) + extra);
+    const exported = await new StepExporter(await parse(source)).exportAsync({ ...options, normalizeMapGeometry: true });
+    expect(exported.stats.warnings).toEqual([]);
+    const { GeometryProcessor } = await import('@ifc-lite/geometry');
+    const processor = new GeometryProcessor();
+    try {
+      await processor.init();
+      const before = await processor.process(new TextEncoder().encode(source));
+      const after = await processor.process(exported.content);
+      const signature = (result: typeof before) => result.meshes.map(mesh => ({ color: mesh.color, indices: mesh.indices.length }));
+      expect(signature(before)).toEqual([{ color: [1, 0, 0, 1], indices: 36 }, { color: [0, 1, 0, 1], indices: 36 }]);
+      expect(signature(after)).toEqual(signature(before));
+    } finally { processor.dispose(); }
+  });
+  it('refuses wrapper-induced mapped depth loss atomically through real WASM (#6634)', async () => {
+    for (const depth of [31, 32]) {
+      let extra = '\n#900=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#6,1.,$);';
+      let item = 22;
+      for (let level = 0; level < depth; level++) {
+        const rep = 1000 + level * 3;
+        extra += `\n#${rep}=IFCSHAPEREPRESENTATION(#10,'Body','MappedRepresentation',(#${item}));
+#${rep + 1}=IFCREPRESENTATIONMAP(#9,#${rep});
+#${rep + 2}=IFCMAPPEDITEM(#${rep + 1},#900);`;
+        item = rep + 2;
+      }
+      const body = data.replace('.MILLI.', '$').replace("'SweptSolid',(#22)", `'MappedRepresentation',(#${item})`) + extra;
+      const store = await parse(file(body));
+      const ordinary = new StepExporter(store).export(options);
+      const refused = await new StepExporter(store).exportAsync({ ...options, normalizeMapGeometry: true });
+      expect(refused.stats.warnings.some(warning => warning.includes('normalization wrapper'))).toBe(true);
+      expect(refused.content).toEqual(ordinary.content);
+      expect(refused.stats.modifiedEntityCount).toBe(0);
+      expect(refused.stats.newEntityCount).toBe(0);
+    }
+  });
   it('leaves all output geometry byte-identical on an unsupported context and frees the real handle', async () => {
     const store = await parse(file(data.replace("'Body','SweptSolid'", "'Axis','SweptSolid'")));
     const { IfcAPI } = await import('@ifc-lite/wasm');

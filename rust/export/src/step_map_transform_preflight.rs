@@ -141,9 +141,30 @@ pub(super) fn body_mapped_sources(roots: &HashSet<u32>, context: u32, decoder: &
     let mut seen = HashSet::new();
     let mut active = HashSet::new();
     let mut sources = HashSet::new();
+    let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
+    let mut depths: HashMap<u32, usize> = HashMap::new();
     let mut work = pending.len();
     while let Some((id, exiting)) = pending.pop() {
-        if exiting { active.remove(&id); continue; }
+        if exiting {
+            // A representation's longest mapped path is a pure ID result.
+            // Postorder memoization also handles aliases reached at different
+            // depths; an entry-time global visited set alone cannot do that.
+            let depth = if let Some(children) = children.get(&id) {
+                children.iter().try_fold(0usize, |longest, child| {
+                    depths.get(child).copied().map(|depth| longest.max(depth))
+                        .ok_or("Body map nesting could not be resolved")
+                })?.saturating_add(1)
+            } else { 0 };
+            // The emitted Body adds a mapped wrapper; submesh collection also
+            // charges the terminal leaf. Reserve both levels to preserve
+            // authored styles, not merely the cached aggregate geometry.
+            if depth.saturating_add(1) >= ifc_lite_core::limits::MAX_MAPPED_ITEM_DEPTH as usize {
+                return Err("Body map nesting leaves no room for the normalization wrapper".into());
+            }
+            depths.insert(id, depth);
+            active.remove(&id);
+            continue;
+        }
         if work > max_work { return Err("Body map reachability exceeded its reference-work bound".into()); }
         if !seen.insert(id) { continue; }
         active.insert(id);
@@ -166,6 +187,7 @@ pub(super) fn body_mapped_sources(roots: &HashSet<u32>, context: u32, decoder: &
             sources.insert(source.id);
             work = work.checked_add(1).filter(|value| *value <= max_work)
                 .ok_or("Body map reachability exceeded its reference-work bound")?;
+            children.entry(id).or_default().push(child);
             pending.push((child, false));
         }
     }

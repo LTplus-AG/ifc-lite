@@ -18,6 +18,9 @@ import { configureMutationView } from '../../utils/configureMutationView.js';
 import { composeDocument, estimateTextWidth, wrapText } from './compose.js';
 import { largestBucketIds } from '../charts/buckets.js';
 import { generateDocumentPdf, topicLines, type DocumentPdfSeams } from './generate-document-pdf.js';
+import { documentPdfWarnings } from './export-prepared-document.js';
+import { prepareDocumentCharts } from './prepare-charts.js';
+import { chartElementFilterKey } from '../charts/source-filter.js';
 import { loadDocuments, parseDocumentFile } from './persistence.js';
 import { blankDocument, coverSheetDocument } from './presets.js';
 import { resolveValidationTableState } from './resolve-validation-table.js';
@@ -700,6 +703,30 @@ function recordingSeams(): { seams: DocumentPdfSeams; calls: Array<{ op: string;
 }
 
 describe('generateDocumentPdf', () => {
+  it('reports chart filter and aggregation failures in both PDF content and artifact warnings (#6612)', async () => {
+    const chart = coverSheetDocument().blocks.find((block) => block.kind === 'chart');
+    assert.ok(chart?.kind === 'chart');
+    const filtered = { ...chart, id: 'filtered', chart: { ...chart.chart, title: 'Filtered result', filter: { selector: 'IfcWall' } } };
+    const malformed = { ...chart, id: 'malformed', chart: { ...chart.chart, type: 'bar' as const, title: 'Missing column', dimension: 'MissingDimension' } };
+    const document: DocumentSpec = { version: DOCUMENT_VERSION, id: 'errors', name: 'Diagnostics',
+      page: { size: 'A4', orientation: 'portrait' }, blocks: [filtered, malformed] };
+    const dataset = elementsDataset([{ store: ctx.models[0].store, toGlobalId: (id) => id, name: 'tower.ifc' }]);
+    const key = chartElementFilterKey(filtered.chart.filter);
+    assert.ok(key);
+    const prepared = prepareDocumentCharts(document, { elements: dataset, clash: dataset, bcf: dataset,
+      schedule: dataset, ids: dataset, compare: dataset }, new Map([[key, { status: 'error' as const, message: 'Selector refused' }]]));
+    assert.equal(prepared.aggregations.get('malformed'), null);
+    const { seams, calls } = recordingSeams();
+    const result = await generateDocumentPdf({ document, bindings: ctx, ...prepared,
+      snapshotIds: () => [], topics: new Map(), tables: new Map() }, seams);
+    const warnings = documentPdfWarnings(result);
+    assert.ok(warnings.some((warning) => warning.includes('Filtered result: Selector refused')));
+    assert.ok(warnings.some((warning) => warning.includes('Missing column:') && warning.includes('MissingDimension')));
+    const texts = calls.filter((call) => call.op === 'text').map((call) => String(call.args[0])).join('\n');
+    assert.ok(texts.includes('Selector refused'));
+    assert.ok(texts.includes('MissingDimension'));
+    assert.equal(calls.filter((call) => call.op === 'svg').length, 0);
+  });
   it('prints resolved text, the chart SVG with its snapshot, the logo, a topic, and reports what did not resolve', async () => {
     const store = ctx.models[0].store;
     const dataset = elementsDataset([{ store, toGlobalId: (id) => id, name: 'tower.ifc' }]);

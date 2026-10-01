@@ -22,7 +22,7 @@ import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { jsPDF } from 'jspdf';
 import { fixtureModel } from '@/test/store-fixture.js';
-import { render, click, cleanup, type as typeInput } from '@/test/render.js';
+import { render, click, cleanup, waitFor, type as typeInput } from '@/test/render.js';
 import type { DocumentPdfSeams } from '@/lib/document/generate-document-pdf.js';
 import { browserReportSeams, type ReportTableArgs } from '@/lib/export/report/generate-report-pdf.js';
 import { DOCUMENT_VERSION, type DocumentSpec, type ListTableSource, type TableBlock } from '@/lib/document/types.js';
@@ -33,6 +33,8 @@ import { DocumentPanel } from './DocumentPanel.js';
 import { TableBlockEditor } from './TableBlockEditor.js';
 import { useDocumentTables } from './useDocumentTables.js';
 import { useDocumentData } from './useDocumentData.js';
+import { Toaster } from '@/components/ui/toast.js';
+import { newChartSpec } from '@/lib/charts/presets.js';
 
 const MINI_IFC = `ISO-10303-21;
 HEADER;
@@ -175,6 +177,31 @@ describe('DocumentPanel table block (#5142)', () => {
   });
   afterEach(() => cleanup());
 
+  it('shows count-only native export warnings for real chart aggregation errors (#6612, #6620)', async () => {
+    const doc: DocumentSpec = { version: DOCUMENT_VERSION, id: 'broken-charts', name: 'Private report',
+      page: { size: 'A4', orientation: 'portrait' }, blocks: [1, 2].map((index) => ({
+        kind: 'chart', id: `broken-${index}`, snapshot: false,
+        chart: newChartSpec({ title: `Private chart ${index}`, dimension: `AbsentColumn${index}` }),
+      })) };
+    useViewerStore.setState({ documents: [doc], activeDocumentId: doc.id });
+    const texts: string[] = [];
+    const ui = render(<><DocumentPanel pdfSeams={recordingSeams([], texts)} /><Toaster /></>);
+    await settle();
+    assert.ok(ui.querySelector('[data-preview-block="broken-1"]')?.textContent?.includes('AbsentColumn1'),
+      'the native aggregator must reject the missing column before export');
+    const exportButton = ui.querySelector<HTMLButtonElement>('[data-document-export]');
+    assert.ok(exportButton);
+    click(exportButton);
+    await waitFor(() => /2 charts not printed/.test(ui.querySelector('[role="status"]')?.textContent ?? ''),
+      'native PDF completion must report both chart errors');
+    const notification = ui.querySelector('[role="status"]')?.textContent ?? '';
+    assert.ok(notification.includes('Document exported:'));
+    assert.ok(!notification.includes('Private') && !notification.includes('AbsentColumn'),
+      'toast diagnostics expose counts without document names, chart names or column names');
+    assert.ok(texts.some((text) => text.includes('AbsentColumn1')));
+    assert.ok(texts.some((text) => text.includes('AbsentColumn2')));
+  });
+
   it('edits group order and header colours, persists them and prints parsed IFC tables (#6543)', async () => {
     const list = wallList({ name: 'Products by class', entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcDoor],
       columns: [{ id: 'class', source: 'attribute', propertyName: 'Class' }, { id: 'name', source: 'attribute', propertyName: 'Name' }],
@@ -208,7 +235,7 @@ describe('DocumentPanel table block (#5142)', () => {
     // File import allocates fresh block ids; presentation and order survive the copy.
     assert.equal(second.groupOrder, 'label'); assert.equal(second.headerBackground, '#ffee88'); assert.equal(second.headerTextColor, '#6b21a8');
     click(ui.querySelector('[data-document-export]')!);
-    for (let i = 0; i < 20 && tables.length < 2; i++) await settle();
+    await waitFor(() => tables.length === 2 && pdfOutputs.length === 1, 'the native PDF renderer prints both styled tables and produces its PDF');
     assert.equal(tables.length, 2);
     assert.deepEqual(tables[0].body.filter((_, i) => tables[0].rowRoles?.[i] === 'group').map((r) => r[0]), groupLabels('t1'));
     assert.deepEqual(tables[1].body.filter((_, i) => tables[1].rowRoles?.[i] === 'group').map((r) => r[0]), groupLabels('t2'));
@@ -289,7 +316,7 @@ describe('DocumentPanel table block (#5142)', () => {
     assert.equal(ui.querySelectorAll('[data-table-update]').length, 2);
 
     click(ui.querySelector('[data-document-export]')!);
-    for (let i = 0; i < 20 && tables.length < 2; i++) await settle();
+    await waitFor(() => tables.length === 2, 'the PDF seam prints both sorted table blocks');
     assert.equal(tables.length, 2);
     assert.deepEqual(tables[0].head, [['Name', 'Storey']]);
     // sortBy name desc, maxRows 1: Wall B first, then "… 1 more row".

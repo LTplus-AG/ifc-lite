@@ -1,5 +1,21 @@
 # @ifc-lite/ids
 
+## 3.2.0
+
+### Minor Changes
+
+- [#6494](https://github.com/LTplus-AG/ifc-lite/pull/6494) [`4a9e7ad`](https://github.com/LTplus-AG/ifc-lite/commit/4a9e7ad337bafc495aa02be9e46a6ef130b9a075) Thanks [@louistrue](https://github.com/louistrue)! - IDS report block: fixed pass percentage and two layouts ([#6470](https://github.com/LTplus-AG/ifc-lite/issues/6470)). A pass rate was floored, so 70 of 7,972 entities passing read `0%` (and 9,999 of 10,000 would read `100%`), which said "nothing passes" when something did. `@ifc-lite/ids` now exports `boundedPassRate`, which keeps a partial result between 1% and 99%; the validator, rule engine, IDS panel, HTML export and document block all use it. The documentation page's IDS report block gets a Layout setting: Compact (one row per check and requirement, a coloured percent bar and only the attribute or property name) and Long (the full requirement text, wrapped rather than cut off, in both the preview and the PDF). Existing saved documents keep their current layout until you pick one; newly added blocks start Compact.
+
+- [#6463](https://github.com/LTplus-AG/ifc-lite/pull/6463) [`64c343b`](https://github.com/LTplus-AG/ifc-lite/commit/64c343bfea7de91b2a44a895f6302f3b1a7f70a7) Thanks [@louistrue](https://github.com/louistrue)! - Carry an information-validation rule's `severity` on its validation result ([#6372](https://github.com/LTplus-AG/ifc-lite/issues/6372)). `SpecificationSummary` gains an optional `severity: 'error' | 'warning'` (absent means `'error'`; IDS never sets it), and `runRuleSet` fills it from each rule, so a report consumer can tell warning failures from failures without the rule file. `ifc-lite check` now reads the severity off the report for its `--fail-on` exit code, with unchanged results.
+
+### Patch Changes
+
+- [#6557](https://github.com/LTplus-AG/ifc-lite/pull/6557) [`2c6be4a`](https://github.com/LTplus-AG/ifc-lite/commit/2c6be4a52f513f174d8eae9bea4e77c7f00edea4) Thanks [@louistrue](https://github.com/louistrue)! - Bound IDS compound entity/name lookup caches to prevent Map exhaustion during large validations. Evicted lookups are recomputed without changing validation results. Preserve per-entity source parsing caches so repeated specifications continue to reuse parsed data.
+  
+  Validations exceeding the retained compound-lookup working set may recompute those lookups, trading additional CPU work for bounded cache retention.
+- Updated dependencies [[`7780cb0`](https://github.com/LTplus-AG/ifc-lite/commit/7780cb05878c574ebd2a9f631ca6757233e845d3), [`e01487f`](https://github.com/LTplus-AG/ifc-lite/commit/e01487ff2f40fa758b73b3ec9a6abba9f9ff646b), [`ec983d3`](https://github.com/LTplus-AG/ifc-lite/commit/ec983d378bfccc2b65fb636a76e321a2c9482aa4)]:
+  - @ifc-lite/parser@9.2.0
+
 ## 3.1.0
 
 ### Minor Changes

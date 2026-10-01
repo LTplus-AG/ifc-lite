@@ -46,6 +46,7 @@
  * underlays" affordance) would branch on.
  */
 
+import { isDxfReferenceFrame } from '@/hooks/dxfReferencePlane';
 import type { DxfPlacement, DxfUnderlay } from '@ifc-lite/drawing-2d';
 import type { DxfUnderlayState } from './drawing2DSlice.js';
 
@@ -178,7 +179,7 @@ function isDxfPlacementLike(v: unknown): v is DxfPlacement {
     isFiniteNumber(p.offsetX) &&
     isFiniteNumber(p.offsetY) &&
     isFiniteNumber(p.rotationDeg) &&
-    isFiniteNumber(p.scale)
+    isFiniteNumber(p.scale) && p.scale > 0
   );
 }
 
@@ -211,10 +212,11 @@ function isDxfUnderlayState(v: unknown): v is DxfUnderlayState {
     isDxfUnderlayLike(u.underlay) &&
     typeof u.visible === 'boolean' &&
     typeof u.visible3D === 'boolean' &&
-    isFiniteNumber(u.opacity) &&
+    isFiniteNumber(u.opacity) && u.opacity >= 0 && u.opacity <= 1 &&
     isRecordOfBooleans(u.layerVisibility) &&
     isDxfPlacementLike(u.placement) &&
-    (u.georeferenced === undefined || typeof u.georeferenced === 'boolean')
+    (u.georeferenced === undefined || typeof u.georeferenced === 'boolean') &&
+    (u.referenceFrame === undefined || isDxfReferenceFrame(u.referenceFrame))
   );
 }
 

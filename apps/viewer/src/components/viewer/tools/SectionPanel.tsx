@@ -22,8 +22,10 @@ import { useViewerStore, loadLastSectionMode } from '@/store';
 import { SectionPlaneVisualization } from './SectionVisualization';
 import { SectionBoxVisualization } from './SectionBoxVisualization';
 import { SectionHint } from './SectionHint';
+import { startAlignmentTool, useAlignmentToolState } from '@/lib/section/alignment-controller';
 
 export function SectionOverlay() {
+  useEffect(startAlignmentTool, []);
   const sectionEnabled = useViewerStore((s) => s.sectionPlane.enabled);
   const setSectionPlaneAxis = useViewerStore((s) => s.setSectionPlaneAxis);
   const setSectionPlanePosition = useViewerStore((s) => s.setSectionPlanePosition);
@@ -62,7 +64,9 @@ export function SectionOverlay() {
     const mode = loadLastSectionMode();
     let armTimer: ReturnType<typeof setTimeout> | null = null;
 
-    if (mode.kind === 'cardinal') {
+    if (useViewerStore.getState().sectionPlane.custom?.alignment) {
+      setSectionPickMode(false);
+    } else if (mode.kind === 'cardinal') {
       // Read current flipped via getState() so we don't pull the live
       // store value into the dep array (which would re-run the effect
       // every flip and clobber the restore on each interaction).
@@ -71,7 +75,13 @@ export function SectionOverlay() {
       setSectionPlanePosition(mode.position);
       if (currentFlipped !== mode.flipped) flipSectionPlane();
     } else if (mode.kind === 'pick' || !useViewerStore.getState().sectionPlane.box) {
-      armTimer = setTimeout(() => setSectionPickMode(true), 200);
+      armTimer = setTimeout(() => {
+        // A user may choose an alignment before the opening-click debounce
+        // expires; the old face-pick timer must not cancel that evaluator.
+        if (!useAlignmentToolState.getState().choosing && !useViewerStore.getState().sectionPlane.custom?.alignment) {
+          setSectionPickMode(true);
+        }
+      }, 200);
     }
 
     return () => {

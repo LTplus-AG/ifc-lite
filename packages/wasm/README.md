@@ -236,3 +236,34 @@ the versioned behavior.
 Combined fill and dashed-stroke paints can still refuse atomically when
 multiple run boundaries produce crossings outside the current fill-region
 qualifier.
+
+## Retained alignment station frames
+
+`AlignmentAxisJs` evaluates one `IfcAlignment` through the canonical Rust
+evaluator. Its `GlobalId` and `Name` properties use exact IFC EXPRESS names;
+`expressId`, `geometricHorizontalLengthMeters` and `approximate` are derived
+metadata. The caller owns the handle and must call `free()` in `finally`.
+
+```ts
+import init, { AlignmentAxisJs } from '@ifc-lite/wasm';
+
+await init();
+const content = await (await fetch('alignment.ifc')).text();
+const axis = new AlignmentAxisJs(content, 39);
+try {
+  const sample = axis.evaluate(10);
+  console.log(axis.GlobalId, axis.Name, sample);
+} finally {
+  axis.free();
+}
+```
+
+`evaluate(distanceMeters)` returns a `Float64Array` containing horizontal
+distance, absolute IFC Z-up point X/Y/Z in metres, and normalized world tangent
+X/Y/Z. Distance is alignment-local geometric horizontal length from the physical
+start, independent of authored chainage and different from 3D arc length. No
+renderer origin or axis conversion is applied. Nonfinite or out-of-range
+distances and unresolved units, curves or placements fail explicitly. The
+`approximate` flag identifies supported approximation paths; it must be exposed
+to precision-sensitive consumers. Whole-source parsing belongs in a disposable
+worker when used by the viewer, so releasing the tool also releases WASM pages.

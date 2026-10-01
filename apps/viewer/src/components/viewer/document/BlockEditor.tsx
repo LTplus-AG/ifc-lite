@@ -80,7 +80,7 @@ function ReportBlockSource({ block, report, onChange }: { block: IdsReportBlock;
         title={refreshable ? undefined : t(kind === 'rules' ? 'document.block.rulesReportRefreshDisabledTitle' : 'document.block.idsReportRefreshDisabledTitle')}
         onClick={() => {
           if (!report || report.source.kind !== kind) return;
-          onChange({ ...idsReportBlockFromReport(report, block.id, block.variant), title: block.title });
+          onChange({ ...idsReportBlockFromReport(report, block.id, block.variant), title: block.title, benchmarks: block.benchmarks });
           toast.success(t('document.block.idsReportRefreshed'));
         }}
       >
@@ -94,18 +94,24 @@ function ReportBlockSource({ block, report, onChange }: { block: IdsReportBlock;
 function ReportBlockPresentation({ block, onChange }: { block: IdsReportBlock; onChange: (block: DocumentBlock) => void }) {
   const { t } = useTranslation();
   return (
-    <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.idsReportVariantLabel')}
-      <select
-        className={field}
-        value={block.variant ?? ''}
-        onChange={(e) => onChange({ ...block, variant: (e.target.value || undefined) as IdsReportVariant | undefined })}
-        aria-label={t('document.block.idsReportVariantAriaLabel')}
-      >
-        {block.variant === undefined && <option value="">{t('document.block.idsReportVariantClassic')}</option>}
-        <option value="compact">{t('document.block.idsReportVariantCompact')}</option>
-        <option value="long">{t('document.block.idsReportVariantLong')}</option>
-      </select>
-    </label>
+    <>
+      <label className="inline-flex items-center gap-1 text-muted-foreground">{t('document.block.idsReportVariantLabel')}
+        <select
+          className={field}
+          value={block.variant ?? ''}
+          onChange={(e) => onChange({ ...block, variant: (e.target.value || undefined) as IdsReportVariant | undefined })}
+          aria-label={t('document.block.idsReportVariantAriaLabel')}
+        >
+          {block.variant === undefined && <option value="">{t('document.block.idsReportVariantClassic')}</option>}
+          <option value="compact">{t('document.block.idsReportVariantCompact')}</option>
+          <option value="long">{t('document.block.idsReportVariantLong')}</option>
+        </select>
+      </label>
+      <label className="inline-flex items-center gap-1 text-muted-foreground">
+        <input type="checkbox" checked={block.benchmarks === true} onChange={(event) => onChange({ ...block, benchmarks: event.target.checked })} />
+        {t('manualValidation.report.benchmarks')}
+      </label>
+    </>
   );
 }
 

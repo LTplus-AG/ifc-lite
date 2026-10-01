@@ -19,7 +19,7 @@
  * anything new should be routed through.
  */
 
-import type { IfcAttributeValue, IfcSourceHeader, MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import type { IfcAttributeValue, IfcSourceHeader } from '@ifc-lite/parser';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import type { RandomSource } from '@ifc-lite/encoding';
 import type { IfcSchemaVersion } from './schema-converter.js';
@@ -34,9 +34,10 @@ import type { createSourceRefReader } from './source-ref-bounds.js';
 import type { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import type { EnumReconciliation } from './schema-converter-enums.js';
+import type { StepCoordinateNormalizationOptions, StepGeoreferencingOptions } from './step-coordinate-options.js';
 
 /** Options for STEP export */
-export interface StepExportOptions {
+export interface StepExportOptions extends StepCoordinateNormalizationOptions, StepGeoreferencingOptions {
   /** IFC schema version for the output file (any version, will convert if needed) */
   schema: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
   /** File description */
@@ -103,12 +104,6 @@ export interface StepExportOptions {
    *  to KEEP georeferencing and addresses: dropping them anyway left an
    *  `IfcSite.SiteAddress` pointing at a line that was never written (#3351). */
   subsetIdentifyingTypes?: ReadonlySet<string>;
-
-  /** Georeferencing mutations to apply (IfcProjectedCRS / IfcMapConversion edits) */
-  georefMutations?: {
-    projectedCRS?: Partial<ProjectedCRS>;
-    mapConversion?: Partial<MapConversion>;
-  };
 
   /**
    * Seeded randomness for the GlobalIds this exporter SYNTHESIZES:

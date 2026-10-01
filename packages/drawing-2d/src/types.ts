@@ -1,7 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
 /**
  * Core types for 2D architectural drawing generation
  */
@@ -72,6 +71,7 @@ export interface SectionConfig {
    */
   projectionBelowDepth?: number;
   projectionAboveDepth?: number;
+  clipProjectionBands?: boolean; // Clip exact bands before outlining (#6615).
   /** Whether to compute hidden lines */
   includeHiddenLines: boolean;
   /** Crease angle threshold in degrees (edges sharper than this are feature edges) */

@@ -1,0 +1,30 @@
+{
+  "base": {
+    "perProcessIterationMediansMs": [97.32287500000007,96.32379099999991,96.77516700000001,98.82737499999996,99.34995799999996],
+    "medianMs": 97.32287500000007,
+    "hashes": ["a6a94928f422840ca2431c782490e3a0f9feaf2d205f64d0caf0d9c9230ca5cb"],
+    "stats": {"entityCount":44249,"newEntityCount":0,"modifiedEntityCount":0,"fileSize":2475178,"warnings":[]}
+  },
+  "branch": {
+    "perProcessIterationMediansMs": [97.14320899999996,100.318083,97.38712499999997,97.06508399999996,97.88537500000001],
+    "medianMs": 97.38712499999997,
+    "hashes": ["a6a94928f422840ca2431c782490e3a0f9feaf2d205f64d0caf0d9c9230ca5cb"],
+    "stats": {"entityCount":44249,"newEntityCount":0,"modifiedEntityCount":0,"fileSize":2475178,"warnings":[]}
+  },
+  "defaultDeltaPercent": 0.06601736744820119,
+  "defaultOutputByteIdentical": true,
+  "deckdefault": {
+    "timesMs": [4.134291999999988,4.182416999999987,4.101124999999996,3.980957999999987,3.962582999999995],
+    "medianMs": 4.101124999999996,
+    "coldFirstCallMs": 4.134291999999988,
+    "hashes": ["bb78dd833f035b6299a6fdcd809e519c9aeebbd9419e386f0b6acd633e0853d1"],
+    "stats": {"entityCount":33,"newEntityCount":0,"modifiedEntityCount":0,"fileSize":1904,"warnings":[]}
+  },
+  "decknormalized": {
+    "timesMs": [23.04524999999998,5.9884580000000085,6.032207999999997,5.388875000000041,5.492624999999975],
+    "medianMs": 5.9884580000000085,
+    "coldFirstCallMs": 23.04524999999998,
+    "hashes": ["7d7f5cc214e87e79bb63a9fbca1f29f9e2943e2299c315de4487a401fafb1c1c"],
+    "stats": {"entityCount":54,"newEntityCount":21,"modifiedEntityCount":5,"fileSize":2826,"warnings":[]}
+  }
+}

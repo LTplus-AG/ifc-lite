@@ -1,0 +1,114 @@
+{
+  "date": "2026-10-01",
+  "scope": "Reviewed final source browser smoke; earlier full PDF/export screenshots remain historical evidence",
+  "fixture": "AC20-FZK-Haus.ifc",
+  "depths": {
+    "0": {
+      "cutLines": 103,
+      "polygons": 28,
+      "projectionLines": 0,
+      "hiddenLines": 0
+    },
+    "3": {
+      "cutLines": 103,
+      "polygons": 28,
+      "projectionLines": 228,
+      "hiddenLines": 95
+    },
+    "7": {
+      "cutLines": 103,
+      "polygons": 28,
+      "projectionLines": 949,
+      "hiddenLines": 521
+    }
+  },
+  "wheel": {
+    "deltaY": 100,
+    "beforePercent": 1052,
+    "afterPercent": 957
+  },
+  "snapshotLimit": "T3 preview snapshot returned client automation errors twice; evaluation and interactions succeeded",
+  "state": {
+    "bundle": [
+      "http://localhost:5291/assets/main-CaUSGX3b.js",
+      "http://localhost:5291/_vercel/insights/script.js"
+    ],
+    "config": {
+      "clipProjectionBands": true,
+      "creaseAngle": 30,
+      "includeHiddenLines": true,
+      "plane": {
+        "axis": "x",
+        "flipped": false,
+        "position": 6
+      },
+      "projectionAboveDepth": 0,
+      "projectionBelowDepth": 7,
+      "projectionDepth": 7,
+      "scale": 100
+    },
+    "modelCount": 1,
+    "stats": {
+      "cutLineCount": 103,
+      "hiddenLineCount": 521,
+      "polygonCount": 28,
+      "processingTimeMs": 35.03500000014901,
+      "projectionLineCount": 949,
+      "silhouetteLineCount": 0,
+      "totalTriangles": 19078
+    },
+    "underlayCount": 1,
+    "zoom": [
+      "0%",
+      "957%"
+    ]
+  },
+  "postMultilineReviewSmoke": {
+    "dateUtc": "2026-10-01",
+    "sourceCommit": "4fcf89b11fdbc939752872eaa9895483d6ff72a5",
+    "sourceLocation": "root implementation working tree; section production matches the final-layer candidate",
+    "url": "http://localhost:5291/?qa=multiline-reviewed",
+    "bundle": "assets/main-clHLY_kB.js",
+    "model": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+    "load": "normal file input after fresh navigation",
+    "bytes": 2526544,
+    "meshes": 275,
+    "models": 1,
+    "axis": "side",
+    "planeXM": 6,
+    "depths": [
+      {
+        "metres": 0,
+        "cutPolygons": 28,
+        "cutLines": 103,
+        "projectionLines": 0,
+        "hiddenLines": 0
+      },
+      {
+        "metres": 3,
+        "cutPolygons": 28,
+        "cutLines": 103,
+        "projectionLines": 228,
+        "hiddenLines": 95
+      },
+      {
+        "metres": 7,
+        "cutPolygons": 28,
+        "cutLines": 103,
+        "projectionLines": 949,
+        "hiddenLines": 521
+      }
+    ],
+    "wheel": {
+      "deltaY": 100,
+      "before": "1052%",
+      "after": "957%",
+      "horizontalOnlyAfter": "957%"
+    },
+    "limitations": [
+      "Native snapshot failed with and without image; DOM evaluation and normal file handlers succeeded.",
+      "Multiline text bounds verified by invariant tests; this smoke did not reimport multiline DXF.",
+      "Full PDF/export screenshot run remains earlier-source evidence."
+    ]
+  }
+}

@@ -71,7 +71,7 @@ function useSaveDrawingMarkupHandler() {
       );
       if (outcome.refusal) {
         const refusal = outcome.refusal;
-        toast.error(refusal === 'edit-mode' || refusal === 'collab-role' || refusal === 'model-unavailable'
+        toast.error(refusal === 'edit-mode' || refusal === 'collab-role' || refusal === 'model-unavailable' || refusal === 'workflow-running'
           ? t(mutationDenialKey(refusal)) : refusalText(refusal));
         return;
       }

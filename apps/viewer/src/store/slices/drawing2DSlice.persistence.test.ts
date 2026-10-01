@@ -124,6 +124,18 @@ describe('drawing2DSlice persistence', () => {
       assert.deepStrictEqual(restored!.sectionConfig, sectionConfig);
     });
 
+    it('migrates legacy and invalid manual depths to Auto while preserving finite metres (#6615)', () => {
+      for (const depth of [undefined, null, -1, '3', 0, 2.5]) {
+        const entry = { ...sampleEntry(), version: 1, savedAt: Date.now(),
+          drawing2DDisplayOptions: { ...DEFAULT_DISPLAY_OPTIONS, constructionProjectionDepth: depth } };
+        localStorage.setItem(keyFor('depth-fixture'), JSON.stringify(entry));
+        const restored = loadDrawing2DEntry('depth-fixture', DEFAULT_DISPLAY_OPTIONS);
+        assert.ok(restored, 'existing valid markup survives display-option migration');
+        assert.equal(restored.drawing2DDisplayOptions.constructionProjectionDepth,
+          typeof depth === 'number' && depth >= 0 ? depth : null);
+      }
+    });
+
     it('round-trips custom display options', () => {
       const options = { ...DEFAULT_DISPLAY_OPTIONS, scale: 50, showHiddenLines: false };
       saveDrawing2DEntry('hash-a', sampleEntry({ drawing2DDisplayOptions: options }));

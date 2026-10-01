@@ -21,6 +21,8 @@
  */
 
 import { Fragment, type ReactNode } from 'react';
+import { Button } from '@/components/ui/button';
+import type { BulkTargetSource } from './bulk-targets';
 import { Input } from '@/components/ui/input';
 import { Field } from '@/components/ui/field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -32,6 +34,7 @@ import { formatLocaleNumber } from '@/i18n/intlFormat';
 type ActionType = 'SET_PROPERTY' | 'DELETE_PROPERTY' | 'SET_ATTRIBUTE';
 
 export interface BulkActionConfigProps {
+  onTargetSourceChange: (source: BulkTargetSource) => void;
   actionType: ActionType;
   onActionTypeChange: (type: ActionType) => void;
   targetPset: string;
@@ -47,6 +50,7 @@ export interface BulkActionConfigProps {
 }
 
 export function BulkActionConfig({
+  onTargetSourceChange,
   actionType,
   onActionTypeChange,
   targetPset,
@@ -69,6 +73,21 @@ export function BulkActionConfig({
 
   return (
     <Fragment>
+      <div className="space-y-2">
+        <Button variant="outline" size="sm" onClick={() => {
+          onTargetSourceChange('selection');
+          onActionTypeChange('SET_PROPERTY');
+          onTargetPsetChange('CESIUM');
+          onTargetPropChange('Stage');
+          onTargetValueChange('1');
+          onValueTypeChange(PropertyValueType.Integer);
+        }}>
+          {t('bulkPropertyEditor.stagePreset')}
+        </Button>
+        {targetPset === 'CESIUM' && targetProp === 'Stage' && (
+          <p className="text-xs text-muted-foreground">{t('bulkPropertyEditor.stageDescription')}</p>
+        )}
+      </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Field label={t('bulkPropertyEditor.actionType')}>

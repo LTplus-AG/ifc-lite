@@ -47,6 +47,34 @@ this browser and applies to every loaded model.
 Right-button fly remains available in every preset when camera controls are
 enabled. Shift + left drag pans in every preset and tool.
 
+## Alignment sections
+
+Open **Section → Alignment**, select the model and its `IfcAlignment`, then
+change **Horizontal distance from start** to move the cut along that axis.
+The cut follows the evaluated 3D tangent, including grade and curvature.
+Distance is geometric horizontal metres from the physical start; it is neither
+authored chainage nor 3D arc length. Approximate supported curves are labelled.
+Unresolvable units, invalid placements and unsupported curves report an error
+instead of substituting a straight line.
+
+The plane uses the selected model's frame and workspace placement. Moving that
+model updates the cut; pending IFC edits rebuild the selected evaluator. Removing
+the owner disables its bound cut. Closing the tool releases its worker and detaches the cut into an ordinary
+custom plane. Select the alignment again to resume station control.
+
+Dragging the plane handle makes it an ordinary custom cut and detaches it from
+the alignment. Choose **Alignment** and select the axis again to resume station
+control. Flip, cut visibility, cap style, cardinal cuts, face picks and section
+boxes retain their ordinary behavior.
+
+Acceptance was exercised in the production viewer with the original OIP 2017
+`844_terrain_and_alignment.ifc` fixture (`IfcAlignment` #39). The distance field
+moved its section through 0, 10 and 20 m; flipping the cut remained active at
+20 m. An independent circular-arc calculation using the authored radius and
+start heading matched the displayed horizontal station coordinates within
+0.000001 m. The viewer screenshot records the rotated cut and active controls;
+this check uses an original authoring-tool model, not a fabricated screenshot.
+
 ## Finding a panel
 
 The right-hand activity rail and **Analyze → Browse panels** in the ribbon use

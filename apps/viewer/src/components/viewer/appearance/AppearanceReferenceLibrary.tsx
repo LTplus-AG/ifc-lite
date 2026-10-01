@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { SectionPlaneConfig } from '@ifc-lite/drawing-2d';
+import { referenceDrawingCorners } from '@/lib/appearance/references/drawing';
 import { trackExportCompleted } from '@/lib/analytics';
 import { AppearanceAnnotationFields } from './AppearanceAnnotationFields';
 import { referenceFrameStatus } from '@/lib/appearance/reference-runtime/frame.js';
@@ -17,6 +19,7 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 export interface AppearanceReferenceLibraryProps {
   onEdit?: (id: string) => void;
   disabled?: boolean;
+  plane?: SectionPlaneConfig;
 }
 
 type LibraryError = { key: TranslationKey } | { text: string } | null;
@@ -28,11 +31,14 @@ class LocalizedReferenceError extends Error {
 }
 
 /** Registered drawings live inside the Appearance workspace; they never select IFC entities. */
-export function AppearanceReferenceLibrary({ onEdit, disabled = false }: AppearanceReferenceLibraryProps) {
+export function AppearanceReferenceLibrary({ onEdit, disabled = false, plane }: AppearanceReferenceLibraryProps) {
   const { t } = useTranslation();
   const references = useViewerStore(state => state.appearanceReferences);
   const selected = useViewerStore(state => state.selectedAppearanceReferenceId);
   const sources = useViewerStore(state => state.appearanceSources);
+  useViewerStore(state => state.models);
+  useViewerStore(state => state.geometryResult);
+  useViewerStore(state => state.modelPlacement);
   const frame = useViewerStore(placementFrameKey);
   useViewerStore(state => state.referenceRevision); // exact-image relink changes availability without replacing the record
   const id = useId();
@@ -124,6 +130,7 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
         const name = sources.find(source => source.id === reference.sourceId)?.name ?? t('appearance.referenceLibrary.defaultDrawingName', { n: index + 1 });
         const missing = !appearanceAssets.get(reference.assetId);
         const wrongFrame = reference.frameKey !== frame && referenceFrameStatus(reference, useViewerStore.getState()) === 'frame-mismatch';
+        const edgeOn = plane && !wrongFrame && !referenceDrawingCorners({ ...reference, visible: true, opacity: 1 }, useViewerStore.getState(), plane);
         const editsDisabled = blocked || reference.locked;
         return <li key={reference.id} aria-label={name} className={`rounded-md border p-2 ${selected === reference.id ? 'border-primary bg-primary/5' : 'border-border'}`}>
           <div className="flex items-center gap-1">
@@ -169,6 +176,8 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
               onClick={() => perform(() => useViewerStore.getState().removeAppearanceReference(reference.id))}
             ><Trash2 aria-hidden="true" /></IconButton>
           </div>
+          {reference.pdf && <p className="px-1 text-2xs text-muted-foreground">{t('drawingUnderlay.reference.pageIdentity', { page: reference.pdf.recipe.page.pageNumber })}</p>}
+          {edgeOn && <p className="px-1 text-2xs text-muted-foreground">{t('drawingUnderlay.reference.edgeOn')}</p>}
           <ReferenceOpacity name={name} value={reference.opacity} disabled={editsDisabled || wrongFrame}
             onCommit={opacity => perform(() => useViewerStore.getState().updateAppearanceReference(reference.id, { opacity }))} />
           <AppearanceAnnotationFields referenceId={reference.id} name={name} disabled={editsDisabled || missing || wrongFrame} />
@@ -189,7 +198,7 @@ export function AppearanceReferenceLibrary({ onEdit, disabled = false }: Appeara
       <span>{t('appearance.referenceLibrary.openingFile')}</span><Button type="button" variant="ghost" size="sm" onClick={() => { pending.current?.abort(); pending.current = undefined; setBusy(false); }}>{t('appearance.referenceLibrary.cancelFileOperation')}</Button>
     </div>}
     {error && <p role="alert" className="text-2xs leading-relaxed text-destructive">{'key' in error ? t(error.key) : error.text}</p>}
-    {noticeKey && <output role="status" className="block text-2xs leading-relaxed text-muted-foreground">{t(noticeKey)}</output>}
+    {noticeKey && <output className="block text-2xs leading-relaxed text-muted-foreground">{t(noticeKey)}</output>}
   </section>;
 }
 

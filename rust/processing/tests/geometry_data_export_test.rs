@@ -12,7 +12,7 @@ use ifc_lite_processing::element::{
     produce_element_meshes, ElementJobKind, ElementMeshJob, MeshProductionContext,
     MeshProductionOptions, GEOM_CLASS_LAYER_SLICE,
 };
-use ifc_lite_processing::{build_geometry_data_export, process_geometry, MeshData};
+use ifc_lite_processing::{build_colored_geometry_data_export, build_geometry_data_export, process_geometry, MeshData};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
@@ -211,4 +211,96 @@ fn geometry_data_export_keeps_a_material_layer_wall() {
     let (mn, mx) = bbox(&wall.vertices);
     approx(mn, [-2.0, -0.15, 0.0], "layered wall min");
     approx(mx, [2.0, 0.15, 3.0], "layered wall max");
+}
+
+// #6601: palette indices must follow faces when welding removes a triangle,
+// while the first-submesh color remains compatible with existing consumers.
+#[test]
+fn face_colors_survive_welded_degenerate_removal_6601() {
+    let source = process_geometry(CUBE_IFC).meshes.remove(0);
+    let mut red = source.clone();
+    red.positions = vec![0., 0., 0., 1., 0., 0., 0., 1., 0.];
+    red.indices = vec![0, 1, 2];
+    red.color = [1., 0., 0., 1.];
+    let mut green = red.clone();
+    green.color = [0., 1., 0., 0.25];
+    // First green triangle collapses on the welding grid; the second survives.
+    green.positions = vec![0., 0., 0., 0.0000001, 0., 0., 0., 1., 0., 1., 0., 0.];
+    green.indices = vec![0, 1, 2, 0, 3, 2];
+    let mut red_again = red.clone();
+    red_again.color[1] = -0.0;
+    let export = build_colored_geometry_data_export(&[red, green, red_again], [0.; 3], None);
+    let el = export.elements.values().next().unwrap();
+    assert_eq!(el.geometry.faces.len(), 3);
+    assert_eq!(el.face_colors, vec![0, 1, 0]);
+    assert_eq!(el.palette, vec![[1., 0., 0., 1.], [0., 1., 0., 0.25]]);
+    assert_eq!(el.geometry.color, [1., 0., 0., 1.]);
+    for &index in &el.face_colors {
+        assert!((index as usize) < el.palette.len());
+    }
+    let json: serde_json::Value = serde_json::from_str(&export.to_json().unwrap()).unwrap();
+    let entity = &json["elements"][source.express_id.to_string()];
+    assert_eq!(entity["face_colors"], serde_json::json!([0, 1, 0]));
+    assert_eq!(entity["palette"][1][3], 0.25);
+}
+
+#[test]
+fn uniform_color_export_keeps_compact_contract_6601() {
+    let source = process_geometry(CUBE_IFC).meshes.remove(0);
+    let export = build_colored_geometry_data_export(&[source.clone(), source], [0.; 3], None);
+    let el = export.elements.values().next().unwrap();
+    assert!(el.palette.is_empty());
+    assert!(el.face_colors.is_empty());
+    let json: serde_json::Value = serde_json::from_str(&export.to_json().unwrap()).unwrap();
+    let entity = json["elements"].as_object().unwrap().values().next().unwrap();
+    assert!(entity.get("palette").is_none());
+    assert!(entity.get("face_colors").is_none());
+}
+
+#[test]
+fn palette_indices_do_not_wrap_at_u16_boundary_6601() {
+    let mut source = process_geometry(CUBE_IFC).meshes.remove(0);
+    source.positions = vec![0., 0., 0., 1., 0., 0., 0., 1., 0.];
+    source.indices = vec![0, 1, 2];
+    let meshes: Vec<_> = (0..=65_536).map(|index| {
+        let mut mesh = source.clone();
+        mesh.color = [index as f32 / 65_536., 0., 0., 1.];
+        mesh
+    }).collect();
+    let export = build_colored_geometry_data_export(&meshes, [0.; 3], None);
+    let el = export.elements.values().next().unwrap();
+    assert_eq!(el.palette.len(), 65_537);
+    assert_eq!(el.face_colors.len(), el.geometry.faces.len());
+    assert_eq!(el.face_colors.last(), Some(&65_536));
+    assert_eq!(el.palette[65_536], [1., 0., 0., 1.]);
+}
+
+#[test]
+fn welded_color_finalization_preserves_fallback_semantics_6601() {
+    let mut red = process_geometry(CUBE_IFC).meshes.remove(0);
+    red.positions = vec![0., 0., 0., 1., 0., 0., 0., 1., 0.];
+    red.indices = vec![0, 1, 2];
+    red.color = [1., 0., 0., 1.];
+    let mut green = red.clone();
+    green.color = [0., 1., 0., 0.25];
+    for (collapse_red, collapse_green) in [(true, false), (false, true), (true, true)] {
+        let mut meshes = [red.clone(), green.clone()];
+        for (mesh, collapse) in meshes.iter_mut().zip([collapse_red, collapse_green]) {
+            if collapse { mesh.positions[3] = 0.0000001; }
+        }
+        let export = build_colored_geometry_data_export(&meshes, [0.; 3], None);
+        let el = export.elements.values().next().unwrap();
+        let legacy = build_geometry_data_export(&meshes, [0.; 3], None);
+        let legacy_el = legacy.elements.values().next().unwrap();
+        assert_eq!(el.geometry.vertices, legacy_el.vertices);
+        assert_eq!(el.geometry.faces, legacy_el.faces);
+        assert_eq!(el.geometry.color, red.color);
+        if collapse_red && !collapse_green {
+            assert_eq!(el.face_colors, vec![1]);
+            assert_eq!(el.palette[1], green.color);
+        } else {
+            assert!(el.palette.is_empty());
+            assert!(el.face_colors.is_empty());
+        }
+    }
 }

@@ -16,11 +16,9 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type {
   SectionConfig,
-  SectionPlaneConfig,
   SectionAxis,
   Drawing2D,
   DrawingLine,
-  DrawingPolygon,
   CutSegment,
   Bounds2D,
   LineCategory,
@@ -45,9 +43,10 @@ import {
   outlineToProjectionLines,
 } from './projection-bands.js';
 import { isFeatureElementType } from './feature-elements.js';
+import { projectionBandMeshes, clipMeshToProjectionWindow } from './projection-clip.js';
+import { removeCoveredOverhead } from './projection-overlap.js';
 import {
   boundsEmpty,
-  boundsExtendPoint,
   boundsExtendLine,
   lineLength,
 } from './math.js';
@@ -238,7 +237,7 @@ export class Drawing2DGenerator {
       // The Rust extractor already skips them at the source, but a CI-lagged
       // WASM bundle can still emit opening profiles, and opening MESHES always
       // reach `meshes` — so this TS filter is the load-bearing guard.
-      const projectionProfiles = profiles?.filter((p) => !isFeatureElementType(p.ifcType));
+      const projectionProfiles = (config.clipProjectionBands ? undefined : profiles)?.filter((p) => !isFeatureElementType(p.ifcType));
 
       // Per-element dedup: elements with an extracted profile take their
       // projection from the clean profile path only; the silhouette fallback
@@ -279,29 +278,33 @@ export class Drawing2DGenerator {
         // aware.
         const outlineProvider = config.plane.customPlane ? undefined : opts.outlineProvider;
 
-        for (const mesh of meshesForSilhouette) {
-          const outline = outlineProvider
-            ? outlineProvider(mesh, config.plane.axis, config.plane.flipped)
-            : null;
-          if (outline && outline.contours.length > 0) {
-            projectionLines.push(
-              ...outlineToProjectionLines(
-                outline,
-                {
-                  entityId: mesh.expressId,
-                  ifcType: mesh.ifcType ?? 'Unknown',
-                  modelIndex: mesh.modelIndex ?? 0,
-                },
-                config.plane,
-                bands,
-              ),
-            );
-          } else {
-            const edges = this.edgeExtractor.extractEdges(mesh);
-            const silhouettes = this.edgeExtractor.extractSilhouettes(edges, viewDir);
-            projectionLines.push(
-              ...this.edgeExtractor.edgesToProjectionLines(silhouettes, config.plane, bands),
-            );
+        for (const source of meshesForSilhouette) {
+          const clipped = config.clipProjectionBands
+            ? projectionBandMeshes(source, config.plane, bands.below, bands.above) : [source];
+          for (const mesh of clipped) {
+            const outline = outlineProvider
+              ? outlineProvider(mesh, config.plane.axis, config.plane.flipped)
+              : null;
+            if (outline && outline.contours.length > 0) {
+              projectionLines.push(
+                ...outlineToProjectionLines(
+                  outline,
+                  {
+                    entityId: mesh.expressId,
+                    ifcType: mesh.ifcType ?? 'Unknown',
+                    modelIndex: mesh.modelIndex ?? 0,
+                  },
+                  config.plane,
+                  bands,
+                ),
+              );
+            } else {
+              const edges = this.edgeExtractor.extractEdges(mesh);
+              const silhouettes = this.edgeExtractor.extractSilhouettes(edges, viewDir);
+              projectionLines.push(
+                ...this.edgeExtractor.edgesToProjectionLines(silhouettes, config.plane, bands),
+              );
+            }
           }
         }
       }
@@ -317,6 +320,9 @@ export class Drawing2DGenerator {
         projectionLines = projectionLines.filter((line) => lineLength(line.line) <= maxLineLength);
       }
 
+      if (config.clipProjectionBands && config.plane.axis === 'y' && !config.plane.customPlane) {
+        projectionLines = removeCoveredOverhead(projectionLines);
+      }
       report('edges', 1);
     }
 
@@ -329,34 +335,21 @@ export class Drawing2DGenerator {
     const classifiable = [...extraLines, ...projectionLines];
     let allLines = [...cutLines, ...classifiable];
 
-    if (opts.includeHiddenLines && classifiable.length > 0) {
+    if ((opts.includeHiddenLines || config.clipProjectionBands) && classifiable.length > 0) {
       report('hidden', 0);
 
       // Compute bounds for depth buffer
       const bounds = this.computeBounds(allLines);
 
-      // The depth buffer must cover everything projection can emit — including
-      // the (possibly wider) construction-projection bands — or in-band lines
-      // beyond projectionDepth would be classified against an incomplete buffer
-      // and wrongly stay visible because their occluders were never rasterized.
-      const occluderDepth = Math.max(
-        config.projectionDepth,
-        config.projectionBelowDepth ?? config.projectionDepth,
-        config.projectionAboveDepth ?? config.projectionDepth,
-      );
-
-      // Build depth buffer and classify lines. The occluder set deliberately
-      // keeps the FULL `meshes` (incl. feature-element/opening meshes that are
-      // filtered out of projection above): an opening mesh is coincident with
-      // the void in its host wall, which writes the same depth, so it never
-      // changes occlusion — and dropping it could only ever REVEAL a
-      // through-wall line that should stay hidden. Don't "tidy" this to the
-      // filtered set.
-      //
-      // The FULL plane config is passed (issue #2639) so a custom
-      // (face-picked) plane classifies in its own basis instead of the stale
-      // cardinal fields.
-      this.hiddenLineClassifier.buildDepthBuffer(meshes, config.plane, occluderDepth, bounds);
+      const occluderDepth = config.clipProjectionBands
+        ? (config.projectionBelowDepth ?? config.projectionDepth)
+        : Math.max(config.projectionDepth, config.projectionBelowDepth ?? config.projectionDepth,
+          config.projectionAboveDepth ?? config.projectionDepth);
+      const occluders = config.clipProjectionBands
+        ? meshes.map(mesh => clipMeshToProjectionWindow(mesh, config.plane, 0, occluderDepth))
+          .filter((mesh): mesh is MeshData => mesh !== null)
+        : meshes;
+      this.hiddenLineClassifier.buildDepthBuffer(occluders, config.plane, occluderDepth, bounds);
 
       // Occlusion only DOWNGRADES visible → hidden; it can never reveal an
       // already-dashed OVERHEAD line. So classify the visible (below-cut)
@@ -369,7 +362,11 @@ export class Drawing2DGenerator {
       // would both skip them AND drop them from the recombination below.
       const toClassify = classifiable.filter((l) => l.visibility === 'visible');
       const passthrough = classifiable.filter((l) => l.visibility !== 'visible');
-      const classifiedLines = this.hiddenLineClassifier.applyVisibility(toClassify);
+      const classified = this.hiddenLineClassifier.applyVisibility(toClassify);
+      // SDK hidden-output filtering applies to occlusion results. Existing
+      // overhead outlines keep their dashed convention even with HLR off.
+      const classifiedLines = config.clipProjectionBands && !opts.includeHiddenLines
+        ? classified.filter(line => line.visibility !== 'hidden') : classified;
 
       // Recombine with cut lines (always visible) + overhead pass-through.
       allLines = [...cutLines, ...classifiedLines, ...passthrough];

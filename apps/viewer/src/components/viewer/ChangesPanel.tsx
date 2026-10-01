@@ -20,6 +20,7 @@ import { totalChangeCount } from '@/lib/export/model-changes';
 function refusalKey(reason: RevertRefusal): TranslationKey {
   switch (reason) {
     case 'stale': return 'changesPanel.revertStale';
+    case 'workflow-running': return 'mutationPermission.workflowRunning';
     case 'edit-mode':
     case 'collab-role':
     case 'model-unavailable': return 'changesPanel.revertPermission';

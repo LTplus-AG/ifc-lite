@@ -1,0 +1,276 @@
+{
+  "flowVersion": 2,
+  "id": "example-coordination-startup",
+  "name": "Coordination session report",
+  "description": "Choose local IFC models and validation definitions, optionally rerun saved comparison recipes or reuse completed comparison reports. Load, tag, run checks, retain native evidence and prepare a combined document with a downloadable PDF. Opening this workflow never runs it automatically.",
+  "capabilities": [
+    "model.create",
+    "model.read",
+    "storage.write:modelTags",
+    "storage.write:validationReports",
+    "storage.write:savedComparisons",
+    "storage.write:documents",
+    "export.create:pdf"
+  ],
+  "inputs": [
+    {
+      "nodeId": "load",
+      "param": "files",
+      "label": "Models",
+      "kind": "files",
+      "fileSlots": [
+        {
+          "id": "models",
+          "label": "IFC models",
+          "accept": ".ifc",
+          "multiple": true,
+          "required": true
+        }
+      ]
+    },
+    {
+      "nodeId": "validation",
+      "param": "files",
+      "label": "Checks",
+      "kind": "files",
+      "fileSlots": [
+        {
+          "id": "checks",
+          "label": "IDS or information rule sets",
+          "accept": ".ids,.json",
+          "multiple": true,
+          "required": true
+        }
+      ]
+    },
+    {
+      "nodeId": "comparison",
+      "param": "files",
+      "label": "Comparison recipes",
+      "kind": "files",
+      "fileSlots": [
+        {
+          "id": "recipes",
+          "label": "Comparison recipe JSON",
+          "accept": ".comparison.json,.json",
+          "multiple": true,
+          "required": false
+        }
+      ]
+    },
+    {
+      "nodeId": "history",
+      "param": "files",
+      "label": "Completed comparison reports",
+      "kind": "files",
+      "fileSlots": [
+        {
+          "id": "reports",
+          "label": "Saved comparison evidence JSON",
+          "accept": ".json",
+          "multiple": true,
+          "required": false
+        }
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "nodeId": "validation",
+      "port": "reports",
+      "label": "Validation evidence"
+    },
+    {
+      "nodeId": "comparison",
+      "port": "reports",
+      "label": "Rerun comparison evidence"
+    },
+    {
+      "nodeId": "history",
+      "port": "reports",
+      "label": "Imported historical evidence"
+    },
+    {
+      "nodeId": "document",
+      "port": "document",
+      "label": "Open report document"
+    },
+    {
+      "nodeId": "pdf",
+      "port": "artifact",
+      "label": "Download combined PDF"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "load",
+      "type": "session.loadModels",
+      "params": {
+        "files": {},
+        "selectors": []
+      },
+      "tracking": "disabled",
+      "pos": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "tags",
+      "type": "session.assignModelTags",
+      "params": {
+        "rules": [
+          {
+            "operator": "glob",
+            "pattern": "*ARC*",
+            "caseSensitive": false,
+            "tags": [
+              "Architecture"
+            ]
+          },
+          {
+            "operator": "glob",
+            "pattern": "*STR*",
+            "caseSensitive": false,
+            "tags": [
+              "Structure"
+            ]
+          }
+        ]
+      },
+      "tracking": "disabled",
+      "pos": [
+        260,
+        0
+      ]
+    },
+    {
+      "id": "validation",
+      "type": "validation.runChecks",
+      "params": {
+        "jobs": [],
+        "files": {}
+      },
+      "pos": [
+        520,
+        0
+      ]
+    },
+    {
+      "id": "comparison",
+      "type": "comparison.runChecks",
+      "params": {
+        "jobs": [],
+        "files": {}
+      },
+      "pos": [
+        520,
+        200
+      ]
+    },
+    {
+      "id": "history",
+      "type": "report.importComparisons",
+      "params": {
+        "files": {}
+      },
+      "pos": [
+        520,
+        400
+      ]
+    },
+    {
+      "id": "document",
+      "type": "report.buildDocument",
+      "params": {
+        "config": {
+          "name": "Coordination report"
+        }
+      },
+      "pos": [
+        800,
+        160
+      ]
+    },
+    {
+      "id": "pdf",
+      "type": "report.exportPdf",
+      "pos": [
+        1060,
+        160
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": [
+        "load",
+        "models"
+      ],
+      "to": [
+        "tags",
+        "models"
+      ]
+    },
+    {
+      "from": [
+        "tags",
+        "models"
+      ],
+      "to": [
+        "validation",
+        "models"
+      ]
+    },
+    {
+      "from": [
+        "tags",
+        "models"
+      ],
+      "to": [
+        "comparison",
+        "models"
+      ]
+    },
+    {
+      "from": [
+        "validation",
+        "reports"
+      ],
+      "to": [
+        "document",
+        "validation"
+      ]
+    },
+    {
+      "from": [
+        "comparison",
+        "reports"
+      ],
+      "to": [
+        "document",
+        "comparisons"
+      ]
+    },
+    {
+      "from": [
+        "history",
+        "reports"
+      ],
+      "to": [
+        "document",
+        "historical"
+      ]
+    },
+    {
+      "from": [
+        "document",
+        "document"
+      ],
+      "to": [
+        "pdf",
+        "document"
+      ]
+    }
+  ]
+}

@@ -64,6 +64,14 @@ export const BUILTIN_LENSES: readonly Lens[] = [
       { id: 'railing', name: 'Railings', enabled: true, ...typeGroups('IfcRailing'), action: 'colorize', color: '#78909C' },
     ],
   },
+  // Vendor metadata for construction-stage tagging; distinct from IFC tasks.
+  {
+    id: 'lens-by-stage',
+    name: 'By Stage',
+    builtin: true,
+    rules: [],
+    autoColor: { source: 'property', psetName: 'CESIUM', propertyName: 'Stage' },
+  },
   // Auto-color by material
   {
     id: 'lens-auto-material',

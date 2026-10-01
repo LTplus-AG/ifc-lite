@@ -758,3 +758,40 @@ A successor row and a picked pair have **Accept** and **Not the same**. Accept w
 The strip above the results exports and imports the artifacts: **Export map** writes the accepted entries as an [identity-map sidecar](#the-sidecar), **Export lineage** writes the [lineage sidecar](#the-lineage-sidecar) (committed identity, splits, merges, and the accepted replacements), and **Import map** loads an identity-map sidecar into the accepted list. Both are pinned to the two files by the same `sha256:` digest the CLI's `--identity-out` writes, so a map exported here replays under `ifc-lite diff --identity-in` and an import written for other bytes is refused with the mismatch shown. A model restored from the viewer's cache has no bytes to digest and cannot be pinned; Compare says so instead of writing an unpinned file.
 
 For the full API, see the [`@ifc-lite/diff` README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/diff).
+
+## Save and reopen comparison setups
+
+**Save comparison setup** downloads a version 1 `.comparison.json` recipe.
+It records the A/base and B/head direction, data/geometry scope, excluded IFC
+classes, content matching option and authored key (`Tag` or `Pset.Property`).
+Omitting `keyProperty` means matching by `GlobalId`. Recipes contain no report
+rows or accepted identity decisions.
+
+**Open comparison setup** validates the recipe and configures the Compare
+panel. It never starts a comparison: click **Run comparison** when ready.
+Filename selectors use the original source filename rather than a renamed
+model label; each side must resolve exactly one loaded model. Tag-name selectors
+use the existing model tag vocabulary and also require exactly one model.
+Workflow file-slot selectors must be opened within a Flow workflow. Imported
+portable selectors remain intact when saving the setup again with the same
+model selections.
+
+A recipe reruns checks against current models. A saved comparison or exported
+Compare report is completed historical evidence for review and documents.
+Opening a completed report as a recipe is rejected, so these two operations
+cannot accidentally substitute stale evidence for a new check.
+
+
+## Reusable comparison setups
+
+In the viewer Compare panel, **Save comparison setup** downloads a version-1
+`.comparison.json` recipe. It preserves A/base and B/head direction, scope,
+excluded IFC classes, content matching and the authored key. **Open comparison setup**
+configures the current comparison and never executes it; each side must resolve
+exactly one distinct loaded model. Filename and tag-name selectors travel with
+the setup. Recipes using workflow file-slot selectors open through Flow.
+
+A recipe is separate from a Saved comparisons report: recipes rerun checks on
+selected models, while saved reports retain completed evidence and its original
+date. [Session automation](flow.md#file-slots-reports-and-portability) provides
+separate file inputs for both and can combine their native reports in one PDF.

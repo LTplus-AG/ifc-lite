@@ -26,6 +26,9 @@ import type { TranslationValue } from '../types';
  * not UI copy.
  */
 export const comparePanelEn = {
+  'comparePanel.setup.save': 'Save comparison setup',
+  'comparePanel.setup.open': 'Open comparison setup',
+  'comparePanel.setup.opened': 'Setup opened. Click Run comparison to execute it.',
   'comparePanel.saved.title': 'Saved comparisons',
   'comparePanel.saved.name': 'Comparison name',
   'comparePanel.saved.save': 'Save comparison',

@@ -9,6 +9,7 @@
  * for the canvas, but simpler (no code-editor dialog, no lacing).
  */
 
+import { FlowFilesField } from './FlowFilesField';
 import type { EntityData } from '@ifc-lite/sdk';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { TranslatableMessage } from '@/i18n/types';
@@ -81,6 +82,8 @@ export function FlowPlayerField({ field, value, error, storeys, onChange }: Flow
         {storeys.map((s) => <option key={s.globalId} value={s.globalId}>{s.name || s.globalId}</option>)}
       </select>
     );
+  } else if (kind === 'files') {
+    widget = <FlowFilesField field={field} value={value} onChange={onChange} />;
   } else if (kind === 'file') {
     widget = (
       <input
@@ -89,7 +92,9 @@ export function FlowPlayerField({ field, value, error, storeys, onChange }: Flow
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (!file) { onChange(undefined); return; }
-          void readFileAsText(file).then(onChange);
+          void readFileAsText(file).then(onChange).catch((cause: unknown) => {
+            console.error('[flow] could not read input file', cause); onChange(undefined);
+          });
         }}
       />
     );
@@ -107,11 +112,12 @@ export function FlowPlayerField({ field, value, error, storeys, onChange }: Flow
     widget = <span className="text-red-400">{t('flowPanel.player.error.unknownKind', { kind: String(kind as string) })}</span>;
   }
 
+  const Container = kind === 'files' ? 'div' : 'label';
   return (
-    <label className="block">
+    <Container className="block">
       <span className="text-muted-foreground">{field.input.label}</span>
       {widget}
       {error && <div className="text-2xs text-red-400">{t(error.labelKey, error.params)}</div>}
-    </label>
+    </Container>
   );
 }

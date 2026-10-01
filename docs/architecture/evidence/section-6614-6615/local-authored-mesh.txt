@@ -1,0 +1,28 @@
+@ifc-lite/viewer:test:     not ok 3 - alignment: an aligned model whose frame cannot be matched is drawn from the parameters
+@ifc-lite/viewer:test:       ---
+@ifc-lite/viewer:test:       duration_ms: 21.900667
+@ifc-lite/viewer:test:       location: '/Users/louistrue/.t3/worktrees/ifc-lite/t3code-beac5aeb/apps/viewer/src/store/slices/authoredFallbackMesh.test.ts:17:2518'
+@ifc-lite/viewer:test:       failureType: 'testCodeFailure'
+@ifc-lite/viewer:test:       error: |-
+@ifc-lite/viewer:test:         the added wall has a mesh
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:         0 !== 1
+@ifc-lite/viewer:test:
+@ifc-lite/viewer:test:       code: 'ERR_ASSERTION'
+@ifc-lite/viewer:test:       name: 'AssertionError'
+@ifc-lite/viewer:test:       expected: 1
+@ifc-lite/viewer:test:       actual: 0
+@ifc-lite/viewer:test:       operator: 'strictEqual'
+@ifc-lite/viewer:test:       stack: |-
+@ifc-lite/viewer:test:         assertFallbackWall (/Users/louistrue/.t3/worktrees/ifc-lite/t3code-beac5aeb/apps/viewer/src/store/slices/authoredFallbackMesh.test.ts:86:10)
+@ifc-lite/viewer:test:         TestContext.<anonymous> (/Users/louistrue/.t3/worktrees/ifc-lite/t3code-beac5aeb/apps/viewer/src/store/slices/authoredFallbackMesh.test.ts:110:5)
+@ifc-lite/viewer:test:         async Test.run (node:internal/test_runner/test:980:9)
+@ifc-lite/viewer:test:         async Suite.processPendingSubtests (node:internal/test_runner/test:677:7)
+@ifc-lite/viewer:test:       ...
+@ifc-lite/viewer:test: # [SpatialHierarchyBuilder] No buildings found in spatial hierarchy
+@ifc-lite/viewer:test: # [remesh] failed: Error: Re-mesh worker did not answer within 10000 ms
+@ifc-lite/viewer:test: #     at <anonymous> (/Users/louistrue/.t3/worktrees/ifc-lite/t3code-beac5aeb/apps/viewer/src/store/slices/authoredFallbackMesh.test.ts:127:50)
+@ifc-lite/viewer:test: #     at Object.remesh (/Users/louistrue/.t3/worktrees/ifc-lite/t3code-beac5aeb/apps/viewer/src/test/scripted-mesher.ts:41:24)
+@ifc-lite/viewer:test: # tests 15
+@ifc-lite/viewer:test: # pass 14
+@ifc-lite/viewer:test: # fail 1

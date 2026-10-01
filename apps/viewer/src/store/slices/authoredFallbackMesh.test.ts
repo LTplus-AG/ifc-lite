@@ -17,6 +17,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { installScriptedMesher, settleRemesh } from '@/test/scripted-mesher';
+import { requestRemesh } from '@/lib/remesh/remesh-service';
 
 const MODEL = 'ifc';
 const STOREY = 40;
@@ -75,8 +76,10 @@ const meshesOf = (id: number) => (useViewerStore.getState().models.get(MODEL)?.g
 async function addWall(): Promise<number> {
   const wall = useViewerStore.getState().addWall(MODEL, STOREY, WALL);
   assert.ok('expressId' in wall, 'error' in wall ? wall.error : 'no id');
-  await settleRemesh();
-  await settleRemesh();
+  // Share the request already started by addWall. An aligned model loads
+  // federationAlign on demand, which need not finish within two timer ticks.
+  await requestRemesh(useViewerStore.getState, MODEL, [wall.expressId], 'created');
+  await settleRemesh(); // let the authored fallback publish after the refusal
   return wall.expressId;
 }
 

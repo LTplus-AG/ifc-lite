@@ -10,11 +10,13 @@ import { IfcParser, extractGeoreferencingOnDemand, type IfcDataStore } from '@if
 import { cleanup, render, click, type, press } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
+import { en } from '@/i18n/en';
 import { exportModelStep } from '@/lib/export/model-step-export';
 import { GeoreferencingPanel } from './GeoreferencingPanel';
 
 const initialState = useViewerStore.getState();
 const ROTATION_LABEL = 'Model rotation in map coordinates';
+const DEGREES_UNIT = en['properties.georef.degUnit'];
 
 afterEach(() => {
   cleanup();
@@ -55,6 +57,7 @@ function mount(dataStore: IfcDataStore, editable = true): HTMLElement {
   assert.ok(georef?.mapConversion);
   useViewerStore.setState({
     ...fixtureModels({ ...fixtureModel('m'), ifcDataStore: dataStore }),
+    editEnabled: editable,
     georefMutations: new Map(),
   });
   const host = render(<GeoreferencingPanel georef={georef} schemaVersion="IFC4" modelId="m" enableEditing={editable} />);
@@ -96,7 +99,7 @@ for (const degrees of [30, -30]) {
     const input = openEditor(host, ROTATION_LABEL);
     type(input, String(degrees));
     press(input, 'Enter');
-    assert.match(valueButton(host, ROTATION_LABEL).getAttribute('aria-label') ?? '', new RegExp(`: ${degrees}°$`));
+    assert.equal(valueButton(host, ROTATION_LABEL).getAttribute('aria-label'), `${ROTATION_LABEL}: ${degrees}${DEGREES_UNIT}`);
     const conversion = await exportedGeoref(dataStore);
     const radians = degrees * Math.PI / 180;
     assert.ok(Math.abs((conversion.xAxisAbscissa ?? NaN) - Math.cos(radians)) < 1e-9);
@@ -110,7 +113,7 @@ for (const degrees of [30, -30]) {
 it('displays the same 45° direction for a non-unit vector and preserves its authored components (#6639)', async () => {
   const dataStore = await parse(fixture(2, 2));
   const host = mount(dataStore);
-  assert.equal(valueButton(host, ROTATION_LABEL).getAttribute('aria-label'), `${ROTATION_LABEL}: 45°`);
+  assert.equal(valueButton(host, ROTATION_LABEL).getAttribute('aria-label'), `${ROTATION_LABEL}: 45${DEGREES_UNIT}`);
   assert.equal(valueButton(host, 'XAxisAbscissa').getAttribute('aria-label'), 'XAxisAbscissa: 2');
   assert.equal(valueButton(host, 'XAxisOrdinate').getAttribute('aria-label'), 'XAxisOrdinate: 2');
   const input = openEditor(host, ROTATION_LABEL);

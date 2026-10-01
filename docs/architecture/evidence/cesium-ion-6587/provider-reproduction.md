@@ -35,7 +35,10 @@ A second client-side control, **5970044**, uses standard mapped geometry
 to carry the deck's full similarity transform. Actual corners agree with the
 source/GEOID99 oracle within 1.75 cm (quantization 3.08 cm), and the rendered
 deck follows the bridge without a display correction. See the [numeric proof](./mapped-deck-normalized-proof.json).
-A generic implementation remains pending.
+The generic Rust-backed SDK export is now verified as edited asset **5970221**:
+its stored geometry contracts exactly match the verified control, edited metadata
+is retained, and the genuine render follows the bridge. Final combined upload-UI
+acceptance remains pending; see the current record above.
 
 The report is retained as an investigation record, not a request to attribute
 fault to the provider. See [the updated acceptance record](./README.md).

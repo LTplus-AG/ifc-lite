@@ -347,10 +347,13 @@ to (44.401270, 56.905256, 7.774582), with project and map units both 0.001 metre
 The source dimensions and canonical map conversion, rather than a matching
 origin alone, remain the placement oracle for any proposed replacement.
 
-## Verdict
+## Current verdict
 
-Real upload, retained edits, completion handling and named asset navigation are
-demonstrated. Automatic placement acceptance remains **failed** for this public
-fixture. Keep that distinction explicit in review and user-facing copy; do not
-claim correct orientation from a matching origin, silently rewrite the IFC to
-work around the service, or treat the fork's best-effort heading as verified.
+The unchanged-source and CRS-override routes above failed placement acceptance.
+The explicit standards-based compatibility export passes the independent source
+and actual tiled-geometry checks for both regression models, with retained edits
+and genuine Cesium renders. The production SDK deck route is asset **5970221**;
+the production viewer Infra-Bridge route is **5970083**. Final combined upload-UI
+acceptance and its PR checks remain pending. These successful client-side routes
+supersede the earlier blocker; they do not certify every IFC representation or
+attribute the original mismatches to a provider defect.

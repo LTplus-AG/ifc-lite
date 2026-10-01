@@ -22,7 +22,7 @@ the unchanged Rust tree is `14b997e32f528eb3a916b6c320c9cebb901bafbe`.
 No artifacts were copied between builds. These observations apply to those
 frozen sources, not later main commits.
 
-`source-correctness/source-qualification.json` is the historical premeasurement
+`source-correctness/source-qualification.json.gz` is the historical premeasurement
 receipt. It records four genuine staging-allocation assertion failures on the
 test-only baseline, the candidate's thirteen passing new cases, eight frozen
 baseline GPU-byte SHA controls, full root build and typecheck, and unchanged
@@ -110,15 +110,21 @@ for name, info in json.loads(Path('raw-file-index.json').read_text()).items():
 Run the independent analyzer against reconstructed packing v3:
 
 ```bash
-python /path/to/evidence/analyze.py cohorts/packing-v3 \
+python /tmp/packing-analyze.py cohorts/packing-v3 \
   6e9cb8da4cb9ee995121ba9a7d051e25b2ca62a3 > packing-derived.json
 ```
 
 **Exit 1 is expected:** it reports the interrupted cohort rather than silently
 dropping the invalid row. The analogous admission command uses
 `cohorts/affinity-v1` and `982da209b3a07da924d4c0af566aebbe7fe749e9` and also
-exits 1. The committed derived JSON retains the original capture paths.
-`artifact-manifest.json` verifies committed evidence files; the archive index
+exits 1. The committed derived JSON archives retain the original capture paths.
+Decompress the recorded analyzer before the commands above with
+`gzip -dc /path/to/evidence/analyze.py.gz > /tmp/packing-analyze.py`, and use
+`/tmp/packing-analyze.py` as the analyzer path. The `.json.gz` files expose the
+recorded results after decompression. All executable diagnostic helpers and raw
+JSON are archives, consistent with the existing evidence-only file contract;
+none is installed, imported or executed by the application or CI.
+`artifact-manifest.md` verifies committed evidence files; the archive index
 verifies reconstructed originals. Harnesses contain the original local paths,
 ports and CDP endpoint, so a new machine must configure its own builds, fixture
 server and browser before attempting new measurements.

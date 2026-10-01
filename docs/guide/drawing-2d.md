@@ -309,7 +309,7 @@ wheel movement to zoom; Trackpad pans with two-finger scrolling and zooms with a
 pinch or Ctrl/Cmd wheel. These controls also work in floating and popped-out
 Drawing panels.
 
-### DXF Underlays
+### DXF and PDF/Image Underlays
 
 Open **Underlays** to import DXF. Choose **Site plan** for CAD coordinates in IFC
 XY or map coordinates, or **Reference on current section** for a plan/elevation registered
@@ -335,13 +335,27 @@ layer controls apply in compatible 2D views. The independent 3D visibility
 control puts vector paths on their registered plane. The 3D overlay currently
 shows paths without hatches/text and uses opacity as an on/off gate.
 
-The PDF export dialog lists visible drawing content its writer cannot include. A
-vector PDF omits drawing markups and DXF reference underlays; a sheet PDF
-includes the underlays in its rasterized sheet image but still omits markups.
-When a sheet is active, its scale governs the PDF and the dialog explains why
-the scale cannot be changed there. DXF export asks for confirmation before it
-omits visible markups or reference underlays. Exports with none of those items
-continue directly.
+**Import PDF/image reference…** opens the existing Appearance reference workflow
+with the current cardinal plane suggested: Down uses IFC XY, Front uses IFC XZ,
+and Side uses IFC YZ. Choose the source or PDF page, calibrate a known distance,
+then explicitly place the reference. Underlays lists the committed raster
+references with visibility, opacity, locking and removal controls. See
+[Drawing references in 2D and 3D](appearance.md#drawing-references-in-2d-and-3d)
+for calibration, editing and registration persistence.
+
+Visible compatible references expand Fit and sheet bounds, including drawings
+with no cut polygons. SVG, PDF and Print include the mapped DXF vectors and
+committed raster references beneath the section geometry. Raw PDFs retain
+vector section strokes while including raster reference imagery; sheet PDFs
+retain the rasterized sheet layout. Four-corner raster placement, opacity and
+CAD layer visibility agree with the display.
+
+DXF exports include the visible mapped CAD vectors. Vertical section exports use
+local section coordinates; they are not map-georeferenced IFC XY drawings. DXF
+cannot embed the PDF/image raster references in this workflow, so the export
+menu lists their omission before continuing. PDF and DXF still report visible
+markup omissions. When a sheet is active, its scale governs PDF export and the
+dialog explains why the scale cannot be changed there.
 
 ### Annotation Tools
 

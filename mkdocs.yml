@@ -24,7 +24,10 @@ validation:
 # the next person finds it" are not the same thing.
 #
 # Declaring them here keeps `omitted_files: warn` meaningful for everything else.
+# The issue-scoped section implementation/acceptance record is linked from its
+# evidence README; keep it searchable without adding a temporary plan to site nav.
 not_in_nav: |
+  architecture/section-6614-6615-spec.md
   architecture/evidence/**
   research/**
 

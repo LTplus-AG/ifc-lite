@@ -1,0 +1,382 @@
+{
+  "date": "2026-10-01",
+  "checkout": "ab97764f42222177ac3c64b98f6aa2262c15a98a",
+  "deployment": "dpl_D9Z1NTZP4fQCNJFYAhtDiUy7A8R2",
+  "browserTarget": "https://www.ifclite.com/",
+  "scope": "Hosted v3.4.0, not a local checkout build. Synthetic DOM wheel/input events exercise real UI handlers.",
+  "zoom": {
+    "model": "building-architecture.ifc",
+    "rows": [
+      {
+        "after": "1100%",
+        "before": "1222%",
+        "defaultPrevented": true,
+        "test": {
+          "deltaY": 1,
+          "name": "tiny pixel"
+        }
+      },
+      {
+        "after": "1100%",
+        "before": "1222%",
+        "defaultPrevented": true,
+        "test": {
+          "deltaY": 100,
+          "name": "large pixel"
+        }
+      },
+      {
+        "after": "1344%",
+        "before": "1222%",
+        "defaultPrevented": true,
+        "test": {
+          "deltaY": 0,
+          "name": "zero"
+        }
+      },
+      {
+        "after": "1344%",
+        "before": "1222%",
+        "defaultPrevented": true,
+        "test": {
+          "deltaX": 100,
+          "deltaY": 0,
+          "name": "horizontal only"
+        }
+      },
+      {
+        "after": "1100%",
+        "before": "1222%",
+        "defaultPrevented": true,
+        "test": {
+          "ctrlKey": true,
+          "deltaY": 100,
+          "name": "Ctrl held"
+        }
+      },
+      {
+        "after": "1100%",
+        "before": "1222%",
+        "defaultPrevented": true,
+        "test": {
+          "deltaMode": 1,
+          "deltaY": 3,
+          "name": "line mode"
+        }
+      },
+      {
+        "after": "149%",
+        "before": "1222%",
+        "defaultPrevented": true,
+        "test": {
+          "count": 20,
+          "deltaY": 1,
+          "name": "20 tiny events"
+        }
+      }
+    ],
+    "status": "ready",
+    "url": "https://www.ifclite.com/",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) T3Code(Alpha)/0.0.44 Chrome/152.0.7977.130 Electron/44.4.2 Safari/537.36",
+    "viewport": {
+      "dpr": 2,
+      "h": 800,
+      "w": 1280
+    }
+  },
+  "sideProjection": {
+    "axis": "side",
+    "config": {
+      "creaseAngle": 30,
+      "includeHiddenLines": true,
+      "plane": {
+        "axis": "x",
+        "flipped": false,
+        "position": -10.371267020702362
+      },
+      "projectionAboveDepth": 0.001,
+      "projectionBelowDepth": 19.271267354488373,
+      "projectionDepth": 19.271267354488373,
+      "scale": 100
+    },
+    "inputs": [
+      ".ifc,.ifcx,.ifczip,.glb,.gltf,.las,.laz,.ply,.pcd,.e57,.pts,.xyz,.xml,.dxf,.bin,.png,.jpg,.jpeg,.tif,.tiff,.tfw,.tifw,.pgw,.pngw,.jgw,.jpgw,.wld,.prj",
+      ".ifc,.ifcx,.ifczip,.glb,.gltf,.las,.laz,.ply,.pcd,.e57,.pts,.xyz,.xml,.dxf,.bin,.png,.jpg,.jpeg,.tif,.tiff,.tfw,.tifw,.pgw,.pngw,.jgw,.jpgw,.wld,.prj",
+      ".json,application/json",
+      "",
+      ".dxf"
+    ],
+    "stats": {
+      "cutLineCount": 0,
+      "hiddenLineCount": 0,
+      "polygonCount": 0,
+      "processingTimeMs": 10.224999999627471,
+      "projectionLineCount": 18,
+      "silhouetteLineCount": 0,
+      "totalTriangles": 1106
+    },
+    "status": "ready",
+    "text": "e\nAuthor\nCommands…\nCtrl+K\nReposition\nReposition models and pointclouds\nSelect\nWalk\nTOOLS\nMeasure\nSection\nAnnotate\nMEASURE & MARK\nHome\nHome (isometric camera + fit)\nSCENE\nSORT: ELEVATION\nHIERARCHY\n6\n\nifc silly sample scene - project\n\nenvironment - site\n\nhouse - site\n\nSingle-family house\nhouse - building\n\norigin\nIfcBuildingElementProxy\n\ngeo-reference\nIfcBuildingElementProxy\nCLICK TO SELECT · CTRL TOGGLE\nSECTION\nDown\nFront\nSide\nFace\nBox\n-10.37\nm\nCap\nCut\n2D\nDrag the distance to move the cut · Esc to finish\nFRONT\nBACK\nTOP\nBTM\nRIGHT\nLEFT\n4.2m\nX\nZ\nY\nIFClite stores an action log on your device. The hosted viewer also sends anonymous product analytics unless you opt out in Privacy settings.\nPrivacy settings\nBUILDING-ARCHITECTURE.IFC\n\nIFC Model\n\nIFC4\nFILE INFORMATION\nFile Size\n220.3 KB\nLoaded At\n10/1/26, 12:37:54 PM\nParse Time\n6 ms\nLENGTH UNIT\nMillimeters (0.001)\nPROJECT INFORMATION\nName\nifc silly sample scene - project\nGlobalId\n2Ndyd$OSX7s9A04nc4lyye\nSTATISTICS\nTotal Entities\n444\nBuilding Storeys\n1\nElements with Geometry\n12\nMax Express ID\n980\nCLASSIFICATION SYSTEMS\nCCI Construction\nEPSG:32760\nEPSG:32760 - WGS 84 / UTM zone 60S\nEPSG\nPROJECTED CRS\nEPSG:32760\nCOORDINATE OPERATION\nE 729,013,349 N 9,063,992,685\nLOCATION\n-8.46229, 179.08012\n© CARTO, © OpenStreetMap contributors\nClick map to place pin\nGoogle Maps\nOpenStreetMap\nGoogle Earth\nToggle style\nCoordinate\nCheck\nQuantify\nAutomate\nSite\nAuthor\nDrawing\nDrawing\nSide 50.0%\nMatch 3D\nExport\nSelect\nDistance\nArea\nText\nCloud\nSymbolic\nAnnotations\nProjection\n3D overlay\nPrint preview\nOverrides\nSheet\nUnderlays\nScan\n41246%\nOVERRIDES\nSHEET\nUNDERLAYS\nSCAN\nImport DXF...\n\nImport a DXF drawing (site plan, survey, coordination set) as a reference layer under the 2D section. You can also drop .dxf files anywhere on the viewport. Underlays render on plan views; use Placement or Center on model to position them.\n\nDrag to pan · Scroll to zoom · Click markup to select\nNo markup\nReady\n12 elements\nWebGPU\nModel\nPresent\nDefault\nv3.4.0\nifclite.dev →"
+  },
+  "pdfImport": {
+    "buttons": [
+      {
+        "disabled": false,
+        "label": "Reposition",
+        "text": "RepositionReposition models and pointclouds"
+      },
+      {
+        "disabled": false,
+        "label": "Hide geo-reference",
+        "text": ""
+      },
+      {
+        "disabled": false,
+        "label": "Isolate geo-reference",
+        "text": ""
+      },
+      {
+        "disabled": false,
+        "label": "Actions for geo-reference",
+        "text": ""
+      },
+      {
+        "disabled": false,
+        "label": "Show model basepoints",
+        "text": ""
+      },
+      {
+        "disabled": false,
+        "label": null,
+        "text": "Place as reference"
+      },
+      {
+        "disabled": false,
+        "label": null,
+        "text": "Point A"
+      },
+      {
+        "disabled": false,
+        "label": null,
+        "text": "Point B"
+      },
+      {
+        "disabled": false,
+        "label": "Choose calibration landmarks on page",
+        "text": ""
+      },
+      {
+        "disabled": true,
+        "label": null,
+        "text": "Place reference"
+      },
+      {
+        "disabled": false,
+        "label": "Point Cloud",
+        "text": ""
+      }
+    ],
+    "images": [
+      {
+        "alt": "",
+        "h": 54,
+        "w": 54
+      },
+      {
+        "alt": "Page 1 of control-text-accepted.pdf",
+        "h": 240,
+        "w": 173
+      },
+      {
+        "alt": "Source image to calibrate",
+        "h": 356,
+        "w": 256
+      }
+    ],
+    "inputs": [
+      {
+        "label": "PDF page number",
+        "value": "1"
+      },
+      {
+        "label": "PDF crop left margin (mm)",
+        "value": "0"
+      },
+      {
+        "label": "PDF crop top margin (mm)",
+        "value": "0"
+      },
+      {
+        "label": "PDF crop right margin (mm)",
+        "value": "0"
+      },
+      {
+        "label": "PDF crop bottom margin (mm)",
+        "value": "0"
+      },
+      {
+        "label": "Distance A–B (m)",
+        "value": ""
+      },
+      {
+        "label": "Rotation (°)",
+        "value": "0"
+      },
+      {
+        "label": "Point A · X (m)",
+        "value": "0"
+      },
+      {
+        "label": "Point A · Y (m)",
+        "value": "0"
+      },
+      {
+        "label": "Point A · Z (m)",
+        "value": "0"
+      }
+    ],
+    "text": "File\nHome\nView\nElements\nAnalyze\nAuthor\nCommands…\nCtrl+K\nReposition\nReposition models and pointclouds\nSelect\nWalk\nTOOLS\nMeasure\nSection\nAnnotate\nMEASURE & MARK\nHome\nHome (isometric camera + fit)\nSCENE\nSORT: ELEVATION\nHIERARCHY\n6\n\nifc silly sample scene - project\n\nenvironment - site\n\nhouse - site\n\nSingle-family house\nhouse - building\n\norigin\nIfcBuildingElementProxy\n\ngeo-reference\nIfcBuildingElementProxy\nCLICK TO SELECT · CTRL TOGGLE\nSECTION\nDown\nFront\nSide\nFace\nBox\n-10.37\nm\nCap\nCut\n2D\nDrag the distance to move the cut · Esc to finish\nFRONT\nBACK\nTOP\nBTM\nRIGHT\nLEFT\n4.2m\nX\nZ\nY\nIFClite stores an action log on your device. The hosted viewer also sends anonymous product analytics unless you opt out in Privacy settings.\nPrivacy settings\nAppearance\n\nImages and PDF pages across the surfaces you choose.\n\nApply to IFC\nPlace as reference\nCreate from scan\nAlign scan\nSource\n\ncontrol-text-accepted.pdf · page 1\n\n288 × 400 px\n\nUpload another source\n\nPNG/JPEG or one PDF page · PDF max 64 MB\n\nPDF page\n\ncontrol-text-accepted.pdf\n\nPage\nof 2\nPage rotation\nOriginal\n90° clockwise\n180°\n90° counterclockwise\nImage quality\nDraft · 72 dpi\nStandard · 144 dpi\nFine · 216 dpi\nHigh · 300 dpi\n\nDrag over the page to crop. Escape cancels the selection.\n\nPage crop\nUse full page\nLeft (mm)\nTop (mm)\nRight (mm)\nBottom (mm)\n\nMargins use paper millimetres. Drawing scale is calibrated separately.\n\nRegistered drawings\n\nRegistered drawings will appear here. You can also restore a saved registration.\n\nDrawing scale\n\nChoose two known points, then enter their distance in the building. The same scale applies across all selected objects.\n\nPoint A\nPoint B\n\nClick to place A and B. With the page focused, use arrow keys to move the cursor and Enter to place a point.\n\nDistance A–B (m)\nChoose two distinct points and enter a positive measured distance.\nMapping\n\nPlace point A at the model coordinates below. Drawing scale comes from the measured span.\n\nProjection plane\nXY · horizontal\nXZ · vertical\nYZ · vertical\nAlignment\nEnter valid numbers in the highlighted fields before applying.\nDiscard\nPlace reference\nCoordinate\nCheck\nQuantify\nAutomate\nSite\nAuthor\nDrawing\nDrawing\nSide 50.0%\nMatch 3D\nExport\nSelect\nDistance\nArea\nText\nCloud\nSymbolic\nAnnotations\nProjection\n3D overlay\nPrint preview\nOverrides\nSheet\nUnderlays\nScan\n41246%\nOVERRIDES\nSHEET\nUNDERLAYS\nSCAN\nImport DXF...\nUnderlays render on plan (top-down) sections. Switch the section to a plan view to see them.\n2D\n3D\nsection-spec-6615.dxf\n1 layers · 1 paths · 0 texts\nOpacity (2D)\n100%\nAlign to model georeference (auto)\nLayers\nPlacement\nDrag to pan · Scroll to zoom · Click markup to select\nNo markup\nReady\n12 elements\nWebGPU\nModel\nPresent\nDefault\nv3.4.0\nifclite.dev →"
+  },
+  "pdfReference": {
+    "axis": "side",
+    "canvas": {
+      "h": 220,
+      "w": 1984
+    },
+    "changedPixels": 17121,
+    "method": "Appearance file input, UI calibration and Place reference; store action toggles visibility; compare 2D canvas RGBA pixels",
+    "reference": {
+      "assetId": "7567b67c4c3ba6bcc120d8f62ac770a0aa97cd96f95df6d3ed9904f15b0dfb48",
+      "calibration": {
+        "distanceMetres": 5,
+        "planeNormal": [
+          1,
+          0,
+          0
+        ],
+        "rasterSize": [
+          288,
+          400
+        ],
+        "rasterToSource": [
+          0,
+          0.25,
+          0.25,
+          0,
+          10,
+          20
+        ],
+        "sourcePoints": [
+          [
+            59.889037815033724,
+            38
+          ],
+          [
+            59.889037815033724,
+            74
+          ]
+        ],
+        "worldAnchor": [
+          0,
+          0,
+          0
+        ],
+        "worldDirection": [
+          0,
+          1,
+          0
+        ]
+      },
+      "cornersIfcWorld": [
+        [
+          0,
+          -2.5,
+          6.929033029865796
+        ],
+        [
+          0,
+          7.5,
+          6.929033029865796
+        ],
+        [
+          0,
+          7.5,
+          -6.959855859023094
+        ],
+        [
+          0,
+          -2.5,
+          -6.959855859023094
+        ]
+      ],
+      "frameKey": "{\"spatialReference\":{\"source\":{\"axes\":[\"east\",\"up\",\"south\"],\"horizontalUnitToMetres\":1,\"verticalUnitToMetres\":1},\"horizontal\":\"EPSG:32760\",\"localToProjected\":{\"kind\":\"local-projected-affine\",\"eastings\":729013.3488297004,\"northings\":9063992.684697364,\"orthogonalHeight\":1.3000000000000012,\"xAxisAbscissa\":0.4999999999999999,\"xAxisOrdinate\":0.8660254037844387,\"scaleX\":1,\"scaleY\":1,\"scaleZ\":1}},\"originShift\":{\"x\":0,\"y\":0,\"z\":0},\"rotation\":0}",
+      "id": "3d05c9ef-16a7-4d94-ae45-f281ed624372",
+      "locked": false,
+      "opacity": 1,
+      "pdf": {
+        "documentSha256": "529c5fc262bf8948af31df1c10e60b898f37fecac1c4331143a51932bbf95d51",
+        "recipe": {
+          "cropPoints": [
+            0,
+            0,
+            144,
+            200
+          ],
+          "effectiveDpi": 144,
+          "page": {
+            "heightPoints": 200,
+            "intrinsicRotation": 90,
+            "pageNumber": 1,
+            "pdfToPage": [
+              0,
+              2,
+              2,
+              0,
+              -40,
+              -20
+            ],
+            "userUnit": 2,
+            "viewBox": [
+              10,
+              20,
+              110,
+              92
+            ],
+            "widthPoints": 144
+          },
+          "paperSizeMetres": [
+            0.0508,
+            0.07055555555555555
+          ],
+          "pixelHeight": 400,
+          "pixelToPdf": [
+            0,
+            0.25,
+            0.25,
+            0,
+            10,
+            20
+          ],
+          "pixelWidth": 288,
+          "requestedDpi": 144,
+          "rotation": 0
+        }
+      },
+      "sourceId": "pdf:7df2c72a-68e4-4957-92fc-7e5c33a96729",
+      "visible": true
+    },
+    "source": "docs/architecture/evidence/pdf-fidelity-report/control-text-accepted.pdf"
+  },
+  "dxf": {
+    "import": "Valid synthetic one-line DXF via Underlays input on Side",
+    "result": "Imported 1 layer, 1 path; UI says Underlays render on plan (top-down) sections. Switch the section to a plan view to see them.",
+    "centerButton": {
+      "disabled": true,
+      "label": "Center on model (switch to a plan view first)"
+    }
+  },
+  "limitations": [
+    "Full-page preview_snapshot repeatedly failed; canvas PNGs were read directly from the real drawing canvas.",
+    "No physical trackpad gesture, browser-default zoom oracle, original reporter model, exporter-matched wall/window visual oracle, local build, or automated repo tests in this analysis run."
+  ]
+}

@@ -34,11 +34,12 @@ export interface DrawingExportMenuProps {
   activeSheet: DrawingSheet | null;
   markupCounts: DrawingExportContent['markupCounts'];
   visibleUnderlayCount: number;
+  visibleRasterReferenceCount?: number;
 }
 
 export function DrawingExportMenu({
   hasDrawing, compact, onExportSvg, onExportDxf, onExportPdf, onPrint,
-  displayedScale, sheetEnabled, activeSheet, markupCounts, visibleUnderlayCount,
+  displayedScale, sheetEnabled, activeSheet, markupCounts, visibleUnderlayCount, visibleRasterReferenceCount = 0,
 }: DrawingExportMenuProps) {
   const { t } = useTranslation();
   const { confirmDialog } = useDialogs();
@@ -47,6 +48,7 @@ export function DrawingExportMenu({
   const content: DrawingExportContent = {
     markupCounts,
     visibleUnderlayCount,
+    visibleRasterReferenceCount,
     sheetScale: sheetEnabled && activeSheet ? activeSheet.scale.factor : null,
   };
   const pdfOmissions = drawingExportOmissions(content, 'pdf');

@@ -34,7 +34,7 @@ export function useDrawingViewModel() {
   const { geometryResult } = runtime;
 
   const sourceDrawing = useViewerStore((s) => s.drawing2D);
-  const { drawing: rasterDrawing, hasReferences: hasRasterReferences } = useDrawingWithReferences(sourceDrawing);
+  const { drawing: rasterDrawing, hasReferences: hasRasterReferences, referenceCount: visibleRasterReferenceCount } = useDrawingWithReferences(sourceDrawing);
   const setDrawing = useViewerStore((s) => s.setDrawing2D);
   const status = useViewerStore((s) => s.drawing2DStatus);
   const setDrawingStatus = useViewerStore((s) => s.setDrawing2DStatus);
@@ -289,7 +289,7 @@ export function useDrawingViewModel() {
 
   return {
     runtime, geometryResult, models,
-    drawing, sourceDrawing, hasReferences, dxfUnderlayData, status, progress, progressPhase, drawingError,
+    drawing, sourceDrawing, hasReferences, visibleRasterReferenceCount, dxfUnderlayData, status, progress, progressPhase, drawingError,
     displayOptions, unitDisplayOverrides, typeVisibility,
     activePresetId, overridesEnabled, overrideEngine, entityColorMap,
     dxfUnderlays, pointCloudClassMask,

@@ -51,10 +51,10 @@ function sheet(): DrawingSheet {
 }
 
 describe('drawing export notices (#5850)', () => {
-  it('lists omitted markups and underlays before vector PDF export without changing the scale argument', () => {
+  it('lists omitted markups while including vector/raster underlays in PDF (#6615)', () => {
     const scales: Array<number | undefined> = [];
     render(<DrawingExportMenu {...props({
-      markupCounts: { ...emptyCounts, texts: 1 }, visibleUnderlayCount: 1,
+      markupCounts: { ...emptyCounts, texts: 1 }, visibleUnderlayCount: 1, visibleRasterReferenceCount: 1,
       onExportPdf: (scale) => scales.push(scale),
     })} />);
     openMenu();
@@ -62,7 +62,7 @@ describe('drawing export notices (#5850)', () => {
     const dialog = document.body.querySelector('[role="dialog"]');
     assert.ok(dialog);
     assert.match(dialog.textContent ?? '', /drawing markups/);
-    assert.match(dialog.textContent ?? '', /visible DXF reference underlays/);
+    assert.doesNotMatch(dialog.textContent ?? '', /reference underlays/);
     const exportButton = [...dialog.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Export');
     assert.ok(exportButton);
     click(exportButton);
@@ -85,7 +85,7 @@ describe('drawing export notices (#5850)', () => {
     let exports = 0;
     render(<>
       <DrawingExportMenu {...props({
-        markupCounts: { ...emptyCounts, measurements: 1 }, visibleUnderlayCount: 1,
+        markupCounts: { ...emptyCounts, measurements: 1 }, visibleUnderlayCount: 1, visibleRasterReferenceCount: 1,
         onExportDxf: () => { exports++; },
       })} />
       <ConfirmDialogHost />
@@ -95,7 +95,7 @@ describe('drawing export notices (#5850)', () => {
     const first = document.body.querySelector('[role="alertdialog"]');
     assert.ok(first, 'DXF notice is shown before download');
     assert.match(first.textContent ?? '', /drawing markups/);
-    assert.match(first.textContent ?? '', /visible DXF reference underlays/);
+    assert.match(first.textContent ?? '', /visible PDF\/image reference underlays/);
     assert.equal(exports, 0);
     const cancel = [...first.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Cancel');
     assert.ok(cancel);
@@ -114,7 +114,7 @@ describe('drawing export notices (#5850)', () => {
 
   it('exports immediately when the DXF writer has nothing to omit', () => {
     let exports = 0;
-    render(<DrawingExportMenu {...props({ onExportDxf: () => { exports++; } })} />);
+    render(<DrawingExportMenu {...props({ visibleUnderlayCount: 1, onExportDxf: () => { exports++; } })} />);
     openMenu();
     selectItem('Download DXF');
     assert.equal(exports, 1);

@@ -6,7 +6,6 @@
   "apps/viewer/src/components/ui/alert.tsx": 1,
   "apps/viewer/src/components/ui/combo-input.tsx": 4,
   "apps/viewer/src/components/viewer/appearance/AppearanceAssignments.test.tsx": 1,
-  "apps/viewer/src/components/viewer/appearance/AppearanceReferenceLibrary.tsx": 2,
   "apps/viewer/src/components/viewer/appearance/AppearanceScanPanel.tsx": 1,
   "apps/viewer/src/components/viewer/bcf/BCFPanelStatus.tsx": 1,
   "apps/viewer/src/components/viewer/bcf/BCFServerDialog.tsx": 1,

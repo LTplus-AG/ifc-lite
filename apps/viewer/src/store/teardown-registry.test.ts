@@ -28,6 +28,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * field on every file swap.
  */
 const PINNED_SESSION_RESET_KEYS: readonly string[] = [
+  'appearanceReferenceEntry', // #6615 unopened section requests cannot outlive their live model session
   'workspaceMode', 'session', // #6232 authoring session: it names one model and storey
   'documentPanelVisible', // #4594 documents: templates survive, the panel closes
   'flowPanelVisible', 'flowRunning', 'flowLastRun', 'flowLastError', 'flowLastRunWindow', // #5167 flow: graphs survive, the last run holds handles of the outgoing model
@@ -95,6 +96,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
 
 /** The same, for `all-models-cleared`. */
 const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
+  'appearanceReferenceEntry', // #6615 unopened section requests cannot outlive their live model session
   'workspaceMode', 'session', // #6232 authoring session: it names one model and storey
   'flowLastRun', 'flowLastError', 'flowLastRunWindow', // #5167 flow: the last run's outputs hold handles into the cleared models
   'chartSelectionRevision', 'chartSlice', 'chartSliceSource', 'chartSliceBuckets', 'chartVisibilityOwned', 'chartVisibilityRevision', // #3944 charts
@@ -214,6 +216,7 @@ function modelRemovedFixture() {
  * `owns` list fails even when no scope emits it under an empty state.
  */
 const PINNED_OWNED_KEYS: readonly string[] = [
+  'appearanceReferenceEntry', // #6615 unopened section requests cannot outlive their live model session
   'workspaceMode', 'session', // #6232 authoring session: it names one model and storey
   'authoringDefaults', // #6232 M2: type / layer-set picks name one model's entities; dimensions survive
   'documentPanelVisible', // #4594 documents

@@ -54,24 +54,40 @@ The integration follows the [Cesium ion upload API](https://cesium.com/learn/ion
 and adapts the MPL-2.0 upload feature from
 [GeoBIM's published IFClite fork](https://github.com/christof2304/ifc-lite/releases/tag/geobim-2026-09-24).
 
-### Placement acceptance fixture
+### Placement acceptance evidence
 
-The catalogued `tests/models/buildingsmart/Infra-Bridge.ifc` (fetch with
-`pnpm fixtures`) is an IFC4 model exported by SketchUp 2024 / IFC-manager 5.3.3.
-Its `IfcProjectedCRS` is EPSG:32760 with a millimetre `MapUnit`.
-`IfcMapConversion` declares eastings `729011225.8823584`, northings
-`9063960607.644705`, height `0`, axis `(1, 0)`, and scale `1`.
-After converting the map units to metres, an independent PROJ transformation
-places that origin at longitude `179.08012899993923`, latitude
-`-8.462489999999077`. Use this origin when checking Ion placement; interpreting
-those map coordinates as metres would be incorrect.
+The catalogued `tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc`
+(fetch with `pnpm fixtures`) is an IfcOpenShell-authored IFC4X3_ADD2 example.
+It declares EPSG:32610 and metre project units, eastings `545991.679663973`, northings
+`4184941.96970872`, height `0`, axis `(-0.0977396728779572, 0.995212015776392)`,
+and scale `0.9996`. Independent PROJ conversion places its map origin at
+longitude `-122.47750280356061`, latitude `37.81071150267693`.
 
-For live acceptance, upload this original fixture to an authorized test account,
-wait for tiling to finish, and verify its placement and element properties.
-Then edit an element's `Name` in IFClite and confirm a second upload carries the
-edit. Check cancellation and a rejected token separately. Record the asset IDs
-and screenshots with the PR; local serialization tests do not prove Ion's tiling
-or georeferencing behavior.
+On 2026-10-01, an authorized test account accepted both the original IFC
+(3D Tiles asset `5969409`, collection `5969408`) and the edited-source exporter
+output (`5969447`, collection `5969446`) through the actual upload transport.
+Both reached `COMPLETE`, 100%. Export preserved all 33 entities, reported no
+warnings, and changed the file from 1,919 to 1,907 bytes. The original tileset's
+ECEF origin resolves to the independently expected longitude and latitude.
+The declared vertical CRS is EPSG:5703: a zero orthometric height does not imply
+zero ellipsoidal height. Vertical placement needs an independent datum
+transformation before it can be claimed as verified.
+
+This confirms API transport, serialization and horizontal placement for this
+fixture; it does not substitute for a Chrome UI screenshot or verification of
+an uploaded pending edit. For UI acceptance, follow the named **View … in
+Cesium ion** button, check placement and element properties, then edit a
+`Name` attribute and confirm a second upload carries it. Check cancellation
+and a rejected token separately. Record that evidence with the PR.
+
+`tests/models/buildingsmart/Infra-Bridge.ifc` is a separate real SketchUp 2024 /
+IFC-manager 5.3.3 IFC4 model with EPSG:32760 and millimetre map units. Its
+independently expected origin is longitude `179.08012899993923`, latitude
+`-8.462489999999077`. Ion rejected tiling at 41% for both its unchanged original
+and its serialized upload in the same account. The export's entire DATA section
+was byte-identical to the original (953 entities, no warnings). This fixture
+therefore does not establish successful Ion placement; no source-format change
+was made to work around the unexplained service rejection.
 
 ## Quick Start: CDN Export (No Build Required)
 

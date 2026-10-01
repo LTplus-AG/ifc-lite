@@ -72,14 +72,17 @@ normalized control's geometry and tile transforms.
 
 The catalogued `tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc`
 is an IfcOpenShell-authored IFC4X3_ADD2 model with map rotation and scale. An
-actual production SDK compatibility export retained an edited slab `Name` and
-`GlobalId`; its stored tiled geometry matches the independently checked mapped
-control. Native Cesium rendering places the deck north–south along Golden Gate
-Bridge without a display correction. These are bounded fixture checks, not a
-claim that every IFC coordinate layout or authored CRS is supported. Datum
+actual production SDK compatibility export and a combined viewer upload retained
+an edited slab `Name` and `GlobalId`; their stored tiled geometry matches the
+independently checked mapped control. The visually verified native Cesium control
+places the deck north–south along Golden Gate Bridge without a display correction.
+The combined upload also completed native Cesium rendering with identical geometry
+and tile transforms; its screenshot capture was unavailable. These are bounded
+fixture checks, not a claim that every IFC coordinate layout or authored CRS is
+supported. Datum
 accuracy depends on the authored CRS and the tiler's transformation.
 
-The [acceptance evidence](https://github.com/LTplus-AG/ifc-lite/blob/d23abbac174b4c1d26d80c174bfde2e8b6366fb7/docs/architecture/evidence/cesium-ion-6587/README.md)
+The [acceptance evidence](https://github.com/LTplus-AG/ifc-lite/blob/9fdc6b889/docs/architecture/evidence/cesium-ion-6587/README.md)
 retains original failed controls, corrected compatibility exports, independent
 geometry checks, actual metadata and screenshots. Mounted regressions exercise
 the selected model, pending edits, IFC2X3 schema retention, and refusal before

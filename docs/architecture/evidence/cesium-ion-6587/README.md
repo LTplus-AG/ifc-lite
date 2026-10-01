@@ -69,6 +69,36 @@ It did not pass placement acceptance and is not a tested replacement.
 
 Supported tiler choices: [Cesium's tiler selection guide](https://cesium.com/learn/bim-cad/tiling-bim-cad-models/bim-cad-tiler-selection-guide/).
 
+## Documented input CRS experiment
+
+Asset **5969729** (collection 5969728) preserved the original IFC and supplied
+the documented `inputCrs` option as WKT for a `DerivedProjectedCRS`, using the
+EPSG:9624 affine conversion and EPSG:32610 base CRS. An independently evaluated
+PROJ conversion included the authored rotation and scale. This is a test-only
+option, not behavior shipped by the upload implementation.
+
+An initial derived CRS control, **5969702**, tiled in the Pacific. Comparing its
+actual center with PROJ showed that the tiler applies the IFC's Eastings and
+Northings before evaluating the override. The second experiment accounted for
+that observed input frame in the affine translation. It reached `COMPLETE`,
+100%, and its actual tiles rendered along the Golden Gate Bridge without a
+CesiumJS model-matrix adjustment.
+
+![Actual tiles from the anchored input CRS experiment following the bridge](anchored-crs-control.png)
+
+Its bounding-sphere center was longitude -122.47856287106258, latitude
+37.81979588145428, ellipsoidal height 67.41936655631595 metres. The horizontal
+center agrees with the independent source midpoint within a millimetre.
+This is a separate CesiumJS rendering of the actual output, not the signed-in
+ion dashboard. It establishes a promising horizontal correction for this
+fixture; it does not verify vertical datum conversion, units other than metres,
+already transformed source geometry, or other IFC georeferencing variants.
+The source declares EPSG:5703 as its vertical CRS, and its elevation still needs
+independent verification before claiming full placement acceptance.
+
+Option contract: [Cesium ion OpenAPI](https://ion.cesium.com/openapi.yaml).
+Affine operation: [PROJ affine transformation documentation](https://proj.org/en/stable/operations/transformations/affine.html).
+
 ## Verdict
 
 Real upload, retained edits, completion handling and named asset navigation are

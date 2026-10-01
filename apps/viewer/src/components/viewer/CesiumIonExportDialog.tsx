@@ -58,6 +58,7 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
     controller.current = abort;
     setAssetId(undefined);
     setPhase('serialize');
+    let exportedAssetName = '';
     try {
       // Resolve again at invocation: never export a removed model or stale view.
       const state = useViewerStore.getState();
@@ -65,6 +66,9 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
       if (!model?.ifcDataStore || model.schemaVersion === 'IFC5' || model.sourceSchema) {
         return { success: false, message: t('ionUpload.noModel') };
       }
+      // Preserve the invocation's export identity through asynchronous failures.
+      exportedAssetName = model.name.replace(/\.[^.]+$/, '');
+      const fileName = modelExportFilename(model.name, 'ifc');
       const result = await exportModelStep({
         modelId: selectedId, dataStore: model.ifcDataStore,
         mutationView: state.getMutationView(selectedId) ?? undefined,
@@ -88,16 +92,16 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
         return { success: false, message: t('ionUpload.texturesUnsupported') };
       }
       const response = await upload({
-        token, name: model.name.replace(/\.[^.]+$/, ''),
-        fileName: modelExportFilename(model.name, 'ifc'),
+        token, name: exportedAssetName,
+        fileName,
         bytes: typeof result.content === 'string' ? new TextEncoder().encode(result.content) : result.content,
         signal: abort.signal, onPhase: next => { if (mounted.current) setPhase(next); },
       });
-      if (mounted.current) { setAssetId(response.assetId); setAssetName(response.name ?? model.name.replace(/\.[^.]+$/, '')); }
+      if (mounted.current) { setAssetId(response.assetId); setAssetName(response.name ?? exportedAssetName); }
       return { success: true, message: t('ionUpload.accepted') };
     } catch (error) {
       if (mounted.current && error instanceof IonUploadError) {
-        setAssetId(error.assetId); setAssetName(selected?.name.replace(/\.[^.]+$/, '') ?? '');
+        setAssetId(error.assetId); setAssetName(exportedAssetName);
       }
       if (abort.signal.aborted) return { success: false, message: t('ionUpload.cancelled') };
       // Serialization errors can contain model content; show a safe explanation.

@@ -5,6 +5,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, test, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
@@ -127,4 +128,37 @@ test('ion completion keeps a long asset name intact and accessible in the primar
   assert.equal(link.querySelector('svg')?.getAttribute('aria-hidden'), 'true');
   assert.equal(link.target, '_blank');
   assert.equal(link.getAttribute('rel'), 'noopener noreferrer');
+});
+
+
+test('ion partial recovery names the invocation-resolved export despite model changes (#6587)', async () => {
+  const model = { ...fixtureModel('rendered.ifc'), ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
+  useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), georefMutations: new Map(),
+    scheduleData: null, scheduleIsEdited: false, scheduleSourceModelId: null });
+  let sent: IonUploadInput | undefined;
+  let failUpload: ((error: IonUploadError) => void) | undefined;
+  render(<CesiumIonExportDialog surface="ribbon" upload={async input => {
+    sent = input;
+    return new Promise<{ assetId: number }>((_, reject) => { failUpload = reject; });
+  }} />);
+  click(button('Upload to Cesium ion'));
+  type(document.querySelector<HTMLInputElement>('#ion-token')!, 'private-test-token');
+  // A model replacement can precede React's render: export resolves the current
+  // store at invocation, while the old event handler still holds rendered.ifc.
+  act(() => {
+    useViewerStore.setState({ models: new Map([[model.id, { ...model, name: 'exported.ifc' }]]) });
+    button('Upload').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  });
+  await waitFor(() => !!sent && !!failUpload, 'upload did not start');
+  assert.equal(sent!.fileName, 'exported.ifc');
+  assert.equal(sent!.name, 'exported');
+  const parsed = await new IfcParser().parseColumnar(sent!.bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  assert.equal(parsed.entities.getName(FIXTURE_WALL_A), 'Wall A');
+  act(() => {
+    const other = { ...model, id: 'other', name: 'other.ifc' };
+    useViewerStore.setState({ models: new Map([[model.id, { ...model, name: 'renamed-after-upload.ifc' }], [other.id, other]]), activeModelId: other.id });
+    failUpload!(new IonUploadError('upload', 101));
+  });
+  await waitFor(() => !!document.querySelector('a[href="https://ion.cesium.com/assets/101"]'), 'partial asset link missing');
+  assert.equal(document.querySelector('a[href="https://ion.cesium.com/assets/101"]')?.textContent?.trim(), 'View exported in Cesium ion');
 });

@@ -11,6 +11,7 @@ import { DEFAULT_MAPPING } from '@ifc-lite/semantic';
 import { SemanticIdentityControls } from './SemanticIdentityControls';
 import { SemanticProfileControls } from './SemanticProfileControls';
 import { SemanticResults } from './SemanticResults';
+import { SemanticValidationSummary } from './SemanticValidationSummary';
 import { previewProjection, applyProjection, PROJECTION_MAPPINGS, type ProjectionPlan, type ConflictPolicy } from '@/lib/semantic/projection';
 import type { ValidationExecutor } from '@/lib/semantic/useSemanticPilot';
 import { PILOT_QUERY, pilotDocument } from '@/lib/semantic/demo';
@@ -98,10 +99,11 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
       <button className={button} onClick={() => { setBearer(''); setHost(''); pilot.restoreWorkspace(payload); }}>{t('semantic.importWorkspace')}</button>
       {pilot.queries.map(preset => <button className={button} key={preset.id} onClick={() => { setEndpoint(preset.endpoint); setQuery(preset.query ?? ''); setMode(preset.kind === 'select' ? 'sparql' : preset.kind); setMapping(preset.mapping ?? DEFAULT_MAPPING); setHost(''); setBearer(''); }}>{preset.id}: {preset.endpoint}</button>)}
     </details>
-    {pilot.results && <SemanticResults results={pilot.results} mapping={mapping} revisions={pilot.revisions} scope={scope || undefined} onError={error => pilot.setError(String(error))} />}
+    {pilot.results && <SemanticResults results={pilot.results} mapping={pilot.resultMapping ?? mapping} revisions={pilot.revisions} scope={scope || undefined} onError={error => pilot.setError(String(error))} />}
     {pilot.diagnostic && <output className="block text-sm">{pilot.diagnostic}</output>}
     {pilot.error && <p role="alert" className="text-sm text-destructive">{pilot.error}</p>}
     {pilot.graph && !pilot.document && <details open><summary>{t('semantic.graph')}</summary>
+      <SemanticValidationSummary report={pilot.report} />
       <label className="block text-sm">{t('semantic.graph')}<textarea className={control} rows={10} value={pilot.graph} onChange={e => pilot.setGraph(e.target.value)} /></label>
       <button className={button} disabled={pilot.busy} onClick={() => void pilot.validate(true)}>{t('semantic.validateGraph')}</button>
       <ul>{pilot.findings.map((finding, index) => <li key={index} className="text-xs break-all">{finding.engine}: {finding.resourceId} — {finding.path}: {finding.message}</li>)}</ul>
@@ -156,11 +158,11 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
           catch (failure) { pilot.setError(String(failure)); }
         }}>{t('semantic.applyProjection')}</button></div>}
       <h3 className="font-medium">{t('semantic.validation')}</h3>
-      <p className="text-xs break-all">{pilot.profile.id} · {pilot.profile.version} · {t(pilot.document?.completeness === 'complete' ? 'semantic.complete' : 'semantic.partial')} · {t('semantic.validationEngines')} · {t('semantic.validationLimits')}</p>
-      {pilot.findings.length === 0 && !pilot.diagnostic ? <p className="text-sm">{t('semantic.valid')}</p> : <ul className="space-y-2 text-sm">{pilot.findings.map((finding, index) =>
+      <SemanticValidationSummary report={pilot.report} />
+      <ul className="space-y-2 text-sm">{pilot.findings.map((finding, index) =>
         <li key={index}><button className="text-left underline break-all" onClick={() => {
           const resource = resources.find(record => record.id === finding.resourceId); if (resource) choose(resource);
-        }}>{finding.engine}: {finding.resourceId} — {finding.path}: {finding.message}</button></li>)}</ul>}
+        }}>{finding.engine}: {finding.resourceId} — {finding.path}: {finding.message}</button></li>)}</ul>
       <details><summary>{t('semantic.graph')}</summary><label className="block text-sm">{t('semantic.graph')}<textarea className={control} rows={10} value={pilot.graph} onChange={e => pilot.setGraph(e.target.value)} /></label>
         <button className={button} disabled={pilot.busy} onClick={() => void pilot.validate(true)}>{t('semantic.validateGraph')}</button></details>
 

@@ -27,6 +27,21 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Planar conic handedness (#6597)
+
+Interleaved base-versus-branch native full-load runs on the house fixture and
+void-heavy ISSUE_129 fixture showed no consistent total-load slowdown beyond
+local variation. Both retained byte-identical ordered mesh payloads and counts.
+This is a correctness fix: no throughput improvement or browser worker-pool
+performance claim is made. The downward-axis synthetic extrusion intentionally
+changes shape, with an independent pinned IfcOpenShell oracle confirming its
+bounds, surface area and volume.
+
+Lesson: RefDirection gives the local X direction, while Axis determines the
+handedness of local Y. Reuse the canonical placement frame rather than adding
+another direction decoder, and test both forward conic sampling and Cartesian
+trim inversion; either half alone leaves a mirrored or incorrectly trimmed arc.
+
 ## Shared-buffer retries after a WASM trap (#6542)
 
 A compatibility retry must distinguish a rejected shared view from a WASM

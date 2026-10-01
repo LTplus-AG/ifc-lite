@@ -135,7 +135,7 @@
     "tokenHandling": {"masked":true,"clearedAfterSubmission":true,"namedAssetLinkRetained":true,"uploadDisabledAfterClear":true},
     "assetLinkLabel": "View Georeferencing_georeferenced-bridge-deck in Cesium ion",
     "validation": {"mountedAndCanonicalHelperTests":14,"skipped":0,"typecheckedTestSources":3211,"rootViewerBuildTasks":50},
-    "readiness": "Live combined viewer acceptance passes; published UI review and required-check history are recorded in PR #6606: https://github.com/LTplus-AG/ifc-lite/pull/6606.",
+    "readiness": "Live combined viewer acceptance passes; published UI review and check-run history are recorded in PR #6606: https://github.com/LTplus-AG/ifc-lite/pull/6606.",
     "independentDecodedGeometry": {"decoder":"genuine meshoptimizer1.1.1 decodeGltfBuffer","logicalGeometrySha256":"5a49fb837b7d0d486acdb0482202d67fc43f84c74f7b206889142816715a86fa","accessorVertices":24,"triangles":12,"allRenderGeometryExact":true,"allTileTransformsExact":true,"contract":"Decoded referenced render accessor logical bytes+types/normalization/count/min/max; indices; scene/node transform hierarchy; materials; feature-ID geometry associations; gltfUpAxis and full tile-transform chains. Metadata Name values intentionally not part of geometry hash. Full GLB hash may change when metadata strings change."},
     "schemaCaptureHashes": {"rawSha256":"33b6fa5698f6ae8f2c05e2fee195d5d848f4fb33c1116502187491db89efcb3b","persistedSha256":"8b585b363ea86289b92ef3714daca8e1c3125ce67508f75bfb68fcd5f9f241fb"}
   },

@@ -30,6 +30,7 @@ let hook: ReturnType<typeof useIfcLoader> | null = null;
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 const originalFetch = globalThis.fetch;
+let remeshCalls = 0;
 
 function Probe() { hook = useIfcLoader(); return null; }
 
@@ -43,6 +44,7 @@ function blankFile(unit: 'METRE' | 'MILLIMETRE'): File {
 
 beforeEach(async () => {
   if (!wasmAvailable) return;
+  remeshCalls = 0;
   // Serve the actual binary for Node's file-URL fetch boundary. No engine,
   // parser, event, frame or mesh result is replaced by a canned response.
   globalThis.fetch = async (input, options) => {
@@ -62,7 +64,7 @@ beforeEach(async () => {
     applyRemeshConfig(api, config);
     return {
       alive: true,
-      remesh: async request => remeshOnApi(api, request),
+      remesh: async request => { remeshCalls++; return remeshOnApi(api, request); },
       styleWire: async buffer => styleWireOnApi(api, buffer),
       setConfig: next => applyRemeshConfig(api, next),
       dispose() { this.alive = false; api.free(); },
@@ -200,8 +202,7 @@ describe('canonical blank file → author → real WASM remesh (#6232)', () => {
     assert.ok(modelEditTarget(useViewerStore.getState(), model.id));
     const wall = useViewerStore.getState().addWall(model.id, storey, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
     assert.ok('expressId' in wall);
-    const existingParts = wallMeshes(model.id, wall.expressId);
     assert.deepEqual(await requestRemesh(useViewerStore.getState, model.id, [wall.expressId], 'created'), { status: 'refused', reason: 'noFrame' });
-    assert.deepEqual(wallMeshes(model.id, wall.expressId), existingParts, 'refusal preserves the existing authored fallback');
+    assert.equal(remeshCalls, 0, 'unknown producer provenance never reaches the real engine remesh');
   });
 });

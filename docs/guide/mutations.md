@@ -480,7 +480,7 @@ image, network or application undo resources are implicitly published by this AP
 
 For full element-with-geometry inserts, `@ifc-lite/create` provides anchored builders that emit a complete sub-graph (placement, profile, extruded solid, representation, product shape, rel-contained-in-spatial-structure) into the overlay. The same builders back the viewer's Model workspace commands for these builder-supported elements and their corresponding SDK / sandbox `bim.store.*` methods.
 
-The viewer's **Start blank** action opens an empty IFC project with a storey. Walls added there use the normal IFC geometry engine and support Undo and Redo. Primary IFC loads that produce no meshes retain the engine's coordinate information for subsequent edits and reserve their spatial entity ids for federation.
+The viewer's **Start blank** action opens an empty IFC project with a storey, waits for its model registration, and enters Wall on that project. Cancelling or replacing the load prevents a late Wall launch on another model. Walls added there use the normal IFC geometry engine and support Undo and Redo. Primary IFC loads that produce no meshes retain the engine's coordinate information for subsequent edits and reserve their spatial entity ids for federation.
 
 | Builder | Signature highlights | Profile modes |
 |---|---|---|

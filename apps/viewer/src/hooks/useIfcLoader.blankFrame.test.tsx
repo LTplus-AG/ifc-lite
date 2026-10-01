@@ -25,6 +25,7 @@ import { requestRemesh, setRemeshClientFactory } from '@/lib/remesh/remesh-servi
 import { useIfcLoader } from './useIfcLoader.js';
 import { advance, waitFor } from '@/test/render.js';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace.js';
+import '@/lib/commands/modeling/builtin.js';
 
 const wasmPath = fileURLToPath(new URL('../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
 const wasmAvailable = existsSync(wasmPath);
@@ -84,6 +85,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  useViewerStore.getState().exitModelWorkspace();
   if (root) await act(async () => root?.unmount());
   root = null;
   hook = null;
@@ -295,36 +297,39 @@ describe('owned primary completion and launcher (#6232)', () => {
   });
 
   for (const oldKind of ['primary', 'federated'] as const) {
-    it(`a new primary in another hook abandons an older ${oldKind} finalizer without late publication`, { skip }, async () => {
-      assert.ok(hook && secondHook);
-      if (oldKind === 'federated') await load(blankFile('METRE'));
-      const held = holdFirstMetadata();
-      let oldSettled = false;
-      const oldTarget = oldKind === 'primary'
-        ? { kind: 'primary' as const, modelId: 'obsolete-primary' }
-        : { kind: 'federated' as const, modelId: 'obsolete-peer' };
-      const oldLoad = hook.loadFile(blankFile('METRE'), oldTarget).then(() => { oldSettled = true; });
-      try {
-        await waitFor(held.decoded, 'old real parser has decoded its store before supersession');
-        await act(async () => secondHook?.loadFile(blankFile('MILLIMETRE')));
-        const current = useViewerStore.getState();
-        const currentId = current.activeModelId;
-        const currentStore = current.ifcDataStore;
-        assert.ok(currentId && currentStore);
-        const currentModel = current.models.get(currentId);
-        assert.equal(currentModel?.loadState, 'complete');
-        await waitFor(() => oldSettled, 'new primary abandons the other hook finalizer without old metadata');
-        held.release();
-        await advance(100);
-        const after = useViewerStore.getState();
-        assert.equal(after.activeModelId, currentId);
-        assert.equal(after.ifcDataStore, currentStore, 'obsolete metadata cannot overwrite the new primary');
-        assert.equal(after.models.size, 1, 'obsolete federated metadata cannot append a ghost model');
-        assert.equal(after.models.get(currentId), currentModel);
-        assert.equal(after.loading, false);
-        assert.equal(after.error, null);
-      } finally { held.release(); await act(async () => oldLoad); }
-    });
+    for (const sameHook of [false, true]) {
+      it(`a new primary in ${sameHook ? 'the same' : 'another'} hook abandons an older ${oldKind} finalizer without late publication`, { skip }, async () => {
+        assert.ok(hook && secondHook);
+        if (oldKind === 'federated') await load(blankFile('METRE'));
+        const held = holdFirstMetadata();
+        let oldSettled = false;
+        const oldTarget = oldKind === 'primary'
+          ? { kind: 'primary' as const, modelId: 'obsolete-primary' }
+          : { kind: 'federated' as const, modelId: 'obsolete-peer' };
+        const oldLoad = hook.loadFile(blankFile('METRE'), oldTarget).then(() => { oldSettled = true; });
+        try {
+          await waitFor(held.decoded, 'old real parser has decoded its store before supersession');
+          const nextHook = sameHook ? hook : secondHook;
+          await act(async () => nextHook.loadFile(blankFile('MILLIMETRE')));
+          const current = useViewerStore.getState();
+          const currentId = current.activeModelId;
+          const currentStore = current.ifcDataStore;
+          assert.ok(currentId && currentStore);
+          const currentModel = current.models.get(currentId);
+          assert.equal(currentModel?.loadState, 'complete');
+          await waitFor(() => oldSettled, 'new primary abandons the other hook finalizer without old metadata');
+          held.release();
+          await advance(100);
+          const after = useViewerStore.getState();
+          assert.equal(after.activeModelId, currentId);
+          assert.equal(after.ifcDataStore, currentStore, 'obsolete metadata cannot overwrite the new primary');
+          assert.equal(after.models.size, 1, 'obsolete federated metadata cannot append a ghost model');
+          assert.equal(after.models.get(currentId), currentModel);
+          assert.equal(after.loading, false);
+          assert.equal(after.error, null);
+        } finally { held.release(); await act(async () => oldLoad); }
+      });
+    }
   }
 
   it('obsolete federated completion cannot clear the newer primary loading UI or its cancellation owner', { skip }, async () => {

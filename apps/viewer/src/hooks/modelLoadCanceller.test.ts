@@ -97,10 +97,12 @@ describe('primary load cancel (#5849)', () => {
     installModelLoadCanceller('primary', () => {});
     const current = store.getState().activeLoadCanceller;
 
+    assert.equal(firstSuperseded, 1, 'a replacement primary abandons the unfinished older owner (#6232)');
+
     staleCancel();
 
     const after = store.getState();
-    assert.equal(firstSuperseded, 0, 'the stale cancel supersedes nothing');
+    assert.equal(firstSuperseded, 1, 'the retained stale cancel cannot supersede again');
     assert.equal(after.loading, true, 'the newer load keeps loading');
     assert.equal(after.models.size, 1, 'the newer load keeps its model record');
     assert.equal(after.activeLoadCanceller, current, 'the newer load keeps its Cancel');

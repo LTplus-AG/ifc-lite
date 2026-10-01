@@ -519,10 +519,13 @@ export function ViewportContainer() {
   const handleStartBlank = useCallback(async () => {
     if (!guardWebGpu(() => { void handleStartBlank(); })) return;
     const file = createBlankIfcFile();
+    const modelId = crypto.randomUUID();
     // Must await: loadFile() calls resetViewerState() internally, which
     // closes any Model workspace session; entering before that races.
-    await loadFile(file);
-    launchModelCommand('wall.place'); // straight into drawing walls (#6232)
+    await loadFile(file, { kind: 'primary', modelId });
+    const state = useViewerStore.getState();
+    if (state.activeModelId !== modelId || state.models.get(modelId)?.loadState !== 'complete') return;
+    if (state.enterModelWorkspace({ modelId })) launchModelCommand('wall.place'); // #6232
   }, [guardWebGpu, loadFile]);
 
   // Issue #540 "Merge Multilayer Walls" reload. The setting changes the produced

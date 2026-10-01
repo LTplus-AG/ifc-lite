@@ -21,6 +21,30 @@ const profile = (): ProfileDefinition => ({ id: 'https://example.org/profile/2',
 const document = () => ({ profile: profile().id, source: 'https://example.org/data', completeness: 'complete' as const,
   resources: [{ id: 'https://example.org/a', type: 'Thing', label: 'A', labels: { en: 'English', de: 'Deutsch' }, value: 2.5, tags: ['a', 'b'], enabled: true }] });
 describe('charter #6643 shared profile standards', () => {
+  it('PR #6648 review: validates profile definitions before JSON or graph validation', async () => {
+    const invalid = { ...profile(), version: '' };
+    expect(() => validateJson(document(), invalid)).toThrow();
+    expect(() => validateLinks(document(), invalid)).toThrow();
+    await expect(validateGraph('<urn:a> <urn:p> "x".', invalid)).rejects.toThrow();
+  });
+  it('PR #6652 review: literal, language and IRI length bounds agree across JSON Schema and generated SHACL', async () => {
+    const p = profile(); p.fields.link.external = true;
+    const boundary = '😀'.repeat(LIMITS.literalCharacters);
+    const accepted = parseProfileDocument({ ...document(), resources: [{ ...document().resources[0], label: boundary, labels: { en: boundary } }] }, p);
+    expect(validateJson(accepted, p)).toEqual([]);
+    expect(await validateGraph(await toRdf(accepted, p), p)).toEqual([]);
+    for (const values of [{ label: boundary + 'x' }, { labels: { en: boundary + 'x' } }, { link: 'urn:' + 'x'.repeat(LIMITS.literalCharacters) }]) {
+      const oversized = { ...document(), resources: [{ ...document().resources[0], ...values }] };
+      expect(validateJson(oversized, p)).not.toEqual([]);
+      // A generic graph import can bypass the profile JSON parser. Validate
+      // that the published SHACL artifact still rejects the same values.
+      const field = Object.keys(values)[0];
+      const value = field === 'labels' ? boundary + 'x' : Object.values(values)[0];
+      const object = field === 'link' ? `<${value}>` : JSON.stringify(value) + (field === 'labels' ? '@en' : '');
+      const data = `<urn:a> a <${p.types.Thing.iri}>; <${p.fields.label.iri}> "A"; <${p.fields.value.iri}> "2.5E0"^^<http://www.w3.org/2001/XMLSchema#double>; <${p.fields.tags.iri}> "a". <urn:a> <${p.fields[field].iri}> ${object}.`;
+      expect((await validateGraph(data, p)).some(finding => finding.path === p.fields[field].iri && finding.message.includes('characters'))).toBe(true);
+    }
+  });
   it('review: rejects unknown profile members and inconsistent common label cardinalities', () => {
     const original = profile();
     for (const invalid of [
@@ -50,6 +74,12 @@ describe('charter #6643 shared profile standards', () => {
     }
     expect(() => assertProfile({ ...p, fields: { ...p.fields, count: { ...p.fields.count, maximum: 1e21 } } })).toThrow('safe integers');
     expect(() => assertProfile({ ...p, fields: { ...p.fields, count: { ...p.fields.count, enum: [1e21] } } })).toThrow('Enum values');
+  });
+  it('review: string and IRI enumeration values in the SHACL namespace remain data rather than executable constraints', async () => {
+    const p = profile(); const text = 'http://www.w3.org/ns/shacl#custom-text';
+    p.fields.tags.enum = [text]; p.fields.link.enum = [text]; p.fields.link.external = true; delete p.fields.link.targetType;
+    const doc = parseProfileDocument({ ...document(), resources: [{ ...document().resources[0], tags: [text], link: text }] }, p);
+    expect(validateJson(doc, p)).toEqual([]); expect(await validateGraph(await toRdf(doc, p), p)).toEqual([]);
   });
   it('generates equivalent bounded JSON/RDF constraints, preserves language tags and primitive datatypes', async () => {
     const p = profile(); const doc = parseProfileDocument(document(), p); expect(validateJson(doc, p)).toEqual([]);

@@ -10,6 +10,19 @@ import { DEFAULT_PROFILE } from './profiles.js';
 import { validateGraph } from './validation.js';
 import { LIMITS } from './types.js';
 
+it('PR #6648 review: malformed JSON-LD yields a descriptive error without reflecting input', async () => {
+  const secret = 'private-input-token';
+  await expect(parseGraph(`{"${secret}":`, { format: 'application/ld+json' })).rejects.toThrow('Invalid JSON-LD JSON syntax');
+  try { await parseGraph(`{"${secret}":`, { format: 'application/ld+json' }); }
+  catch (error) { expect(String(error)).not.toContain(secret); }
+});
+it('PR #6652 review: SHACL maxLength counts supplementary Unicode characters and rejects malformed limits', async () => {
+  const shapes = '@prefix sh:<http://www.w3.org/ns/shacl#>. <urn:s> sh:targetNode <urn:a>;sh:property [sh:path <urn:p>;sh:maxLength 1].';
+  expect(await validateGraph('<urn:a> <urn:p> "😀".', { shapes })).toEqual([]);
+  expect(await validateGraph('<urn:a> <urn:p> "😀x".', { shapes })).toHaveLength(1);
+  for (const invalid of ['-1', '1.5', '"bad"', '"1"']) await expect(validateGraph('<urn:a> <urn:p> "x".', { shapes: shapes.replace('maxLength 1', `maxLength ${invalid}`) })).rejects.toThrow('non-negative integer');
+});
+
 it('charter #6643 review: explicit SHACL targets validate absent nodes and reject invalid work limits', async () => {
   const data = '<urn:unrelated> <urn:p> "x".';
   const shapes = '@prefix sh:<http://www.w3.org/ns/shacl#>. <urn:s> a sh:NodeShape;sh:targetNode <urn:absent>;sh:property [sh:path <urn:required>;sh:minCount 1].';
@@ -42,6 +55,19 @@ it('charter #6643 review: malformed constraint lists reject missing first entrie
       <urn:s> a sh:NodeShape;sh:targetNode <urn:a>;sh:property [sh:path <urn:absent>;sh:${predicate} _:a]. _:a rdf:rest _:a.`;
     await expect(validateGraph('<urn:a> <urn:p> "x".', { shapes })).rejects.toThrow('Malformed SHACL RDF list');
   }
+});
+it('charter #6643 review: recursive property shapes fail before cached pairs can silently conform; nonrecursive composition stays supported', async () => {
+  const prefix = '@prefix sh:<http://www.w3.org/ns/shacl#>.';
+  const data = '<urn:a> <urn:p> <urn:a>.';
+  const root = '<urn:s> a sh:NodeShape;sh:targetNode <urn:a>;sh:property _:p. ';
+  const cyclic = '_:p a sh:PropertyShape;sh:path <urn:p>;sh:property _:p;sh:minCount 1.';
+  await expect(validateGraph(data, { shapes: prefix + root + cyclic })).rejects.toThrow('Cyclic SHACL property-shape');
+  const composed = '_:p a sh:PropertyShape;sh:path <urn:p>;sh:property _:q;sh:minCount 1. _:q a sh:PropertyShape;sh:path <urn:required>;sh:minCount 1.';
+  const findings = await validateGraph(data, { shapes: prefix + root + composed });
+  expect(findings).toEqual([expect.objectContaining({ resourceId: 'urn:a', path: 'urn:required' })]);
+  expect(await validateGraph(data + '<urn:a> <urn:required> "present".', { shapes: prefix + root + composed })).toEqual([]);
+  const deep = Array.from({ length: 65 }, (_, index) => `<urn:shape${index}> sh:path <urn:p>;sh:property <urn:shape${index + 1}>.`).join('');
+  await expect(validateGraph(data, { shapes: prefix + deep })).rejects.toThrow('depth');
 });
 
 it('charter #6643: Turtle and inline JSON-LD imports retain literal tags, datatypes, multi-values and named graphs', async () => {

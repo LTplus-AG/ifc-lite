@@ -92,7 +92,7 @@
   "verdict": "PASS full physicalplacement for original publicdeck after legitimate IfcMappedItem normalization: directdecoded8corners12triangles agree independentGEOID99 fullXYZsourceoracle withinquantization; headingcorrect. GEOID18 expected differences disclosed, notusedtoassertverticaldatum failure. Original VerticalDatumCRScode5703 retaineddiagnostically; no derivedinputCRS.",
   "productionSDKAcceptance": {
     "implementationCommit": "3217508b67b871c65d9e30106e6fa6afcdf8d01c",
-    "route": "actual StepExporter.exportAsync with effective Name edit and both normalization options, fresh canonical WASM, real production upload transport; final combined UI caller still pending",
+    "route": "actual StepExporter.exportAsync with effective Name edit and both normalization options, fresh canonical WASM, real production upload transport; combined viewer caller verified separately below",
     "sourceSha256": "6b1de724ceb436759d9cdbe7ce7f4c71734065dfde8cc8786b6239de347de1b1",
     "outputSha256": "23a178542a0d9173f9af319b066e717f394dbe651d0daf345a9c3628978cf194",
     "exportStats": {"entityCount":54,"newEntityCount":21,"modifiedEntityCount":5,"warnings":[]},
@@ -112,9 +112,36 @@
     "visualAcceptance": "Actual production-uploaded deck follows Golden Gate north-south against Esri imagery; camera reset to world coordinates at 4500m, heading 0, pitch -90deg, roll 0; geometry uses only downloaded cumulative tile matrix.",
     "screenshot": "production-deck-normalized.png"
   },
+  "combinedViewerAcceptance": {
+    "sourceHead": "27debbf58f3222248ee78296abf955c1498a25c3",
+    "geometrySourceCommit": "c592decc8",
+    "rustTree": "28220977ec3b198d51b57ef4db0be4e463a5d100",
+    "wasmSha256": "97a611347368096bfe5c333b525ceecdfbcf991c3642210f7753a7c9d400ad1c",
+    "route": "Original public IFC loaded through canonical viewer path; actual Author Name edit; real masked-token dialog Upload and production transport; no manual provider placement override.",
+    "sourceSha256": "6b1de724ceb436759d9cdbe7ce7f4c71734065dfde8cc8786b6239de347de1b1",
+    "assetId": 5972000,
+    "tilingStatus": "COMPLETE",
+    "percentComplete": 100,
+    "fullDownload": {"glbs":1,"totalFetchedBytes":5765,"externalSchemaRetrieved":true,"schemaPersistence":"credential-bearing URL annotations removed; semantic class definitions retained; raw/persisted schema hashes distinguished in capture manifest"},
+    "contentSha256": "a018df41ebbb8be9fd311ef3fbd34a544946f989ff7891a7f174eff071bedc17",
+    "actualStoredMetadata": {"Name":"Ion combined UI compatibility edited deck","GlobalId":"1BvdN7mUjD7A_lI6KfHKqB"},
+    "referenceAssetId": 5970221,
+    "allEncodedPrimitivePayloadsAndDecoderParametersExact": true,
+    "allAccessorDescriptorsMaterialsFeaturesNodesScenesExact": true,
+    "allTileTransformChainsAxesAndBoundsExact": true,
+    "cesiumRender": {"version":"1.145.0","readyPrimitives":1,"triangles":12,"errors":[],"geometryTransform":"downloaded cumulative tile matrix only","binaryChunkUnchanged":true},
+    "worldCamera": {"longitude":-122.47856290883625,"latitude":37.81979588005104,"height":4500,"heading":0,"pitch":-90,"roll":0},
+    "visualEvidenceLimit": "Native preview snapshot repeatedly failed on the client, including after open/show/resize retries. No new screenshot or independent visual inspection is claimed for this asset. Actual geometry and tile-frame identity establish equivalence to the independently decoded and visually verified reference above.",
+    "tokenHandling": {"masked":true,"clearedAfterSubmission":true,"namedAssetLinkRetained":true,"uploadDisabledAfterClear":true},
+    "assetLinkLabel": "View Georeferencing_georeferenced-bridge-deck in Cesium ion",
+    "validation": {"mountedAndCanonicalHelperTests":14,"skipped":0,"typecheckedTestSources":3211,"rootViewerBuildTasks":50},
+    "readiness": "Live combined viewer acceptance passes; final published UI head still requires CI and feedback completion.",
+    "independentDecodedGeometry": {"decoder":"genuine meshoptimizer1.1.1 decodeGltfBuffer","logicalGeometrySha256":"5a49fb837b7d0d486acdb0482202d67fc43f84c74f7b206889142816715a86fa","accessorVertices":24,"triangles":12,"allRenderGeometryExact":true,"allTileTransformsExact":true,"contract":"Decoded referenced render accessor logical bytes+types/normalization/count/min/max; indices; scene/node transform hierarchy; materials; feature-ID geometry associations; gltfUpAxis and full tile-transform chains. Metadata Name values intentionally not part of geometry hash. Full GLB hash may change when metadata strings change."},
+    "schemaCaptureHashes": {"rawSha256":"33b6fa5698f6ae8f2c05e2fee195d5d848f4fb33c1116502187491db89efcb3b","persistedSha256":"8b585b363ea86289b92ef3714daca8e1c3125ce67508f75bfb68fcd5f9f241fb"}
+  },
   "limitations": [
     "Original VerticalDatum=EPSG5703 identifies a verticalCRS rather than datum5103; control intentionally preserves metadata to isolate mapped geometry normalization.",
     "PROJ operation accuracy is expected accuracy, not rigorous bound; provider geoid grid/version notidentified.",
-    "Production SDK compatibility export is verified for the public deck; unsupported coordinate consumers, frames and nonuniform factors are explicitly refused. This does not establish support for every IFC representation or final combined upload UI acceptance."
+    "Production SDK and combined viewer compatibility export are verified for this public deck; unsupported coordinate consumers, frames and nonuniform factors are explicitly refused. This does not establish support for every IFC representation."
   ]
 }

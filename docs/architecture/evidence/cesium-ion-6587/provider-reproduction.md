@@ -37,8 +37,12 @@ source/GEOID99 oracle within 1.75 cm (quantization 3.08 cm), and the rendered
 deck follows the bridge without a display correction. See the [numeric proof](./mapped-deck-normalized-proof.json).
 The generic Rust-backed SDK export is now verified as edited asset **5970221**:
 its stored geometry contracts exactly match the verified control, edited metadata
-is retained, and the genuine render follows the bridge. Final combined upload-UI
-acceptance remains pending; see the current record above.
+is retained, and the genuine render follows the bridge. The actual combined viewer
+upload also passes as edited asset **5972000**, with retained Name/GUID and exact
+geometry/tile-frame identity against the SDK reference. Its genuine Cesium render
+has twelve triangles and no errors; native screenshot capture failed, so no new
+visual inspection is claimed. Final published UI CI and feedback remain pending;
+see the current record above.
 
 The report is retained as an investigation record, not a request to attribute
 fault to the provider. See [the updated acceptance record](./README.md).

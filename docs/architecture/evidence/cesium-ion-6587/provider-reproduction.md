@@ -40,6 +40,11 @@ agrees with the complete authored XYZ affine transform within 1.9e-8 m.
 Actual asset 5969809 completed, but its vertical bounds remain unscaled and
 match the prior 2D compound control 5969784. Independently transformed source
 corners lie up to 68 m outside the actual tileset's declared containing box.
+The uploaded generated control contained a lexically invalid STEP `Precision`
+literal (`1E-05`, missing the mantissa decimal point). Its geometry was accepted
+by IfcOpenShell, but this observed asset is not yet a clean standards-conforming
+reproduction. The original fixture and the IfcOpenShell mutation recipe above
+do not have that lexical defect; a corrected upload is being checked.
 The discrepancy persists using GEOID99 and GEOID18 operations and exceeds
 their stated accuracy bounds. API acceptance of this WKT did not establish
 support for its derived vertical conversion. No client modelMatrix was applied.

@@ -129,14 +129,26 @@ cases are verified.
 
 ## Unit and scale matrix
 
+Audit qualification: the generated controls below contain `1E-05` for context
+`Precision`, whereas STEP REAL syntax requires a decimal point in the mantissa
+(`1.E-05`). IfcOpenShell accepted their geometry, but these uploads do not by
+themselves establish a standards-conforming scale reproduction. A corrected
+control is being checked separately. The unchanged public fixture used for the
+original orientation failure contains the valid literal.
+
 Four independently checked IFC variants also reached `COMPLETE`. IfcOpenShell
 produced identical eight SI-metre source vertices for the metre and millimetre
 variants. The controls preserved source geometry and used the test-only anchored
 compound CRS, with parameters derived for each variant.
 
+The millimetre variant uses millimetre project geometry, metre `MapUnit`, and
+`Scale = 0.9996 / 1000`. It does not test millimetre map units; the original
+Infra-Bridge has both project and map units in millimetres and still fails
+acceptance below.
+
 | Control | Asset | Result |
 | --- | --- | --- |
-| Millimetre geometry and map units | 5969785 | Horizontal placement agrees; vertical scale still unverified by center alone |
+| Millimetre geometry, metre map units | 5969785 | Horizontal placement agrees; vertical scale still unverified by center alone |
 | Unrotated horizontal axis | 5969787 | Horizontal placement agrees |
 | Map Scale = 2 | 5969784 | Incorrect elevation: canonical vertices lie up to 68 m outside the tiled bounding box |
 | Local elevation +100 m, OrthogonalHeight = 23 m | 5969789 | Vertical translation retained; scale discrepancy remains |

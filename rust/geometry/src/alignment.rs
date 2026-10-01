@@ -252,7 +252,8 @@ impl AlignmentCurve {
                 crate::alignment_sampling_curve::validate_composite(directrix, decoder)?;
                 for attr in directrix.get_list(0).ok_or_else(|| Error::geometry("GradientCurve missing Segments"))? {
                     let id = attr.as_entity_ref().ok_or_else(|| Error::geometry("Gradient segment must be a reference"))?;
-                    decoder.decode_by_id(id)?;
+                    let segment = decoder.decode_by_id(id)?;
+                    crate::alignment_sampling_curve::validate_segment_placement(&segment, decoder)?;
                 }
             }
             return Self::from_gradient_curve(directrix, decoder);

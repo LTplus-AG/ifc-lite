@@ -69,12 +69,13 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
       // Preserve the invocation's export identity through asynchronous failures.
       exportedAssetName = model.name.replace(/\.[^.]+$/, '');
       const fileName = modelExportFilename(model.name, 'ifc');
+      const schema = mapStepSchema(model.ifcDataStore.schemaVersion ?? '');
       const result = await exportModelStep({
         modelId: selectedId, dataStore: model.ifcDataStore,
         mutationView: state.getMutationView(selectedId) ?? undefined,
         options: {
-          schema: mapStepSchema(model.ifcDataStore.schemaVersion ?? ''),
-          includeGeometry: true, applyMutations: true, visibleOnly: false, normalizeMapUnitsToMetres: true,
+          schema, includeGeometry: true, applyMutations: true, visibleOnly: false,
+          normalizeMapUnitsToMetres: schema === 'IFC4' || schema === 'IFC4X3',
           georefMutations: state.georefMutations.get(selectedId) ?? undefined,
           application: 'ifc-lite', description: 'Exported from ifc-lite for Cesium ion',
           onProgress: () => abort.signal.throwIfAborted(),

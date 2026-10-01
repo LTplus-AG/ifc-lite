@@ -299,3 +299,14 @@ Validation runs in a Web Worker so the UI stays responsive during large runs, wi
 | `IDSConstraint` | Simple, Pattern, Enumeration, or Bounds value matcher |
 | `IDSValidationReport` | Complete validation results with per-entity details |
 | `IDSEntityResult` | Pass/fail result for a single entity with failure details |
+
+
+## Saved workflows and retained reports
+
+[Session automation](flow.md#file-slots-reports-and-portability) can run several
+enabled IDS or information-validation jobs over explicitly selected models and
+retain each completed native report. IDS evaluates each target model separately:
+a job targeting several models produces adjacent model reports rather than a
+merged fictitious IFC model or an averaged pass rate. Information rule sets
+evaluate their targeted federation as one job. Validation uses current effective
+property/entity edits, preserving the same native evaluator semantics.

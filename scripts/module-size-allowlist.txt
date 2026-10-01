@@ -114,7 +114,6 @@
    461 apps/viewer/src/hooks/useAnnotation2D.ts
    764 apps/viewer/src/hooks/useBCF.ts
   1348 apps/viewer/src/hooks/useClash.ts
-   472 apps/viewer/src/hooks/useCompare.ts
   1353 apps/viewer/src/hooks/useDrawingExport.ts
   1041 apps/viewer/src/hooks/useDrawingGeneration.ts
    586 apps/viewer/src/hooks/useIfcCache.ts

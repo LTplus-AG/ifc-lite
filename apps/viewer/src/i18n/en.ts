@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { automationEditorEn } from './catalogues/automation-editor.en';
+import { flowStartupEn } from './catalogues/flow-startup.en';
 import { appearanceAssignmentListEn } from './catalogues/appearance-assignment-list.en';
 import { appearanceAssignmentMembersEn } from './catalogues/appearance-assignment-members.en';
 import { analysisPanelEn } from './catalogues/analysis-panel.en';
@@ -187,6 +189,8 @@ export const en = {
   ...validationEditorEn,
   ...validationPanelEn,
   ...manualValidationEn,
+  ...flowStartupEn,
+  ...automationEditorEn,
   ...flowPanelEn,
   ...chatEn,
   ...chatByokEn,

@@ -276,6 +276,18 @@ In the IFClite viewer:
 6. **Graphic overrides** - Apply presets to change element appearance
 7. **Export** - Download the drawing as vector SVG, or as DXF R12 (plan sections are georeferenced to true world/map coordinates when the model carries an `IfcMapConversion`)
 
+### Drawing Navigation
+
+Wheel zoom follows the pointer and uses the input magnitude, including pixel,
+line and page wheel deltas. Hold Ctrl or Cmd for fine zoom. A trackpad pinch
+zooms normally unless that modifier key is physically held.
+
+The navigation preset also applies to the Drawing panel: Default uses vertical
+wheel movement to zoom and horizontal movement to pan; Navisworks uses vertical
+wheel movement to zoom; Trackpad pans with two-finger scrolling and zooms with a
+pinch or Ctrl/Cmd wheel. These controls also work in floating and popped-out
+Drawing panels.
+
 The PDF export dialog lists visible drawing content its writer cannot include. A
 vector PDF omits drawing markups and DXF reference underlays; a sheet PDF
 includes the underlays in its rasterized sheet image but still omits markups.

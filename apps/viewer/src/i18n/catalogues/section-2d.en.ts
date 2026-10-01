@@ -6,6 +6,7 @@ import type { TranslationValue } from '../types';
 
 /** The Drawing panel's chrome (header, toolbar, export menu, status line), guidance, and error states. */
 export const section2dEn = {
+  'section2d.tip.trackpad': 'Drag or scroll to pan · Pinch or Ctrl/Cmd+scroll to zoom · Click markup to select',
   'section2d.heading': 'Drawing',
   'section2d.overlay.toggleTitle': 'Toggle 3D overlay',
   'section2d.symbolic.planTitle': 'Symbolic representations (Plan)',
@@ -72,7 +73,7 @@ export const section2dEn = {
   'section2d.error.generation': 'Generation failed',
   'section2d.error.retry': 'Retry',
   'section2d.updating': 'Updating...',
-  'section2d.tip.pan': 'Drag to pan · Scroll to zoom · Click markup to select',
+  'section2d.tip.pan': 'Drag to pan · Scroll to zoom · Ctrl/Cmd for fine zoom · Click markup to select',
   'section2d.tip.measureFirst': 'Click to place the first point',
   'section2d.tip.measureSecond': 'Click to place the second point · Esc = cancel',
   'section2d.tip.shift': 'Shift: perpendicular',

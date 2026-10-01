@@ -74,7 +74,7 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
         mutationView: state.getMutationView(selectedId) ?? undefined,
         options: {
           schema: mapStepSchema(model.ifcDataStore.schemaVersion ?? ''),
-          includeGeometry: true, applyMutations: true, visibleOnly: false,
+          includeGeometry: true, applyMutations: true, visibleOnly: false, normalizeMapUnitsToMetres: true,
           georefMutations: state.georefMutations.get(selectedId) ?? undefined,
           application: 'ifc-lite', description: 'Exported from ifc-lite for Cesium ion',
           onProgress: () => abort.signal.throwIfAborted(),

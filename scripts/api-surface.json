@@ -8076,6 +8076,7 @@
     "ResolvedUnit: interface",
     "SCHEMA_REGISTRY: const",
     "SECONDARY_REL_TYPE_MAP: const",
+    "SI_PREFIX_MULTIPLIERS: const",
     "STEP_TRIVIA: const",
     "ScheduleExtraction: interface",
     "ScheduleSequenceInfo: interface",

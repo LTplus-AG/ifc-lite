@@ -108,6 +108,8 @@ async function putObject(input: IonS3Request): Promise<void> {
 export async function uploadToCesiumIon(input: IonUploadInput, deps: IonUploadDeps = {}): Promise<IonUploadResult> {
   input.signal.throwIfAborted();
   if (!input.token.trim() || !input.name.trim() || !input.bytes.length
+    // Reject control characters in filenames before any remote side effect.
+    // eslint-disable-next-line no-control-regex
     || !/^[^/\\\u0000-\u001f\u007f]+\.ifc$/i.test(input.fileName)) {
     throw new IonUploadError('create');
   }

@@ -8,7 +8,7 @@ import { expect, test } from '@playwright/test';
 test.use({ viewport: { width: 1280, height: 900 } });
 
 const TAB_BUTTON_COUNTS = [
-  ['File', 18],
+  ['File', 19], // includes the Cesium ion upload command (#6587)
   ['Home', 7],
   ['View', 20],
   ['Elements', 17], // includes the selected mesh hover outline (#5748)
@@ -16,7 +16,7 @@ const TAB_BUTTON_COUNTS = [
   ['Author', 8], // includes Change sets (#6232 D4); every create kind is a Model workspace command, not a button (#6232 B1)
 ] as const;
 
-test('authored IFC keeps all 86 ribbon commands and panel browser reachable at 1280px (#5874, #5778)', async ({ page }, testInfo) => {
+test('authored IFC keeps all 87 ribbon commands and panel browser reachable at 1280px (#5874, #5778)', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     localStorage.setItem('ifclite.extensions.privacy-disclosure.v2', 'e2e acknowledged');
   });
@@ -79,7 +79,26 @@ test('authored IFC keeps all 86 ribbon commands and panel browser reachable at 1
   const browserCount = visited.Analyze.filter((name) => name === 'Browse panels').length;
   expect(visited.View, 'View includes the selected-source centreline command (#5778)').toContain('Centreline');
   expect(browserCount, 'Analyze has one panel-browser content trigger').toBe(1);
-  expect(Object.values(visited).reduce((total, names) => total + names.length, 0) - browserCount).toBe(86);
+  expect(Object.values(visited).reduce((total, names) => total + names.length, 0) - browserCount).toBe(87);
+  // #6587: the added command is unique, reachable, and dispatches to the real
+  // selected-model upload dialog. Opening it never creates a remote asset.
+  const ionCommandName = 'Upload edited IFC to your Cesium ion account';
+  expect(visited.File.filter((name) => name === ionCommandName)).toHaveLength(1);
+  await page.getByRole('tab', { name: 'File', exact: true }).click();
+  await page.getByRole('tabpanel', { name: 'File', exact: true })
+    .getByRole('button', { name: ionCommandName, exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Upload to Cesium ion', exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('combobox')).toContainText('building-architecture.ifc');
+  await expect(dialog.getByLabel('Cesium ion token (assets:write)', { exact: true })).toHaveAttribute('type', 'password');
+  await expect(dialog.getByRole('button', { name: 'Upload', exact: true })).toBeDisabled();
+  await testInfo.attach('cesium-ion-upload-dialog.png', {
+    body: await dialog.screenshot(),
+    contentType: 'image/png',
+  });
+  // The footer Close and top-right close icon share the same accessible name.
+  await dialog.getByRole('button', { name: 'Close', exact: true }).first().click();
+  await expect(dialog).not.toBeVisible();
   await testInfo.attach('reachable-ribbon-commands.json', {
     body: JSON.stringify(visited, null, 2),
     contentType: 'application/json',

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Ring-chart geometry and colours for manual validation (#6401), DOM-free
+ * Ring-chart geometry and colours for validation reports (#6401, #6552), DOM-free
  * so the panel's SVG and the document block's print path draw the same
  * ring from the same numbers.
  *
@@ -78,9 +78,18 @@ export function ringSvg(counts: ManualCounts, size: number): string {
   const circumference = 2 * Math.PI * radius;
   const circle = (color: string, extra: string): string =>
     `<circle cx="${c}" cy="${c}" r="${radius}" fill="none" stroke="${color}" stroke-width="${stroke}"${extra}/>`;
-  const segments = ringSegments(counts, radius, Math.max(1, size / 40)).map((seg) =>
-    circle(RING_COLORS[seg.bucket], ` stroke-dasharray="${seg.length} ${circumference - seg.length}" stroke-dashoffset="${-seg.offset}"`));
+  const point = (offset: number): string => {
+    const angle = offset / radius - Math.PI / 2;
+    return `${c + radius * Math.cos(angle)} ${c + radius * Math.sin(angle)}`;
+  };
+  const segments = ringSegments(counts, radius, Math.max(1, size / 40)).map((seg) => {
+    if (seg.length >= circumference) return circle(RING_COLORS[seg.bucket], '');
+    // Explicit clockwise arcs retain SVG/PDF order without relying on a
+    // PDF reader's dash phase or svg2pdf's circle-path orientation.
+    const arc = `M ${point(seg.offset)} A ${radius} ${radius} 0 ${seg.length > Math.PI * radius ? 1 : 0} 1 ${point(seg.offset + seg.length)}`;
+    return `<path d="${arc}" fill="none" stroke="${RING_COLORS[seg.bucket]}" stroke-width="${stroke}"/>`;
+  });
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`
     + circle(RING_COLORS.unanswered, ' stroke-opacity="0.25"')
-    + `<g transform="rotate(-90 ${c} ${c})">${segments.join('')}</g></svg>`;
+    + segments.join('') + '</svg>';
 }

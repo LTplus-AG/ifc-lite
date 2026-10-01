@@ -29,9 +29,8 @@ import { largestBucketIds } from '@/lib/charts/buckets';
 import { idsReportBlockFromReport } from '@/lib/document/ids-report';
 import { emptyManualReportBlock } from '@/lib/document/manual-report';
 import { listCopyForDocument, TABLE_ROWS_DEFAULT, type DocumentBlock, type DocumentSpec } from '@/lib/document/types';
-import { browserImageSize, generateDocumentPdf, type DocumentPdfSeams } from '@/lib/document/generate-document-pdf';
-import { browserReportSeams } from '@/lib/export/report/generate-report-pdf';
-import { createSnapshotCapture } from '@/lib/export/report/snapshots';
+import { type DocumentPdfSeams } from '@/lib/document/generate-document-pdf';
+import { exportPreparedDocument } from '@/lib/document/export-prepared-document';
 import { BlockEditor } from './BlockEditor';
 import { DocumentMenu } from './DocumentMenu';
 import { DocumentPreview } from './DocumentPreview';
@@ -104,7 +103,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         : kind === 'chart' ? { kind, id, chart: charts[0]?.chart ? { ...charts[0].chart, id: freshBlockId() } : newChartSpec(), snapshot: false }
           : kind === 'page-break' ? { kind, id }
           : kind === 'spacer' ? { kind, id, height: 20 }
-            : kind === 'ids-report' ? (idsValidationReport ? idsReportBlockFromReport(idsValidationReport, id, 'compact') : { kind, id, variant: 'compact', sourceName: '', generatedAt: new Date().toISOString(), summary: { checked: 0, passed: 0, failed: 0, passRate: 100 }, checks: [] })
+            : kind === 'ids-report' ? (idsValidationReport ? { ...idsReportBlockFromReport(idsValidationReport, id, 'compact'), benchmarks: true } : { kind, id, variant: 'compact', benchmarks: true, sourceName: '', generatedAt: new Date().toISOString(), summary: { checked: 0, passed: 0, failed: 0, passRate: 100 }, checks: [] })
               : kind === 'manual-report' ? (manualSource.snapshot(id, null, manualSource.defaultChecklistId ?? undefined) ?? emptyManualReportBlock(id))
               : { kind, id, guid: [...data.topics.keys()][0] ?? '', snapshot: true };
     setBlocks([...document.blocks, block]);
@@ -121,10 +120,9 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const exportPdf = useCallback(async () => {
     if (!document) return;
     setBusy(true);
-    const snapshot = pdfSeams ? null : createSnapshotCapture();
     try {
-      const seams = await (pdfSeams ? pdfSeams() : browserReportSeams(snapshot?.capture ?? null).then((s) => ({ ...s, imageSize: browserImageSize })));
-      const result = await generateDocumentPdf({
+      const seams = pdfSeams ? await pdfSeams() : undefined;
+      const result = await exportPreparedDocument({
         document,
         bindings: data.bindings,
         aggregations: data.aggregations,
@@ -132,7 +130,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         snapshotIds: (blockId) => largestBucketIds(data.aggregations.get(blockId)),
         topics: data.topics,
         tables: data.tables,
-      }, seams);
+      }, { seams });
       downloadBlob(result.blob, `${sanitizeFilename(document.name, { fallback: 'document' })}.pdf`);
       // Counts only — never the document's text or name.
       trackExportCompleted({ format: 'pdf', surface: 'document', page_count: result.pages, block_count: document.blocks.length, unresolved_count: result.unresolved.length, table_block_count: document.blocks.filter((b) => b.kind === 'table').length });
@@ -142,6 +140,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         result.snapshotFailures.length > 0 ? t('document.panel.problemSnapshotFailures', localeCount(locale, result.snapshotFailures.length)) : '',
         result.imageFailures.length > 0 ? t('document.panel.problemImageFailures', localeCount(locale, result.imageFailures.length)) : '',
         result.tableFailures.length > 0 ? t('document.panel.problemTables', localeCount(locale, result.tableFailures.length)) : '',
+        (result.chartFailures?.length ?? 0) > 0 ? t('document.panel.problemCharts', localeCount(locale, result.chartFailures?.length ?? 0)) : '',
       ].filter(Boolean);
       const pages = localeCount(locale, result.pages);
       toast.success(problems.length > 0
@@ -151,7 +150,6 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
       console.error('[Documents] export failed', err);
       toast.error(err instanceof Error ? t('document.panel.exportFailedWithMessage', { message: err.message }) : t('document.panel.exportFailedGeneric'));
     } finally {
-      snapshot?.restore();
       setBusy(false);
     }
   }, [document, data, pdfSeams, t, locale]);
@@ -216,7 +214,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
               const entry = savedReports.at(-1);
               if (!document || !entry) return;
               const block = savedReportBlock(entry, freshBlockId());
-              setBlocks([...document.blocks, block]);
+              setBlocks([...document.blocks, block.kind === 'ids-report' ? { ...block, benchmarks: block.benchmarks ?? true } : block]);
               setSelectedBlockId(block.id);
             }}>{t('validationPanel.history.addDocument')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('manual-report')} disabled={!manualSource.available} title={manualSource.available ? undefined : t('manualValidation.report.unavailableTitle')}>{t('manualValidation.report.add')}</DropdownMenuItem>

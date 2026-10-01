@@ -1,0 +1,11 @@
+diff --git a/rust/export/src/step_map_transform.rs b/rust/export/src/step_map_transform.rs
+--- a/rust/export/src/step_map_transform.rs
++++ b/rust/export/src/step_map_transform.rs
+@@ -82,6 +82,7 @@
+         // The renderer's canonical extractor is intentionally tolerant of
+         // bad unit metadata. A writer must not interpret that fallback as a
+         // permission to bake coordinates: validate the authored target first.
++        preflight::map_unit(&target, unit, &mut decoder)?;
+         let geo = GeoRefExtractor::extract(&mut decoder, &types)
+             .map_err(|error| error.to_string())?.filter(|geo| geo.has_map_conversion)
+             .ok_or_else(|| format!("map conversion #{} cannot be resolved exactly", map.id))?;

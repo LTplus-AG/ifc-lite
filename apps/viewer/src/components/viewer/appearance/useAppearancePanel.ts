@@ -62,7 +62,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     ? sources.find(source => source.id === savedDraft.sourceId)?.id ?? null : sources[0]?.id ?? null);
   const [scope, setScope] = useState<AppearanceScope>(canResumeModel && savedDraft ? savedDraft.scope
     : { kind: selection.size || primarySelection !== null ? 'selection' : 'model' });
-  const [settings, setSettings] = useState<AppearanceDraftSettings>({ ...(savedDraft?.settings ?? DEFAULT_APPEARANCE_SETTINGS) });
+  const [settings, setSettings] = useState<AppearanceDraftSettings>({ ...(savedDraft?.settings ?? DEFAULT_APPEARANCE_SETTINGS), ...useViewerStore.getState().appearanceReferenceEntry?.settings });
   const [status, setStatus] = useState<AppearancePanelViewProps['status']>('idle');
   const [statusMessage, setStatusMessage] = useState<LocalizedMessage | undefined>(savedDraft && !savedDraft.previewEnabled
     ? translatedMessage('appearance.controller.adjustMapping') : undefined);

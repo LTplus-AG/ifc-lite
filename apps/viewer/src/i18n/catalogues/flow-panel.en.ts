@@ -27,7 +27,7 @@ export const flowPanelEn = {
 
   'flowPanel.examples.open': 'Examples…',
   'flowPanel.examples.ariaLabel': 'Open an example graph',
-  'flowPanel.examples.heading': 'Start from an example — each one runs against the loaded model, and opens as your own editable copy.',
+  'flowPanel.examples.heading': 'Start from an example — query a loaded model or prepare a local coordination session. Each opens as your own editable copy.',
   'flowPanel.examples.size': '{nodes} nodes · {edges} edges',
   'flowPanel.noModel': 'Load a model to run a graph.',
 

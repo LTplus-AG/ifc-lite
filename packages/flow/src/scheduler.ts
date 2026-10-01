@@ -24,6 +24,8 @@ import { ORPHAN_NODE_ID, removeOrphanedSets, removeSet, trackingKeyOf } from './
 import { noopOutputs, prepareInputs } from './prepare.js';
 import { emptyTrackedSet, planTracking, type TrackingPlan, type TrackingStore } from './tracking.js';
 import type { FlowData } from './values.js';
+import { reconcileTrackingProgress } from './tracking-progress.js';
+import { onceSuccessfulWrite } from './write-accounting.js';
 
 export const DEFAULT_MAX_CROSS = 100_000;
 
@@ -159,6 +161,7 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       report({ status: 'error', lanes, laneErrors: 0, missing: {}, warnings: [], error });
     };
 
+    if (opts.signal?.aborted) { fail('aborted'); continue; }
     const def = registry.get(node.type);
     if (!def) {
       fail(`unknown node type "${node.type}"`);
@@ -174,7 +177,6 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       fail(problems.join('; '));
       continue;
     }
-
     const overrides: Record<string, unknown> = {};
     for (const p of def.params) {
       const v = opts.inputs?.[`${nodeId}.${p.name}`];
@@ -182,7 +184,6 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
     }
     const params = resolveParams(def, { ...node.params, ...overrides });
     const lacing = node.lacing ?? 'shortest';
-
     if (opts.features) {
       const avail = nodeAvailability(def, node.type, opts.features);
       if (avail.status === 'unavailable') {
@@ -213,7 +214,6 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
         continue;
       }
     }
-
     let plan: LiftPlan;
     try {
       plan = planLift(inputs, { lacing, maxCross, laneKeyPort: def.laneKeyPort });
@@ -225,7 +225,6 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
     for (const [port, keys] of Object.entries(plan.missing)) {
       log.push({ nodeId, laneKey: null, level: 'warn', message: `input "${port}" has no branch for keys: ${keys.join(', ')}` });
     }
-
     // Tracked nodes: decide per lane what to do against last run's set.
     let trackingPlan: TrackingPlan | undefined;
     const trackingKey = trackingKeyOf(doc, node);
@@ -267,8 +266,7 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       const kept = trackingPlan.keep.find((e) => e.laneKey === k);
       return kept ? { action: 'keep', globalId: kept.globalId } : undefined;
     };
-    // Set when any lane reports that its result came from outside the graph:
-    // the node's outputs are then not memoised, so a rerun fetches again.
+    // Externally sourced lane results are not memoised; a rerun fetches again.
     let markedVolatile = false;
     const makeCtx = (laneKey: string | null, tracking?: LaneTracking) => ({
       host: opts.host,
@@ -279,6 +277,7 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       markVolatile: () => { markedVolatile = true; },
     });
 
+    const markWrote = onceSuccessfulWrite(!!def.writes, () => { writesThisRun += 1; if (opts.cache) opts.cache.writeGeneration += 1; });
     const results: (NodeOutputs | null)[] = [];
     let laneErrors = 0;
     let nodeError: string | undefined;
@@ -306,6 +305,7 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       const ctx = makeCtx(lane.laneKey, laneTracking(lane.laneKey));
       try {
         results.push(await def.run(ctx, lane.args, params));
+        markWrote();
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (!plan.lifted) {
@@ -317,7 +317,10 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
         results.push(null);
       }
     }
+    if (opts.signal?.aborted) nodeError = 'aborted';
     if (nodeError !== undefined) {
+      if (trackingPlan) opts.tracking?.save(reconcileTrackingProgress(trackingPlan, opts.tracking.load(trackingKey),
+        node.type, plan.lanes, results, skippedDuplicates, [], true));
       fail(nodeError, plan.lanes.length);
       continue;
     }
@@ -335,8 +338,9 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
         for (const gone of trackingPlan.remove) failedRemovals.push(gone.laneKey);
       } else {
         for (const gone of trackingPlan.remove) {
+          if (opts.signal?.aborted) { failedRemovals.push(gone.laneKey); removeSkipped++; continue; }
           try {
-            await def.remove?.(makeCtx(gone.laneKey), gone.globalId);
+            if (def.remove) { await def.remove(makeCtx(gone.laneKey), gone.globalId); markWrote(); }
           } catch (err) {
             removeErrors += 1;
             failedRemovals.push(gone.laneKey);
@@ -344,22 +348,10 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
           }
         }
       }
-      // A lane that failed keeps its previous entry, so the next run retries
-      // it instead of forgetting an element that may still exist. A vanished
-      // lane whose removal threw, or whose node has no remove hook at all,
-      // is the same case: still in the model, so still in the set.
-      const failedLanes = new Set([
-        ...plan.lanes.filter((l, i) => results[i] === null && !l.nullLane && !skippedDuplicates.has(i)).map((l) => l.laneKey ?? ''),
-        ...failedRemovals,
-      ]);
-      const entries = { ...trackingPlan.next.entries };
-      const previous = opts.tracking?.load(trackingKey)?.entries ?? {};
-      for (const k of failedLanes) {
-        if (previous[k]) entries[k] = previous[k];
-        else delete entries[k];
-      }
-      opts.tracking?.save({ ...trackingPlan.next, entries, nodeType: node.type });
+      opts.tracking?.save(reconcileTrackingProgress(trackingPlan, opts.tracking.load(trackingKey),
+        node.type, plan.lanes, results, skippedDuplicates, failedRemovals));
     }
+    if (opts.signal?.aborted) { fail('aborted', plan.lanes.length); continue; }
     let assembled: Map<string, FlowData>;
     try {
       assembled = assemble(plan, def.outputs, results);
@@ -368,10 +360,7 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
       continue;
     }
     outputs.set(nodeId, assembled);
-    if (def.writes) {
-      writesThisRun += 1;
-      if (opts.cache) opts.cache.writeGeneration += 1;
-    }
+    markWrote();
     if (memoKey && opts.cache) {
       if (markedVolatile) opts.cache.invalidate(nodeId);
       else opts.cache.set(nodeId, memoKey, assembled);
@@ -396,5 +385,5 @@ export async function runFlow<H>(doc: FlowDocument, opts: RunOptions<H>): Promis
   }
 
   const graphOutputs = doc.outputs.map((o) => ({ label: o.label, nodeId: o.nodeId, port: o.port, data: outputs.get(o.nodeId)?.get(o.port) }));
-  return { ok: failed.size === 0, writes: writesThisRun, outputs, graphOutputs, reports, log };
+  return { ok: failed.size === 0 && !opts.signal?.aborted, writes: writesThisRun, outputs, graphOutputs, reports, log };
 }

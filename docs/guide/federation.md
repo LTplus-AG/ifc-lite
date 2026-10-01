@@ -351,3 +351,13 @@ const result = await parseFederatedIfcx([
 ```
 
 See the [IFC5 Parsing Guide](parsing.md) for more details on IFCX format support.
+
+
+## Filename tags in saved workflows
+
+[Session automation](flow.md#file-slots-reports-and-portability) loads models
+through the same federation loader and can assign model tags from their original
+filenames. All matching rules union their tag names, preserving manual tags.
+Checks target qualified file slots, exact filenames or normalized tag names.
+Duplicate filenames require explicit slot bindings; comparison A/base and B/head
+roles must each resolve exactly one model.

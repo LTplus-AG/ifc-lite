@@ -1,0 +1,151 @@
+{
+  "observer": "tests",
+  "baseline": {
+    "kind": "pass",
+    "passed": 17,
+    "total": 17
+  },
+  "reverted": {
+    "kind": "assertion-failure",
+    "passed": 15,
+    "failed": 2,
+    "total": 17,
+    "evidence": []
+  },
+  "ledger": [
+    {
+      "file": "apps/viewer/src/lib/document/build-report-document.test.ts",
+      "role": "executable",
+      "runKey": "test:apps/viewer/src/lib/document/build-report-document.test.ts",
+      "adapter": "node-test",
+      "runner": {
+        "family": "node-test",
+        "command": [
+          "tsx",
+          "--import",
+          "./src/test/vite-module-hooks.mjs",
+          "--test-timeout=120000",
+          "--test-concurrency=1",
+          "--test",
+          "src/lib/document/build-report-document.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 10,
+        "failed": 0,
+        "total": 10,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "node v26.7.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/lib/document/build-report-document.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 9,
+        "failed": 1,
+        "total": 10,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "node v26.7.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/lib/document/build-report-document.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    },
+    {
+      "file": "apps/viewer/src/lib/document/model-bindings.test.ts",
+      "role": "executable",
+      "runKey": "test:apps/viewer/src/lib/document/model-bindings.test.ts",
+      "adapter": "node-test",
+      "runner": {
+        "family": "node-test",
+        "command": [
+          "tsx",
+          "--import",
+          "./src/test/vite-module-hooks.mjs",
+          "--test-timeout=120000",
+          "--test-concurrency=1",
+          "--test",
+          "src/lib/document/model-bindings.test.ts"
+        ]
+      },
+      "features": [],
+      "attribution": "runtime-v8-file",
+      "baseline": {
+        "kind": "pass",
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "exitCode": 0,
+        "signal": null,
+        "toolchain": "node v26.7.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/lib/document/model-bindings.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 6,
+        "failed": 1,
+        "total": 7,
+        "exitCode": 1,
+        "signal": null,
+        "toolchain": "node v26.7.0",
+        "attributed": true,
+        "files": [
+          "apps/viewer/src/lib/document/model-bindings.test.ts"
+        ],
+        "testIdentities": [],
+        "evidence": []
+      }
+    }
+  ],
+  "schemaVersion": 2,
+  "channel": "pull-request",
+  "verdict": "OBSERVED",
+  "exitCode": 0,
+  "reason": "reverting production turned an assertion RED in apps/viewer/src/lib/document/build-report-document.test.ts; that file has a green, attributable baseline.",
+  "base": "271f35684ba57944b82f49505e51573d952cdcee",
+  "head": "0860c7f629b5ca3a87fc018a046ef832aedffc11",
+  "production": [
+    "apps/viewer/src/components/viewer/document/DocumentPanel.tsx",
+    "apps/viewer/src/components/viewer/document/useDocumentData.ts",
+    "apps/viewer/src/components/viewer/document/useDocumentTables.ts",
+    "apps/viewer/src/components/viewer/lists/useListProviders.ts",
+    "apps/viewer/src/i18n/catalogues/document.en.ts",
+    "apps/viewer/src/lib/document/bindings.ts",
+    "apps/viewer/src/lib/document/build-report-document.ts",
+    "apps/viewer/src/lib/document/export-prepared-document.ts",
+    "apps/viewer/src/lib/document/generate-document-pdf.ts",
+    "apps/viewer/src/lib/document/list-fingerprint.ts",
+    "apps/viewer/src/lib/document/prepare-charts.ts",
+    "apps/viewer/src/lib/document/prepare-document.ts",
+    "apps/viewer/src/lib/document/prepare-list-table.ts",
+    "apps/viewer/src/lib/lists/prepare-providers.ts",
+    "mkdocs.yml"
+  ],
+  "tests": [
+    "apps/viewer/src/lib/document/build-report-document.test.ts",
+    "apps/viewer/src/lib/document/model-bindings.test.ts"
+  ],
+  "invocationId": "e11857b1-d0ef-42d4-86a2-1d46794023df",
+  "timing": {
+    "startedAt": "2026-10-01T15:51:34.753Z",
+    "finishedAt": "2026-10-01T15:51:43.009Z"
+  },
+  "restoration": "verified"
+}

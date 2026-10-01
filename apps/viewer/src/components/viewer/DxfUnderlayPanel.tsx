@@ -8,7 +8,8 @@
  * Import DXF files as toggleable reference layers under the 2D drawing:
  * per-file visibility/opacity, per-DXF-layer toggles, centre-on-model, and
  * placement (offset / rotation / scale) against the model's coordinate
- * system. Underlays render on plan ('down') sections.
+ * system. Site plans render on Down; frozen plane references project into
+ * compatible Front/Side/Down drawings.
  *
  * "Align to model georeference" (issue #1929) is a per-underlay toggle for
  * DXFs authored in map/CRS coordinates (eastings/northings) rather than
@@ -35,24 +36,19 @@
  */
 
 import React, { useCallback, useRef, useState } from 'react';
-import { Eye, EyeOff, FileUp, Trash2, ChevronDown, ChevronRight, AlertTriangle, Crosshair } from 'lucide-react';
+import { FileUp } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
+import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { posthog } from '@/lib/analytics';
 import { ingestDxfFile } from '@/hooks/ingest/dxfIngest';
-import { resolveEffectiveGeoreferenced } from '@/hooks/dxfUnderlayMath';
-import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice';
-interface DxfUnderlayPanelProps {
+import type { SectionPlaneConfig } from '@ifc-lite/drawing-2d';
+import { UnderlayCard } from './drawing/DxfUnderlayCard';
+import { captureDxfReferenceFrame } from '@/hooks/dxfReferencePlane';
+
+export interface DxfUnderlayPanelProps {
   /** Centre the underlay on the generated drawing (offset adjustment). */
   onCenterOnModel: (id: string) => void;
   /** False when the current section is not a cardinal plan view. */
@@ -63,286 +59,16 @@ interface DxfUnderlayPanelProps {
    * any underlay still in "auto" mode (`entry.georeferenced === undefined`).
    */
   georeferenceAvailable: boolean;
+  sectionPlane?: SectionPlaneConfig;
 }
 
-function PlacementField({
-  label,
-  value,
-  step,
-  onCommit,
-}: {
-  label: string;
-  value: number;
-  step: number;
-  onCommit: (value: number) => void;
-}): React.ReactElement {
-  const inputId = React.useId();
-  return (
-    <div className="flex flex-col gap-0.5">
-      <Label htmlFor={inputId} className="text-2xs text-muted-foreground">{label}</Label>
-      <Input
-        id={inputId}
-        type="number"
-        step={step}
-        value={Number.isFinite(value) ? Number(value.toFixed(4)) : 0}
-        onChange={(e) => {
-          const n = Number.parseFloat(e.target.value);
-          if (Number.isFinite(n)) onCommit(n);
-        }}
-        className="h-6 text-xs px-1.5"
-      />
-    </div>
-  );
-}
-
-function UnderlayCard({
-  state,
-  onCenterOnModel,
-  planViewActive,
-  georeferenceAvailable,
-}: {
-  state: DxfUnderlayState;
-  onCenterOnModel: (id: string) => void;
-  planViewActive: boolean;
-  georeferenceAvailable: boolean;
-}): React.ReactElement {
-  const { t } = useTranslation();
-  const removeDxfUnderlay = useViewerStore((s) => s.removeDxfUnderlay);
-  const setDxfUnderlayVisible = useViewerStore((s) => s.setDxfUnderlayVisible);
-  const setDxfUnderlayVisible3D = useViewerStore((s) => s.setDxfUnderlayVisible3D);
-  const setDxfUnderlayOpacity = useViewerStore((s) => s.setDxfUnderlayOpacity);
-  const toggleDxfUnderlayLayer = useViewerStore((s) => s.toggleDxfUnderlayLayer);
-  const updateDxfUnderlayPlacement = useViewerStore((s) => s.updateDxfUnderlayPlacement);
-  const setDxfUnderlayGeoreferenced = useViewerStore((s) => s.setDxfUnderlayGeoreferenced);
-
-  const [layersOpen, setLayersOpen] = useState(false);
-  const [placementOpen, setPlacementOpen] = useState(false);
-
-  const { underlay, placement } = state;
-  const pathCount = underlay.layers.reduce((n, l) => n + l.paths.length + l.fills.length, 0);
-  const textCount = underlay.layers.reduce((n, l) => n + l.texts.length, 0);
-
-  return (
-    <div className="border rounded-md p-2 space-y-2 bg-muted/20">
-      <div className="flex items-center gap-1.5 min-w-0">
-        <div className="flex items-center">
-          <IconButton
-            label={t(state.visible ? 'drawingUnderlay.dxf.hide2DTitle' : 'drawingUnderlay.dxf.show2DTitle')}
-            size="icon-sm"
-            onClick={() => setDxfUnderlayVisible(state.id, !state.visible)}
-          >
-            {state.visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-          </IconButton>
-          <span className="text-2xs leading-none text-muted-foreground -ml-1">{t('drawingUnderlay.dxf.badge2D')}</span>
-        </div>
-        <div className="flex items-center">
-          <IconButton
-            label={t(state.visible3D ? 'drawingUnderlay.dxf.hide3DTitle' : 'drawingUnderlay.dxf.show3DTitle')}
-            size="icon-sm"
-            onClick={() => setDxfUnderlayVisible3D(state.id, !state.visible3D)}
-          >
-            {state.visible3D ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-          </IconButton>
-          <span className="text-2xs leading-none text-muted-foreground -ml-1">3D</span>
-        </div>
-        <span className="text-xs font-medium truncate flex-1" title={state.name}>{state.name}</span>
-        <IconButton
-          label={t(planViewActive ? 'drawingUnderlay.dxf.centerOnModelTitle' : 'drawingUnderlay.dxf.centerOnModelDisabledTitle')}
-          size="icon-sm"
-          onClick={() => onCenterOnModel(state.id)}
-          disabled={!planViewActive}
-        >
-          <Crosshair className="h-3.5 w-3.5" />
-        </IconButton>
-        <IconButton
-          label={t('drawingUnderlay.dxf.removeUnderlayTitle')}
-          size="icon-sm"
-          onClick={() => removeDxfUnderlay(state.id)}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </IconButton>
-      </div>
-
-      <div className="text-2xs text-muted-foreground px-1">
-        {t('drawingUnderlay.dxf.summaryLine', { layers: underlay.layers.length, paths: pathCount, texts: textCount })}
-      </div>
-
-      {underlay.warnings.length > 0 && (
-        <div className="flex items-start gap-1 text-2xs text-amber-600 dark:text-amber-500 px-1">
-          <AlertTriangle className="h-3 w-3 mt-px shrink-0" />
-          <span>{underlay.warnings[0]}{underlay.warnings.length > 1 ? t('drawingUnderlay.dxf.moreWarningsSuffix', { count: underlay.warnings.length - 1 }) : ''}</span>
-        </div>
-      )}
-
-      {/* Skipped entity types (parser-computed `underlay.skipped`, a
-          type→count map — distinct from `warnings`, a message list, so it
-          gets its own line rather than being concatenated with warnings
-          above). This is the only place a user can learn that part of the
-          DXF did not import: `ingestDxfFile` only logs `skipped` to the
-          console, and only when the underlay has ZERO drawable entities —
-          the common case of "most of it imported, N entities of type X
-          did not" was previously silent. */}
-      {Object.keys(underlay.skipped).length > 0 && (
-        <div className="flex items-start gap-1 text-2xs text-amber-600 dark:text-amber-500 px-1">
-          <AlertTriangle className="h-3 w-3 mt-px shrink-0" />
-          <span>
-            {t('drawingUnderlay.dxf.notImportedLabel')} {Object.entries(underlay.skipped)
-              .map(([type, count]) => `${count}× ${type}`)
-              .join(', ')}
-          </span>
-        </div>
-      )}
-
-      {/* Opacity — PR #2114 review: the slider only affects the 2D drawing
-          panel. The 3D viewport's line pipeline (`Section2DOverlayRenderer`)
-          shares one un-blended `linePipeline`/uniform colour across the
-          grid, alignment, annotation and DXF line overlays; giving each DXF
-          underlay its own alpha would mean splitting the merged 3D DXF
-          line buffer (`useDxfUnderlays3DLines`) into a per-underlay draw
-          call and adding blend state to that shared pipeline — out of
-          scope here, so `useDxfUnderlays3DLines`'s `opacity > 0` check
-          stays a binary gate. The title below and the "(2D)" suffix make
-          that explicit rather than leaving the control silently no-op in
-          3D. */}
-      <div className="flex items-center gap-2 px-1">
-        <Label className="text-2xs text-muted-foreground w-12" title={t('drawingUnderlay.dxf.opacityHint')}>
-          {t('drawingUnderlay.dxf.opacityLabel')}
-        </Label>
-        <input
-          type="range"
-          min={0.1}
-          max={1}
-          step={0.05}
-          value={state.opacity}
-          onChange={(e) => setDxfUnderlayOpacity(state.id, Number.parseFloat(e.target.value))}
-          className="flex-1 h-1.5 accent-primary"
-          title={t('drawingUnderlay.dxf.opacityHint')}
-        />
-        <span className="text-2xs text-muted-foreground w-8 text-right">{Math.round(state.opacity * 100)}%</span>
-      </div>
-
-      {/* Georeference alignment (issue #1929) — mirrors the .laz/.las
-          "Align to model georeference" toggle (issue #1804), but per-DXF
-          since each imported file may or may not be in map/CRS
-          coordinates. Tri-state (PR #1965 review): a freshly-imported
-          entry starts in "auto" (`state.georeferenced === undefined`) and
-          the checkbox shows the EFFECTIVE resolved state — following
-          `georeferenceAvailable` — until the user clicks it, at which
-          point it becomes an explicit true/false that no longer moves on
-          its own. */}
-      {(() => {
-        const isAuto = state.georeferenced === undefined;
-        const effectiveChecked = resolveEffectiveGeoreferenced(state, georeferenceAvailable);
-        return (
-          <label
-            className="flex items-center justify-between gap-2 cursor-pointer px-1"
-            title={
-              isAuto
-                ? t('drawingUnderlay.dxf.georefAutoHint', { state: t(effectiveChecked ? 'drawingUnderlay.dxf.onState' : 'drawingUnderlay.dxf.offState') })
-                : t('drawingUnderlay.dxf.georefManualHint')
-            }
-          >
-            <span className="text-2xs text-muted-foreground">
-              {t('drawingUnderlay.dxf.georefToggleLabel')}{isAuto ? t('drawingUnderlay.dxf.georefAutoSuffix') : ''}
-            </span>
-            <input
-              type="checkbox"
-              checked={effectiveChecked}
-              onChange={(e) => setDxfUnderlayGeoreferenced(state.id, e.target.checked)}
-              className="accent-primary"
-            />
-          </label>
-        );
-      })()}
-
-      {/* DXF layers */}
-      <Collapsible open={layersOpen} onOpenChange={setLayersOpen}>
-        <CollapsibleTrigger asChild>
-          <button className="flex items-center gap-1 text-xs font-medium w-full px-1 py-0.5 hover:text-primary">
-            {layersOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            {t('drawingUnderlay.dxf.layersSectionLabel')}
-          </button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="space-y-0.5 pl-2 max-h-48 overflow-y-auto">
-            {underlay.layers.map((layer) => {
-              const layerVisible = state.layerVisibility[layer.name] ?? layer.visible;
-              return (
-                <button
-                  key={layer.name}
-                  onClick={() => toggleDxfUnderlayLayer(state.id, layer.name)}
-                  className="flex items-center gap-1.5 w-full px-1 py-0.5 rounded hover:bg-muted text-left"
-                  title={t(layerVisible ? 'drawingUnderlay.dxf.hideLayerTitle' : 'drawingUnderlay.dxf.showLayerTitle', { name: layer.name })}
-                >
-                  {layerVisible ? (
-                    <Eye className="h-3 w-3 shrink-0" />
-                  ) : (
-                    <EyeOff className="h-3 w-3 shrink-0 text-muted-foreground" />
-                  )}
-                  <span
-                    className="w-2.5 h-2.5 rounded-sm border shrink-0"
-                    style={{ backgroundColor: layer.color }}
-                  />
-                  <span className={`text-2xs truncate ${layerVisible ? '' : 'text-muted-foreground'}`}>
-                    {layer.name}
-                  </span>
-                  <span className="text-2xs text-muted-foreground ml-auto shrink-0">
-                    {layer.paths.length + layer.fills.length + layer.texts.length}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
-      {/* Placement */}
-      <Collapsible open={placementOpen} onOpenChange={setPlacementOpen}>
-        <CollapsibleTrigger asChild>
-          <button className="flex items-center gap-1 text-xs font-medium w-full px-1 py-0.5 hover:text-primary">
-            {placementOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            {t('drawingUnderlay.dxf.placementSectionLabel')}
-          </button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="grid grid-cols-2 gap-1.5 pl-2 pr-1 pt-1">
-            <PlacementField
-              label="Offset X (m)"
-              value={placement.offsetX}
-              step={0.1}
-              onCommit={(v) => updateDxfUnderlayPlacement(state.id, { offsetX: v })}
-            />
-            {/* Drawing-space +y points south on a plan; show north-positive. */}
-            <PlacementField
-              label="Offset Y (m)"
-              value={-placement.offsetY}
-              step={0.1}
-              onCommit={(v) => updateDxfUnderlayPlacement(state.id, { offsetY: -v })}
-            />
-            <PlacementField
-              label="Rotation (°)"
-              value={placement.rotationDeg}
-              step={1}
-              onCommit={(v) => updateDxfUnderlayPlacement(state.id, { rotationDeg: v })}
-            />
-            <PlacementField
-              label="Scale"
-              value={placement.scale}
-              step={0.1}
-              onCommit={(v) => {
-                if (v > 0) updateDxfUnderlayPlacement(state.id, { scale: v });
-              }}
-            />
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
-    </div>
-  );
-}
-
-export function DxfUnderlayPanel({ onCenterOnModel, planViewActive, georeferenceAvailable }: DxfUnderlayPanelProps): React.ReactElement {
+export function DxfUnderlayPanel({ onCenterOnModel, planViewActive, georeferenceAvailable, sectionPlane }: DxfUnderlayPanelProps): React.ReactElement {
   const { t } = useTranslation(); const dxfUnderlays = useViewerStore((s) => s.dxfUnderlays);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [chosenMode, setChosenMode] = useState<'site-plan' | 'plane-reference' | null>(null);
+  const mode = chosenMode ?? (planViewActive ? 'site-plan' : 'plane-reference');
+  const [units, setUnits] = useState<'auto' | 'm' | 'mm' | 'cm' | 'ft' | 'in'>('auto');
   const [importing, setImporting] = useState(false);
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -352,14 +78,23 @@ export function DxfUnderlayPanel({ onCenterOnModel, planViewActive, georeference
 
     setImporting(true);
     try {
+      // Capture before awaiting bytes, but handle a section change while the
+      // native picker was open (a custom plane cannot be registered).
+      const referenceFrame = mode === 'plane-reference' && sectionPlane
+        ? captureDxfReferenceFrame(useViewerStore.getState(), sectionPlane) : undefined;
+      if (mode === 'plane-reference' && !referenceFrame) return;
+      const options = { referenceFrame, units: units === 'auto' ? undefined : units };
       for (const file of files) {
-        await ingestDxfFile(file); // errors surface as toasts inside
+        await ingestDxfFile(file, options); // errors surface as toasts inside
       }
       posthog.capture('dxf_underlay_imported', { file_count: files.length });
+    } catch (error: unknown) {
+      console.error('[DxfUnderlayPanel] import failed', error);
+      toast.error(error instanceof Error ? error.message : String(error));
     } finally {
       setImporting(false);
     }
-  }, []);
+  }, [mode, units, sectionPlane]);
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -374,11 +109,30 @@ export function DxfUnderlayPanel({ onCenterOnModel, planViewActive, georeference
           className="hidden"
           onChange={handleFileChange}
         />
+        <label className="block space-y-1 text-xs">
+          <span>{t('drawingUnderlay.dxf.importPlacement')}</span>
+          <select className="w-full rounded border bg-background p-1" value={mode}
+            onChange={event => setChosenMode(event.currentTarget.value === 'plane-reference' ? 'plane-reference' : 'site-plan')}>
+            <option value="site-plan">{t('drawingUnderlay.dxf.sitePlan')}</option>
+            <option value="plane-reference" disabled={!sectionPlane || !!sectionPlane.customPlane}>{t('drawingUnderlay.dxf.sectionReference')}</option>
+          </select>
+        </label>
+        <label className="block space-y-1 text-xs">
+          <span>{t('drawingUnderlay.dxf.units')}</span>
+          <select className="w-full rounded border bg-background p-1" value={units} onChange={event => {
+            const value = event.currentTarget.value;
+            if (value === 'auto' || value === 'm' || value === 'mm' || value === 'cm' || value === 'ft' || value === 'in') setUnits(value);
+          }}>
+            <option value="auto">{t('drawingUnderlay.dxf.fileUnits')}</option>
+            {(['m', 'mm', 'cm', 'ft', 'in'] as const).map(unit => <option key={unit} value={unit}>{unit}</option>)}
+          </select>
+        </label>
+        <p className="text-2xs text-muted-foreground">{t('drawingUnderlay.dxf.unitsHint')}</p>
         <Button
           variant="outline"
           size="sm"
           className="w-full"
-          disabled={importing}
+          disabled={importing || (mode === 'plane-reference' && (!sectionPlane || !!sectionPlane.customPlane))}
           onClick={() => fileInputRef.current?.click()}
         >
           {importing ? (
@@ -393,15 +147,8 @@ export function DxfUnderlayPanel({ onCenterOnModel, planViewActive, georeference
           <p className="text-xs text-muted-foreground px-1">{t('drawingUnderlay.dxf.emptyStateHint')}</p>
         )}
 
-        {dxfUnderlays.length > 0 && !planViewActive && (
-          <div className="flex items-start gap-1.5 text-xs text-muted-foreground border rounded-md p-2">
-            <AlertTriangle className="h-3.5 w-3.5 mt-px shrink-0" />
-            <span>{t('drawingUnderlay.dxf.notPlanViewHint')}</span>
-          </div>
-        )}
-
         {dxfUnderlays.map((state) => (
-          <UnderlayCard key={state.id} state={state} onCenterOnModel={onCenterOnModel} planViewActive={planViewActive} georeferenceAvailable={georeferenceAvailable} />
+          <UnderlayCard key={state.id} state={state} onCenterOnModel={onCenterOnModel} planViewActive={planViewActive} georeferenceAvailable={georeferenceAvailable} sectionPlane={sectionPlane} />
         ))}
       </div>
     </div>

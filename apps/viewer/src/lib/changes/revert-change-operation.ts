@@ -9,10 +9,10 @@ import { hasAppearanceHistoryEntry } from '@/lib/appearance/history';
 import { applyRedoToView, applyUndoToView } from '@/store/slices/mutation-history-apply';
 import { georefPatch } from '@/store/slices/mutation-history-replay';
 import { inverseMutationTargets, revertedMutationIds } from '@/store/slices/mutation-inverse-registry';
-import { mutationPermissionForModels } from '@/store/mutation-permission';
+import { mutationPermissionForModels, type MutationDenialReason } from '@/store/mutation-permission';
 import { changeOperations, type ChangeOperation } from './change-operations.js';
 
-export type RevertRefusal = 'stale' | 'edit-mode' | 'collab-role' | 'model-unavailable'
+export type RevertRefusal = MutationDenialReason | 'stale'
   | 'newer-conflict' | 'unsupported' | 'missing-view' | 'shared-room';
 export type RevertResult = { ok: true; mode: 'undo' | 'inverse' } | { ok: false; reason: RevertRefusal };
 
@@ -78,7 +78,9 @@ export function revertChangeOperation(store: StoreApi<ViewerState>, requested: C
     return { ok: false, reason: 'stale' };
   }
   const permission = mutationPermissionForModels(state, live.modelIds);
-  if (!permission.allowed && permission.reason === 'edit-mode') return { ok: false, reason: 'edit-mode' };
+  if (!permission.allowed && (permission.reason === 'edit-mode' || permission.reason === 'workflow-running')) {
+    return { ok: false, reason: permission.reason };
+  }
   // The generic history replay writes the local overlay, but property and
   // quantity inverses do not mirror into the room CRDT. Never show a local-only
   // Revert as a successful shared edit (#5902).

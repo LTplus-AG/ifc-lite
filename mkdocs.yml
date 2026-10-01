@@ -24,7 +24,10 @@ validation:
 # the next person finds it" are not the same thing.
 #
 # Declaring them here keeps `omitted_files: warn` meaningful for everything else.
+# The issue-scoped section implementation/acceptance record is linked from its
+# evidence README; keep it searchable without adding a temporary plan to site nav.
 not_in_nav: |
+  architecture/section-6614-6615-spec.md
   architecture/evidence/**
   research/**
 
@@ -185,6 +188,9 @@ nav:
     - Privacy: guide/privacy.md
   - Architecture:
     - Overview: architecture/overview.md
+    - Session Automation:
+        - Specification: architecture/session-automation-6612.md
+        - Implementation Plan: architecture/session-automation-6612-implementation.md
     - Data Flow: architecture/data-flow.md
     - Parsing Pipeline: architecture/parsing-pipeline.md
     - Geometry Pipeline: architecture/geometry-pipeline.md

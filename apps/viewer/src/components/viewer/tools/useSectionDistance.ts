@@ -21,6 +21,7 @@ import { useCallback, useMemo } from 'react';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
+import { setAlignmentDistance } from '@/lib/section/alignment-controller';
 import {
   collectStoreys,
   mergedSectionBounds,
@@ -38,7 +39,7 @@ export const STOREY_SNAP_TOLERANCE_M = 0.15;
 
 export interface SectionDistance {
   /** `'custom'` = along the picked normal; `'world'` = along the cardinal axis; `'percent'` = no bounds yet. */
-  kind: 'custom' | 'world' | 'percent';
+  kind: 'alignment' | 'custom' | 'world' | 'percent';
   value: number;
   onChange: (next: number) => void;
   step: number;
@@ -99,6 +100,12 @@ export function useSectionDistance(): SectionDistance {
   }, [range, setSectionPlanePosition]);
 
   if (custom) {
+    if (custom.alignment) return {
+      kind: 'alignment', value: custom.alignment.geometricHorizontalDistanceMeters,
+      onChange: next => { void setAlignmentDistance(next); },
+      step: 0.1, min: 0, max: custom.alignment.geometricHorizontalLengthMeters,
+      snaps: [], storeys, range, bounds, cutAtStorey,
+    };
     return {
       kind: 'custom', value: custom.distance, onChange: setSectionCustomDistance,
       step: 0.05, min: -Infinity, max: Infinity, snaps: [], storeys, range, bounds, cutAtStorey,

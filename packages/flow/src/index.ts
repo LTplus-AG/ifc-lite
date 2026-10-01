@@ -45,6 +45,7 @@ export type {
   FlowNode,
   FlowEdge,
   FlowInput,
+  FlowFileSlot,
   FlowOutput,
   FlowDocument,
   DocumentProblem,

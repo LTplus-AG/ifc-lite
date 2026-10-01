@@ -2,9 +2,10 @@
 
 A flow graph is a node-based program over a BIM model: query elements, read
 and restructure their data, write properties back, highlight results in the
-viewer, and export tables. The same `*.flow.json` runs in the browser and
-with `ifc-lite flow run` in CI, and every write lands in the model's change
-set, so it is previewed, undone, and published like any other edit.
+viewer, and export tables. Portable `*.flow.json` graphs run in the browser
+and with `ifc-lite flow run` in CI. Model writes land in the change set for
+preview, undo and publishing. Local session automation additionally requires
+the viewer host for files, native check history, documents and PDF artifacts.
 
 The runtime is `@ifc-lite/flow`; the standard nodes are `@ifc-lite/flow-nodes`.
 
@@ -659,5 +660,94 @@ they also run headlessly:
 ifc-lite flow run apps/viewer/src/lib/flow/examples/03-quantity-takeoff.flow.json model.ifc --json
 ```
 
-`packages/cli`'s `flow.test.ts` runs every one of them against a real model,
-so an example that stops working fails the build.
+`packages/cli`'s `flow.test.ts` runs the portable examples against a real model.
+The session automation example verifies that headless execution refuses its
+missing viewer services before opening a model.
+
+### Offer a saved workflow at startup
+
+Select a saved workflow and enable **Offer this workflow at startup** in the
+Flow toolbar. On the next viewer session, a prompt offers to open that workflow
+in Player so you can select files and review settings before clicking Run.
+**Skip this session** dismisses the offer without changing the preference;
+**Disable startup prompt** removes the preference. No workflow executes merely
+because the viewer opens.
+
+Explicit model or collaboration links take priority. The offer waits until
+other startup dialogs close, appears once per session and is cleared if its
+saved workflow no longer exists. The preference references the local saved
+workflow ID, so importing that workflow on another browser does not opt that
+browser into startup execution.
+
+### Configure session automation
+
+The automation form edits filename rules, check jobs and document mappings
+without writing node-parameter JSON. Filename rules apply in order and union
+all matching tag names. Each check has a stable job ID, an enable switch and
+ordered execution. Use **Embed configuration in workflow** to import an IDS,
+information rule set or comparison recipe into the saved workflow, or select
+**Choose a file each run** and bind an existing configuration file slot.
+Imported configuration files and templates are limited to 10 MiB.
+
+Target selectors use qualified file slots, original filenames or normalized
+tag names. An empty target list means all workflow models; multiple targets
+form a union. Imported comparison recipes expose their A/base and B/head
+selectors separately. The form lists tag references from embedded information
+rules and accepts explicit ID-to-name mappings for external rules.
+
+Import a native document template to map its report blocks to stable check job
+IDs. An optional result ID selects one report; leaving it blank includes all
+reports for that job, including separate IDS reports for each model. Importing
+configuration or a template edits the setup and never starts execution.
+
+
+### File slots, reports and portability
+
+Flow document version 2 adds a `files` input with ordered named slots. The
+existing `file` input still reads text. Version-1 workflows migrate when opened,
+including saved browser workflows; the graph's authored parameters are retained.
+Selected local files must be chosen again after reload and never travel in an
+exported `.flow.json` file. Resource selectors use qualified addresses such as
+`load.files/models`, exact original filenames or normalized tag names.
+
+Open **Coordination session report** from the examples menu to load local IFC
+models, apply filename tags, execute selected IDS/information checks and optional
+comparison recipes, import completed comparison evidence and create a combined
+report document and PDF. The example requires at least one validation definition;
+comparison recipes and historical evidence are separate optional inputs. Configure
+job targets and tag-reference mappings when a definition requires them. Enable
+the startup offer only after saving the configured workflow.
+
+Comparison recipes describe checks to rerun. Saved comparison JSON contains
+completed evidence for documents. A plain live Compare report is a different
+format: export from the Saved comparisons library for historical reuse.
+One IDS job over several models produces separate model reports, with independent
+cardinality and pass rates. Quality failures remain reportable; evaluator errors
+block dependent document/PDF steps while completed reports remain reviewable.
+
+Session automation captures a fixed model revision for its checks. Run model
+editing nodes, including scripts with model-write grants, in a separate graph;
+mixed automation/edit graphs are rejected before model loading or other writes.
+
+Completed native reports retain workflow/run/job identity, effective options,
+model content identity, edit revision and execution diagnostics when available.
+Saving the same result within a run is idempotent. A new run creates new evidence.
+Browser storage refusal keeps reports/documents in memory and displays a warning;
+retry saving or download the evidence before closing the session.
+
+Default report documents print a title, scoped result counts and run/model
+provenance before the native report blocks. A custom template maps existing
+validation report or comparison table block IDs to enabled job IDs. A mapping
+without a result ID expands all results for that job into adjacent blocks, keeping
+the template's presentation. Required and incompatible mappings are rejected
+before model loading. Native document version 10 remains the portable format.
+Templates cannot use live validation tables or IDS/comparison charts, whose data
+belongs to the viewer's latest manual result. Use mapped report blocks for the
+workflow's captured evidence. Chart preparation failures produce PDF warnings.
+
+The standard CLI and MCP hosts describe these nodes but do not provide viewer
+session services. Execution refuses unavailable services before loading a model
+or mutating it. Custom hosts can implement `SessionAutomationHost`; advertise
+only services actually supplied. Files, native report bodies and PDF blobs stay
+outside persistable graph values. PDF generation produces a session artifact;
+Download can be retried without rerunning checks while that artifact is valid.

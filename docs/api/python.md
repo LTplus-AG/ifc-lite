@@ -84,6 +84,8 @@ you can hand them straight to `numpy.frombuffer` with zero parsing.
       "color":     [r, g, b, a],      # 0..1
       "vertices":  <bytes>,           # f64 little-endian, xyz triplets
       "faces":     <bytes>,           # u32 little-endian, triangle indices
+      "palette":   [[r, g, b, a], ...], # optional, per-face color overrides
+      "face_colors": <bytes>,         # optional, u64 little-endian palette indices
     },
     ...
   }
@@ -96,6 +98,15 @@ Decode the buffers with:
 verts = np.frombuffer(el["vertices"], dtype=np.float64).reshape(-1, 3)  # (V, 3)
 faces = np.frombuffer(el["faces"],    dtype=np.uint32 ).reshape(-1, 3)  # (F, 3)
 ```
+
+Elements whose surviving faces cannot be represented by the fallback `color` also
+carry `palette` and `face_colors`.
+Decode `face_colors` using `np.frombuffer(el["face_colors"], dtype="<u8")`:
+there is one palette index per surviving triangle, including transparency.
+The JSON form carries the same indices as an array of integers. Both fields are
+omitted when `color` represents all surviving faces; `color` remains the first
+submesh's RGBA for existing consumers.
+Palette order follows first occurrence and supports more than 65,536 colors.
 
 ### `geometry_data_json(ifc_bytes: bytes, quality: str | None = None, ids: set[int] | None = None, *, include_directrices: bool = False) -> str`
 
@@ -625,6 +636,53 @@ Runnable scripts live in [`examples/`](https://github.com/LTplus-AG/ifc-lite/tre
 ## License
 
 MPL-2.0. Part of the [ifc-lite](https://github.com/LTplus-AG/ifc-lite) project.
+
+### Alignment axes
+
+`alignment_axes(ifc_bytes, spacing_m=1.0, max_samples_per_axis=5001,
+max_total_samples=100000)` returns `axes` keyed by integer STEP ExpressId and
+`diagnostics` (at most 1,000 entries, with `diagnostics_omitted` reporting
+suppressed entries). Each axis carries `GlobalId`, `Name`, geometric horizontal length
+in metres, and samples containing `geometric_horizontal_distance_m`, an absolute
+world-space f64 `point` in IFC Z-up metres, and a normalized 3D `tangent`.
+
+Distance starts at the physical start, **not authored chainage**, and differs
+from 3D arc length on graded paths. Placement and declared length units use the
+shared Rust resolvers. Missing or unsupported axes, unresolved units and invalid
+placements produce diagnostics instead of fabricated identity or metre values.
+The strict sampling API accepts absent placement or a valid finite, nondegenerate
+`IfcLocalPlacement` chain with 3D relative placements; grid/linear axis placements
+and 2D relative placements are explicitly unsupported.
+IFC4x3 gradient/composite curves use the canonical medium-quality tessellation;
+this approximation is reported, as are the canonical cubic-parabola and
+biquadratic-parabola transition approximations. Horizontal distance is measured
+in the alignment-local XY plane even if placement tilts it in world space.
+Existing renderer alignment lines are unchanged.
+
+Sampling includes both endpoints. Per-axis and total bounds may coarsen spacing
+and report that action; later axes are omitted with diagnostics when fewer than
+two samples remain. Bounds must be between 2 and 1,000,000 and spacing must be
+finite and positive. Failed axes also spend the total frame-evaluation budget, so a late invalid
+frame cannot repeatedly reset that budget. Composite/gradient curve validation
+also has a per-axis budget of 100,000 reference-work items, including repeated
+references; exhaustion reports an invalid axis rather than truncated geometry.
+These limits do not limit the input IFC file size. The binding releases the GIL
+during Rust evaluation.
+
+```python
+from ifclite_geom import alignment_axes
+
+with open("road.ifc", "rb") as file:
+    report = alignment_axes(file.read(), spacing_m=5.0)
+for express_id, axis in report["axes"].items():
+    print(express_id, axis["Name"], axis["samples"][0]["point"])
+for diagnostic in report["diagnostics"]:
+    print(diagnostic["express_id"], diagnostic["code"], diagnostic["message"])
+```
+
+The capability adapts GeoBIM's published `alignment_axes` idea through the
+canonical evaluator, rather than duplicating evaluation or sampling renderer
+Float32 lines. Source: <https://github.com/geobim-app/geobim> (MPL-2.0).
 <!-- END GENERATED: python-api -->
 
 ## Source

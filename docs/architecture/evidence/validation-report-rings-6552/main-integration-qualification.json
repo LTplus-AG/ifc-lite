@@ -1,0 +1,179 @@
+{
+  "source": "26244b1cf7488a37c626200fc207120aeb720e35",
+  "integrationBase": "d1213b416a2077f2fa6eac36bacd333754901c4e",
+  "originalBrowserCaptureSource": "c5475182441bba8f1e7e8fb8b9305a376a720e80",
+  "typecheck": {
+    "command": "pnpm typecheck",
+    "exit": 0,
+    "turboTasksPassed": 109,
+    "testFilesCovered": 3185,
+    "log": "/tmp/6232-takeover/6552-heading-final-typecheck.log"
+  },
+  "selectedTests": [
+    {
+      "name": "reportBenchmarks",
+      "shard": 194087,
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-integration-benchmarks-green-final.log",
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "document",
+      "shard": 885784,
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-regression-document.log",
+      "tests": 42,
+      "passed": 42,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "ids-report-layout",
+      "shard": 766711,
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-regression-ids-report-layout.log",
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "report-provenance",
+      "shard": 961573,
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-regression-report-provenance.log",
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "IDSPanelResults.restore-colors",
+      "shard": 713213,
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-regression-IDSPanelResults.restore-colors.log",
+      "tests": 34,
+      "passed": 34,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "IDSPanel.rerun",
+      "shard": 583538,
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-regression-IDSPanel.rerun.log",
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "IDSPanel.i18n",
+      "shard": 523016,
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-regression-IDSPanel.i18n.log",
+      "tests": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "blockTitles",
+      "shard": 164740,
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-regression-blockTitles.log",
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "DocumentPanel.manualReport",
+      "shard": 295745,
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-regression-DocumentPanel.manualReport.log",
+      "tests": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "checklist-summary",
+      "shard": 5843,
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-regression-checklist-summary.log",
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "manual-report",
+      "shard": 100883,
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-regression-manual-report.log",
+      "tests": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "name": "pageHeading",
+      "shard": 476985,
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-regression-pageHeading.log",
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    }
+  ],
+  "selectedTotalPassed": 158,
+  "selectedTotalSkipped": 0,
+  "officialRevertOracle": {
+    "command": "node scripts/check-test-revert-oracle.mjs --base d1213b416a2077f2fa6eac36bacd333754901c4e --ci --json",
+    "exit": 0,
+    "baselinePassed": 16,
+    "revertedPassed": 8,
+    "revertedAssertionFailures": 8,
+    "productionFilesReverted": 12,
+    "restoration": "verified",
+    "log": "/tmp/6232-takeover/6552-heading-integration-official-oracle.log"
+  },
+  "limits": "The original browser/PDF artifacts remain the historical capture at c547. Current-main coverage adds an independently parsed real jsPDF export with Times 48 headings, measured ring bounds, body/footer fonts and actual outcome colors. No full local repository-suite pass is claimed; fresh publication-head CI is required.",
+  "gates": {
+    "lint": {
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-final-lint.log",
+      "files": 7970
+    },
+    "docsSamples": {
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-final-docs-samples.log",
+      "compiled": 425
+    },
+    "docsGenerated": {
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-final-docs-generated.log"
+    },
+    "moduleSize": {
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-final-module.log"
+    },
+    "sourceAssertions": {
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-final-source.log"
+    },
+    "changesets": {
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-publisher-changesets.log"
+    },
+    "changesetBump": {
+      "exit": 0,
+      "log": "/tmp/6232-takeover/6552-heading-publisher-bump-final.log"
+    }
+  }
+}

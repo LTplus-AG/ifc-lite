@@ -100,6 +100,8 @@ export interface IdsReportBlock extends ReportProvenance, BlockTitle {
   id: string;
   /** Layout (#6470). Absent in documents saved before it existed, which keep printing the original layout (one truncated line per field) until the author picks one. */
   variant?: IdsReportVariant;
+  /** Optional ring benchmark (#6552). Absent retains existing document output. */
+  benchmarks?: boolean;
   /** Which engine produced the snapshot (#6372). Absent means `'ids'`: every block saved before this field existed was labelled IDS. */
   sourceKind?: ReportSourceKind;
   /** IDS document title, or rule-set name, printed in the block's heading. */
@@ -149,6 +151,7 @@ export function validateIdsReportBlock(block: Record<string, unknown>, at: strin
   if (!isString(block.sourceName)) errors.push({ path: `${at}.sourceName`, message: 'expected a string' });
   if (!isString(block.generatedAt)) errors.push({ path: `${at}.generatedAt`, message: 'expected a string' });
   if (block.variant !== undefined && !IDS_REPORT_VARIANTS.includes(block.variant as IdsReportVariant)) errors.push({ path: `${at}.variant`, message: `expected ${IDS_REPORT_VARIANTS.join(' | ')}` });
+  if (block.benchmarks !== undefined && typeof block.benchmarks !== 'boolean') errors.push({ path: `${at}.benchmarks`, message: 'expected a boolean' });
   const summary = block.summary;
   if (!isRecord(summary) || !isCount(summary.checked) || !isCount(summary.passed) || !isCount(summary.failed) || !isRate(summary.passRate)
     || (summary.warnings !== undefined && !isCount(summary.warnings))) {

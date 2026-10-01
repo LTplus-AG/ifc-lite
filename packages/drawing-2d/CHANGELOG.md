@@ -1,5 +1,16 @@
 # @ifc-lite/drawing-2d
 
+## 4.1.0
+
+### Minor Changes
+
+- [#6627](https://github.com/LTplus-AG/ifc-lite/pull/6627) [`89e5950`](https://github.com/LTplus-AG/ifc-lite/commit/89e5950673dda22483396628f6cf46041c15e979) Thanks [@louistrue](https://github.com/louistrue)! - Add the optional `SectionConfig.clipProjectionBands` setting to clip mesh projections and hidden-line occluders to the configured visible and overhead depth bands before outlining them. This keeps geometry crossing a finite depth boundary from projecting its out-of-band footprint. Existing callers retain their current behavior when the setting is omitted.
+
+### Patch Changes
+
+- Updated dependencies [[`1051a74`](https://github.com/LTplus-AG/ifc-lite/commit/1051a74edca83eb3e6104562a7a65e0e645ac45b), [`6dace7b`](https://github.com/LTplus-AG/ifc-lite/commit/6dace7b05927505e9a9529674c635a505ce0c887), [`4c0ebf2`](https://github.com/LTplus-AG/ifc-lite/commit/4c0ebf24c8c7b8470602300d56f0b1bd7c2a01e0)]:
+  - @ifc-lite/geometry@7.7.0
+
 ## 4.0.4
 
 ### Patch Changes

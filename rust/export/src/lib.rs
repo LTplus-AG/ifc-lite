@@ -67,6 +67,8 @@ mod step_json;
 mod step_log;
 mod step_slot;
 mod step_text;
+mod step_map_transform;
+pub use step_map_transform::{plan_map_conversion_normalization, MapConversionEntityPatch, MapConversionNormalizationPlan};
 mod usd;
 
 /// The STEP string-literal escaper; `escape`'s docs say why it is public.

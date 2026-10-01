@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { sameReportEvidence } from '@/lib/flow/report-provenance';
 import type { StateCreator } from 'zustand';
 import type { SavedHistoryIssue } from '@/lib/storage/saved-history';
-import { newSavedReport, validateSavedReport, type SavedValidationReport, type ValidationReportSnapshot } from '@/lib/validation/reports/history';
+import { newSavedReport, savedReportWithProvenance, validateSavedReport, type SavedValidationReport, type ValidationReportSnapshot } from '@/lib/validation/reports/history';
 import { readValidationReports, persistValidationReports } from '@/lib/validation/reports/persistence';
 
 export interface ValidationReportsSlice {
@@ -13,6 +14,7 @@ export interface ValidationReportsSlice {
   validationReportsLoadIssue: SavedHistoryIssue | null;
   retryValidationReportsSave: () => void;
   saveValidationReport: (snapshot: ValidationReportSnapshot, name?: string) => string | null;
+  saveValidationReportEntry: (entry: SavedValidationReport) => string | null;
   renameValidationReport: (id: string, name: string) => void;
   removeValidationReport: (id: string) => void;
 }
@@ -30,8 +32,18 @@ export const createValidationReportsSlice: StateCreator<ValidationReportsSlice, 
     retryValidationReportsSave: () => commit(get().savedValidationReports),
     saveValidationReport: (snapshot, name) => {
       const entry = newSavedReport(snapshot, name);
+      return get().saveValidationReportEntry(entry);
+    },
+    saveValidationReportEntry: (entry) => {
       if (!validateSavedReport(entry)) { console.warn('[Validation reports] Refusing invalid report'); return null; }
-      commit([...get().savedValidationReports, entry]);
+      entry = savedReportWithProvenance(entry);
+      const current = get().savedValidationReports;
+      const existing = current.find((report) => report.id === entry.id);
+      if (existing && !sameReportEvidence(savedReportWithProvenance(existing), entry)) {
+        console.warn('[Validation reports] Refusing conflicting evidence ID', entry.id);
+        return null;
+      }
+      commit(existing ? current.map((saved) => saved.id === entry.id ? entry : saved) : [...current, entry]);
       return entry.id;
     },
     renameValidationReport: (id, name) => {

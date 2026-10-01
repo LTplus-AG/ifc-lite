@@ -1,0 +1,229 @@
+{
+  "schemaVersion": 1,
+  "assetId": 5969891,
+  "source": {
+    "sourceFixture": "tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc",
+    "sourceSha256": "6b1de724ceb436759d9cdbe7ce7f4c71734065dfde8cc8786b6239de347de1b1",
+    "correctedSourceSha256": "970100f73a188cbcda65e0ba147cb2be0646643fe9f0bf84de200819feac3434",
+    "correctedSourceBytes": 1958,
+    "patchSha256": "223f8f07afc7bfbd5af7d0e7e19d41f7fd7027c5de106f6e65a9afee63460738",
+    "inputCrs": "scale-two-full-crs.wkt",
+    "inputCrsSha256": "a372e600711e905e383203cae1d2557b1b6274673c052bf0ce0863ff6c267bd3",
+    "scope": "Exact patch from the public fixture: Scale=2, explicit metre MapUnit, and a 1e-11 metre profile-center rounding change. Lexically valid STEP REAL input; geometry and typed attributes match the earlier generated scale-two control."
+  },
+  "status": "COMPLETE",
+  "mode": "BIM_CAD options.inputCrs full compound DerivedProjectedCRS + DerivedVerticalCRS(EPSG5703)",
+  "rootFrame": {
+    "transform": [
+      0.8436023515648817,
+      -0.5369684091584922,
+      0,
+      0,
+      0.3291910337677256,
+      0.5171744286330252,
+      0.7900404253296409,
+      0,
+      -0.4242267503601558,
+      -0.6664799606394044,
+      0.6130547498755392,
+      0,
+      -2709172.5861739255,
+      -4256236.168666033,
+      3888846.279446933,
+      1
+    ],
+    "boundingVolume": {
+      "box": [
+        -186.74485690882335,
+        2017.4238748503844,
+        66.89827267639336,
+        214.63624025648465,
+        0,
+        0,
+        0,
+        2020.0057315342128,
+        0,
+        0,
+        0,
+        1.1021295036189616
+      ],
+      "sphere": null,
+      "region": null
+    },
+    "children": []
+  },
+  "independentSourceVertexComparison": {
+    "variant": "scale-two",
+    "assetId": 5969891,
+    "actualRootFrameCenterGeodetic": [
+      -122.47962402139508,
+      37.82888751081357,
+      34.21792546659708
+    ],
+    "actualBoxBoundsMetres": [
+      [
+        -401.381097165308,
+        27.891383347661304
+      ],
+      [
+        -2.5818566838283914,
+        4037.4296063845973
+      ],
+      [
+        65.79614317277439,
+        68.00040218001233
+      ]
+    ],
+    "comparisons": [
+      {
+        "grid": "g2018u0",
+        "operationAccuracyMetres": 4.015,
+        "sourceCornerBoundsInActualRootFrameMetres": [
+          [
+            -401.3853982938539,
+            27.891682244390356
+          ],
+          [
+            -2.58188332164724,
+            4037.4730539401153
+          ],
+          [
+            133.22987222785127,
+            136.43654293901835
+          ]
+        ],
+        "maxSourceCornerOutsideActualBoxMetres": [
+          0.004301128545876054,
+          0.04344755551801427,
+          68.43614075900602
+        ],
+        "boundingCenterDifferenceMetres": [
+          0.0020011159083992425,
+          -0.021710458849611314,
+          -67.93493490704145
+        ],
+        "sourceCornersInActualRootFrameMetres": [
+          [
+            27.89167350951435,
+            2.5818868979973786,
+            134.43654293889128
+          ],
+          [
+            27.891682244390356,
+            2.5818877434887924,
+            136.43654293901835
+          ],
+          [
+            -27.891674364173852,
+            -2.581882543365481,
+            134.43544820428443
+          ],
+          [
+            -27.891683099373083,
+            -2.58188332164724,
+            136.4354482043293
+          ],
+          [
+            -345.6018755705602,
+            4037.471784170314,
+            133.2301057309819
+          ],
+          [
+            -345.60198380282554,
+            4037.4730539401153,
+            135.23010532429407
+          ],
+          [
+            -401.3852725915135,
+            4032.308265955796,
+            133.22987222785127
+          ],
+          [
+            -401.3853982938539,
+            4032.309534102192,
+            135.22987182136671
+          ]
+        ]
+      },
+      {
+        "grid": "g1999u05",
+        "operationAccuracyMetres": 2.05,
+        "sourceCornerBoundsInActualRootFrameMetres": [
+          [
+            -401.38537103235353,
+            27.891680339880907
+          ],
+          [
+            -2.5818831524600654,
+            4037.4727785424757
+          ],
+          [
+            132.79612957127028,
+            136.00040217949186
+          ]
+        ],
+        "maxSourceCornerOutsideActualBoxMetres": [
+          0.004273867045526458,
+          0.04317215787841633,
+          67.99999999947953
+        ],
+        "boundingCenterDifferenceMetres": [
+          0.00198843741296173,
+          -0.021572844623278797,
+          -67.49999319898771
+        ],
+        "sourceCornersInActualRootFrameMetres": [
+          [
+            27.891671605112165,
+            2.5818867129736702,
+            134.0004021804685
+          ],
+          [
+            27.891680339880907,
+            2.5818875587321344,
+            136.00040217949186
+          ],
+          [
+            -27.89167245982626,
+            -2.5818823739112275,
+            133.99947439566103
+          ],
+          [
+            -27.891681194918235,
+            -2.5818831524600654,
+            135.99947439680963
+          ],
+          [
+            -345.60185209625377,
+            4037.4715087730947,
+            132.7963301403961
+          ],
+          [
+            -345.6019603288048,
+            4037.4727785424757,
+            134.79632973500975
+          ],
+          [
+            -401.38524533001294,
+            4032.307990931415,
+            132.79612957127028
+          ],
+          [
+            -401.38537103235353,
+            4032.3092590770757,
+            134.7961291642148
+          ]
+        ]
+      }
+    ]
+  },
+  "verdict": "FAIL: expected authored source corners are incompatible with the stored containing box. Subsequent direct mesh decoding also proves actual vertices are vertically inconsistent; see actual-scale-two-mesh-comparison.json.",
+  "limitations": [
+    "No actual glTF vertex positions decoded; box is a containing bound, not exact vertices",
+    "Tiler may subdivide geometry; independent corner oracle preserves authored8vertices",
+    "PROJ reports expected operation accuracy of 2.05 m / 4.015 m, not guaranteed error bounds; the observed vertical discrepancy is approximately 68 m."
+  ],
+  "correctedFixtureValidation": "Independent REAL lexical audit: zero invalid tokens. IfcOpenShell schema validation: zero messages. An independent IfcOpenShell extraction of the corrected scale-two slab produced eight vertices and twelve triangles. The lexical correction changes only Precision notation; checked typed attributes are unchanged. An earlier scratch geometry-equality record had empty arrays and is not used as evidence.",
+  "offlineDerivedCrsMaxMapErrorMetres": 1.862645149230957e-08,
+  "directMeshEvidence": "actual-scale-two-mesh-comparison.json"
+}

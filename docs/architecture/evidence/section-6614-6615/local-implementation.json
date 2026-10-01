@@ -1,0 +1,391 @@
+{
+  "downloads": [
+    {
+      "name": "section-side-50.svg",
+      "size": 147272,
+      "type": "image/svg+xml"
+    },
+    {
+      "name": "section-side-50-1-100.pdf",
+      "size": 4109379,
+      "type": "application/pdf"
+    },
+    {
+      "name": "section-side-50.dxf",
+      "size": 109279,
+      "type": "application/dxf"
+    }
+  ],
+  "dxf": [
+    {
+      "frame": {
+        "frameKey": "local-engineering:m:z-up",
+        "kind": "plane-reference",
+        "originIfc": [
+          6,
+          0,
+          0
+        ],
+        "uIfc": [
+          0,
+          -1,
+          0
+        ],
+        "vIfc": [
+          0,
+          0,
+          1
+        ],
+        "version": 1
+      },
+      "placement": {
+        "offsetX": -7.5,
+        "offsetY": 1.1588459014892583,
+        "rotationDeg": 0,
+        "scale": 1
+      }
+    }
+  ],
+  "errors": [],
+  "fixture": "ara3d/AC20-FZK-Haus.ifc",
+  "pdf": [
+    {
+      "calibration": {
+        "distanceMetres": 5,
+        "planeNormal": [
+          1,
+          0,
+          0
+        ],
+        "rasterSize": [
+          288,
+          400
+        ],
+        "rasterToSource": [
+          0,
+          0.25,
+          0.25,
+          0,
+          10,
+          20
+        ],
+        "sourcePoints": [
+          [
+            59.889037815033724,
+            37.71875
+          ],
+          [
+            59.889037815033724,
+            74
+          ]
+        ],
+        "worldAnchor": [
+          6,
+          0,
+          0
+        ],
+        "worldDirection": [
+          0,
+          1,
+          0
+        ]
+      },
+      "corners": [
+        [
+          6,
+          -2.4418604651162794,
+          6.875319595525751
+        ],
+        [
+          6,
+          7.480620155038759,
+          6.875319595525751
+        ],
+        [
+          6,
+          7.480620155038759,
+          -6.905903488022915
+        ],
+        [
+          6,
+          -2.4418604651162794,
+          -6.905903488022915
+        ]
+      ],
+      "id": "e9099341-5ad2-4513-aa1b-ec0e2768820e",
+      "pdf": {
+        "documentSha256": "529c5fc262bf8948af31df1c10e60b898f37fecac1c4331143a51932bbf95d51",
+        "recipe": {
+          "cropPoints": [
+            0,
+            0,
+            144,
+            200
+          ],
+          "effectiveDpi": 144,
+          "page": {
+            "heightPoints": 200,
+            "intrinsicRotation": 90,
+            "pageNumber": 1,
+            "pdfToPage": [
+              0,
+              2,
+              2,
+              0,
+              -40,
+              -20
+            ],
+            "userUnit": 2,
+            "viewBox": [
+              10,
+              20,
+              110,
+              92
+            ],
+            "widthPoints": 144
+          },
+          "paperSizeMetres": [
+            0.0508,
+            0.07055555555555555
+          ],
+          "pixelHeight": 400,
+          "pixelToPdf": [
+            0,
+            0.25,
+            0.25,
+            0,
+            10,
+            20
+          ],
+          "pixelWidth": 288,
+          "requestedDpi": 144,
+          "rotation": 0
+        }
+      }
+    }
+  ],
+  "projection": [
+    {
+      "config": {
+        "clipProjectionBands": true,
+        "creaseAngle": 30,
+        "includeHiddenLines": true,
+        "plane": {
+          "axis": "x",
+          "flipped": false,
+          "position": 6
+        },
+        "projectionAboveDepth": 0,
+        "projectionBelowDepth": 0,
+        "projectionDepth": 0,
+        "scale": 100
+      },
+      "cutIds": [
+        37582,
+        59553,
+        67536,
+        18698,
+        40539,
+        75347,
+        33109,
+        33109,
+        33109,
+        33109,
+        33109,
+        20374,
+        32407,
+        32407,
+        34509,
+        40416,
+        59290,
+        389,
+        389,
+        27421,
+        59753,
+        31079,
+        31079,
+        31079,
+        31079,
+        31079,
+        19199,
+        19199
+      ],
+      "depth": 0,
+      "stats": {
+        "cutLineCount": 103,
+        "hiddenLineCount": 0,
+        "polygonCount": 28,
+        "processingTimeMs": 5.040000002831221,
+        "projectionLineCount": 0,
+        "silhouetteLineCount": 0,
+        "totalTriangles": 19078
+      }
+    },
+    {
+      "config": {
+        "clipProjectionBands": true,
+        "creaseAngle": 30,
+        "includeHiddenLines": true,
+        "plane": {
+          "axis": "x",
+          "flipped": false,
+          "position": 6
+        },
+        "projectionAboveDepth": 0,
+        "projectionBelowDepth": 3,
+        "projectionDepth": 3,
+        "scale": 100
+      },
+      "cutIds": [
+        37582,
+        59553,
+        67536,
+        18698,
+        40539,
+        75347,
+        33109,
+        33109,
+        33109,
+        33109,
+        33109,
+        20374,
+        32407,
+        32407,
+        34509,
+        40416,
+        59290,
+        389,
+        389,
+        27421,
+        59753,
+        31079,
+        31079,
+        31079,
+        31079,
+        31079,
+        19199,
+        19199
+      ],
+      "depth": 3,
+      "stats": {
+        "cutLineCount": 103,
+        "hiddenLineCount": 95,
+        "polygonCount": 28,
+        "processingTimeMs": 21.984999999403954,
+        "projectionLineCount": 228,
+        "silhouetteLineCount": 0,
+        "totalTriangles": 19078
+      }
+    },
+    {
+      "config": {
+        "clipProjectionBands": true,
+        "creaseAngle": 30,
+        "includeHiddenLines": true,
+        "plane": {
+          "axis": "x",
+          "flipped": false,
+          "position": 6
+        },
+        "projectionAboveDepth": 0,
+        "projectionBelowDepth": 7,
+        "projectionDepth": 7,
+        "scale": 100
+      },
+      "cutIds": [
+        37582,
+        59553,
+        67536,
+        18698,
+        40539,
+        75347,
+        33109,
+        33109,
+        33109,
+        33109,
+        33109,
+        20374,
+        32407,
+        32407,
+        34509,
+        40416,
+        59290,
+        389,
+        389,
+        27421,
+        59753,
+        31079,
+        31079,
+        31079,
+        31079,
+        31079,
+        19199,
+        19199
+      ],
+      "depth": 7,
+      "stats": {
+        "cutLineCount": 103,
+        "hiddenLineCount": 521,
+        "polygonCount": 28,
+        "processingTimeMs": 35.24500000104308,
+        "projectionLineCount": 949,
+        "silhouetteLineCount": 0,
+        "totalTriangles": 19078
+      }
+    }
+  ],
+  "url": "http://localhost:5291/?qa=final",
+  "visibility": {
+    "changedPixels": 273863,
+    "height": 906,
+    "width": 2560
+  },
+  "wheel": [
+    {
+      "after": "2299%",
+      "before": "2301%",
+      "deltaY": 1
+    },
+    {
+      "after": "2090%",
+      "before": "2299%",
+      "deltaY": 100
+    },
+    {
+      "after": "2090%",
+      "before": "2090%",
+      "deltaY": 0
+    },
+    {
+      "after": "2090%",
+      "before": "2090%",
+      "deltaX": 100,
+      "deltaY": 0
+    },
+    {
+      "after": "2130%",
+      "before": "2090%",
+      "deltaY": -100,
+      "physicalCtrl": true
+    }
+  ],
+  "finalPdf": {
+    "name": "section-side-50-1-100.pdf",
+    "bytes": 4008088,
+    "orientation": "upright, visually inspected Poppler rendering",
+    "rasterRestoration": "After rebuilding, imported registration and relinked exact original PNG digest from earlier SVG export.",
+    "sha256": "aac8495433e4a233db1e598e7e6cbfc036b8a2ee4ab33ecf9ac91f1650dc112d"
+  },
+  "sheetPdf": {
+    "name": "Drawing Sheet-side-50.pdf",
+    "bytes": 52212881,
+    "pageSizePoints": [
+      1190.55,
+      841.89
+    ],
+    "paper": "A3 landscape",
+    "scale": 100,
+    "sha256": "f6a618645b3b613f0d1c21c5dd2dcf32d168e6eda95e4e40acb5c3aa6c52de28",
+    "inspection": "Poppler rendering: upright IFC cut, raster reference, DXF vector, professional frame and title block"
+  }
+}

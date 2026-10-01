@@ -1,0 +1,22 @@
+{
+  "samples": [
+    {"side":"base","pair":1,"metadataParseMs":108.0,"streamCompleteMs":166.0,"firstVisibleMs":746.0,"geometryCompletionMs":750.179999999702,"metadataGeometryRendererCompletionMs":788.0100000016391,"reportedTotalMs":800.0},
+    {"side":"branch","pair":1,"metadataParseMs":120.0,"streamCompleteMs":161.0,"firstVisibleMs":523.0,"geometryCompletionMs":527.089999999851,"metadataGeometryRendererCompletionMs":567.6550000011921,"reportedTotalMs":500.0},
+    {"side":"base","pair":2,"metadataParseMs":123.0,"streamCompleteMs":160.0,"firstVisibleMs":516.0,"geometryCompletionMs":518.8700000010431,"metadataGeometryRendererCompletionMs":556.1850000023842,"reportedTotalMs":500.0},
+    {"side":"branch","pair":2,"metadataParseMs":114.0,"streamCompleteMs":159.0,"firstVisibleMs":631.0,"geometryCompletionMs":632.9600000008941,"metadataGeometryRendererCompletionMs":666.8150000013411,"reportedTotalMs":600.0},
+    {"side":"base","pair":3,"metadataParseMs":123.0,"streamCompleteMs":153.0,"firstVisibleMs":537.0,"geometryCompletionMs":539.8449999988079,"metadataGeometryRendererCompletionMs":573.019999999553,"reportedTotalMs":500.0},
+    {"side":"branch","pair":3,"metadataParseMs":111.0,"streamCompleteMs":156.0,"firstVisibleMs":903.0,"geometryCompletionMs":905.5049999989569,"metadataGeometryRendererCompletionMs":938.0699999965727,"reportedTotalMs":900.0},
+    {"side":"base","pair":4,"metadataParseMs":121.0,"streamCompleteMs":161.0,"firstVisibleMs":545.0,"geometryCompletionMs":549.695000000298,"metadataGeometryRendererCompletionMs":589.9899999983609,"reportedTotalMs":600.0},
+    {"side":"branch","pair":4,"metadataParseMs":108.0,"streamCompleteMs":169.0,"firstVisibleMs":555.0,"geometryCompletionMs":560.035000000149,"metadataGeometryRendererCompletionMs":597.0500000007451,"reportedTotalMs":600.0},
+    {"side":"base","pair":5,"metadataParseMs":111.0,"streamCompleteMs":202.0,"firstVisibleMs":554.0,"geometryCompletionMs":557.269999999553,"metadataGeometryRendererCompletionMs":596.5599999986589,"reportedTotalMs":600.0},
+    {"side":"branch","pair":5,"metadataParseMs":110.0,"streamCompleteMs":162.0,"firstVisibleMs":546.0,"geometryCompletionMs":550.5250000022352,"metadataGeometryRendererCompletionMs":590.2950000017881,"reportedTotalMs":600.0}
+  ],
+  "summary": {
+    "metadataParseMs": {"base":[108.0,123.0,123.0,121.0,111.0],"branch":[120.0,114.0,111.0,108.0,110.0],"baseMedian":121.0,"branchMedian":111.0,"medianDeltaPct":-8.264462809917351,"baseRange":[108.0,123.0],"branchRange":[108.0,120.0],"pairedDeltaMs":[12.0,-9.0,-12.0,-13.0,-1.0]},
+    "streamCompleteMs": {"base":[166.0,160.0,153.0,161.0,202.0],"branch":[161.0,159.0,156.0,169.0,162.0],"baseMedian":161.0,"branchMedian":161.0,"medianDeltaPct":0.0,"baseRange":[153.0,202.0],"branchRange":[156.0,169.0],"pairedDeltaMs":[-5.0,-1.0,3.0,8.0,-40.0]},
+    "firstVisibleMs": {"base":[746.0,516.0,537.0,545.0,554.0],"branch":[523.0,631.0,903.0,555.0,546.0],"baseMedian":545.0,"branchMedian":555.0,"medianDeltaPct":1.83486238532109,"baseRange":[516.0,746.0],"branchRange":[523.0,903.0],"pairedDeltaMs":[-223.0,115.0,366.0,10.0,-8.0]},
+    "geometryCompletionMs": {"base":[750.179999999702,518.8700000010431,539.8449999988079,549.695000000298,557.269999999553],"branch":[527.089999999851,632.9600000008941,905.5049999989569,560.035000000149,550.5250000022352],"baseMedian":549.695000000298,"branchMedian":560.035000000149,"medianDeltaPct":1.8810431238860392,"baseRange":[518.8700000010431,750.179999999702],"branchRange":[527.089999999851,905.5049999989569],"pairedDeltaMs":[-223.089999999851,114.08999999985099,365.660000000149,10.339999999850988,-6.744999997317791]},
+    "metadataGeometryRendererCompletionMs": {"base":[788.0100000016391,556.1850000023842,573.019999999553,589.9899999983609,596.5599999986589],"branch":[567.6550000011921,666.8150000013411,938.0699999965727,597.0500000007451,590.2950000017881],"baseMedian":589.9899999983609,"branchMedian":597.0500000007451,"medianDeltaPct":1.196630451771008,"baseRange":[556.1850000023842,788.0100000016391],"branchRange":[567.6550000011921,938.0699999965727],"pairedDeltaMs":[-220.35500000044703,110.62999999895692,365.04999999701977,7.060000002384186,-6.264999996870756]},
+    "reportedTotalMs": {"base":[800.0,500.0,500.0,600.0,600.0],"branch":[500.0,600.0,900.0,600.0,600.0],"baseMedian":600.0,"branchMedian":600.0,"medianDeltaPct":0.0,"baseRange":[500.0,800.0],"branchRange":[500.0,900.0],"pairedDeltaMs":[-300.0,100.0,400.0,0.0,0.0]}
+  }
+}

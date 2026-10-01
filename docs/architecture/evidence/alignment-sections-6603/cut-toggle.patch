@@ -1,0 +1,11 @@
+--- a/apps/viewer/src/lib/section/alignment-controller.ts
++++ b/apps/viewer/src/lib/section/alignment-controller.ts
+@@ -93,7 +93,7 @@
+ 
+ export async function bindAlignment(modelId: string, expressId: number, distance = 0): Promise<void> {
+   const previousBinding = useViewerStore.getState().sectionPlane.custom?.alignment;
+-  const initial = true;
++  const initial = previousBinding?.modelId !== modelId || previousBinding.expressId !== expressId;
+   closeAlignmentEvaluator();
+   const version = generation;
+   useAlignmentToolState.setState({ choosing: true, busy: true, error: undefined });

@@ -1,0 +1,12 @@
+diff --git a/rust/export/src/step_map_transform.rs b/rust/export/src/step_map_transform.rs
+--- a/rust/export/src/step_map_transform.rs
++++ b/rust/export/src/step_map_transform.rs
+@@ -107,7 +107,7 @@
+                 .map_err(|error| error.to_string())?;
+             let mut placement = Matrix4::from_column_slice(&matrix);
+             for row in 0..3 { placement[(row, 3)] /= unit; }
+-            let normalized = placement * affine * inverse_scale;
++            let normalized = affine * placement * inverse_scale;
+             preflight::rigid_frame(&normalized, record.id)?;
+             let new_placement = output.placement(&normalized)?;
+             plan.replacements.push(writer::replace(record, &[(5, format!("#{new_placement}"))])?);

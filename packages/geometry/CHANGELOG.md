@@ -1,5 +1,23 @@
 # @ifc-lite/geometry
 
+## 7.7.0
+
+### Minor Changes
+
+- [#6634](https://github.com/LTplus-AG/ifc-lite/pull/6634) [`4c0ebf2`](https://github.com/LTplus-AG/ifc-lite/commit/4c0ebf24c8c7b8470602300d56f0b1bd7c2a01e0) Thanks [@louistrue](https://github.com/louistrue)! - Add opt-in asynchronous STEP map rotation/scale normalization through a canonical Rust entity-patch planner. Preserve authored project/property units and edited attributes, with atomic warnings for unsupported coordinate consumers. Ordinary exports retain their coordinate structure.
+
+### Patch Changes
+
+- [#6562](https://github.com/LTplus-AG/ifc-lite/pull/6562) [`1051a74`](https://github.com/LTplus-AG/ifc-lite/commit/1051a74edca83eb3e6104562a7a65e0e645ac45b) Thanks [@louistrue](https://github.com/louistrue)! - Preserve remeshing panic source locations across the worker boundary ([#6555](https://github.com/LTplus-AG/ifc-lite/issues/6555)), including when cleanup also traps. Consume cleanup locations so a later request cannot inherit them. Forward only Rust source location and timestamp, without model-derived panic text.
+  
+  Rebuild the handle after any failed remesh or style-wire request, including an ordinary primary error followed by a cleanup trap. Preserve the primary failure and prevent reuse of partially cleaned state.
+
+- [#6561](https://github.com/LTplus-AG/ifc-lite/pull/6561) [`6dace7b`](https://github.com/LTplus-AG/ifc-lite/commit/6dace7b05927505e9a9529674c635a505ce0c887) Thanks [@louistrue](https://github.com/louistrue)! - Stop shared-buffer compatibility retries after a WASM runtime trap ([#6542](https://github.com/LTplus-AG/ifc-lite/issues/6542)). Preserve the first failure instead of replaying a failed instance with a full file copy. Keep non-trap compatibility retries and existing per-entity batch recovery, and direct large-model failures to smaller inputs or the native CLI/server.
+  
+  Performance verdict: successful mesh production is unchanged; no end-to-end throughput improvement is claimed. Worker contract tests verify that traps avoid the copying retry.
+- Updated dependencies [[`89be760`](https://github.com/LTplus-AG/ifc-lite/commit/89be760d4eb8adba93e9f5660f6e4ceda0c507d5), [`dd8e27c`](https://github.com/LTplus-AG/ifc-lite/commit/dd8e27cccbfd27cc6c16f09d66542c1c9bd17075), [`526a91b`](https://github.com/LTplus-AG/ifc-lite/commit/526a91bdf33e2be2d6167df95a68db343b5337c0), [`4c0ebf2`](https://github.com/LTplus-AG/ifc-lite/commit/4c0ebf24c8c7b8470602300d56f0b1bd7c2a01e0)]:
+  - @ifc-lite/wasm@10.3.0
+
 ## 7.6.0
 
 ### Minor Changes

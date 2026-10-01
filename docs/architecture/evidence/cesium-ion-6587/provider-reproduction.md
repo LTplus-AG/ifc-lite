@@ -27,9 +27,9 @@ vertex differences are below 1.255 mm, within the 1.810 mm quantization step.
 See the [numeric proof](./infra-map-unit-normalized-proof.json). A production
 implementation has passed real edited-model upload acceptance as asset
 5970083: the actual Name edit and all 48 GUIDs survive, with exact render
-geometry/tile-transform identity against the verified control. PR review and
-required checks remain pending. No manual display transform was
-introduced.
+geometry/tile-transform identity against the verified control. Published UI
+review and required-check history are recorded in [PR #6606](https://github.com/LTplus-AG/ifc-lite/pull/6606). No manual
+display transform was introduced.
 
 A second client-side control, **5970044**, uses standard mapped geometry
 to carry the deck's full similarity transform. Actual corners agree with the
@@ -41,8 +41,8 @@ is retained, and the genuine render follows the bridge. The actual combined view
 upload also passes as edited asset **5972000**, with retained Name/GUID and exact
 geometry/tile-frame identity against the SDK reference. Its genuine Cesium render
 has twelve triangles and no errors; native screenshot capture failed, so no new
-visual inspection is claimed. Final published UI CI and feedback remain pending;
-see the current record above.
+visual inspection is claimed. Published UI review and required-check history are
+recorded in [PR #6606](https://github.com/LTplus-AG/ifc-lite/pull/6606); see the acceptance record above.
 
 The report is retained as an investigation record, not a request to attribute
 fault to the provider. See [the updated acceptance record](./README.md).

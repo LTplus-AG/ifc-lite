@@ -42,8 +42,9 @@ The deck's `VerticalDatum = EPSG:5703` names a vertical CRS, not the datum
 identifier expected by [IfcProjectedCRS](https://standards.buildingsmart.org/IFC/RELEASE/IFC4_3/HTML/lexical/IfcProjectedCRS.htm).
 Correcting its compound CRS (5970016), or baking its map transform into ordinary
 geometry with datum EPSG:5103 (5970020), produced `DATA_ERROR` at 5%, so those
-controls do not establish correct placement. Further client integration tests
-are active; this work is not blocked on provider support.
+controls do not establish correct placement. The client integration review and
+required-check history are recorded in [PR #6606](https://github.com/LTplus-AG/ifc-lite/pull/6606); this work is not
+blocked on provider support.
 
 
 ## Equivalent mapped geometry fixes the deck
@@ -70,7 +71,7 @@ The downloaded tiles retain the edited Name and GlobalId; their actual geometry
 payloads, decoder parameters, accessors, materials, scene and tile frames exactly
 match the independently verified control. CesiumJS renders the deck along the
 Golden Gate Bridge using only its downloaded transform. The [numeric proof](./mapped-deck-normalized-proof.json)
-records this SDK route separately. The final combined viewer route also passed as asset **5972000**: the original public deck was loaded, its Name edited in Author, and the actual masked-token dialog submitted it through the production transport. Downloaded metadata retains `Ion combined UI compatibility edited deck` and the original GUID. All encoded geometry, decoder/accessor contracts, scene/material/feature contracts and full tile frames exactly match verified SDK asset 5970221. CesiumJS renders its twelve triangles without errors using only the downloaded transform. The token was cleared while the prominent named asset link remained visible. Native screenshot capture failed for this new asset, so no new screenshot or visual inspection is claimed; its actual geometry is identical to the visually verified reference below. Final published UI checks and feedback remain pending.
+records this SDK route separately. The final combined viewer route also passed as asset **5972000**: the original public deck was loaded, its Name edited in Author, and the actual masked-token dialog submitted it through the production transport. Downloaded metadata retains `Ion combined UI compatibility edited deck` and the original GUID. All encoded geometry, decoder/accessor contracts, scene/material/feature contracts and full tile frames exactly match verified SDK asset 5970221. CesiumJS renders its twelve triangles without errors using only the downloaded transform. The token was cleared while the prominent named asset link remained visible. Native screenshot capture failed for this new asset, so no new screenshot or visual inspection is claimed; its actual geometry is identical to the visually verified reference below. Published UI review and required-check history are recorded in [PR #6606](https://github.com/LTplus-AG/ifc-lite/pull/6606).
 
 ![Production SDK export tiled at the Golden Gate Bridge](production-deck-normalized.png)
 
@@ -355,6 +356,7 @@ and actual tiled-geometry checks for both regression models, with retained edits
 and genuine Cesium renders. The production SDK deck route is asset **5970221**;
 the production viewer Infra-Bridge route is **5970083**. The combined upload UI
 also passes actual edited-deck tiling/geometry/metadata acceptance as **5972000**;
-its final published PR checks and feedback remain pending. These successful client-side routes
+its published review and required-check history are recorded in [PR #6606](https://github.com/LTplus-AG/ifc-lite/pull/6606).
+These successful client-side routes
 supersede the earlier blocker; they do not certify every IFC representation or
 attribute the original mismatches to a provider defect.

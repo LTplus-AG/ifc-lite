@@ -48,7 +48,8 @@ it('#6604 federation setup stays compact beside the prominent IFC export and Sav
   for (const button of setupButtons) {
     assert.ok(button.classList.contains('h-[20px]'), 'setup actions use standard compact rows');
     const icon = button.querySelector('svg');
-    assert.ok(icon?.classList.contains('h-3.5'), 'setup icons use the small ribbon size');
+    assert.ok(icon);
+    assert.ok(icon.classList.contains('h-3.5'), 'setup icons use the small ribbon size');
     assert.ok(icon.classList.contains('w-3.5'));
   }
   assert.ok(save.querySelector('svg[data-testid="icon-stub"]'),
@@ -56,7 +57,8 @@ it('#6604 federation setup stays compact beside the prominent IFC export and Sav
   assert.equal(save.querySelector('span')?.textContent,
     resolve('commandPalette.file.saveFederationSetup.label'), 'the compact row displays the full label');
   const ifcIcon = container.querySelector('[data-export-command="ifc"] svg');
-  assert.ok(ifcIcon?.classList.contains('h-8'), 'IFC export retains its large icon');
+  assert.ok(ifcIcon);
+  assert.ok(ifcIcon.classList.contains('h-8'), 'IFC export retains its large icon');
   assert.ok(ifcIcon.classList.contains('w-8'));
 
   let saves = 0;

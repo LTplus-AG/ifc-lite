@@ -40,6 +40,27 @@ export function blankFile(unit: 'METRE' | 'MILLIMETRE'): File {
   return new File([creator.toIfc().content], 'blank-mm.ifc', { type: 'application/ifc' });
 }
 
+/** Actual worker core; an optional triangle partition exercises renderer part
+ * identity without substituting a parser, coordinate frame or engine result. */
+export function installRealRemesh(transform: (meshes: MeshData[]) => MeshData[] = meshes => meshes): void {
+  setRemeshClientFactory(async config => {
+    const api = new IfcAPI();
+    let alive = true;
+    applyRemeshConfig(api, config);
+    return {
+      get alive() { return alive; },
+      remesh: async request => {
+        remeshCalls++;
+        const result = remeshOnApi(api, request);
+        return { ...result, meshes: transform(result.meshes) };
+      },
+      styleWire: async buffer => styleWireOnApi(api, buffer),
+      setConfig: next => applyRemeshConfig(api, next),
+      dispose() { alive = false; api.free(); },
+    };
+  });
+}
+
 beforeEach(async () => {
   if (!wasmAvailable) return;
   remeshCalls = 0;
@@ -57,18 +78,7 @@ beforeEach(async () => {
   useViewerStore.getState().clearAllModels();
   // The existing remesh factory substitutes only transport. It executes the
   // exact real worker core and releases its own API deterministically.
-  setRemeshClientFactory(async config => {
-    const api = new IfcAPI();
-    let alive = true;
-    applyRemeshConfig(api, config);
-    return {
-      get alive() { return alive; },
-      remesh: async request => { remeshCalls++; return remeshOnApi(api, request); },
-      styleWire: async buffer => styleWireOnApi(api, buffer),
-      setConfig: next => applyRemeshConfig(api, next),
-      dispose() { alive = false; api.free(); },
-    };
-  });
+  installRealRemesh();
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -123,4 +133,3 @@ export function bounds(meshes: MeshData[]) {
   }
   return { min, max };
 }
-

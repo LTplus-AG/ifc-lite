@@ -118,5 +118,12 @@ test('charter #6643: long semantic identity provenance retains the full URI as I
   const source = 'https://example.org/' + 'a'.repeat(300);
   applyProjection(previewProjection({ ...input, source, mappingId: 'wall-thermal-transmittance', unit: 'mW/(m2.K)' }), revisions);
   const property = properties(wall).find(pset => pset.name === 'Pset_SemanticProjection')?.properties.find(property => property.name === 'Source');
-  assert.equal(property?.value, source); assert.equal(property?.dataType, 'IfcText');
+  assert.equal(property?.value, source);
+  const exported = createExportAdapter(useViewerStore).ifc([{ modelId: 'model', expressId: wall }], { includeMutations: true });
+  const bytes = typeof exported === 'string' ? new TextEncoder().encode(exported) : new Uint8Array(exported);
+  const reopened = await new IfcParser().parseColumnar(bytes.slice().buffer, { disableWorkerScan: true });
+  const id = reopened.entities.getExpressIdByGlobalId(String(input.resource.GlobalId));
+  const saved = new EntityNode(reopened, id).properties().find(pset => pset.name === 'Pset_SemanticProjection')
+    ?.properties.find(property => property.name === 'Source');
+  assert.equal(saved?.value, source); assert.equal(saved?.dataType, 'IFCTEXT');
 });

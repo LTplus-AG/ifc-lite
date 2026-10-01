@@ -19,4 +19,10 @@ describe('Saved comparison binding contract (#6549)', () => {
       expect(validateChartSpec({ ...chart, source, comparisonId: 'completed-comparison' }).some(({ path }) => path.endsWith('.comparisonId'))).toBe(true);
     }
   });
+  it('rejects live element selectors and rule groups on recorded comparison sources (#6549)', () => {
+    for (const filter of [{ selector: 'IfcWall' }, { selector: '', groups: [{ combinator: 'AND', rules: [{ field: 'type', operator: 'equals', value: 'IfcWall' }] }] }]) {
+      expect(validateChartSpec({ ...chart, comparisonId: 'completed-comparison', filter }).some(({ path, message }) => path.endsWith('.filter') && message.includes('not applicable'))).toBe(true);
+    }
+  });
+
 });

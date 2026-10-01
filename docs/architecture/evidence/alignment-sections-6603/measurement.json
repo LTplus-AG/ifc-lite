@@ -12,7 +12,7 @@
   "method": "Five interleaved pairs, separate ephemeral Chromium processes, first model in each process, frozen matching JS/WASM bundles, crossOriginIsolated+SAB. Output witness runs after completion timing.",
   "limits": [
     "Non-benchmark Chrome processes remained active; host was not fully idle.",
-    "One initial baseline-only sample reached geometry/metadata but not renderer-finalize before timeout; retained below, not treated as a passing sample.",
+    "One initial baseline-only sample missed the renderer-finalize log marker before timeout, but independent screenshot inspection showed Haus fully rendered. Late renderer initialization missed the streaming-to-complete marker; observer false negative retained below, not treated as a passing sample.",
     "Nine qualification samples completed but post-measurement witness failed the tsx __name helper; helper supplied only after measured completion in final run.",
     "Default Playwright executable1243 was absent; separate launch-failure run existed before specifying installed Chromium1234.",
     "Metadata phase is complete-start wall time and overlaps geometry; raw parser CPU time unavailable.",

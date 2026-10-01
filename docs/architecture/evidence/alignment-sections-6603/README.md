@@ -21,8 +21,11 @@ All measured phases stayed within the reporter's variation estimate. The result
 supports no observed default-load regression in this model and environment, and
 makes no speed claim. Background Chrome processes could not safely be stopped,
 so this is not an idle-host proof. An earlier baseline-only renderer timeout is
-retained as an unresolved qualification limitation, alongside subsequent harness
-failures; it is not silently converted into a successful sample.
+retained alongside subsequent harness failures; it is not silently converted
+into a successful sample. Independent inspection found that its screenshot
+rendered Haus successfully. Late renderer initialization missed the streaming
+transition that emits the finalization marker demanded by the timing observer;
+the timeout is an observer false negative, rather than evidence of failed rendering.
 
 To repeat the standard timing control, build frozen viewer distributions at the
 recorded refs, then use `scripts/perf/browser-cold-ab.mts` with `--dist-base`,

@@ -33,24 +33,26 @@ export function useSemanticPilot(execute: ValidationExecutor = validateInWorker)
     finally { if (current.current === controller) { setBusy(false); current.current = null; } }
   }
   async function accept(job: ValidationJob, signal: AbortSignal, bindings?: SparqlResults, guard?: () => boolean) {
+    const inputVersion = useSemanticSession.getState().dataVersion;
     const validated = await execute({ ...job, profile }, signal);
-    if (signal.aborted || useSemanticSession.getState().profile !== profile) return;
+    if (signal.aborted || useSemanticSession.getState().profile !== profile || useSemanticSession.getState().dataVersion !== inputVersion) return;
     if (guard && !guard()) throw new Error('Loaded models changed during retrieval; load the records again');
-    setDocument(validated.document); setGraph(validated.graph); session.setGraphFormat('application/n-quads'); setResults(bindings); setFindings(validated.findings); setDiagnostic(validated.diagnostic ?? "");
+    setDocument(validated.document); setGraph(validated.graph); session.setGraphFormat('application/n-quads'); setResults(bindings); setFindings(validated.findings); setDiagnostic(validated.diagnostic ?? ""); session.setReport(validated.diagnostic ? undefined : validated.report);
   }
   function load(input: SourceInput) {
     return run(async signal => {
-      const models = useViewerStore.getState().models; const guard = () => models === useViewerStore.getState().models && useSemanticSession.getState().profile === profile;
+      let inputVersion = useSemanticSession.getState().dataVersion;
+      const models = useViewerStore.getState().models; const guard = () => inputVersion === useSemanticSession.getState().dataVersion && models === useViewerStore.getState().models && useSemanticSession.getState().profile === profile;
       if (input.mode === 'turtle' || input.mode === 'nquads' || input.mode === 'jsonld') {
         const value = await execute({ graph: input.payload, profile, graphFormat: input.mode === 'turtle' ? 'text/turtle' : input.mode === 'nquads' ? 'application/n-quads' : 'application/ld+json' }, signal);
-        if (!signal.aborted && guard()) { setGraph(value.graph); session.setGraphFormat('application/n-quads'); setDocument(undefined); setResults(undefined); setFindings(value.findings); setDiagnostic(value.diagnostic ?? ""); }
+        if (!signal.aborted && guard()) { setGraph(value.graph); session.setGraphFormat('application/n-quads'); setDocument(undefined); setResults(undefined); setFindings(value.findings); setDiagnostic(value.diagnostic ?? ""); session.setReport(value.diagnostic ? undefined : value.report); }
         else if (!signal.aborted) throw new Error('Loaded models changed during graph import');
         return;
       }
       if (input.mode === 'local') {
         if (new TextEncoder().encode(input.payload).length > 5 * 1024 * 1024) throw new Error('JSON exceeds the byte limit');
         const validated = await execute({ document: JSON.parse(input.payload) as unknown, profile }, signal);
-        if (!signal.aborted && guard()) { setDocument(validated.document); setGraph(validated.graph); setFindings(validated.findings); setDiagnostic(validated.diagnostic ?? ""); setResults(undefined); }
+        if (!signal.aborted && guard()) { setDocument(validated.document); setGraph(validated.graph); session.setGraphFormat('application/n-quads'); setFindings(validated.findings); setDiagnostic(validated.diagnostic ?? ""); session.setReport(validated.diagnostic ? undefined : validated.report); setResults(undefined); }
         else if (!signal.aborted) throw new Error('Loaded models changed during import');
         if (!signal.aborted && useSemanticSession.getState().profile === profile) session.setRetrievedAt(undefined); return;
       }
@@ -62,20 +64,22 @@ export function useSemanticPilot(execute: ValidationExecutor = validateInWorker)
       session.setQueries([{ id: 'current', endpoint: input.endpoint, kind, query: input.query, mapping: input.mapping, profileId: profile.id }]);
       if (response.kind === 'select') {
         // Generic results are committed independently; a narrower projection may fail visibly.
-        setResults(response.value); setDocument(undefined); setGraph(''); setFindings([]);
+        setResults(response.value); session.setResultMapping(input.mapping); setDocument(undefined); setGraph(''); setFindings([]);
+        inputVersion = useSemanticSession.getState().dataVersion;
         try { await accept({ results: response.value, source: response.source, mapping: input.mapping }, signal, response.value, guard); }
         catch (failure) { if (!signal.aborted) setDiagnostic(failure instanceof Error ? failure.message : String(failure)); }
       } else if (response.kind === 'construct') {
         setGraph(response.value); session.setGraphFormat('text/turtle'); setDocument(undefined); setResults(undefined); setFindings([]);
+        inputVersion = useSemanticSession.getState().dataVersion;
         try {
           const validated = await execute({ graph: response.value, profile }, signal);
-          if (!signal.aborted && guard()) { setFindings(validated.findings); setDiagnostic(validated.diagnostic ?? ""); }
+          if (!signal.aborted && guard()) { setFindings(validated.findings); setDiagnostic(validated.diagnostic ?? ""); session.setReport(validated.diagnostic ? undefined : validated.report); }
           else if (!signal.aborted) throw new Error('Loaded models changed during validation');
         } catch (failure) { if (!signal.aborted) setDiagnostic(failure instanceof Error ? failure.message : String(failure)); }
 
       } else {
         const validated = await execute({ document: response.value, profile }, signal);
-        if (!signal.aborted && guard()) { setDocument(validated.document); setGraph(validated.graph); setFindings(validated.findings); setDiagnostic(validated.diagnostic ?? ""); setResults(undefined); }
+        if (!signal.aborted && guard()) { setDocument(validated.document); setGraph(validated.graph); session.setGraphFormat('application/n-quads'); setFindings(validated.findings); setDiagnostic(validated.diagnostic ?? ""); session.setReport(validated.diagnostic ? undefined : validated.report); setResults(undefined); }
         else if (!signal.aborted) throw new Error('Loaded models changed during validation');
       }
     });
@@ -83,8 +87,8 @@ export function useSemanticPilot(execute: ValidationExecutor = validateInWorker)
   function related(input: SourceInput) {
     try {
       const query = queryForSelection({ selection: createSelectionAdapter(useViewerStore).get(), entities: liveEntities(),
-        revisions, profile, mapping: input.mapping, document, results, settings: session });
-      return load({ ...input, mode: 'sparql', query, mapping: DEFAULT_MAPPING });
+        revisions, profile, mapping: session.resultMapping ?? input.mapping, document, results, settings: session });
+      return load({ ...input, mode: 'sparql', query, mapping: { ...DEFAULT_MAPPING, id: 'subject' } });
     } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); return Promise.resolve(); }
   }
   function demo(withModels: boolean) {
@@ -106,23 +110,33 @@ export function useSemanticPilot(execute: ValidationExecutor = validateInWorker)
   }
   function validate(suppliedGraph = false) {
     return run(async signal => {
-      const value = await execute(suppliedGraph ? { graph, profile } : { document, profile }, signal);
-      if (!signal.aborted && useSemanticSession.getState().profile === profile) { setFindings(value.findings); setDiagnostic(value.diagnostic ?? ""); }
+      const input = useSemanticSession.getState();
+      const value = await execute(suppliedGraph ? { graph: input.graph, graphFormat: input.graphFormat, profile: input.profile } : { document: input.document, profile: input.profile }, signal);
+      const latest = useSemanticSession.getState();
+      // A worker result describes its exact input, never a newer edited/restored dataset.
+      if (!signal.aborted && latest.dataVersion === input.dataVersion && latest.profile === input.profile && latest.graph === input.graph && latest.graphFormat === input.graphFormat && latest.document === input.document) {
+        setFindings(value.findings); setDiagnostic(value.diagnostic ?? '');
+        session.setReport(value.diagnostic ? undefined : value.report);
+      }
     });
+  }
+  function editGraph(value: string) {
+    current.current?.abort(); setDiagnostic(''); session.setGraph(value);
   }
   function exportBundle() {
     return run(async signal => {
       const assets = await generateArtifacts(profile);
-      const bundle = { document, ...assets, jsonLd: document ? asJsonLd(document, profile) : undefined, nquads: graph,
+      const bundle = { document, ...assets, jsonLd: document ? asJsonLd(document, profile) : undefined, graph, graphFormat: session.graphFormat,
+        nquads: session.graphFormat === 'application/n-quads' ? graph : undefined,
         selectQuery: PILOT_QUERY, sparqlResults: results, note: 'Original reference profile; no standards conformity claim.' };
       if (!signal.aborted) downloadFile(JSON.stringify(bundle, null, 2), 'semantic-records.json', 'application/json');
     });
   }
   function saveWorkspace() { try { downloadFile(session.save(), 'semantic-workspace.json', 'application/json'); } catch (failure) { setError(String(failure)); } }
   function restoreWorkspace(serialized?: string) {
-    try { const value = serialized ?? savedSemanticWorkspace(); if (!value) throw new Error('No saved workspace'); current.current?.abort(); session.restore(value); }
+    try { const value = serialized ?? savedSemanticWorkspace(); if (!value) throw new Error('No saved workspace'); current.current?.abort(); session.restore(value); setDiagnostic(''); }
     catch (failure) { setError(String(failure)); }
   }
-  return { ...session, busy, error, diagnostic, setError, load, related, demo, validate, exportBundle, saveWorkspace, restoreWorkspace,
+  return { ...session, setGraph: editGraph, busy, error, diagnostic, setError, load, related, demo, validate, exportBundle, saveWorkspace, restoreWorkspace,
     cancel: () => current.current?.abort() };
 }

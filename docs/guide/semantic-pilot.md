@@ -36,7 +36,8 @@ identifiers after reload; display names never establish identity.
 known semantic URIs and runs a bounded query for outgoing and incoming links.
 With no known subject, the selected profile's GlobalId predicate performs
 explicit discovery. Identifiers are serialized into VALUES, not executable
-query text. This is a partial supplied view and cannot establish endpoint-wide
+query text. Related query results use their `subject` URI for explicit resource links,
+while the query editor retains your analytical binding mapping. This is a partial supplied view and cannot establish endpoint-wide
 conformance.
 
 Load a versioned profile definition in the profile controls, generate its
@@ -117,9 +118,14 @@ independently hand-maintained second ontology. RDFS describes the vocabulary;
 Schema and SHACL enforce the supplied profile. There is no OWL inference or
 remote-context loading. SHACL validation uses explicit resource types, rejects
 graphs with no pilot targets, and bounds graph input to 5 MiB / 50,000 quads.
-The displayed RDF is editable for independent graph validation; downloading
-the bundle regenerates canonical RDF from the records rather than exporting
-unvalidated editor changes.
+The displayed RDF is editable for independent graph validation. Editing it
+invalidates previous findings and cancels pending validation. Restored workspaces
+remain unvalidated until validation completes for the restored data. The report
+shows the actual validation scope, engines, completeness and finding-limit status;
+validating a supplied graph does not claim JSON Schema validation of the records. The bundle
+exports the current graph with its explicit `graphFormat`; the `nquads` field is
+present only when that graph is actually N-Quads. Edited graph data does not
+change the accompanying profile JSON records.
 
 The conceptual entities are Building, Logbook, Installation, Product, Passport
 and Inspection. Products and passports carry model/batch/item granularity.

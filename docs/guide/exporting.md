@@ -468,8 +468,8 @@ Ambiguous owners, unsupported or cyclic conversion units, invalid numeric
 values, unsupported coordinate operations and retained WKT unit definitions
 are preserved with warnings. A CRS shared by multiple operations changes only
 when all those operations can be normalized safely. Delta exports and schema
-conversions reject this option. Cesium ion uploads enable it; ordinary IFC
-file exports retain their original map units.
+conversions reject this option. Ordinary IFC file exports retain their original
+map units unless this option is enabled.
 
 #### Which schema identifier is written
 

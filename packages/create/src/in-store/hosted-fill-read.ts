@@ -171,6 +171,37 @@ export function readHostedFill(
     const rel = reader.entity(relId);
     if (rel && refId(rel.attributes[5]) === openingId) { hostId = refId(rel.attributes[4]); break; }
   }
+  return readOpeningInHost(reader, lengthScale(store, 'readHostedFill'), openingId, hostId, fillingId);
+}
+
+/** Package-private batch reader: one relation walk for any number of cuts.
+ * Reuses the single-read placement contract; source relations are indexed
+ * before the atomic writer starts moving any occurrence (#6232). */
+export function readHostedOpeningBatch(
+  store: IfcDataStore, openingIds: ReadonlySet<number>, view?: MutablePropertyView | null,
+): ReadonlyMap<number, HostedFillRead | null> {
+  const result = new Map<number, HostedFillRead | null>();
+  if (openingIds.size === 0) return result;
+  const reader = new AnchorEntityReader(store, view), hosts = new Map<number, number | null>(), fills = new Map<number, number>();
+  for (const id of reader.ids('IFCRELVOIDSELEMENT')) {
+    const rel = reader.entity(id), openingId = rel ? refId(rel.attributes[5]) : null;
+    if (openingId !== null && openingIds.has(openingId) && !hosts.has(openingId)) hosts.set(openingId, refId(rel!.attributes[4]));
+  }
+  for (const id of reader.ids('IFCRELFILLSELEMENT')) {
+    const rel = reader.entity(id), openingId = rel ? refId(rel.attributes[4]) : null;
+    const fillingId = rel ? refId(rel.attributes[5]) : null;
+    if (openingId !== null && openingIds.has(openingId) && !fills.has(openingId) && fillingId !== null && reader.entity(fillingId)) fills.set(openingId, fillingId);
+  }
+  const scale = lengthScale(store, 'readHostedFill');
+  for (const openingId of openingIds) {
+    const type = reader.entity(openingId)?.type.toUpperCase();
+    result.set(openingId, type && OPENING_TYPES.has(type)
+      ? readOpeningInHost(reader, scale, openingId, hosts.get(openingId) ?? null, fills.get(openingId) ?? null) : null);
+  }
+  return result;
+}
+
+function readOpeningInHost(reader: AnchorEntityReader, scale: number, openingId: number, hostId: number | null, fillingId: number | null): HostedFillRead | null {
   const host = hostId === null ? null : reader.entity(hostId);
   const opening = reader.entity(openingId);
   if (hostId === null || !host || !opening) return null;
@@ -188,7 +219,7 @@ export function readHostedFill(
   const location = [0, 1, 2].map((i) => (typeof coords[i] === 'number' ? coords[i] as number : 0)) as [number, number, number];
   if (!location.every(Number.isFinite)) return null;
 
-  const unit = { lengthUnitScale: lengthScale(store, 'readHostedFill') };
+  const unit = { lengthUnitScale: scale };
   return {
     hostId,
     openingId,

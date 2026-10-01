@@ -8,7 +8,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { readHostOpeningExtents } from './hosted-element.js';
-import { readHostedFill, type HostedFillRead } from './hosted-fill-read.js';
+import { readHostedOpeningBatch, type HostedFillRead } from './hosted-fill-read.js';
 import { axis3d, placementInAncestor, refId, type Vec3 } from './host-geometry-frame.js';
 
 const ref = (id: number) => `#${id}`;
@@ -74,6 +74,7 @@ export interface HostedOpeningReassignment {
 export function reassignHostedOpeningsInStore(
   store: IfcDataStore, editor: StoreEditor, sourceHostId: number, moves: readonly HostedOpeningReassignment[],
 ): void {
+  if (moves.length === 0) return;
   editor.runAtomic(draft => {
     const view = draft.getMutationView(), reader = new AnchorEntityReader(store, view);
     const sourceRelations = new Map<number, number[]>();
@@ -87,10 +88,11 @@ export function reassignHostedOpeningsInStore(
       sourceRelations.set(openingId, ids);
     }
     const seen = new Set<number>();
+    const reads = readHostedOpeningBatch(store, new Set(moves.map(move => move.openingId)), view);
     const plan = moves.map(move => {
       if (seen.has(move.openingId)) throw new Error('An opening cannot be reassigned twice in one batch');
       seen.add(move.openingId);
-      const read = readHostedFill(store, move.openingId, view);
+      const read = reads.get(move.openingId);
       if (!read || read.hostId !== sourceHostId) throw new Error('The opening does not belong to the source host');
       const relations = sourceRelations.get(move.openingId) ?? [];
       if (relations.length !== 1) throw new Error('An opening must have exactly one source void relationship');

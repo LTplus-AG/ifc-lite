@@ -127,6 +127,43 @@ horizontal-only experiment lost. Both experiments remain test-only until
 source-unit, map-scale, coordinate-frame and original Infra-Bridge acceptance
 cases are verified.
 
+## Unit and scale matrix
+
+Four independently checked IFC variants also reached `COMPLETE`. IfcOpenShell
+produced identical eight SI-metre source vertices for the metre and millimetre
+variants. The controls preserved source geometry and used the test-only anchored
+compound CRS, with parameters derived for each variant.
+
+| Control | Asset | Result |
+| --- | --- | --- |
+| Millimetre geometry and map units | 5969785 | Horizontal placement agrees; vertical scale still unverified by center alone |
+| Unrotated horizontal axis | 5969787 | Horizontal placement agrees |
+| Map Scale = 2 | 5969784 | Incorrect elevation: canonical vertices lie up to 68 m outside the tiled bounding box |
+| Local elevation +100 m, OrthogonalHeight = 23 m | 5969789 | Vertical translation retained; scale discrepancy remains |
+
+The stronger scale check transforms all eight authored corners through the
+canonical IFC scale/rotation/translation and a no-ballpark PROJ vertical grid
+operation into ECEF, then into the actual tileset's root frame. It compares
+those vertices with ion's declared containing bounding box, rather than
+comparing two bounding centers. With GEOID99, the Scale = 2 expected vertices
+fall outside the actual box by up to 67.9999999999 m; GEOID18 also puts them
+outside by about 68.44 m, well beyond either operation's stated accuracy.
+The actual box remains around the unscaled local height. The 2D affine override
+therefore cannot represent IFC's scale of all three coordinates. Successful
+horizontal and vertical-datum controls do not make this route merge-ready.
+
+## Original Infra-Bridge database control
+
+Asset **5969775** (collection 5969773, iModel 5969774) used the unchanged original
+SketchUp IFC4 Infra-Bridge and the documented `BIM_CAD_DB` source type with no
+CRS override. It reached `COMPLETE`, unlike the original tiler, which failed at
+41%. Its actual root transform is centered at ECEF approximately
+(6378137, 0, 0), near longitude/latitude 0/0. Its millimetre `IfcMapConversion`
+instead declares EPSG:32760 with metre-equivalent Eastings 729011.2258823584
+and Northings 9063960.607644705. Tiling this real model is demonstrated;
+placement acceptance is still failed. This is a control, not a replacement
+transport shipped by the PR.
+
 ## Verdict
 
 Real upload, retained edits, completion handling and named asset navigation are

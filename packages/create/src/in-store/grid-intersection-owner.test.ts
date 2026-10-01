@@ -111,7 +111,7 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) describe(`#6232 gene
     a.editor.removeEntity(a.grid.uAxisIds[1]);
     expect(() => gridIntersectionPlacement(a.editor, a.anchor, {
       Axes: [a.grid.uAxisIds[1], a.grid.vAxisIds[0]],
-    }, a.store)).toThrow(/live readable IfcGridAxis/);
+    }, a.store)).toThrow(new Error(`gridIntersectionPlacement: #${a.grid.uAxisIds[1]} is not an entity, not an IfcGridAxis`));
     expect(a.view.getNewEntities()).toHaveLength(0);
   });
 

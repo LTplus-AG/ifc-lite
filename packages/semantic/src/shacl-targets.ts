@@ -8,6 +8,44 @@ const RDF = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
 const RDFS = 'http://www.w3.org/2000/01/rdf-schema#';
 const SH = 'http://www.w3.org/ns/shacl#';
 
+/** Topological work estimation bounds the recursive evaluator without altering
+ * valid repeated references. Acyclic DAG fan-out can exceed a cycle/depth guard. */
+function assertBoundedDag(children: Map<string, Set<string>>, parents: Map<string, Set<string>>, kind: string): void {
+  const remaining = new Map([...children].map(([node, values]) => [node, values.size]));
+  const work = new Map([...children.keys()].map(node => [node, 1]));
+  const depth = new Map([...children.keys()].map(node => [node, 1]));
+  const queue = [...children.keys()].filter(node => remaining.get(node) === 0);
+  let processed = 0; let total = 0;
+  for (let index = 0; index < queue.length; index++) {
+    const node = queue[index]; processed++; total += work.get(node)!;
+    if (total > LIMITS.quads * 2) throw new Error(`${kind} traversal exceeds the supported work budget`);
+    for (const parent of parents.get(node) ?? []) {
+      const parentWork = work.get(parent)! + work.get(node)!;
+      const parentDepth = Math.max(depth.get(parent)!, depth.get(node)! + 1);
+      if (parentWork > LIMITS.quads) throw new Error(`${kind} DAG exceeds the supported work budget`);
+      if (parentDepth > 64) throw new Error(`${kind} traversal exceeds the supported 64-level depth`);
+      work.set(parent, parentWork); depth.set(parent, parentDepth);
+      const count = remaining.get(parent)! - 1; remaining.set(parent, count);
+      if (!count) queue.push(parent);
+    }
+  }
+  if (processed !== children.size) throw new Error(`Cyclic ${kind} references are unsupported`);
+}
+
+/** SHACL property references may compose nonrecursive shapes. Imported cycles
+ * must fail before the validator's repeated-pair cache can silently accept them. */
+export function assertBoundedPropertyShapes(shapes: Store): void {
+  const children = new Map<string, Set<string>>(); const parents = new Map<string, Set<string>>();
+  for (const quad of shapes.getQuads(null, SH + 'property', null, null)) {
+    if (!['NamedNode', 'BlankNode'].includes(quad.object.termType)) throw new Error('SHACL property shapes require resource references');
+    const parent = `${quad.subject.termType}:${quad.subject.value}`; const child = `${quad.object.termType}:${quad.object.value}`;
+    const descendants = children.get(parent) ?? new Set<string>(); descendants.add(child); children.set(parent, descendants);
+    if (!children.has(child)) children.set(child, new Set());
+    const ancestors = parents.get(child) ?? new Set<string>(); ancestors.add(parent); parents.set(child, ancestors);
+  }
+  assertBoundedDag(children, parents, 'SHACL property-shape');
+}
+
 /** The installed validator recursively traverses subclasses. Reject unsafe RDF
  * before handing it off: cycles, deep acyclic paths and repeated DAG fan-out
  * require separate checks. The raw imported graph remains unchanged. */
@@ -20,25 +58,7 @@ export function assertBoundedSubclasses(store: Store): void {
     if (!children.has(child)) children.set(child, new Set());
     const ancestors = parents.get(child) ?? new Set<string>(); ancestors.add(parent); parents.set(child, ancestors);
   }
-  const remaining = new Map([...children].map(([node, values]) => [node, values.size]));
-  const work = new Map([...children.keys()].map(node => [node, 1]));
-  const depth = new Map([...children.keys()].map(node => [node, 1]));
-  const queue = [...children.keys()].filter(node => remaining.get(node) === 0);
-  let processed = 0; let total = 0;
-  for (let index = 0; index < queue.length; index++) {
-    const node = queue[index]; processed++; total += work.get(node)!;
-    if (total > LIMITS.quads * 2) throw new Error('RDFS subclass traversal exceeds the supported work budget');
-    for (const parent of parents.get(node) ?? []) {
-      const parentWork = work.get(parent)! + work.get(node)!;
-      const parentDepth = Math.max(depth.get(parent)!, depth.get(node)! + 1);
-      if (parentWork > LIMITS.quads) throw new Error('RDFS subclass DAG exceeds the supported work budget');
-      if (parentDepth > 64) throw new Error('RDFS subclass traversal exceeds the supported 64-level depth');
-      work.set(parent, parentWork); depth.set(parent, parentDepth);
-      const count = remaining.get(parent)! - 1; remaining.set(parent, count);
-      if (!count) queue.push(parent);
-    }
-  }
-  if (processed !== children.size) throw new Error('Cyclic RDFS subclass relationships are unsupported');
+  assertBoundedDag(children, parents, 'RDFS subclass');
 }
 
 /** SHACL instances include explicitly typed subclasses in the supplied graph.

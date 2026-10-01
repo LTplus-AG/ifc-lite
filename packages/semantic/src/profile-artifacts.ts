@@ -6,6 +6,7 @@ import { DataFactory, Writer } from 'n3';
 import type { ContextDefinition } from 'jsonld';
 import { assertProfile, DEFAULT_PROFILE, type ProfileDefinition, type ProfileField } from './profiles.js';
 import { profileToDictionary } from './dictionary.js';
+import { LIMITS } from './types.js';
 const { namedNode: n, literal: l, blankNode: b } = DataFactory;
 const RDF = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
 const SH = 'http://www.w3.org/ns/shacl#';
@@ -23,8 +24,8 @@ const valueBounds = (field: ProfileField) => ({
 function scalarSchema(field: ProfileField) {
   const bounds = valueBounds(field);
   return field.kind === 'language' ? { type: 'object', minProperties: 1, additionalProperties: false,
-    patternProperties: { '^[A-Za-z]{1,8}(-[A-Za-z0-9]{1,8})*$': { type: 'string', maxLength: 65536 } } }
-    : { type: field.kind === 'iri' ? 'string' : field.kind, ...(['iri', 'string'].includes(field.kind) ? { maxLength: 65536 } : {}), ...(field.kind === 'iri' ? { format: 'uri' } : {}),
+    patternProperties: { '^[A-Za-z]{1,8}(-[A-Za-z0-9]{1,8})*$': { type: 'string', maxLength: LIMITS.literalCharacters } } }
+    : { type: field.kind === 'iri' ? 'string' : field.kind, ...(['iri', 'string'].includes(field.kind) ? { maxLength: LIMITS.literalCharacters } : {}), ...(field.kind === 'iri' ? { format: 'uri' } : {}),
       ...(field.enum ? { enum: field.enum } : {}), ...(field.pattern ? { pattern: field.pattern } : {}),
       ...(bounds.minimum !== undefined ? { minimum: bounds.minimum } : {}), ...(bounds.maximum !== undefined ? { maximum: bounds.maximum } : {}) };
 }
@@ -44,7 +45,7 @@ export function resourceSchema(type: string, profile = DEFAULT_PROFILE, structur
 }
 export function exchangeSchema(profile = DEFAULT_PROFILE, structural = false) {
   assertProfile(profile);
-  return { $id: profile.id, type: 'object', additionalProperties: false, required: ['profile', 'source', 'completeness', 'resources'],
+  return { $schema: 'http://json-schema.org/draft-07/schema#', $id: profile.id, type: 'object', additionalProperties: false, required: ['profile', 'source', 'completeness', 'resources'],
     properties: { profile: { const: profile.id }, source: { type: 'string', format: 'uri' }, completeness: { enum: ['complete', 'partial'] },
       resources: { type: 'array', maxItems: 5000, items: { oneOf: Object.keys(profile.types).map(type => resourceSchema(type, profile, structural)) } } } };
 }
@@ -78,6 +79,7 @@ export async function shapesTurtle(profile = DEFAULT_PROFILE): Promise<string> {
       if (field.kind !== 'language') add(property, SH + 'maxCount', l(count.maxCount ?? 1));
       else add(property, SH + 'uniqueLang', l('true', n(XSD + 'boolean')));
       add(property, field.kind === 'iri' ? SH + 'nodeKind' : SH + 'datatype', n(field.kind === 'iri' ? SH + 'IRI' : datatype(field)));
+      if (['string', 'iri', 'language'].includes(field.kind)) add(property, SH + 'maxLength', l(LIMITS.literalCharacters));
       if (field.targetType) add(property, SH + 'class', n(profile.types[field.targetType].iri));
       if (field.pattern) add(property, SH + 'pattern', l(field.pattern));
       if (bounds.minimum !== undefined) add(property, SH + 'minInclusive', l(String(bounds.minimum), n(datatype(field))));

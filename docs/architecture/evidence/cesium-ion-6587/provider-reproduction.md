@@ -3,6 +3,34 @@
 Prepared on 2026-10-01. This report has not been sent externally. It contains
 public fixture identifiers and observed asset IDs, but no credentials.
 
+## Reopened client-side investigation
+
+The observations below do not establish a Cesium defect. A fresh standards
+review found that the deck's `VerticalDatum` value `EPSG:5703` identifies a
+vertical CRS, whereas IFC defines that attribute as a datum identifier
+(NAVD88 datum is `EPSG:5103`). Schema validation alone did not check that
+semantic distinction. Supported input normalization must be tested before
+escalation. The corrected compound-CRS control 5970016 and datum-corrected,
+geometry-baked control 5970020 returned `DATA_ERROR` at 5%; those results
+provide no geometry-placement verdict.
+
+A client-side compatibility fix succeeded for the original SketchUp model:
+control **5970022** changed its target `MapUnit` from millimetres to metres
+and multiplied `Eastings`, `Northings`, `OrthogonalHeight`, and `Scale` by
+0.001. It preserved all 48 products' engineering geometry and indices.
+Independent physical map-coordinate differences are at most 1.87e-9 m.
+The design tiler reached `COMPLETE`; its root origin independently resolves
+to longitude 179.08012899993923, latitude -8.462489999999077, matching the
+original source. All four actual GLBs and their schema dependencies render
+in CesiumJS, with 48 metadata features and 13,292 triangles. Full per-product placement comparison also passed: bidirectional referenced
+vertex differences are below 1.255 mm, within the 1.810 mm quantization step.
+See the [numeric proof](./infra-map-unit-normalized-proof.json). A production
+implementation and edited-model acceptance remain pending. No manual display transform was
+introduced.
+
+The report is retained as an investigation record, not a request to attribute
+fault to the provider. See [the updated acceptance record](./README.md).
+
 ## Minimal original IFC
 
 Fetch `tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc` with
@@ -10,7 +38,7 @@ Fetch `tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc` with
 [public fixture](https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1/6b1de724ceb436759d9cdbe7ce7f4c71734065dfde8cc8786b6239de347de1b1).
 SHA-256: `6b1de724ceb436759d9cdbe7ce7f4c71734065dfde8cc8786b6239de347de1b1`.
 It is an IfcOpenShell-exported IFC4X3_ADD2 rectangle/extrusion with 33 entities,
-EPSG:32610, vertical datum EPSG:5703 and an explicit rotated IfcMapConversion.
+EPSG:32610, a VerticalDatum field containing EPSG:5703, and an explicit rotated IfcMapConversion.
 
 Upload unchanged through `POST /v1/assets` with type `3DTILES`, source type
 `BIM_CAD`, and the returned storage/completion instructions. Supply string

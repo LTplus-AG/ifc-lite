@@ -4,6 +4,35 @@ Observed on 2026-10-01 using an authorized real account and the catalogued
 IfcOpenShell `Georeferencing_georeferenced-bridge-deck.ifc` regression model.
 Fetch the model with `pnpm fixtures`. Credentials are not included here.
 
+## Client normalization re-audit
+
+The earlier mismatches are observations, not proof of a provider defect.
+A fresh review identified ambiguous deck CRS metadata and tested equivalent
+IFC encodings before escalation. The original SketchUp Infra-Bridge model
+now tiles as asset **5970022** after normalizing only its map units to metres:
+`MapUnit = METRE`, and `Eastings`, `Northings`, `OrthogonalHeight`, `Scale`
+multiplied by 0.001. Project units and all 48 products' geometry/indices stay
+unchanged. Independent mapped-vertex equivalence is within 1.87e-9 m.
+
+The actual tiled root's longitude/latitude match the authored origin exactly
+at printed precision: (179.08012899993923, -8.462489999999077). CesiumJS 1.145
+loaded all four actual GLBs and their external schema dependencies: 48 metadata
+features and 13,292 rendered triangles. Only schema URIs were localized;
+binary geometry and cumulative tile transforms were preserved. An independent decoder compared all 48 products: bidirectional referenced
+vertex differences are at most 1.255 mm, below the 1.810 mm quantization step;
+per-axis bounds differences are below 0.585 mm. Triangle counts differ, so
+this does not assert identical connectivity. See the [numeric proof](./infra-map-unit-normalized-proof.json).
+An edited-model production upload remains pending.
+
+![Actual normalized Infra-Bridge asset rendered by CesiumJS](infra-map-unit-normalized.png)
+
+The deck's `VerticalDatum = EPSG:5703` names a vertical CRS, not the datum
+identifier expected by [IfcProjectedCRS](https://standards.buildingsmart.org/IFC/RELEASE/IFC4_3/HTML/lexical/IfcProjectedCRS.htm).
+Correcting its compound CRS (5970016), or baking its map transform into ordinary
+geometry with datum EPSG:5103 (5970020), produced `DATA_ERROR` at 5%, so those
+controls do not establish correct placement. Further client integration tests
+are active; this work is not blocked on provider support.
+
 ## Real ribbon entry and dialog
 
 On source head `d90afc7362ec768c8a107544667777e1bf9349bf`, the supported

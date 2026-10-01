@@ -69,7 +69,7 @@ for (const count of [0, 1, 2]) {
       : new TextEncoder().encode(source);
     const dataStore = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, {});
     const anchor = { ...fixtureModel('anchor'), ifcDataStore: dataStore, geometryResult: geometry };
-    const models = count === 2 ? [{ ...fixtureModel('other'), ifcDataStore: undefined }, anchor] : count === 1 ? [anchor] : [];
+    const models = count === 2 ? [{ ...fixtureModel('other'), ifcDataStore: null }, anchor] : count === 1 ? [anchor] : [];
     useViewerStore.setState({
       ...fixtureModels(...models), ifcDataStore: count === 0 ? dataStore : null,
       geometryResult: geometry, cesiumEnabled: false, solarEnabled: false,

@@ -7,7 +7,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 /** Metadata and registration belong to one load, including its cancellation.
  * Registration completes before the existing background cache write; callers
  * need the actual model, not an IndexedDB write, before launching authoring. */
-export function createModelLoadCompletion(signal: AbortSignal) {
+export function createModelLoadCompletion(signal: AbortSignal, reportFailure: (error: unknown) => void) {
   let resolveMetadata!: (store: IfcDataStore | null) => void;
   let rejectMetadata!: (error: unknown) => void;
   let resolveModelReady!: () => void;
@@ -16,6 +16,10 @@ export function createModelLoadCompletion(signal: AbortSignal) {
     resolveMetadata = resolve;
     rejectMetadata = reject;
   });
+  // Parsing can fail before geometry has installed its finalizer. Own that
+  // rejection immediately; the original promise still carries the failure to
+  // the later finalizer, while the load reports it once at the point of failure.
+  void metadata.catch(reportFailure);
   const modelReady = new Promise<void>(resolve => { resolveModelReady = resolve; });
   const settleModel = () => {
     signal.removeEventListener('abort', abandon);

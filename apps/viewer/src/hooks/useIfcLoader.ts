@@ -1378,7 +1378,8 @@ export function useIfcLoader() {
       // workers + main share the same SharedArrayBuffer source, and the
       // main thread never blocks on parse.
       // Fall back to main-thread parsing when isolation or worker startup fails.
-      modelCompletion = createModelLoadCompletion(metadataAbort.signal);
+      modelCompletion = createModelLoadCompletion(metadataAbort.signal,
+        err => console.error('[useIfc] Data model parsing failed:', err));
       const dataStorePromise = modelCompletion.metadata;
       if (target.kind === 'primary') void appearanceLoad?.finishAfter(dataStorePromise, () => useViewerStore.getState().models.get(modelId));
 
@@ -1498,7 +1499,6 @@ export function useIfcLoader() {
           .catch((err) => {
             if (metadataAbort.signal.aborted || isStale()) return;
             metadataFailedMs = performance.now() - totalStartTime;
-            console.error('[useIfc] Data model parsing failed:', err);
             console.log(`[useIfc] Data model parsing failed for ${file.name}: ${metadataFailedMs.toFixed(0)}ms`);
             memoryAccounting.recordPhase({ phase: 'parser-failed' });
             modelCompletion?.failMetadata(err);

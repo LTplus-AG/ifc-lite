@@ -1,0 +1,83 @@
+{
+  "source": "c5475182441bba8f1e7e8fb8b9305a376a720e80",
+  "sourceHashes": {
+    "apps/viewer/src/lib/validation/manual/ring.ts": "5eb686c6544642c4f06bf42212d8124d173dd6d80c3ce36ce2eab5bf09c62a2b",
+    "apps/viewer/src/lib/document/compose-ids-report.ts": "1fcd8164207c5877b5e22ca383112f91ce552d8504d4a30d5426f8eb65647cc7",
+    "apps/viewer/src/components/viewer/validation/ValidationBenchmark.tsx": "2c83f03d6e7ce68fe86444c1ff0e92d4d891c496f3d1934cd7f5beb31bba58f9"
+  },
+  "capturedAt": "2026-09-30T23:18:10.362Z",
+  "route": "User-authorized own-profile headless Google Chrome; actual canonical IFC file input, real engines, mounted controls and Playwright download event. No download suppression, PDF seam, fake SVG or hand-made engine output.",
+  "limits": "Document DOM and actual PDF proof only. Software WebGPU selected; no 3D render or performance claim.",
+  "chrome": "153.0.8010.36",
+  "model": {
+    "id": "73e2f0c5-1a23-4877-a0ed-34a0ab22e5bd",
+    "name": "building-architecture.ifc",
+    "fingerprint": "building-architecture.ifc:f778982157aa24e",
+    "entities": 444,
+    "schema": "IFC4"
+  },
+  "engineSummaries": [
+    {
+      "totalSpecifications": 2,
+      "passedSpecifications": 1,
+      "failedSpecifications": 1,
+      "totalEntitiesChecked": 8,
+      "totalEntitiesPassed": 5,
+      "totalEntitiesFailed": 3,
+      "overallPassRate": 62
+    },
+    {
+      "totalSpecifications": 3,
+      "passedSpecifications": 1,
+      "failedSpecifications": 2,
+      "totalEntitiesChecked": 12,
+      "totalEntitiesPassed": 6,
+      "totalEntitiesFailed": 6,
+      "overallPassRate": 50
+    }
+  ],
+  "download": {
+    "suggestedFilename": "Public IFC validation outcome rings.pdf",
+    "bytes": 14558,
+    "sha256": "d8da79f8517ee1c0953126ad68093ceecd6eaea5f30e179b5769fee27b9f5afb"
+  },
+  "logs": [],
+  "live": {
+    "ids": {
+      "text": "62%\nPass\n5\nWarning\n0\nFail\n3\nNot checked\n0",
+      "accessibleName": "Public wall name checks: 5 passed, 0 with warnings, 3 failed, 0 not checked \u00b7 Pass rate 62%",
+      "svgImageSha256": "2d0376a37423f984465c7cc3f3d06750d8c55ab0f59705be62c773948e25f271"
+    },
+    "information": {
+      "text": "50%\nPass\n6\nWarning\n3\nFail\n3\nNot checked\n0",
+      "accessibleName": "Public wall information checks: 6 passed, 3 with warnings, 3 failed, 0 not checked \u00b7 Pass rate 50%",
+      "svgImageSha256": "6271241ba050812b85512cca4b31419ed5ce99efd8e9f39a05528edbcbee775f"
+    }
+  },
+  "preview": [
+    {
+      "id": "ids-compact",
+      "text": "IDS outcome audit (compact)\nValidation run: 2026-09-30T23:18:00.892Z\nModels: building-architecture.ifc\n62%\nPass\n5\nWarning\n0\nFail\n3\nNot checked\n0\nCHECKED\n8\nPASSED\n5\nFAILED\n3\nPASS RATE\n62%\n2 checks\nWall Name exists\n4/4 \u00b7 100%\nName\n4/4 \u00b7 100%\nWall Name is plumbing wall\n1/4 \u00b7 25%\nName\n1/4 \u00b7 25%",
+      "ring": "Public wall name checks: 5 passed, 0 with warnings, 3 failed, 0 not checked \u00b7 Pass rate 62%"
+    },
+    {
+      "id": "ids-long",
+      "text": "IDS outcome audit (long)\nValidation run: 2026-09-30T23:18:00.892Z\nModels: building-architecture.ifc\n62%\nPass\n5\nWarning\n0\nFail\n3\nNot checked\n0\nCHECKED\n8\nPASSED\n5\nFAILED\n3\nPASS RATE\n62%\n2 checks\nWall Name exists\n4 \u00b7 4 / 0 \u00b7 100%\nAttribute \"\"Name\"\" must exist\n4 \u00b7 4 / 0 \u00b7 100%\nAttribute \"\"Name\"\" must exist\nWall Name is plumbing wall\n4 \u00b7 1 / 3 \u00b7 25%\nAttribute \"\"Name\"\" must equal \"plumbing wall\"\n4 \u00b7 1 / 3 \u00b7 25%\nAttribute \"\"Name\"\" must equal \"plumbing wall\"",
+      "ring": "Public wall name checks: 5 passed, 0 with warnings, 3 failed, 0 not checked \u00b7 Pass rate 62%"
+    },
+    {
+      "id": "rules-compact",
+      "text": "Information outcome audit (compact)\nValidation run: 2026-09-30T23:18:00.896Z\nModels: building-architecture.ifc\n50%\nPass\n6\nWarning\n3\nFail\n3\nNot checked\n0\nCHECKED\n12\nPASSED\n6\nFAILED\n3\nWARNINGS\n3\nPASS RATE\n50%\n3 checks\nDescription exists\n4/4 \u00b7 100%\nName is plumbing wall\n1/4 \u00b7 25%\nWarningDescription mentions plumbing\n1/4 \u00b7 25%",
+      "ring": "Public wall information checks: 6 passed, 3 with warnings, 3 failed, 0 not checked \u00b7 Pass rate 50%"
+    },
+    {
+      "id": "rules-long",
+      "text": "Information outcome audit (long)\nValidation run: 2026-09-30T23:18:00.896Z\nModels: building-architecture.ifc\n50%\nPass\n6\nWarning\n3\nFail\n3\nNot checked\n0\nCHECKED\n12\nPASSED\n6\nFAILED\n3\nWARNINGS\n3\nPASS RATE\n50%\n3 checks\nDescription exists\n4 \u00b7 4 / 0 \u00b7 100%\nName is plumbing wall\n4 \u00b7 1 / 3 \u00b7 25%\nDescription mentions plumbing\nWarning4 \u00b7 1 / 3 \u00b7 25%",
+      "ring": "Public wall information checks: 6 passed, 3 with warnings, 3 failed, 0 not checked \u00b7 Pass rate 50%"
+    }
+  ],
+  "persistedReloadJsonEqual": true,
+  "documentArtifact": "document.ifclite-document.json",
+  "rawCaptureSha256": "9887ddaef7c7d09f21c56c8980c00424debfa0decda8d7eb23228538fc61f51e",
+  "note": "Curated capture omits duplicate before/after embedded document and long SVG data URLs; their identities and persisted document remain recorded. The raw capture is retained in /tmp/6232-takeover/6552-browser-final-observations.json."
+}

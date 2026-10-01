@@ -105,7 +105,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         : kind === 'chart' ? { kind, id, chart: charts[0]?.chart ? { ...charts[0].chart, id: freshBlockId() } : newChartSpec(), snapshot: false }
           : kind === 'page-break' ? { kind, id }
           : kind === 'spacer' ? { kind, id, height: 20 }
-            : kind === 'ids-report' ? (idsValidationReport ? idsReportBlockFromReport(idsValidationReport, id, 'compact') : { kind, id, variant: 'compact', sourceName: '', generatedAt: new Date().toISOString(), summary: { checked: 0, passed: 0, failed: 0, passRate: 100 }, checks: [] })
+            : kind === 'ids-report' ? (idsValidationReport ? { ...idsReportBlockFromReport(idsValidationReport, id, 'compact'), benchmarks: true } : { kind, id, variant: 'compact', benchmarks: true, sourceName: '', generatedAt: new Date().toISOString(), summary: { checked: 0, passed: 0, failed: 0, passRate: 100 }, checks: [] })
               : kind === 'manual-report' ? (manualSource.snapshot(id, null, manualSource.defaultChecklistId ?? undefined) ?? emptyManualReportBlock(id))
               : { kind, id, guid: [...data.topics.keys()][0] ?? '', snapshot: true };
     setBlocks([...document.blocks, block]);
@@ -218,7 +218,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
               const entry = savedReports.at(-1);
               if (!document || !entry) return;
               const block = savedReportBlock(entry, freshBlockId());
-              setBlocks([...document.blocks, block]);
+              setBlocks([...document.blocks, block.kind === 'ids-report' ? { ...block, benchmarks: block.benchmarks ?? true } : block]);
               setSelectedBlockId(block.id);
             }}>{t('validationPanel.history.addDocument')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('manual-report')} disabled={!manualSource.available} title={manualSource.available ? undefined : t('manualValidation.report.unavailableTitle')}>{t('manualValidation.report.add')}</DropdownMenuItem>

@@ -323,3 +323,35 @@ fn issue_6600_composite_cycle_with_a_valid_sibling_is_reported_not_truncated() {
         && matches!(d.code, AlignmentSamplingDiagnosticCode::InvalidAxis)
         && d.message.contains("Curve nesting depth")));
 }
+
+#[test]
+fn issue_6600_curve_segment_references_spend_validation_work_without_dropping_reuse() {
+    let prefix = "#30=IFCCARTESIANPOINT((0.,0.));#31=IFCDIRECTION((1.,0.));#32=IFCAXIS2PLACEMENT2D(#30,#31);#33=IFCVECTOR(#31,1.);#34=IFCLINE(#30,#33);#40=IFCCURVESEGMENT(.CONTINUOUS.,#32,0.,10.,#34);#41=IFCCURVESEGMENT(.CONTINUOUS.,#32,0.,10.,#34);#42=IFCCURVESEGMENT(.CONTINUOUS.,#32,0.,10.,#34);";
+    for refs in ["#40,#41,#42", "#40,#40,#40"] {
+        let content = model("$", &format!("{prefix}#50=IFCCOMPOSITECURVE(({refs}),.F.);#51=IFCSHAPEREPRESENTATION($,'Axis',$,(#50));#52=IFCPRODUCTDEFINITIONSHAPE($,$,(#51));"))
+            .replace("'Road',$,$,$,$,#12", "'Road',$,$,$,#52,$");
+        let mut decoder = EntityDecoder::with_index(&content, build_entity_index(&content));
+        let curve = decoder.decode_by_id(50).unwrap();
+        let error = crate::alignment_sampling_curve::validate_composite_with_budget(&curve, &mut decoder, 3).unwrap_err();
+        assert!(error.to_string().contains("curve-reference work budget"));
+        crate::alignment_sampling_curve::validate_composite_with_budget(&curve, &mut decoder, 4).unwrap();
+        // Pure validation may memoize #40; accumulated geometry must not.
+        let axis = AlignmentAxis::from_content(&content, 20).unwrap();
+        near(axis.length_m(), 50.);
+        let gradient = content.replace(" ENDSEC;END-ISO-10303-21;",
+            " #60=IFCGRADIENTCURVE((#40,#40),.F.,#50,$); ENDSEC;END-ISO-10303-21;");
+        let mut decoder = EntityDecoder::with_index(&gradient, build_entity_index(&gradient));
+        let curve = decoder.decode_by_id(60).unwrap();
+        assert!(crate::alignment_sampling_curve::validate_composite_with_budget(&curve, &mut decoder, 6)
+            .unwrap_err().to_string().contains("curve-reference work budget"));
+        crate::alignment_sampling_curve::validate_composite_with_budget(&curve, &mut decoder, 7).unwrap();
+    }
+    // The production cap must act AND report before a wide list is enqueued.
+    let refs = vec!["#40"; 100_000].join(",");
+    let content = model("$", &format!("{prefix}#50=IFCCOMPOSITECURVE(({refs}),.F.);#51=IFCSHAPEREPRESENTATION($,'Axis',$,(#50));#52=IFCPRODUCTDEFINITIONSHAPE($,$,(#51));"))
+        .replace("'Road',$,$,$,$,#12", "'Road',$,$,$,#52,$");
+    let report = sample_alignment_axes(&content, Default::default()).unwrap();
+    assert!(report.axes.is_empty());
+    assert!(report.diagnostics.iter().any(|d| d.express_id == Some(20)
+        && d.message.contains("curve-reference work budget")));
+}

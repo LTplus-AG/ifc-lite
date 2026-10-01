@@ -663,8 +663,11 @@ Sampling includes both endpoints. Per-axis and total bounds may coarsen spacing
 and report that action; later axes are omitted with diagnostics when fewer than
 two samples remain. Bounds must be between 2 and 1,000,000 and spacing must be
 finite and positive. Failed axes also spend the total frame-evaluation budget, so a late invalid
-frame cannot repeatedly reset that budget. These limits bound output allocation; they do not limit the
-input IFC file size. The binding releases the GIL during Rust evaluation.
+frame cannot repeatedly reset that budget. Composite/gradient curve validation
+also has a per-axis budget of 100,000 reference-work items, including repeated
+references; exhaustion reports an invalid axis rather than truncated geometry.
+These limits do not limit the input IFC file size. The binding releases the GIL
+during Rust evaluation.
 
 ```python
 from ifclite_geom import alignment_axes

@@ -8,77 +8,71 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::collections::HashSet;
 
 pub(super) fn validate_composite(curve: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
-    let mut stack = vec![curve.id];
+    validate_composite_with_budget(curve, decoder, 100_000)
+}
+
+pub(super) fn validate_composite_with_budget(
+    curve: &DecodedEntity, decoder: &mut EntityDecoder, max_work: usize,
+) -> Result<()> {
+    let mut stack = vec![(curve.id, false)];
     let mut visited = HashSet::new();
-    while let Some(id) = stack.pop() {
-        // Validation is a pure function of entity ID: globally memoize it.
-        if !visited.insert(id) {
-            continue;
-        }
-        if visited.len() > 100_000 {
-            return Err(Error::geometry(
-                "Alignment validation exceeded curve-node budget",
-            ));
-        }
+    let mut work = 1usize;
+    charge_references(&mut work, 0, max_work)?;
+    while let Some((id, segment_required)) = stack.pop() {
+        // Validation is pure by ID; geometry accumulation remains canonical.
         let item = decoder.decode_by_id(id)?;
+        if segment_required && !matches!(item.ifc_type,
+            IfcType::IfcCurveSegment | IfcType::IfcCompositeCurveSegment) {
+            return Err(Error::geometry(format!("Unsupported composite segment {}", item.ifc_type)));
+        }
+        if !visited.insert(id) { continue; }
         match item.ifc_type {
-            IfcType::IfcGradientCurve => {
-                stack.push(
-                    item.get_ref(2)
-                        .ok_or_else(|| Error::geometry("GradientCurve missing BaseCurve"))?,
-                );
-            }
-            IfcType::IfcCompositeCurve => {
-                let refs = item
-                    .get_list(0)
-                    .ok_or_else(|| Error::geometry("CompositeCurve missing Segments"))?;
+            IfcType::IfcGradientCurve | IfcType::IfcCompositeCurve => {
+                let refs = item.get_list(0)
+                    .ok_or_else(|| Error::geometry("Composite/gradient curve missing Segments"))?;
+                // Charge before enqueue, including repeated references. This
+                // bounds both validation work and the pending stack's breadth.
+                charge_references(&mut work, refs.len(), max_work)?;
                 for attr in refs {
-                    let segment_id = attr
-                        .as_entity_ref()
-                        .ok_or_else(|| Error::geometry("Composite segment must be a reference"))?;
-                    let segment = decoder.decode_by_id(segment_id)?;
-                    if segment.ifc_type == IfcType::IfcCurveSegment {
-                        validate_segment_placement(&segment, decoder)?;
-                        if segment.get_float(2).is_none_or(|v| !v.is_finite())
-                            || segment.get_float(3).is_none_or(|v| !v.is_finite())
-                        {
-                            return Err(Error::geometry(format!(
-                                "CurveSegment #{} missing finite start/length",
-                                segment_id
-                            )));
-                        }
-                        let points = crate::curve_segment::sample_curve_segment(&segment, decoder)
-                            .ok_or_else(|| Error::geometry(format!("CurveSegment #{} is unsupported or incomplete; sparse fallback refused", segment_id)))?;
-                        if points.len() < 2
-                            || points.iter().any(|p| !p.iter().all(|v| v.is_finite()))
-                        {
-                            return Err(Error::geometry(format!(
-                                "Invalid sampled CurveSegment #{}",
-                                segment_id
-                            )));
-                        }
-                    } else if segment.ifc_type == IfcType::IfcCompositeCurveSegment {
-                        stack.push(segment.get_ref(2).ok_or_else(|| {
-                            Error::geometry("CompositeCurveSegment missing ParentCurve")
-                        })?);
-                    } else {
-                        return Err(Error::geometry(format!(
-                            "Unsupported composite segment {}",
-                            segment.ifc_type
-                        )));
-                    }
+                    stack.push((attr.as_entity_ref()
+                        .ok_or_else(|| Error::geometry("Curve segment must be a reference"))?, true));
+                }
+                if item.ifc_type == IfcType::IfcGradientCurve {
+                    charge_references(&mut work, 1, max_work)?;
+                    stack.push((item.get_ref(2)
+                        .ok_or_else(|| Error::geometry("GradientCurve missing BaseCurve"))?, false));
                 }
             }
-            IfcType::IfcTrimmedCurve => stack.push(
-                item.get_ref(0)
-                    .ok_or_else(|| Error::geometry("TrimmedCurve missing BasisCurve"))?,
-            ),
-            IfcType::IfcPolyline => {
-                crate::AlignmentCurve::parse_for_sampling(&item, decoder)?;
+            IfcType::IfcCurveSegment => {
+                validate_segment_placement(&item, decoder)?;
+                if item.get_float(2).is_none_or(|v| !v.is_finite())
+                    || item.get_float(3).is_none_or(|v| !v.is_finite()) {
+                    return Err(Error::geometry(format!("CurveSegment #{} missing finite start/length", id)));
+                }
+                let points = crate::curve_segment::sample_curve_segment(&item, decoder)
+                    .ok_or_else(|| Error::geometry(format!("CurveSegment #{} is unsupported or incomplete; sparse fallback refused", id)))?;
+                if points.len() < 2 || points.iter().any(|p| !p.iter().all(|v| v.is_finite())) {
+                    return Err(Error::geometry(format!("Invalid sampled CurveSegment #{}", id)));
+                }
             }
+            IfcType::IfcCompositeCurveSegment | IfcType::IfcTrimmedCurve => {
+                charge_references(&mut work, 1, max_work)?;
+                let index = if item.ifc_type == IfcType::IfcTrimmedCurve { 0 } else { 2 };
+                stack.push((item.get_ref(index)
+                    .ok_or_else(|| Error::geometry("Curve segment missing parent/basis curve"))?, false));
+            }
+            IfcType::IfcPolyline => { crate::AlignmentCurve::parse_for_sampling(&item, decoder)?; }
             _ => {}
         }
     }
+    Ok(())
+}
+
+fn charge_references(work: &mut usize, additional: usize, max_work: usize) -> Result<()> {
+    if additional > max_work.saturating_sub(*work) || *work > max_work {
+        return Err(Error::geometry("Alignment validation exceeded curve-reference work budget"));
+    }
+    *work += additional;
     Ok(())
 }
 

@@ -29,6 +29,11 @@ The companion infrastructure test checks all five identities, finite unit
 rotated/tilted placements, large absolute f64 coordinates, a nonzero authored
 chainage, an IFC4x3 graded circular path and reported tessellation approximation,
 invalid references, cyclic/long placement chains and output/work/diagnostic bounds.
+The reference-work regression covers unique and repeated curve segments,
+gradient children, the production-wide-list limit and its diagnostic. Reusing
+a segment retains all accumulated geometry despite memoized pure validation.
+An external-library integration test names all public report field types and
+checks strict positive vertical measures while preserving renderer parsing.
 
 The public distance starts at the physical start in the alignment-local XY
 plane; it is not authored chainage, projected-world XY distance or 3D arc length.

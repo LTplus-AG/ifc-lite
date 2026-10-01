@@ -33,7 +33,8 @@ test('ion follows returned completion fields and sends source bytes only to S3 (
   assert.equal(requests.length, 2);
   assert.equal(requests[0].url, 'https://api.cesium.com/v1/assets');
   const createBody: unknown = JSON.parse(String(requests[0].options.body));
-  assert.deepEqual(createBody, { name: 'Building', type: '3DTILES', options: { sourceType: 'BIM_CAD' } });
+  assert.deepEqual(createBody, { name: 'Building', description: '', attribution: '',
+    type: '3DTILES', options: { sourceType: 'BIM_CAD' } });
   assert.equal(requests[1].url, response().onComplete.url);
   assert.deepEqual(JSON.parse(String(requests[1].options.body)), { verify: true });
   assert.equal(new Headers(requests[1].options.headers).get('Authorization'), 'Bearer private-write-token');
@@ -97,4 +98,64 @@ test('invalid upload filenames do not create assets (#6587)', async () => {
       fetchImpl: async () => assert.fail('must not create asset'),
     }), IonUploadError);
   }
+});
+
+test('ion distinguishes request conflicts from authorization without echoing response bodies (#6587)', async () => {
+  for (const [status, reason] of [[401, 'authorization'], [403, 'authorization'], [409, 'conflict'],
+    [402, 'capacity'], [413, 'capacity'], [429, 'rateLimit'], [503, 'service'], [400, 'request']] as const) {
+    let uploaded = false;
+    await assert.rejects(uploadToCesiumIon(input(), {
+      fetchImpl: async () => new Response('private-write-token temporary-secret', { status }),
+      putObject: async () => { uploaded = true; },
+    }), (error: unknown) => error instanceof IonUploadError && error.status === status
+      && error.phase === 'create' && error.reason === reason
+      && !error.message.includes('token') && !error.message.includes('secret'));
+    assert.equal(uploaded, false);
+  }
+});
+
+test('ion supplies description and attribution required by live asset validation (#6587)', async () => {
+  let created = false;
+  const result = await uploadToCesiumIon(input(), {
+    fetchImpl: async (_url, options) => {
+      if (created) return new Response(null, { status: 204 });
+      const body: unknown = JSON.parse(String(options?.body));
+      assert.ok(body && typeof body === 'object' && 'description' in body && 'attribution' in body);
+      assert.equal(typeof body.description, 'string');
+      assert.equal(typeof body.attribution, 'string');
+      created = true;
+      return Response.json(response());
+    },
+    putObject: async () => undefined,
+  });
+  assert.equal(result.assetId, 42);
+});
+
+test('ion completes the BIM/CAD collection and returns its single viewable tile child (#6587)', async () => {
+  const created = { ...response(), assetMetadata: { id: 42, type: 'BIM_CAD', name: 'Bridge collection' },
+    assets: [{ id: 43, type: '3DTILES', name: 'Bridge tiles' }, { id: 44, type: 'BIM_CAD_DB' }] };
+  let requests = 0;
+  const result = await uploadToCesiumIon(input(), {
+    fetchImpl: async (url) => {
+      if (++requests === 1) return Response.json(created);
+      assert.equal(String(url), 'https://api.cesium.com/v1/assets/42/uploadComplete');
+      return new Response(null, { status: 204 });
+    },
+    putObject: async request => { assert.equal(request.key, 'sources/42/building.ifc'); },
+  });
+  assert.deepEqual(result, { assetId: 43, name: 'Bridge tiles', containerAssetId: 42 });
+});
+
+test('ion never guesses between multiple tile children and retains upload owner on failure (#6587)', async () => {
+  const created = { ...response(), assets: [{ id: 43, type: '3DTILES' }, { id: 44, type: '3DTILES' }] };
+  let requests = 0;
+  const result = await uploadToCesiumIon(input(), {
+    fetchImpl: async () => ++requests === 1 ? Response.json(created) : new Response(null, { status: 204 }),
+    putObject: async () => undefined,
+  });
+  assert.equal(result.assetId, 42);
+  await assert.rejects(uploadToCesiumIon(input(), {
+    fetchImpl: async () => Response.json(created),
+    putObject: async () => { throw new Error('storage failure'); },
+  }), (error: unknown) => error instanceof IonUploadError && error.assetId === 42);
 });

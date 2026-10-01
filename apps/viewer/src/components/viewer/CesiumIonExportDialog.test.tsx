@@ -42,7 +42,8 @@ test('ion dialog defaults to active IFC, uploads edited bytes, and forgets write
   assert.equal(exported.entities.getName(FIXTURE_WALL_A), 'Upload edit');
   assert.equal(sent!.fileName, 'active.ifc');
   await waitFor(() => !!document.querySelector('a[href="https://ion.cesium.com/assets/42"]'), 'asset link missing');
-  assert.ok(document.body.textContent?.includes('Upload accepted'));
+  assert.ok(document.body.textContent?.includes('Submitted for tiling'));
+  assert.equal(document.querySelector('a[href="https://ion.cesium.com/assets/42"]')?.textContent?.trim(), 'View active in Cesium ion');
   click(button('Close'));
   click(button('Upload to Cesium ion'));
   assert.equal(document.querySelector<HTMLInputElement>('#ion-token')!.value, '');
@@ -86,4 +87,27 @@ test('ion Cancel upload aborts the active request and exposes the partial asset 
   assert.equal(started!.signal.aborted, true);
   assert.ok(document.querySelector('a[href="https://ion.cesium.com/assets/77"]'));
   assert.equal(button('Upload').disabled, false, 'the user can retry after cancellation');
+});
+
+test('ion shows request rejection without blaming token permissions and supports retry (#6587)', async () => {
+  const model = { ...fixtureModel('retry.ifc'), ifcDataStore: await parseFixtureModel(), schemaVersion: 'IFC4' as const };
+  useViewerStore.setState({ ...fixtureModels(model), mutationViews: new Map(), georefMutations: new Map(),
+    scheduleData: null, scheduleIsEdited: false, scheduleSourceModelId: null });
+  let attempts = 0;
+  render(<CesiumIonExportDialog surface="ribbon" upload={async () => {
+    if (++attempts === 1) throw new IonUploadError('create', undefined, 409);
+    return { assetId: 88 };
+  }} />);
+  click(button('Upload to Cesium ion'));
+  type(document.querySelector<HTMLInputElement>('#ion-token')!, 'private-test-token');
+  click(button('Upload'));
+  await waitFor(() => !!document.body.textContent?.includes('HTTP 409'), 'request rejection was not reported');
+  assert.ok(document.body.textContent?.includes('Cesium ion rejected the upload request'));
+  assert.ok(!document.body.textContent?.includes('Check the token permissions'));
+  assert.equal(button('Upload').disabled, false);
+  click(button('Upload'));
+  await waitFor(() => !!document.querySelector('a[href="https://ion.cesium.com/assets/88"]'), 'retry asset link missing');
+  assert.equal(attempts, 2);
+  assert.ok(document.body.textContent?.includes('Submitted for tiling'));
+  assert.equal(document.querySelector('a[href="https://ion.cesium.com/assets/88"]')?.textContent?.trim(), 'View retry in Cesium ion');
 });

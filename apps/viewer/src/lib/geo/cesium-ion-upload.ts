@@ -9,10 +9,21 @@
  */
 const API = 'https://api.cesium.com/v1';
 export type IonUploadPhase = 'create' | 'upload' | 'complete';
+export type IonFailureReason = 'authorization' | 'conflict' | 'capacity' | 'rateLimit' | 'service' | 'request';
+function failureReason(status?: number): IonFailureReason {
+  if (status === 401 || status === 403) return 'authorization';
+  if (status === 409) return 'conflict';
+  if (status === 402 || status === 413) return 'capacity';
+  if (status === 429) return 'rateLimit';
+  if (status !== undefined && status >= 500) return 'service';
+  return 'request';
+}
 export class IonUploadError extends Error {
+  readonly reason: IonFailureReason;
   constructor(readonly phase: IonUploadPhase, readonly assetId?: number, readonly status?: number) {
     super(`Cesium ion ${phase} failed${status ? ` (HTTP ${status})` : ''}`);
     this.name = 'IonUploadError';
+    this.reason = failureReason(status);
   }
 }
 export function ionAssetUrl(assetId: number): string {
@@ -43,6 +54,13 @@ export interface IonS3Request {
 export interface IonUploadDeps {
   fetchImpl?: typeof fetch;
   putObject?: (input: IonS3Request) => Promise<void>;
+}
+export interface IonUploadResult {
+  /** Viewable 3D Tiles child when the API returns a single one; otherwise the created asset. */
+  assetId: number;
+  name?: string;
+  /** The upload owner, retained separately when it is a BIM/CAD collection. */
+  containerAssetId?: number;
 }
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid ion response');
@@ -87,7 +105,7 @@ async function putObject(input: IonS3Request): Promise<void> {
   }
 }
 
-export async function uploadToCesiumIon(input: IonUploadInput, deps: IonUploadDeps = {}): Promise<{ assetId: number }> {
+export async function uploadToCesiumIon(input: IonUploadInput, deps: IonUploadDeps = {}): Promise<IonUploadResult> {
   input.signal.throwIfAborted();
   if (!input.token.trim() || !input.name.trim() || !input.bytes.length
     || !/^[^/\\\u0000-\u001f\u007f]+\.ifc$/i.test(input.fileName)) {
@@ -101,13 +119,26 @@ export async function uploadToCesiumIon(input: IonUploadInput, deps: IonUploadDe
     input.onPhase?.(phase);
     const created = await fetchImpl(`${API}/assets`, {
       method: 'POST', headers, redirect: 'error', signal: input.signal,
-      body: JSON.stringify({ name: input.name.trim(), type: '3DTILES', options: { sourceType: 'BIM_CAD' } }),
+      // The live API validates these strings even though its OpenAPI schema
+      // does not mark them required (#6587 live acceptance, 2026-10-01).
+      body: JSON.stringify({ name: input.name.trim(), description: '', attribution: '',
+        type: '3DTILES', options: { sourceType: 'BIM_CAD' } }),
     });
     if (!created.ok) throw new IonUploadError(phase, assetId, created.status);
     const response = object(await created.json());
-    const id = object(response.assetMetadata).id;
+    const metadata = object(response.assetMetadata);
+    const id = metadata.id;
     if (typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0) throw new Error('Invalid asset id');
     assetId = id;
+    // BIM/CAD tiling may create a collection and its viewable tile child.
+    // Complete the upload owner, never the child. Pick a child only when the
+    // response identifies exactly one unambiguous, valid 3D Tiles asset.
+    const tiles = Array.isArray(response.assets) ? response.assets.filter((value: unknown): value is Record<string, unknown> => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+      const item = value as Record<string, unknown>;
+      return item.type === '3DTILES' && typeof item.id === 'number' && Number.isSafeInteger(item.id) && item.id > 0;
+    }) : [];
+    const viewable = tiles.length === 1 ? tiles[0] : metadata;
     const uploadLocation = location(response.uploadLocation);
     const completion = object(response.onComplete);
     const url = new URL(text(completion.url));
@@ -130,7 +161,10 @@ export async function uploadToCesiumIon(input: IonUploadInput, deps: IonUploadDe
       method: 'POST', headers, redirect: 'error', signal: input.signal, body: JSON.stringify(fields),
     });
     if (!completed.ok) throw new IonUploadError(phase, assetId, completed.status);
-    return { assetId };
+    const viewableId = typeof viewable.id === 'number' ? viewable.id : assetId;
+    return { assetId: viewableId,
+      ...(typeof viewable.name === 'string' && viewable.name.trim() ? { name: viewable.name } : {}),
+      ...(viewableId !== assetId ? { containerAssetId: assetId } : {}) };
   } catch (error) {
     // Never expose arbitrary server/SDK text, which may echo credentials.
     if (error instanceof IonUploadError) throw error;

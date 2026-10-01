@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CloudUpload } from 'lucide-react';
+import { CloudUpload, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -35,6 +35,7 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
   const [selectedId, setSelectedId] = useState('');
   const [token, setToken] = useState('');
   const [assetId, setAssetId] = useState<number>();
+  const [assetName, setAssetName] = useState('');
   const [phase, setPhase] = useState<'serialize' | IonUploadPhase>();
   const controller = useRef<AbortController | null>(null);
   const mounted = useRef(true);
@@ -92,14 +93,17 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
         bytes: typeof result.content === 'string' ? new TextEncoder().encode(result.content) : result.content,
         signal: abort.signal, onPhase: next => { if (mounted.current) setPhase(next); },
       });
-      if (mounted.current) setAssetId(response.assetId);
+      if (mounted.current) { setAssetId(response.assetId); setAssetName(response.name ?? model.name.replace(/\.[^.]+$/, '')); }
       return { success: true, message: t('ionUpload.accepted') };
     } catch (error) {
-      if (mounted.current && error instanceof IonUploadError) setAssetId(error.assetId);
+      if (mounted.current && error instanceof IonUploadError) {
+        setAssetId(error.assetId); setAssetName(selected?.name.replace(/\.[^.]+$/, '') ?? '');
+      }
       if (abort.signal.aborted) return { success: false, message: t('ionUpload.cancelled') };
       // Serialization errors can contain model content; show a safe explanation.
       return { success: false, message: error instanceof IonUploadError
-        ? t('ionUpload.failed', { phase: t(`ionUpload.phase.${error.phase}`), status: error.status ?? '—' })
+        ? t('ionUpload.failed', { phase: t(`ionUpload.phase.${error.phase}`), status: error.status ?? '—',
+          help: t(`ionUpload.failure.${error.reason}`) })
         : t('ionUpload.serializationFailed') };
     } finally {
       controller.current = null;
@@ -117,7 +121,11 @@ export function CesiumIonExportDialog({ trigger, upload = uploadToCesiumIon }: C
     onOpenStateChange={open => { if (!open) setToken(''); else setAssetId(undefined); }}
     onExport={onUpload}
     footerLeading={({ isExporting }) => isExporting && <Button variant="outline" onClick={() => controller.current?.abort()}>{t('ionUpload.abort')}</Button>}
-    resultDetails={assetId !== undefined && <a className="text-sm underline" href={ionAssetUrl(assetId)} target="_blank" rel="noopener noreferrer">{t('ionUpload.openAsset', { id: assetId })}</a>}
+    resultDetails={assetId !== undefined && <Button asChild className="w-full">
+      <a href={ionAssetUrl(assetId)} target="_blank" rel="noopener noreferrer">
+        <ExternalLink aria-hidden className="mr-2 h-4 w-4" />{t('ionUpload.openAsset', { name: assetName })}
+      </a>
+    </Button>}
   >{({ isExporting }) => <>
     <div className="grid gap-2">
       <Label htmlFor="ion-model">{t('ionUpload.model')}</Label>

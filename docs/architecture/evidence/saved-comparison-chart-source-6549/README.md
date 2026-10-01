@@ -1,5 +1,28 @@
 # Saved comparison chart source — #6549
 
+## Current-main qualification
+
+The later capture uses frozen `f626e81d690eb242229e8ca4fb360e0fa19f4678`, based on
+main `e57ed503a`; the earlier files below remain attributed to their original source.
+[Current observations](./current-main/observations.json) retain actual saved report
+rows, persisted chart/document state, source/input hashes, and export notifications.
+The saved A→B chart stays at three rows after the live B→C run, reloads with zero
+models, and exports with `Document exported: 1 page` ([screenshot](./current-main/current-document-export-success.png)).
+Deleting its history entry prints one complete notice and reports one chart not printed.
+The actual [dashboard](./current-main/current-dashboard.pdf), [document](./current-main/current-document.pdf)
+and [missing-source](./current-main/current-missing-source.pdf) downloads were independently
+inspected/rendered with PyMuPDF at `(1.5, 1.5)`; all ten new screenshots/renders were viewed.
+[Current qualification](./current-main/qualification.json) and [source hashes](./current-main/source-hashes.json)
+record plain root typecheck 109 tasks/all 3,236 test files, full build 61, lint 8,111
+files/zero errors, 265 selected passes/one existing optional skip, docs 428, API 9,165,
+and the final-source oracle: 12 passes become 2 passes/10 assertion failures with restoration verified.
+The 70 charts/186 consumer results belong to production-identical `89c0fbef2`; the
+typed test correction, final nine mounted cases, gates and native proof belong to `f626`.
+UI screenshots retain graphics-device-loss and federation-alignment toasts, despite
+zero captured console/pageerror entries. This proves data/document output only.
+
+## Earlier qualified capture
+
 Actual Chrome exports captured from source `af39763b647e01e244a216892432a0a54eb94ac0`,
 a clean integration with main `4fbff072ec1ac901591bb9b10f0431bd562b2836`.
 The evidence commit adds files only; [source hashes](./source-hashes.json) identify
@@ -37,9 +60,10 @@ jsPDF, svg2pdf and autoTable. No PDF/SVG/browser exporter was replaced.
 [Independent PyMuPDF text/font/hash inspection](./pdf-inspection.json) confirms
 one page per file and one missing-source sentence. Page PNGs are actual PDF renders
 at matrix `(1.5, 1.5)`. All preview screenshots and all three PDF renders were viewed.
-[Capture script](./browser-capture.cjs) records the actual route: set its `wt`, `out`,
-profile and URL constants for a fresh isolated checkout/profile, then run root
-`pnpm dev --host 127.0.0.1 --port 52657` and the script. It closes its own context.
+[Capture script](./browser-capture.cjs) now reproduces the current capture: start root
+`pnpm dev --host 127.0.0.1 --port 52658`, then run `node browser-capture.cjs WT OUTPUT_PREFIX 52658`.
+It uses a new profile derived from the prefix and closes its own context. The original
+earlier capture script remains in commit `e216d3d30bffb028e68b4006483142fb676da9fb`.
 
 An earlier native capture at `aed543e56f1b9020663b91bc0261e6e2bc66d65a` found
 the full missing notice twice (subtitle and empty body). The original

@@ -5,19 +5,22 @@
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const child = require('node:child_process');
-const wt = '/home/louistrue/wt/6549-saved-chart-main-integration-session6503';
+const wt = process.argv[2];
+if (!wt) throw Error('Pass the owned current source worktree');
 const { chromium } = require(wt + '/node_modules/@playwright/test');
-const out = '/tmp/6232-takeover/6549-native-final';
+const out = process.argv[3];
+const port = Number(process.argv[4]);
+if (!out || !Number.isInteger(port)) throw Error('Pass the evidence prefix and owned server port');
 const hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 (async () => {
  const source = child.execFileSync('git', ['rev-parse', 'HEAD'], { cwd: wt, encoding: 'utf8' }).trim();
- const context = await chromium.launchPersistentContext('/tmp/6232-takeover/6549-chrome-own-profile-session6503-af', { executablePath: '/usr/bin/google-chrome', headless: true, viewport: { width: 1440, height: 1000 }, acceptDownloads: true, args: ['--enable-unsafe-webgpu', '--use-angle=swiftshader'] });
+ const context = await chromium.launchPersistentContext(out + '-own-profile', { executablePath: '/usr/bin/google-chrome', headless: true, viewport: { width: 1440, height: 1000 }, acceptDownloads: true, args: ['--enable-unsafe-webgpu', '--use-angle=swiftshader'] });
  const logs = []; let page;
  try {
   page = await context.newPage();
   page.on('console', (message) => { if (message.type() === 'error') logs.push({ type: 'console', text: message.text().slice(0, 1200) }); });
   page.on('pageerror', (error) => logs.push({ type: 'pageerror', text: error.message }));
-  await page.goto('http://127.0.0.1:52657/');
+  await page.goto('http://127.0.0.1:' + port + '/');
   await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__);
   await page.locator('input[type=file][accept^=".ifc"]').first().setInputFiles(wt + '/apps/viewer/public/samples/building-architecture.ifc');
   await page.waitForFunction(() => [...__ifc_lite_viewer_store__.getState().models.values()].some((model) => model.ifcDataStore), null, { timeout: 60000 });
@@ -82,7 +85,11 @@ const hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
   await page.screenshot({ path: out + '-document-preview.png' });
   const docBefore = await page.evaluate(() => ({ persisted: __ifc_lite_viewer_store__.getState().documents.find((item) => item.id === 'recorded-doc-proof'), preview: document.querySelector('[data-preview-block="recorded-block"]')?.textContent, checkboxDisabled: document.querySelector('[data-block-editor="recorded-block"] input[type="checkbox"]')?.disabled }));
   const download = page.waitForEvent('download', { timeout: 60000 }); await page.getByRole('button', { name: 'Export PDF', exact: true }).click();
+  const successfulToastHandle = await page.waitForFunction(() => [...document.querySelectorAll('[data-toast-seq]')].filter((row) => row.textContent.includes('Document exported:')).at(-1)?.textContent || false);
+  const successfulToast = await successfulToastHandle.jsonValue(); await successfulToastHandle.dispose();
   const docPdf = await download; await docPdf.saveAs(out + '-document.pdf'); if (await docPdf.failure()) throw Error(await docPdf.failure());
+  if (successfulToast?.trim() !== 'Document exported: 1 page') throw Error('Successful recorded chart has an export problem: ' + successfulToast);
+  await page.screenshot({ path: out + '-document-export-success.png' });
   await page.reload(); await page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__);
   await page.evaluate(() => { const state = __ifc_lite_viewer_store__.getState(); state.floatPanel('document'); state.setFloatingPanelRect('document', { x: 20, y: 70, w: 1400, h: 900 }); });
   await page.waitForFunction(() => document.querySelector('[data-preview-block="recorded-block"] svg')?.textContent.includes('added'));
@@ -95,12 +102,14 @@ const hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
   if (missingNoticeCount !== 1) throw Error('Missing-source notice repeated in actual preview: ' + missingNoticeCount);
   await page.screenshot({ path: out + '-missing-source.png' });
   const missingEvent = page.waitForEvent('download', { timeout: 60000 }); await page.getByRole('button', { name: 'Export PDF', exact: true }).click();
+  const missingToastHandle = await page.waitForFunction(() => [...document.querySelectorAll('[data-toast-seq]')].filter((row) => row.textContent.includes('chart not printed')).at(-1)?.textContent || false);
+  const missingToast = await missingToastHandle.jsonValue(); await missingToastHandle.dispose();
   const missingPdf = await missingEvent; await missingPdf.saveAs(out + '-missing-source.pdf'); if (await missingPdf.failure()) throw Error(await missingPdf.failure());
   const artifact = (suffix) => ({ path: out + suffix, bytes: fs.statSync(out + suffix).size, sha256: hash(fs.readFileSync(out + suffix)) });
   fs.writeFileSync(out + '-document.ifclite-document.json', JSON.stringify(docBefore.persisted, null, 2) + '\n');
   fs.writeFileSync(out + '-dashboard.ifclite-dashboard.json', JSON.stringify(dashboard.persisted, null, 2) + '\n');
   fs.writeFileSync(out + '-saved-comparisons.json', JSON.stringify([savedAB, savedBC]) + '\n');
-  fs.writeFileSync(out + '-observations.json', JSON.stringify({ source, capturedAt: new Date().toISOString(), chrome: await context.browser()?.version(), inputHashes: { A: hash(fs.readFileSync(wt + '/apps/viewer/public/samples/building-architecture.ifc')), B: hash(fs.readFileSync(wt + '/apps/viewer/public/samples/building-architecture-rev-b.ifc')), C: artifact('-declared-revision-c.ifc') }, declaredRecipe: derived.recipe, route: 'Own-profile Chrome, actual canonical primary/federated file loads, actual mounted Compare run/save and chart source picker, real engines, unmodified native SVG/PDF exporters, actual download events.', limits: 'Own Linux Chrome software WebGPU is a document/data route. Any graphics-device loss or EPSG federation-alignment failure is retained in console errors/screenshots; no 3D, geospatial alignment, or performance claim.', models, savedReports: [{ id: savedAB.id, name: savedAB.name, rows: savedAB.report.rows }, { id: savedBC.id, name: savedBC.name, rows: savedBC.report.rows }], dashboard, docBefore, docAfter, missingNoticeCount, downloads: [artifact('-dashboard.pdf'), artifact('-document.pdf'), artifact('-missing-source.pdf')], logs }, null, 2) + '\n');
+  fs.writeFileSync(out + '-observations.json', JSON.stringify({ source, capturedAt: new Date().toISOString(), chrome: await context.browser()?.version(), inputHashes: { A: hash(fs.readFileSync(wt + '/apps/viewer/public/samples/building-architecture.ifc')), B: hash(fs.readFileSync(wt + '/apps/viewer/public/samples/building-architecture-rev-b.ifc')), C: artifact('-declared-revision-c.ifc') }, declaredRecipe: derived.recipe, route: 'Own-profile Chrome, actual canonical primary/federated file loads, actual mounted Compare run/save and chart source picker, real engines, unmodified native SVG/PDF exporters, actual download events.', limits: 'Own Linux Chrome software WebGPU is a document/data route. Any graphics-device loss or EPSG federation-alignment failure is retained in console errors/screenshots; no 3D, geospatial alignment, or performance claim.', models, savedReports: [{ id: savedAB.id, name: savedAB.name, rows: savedAB.report.rows }, { id: savedBC.id, name: savedBC.name, rows: savedBC.report.rows }], dashboard, docBefore, docAfter, successfulToast, missingToast, missingNoticeCount, downloads: [artifact('-dashboard.pdf'), artifact('-document.pdf'), artifact('-missing-source.pdf')], logs }, null, 2) + '\n');
   console.log(JSON.stringify({ source, savedRows: [savedAB.report.rows.length, savedBC.report.rows.length], modelsAfterReload: docAfter.models, downloads: [artifact('-dashboard.pdf'), artifact('-document.pdf'), artifact('-missing-source.pdf')] }));
  } catch (error) { if (page) await page.screenshot({ path: out + '-failure.png' }); fs.writeFileSync(out + '-failure-logs.json', JSON.stringify(logs, null, 2)); throw error; }
  finally { await context.close(); }

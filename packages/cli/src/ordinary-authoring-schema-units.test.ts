@@ -151,7 +151,10 @@ describe.skipIf(!AVAILABLE)('#6232 D5 source-native schema/unit/frame controls',
         expect(ref.modelId).toBe('control');
         const product = extractor.extractEntity(store.entityIndex.byId.get(ref.expressId)!);
         expect(product?.type).toBe(['IFCWALL', 'IFCCOLUMN', 'IFCSLAB', 'IFCBEAM'][index]);
-        expect(product?.attributes).toHaveLength(schema === 'IFC2X3' ? 8 : 9);
+        // IFC2X3 slabs already have optional PredefinedType; wall/column/beam
+        // acquire that occurrence attribute in IFC4. Official slab EXPRESS:
+        // https://standards.buildingsmart.org/IFC/RELEASE/IFC2x3/TC1/HTML/ifcsharedbldgelements/lexical/ifcslab.htm
+        expect(product?.attributes).toHaveLength(schema === 'IFC2X3' && index !== 2 ? 8 : 9);
         expect(product?.attributes[1], 'the creator file has actual mandatory owner history').toEqual(expect.any(Number));
         expect(extractor.extractEntity(store.entityIndex.byId.get(product!.attributes[1] as number)!)?.type).toBe('IFCOWNERHISTORY');
         expect(store.spatialHierarchy?.elementToStorey.get(ref.expressId)).toBe(f.storey);

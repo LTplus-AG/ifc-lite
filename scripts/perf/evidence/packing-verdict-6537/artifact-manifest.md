@@ -10,7 +10,7 @@ inside `raw-cohorts.tar.gz`.
 
 | File | Bytes | SHA-256 |
 | --- | ---: | --- |
-| `README.md` | 8308 | `72c5aa6309c9bc903732750d71b62da0d2578db5ccb56355e70ca33c97619936` |
+| `README.md` | 8185 | `0bc0cba82a275f522a30776697d9169c2db06fb9cb5c9fb2e248d5153f1a68d0` |
 | `affinity-static-provenance.json.gz` | 795 | `b6c13150264c8dfa2867fba7f7d1a770f6d9d6b5811069d930684a445dc89779` |
 | `affinity-v1-derived.json.gz` | 2433 | `76d82bf485d72dfffbc3279a119d05e2354152c02fd81d131e9316e64d29e73e` |
 | `analyze.py.gz` | 3955 | `b8443f47244a436e62a3f16483a0c1a8d8fefe3a0cf45805a9fdf347001a6cf3` |

@@ -110,6 +110,7 @@ for name, info in json.loads(Path('raw-file-index.json').read_text()).items():
 Run the independent analyzer against reconstructed packing v3:
 
 ```bash
+gzip -dc /path/to/evidence/analyze.py.gz > /tmp/packing-analyze.py
 python /tmp/packing-analyze.py cohorts/packing-v3 \
   6e9cb8da4cb9ee995121ba9a7d051e25b2ca62a3 > packing-derived.json
 ```
@@ -118,9 +119,7 @@ python /tmp/packing-analyze.py cohorts/packing-v3 \
 dropping the invalid row. The analogous admission command uses
 `cohorts/affinity-v1` and `982da209b3a07da924d4c0af566aebbe7fe749e9` and also
 exits 1. The committed derived JSON archives retain the original capture paths.
-Decompress the recorded analyzer before the commands above with
-`gzip -dc /path/to/evidence/analyze.py.gz > /tmp/packing-analyze.py`, and use
-`/tmp/packing-analyze.py` as the analyzer path. The `.json.gz` files expose the
+The `.json.gz` files expose the
 recorded results after decompression. All executable diagnostic helpers and raw
 JSON are archives, consistent with the existing evidence-only file contract;
 none is installed, imported or executed by the application or CI.

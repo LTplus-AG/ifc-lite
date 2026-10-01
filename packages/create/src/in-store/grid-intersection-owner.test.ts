@@ -84,7 +84,7 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) describe(`#6232 gene
     const a = await sourceGrid(schema, 'shared');
     expect(() => gridIntersectionPlacement(a.editor, a.anchor, {
       Axes: [a.grid.uAxisIds[1], a.grid.vAxisIds[0]],
-    }, a.store)).toThrow(/unambiguous|owner|grid/i);
+    }, a.store)).toThrow(/same unambiguous IfcGrid/);
     expect(a.view.getNewEntities()).toHaveLength(0);
   });
 
@@ -93,7 +93,7 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) describe(`#6232 gene
     a.editor.removeEntity(a.grid.gridId);
     expect(() => gridIntersectionPlacement(a.editor, a.anchor, {
       Axes: [a.grid.uAxisIds[1], a.grid.vAxisIds[0]],
-    }, a.store)).toThrow(/unambiguous|owner|grid/i);
+    }, a.store)).toThrow(/same unambiguous IfcGrid/);
     expect(a.view.getNewEntities()).toHaveLength(0);
   });
 
@@ -111,7 +111,7 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) describe(`#6232 gene
     a.editor.removeEntity(a.grid.uAxisIds[1]);
     expect(() => gridIntersectionPlacement(a.editor, a.anchor, {
       Axes: [a.grid.uAxisIds[1], a.grid.vAxisIds[0]],
-    }, a.store)).toThrow(/axis|grid/i);
+    }, a.store)).toThrow(/live readable IfcGridAxis/);
     expect(a.view.getNewEntities()).toHaveLength(0);
   });
 

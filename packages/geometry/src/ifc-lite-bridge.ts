@@ -8,6 +8,7 @@
  */
 
 import { createLogger } from '@ifc-lite/data';
+import { runDomainExport } from './domain-export-call.js';
 import type { KmzAltitudeMode, TessellationQuality } from './types.js';
 import type { RtcFrame } from './rtc-frame.js';
 import type { HbjsonStats } from './hbjson-stats.js';
@@ -521,6 +522,11 @@ export class IfcLiteBridge {
     );
   }
 
+  /** Plan coordinate compatibility patches; all domain math remains in Rust. */
+  planMapConversionNormalization(content: Uint8Array): string {
+    return this.runExport('planMapConversionNormalization', content, api => api.planMapConversionNormalization(content));
+  }
+
   /**
    * Re-serialize the model in `content` to a STEP/IFC string (P1: base
    * re-serialization + reference-closed subset). Empty `schema` preserves the source;
@@ -720,18 +726,9 @@ export class IfcLiteBridge {
    * logging + fatal-wasm-error marking, mirroring the other bridge entry points.
    */
   private runExport<T>(op: string, content: Uint8Array, run: (api: IfcAPI) => T): T {
-    if (!this.ifcApi) {
-      throw new Error('IFC-Lite not initialized. Call init() first.');
-    }
-    try {
-      return run(this.ifcApi);
-    } catch (error) {
-      log.error(`Failed to ${op}`, error, { operation: op, data: { contentLength: content.length } });
-      if (this.isWasmRuntimeError(error)) {
-        this.recordWasmRuntimeTrap();
-      }
-      throw error;
-    }
+    return runDomainExport(this.ifcApi, op, content, run, error => {
+      if (this.isWasmRuntimeError(error)) this.recordWasmRuntimeTrap();
+    });
   }
 
   /**

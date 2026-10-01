@@ -209,6 +209,10 @@ export async function flowCommand(args: string[]): Promise<void> {
     for (const e of secretErrors) process.stderr.write(`  error secrets: ${e.message}\n`);
     fatal(`${secretErrors.length} secret reference problem(s); see above`);
   }
+  const unavailable = checkAvailability(doc, registry, headlessFeatures(usableSecretNames(process.env)))
+    .filter((node) => node.status === 'unknown' || node.status === 'unavailable');
+  if (unavailable.length) fatal(`Flow cannot run on this host: ${unavailable.map((node) => `${node.nodeId}: ${node.reasons.join('; ')}`).join(' | ')}`);
+
   const secretValues = resolveSecretValues(doc, process.env);
   const redaction = buildRedactionMap(secretValues);
   const runDoc = interpolateSecrets(doc, secretValues);

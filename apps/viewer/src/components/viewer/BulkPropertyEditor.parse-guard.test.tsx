@@ -74,6 +74,15 @@ describe('parseBulkSetPropertyValue', () => {
     assert.equal(parseBulkSetPropertyValue('', PropertyValueType.Integer).ok, false);
   });
 
+  it('#6598: rejects truncated, nonfinite and unsafe numeric entries', () => {
+    for (const value of ['2stage', '1.5', '1e3', 'Infinity', '9007199254740993'])
+      assert.equal(parseBulkSetPropertyValue(value, PropertyValueType.Integer).ok, false);
+    for (const value of ['2metres', '0x10', 'Infinity', '1e309'])
+      assert.equal(parseBulkSetPropertyValue(value, PropertyValueType.Real).ok, false);
+    assert.deepEqual(parseBulkSetPropertyValue('-2', PropertyValueType.Integer), { ok: true, value: -2 });
+    assert.deepEqual(parseBulkSetPropertyValue('1.2e3', PropertyValueType.Real), { ok: true, value: 1200 });
+  });
+
   it('String/Label entries pass through unparsed', () => {
     assert.deepEqual(parseBulkSetPropertyValue('hello', PropertyValueType.String), { ok: true, value: 'hello' });
   });

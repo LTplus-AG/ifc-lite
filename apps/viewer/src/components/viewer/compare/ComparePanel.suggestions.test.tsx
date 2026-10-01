@@ -171,7 +171,7 @@ async function waitUntil(ready: () => boolean, label: string): Promise<void> {
 
 /** Hand a file to the hidden import input the way the picker does. */
 function importFile(container: HTMLElement, file: File): void {
-  const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+  const input = container.querySelector('input[type="file"][aria-label="Import identity map"]') as HTMLInputElement;
   assert.ok(input, 'the import input must be rendered');
   Object.defineProperty(input, 'files', { value: [file], configurable: true });
   act(() => {

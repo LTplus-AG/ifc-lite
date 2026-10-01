@@ -11,6 +11,7 @@ import { useViewerStore } from '@/store';
 import { fixtureModel } from '@/test/store-fixture';
 import { changeOperations } from './change-operations.js';
 import { revertChangeOperation } from './revert-change-operation.js';
+import { startWorkflowRun } from '@/lib/flow/run-session';
 import { inverseMutationTargets } from '@/store/slices/mutation-inverse-registry';
 
 const original = useViewerStore.getState();
@@ -145,4 +146,22 @@ test('#5902 reverting another model selects its history for the next Ctrl+Y', as
   assert.equal(useViewerStore.getState().activeModelId, 'B');
   useViewerStore.getState().redo('B');
   assert.equal(views.get('B')!.getPropertyValue(101, 'Pset_Test', 'Status'), 'draft');
+});
+
+
+test('#6612 workflow capture refuses native edits and reversal without changing the IFC overlay', async () => {
+  const views = await install(['A']);
+  useViewerStore.getState().setProperty('A', 101, 'Pset_Test', 'Status', 'captured', PropertyValueType.Label);
+  const operation = rows()[0];
+  const run = startWorkflowRun();
+  try {
+    await run.withModelRead(async () => {
+      assert.deepEqual(revertChangeOperation(useViewerStore, operation), { ok: false, reason: 'workflow-running' });
+      useViewerStore.getState().setProperty('A', 101, 'Pset_Test', 'Status', 'concurrent edit', PropertyValueType.Label);
+      assert.equal(views.get('A')!.getPropertyValue(101, 'Pset_Test', 'Status'), 'captured');
+      assert.equal(rows().length, 1);
+    });
+    assert.deepEqual(revertChangeOperation(useViewerStore, operation), { ok: true, mode: 'undo' });
+    assert.equal(views.get('A')!.getPropertyValue(101, 'Pset_Test', 'Status'), null);
+  } finally { run.release(); }
 });

@@ -34,14 +34,19 @@ describe('drawing export omissions (#5850)', () => {
     }
   });
 
-  it('distinguishes sheet PDF, which embeds visible underlays, from vector PDF and DXF', async () => {
+  it('includes vectors in every format and omits only eligible raster references from DXF (#6615)', async () => {
     const content = { ...empty, visibleUnderlayCount: 2 };
-    assert.deepEqual(await omissions(content, 'pdf'), ['underlays']);
+    assert.deepEqual(await omissions(content, 'pdf'), []);
     assert.deepEqual(await omissions({ ...content, sheetScale: 50 }, 'pdf'), []);
     assert.deepEqual(await omissions({
       ...content, sheetScale: 50, markupCounts: { ...empty.markupCounts, texts: 1 },
     }, 'pdf'), ['markups']);
-    assert.deepEqual(await omissions({ ...content, sheetScale: 50 }, 'dxf'), ['underlays']);
+    assert.deepEqual(await omissions({ ...content, sheetScale: 50 }, 'dxf'), []);
+    const raster = { ...content, visibleRasterReferenceCount: 1 };
+    assert.deepEqual(await omissions(raster, 'dxf'), ['rasterReferences']);
+    assert.deepEqual(await omissions(raster, 'pdf'), []);
+    assert.deepEqual(await omissions({ ...raster, sheetScale: 50 }, 'pdf'), []);
+    assert.deepEqual(await omissions({ ...raster, visibleRasterReferenceCount: 0 }, 'dxf'), []);
   });
 
   it('names a requested scale only when a sheet overrides it', async () => {

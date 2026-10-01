@@ -70,6 +70,10 @@ import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
 import { isMeshVisibleInViewMode, meshClassIsPlaced, meshIsNonOccurrence } from '@/lib/type-view-visibility';
 
+/**
+ * The primary container for the 3D viewport, managing IFC model loading,
+ * geometry streaming, scene overlays, and interaction tools.
+ */
 export function ViewportContainer() {
   // Drive Stacked / Solo / Exploded level display from the slice.
   // Mount-once hook — it self-gates on mode + gap + model changes.
@@ -89,7 +93,6 @@ export function ViewportContainer() {
   const resetViewerState = useViewerStore((s) => s.resetViewerState);
   const bcfOverlayVisible = useViewerStore((s) => s.bcfOverlayVisible);
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
-  const solarEnabled = useViewerStore((s) => s.solarEnabled);
   const cesiumPlacementDraft = useViewerStore((s) => s.cesiumPlacementDraft);
   const cesiumPlacementDraftModelId = useViewerStore((s) => s.cesiumPlacementDraftModelId);
   const anchorModelIdOverride = useViewerStore((s) => s.anchorModelIdOverride);
@@ -161,13 +164,9 @@ export function ViewportContainer() {
     return collected;
   }, [storeModels, geometryResult, modelIdToIndex, typeVisibility]);
 
-  // Extract georeferencing info merged with any live mutations (for Cesium overlay).
-  // Reacts to: model load, Cesium toggle, and every georef field edit.
-  // Also computed while the solar study runs without Cesium — the WebGPU sun
-  // needs the site's lat/lon + map rotation to track the studied instant.
+  // Keep the placement panel context available regardless of map/solar toggles.
+  // The Cesium overlay and solar study also consume this effective georeference.
   const georef = useMemo(() => {
-    if (!cesiumEnabled && !solarEnabled) return null;
-
     const applyPlacementDraft = <T extends { mapConversion?: MapConversion }>(
       modelId: string,
       effective: T,
@@ -196,8 +195,8 @@ export function ViewportContainer() {
     // The ungated `selectAnchorGeoref` (lib/geo/useAnchorGeoreference) shares this
     // "pinned anchor, else first model with a usable map-conversion georef"
     // selection for the basepoint overlay and the measure-tool XYZ readout. This
-    // memo stays bespoke on purpose: it is gated on Cesium/solar, iterates in the
-    // store's insertion order (not loadedAt), and layers the placement-draft
+    // memo stays bespoke on purpose: it iterates in the store's insertion order
+    // (not loadedAt), and layers the placement-draft
     // preview + storey elevations that only the Cesium bridge consumes.
     const orderedModels = (() => {
       if (!anchorModelIdOverride) return Array.from(storeModels);
@@ -252,8 +251,6 @@ export function ViewportContainer() {
 
     return null;
   }, [
-    cesiumEnabled,
-    solarEnabled,
     storeModels,
     ifcDataStore,
     georefMutations,
@@ -984,7 +981,7 @@ export function ViewportContainer() {
           storeyElevations={georef.storeyElevations}
         />
       )}
-      {cesiumEnabled && georef?.mapConversion && georef.baseMapConversion && (
+      {georef?.mapConversion && georef.baseMapConversion && (
         <CesiumPlacementGizmo
           modelId={georef.sourceModelId}
           mapConversion={georef.mapConversion}

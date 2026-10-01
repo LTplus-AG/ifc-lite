@@ -25,6 +25,70 @@ archives may retain unused images from their source model. The STEP subset
 closure retains inverse texture maps for included faces, including maps created
 or retargeted through pending edits.
 
+## Upload to Cesium ion
+
+Choose **File → Cesium ion** (also available in the command palette and mobile
+export menu), select a STEP IFC model, and provide a Cesium ion token with
+`assets:write` permission. The viewer uploads that model's complete IFC with
+pending property, attribute, geometry, georeferencing, and schedule edits applied.
+Hidden elements remain included. Uploads go directly from your browser to Cesium
+ion and its temporary S3 storage; no IFClite server receives the model or token.
+
+Use a separate write token from the token used for viewing Cesium content. The
+upload token stays in memory and is cleared when the dialog closes; it is never
+saved to browser storage or sent to analytics.
+
+IFC4 and IFC4X3 uploads use the canonical compatibility exporter after applying
+edits. It normalizes map units to metres and moves supported uniform map rotation
+and scale into product placements and mapped Body representations. This preserves
+physical map coordinates, project units, properties and authored shape data;
+ordinary IFC downloads retain their original coordinate representation. IFC2X3
+uploads keep their source schema and edits without an implicit upgrade.
+
+Unsupported coordinate consumers, ambiguous units or export warnings stop the
+upload before network transfer. For a model without georeferencing, set its
+location in Cesium ion. No undocumented heading or placement override is sent.
+A successful upload starts tiling; follow the asset link to check its progress.
+
+**Cancel upload** stops pending network work. An asset already created remains
+in your account, including when upload or completion fails. Follow its link to
+inspect or remove it before retrying. The viewer does not automatically delete
+assets. IFCX, LandXML, and models with retained image resources are currently
+unsupported by direct upload; textured models should be exported as IFCZIP to
+retain their images.
+
+The integration follows the [Cesium ion upload API](https://cesium.com/learn/ion/ion-upload-rest/)
+and adapts the MPL-2.0 upload feature from
+[GeoBIM's published IFClite fork](https://github.com/christof2304/ifc-lite/releases/tag/geobim-2026-09-24).
+
+### Placement acceptance evidence
+
+The catalogued `tests/models/buildingsmart/Infra-Bridge.ifc` is a real SketchUp
+2024 IFC4 model with millimetre project and map units. Canonical map-unit
+normalization preserves its engineering geometry and physical map coordinates.
+An actual viewer upload retained an edited girder `Name`; the complete tiled
+output preserved all 48 product `GlobalId` values, the other Names, and the
+normalized control's geometry and tile transforms.
+
+The catalogued `tests/models/ifc5/Georeferencing_georeferenced-bridge-deck.ifc`
+is an IfcOpenShell-authored IFC4X3_ADD2 model with map rotation and scale. An
+actual production SDK compatibility export and a combined viewer upload retained
+an edited slab `Name` and `GlobalId`; their stored tiled geometry matches the
+independently checked mapped control. The visually verified native Cesium control
+places the deck north–south along Golden Gate Bridge without a display correction.
+The combined upload also completed native Cesium rendering with identical geometry
+and tile transforms; its screenshot capture was unavailable. These are bounded
+fixture checks, not a claim that every IFC coordinate layout or authored CRS is
+supported. Datum
+accuracy depends on the authored CRS and the tiler's transformation.
+
+The [acceptance evidence](https://github.com/LTplus-AG/ifc-lite/blob/9fdc6b889/docs/architecture/evidence/cesium-ion-6587/README.md)
+retains original failed controls, corrected compatibility exports, independent
+geometry checks, actual metadata and screenshots. Mounted regressions exercise
+the selected model, pending edits, IFC2X3 schema retention, and refusal before
+transport. Earlier unchanged-source failures are historical controls; they do
+not establish a general provider defect.
+
 ## Quick Start: CDN Export (No Build Required)
 
 Export IFC to GLB directly in the browser with zero setup:
@@ -438,6 +502,77 @@ For quick scripts there is also `exportToStep(dataStore, options?)`, which
 returns the STEP text as a string (defaults `schema` to the source model's own
 schema, so a round-trip preserves it; pass `schema` explicitly to convert.
 Prefer `StepExporter` and its `Uint8Array` output for very large files).
+
+#### Map units for interoperability
+
+STEP export preserves authored map units by default. For a consumer that needs
+metre-valued map coordinates, enable `normalizeMapUnitsToMetres` on a full
+IFC4 or IFC4X3 export using the source schema:
+
+```typescript
+const metreMap = new StepExporter(dataStore, mutationView).export({
+  schema: 'IFC4',
+  normalizeMapUnitsToMetres: true,
+});
+if (metreMap.stats.warnings.length) {
+  throw new Error(metreMap.stats.warnings.join('\n'));
+}
+await saveFile('metre-map.ifc', metreMap.content);
+```
+
+The exporter resolves the emitted model after session edits, changes
+`IfcProjectedCRS.MapUnit` to a separate metre unit, and scales every referencing
+`IfcMapConversion.Eastings`, `Northings`, `OrthogonalHeight` and `Scale` together.
+An omitted `Scale` means 1 before conversion. The engineering geometry and
+`IfcProject.UnitsInContext` remain unchanged, as do rotation and
+`IfcMapConversionScaled.FactorX`, `FactorY` and `FactorZ`.
+
+A missing map unit is resolved through the source context's owning project.
+Ambiguous owners, unsupported or cyclic conversion units, invalid numeric
+values, unsupported coordinate operations and retained WKT unit definitions
+are preserved with warnings. A CRS shared by multiple operations changes only
+when all those operations can be normalized safely. Delta exports and schema
+conversions reject this option. Ordinary IFC file exports retain their original
+map units unless this option is enabled.
+
+#### Map rotation and scale for interoperability
+
+`normalizeMapGeometry` is a separate, opt-in asynchronous compatibility export.
+It requires a full IFC4 or IFC4X3 export using the source schema and a metre
+map unit. Enable unit normalization first when the authored map unit differs:
+
+```typescript
+const compatibleMap = await new StepExporter(dataStore, mutationView).exportAsync({
+  schema: 'IFC4',
+  normalizeMapUnitsToMetres: true,
+  normalizeMapGeometry: true,
+});
+if (compatibleMap.stats.warnings.length) {
+  throw new Error(compatibleMap.stats.warnings.join('\n'));
+}
+await saveFile('compatible-map.ifc', compatibleMap.content);
+```
+
+Canonical Rust resolves the emitted model after edits. It moves uniform map
+rotation and scale into absolute logical product placements and `IfcMappedItem`
+Body representations, preserving physical map coordinates, logical placement
+origins, GUIDs, properties, and authored project/property units. The coordinate
+operation then retains only project-to-metre unit conversion. If rotation and
+physical scale are already neutral, placements and geometry remain untouched.
+
+The supported subset has one map conversion, one project, an identity 3D context,
+SI metre-based project units, local 3D placements, and Body representations.
+Type representation maps must be reachable from an actual product Body;
+orphan mapped items do not authorize uninstantiated type geometry.
+Body mapped paths with 31 or more existing wrappers are refused atomically: the
+new wrapper and terminal leaf must both fit the canonical submesh depth limit,
+so normalization preserves per-leaf styles as well as aggregate geometry.
+Voids/fills, annotations, alignment/grid/structural coordinate consumers,
+nonuniform scale, nonidentity contexts, ambiguous representation ownership,
+and malformed units or placements cause atomic refusal: no geometry patches
+are applied and warnings explain the limitation. Inspect warnings before
+sending the result to another service. Synchronous export rejects this option.
+Ordinary exports preserve their existing coordinate structure and bytes.
 
 #### Which schema identifier is written
 

@@ -21,6 +21,10 @@ import { tableNodes } from './table-nodes.js';
 import { viewerNodes } from './viewer-nodes.js';
 import { writeNodes } from './write-nodes.js';
 import { xlsxNodes } from './xlsx-nodes.js';
+import { sessionNodes } from './session-nodes.js';
+
+export { isModelSelector, parseTagRules, parseCheckJobs, matchesFilename, AUTOMATION_FEATURES } from './session-contracts.js';
+export type { ModelSelector, SessionModel, SessionModels, FilenameTagRule, ResourceSource, CheckJob, DocumentMapping, SessionAutomationHost } from './session-contracts.js';
 
 export type { FlowHost, FlowNodeDef, TableAccess, StringLookup } from './host.js';
 export { requireCapability, toRef, toSdkRef, resolveByGlobalId, rememberGlobalId, forgetGlobalId, invalidateGlobalIdIndex } from './host.js';
@@ -64,6 +68,7 @@ export function createStandardRegistry(): NodeRegistry<FlowHost> {
     speckleReceiveNode,
     ...documentsNodes,
     openModelNode,
+    ...sessionNodes,
   ]);
 }
 

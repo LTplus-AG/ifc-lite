@@ -66,7 +66,6 @@ import { useBulkTargets } from './useBulkTargets';
 import type { BulkTargetSource } from './bulk-targets';
 import { runBulkTargetBatches } from './bulk-target-run';
 
-
 export { parseBulkSetPropertyValue } from './bulk-property-value';
 
 type ActionType = 'SET_PROPERTY' | 'DELETE_PROPERTY' | 'SET_ATTRIBUTE';
@@ -544,6 +543,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
             </Label>
 
             <BulkActionConfig
+              onTargetSourceChange={setTargetSource}
               actionType={actionType}
               onActionTypeChange={setActionType}
               targetPset={targetPset}

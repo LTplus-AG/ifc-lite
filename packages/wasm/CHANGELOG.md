@@ -1,5 +1,19 @@
 # @ifc-lite/wasm
 
+## 10.3.0
+
+### Minor Changes
+
+- [#6609](https://github.com/LTplus-AG/ifc-lite/pull/6609) [`89be760`](https://github.com/LTplus-AG/ifc-lite/commit/89be760d4eb8adba93e9f5660f6e4ceda0c507d5) Thanks [@louistrue](https://github.com/louistrue)! - Expose a retained AlignmentAxisJs evaluator with exact IFC identity metadata and f64 station frames measured in geometric horizontal metres from the physical start. Unsupported axes and out-of-range distances fail explicitly; consumers own and free the handle.
+
+- [#6634](https://github.com/LTplus-AG/ifc-lite/pull/6634) [`4c0ebf2`](https://github.com/LTplus-AG/ifc-lite/commit/4c0ebf24c8c7b8470602300d56f0b1bd7c2a01e0) Thanks [@louistrue](https://github.com/louistrue)! - Add opt-in asynchronous STEP map rotation/scale normalization through a canonical Rust entity-patch planner. Preserve authored project/property units and edited attributes, with atomic warnings for unsupported coordinate consumers. Ordinary exports retain their coordinate structure.
+
+### Patch Changes
+
+- [#6502](https://github.com/LTplus-AG/ifc-lite/pull/6502) [`dd8e27c`](https://github.com/LTplus-AG/ifc-lite/commit/dd8e27cccbfd27cc6c16f09d66542c1c9bd17075) Thanks [@louistrue](https://github.com/louistrue)! - Place elements on IFC2X3 and IFC4 grid intersections correctly. An `IfcGridPlacement` in those schemas has no `PlacementRelTo`, so the mesher now reads its attributes in the layout the file declares and positions the element in the frame of the grid that owns the axes, instead of at the world origin.
+
+- [#6536](https://github.com/LTplus-AG/ifc-lite/pull/6536) [`526a91b`](https://github.com/LTplus-AG/ifc-lite/commit/526a91bdf33e2be2d6167df95a68db343b5337c0) Thanks [@louistrue](https://github.com/louistrue)! - Reuse validated group retessellation when disjoint opening cutters miss a host, avoiding repeated single-cutter arrangements while preserving geometry repair and existing fallback gates.
+
 ## 10.2.0
 
 ### Minor Changes

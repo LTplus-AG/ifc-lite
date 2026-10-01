@@ -10,6 +10,8 @@
  * Extracted from useIfc.ts for better separation of concerns
  */
 
+import { assertWorkflowOwner } from '@/lib/flow/run-session';
+import type { ModelLoadOptions, FederationAddModelOptions } from './modelLoadOptions.js';
 import { commitRealignmentFrame } from '@/lib/model-placement/realignment-frame';
 import { useCallback, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
@@ -57,7 +59,7 @@ export function useIfcFederation(
   loadFile: (
     file: File,
     target?: import('./useIfcLoader.js').LoadTarget,
-    options?: { sourceHandle?: FileSystemFileHandle },
+    options?: ModelLoadOptions,
   ) => Promise<void>,
 ) {
   const {
@@ -107,16 +109,9 @@ export function useIfcFederation(
    */
   const addModel = useCallback(async (
     file: File,
-    options?: {
-      name?: string;
-      modelId?: string;
-      loadedAt?: number;
-      visible?: boolean;
-      collapsed?: boolean;
-      /** Live FS Access handle so this federated model stays refreshable. */
-      sourceHandle?: FileSystemFileHandle;
-    }
+    options?: FederationAddModelOptions
   ): Promise<string | null> => {
+    assertWorkflowOwner(options?.workflowOwner);
     const modelId = options?.modelId ?? crypto.randomUUID();
     // Request order, not completion order, decides the RTC anchor of overlapping loads (#4897).
     const loadedAt = options?.loadedAt ?? Date.now();
@@ -159,7 +154,7 @@ export function useIfcFederation(
         collapsed: options?.collapsed,
         loadedAt,
         sharedRtcOffset,
-      }, { sourceHandle: options?.sourceHandle });
+      }, { sourceHandle: options?.sourceHandle, workflowOwner: options?.workflowOwner });
 
       // Before the session check: a superseded load still settled a model (#4897, `federationRtcRebase.ts`).
       if (useViewerStore.getState().models.has(modelId)) convergeFederationRtcFrame();

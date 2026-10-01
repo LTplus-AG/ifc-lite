@@ -70,7 +70,6 @@
   1052 apps/viewer/src/components/viewer/DataConnector.tsx
   1733 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
    535 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
-   409 apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx
    644 apps/viewer/src/components/viewer/ExportDialog.tsx
    468 apps/viewer/src/components/viewer/GLBExportDialog.tsx
   1357 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
@@ -114,7 +113,6 @@
    461 apps/viewer/src/hooks/useAnnotation2D.ts
    764 apps/viewer/src/hooks/useBCF.ts
   1348 apps/viewer/src/hooks/useClash.ts
-   472 apps/viewer/src/hooks/useCompare.ts
   1353 apps/viewer/src/hooks/useDrawingExport.ts
   1041 apps/viewer/src/hooks/useDrawingGeneration.ts
    586 apps/viewer/src/hooks/useIfcCache.ts

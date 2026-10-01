@@ -17,7 +17,7 @@ after(closeContrastBrowser);
 describe('BulkActionConfig found-count contrast (#5812)', () => {
   for (const theme of ['light', 'dark', 'colorful'] as Theme[]) {
     it(`measures both rendered found-count annotations in ${theme}`, async () => {
-      const container = render(<BulkActionConfig
+      const container = render(<BulkActionConfig onTargetSourceChange={() => {}}
         actionType="SET_PROPERTY"
         onActionTypeChange={() => {}}
         targetPset=""

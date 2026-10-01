@@ -37,6 +37,7 @@ export async function removeSet<H>(
   let removed = 0;
   const failed: Record<string, TrackedEntry> = {};
   for (const [laneKey, entry] of Object.entries(set.entries)) {
+    if (signal?.aborted) { failed[laneKey] = entry; continue; }
     try {
       await def.remove({ host, laneKey, tracking: undefined, signal, log: (level, message) => say(level, laneKey, message) }, entry.globalId);
       removed += 1;
@@ -71,6 +72,7 @@ export async function removeOrphanedSets<H>(
   let errors = 0;
   let removed = 0;
   for (const key of store.keys()) {
+    if (signal?.aborted) break;
     if (live.has(key)) continue;
     const set = store.load(key);
     if (!set) continue;

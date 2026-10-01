@@ -2,30 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * DXF underlay → 2D drawing space (issue #1782). The mapping math lives in
- * `dxfUnderlayMath.ts` (store-free, unit-tested); this hook wires it to the
- * viewer store and filters by section axis: underlays are plan content, so
- * anything but a cardinal 'down' section yields no data.
- *
- * `useDxfMapToWorldTransform` (issue #1929) resolves the federation
- * anchor's effective georeference the SAME way the DXF export path does
- * (`resolveDxfExportGeoreference`, which folds in `georefMutations` edits)
- * and builds the inverse-IfcMapConversion transform underlays flagged
- * `georeferenced` need. `useDrawingLayers`'s "Center on model" handler uses
- * it too, so centering agrees with what's actually rendered.
- *
- * PR #1965 review: also returns `available` — whether an anchor
- * georeference currently resolves — because `entry.georeferenced` is now
- * tri-state (`drawing2DSlice.ts`'s field doc) and an `undefined` ("auto")
- * entry's EFFECTIVE state depends on this same availability
- * (`resolveEffectiveGeoreferenced` in `dxfUnderlayMath.ts`). Every caller
- * that gates on an entry's georeferenced state needs both the transform
- * AND this flag, so they're returned together to keep them from drifting.
- */
+/** DXF references projected through their registered engineering frame. */
 
+import { dxfPlaneDrawingMapper, dxfReferenceRenderBasis, dxfReferencePointToRender } from './dxfReferencePlane';
+import { anchorWorldLineVertices } from '@/lib/renderer/line-overlay-rte';
 import { useMemo } from 'react';
-import type { Point2D } from '@ifc-lite/drawing-2d';
+import type { Point2D, SectionPlaneConfig } from '@ifc-lite/drawing-2d';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { RendererLineVertices } from '@/lib/renderer/line-overlay-rte';
 import { useViewerStore } from '@/store';
@@ -94,6 +76,7 @@ export function useDxfMapToWorldTransform(): DxfMapToWorld {
 }
 
 export function useDxfUnderlaysForDrawing(params: {
+  plane?: SectionPlaneConfig;
   enabled: boolean;
   sectionAxis: 'down' | 'front' | 'side';
   isCustomPlane: boolean;
@@ -101,20 +84,27 @@ export function useDxfUnderlaysForDrawing(params: {
   coordinateInfo: GeometryResult['coordinateInfo'] | undefined;
 }): readonly DxfUnderlayRenderData[] {
   const { enabled, sectionAxis, isCustomPlane, flipped, coordinateInfo } = params;
+  const models = useViewerStore(s => s.models), placement = useViewerStore(s => s.modelPlacement);
   const dxfUnderlays = useViewerStore((s) => s.dxfUnderlays);
   const { transform: mapToWorld, available: georeferenceAvailable } = useDxfMapToWorldTransform();
 
   return useMemo(() => {
-    // Plan-view content only: elevation/section/custom planes have no
-    // meaningful mapping for a 2D site plan.
-    if (!enabled || sectionAxis !== 'down' || isCustomPlane) return [];
+    // Site plans remain plan-only; registered references project in compatible views.
+    if (!enabled) return [];
     const visible = dxfUnderlays.filter((u) => u.visible && u.opacity > 0);
     if (visible.length === 0) return [];
     const shift = dxfWorldShift(coordinateInfo);
     // Cardinal flipped sections mirror the drawing's X axis (see
     // projectTo2D's flipped-U rule); the underlay must follow.
-    return visible.map((u) => dxfUnderlayToDrawing(u, shift, flipped, mapToWorld, georeferenceAvailable));
-  }, [enabled, sectionAxis, isCustomPlane, flipped, coordinateInfo, dxfUnderlays, mapToWorld, georeferenceAvailable]);
+    const plane: SectionPlaneConfig = params.plane ?? {axis: sectionAxis === 'down' ? 'y' : sectionAxis === 'front' ? 'z' : 'x', position: 0, flipped};
+    return visible.flatMap(u => {
+      if (u.referenceFrame) {
+        const mapper = dxfPlaneDrawingMapper(u, useViewerStore.getState(), plane);
+        return mapper ? [dxfUnderlayToDrawing(u, shift, flipped, mapToWorld, georeferenceAvailable, mapper)] : [];
+      }
+      return sectionAxis === 'down' && !isCustomPlane ? [dxfUnderlayToDrawing(u, shift, flipped, mapToWorld, georeferenceAvailable)] : [];
+    });
+  }, [enabled, sectionAxis, isCustomPlane, flipped, coordinateInfo, dxfUnderlays, mapToWorld, georeferenceAvailable, params.plane, models, placement]);
 }
 
 /**
@@ -131,6 +121,7 @@ export function useDxfUnderlays3DLines(
   coordinateInfo: GeometryResult['coordinateInfo'] | undefined,
 ): DxfLines3D {
   const dxfUnderlays = useViewerStore((s) => s.dxfUnderlays);
+  const models = useViewerStore(s => s.models), placement = useViewerStore(s => s.modelPlacement);
   const { transform: mapToWorld, available: georeferenceAvailable } = useDxfMapToWorldTransform();
 
   return useMemo(() => {
@@ -149,13 +140,25 @@ export function useDxfUnderlays3DLines(
     if (visible.length === 0) return EMPTY_LINES_3D;
     const shift = dxfWorldShift(coordinateInfo);
     const elevationRenderY = dxfElevationRenderY(coordinateInfo);
-    const payloads = visible.map((u) =>
-      dxfUnderlayToWorldLines3DAnchored(u, shift, elevationRenderY, mapToWorld, georeferenceAvailable),
-    ).filter((value): value is RendererLineVertices => value !== null);
+    const payloads = visible.map((u) => {
+      if (!u.referenceFrame) return dxfUnderlayToWorldLines3DAnchored(u, shift, elevationRenderY, mapToWorld, georeferenceAvailable);
+      const basis = dxfReferenceRenderBasis(u.referenceFrame, useViewerStore.getState());
+      if (!basis) return null;
+      const vertices: number[] = [];
+      for (const layer of u.underlay.layers) {
+        if (!(u.layerVisibility[layer.name] ?? layer.visible)) continue;
+        for (const path of layer.paths) {
+          const points = path.points.map(p => dxfReferencePointToRender(p, u, basis));
+          for (let i=1;i<points.length;i++) vertices.push(...points[i-1],...points[i]);
+          if (path.closed && points.length > 2) vertices.push(...points[points.length-1],...points[0]);
+        }
+      }
+      return vertices.length ? anchorWorldLineVertices(vertices) : null;
+    }).filter((value): value is RendererLineVertices => value !== null);
     const partitions = payloads.flatMap((payload) => payload instanceof Float32Array
       ? []
       : 'localVertices' in payload ? [payload] : payload);
     if (partitions.length === 0) return EMPTY_LINES_3D;
     return partitions.length === 1 ? partitions[0] : partitions;
-  }, [dxfUnderlays, coordinateInfo, mapToWorld, georeferenceAvailable]);
+  }, [dxfUnderlays, coordinateInfo, mapToWorld, georeferenceAvailable, models, placement]);
 }

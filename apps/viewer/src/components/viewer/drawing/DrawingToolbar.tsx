@@ -11,6 +11,7 @@
  * one short menu and drops the +/- zoom steps (wheel and pinch still zoom).
  */
 
+import { DrawingProjectionSettings } from './DrawingProjectionSettings';
 import { Box, BoxSelect, Cloud, Eye, FileText, Hexagon, Layers, Maximize2, MoreHorizontal, MousePointer2, Palette, Pin, PinOff, Printer, Ruler, ScanLine, Shapes, Tag, Trash2, Type, ZoomIn, ZoomOut } from 'lucide-react';
 import type { Annotation2DTool } from '@/store/slices/drawing2DSlice';
 import { Button } from '@/components/ui/button';
@@ -84,7 +85,7 @@ export function DrawingToolbar(p: DrawingToolbarProps) {
 
       <ToolbarDivider />
 
-      <div role="group" aria-label={t('section2d.display.group')} className="inline-flex items-center gap-1">
+      <fieldset aria-label={t('section2d.display.group')} className="inline-flex items-center gap-1">
         <ToggleChip
           icon={p.display.symbolic ? Shapes : Box} label={t('section2d.display.symbolic')}
           tip={p.display.symbolic ? t('section2d.symbolic.planTitle') : t('section2d.symbolic.cutTitle')}
@@ -102,6 +103,7 @@ export function DrawingToolbar(p: DrawingToolbarProps) {
             : p.display.projection ? t('section2d.construction.hideTitle') : t('section2d.construction.showTitle')}
           on={p.display.projection} disabled={!p.projectionAvailable} showLabel={showLabels} onToggle={p.onToggleProjection}
         />
+        <DrawingProjectionSettings available={p.projectionAvailable} />
         <ToggleChip
           icon={Eye} label={t('section2d.display.overlay3d')} tip={t('section2d.overlay.toggleTitle')}
           on={p.display.overlay3D} showLabel={showLabels} onToggle={p.onToggleOverlay3D}
@@ -111,16 +113,16 @@ export function DrawingToolbar(p: DrawingToolbarProps) {
           tip={p.display.printPreview ? t('section2d.printPreview.hideTitle') : t('section2d.printPreview.showTitle')}
           on={p.display.printPreview} showLabel={showLabels} onToggle={p.onTogglePrintPreview}
         />
-      </div>
+      </fieldset>
 
       {!narrow && (
         <>
           <ToolbarDivider />
-          <div role="group" aria-label={t('section2d.drawers.group')} className="inline-flex items-center gap-0.5">
+          <fieldset aria-label={t('section2d.drawers.group')} className="inline-flex items-center gap-0.5">
             {DRAWERS.map(({ id, icon, labelKey }) => (
               <DrawerToggle key={id} icon={icon} label={t(labelKey)} open={p.openDrawer === id} dot={p.drawerActivity[id]} showLabel={showLabels} onToggle={() => p.onToggleDrawer(id)} />
             ))}
-          </div>
+          </fieldset>
         </>
       )}
 

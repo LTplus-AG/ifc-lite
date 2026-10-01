@@ -1,0 +1,10 @@
+--- a/apps/viewer/src/components/viewer/document/DocumentPanel.tsx
++++ b/apps/viewer/src/components/viewer/document/DocumentPanel.tsx
+@@ -140,6 +140,7 @@
+         result.snapshotFailures.length > 0 ? t('document.panel.problemSnapshotFailures', localeCount(locale, result.snapshotFailures.length)) : '',
+         result.imageFailures.length > 0 ? t('document.panel.problemImageFailures', localeCount(locale, result.imageFailures.length)) : '',
+         result.tableFailures.length > 0 ? t('document.panel.problemTables', localeCount(locale, result.tableFailures.length)) : '',
++        (result.chartFailures?.length ?? 0) > 0 ? t('document.panel.problemCharts', localeCount(locale, result.chartFailures?.length ?? 0)) : '',
+       ].filter(Boolean);
+       const pages = localeCount(locale, result.pages);
+       toast.success(problems.length > 0

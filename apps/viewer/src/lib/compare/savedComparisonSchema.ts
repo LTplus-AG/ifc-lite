@@ -3,10 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Portable saved-report contract and boundary validation (#6506). No model/runtime imports. */
+import { isAutomationReportProvenance, type AutomationReportProvenance } from '../flow/report-provenance';
 import type { CompareReport } from './exportReport';
 
 export interface SavedComparison {
   version: 1;
+  automation?: AutomationReportProvenance;
   id: string;
   name: string;
   savedAt: string;
@@ -28,6 +30,7 @@ const matches = ['renamed', 'moved', 'reshaped', 'respecified', 'duplicated', 'd
 /** The same boundary validates storage and embedded document snapshots. */
 export function isSavedComparison(v: unknown): v is SavedComparison {
   if (!record(v) || v.version !== 1 || !strings(v, ['id']) || !v.id || typeof v.name !== 'string' || !v.name.trim() || !timestamp(v.savedAt)) return false;
+  if (v.automation !== undefined && !isAutomationReportProvenance(v.automation)) return false;
   if (!record(v.pair) || !strings(v.pair, ['baseModelId', 'headModelId']) || !v.pair.baseModelId || !v.pair.headModelId || v.pair.baseModelId === v.pair.headModelId) return false;
   if (typeof v.geometryUnavailable !== 'boolean' || typeof v.placementOnlyGeometry !== 'boolean') return false;
   if (v.keyProperty !== undefined && typeof v.keyProperty !== 'string') return false;

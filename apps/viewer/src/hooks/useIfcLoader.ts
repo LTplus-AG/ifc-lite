@@ -14,6 +14,8 @@ import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
 import { installModelLoadCanceller } from './modelLoadCanceller.js';
+import type { ModelLoadOptions } from './modelLoadOptions.js';
+import { assertWorkflowOwner } from '@/lib/flow/run-session';
 import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideMeshOnlyCacheHit, decideSourceTierCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
 import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
@@ -225,12 +227,7 @@ export function useIfcLoader() {
     | ((
         file: File,
         target?: LoadTarget,
-        options?: {
-          sourceHandle?: FileSystemFileHandle;
-          tierOverride?: TessellationQuality;
-          isResourceRetry?: boolean;
-          assumedLinearUnit?: string;
-        },
+        options?: ModelLoadOptions,
       ) => Promise<void>)
     | null
   >(null);
@@ -275,19 +272,9 @@ export function useIfcLoader() {
   const loadFile = useCallback(async (
     file: File,
     target: LoadTarget = { kind: 'primary' },
-    options?: {
-      sourceHandle?: FileSystemFileHandle;
-      // Auto-retry-at-lower-detail (resource-retry.ts): when a resource-limit
-      // failure re-invokes loadFile, it forces this tier and marks the attempt
-      // so a second failure surfaces instead of looping.
-      tierOverride?: TessellationQuality;
-      isResourceRetry?: boolean;
-      // #5175: a LandXML source with no declared `<Units>` refuses by
-      // default. The viewer supplies this only after the user picks a
-      // linear unit from the refusal prompt; never inferred or defaulted.
-      assumedLinearUnit?: string;
-    },
+    options?: ModelLoadOptions,
   ) => {
+    assertWorkflowOwner(options?.workflowOwner);
     const draping = drapeIfGeoRaster(file, setLoading); if (draping) return draping; // #5942: imagery, never a model
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
     // A primary supersedes every outstanding hook owner via the shared canceller.

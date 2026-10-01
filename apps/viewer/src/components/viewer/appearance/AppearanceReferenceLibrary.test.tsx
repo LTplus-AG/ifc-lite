@@ -134,10 +134,10 @@ test('a retained success notice follows active catalogue replacement (#4918)', a
   act(() => setLocale('notice-test'));
   const ui = render(<AppearanceReferenceLibrary />);
   click(button(ui, 'Export drawing registration'));
-  assert.equal(ui.querySelector('[role="status"]')?.textContent, 'Exported A');
+  assert.ok(Array.from(ui.querySelectorAll('output')).some(output => output.textContent === 'Exported A'));
 
   act(() => registerLocale('notice-test', { 'appearance.referenceLibrary.exportedNotice': 'Exported B' }));
-  assert.equal(ui.querySelector('[role="status"]')?.textContent, 'Exported B');
+  assert.ok(Array.from(ui.querySelectorAll('output')).some(output => output.textContent === 'Exported B'));
 });
 
 test('a retained validation error follows active catalogue replacement (#4918)', async () => {

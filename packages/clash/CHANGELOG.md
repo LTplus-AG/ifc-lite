@@ -1,5 +1,15 @@
 # @ifc-lite/clash
 
+## 2.4.4
+
+### Patch Changes
+
+- [#6579](https://github.com/LTplus-AG/ifc-lite/pull/6579) [`d92c25d`](https://github.com/LTplus-AG/ifc-lite/commit/d92c25da46cc45ac65028ccb452dc3f1703f5615) Thanks [@louistrue](https://github.com/louistrue)! - Compare large clash runs without exceeding JavaScript's call-argument limit when appending revision buckets. Preserve every occurrence and deterministic ordering while avoiding temporary copies of reloaded bucket ranges.
+- Updated dependencies [[`1051a74`](https://github.com/LTplus-AG/ifc-lite/commit/1051a74edca83eb3e6104562a7a65e0e645ac45b), [`89be760`](https://github.com/LTplus-AG/ifc-lite/commit/89be760d4eb8adba93e9f5660f6e4ceda0c507d5), [`6dace7b`](https://github.com/LTplus-AG/ifc-lite/commit/6dace7b05927505e9a9529674c635a505ce0c887), [`7780cb0`](https://github.com/LTplus-AG/ifc-lite/commit/7780cb05878c574ebd2a9f631ca6757233e845d3), [`dd8e27c`](https://github.com/LTplus-AG/ifc-lite/commit/dd8e27cccbfd27cc6c16f09d66542c1c9bd17075), [`e01487f`](https://github.com/LTplus-AG/ifc-lite/commit/e01487ff2f40fa758b73b3ec9a6abba9f9ff646b), [`526a91b`](https://github.com/LTplus-AG/ifc-lite/commit/526a91bdf33e2be2d6167df95a68db343b5337c0), [`4c0ebf2`](https://github.com/LTplus-AG/ifc-lite/commit/4c0ebf24c8c7b8470602300d56f0b1bd7c2a01e0), [`ec983d3`](https://github.com/LTplus-AG/ifc-lite/commit/ec983d378bfccc2b65fb636a76e321a2c9482aa4)]:
+  - @ifc-lite/geometry@7.7.0
+  - @ifc-lite/wasm@10.3.0
+  - @ifc-lite/parser@9.2.0
+
 ## 2.4.3
 
 ### Patch Changes

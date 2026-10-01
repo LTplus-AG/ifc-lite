@@ -98,7 +98,7 @@ describe('mounted 3D modelling gesture ownership (#6232)', () => {
     assert.equal(slabs.length, 1, 'the browser second click closes exactly one slab');
   });
 
-  for (const finish of ['pointerup', 'pointercancel', 'lostpointercapture', 'captured-leave', 'capture-refused', 'window-blur', 'buttons-lost', 'unmount'] as const) it(`room corner press-drag ${finish} uses actual layout/history`, async (t) => {
+  for (const finish of ['pointerup', 'pointercancel', 'lostpointercapture', 'captured-leave', 'capture-refused', 'foreign-cancel', 'window-blur', 'buttons-lost', 'unmount'] as const) it(`room corner press-drag ${finish} uses actual layout/history`, async (t) => {
     if (!ensureRoomWasm(t)) return;
     await ensureSpaceWasm();
     setWallMeshes([...BOX, [[4, 0], [4, 5]]]);
@@ -109,7 +109,7 @@ describe('mounted 3D modelling gesture ownership (#6232)', () => {
     assert.ok(left);
     act(() => { updateCommandGesture((g) => ({ ...(g as RoomPlaceGesture), mode: 'edit', edit: { tool: 'shape', hover: null, drag: null, cut: null, op: null } })); });
     const { canvas, camera } = canvasProbe(), before = pose(camera);
-    if (finish === 'capture-refused') canvas.setPointerCapture = () => { throw new DOMException('No active pointer', 'NotFoundError'); };
+    if (finish === 'capture-refused' || finish === 'foreign-cancel') canvas.setPointerCapture = () => { throw new DOMException('No active pointer', 'NotFoundError'); };
     event(canvas, 'pointerdown', 4, 5);
     assert.ok(roomGesture().edit.drag, 'real press grabs the room corner');
     event(canvas, 'pointermove', 3, 5);
@@ -117,6 +117,13 @@ describe('mounted 3D modelling gesture ownership (#6232)', () => {
     if (finish === 'captured-leave') {
       act(() => { canvas.dispatchEvent(new MouseEvent('mouseleave')); });
       assert.ok(roomGesture().edit.drag, 'captured departure retains the owned drag');
+      event(canvas, 'pointerup', 3, 5);
+    } else if (finish === 'foreign-cancel') {
+      for (const pointerType of ['touch', 'pen']) {
+        act(() => { canvas.dispatchEvent(mousePointer('pointercancel', 0, 300, -500, { pointerId: 2, pointerType })); });
+        assert.ok(roomGesture().edit.drag, 'a foreign cancellation cannot abandon the uncaptured owned mouse press');
+        assert.equal(depth(), history, 'foreign cancellation writes no IFC');
+      }
       event(canvas, 'pointerup', 3, 5);
     } else if (finish === 'capture-refused') {
       act(() => { canvas.dispatchEvent(new MouseEvent('mouseleave')); });
@@ -128,7 +135,7 @@ describe('mounted 3D modelling gesture ownership (#6232)', () => {
     else event(canvas, finish, 3, 5);
     assert.deepEqual(pose(camera), before);
     assert.equal(roomGesture().edit.drag, null, 'release/loss ends the press');
-    if (finish === 'pointerup' || finish === 'captured-leave') {
+    if (finish === 'pointerup' || finish === 'captured-leave' || finish === 'foreign-cancel') {
       assert.equal(spaceQuantity(left.id, 'GrossFloorArea'), 17.5);
       const committedDepth = depth();
       const state = useViewerStore.getState();
